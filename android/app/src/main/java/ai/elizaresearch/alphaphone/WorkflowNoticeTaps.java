@@ -45,6 +45,12 @@ final class WorkflowNoticeTaps {
  }}
  String token(String id)throws Exception{synchronized(LOCK){JSONObject row=ledger().optJSONObject(id);return row==null?null:row.getString("token");}}
  private boolean confirmed(String id,JSONObject row)throws Exception{
+  if(WorkflowNoticeDelivery.approvalId(id)){
+   // An approval notice opens its run only while its receipt is posted; a decision or expiry withdraws it.
+   String raw=storage.read(WorkflowNoticeDelivery.APPROVAL_SLOT);if(raw==null)return false;
+   JSONObject receipt=new JSONObject(raw).optJSONObject(id);
+   return receipt!=null&&receipt.length()==4&&row.getString("binding").equals(receipt.getString("binding"))&&receipt.getString("digest").matches("[a-f0-9]{64}")&&"succeeded".equals(receipt.getString("status"));
+  }
   String raw=storage.read(WorkflowNoticeDelivery.SLOT);if(raw==null)return false;
   JSONObject receipt=new JSONObject(raw).optJSONObject(id);
   return receipt!=null&&receipt.length()==3&&row.getString("binding").equals(receipt.getString("binding"))&&receipt.getString("digest").matches("[a-f0-9]{64}")&&"succeeded".equals(receipt.getString("status"));
@@ -68,5 +74,11 @@ final class WorkflowNoticeTaps {
    if(!"pending".equals(row.getString("state"))||!confirmed(id,row))throw new IllegalStateException("Notification tap changed");
    row.put("state","consumed");storage.write(SLOT,rows.toString());return;
   }throw new UnknownTap();
+ }}
+ /** Frees a withdrawn or expired approval route. Its receipt is no longer posted, so even a captured tap could never open. */
+ void forget(String id)throws Exception{synchronized(LOCK){
+  if(!WorkflowNoticeDelivery.approvalId(id))throw new IllegalArgumentException("Only approval routes are released");
+  JSONObject rows=ledger(),row=rows.optJSONObject(id);if(row==null||confirmed(id,row))return;
+  rows.remove(id);storage.write(SLOT,rows.toString());
  }}
 }

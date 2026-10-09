@@ -41,8 +41,29 @@ public class AlphaHostedResultsPlugin extends Plugin {
  @PluginMethod public void syncInbox(PluginCall call){submit(call,()->{try{HostedDelivery d=HostedDelivery.get(getContext());JSObject out=new JSObject();out.put("entries",d.sync(d.generation(call.getString("sessionId"))));call.resolve(out);}catch(Exception error){call.reject("Result sync unavailable; saved history is unchanged");}});}
  @PluginMethod public void setBackgroundPolling(PluginCall call){java.util.concurrent.CompletableFuture.runAsync(()->{try{Boolean enabled=call.getBoolean("enabled");if(enabled==null)throw new IllegalArgumentException();HostedDelivery.get(getContext()).polling(enabled);status(call);}catch(Exception error){call.reject("Background preference could not be saved");}});}
  @PluginMethod public void inboxHistory(PluginCall call){submit(call,()->{try{JSObject out=new JSObject();out.put("entries",HostedDelivery.get(getContext()).history(call.getString("sessionId")));call.resolve(out);}catch(Exception error){call.reject("Saved result history unavailable");}});}
- @Override public void load(){channel();capture(getActivity().getIntent());}
- @Override protected void handleOnNewIntent(Intent intent){capture(intent);}
+ /** Arms (or clears) the redacted renewal notice for a source bound to a scheduled loop. Only an identity and expiry cross the bridge. */
+ @PluginMethod public void scheduleSourceRenewal(PluginCall call){submit(call,()->{try{String id=HostedResultNotices.sourceId(call.getString("sourceId"));Long expiresAt=call.getLong("expiresAt");if(expiresAt==null)throw new IllegalArgumentException();HostedDeliveryWorker.scheduleRenewal(getContext(),id,expiresAt,System.currentTimeMillis());call.resolve();}catch(Exception error){call.reject("Renewal reminder unavailable; the in-app notice remains");}});}
+ @PluginMethod public void clearSourceRenewal(PluginCall call){submit(call,()->{try{HostedDeliveryWorker.cancelRenewal(getContext(),HostedResultNotices.sourceId(call.getString("sourceId")));call.resolve();}catch(Exception error){call.reject("Renewal reminder could not be cleared");}});}
+ /** One redacted notice per pending phone-step approval. Only an opaque ID, a route binding and the expiry cross the bridge; a tap opens the run read-only. */
+ @PluginMethod public void postWorkflowApprovalNotice(PluginCall call){submit(call,()->{try{
+  String id=call.getString("id"),binding=call.getString("bindingHash");Long expiresAt=call.getLong("expiresAt");JSONObject route=call.getObject("route");
+  if(!WorkflowNoticeDelivery.approvalId(id)||expiresAt==null||route==null)throw new IllegalArgumentException();
+  long now=System.currentTimeMillis();WorkflowNoticeTaps taps=WorkflowNoticeTapsFactory.create(getContext());WorkflowNoticeDelivery delivery=WorkflowNoticeTapsFactory.delivery(getContext());
+  for(String expired:delivery.expireApprovals(now))taps.forget(expired);
+  String status="expired";if(WorkflowNoticeDelivery.approvalTimeout(expiresAt,now)>0){taps.prepare(id,binding,route);status=delivery.publishApproval(id,binding,expiresAt,now);}
+  JSObject out=new JSObject();out.put("status",status);call.resolve(out);
+ }catch(Exception error){call.reject("Approval notice unavailable; the step stays waiting in Workflows");}});}
+ /** A decision (or an approval that is no longer pending) withdraws its notice; it is never reposted. */
+ @PluginMethod public void withdrawWorkflowApprovalNotice(PluginCall call){submit(call,()->{try{
+  String id=call.getString("id");if(!WorkflowNoticeDelivery.approvalId(id))throw new IllegalArgumentException();
+  WorkflowNoticeTapsFactory.delivery(getContext()).withdrawApproval(id);WorkflowNoticeTapsFactory.create(getContext()).forget(id);call.resolve();
+ }catch(Exception error){call.reject("Approval notice could not be withdrawn; it expires with the approval");}});}
+ private static volatile String pendingRenewal;
+ /** A Renew tap only opens the review for that source; it is consumed once and never renews by itself. */
+ @PluginMethod public void pendingSourceRenewal(PluginCall call){String id=pendingRenewal;pendingRenewal=null;JSObject out=new JSObject();if(id!=null)out.put("sourceId",id);call.resolve(out);}
+ private void captureRenewal(Intent intent){if(intent==null||!HostedNoticePoster.RENEW_ACTION.equals(intent.getAction())||intent.getData()==null)return;String data=intent.getData().toString();if(!data.startsWith(HostedNoticePoster.RENEW_PREFIX))return;try{pendingRenewal=HostedResultNotices.sourceId(data.substring(HostedNoticePoster.RENEW_PREFIX.length()));intent.setData(null);notifyListeners("renewSource",new JSObject(),true);}catch(IllegalArgumentException ignored){}}
+ @Override public void load(){channel();capture(getActivity().getIntent());captureRenewal(getActivity().getIntent());}
+ @Override protected void handleOnNewIntent(Intent intent){capture(intent);captureRenewal(intent);}
  @Override protected void handleOnResume(){notifyListeners("pendingResult",new JSObject(),true);}
  private void capture(Intent intent){if(intent==null||!ACTION.equals(intent.getAction())||intent.getData()==null)return;String data=intent.getData().toString();if(!data.startsWith(PREFIX))return;String key=data.substring(PREFIX.length());submit(null,()->{try{notices().capture(key);intent.setData(null);notifyListeners("pendingResult",new JSObject(),true);}catch(Exception ignored){/* Keep Intent for a later retry; never expose a result from an uncommitted tap. */}});}
  @PluginMethod public void publishResult(PluginCall call){submit(call,()->{try{String phase=notices().publish(call.getData());JSObject out=new JSObject();out.put("phase",phase);call.resolve(out);}catch(Exception error){call.reject("Result notice unavailable; saved history is unchanged");}});}

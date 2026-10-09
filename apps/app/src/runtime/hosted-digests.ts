@@ -90,6 +90,15 @@ export interface DigestSpec {
 	localTime: string;
 	enabled: boolean;
 }
+export type DigestSourceState = "current" | "expired" | "revoked";
+export interface DigestCapabilities {
+	digests: boolean;
+	nativeSources: boolean;
+	/** Agent accepts evening loops over a native phone source (its own prompt and read window). */
+	nativeEvening: boolean;
+	/** Agent pauses a loop whose source lapsed (no daily failure briefs) and reports sourceState. */
+	sourcePause: boolean;
+}
 export interface DigestLoop {
 	id: string;
 	versionId: string;
@@ -97,6 +106,69 @@ export interface DigestLoop {
 	active: boolean;
 	removed: boolean;
 	spec: DigestSpec;
+	/** Agents with patched plugin-workflow report why a loop is paused; older agents omit it. */
+	sourceState?: DigestSourceState;
+}
+/** Default and maximum reviewed source lifetime; renewal reviews a new source. */
+export const DIGEST_SOURCE_MAX_HOURS = 168;
+/** A bound source shows its renewal notice in its final 24 hours. */
+export const DIGEST_RENEWAL_WINDOW_MS = 24 * 3600000;
+export interface DigestRenewal {
+	source: DigestSource;
+	state: DigestSourceState | "expiring";
+	loops: DigestLoop[];
+}
+/** Sources that keep a loop running and need renewal now: expired, revoked, or within 24h of expiry. */
+export function digestRenewals(sources: DigestSource[], loops: DigestLoop[], now = Date.now()): DigestRenewal[] {
+	const out: DigestRenewal[] = [];
+	for (const source of sources) {
+		const bound = loops.filter((loop) => !loop.removed && loop.spec.enabled && loop.spec.sourceId === source.id);
+		if (!bound.length) continue;
+		const expiresAt = Date.parse(source.expiresAt);
+		const reported = bound.find((loop) => loop.sourceState && loop.sourceState !== "current")?.sourceState;
+		const state: DigestRenewal["state"] = source.revoked || reported === "revoked" ? "revoked" : expiresAt <= now || reported === "expired" ? "expired" : expiresAt - now <= DIGEST_RENEWAL_WINDOW_MS ? "expiring" : "current";
+		if (state !== "current") out.push({ source, state, loops: bound });
+	}
+	return out;
+}
+/** Loop state shown to the owner. Only an agent that advertises pausing is described as paused; an older agent still runs the schedule and records an unavailable result. */
+export function digestLoopState(loop: DigestLoop, sources: DigestSource[], now = Date.now(), pauses = false): string {
+	if (loop.removed) return "Removed";
+	if (!loop.spec.enabled || !loop.active) return "Paused";
+	const source = sources.find((s) => s.id === loop.spec.sourceId);
+	const suffix = pauses ? " — paused" : " — renew to resume";
+	if (loop.sourceState === "revoked" || source?.revoked) return "Source revoked" + suffix;
+	if (loop.sourceState === "expired" || !source || Date.parse(source.expiresAt) <= now) return "Source expired" + suffix;
+	return "On";
+}
+export interface RetainedDigestSummary {
+	summary: string;
+	ranAt: string;
+	agent: string;
+	status: string;
+}
+let retained: RetainedDigestSummary | null = null;
+const retainedListeners = new Set<() => void>();
+/** Latest retained digest of the current connection, for Home. Never a fresh read or a run. */
+export function latestRetainedDigest(): RetainedDigestSummary | null {
+	return retained;
+}
+export function subscribeRetainedDigest(listener: () => void): () => void {
+	retainedListeners.add(listener);
+	return () => retainedListeners.delete(listener);
+}
+/** Records the newest retained result (by completion, then cursor), or clears it when the connection changes. */
+export function rememberRetainedDigests(results: DigestResult[] | null, agent = "Your agent") {
+	const latest = (results ?? []).reduce<DigestResult | null>((best, row) => {
+		if (!best) return row;
+		const a = Date.parse(row.completedAt), b = Date.parse(best.completedAt);
+		return a > b || (a === b && row.cursor > best.cursor) ? row : best;
+	}, null);
+	const next = latest ? { summary: digestSummaryText(latest).slice(0, 2000), ranAt: latest.completedAt, agent: agent.slice(0, 200) || "Your agent", status: latest.status } : null;
+	if (JSON.stringify(next) === JSON.stringify(retained)) return;
+	retained = next;
+	for (const listener of retainedListeners) listener();
+	if (typeof window !== "undefined") window.dispatchEvent(new Event("alpha:retained-digest"));
 }
 export interface DigestResult {
 	cursor: number;
@@ -175,7 +247,8 @@ export class HostedDigestProtocol {
 			signal: AbortSignal,
 		) => Promise<unknown>,
 	) {}
- async nativeSourcesAvailable(signal:AbortSignal):Promise<boolean>{return object(await this.request('/api/workflow/status',undefined,signal)).hostedNativeSourceProtocol===1;}
+ /** What this agent advertises. Older agents omit the pause and native evening flags, so the app neither offers nor claims them. */
+ async capabilities(signal:AbortSignal):Promise<DigestCapabilities>{const v=object(await this.request('/api/workflow/status',undefined,signal));return {digests:v.hostedDigestProtocol===1,nativeSources:v.hostedNativeSourceProtocol===1,nativeEvening:v.hostedNativeSourceProtocol===1&&v.hostedNativeEveningProtocol===1,sourcePause:v.hostedDigestSourcePauseProtocol===1};}
 	async available(signal: AbortSignal) {
 		return (
 			object(await this.request("/api/workflow/status", undefined, signal))
@@ -287,7 +360,9 @@ export class HostedDigestProtocol {
 			throw Error("Invalid loops");
 		return values.map((value) => {
 			const v = object(value);
-			return { ...v, id: id(v.id), versionId: id(v.versionId) } as DigestLoop;
+			const sourceState = ["current", "expired", "revoked"].includes(v.sourceState) ? (v.sourceState as DigestSourceState) : undefined;
+			const { sourceState: _reported, ...rest } = v;
+			return { ...rest, id: id(v.id), versionId: id(v.versionId), ...(sourceState ? { sourceState } : {}) } as DigestLoop;
 		});
 	}
 	async mutate(

@@ -12,6 +12,15 @@ import java.util.UUID;
 final class HostedResultNotices {
  interface Storage { String read(String slot)throws Exception; void write(String slot,String value)throws Exception; }
  interface Poster { boolean allowed(); boolean active(String key); void post(String key); void cancel(String key); }
+ /** A daily brief supersedes the previous one; an unopened result notice withdraws itself after a day. History stays in the inbox. */
+ static final long SUPERSEDE_AFTER_MS=24L*3600000;
+ /** Source renewal notices appear within the final 24 hours of a reviewed source and withdraw themselves at expiry. */
+ static final long RENEWAL_WINDOW_MS=24L*3600000, MAXIMUM_SOURCE_MS=7L*86400000+3600000;
+ static String sourceId(String value){if(value==null||!value.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,127}"))throw new IllegalArgumentException("Invalid source identity");return value;}
+ /** Delay before the renewal notice, or -1 when the source already expired (nothing to renew in place). */
+ static long renewalDelay(long expiresAt,long now){if(expiresAt-now>MAXIMUM_SOURCE_MS)throw new IllegalArgumentException("Source expiry exceeds the reviewed bound");if(expiresAt<=now)return -1;return Math.max(0,expiresAt-RENEWAL_WINDOW_MS-now);}
+ /** The renewal notice disappears when the source expires; the in-app notice then shows the paused loop. */
+ static long renewalTimeout(long expiresAt,long now){return Math.max(1,expiresAt-now);}
  static final String LEDGER="hosted-notices:v1", PENDING="hosted-notices:pending:v1";
  private final Storage storage; private final Poster poster;
  HostedResultNotices(Storage storage,Poster poster){this.storage=storage;this.poster=poster;}
@@ -44,6 +53,8 @@ final class HostedResultNotices {
   // Bound encrypted metadata across accounts. A pending tap is never evicted.
   String pendingKey=read(PENDING).optString("key");ArrayList<String> keys=new ArrayList<>();ledger.keys().forEachRemaining(keys::add);keys.sort(Comparator.comparingLong(k->ledger.optJSONObject(k).optLong("createdAt")));
   while(ledger.length()>200){String oldest=null;for(String candidate:keys)if(!candidate.equals(key)&&!candidate.equals(pendingKey)){oldest=candidate;break;}if(oldest==null)throw new IllegalStateException("Notice history full");keys.remove(oldest);ledger.remove(oldest);poster.cancel(oldest);}
+  // A newer result from the same scheduled loop supersedes its earlier unopened notice.
+  for(String other:keys){JSONObject prior=ledger.optJSONObject(other);if(prior==null||other.equals(key)||other.equals(pendingKey)||!"posted".equals(prior.optString("phase"))||!record.getString("scope").equals(prior.optString("scope"))||!record.getString("workflowId").equals(prior.optString("workflowId")))continue;prior.put("phase","superseded");poster.cancel(other);}
   write(LEDGER,ledger); // Exact route and uncertain dispatch state precede any OS effect.
   if(record.getString("phase").equals("denied"))return "denied";
   try {poster.post(key);record.put("phase","posted");write(LEDGER,ledger);return "posted";}

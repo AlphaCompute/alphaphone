@@ -12,27 +12,50 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.service.notification.StatusBarNotification;
 
-/** Uses only this app's channel; private contents are hidden on the lock screen. */
+/** Uses only this app's channels; private contents are hidden on the lock screen. Only pending approvals use a high-importance channel. */
 final class WorkflowNoticePoster implements WorkflowNoticeDelivery.Poster {
- private static final String CHANNEL="alpha_workflow_steps";
+ static final String CHANNEL="alpha_workflow_steps",APPROVAL_CHANNEL="alpha_workflow_approvals";
  private final Context context;
- WorkflowNoticePoster(Context context){this.context=context.getApplicationContext();NotificationChannel channel=new NotificationChannel(CHANNEL,"Approved workflow notifications",NotificationManager.IMPORTANCE_DEFAULT);channel.setDescription("Notifications explicitly approved in Alpha Phone workflows");channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);manager().createNotificationChannel(channel);}
+ WorkflowNoticePoster(Context context){
+  this.context=context.getApplicationContext();
+  NotificationChannel channel=new NotificationChannel(CHANNEL,"Approved workflow notifications",NotificationManager.IMPORTANCE_DEFAULT);channel.setDescription("Notifications explicitly approved in Alpha Phone workflows");channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);manager().createNotificationChannel(channel);
+  NotificationChannel approvals=new NotificationChannel(APPROVAL_CHANNEL,"Workflow approval requests",NotificationManager.IMPORTANCE_HIGH);approvals.setDescription("A workflow step is waiting for your approval on this phone");approvals.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);manager().createNotificationChannel(approvals);
+ }
  private NotificationManager manager(){return context.getSystemService(NotificationManager.class);}
  private String tag(String id){return "alpha-workflow-"+id;}
- public boolean allowed(){
+ private static String channelFor(String id){return WorkflowNoticeDelivery.approvalId(id)?APPROVAL_CHANNEL:CHANNEL;}
+ private boolean allowed(String name){
   if(Build.VERSION.SDK_INT>=33&&context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)return false;
-  NotificationChannel channel=manager().getNotificationChannel(CHANNEL);if(!manager().areNotificationsEnabled()||channel==null||channel.getImportance()==NotificationManager.IMPORTANCE_NONE)return false;
+  NotificationChannel channel=manager().getNotificationChannel(name);if(!manager().areNotificationsEnabled()||channel==null||channel.getImportance()==NotificationManager.IMPORTANCE_NONE)return false;
   NotificationChannelGroup group=channel.getGroup()==null?null:manager().getNotificationChannelGroup(channel.getGroup());return group==null||!group.isBlocked();
  }
- public void post(String id,String title,String body)throws Exception{
-  if(!allowed())throw new SecurityException("Notification delivery is disabled");
-  Notification redacted=new Notification.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle("Alpha Phone workflow").setContentText("Unlock to review this notification.").build();
-  Notification.Builder notice=new Notification.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText(body).setStyle(new Notification.BigTextStyle().bigText(body)).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted).setOnlyAlertOnce(true).setAutoCancel(false).setCategory(Notification.CATEGORY_STATUS);
+ public boolean allowed(){return allowed(CHANNEL);}
+ @Override public boolean approvalsAllowed(){return allowed(APPROVAL_CHANNEL);}
+ private PendingIntent tap(String id)throws Exception{
   Intent launch=context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
   String token=WorkflowNoticeTapsFactory.create(context).token(id);
   if(launch==null||token==null)throw new IllegalStateException("Workflow notification route unavailable");
-  {launch.setAction(WorkflowNoticeTaps.ACTION).setData(android.net.Uri.parse(WorkflowNoticeTaps.PREFIX+token));notice.setContentIntent(PendingIntent.getActivity(context,0,launch,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT));}
-  manager().notify(tag(id),0,notice.build());
+  launch.setAction(WorkflowNoticeTaps.ACTION).setData(android.net.Uri.parse(WorkflowNoticeTaps.PREFIX+token));
+  return PendingIntent.getActivity(context,0,launch,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
  }
- public boolean matches(String id,String title,String body){for(StatusBarNotification row:manager().getActiveNotifications())if(row.getId()==0&&tag(id).equals(row.getTag())){Notification notice=row.getNotification();return CHANNEL.equals(notice.getChannelId())&&title.contentEquals(notice.extras.getCharSequence(Notification.EXTRA_TITLE,""))&&body.contentEquals(notice.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,notice.extras.getCharSequence(Notification.EXTRA_TEXT,"")));}return false;}
+ private Notification redacted(String channel,String title){return new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText("Unlock to review this notification.").build();}
+ /** Visible for builder tests. An unopened step notice times out after a day; opening it cancels it. */
+ Notification.Builder step(String title,String body,PendingIntent tap){
+  return new Notification.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText(body).setStyle(new Notification.BigTextStyle().bigText(body)).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted(CHANNEL,"Alpha Phone workflow")).setOnlyAlertOnce(true).setAutoCancel(false).setTimeoutAfter(WorkflowNoticeDelivery.STEP_NOTICE_TIMEOUT_MS).setCategory(Notification.CATEGORY_STATUS).setContentIntent(tap);
+ }
+ /** Visible for builder tests. Redacted approval request that disappears when the approval expires; tapping only opens the run. */
+ Notification.Builder approval(String title,String body,long timeoutMs,PendingIntent tap){
+  if(timeoutMs<=0)throw new IllegalArgumentException("Approval already expired");
+  return new Notification.Builder(context,APPROVAL_CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText(body).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted(APPROVAL_CHANNEL,"Alpha Phone")).setOnlyAlertOnce(true).setAutoCancel(false).setTimeoutAfter(timeoutMs).setCategory(Notification.CATEGORY_REMINDER).setContentIntent(tap);
+ }
+ public void post(String id,String title,String body)throws Exception{
+  if(!allowed())throw new SecurityException("Notification delivery is disabled");
+  manager().notify(tag(id),0,step(title,body,tap(id)).build());
+ }
+ @Override public void postApproval(String id,String title,String body,long timeoutMs)throws Exception{
+  if(!WorkflowNoticeDelivery.approvalId(id)||!approvalsAllowed())throw new SecurityException("Approval notifications are disabled");
+  manager().notify(tag(id),0,approval(title,body,timeoutMs,tap(id)).build());
+ }
+ @Override public void cancel(String id){manager().cancel(tag(id),0);}
+ public boolean matches(String id,String title,String body){for(StatusBarNotification row:manager().getActiveNotifications())if(row.getId()==0&&tag(id).equals(row.getTag())){Notification notice=row.getNotification();return channelFor(id).equals(notice.getChannelId())&&title.contentEquals(notice.extras.getCharSequence(Notification.EXTRA_TITLE,""))&&body.contentEquals(notice.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,notice.extras.getCharSequence(Notification.EXTRA_TEXT,"")));}return false;}
 }

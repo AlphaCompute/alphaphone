@@ -52,4 +52,16 @@ public final class HostedResultNoticeInstrumentedTest {
  }
  @Test public void redactedNoticeTapSurvivesRecreationWithoutReplay()throws Exception {org.junit.Assume.assumeTrue("Dedicated hosted notice campaign","1".equals(InstrumentationRegistry.getArguments().getString("hostedNotice")));run(true);}
  @Test public void deniedNotificationRetainsEncryptedHistory()throws Exception {org.junit.Assume.assumeTrue("Dedicated denied notice campaign","1".equals(InstrumentationRegistry.getArguments().getString("hostedNoticeDenied")));run(false);}
+ /** Builders only: no OS notification is posted. */
+ @Test public void resultAndRenewalBuildersExpireAndStayRedacted()throws Exception {
+  android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();HostedNoticePoster poster=new HostedNoticePoster(context);
+  android.app.PendingIntent tap=android.app.PendingIntent.getActivity(context,0,new android.content.Intent(context,MainActivity.class),android.app.PendingIntent.FLAG_IMMUTABLE);
+  android.app.Notification result=poster.result(tap,new android.app.Notification.Builder(context,AlphaHostedResultsPlugin.CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).build()).build();
+  assertEquals(HostedResultNotices.SUPERSEDE_AFTER_MS,result.getTimeoutAfter());assertEquals(AlphaHostedResultsPlugin.CHANNEL,result.getChannelId());assertEquals(android.app.Notification.VISIBILITY_PRIVATE,result.visibility);
+  long now=System.currentTimeMillis(),expiresAt=now+5*3600000L;String source=UUID.randomUUID().toString();
+  android.app.Notification renewal=poster.renewal(source,expiresAt,now).build();
+  assertEquals(5*3600000L,renewal.getTimeoutAfter());assertEquals(1,renewal.actions.length);assertEquals("Renew",renewal.actions[0].title.toString());assertEquals(android.app.Notification.VISIBILITY_PRIVATE,renewal.visibility);assertNotNull(renewal.publicVersion);
+  assertFalse(renewal.extras.toString().contains(source));assertTrue(HostedNoticePoster.renewalTag(source).endsWith(source));
+  assertThrows(IllegalArgumentException.class,()->poster.renewal("../escape",expiresAt,now));
+ }
 }

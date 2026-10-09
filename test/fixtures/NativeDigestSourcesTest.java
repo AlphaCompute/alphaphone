@@ -24,7 +24,23 @@ public final class NativeDigestSourcesTest {
   now[0]=Instant.parse("2026-10-08T15:41:19.576Z").toEpochMilli();NativeDigestSources.Reader racing=new NativeDigestSources.Reader(){public JSONArray calendar(JSONArray ids,String a,String b,int m,String startDate,String endDateExclusive)throws Exception{restarted.revoke(binding,"source",()->{});return reader.calendar(ids,a,b,m,startDate,endDateExclusive);}public JSONArray reminders()throws Exception{return reader.reminders();}};
   rejects(()->sources.read(binding,"source",revision,now[0],now[0],racing,()->{}));int before=reads[0];rejects(()->sources.read(binding,"source",revision,now[0],now[0],reader,()->{}));require(reads[0]==before);rejects(()->sources.approve(binding,"source",scope,now[0]+7*86400000L,now[0],()->{}));
   now[0]+=86400001;rejects(()->sources.read(binding,"small",smallGrant.getString("revision"),now[0],now[0],reader,()->{}));
+  // Consent is capped at 7 days; renewal reviews a new source.
+  rejects(()->sources.approve(binding,"too-long",scope,now[0]+7*86400000L+1,now[0],()->{}));require(sources.approve(binding,"week",scope,now[0]+7*86400000L,now[0],()->{}).getString("expiresAt").equals(Instant.ofEpochMilli(now[0]+7*86400000L).toString()));
+  // Evening window and upgraded legacy one-off alarms over one shared owner-day consent.
+  JSONObject shared=sources.approve(binding,"shared",scope.put("maximumItems",20),now[0]+86400000,now[0],()->{});long today=now[0];
+  NativeDigestSources.Reader daily=new NativeDigestSources.Reader(){public JSONArray calendar(JSONArray ids,String a,String b,int m,String startDate,String endDateExclusive){return new JSONArray().put(new JSONObject().put("calendarId","1").put("title","Selected"));}public JSONArray reminders()throws Exception{return new JSONArray()
+   .put(new JSONObject().put("id","legacy").put("title","Upgraded alarm").put("at",today-3600000).put("dueAt",today-3600000).put("legacyAlarm",true).put("status","posted").put("history",new JSONArray()))
+   .put(new JSONObject().put("id","open").put("title","Open").put("at",today+600000).put("dueAt",today+600000).put("status","scheduled"))
+   .put(new JSONObject().put("id","done-today").put("title","Done today").put("at",today-7200000).put("dueAt",today-7200000).put("status","completed").put("completedAt",today-60000).put("history",new JSONArray().put(new JSONObject().put("occurrenceId","o1").put("dueAt",today-7200000).put("completedAt",today-60000).put("skippedDates",0))))
+   .put(new JSONObject().put("id","done-yesterday").put("title","Done yesterday").put("at",today-86400000).put("dueAt",today-86400000).put("status","completed").put("completedAt",today-86400000))
+   .put(new JSONObject().put("id","daily").put("title","Recurring").put("at",today+86400000).put("dueAt",today+86400000).put("status","scheduled").put("recurrence",new JSONObject()).put("history",new JSONArray().put(new JSONObject().put("occurrenceId","d1").put("dueAt",today-3600000).put("completedAt",today-1800000).put("skippedDates",0))))
+   .put(new JSONObject().put("id","cancelled").put("title","Cancelled").put("at",today).put("dueAt",today).put("status","cancelled"));}};
+  JSONObject morning=sources.read(binding,"shared",shared.getString("revision"),now[0],now[0],"morning",daily,()->{});JSONArray morningRows=morning.getJSONArray("reminders");
+  require(!morning.has("template")&&morningRows.length()==2&&morningRows.getJSONObject(0).getString("id").equals("legacy")&&morningRows.getJSONObject(1).getString("id").equals("open")&&!morningRows.toString().contains("completed"));
+  JSONObject evening=sources.read(binding,"shared",shared.getString("revision"),now[0],now[0],"evening",daily,()->{});JSONArray eveningRows=evening.getJSONArray("reminders");Set<String> eveningIds=new HashSet<>();for(int i=0;i<eveningRows.length();i++)eveningIds.add(eveningRows.getJSONObject(i).getString("id")+":"+eveningRows.getJSONObject(i).getString("status"));
+  require("evening".equals(evening.getString("template"))&&eveningRows.length()==4&&eveningIds.equals(Set.of("legacy:posted","open:scheduled","done-today:completed","daily:completed"))&&evening.getString("start").equals(morning.getString("start"))&&evening.getString("end").equals(morning.getString("end")));
+  rejects(()->sources.read(binding,"shared",shared.getString("revision"),now[0],now[0],"weekly",daily,()->{}));
   try(var files=Files.list(dir)){for(Path p:(Iterable<Path>)files::iterator)Files.delete(p);}Files.delete(dir);
-  System.out.println("PASS native digest sources: durable consent/restart, tenant/enrollment fences, revocation during read, selected scope, due-time projection, DST, overflow, expiry and egress");
+  System.out.println("PASS native digest sources: durable consent/restart, tenant/enrollment fences, revocation during read, selected scope, due-time projection, DST, overflow, expiry and egress, 7-day cap, evening window, legacy reminders");
  }
 }
