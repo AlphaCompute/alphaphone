@@ -1,8 +1,8 @@
 diff --git a/packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts b/packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts
-index 128f1e357c30c7a580f5c771c1059e66d7de7b36..afa77881a9a412b949f806c615817915b595bb70 100644
+index d5ca9830e837a08b2324515f17fc4c9b478894cd..4963158622ba7023f5d52940c84d125bd56244fd 100644
 --- a/packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts
 +++ b/packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts
-@@ -62,7 +62,11 @@ app.get("/thread", async (context) =>
+@@ -66,7 +66,11 @@ app.get("/thread", async (context) =>
  );
  app.get("/attachment", async (context) =>
    context.json(

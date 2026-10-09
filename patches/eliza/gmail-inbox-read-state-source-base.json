@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "date": "2026-10-08",
+  "date": "2026-10-09",
   "upstream": "elizaOS/eliza",
-  "baseCommit": "cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e",
+  "baseCommit": "5513606ca720e256f609de302b52088d2a5f509f",
   "patch": "0037-gmail-inbox-read-state.patch",
   "patchSha256": "a88a61696fee91e83f59ef8784646af056b0199964c306f4e45f74e01857a2c4",
   "summary": "Adds reviewed managed Gmail inbox-v1 operation kinds mark-read and mark-unread, capabilities.readState, and additive migration 0535 widening managed_gmail_operation_receipts_kind_check.",
@@ -94,6 +94,18 @@
       "command": "git fetch --depth 50 https://github.com/elizaOS/eliza.git develop; git diff --stat cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e 903a1bc4effaa36558a1b933c8098186c1620a5f; GIT_INDEX_FILE=<scratch> git read-tree 903a1bc4e && git apply --cached 0037 0055 0056 0057 0058 0059 (in order); git write-tree",
       "date": "2026-10-08",
       "result": "develop advanced to 903a1bc4effaa36558a1b933c8098186c1620a5f (5 commits after cd12fabd); its tree is identical to cd12fabd (empty diff), 0535 is still unused, all six patches apply in series order, and the resulting tree (50d4ee5347ad69c874ae24dd8cdc6ab06d0d902b) equals the tree of the authored series commit tested above, so the bun integration test and migration order results above hold unchanged for this tip. The tests were not rerun at 903a1bc4."
+    },
+    {
+      "date": "2026-10-09",
+      "base": "5513606ca720e256f609de302b52088d2a5f509f (elizaOS develop tip on 2026-10-09)",
+      "upstreamDrift": "develop changed gmail.ts, shared.ts and inbox-v1/route.ts after cd12fabd (personal Google context consent: personalContextRead on managed fetches, requirePrivateOwnerAccess in the inbox-v1 identity); migration prefix 0535 is still unused (last is 0534).",
+      "command": "git rebase --onto 5513606ca cd12fabd7 (the six stacked series commits) in an isolated sparse worktree; git diff --full-index <commit>^ <commit> per patch",
+      "result": "clean three-way rebase, no conflicts; patch bytes unchanged",
+      "applyCheck": "GIT_INDEX_FILE=<scratch> git read-tree 5513606ca; git apply --cached 0037-gmail-inbox-read-state.patch in order: pass; full-series tree a688798f85c929512375173d2a1da62080fe3014 equals the tested worktree tree",
+      "tests": "cd packages/cloud/shared && bun test (1.4.2) src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts src/lib/utils/gmail-mime-text.test.ts with the whole series applied: 21 pass, 0 fail, 271 expect() calls",
+      "migrationOrder": "cd packages/cloud/shared && node ../scripts/shared/check-migration-prefix-order.ts: pass (exit 0)",
+      "lint": "biome check (2.5.14) on all 12 changed files: pass",
+      "typecheck": "tsc (6.0.3, scratch strict config) over the changed shared files: no errors in patch-added code; module-resolution errors from uninstalled monorepo packages and one pre-existing implicit any at gmail.ts readManagedGoogleGmailMessage attachments map (upstream line, not this series) remain because the full monorepo is not installed"
     }
   ],
   "upstreamPullRequest": "Not opened. Opening an elizaOS develop pull request publishes to a public repository and needs the owner's explicit approval in chat; the authoring branch exists only in the isolated worktree."

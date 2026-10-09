@@ -1,5 +1,5 @@
 diff --git a/packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts b/packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts
-index 412e981ef8ba6a1335a22340093fdb996282b8d4..6355f425c6fefd3c3dd54c52f80fee644c71fc51 100644
+index e61f6b7874031e2a1b5da15f0843bcc4caf730e9..9d8ca418ad9b0cbc0525f4576a100f2a715ec5ab 100644
 --- a/packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts
 +++ b/packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts
 @@ -5,7 +5,11 @@ import {
@@ -23,7 +23,7 @@ index 412e981ef8ba6a1335a22340093fdb996282b8d4..6355f425c6fefd3c3dd54c52f80fee64
      isImportant: triage.isImportant,
      likelyReplyNeeded: triage.likelyReplyNeeded,
      triageScore: triage.triageScore,
-@@ -428,7 +433,7 @@ async function fetchManagedGoogleGmailMessages(args: {
+@@ -429,7 +434,7 @@ async function fetchManagedGoogleGmailMessages(args: {
      fail(400, "Invalid Gmail page token.");
    const listParams = new URLSearchParams({
      maxResults: String(Math.min(Math.max(args.maxResults, 1), 50)),
@@ -66,10 +66,10 @@ index e96bf6d7519abf726d705529d752ddc91119b2f5..c335711fca0f10a4729d2f1b2f15c46a
          mimeTypes: Object.keys(attachmentTypes),
          maximumBytes: attachmentLimit,
 diff --git a/packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts b/packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts
-index dbedf4434d68c486b69881a4f04adae2e277759d..2966b214cc061af6502df6a02bc606d5beaaa681 100644
+index d54b9d26aa19a8525946e17ec5e9c192197c8a9d..dba988910b277776ff3da3fe1d3d3162ab832862 100644
 --- a/packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts
 +++ b/packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts
-@@ -94,6 +94,8 @@ export interface ManagedGoogleGmailMessage {
+@@ -96,6 +96,8 @@ export interface ManagedGoogleGmailMessage {
    snippet: string;
    receivedAt: string;
    isUnread: boolean;

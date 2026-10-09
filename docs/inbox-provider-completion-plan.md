@@ -20,8 +20,12 @@ The upstream inbox-v1 operations could not change read state, so [`patches/eliza
 
 0037 was requalified on elizaOS `develop` `cd12fabd` (October 8): migration prefix 0535 is still free, the
 patch applies unchanged and is byte-identical when regenerated there, the PGlite integration test passes
-(8 pass) and `check-migration-prefix-order` passes. No elizaOS pull request has been opened, and no Cloud
-deployment exists. Five further reference patches extend the managed connector; each records its contract
+(8 pass) and `check-migration-prefix-order` passes. On October 9 the whole series (0037, 0055-0059) was
+rebased onto `develop` `5513606c`, which had changed `gmail.ts`, `shared.ts` and the inbox-v1 route for
+personal Google context consent. The rebase was clean, 0037 and 0056 are byte-identical, 0055 and
+0057-0059 changed only in context and index lines, 0535 is still free, and the series' bun tests (21 pass),
+the migration order check and biome pass there; each manifest's `requalification` entry records this.
+No elizaOS pull request has been opened, and no Cloud deployment exists. Five further reference patches extend the managed connector; each records its contract
 and verification in its `-source-base.json` and applies in series after 0037:
 
 | Patch | Adds | Client use when a server advertises it |

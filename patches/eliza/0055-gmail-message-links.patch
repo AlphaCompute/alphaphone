@@ -1,5 +1,5 @@
 diff --git a/packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts b/packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts
-index cb0580be752d263154c5e6dc80a91bdf04492186..412e981ef8ba6a1335a22340093fdb996282b8d4 100644
+index a351a6f6ac360bfa3efee468d43063225fc9bca7..e61f6b7874031e2a1b5da15f0843bcc4caf730e9 100644
 --- a/packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts
 +++ b/packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts
 @@ -5,6 +5,7 @@ import {
@@ -10,7 +10,7 @@ index cb0580be752d263154c5e6dc80a91bdf04492186..412e981ef8ba6a1335a22340093fdb99
  import { extractBody, sanitizeHeaderValue } from "../../utils/google-mcp-shared";
  import type { OAuthConnectionRole } from "../oauth/types";
  import {
-@@ -686,6 +687,7 @@ export async function readManagedGoogleGmailMessage(args: {
+@@ -695,6 +696,7 @@ export async function readManagedGoogleGmailMessage(args: {
    return {
      message,
      bodyText: normalizeManagedGmailBodyText(rawBody) || message.snippet,
@@ -129,18 +129,18 @@ index f113ef4d93a18a216b531239e400b83099d54e56..e96bf6d7519abf726d705529d752ddc9
  const endpoint = "https://gmail.googleapis.com/gmail/v1/users/me";
  const fullScope = "https://mail.google.com/",
 diff --git a/packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts b/packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts
-index 8c6688856996ed440f52eb5fd2a0c4dc798bf49e..dbedf4434d68c486b69881a4f04adae2e277759d 100644
+index 5e5ed2da6f77bb76bf4b65b86f1fea7f3664d804..d54b9d26aa19a8525946e17ec5e9c192197c8a9d 100644
 --- a/packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts
 +++ b/packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts
-@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
- import { dbRead } from "../../../db/client";
+@@ -5,6 +5,7 @@ import { dbRead } from "../../../db/client";
+ import { authorizePersonalGoogleContextRead } from "../../../db/repositories/personal-google-context-consent";
  import { platformCredentials } from "../../../db/schemas/platform-credentials";
  import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
 +import type { GmailMessageLink } from "../../utils/gmail-mime-text";
  import { googleFetchWithToken } from "../../utils/google-mcp-shared";
  import { oauthService } from "../oauth";
  import { getPreferredActiveConnection } from "../oauth/oauth-service";
-@@ -106,6 +107,8 @@ export interface ManagedGoogleGmailReadResult {
+@@ -108,6 +109,8 @@ export interface ManagedGoogleGmailReadResult {
    attachments?: GoogleGmailAttachment[];
    message: ManagedGoogleGmailMessage;
    bodyText: string;
