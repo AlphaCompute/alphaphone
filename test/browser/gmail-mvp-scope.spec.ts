@@ -1,4 +1,6 @@
+import {guardCalendarFixture as guardNoMedia} from './calendar-draft-readiness';
 import {test,expect,type Page} from '@playwright/test';
+test.beforeEach(async({context,page})=>{await guardNoMedia(context);await page.route(/^https?:\/\/(?!127\.0\.0\.1:|localhost:)/,route=>route.abort());});
 // Gmail MVP flows against a controlled provider-boundary fixture: no real account, OAuth or mail.
 type Options={accounts?:string[];readState?:boolean;pages?:Record<string,number>};
 async function setup(page:Page,options:Options={}){
@@ -68,7 +70,7 @@ test('Inbox loads on open, pages with Load more, shows Sent and drives the unrea
  await expect(page.getByRole('button',{name:'To: friend@example.test, Sent subject',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Sent',exact:true})).toHaveAttribute('aria-pressed','true');
  await page.getByRole('button',{name:'Inbox',exact:true}).first().click();
- await expect(page.getByText('Subject in-0-a',{exact:true})).toBeVisible();
+ await expect(page.getByRole('region',{name:'Inbox',exact:true}).getByText('Subject in-0-a',{exact:true})).toBeVisible();
  await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));
  await expect(inboxBadge(page)).toHaveCount(1);
  expect((await gm(page)).dispatches).toEqual([]);
@@ -144,7 +146,7 @@ for(const [kind,text] of [['offline',/offline/],[409,/revoked or needs authoriza
 test('Inbox disconnect asks first and then shows the honest disconnected state',async({page})=>{
  await setup(page);
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
- await expect(page.getByText('Subject in-0-a',{exact:true})).toBeVisible();
+ await expect(page.getByRole('region',{name:'Inbox',exact:true}).getByText('Subject in-0-a',{exact:true})).toBeVisible();
  page.once('dialog',dialog=>dialog.dismiss());
  await page.getByRole('button',{name:'Disconnect Gmail',exact:true}).click();
  expect((await gm(page)).disconnects).toEqual([]);
