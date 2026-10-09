@@ -117,6 +117,18 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  /** Select exactly one billing authority at process launch; never accept UI balance as authorization. */
  static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {
   String kind=provider.optString("provider","cerebras"),model=provider.getString("model");
+  // Retirement context only: reuse protected selection identity, never a credential or renderer value.
+  Object selectedRevision=provider.opt("revision");
+  String hostRevision;
+  if(provider.has("revision")){
+   if(!(selectedRevision instanceof String))throw new IllegalArgumentException();
+   String revision=java.util.UUID.fromString((String)selectedRevision).toString();
+   if(!revision.equalsIgnoreCase((String)selectedRevision))throw new IllegalArgumentException();
+   hostRevision="provider:"+kind+":"+revision;
+  }else{
+   // Legacy selections cannot carry an unfinished read across a process restart.
+   hostRevision="boot:"+java.util.UUID.randomUUID().toString();
+  }
   if("elizacloud".equals(kind)){
    if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
    String token=cloudProviderToken(cloudSaved,provider.getString("credentialId"),now);
@@ -142,6 +154,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    env.put("CEREBRAS_LARGE_MODEL",model);
    env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
   }else throw new IllegalArgumentException();
+  env.put("ELIZA_HOST_CONTEXT_REVISION",hostRevision);
  }
  static final String PROVIDER_MODEL_PATTERN="[A-Za-z0-9][A-Za-z0-9._/-]{0,127}";
  /** Settings may show which hosted provider and model are configured; the key never leaves native storage. */

@@ -76,6 +76,25 @@ ${method(' static void configureLocalEmbeddings(')}
   bindCloudProvider(success,ID,CLOUD_PROVIDER_MODEL);
   JSONObject admitted=new JSONObject(success.provider);
   if(!"elizacloud".equals(admitted.getString("provider"))||!ID.equals(admitted.getString("credentialId"))||!admitted.has("revision")||admitted.has("token")||admitted.has("key"))throw new AssertionError("Invalid binding contents");
+  Map<String,String> scoped=new HashMap<>();
+  applyProviderEnvironment(admitted,current,scoped,NOW);
+  String revision=scoped.get("ELIZA_HOST_CONTEXT_REVISION");
+  if(!("provider:elizacloud:"+admitted.getString("revision")).equals(revision))throw new AssertionError("Protected provider revision not emitted");
+  applyProviderEnvironment(admitted,current,scoped,NOW);
+  if(!revision.equals(scoped.get("ELIZA_HOST_CONTEXT_REVISION")))throw new AssertionError("Same protected selection changed across launch");
+  JSONObject changed=new JSONObject(admitted.toString()).put("revision",UUID.randomUUID().toString());
+  applyProviderEnvironment(changed,current,scoped,NOW);
+  if(revision.equals(scoped.get("ELIZA_HOST_CONTEXT_REVISION")))throw new AssertionError("New selection did not retire prior completion");
+  JSONObject legacy=binding();String legacyBytes=legacy.toString();
+  applyProviderEnvironment(legacy,current,scoped,NOW);String boot=scoped.get("ELIZA_HOST_CONTEXT_REVISION");
+  if(boot==null||!boot.startsWith("boot:"))throw new AssertionError("Legacy selection lacks launch retirement nonce");
+  applyProviderEnvironment(legacy,current,scoped,NOW);
+  if(boot.equals(scoped.get("ELIZA_HOST_CONTEXT_REVISION"))||!legacyBytes.equals(legacy.toString()))throw new AssertionError("Legacy restart retained stale completion or rewrote provider");
+  for(Object bad:new Object[]{"", "not-a-uuid", "1-1-1-1-1", 123, JSONObject.NULL}){
+   Map<String,String> snapshot=new HashMap<>(scoped);
+   refuses(()->applyProviderEnvironment(new JSONObject(admitted.toString()).put("revision",bad),current,scoped,NOW));
+   if(!snapshot.equals(scoped))throw new AssertionError("Invalid revision mutated environment");
+  }
   for(String previous:new String[]{null,original}){
    AlphaCredentialStore logout=new AlphaCredentialStore(previous,current);
    logout.beforeRead=n->{if(n==2)logout.cloud=null;};
