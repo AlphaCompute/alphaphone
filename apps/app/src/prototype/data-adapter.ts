@@ -88,7 +88,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       homeCalendarLabel: agenda ? `Open calendar event: ${agenda.event.title}` : 'Open your calendar',
       homeCalendarTime: dateLabel, homeCalendarTitle: agenda?.event.title || (calendarSource?.loading ? 'Loading events…' : calendarSource?.ready ? calendarSource.truncated ? 'Calendar results limited' : 'No upcoming events' : calendarSource ? 'Calendar unavailable' : 'Loading events…'),
       homeAttentionLabel: browserDevProfile?'Open Inbox: '+unread+' unread email'+(unread===1?'':'s'):'Open Inbox', homeAttentionCount: browserDevProfile?String(unread):'—',
-      homeInboxTitle: browserDevProfile ? (unread ? `${unread} unread` : 'No unread messages') : 'Inbox', homeInboxStatus: browserDevProfile ? 'Open your messages' : 'View email accounts',
+      homeInboxTitle: browserDevProfile ? (unread ? `${unread} unread` : 'No unread messages') : 'Connect email', homeInboxStatus: browserDevProfile ? 'Open your messages' : '',
       homeAttentionPeople: [],
       homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Routines and automations', homePeopleVisibility: 'hidden',
       goCalendar: () => this.openView('calendar', agenda ? {open:agenda.event.id, day:agenda.event.off, openDay:agenda.event.off} : undefined),
