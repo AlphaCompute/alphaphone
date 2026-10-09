@@ -734,8 +734,6 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     const words = st.searching ? captureSearchWords(st.q) : [];
     const shownCaptures = st.filter ? [] : captures.filter(c => captureMatches(c, words));
     data.canSearch = captures.length > 0 || (data.groups || []).some((g: Bag) => g.items?.length);
-    // Until the template can hide the button (P10: sc-if photos.canSearch), an empty library says so instead of opening a search with nothing to find.
-    if (!data.canSearch && loaded && !loading && !next && !st.searching && typeof data.search === 'function') data.search = () => currentApi.toast('Nothing to search yet. Photos and videos you take with Alpha appear here.');
     if (shownCaptures.length) data.groups = [{ label: words.length ? `Captured on this device · ${shownCaptures.length} ${shownCaptures.length === 1 ? 'match' : 'matches'}${next ? ' so far' : ''}` : 'Captured on this device', place: '', items: shownCaptures.map(c => ({ nativeMediaId: c.id, bg: bg(c), tf: '', flt: '', vid: c.kind === 'video', dur: c.duration ? `${Math.floor(c.duration / 60)}:${String(Math.floor(c.duration % 60)).padStart(2, '0')}` : '', fav: !!c.favorite, dim: '', alt: (c.kind === 'video' ? 'Captured video ' : 'Captured photo ') + new Date(c.date).toLocaleTimeString(), ...thumbnailEvents(c,currentApi) })) }, ...(data.groups || [])];
     const selected = preview?.id === st.open ? preview : captures.find(c => c.id === st.open);
     if (selected) {
