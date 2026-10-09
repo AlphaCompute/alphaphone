@@ -214,8 +214,10 @@ export class DeviceActions {
     for (const value of response.proposals) {
       try { valid.push(this.parse(value)); }
       catch (error) {
-        const state = value && typeof value === 'object' ? (value as { state?: unknown }).state : undefined;
-        invalid.push({ pending: state === undefined || state === 'pending', error: error instanceof Error ? error : new Error('Invalid device action') });
+        const raw = value && typeof value === 'object' ? value as { state?: unknown; expiresAt?: unknown } : {};
+        // An invalid proposal that is finished or has expired is history, not a pending notice.
+        const expiresAt = typeof raw.expiresAt === 'string' ? Date.parse(raw.expiresAt) : NaN;
+        invalid.push({ pending: (raw.state === undefined || raw.state === 'pending') && !(expiresAt <= Date.now()), error: error instanceof Error ? error : new Error('Invalid device action') });
       }
     }
     return { valid, invalid };

@@ -528,10 +528,10 @@ index 0000000000000000000000000000000000000000..a4e8b4d287821db210a069c0201586ac
 +}
 diff --git a/plugins/plugin-native-notifications/test/native-host/android-compile.node.mjs b/plugins/plugin-native-notifications/test/native-host/android-compile.node.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d3af6ac72effd2769b6f5e525a24b62ac69d275e
+index 0000000000000000000000000000000000000000..4e87702c8489980a401c29be770ea7a274ee2a3d
 --- /dev/null
 +++ b/plugins/plugin-native-notifications/test/native-host/android-compile.node.mjs
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,79 @@
 +import assert from "node:assert/strict";
 +import { execFileSync } from "node:child_process";
 +import fs from "node:fs";
@@ -543,7 +543,10 @@ index 0000000000000000000000000000000000000000..d3af6ac72effd2769b6f5e525a24b62a
 +// Compiles every Android source against the SDK platform jar. This is a compile check, not a
 +// device test: it proves the module builds against the framework API it targets.
 +const plugin = fileURLToPath(new URL("../..", import.meta.url));
-+const sources = path.join(plugin, "android/src/main/java/ai/eliza/plugins/notifications");
++const sources = path.join(
++  plugin,
++  "android/src/main/java/ai/eliza/plugins/notifications",
++);
 +const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
 +const platform = (() => {
 +  if (!sdk) return null;
@@ -554,27 +557,66 @@ index 0000000000000000000000000000000000000000..d3af6ac72effd2769b6f5e525a24b62a
 +    .map((name) => /^android-(\d+)$/.exec(name))
 +    .filter(Boolean)
 +    .map((match) => Number(match[1]))
-+    .filter((level) => level >= 33 && fs.existsSync(path.join(root, `android-${level}`, "android.jar")))
++    .filter(
++      (level) =>
++        level >= 33 &&
++        fs.existsSync(path.join(root, `android-${level}`, "android.jar")),
++    )
 +    .sort((a, b) => b - a);
-+  return versions.length ? path.join(root, `android-${versions[0]}`, "android.jar") : null;
++  return versions.length
++    ? path.join(root, `android-${versions[0]}`, "android.jar")
++    : null;
 +})();
-+const bin = (name) => (process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name);
-+test("android sources compile against the SDK platform", { skip: platform ? false : "ANDROID_HOME/ANDROID_SDK_ROOT with an android-33+ platform is not set" }, (t) => {
-+  const classes = fs.mkdtempSync(path.join(os.tmpdir(), "notification-mirror-android-"));
++const bin = (name) =>
++  process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
++test("android sources compile against the SDK platform", {
++  skip: platform
++    ? false
++    : "ANDROID_HOME/ANDROID_SDK_ROOT with an android-33+ platform is not set",
++}, (t) => {
++  const classes = fs.mkdtempSync(
++    path.join(os.tmpdir(), "notification-mirror-android-"),
++  );
 +  t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
-+  const files = fs.readdirSync(sources).filter((name) => name.endsWith(".java")).map((name) => path.join(sources, name));
++  const files = fs
++    .readdirSync(sources)
++    .filter((name) => name.endsWith(".java"))
++    .map((name) => path.join(sources, name));
 +  assert.equal(files.length, 4);
-+  execFileSync(bin("javac"), ["--release", "17", "-Xlint:-options", "-classpath", platform, "-d", classes, ...files], { timeout: 180000 });
-+  for (const name of ["NotificationMirror", "NotificationMirrorConfig", "NotificationMirrorPolicy", "NotificationMirrorListenerService"]) {
-+    assert.ok(fs.existsSync(path.join(classes, "ai/eliza/plugins/notifications", `${name}.class`)), name);
++  execFileSync(
++    bin("javac"),
++    [
++      "--release",
++      "17",
++      "-Xlint:-options",
++      "-classpath",
++      platform,
++      "-d",
++      classes,
++      ...files,
++    ],
++    { timeout: 180000 },
++  );
++  for (const name of [
++    "NotificationMirror",
++    "NotificationMirrorConfig",
++    "NotificationMirrorPolicy",
++    "NotificationMirrorListenerService",
++  ]) {
++    assert.ok(
++      fs.existsSync(
++        path.join(classes, "ai/eliza/plugins/notifications", `${name}.class`),
++      ),
++      name,
++    );
 +  }
 +});
 diff --git a/plugins/plugin-native-notifications/test/native-host/policy.node.mjs b/plugins/plugin-native-notifications/test/native-host/policy.node.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..59509a7897952b316feba95ea9401e28ecb9dfdf
+index 0000000000000000000000000000000000000000..ba706b667ee686ae21fe3abb6623ba0cf121bf6d
 --- /dev/null
 +++ b/plugins/plugin-native-notifications/test/native-host/policy.node.mjs
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,41 @@
 +import assert from "node:assert/strict";
 +import { execFileSync } from "node:child_process";
 +import fs from "node:fs";
@@ -584,10 +626,16 @@ index 0000000000000000000000000000000000000000..59509a7897952b316feba95ea9401e28
 +import { fileURLToPath } from "node:url";
 +
 +const plugin = fileURLToPath(new URL("../..", import.meta.url));
-+const sources = path.join(plugin, "android/src/main/java/ai/eliza/plugins/notifications");
-+const bin = (name) => (process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name);
++const sources = path.join(
++  plugin,
++  "android/src/main/java/ai/eliza/plugins/notifications",
++);
++const bin = (name) =>
++  process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
 +test("notification mirror configuration and policy decisions", (t) => {
-+  const classes = fs.mkdtempSync(path.join(os.tmpdir(), "notification-mirror-policy-"));
++  const classes = fs.mkdtempSync(
++    path.join(os.tmpdir(), "notification-mirror-policy-"),
++  );
 +  t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
 +  execFileSync(
 +    bin("javac"),
@@ -600,9 +648,13 @@ index 0000000000000000000000000000000000000000..59509a7897952b316feba95ea9401e28
 +    ],
 +    { timeout: 120000 },
 +  );
-+  const output = execFileSync(bin("java"), ["-cp", classes, "NotificationMirrorPolicyTest"], {
-+    timeout: 60000,
-+    encoding: "utf8",
-+  });
++  const output = execFileSync(
++    bin("java"),
++    ["-cp", classes, "NotificationMirrorPolicyTest"],
++    {
++      timeout: 60000,
++      encoding: "utf8",
++    },
++  );
 +  assert.match(output, /^\d+ assertions passed/);
 +});

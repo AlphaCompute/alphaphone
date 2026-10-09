@@ -1,7 +1,7 @@
 {
   "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
   "patch": "0048-contracts-runtime-capabilities.patch",
-  "sha256": "d7b46ef4c58fd17dd0c6bda1dbfe9d6cf7dd113247da8e228ab0a3b70744f8e0",
+  "sha256": "7143f3d48fd2a117927d775211f3225c69c97c232c93e5faf4ee7537e84aaa37",
   "status": "Candidate for elizaOS develop; types and validators only, no metering semantics; authored at reviewed runtime 45242af; not submitted upstream",
   "basePaths": [
     "packages/contracts/package.json"
@@ -17,7 +17,7 @@
   ],
   "files": {
     "packages/contracts/package.json": "f48a36155f236523ef379260b7ef00510a3db9b6a696fb116388c620ee705165",
-    "packages/contracts/src/runtime-capabilities.test.ts": "80ca74fd8fc4a6d97c18448f0fd21cab2e99ab6c80f0350ddc4727bc517d4fc3",
-    "packages/contracts/src/runtime-capabilities.ts": "bdb57a446715b7aa419f6e4b96735738134f5c51f84df12898d712cf1a6e4049"
+    "packages/contracts/src/runtime-capabilities.test.ts": "8a9cb62f9f83da0931b181e69a57fdbbfde00c2faa0e2ac1387b7afa92d9dc45",
+    "packages/contracts/src/runtime-capabilities.ts": "6bb98e810a6326d0dc8493b1e6c689acfb2af95dc834a27b73a17b51ec6bca97"
   }
 }

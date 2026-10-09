@@ -7,7 +7,10 @@
 // that agent). It enrolls one fresh synthetic device, sends each case in its own
 // conversation with the same device headers and current-turn context the phone uses, and
 // counts durable proposals. Every proposal it causes is rejected immediately; nothing is
-// approved or executed, and no phone effect can occur.
+// approved or executed, and no phone effect can occur. The synthetic device is revoked when
+// the run ends; its per-case conversations remain in the runtime's history.
+// The result records the script's expected model (scripts/agent-model.mjs); it does not
+// prove which model the runtime used. Check the runtime's own configuration for that.
 //
 //   node scripts/eval-device-action-clarification.mjs --origin http://127.0.0.1:2138 \
 //     --token-file /path/to/paired-machine-token --output test-results/clarification.json
@@ -93,56 +96,64 @@ async function client(origin, token) {
   if (registered.installationId !== installationId) throw Error('Device registration was not verified');
   const negotiated = CAPABILITIES.filter(capability => registered.capabilities?.includes(capability));
   device['X-Eliza-Device-Capabilities'] = negotiated.join(',');
-  return { call, negotiated };
+  return { call, negotiated, revoke: () => call('/api/client-devices/revoke', {}) };
 }
 /** Sends each case once and records its outcome; every proposal it caused is rejected. */
 export async function evaluate({ origin, token, cases = CASES, now = () => new Date() }) {
-  const { call, negotiated } = await client(loopback(origin), token);
-  const seen = new Set((await call('/api/client-devices/proposals')).proposals.map(p => p.id));
-  // Rejects every unseen proposal. Called before each case and at the end, so a late or
-  // orphaned proposal (for example after a timed-out turn) is rejected and counted as stray,
-  // never attributed to the next case.
-  const sweep = async () => {
-    let stray = 0;
-    for (const proposal of (await call('/api/client-devices/proposals')).proposals.filter(p => !seen.has(p.id))) {
-      seen.add(proposal.id); stray++;
-      if (proposal.state === 'pending') await call(`/api/client-devices/proposals/${encodeURIComponent(proposal.id)}/decision`, { digest: proposal.digest, decision: 'reject' });
-    }
-    return stray;
-  };
-  const rows = [];
-  let strayProposals = 0;
-  for (const item of cases) {
-    const row = { id: item.id, expect: item.expect };
-    try {
-      strayProposals += await sweep();
-      const { conversation } = await call('/api/conversations', { title: `Clarification eval ${item.id}` });
-      const context = { view: item.view, revision: 1, sensitive: false, timeZone: 'America/New_York' };
-      const reply = await call(`/api/conversations/${encodeURIComponent(conversation.id)}/messages`, { text: item.text, channelType: 'DM', metadata: { uiTimeZone: context.timeZone, clientDevice: { context } }, clientMessageId: randomUUID() });
-      const created = (await call('/api/client-devices/proposals')).proposals.filter(p => !seen.has(p.id));
-      for (const proposal of created) {
-        seen.add(proposal.id);
+  const { call, negotiated, revoke } = await client(loopback(origin), token);
+  let revoked = false;
+  try {
+    const seen = new Set((await call('/api/client-devices/proposals')).proposals.map(p => p.id));
+    // Rejects every unseen proposal. Called before each case and at the end, so a late or
+    // orphaned proposal (for example after a timed-out turn) is rejected and counted as stray,
+    // never attributed to the next case.
+    const sweep = async () => {
+      let stray = 0;
+      for (const proposal of (await call('/api/client-devices/proposals')).proposals.filter(p => !seen.has(p.id))) {
+        seen.add(proposal.id); stray++;
         if (proposal.state === 'pending') await call(`/api/client-devices/proposals/${encodeURIComponent(proposal.id)}/decision`, { digest: proposal.digest, decision: 'reject' });
       }
-      Object.assign(row, { outcome: classify({ proposals: created.length, reply: reply.text }), proposals: created.map(p => p.payload?.operation?.type ?? 'unknown'), replyChars: String(reply.text ?? '').length });
-    } catch (error) {
-      Object.assign(row, { outcome: 'error', error: String(error.message).slice(0, 200) });
+      return stray;
+    };
+    const rows = [];
+    let strayProposals = 0;
+    for (const item of cases) {
+      const row = { id: item.id, expect: item.expect };
+      try {
+        strayProposals += await sweep();
+        const { conversation } = await call('/api/conversations', { title: `Clarification eval ${item.id}` });
+        const context = { view: item.view, revision: 1, sensitive: false, timeZone: 'America/New_York' };
+        const reply = await call(`/api/conversations/${encodeURIComponent(conversation.id)}/messages`, { text: item.text, channelType: 'DM', metadata: { uiTimeZone: context.timeZone, clientDevice: { context } }, clientMessageId: randomUUID() });
+        const created = (await call('/api/client-devices/proposals')).proposals.filter(p => !seen.has(p.id));
+        for (const proposal of created) {
+          seen.add(proposal.id);
+          if (proposal.state === 'pending') await call(`/api/client-devices/proposals/${encodeURIComponent(proposal.id)}/decision`, { digest: proposal.digest, decision: 'reject' });
+        }
+        Object.assign(row, { outcome: classify({ proposals: created.length, reply: reply.text }), proposals: created.map(p => p.payload?.operation?.type ?? 'unknown'), replyChars: String(reply.text ?? '').length });
+      } catch (error) {
+        Object.assign(row, { outcome: 'error', error: String(error.message).slice(0, 200) });
+      }
+      rows.push(row);
     }
-    rows.push(row);
+    strayProposals += await sweep();
+    // The synthetic enrollment never outlives the run.
+    await revoke(); revoked = true;
+    return { version: 1, kind: 'device-action-clarification', recordedAt: now().toISOString(), expectedModel: AGENT_MODEL, negotiatedCapabilities: negotiated, source: sourceBinding(), summary: { ...summarize(rows), strayProposals }, rows };
+  } finally {
+    if (!revoked) await revoke().catch(() => {});
   }
-  strayProposals += await sweep();
-  return { version: 1, kind: 'device-action-clarification', recordedAt: now().toISOString(), model: AGENT_MODEL, negotiatedCapabilities: negotiated, source: sourceBinding(), summary: { ...summarize(rows), strayProposals }, rows };
 }
 
 async function selfTest() {
   // Synthetic agent: asks back for ambiguous text, proposes for the controls.
   const token = 'synthetic-eval-token', proposals = [];
-  let late = false;
+  let late = false, revokes = 0;
   const server = http.createServer(async (req, res) => {
     let raw = ''; for await (const chunk of req) raw += chunk;
     const body = raw ? JSON.parse(raw) : undefined, send = value => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(value)); };
     assert.equal(req.headers.authorization, `Bearer ${token}`);
     if (req.url === '/api/client-devices/register') return send({ installationId: req.headers['x-eliza-device-id'], enrollmentId: 'enrollment', capabilities: CAPABILITIES.slice(0, 4) });
+    if (req.url === '/api/client-devices/revoke') { revokes++; return send({ revoked: true }); }
     if (req.url === '/api/client-devices/proposals') {
       send({ proposals: proposals.map(p => ({ ...p })) });
       // Arrives just after this case's listing: the next sweep must reject it as stray.
@@ -165,13 +176,15 @@ async function selfTest() {
     const result = await evaluate({ origin: `http://127.0.0.1:${server.address().port}`, token });
     assert.deepEqual(result.summary, { ambiguous: { cases: 8, clarifyingQuestionRate: 1, proposalRate: 0 }, controls: { cases: 3, proposalRate: 1, clarifyingQuestionRate: 0 }, errors: 0, strayProposals: 1 });
     assert.ok(proposals.every(p => p.state === 'rejected'), 'every caused proposal is rejected');
+    assert.equal(revokes, 1, 'the synthetic device is revoked once at the end');
+    assert.equal(result.expectedModel, AGENT_MODEL); assert.ok(!('model' in result), 'the runtime model is not claimed as observed');
     assert.deepEqual(result.negotiatedCapabilities, CAPABILITIES.slice(0, 4));
     assert.match(result.source.caseSet, /^[a-f0-9]{64}$/);
     assert.equal(classify({ proposals: 1, reply: 'Which one?' }), 'proposal');
     assert.equal(classify({ proposals: 0, reply: 'Done.' }), 'other');
     assert.equal(classify({ proposals: 0, reply: '' }), 'empty');
     assert.throws(() => loopback('https://agent.example.com'), /loopback/);
-    console.log('PASS clarification eval harness: classification, per-case conversations, rejection of every caused proposal (late ones counted as stray, never misattributed), loopback-only origin and source binding. Synthetic agent only; not a model result.');
+    console.log('PASS clarification eval harness: classification, per-case conversations, rejection of every caused proposal (late ones counted as stray, never misattributed), synthetic device revoked, loopback-only origin and source binding. Synthetic agent only; not a model result.');
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 }
 

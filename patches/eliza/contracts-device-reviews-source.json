@@ -1,7 +1,7 @@
 {
   "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
   "patch": "0045-contracts-device-reviews.patch",
-  "sha256": "cee3b2b95596689ea05a43b57e1f704303061144e879e2f2c7a8d95d018aec3d",
+  "sha256": "bb32acccfce7e16c7db781e278f342806218b6201c0fb740a19a00ec0a52e66a",
   "status": "Candidate for elizaOS develop; authored at reviewed runtime 45242af; not submitted upstream",
   "basePaths": [
     "packages/contracts/src/index.ts"
@@ -16,8 +16,8 @@
     "packages/contracts/src/index.ts"
   ],
   "files": {
-    "packages/contracts/src/device-reviews.test.ts": "e008e0a52acbb881ab9bbe8e5e3dcfcbf26f079ca630e09bc27d79ac1ddf43d3",
-    "packages/contracts/src/device-reviews.ts": "7be6468c083830efb0336919fc760990ed83686a83f95638b8bbc500e004afa7",
+    "packages/contracts/src/device-reviews.test.ts": "b06abb1599dca1139c240d513dca6a451594310d5565e898abec1b1577e024fb",
+    "packages/contracts/src/device-reviews.ts": "2067e022d187c40b85ced1d6db53bad3ef74176dda0e5320c9c8facbaa6e5f5d",
     "packages/contracts/src/index.ts": "c4ab049b7255cd6ba8f39e3139248a38551062820589544211f641700c499a09"
   }
 }

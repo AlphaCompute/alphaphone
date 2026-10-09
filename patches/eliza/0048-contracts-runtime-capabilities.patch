@@ -17,10 +17,10 @@ index 2635760e9ae400b0d8ad1263dd8e30235af09402..fabb692b47cd34d26baf935397ed46c3
    "scripts": {
 diff --git a/packages/contracts/src/runtime-capabilities.test.ts b/packages/contracts/src/runtime-capabilities.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..38ff297c60951f57f0819e141d4804b2a612d606
+index 0000000000000000000000000000000000000000..7a885fe7c5507fe11abb761c24241dd7d724c868
 --- /dev/null
 +++ b/packages/contracts/src/runtime-capabilities.test.ts
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,121 @@
 +import { describe, expect, it } from "vitest";
 +import {
 +  validateAgentResult,
@@ -42,12 +42,19 @@ index 0000000000000000000000000000000000000000..38ff297c60951f57f0819e141d4804b2
 +      runtime: "resident",
 +      webUiUrl: "https://agent.example/app/",
 +      inference: { provider: "cerebras", model: "qwen-3.8-27b" },
-+      deviceCapabilities: ["notes.local-record.v1", "calendar.availability-read.v1"],
++      deviceCapabilities: [
++        "notes.local-record.v1",
++        "calendar.availability-read.v1",
++      ],
 +      speech,
 +    };
 +    expect(validateRuntimeCapabilities(value)).toEqual(value);
 +    expect(
-+      validateRuntimeCapabilities({ version: 1, runtime: "cloud", deviceCapabilities: [] }),
++      validateRuntimeCapabilities({
++        version: 1,
++        runtime: "cloud",
++        deviceCapabilities: [],
++      }),
 +    ).toEqual({ version: 1, runtime: "cloud", deviceCapabilities: [] });
 +  });
 +  it("rejects unknown versions, fields, credentials in URLs and duplicate capabilities", () => {
@@ -58,9 +65,18 @@ index 0000000000000000000000000000000000000000..38ff297c60951f57f0819e141d4804b2
 +      { ...base, webUiUrl: "http://agent.example" },
 +      { ...base, webUiUrl: "https://user:pass@agent.example" },
 +      { ...base, webUiUrl: "https://agent.example/?token=secret" },
-+      { ...base, deviceCapabilities: ["notes.local-record.v1", "notes.local-record.v1"] },
++      // URL parsing silently drops tabs and newlines, so control characters are refused first.
++      { ...base, webUiUrl: "https://agent.example/\napp/" },
++      { ...base, inference: { provider: "cerebras\t", model: "qwen-3.8-27b" } },
++      {
++        ...base,
++        deviceCapabilities: ["notes.local-record.v1", "notes.local-record.v1"],
++      },
 +      { ...base, deviceCapabilities: ["Notes"] },
-+      { ...base, inference: { provider: "cerebras", model: "qwen", apiKey: "x" } },
++      {
++        ...base,
++        inference: { provider: "cerebras", model: "qwen", apiKey: "x" },
++      },
 +      { ...base, runtime: "enclave" },
 +    ])
 +      expect(() => validateRuntimeCapabilities(bad)).toThrow();
@@ -68,10 +84,16 @@ index 0000000000000000000000000000000000000000..38ff297c60951f57f0819e141d4804b2
 +  it("keeps speech location and languages consistent", () => {
 +    expect(validateSpeechCapabilities(speech)).toEqual(speech);
 +    expect(() =>
-+      validateSpeechCapabilities({ ...speech, tts: { location: "none", languages: ["en"] } }),
++      validateSpeechCapabilities({
++        ...speech,
++        tts: { location: "none", languages: ["en"] },
++      }),
 +    ).toThrow();
 +    expect(() =>
-+      validateSpeechCapabilities({ ...speech, stt: { location: "device", languages: [] } }),
++      validateSpeechCapabilities({
++        ...speech,
++        stt: { location: "device", languages: [] },
++      }),
 +    ).toThrow();
 +  });
 +  it("binds agent results to their scheduled occurrence", () => {
@@ -90,9 +112,14 @@ index 0000000000000000000000000000000000000000..38ff297c60951f57f0819e141d4804b2
 +      completedAt: "2026-10-08T12:00:05.000Z",
 +    };
 +    expect(validateAgentResult(occurrence, result)).toEqual(result);
-+    expect(() => validateAgentResult(occurrence, { ...result, occurrenceId: "occ-2" })).toThrow();
 +    expect(() =>
-+      validateAgentResult(occurrence, { ...result, completedAt: "2026-10-08T11:00:00.000Z" }),
++      validateAgentResult(occurrence, { ...result, occurrenceId: "occ-2" }),
++    ).toThrow();
++    expect(() =>
++      validateAgentResult(occurrence, {
++        ...result,
++        completedAt: "2026-10-08T11:00:00.000Z",
++      }),
 +    ).toThrow();
 +  });
 +  it("records usage observations without metering fields", () => {
@@ -106,17 +133,21 @@ index 0000000000000000000000000000000000000000..38ff297c60951f57f0819e141d4804b2
 +    };
 +    expect(validateUsageEvent(event)).toEqual(event);
 +    expect(() => validateUsageEvent({ ...event, cost: 1 })).toThrow();
-+    expect(() => validateUsageEvent({ ...event, units: { credits: 1 } })).toThrow();
++    expect(() =>
++      validateUsageEvent({ ...event, units: { credits: 1 } }),
++    ).toThrow();
 +    expect(() => validateUsageEvent({ ...event, units: {} })).toThrow();
-+    expect(() => validateUsageEvent({ ...event, units: { inputTokens: 1.5 } })).toThrow();
++    expect(() =>
++      validateUsageEvent({ ...event, units: { inputTokens: 1.5 } }),
++    ).toThrow();
 +  });
 +});
 diff --git a/packages/contracts/src/runtime-capabilities.ts b/packages/contracts/src/runtime-capabilities.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..588549a7a7d16da664b4b3c36e95c8817f17957f
+index 0000000000000000000000000000000000000000..c6945f2c51433b5a3544c702c220c1cd1201a718
 --- /dev/null
 +++ b/packages/contracts/src/runtime-capabilities.ts
-@@ -0,0 +1,294 @@
+@@ -0,0 +1,324 @@
 +/**
 + * Versioned, browser-safe descriptions a host negotiates with a client: what the
 + * connected runtime offers, its speech surfaces, scheduled-occurrence results and usage
@@ -199,19 +230,25 @@ index 0000000000000000000000000000000000000000..588549a7a7d16da664b4b3c36e95c881
 +  )
 +    throw Error(`Unexpected ${label} fields`);
 +}
++function hasControlCharacter(value: string): boolean {
++  for (let i = 0; i < value.length; i++)
++    if (value.charCodeAt(i) < 0x20) return true;
++  return false;
++}
 +function text(value: unknown, max: number, label: string): string {
 +  if (
 +    typeof value !== "string" ||
 +    !value.trim() ||
 +    value.length > max ||
-+    /[\u0000-\u001f]/.test(value)
++    hasControlCharacter(value)
 +  )
 +    throw Error(`Invalid ${label}`);
 +  return value;
 +}
 +function identifier(value: unknown, label: string): string {
 +  const id = text(value, 128, label);
-+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(id)) throw Error(`Invalid ${label}`);
++  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(id))
++    throw Error(`Invalid ${label}`);
 +  return id;
 +}
 +function instant(value: unknown, label: string): string {
@@ -277,7 +314,9 @@ index 0000000000000000000000000000000000000000..588549a7a7d16da664b4b3c36e95c881
 +  return { version: 1, stt: surface(v.stt, "stt"), tts: surface(v.tts, "tts") };
 +}
 +
-+export function validateRuntimeCapabilities(value: unknown): RuntimeCapabilities {
++export function validateRuntimeCapabilities(
++  value: unknown,
++): RuntimeCapabilities {
 +  const v = object(value, "runtime capabilities");
 +  only(
 +    v,
@@ -325,11 +364,14 @@ index 0000000000000000000000000000000000000000..588549a7a7d16da664b4b3c36e95c881
 +      model: identifier(i.model, "inference model"),
 +    };
 +  }
-+  if (v.speech !== undefined) result.speech = validateSpeechCapabilities(v.speech);
++  if (v.speech !== undefined)
++    result.speech = validateSpeechCapabilities(v.speech);
 +  return result;
 +}
 +
-+export function validateScheduledOccurrence(value: unknown): ScheduledOccurrence {
++export function validateScheduledOccurrence(
++  value: unknown,
++): ScheduledOccurrence {
 +  const v = object(value, "scheduled occurrence");
 +  only(
 +    v,
@@ -369,12 +411,20 @@ index 0000000000000000000000000000000000000000..588549a7a7d16da664b4b3c36e95c881
 +  const completedAt = instant(v.completedAt, "completion instant");
 +  if (Date.parse(completedAt) < Date.parse(occurrence.scheduledAt))
 +    throw Error("Agent result precedes its occurrence");
-+  if (typeof v.summary !== "string" || v.summary.length > 2000 || v.summary.includes("\0"))
++  if (
++    typeof v.summary !== "string" ||
++    v.summary.length > 2000 ||
++    v.summary.includes("\0")
++  )
 +    throw Error("Invalid agent result summary");
 +  return {
 +    version: 1,
 +    occurrenceId: occurrence.occurrenceId,
-+    status: oneOf(v.status, ["succeeded", "failed", "unknown"] as const, "result status"),
++    status: oneOf(
++      v.status,
++      ["succeeded", "failed", "unknown"] as const,
++      "result status",
++    ),
 +    summary: v.summary,
 +    completedAt,
 +  };
@@ -385,7 +435,12 @@ index 0000000000000000000000000000000000000000..588549a7a7d16da664b4b3c36e95c881
 +  only(v, ["version", "id", "at", "kind", "units"], ["model"], "usage event");
 +  version(v, "usage event");
 +  const u = object(v.units, "usage units");
-+  const keys = ["inputTokens", "outputTokens", "audioSeconds", "steps"] as const;
++  const keys = [
++    "inputTokens",
++    "outputTokens",
++    "audioSeconds",
++    "steps",
++  ] as const;
 +  only(u, [], [...keys], "usage units");
 +  const units: UsageEvent["units"] = {};
 +  for (const key of keys) {
@@ -406,8 +461,14 @@ index 0000000000000000000000000000000000000000..588549a7a7d16da664b4b3c36e95c881
 +    version: 1,
 +    id: identifier(v.id, "usage ID"),
 +    at: instant(v.at, "usage instant"),
-+    kind: oneOf(v.kind, ["inference", "speech", "workflow"] as const, "usage kind"),
-+    ...(v.model === undefined ? {} : { model: identifier(v.model, "usage model") }),
++    kind: oneOf(
++      v.kind,
++      ["inference", "speech", "workflow"] as const,
++      "usage kind",
++    ),
++    ...(v.model === undefined
++      ? {}
++      : { model: identifier(v.model, "usage model") }),
 +    units,
 +  };
 +}

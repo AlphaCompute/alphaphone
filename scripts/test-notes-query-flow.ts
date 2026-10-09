@@ -96,6 +96,10 @@ try{
   assert.equal(declined.status,'failed');assert.ok(!('foregroundResult' in declined));
   const nothing=await executeNamedNotes(fixture.store,{type:'notes_named',action:'delete',name:'missing'},'missing',signal(),()=>{},async()=>{throw Error('No match must not apply');},async()=>{throw Error('No match must not open a review');});
   assert.equal((nothing.foregroundResult as any).basis,'no-match');
+  // A very long saved title is bounded before review, so the reviewed listing is exactly what is shared.
+  const long=await make('long-title',[{id:'long',kind:'text',title:'L'.repeat(600),body:'x',createdAt:1,modifiedAt:1}]);let shown:string[]=[];
+  const bounded=await executeNotesSearch(long.store,{type:'notes_search',query:{kind:'titles',limit:5}},'long',signal(),()=>{},async()=>null,async list=>{shown=list;return true;});
+  assert.equal(bounded.status,'succeeded');assert.equal(shown[0].length,500);assert.deepEqual((bounded.foregroundResult as any).titles,shown);
  }
  console.log('PASS Notes query: real file CAS store, selected exact text, empty success, uncertain dates, owner/raw/choice races, negotiated Home action, journal-before-read and receipt-only recovery; content search shares only the chosen note, a Home named delete is disambiguated locally and ends in restorable Trash after approval, titles listings share only reviewed titles. Synthetic only.');
 }finally{rmSync(directory,{recursive:true,force:true});}

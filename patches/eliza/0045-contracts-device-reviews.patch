@@ -1,9 +1,9 @@
 diff --git a/packages/contracts/src/device-reviews.test.ts b/packages/contracts/src/device-reviews.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..0ad960458b4847e377279b8c239f4c7d16e75bc2
+index 0000000000000000000000000000000000000000..235dbd1f7a9abaa0051d13ea93e86d212933aa5b
 --- /dev/null
 +++ b/packages/contracts/src/device-reviews.test.ts
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,262 @@
 +import { describe, expect, it as test } from "vitest";
 +import {
 +  calendarAvailability,
@@ -72,12 +72,17 @@ index 0000000000000000000000000000000000000000..0ad960458b4847e377279b8c239f4c7d
 +  // The previous civil day ends at local midnight 2026-10-13T04:00Z, before the window.
 +  expect(
 +    calendarAvailability(tuesday, 1, [
-+      { ...allDay, start: "2026-10-12T00:00:00.000Z", end: "2026-10-13T00:00:00.000Z" },
++      {
++        ...allDay,
++        start: "2026-10-12T00:00:00.000Z",
++        end: "2026-10-13T00:00:00.000Z",
++      },
 +    ]).status,
 +  ).toBe("free");
 +  // A transparent all-day event (for example a holiday marker) never blocks.
 +  expect(
-+    calendarAvailability(tuesday, 1, [{ ...allDay, availability: "free" }]).status,
++    calendarAvailability(tuesday, 1, [{ ...allDay, availability: "free" }])
++      .status,
 +  ).toBe("free");
 +  const tentative = calendarAvailability(tuesday, 1, [
 +    timed("2026-10-13T19:30:00.000Z", "2026-10-13T20:30:00.000Z", "tentative"),
@@ -120,9 +125,9 @@ index 0000000000000000000000000000000000000000..0ad960458b4847e377279b8c239f4c7d
 +  ).toThrow();
 +});
 +
-+
 +const plain = (value: unknown) => {
-+  if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("fields");
++  if (!value || typeof value !== "object" || Array.isArray(value))
++    throw Error("fields");
 +  return value as never;
 +};
 +const stub = {
@@ -133,11 +138,21 @@ index 0000000000000000000000000000000000000000..0ad960458b4847e377279b8c239f4c7d
 +};
 +describe("name-targeted and search contracts with injected domain validators", () => {
 +  test("named targets carry only a name and resolve to the fixed exact type", () => {
-+    const remove = validateNamedTargetOperation({ type: "reminder_named", action: "cancel", name: "Pills" }, stub);
++    const remove = validateNamedTargetOperation(
++      { type: "reminder_named", action: "cancel", name: "Pills" },
++      stub,
++    );
 +    expect(namedTargetExactType(remove)).toBe("reminder_cancel");
-+    expect(resolveNamedTarget(remove, { id: "r" }, stub)).toEqual({ type: "reminder_cancel", target: { id: "r" } });
++    expect(resolveNamedTarget(remove, { id: "r" }, stub)).toEqual({
++      type: "reminder_cancel",
++      target: { id: "r" },
++    });
 +    expect(() =>
-+      resolveNamedTarget(remove, { id: "r" }, { ...stub, exact: () => ({ type: "reminder_update", target: {} }) }),
++      resolveNamedTarget(
++        remove,
++        { id: "r" },
++        { ...stub, exact: () => ({ type: "reminder_update", target: {} }) },
++      ),
 +    ).toThrow(/another operation/);
 +    for (const bad of [
 +      { type: "reminder_named", action: "delete", name: "Pills" },
@@ -148,51 +163,115 @@ index 0000000000000000000000000000000000000000..0ad960458b4847e377279b8c239f4c7d
 +      expect(() => validateNamedTargetOperation(bad, stub)).toThrow();
 +  });
 +  test("titles listings are bounded and content matches use the injected selected read", () => {
-+    const titles = validateNotesSearchOperation({ type: "notes_search", query: { kind: "titles", limit: 2 } });
++    const titles = validateNotesSearchOperation({
++      type: "notes_search",
++      query: { kind: "titles", limit: 2 },
++    });
 +    const read = () => ({ target: "t", record: "r" });
 +    expect(
 +      validateNotesSearchResult(
 +        titles,
-+        { version: 1, kind: "notes_search", query: { kind: "titles", limit: 2 }, basis: "titles-reviewed", titles: ["A", "B"], truncated: true },
++        {
++          version: 1,
++          kind: "notes_search",
++          query: { kind: "titles", limit: 2 },
++          basis: "titles-reviewed",
++          titles: ["A", "B"],
++          truncated: true,
++        },
 +        read,
 +      ),
 +    ).toMatchObject({ titles: ["A", "B"], truncated: true });
 +    expect(() =>
 +      validateNotesSearchResult(
 +        titles,
-+        { version: 1, kind: "notes_search", query: { kind: "titles", limit: 2 }, basis: "titles-reviewed", titles: ["A", "B", "C"], truncated: false },
++        {
++          version: 1,
++          kind: "notes_search",
++          query: { kind: "titles", limit: 2 },
++          basis: "titles-reviewed",
++          titles: ["A", "B", "C"],
++          truncated: false,
++        },
 +        read,
 +      ),
 +    ).toThrow();
-+    const content = validateNotesSearchOperation({ type: "notes_search", query: { kind: "content", text: "passport" } });
++    const content = validateNotesSearchOperation({
++      type: "notes_search",
++      query: { kind: "content", text: "passport" },
++    });
 +    expect(
 +      validateNotesSearchResult(
 +        content,
-+        { version: 1, kind: "notes_search", query: content.query, basis: "content-match", target: {}, record: {} },
++        {
++          version: 1,
++          kind: "notes_search",
++          query: content.query,
++          basis: "content-match",
++          target: {},
++          record: {},
++        },
 +        read,
 +      ),
 +    ).toMatchObject({ target: "t", record: "r" });
 +    expect(() =>
-+      validateNotesSearchResult(content, { version: 1, kind: "notes_search", query: { kind: "content", text: "other" }, basis: "no-match" }, read),
++      validateNotesSearchResult(
++        content,
++        {
++          version: 1,
++          kind: "notes_search",
++          query: { kind: "content", text: "other" },
++          basis: "no-match",
++        },
++        read,
++      ),
 +    ).toThrow(/changed/);
-+    expect(() => validateNotesSearchOperation({ type: "notes_search", query: { kind: "titles", limit: 51 } })).toThrow();
++    expect(() =>
++      validateNotesSearchOperation({
++        type: "notes_search",
++        query: { kind: "titles", limit: 51 },
++      }),
++    ).toThrow();
 +  });
 +  test("each family requires its negotiated capability", () => {
 +    expect(isDeviceReviewOperation(tuesday)).toBe(true);
-+    expect(deviceReviewCapabilityAvailable("calendar_availability", [])).toBe(false);
-+    expect(deviceReviewCapabilityAvailable("calendar_availability", ["calendar.availability-read.v1"])).toBe(true);
-+    expect(deviceReviewCapabilityAvailable("notes_search", ["notes.search.v1"])).toBe(false);
-+    expect(deviceReviewCapabilityAvailable("notes_search", ["notes.search.v1", "notes.local-record.v1"])).toBe(true);
-+    expect(deviceReviewCapabilityAvailable("calendar_named", [NAMED_TARGET_CAPABILITY, "notes.local-record.v1"])).toBe(false);
-+    expect(deviceReviewCapabilityAvailable("calendar_named", [NAMED_TARGET_CAPABILITY, "calendar.local-event.v1"])).toBe(true);
++    expect(deviceReviewCapabilityAvailable("calendar_availability", [])).toBe(
++      false,
++    );
++    expect(
++      deviceReviewCapabilityAvailable("calendar_availability", [
++        "calendar.availability-read.v1",
++      ]),
++    ).toBe(true);
++    expect(
++      deviceReviewCapabilityAvailable("notes_search", ["notes.search.v1"]),
++    ).toBe(false);
++    expect(
++      deviceReviewCapabilityAvailable("notes_search", [
++        "notes.search.v1",
++        "notes.local-record.v1",
++      ]),
++    ).toBe(true);
++    expect(
++      deviceReviewCapabilityAvailable("calendar_named", [
++        NAMED_TARGET_CAPABILITY,
++        "notes.local-record.v1",
++      ]),
++    ).toBe(false);
++    expect(
++      deviceReviewCapabilityAvailable("calendar_named", [
++        NAMED_TARGET_CAPABILITY,
++        "calendar.local-event.v1",
++      ]),
++    ).toBe(true);
 +  });
 +});
 diff --git a/packages/contracts/src/device-reviews.ts b/packages/contracts/src/device-reviews.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8b71e02c6
+index 0000000000000000000000000000000000000000..b5ed7fa3eeb9b3679d29c422079fba1f75de9cc5
 --- /dev/null
 +++ b/packages/contracts/src/device-reviews.ts
-@@ -0,0 +1,685 @@
+@@ -0,0 +1,760 @@
 +/**
 + * Browser-safe contracts for device operations a phone resolves in a foreground local
 + * review before anything is shared or changed: free/busy reads over owner-selected
@@ -473,7 +552,11 @@ index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8
 +      end: operation.end,
 +      timeZone: operation.timeZone,
 +    },
-+    calendarCount: count(v.calendarCount, 1, CALENDAR_AVAILABILITY_MAX_CALENDARS),
++    calendarCount: count(
++      v.calendarCount,
++      1,
++      CALENDAR_AVAILABILITY_MAX_CALENDARS,
++    ),
 +    status,
 +    busy,
 +    transparentIgnored: count(
@@ -585,7 +668,10 @@ index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8
 +export function validateNotesSearchResult<Target, Selected>(
 +  operation: NotesSearchOperation,
 +  value: unknown,
-+  selectedRead: (target: unknown, record: unknown) => NotesSearchSelection<Target, Selected>,
++  selectedRead: (
++    target: unknown,
++    record: unknown,
++  ) => NotesSearchSelection<Target, Selected>,
 +): NotesSearchResult<Target, Selected> {
 +  const op = validateNotesSearchOperation(operation);
 +  const v = searchObject(value);
@@ -603,9 +689,15 @@ index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8
 +  if (JSON.stringify(notesSearchQuery(v.query)) !== JSON.stringify(op.query))
 +    throw Error("Notes search changed");
 +  if (v.basis === "no-match")
-+    return { version: 1, kind: "notes_search", query: op.query, basis: "no-match" };
++    return {
++      version: 1,
++      kind: "notes_search",
++      query: op.query,
++      basis: "no-match",
++    };
 +  if (op.query.kind === "titles") {
-+    if (v.basis !== "titles-reviewed") throw Error("Notes listing proof changed");
++    if (v.basis !== "titles-reviewed")
++      throw Error("Notes listing proof changed");
 +    if (
 +      !Array.isArray(v.titles) ||
 +      v.titles.length < 1 ||
@@ -613,7 +705,9 @@ index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8
 +      typeof v.truncated !== "boolean" ||
 +      v.titles.some(
 +        (title) =>
-+          typeof title !== "string" || title.length > 500 || title.includes("\0"),
++          typeof title !== "string" ||
++          title.length > 500 ||
++          title.includes("\0"),
 +      )
 +    )
 +      throw Error("Invalid reviewed Notes titles");
@@ -665,11 +759,26 @@ index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8
 +  schedule?: unknown;
 +}
 +export type NamedTargetOperation =
-+  | { type: "notes_named"; action: "update"; name: string; fields: NamedNotesFields }
++  | {
++      type: "notes_named";
++      action: "update";
++      name: string;
++      fields: NamedNotesFields;
++    }
 +  | { type: "notes_named"; action: "delete"; name: string }
-+  | { type: "calendar_named"; action: "update"; name: string; fields: NamedCalendarFields }
++  | {
++      type: "calendar_named";
++      action: "update";
++      name: string;
++      fields: NamedCalendarFields;
++    }
 +  | { type: "calendar_named"; action: "delete"; name: string }
-+  | { type: "reminder_named"; action: "update"; name: string; fields: NamedReminderFields }
++  | {
++      type: "reminder_named";
++      action: "update";
++      name: string;
++      fields: NamedReminderFields;
++    }
 +  | { type: "reminder_named"; action: "cancel"; name: string };
 +/** Exact selected-record operation the owner's local choice resolves to. */
 +export interface NamedTargetExact {
@@ -741,7 +850,10 @@ index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8
 +  return (
 +    !!value &&
 +    typeof value === "object" &&
-+    Object.hasOwn(NAMED_TARGET_DOMAIN_CAPABILITY, String((value as { type?: unknown }).type))
++    Object.hasOwn(
++      NAMED_TARGET_DOMAIN_CAPABILITY,
++      String((value as { type?: unknown }).type),
++    )
 +  );
 +}
 +export function namedTargetCapabilityAvailable(
@@ -760,12 +872,17 @@ index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8
 +  if (operation.type === "notes_named")
 +    return operation.action === "update" ? "notes_update" : "notes_delete";
 +  if (operation.type === "calendar_named")
-+    return operation.action === "update" ? "calendar_update" : "calendar_delete";
++    return operation.action === "update"
++      ? "calendar_update"
++      : "calendar_delete";
 +  return operation.action === "update" ? "reminder_update" : "reminder_cancel";
 +}
 +export function validateNamedTargetOperation(
 +  value: unknown,
-+  validators: Pick<NamedTargetValidators, "notesFields" | "calendarFields" | "reminderFields">,
++  validators: Pick<
++    NamedTargetValidators,
++    "notesFields" | "calendarFields" | "reminderFields"
++  >,
 +): NamedTargetOperation {
 +  const v = namedObject(value);
 +  if (!isNamedTargetOperation(v)) throw Error("Unsupported named target");
@@ -775,14 +892,30 @@ index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8
 +  if (v.action === "update") {
 +    namedKeys(v, ["type", "action", "name", "fields"]);
 +    if (v.type === "notes_named")
-+      return { type: v.type, action: "update", name, fields: validators.notesFields(v.fields) };
++      return {
++        type: v.type,
++        action: "update",
++        name,
++        fields: validators.notesFields(v.fields),
++      };
 +    if (v.type === "calendar_named")
-+      return { type: v.type, action: "update", name, fields: validators.calendarFields(v.fields) };
-+    return { type: "reminder_named", action: "update", name, fields: validators.reminderFields(v.fields) };
++      return {
++        type: v.type,
++        action: "update",
++        name,
++        fields: validators.calendarFields(v.fields),
++      };
++    return {
++      type: "reminder_named",
++      action: "update",
++      name,
++      fields: validators.reminderFields(v.fields),
++    };
 +  }
 +  namedKeys(v, ["type", "action", "name"]);
 +  if (v.type === "notes_named") return { type: v.type, action: "delete", name };
-+  if (v.type === "calendar_named") return { type: v.type, action: "delete", name };
++  if (v.type === "calendar_named")
++    return { type: v.type, action: "delete", name };
 +  return { type: "reminder_named", action: "cancel", name };
 +}
 +/**
@@ -792,14 +925,18 @@ index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8
 +export function resolveNamedTarget<Exact extends NamedTargetExact>(
 +  operation: NamedTargetOperation,
 +  target: unknown,
-+  validators: Pick<NamedTargetValidators<Exact>, "notesFields" | "calendarFields" | "reminderFields" | "exact">,
++  validators: Pick<
++    NamedTargetValidators<Exact>,
++    "notesFields" | "calendarFields" | "reminderFields" | "exact"
++  >,
 +): Exact {
 +  const op = validateNamedTargetOperation(operation, validators);
 +  const type = namedTargetExactType(op);
 +  const exact = validators.exact(
 +    "fields" in op ? { type, target, fields: op.fields } : { type, target },
 +  );
-+  if (exact.type !== type) throw Error("Named target resolved to another operation");
++  if (exact.type !== type)
++    throw Error("Named target resolved to another operation");
 +  return exact;
 +}
 +function canonical(value: unknown): unknown {
@@ -811,7 +948,10 @@ index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8
 +      .map((key) => [key, canonical((value as Record<string, unknown>)[key])]),
 +  );
 +}
-+export function validateNamedTargetResult<Exact extends NamedTargetExact, Applied>(
++export function validateNamedTargetResult<
++  Exact extends NamedTargetExact,
++  Applied,
++>(
 +  operation: NamedTargetOperation,
 +  value: unknown,
 +  validators: NamedTargetValidators<Exact, Applied>,
@@ -819,11 +959,25 @@ index 0000000000000000000000000000000000000000..79493992364f4cca469d98c8475db3f8
 +  const op = validateNamedTargetOperation(operation, validators);
 +  const v = namedObject(value);
 +  const base = ["version", "kind", "action", "name", "basis"];
-+  namedKeys(v, v.basis === "no-match" ? base : [...base, "operation", "record"]);
-+  if (v.version !== 1 || v.kind !== op.type || v.action !== op.action || v.name !== op.name)
++  namedKeys(
++    v,
++    v.basis === "no-match" ? base : [...base, "operation", "record"],
++  );
++  if (
++    v.version !== 1 ||
++    v.kind !== op.type ||
++    v.action !== op.action ||
++    v.name !== op.name
++  )
 +    throw Error("Named target result scope changed");
 +  if (v.basis === "no-match")
-+    return { version: 1, kind: op.type, action: op.action, name: op.name, basis: "no-match" };
++    return {
++      version: 1,
++      kind: op.type,
++      action: op.action,
++      name: op.name,
++      basis: "no-match",
++    };
 +  if (v.basis !== "owner-chosen") throw Error("Named target proof changed");
 +  const exact = namedObject(v.operation);
 +  const resolved = resolveNamedTarget(op, exact.target, validators);

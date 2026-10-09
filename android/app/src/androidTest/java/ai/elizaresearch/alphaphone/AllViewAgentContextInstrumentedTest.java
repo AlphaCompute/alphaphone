@@ -105,13 +105,16 @@ public class AllViewAgentContextInstrumentedTest {
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    AppNavigation.liveMode();WebViewTestDriver.evaluate(AppNavigation.request("Home"));until("document.querySelector('[data-screen]')",20000);
    for(int i=0;i<100&&!"true".equals(WebViewTestDriver.evaluate("Boolean(window.Capacitor?.Plugins?.AlphaNotifications)"));i++)SystemClock.sleep(100);
+   // Rows already listed (for example another test's secret notice) never stand in for this test's rows.
+   java.util.Set<String> earlier=new java.util.HashSet<>();JSONObject initial=call("Capacitor.Plugins.AlphaNotifications.list()");assertFalse("Own notifications are readable in the foreground",initial.has("error"));
+   for(int i=0;i<initial.getJSONArray("items").length();i++)earlier.add(initial.getJSONArray("items").getJSONObject(i).getString("id"));
    manager.notify(tag,1,new android.app.Notification.Builder(context,ai.eliza.plugins.reminders.ReminderTestAccess.CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText(body).build());
    manager.notify(tag,2,new android.app.Notification.Builder(context,ai.eliza.plugins.reminders.ReminderTestAccess.CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title+"_SECRET").setContentText(body).setVisibility(android.app.Notification.VISIBILITY_SECRET).build());
    JSONObject own=null,secret=null;org.json.JSONArray items=null;
    for(int attempt=0;attempt<50&&(own==null||secret==null);attempt++){
     JSONObject listed=call("Capacitor.Plugins.AlphaNotifications.list()");assertFalse("Own notifications are readable in the foreground",listed.has("error"));
     items=listed.getJSONArray("items");own=null;secret=null;
-    for(int i=0;i<items.length();i++){JSONObject row=items.getJSONObject(i);if(title.equals(row.optString("title")))own=row;else if("own".equals(row.optString("source"))&&row.optString("title").equals("Alpha Phone notification"))secret=row;}
+    for(int i=0;i<items.length();i++){JSONObject row=items.getJSONObject(i);if(title.equals(row.optString("title")))own=row;else if("own".equals(row.optString("source"))&&row.optString("title").equals("Alpha Phone notification")&&!earlier.contains(row.optString("id")))secret=row;}
     if(own==null||secret==null)SystemClock.sleep(100);
    }
    assertNotNull("Posted own notification is listed",own);assertNotNull("Secret own notification is listed with hidden content",secret);

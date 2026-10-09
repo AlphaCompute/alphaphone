@@ -42,7 +42,8 @@ export async function executeNotesSearch(store:Store,operation:NotesSearchOperat
  const noMatch=()=>({status:'succeeded' as const,summary:'No saved note matches this request.',foregroundResult:validateForegroundReviewResult(operation,{version:1,kind:'notes_search',query:operation.query,basis:'no-match'})});
  if(operation.query.kind==='titles'){
   const ordered=[...store.list].sort((a,b)=>instant(b)-instant(a)||a.id.localeCompare(b.id));
-  const titles=ordered.slice(0,operation.query.limit).map(note=>note.title||'Untitled note');
+  // The owner reviews exactly the bounded labels the shared contract accepts (at most 500 characters).
+  const titles=ordered.slice(0,operation.query.limit).map(note=>String(note.title??'').replaceAll('\0','').slice(0,500)||'Untitled note');
   if(!titles.length){await store.assertCurrent();stable();return noMatch();}
   const approved=await reviewTitles(titles,ordered.length>titles.length,signal,stable);
   if(!approved)return {status:'failed',summary:'Notes listing cancelled. Nothing was shared.'};

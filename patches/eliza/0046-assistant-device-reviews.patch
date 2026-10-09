@@ -1,19 +1,19 @@
 diff --git a/plugins/plugin-assistant/src/services/device-actions/action.ts b/plugins/plugin-assistant/src/services/device-actions/action.ts
-index 1d7ed0e3ce1f1e47fd38cdb3b210818a4b8a1c0f..6b1e540427f978ce664c2ce351b6089d08341acd 100644
+index 1d7ed0e3ce1f1e47fd38cdb3b210818a4b8a1c0f..152d5f97ee0aee374bef87819605d60c2b0cc5b3 100644
 --- a/plugins/plugin-assistant/src/services/device-actions/action.ts
 +++ b/plugins/plugin-assistant/src/services/device-actions/action.ts
-@@ -19,6 +19,11 @@ import {
-   validateDevicePayload,
- } from "./contract.ts";
- import { formatDeviceRecordDateTime } from "./device-record-presentation.ts";
+@@ -23,6 +23,11 @@ import {
+   deviceActionEffectReceipts,
+   deviceApprovalPersistenceReceipt,
+ } from "./effect-receipts.ts";
 +import {
 +  isForegroundReviewOperation,
 +  isForegroundReviewType,
 +  validateForegroundReviewResult,
 +} from "./foreground-review-contract.ts";
- import {
-   deviceActionEffectReceipts,
-   deviceApprovalPersistenceReceipt,
+ import { isMapsOperation, validateMapsResult } from "./maps-contract.ts";
+ import { isNotesOperation, validateNotesResult } from "./notes-contract.ts";
+ import { validateNotesQueryResult } from "./notes-query-result.ts";
 @@ -469,6 +474,76 @@ const reminderCreateAfterSchema: ActionParameterSchema = {
      },
    },
@@ -112,7 +112,7 @@ index 1d7ed0e3ce1f1e47fd38cdb3b210818a4b8a1c0f..6b1e540427f978ce664c2ce351b6089d
            ...reminderSchemas,
            reminderCreateSchema,
            reminderCreateAfterSchema,
-@@ -681,13 +761,16 @@ export const proposeDeviceAction: Action = {
+@@ -681,29 +761,32 @@ export const proposeDeviceAction: Action = {
          isReminderCreate(payload.operation) ||
          isCalendarOperation(payload.operation) ||
          isNotesOperation(payload.operation) ||
@@ -125,12 +125,44 @@ index 1d7ed0e3ce1f1e47fd38cdb3b210818a4b8a1c0f..6b1e540427f978ce664c2ce351b6089d
        receipt.outcome === "applied"
      ) {
 -      const result = isNativeNotesQuery(payload.operation)
+-        ? validateNotesQueryResult(payload.operation, receipt.result)
+-        : isMapsOperation(payload.operation)
+-          ? validateMapsResult(payload.operation, receipt.result)
+-          : isReminderCreate(payload.operation)
+-            ? validateReminderCreateResult(
+-                payload.operation,
+-                receipt.result,
+-                typeof receipt.operationId === "string"
+-                  ? receipt.operationId
+-                  : undefined,
+-              )
+-            : isReminderOperation(payload.operation)
+-              ? validateReminderResult(payload.operation, receipt.result)
+-              : isNotesOperation(payload.operation)
+-                ? validateNotesResult(payload.operation, receipt.result)
+-                : validateCalendarResult(payload.operation, receipt.result);
 +      const result = isForegroundReviewOperation(payload.operation)
 +        ? validateForegroundReviewResult(payload.operation, receipt.result)
 +        : isNativeNotesQuery(payload.operation)
-         ? validateNotesQueryResult(payload.operation, receipt.result)
-         : isMapsOperation(payload.operation)
-           ? validateMapsResult(payload.operation, receipt.result)
++          ? validateNotesQueryResult(payload.operation, receipt.result)
++          : isMapsOperation(payload.operation)
++            ? validateMapsResult(payload.operation, receipt.result)
++            : isReminderCreate(payload.operation)
++              ? validateReminderCreateResult(
++                  payload.operation,
++                  receipt.result,
++                  typeof receipt.operationId === "string"
++                    ? receipt.operationId
++                    : undefined,
++                )
++              : isReminderOperation(payload.operation)
++                ? validateReminderResult(payload.operation, receipt.result)
++                : isNotesOperation(payload.operation)
++                  ? validateNotesResult(payload.operation, receipt.result)
++                  : validateCalendarResult(payload.operation, receipt.result);
+       return {
+         success: true,
+         transcriptVisibility: "internal",
 @@ -825,7 +908,9 @@ export function deviceActionForCapabilities(
            (type) =>
              typeof type === "string" &&
@@ -199,10 +231,10 @@ index 984872ab163a71f11b55e3ac8f4f55198e84af01..bbdfbd15bb9b552cb6dc0b049c5e3ba0
        return {
 diff --git a/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.test.ts b/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..9aef6e3c5e5fed61ef985bdee4e62b3451108075
+index 0000000000000000000000000000000000000000..db46f1b0743b6d0998a85dae571f66758efe59d8
 --- /dev/null
 +++ b/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.test.ts
-@@ -0,0 +1,194 @@
+@@ -0,0 +1,208 @@
 +import {
 +  CALENDAR_AVAILABILITY_CAPABILITY,
 +  calendarAvailability,
@@ -250,13 +282,19 @@ index 0000000000000000000000000000000000000000..9aef6e3c5e5fed61ef985bdee4e62b34
 +    name: "Groceries",
 +  });
 +  if (remove.type !== "notes_named") throw Error("expected named target");
-+  expect(resolveNamedTarget(remove, notesTarget, namedTargetValidators)).toEqual({
++  expect(
++    resolveNamedTarget(remove, notesTarget, namedTargetValidators),
++  ).toEqual({
 +    type: "notes_delete",
 +    target: notesTarget,
 +  });
 +  // The exact Notes contract still rejects a malformed chosen record.
 +  expect(() =>
-+    resolveNamedTarget(remove, { ...notesTarget, revision: "short" }, namedTargetValidators),
++    resolveNamedTarget(
++      remove,
++      { ...notesTarget, revision: "short" },
++      namedTargetValidators,
++    ),
 +  ).toThrow();
 +  const result = {
 +    version: 1,
@@ -363,7 +401,9 @@ index 0000000000000000000000000000000000000000..9aef6e3c5e5fed61ef985bdee4e62b34
 +    "calendar.local-event.v1",
 +    "reminders.local-record.v1",
 +  ];
-+  expect(deviceOperationSupportedByCapabilities("calendar_availability", base)).toBe(false);
++  expect(
++    deviceOperationSupportedByCapabilities("calendar_availability", base),
++  ).toBe(false);
 +  expect(
 +    deviceOperationSupportedByCapabilities("calendar_availability", [
 +      ...base,
@@ -371,7 +411,10 @@ index 0000000000000000000000000000000000000000..9aef6e3c5e5fed61ef985bdee4e62b34
 +    ]),
 +  ).toBe(true);
 +  expect(
-+    foregroundReviewCapabilityAvailable("notes_search", [...base, NOTES_SEARCH_CAPABILITY]),
++    foregroundReviewCapabilityAvailable("notes_search", [
++      ...base,
++      NOTES_SEARCH_CAPABILITY,
++    ]),
 +  ).toBe(true);
 +  expect(
 +    deviceOperationSupportedByCapabilities("reminder_named", [
@@ -380,9 +423,9 @@ index 0000000000000000000000000000000000000000..9aef6e3c5e5fed61ef985bdee4e62b34
 +    ]),
 +  ).toBe(false);
 +  expect(validateDeviceOperation(tuesday)).toEqual(tuesday);
-+  expect(() => validateDeviceOperation({ ...tuesday, end: tuesday.start })).toThrow(
-+    /Calendar availability/,
-+  );
++  expect(() =>
++    validateDeviceOperation({ ...tuesday, end: tuesday.start }),
++  ).toThrow(/Calendar availability/);
 +  // Availability is a foreground chat read, not a workflow read: no binding required.
 +  expect(
 +    validateDevicePayload({
@@ -394,15 +437,18 @@ index 0000000000000000000000000000000000000000..9aef6e3c5e5fed61ef985bdee4e62b34
 +    }).operation,
 +  ).toEqual(tuesday);
 +  expect(
-+    validateForegroundReviewResult(tuesday, calendarAvailability(tuesday, 1, [])),
++    validateForegroundReviewResult(
++      tuesday,
++      calendarAvailability(tuesday, 1, []),
++    ),
 +  ).toMatchObject({ status: "free", busy: [] });
 +});
 diff --git a/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts b/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..b4cd8d2c3eee4151503355aea874276f68b321b0
+index 0000000000000000000000000000000000000000..cbb63e9a2c65b4285c9889d65de38c68812ffc8a
 --- /dev/null
 +++ b/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,136 @@
 +/**
 + * Binds the shared @elizaos/contracts device-review contracts (free/busy reads, Notes
 + * search, name-targeted edits) to this plugin's Notes, Calendar and reminder record
@@ -514,7 +560,10 @@ index 0000000000000000000000000000000000000000..b4cd8d2c3eee4151503355aea874276f
 +  });
 +  if (selected.type !== "notes_read_selected")
 +    throw Error("Invalid selected Notes read");
-+  return { target: selected.target, record: validateNotesResult(selected, record) };
++  return {
++    target: selected.target,
++    record: validateNotesResult(selected, record),
++  };
 +}
 +export function validateForegroundReviewOperation(
 +  value: unknown,
@@ -537,26 +586,32 @@ index 0000000000000000000000000000000000000000..b4cd8d2c3eee4151503355aea874276f
 +  return validateNamedTargetResult(operation, value, namedTargetValidators);
 +}
 diff --git a/plugins/plugin-assistant/src/services/device-actions/service.ts b/plugins/plugin-assistant/src/services/device-actions/service.ts
-index becb58e3f69fd222c6fe4af63a957c0e1f22e8c0..3831cfb5b394c440813e67695d5856cf9ca4b2c5 100644
+index becb58e3f69fd222c6fe4af63a957c0e1f22e8c0..813ef0387e21f636b366325df3781ea61213ab89 100644
 --- a/plugins/plugin-assistant/src/services/device-actions/service.ts
 +++ b/plugins/plugin-assistant/src/services/device-actions/service.ts
-@@ -55,6 +55,16 @@ import {
-   NOTES_CAPABILITY,
-   validateNotesResult,
- } from "./notes-contract.ts";
+@@ -1,5 +1,10 @@
+ import { AsyncLocalStorage } from "node:async_hooks";
+ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 +import {
 +  CALENDAR_AVAILABILITY_CAPABILITY,
 +  NAMED_TARGET_CAPABILITY,
 +  NOTES_SEARCH_CAPABILITY,
 +} from "@elizaos/contracts";
+ import {
+   isNativeNotesQuery,
+   NOTES_QUERY_CAPABILITY,
+@@ -44,6 +49,11 @@ import {
+   validateDeviceOperation,
+   validateDevicePayload,
+ } from "./contract.ts";
 +import {
 +  FOREGROUND_REVIEW_TYPES,
 +  isForegroundReviewOperation,
 +  validateForegroundReviewResult,
 +} from "./foreground-review-contract.ts";
- import { validateNotesQueryResult } from "./notes-query-result.ts";
  import {
-   isReminderOperation,
+   assertMapsObservation,
+   isMapsOperation,
 @@ -126,6 +136,7 @@ export async function withDeviceActionTurn<T>(
                    CALENDAR_CAPABILITY,
                    CALENDAR_CREATE_CAPABILITY,
