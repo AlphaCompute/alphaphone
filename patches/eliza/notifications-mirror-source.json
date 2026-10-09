@@ -1,0 +1,36 @@
+{
+  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "patch": "0049-notifications-mirror.patch",
+  "sha256": "f5a53d23c306e908be6500e76af20b4e2b43185ed7d98ba4c1a7dc8548de56e0",
+  "status": "Candidate for elizaOS develop; authored at reviewed runtime 45242af; not consumed by the Alpha Android build until the Gradle include lands; not submitted upstream",
+  "basePaths": [],
+  "addedPaths": [
+    "plugins/plugin-native-notifications"
+  ],
+  "changed": [
+    "plugins/plugin-native-notifications/README.md",
+    "plugins/plugin-native-notifications/android/build.gradle",
+    "plugins/plugin-native-notifications/android/src/main/AndroidManifest.xml",
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NotificationMirror.java",
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NotificationMirrorConfig.java",
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NotificationMirrorListenerService.java",
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NotificationMirrorPolicy.java",
+    "plugins/plugin-native-notifications/package.json",
+    "plugins/plugin-native-notifications/test/native-host/NotificationMirrorPolicyTest.java",
+    "plugins/plugin-native-notifications/test/native-host/android-compile.node.mjs",
+    "plugins/plugin-native-notifications/test/native-host/policy.node.mjs"
+  ],
+  "files": {
+    "plugins/plugin-native-notifications/android/build.gradle": "327422a3191ef01a89c649d43d121d5b0100040109e069dff5da729cff62bc53",
+    "plugins/plugin-native-notifications/android/src/main/AndroidManifest.xml": "7195a052095c6e13b2762d7c95bc6c4929804f437bce38403717a7f49dd0e9a0",
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NotificationMirror.java": "3cacb5063d99b452e21e5f5c87065e0d2371ed3ab9772039a1bf54298dc4a7b0",
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NotificationMirrorConfig.java": "424221b33268358ecb7f2e877461060a228600eca5b6663376c9889b4bec8cff",
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NotificationMirrorListenerService.java": "eb1f3db18b2934dbb6a66910233c46186db5288d883e6b2985f675cd487ad35f",
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NotificationMirrorPolicy.java": "1d12a2b748decfb6b566fb83d9e205569b795a59b9f9dc23d31ad99fe0a74ce9",
+    "plugins/plugin-native-notifications/package.json": "5a3507d9b7eda775a2b6fb885bd40a7905244922b5075c640ffdcc846c3534ae",
+    "plugins/plugin-native-notifications/README.md": "107c188f20083f2f87047e0650b50c130b1bbbd2a18f51e3ac6f9afc70ea4116",
+    "plugins/plugin-native-notifications/test/native-host/android-compile.node.mjs": "ac7b5ff3dc92cfd4d7552447edb6ba1afa62d168f4b48665133918cab071d27c",
+    "plugins/plugin-native-notifications/test/native-host/NotificationMirrorPolicyTest.java": "74bef8a7d4141c63708d854e8e1541a2811ba4a0659b48c00b93a0971ff20b53",
+    "plugins/plugin-native-notifications/test/native-host/policy.node.mjs": "a992a188ba23aaa9da252786dc5675b74cd343631257d3da735bdb763864c4a3"
+  }
+}

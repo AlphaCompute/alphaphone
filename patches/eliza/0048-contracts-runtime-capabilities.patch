@@ -1,0 +1,474 @@
+diff --git a/packages/contracts/package.json b/packages/contracts/package.json
+index 2635760e9ae400b0d8ad1263dd8e30235af09402..fabb692b47cd34d26baf935397ed46c36b904cb4 100644
+--- a/packages/contracts/package.json
++++ b/packages/contracts/package.json
+@@ -27,6 +27,12 @@
+       "types": "./dist/native-notes-query.d.ts",
+       "import": "./dist/native-notes-query.js",
+       "default": "./dist/native-notes-query.js"
++    },
++    "./runtime-capabilities": {
++      "eliza-source": "./src/runtime-capabilities.ts",
++      "types": "./dist/runtime-capabilities.d.ts",
++      "import": "./dist/runtime-capabilities.js",
++      "default": "./dist/runtime-capabilities.js"
+     }
+   },
+   "scripts": {
+diff --git a/packages/contracts/src/runtime-capabilities.test.ts b/packages/contracts/src/runtime-capabilities.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7a885fe7c5507fe11abb761c24241dd7d724c868
+--- /dev/null
++++ b/packages/contracts/src/runtime-capabilities.test.ts
+@@ -0,0 +1,121 @@
++import { describe, expect, it } from "vitest";
++import {
++  validateAgentResult,
++  validateRuntimeCapabilities,
++  validateScheduledOccurrence,
++  validateSpeechCapabilities,
++  validateUsageEvent,
++} from "./runtime-capabilities";
++
++const speech = {
++  version: 1,
++  stt: { location: "device", languages: ["en"] },
++  tts: { location: "none", languages: [] },
++};
++describe("runtime capability contracts", () => {
++  it("accepts a resident runtime with a plain HTTPS web UI and device capabilities", () => {
++    const value = {
++      version: 1,
++      runtime: "resident",
++      webUiUrl: "https://agent.example/app/",
++      inference: { provider: "cerebras", model: "qwen-3.8-27b" },
++      deviceCapabilities: [
++        "notes.local-record.v1",
++        "calendar.availability-read.v1",
++      ],
++      speech,
++    };
++    expect(validateRuntimeCapabilities(value)).toEqual(value);
++    expect(
++      validateRuntimeCapabilities({
++        version: 1,
++        runtime: "cloud",
++        deviceCapabilities: [],
++      }),
++    ).toEqual({ version: 1, runtime: "cloud", deviceCapabilities: [] });
++  });
++  it("rejects unknown versions, fields, credentials in URLs and duplicate capabilities", () => {
++    const base = { version: 1, runtime: "resident", deviceCapabilities: [] };
++    for (const bad of [
++      { ...base, version: 2 },
++      { ...base, extra: true },
++      { ...base, webUiUrl: "http://agent.example" },
++      { ...base, webUiUrl: "https://user:pass@agent.example" },
++      { ...base, webUiUrl: "https://agent.example/?token=secret" },
++      // URL parsing silently drops tabs and newlines, so control characters are refused first.
++      { ...base, webUiUrl: "https://agent.example/\napp/" },
++      { ...base, inference: { provider: "cerebras\t", model: "qwen-3.8-27b" } },
++      {
++        ...base,
++        deviceCapabilities: ["notes.local-record.v1", "notes.local-record.v1"],
++      },
++      { ...base, deviceCapabilities: ["Notes"] },
++      {
++        ...base,
++        inference: { provider: "cerebras", model: "qwen", apiKey: "x" },
++      },
++      { ...base, runtime: "enclave" },
++    ])
++      expect(() => validateRuntimeCapabilities(bad)).toThrow();
++  });
++  it("keeps speech location and languages consistent", () => {
++    expect(validateSpeechCapabilities(speech)).toEqual(speech);
++    expect(() =>
++      validateSpeechCapabilities({
++        ...speech,
++        tts: { location: "none", languages: ["en"] },
++      }),
++    ).toThrow();
++    expect(() =>
++      validateSpeechCapabilities({
++        ...speech,
++        stt: { location: "device", languages: [] },
++      }),
++    ).toThrow();
++  });
++  it("binds agent results to their scheduled occurrence", () => {
++    const occurrence = validateScheduledOccurrence({
++      version: 1,
++      workflowId: "digest",
++      occurrenceId: "occ-1",
++      scheduledAt: "2026-10-08T12:00:00.000Z",
++      status: "completed",
++    });
++    const result = {
++      version: 1,
++      occurrenceId: "occ-1",
++      status: "succeeded",
++      summary: "Done",
++      completedAt: "2026-10-08T12:00:05.000Z",
++    };
++    expect(validateAgentResult(occurrence, result)).toEqual(result);
++    expect(() =>
++      validateAgentResult(occurrence, { ...result, occurrenceId: "occ-2" }),
++    ).toThrow();
++    expect(() =>
++      validateAgentResult(occurrence, {
++        ...result,
++        completedAt: "2026-10-08T11:00:00.000Z",
++      }),
++    ).toThrow();
++  });
++  it("records usage observations without metering fields", () => {
++    const event = {
++      version: 1,
++      id: "u1",
++      at: "2026-10-08T12:00:00.000Z",
++      kind: "inference",
++      model: "qwen-3.8-27b",
++      units: { inputTokens: 10, outputTokens: 3 },
++    };
++    expect(validateUsageEvent(event)).toEqual(event);
++    expect(() => validateUsageEvent({ ...event, cost: 1 })).toThrow();
++    expect(() =>
++      validateUsageEvent({ ...event, units: { credits: 1 } }),
++    ).toThrow();
++    expect(() => validateUsageEvent({ ...event, units: {} })).toThrow();
++    expect(() =>
++      validateUsageEvent({ ...event, units: { inputTokens: 1.5 } }),
++    ).toThrow();
++  });
++});
+diff --git a/packages/contracts/src/runtime-capabilities.ts b/packages/contracts/src/runtime-capabilities.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..c6945f2c51433b5a3544c702c220c1cd1201a718
+--- /dev/null
++++ b/packages/contracts/src/runtime-capabilities.ts
+@@ -0,0 +1,324 @@
++/**
++ * Versioned, browser-safe descriptions a host negotiates with a client: what the
++ * connected runtime offers, its speech surfaces, scheduled-occurrence results and usage
++ * observations. These are types and strict validators only. They grant no permission,
++ * and UsageEvent carries observed counts without any metering, pricing or quota meaning.
++ */
++export const RUNTIME_CAPABILITIES_VERSION = 1;
++
++export type RuntimeKind = "resident" | "cloud" | "remote" | "local-host";
++export interface RuntimeCapabilities {
++  version: 1;
++  runtime: RuntimeKind;
++  /** Canonical HTTPS origin of the runtime's web UI, when it serves one. */
++  webUiUrl?: string;
++  /** Hosted text inference, as configured; never a credential or endpoint secret. */
++  inference?: { provider: string; model: string };
++  /** Device operation capabilities the runtime will propose, e.g. notes.local-record.v1. */
++  deviceCapabilities: string[];
++  speech?: SpeechCapabilities;
++}
++export type SpeechLocation = "device" | "runtime" | "cloud" | "none";
++export interface SpeechCapabilities {
++  version: 1;
++  /** Speech-to-text location and BCP 47 languages. Cloud requires explicit opt-in. */
++  stt: { location: SpeechLocation; languages: string[] };
++  tts: { location: SpeechLocation; languages: string[] };
++}
++export type ScheduledOccurrenceStatus =
++  | "pending"
++  | "running"
++  | "completed"
++  | "missed"
++  | "cancelled";
++export interface ScheduledOccurrence {
++  version: 1;
++  workflowId: string;
++  occurrenceId: string;
++  /** Canonical UTC instant with milliseconds. */
++  scheduledAt: string;
++  status: ScheduledOccurrenceStatus;
++}
++export interface AgentResult {
++  version: 1;
++  occurrenceId: string;
++  status: "succeeded" | "failed" | "unknown";
++  summary: string;
++  completedAt: string;
++}
++export type UsageKind = "inference" | "speech" | "workflow";
++/** An observation of work done. It carries no price, quota or billing semantics. */
++export interface UsageEvent {
++  version: 1;
++  id: string;
++  at: string;
++  kind: UsageKind;
++  model?: string;
++  units: {
++    inputTokens?: number;
++    outputTokens?: number;
++    audioSeconds?: number;
++    steps?: number;
++  };
++}
++
++function object(value: unknown, label: string): Record<string, unknown> {
++  if (!value || typeof value !== "object" || Array.isArray(value))
++    throw Error(`Invalid ${label}`);
++  return value as Record<string, unknown>;
++}
++function only(
++  value: Record<string, unknown>,
++  required: string[],
++  optional: string[],
++  label: string,
++) {
++  const allowed = [...required, ...optional];
++  if (
++    required.some((key) => !Object.hasOwn(value, key)) ||
++    Object.keys(value).some((key) => !allowed.includes(key))
++  )
++    throw Error(`Unexpected ${label} fields`);
++}
++function hasControlCharacter(value: string): boolean {
++  for (let i = 0; i < value.length; i++)
++    if (value.charCodeAt(i) < 0x20) return true;
++  return false;
++}
++function text(value: unknown, max: number, label: string): string {
++  if (
++    typeof value !== "string" ||
++    !value.trim() ||
++    value.length > max ||
++    hasControlCharacter(value)
++  )
++    throw Error(`Invalid ${label}`);
++  return value;
++}
++function identifier(value: unknown, label: string): string {
++  const id = text(value, 128, label);
++  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(id))
++    throw Error(`Invalid ${label}`);
++  return id;
++}
++function instant(value: unknown, label: string): string {
++  if (
++    typeof value !== "string" ||
++    !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value) ||
++    !Number.isFinite(Date.parse(value)) ||
++    new Date(value).toISOString() !== value
++  )
++    throw Error(`Invalid ${label}`);
++  return value;
++}
++function oneOf<T extends string>(
++  value: unknown,
++  values: readonly T[],
++  label: string,
++): T {
++  if (!values.includes(value as T)) throw Error(`Unsupported ${label}`);
++  return value as T;
++}
++function version(value: Record<string, unknown>, label: string) {
++  if (value.version !== 1) throw Error(`Unsupported ${label} version`);
++}
++function list(
++  value: unknown,
++  max: number,
++  check: (item: unknown) => string,
++  label: string,
++): string[] {
++  if (!Array.isArray(value) || value.length > max)
++    throw Error(`Invalid ${label}`);
++  const items = value.map(check);
++  if (new Set(items).size !== items.length) throw Error(`Duplicate ${label}`);
++  return items;
++}
++const capability = (value: unknown) => {
++  const id = text(value, 96, "device capability");
++  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+\.v\d+$/.test(id))
++    throw Error("Invalid device capability");
++  return id;
++};
++const language = (value: unknown) => {
++  const tag = text(value, 35, "speech language");
++  if (!/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(tag))
++    throw Error("Invalid speech language");
++  return tag;
++};
++const LOCATIONS = ["device", "runtime", "cloud", "none"] as const;
++
++export function validateSpeechCapabilities(value: unknown): SpeechCapabilities {
++  const v = object(value, "speech capabilities");
++  only(v, ["version", "stt", "tts"], [], "speech capabilities");
++  version(v, "speech capabilities");
++  const surface = (input: unknown, label: string) => {
++    const s = object(input, label);
++    only(s, ["location", "languages"], [], label);
++    const location = oneOf(s.location, LOCATIONS, `${label} location`);
++    const languages = list(s.languages, 32, language, `${label} languages`);
++    if ((location === "none") !== (languages.length === 0))
++      throw Error(`Inconsistent ${label} languages`);
++    return { location, languages };
++  };
++  return { version: 1, stt: surface(v.stt, "stt"), tts: surface(v.tts, "tts") };
++}
++
++export function validateRuntimeCapabilities(
++  value: unknown,
++): RuntimeCapabilities {
++  const v = object(value, "runtime capabilities");
++  only(
++    v,
++    ["version", "runtime", "deviceCapabilities"],
++    ["webUiUrl", "inference", "speech"],
++    "runtime capabilities",
++  );
++  version(v, "runtime capabilities");
++  const result: RuntimeCapabilities = {
++    version: 1,
++    runtime: oneOf(
++      v.runtime,
++      ["resident", "cloud", "remote", "local-host"] as const,
++      "runtime kind",
++    ),
++    deviceCapabilities: list(
++      v.deviceCapabilities,
++      64,
++      capability,
++      "device capabilities",
++    ),
++  };
++  if (v.webUiUrl !== undefined) {
++    let url: URL;
++    try {
++      url = new URL(text(v.webUiUrl, 2048, "web UI URL"));
++    } catch {
++      throw Error("Invalid web UI URL");
++    }
++    if (
++      url.protocol !== "https:" ||
++      url.username ||
++      url.password ||
++      url.search ||
++      url.hash
++    )
++      throw Error("Web UI URL must be a plain HTTPS address");
++    result.webUiUrl = url.href;
++  }
++  if (v.inference !== undefined) {
++    const i = object(v.inference, "inference");
++    only(i, ["provider", "model"], [], "inference");
++    result.inference = {
++      provider: identifier(i.provider, "inference provider"),
++      model: identifier(i.model, "inference model"),
++    };
++  }
++  if (v.speech !== undefined)
++    result.speech = validateSpeechCapabilities(v.speech);
++  return result;
++}
++
++export function validateScheduledOccurrence(
++  value: unknown,
++): ScheduledOccurrence {
++  const v = object(value, "scheduled occurrence");
++  only(
++    v,
++    ["version", "workflowId", "occurrenceId", "scheduledAt", "status"],
++    [],
++    "scheduled occurrence",
++  );
++  version(v, "scheduled occurrence");
++  return {
++    version: 1,
++    workflowId: identifier(v.workflowId, "workflow ID"),
++    occurrenceId: identifier(v.occurrenceId, "occurrence ID"),
++    scheduledAt: instant(v.scheduledAt, "scheduled instant"),
++    status: oneOf(
++      v.status,
++      ["pending", "running", "completed", "missed", "cancelled"] as const,
++      "occurrence status",
++    ),
++  };
++}
++
++/** Validates a result against the occurrence it reports; it cannot precede scheduling. */
++export function validateAgentResult(
++  occurrence: ScheduledOccurrence,
++  value: unknown,
++): AgentResult {
++  const v = object(value, "agent result");
++  only(
++    v,
++    ["version", "occurrenceId", "status", "summary", "completedAt"],
++    [],
++    "agent result",
++  );
++  version(v, "agent result");
++  if (v.occurrenceId !== occurrence.occurrenceId)
++    throw Error("Agent result occurrence changed");
++  const completedAt = instant(v.completedAt, "completion instant");
++  if (Date.parse(completedAt) < Date.parse(occurrence.scheduledAt))
++    throw Error("Agent result precedes its occurrence");
++  if (
++    typeof v.summary !== "string" ||
++    v.summary.length > 2000 ||
++    v.summary.includes("\0")
++  )
++    throw Error("Invalid agent result summary");
++  return {
++    version: 1,
++    occurrenceId: occurrence.occurrenceId,
++    status: oneOf(
++      v.status,
++      ["succeeded", "failed", "unknown"] as const,
++      "result status",
++    ),
++    summary: v.summary,
++    completedAt,
++  };
++}
++
++export function validateUsageEvent(value: unknown): UsageEvent {
++  const v = object(value, "usage event");
++  only(v, ["version", "id", "at", "kind", "units"], ["model"], "usage event");
++  version(v, "usage event");
++  const u = object(v.units, "usage units");
++  const keys = [
++    "inputTokens",
++    "outputTokens",
++    "audioSeconds",
++    "steps",
++  ] as const;
++  only(u, [], [...keys], "usage units");
++  const units: UsageEvent["units"] = {};
++  for (const key of keys) {
++    const amount = u[key];
++    if (amount === undefined) continue;
++    if (
++      typeof amount !== "number" ||
++      !Number.isFinite(amount) ||
++      amount < 0 ||
++      amount > 1e12 ||
++      (key !== "audioSeconds" && !Number.isSafeInteger(amount))
++    )
++      throw Error(`Invalid usage ${key}`);
++    units[key] = amount;
++  }
++  if (!Object.keys(units).length) throw Error("Usage event has no units");
++  return {
++    version: 1,
++    id: identifier(v.id, "usage ID"),
++    at: instant(v.at, "usage instant"),
++    kind: oneOf(
++      v.kind,
++      ["inference", "speech", "workflow"] as const,
++      "usage kind",
++    ),
++    ...(v.model === undefined
++      ? {}
++      : { model: identifier(v.model, "usage model") }),
++    units,
++  };
++}
