@@ -237,3 +237,26 @@ test("a shell switch failure settles the exact claim without claiming delivery",
 		"private shell failure",
 	);
 });
+
+test("an owner change during acknowledgment cannot report delivery in the replacement session", async ({
+	page,
+}) => {
+	await setup(page);
+	const result = await page.evaluate(async () => {
+		const win = window as any;
+		const client = new win.ViewNavigationClient(
+			async (path: string) => {
+				if (path.endsWith("claim")) return { claimId: "owned-claim" };
+				win.active = false;
+				return { ok: true, accepted: true };
+			},
+			() => win.active,
+			() => win.current,
+		);
+		const attempt = client.capture(win.current),
+			summary = win.summary();
+		summary.values.navigationBinding.clientId = client.clientId;
+		return client.deliver([summary], attempt, win.navigate);
+	});
+	expect(result).toEqual({ status: "unknown" });
+});

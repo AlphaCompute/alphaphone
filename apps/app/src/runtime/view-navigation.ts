@@ -189,7 +189,12 @@ export class ViewNavigationClient {
 		}
 		// Our own view switch retires the chat context; it must not cancel its exact
 		// post-effect acknowledgment. A connection/owner/epoch change still refuses it.
-		if (this.disposed || !this.currentSession()) return { status: "unknown" };
+		if (
+			this.disposed ||
+			!this.currentSession() ||
+			attempt.controller.signal.aborted
+		)
+			return { status: "unknown" };
 		switched =
 			switched &&
 			this.context()?.view === target &&
@@ -207,7 +212,16 @@ export class ViewNavigationClient {
 				AbortSignal.timeout(5000),
 			),
 		);
-		if (switched && accepted.accepted === true)
+		if (
+			switched &&
+			accepted.accepted === true &&
+			!this.disposed &&
+			this.currentSession() &&
+			!attempt.controller.signal.aborted &&
+			this.context()?.view === target &&
+			!this.context()?.sensitive &&
+			!document.hidden
+		)
 			return {
 				status: "delivered",
 				label:
