@@ -82,11 +82,17 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       .sort((a: Bag, b: Bag) => a.begin - b.begin)[0];
     const day = agenda ? new Date(agenda.begin) : null;
     const dateLabel = (day || new Date(now)).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    const eventTitle=agenda?String(agenda.event.title||'Untitled event'):'';
+    const timeLabel=(instant:number)=>new Date(instant).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+    const endDay=agenda?new Date(agenda.end):null;
+    const endLabel=agenda&&endDay&&day&&endDay.toDateString()!==day.toDateString()?`${endDay.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}, ${timeLabel(agenda.end)}`:agenda?timeLabel(agenda.end):'';
+    const eventTime=agenda?agenda.event.nativeEvent?.allDay?'All day':timeLabel(agenda.begin)+(agenda.end>agenda.begin?` – ${endLabel}`:''):'';
     return {
       ...out, shadeN: [], lockSum: [], showHeads: false,
       sugg: suggestions.map(label => ({ label, go: () => this.send(label) })),
-      homeCalendarLabel: agenda ? `Open calendar event: ${agenda.event.title}` : 'Open your calendar',
-      homeCalendarTime: dateLabel, homeCalendarTitle: agenda?.event.title || (calendarSource?.loading ? 'Loading events…' : calendarSource?.ready ? calendarSource.truncated ? 'Calendar results limited' : 'No upcoming events' : calendarSource ? 'Calendar unavailable' : 'Loading events…'),
+      homeCalendarLabel: agenda ? `Open calendar event: ${eventTitle}, ${dateLabel}, ${eventTime}` : 'Open your calendar',
+      homeCalendarHasEvent:!!agenda,homeCalendarFooter:eventTime,
+      homeCalendarTime: dateLabel, homeCalendarTitle: eventTitle || (calendarSource?.loading ? 'Loading events…' : calendarSource?.ready ? calendarSource.truncated ? 'Calendar results limited' : 'No upcoming events' : calendarSource ? 'Calendar unavailable' : 'Loading events…'),
       homeAttentionLabel: browserDevProfile?'Open Inbox: '+unread+' unread email'+(unread===1?'':'s'):'Open Inbox', homeAttentionCount: browserDevProfile?String(unread):'—',
       homeInboxTitle: browserDevProfile ? (unread ? `${unread} unread` : 'No unread messages') : 'Connect email', homeInboxStatus: browserDevProfile ? 'Open your messages' : '',
       homeAttentionPeople: [],
@@ -104,7 +110,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
 
 /** Neutral Home card values used when no fixture defaults are bundled. */
 const NEUTRAL_HOME = {
-  homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'Loading events…',
+  homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'Loading events…',homeCalendarHasEvent:false,homeCalendarFooter:'',
   homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Routines and automations',
 };
 

@@ -89,9 +89,9 @@ test('Home shows clean Calendar and Workflows tiles with Inbox last',async({page
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev');
  const home=page.getByRole('region',{name:'Home',exact:true});await expect(home.getByRole('button',{name:'Open your calendar',exact:true})).toContainText(/Loading events…|Calendar unavailable|No upcoming events/);
  await expect(home.getByRole('button',{name:'Open workflows',exact:true})).toBeVisible();
- const tiles=home.locator(':scope > .scr').first().getByRole('button');await expect(tiles.nth(1)).toHaveAttribute('aria-label','Open workflows');await expect(tiles.nth(2)).toHaveAttribute('aria-label',/^Open Inbox:/);
+ const tiles=home.locator('[data-alpha-home-layout] > .scr').first().getByRole('button');await expect(tiles.nth(1)).toHaveAttribute('aria-label','Open workflows');await expect(tiles.nth(2)).toHaveAttribute('aria-label',/^Open Inbox(?:$|:)/);
  await page.screenshot({path:info.outputPath('home-clean-tiles.png'),animations:'disabled'});
- await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');await new BrowserCalendar().save({calendarId:'local',title:'Synthetic Home calendar check',begin:Date.now()+3600000,end:Date.now()+7200000,creationId:crypto.randomUUID()});});await page.reload();await expect(home.getByRole('button',{name:'Open calendar event: Synthetic Home calendar check',exact:true})).toContainText('Synthetic Home calendar check');await page.screenshot({path:info.outputPath('home-next-event.png'),animations:'disabled'});
+ await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');await new BrowserCalendar().save({calendarId:'local',title:'Synthetic Home calendar check',begin:Date.now()+3600000,end:Date.now()+7200000,creationId:crypto.randomUUID()});});await page.reload();await expect(home.getByRole('button',{name:/^Open calendar event: Synthetic Home calendar check, /})).toContainText('Synthetic Home calendar check');await page.screenshot({path:info.outputPath('home-next-event.png'),animations:'disabled'});
 });
 
 test('chat brand Home preserves the existing conversation and unsent draft',async({page})=>{

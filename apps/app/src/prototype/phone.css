@@ -16,6 +16,13 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 .alpha-phone [data-alpha-layer="conversation"]{max-height:100%}
 .alpha-phone [data-alpha-layer="conversation"]>.scr{min-height:0}
 
+/* Real event titles share the card with their date and time; empty copy stays large. */
+.home-calendar-card { display:grid; grid-template-rows:auto minmax(0,1fr); gap:12px; text-align:left; }
+.home-calendar-title { min-width:0; align-self:center; font-size:36px; line-height:1.02; letter-spacing:-.01em; overflow:hidden; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; max-height:3.06em; }
+.home-calendar-card[data-alpha-home-calendar-event="true"] { grid-template-rows:auto minmax(0,1fr) auto; }
+.home-calendar-card[data-alpha-home-calendar-event="true"] .home-calendar-title { font-size:26px; line-height:1.1; max-height:3.3em; }
+.home-calendar-footer { min-width:0; font-size:14px; font-weight:500; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
 /* Recipient suggestions and attachments must not push the draft out of reach. */
 .inbox-compose-fields { overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; scroll-padding-block:12px; padding-bottom:64px!important; }
 .inbox-compose-fields > * { flex-shrink:0; }
