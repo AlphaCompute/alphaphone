@@ -205,7 +205,8 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     shell.vset('browser', { findQuery: value, findDone: !value, ...(value ? {} : { findCount: 0, findIndex: 0 }) });
     window.clearTimeout(findTimer);
     // Debounced so typing does not issue a native search per keystroke.
-    findTimer = window.setTimeout(() => { if (created.has(id)) void Browser.find({ session, id, query: value }).catch(report); }, 150);
+    // A tab switch during the debounce must not search a tab that is no longer shown.
+    findTimer = window.setTimeout(() => { if (created.has(id) && id === state()?.cur && id === state()?.findTab) void Browser.find({ session, id, query: value }).catch(report); }, 150);
   }
   function findStep(forward: boolean) {
     const s = state(), id = s?.findTab;

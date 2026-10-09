@@ -155,7 +155,7 @@ public class AlphaBrowserPlugin extends Plugin {
   }
  }); }
 
- private static class Tab { BrowserReadingWorld readingWorld; BrowserDownloads.BlobCapture capture; String findQuery; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
+ private static class Tab { BrowserReadingWorld readingWorld; BrowserDownloads.BlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
  /** Credentials stay in the framework/provider and the remote document. No bridge API
   * reads fields or replaces Chromium's frame-specific webDomain metadata. The only addition
   * is the committed top-level origin, which the password provider requires to equal the
@@ -345,9 +345,10 @@ public class AlphaBrowserPlugin extends Plugin {
      // mailto/tel/intent/market belong to other apps. The current page stays.
      if (BrowserExternalLinks.external(target)) { if (r.isForMainFrame()) handoff(t, target, r.hasGesture()); return true; }
      if (!safe(target)) { if (r.isForMainFrame()) fail(t,"This address type is not supported."); return true; }
+     if (r.isForMainFrame()) t.pendingMain=target;
      return false;
     }
-    @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) { if (r.isForMainFrame() && !safe(r.getUrl().toString())) return new WebResourceResponse("text/plain","UTF-8",new java.io.ByteArrayInputStream(new byte[0])); return null; }
+    @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) { if (r.isForMainFrame()) t.pendingMain=r.getUrl().toString(); if (r.isForMainFrame() && !safe(r.getUrl().toString())) return new WebResourceResponse("text/plain","UTF-8",new java.io.ByteArrayInputStream(new byte[0])); return null; }
     @Override public void onPageStarted(WebView v, String url, Bitmap icon) { if (!safe(url)) { fail(t,"This address type is not supported."); return; } t.url=url; if(t.readingWorld!=null)t.readingWorld.pageStarted(url); loading(t,true); emit(t); }
     @Override public void onPageCommitVisible(WebView v, String url) {
      if (!t.error.isEmpty() || !url.equals(v.getUrl())) return;
@@ -465,6 +466,9 @@ public class AlphaBrowserPlugin extends Plugin {
   long revision=t.navigation;
   java.util.function.BooleanSupplier current=()->!destroyed&&!t.dead&&tabs.get(t.id)==t&&t.navigation==revision&&Objects.equals(origin,BrowserDownloads.origin(t.web.getUrl()));
   LinkedHashSet<String> wanted=new LinkedHashSet<>(),allowed=new LinkedHashSet<>();
+  // Only the selected, shown page may use a device sensor, even with a stored Allow:
+  // a background tab or a paused app is refused without asking.
+  if(!promptable(t)){result.accept(Collections.emptySet());return;}
   for(String kind:kinds){
    if(!grantable(kind)){notice(t,"Websites cannot use your "+kindLabel(kind)+" in this app.");continue;}
    Boolean stored=null;if(!t.priv)try{stored=sessionStore.permission(origin,kind);}catch(Exception damaged){stored=null;}
@@ -482,7 +486,6 @@ public class AlphaBrowserPlugin extends Plugin {
    try{runtimePermissions.launch(missing.toArray(new String[0]));}catch(RuntimeException unavailable){runtimeResult=null;result.accept(Collections.emptySet());}
   };
   if(wanted.isEmpty()){runtime.accept(allowed);return;}
-  if(!promptable(t)){result.accept(Collections.emptySet());return;}
   StringBuilder labels=new StringBuilder();int i=0;for(String kind:wanted){if(i>0)labels.append(i==wanted.size()-1?" and ":", ");labels.append(kindLabel(kind));i++;}
   String message=Uri.parse(origin).getHost()+" wants to use your "+labels+"."+(t.priv?"\n\nPrivate tab: this choice is not remembered.":"\n\nYou can change this later with Clear data for this site.");
   boolean[] answered={false};
@@ -519,13 +522,22 @@ public class AlphaBrowserPlugin extends Plugin {
   // Never let WebView retain the grant: decisions live only in Alpha's per-profile store.
   sitePermission(t,origin,Collections.singletonList("location"),granted->{if(done[0])return;done[0]=true;callback.invoke(requested,granted.contains("location"),false);});
  }
+ private static boolean secureAuthPage(Uri page){return "https".equalsIgnoreCase(page.getScheme())||(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&"http".equalsIgnoreCase(page.getScheme())&&("127.0.0.1".equals(page.getHost())||"localhost".equals(page.getHost())));}
  private void httpAuth(Tab t,HttpAuthHandler handler,String host,String realm){
-  Uri page=Uri.parse(t.url==null?"":t.url);
-  boolean secure="https".equalsIgnoreCase(page.getScheme())||(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&"http".equalsIgnoreCase(page.getScheme())&&("127.0.0.1".equals(page.getHost())||"localhost".equals(page.getHost())));
-  if(!secure){handler.cancel();fail(t,"This site asks for a password over an insecure connection. It was not sent.");return;}
   // WebView may report host[:port]; the prompt is allowed only for the page's own host.
   String asked=host==null?null:host.replaceFirst(":\\d+$","");
-  if(asked==null||!asked.equalsIgnoreCase(page.getHost())){handler.cancel();notice(t,"Blocked a sign-in prompt from a different site.");return;}
+  // The challenge carries no URL. While a page-initiated load is pending, t.url can still be the
+  // shown page; pendingMain is the latest main-frame request or redirect. Mixed content is never loaded,
+  // so an insecure challenge can only come from a main-frame load. Any candidate for this
+  // host that is not secure refuses the prompt, so a password is never sent in cleartext.
+  boolean matched=false;
+  for(String candidate:new String[]{t.url,t.pendingMain}){
+   if(candidate==null||asked==null)continue;Uri page=Uri.parse(candidate);
+   if(page.getHost()==null||!asked.equalsIgnoreCase(page.getHost()))continue;
+   matched=true;
+   if(!secureAuthPage(page)){handler.cancel();fail(t,"This site asks for a password over an insecure connection. It was not sent.");return;}
+  }
+  if(!matched){handler.cancel();notice(t,"Blocked a sign-in prompt from a different site.");return;}
   if(!promptable(t)){handler.cancel();fail(t,"Sign-in was cancelled. Reload to try again.");return;}
   if(++t.authAttempts>3){handler.cancel();fail(t,"Sign-in failed. Reload to try again.");return;}
   float density=getContext().getResources().getDisplayMetrics().density;int pad=Math.round(20*density);
@@ -615,7 +627,8 @@ public class AlphaBrowserPlugin extends Plugin {
  @PluginMethod public void find(PluginCall call) { run(call,t->{
   String query=call.getString("query","");
   if(query==null||query.length()>200||query.chars().anyMatch(c->c<32&&c!=9))throw new IllegalArgumentException();
-  if(query.isEmpty()){clearFind(t);return;}
+  // An emptied search box removes the highlights but keeps the find bar open.
+  if(query.isEmpty()){if(t.findQuery!=null){t.findQuery=null;t.web.clearMatches();}return;}
   if(!t.committed||!t.error.isEmpty())throw new IllegalStateException();
   t.findQuery=query;t.web.findAllAsync(query);
  }); }

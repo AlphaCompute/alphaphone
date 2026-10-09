@@ -28,7 +28,8 @@ import static org.junit.Assert.*;
 
 /** Real isolated child WebViews against a loopback fixture (cleartext exists only
  * in -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug builds): private-tab downloads stay out
- * of the persisted list, the sign-in cookie reaches only the same origin,
+ * of the persisted list, the sign-in cookie reaches only the same origin (also
+ * when the app-fetched download is redirected to another origin),
  * page-created blob:/data: files are saved after review, HTTP authentication
  * uses a native prompt, site permissions are origin-labelled and stored only for
  * normal tabs, find-in-page and fullscreen with Back. All values are synthetic. */
@@ -38,6 +39,7 @@ public final class BrowserWebFeaturesInstrumentedTest {
  private final String token=UUID.randomUUID().toString().replace("-","");
  private final String authUser="alpha-fixture-user",authSecret="alpha-fixture-"+token;
  private final List<String> cookieRequests=Collections.synchronizedList(new ArrayList<>());
+ private final java.util.concurrent.atomic.AtomicInteger hopRequests=new java.util.concurrent.atomic.AtomicInteger();
  private ServerSocket server,other;
  private ExecutorService workers;
  private String base;
@@ -115,7 +117,7 @@ public final class BrowserWebFeaturesInstrumentedTest {
  private String fixturePage(){
   String data="data:text/plain;base64,"+android.util.Base64.encodeToString(("data bytes "+token).getBytes(StandardCharsets.UTF_8),android.util.Base64.NO_WRAP);
   return "<!doctype html><meta name=viewport content='width=device-width'><title>Web features fixture</title>"
-   +"<a id=same href='/file'>Same-origin file</a><br><a id=cross href='http://127.0.0.1:"+other.getLocalPort()+"/file'>Other-origin file</a><br>"
+   +"<a id=same href='/file'>Same-origin file</a><br><a id=hop href='/hop'>Redirected file</a><br><a id=cross href='http://127.0.0.1:"+other.getLocalPort()+"/file'>Other-origin file</a><br>"
    +"<a id=data download='data-"+token+".txt' href='"+data+"'>Data file</a><br><a id=blob>Blob file</a><br>"
    +"<p>needle one</p><p>needle two</p><p>needle three</p>"
    +"<div id=fs style='width:200px;height:80px;background:#246'><button id=full style='font-size:28px;padding:16px'>Fullscreen</button></div>"
@@ -132,7 +134,12 @@ public final class BrowserWebFeaturesInstrumentedTest {
    socket.setSoTimeout(10000);BufferedReader reader=new BufferedReader(new InputStreamReader(socket.getInputStream(),StandardCharsets.US_ASCII));String request=reader.readLine(),line,cookie="",auth="";
    while((line=reader.readLine())!=null&&!line.isEmpty()){String lower=line.toLowerCase(Locale.ROOT);if(lower.startsWith("cookie:"))cookie=line.substring(7).trim();if(lower.startsWith("authorization:"))auth=line.substring(14).trim();}
    OutputStream output=socket.getOutputStream();
-   if(request!=null&&request.startsWith("GET /file")){
+   if(request!=null&&request.startsWith("GET /hop")&&listening==server){
+    // The WebView's own request gets the file; the app's later fetch is redirected to the other origin.
+    cookieRequests.add("hop="+cookie.contains("alpha_dl="+token));
+    if(hopRequests.incrementAndGet()==1)respond(output,"200 OK","text/plain",("file bytes "+token).getBytes(StandardCharsets.UTF_8),"Content-Disposition: attachment; filename=\"alpha-"+token+".txt\"\r\n");
+    else respond(output,"302 Found","text/plain",new byte[0],"Location: http://127.0.0.1:"+other.getLocalPort()+"/file\r\n");
+   }else if(request!=null&&request.startsWith("GET /file")){
     // Record only whether this fixture's own synthetic cookie arrived, per listening origin.
     cookieRequests.add(tag+"="+cookie.contains("alpha_dl="+token));
     respond(output,"200 OK","text/plain",("file bytes "+token).getBytes(StandardCharsets.UTF_8),"Content-Disposition: attachment; filename=\"alpha-"+token+".txt\"\r\n");
@@ -168,9 +175,20 @@ public final class BrowserWebFeaturesInstrumentedTest {
    browser.child("document.cookie='alpha_dl="+token+"; Path=/; Max-Age=600';true");
    // Same-origin download from a normal tab carries the tab's own sign-in cookie.
    browser.child("document.querySelector('#same').click();true");nativeVisible("Download file?");nativeVisible("Your sign-in for this site is used");
-   // The WebView's own request already happened; only DownloadManager's request is counted from here.
+   // The WebView's own request already happened; only the app's fetch is counted from here.
+   int before=downloadEntries().size();
    cookieRequests.clear();nativeClick("Download");for(int i=0;i<150&&!cookieRequests.contains("page=true");i++)SystemClock.sleep(100);
-   assertTrue("Same-origin download received the tab's cookie: "+cookieRequests,cookieRequests.contains("page=true"));nativeClick("Close");
+   assertTrue("Same-origin download received the tab's cookie: "+cookieRequests,cookieRequests.contains("page=true"));
+   assertArrayEquals("Signed-in download saved exactly",("file bytes "+token).getBytes(StandardCharsets.UTF_8),read(savedCapture(before)));nativeClick("Close");
+   assertFalse("The cookie is never written to the persisted download list",persistedDownloads().contains("alpha_dl"));
+   // A signed-in download redirected to another origin: the cookie goes to the page origin only.
+   openFixture();browser.child("document.querySelector('#hop').click();true");nativeVisible("Download file?");nativeVisible("Your sign-in for this site is used");
+   before=downloadEntries().size();cookieRequests.clear();nativeClick("Download");
+   for(int i=0;i<150&&cookieRequests.stream().noneMatch(r->r.startsWith("other="));i++)SystemClock.sleep(100);
+   assertTrue("The app's fetch of the page-origin URL carried the cookie: "+cookieRequests,cookieRequests.contains("hop=true"));
+   assertTrue("The redirect target was requested: "+cookieRequests,cookieRequests.contains("other=false"));
+   assertFalse("The redirect target never received the cookie: "+cookieRequests,cookieRequests.contains("other=true"));
+   assertArrayEquals("Redirected download saved exactly",("file bytes "+token).getBytes(StandardCharsets.UTF_8),read(savedCapture(before)));nativeClick("Close");
    // A different origin (another port on the same host) never receives it from Alpha.
    openFixture();browser.child("document.querySelector('#cross').click();true");nativeVisible("Download file?");nativeVisible("Website sign-in is not shared");
    cookieRequests.clear();nativeClick("Download");for(int i=0;i<150&&cookieRequests.stream().noneMatch(r->r.startsWith("other="));i++)SystemClock.sleep(100);

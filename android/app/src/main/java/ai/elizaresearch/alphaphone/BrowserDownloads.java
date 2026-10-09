@@ -40,10 +40,12 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /** Browser downloads, always after an explicit native review.
- * HTTPS files go to the OS DownloadManager. Only the requesting tab's own
- * profile cookie for the exact same origin as its committed page is attached,
- * read at confirmation while that tab is still open; no bearer tokens, referer
- * or form bodies are copied. blob: and data: links are captured into an
+ * HTTPS files without a sign-in go to the OS DownloadManager. A file that uses
+ * the requesting tab's own profile cookie (exact same origin as its committed
+ * page, read at confirmation while that tab is still open) is fetched by the app
+ * instead: DownloadManager would replay a Cookie header to every redirect target
+ * and keep it in Android's download database after the tab, even a private one,
+ * is gone. No bearer tokens, referer or form bodies are copied. blob: and data: links are captured into an
  * app-owned cache file (blob: through an isolated script world that page
  * scripts cannot reach) and copied to Downloads only after review.
  * Private-tab downloads are never written to the persisted download list.
@@ -51,15 +53,20 @@ import java.util.function.Supplier;
 final class BrowserDownloads {
  static final long MAX_CAPTURE=64L*1024*1024;
  static final int MAX_ENTRIES=50;
+ static final int MAX_REDIRECTS=10;
  private final Context context;
  private final DownloadManager manager;
  private final SharedPreferences preferences;
  private final Handler handler=new Handler(Looper.getMainLooper());
  private final ExecutorService io=Executors.newSingleThreadExecutor();
+ /** Signed-in downloads fetched by the app, one at a time; progress and cancellation by entry id. */
+ private final ExecutorService network=Executors.newSingleThreadExecutor();
+ private final Map<Long,Long> received=new java.util.concurrent.ConcurrentHashMap<>();
+ private final Set<Long> cancelled=java.util.concurrent.ConcurrentHashMap.newKeySet();
  private AlertDialog pending,listing;
  private String pendingTab;
  private Runnable update;
- /** Positive keys are DownloadManager IDs; negative keys are captured files saved to MediaStore. */
+ /** Positive keys are DownloadManager IDs; negative keys are captured or app-fetched (signed-in) files saved to MediaStore. */
  private final LinkedHashMap<Long,JSONObject> owned=new LinkedHashMap<>();
  private long localSequence;
  /** The requesting tab, captured by the plugin at download start. */
@@ -72,10 +79,10 @@ final class BrowserDownloads {
   preferences=context.getSharedPreferences("alpha-browser-downloads",Context.MODE_PRIVATE);
   try{JSONArray saved=new JSONArray(preferences.getString("owned","[]"));for(int i=0;i<saved.length()&&i<MAX_ENTRIES;i++){JSONObject item=saved.getJSONObject(i);long id=item.getLong("id");
    // A private entry can only exist in a store written by an older build; never restore it.
-   if(id!=0&&!item.optBoolean("private",false))owned.put(id,item);if(id<localSequence)localSequence=id;}}catch(Exception ignored){/* No outside IDs are queried. */}
+   if(id!=0&&!item.optBoolean("private",false)&&!item.optBoolean("running",false))owned.put(id,item);if(id<localSequence)localSequence=id;}}catch(Exception ignored){/* No outside IDs are queried. */}
  }
  /** Persist only normal-tab entries. Private-tab entries live in memory until their tab closes. */
- private void persist(){JSONArray records=new JSONArray();for(JSONObject item:owned.values())if(!item.optBoolean("private",false))records.put(item);preferences.edit().putString("owned",records.toString()).apply();}
+ private void persist(){JSONArray records=new JSONArray();for(JSONObject item:owned.values())if(!item.optBoolean("private",false)&&!item.optBoolean("running",false))records.put(item);preferences.edit().putString("owned",records.toString()).apply();}
  static String safeName(String raw,String disposition,String mime){
   String name=URLUtil.guessFileName(raw,disposition,mime).replaceAll("[^A-Za-z0-9._ -]","_").replaceAll("^[. ]+","").trim();
   if(name.isEmpty())name="download";
@@ -134,7 +141,8 @@ final class BrowserDownloads {
     if(validMime(mime))request.setMimeType(mime);
     if(source.userAgent!=null&&!source.userAgent.isEmpty()&&source.userAgent.length()<1024)request.addRequestHeader("User-Agent",source.userAgent);
     // Read now, from the still-open requesting tab's own profile. A closed tab supplies nothing.
-    if(signedIn){String cookie=source.cookies==null?null:source.cookies.get();if(cookie!=null&&!cookie.isEmpty()&&cookie.length()<8192&&!cookie.matches("(?s).*[\\r\\n].*"))request.addRequestHeader("Cookie",cookie);}
+    if(signedIn){String cookie=source.cookies==null?null:source.cookies.get();if(cookie!=null&&!cookie.isEmpty()&&cookie.length()<8192&&!cookie.matches("(?s).*[\\r\\n].*")){fetchSignedIn(raw,name,mime,origin,source,cookie);show();return;}}
+    // No sign-in: DownloadManager never receives a Cookie header.
     long id=manager.enqueue(request);
     owned.put(id,entry(id,name,origin,source));persist();
     show();
@@ -185,15 +193,73 @@ final class BrowserDownloads {
   });
   AlertDialog review=pending;if(review!=null)review.setOnDismissListener(dialog->{if(pending==review){pending=null;pendingTab=null;}if(!used[0])file.delete();});
  }
- private Uri publish(File file,String name,String mime)throws Exception{
+ /** Thrown by the fetch loop when the user cancelled or removed the entry. */
+ private static final class Cancelled extends Exception{Cancelled(){super(null,null,false,false);}}
+ /** A failure whose fixed message is shown to the user. */
+ private static final class Refused extends Exception{Refused(String message){super(message,null,false,false);}}
+ /** Fetch a signed-in file in-app. The cookie is sent on each hop only when that hop's URL has
+  * exactly the page's origin; redirects are followed manually, only to allowed (HTTPS) addresses,
+  * and the cookie is never stored. The entry is in memory while running and persisted on success
+  * (normal tabs only). A fetch interrupted by process death leaves only Android's pending row,
+  * which the system removes. */
+ private void fetchSignedIn(String start,String name,String mime,String origin,Source source,String cookie)throws Exception{
+  long id=--localSequence;JSONObject item=entry(id,name,origin,source);item.put("running",true);owned.put(id,item);received.put(id,0L);
+  network.execute(()->{
+   Uri saved=null;String failure=null;boolean stopped=false;
+   try{saved=fetch(id,start,source.pageOrigin,cookie,source.userAgent,name,mime);}
+   catch(Cancelled cancel){stopped=true;}
+   catch(Refused refused){failure=refused.getMessage();}
+   catch(Exception error){failure="The download failed. Check the connection and try again.";}
+   Uri result=saved;String error=failure;boolean wasCancelled=stopped;
+   handler.post(()->{
+    received.remove(id);cancelled.remove(id);
+    JSONObject current=owned.get(id);
+    // Removed, cancelled or cleared while running: nothing is re-added. A finished file stays in Downloads.
+    if(current==null||wasCancelled)return;
+    try{current.remove("running");if(result!=null)current.put("uri",result.toString());else current.put("failed",true);}catch(Exception ignored){}
+    persist();if(update!=null)update.run();
+    if(result==null&&error!=null)message(error);
+   });
+  });
+ }
+ private Uri fetch(long id,String start,String pageOrigin,String cookie,String agent,String name,String mime)throws Exception{
+  java.net.URL url=new java.net.URL(start);
+  for(int hop=0;;hop++){
+   if(hop>MAX_REDIRECTS)throw new Refused("The site redirected the download too many times.");
+   if(cancelled.contains(id))throw new Cancelled();
+   java.net.HttpURLConnection connection=(java.net.HttpURLConnection)url.openConnection();
+   try{
+    connection.setInstanceFollowRedirects(false);connection.setUseCaches(false);connection.setConnectTimeout(30000);connection.setReadTimeout(60000);
+    connection.setRequestProperty("Accept-Encoding","identity");
+    if(agent!=null&&!agent.isEmpty()&&agent.length()<1024&&!agent.matches("(?s).*[\\r\\n].*"))connection.setRequestProperty("User-Agent",agent);
+    // Only the exact page origin gets the sign-in, on this hop and on any redirect back to it.
+    if(cookieAllowed(url.toString(),pageOrigin))connection.setRequestProperty("Cookie",cookie);
+    int code=connection.getResponseCode();
+    if(code==301||code==302||code==303||code==307||code==308){
+     String location=connection.getHeaderField("Location");
+     if(location==null||location.length()>8192||location.matches("(?s).*[\\x00-\\x1f\\x7f].*"))throw new Refused("The site redirected the download to an invalid address.");
+     java.net.URL next=new java.net.URL(url,location);
+     if(!allowed(Uri.parse(next.toString())))throw new Refused("The site redirected the download to an address that is not supported.");
+     url=next;continue;
+    }
+    if(code<200||code>=300)throw new Refused("The site did not provide the file (HTTP "+code+").");
+    String type=connection.getContentType();if(type!=null)type=type.split(";",2)[0].trim();
+    try(InputStream in=connection.getInputStream()){return publish(in,name,validMime(mime)?mime:validMime(type)?type:null,id);}
+   }finally{connection.disconnect();}
+  }
+ }
+ private Uri publish(File file,String name,String mime)throws Exception{try(InputStream in=new FileInputStream(file)){return publish(in,name,mime,0);}}
+ /** Stream into a pending MediaStore Downloads row; a failed or cancelled copy removes it. */
+ private Uri publish(InputStream in,String name,String mime,long id)throws Exception{
   ContentResolver resolver=context.getContentResolver();ContentValues values=new ContentValues();
   values.put(MediaStore.MediaColumns.DISPLAY_NAME,UUID.randomUUID().toString().substring(0,8)+"-"+name);
   values.put(MediaStore.MediaColumns.MIME_TYPE,validMime(mime)?mime:"application/octet-stream");
   values.put(MediaStore.MediaColumns.RELATIVE_PATH,Environment.DIRECTORY_DOWNLOADS);
   values.put(MediaStore.MediaColumns.IS_PENDING,1);
   Uri uri=resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values);if(uri==null)throw new IllegalStateException();
-  try(InputStream in=new FileInputStream(file);OutputStream out=resolver.openOutputStream(uri)){
-   if(out==null)throw new IllegalStateException();byte[] buffer=new byte[65536];int count;while((count=in.read(buffer))!=-1)out.write(buffer,0,count);
+  try(OutputStream out=resolver.openOutputStream(uri)){
+   if(out==null)throw new IllegalStateException();byte[] buffer=new byte[65536];int count;long total=0;
+   while((count=in.read(buffer))!=-1){if(id!=0&&cancelled.contains(id))throw new Cancelled();out.write(buffer,0,count);total+=count;if(id!=0)received.put(id,total);}
   }catch(Exception failure){resolver.delete(uri,null,null);throw failure;}
   ContentValues done=new ContentValues();done.put(MediaStore.MediaColumns.IS_PENDING,0);resolver.update(uri,done,null,null);
   return uri;
@@ -218,7 +284,9 @@ final class BrowserDownloads {
   list.setOnDismissListener(dialog->{handler.removeCallbacks(poll);if(listing==list){update=null;listing=null;}});
   update=poll;list.show();poll.run();
  }
- private String localLabel(JSONObject item){
+ private String localLabel(long id,JSONObject item){
+  if(item.optBoolean("running",false))return "Downloading · "+size(received.getOrDefault(id,0L));
+  if(item.optBoolean("failed",false))return "Failed";
   try(Cursor cursor=context.getContentResolver().query(Uri.parse(item.optString("uri")),new String[]{MediaStore.MediaColumns.SIZE},null,null,null)){
    if(cursor!=null&&cursor.moveToFirst())return "Saved to Downloads · "+size(cursor.getLong(0));
   }catch(Exception unavailable){return "Status unavailable";}
@@ -229,7 +297,7 @@ final class BrowserDownloads {
   if(owned.isEmpty()){TextView empty=new TextView(context);empty.setText("No downloads yet.");rows.addView(empty);return;}
   for(Map.Entry<Long,JSONObject> entry:new ArrayList<>(owned.entrySet())){
    long id=entry.getKey();JSONObject item=entry.getValue();int status=0,reason=0;long bytes=0,total=-1;String label;
-   if(id<0)label=localLabel(item);
+   if(id<0)label=localLabel(id,item);
    else{
     try(Cursor cursor=manager.query(new DownloadManager.Query().setFilterById(id))){if(cursor!=null&&cursor.moveToFirst()){
      status=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));reason=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));
@@ -239,9 +307,9 @@ final class BrowserDownloads {
    }
    if(item.optBoolean("private",false))label+=" · Private tab";
    TextView text=new TextView(context);text.setText(item.optString("name")+"\n"+item.optString("origin")+"\n"+label);text.setPadding(0,12,0,8);rows.addView(text);
-   boolean active=id>0&&(status==DownloadManager.STATUS_PENDING||status==DownloadManager.STATUS_RUNNING||status==DownloadManager.STATUS_PAUSED);
+   boolean active=(id<0&&item.optBoolean("running",false))||(id>0&&(status==DownloadManager.STATUS_PENDING||status==DownloadManager.STATUS_RUNNING||status==DownloadManager.STATUS_PAUSED));
    Button control=new Button(context);control.setText(active?"Cancel download":"Remove entry");control.setContentDescription((active?"Cancel download ":"Remove download entry ")+item.optString("name"));
-   control.setOnClickListener(view->{try{if(active)manager.remove(id);owned.remove(id);persist();render(rows);}catch(Exception error){message("Android could not cancel this download. Try again.");}});rows.addView(control);
+   control.setOnClickListener(view->{try{if(active){if(id>0)manager.remove(id);else cancelled.add(id);}owned.remove(id);persist();render(rows);}catch(Exception error){message("Android could not cancel this download. Try again.");}});rows.addView(control);
   }
  }
  // Dismiss only UI; OS-owned transfers and durable history remain intact.
@@ -250,7 +318,7 @@ final class BrowserDownloads {
   AlertDialog review=pending,list=listing;pending=null;pendingTab=null;listing=null;
   if(review!=null)review.dismiss();if(list!=null)list.dismiss();
  }
- void destroy(){dismissDialogs();io.shutdown();}
+ void destroy(){dismissDialogs();cancelled.addAll(received.keySet());io.shutdown();network.shutdown();}
 
  /** Captures a page-created blob: download into an app-owned file. The script
   * runs in a dedicated isolated JavaScript world: page scripts cannot see its

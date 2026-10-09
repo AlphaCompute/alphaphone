@@ -14,8 +14,8 @@ const store = read(dir + 'BrowserSessionStore.java');
 const adapter = read('apps/app/src/prototype/browser-adapter.ts');
 
 test('private-tab downloads never reach the persisted download list', () => {
-  assert.match(downloads, /private void persist\(\)\{[^\n]*if\(!item\.optBoolean\("private",false\)\)records\.put\(item\)/);
-  assert.match(downloads, /if\(id!=0&&!item\.optBoolean\("private",false\)\)owned\.put\(id,item\)/, 'a stale private row is never restored');
+  assert.match(downloads, /private void persist\(\)\{[^\n]*if\(!item\.optBoolean\("private",false\)&&[^\n]*\)records\.put\(item\)/);
+  assert.match(downloads, /if\(id!=0&&!item\.optBoolean\("private",false\)&&[^\n]*\)owned\.put\(id,item\)/, 'a stale private row is never restored');
   assert.match(downloads, /if\(source\.priv\)\{item\.put\("private",true\);item\.put\("tab",source\.tab\);\}/);
   assert.match(downloads, /Private tab: the file stays in Downloads after you close this tab/);
   assert.match(plugin, /if\(t\.priv\)downloads\.forgetPrivate\(t\.id\);/, 'closing a private tab forgets its entries');
@@ -28,6 +28,13 @@ test('download cookies come only from the requesting tab, for its exact origin',
   assert.match(downloads, /if\(signedIn\)\{String cookie=source\.cookies==null\?null:source\.cookies\.get\(\);/, 'the cookie is read at confirmation');
   assert.match(plugin, /if\(t\.dead\|\|tabs\.get\(t\.id\)!=t\)return null;\n\s*try\{return WebViewCompat\.getProfile\(t\.web\)\.getCookieManager\(\)\.getCookie\(url\);/, 'a closed tab supplies no cookie; the tab profile is used');
   assert.doesNotMatch(downloads, /CookieManager\.getInstance\(\)/, 'never the host/default profile cookie jar');
+  // DownloadManager would replay a Cookie header to redirect targets and keep it in Android's download database.
+  assert.doesNotMatch(downloads, /addRequestHeader\("Cookie"/, 'DownloadManager never receives the sign-in cookie');
+  assert.match(downloads, /fetchSignedIn\(raw,name,mime,origin,source,cookie\)/, 'signed-in downloads are fetched by the app');
+  assert.match(downloads, /connection\.setInstanceFollowRedirects\(false\)/, 'redirects are followed manually');
+  assert.match(downloads, /if\(cookieAllowed\(url\.toString\(\),pageOrigin\)\)connection\.setRequestProperty\("Cookie",cookie\);/, 'each hop gets the cookie only for the exact page origin');
+  assert.match(downloads, /if\(!allowed\(Uri\.parse\(next\.toString\(\)\)\)\)throw new Refused/, 'a redirect to a non-HTTPS address is refused');
+  assert.match(downloads, /!item\.optBoolean\("private",false\)&&!item\.optBoolean\("running",false\)\)records\.put\(item\)/, 'running entries are never persisted');
 });
 
 test('page-created files are captured in an isolated world and saved only after review', () => {
@@ -42,6 +49,7 @@ test('page-created files are captured in an isolated world and saved only after 
 test('site permissions are origin-bound prompts, stored only for normal tabs and never retained by WebView', () => {
   assert.doesNotMatch(plugin, /onPermissionRequest\(PermissionRequest request\) \{ request\.deny\(\); \}/);
   assert.match(plugin, /if\(!t\.priv\)try\{stored=sessionStore\.permission\(origin,kind\);\}/, 'private tabs never read decisions');
+  assert.match(plugin, /if\(!promptable\(t\)\)\{result\.accept\(Collections\.emptySet\(\)\);return;\}\n  for\(String kind:kinds\)/, 'a stored Allow is used only by the selected, shown page');
   assert.equal((plugin.match(/if\(!t\.priv\)for\(String kind:wanted\)try\{sessionStore\.setPermission/g) || []).length, 2, 'private tabs never store decisions');
   assert.match(plugin, /callback\.invoke\(requested,granted\.contains\("location"\),false\)/, 'WebView never retains a geolocation grant');
   assert.match(plugin, /if\(page==null\|\|!page\.equals\(asked\)/, 'embedded cross-origin requests are refused');
@@ -52,8 +60,12 @@ test('site permissions are origin-bound prompts, stored only for normal tabs and
 
 test('HTTP authentication is a native prompt for the page host over a secure connection only', () => {
   assert.doesNotMatch(plugin, /HTTP authentication\), which is not supported/);
-  assert.match(plugin, /if\(!secure\)\{handler\.cancel\(\);fail\(t,"This site asks for a password over an insecure connection/);
-  assert.match(plugin, /if\(asked==null\|\|!asked\.equalsIgnoreCase\(page\.getHost\(\)\)\)\{handler\.cancel\(\);/);
+  assert.match(plugin, /if\(!secureAuthPage\(page\)\)\{handler\.cancel\(\);fail\(t,"This site asks for a password over an insecure connection/);
+  // The challenge has no URL: both the shown page and the pending main-frame request are checked.
+  assert.match(plugin, /for\(String candidate:new String\[\]\{t\.url,t\.pendingMain\}\)/);
+  assert.match(plugin, /if \(r\.isForMainFrame\(\)\) t\.pendingMain=r\.getUrl\(\)\.toString\(\);/, 'every main-frame request is recorded');
+  assert.match(plugin, /if \(r\.isForMainFrame\(\)\) t\.pendingMain=target;/, 'main-frame redirects are recorded');
+  assert.match(plugin, /if\(!matched\)\{handler\.cancel\(\);notice\(t,"Blocked a sign-in prompt from a different site\."\);return;\}/);
   assert.match(plugin, /Alpha Phone does not save this password\./);
   assert.doesNotMatch(plugin, /setHttpAuthUsernamePassword|useHttpAuthUsernamePassword/, 'nothing is stored or reused');
 });
