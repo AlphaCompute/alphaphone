@@ -1,0 +1,589 @@
+diff --git a/packages/voice/README.md b/packages/voice/README.md
+index dfe876757c3d5b079e6b3cf817145c68e2f731c5..671daaef7f7714fc85bf575d622989e4938d1850 100644
+--- a/packages/voice/README.md
++++ b/packages/voice/README.md
+@@ -7,3 +7,21 @@ remain in their plugins.
+ 
+ From the repository root, run `bun run --cwd packages/voice build`,
+ `bun run --cwd packages/voice typecheck` and `bun run --cwd packages/voice test`.
++
++## Browser speech recognition
++
++`@elizaos/voice/browser-speech` runs English speech recognition in the browser: Whisper
++tiny.en over ONNX Runtime Web in a dedicated worker. Recordings never leave the page. The
++host serves the model files itself and supplies three inputs:
++
++- a speech manifest (`SpeechManifest`: model, revision, runtime, and the size and SHA-256 of
++  the encoder, decoder, vocabulary, generation config, WebAssembly and glue files). The worker
++  fetches each file same-origin and refuses any file whose size or digest differs;
++- a worker module that calls `installSpeechWorker(self, ort)` with the host's
++  `onnxruntime-web/wasm` import (the external-WebAssembly build, so only the verified binary
++  is used);
++- `new BrowserSpeechRecognizer({manifestUrl, createWorker, idleMs})`.
++
++One request runs at a time. Cancelling terminates the worker, so a late result cannot arrive;
++an idle model is released after `idleMs`. Errors use the codes `model-load-failed` and
++`recognition-failed`; `silentRecording` reports digital silence before any model download.
+diff --git a/packages/voice/package.json b/packages/voice/package.json
+index d51566796ff07151b6425261bd5990ca3fefbc66..3f569c30c75d5f402bb6627b840855a0629501c2 100644
+--- a/packages/voice/package.json
++++ b/packages/voice/package.json
+@@ -15,6 +15,12 @@
+       "types": "./dist/index.d.ts",
+       "import": "./dist/index.js",
+       "default": "./dist/index.js"
++    },
++    "./browser-speech": {
++      "eliza-source": "./src/browser-speech/index.ts",
++      "types": "./dist/browser-speech/index.d.ts",
++      "import": "./dist/browser-speech/index.js",
++      "default": "./dist/browser-speech/index.js"
+     }
+   },
+   "scripts": {
+diff --git a/packages/voice/src/browser-speech/browser-speech.test.ts b/packages/voice/src/browser-speech/browser-speech.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..24b34876b51c8798ad4003b2eabd32d7545e3ccc
+--- /dev/null
++++ b/packages/voice/src/browser-speech/browser-speech.test.ts
+@@ -0,0 +1,108 @@
++import { describe, expect, it } from "vitest";
++import { BrowserSpeechRecognizer } from "./speech-recognizer.ts";
++import { installSpeechWorker } from "./speech-worker.ts";
++import {
++  createTokenDecoder,
++  logMelSpectrogram,
++  melFilterBank,
++  noSpeechDecision,
++  repeatingTail,
++  silentRecording,
++  WHISPER,
++} from "./whisper-engine.ts";
++
++class ScriptedWorker {
++  posted: unknown[] = [];
++  terminated = false;
++  onmessage: ((event: MessageEvent) => void) | null = null;
++  onerror: ((event: ErrorEvent) => void) | null = null;
++  postMessage(message: unknown) { this.posted.push(message); }
++  terminate() { this.terminated = true; }
++  emit(data: unknown) { if (!this.terminated) this.onmessage?.({ data } as MessageEvent); }
++}
++function recognizer(idleMs = 50) {
++  const workers: ScriptedWorker[] = [];
++  const value = new BrowserSpeechRecognizer({
++    manifestUrl: () => "https://host.test/speech/manifest.json",
++    createWorker: () => { const worker = new ScriptedWorker(); workers.push(worker); return worker as unknown as Worker; },
++    idleMs,
++  });
++  return { value, workers };
++}
++const transcript = { text: "Hello there", noSpeech: false, engine: "whisper", model: "whisper-tiny.en", modelRevision: "r", runtime: "ort", language: "en" };
++
++describe("whisper engine", () => {
++  it("builds 80 Slaney mel filters over 201 bins and floors silence", () => {
++    const filters = melFilterBank();
++    expect(filters.length).toBe(WHISPER.mels * (WHISPER.nFft / 2 + 1));
++    expect(filters.every(Number.isFinite)).toBe(true);
++    const features = logMelSpectrogram(new Float32Array(16000));
++    expect(features.length).toBe(WHISPER.mels * WHISPER.frames);
++    expect(new Set(features).size).toBe(1);
++  });
++  it("reports silence before any model work and rejects filler no-speech text", () => {
++    expect(silentRecording(new Float32Array(16000))).toBe(true);
++    const tone = Float32Array.from({ length: 16000 }, (_, i) => 0.2 * Math.sin(i / 5));
++    expect(silentRecording(tone)).toBe(false);
++    expect(noSpeechDecision("[BLANK_AUDIO]", 0.1, -0.2)).toBe(true);
++    expect(noSpeechDecision("...", 0.1, -0.2)).toBe(true);
++    expect(noSpeechDecision("you", 0.9, -0.1)).toBe(true);
++    expect(noSpeechDecision("Call me at noon.", 0.1, -0.3)).toBe(false);
++  });
++  it("stops decoder loops and decodes byte-level tokens", () => {
++    expect(repeatingTail([1, 2, 1, 2, 1, 2, 1, 2])).toBe(2);
++    expect(repeatingTail([1, 2, 3, 4])).toBe(0);
++    const decode = createTokenDecoder({ Hello: 0, "Ġthere": 1 });
++    expect(decode([0, 1, WHISPER.eot])).toBe("Hello there");
++  });
++});
++
++describe("browser speech recognizer", () => {
++  it("uses the host manifest and worker, and keeps one request at a time", async () => {
++    const { value, workers } = recognizer();
++    const first = value.transcribe(new Float32Array(1600), new AbortController().signal);
++    expect(workers).toHaveLength(1);
++    const request = workers[0].posted[0] as { id: string; manifestUrl: string };
++    expect(request.manifestUrl).toBe("https://host.test/speech/manifest.json");
++    const second = value.transcribe(new Float32Array(1600), new AbortController().signal);
++    await expect(first).rejects.toMatchObject({ name: "AbortError" });
++    expect(workers[0].terminated).toBe(true);
++    const next = workers[1].posted[0] as { id: string };
++    workers[1].emit({ type: "result", id: next.id, ...transcript });
++    await expect(second).resolves.toMatchObject({ text: "Hello there" });
++  });
++  it("cancellation terminates the worker so a late result cannot arrive", async () => {
++    const { value, workers } = recognizer();
++    const controller = new AbortController();
++    const pending = value.transcribe(new Float32Array(1600), controller.signal);
++    controller.abort();
++    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
++    expect(workers[0].terminated).toBe(true);
++  });
++  it("maps worker errors to recorder codes and releases an idle model", async () => {
++    const { value, workers } = recognizer(10);
++    const failed = value.transcribe(new Float32Array(1600), new AbortController().signal);
++    const id = (workers[0].posted[0] as { id: string }).id;
++    workers[0].emit({ type: "error", id, code: "model-load-failed", message: "missing" });
++    await expect(failed).rejects.toMatchObject({ code: "model-load-failed" });
++    const ok = value.transcribe(new Float32Array(1600), new AbortController().signal);
++    const next = (workers[1].posted[0] as { id: string }).id;
++    workers[1].emit({ type: "result", id: next, ...transcript });
++    await ok;
++    await new Promise((resolve) => setTimeout(resolve, 30));
++    expect(workers[1].terminated).toBe(true);
++  });
++});
++
++describe("speech worker", () => {
++  it("refuses an unverified manifest without loading a model", async () => {
++    const messages: unknown[] = [];
++    let listener: ((event: MessageEvent) => void) | undefined;
++    const runtime = { env: { wasm: {} }, InferenceSession: { create: async () => { throw Error("must not load"); } }, Tensor: class {} } as never;
++    installSpeechWorker({ postMessage: (message) => messages.push(message), addEventListener: (_type, value) => { listener = value as never; } }, runtime,
++      (async () => new Response(JSON.stringify({ version: 2 }), { status: 200 })) as typeof fetch);
++    listener?.({ data: { type: "transcribe", id: "a", manifestUrl: "https://host.test/speech/manifest.json", samples: new Float32Array(1600) } } as MessageEvent);
++    await new Promise((resolve) => setTimeout(resolve, 10));
++    expect(messages).toEqual([{ type: "error", id: "a", code: "model-load-failed", message: "Unsupported speech model manifest" }]);
++  });
++});
+diff --git a/packages/voice/src/browser-speech/index.ts b/packages/voice/src/browser-speech/index.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ec3a7bb91ada0fcb821f0e334a2ada0f154ad733
+--- /dev/null
++++ b/packages/voice/src/browser-speech/index.ts
+@@ -0,0 +1,13 @@
++/**
++ * In-browser English speech recognition: Whisper tiny.en over ONNX Runtime Web in a dedicated
++ * worker, with self-hosted, hash-verified model files and no upload. Host inputs: the model
++ * manifest URL, the worker factory and the ONNX Runtime module. See README.md.
++ */
++export type {BrowserSpeechRecognizerHost} from './speech-recognizer.ts';
++export {BrowserSpeechRecognizer} from './speech-recognizer.ts';
++export type {SpeechOnnxRuntime,SpeechWorkerScope} from './speech-worker.ts';
++export {installSpeechWorker} from './speech-worker.ts';
++export type {BrowserTranscript,SpeechErrorCode,SpeechFile,SpeechManifest,SpeechProgress,SpeechWorkerMessage,SpeechWorkerRequest} from './speech-protocol.ts';
++export {speechError} from './speech-protocol.ts';
++export type {WhisperCheck,WhisperGeneration,WhisperModels,WhisperRuntime,WhisperSession,WhisperTensor,WhisperTranscript} from './whisper-engine.ts';
++export {audioActivity,createTokenDecoder,createWhisperRecognizer,logMelSpectrogram,logProbability,melFilterBank,noSpeechDecision,repeatingTail,selectToken,silentRecording,WHISPER} from './whisper-engine.ts';
+diff --git a/packages/voice/src/browser-speech/speech-protocol.ts b/packages/voice/src/browser-speech/speech-protocol.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0d78e59baea266d979bb700574c3686c3ab70948
+--- /dev/null
++++ b/packages/voice/src/browser-speech/speech-protocol.ts
+@@ -0,0 +1,16 @@
++/** Messages between the page and the in-browser speech worker, and the build's model manifest. */
++export type SpeechFile = {path:string;bytes:number;sha256:string};
++export type SpeechManifest = {
++ version:1;engine:'whisper';model:string;revision:string;language:'en';runtime:string;
++ files:{encoder:SpeechFile;decoder:SpeechFile;vocab:SpeechFile;generation:SpeechFile;wasm:SpeechFile;glue:SpeechFile};
++};
++export type SpeechProgress = {phase:'download';loaded:number;total:number}|{phase:'initialize'|'transcribe'};
++export type SpeechWorkerRequest = {type:'transcribe';id:string;manifestUrl:string;samples:Float32Array};
++export type BrowserTranscript = {text:string;noSpeech:boolean;engine:string;model:string;modelRevision:string;runtime:string;language:string};
++export type SpeechWorkerMessage =
++ | ({type:'progress';id:string}&SpeechProgress)
++ | ({type:'result';id:string}&BrowserTranscript)
++ | {type:'error';id:string;code:'model-load-failed'|'recognition-failed';message:string};
++/** Error codes surfaced to the recorder; each one has its own user-facing state. */
++export type SpeechErrorCode = 'no-speech'|'model-load-failed'|'recognition-failed';
++export function speechError(code:SpeechErrorCode,message:string){return Object.assign(new Error(message),{code});}
+diff --git a/packages/voice/src/browser-speech/speech-recognizer.ts b/packages/voice/src/browser-speech/speech-recognizer.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9e1909b62bc23aa18e9b5ce7ccb603580b86775c
+--- /dev/null
++++ b/packages/voice/src/browser-speech/speech-recognizer.ts
+@@ -0,0 +1,69 @@
++import {speechError,type BrowserTranscript,type SpeechProgress,type SpeechWorkerMessage} from './speech-protocol.ts';
++
++const cancelled=()=>new DOMException('Transcription cancelled','AbortError');
++/** Host inputs: where the build's model manifest is served, and how to start the worker. */
++export type BrowserSpeechRecognizerHost = {
++ /** Absolute URL of the build's speech manifest (see speech-protocol SpeechManifest). */
++ manifestUrl:()=>string;
++ /** A new dedicated worker running installSpeechWorker with the host's ONNX Runtime. */
++ createWorker:()=>Worker;
++ /** Idle time before a loaded model is released. Default five minutes. */
++ idleMs?:number;
++};
++/**
++ * Owns the speech worker. One request at a time; cancelling terminates the worker, which
++ * stops model download and inference immediately and makes late results impossible.
++ * A finished request leaves the verified model loaded for the next recording, until it has been
++ * idle for idleMs; then the worker is terminated so an unused model never stays resident.
++ */
++export class BrowserSpeechRecognizer {
++ private worker?:Worker;
++ private active?:{id:string;reject:(error:unknown)=>void};
++ private idle?:ReturnType<typeof setTimeout>;
++ private readonly manifestUrl:()=>string;
++ private readonly create:()=>Worker;
++ private readonly idleMs:number;
++ constructor(host:BrowserSpeechRecognizerHost){this.manifestUrl=host.manifestUrl;this.create=host.createWorker;this.idleMs=host.idleMs??5*60_000;}
++ private clearIdle(){if(this.idle!==undefined)clearTimeout(this.idle);this.idle=undefined;}
++ private scheduleIdle(){this.clearIdle();if(!this.worker)return;this.idle=setTimeout(()=>{this.idle=undefined;if(!this.active){this.worker?.terminate();this.worker=undefined;}},this.idleMs);}
++ /** Stop the current request, if any. Its worker is terminated; an idle model stays loaded. */
++ stop(){if(this.active)this.cancel();}
++ get busy(){return !!this.active;}
++ /** Stop the current request (if any) and discard the loaded model. */
++ cancel(){this.clearIdle();const active=this.active;this.active=undefined;this.worker?.terminate();this.worker=undefined;active?.reject(cancelled());}
++ transcribe(samples:Float32Array,signal:AbortSignal,progress:(value:SpeechProgress)=>void=()=>{}):Promise<BrowserTranscript>{
++  if(signal.aborted)return Promise.reject(cancelled());
++  // A replacement request retires the previous one; an idle worker keeps its model.
++  if(this.active)this.cancel();
++  this.clearIdle();
++  return new Promise<BrowserTranscript>((resolve,reject)=>{
++   const id=crypto.randomUUID();let worker:Worker;
++   const finish=(error?:unknown,value?:BrowserTranscript)=>{
++    if(this.active?.id!==id)return;this.active=undefined;signal.removeEventListener('abort',abort);
++    worker.onmessage=null;worker.onerror=null;
++    if(error){
++     // A failed load is not retained; a later attempt starts a fresh worker.
++     if((error as {code?:string}).code==='model-load-failed'||error instanceof DOMException){worker.terminate();if(this.worker===worker)this.worker=undefined;}
++     reject(error);
++    }else resolve(value!);
++    this.scheduleIdle();
++   };
++   const abort=()=>{if(this.active?.id===id)this.cancel();};
++   try{worker=this.worker??=this.create();}catch(error){reject(speechError('model-load-failed',error instanceof Error?error.message:'Speech worker unavailable'));return;}
++   this.active={id,reject:error=>{signal.removeEventListener('abort',abort);reject(error);}};
++   signal.addEventListener('abort',abort,{once:true});
++   worker.onmessage=(event:MessageEvent<SpeechWorkerMessage>)=>{
++    const message=event.data;if(message?.id!==id||this.active?.id!==id)return;
++    if(message.type==='progress'){const {type:_type,id:_id,...value}=message;progress(value as SpeechProgress);return;}
++    if(message.type==='error'){finish(speechError(message.code,message.message));return;}
++    const {type:_type,id:_id,...result}=message;
++    if(typeof result.text!=='string'||typeof result.noSpeech!=='boolean')finish(speechError('recognition-failed','Malformed transcript'));
++    else finish(undefined,result);
++   };
++   worker.onerror=event=>{event.preventDefault?.();finish(speechError('model-load-failed',event.message||'Speech worker failed'));};
++   let manifestUrl:string;try{manifestUrl=this.manifestUrl();}catch{finish(speechError('model-load-failed','Speech model location unavailable'));return;}
++   const copy=samples.slice();
++   worker.postMessage({type:'transcribe',id,manifestUrl,samples:copy},[copy.buffer]);
++  });
++ }
++}
+diff --git a/packages/voice/src/browser-speech/speech-worker.ts b/packages/voice/src/browser-speech/speech-worker.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..bad2ddf6d3aee12545c75d9b2a038ee0ff419e33
+--- /dev/null
++++ b/packages/voice/src/browser-speech/speech-worker.ts
+@@ -0,0 +1,62 @@
++import {createWhisperRecognizer,type WhisperGeneration,type WhisperRuntime} from './whisper-engine.ts';
++import type {SpeechManifest,SpeechWorkerRequest,SpeechWorkerMessage} from './speech-protocol.ts';
++
++/** The parts of a dedicated worker scope this handler uses. */
++export type SpeechWorkerScope = {
++ postMessage(message:SpeechWorkerMessage,transfer?:Transferable[]):void;
++ addEventListener(type:'message',listener:(event:MessageEvent<SpeechWorkerRequest>)=>void):void;
++};
++/** Host input: ONNX Runtime Web's external-WebAssembly build (`onnxruntime-web/wasm`). */
++export type SpeechOnnxRuntime = WhisperRuntime & {env:{wasm:{numThreads?:number;proxy?:boolean;wasmBinary?:ArrayBufferLike|Uint8Array;wasmPaths?:unknown}}};
++const hex=(bytes:ArrayBuffer)=>Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
++
++/**
++ * Installs the transcription handler in a dedicated worker. The page owns cancellation by
++ * terminating the worker; there is no cross-request state except the loaded model, which is
++ * verified once, file by file, against the build's manifest (size and SHA-256). Model files are
++ * fetched same-origin from the host's manifest location only; nothing is uploaded.
++ */
++export function installSpeechWorker(scope:SpeechWorkerScope,ort:SpeechOnnxRuntime,fetcher:typeof fetch=(input,init)=>fetch(input,init)){
++ let recognizer:Promise<{manifest:SpeechManifest;transcribe:(samples:Float32Array)=>Promise<{text:string;noSpeech:boolean}>}>|undefined;
++ const post=(message:SpeechWorkerMessage)=>scope.postMessage(message);
++ async function fetchVerified(base:string,file:{path:string;bytes:number;sha256:string},progress:(bytes:number)=>void){
++  const response=await fetcher(new URL(file.path,base),{credentials:'same-origin',cache:'default'});
++  if(!response.ok||!response.body)throw Error(`Speech model file unavailable (${response.status})`);
++  const output=new Uint8Array(file.bytes),reader=response.body.getReader();let offset=0;
++  for(;;){const {done,value}=await reader.read();if(done)break;if(offset+value.length>file.bytes)throw Error('Speech model file is larger than recorded');output.set(value,offset);offset+=value.length;progress(value.length);}
++  if(offset!==file.bytes)throw Error('Speech model file is incomplete');
++  if(hex(await crypto.subtle.digest('SHA-256',output))!==file.sha256)throw Error('Speech model file failed verification');
++  return output;
++ }
++ async function load(id:string,manifestUrl:string){
++  const response=await fetcher(manifestUrl,{credentials:'same-origin',cache:'no-cache'});
++  if(!response.ok)throw Error('This build does not include the speech model');
++  const manifest=await response.json() as SpeechManifest;
++  if(manifest?.version!==1||manifest.engine!=='whisper'||manifest.language!=='en'||!manifest.files)throw Error('Unsupported speech model manifest');
++  const files=manifest.files,total=Object.values(files).reduce((sum,file)=>sum+file.bytes,0);let loaded=0;
++  post({type:'progress',id,phase:'download',loaded,total});
++  const progress=(bytes:number)=>{loaded+=bytes;post({type:'progress',id,phase:'download',loaded,total});};
++  const [wasm,encoder,decoder,vocab,generation]=await Promise.all([files.wasm,files.encoder,files.decoder,files.vocab,files.generation].map(file=>fetchVerified(manifestUrl,file,progress)));
++  post({type:'progress',id,phase:'initialize'});
++  ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmBinary=wasm.buffer;
++  ort.env.wasm.wasmPaths={mjs:new URL(files.glue.path,manifestUrl).href};
++  const decodeJson=(bytes:Uint8Array)=>JSON.parse(new TextDecoder().decode(bytes));
++  const engine=await createWhisperRecognizer(ort,{encoder,decoder,vocab:decodeJson(vocab) as Record<string,number>,generation:decodeJson(generation) as WhisperGeneration});
++  return {manifest,transcribe:(samples:Float32Array)=>engine.transcribe(samples)};
++ }
++ scope.addEventListener('message',event=>{
++  const request=event.data;if(request?.type!=='transcribe')return;
++  const {id}=request;
++  void (async()=>{
++   let stage:'load'|'transcribe'='load';
++   try{
++    if(!recognizer){recognizer=load(id,request.manifestUrl);recognizer.catch(()=>{recognizer=undefined;});}
++    const owned=await recognizer;stage='transcribe';
++    post({type:'progress',id,phase:'transcribe'});
++    const result=await owned.transcribe(request.samples);
++    const {manifest}=owned;
++    post({type:'result',id,text:result.noSpeech?'':result.text,noSpeech:result.noSpeech,engine:manifest.engine,model:manifest.model,modelRevision:manifest.revision,runtime:manifest.runtime,language:manifest.language});
++   }catch(error){post({type:'error',id,code:stage==='load'?'model-load-failed':'recognition-failed',message:error instanceof Error?error.message:String(error)});}
++  })();
++ });
++}
+diff --git a/packages/voice/src/browser-speech/whisper-engine.ts b/packages/voice/src/browser-speech/whisper-engine.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4121f38c6974089e3d2b84214f58a52accd1ec85
+--- /dev/null
++++ b/packages/voice/src/browser-speech/whisper-engine.ts
+@@ -0,0 +1,242 @@
++/**
++ * Whisper tiny.en inference over ONNX Runtime, independent of the host environment.
++ * The runtime is injected so the same code runs in the browser worker and in Node tests.
++ * This module has no imports: features, decoding and no-speech policy are pure functions.
++ */
++export const WHISPER = Object.freeze({
++  sampleRate: 16000, nFft: 400, hop: 160, mels: 80, windowSamples: 480000, frames: 3000,
++  heads: 6, headDim: 64, layers: 4, maxNewTokens: 220,
++  eot: 50256, sot: 50257, noSpeech: 50361, noTimestamps: 50362,
++});
++
++export type WhisperTensor = { data: unknown; dims: readonly number[] };
++export type WhisperSession = {
++  inputNames: readonly string[];
++  outputNames: readonly string[];
++  run(feeds: Record<string, WhisperTensor>, fetches?: readonly string[]): Promise<Record<string, WhisperTensor>>;
++  release?(): Promise<void>;
++};
++export type WhisperRuntime = {
++  InferenceSession: { create(model: Uint8Array, options?: Record<string, unknown>): Promise<WhisperSession> };
++  Tensor: new (type: string, data: unknown, dims: readonly number[]) => WhisperTensor;
++};
++export type WhisperGeneration = { suppress_tokens?: number[]; begin_suppress_tokens?: number[] };
++export type WhisperTranscript = { text: string; noSpeechProbability: number; averageLogProbability: number; tokens: number; noSpeech: boolean };
++
++/** Slaney-normalized mel filters for a 400-point FFT at 16 kHz (librosa defaults, as Whisper). */
++export function melFilterBank(): Float32Array {
++  const { sampleRate, nFft, mels } = WHISPER, bins = nFft / 2 + 1;
++  const fSp = 200 / 3, minLogHz = 1000, minLogMel = minLogHz / fSp, logStep = Math.log(6.4) / 27;
++  const toMel = (hz: number) => hz < minLogHz ? hz / fSp : minLogMel + Math.log(hz / minLogHz) / logStep;
++  const toHz = (mel: number) => mel < minLogMel ? mel * fSp : minLogHz * Math.exp(logStep * (mel - minLogMel));
++  const top = toMel(sampleRate / 2), points = Array.from({ length: mels + 2 }, (_, i) => toHz(top * i / (mels + 1)));
++  const filters = new Float32Array(mels * bins);
++  for (let m = 0; m < mels; m++) {
++    const lower = points[m], centre = points[m + 1], upper = points[m + 2], norm = 2 / (upper - lower);
++    for (let k = 0; k < bins; k++) {
++      const hz = k * sampleRate / nFft;
++      const weight = Math.max(0, Math.min((hz - lower) / (centre - lower), (upper - hz) / (upper - centre)));
++      filters[m * bins + k] = weight * norm;
++    }
++  }
++  return filters;
++}
++
++let tables: { cos: Float32Array; sin: Float32Array; window: Float32Array; filters: Float32Array } | undefined;
++function spectralTables() {
++  if (tables) return tables;
++  const { nFft } = WHISPER, bins = nFft / 2 + 1;
++  const cos = new Float32Array(bins * nFft), sin = new Float32Array(bins * nFft), window = new Float32Array(nFft);
++  for (let n = 0; n < nFft; n++) window[n] = 0.5 - 0.5 * Math.cos(2 * Math.PI * n / nFft); // periodic Hann
++  for (let k = 0; k < bins; k++) for (let n = 0; n < nFft; n++) {
++    const angle = 2 * Math.PI * ((k * n) % nFft) / nFft;
++    cos[k * nFft + n] = Math.cos(angle); sin[k * nFft + n] = Math.sin(angle);
++  }
++  return tables = { cos, sin, window, filters: melFilterBank() };
++}
++
++/**
++ * Whisper log-mel features [80, 3000] for one 30-second window: zero-padded, centred
++ * reflect-padded STFT, power spectrum, mel projection, log10 with an 8-decade floor.
++ * Frames that only see padding are exactly zero power and skip the transform.
++ */
++export function logMelSpectrogram(samples: Float32Array): Float32Array {
++  const { nFft, hop, mels, frames, windowSamples } = WHISPER, bins = nFft / 2 + 1, half = nFft / 2;
++  const { cos, sin, window, filters } = spectralTables();
++  const audio = new Float32Array(windowSamples); audio.set(samples.subarray(0, windowSamples));
++  const padded = new Float32Array(windowSamples + nFft);
++  padded.set(audio, half);
++  for (let i = 0; i < half; i++) { padded[i] = audio[half - i]; padded[half + windowSamples + i] = audio[windowSamples - 2 - i]; }
++  let last = 0; for (let i = audio.length - 1; i >= 0; i--) if (audio[i] !== 0) { last = i + 1; break; }
++  const output = new Float32Array(mels * frames), frame = new Float32Array(nFft), power = new Float32Array(bins);
++  const floor = Math.log10(1e-10);
++  let maximum = -Infinity;
++  for (let t = 0; t < frames; t++) {
++    const start = t * hop;
++    // Centred frame t covers padded[start, start+nFft) = audio[start-half, start+half).
++    // Zero padding past the recording also reflects zeros at the very end of the window.
++    const silent = start - half >= last && start + half <= windowSamples;
++    if (silent) { for (let m = 0; m < mels; m++) output[m * frames + t] = floor; if (floor > maximum) maximum = floor; continue; }
++    for (let n = 0; n < nFft; n++) frame[n] = padded[start + n] * window[n];
++    for (let k = 0; k < bins; k++) {
++      let re = 0, im = 0; const row = k * nFft;
++      for (let n = 0; n < nFft; n++) { re += frame[n] * cos[row + n]; im -= frame[n] * sin[row + n]; }
++      power[k] = re * re + im * im;
++    }
++    for (let m = 0; m < mels; m++) {
++      let sum = 0; const row = m * bins;
++      for (let k = 0; k < bins; k++) sum += filters[row + k] * power[k];
++      const value = Math.log10(Math.max(sum, 1e-10));
++      output[m * frames + t] = value; if (value > maximum) maximum = value;
++    }
++  }
++  const limit = maximum - 8;
++  for (let i = 0; i < output.length; i++) output[i] = (Math.max(output[i], limit) + 4) / 4;
++  return output;
++}
++
++/** Signal level of a mono recording; used to report silence before loading any model. */
++export function audioActivity(samples: Float32Array) {
++  let sum = 0, peak = 0;
++  for (let i = 0; i < samples.length; i++) { const v = Math.abs(samples[i]); sum += v * v; if (v > peak) peak = v; }
++  return { rms: samples.length ? Math.sqrt(sum / samples.length) : 0, peak };
++}
++/** True when a recording is too quiet to contain speech (digital silence or a muted input). */
++export function silentRecording(samples: Float32Array) {
++  const { rms, peak } = audioActivity(samples);
++  return samples.length < WHISPER.sampleRate / 10 || peak < 0.01 || rms < 0.0015;
++}
++
++/**
++ * Whisper's own rule (likely no speech and low confidence), plus a confident no-speech token
++ * (tiny.en emits short fillers such as "you" for near-silence) or nothing but punctuation.
++ */
++export function noSpeechDecision(text: string, noSpeechProbability: number, averageLogProbability: number) {
++  if (!/[\p{L}\p{N}]/u.test(text)) return true;
++  if (/^\s*[[(]\s*(blank[_ ]audio|silence|no speech|music|inaudible)\s*[\])]\s*$/i.test(text)) return true;
++  if (noSpeechProbability > 0.85) return true;
++  return noSpeechProbability > 0.6 && averageLogProbability < -1;
++}
++
++/** GPT-2 byte-level BPE decoding for Whisper's English vocabulary. */
++export function createTokenDecoder(vocab: Record<string, number>) {
++  const printable: number[] = [];
++  for (let b = 33; b <= 126; b++) printable.push(b);
++  for (let b = 161; b <= 172; b++) printable.push(b);
++  for (let b = 174; b <= 255; b++) printable.push(b);
++  const byteOf = new Map<string, number>(); let extra = 0;
++  for (let b = 0; b < 256; b++) byteOf.set(String.fromCodePoint(printable.includes(b) ? b : 256 + extra++), b);
++  const tokens: string[] = [];
++  for (const [token, id] of Object.entries(vocab)) if (Number.isInteger(id) && id >= 0) tokens[id] = token;
++  const utf8 = new TextDecoder('utf-8', { fatal: false });
++  return (ids: readonly number[]) => {
++    const bytes: number[] = [];
++    for (const id of ids) {
++      if (id >= WHISPER.eot) continue;
++      const token = tokens[id]; if (token === undefined) continue;
++      for (const char of token) { const byte = byteOf.get(char); if (byte !== undefined) bytes.push(byte); }
++    }
++    return utf8.decode(new Uint8Array(bytes));
++  };
++}
++
++/** Index of the best token after Whisper's suppression rules (no timestamps or specials). */
++export function selectToken(logits: Float32Array, offset: number, vocabSize: number, suppressed: Set<number>, first: boolean, beginSuppressed: Set<number>) {
++  let best = -1, bestValue = -Infinity;
++  for (let id = 0; id < vocabSize; id++) {
++    if (id > WHISPER.eot || suppressed.has(id) || (first && beginSuppressed.has(id))) continue;
++    const value = logits[offset + id];
++    if (value > bestValue) { bestValue = value; best = id; }
++  }
++  return best;
++}
++/** log-softmax of one logit row at the given id, and the softmax probability of another id. */
++export function logProbability(logits: Float32Array, offset: number, vocabSize: number, id: number) {
++  let maximum = -Infinity; for (let i = 0; i < vocabSize; i++) if (logits[offset + i] > maximum) maximum = logits[offset + i];
++  let sum = 0; for (let i = 0; i < vocabSize; i++) sum += Math.exp(logits[offset + i] - maximum);
++  return logits[offset + id] - maximum - Math.log(sum);
++}
++/** True when the token tail is one n-gram repeated at least four times (decoder loop). */
++export function repeatingTail(tokens: readonly number[]) {
++  for (let size = 1; size <= 8; size++) {
++    if (tokens.length < size * 4) break;
++    let repeated = true;
++    for (let r = 1; r < 4 && repeated; r++) for (let i = 0; i < size; i++) if (tokens[tokens.length - 1 - i] !== tokens[tokens.length - 1 - i - r * size]) { repeated = false; break; }
++    if (repeated) return size;
++  }
++  return 0;
++}
++
++export type WhisperModels = { encoder: Uint8Array; decoder: Uint8Array; vocab: Record<string, number>; generation: WhisperGeneration };
++export type WhisperCheck = () => void;
++
++/** Load both sessions once; each transcription decodes greedily with a key/value cache. */
++export async function createWhisperRecognizer(runtime: WhisperRuntime, models: WhisperModels, sessionOptions: Record<string, unknown> = {}) {
++  const options = { executionProviders: ['wasm'], graphOptimizationLevel: 'all', ...sessionOptions };
++  const encoder = await runtime.InferenceSession.create(models.encoder, options);
++  let decoder: WhisperSession;
++  try { decoder = await runtime.InferenceSession.create(models.decoder, options); }
++  catch (error) { await encoder.release?.(); throw error; }
++  const decode = createTokenDecoder(models.vocab);
++  const suppressed = new Set(models.generation.suppress_tokens || []);
++  const beginSuppressed = new Set(models.generation.begin_suppress_tokens || [220, WHISPER.eot]);
++  const { heads, headDim, layers } = WHISPER;
++  const presentNames = Array.from({ length: layers }, (_, i) => ['decoder.key', 'decoder.value', 'encoder.key', 'encoder.value'].map(kind => `present.${i}.${kind}`)).flat();
++  for (const name of ['input_features']) if (!encoder.inputNames.includes(name)) throw Error('Unexpected Whisper encoder model');
++  for (const name of ['input_ids', 'encoder_hidden_states', 'use_cache_branch']) if (!decoder.inputNames.includes(name)) throw Error('Unexpected Whisper decoder model');
++  const empty = () => new runtime.Tensor('float32', new Float32Array(0), [1, heads, 0, headDim]);
++  const ids = (values: number[]) => new runtime.Tensor('int64', BigInt64Array.from(values.map(BigInt)), [1, values.length]);
++
++  async function window(samples: Float32Array, check: WhisperCheck) {
++    check();
++    const features = logMelSpectrogram(samples);
++    check();
++    const encoded = await encoder.run({ input_features: new runtime.Tensor('float32', features, [1, WHISPER.mels, WHISPER.frames]) }, ['last_hidden_state']);
++    check();
++    const hidden = encoded.last_hidden_state;
++    const past: Record<string, WhisperTensor> = {};
++    for (let i = 0; i < layers; i++) for (const kind of ['decoder.key', 'decoder.value', 'encoder.key', 'encoder.value']) past[`past_key_values.${i}.${kind}`] = empty();
++    let input: number[] = [WHISPER.sot, WHISPER.noTimestamps], cached = false;
++    const tokens: number[] = []; let logSum = 0, noSpeechProbability = 0;
++    for (let step = 0; step < WHISPER.maxNewTokens; step++) {
++      const output = await decoder.run({ input_ids: ids(input), encoder_hidden_states: hidden, use_cache_branch: new runtime.Tensor('bool', [cached], [1]), ...past }, ['logits', ...presentNames]);
++      check();
++      const logits = output.logits.data as Float32Array, [, length, vocabSize] = output.logits.dims;
++      if (step === 0) noSpeechProbability = Math.exp(logProbability(logits, 0, vocabSize, WHISPER.noSpeech));
++      const offset = (length - 1) * vocabSize, token = selectToken(logits, offset, vocabSize, suppressed, step === 0, beginSuppressed);
++      if (token < 0) break;
++      logSum += logProbability(logits, offset, vocabSize, token);
++      for (let i = 0; i < layers; i++) {
++        past[`past_key_values.${i}.decoder.key`] = output[`present.${i}.decoder.key`];
++        past[`past_key_values.${i}.decoder.value`] = output[`present.${i}.decoder.value`];
++        // The cross-attention cache is computed once, by the first (uncached) pass.
++        if (!cached) { past[`past_key_values.${i}.encoder.key`] = output[`present.${i}.encoder.key`]; past[`past_key_values.${i}.encoder.value`] = output[`present.${i}.encoder.value`]; }
++      }
++      if (token === WHISPER.eot) { tokens.push(token); break; }
++      tokens.push(token);
++      const loop = repeatingTail(tokens);
++      if (loop) { tokens.splice(tokens.length - loop * 3); break; }
++      input = [token]; cached = true;
++    }
++    const text = decode(tokens).trim();
++    return { text, noSpeechProbability, averageLogProbability: logSum / Math.max(1, tokens.length), tokens: tokens.filter(t => t !== WHISPER.eot).length };
++  }
++
++  return {
++    /** English transcript of 16 kHz mono samples, 30-second windows in order. */
++    async transcribe(samples: Float32Array, check: WhisperCheck = () => {}): Promise<WhisperTranscript> {
++      const parts: string[] = []; let noSpeechProbability = 1, logSum = 0, tokens = 0;
++      for (let start = 0; start < Math.max(1, samples.length); start += WHISPER.windowSamples) {
++        const part = samples.subarray(start, start + WHISPER.windowSamples);
++        if (start > 0 && silentRecording(part)) continue;
++        const result = await window(part, check);
++        noSpeechProbability = Math.min(noSpeechProbability, result.noSpeechProbability);
++        logSum += result.averageLogProbability * Math.max(1, result.tokens); tokens += result.tokens;
++        if (!noSpeechDecision(result.text, result.noSpeechProbability, result.averageLogProbability)) parts.push(result.text);
++      }
++      const text = parts.join(' ').replace(/\s+/g, ' ').trim(), averageLogProbability = logSum / Math.max(1, tokens);
++      return { text, noSpeechProbability, averageLogProbability, tokens, noSpeech: !text };
++    },
++    async release() { await Promise.allSettled([encoder.release?.(), decoder.release?.()]); },
++  };
++}
