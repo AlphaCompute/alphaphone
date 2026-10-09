@@ -93,31 +93,28 @@ test('the web build pairs a synthetic HTTPS remote agent, sends one message and 
   expect(foreign).toEqual([]);
 });
 
-test('web Eliza Cloud sign-in opens the sign-in page in a new tab and keeps this page polling', async ({ page, context }) => {
-  // Synthetic Cloud authority: a pending CLI session that is never approved. Real Cloud CORS is unverified.
-  const session = '5b0c8f9e-1d2a-4b3c-8d4e-5f6a7b8c9d0e';
-  const polls: string[] = [];
+test('the web build offers no Eliza Cloud sign-in that Cloud would refuse; the account page opens in a new tab', async ({ page, context }) => {
+  // Pinned upstream Cloud CORS answers credentialed API routes (cli-session, user) only for Eliza's
+  // own origins, so sign-in from this page cannot work. The account page is a plain new tab.
+  const external: string[] = [];
   await context.route('**/*', route => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1') return route.continue();
-    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'accept,content-type,authorization', 'content-type': 'application/json' };
-    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
-    if (url.origin === 'https://api.eliza.app' && url.pathname === '/api/auth/cli-session') return route.fulfill({ status: 200, headers: cors, body: JSON.stringify({ sessionId: session, expiresAt: new Date(Date.now() + 600_000).toISOString() }) });
-    if (url.origin === 'https://api.eliza.app' && url.pathname === `/api/auth/cli-session/${session}`) { polls.push(url.pathname); return route.fulfill({ status: 200, headers: cors, body: JSON.stringify({ status: 'pending' }) }); }
-    if (url.origin === 'https://eliza.app') return route.fulfill({ status: 200, headers: { 'content-type': 'text/html' }, body: '<title>Synthetic sign-in</title>' });
+    external.push(url.origin + url.pathname);
+    if (url.origin === 'https://cloud.eliza.app' && url.pathname === '/cloud/agents') return route.fulfill({ status: 200, headers: { 'content-type': 'text/html' }, body: '<title>Synthetic Cloud account</title>' });
     return route.abort();
   });
   await page.goto('/');
   const chooser = page.locator('.alpha-connection');
   await chooser.getByText('Eliza Cloud', { exact: true }).click();
+  await expect(chooser.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toHaveCount(0);
+  await expect(chooser.getByText(/Eliza Cloud sign-in is available in the Alpha Phone Android app/)).toBeVisible();
   const popup = context.waitForEvent('page');
-  await chooser.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
+  await chooser.getByRole('button', { name: 'Manage Cloud account', exact: true }).click();
   const tab = await popup;
-  await tab.waitForURL(/cli-login/);
-  expect(new URL(tab.url()).href).toBe(`https://eliza.app/auth/cli-login?session=${session}`);
+  await tab.waitForURL('https://cloud.eliza.app/cloud/agents');
   expect(await tab.evaluate(() => window.opener)).toBeNull();
-  await expect.poll(() => polls.length).toBeGreaterThan(0);
   expect(new URL(page.url()).origin).toMatch(/^http:\/\/127\.0\.0\.1/);
-  await chooser.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(chooser.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeEnabled();
+  // No Cloud API request is made from the web page.
+  expect(external).toEqual(['https://cloud.eliza.app/cloud/agents']);
 });

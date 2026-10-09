@@ -462,6 +462,10 @@ function restoredMessages(items:Record<string,unknown>[]):RestoredMessage[] {
     return {id:item.id,from:item.role==='user'?'user':'agent',text:item.role==='user'?restoredText(item.text,item.userTextFormat):item.text};
   });
 }
+/** Eliza Cloud's API answers credentialed browser requests only from Eliza's own origins
+ * (pinned upstream `cloud-api-hono-cors.ts`), so the flag-off web build cannot sign in or read the
+ * account. It offers the account page instead of a sign-in that would always fail. */
+export const WEB_CLOUD_UNAVAILABLE = 'Eliza Cloud sign-in is available in the Alpha Phone Android app. Eliza Cloud does not accept sign-in requests from this web page.';
 /** Stop closes the transport and asks the agent to cancel through upstream's
  * `POST /api/turns/:roomId/abort` (resident, remote and local agents). Cloud agents and agents that
  * refuse that route keep the honest "may still finish" state. Either way one later read of the
@@ -794,7 +798,8 @@ export const connectionController = {
       const saved = selection();
       if (isAndroid && !testMocksEnabled) {
         // An explicit "local apps without AI" choice is kept; AI starts only when the user asks.
-        if (localAppsSelected()) return;
+        // A kept Cloud sign-in is offered as "Retry saved connection" (local read, no network).
+        if (localAppsSelected()) { try { const credential = await cloudCredentialStore.read('production'); update({ residentSavedCredential: !!credential?.credentialId }); } catch { /* Sign-in stays available. */ } return; }
         await work('Checking your Cloud account…',async signal=>{
           const credential=await cloudCredentialStore.read('production');
           signal.throwIfAborted();
@@ -893,6 +898,7 @@ export const connectionController = {
   },
   async cloudLogin(environment: CloudEnvironment) {
     if(isAndroid && !testMocksEnabled){await connectionController.residentCloudLogin();return;}
+    if(!testMocksEnabled && !isAndroid && !browserLocalAgentEnabled){update({open:true,error:WEB_CLOUD_UNAVAILABLE,message:''});return;}
     await work('Opening Eliza Cloud sign-in…', async signal => {
       // A login can replace the environment's secure token with a different
       // account. Detach the old identity before any token can be replaced.
@@ -1253,9 +1259,9 @@ export function ConnectionChooser() {
   return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="connection-title" tabIndex={-1} ref={panel}>
     <header><span className="alpha-connection-logo serif">a</span><button aria-label="Close connection settings" disabled={snapshot.busy} onClick={() => connectionController.close()}>×</button></header>
     <h1 id="connection-title" className="serif">Your agent.<br />Your phone.</h1>
-    <p>{browserOnly ? 'Connect your own remote agent or Eliza Cloud.' : 'Run your agent locally, or connect an optional remote agent.'} Model inference uses the provider configured for that agent.</p>
+    <p>{browserOnly ? 'Connect your own remote agent.' : 'Run your agent locally, or connect an optional remote agent.'} Model inference uses the provider configured for that agent.</p>
     {browserOnly ? <section className="alpha-connection-notice"><h3>This browser has no on-device agent</h3>
-      <p>The web version of Alpha Phone does not run an agent itself. Connect your own remote agent, sign in with Eliza Cloud, or continue offline with local apps such as Notes and Calendar.</p>
+      <p>The web version of Alpha Phone does not run an agent itself. Connect your own remote agent, or continue offline with local apps such as Notes and Calendar.</p>
     </section> : <section><h3>{isAndroid ? 'On-device agent' : 'Agent on this computer'}</h3>
       <p>{isAndroid ? 'Agent execution and state stay on this Android device. Hosted inference, when configured, receives your prompts and selected context.' : 'The agent runs on your development computer. This browser is its interface; Android uses the native runtime instead.'}</p>
       {isAndroid && localPackaging==='available' && <details onToggle={event=>{if((event.currentTarget as HTMLDetailsElement).open)void connectionController.refreshProviderStatus();}}><summary>Model provider</summary><p role="status">{providerStatusLabel(snapshot.providerStatus)}</p><p>Cerebras receives prompts and selected context for inference with {LOCAL_PROVIDER_MODEL}. Your key is checked with Cerebras, then stored using Android Keystore. A new key takes effect after the agent restarts.</p><form onSubmit={event=>{event.preventDefault();const key=providerKey.current?.value||'';if(providerKey.current)providerKey.current.value='';void connectionController.configureLocal(key);}}><label>Cerebras API key<input ref={providerKey} type="password" autoComplete="off" required disabled={snapshot.busy}/></label><p>Model: {LOCAL_PROVIDER_MODEL}</p><button disabled={snapshot.busy}>Save provider</button></form>
@@ -1273,14 +1279,16 @@ export function ConnectionChooser() {
     <div role="status" aria-live="polite">{snapshot.message}</div>
     {snapshot.error && <p role="alert" className="alpha-connection-error">{snapshot.error}</p>}
     {snapshot.busy && <button className="alpha-connection-cancel" onClick={() => connectionController.cancel()}>{snapshot.cloudPersonal?.view?'Stop waiting':'Cancel'}</button>}
-    <details><summary>Eliza Cloud</summary><p>Connect your personal Eliza. Dedicated hosting requires a reviewed setup before it starts.</p>
+    {browserOnly ? <details><summary>Eliza Cloud</summary><p>{WEB_CLOUD_UNAVAILABLE}</p>
+      <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudManage('production')}>Manage Cloud account</button>
+    </details> : <details><summary>Eliza Cloud</summary><p>Connect your personal Eliza. Dedicated hosting requires a reviewed setup before it starts.</p>
       {snapshot.cloudAccount && <section className="alpha-connection-current"><strong>Cloud services connected</strong><span>{snapshot.cloudAccount.environment} · verified account {snapshot.cloudAccount.userId.slice(0, 8)}</span><p>Gmail and speech use this account independently of your agent.</p><button disabled={snapshot.busy} onClick={() => void connectionController.cloudSignOut()}>Sign out of Eliza Cloud</button></section>}
       {testMocksEnabled&&<label>Environment<select aria-label="Environment" ref={environment} disabled={snapshot.busy} defaultValue="production" onChange={() => connectionController.cloudEnvironment(env())}><option value="production">Production</option><option value="staging">Staging</option></select></label>}
       <div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={() => void connectionController.cloudLogin(env())}>Sign in with Eliza Cloud</button><button disabled={snapshot.busy} onClick={() => void connectionController.cloudList(env())}>Refresh agent status</button></div>
       {snapshot.cloudAccount&&Capacitor.getPlatform()!=='android'&&<button disabled={snapshot.busy} onClick={()=>void connectionController.cloudPersonalRecovery()}>Cloud setup intent recovery</button>}
       {snapshot.cloudPersonal&&<CloudPersonalSetup setup={snapshot.cloudPersonal} busy={snapshot.busy} onAccept={()=>void connectionController.cloudPersonalAccept()} onDecline={()=>connectionController.cloudPersonalDecline()} onPoll={()=>void connectionController.cloudPersonalPoll()} onFinalize={()=>void connectionController.cloudPersonalFinalize()} onConnect={()=>void connectionController.cloudPersonalConnect()}/>}
       <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudManage(env())}>Manage Cloud account</button>
-    </details>
+    </details>}
     {pairingOptions}
     {testMocksEnabled&&<details><summary>Mock mode</summary><p>Explore the prototype with simulated data and actions. No live agent connection is used.</p><button disabled={snapshot.busy} onClick={() => connectionController.mock()}>Enter mock mode</button></details>}
     <button className="alpha-connection-offline" disabled={snapshot.busy} onClick={() => void connectionController.offline()}>Continue offline</button>
