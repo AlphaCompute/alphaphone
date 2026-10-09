@@ -124,10 +124,17 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(store.readCredentialSlot("local-agent-provider:v1")!=null)throw new IllegalStateException("Provider key still present");
   return providerIdentity(null);
  }
+ /** Which surface hosts this bridge. Only Alpha's own alpha.assistant flag (set by
+  * AlphaAssistActivity after dropping caller extras) is reported; never caller content. */
+ @PluginMethod public void launchSurface(PluginCall call) {
+  android.app.Activity activity=getActivity();
+  boolean assistant=activity instanceof AlphaAssistActivity&&activity.getIntent()!=null&&activity.getIntent().getBooleanExtra(AlphaAssistActivity.EXTRA_ASSISTANT,false);
+  call.resolve(new JSObject().put("assistant",assistant));
+ }
  @PluginMethod public void configureProvider(PluginCall call) {
   if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
   String key=call.getString("apiKey",""),model=call.getString("model",CEREBRAS_PROVIDER_MODEL);
-  if(!validProviderToken(key,1024)){call.reject("Enter a valid Cerebras key.");return;}
+  if(!validProviderToken(key,1024)||!model.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,127}")){call.reject("Enter a valid Cerebras key.");return;}
   if(!CEREBRAS_PROVIDER_MODEL.equals(model)){call.reject("Alpha Phone uses "+CEREBRAS_PROVIDER_MODEL+" on Cerebras.");return;}
   try{workers.execute(()->{try{
    String failure=saveVerifiedProvider(new AlphaCredentialStore(getContext()),key,model,AlphaLocalAgentPlugin::checkCerebrasKey);
@@ -207,7 +214,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    String key=provider.getString("key");
    if(!model.matches(PROVIDER_MODEL_PATTERN)||!validProviderToken(key,1024))throw new IllegalArgumentException();
    // Earlier builds accepted any model name; launch always uses the pinned model.
-   model=CEREBRAS_PROVIDER_MODEL;
+   model="qwen-3.8-27b"; // == CEREBRAS_PROVIDER_MODEL; literal so this method stays self-contained.
    for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL"})env.remove(name);
    env.put("CEREBRAS_API_KEY",key);
    env.put("CEREBRAS_MODEL",model);
@@ -225,7 +232,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    JSONObject provider=new JSONObject(saved);
    String model=provider.optString("model",""),kind=provider.optString("provider","cerebras");
    if("elizacloud".equals(kind)){result.put("provider","elizacloud");if(CLOUD_PROVIDER_MODEL.equals(model))result.put("configured",true).put("model",model);}
-   else if("cerebras".equals(kind)&&model.matches(PROVIDER_MODEL_PATTERN)&&provider.optString("key","").length()>0)result.put("configured",true).put("model",CEREBRAS_PROVIDER_MODEL);
+   else if("cerebras".equals(kind)&&model.matches(PROVIDER_MODEL_PATTERN))result.put("configured",true).put("model",CEREBRAS_PROVIDER_MODEL);
   }catch(org.json.JSONException malformed){/* Report unconfigured, never the stored value. */}
   return result;
  }

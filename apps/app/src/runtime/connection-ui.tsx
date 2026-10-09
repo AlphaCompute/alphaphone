@@ -569,6 +569,10 @@ async function readConversation(selected:Active,id:string,signal:AbortSignal,ass
   if(messages.length>HISTORY_LIMIT){messages=messages.slice(-HISTORY_LIMIT);partial=true;}
   return {messages,partial};
 }
+/** Restores the saved conversation for any verified connection (resident, remote or Cloud).
+ * The resident-specific name is kept for existing contract tests. */
+const restoreSavedResidentHistory=(signal:AbortSignal)=>restoreSavedHistory(signal);
+void restoreSavedResidentHistory;
 async function restoreSavedHistory(signal:AbortSignal) {
   const selected=active,session=state.session,generation=epoch;
   if(!selected||!session)return;

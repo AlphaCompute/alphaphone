@@ -13,6 +13,7 @@ export interface LocalAgentBridge {
   configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
   providerStatus?():Promise<{provider?:unknown;configured?:unknown;model?:unknown}>;
   clearProvider?():Promise<{configured?:unknown}>;
+  launchSurface?():Promise<{assistant?:unknown}>;
   configureCloudProvider?(input:{credentialId:string;model:string}):Promise<unknown>;
   request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
   stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void):Promise<RemoteChatReply>;
@@ -263,6 +264,12 @@ export async function clearLocalProvider():Promise<LocalProviderStatus> {
   const status=await localProviderStatus();
   if(status.configured&&status.provider==='cerebras')throw Error('The provider key could not be confirmed removed.');
   return status;
+}
+
+/** True only in the Android ACTION_ASSIST surface (native alpha.assistant launch flag). */
+export async function launchedAsAssistant():Promise<boolean> {
+  if(!Capacitor.isNativePlatform()||!Capacitor.isPluginAvailable('Agent')||!native.launchSurface)return false;
+  try{return (await native.launchSurface()).assistant===true;}catch{return false;}
 }
 
 export async function configureLocalCloudProvider(credentialId:string) {

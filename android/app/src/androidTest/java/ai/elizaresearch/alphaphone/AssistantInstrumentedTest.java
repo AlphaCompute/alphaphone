@@ -17,6 +17,17 @@ import static org.junit.Assert.*;
 /** Actual Android assist activity and task boundary; does not silently change the user's role. */
 @RunWith(AndroidJUnit4.class)
 public class AssistantInstrumentedTest {
+ /** Agent.launchSurface() as the renderer sees it: "true", "false" or "error". */
+ private static String launchSurfaceAssistant() throws Exception {
+  for (int i = 0; i < 100 && !"true".equals(WebViewTestDriver.evaluate("Boolean(window.Capacitor?.Plugins?.Agent)")); i++) SystemClock.sleep(100);
+  WebViewTestDriver.evaluate("window.__launchSurface=null;Capacitor.Plugins.Agent.launchSurface().then(v=>window.__launchSurface=String(v.assistant===true),()=>window.__launchSurface='error')");
+  for (int i = 0; i < 200; i++) {
+   String raw = WebViewTestDriver.evaluate("window.__launchSurface");
+   if (raw != null && !"null".equals(raw)) return raw.replace("\"", "");
+   SystemClock.sleep(50);
+  }
+  throw new AssertionError("launchSurface did not complete");
+ }
  @Test public void assistantCandidateIsExportedAndHasSeparateTask() throws Exception {
   Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
   PackageManager packages = context.getPackageManager();
@@ -36,6 +47,7 @@ public class AssistantInstrumentedTest {
    .putExtra(Intent.EXTRA_TEXT, "Never automatically forward caller content")
    .putExtra("query", "Never automatically execute caller instructions");
   try (BoundedActivityScenario<AlphaAssistActivity> scenario = BoundedActivityScenario.launch(intent)) {
+   assertEquals("The renderer learns it is the assistant surface", "true", launchSurfaceAssistant());
    WebViewTestDriver.withActivity(AlphaAssistActivity.class, activity -> {
     // Only Alpha's own launch flag survives; caller text, query and data are dropped.
     android.os.Bundle extras = activity.getIntent().getExtras();
@@ -59,6 +71,7 @@ public class AssistantInstrumentedTest {
   java.util.concurrent.atomic.AtomicBoolean mainInvalidated = new java.util.concurrent.atomic.AtomicBoolean(), assistInvalidated = new java.util.concurrent.atomic.AtomicBoolean();
   java.util.concurrent.atomic.AtomicReference<AlphaLocalAgentPlugin> mainPlugin = new java.util.concurrent.atomic.AtomicReference<>();
   try (BoundedActivityScenario<MainActivity> main = BoundedActivityScenario.launch(MainActivity.class)) {
+   assertEquals("The main surface is not the assistant", "false", launchSurfaceAssistant());
    WebViewTestDriver.withActivity(MainActivity.class, activity -> {
     AlphaLocalAgentPlugin plugin = (AlphaLocalAgentPlugin) activity.getBridge().getPlugin("Agent").getInstance();
     mainPlugin.set(plugin);
