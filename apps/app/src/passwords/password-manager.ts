@@ -44,6 +44,27 @@ function resolveClient(): Promise<PasswordsClient | null> {
   return resolving;
 }
 
+/** Export/import (upstream candidate patch 0060, PasswordTransferPlugin) run entirely natively and
+ * resolve with counts only; the results are revalidated so nothing else reaches this module.
+ * Offered only where the host registered the native ElizaPasswordTransfer plugin. */
+interface PasswordTransfer { exportVault(): Promise<{ exported: number }>; importVault(): Promise<{ imported: number; skipped: number }> }
+const transferCount = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100000;
+function onlyCounts<T extends Record<string, number>>(value: unknown, keys: (keyof T & string)[]): T {
+  const result = value as Record<string, unknown> | null;
+  if (!result || typeof result !== 'object' || Object.keys(result).some(key => !keys.includes(key)) || !keys.every(key => transferCount(result[key]))) throw new Error('Saved passwords are unavailable');
+  return Object.fromEntries(keys.map(key => [key, result[key]])) as T;
+}
+let transfer: PasswordTransfer | null | undefined;
+function transferClient(): PasswordTransfer | null {
+  if (transfer !== undefined) return transfer;
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('ElizaPasswordTransfer')) return transfer = null;
+  const plugin = registerPlugin<PasswordTransfer>('ElizaPasswordTransfer');
+  return transfer = {
+    exportVault: async () => onlyCounts<{ exported: number }>(await plugin.exportVault(), ['exported']),
+    importVault: async () => onlyCounts<{ imported: number; skipped: number }>(await plugin.importVault(), ['imported', 'skipped']),
+  };
+}
+
 function clearSecrets() { if (draft) draft.password = ''; draft = null; }
 function locked(message = '') {
   entries = null; clearSecrets(); if (status) status = { ...status, locked: true, unlockRemainingMs: 0 };
@@ -175,6 +196,19 @@ export function passwordManagerGroups(helpers: Helpers): Bag[] {
     groups.push(captioned(helpers, '', [input(helpers.ic, 'Search passwords', 'Search passwords', 'search', query, value => { query = value; notify(); }, 'search'), button('Add password', () => openEntry(helpers, null), true)], true));
     const shown = filterEntries(entries, query);
     groups.push(helpers.group(shown.length ? shown.map(entry => nav(entry.label, () => openEntry(helpers, entry), { sub: `${entry.username || 'No username'} · ${bindingText(entry)}`, aria: `Open ${entry.label}` })) : [helpers.info(entries.length ? 'No matching passwords' : 'No saved passwords', '')]));
+    const move = transferClient();
+    if (move) groups.push(captioned(helpers, 'Move passwords', [
+      nav(busy === 'import' ? 'Importing…' : 'Import passwords', () => void run('import', async () => {
+        const result = await move.importVault();
+        notice = result.imported ? `Imported ${result.imported} ${result.imported === 1 ? 'password' : 'passwords'}${result.skipped ? `, ${result.skipped} not imported` : ''}.` : 'No passwords were imported.';
+        await refresh();
+      }), { sub: 'From a CSV file. You review each website first.' }),
+      nav(busy === 'export' ? 'Exporting…' : 'Export passwords', () => void run('export', async () => {
+        const result = await move.exportVault();
+        notice = `Exported ${result.exported} ${result.exported === 1 ? 'password' : 'passwords'}. The file is not encrypted; delete it when you are done.`;
+        await refresh();
+      }), { sub: 'Unencrypted CSV file. Asks for your screen lock.' }),
+    ]));
   }
   if (status) {
     const selection = { 'this-app': 'Alpha Phone passwords', other: 'Another provider', none: 'None selected', unknown: 'Not checked' }[status.autofill.selected];
