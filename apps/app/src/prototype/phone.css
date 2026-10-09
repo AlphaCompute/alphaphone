@@ -107,3 +107,5 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 
 [data-alpha-message-text][role="button"] { cursor: pointer; }
 [data-alpha-message-text][role="button"]:focus-visible, [data-alpha-message-actions] [role="menuitem"]:focus-visible { outline: 2px solid var(--acct); outline-offset: 3px; }
+
+.alpha-compute-mark{display:block;width:24px;height:24px;filter:brightness(0) invert(1)}
