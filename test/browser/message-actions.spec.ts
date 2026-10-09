@@ -37,3 +37,11 @@ test('Read aloud invokes the existing speech path; fixture blocks all audio',asy
 test('user messages copy without unsupported playback, reply or edit controls',async({page})=>{
  await conversation(page);await page.locator('[data-alpha-message-text]').filter({hasText:'My original request'}).click();await expect(menu(page).getByRole('menuitem',{name:'Read aloud'})).toHaveCount(0);await expect(menu(page).getByRole('menuitem',{name:'Reply'})).toHaveCount(0);await expect(menu(page).getByRole('menuitem',{name:'Edit'})).toHaveCount(0);await menu(page).getByRole('menuitem',{name:'Copy',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).copiedMessage)).toBe('My original request');
 });
+test('Home shows clean Calendar and Workflows tiles with Inbox last',async({page},info)=>{
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev');
+ const home=page.getByRole('region',{name:'Home',exact:true});await expect(home.getByRole('button',{name:'Open your calendar',exact:true})).toContainText(/See your events|No upcoming events/);
+ await expect(home.getByRole('button',{name:'Open workflows',exact:true})).toBeVisible();
+ const tiles=home.locator(':scope > .scr').first().getByRole('button');await expect(tiles.nth(1)).toHaveAttribute('aria-label','Open workflows');await expect(tiles.nth(2)).toHaveAttribute('aria-label',/^Open Inbox:/);
+ await page.screenshot({path:info.outputPath('home-clean-tiles.png'),animations:'disabled'});
+ await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');await new BrowserCalendar().save({calendarId:'local',title:'Synthetic Home calendar check',begin:Date.now()+3600000,end:Date.now()+7200000,creationId:crypto.randomUUID()});});await page.reload();await expect(home.getByRole('button',{name:'Open calendar event: Synthetic Home calendar check',exact:true})).toContainText('Synthetic Home calendar check');await page.screenshot({path:info.outputPath('home-next-event.png'),animations:'disabled'});
+});
