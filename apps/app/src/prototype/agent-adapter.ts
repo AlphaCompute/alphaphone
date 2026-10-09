@@ -1,3 +1,5 @@
+import {BrowserReviews} from '../browser/review';
+import type {ConversationMessageTarget} from '../runtime/alpha-client';
 import {AlphaClientError} from '../runtime/alpha-client';
 import {formatDeviceRecordDateTime} from "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts";
 import {isNativeNotesQuery} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
@@ -57,6 +59,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   const originalSet = p.vset;
   const originalApi = p.api;
   const originalVals = p.renderVals;
+  const messageReviews=new BrowserReviews();
   const notesRender = views.notes.render;
   // Navigation resets transient view state, but must retain the actual storage receipt.
   views.notes.persist = [...new Set([...(views.notes.persist || []), 'storageStatus'])];
@@ -168,6 +171,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     this.connectionUnsubscribe = connectionController.subscribe(() => {
       const session = connectionController.getSnapshot().session?.sessionId;
       if (session !== this.connectionSession) {
+        cancelMessageContext(this);
         this.draftRecoveryAbort?.abort();this.composerDraft.retire();
         this.closeSummaryReview?.();this.reviewedSourceDraft=null;
         clearMapsSelection();
@@ -177,10 +181,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       }
       const history = connectionController.getSnapshot().history;
       if (history && history.sessionId === session && this.restoredHistory !== history) {
-        if(!history.automatic){this.draftRecoveryAbort?.abort();this.composerDraft.retire();this.reviewedSourceDraft=null;}
+        if(!history.automatic){cancelMessageContext(this);this.draftRecoveryAbort?.abort();this.composerDraft.retire();this.reviewedSourceDraft=null;}
         this.restoredHistory = history;
         alphaClient.disconnect();
-        if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, card: null })), typing: false, ...(history.automatic?{}:{draft:'',chat:'full'}) });
+        if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, messageBinding:{conversationId:history.conversationId,session:connectionController.getSnapshot().session}, card: null })), typing: false, ...(history.automatic?{}:{draft:'',chat:'full'}) });
       }
       if (this.live) {context(this);this.refreshDraftBinding();}
     });
@@ -246,7 +250,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if (connection.session) {
         alphaClient.attachVerifiedTransport({
           session: connection.session,
-          send: ({ text, context, requestId, signal, onText }) => connectionController.send(text, context, requestId, signal, onText),
+          send: ({ text, context, requestId, signal, onText, replyTo }) => connectionController.send(text, context, requestId, signal, onText,replyTo),
           // Remote text is not authority to execute device actions. This path
           // accepts chat only until the server supports verified proposals.
           execute: ({ proposal, context, signal }) => connectionController.execute(proposal, context, signal),
@@ -468,9 +472,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     });
     context(this);
   };
-  p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); sizeComposer();this.composerDraft?.edit(String(this.S().draft||'')); };
+  p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); sizeComposer();this.composerDraft?.edit(String(this.S().draft||''));const selected=this.messageReplyTarget||this.messageEditTarget;if(selected&&(JSON.stringify(selected.session)!==JSON.stringify(connectionController.getSnapshot().session)||!this.S().msgs.some((m:Shell)=>m.id===selected.messageId&&m.text===selected.text))){cancelMessageContext(this);this.setState({});} };
   p.componentWillUnmount = function () {
-    connectionController.cancelViewNavigation();
+    cancelMessageContext(this);connectionController.cancelViewNavigation();
     this.pendingActionRecoveryAbort?.abort();this.pendingActionApproval?.abort();
     this.draftRecoveryAbort?.abort();this.composerDraft?.retire(false);this.draftBindingAbort?.abort();
     this.notesOpenAbort?.abort();if(activeShell===this){activeShell=null;notesRecovery?.abort();}
@@ -586,8 +590,20 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     };
     return api;
   };
+  function cancelMessageContext(shell:Shell){if(shell.messageEditTarget)messageReviews.cancel('edit-message-'+shell.messageEditTarget.messageId);shell.messageEditTarget=undefined;shell.messageReplyTarget=undefined;}
+  function messageTarget(message:Shell):ConversationMessageTarget|undefined {
+    if(!message.messageBinding||message.streaming||message.interrupted||message.card)return;
+    return {...message.messageBinding,messageId:message.id,text:message.text,from:message.from};
+  }
+  p.canReplyMessage=function(message:Shell){const target=messageTarget(message);return !!target&&!this.S().typing&&!this.draftSendPending&&connectionController.messageTargetCurrent(target);};
+  p.canEditMessage=function(message:Shell){return message.from==='user'&&this.canReplyMessage(message)&&connectionController.canEditMessages();};
+  p.replyToMessage=function(message:Shell){if(!this.canReplyMessage(message))return;this.messageEditTarget=undefined;this.messageReplyTarget=messageTarget(message);this.setState({chat:'full'},()=>document.querySelector<HTMLTextAreaElement>('[data-alpha-layer="conversation"] textarea[data-alpha-composer]')?.focus());};
+  p.editMessage=function(message:Shell){if(!this.canEditMessage(message))return;if(this.S().draft.trim()){this.toast('Finish or clear your current draft before editing a message.');return;}this.messageReplyTarget=undefined;this.messageEditTarget=messageTarget(message);this.setState({draft:message.text,chat:'full'},()=>document.querySelector<HTMLTextAreaElement>('[data-alpha-layer="conversation"] textarea[data-alpha-composer]')?.focus());};
   p.renderVals = function () {
     const out = originalVals.call(this);
+    const composeTarget=this.messageEditTarget||this.messageReplyTarget;
+    out.messageComposeContext=composeTarget?(this.messageEditTarget?'Editing message':'Replying to '+(composeTarget.from==='user'?'your message':out.name))+': '+composeTarget.text.replace(/\s+/g,' ').slice(0,160):'';
+    out.cancelMessageContext=()=>{cancelMessageContext(this);this.setState({});};
     const draft=this.composerDraft?.state;
     out.draftRecovery=!!draft?.error&&!!this.composerDraft?.recovery();
     out.recoverDraft=()=>{const recovery=this.composerDraft?.recovery();if(!recovery)return;this.draftRecoveryAbort?.abort();const controller=this.draftRecoveryAbort=new AbortController();openDomainRecovery({capture:async signal=>{const captured=await recovery.capture(signal);return {...captured,raw:JSON.stringify({saved:captured.raw,currentDraft:String(this.S().draft||'')})};},reset:recovery.reset},'assistant draft','Assistant draft recovery','Download the saved bytes and current text before resetting this conversation’s draft. Reset does not delete messages or send anything. Reloading discards the current unsaved text.',controller.signal,undefined,Capacitor.getPlatform()==='android'?'device':'browser');};
@@ -611,8 +627,20 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     return out;
   };
   p.send = async function (argument?: string, expectedSession?: {sessionId:string;agentId:string;ownerId:string;origin:string}) {
-    const s = this.S(); const text = String(argument ?? s.draft).trim();
+    let s = this.S(); const text = String(argument ?? s.draft).trim();
     if (!text || s.typing || this.draftSendPending) return;
+    const editTarget:ConversationMessageTarget|undefined=this.messageEditTarget,replyTarget:ConversationMessageTarget|undefined=this.messageReplyTarget,editView=s.view;
+    if(editTarget){
+      if(argument!==undefined||!connectionController.messageTargetCurrent(editTarget))return;
+      this.draftSendPending=true;
+      try {
+        if(!await messageReviews.confirm('edit-message-'+editTarget.messageId,'Edit and resend message','This replaces the selected message and all later messages in this conversation. It does not undo actions that already ran.\n\nOriginal: '+editTarget.text+'\n\nReplacement: '+text,'Edit and resend'))return;
+        if(!this.live||document.hidden||String(this.S().draft).trim()!==text||!connectionController.messageTargetCurrent(editTarget))throw Error('The draft or conversation changed. Nothing was replaced.');
+        await connectionController.truncateMessage(editTarget);this.messageEditTarget=undefined;s=this.S();
+        if(!this.live||document.hidden||s.view!==editView||String(s.draft).trim()!==text)throw Error('History was replaced. Your draft changed, so nothing was resent.');
+      } catch(error){if(error&&typeof error==='object'&&'historyChanged' in error)this.messageEditTarget=undefined;this.toast(error instanceof Error?error.message:'Message replacement failed.');return;}
+      finally{this.draftSendPending=false;}
+    }
     const sourceDraft=this.reviewedSourceDraft?.draft.trim()===text?sourceOf(this.reviewedSourceDraft.source):undefined;
     context(this);
     const revision=alphaClient.getState().context.revision,connection=connectionController.getSnapshot(),sessionId=connection.session?.sessionId,conversationId=connection.history?.conversationId;
@@ -620,9 +648,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     this.draftSendPending=true;
     try{await this.draftBindingTask;await this.composerDraft.consume(String(s.draft||'').trim(),current);}catch(error){this.toast(error instanceof Error?error.message:'Draft could not be prepared. Nothing was sent.');return;}finally{this.draftSendPending=false;}
     this.reviewedSourceDraft=null;
-    const streamedId=crypto.randomUUID();let streamed=false;
+    const streamedId=crypto.randomUUID(),userMessageId=crypto.randomUUID();let streamed=false;
     const replaceStream=(value:string,streaming=true)=>this.setState((previous:Shell)=>({msgs:previous.msgs.map((message:Shell)=>message.id===streamedId?{...message,text:value,streaming}:message)}));
-    this.setState({ msgs: [...s.msgs, { id: crypto.randomUUID(), from: 'user', text }], draft: '', typing: true, chat: s.chat === 'full' ? 'full' : 'sheet', shade: false });
+    this.setState({ msgs: [...s.msgs, { id: userMessageId, from: 'user', text }], draft: '', typing: true, chat: s.chat === 'full' ? 'full' : 'sheet', shade: false });
     try {
       await this.connectAgent(); context(this);
       if (alphaClient.getState().context.revision !== revision) throw new Error('The active screen changed. Please send your request again.');
@@ -633,9 +661,12 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(!this.live)return;
         if(streamed)replaceStream(value);
         else{streamed=true;this.setState((previous:Shell)=>({msgs:[...previous.msgs,{id:streamedId,from:'agent',text:value,card:null,streaming:true}]}));}
-      });
+      },replyTarget);
       if (!this.live) return;
-      if(streamed)replaceStream(reply.text,false);else this.agentSay(reply.text);
+      const identity=reply.messageBinding;
+      if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===streamedId?{...m,id:reply.messageId||m.id,messageBinding:reply.messageId?identity:undefined,text:reply.text,streaming:false}:m)}));else this.agentSay(reply.text,undefined,reply.messageId&&identity?{id:reply.messageId,messageBinding:identity}:undefined);
+      if(reply.userMessageId&&identity)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===userMessageId?{...m,id:reply.userMessageId,messageBinding:identity}:m)}));
+      if(this.messageReplyTarget===replyTarget)this.messageReplyTarget=undefined;
       if(sourceDraft&&sourceSession&&JSON.stringify(sourceSession)===JSON.stringify(connectionController.getSnapshot().session))this.agentSay('Review this answer before saving it with its source.',{type:'generic',icon:'note',title:'Review summary note',sub:sourceDraft.name,sourceSummary:{source:sourceDraft,text:reply.text,session:sourceSession}});
       for (const proposal of reply.proposals || []) this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id });
       if(navigation&&reply.actionResults?.length){
@@ -648,13 +679,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     } catch (e) { if (this.live) {const message=e instanceof Error?e.message:'The agent could not complete this request.';if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));else this.agentSay(message);} }
     finally { if (this.live) this.setState({ typing: false }); }
   };
-  p.agentSay = function (text: string, card?: Shell) {
+  p.agentSay = function (text: string, card?: Shell, identity?:{id:string;messageBinding:{conversationId:string;session:unknown}}) {
     this.setState((previous: Shell) => {
       const chat = previous.chat === 'full' ? 'full' : 'sheet';
       // Recovery and a chat reply can publish the same pending action. Decide
       // inside the state update so either arrival order retains one approval.
       if (card?.proposalId && (previous.msgs || []).some((message: Shell) => message.card?.proposalId === card.proposalId)) return { chat };
-      return { chat, msgs: [...(previous.msgs || []), { id: crypto.randomUUID(), from: 'agent', text, card: card || null }] };
+      return { chat, msgs: [...(previous.msgs || []), { id: crypto.randomUUID(), ...identity, from: 'agent', text, card: card || null }] };
     });
   };
   p.reply = function () { return { text: 'Connect an agent to continue.' }; };

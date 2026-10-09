@@ -81,6 +81,8 @@ export function installLocalSpeechPlayback(Component: Shell) {
         },
         messageActionsMove: (event: PointerEvent) => { const hold = holds.get(this); if (hold && Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 8) cancelHold(this); },
         messageActionsCancel: () => cancelHold(this),
+        canReplyMessage: this.canReplyMessage?.(entry)===true, canEditMessage: this.canEditMessage?.(entry)===true,
+        replyMessage: () => { closeMenu(this); this.replyToMessage?.(entry); }, editMessage: () => { closeMenu(this); this.editMessage?.(entry); },
         closeMessageActions: () => closeMenu(this, true), menuKey: (event: KeyboardEvent) => menuKey(this, event),
         copyMessage: async () => {
           if (!menu || menus.get(this) !== menu || menu.binding !== JSON.stringify(connectionController.getSnapshot().session)) return;

@@ -57,7 +57,17 @@ export interface ActionProposal {
   expiresAt: number;
   contextRevision: number;
 }
+export interface ConversationMessageTarget {
+  messageId: string;
+  conversationId: string;
+  session: VerifiedSession;
+  text: string;
+  from: 'user' | 'agent';
+}
 export interface AgentReply {
+  messageId?: string;
+  userMessageId?: string;
+  messageBinding?: { conversationId: string; session: VerifiedSession };
   text: string;
   actionResults?: readonly unknown[];
   proposals?: ActionProposal[];
@@ -76,6 +86,7 @@ export interface VerifiedSessionTransport {
     context: ContextEnvelope;
     signal: AbortSignal;
     onText?:(text:string)=>void;
+    replyTo?: ConversationMessageTarget;
   }): Promise<AgentReply>;
   /** Server must revalidate ownership, context/preconditions, approval and dedupe. */
   execute(input: {
@@ -312,13 +323,14 @@ export class AlphaClient {
       return reply.text;
     },signal,automatic);
   }
-  async send(text: string, onText?:(text:string)=>void): Promise<AgentReply> {
+  async send(text: string, onText?:(text:string)=>void, replyTo?:ConversationMessageTarget): Promise<AgentReply> {
     if (!text.trim()) throw new Error("Enter a message.");
     return this.run(async (transport, context, signal) => {
       let accepting=true;let result:AgentReply;
       try { result = await transport.send({
         requestId: crypto.randomUUID(),
         text: text.trim(),
+        ...(replyTo?{replyTo}:{}),
         context,
         signal,
         onText:value=>{if(!accepting||signal.aborted)return;if(typeof value!=='string'||value.length>200000)throw new AlphaClientError('invalid-response','Invalid streamed reply.');onText?.(value);},
@@ -359,6 +371,9 @@ export class AlphaClient {
       this.proposals = next;
       return {
         text: result.text,
+        ...(result.messageId?{messageId:result.messageId}:{}),
+        ...(result.userMessageId?{userMessageId:result.userMessageId}:{}),
+        ...(result.messageBinding?{messageBinding:result.messageBinding}:{}),
         ...(Array.isArray(result.actionResults)?{actionResults:result.actionResults}:{}),
         proposals: [...next.values()].map((p) => ({ ...p })),
       };

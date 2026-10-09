@@ -172,6 +172,10 @@ export class LocalAgentProtocol {
     const value=record((await this.json('/api/conversations',{title},signal)).conversation);
     return {...value,id:identifier(value.id)};
   }
+  async truncateMessages(id:string,messageId:string,signal:AbortSignal):Promise<void> {
+    const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages/truncate`,{messageId,inclusive:true},signal);
+    if(value.ok!==true||!Number.isSafeInteger(value.deletedCount)||Number(value.deletedCount)<1)throw Error('Message replacement was not confirmed. Reload conversation history before trying again.');
+  }
   async messages(id:string,signal?:AbortSignal):Promise<{messages:Record<string,unknown>[]}> {
     const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages`,undefined,signal);
     if(!Array.isArray(value.messages))throw new Error('Invalid local conversation history.');

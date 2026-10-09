@@ -335,7 +335,7 @@ export class CloudProtocol {
    * the dedicated host accepts it. Caller must not treat shared context as delivered. */
   async send(agentId: string, conversationId: string, text: string,
     options: { metadata?: Record<string, unknown>; clientMessageId?: string; signal: AbortSignal },
-  ): Promise<{ text: string; agentName: string; actionResults?: readonly unknown[]; interrupted?: boolean; noResponseReason?: "ignored"; failureKind?: unknown; terminalFailure?: unknown }> {
+  ): Promise<{ text: string; agentName: string; messageId?:string;userMessageId?:string;actionResults?:readonly unknown[];interrupted?: boolean; noResponseReason?: "ignored"; failureKind?: unknown; terminalFailure?: unknown }> {
     if (!text.trim()) throw new TypeError("Message must not be empty");
     const response = await this.runtimeCall(agentId,
       `/api/conversations/${encodeURIComponent(string(conversationId))}/messages`, options.signal,
@@ -343,7 +343,10 @@ export class CloudProtocol {
         ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}) });
     if (typeof response.text !== "string" || typeof response.agentName !== "string") throw new CloudProtocolError("invalid-response");
     if (response.terminalFailure || response.failureKind) throw new CloudProtocolError("invalid-response");
+    for(const key of ['messageId','userMessageId'])if(response[key]!==undefined&&typeof response[key]!=='string')throw new CloudProtocolError('invalid-response');
     return { text: response.text, agentName: response.agentName,
+      ...(typeof response.messageId==='string'?{messageId:response.messageId}:{}),
+      ...(typeof response.userMessageId==='string'?{userMessageId:response.userMessageId}:{}),
       ...(Array.isArray(response.actionResults)?{actionResults:response.actionResults}:{}),
       ...(response.interrupted === true ? { interrupted: true } : {}),
       ...(response.noResponseReason === "ignored" ? { noResponseReason: "ignored" as const } : {}) };

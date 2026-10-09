@@ -1,3 +1,5 @@
+import {validateUuid} from '../../../../vendor/eliza/packages/core/src/utils/uuid';
+import type {ConversationMessageTarget} from './alpha-client';
 import {ViewNavigationClient} from './view-navigation';
 import {captureConversationChoice,selectConversation,conversationSelectionDocument} from './conversation-selection';
 import {developmentDigestDocument} from '../browser/development-digest-document';
@@ -838,8 +840,29 @@ export const connectionController = {
     await work('Verifying and restoring conversation…',signal=>restoreConversationHistory(id,signal,false));
   },
   async retrySavedHistory(){if(sending)return;await work('Checking saved conversation…',signal=>restoreSavedResidentHistory(signal));},
-  async send(text: string, context: ContextEnvelope, requestId: string, signal: AbortSignal, onText?:(text:string)=>void): Promise<{ text: string; proposals?: ActionProposal[]; actionResults?:readonly unknown[] }> {
+  messageTargetCurrent(target:ConversationMessageTarget) {
+    return !!active&&!!state.session&&!state.open&&!state.busy&&!sending&&!operation&&validateUuid(target.messageId)&&target.conversationId===conversationMemory.get(conversationKey(state.session))&&JSON.stringify(target.session)===JSON.stringify(state.session);
+  },
+  canEditMessages(){return !!active&&active.kind!=='cloud';},
+  async truncateMessage(target:ConversationMessageTarget):Promise<void> {
+    if(!this.messageTargetCurrent(target)||target.from!=='user'||!active||active.kind==='cloud'||document.hidden)throw Error('This message cannot be edited in the current connection.');
+    const selected=active,session=state.session!,generation=epoch,controller=new AbortController(),contextKey=JSON.stringify(navigationContext?.());operation=controller;update({busy:true});let dispatched=false;
+    const current=()=>{controller.signal.throwIfAborted();if(document.hidden||state.open||generation!==epoch||selected!==active||JSON.stringify(state.session)!==JSON.stringify(session)||conversationMemory.get(conversationKey(session))!==target.conversationId)throw Error('The conversation changed.');};
+    try {
+      const history=await selected.remote.messages(target.conversationId,controller.signal);current();
+      const row=history.messages.find(row=>row.id===target.messageId);
+      if(!row||row.role!=='user'||row.source==='local_command'||typeof row.text!=='string'||restoredText(row.text,row.userTextFormat)!==target.text)throw Error('This message changed. Reload its conversation before editing.');
+      if(JSON.stringify(navigationContext?.())!==contextKey)throw Error('The active screen changed. Nothing was replaced.');
+      dispatched=true;await selected.remote.truncateMessages(target.conversationId,target.messageId,controller.signal);current();
+      await restoreConversationHistory(target.conversationId,controller.signal,true);current();
+    } catch(error) {
+      if(dispatched){if(generation===epoch)update({historyError:'Message replacement may have changed history. Reload the conversation before another edit.'});throw Object.assign(new Error('Message replacement needs a history check. Nothing was resent automatically.'),{historyChanged:true,cause:error});}
+      throw error;
+    } finally {if(operation===controller){operation=null;update({busy:false});}}
+  },
+  async send(text: string, context: ContextEnvelope, requestId: string, signal: AbortSignal, onText?:(text:string)=>void,replyTo?:ConversationMessageTarget): Promise<{ messageId?:string;userMessageId?:string;messageBinding?:{conversationId:string;session:VerifiedSession};text: string; proposals?: ActionProposal[]; actionResults?:readonly unknown[] }> {
     if (operation) throw new Error('Finish the connection or history operation before sending.');
+    if(replyTo&&!this.messageTargetCurrent(replyTo))throw Error('The reply target belongs to a different conversation.');
     const message = phoneContextMessage(text, context);
     if (sending) throw new Error('Wait for the current reply before sending another message.');
     const selected = active, session = state.session, generation = epoch;
@@ -869,11 +892,13 @@ export const connectionController = {
         assertCurrent();conversationMemory.set(key,id);update({});
         if(!saved)update({ message: 'Conversation is connected for this session. Its selection could not be saved for restart.' });
       }
+      if(replyTo&&(!validateUuid(replyTo.messageId)||replyTo.conversationId!==id||JSON.stringify(replyTo.session)!==JSON.stringify(session)))throw Error('The reply target belongs to a different conversation.');
+      if(replyTo){const history=selected.kind==='cloud'?await selected.cloud.messages(selected.agentId,id,requestSignal):await selected.remote.messages(id,requestSignal);assertCurrent();const row=history.messages.find(row=>row.id===replyTo.messageId);if(!row||row.role!==(replyTo.from==='user'?'user':'assistant')||typeof row.text!=='string'||(replyTo.from==='user'?restoredText(row.text,row.userTextFormat):row.text)!==replyTo.text)throw Error('The reply target changed. Reload its conversation before replying.');}
       // Only the verified native resident profile negotiates verbatim prose
       // history. Other hosts retain the existing envelope and legacy alias.
       const nativeProse=isAndroid&&selected.kind==='resident'&&selected.userTextFormatVersion===1;
       const wireText=nativeProse?text:message.text;
-      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, ...boundNavigation()?.metadata(context), ...(nativeProse?{userTextFormat:'plain-v1'}:{alphaPhone:{context:message.context}}) } };
+      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { ...(replyTo?{replyToMessageId:replyTo.messageId}:{}), ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, ...boundNavigation()?.metadata(context), ...(nativeProse?{userTextFormat:'plain-v1'}:{alphaPhone:{context:message.context}}) } };
       const progress=(value:string)=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');onText?.(value);};
       const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, wireText, options) : selected.kind==='resident'?await selected.remote.send(id,wireText,{...options,onText:progress}):await selected.remote.send(id, wireText, options);
       requestSignal.throwIfAborted();
@@ -887,6 +912,7 @@ export const connectionController = {
           ? new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.')
           : new Error('The agent could not complete this response.');
       }
+      for(const key of ['messageId','userMessageId'] as const)if(reply[key]!==undefined&&!validateUuid(reply[key]))throw Error('The agent returned an invalid message identity.');
       if (typeof reply.text !== 'string') throw new Error('The agent returned an invalid response.');
       let proposals: ActionProposal[] | undefined;
       if (selected.actions) {
@@ -900,7 +926,7 @@ export const connectionController = {
       if (responseFailure && !proposals?.length) throw responseFailure;
       return { text: responseFailure
         ? `${responseFailure.message} Pending phone actions are available for separate review. Nothing has been approved or performed automatically.`
-        : reply.text, ...(proposals ? { proposals } : {}), ...(!responseFailure&&Array.isArray(reply.actionResults)?{actionResults:reply.actionResults}:{}) };
+        : reply.text, ...(!responseFailure?{...(typeof reply.messageId==='string'?{messageId:reply.messageId}:{}),...(typeof reply.userMessageId==='string'?{userMessageId:reply.userMessageId}:{}),messageBinding:{conversationId:id,session:{...session}}}:{}), ...(proposals ? { proposals } : {}), ...(!responseFailure&&Array.isArray(reply.actionResults)?{actionResults:reply.actionResults}:{}) };
     } catch (error) {
       if (error && typeof error === 'object' && 'status' in error && error.status === 429) {
         throw new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.');

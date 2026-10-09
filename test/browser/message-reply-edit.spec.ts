@@ -1,0 +1,51 @@
+import {test,expect,type Page} from '@playwright/test';
+const userId='11111111-1111-4111-8111-111111111111',agentId='22222222-2222-4222-8222-222222222222';
+const user=(page:Page)=>page.locator('[data-alpha-message-text]').filter({hasText:'Original request'});
+const agent=(page:Page)=>page.locator('[data-alpha-message-text]').filter({hasText:'Original response'});
+const menu=(page:Page)=>page.getByRole('menu',{name:'Message actions'});
+const composer=(page:Page)=>page.getByRole('textbox',{name:'Message Alpha',exact:true});
+async function ready(page:Page){
+ await page.goto('/?mode=dev');await page.evaluate(async({userId,agentId})=>{
+  const fixture=(window as any).messageFixture={sent:[],truncated:[],rows:[],room:'',failTruncate:false,holdTruncate:false};
+  const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');await c.initialize();await c.startDevelopment('local');
+  const {LocalAgentProtocol:P}=await import('/src/runtime/local-agent.ts');
+  P.prototype.send=async(room,text,options)=>{fixture.room=room;fixture.sent.push({text,metadata:options?.metadata});const first=fixture.sent.length===1,u=first?userId:crypto.randomUUID(),a=first?agentId:crypto.randomUUID();fixture.rows.push({id:u,role:'user',text,userTextFormat:options?.metadata?.userTextFormat},{id:a,role:'assistant',text:first?'Original response':'Replacement response'});return {text:first?'Original response':'Replacement response',agentName:'Alpha',userMessageId:u,messageId:a};};
+  P.prototype.messages=async()=>({messages:structuredClone(fixture.rows)});P.prototype.listConversations=async()=>[{id:fixture.room,title:'Owned conversation'}];
+  P.prototype.truncateMessages=async(room,id)=>{fixture.truncated.push({room,id});if(fixture.failTruncate)throw Error('Unsupported endpoint');if(fixture.holdTruncate)await new Promise<void>(resolve=>fixture.releaseTruncate=resolve);fixture.rows=fixture.rows.slice(0,fixture.rows.findIndex((row:any)=>row.id===id));};
+ },{userId,agentId});
+ const input=page.getByRole('textbox',{name:'Ask Alpha',exact:true});await input.fill('Original request');await input.press('Enter');await expect(agent(page)).toBeVisible();
+}
+async function edit(page:Page){await user(page).click();await menu(page).getByRole('menuitem',{name:'Edit and resend',exact:true}).click();await expect(composer(page)).toHaveValue('Original request');await composer(page).fill('Edited request');await composer(page).press('Enter');await expect(page.getByRole('dialog',{name:'Edit and resend message',exact:true})).toBeVisible();}
+test('new live stable IDs enable Reply and send canonical metadata without rewriting prose',async({page},info)=>{
+ await ready(page);await agent(page).click();await menu(page).getByRole('menuitem',{name:'Reply',exact:true}).click();await expect(page.getByText('Replying to Alpha: Original response',{exact:true})).toBeVisible();await composer(page).fill('Follow up');await composer(page).press('Enter');await expect.poll(()=>page.evaluate(()=>(window as any).messageFixture.sent.length)).toBe(2);
+ const sent=await page.evaluate(()=>(window as any).messageFixture.sent[1]);expect(sent.metadata.replyToMessageId).toBe(agentId);expect(sent.text).not.toContain('Original response');await expect(page.getByText('Replying to Alpha: Original response',{exact:true})).toHaveCount(0);await page.screenshot({path:info.outputPath('reply-result.png'),animations:'disabled'});
+});
+test('canceling Edit and resend retains every original message and the unsent edited draft',async({page},info)=>{
+ await ready(page);await edit(page);const review=page.getByRole('dialog',{name:'Edit and resend message',exact:true});await expect(review).toContainText('all later messages');await expect(review).toContainText('does not undo actions');await page.screenshot({path:info.outputPath('edit-review.png'),animations:'disabled'});await review.getByRole('button',{name:'Cancel',exact:true}).click();await expect(user(page)).toBeVisible();await expect(agent(page)).toBeVisible();await expect(composer(page)).toHaveValue('Edited request');expect(await page.evaluate(()=>(window as any).messageFixture.truncated)).toEqual([]);expect(await page.evaluate(()=>(window as any).messageFixture.sent.length)).toBe(1);await page.screenshot({path:info.outputPath('edit-canceled.png'),animations:'disabled'});
+});
+test('explicit edit confirmation truncates once, restores server history, then resends once',async({page},info)=>{
+ await ready(page);await edit(page);await page.getByRole('dialog',{name:'Edit and resend message',exact:true}).getByRole('button',{name:'Edit and resend',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).messageFixture.sent.length)).toBe(2);await expect(page.locator('[data-alpha-message-text]').filter({hasText:'Edited request'})).toBeVisible();await expect(user(page)).toHaveCount(0);await expect(agent(page)).toHaveCount(0);const fixture=await page.evaluate(()=>(window as any).messageFixture);expect(fixture.truncated).toHaveLength(1);expect(fixture.truncated[0].id).toBe(userId);expect(fixture.rows.map((r:any)=>r.text)).toEqual([fixture.sent[1].text,'Replacement response']);await page.screenshot({path:info.outputPath('edit-resend-result.png'),animations:'disabled'});
+});
+test('unsupported truncation preserves visible history and never resends',async({page})=>{
+ await ready(page);await page.evaluate(()=>(window as any).messageFixture.failTruncate=true);await edit(page);await page.getByRole('dialog',{name:'Edit and resend message',exact:true}).getByRole('button',{name:'Edit and resend',exact:true}).click();await expect(page.getByText('Message replacement needs a history check. Nothing was resent automatically.',{exact:true})).toBeVisible();expect(await page.evaluate(()=>(window as any).messageFixture.sent.length)).toBe(1);await expect(user(page)).toBeVisible();await expect(agent(page)).toBeVisible();await expect(composer(page)).toHaveValue('Edited request');
+});
+test('changed server message rejects edit before truncation or resend',async({page})=>{
+ await ready(page);await edit(page);await page.evaluate(()=>(window as any).messageFixture.rows[0].text='New server text');await page.getByRole('dialog',{name:'Edit and resend message',exact:true}).getByRole('button',{name:'Edit and resend',exact:true}).click();await expect(page.getByText('This message changed. Reload its conversation before editing.',{exact:true})).toBeVisible();expect(await page.evaluate(()=>(window as any).messageFixture.truncated)).toEqual([]);expect(await page.evaluate(()=>(window as any).messageFixture.sent.length)).toBe(1);
+});
+test('connection switch retires reply target and never sends it to a different account',async({page})=>{
+ await ready(page);await agent(page).click();await menu(page).getByRole('menuitem',{name:'Reply',exact:true}).click();await composer(page).fill('Keep unsent text');await page.evaluate(async()=>await(await import('/src/runtime/connection-ui.tsx')).connectionController.offline());await expect(page.getByText('Replying to Alpha: Original response',{exact:true})).toHaveCount(0);expect(await page.evaluate(()=>(window as any).messageFixture.sent.length)).toBe(1);
+});
+test('restored server history keeps real Reply and user Edit identities',async({page})=>{
+ await ready(page);await page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');await c.restoreHistory((window as any).messageFixture.room);});await user(page).click();await expect(menu(page).getByRole('menuitem',{name:'Edit and resend',exact:true})).toBeVisible();await menu(page).getByRole('menuitem',{name:'Close message actions'}).click();await agent(page).click();await expect(menu(page).getByRole('menuitem',{name:'Reply',exact:true})).toBeVisible();
+});
+test('a forged conversation or session target is rejected before history reads or writes',async({page})=>{
+ await ready(page);const result=await page.evaluate(async(userId)=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');const base={messageId:userId,text:'Original request',from:'user' as const,conversationId:(window as any).messageFixture.room,session:c.getSnapshot().session!};const rejected=[];for(const target of [{...base,conversationId:'different-room'},{...base,session:{...base.session,ownerId:'other-owner'}},{...base,messageId:'not-a-server-id'}]){try{await c.truncateMessage(target);rejected.push(false);}catch{rejected.push(true);}}return {rejected,truncated:(window as any).messageFixture.truncated,sent:(window as any).messageFixture.sent.length};},userId);expect(result).toEqual({rejected:[true,true,true],truncated:[],sent:1});
+});
+
+test('a foreign message ID in the current room is rejected before model dispatch',async({page})=>{
+ await ready(page);const result=await page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');const {alphaClient}=await import('/src/runtime/alpha-client.ts');let rejected=false;try{await c.send('Do not send',alphaClient.getState().context,crypto.randomUUID(),new AbortController().signal,undefined,{messageId:'33333333-3333-4333-8333-333333333333',conversationId:(window as any).messageFixture.room,session:c.getSnapshot().session!,from:'agent',text:'Foreign text'});}catch{rejected=true;}return {rejected,sent:(window as any).messageFixture.sent.length};});expect(result).toEqual({rejected:true,sent:1});
+});
+
+test('changing accounts closes the old message edit confirmation without dispatch',async({page})=>{
+ await ready(page);await edit(page);await page.evaluate(async()=>await(await import('/src/runtime/connection-ui.tsx')).connectionController.offline());await expect(page.getByRole('dialog',{name:'Edit and resend message',exact:true})).toHaveCount(0);expect(await page.evaluate(()=>(window as any).messageFixture.truncated)).toEqual([]);expect(await page.evaluate(()=>(window as any).messageFixture.sent.length)).toBe(1);
+});
