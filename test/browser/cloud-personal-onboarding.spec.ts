@@ -79,13 +79,13 @@ for(const scenario of ['decline','accepted-reload','lost-activation','quote-chan
    await page.evaluate(status=>{const s=JSON.parse(localStorage.getItem('fixture.cloud.setup')!);s.authFailure=status;localStorage.setItem('fixture.cloud.setup',JSON.stringify(s));},scenario==='expired-poll'?401:503);
    await page.getByRole('button',{name:'Check setup status',exact:true}).click();
    if(scenario==='expired-poll'){
-    await expect(page.getByText('Cloud services connected',{exact:true})).toHaveCount(0);
+    await expect(page.getByText('Signed in to Eliza Cloud',{exact:true})).toHaveCount(0);
     await expect(page.getByRole('alert')).toContainText('sign-in has expired');
     expect(await page.evaluate(async()=>{const c=(await import('/src/runtime/connection-ui.tsx')).connectionController;return {client:c.getCloudClient(),account:c.getSnapshot().cloudAccount};})).toEqual({client:null,account:null});
-   }else await expect(page.getByText('Cloud services connected',{exact:true})).toBeVisible();
+   }else await expect(page.getByText('Signed in to Eliza Cloud',{exact:true})).toBeVisible();
    expect(await intentSnapshot(page)).toEqual(before);
    await page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
-   await expect(page.getByText('Cloud services connected',{exact:true})).toBeVisible();
+   await expect(page.getByText('Signed in to Eliza Cloud',{exact:true})).toBeVisible();
    await expect(page.getByText('Dedicated setup accepted',{exact:true})).toBeVisible();
    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')!))).toMatchObject({activation:1,cutover:0});return;
   }

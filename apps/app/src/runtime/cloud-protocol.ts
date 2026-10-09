@@ -301,9 +301,9 @@ export class CloudProtocol {
     return agent;
   }
   /** Authenticated identity is server-derived, never inferred from entered email. */
-  async identity(signal: AbortSignal): Promise<{ userId: string; organizationId?: string }> {
+  async identity(signal: AbortSignal): Promise<{ userId: string; organizationId?: string;email?:string }> {
     const data = object(this.success(await this.call("/api/v1/user", signal, { authenticated: true })));
-    return { userId: uuid(data.id), ...(data.organization_id == null ? {} : { organizationId: uuid(data.organization_id) }) };
+    return { userId: uuid(data.id), ...(typeof data.email==='string'&&data.email.trim()&&data.email.length<=320?{email:data.email.trim()}:{}), ...(data.organization_id == null ? {} : { organizationId: uuid(data.organization_id) }) };
   }
   private async runtimeCall(agentId: string, path: string, signal: AbortSignal, body?: unknown) {
     if (this.phoneTarget?.agentId === agentId) return this.phoneRequest(this.phoneTarget, path, signal, body);

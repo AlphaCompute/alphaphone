@@ -80,7 +80,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   async function work(label: string, task: (binding: NonNullable<ReturnType<typeof connectionController.getCloudClient>>, signal: AbortSignal, valid: () => boolean) => Promise<void>, retry?: () => void, keep = false) {
     if (operation) return;
     const binding = connectionController.getCloudClient();
-    if (!binding) { connectionController.open(); return; }
+    if (!binding) { connectionController.openCloudAccount(); return; }
     const token = ++generation, controller = new AbortController();
     operation = controller; phase = 'busy'; status = label; failure = null; publish();
     const valid = () => token === generation && !controller.signal.aborted && binding.sessionId === connectionController.getCloudClient()?.sessionId;
@@ -356,7 +356,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       ...(selected&&!provider.capabilities()?.mailboxMutations?[chip('Authorize mailbox changes',()=>void connect('mailbox'))]:[]),
       ...accounts.filter(a => a.connectionId).map(a => chip(a.label, () => selectAccount(a), a.connectionId === selected)),
       ...(selected ? [chip('Disconnect Gmail', () => void disconnect())] : []),
-    ] : [chip('Connect Eliza Cloud', () => connectionController.open())];
+    ] : [chip('Connect Eliza Cloud', () => connectionController.openCloudAccount())];
     chips.push(...drafts.chips(chip), ...provider.chips(chip));
 
     if (operation && !disconnecting) chips.push(chip('Cancel', cancelRead));
