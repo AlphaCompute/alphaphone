@@ -1,0 +1,18 @@
+{
+  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "patch": "0070-notes-trash-policy.patch",
+  "sha256": "a51ab810d134b8082c172df3c7ea17b822bacc376a15718a9328be5a11797314",
+  "status": "Candidate for elizaOS develop (generic Notes Trash retention policy with host-supplied retention, limits and kinds); not submitted upstream",
+  "basePaths": [],
+  "addedPaths": [
+    "plugins/plugin-notes"
+  ],
+  "changed": [
+    "plugins/plugin-notes/src/client/notes-trash-policy.ts",
+    "plugins/plugin-notes/test/notes-trash-policy.test.mjs"
+  ],
+  "files": {
+    "plugins/plugin-notes/src/client/notes-trash-policy.ts": "3929f0e89ec663e6435abd590cb460fbcdf2b098b6bf6575ccb1db99f7fae020",
+    "plugins/plugin-notes/test/notes-trash-policy.test.mjs": "7674883d5936ca8a19ea45f1fbf61fbd4300afa71eea81ad17c6a49b3770f277"
+  }
+}

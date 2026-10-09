@@ -1,15 +1,25 @@
 import {
- addNotesTrashEntry,editNotesTrash,notesTrashDaysLabel,notesTrashExpired,planNotesTrash,readNotesTrash,removeNotesTrashEntries,
+ addNotesTrashEntry,editNotesTrash,notesTrashDaysLabel,notesTrashExpired,readNotesTrash,removeNotesTrashEntries,
  restoreNotesTrashEntry,savedNoteIds,sortedNotesTrash,withNotesDeletionLock,type NotesTrashEntry,
 } from '../runtime/notes-trash';
+import {notesTrashPolicy} from '../runtime/notes-trash-policy';
+import {maintainNotesTrash} from '../../../../.eliza/patched/plugins/plugin-notes/src/client/notes-trash-maintenance.ts';
+import {scheduleNotesTrashMaintenance} from '../../../../.eliza/patched/plugins/plugin-notes/src/client/notes-trash-schedule.ts';
+import {DailyApps} from '../daily';
 type Bag=Record<string,any>;
 type Shell=any;
 const kindLabel:Record<string,string>={text:'Note',list:'Checklist',voice:'Voice note',link:'Link'};
 
+/** While the shell is alive, Trash is checked at least this often, whichever view is open. */
+export const NOTES_TRASH_MAINTENANCE_INTERVAL_MS=15*60*1000;
+
 /**
  * Deleted notes go to a durable Trash and are erased three days after deletion.
- * Maintenance (drop rows whose note is live again, purge expired rows) runs at startup
- * and whenever Notes opens. It is idempotent and reads authoritative storage only.
+ * Maintenance (drop rows whose note is live again, purge expired rows) runs at startup,
+ * whenever Notes opens, when the app returns to the foreground (visibilitychange and the
+ * native appResumed event) and on a 15-minute timer while the shell is alive, so expiry
+ * never depends on the user opening Notes. It is idempotent and reads authoritative
+ * storage only. On Android a native WorkManager sweep is the backstop while Alpha is closed.
  */
 export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag>){
  const notes=views.notes,render=notes.render,back=notes.back;
@@ -28,24 +38,25 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
   try{const doc=await readNotesTrash();if(shell.live)shell.vset('notes',{trash:sortedNotesTrash(doc),trashError:''});}
   catch{if(shell.live)shell.vset('notes',{trash:[],trashError:'Trash could not be read. Nothing in it was deleted.'});}
  }
- /** Idempotent: a second run with the same clock finds nothing to do. */
- async function maintain(shell:Shell,now=Date.now()){
-  const doc=await readNotesTrash();
-  if(doc.entries.length){
-   const plan=planNotesTrash(doc,await savedNoteIds(),now);
-   // Only take the shared deletion lock when there is work, so idle opens never queue behind a deletion.
-   if(plan.stale.length||plan.expired.length)await withNotesDeletionLock(async()=>{
-    const current=planNotesTrash(await readNotesTrash(),await savedNoteIds(),now),drop=current.stale.map(entry=>entry.id);
-    for(const entry of current.expired){try{if(await purge(shell,entry))drop.push(entry.id);}catch{/* Retained; retried next time. */}}
-    if(drop.length)await editNotesTrash(value=>removeNotesTrashEntries(value,drop));
-   });
-  }
-  await load(shell);
+ /** Idempotent: a second run with the same clock finds nothing to do (elizaOS maintenance pass, patch 0071). */
+ async function maintain(shell:Shell,background:boolean,now=Date.now()){
+  const result=await maintainNotesTrash({policy:notesTrashPolicy,read:readNotesTrash,edit:editNotesTrash,liveNoteIds:savedNoteIds,withLock:work=>withNotesDeletionLock(work),purge:entry=>purge(shell,entry)},now);
+  // A background pass repaints only when it changed Trash; an open Notes view re-reads every time.
+  if(!background||result.removed.length)await load(shell);
  }
- function runMaintenance(shell:Shell){
-  if(maintaining)return maintaining;
-  maintaining=maintain(shell).catch(()=>load(shell)).finally(()=>{maintaining=null;});
+ function runMaintenance(shell:Shell,background=false){
+  // A foreground caller joining a background pass still re-reads Trash afterwards.
+  if(maintaining)return background?maintaining:maintaining.then(()=>load(shell));
+  maintaining=maintain(shell,background).catch(()=>load(shell)).finally(()=>{maintaining=null;});
   return maintaining;
+ }
+ /** Foreground, resume and timer passes (elizaOS schedule, patch 0072). They wait for saved Notes and never run on failed storage. */
+ function scheduleMaintenance(shell:Shell){
+  return scheduleNotesTrashMaintenance({
+   intervalMs:NOTES_TRASH_MAINTENANCE_INTERVAL_MS,visibility:document,
+   run:()=>{if(!shell.live)return;void Promise.resolve(shell.notesReady).then(()=>{if(shell.live&&!shell.notesStorageFailed)return runMaintenance(shell,true);}).catch(()=>{});},
+   onResume:listener=>{const handle=DailyApps.addListener('appResumed',listener).catch(()=>null);return ()=>void handle.then(value=>value?.remove()).catch(()=>{});},
+  });
  }
 
  async function moveToTrash(shell:Shell,note:Bag,index:number){
@@ -129,10 +140,12 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
   void Promise.resolve(this.notesReady).then(()=>{if(this.live&&!this.notesStorageFailed)return runMaintenance(this);}).catch(()=>{});
   this.notesTrashChanged=()=>{if(this.live)void load(this);};
   window.addEventListener('alpha:notes-trash-changed',this.notesTrashChanged);
+  this.notesTrashSchedule=scheduleMaintenance(this);
   return result;
  };
  p.componentWillUnmount=function(...args:unknown[]){
   window.removeEventListener('alpha:notes-trash-changed',this.notesTrashChanged);
+  this.notesTrashSchedule?.();this.notesTrashSchedule=undefined;
   return originalUnmount?.apply(this,args);
  };
 

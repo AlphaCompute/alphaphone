@@ -1,5 +1,6 @@
 import { testMocksEnabled } from '../build-flags';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { errorClassOf, recordRendererFailure } from './crash-log';
 
 declare const __APP_VERSION__: string;
 
@@ -9,7 +10,7 @@ export type FailureKind = 'render' | 'startup' | 'uncaught';
  * them can carry note text, addresses or account data. Only the failure class is kept.
  */
 export function recoveryDiagnostics(kind: FailureKind, error: unknown): string {
-  const name = error instanceof Error ? (/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(error.name) ? error.name : 'Error') : typeof error;
+  const name = errorClassOf(error);
   const version = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'unknown';
   const platform = document.documentElement.classList.contains('native-phone') ? 'android' : 'web';
   return [`failure: ${kind}`, `error: ${name}`, `version: ${version}`, `platform: ${platform}`, `time: ${new Date().toISOString()}`].join('\n');
@@ -27,6 +28,8 @@ let shown = false;
 export function showRecoveryScreen(kind: FailureKind, error: unknown): void {
   if (shown) return;
   shown = true;
+  // The failure class survives the reload in the local problem log (Settings > About).
+  void recordRendererFailure(kind, error);
   const screen = document.createElement('div');
   screen.className = 'alpha-recovery';
   screen.setAttribute('role', 'alertdialog');
@@ -85,7 +88,7 @@ export class RootErrorBoundary extends Component<{ children: ReactNode }, { fail
   static getDerivedStateFromError(error: unknown) { return { failed: true, diagnostics: recoveryDiagnostics('render', error) }; }
   componentDidMount() { if (testMocksEnabled) window.addEventListener('alpha:render-error-check', this.check); }
   componentWillUnmount() { if (testMocksEnabled) window.removeEventListener('alpha:render-error-check', this.check); }
-  componentDidCatch(_error: unknown, _info: ErrorInfo) { forced = false; /* Diagnostics exclude component stacks and messages. */ }
+  componentDidCatch(error: unknown, _info: ErrorInfo) { forced = false; void recordRendererFailure('render', error); /* Diagnostics exclude component stacks and messages. */ }
   render() {
     if (!this.state.failed) return testMocksEnabled ? <ForcedFailure>{this.props.children}</ForcedFailure> : this.props.children;
     return <div className="alpha-recovery" role="alertdialog" aria-labelledby="alpha-recovery-title" style={{ position: 'fixed', inset: 0, zIndex: 2147483000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, boxSizing: 'border-box', background: '#f7f7f7', color: '#171717', font: '16px/1.5 system-ui,sans-serif' }}>
