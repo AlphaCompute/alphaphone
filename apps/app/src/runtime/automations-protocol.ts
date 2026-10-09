@@ -1,3 +1,4 @@
+import {formatSchedule} from '../../../../.eliza/client-features/packages/ui/src/utils/cron-format.ts';
 /** Alpha presentation over OG's canonical automation, ScheduledTask and LifeOps contracts.
  * No runner, mirroring, task storage or automatic execution lives in this client. */
 export type AutomationMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -31,7 +32,12 @@ const at=(value:unknown)=>{const stamp=Date.parse(text(value));return Number.isF
 function schedule(value:unknown):string {
  const t=object(value);switch(t.triggerType??t.kind){
   case 'once':return at(t.scheduledAtIso??t.atIso??t.dueAt)||'Once';
-  case 'cron':return [text(t.cronExpression??t.expression),text(t.timezone??t.tz)].filter(Boolean).join(' · ');
+  case 'cron': {
+   const expression=text(t.cronExpression??t.expression).trim(),description=expression?formatSchedule(expression):'';
+   let zone=text(t.timezone??t.tz).trim();
+   if(zone){try{new Intl.DateTimeFormat('en',{timeZone:zone});}catch{zone+=' (unrecognized time zone)';}}
+   return [description?(description===expression?'Cron: '+expression:description):'Schedule unavailable',zone||'Time zone not specified'].join(' · ');
+  }
   case 'interval':return t.everyMinutes?`Every ${t.everyMinutes} minutes`:t.intervalMs?`Every ${t.intervalMs/60000} minutes`:'Interval';
   case 'event':return `On ${text(t.eventKind)||'event'}`;
   case 'manual':return 'Manual';
