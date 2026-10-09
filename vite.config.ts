@@ -114,8 +114,9 @@ export default defineConfig({
   optimizeDeps: { include: ['onnxruntime-web/wasm'] },
   resolve: {
     alias: {
-      "@elizaos/voice": fileURLToPath(new URL("./.eliza/client-features/packages/voice/src/batch-protocol.ts",import.meta.url)),
-      "@elizaos/core/protocol": fileURLToPath(new URL("./.eliza/client-features/packages/core/src/voice-protocol.ts",import.meta.url)),
+      "@elizaos/voice/turn": fileURLToPath(new URL("./.eliza/client-features/packages/voice/src/turn.ts",import.meta.url)),
+      "@elizaos/core/speech": fileURLToPath(new URL("./.eliza/client-features/packages/core/src/speech.ts",import.meta.url)),
+      "@elizaos/ui/voice/batch-conversation": fileURLToPath(new URL("./.eliza/client-features/packages/ui/src/voice/batch-conversation.ts",import.meta.url)),
       "@elizaos/contracts/native-notes-query": fileURLToPath(new URL("./.eliza/client-features/packages/contracts/src/native-notes-query.ts",import.meta.url)),
       // The external-WebAssembly build: the bundled variant would make Vite emit a second,
       // unverified copy of the 14 MB runtime into assets/ (and so into every APK).

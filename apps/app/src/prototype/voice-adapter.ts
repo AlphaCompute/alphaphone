@@ -1,4 +1,4 @@
-import {BatchVoiceConversation,type BatchVoiceState} from '../../../../.eliza/client-features/packages/ui/src/voice/batch-conversation.ts';
+import {BatchVoiceConversation,type BatchVoiceState} from '@elizaos/ui/voice/batch-conversation';
 import {recordingRevision} from './summary-source';
 import {reviewContentQuestion} from '../browser/content-question';
 import {recordingLevels} from '../browser/audio-levels';
