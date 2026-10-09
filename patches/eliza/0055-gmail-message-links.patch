@@ -151,10 +151,10 @@ index 5e5ed2da6f77bb76bf4b65b86f1fea7f3664d804..d54b9d26aa19a8525946e17ec5e9c192
  export interface ManagedGoogleGmailSearchResult {
 diff --git a/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts b/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..88cf3e9d1aae2095bdd67598e3e944be2e7eccdb
+index 0000000000000000000000000000000000000000..13368f966c6382fcbb1ea3c13e55ca4c5da35c51
 --- /dev/null
 +++ b/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,78 @@
 +import { expect, test } from "bun:test";
 +import { extractGmailHtmlLinks, safeGmailLinkHref } from "./gmail-mime-text";
 +
@@ -208,12 +208,37 @@ index 0000000000000000000000000000000000000000..88cf3e9d1aae2095bdd67598e3e944be
 +  expect(safeGmailLinkHref("https://")).toBeNull();
 +  expect(safeGmailLinkHref("data:text/html,x")).toBeNull();
 +});
++
++test("only a real href attribute counts: data-href and quoted text are ignored", () => {
++  const html = `<a data-href="https://data.invalid/" title='href="https://title.invalid/"' HREF = "https://real.example.org/">Real</a>
++    <a href=https://eq.example.org/?a=b&amp;c=d>Query</a><a title="unclosed href="https://x.invalid/>none</a>`;
++  expect(extractGmailHtmlLinks(part("text/html", html))).toEqual([
++    { href: "https://real.example.org/", text: "Real" },
++    { href: "https://eq.example.org/?a=b&c=d", text: "Query" },
++  ]);
++});
++
++test("hostile markup is scanned in linear time", () => {
++  const hostile = [
++    "<a x>".repeat(200_000),
++    "<!--".repeat(200_000),
++    "<script>".repeat(200_000),
++    `<a href="${"<".repeat(400_000)}">x</a>`,
++    `<a title="${'href="'.repeat(100_000)}">x</a>`,
++  ];
++  for (const html of hostile) {
++    const started = performance.now();
++    extractGmailHtmlLinks(part("text/html", `<a href="https://first.example.org/">ok</a>${html}`));
++    // Quadratic scanning of these inputs takes minutes; the linear scan takes milliseconds.
++    expect(performance.now() - started).toBeLessThan(5_000);
++  }
++});
 diff --git a/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts b/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..4488ecd41d721f0ec8799ea5f2d741ac253c2f9b
+index 0000000000000000000000000000000000000000..e77f5095b42ef22fa5fd971be0d3ddaf0ab40c77
 --- /dev/null
 +++ b/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,164 @@
 +// Pure helpers for Gmail API message payloads (users.messages.get format=full). No network,
 +// no HTML rendering: links are returned as inert data for clients to review before opening.
 +
@@ -293,11 +318,63 @@ index 0000000000000000000000000000000000000000..4488ecd41d721f0ec8799ea5f2d741ac
 +}
 +
 +function linkText(html: string): string {
-+  return decodeEntities(html.replace(/<[^>]*>/g, " "))
++  // `[^<>]` keeps the tag strip linear on unbalanced markup; labels are cut to 200 characters anyway.
++  return decodeEntities(html.slice(0, 4096).replace(/<[^<>]*>/g, " "))
 +    .replace(/[\u0000-\u001f\u007f]+/g, " ")
 +    .replace(/\s+/g, " ")
 +    .trim()
 +    .slice(0, 200);
++}
++
++function nextMatch(
++  html: string,
++  pattern: RegExp,
++  from: number,
++): { index: number; end: number } | null {
++  pattern.lastIndex = from;
++  const found = pattern.exec(html);
++  return found ? { index: found.index, end: pattern.lastIndex } : null;
++}
++
++/**
++ * Calls `visit` for each `<a ...>inner</a>` outside comments, scripts and styles, in one forward
++ * pass until it returns false. Every search resumes after the previous construct and the scan stops
++ * at the first one left unclosed, so hostile mail (thousands of unclosed tags or comments) costs
++ * linear time rather than quadratic regex backtracking on the server.
++ */
++function forEachAnchor(html: string, visit: (attributes: string, inner: string) => boolean): void {
++  const open = /<(!--|script\b|style\b|a\b)/gi;
++  for (let match = open.exec(html); match; match = open.exec(html)) {
++    const kind = match[1].toLowerCase();
++    if (kind !== "a") {
++      const closing =
++        kind === "!--" ? /-->/g : kind === "script" ? /<\/script\s*>/gi : /<\/style\s*>/gi;
++      const end = nextMatch(html, closing, open.lastIndex);
++      if (!end) return;
++      open.lastIndex = end.end;
++      continue;
++    }
++    const tagEnd = html.indexOf(">", open.lastIndex);
++    if (tagEnd < 0) return;
++    const end = nextMatch(html, /<\/a\s*>/gi, tagEnd + 1);
++    if (!end) return;
++    const attributes = html.slice(open.lastIndex, tagEnd);
++    open.lastIndex = end.end;
++    if (!visit(attributes, html.slice(tagEnd + 1, end.index))) return;
++  }
++}
++
++/**
++ * The value of the first `href` attribute. Attributes are read name by name, so text inside another
++ * attribute's quoted value (for example `title="href=..."`) or a `data-href` is never taken.
++ */
++function hrefAttribute(attributes: string): string | null {
++  const token = /\s*([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`]+)))?/y;
++  for (let match = token.exec(attributes); match; match = token.exec(attributes)) {
++    if (match[1].toLowerCase() === "href") return match[2] ?? match[3] ?? match[4] ?? null;
++    if (token.lastIndex >= attributes.length) break;
++  }
++  return null;
 +}
 +
 +/**
@@ -315,18 +392,14 @@ index 0000000000000000000000000000000000000000..4488ecd41d721f0ec8799ea5f2d741ac
 +  walk(payload, (part) => {
 +    if (links.length >= MAX_GMAIL_LINKS) return;
 +    if (part.mimeType?.toLowerCase() !== "text/html" || typeof part.body?.data !== "string") return;
-+    const html = decode(part)
-+      .replace(/<!--[\s\S]*?-->/g, " ")
-+      .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, " ");
-+    for (const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
-+      if (links.length >= MAX_GMAIL_LINKS) break;
-+      const attribute = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i.exec(match[1] ?? "");
-+      if (!attribute) continue;
-+      const href = safeGmailLinkHref(attribute[1] ?? attribute[2] ?? attribute[3] ?? "");
-+      if (!href || seen.has(href)) continue;
-+      seen.add(href);
-+      links.push({ href, text: linkText(match[2] ?? "") || new URL(href).hostname });
-+    }
++    forEachAnchor(decode(part), (attributes, inner) => {
++      const href = safeGmailLinkHref(hrefAttribute(attributes) ?? "");
++      if (href && !seen.has(href)) {
++        seen.add(href);
++        links.push({ href, text: linkText(inner) || new URL(href).hostname });
++      }
++      return links.length < MAX_GMAIL_LINKS;
++    });
 +  });
 +  return links;
 +}

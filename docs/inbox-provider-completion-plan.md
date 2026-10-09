@@ -25,6 +25,11 @@ rebased onto `develop` `5513606c`, which had changed `gmail.ts`, `shared.ts` and
 personal Google context consent. The rebase was clean, 0037 and 0056 are byte-identical, 0055 and
 0057-0059 changed only in context and index lines, 0535 is still free, and the series' bun tests (21 pass),
 the migration order check and biome pass there; each manifest's `requalification` entry records this.
+A review the same day found that 0055's regex-based link scan backtracked quadratically on unclosed
+markup (a hostile 1 MB HTML email cost tens of seconds of server CPU per read) and could take a
+`data-href` as the link. 0055 now scans anchors in one linear pass and reads the first real `href`
+attribute; 0056 and 0057 were regenerated with new test-file context only, and the series' bun tests
+(23 pass), the migration order check and biome pass on `5513606c`.
 No elizaOS pull request has been opened, and no Cloud deployment exists. Five further reference patches extend the managed connector; each records its contract
 and verification in its `-source-base.json` and applies in series after 0037:
 

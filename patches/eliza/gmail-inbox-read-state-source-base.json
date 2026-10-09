@@ -106,6 +106,17 @@
       "migrationOrder": "cd packages/cloud/shared && node ../scripts/shared/check-migration-prefix-order.ts: pass (exit 0)",
       "lint": "biome check (2.5.14) on all 12 changed files: pass",
       "typecheck": "tsc (6.0.3, scratch strict config) over the changed shared files: no errors in patch-added code; module-resolution errors from uninstalled monorepo packages and one pre-existing implicit any at gmail.ts readManagedGoogleGmailMessage attachments map (upstream line, not this series) remain because the full monorepo is not installed"
+    },
+    {
+      "date": "2026-10-09",
+      "base": "5513606ca720e256f609de302b52088d2a5f509f",
+      "reason": "Review fix in 0055: the anchor, comment and script/style regexes backtracked quadratically on unclosed markup (a 1 MB hostile HTML body cost tens of seconds of server CPU per read); replaced by a linear forward scan and a tokenized href read, with linear-time and attribute-confusion tests. Later patches were cherry-picked unchanged.",
+      "result": "patch byte-identical; recorded because the series it applies after changed",
+      "applyCheck": "GIT_INDEX_FILE=<scratch> git read-tree 5513606ca; git apply --check --cached then git apply --cached 0037, 0055, 0056, 0057, 0058, 0059 in order: pass; full-series tree 0ebbae94e0cc9b1401065633135e3a64467d92bd equals the tested worktree tree",
+      "tests": "cd packages/cloud/shared && bun test (1.4.2) src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts src/lib/utils/gmail-mime-text.test.ts with the whole series applied: 23 pass, 0 fail, 277 expect() calls",
+      "migrationOrder": "cd packages/cloud/shared && node ../scripts/shared/check-migration-prefix-order.ts: pass (exit 0)",
+      "lint": "biome check (2.5.14) on all 12 changed files: pass",
+      "typecheck": "same scratch tsc config: no errors in gmail-mime-text.ts or its test; the remaining errors are the same module-resolution files as before"
     }
   ],
   "upstreamPullRequest": "Not opened. Opening an elizaOS develop pull request publishes to a public repository and needs the owner's explicit approval in chat; the authoring branch exists only in the isolated worktree."

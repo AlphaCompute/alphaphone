@@ -1,5 +1,5 @@
 diff --git a/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts b/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts
-index 88cf3e9d1aae2095bdd67598e3e944be2e7eccdb..ff7c3b6ea350ee9bf65997c4864d3ff4e2b96edc 100644
+index 13368f966c6382fcbb1ea3c13e55ca4c5da35c51..a8047c4e44dcfa6792ad000eb39499f44a081d6d 100644
 --- a/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts
 +++ b/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts
 @@ -1,5 +1,11 @@
@@ -15,9 +15,9 @@ index 88cf3e9d1aae2095bdd67598e3e944be2e7eccdb..ff7c3b6ea350ee9bf65997c4864d3ff4
  
  const part = (mimeType: string, text: string) => ({
    mimeType,
-@@ -51,3 +57,58 @@ test("bounded: at most 50 links and long or malformed hrefs are dropped", () =>
-   expect(safeGmailLinkHref("https://")).toBeNull();
-   expect(safeGmailLinkHref("data:text/html,x")).toBeNull();
+@@ -76,3 +82,58 @@ test("hostile markup is scanned in linear time", () => {
+     expect(performance.now() - started).toBeLessThan(5_000);
+   }
  });
 +
 +const encoded = (bytes: number[], contentType?: string, mimeType = "text/plain") => ({
@@ -75,7 +75,7 @@ index 88cf3e9d1aae2095bdd67598e3e944be2e7eccdb..ff7c3b6ea350ee9bf65997c4864d3ff4
 +  expect(decodeGmailPart(encoded(utf8))).toBe("Menú ✓");
 +});
 diff --git a/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts b/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts
-index 4488ecd41d721f0ec8799ea5f2d741ac253c2f9b..24dc92f0e2c38ec40f5ec96c6af47000730c1585 100644
+index e77f5095b42ef22fa5fd971be0d3ddaf0ab40c77..982cf4a752095852ea1bbccd6efc1e521ace4bc8 100644
 --- a/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts
 +++ b/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts
 @@ -17,9 +17,98 @@ export interface GmailMessageLink {
@@ -180,7 +180,7 @@ index 4488ecd41d721f0ec8799ea5f2d741ac253c2f9b..24dc92f0e2c38ec40f5ec96c6af47000
  }
  
  function walk(payload: GmailPayloadPart, visit: (part: GmailPayloadPart) => void): void {
-@@ -91,7 +180,7 @@ function linkText(html: string): string {
+@@ -143,7 +232,7 @@ function hrefAttribute(attributes: string): string | null {
   */
  export function extractGmailHtmlLinks(
    payload: GmailPayloadPart | null | undefined,

@@ -7,7 +7,7 @@
     "0037-gmail-inbox-read-state.patch"
   ],
   "patch": "0055-gmail-message-links.patch",
-  "patchSha256": "57a82df33c3df244422d00566d86e5557defc20fddc7994790086afd0fb77719",
+  "patchSha256": "34c53ebcabf57b051f557384bc617b5201337214b8ae170bb9b1fe956f30c2d5",
   "summary": "Managed Gmail read and inbox-v1 thread responses return links[]: inert {href,text} anchors extracted from text/html parts.",
   "filesChanged": [
     "packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts",
@@ -21,8 +21,9 @@
   "contract": {
     "read": "GET /api/v1/eliza/google/gmail/read adds links: [{href,text}] (empty when there is no HTML part); older servers omit the field and clients treat it as []",
     "thread": "inbox-v1 GET /thread messages[].links from normalizeMessage",
-    "extraction": "new pure module packages/cloud/shared/src/lib/utils/gmail-mime-text.ts: <a href> in text/html parts only, comments/script/style removed first, entities decoded, absolute http(s) without userinfo, href <= 2048, deduplicated by destination, at most 50, label reduced to plain text (<= 200 chars, hostname when empty)",
-    "safety": "nothing is fetched or rendered; plain-text URLs are left to the client (Alpha linkifies https URLs and reviews the origin before opening in its Browser)"
+    "extraction": "new pure module packages/cloud/shared/src/lib/utils/gmail-mime-text.ts: <a href> in text/html parts only, comments/script/style skipped, entities decoded, absolute http(s) without userinfo, href <= 2048, deduplicated by destination, at most 50, label reduced to plain text (<= 200 chars, hostname when empty); the href is the first real href attribute (attributes are tokenized, so data-href or text inside another quoted attribute is never taken)",
+    "safety": "nothing is fetched or rendered; plain-text URLs are left to the client (Alpha linkifies https URLs and reviews the origin before opening in its Browser)",
+    "cost": "one forward scan: each search resumes after the previous construct and stops at the first unclosed comment, script, style or anchor, so hostile mail (for example hundreds of thousands of unclosed <a or <!--) costs linear time instead of quadratic regex backtracking"
   },
   "verification": [
     {
@@ -68,6 +69,17 @@
       "migrationOrder": "cd packages/cloud/shared && node ../scripts/shared/check-migration-prefix-order.ts: pass (exit 0)",
       "lint": "biome check (2.5.14) on all 12 changed files: pass",
       "typecheck": "tsc (6.0.3, scratch strict config) over the changed shared files: no errors in patch-added code; module-resolution errors from uninstalled monorepo packages and one pre-existing implicit any at gmail.ts readManagedGoogleGmailMessage attachments map (upstream line, not this series) remain because the full monorepo is not installed"
+    },
+    {
+      "date": "2026-10-09",
+      "base": "5513606ca720e256f609de302b52088d2a5f509f",
+      "reason": "Review fix in 0055: the anchor, comment and script/style regexes backtracked quadratically on unclosed markup (a 1 MB hostile HTML body cost tens of seconds of server CPU per read); replaced by a linear forward scan and a tokenized href read, with linear-time and attribute-confusion tests. Later patches were cherry-picked unchanged.",
+      "result": "patch regenerated, sha256 57a82df33c3d -> 34c53ebcabf5",
+      "applyCheck": "GIT_INDEX_FILE=<scratch> git read-tree 5513606ca; git apply --check --cached then git apply --cached 0037, 0055, 0056, 0057, 0058, 0059 in order: pass; full-series tree 0ebbae94e0cc9b1401065633135e3a64467d92bd equals the tested worktree tree",
+      "tests": "cd packages/cloud/shared && bun test (1.4.2) src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts src/lib/utils/gmail-mime-text.test.ts with the whole series applied: 23 pass, 0 fail, 277 expect() calls",
+      "migrationOrder": "cd packages/cloud/shared && node ../scripts/shared/check-migration-prefix-order.ts: pass (exit 0)",
+      "lint": "biome check (2.5.14) on all 12 changed files: pass",
+      "typecheck": "same scratch tsc config: no errors in gmail-mime-text.ts or its test; the remaining errors are the same module-resolution files as before"
     }
   ]
 }

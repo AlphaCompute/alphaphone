@@ -79,7 +79,7 @@ index d54b9d26aa19a8525946e17ec5e9c192197c8a9d..dba988910b277776ff3da3fe1d3d3162
    likelyReplyNeeded: boolean;
    triageScore: number;
 diff --git a/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts b/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts
-index ff7c3b6ea350ee9bf65997c4864d3ff4e2b96edc..89dcc3cff952110411521fcc904e77abaf3fbe4e 100644
+index a8047c4e44dcfa6792ad000eb39499f44a081d6d..cd2dc4497b81307a9fe86c4a4c60fc73115dd647 100644
 --- a/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts
 +++ b/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts
 @@ -3,7 +3,9 @@ import {
@@ -92,7 +92,7 @@ index ff7c3b6ea350ee9bf65997c4864d3ff4e2b96edc..89dcc3cff952110411521fcc904e77ab
    safeGmailLinkHref,
  } from "./gmail-mime-text";
  
-@@ -112,3 +114,21 @@ test("0056: HTML part charset applies to links; unknown charsets fall back to UT
+@@ -137,3 +139,21 @@ test("0056: HTML part charset applies to links; unknown charsets fall back to UT
    expect(decodeGmailPart(encoded(utf8, "text/plain; charset=UTF-8"))).toBe("Menú ✓");
    expect(decodeGmailPart(encoded(utf8))).toBe("Menú ✓");
  });
@@ -115,10 +115,10 @@ index ff7c3b6ea350ee9bf65997c4864d3ff4e2b96edc..89dcc3cff952110411521fcc904e77ab
 +  expect(gmailSearchIncludesTrash(undefined)).toBe(false);
 +});
 diff --git a/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts b/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts
-index 24dc92f0e2c38ec40f5ec96c6af47000730c1585..14ee3937abc706c76bcc96066d85f8f4d6b9a379 100644
+index 982cf4a752095852ea1bbccd6efc1e521ace4bc8..d211ea97f47c3fd2cf539a1e81565630676c6dd6 100644
 --- a/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts
 +++ b/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts
-@@ -203,3 +203,23 @@ export function extractGmailHtmlLinks(
+@@ -251,3 +251,23 @@ export function extractGmailHtmlLinks(
    });
    return links;
  }

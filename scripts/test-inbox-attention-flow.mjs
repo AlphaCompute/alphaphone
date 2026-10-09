@@ -136,10 +136,17 @@ const searches=t=>t.calls.filter(c=>Array.isArray(c)&&c[0]==='search');
 // 3. Links: provider links and plain-text https URLs, origin review, Browser only, no remote loads.
 {
  deq(JSON.parse(JSON.stringify((await boot()).sandbox.linkifyMailText('Go to https://a.example.org/x). Or (https://b.example.org/y_(z)) and http://c.example.org'))).map(l=>l.href),['https://a.example.org/x','https://b.example.org/y_(z)']);
+ {
+  // Hostile bodies stay linear: trimming 150k trailing ")" per URL was quadratic (tens of seconds).
+  const linkify=(await boot()).sandbox.linkifyMailText,started=Date.now();
+  const found=linkify(['a','b','c'].map(h=>`https://${h}.example.org/x${')'.repeat(150_000)}`).join(' ')+' https://'+'y'.repeat(3000)+' https://end.example.org/');
+  assert.ok(Date.now()-started<5000,'linkify is linear on hostile bodies');
+  deq(JSON.parse(JSON.stringify(found)).map(l=>l.href),['https://a.example.org/x','https://b.example.org/x','https://c.example.org/x','https://end.example.org/']);
+ }
  const t=await boot({caps:{opaqueAttachments:true,forwardAttachments:true,attachmentPolicy:{maximumOutgoing:10,maximumBytes:5242880,maximumTotalBytes:5242880}}});
  t.mount();t.setActive(true);t.render();await t.tick();
  t.render().rows[0].open();await t.tick();
- const d=t.render().d;assert.equal(d.hasLinks,true);
+ const d=t.render().d;assert.equal(d.hasLinks,true);assert.equal(t.render().d.links,d.links,'link rows are computed once per opened body');
  deq(d.links.map(l=>[l.href,l.mismatch]),[['https://tracker.attacker.invalid/r',true],['https://docs.example.org/plan?x=1',false]],'HTML links first, plain-text URL deduplicated, http dropped');
  t.answer(false);d.links[0].open();assert.equal(t.navigations.length,0,'declined review opens nothing');assert.match(t.confirms.at(-1),/tracker\.attacker\.invalid/);assert.match(t.confirms.at(-1),/Warning: the email shows/);
  t.answer(true);d.links[1].open();await t.tick();deq(t.navigations,['https://docs.example.org/plan?x=1'],'approved link opens in Alpha Browser');
