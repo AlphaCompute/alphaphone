@@ -6,7 +6,12 @@ import { validateMapsSelectedObject } from '../maps/agent-context.ts';
 import type { ContextEnvelope } from './alpha-client';
 
 const views = new Set(['home', 'assistant', 'apps', 'maps', 'camera', 'photos', 'notes', 'calendar', 'notifications', 'reminders', 'workflows', 'files', 'inbox', 'browser', 'phone', 'messages', 'contacts', 'settings']);
-const kinds = new Set(['note', 'document', 'photo', 'video', 'browser-tab', 'calendar-event', 'calendar-source', 'event', 'reminder', 'contact', 'email', 'file', 'workflow', 'workflow-run', 'map-place', 'map-route', 'map-search','clock-draft']);
+const kinds = new Set(['note', 'document', 'photo', 'video', 'browser-tab', 'calendar-event', 'calendar-source', 'event', 'reminder', 'contact', 'email', 'file', 'workflow', 'workflow-run', 'map-place', 'map-route', 'map-search','clock-draft','folder','notification','settings']);
+/** Marker for Alpha Phone's own notifications; other apps' and hosted notices never become context. */
+export const OWN_NOTIFICATION_SOURCE = 'own';
+const SETTINGS_SECTION = /^[a-z][a-z0-9-]{0,63}$/;
+// Credential, vault and unlock surfaces are paused as sensitive; their names never become identities.
+const SENSITIVE_SETTINGS = /pass|credential|vault|secret|token|key|unlock|pin|biometric/;
 function opaque(value: unknown): string {
   // Identifiers only: no prose, control characters, URLs, query strings or email.
   if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value)) throw new Error('The selected object has an unsupported identifier.');
@@ -22,6 +27,16 @@ export function sanitizePhoneContext(input: ContextEnvelope): ContextEnvelope {
     const selected = input.selectedObject;
     if (!kinds.has(selected.kind)) throw new Error('This selected object cannot share agent context.');
     if(selected.kind==='clock-draft'&&(input.view!=='calendar'||!selected.revision||selected.accountId!==undefined||selected.sourceRevision!==undefined||selected.occurrenceId!==undefined))throw Error('Clock context changed');
+    if(selected.kind==='folder'){
+      // Opaque Files tree identity plus listing revision; never a path or display name.
+      if(input.view!=='files'||selected.revision===undefined||selected.accountId!==undefined||selected.sourceRevision!==undefined||selected.occurrenceId!==undefined||selected.id.length>128||selected.revision.length>128)throw new Error('The folder observation is no longer current.');
+    }
+    if(selected.kind==='notification'){
+      if(selected.accountId!==OWN_NOTIFICATION_SOURCE||selected.revision===undefined||selected.sourceRevision!==undefined||selected.occurrenceId!==undefined||selected.id.length>128||selected.revision.length>128)throw new Error('Only Alpha Phone notifications can be shared as context.');
+    }
+    if(selected.kind==='settings'){
+      if(input.view!=='settings'||typeof selected.id!=='string'||!SETTINGS_SECTION.test(selected.id)||SENSITIVE_SETTINGS.test(selected.id)||selected.revision!==undefined||selected.accountId!==undefined||selected.sourceRevision!==undefined||selected.occurrenceId!==undefined)throw new Error('This settings page cannot share agent context.');
+    }
     if(selected.kind==='workflow-run'){
       if(input.view!=='workflows'||selected.revision===undefined||selected.accountId!==undefined||selected.sourceRevision!==undefined||selected.occurrenceId!==undefined)throw new Error('The workflow execution observation is no longer current.');
       opaque(selected.id);opaque(selected.revision);
