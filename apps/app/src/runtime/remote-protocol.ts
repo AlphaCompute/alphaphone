@@ -44,6 +44,7 @@ export interface RemoteAuthStatus {
 export interface RemoteConversation { id: string; [key: string]: unknown }
 export interface RemoteChatReply {
   text: string;
+  actionResults?: readonly unknown[];
   agentName: string;
   interrupted?: boolean;
   noResponseReason?: "ignored";

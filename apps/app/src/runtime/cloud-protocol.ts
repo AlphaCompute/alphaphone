@@ -335,7 +335,7 @@ export class CloudProtocol {
    * the dedicated host accepts it. Caller must not treat shared context as delivered. */
   async send(agentId: string, conversationId: string, text: string,
     options: { metadata?: Record<string, unknown>; clientMessageId?: string; signal: AbortSignal },
-  ): Promise<{ text: string; agentName: string; interrupted?: boolean; noResponseReason?: "ignored"; failureKind?: unknown; terminalFailure?: unknown }> {
+  ): Promise<{ text: string; agentName: string; actionResults?: readonly unknown[]; interrupted?: boolean; noResponseReason?: "ignored"; failureKind?: unknown; terminalFailure?: unknown }> {
     if (!text.trim()) throw new TypeError("Message must not be empty");
     const response = await this.runtimeCall(agentId,
       `/api/conversations/${encodeURIComponent(string(conversationId))}/messages`, options.signal,
