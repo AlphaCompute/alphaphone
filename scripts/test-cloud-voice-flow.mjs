@@ -19,7 +19,7 @@ source=source.replace(/^import .*;\n/gm,'').replace('export function','function'
 const sandbox={browserDevProfile:false,createOnDeviceVoice:()=>null,createPairedVoice:()=>pairedEnabled?paired:null,connectionController:controller,createCloudVoice:()=>driver,registerPlugin:()=>driver,Capacitor:{isNativePlatform:()=>true,isPluginAvailable:()=>true},localStorage:{getItem:()=>JSON.stringify({kind:selectionKind})},document:{documentElement:{dataset:{}},querySelector:()=>noteEditor,addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},setInterval,clearInterval,Date,crypto,AbortController,console};
 const playback=(await readFile(new URL('../apps/app/src/prototype/local-speech-playback.ts',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export function','function');
 sandbox.testMocksEnabled=true;
-for(const [file,name] of [['voice-selection.ts','selectVoiceRoute'],['cloud-voice.ts','cloudVoiceFailure']]) {
+for(const [file,name] of [['voice-selection.ts','selectVoiceRoute'],['cloud-voice.ts','cloudVoiceFailure'],['voice-timing.ts','markVoiceTiming']]) {
  const policy=(await readFile(new URL('../apps/app/src/runtime/'+file,import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export function','function').replaceAll('export type','type');
  vm.runInNewContext('{'+stripTypeScriptTypes(policy,{mode:'transform'})+'\nglobalThis.'+name+'='+name+';}',sandbox);
 }
@@ -78,13 +78,20 @@ render().rec.onTranscript({target:{value:'Explicit paired playback'}});render().
 agent='replacement-agent';for(const fn of listeners)fn();await tick();assert.equal(speechSignal.aborted,true);assert.equal(render().rec,undefined,'switching agent cancels playback and closes old draft');
 pairedAsr=true;await shell.startVoice();render().rec.changeRoute();await tick();render().rec.stop();await tick();render().rec.stop();await tick();assert.equal(pairedUploads,0,'microphone start/stop never uploads to agent');assert.equal(render().rec.primaryLabel,'Transcribe with agent Whisper');render().rec.stop();await tick();assert.equal(pairedUploads,1);assert.equal(render().rec.transcript,'Actual selected-provider transcript fixture');render().rec.stop();await tick();assert.equal(shell.state.draft,'Actual selected-provider transcript fixture');assert.equal(sends,0,'transcription never sends chat implicitly');
 pairedDelay=true;render().record();render().rec.changeRoute();await tick();render().rec.stop();await tick();render().rec.stop();await tick();render().rec.stop();await tick();assert.equal(typeof pairedRelease,'function');agent='third-agent';for(const fn of listeners)fn();assert.equal(pairedSignal.aborted,true);pairedRelease({text:'Late wrong-account text',local:true});await tick();assert.equal(render().rec,undefined);assert.equal(shell.state.draft,'Actual selected-provider transcript fixture');
-// Production resident uses the same Cloud default for Notes and composer, without starting audio.
+// A signed-in production resident stays on-device by default, for Notes and composer.
+// Cloud speech needs the explicit, disclosed recorder choice, which persists as voice-route:v1.
 selectionKind='resident';snapshotKind='resident';account='resident-cloud-account';pairedEnabled=false;
 sandbox.testMocksEnabled=false;sandbox.Capacitor.getPlatform=()=> 'android';
+const stored=new Map(),selectionStorage=sandbox.localStorage.getItem;
+sandbox.localStorage.getItem=key=>stored.has(key)?stored.get(key):selectionStorage(key);sandbox.localStorage.setItem=(key,value)=>stored.set(key,String(value));
 const startsBeforeResident=starts,uploadsBeforeResident=uploads;
-render().record();assert.equal(render().rec.primaryDisabled,false);assert.equal(render().rec.routeLabel,'Use on-device voice');render().rec.discard();
-await shell.startVoice();assert.equal(render().rec.primaryDisabled,false);assert.equal(render().rec.routeLabel,'Use on-device voice');
+render().record();assert.equal(render().rec.primaryDisabled,true,'unavailable on-device speech never falls back to Cloud');assert.equal(render().rec.routeLabel,'Use Eliza Cloud voice (uses credits)');render().rec.discard();
+await shell.startVoice();assert.equal(shell.state.view,'notes');assert.equal(render().rec.primaryDisabled,true,'composer voice is on-device by default with a Cloud account');assert.equal(render().rec.routeLabel,'Use Eliza Cloud voice (uses credits)');
+render().rec.changeRoute();assert.equal(render().rec.primaryDisabled,false);assert.equal(render().rec.routeLabel,'Use on-device voice');assert.match(render().rec.lines[0].t,/uses its credits/,'the Cloud choice is disclosed');
+assert.equal(JSON.parse(stored.get('alphaphone:voice-route:v1')).route,'cloud');render().rec.discard();
+render().record();assert.equal(render().rec.primaryDisabled,false,'the persisted Cloud choice is the default after it was made');assert.equal(render().rec.routeLabel,'Use on-device voice');
 assert.equal(starts,startsBeforeResident,'choosing resident Cloud voice must not start recording');assert.equal(uploads,uploadsBeforeResident,'choosing resident Cloud voice must not upload audio');
-render().rec.changeRoute();assert.equal(render().rec.primaryDisabled,true,'explicit unavailable local choice must not fall back to Cloud');
+render().rec.changeRoute();assert.equal(render().rec.primaryDisabled,true,'explicit unavailable local choice must not fall back to Cloud');assert.equal(JSON.parse(stored.get('alphaphone:voice-route:v1')).route,'device');render().rec.discard();
+render().record();assert.equal(render().rec.primaryDisabled,true,'choosing on-device again persists');render().rec.discard();
 shell.componentWillUnmount();
 console.log('PASS: remote+Cloud composer mic, explicit record/stop/upload stages, editable draft without remote send, durable audio+edited transcript save with persistence retry, Notes records/saves manual transcripts offline/local/remote with zero uploads; paired Whisper composer requires capability and explicit upload, produces a draft without auto-send, and cancels stale transcription; offline composer stays provider-gated; dictation replaces the saved selection without changing text-note type or retaining audio, preserves transcript after save failure, and rejects concurrent note changes. Native/provider fixture only.');

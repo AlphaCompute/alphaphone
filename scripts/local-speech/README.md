@@ -100,3 +100,85 @@ pass for every packaged ABI. Failed, missing, malformed or unsupported acceptanc
 records fail closed. `scripts/verify-apks.mjs` requires both gates, so exact native bytes
 alone cannot set `distributable: true`. Source/build/JNI QA may proceed; this admission
 does not establish local speech quality, full product readiness or a release decision.
+
+## Requalify an independent rebuild
+
+A second machine cannot reproduce the recorded JNI bytes (build ID, ZIP times; see above), so
+`install-generated.py` refuses its runtime. `requalify-runtime.py` is the reviewed path that
+admits such a rebuild into `qualified-runtime-manifest.json` without weakening either gate:
+
+```sh
+# 1. Rebuild with the pinned NDK r28c and CMake 4.0.3 (commands above, through assemble-runtime.py).
+# 2. Record the candidate: native bytes, no-eSpeak checks, AAR hash, upstream pin, hashes of the
+#    pinned tooling and these wrappers, the NDK source.properties and the cmake executable, and the
+#    SHA-256 of the canonical test.
+python3 scripts/local-speech/requalify-runtime.py record --ndk "$ANDROID_NDK_HOME"
+# 3. Build a non-distributable APK and test APK with that runtime (install-generated.py
+#    --allow-unqualified-runtime; never commit the runtime-manifest.json it writes), disable
+#    networking on a disposable device or emulator of each ABI, then run the unchanged
+#    LocalSpeechInstrumentedTest there. The device must be named; none is chosen for you.
+python3 scripts/local-speech/requalify-runtime.py run --serial <device> \
+  --apk android/app/build/outputs/apk/standalone/debug/app-standalone-debug.apk \
+  --test-apk android/app/build/outputs/apk/androidTest/standalone/debug/app-standalone-debug-androidTest.apk
+#    (or `ingest --abi ABI --device-abi ABI --apk APP.apk --log am-instrument-r.log --evidence local-speech-evidence/`
+#    for a run made elsewhere)
+# 4. Admit once every rebuilt ABI passed. The previous record is kept under baselines/.
+python3 scripts/local-speech/requalify-runtime.py admit --reviewer "<who reviewed the evidence>"
+```
+
+An ABI passes only when both canonical tests ran and passed (`am instrument -r` codes), the
+run completed without failures, `result.json` and `holder-result.json` record a CPU pass, the
+APK carries exactly the candidate's native bytes for that ABI, the device ABI is that ABI (read with adb by `run`, stated with `--device-abi` for `ingest`),
+and the canonical test is byte-identical to the one recorded. `admit` refuses while any ABI is
+missing or failed, so `verify-apk-qualification.py` and `scripts/verify-apks.mjs` keep marking
+an APK distributable only when every packaged ABI has a functional pass. Commit the new record,
+its baseline copy and the candidate's evidence digests for review. An Apple Silicon host
+cannot run an x86_64 Android emulator; the x86_64 run needs an x86_64 host or device.
+`test/local-speech-requalify.test.py` covers these rules with synthetic inputs.
+
+### Float-path diagnostics (release-05)
+
+`VoiceFloatPathDiagnosticInstrumentedTest` (opt-in `-e localSpeech 1`, networking off) records,
+next to the canonical evidence, how the in-process float buffer given to ASR differs from the
+saved 16-bit PCM: peak, clipped samples, exact zeros, the 32767/32768 write gain, quantization
+error, and the transcript of each variant through the canonical linear resampler, and it keeps
+both float buffers as float32 files. It asserts only that this evidence was produced; the
+canonical test and its keyword assertions stay unchanged.
+
+**Root cause and fix.** The pinned `LocalSpeechEngine` left sherpa-onnx's VITS defaults
+(noise 0.667, noise_w 0.8). The Piper graph feeds them to two unseeded `RandomNormalLike`
+nodes, so every `synthesize` call rendered a new waveform for the same text, and a share of
+those renderings misarticulate words. The failed run's `lady's dog` is one such draw: the
+saved PCM of that same synthesis recognized `lazy`, so the draw sat on Whisper's decision
+boundary, where a 76 dB quantization difference flips the transcript. Resampling, gain and
+clipping are not the cause (peak below 0.46, no clipped samples, float and saved-PCM ASR inputs
+agree in 119 of 120 renderings).
+
+`float-path-replica.py` reproduces the canonical path on a host from the qualified model bytes
+(sherpa-onnx 1.13.8 Whisper recognizer, ONNX Runtime 1.30.0 for the VITS graph, the no-eSpeak
+lexicon framing). Recorded on macOS arm64, 2026-10-08:
+
+| VITS noise, noise_w | Renderings | Every keyword recognized | Repeat synthesis identical |
+| --- | --- | --- | --- |
+| 0.667, 0.8 (pinned engine) | 120 | 94 (16 heard `lady`) | no |
+| 0.333, 0.333 | 60 | 57 | no |
+| 0.2, 0.2 | 60 | 60 | no |
+| 0, 0 (patch 0066) | 60 | 60 | yes |
+
+Patch `0066-local-speech-deterministic-synthesis` sets noise and noise_w to 0 and length to 1,
+so each text has one repeatable rendering; `android/local-speech/build.gradle` compiles the
+patched engine from `.eliza/patched` over the pinned module. Host results are evidence for the
+cause only. They are not Android execution: the unchanged `LocalSpeechInstrumentedTest` must
+still pass per ABI on a device or emulator of that ABI before `functionalAcceptance` records a
+pass, and a model, runtime or engine change re-runs it.
+
+**Android result (2026-10-09).** With patch 0066 compiled in, the unchanged canonical test
+(SHA-256 `fc05574d…`) passed both tests on an arm64-v8a Android 16 emulator with networking
+off (`OK (2 tests)`; synthesis transcript `The quick brown fox jumps over the lazy dog.`). It ran
+through `requalify-runtime.py run` against an independent rebuild of the runtime (AAR
+`f24a1f68…`, JNI differing from the reviewed record), so it is recorded as the
+`requalificationCandidate` in `qualified-runtime-manifest.json`, with the full candidate under
+`android/local-speech/requalification/`. `admit` refuses it: x86_64 has not executed (an Apple
+Silicon host cannot run an x86_64 image). The reviewed record's own `functionalAcceptance` stays
+failed and no APK is distributable. Still open: the x86_64 run, and an arm64 physical-device
+run of the canonical test with the engine fix.

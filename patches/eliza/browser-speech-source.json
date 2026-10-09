@@ -1,0 +1,53 @@
+{
+  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "patch": "0065-browser-speech.patch",
+  "sha256": "fd93dd66b73baed277488d51edaed7695e8b0e523fe4bb57800698a6516984bc",
+  "status": "Candidate for elizaOS develop: @elizaos/voice/browser-speech (Whisper tiny.en worker, recognizer, protocol) and @elizaos/voice/browser-capture (MediaRecorder sessions with host microphone admission, mono PCM and PCM16 WAV) with host inputs; authored at 45242af; bun tests 12/12 in the authoring clone; not submitted upstream",
+  "basePaths": [
+    "packages/voice/README.md",
+    "packages/voice/package.json"
+  ],
+  "addedPaths": [
+    "packages/voice/src/browser-capture/README.md",
+    "packages/voice/src/browser-capture/audio-capture.ts",
+    "packages/voice/src/browser-capture/browser-capture.test.ts",
+    "packages/voice/src/browser-capture/index.ts",
+    "packages/voice/src/browser-capture/recording-pcm.ts",
+    "packages/voice/src/browser-speech/browser-speech.test.ts",
+    "packages/voice/src/browser-speech/index.ts",
+    "packages/voice/src/browser-speech/speech-protocol.ts",
+    "packages/voice/src/browser-speech/speech-recognizer.ts",
+    "packages/voice/src/browser-speech/speech-worker.ts",
+    "packages/voice/src/browser-speech/whisper-engine.ts"
+  ],
+  "changed": [
+    "packages/voice/README.md",
+    "packages/voice/package.json",
+    "packages/voice/src/browser-capture/README.md",
+    "packages/voice/src/browser-capture/audio-capture.ts",
+    "packages/voice/src/browser-capture/browser-capture.test.ts",
+    "packages/voice/src/browser-capture/index.ts",
+    "packages/voice/src/browser-capture/recording-pcm.ts",
+    "packages/voice/src/browser-speech/browser-speech.test.ts",
+    "packages/voice/src/browser-speech/index.ts",
+    "packages/voice/src/browser-speech/speech-protocol.ts",
+    "packages/voice/src/browser-speech/speech-recognizer.ts",
+    "packages/voice/src/browser-speech/speech-worker.ts",
+    "packages/voice/src/browser-speech/whisper-engine.ts"
+  ],
+  "files": {
+    "packages/voice/package.json": "2699830f3119643e588e68f48c138ec65d2bab93b39c188c32f21677a0382c8a",
+    "packages/voice/README.md": "e198e147b8a723202d80ccf4d8eec97e43d9c8545be87ce7074c008fd908fb92",
+    "packages/voice/src/browser-capture/audio-capture.ts": "e2f6a3386b43161301afbaef7d6dd49624245784bd698e2251e9aa48939328b8",
+    "packages/voice/src/browser-capture/browser-capture.test.ts": "f50db980b41f504518b9607d88648934d7dc070bb7e210b5d68833409afadcae",
+    "packages/voice/src/browser-capture/index.ts": "7af08759bbd5903aae2dbf59f4be03ae527906925c3c0e71113e481d1231a165",
+    "packages/voice/src/browser-capture/README.md": "fcf40e93627f2128563c350c30b71c1d8bf5d8e0fcbccca461f4bdfb1ff8509d",
+    "packages/voice/src/browser-capture/recording-pcm.ts": "433ea1c7f5b1d203b728e1bd06d3b15e7a68bccd69f456f75fb1edb875025751",
+    "packages/voice/src/browser-speech/browser-speech.test.ts": "fe4cb2198098b0f00310dadf344744b12c0a32e45ea94b835fbc65c70c009e95",
+    "packages/voice/src/browser-speech/index.ts": "16faff092b8b0a1f8be61b20d70be331b39c1262bb227d2cbb605107c61dbf5f",
+    "packages/voice/src/browser-speech/speech-protocol.ts": "60022b80056ccb12a6326f2e0872ba9567d4e9760dd965385f98dccdfd7f4f16",
+    "packages/voice/src/browser-speech/speech-recognizer.ts": "3ed2a413c71ae7359e802673fbf01734152e799c00a9fe8d97b56759760072bd",
+    "packages/voice/src/browser-speech/speech-worker.ts": "ef3f6d4ddce77b73f679c0f3f40e43f77ee70bf25d3c3f2134a2ab580bfcfe00",
+    "packages/voice/src/browser-speech/whisper-engine.ts": "fb093909bc6e0ed61b1e448877007b668e59ba0b0b075dd6d16e3080b73be896"
+  }
+}

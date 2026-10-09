@@ -16,6 +16,7 @@ evaluate(await fs.readFile(new URL('apps/app/src/prototype/local-speech-playback
 evaluate(await fs.readFile(new URL('apps/app/src/runtime/voice-states.ts',root),'utf8'),'globalThis.voiceFailure=voiceFailure;globalThis.transcriptProvenance=transcriptProvenance;globalThis.speechProgressMessage=speechProgressMessage;');
 box.testMocksEnabled=true;
 evaluate(await fs.readFile(new URL('apps/app/src/runtime/voice-selection.ts',root),'utf8'),'globalThis.selectVoiceRoute=selectVoiceRoute;');
+evaluate(await fs.readFile(new URL('apps/app/src/runtime/voice-timing.ts',root),'utf8'),'globalThis.markVoiceTiming=markVoiceTiming;');
 evaluate(await fs.readFile(new URL('apps/app/src/prototype/voice-adapter.ts',root),'utf8'),'globalThis.install=installPrototypeVoiceAdapter;');
 class Shell{constructor(){this.state={view:'notes'};this.notes={list:[]};}S(){return this.state;}setState(p){Object.assign(this.state,p);}openView(v){this.state.view=v;}goHome(){this.state.view=null;}toast(){}vset(_,p){Object.assign(this.notes,p);return true;}startVoice(){}componentWillUnmount(){}}
 const views={notes:{render:()=>({ed:{}}),back:()=>false,onLeave:()=>{}}};box.install(Shell,views);const shell=new Shell();const api={get:()=>shell.notes,setView:(_,p)=>Object.assign(shell.notes,p),set:p=>Object.assign(shell.notes,p),ic:{}};const render=()=>views.notes.render(shell.notes,api);

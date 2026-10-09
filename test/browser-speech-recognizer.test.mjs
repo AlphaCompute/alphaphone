@@ -8,10 +8,13 @@ import {stripTypeScriptTypes} from 'node:module';
 function harness(idleMs = 200) {
   const workers = [];
   class FakeWorker { constructor() { this.posted = []; this.terminated = false; workers.push(this); } postMessage(message, transfer) { this.posted.push({message, transfer}); } terminate() { this.terminated = true; } emit(data) { if (!this.terminated) this.onmessage?.({data}); } }
-  const protocol = readFileSync(new URL('../apps/app/src/browser/speech-protocol.ts', import.meta.url), 'utf8').replaceAll('export function', 'function');
+  // The shared recognizer (elizaOS patch 0065, materialized in .eliza/patched) and Alpha's host wrapper.
+  const shared = '../.eliza/patched/packages/voice/src/browser-speech/';
+  const protocol = readFileSync(new URL(shared + 'speech-protocol.ts', import.meta.url), 'utf8').replaceAll('export function', 'function');
+  const upstream = readFileSync(new URL(shared + 'speech-recognizer.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '').replace('export class BrowserSpeechRecognizer', 'class SharedSpeechRecognizer');
   const source = readFileSync(new URL('../apps/app/src/browser/speech-recognizer.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '').replace('export class', 'class').replace('import.meta.url', "'https://app.test/assets/'");
   const context = {DOMException, crypto, Float32Array, URL, Promise, Error, Object, setTimeout, clearTimeout};
-  vm.runInNewContext(stripTypeScriptTypes(protocol, {mode: 'transform'}) + '\n' + stripTypeScriptTypes(source, {mode: 'transform'}) + '\nglobalThis.Recognizer=BrowserSpeechRecognizer;', context);
+  vm.runInNewContext([protocol, upstream, source].map(text => stripTypeScriptTypes(text, {mode: 'transform'})).join('\n') + '\nglobalThis.Recognizer=BrowserSpeechRecognizer;', context);
   const recognizer = new context.Recognizer(() => 'https://app.test/browser-speech/manifest.json', () => new FakeWorker(), idleMs);
   return {recognizer, workers};
 }
