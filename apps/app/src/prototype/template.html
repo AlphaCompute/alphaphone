@@ -3694,12 +3694,9 @@
     <button class="ib" aria-label="{{sizeLabel}}" onClick="{{grabTap}}"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{sizeIcon}}"></path></svg></button>
     <button class="ib" aria-label="Minimize chat" onClick="{{closeChat}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.down}}"></path></svg></button>
   </div>
-  <div class="scr" style="flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column-reverse; gap: 20px; padding: 8px 20px 14px; touch-action: pan-y; user-select: text; -webkit-user-select: text">
-    <sc-if value="{{typing}}" hint-placeholder-val="{{false}}">
-      <div style="display: flex; gap: 5px; padding: 6px 0"><span class="dot" style="width: 7px; height: 7px; border-radius: 4px; background: var(--acct)"></span><span class="dot" style="width: 7px; height: 7px; border-radius: 4px; background: var(--acct); animation-delay: .2s"></span><span class="dot" style="width: 7px; height: 7px; border-radius: 4px; background: var(--acct); animation-delay: .4s"></span></div>
-    </sc-if>
+  <div data-alpha-transcript class="scr" style="flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; padding: 8px 20px 14px; touch-action: pan-y; user-select: text; -webkit-user-select: text">
     <sc-for list="{{msgs}}" as="m" hint-placeholder-count="2">
-      <div style="display: flex; flex-direction: column">
+      <div data-alpha-message-id="{{m.id}}" style="display: flex; flex-direction: column">
         <sc-if value="{{m.isUser}}" hint-placeholder-val="{{false}}">
           <div data-alpha-message-text role="{{m.messageActionsRole}}" tabIndex="{{m.messageActionsTabIndex}}" aria-label="{{m.messageActionsLabel}}" aria-haspopup="{{m.messageActionsPopup}}" aria-expanded="{{m.messageActionsOpen}}" onClick="{{m.openMessageActions}}" onKeyDown="{{m.messageActionsKey}}" onContextMenu="{{m.messageActionsContext}}" onPointerDown="{{m.messageActionsDown}}" onPointerMove="{{m.messageActionsMove}}" onPointerUp="{{m.messageActionsCancel}}" onPointerCancel="{{m.messageActionsCancel}}" style="align-self: flex-end; max-width: 80%; background: var(--acc); color: #ffffff; padding: 11px 16px; border-radius: 22px 22px 6px 22px; font-size: 15px; line-height: 1.4">{{m.text}}</div>
         </sc-if>
@@ -3797,16 +3794,19 @@
         </sc-if>
         <sc-if value="{{m.messageActionsOpen}}" hint-placeholder-val="{{false}}">
           <div data-alpha-message-actions role="menu" aria-label="Message actions" onKeyDown="{{m.menuKey}}" style="align-self: flex-start; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; padding: 4px; border-radius: 14px; background: var(--s2)">
-            <sc-if value="{{m.canReplyMessage}}" hint-placeholder-val="{{false}}"><button class="tap" role="menuitem" onClick="{{m.replyMessage}}" style="min-height:44px;padding:0 14px;font-size:14px;font-weight:600">Reply</button></sc-if>
-            <button class="tap" role="menuitem" onClick="{{m.copyMessage}}" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 600">Copy</button>
+            <sc-if value="{{m.canReplyMessage}}" hint-placeholder-val="{{false}}"><button class="tap" role="menuitem" onClick="{{m.replyMessage}}" style="display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;font-size:14px;font-weight:600"><svg aria-hidden="true" class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="{{ic.reply}}"></path></svg>Reply</button></sc-if>
+            <button class="tap" role="menuitem" onClick="{{m.copyMessage}}" style="display:flex;align-items:center;gap:8px;min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 600"><svg aria-hidden="true" class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="{{ic.copy}}"></path></svg>Copy</button>
             <sc-if value="{{m.localSpeechAvailable}}" hint-placeholder-val="{{false}}"><button class="tap" role="menuitem" onClick="{{m.localSpeech}}" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; color: var(--acct); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{ic.wave}}"></path></svg>{{m.localSpeechLabel}}</button></sc-if>
-            <sc-if value="{{m.canEditMessage}}" hint-placeholder-val="{{false}}"><button class="tap" role="menuitem" onClick="{{m.editMessage}}" style="min-height:44px;padding:0 14px;font-size:14px;font-weight:600">Edit and resend</button></sc-if>
+            <sc-if value="{{m.canEditMessage}}" hint-placeholder-val="{{false}}"><button class="tap" role="menuitem" onClick="{{m.editMessage}}" style="display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;font-size:14px;font-weight:600"><svg aria-hidden="true" class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="{{ic.edit}}"></path></svg>Edit and resend</button></sc-if>
             <button class="tap" role="menuitem" aria-label="Close message actions" onClick="{{m.closeMessageActions}}" style="min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{ic.x}}"></path></svg></button>
           </div>
           <div role="status" style="margin-top: 4px; font-size: 13px; line-height: 1.4; color: var(--mut)">{{m.messageActionsNotice}} {{m.localSpeechMessage}}</div>
         </sc-if>
       </div>
     </sc-for>
+    <sc-if value="{{typing}}" hint-placeholder-val="{{false}}">
+      <div style="display: flex; gap: 5px; padding: 6px 0"><span class="dot" style="width: 7px; height: 7px; border-radius: 4px; background: var(--acct)"></span><span class="dot" style="width: 7px; height: 7px; border-radius: 4px; background: var(--acct); animation-delay: .2s"></span><span class="dot" style="width: 7px; height: 7px; border-radius: 4px; background: var(--acct); animation-delay: .4s"></span></div>
+    </sc-if>
   </div>
   <sc-if value="{{showSugg}}" hint-placeholder-val="{{true}}">
     <div class="scr" style="display: flex; gap: 8px; overflow-x: auto; padding: 2px 16px 10px; flex-shrink: 0; touch-action: pan-x">

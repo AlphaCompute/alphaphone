@@ -58,6 +58,7 @@ var IC = {
   info: "M21 12a9 9 0 1 1-18 0a9 9 0 1 1 18 0zM12 11v5M12 8h.01",
   grid: "M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h5v5h-5z",
   reply: "M9 14L4 9l5-5M4 9h10a6 6 0 0 1 6 6v4",
+  copy: "M9 9h11v11H9zM5 15H4V4h11v1",
   archive: "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
   clock: "M21 12a9 9 0 1 1-18 0a9 9 0 1 1 18 0zM12 7v5l3 2",
   bubble: "M4 5h16v11H9l-5 4z",
@@ -5038,8 +5039,47 @@ class Component extends DCLogic {
     this.clock = setInterval(function () { self.setState({ now: Date.now() }); }, 15000);
     this.preset(this.props.initial || "boot");
   }
-  componentDidUpdate(prev) { if (prev && prev.initial !== this.props.initial) this.preset(this.props.initial || "boot"); }
+  getSnapshotBeforeUpdate(_props, previous) {
+    var list = document.querySelector("[data-alpha-transcript]");
+    if (!list) { this.chatScrollSnapshot = null; return null; }
+    var state = this.S(), rows = Array.from(list.querySelectorAll("[data-alpha-message-id]"));
+    var bounds = list.getBoundingClientRect(), scale = bounds.height / list.clientHeight || 1;
+    var anchor = rows.find(function (row) { return row.getBoundingClientRect().bottom >= bounds.top; });
+    var oldUser = (previous.msgs || []).filter(function (m) { return m.from === "user"; }).at(-1);
+    var newUser = state.msgs.filter(function (m) { return m.from === "user"; }).at(-1);
+    var opened = !["sheet", "full"].includes(previous.chat) && ["sheet", "full"].includes(state.chat);
+    var newTurn = state.typing && newUser && newUser.id !== oldUser?.id;
+    this.chatScrollSnapshot = { list: list, top: list.scrollTop,
+      follow: opened || newTurn || (list.scrollHeight - list.scrollTop - list.clientHeight < 80 && window.getSelection()?.isCollapsed !== false),
+      anchor: anchor?.getAttribute("data-alpha-message-id"), offset: anchor ? (anchor.getBoundingClientRect().top - bounds.top) / scale : 0 };
+    return null;
+  }
+  componentDidUpdate(prev) {
+    if (prev && prev.initial !== this.props.initial) this.preset(this.props.initial || "boot");
+    var list = document.querySelector("[data-alpha-transcript]"), saved = this.chatScrollSnapshot;
+    if (!list || !["sheet", "full"].includes(this.S().chat)) return;
+    if (this.chatScrollElement !== list && typeof ResizeObserver !== "undefined") {
+      this.chatScrollObserver?.disconnect(); this.chatScrollElement = list;
+      this.chatScrollObserver = new ResizeObserver(() => {
+        var size = this.chatScrollSize;
+        if (size && size.height - list.scrollTop - size.client < 80 && window.getSelection()?.isCollapsed !== false) list.scrollTop = list.scrollHeight;
+        this.chatScrollSize = { height: list.scrollHeight, client: list.clientHeight };
+      });
+      this.chatScrollObserver.observe(list);
+    }
+    if (!saved || saved.list !== list || saved.follow) list.scrollTop = list.scrollHeight;
+    else {
+      var anchor = Array.from(list.querySelectorAll("[data-alpha-message-id]")).find(function (row) { return row.getAttribute("data-alpha-message-id") === saved.anchor; });
+      if (!anchor) list.scrollTop = saved.top;
+      else {
+        var bounds = list.getBoundingClientRect(), scale = bounds.height / list.clientHeight || 1;
+        list.scrollTop += (anchor.getBoundingClientRect().top - bounds.top) / scale - saved.offset;
+      }
+    }
+    this.chatScrollSize = { height: list.scrollHeight, client: list.clientHeight };
+  }
   componentWillUnmount() {
+    this.chatScrollObserver?.disconnect();
     clearInterval(this.clock); clearInterval(this.vI);
     var G = this.G || {}; Object.keys(G).forEach(function (k) { G[k].forEach(clearTimeout); });
     var I = this.I || {}; Object.keys(I).forEach(function (k) { I[k].forEach(clearInterval); });
@@ -5199,8 +5239,8 @@ class Component extends DCLogic {
 
   /* ---- gestures ---- */
   scale(el) { var sc = el && el.closest ? el.closest("[data-screen]") : null; var r = (sc || el).getBoundingClientRect(); return { r: r, s: r.width / 412 || 1 }; }
-  gDown(e) { var o = this.scale(e.currentTarget); this.g = { x: (e.clientX - o.r.left) / o.s, y: (e.clientY - o.r.top) / o.s, cx: e.clientX, cy: e.clientY, s: o.s }; }
-  gUp(e) { var g = this.g; this.g = null; if (!g) return; this.swipe(g, (e.clientX - g.cx) / g.s, (e.clientY - g.cy) / g.s); }
+  gDown(e) { if (e.target.closest?.("[data-alpha-transcript]")) { this.g = null; return; } var o = this.scale(e.currentTarget); this.g = { x: (e.clientX - o.r.left) / o.s, y: (e.clientY - o.r.top) / o.s, cx: e.clientX, cy: e.clientY, s: o.s }; }
+  gUp(e) { var g = this.g; this.g = null; if (!g || window.getSelection()?.isCollapsed === false) return; this.swipe(g, (e.clientX - g.cx) / g.s, (e.clientY - g.cy) / g.s); }
   swipe(g, dx, dy) {
     var S = this.S(); var T = 46; var ax = Math.abs(dx), ay = Math.abs(dy);
     if (ax < T && ay < T) return;
@@ -5399,10 +5439,10 @@ class Component extends DCLogic {
       } };
     });
 
-    var msgs = S.msgs.slice().reverse().map(function (m) {
+    var msgs = S.msgs.map(function (m) {
       var c = m.card || {}; var t = c.type;
       return {
-        text: m.text, isUser: m.from === "user", isAgent: m.from === "agent", c: c,
+        id: m.id, text: m.text, isUser: m.from === "user", isAgent: m.from === "agent", c: c,
         cAgenda: t === "agenda", cEvent: t === "event", cDigest: t === "digest", cNote: t === "note", cFlow: t === "flow", cSummary: t === "summary", cDraft: t === "draft", cCall: t === "call", cGeneric: t === "generic",
         gIcon: IC[c.icon] || IC.spark, evIcon: c.act && !c.done ? IC.plus : IC.check, callIni: c.ini || ((c.who || "").split(" ").map(function (w) { return w.charAt(0); }).join("").slice(0, 2)),
         sumSave: t === "summary" && !c.done && !!c.act, sumOpen: t === "summary" && !c.act && !!c.go,

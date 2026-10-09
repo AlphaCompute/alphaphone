@@ -14,13 +14,20 @@ export function installLocalSpeechPlayback(Component: Shell) {
   const p = Component.prototype, original = p.renderVals, mount = p.componentDidMount, update = p.componentDidUpdate, unmount = p.componentWillUnmount;
   const states = new WeakMap<object, Reading>();
   const menus = new WeakMap<object, { id: string; text: string; trigger?: HTMLElement; notice: string; focus: boolean; binding: string }>();
-  const holds = new WeakMap<object, { timer: ReturnType<typeof setTimeout>; x: number; y: number }>();
+  const holds = new WeakMap<object, { timer?: ReturnType<typeof setTimeout>; x: number; y: number; opened?:boolean; selecting?:boolean; start?:{node:Node;offset:number} }>();
+  const suppressedClicks = new WeakMap<object, string>();
   const listeners = new WeakMap<object, () => void>();
   const cancelHold = (shell: Shell) => { const hold = holds.get(shell); if (hold) clearTimeout(hold.timer); holds.delete(shell); };
-  const closeMenu = (shell: Shell, focus = false) => { const menu = menus.get(shell); if (!menu) return; menus.delete(shell); if (focus) menu?.trigger?.focus(); refresh(shell); };
+  const caret=(x:number,y:number)=>{
+    const point=document.caretPositionFromPoint?.(x,y),range=point?null:document.caretRangeFromPoint?.(x,y);
+    const node=point?.offsetNode??range?.startContainer,offset=point?.offset??range?.startOffset;
+    return node&&offset!==undefined&&(node instanceof Element?node:node.parentElement)?.closest('[data-alpha-message-text]')?{node,offset}:undefined;
+  };
+  const closeMenu = (shell: Shell, focus = false) => { const menu = menus.get(shell); if (!menu) return; menus.delete(shell); if (focus) menu.trigger?.focus({preventScroll:true}); refresh(shell); };
   function openMenu(shell: Shell, id: string, text: string, event: Event) {
     event.preventDefault(); event.stopPropagation();
-    menus.set(shell, { id, text, trigger: event.currentTarget as HTMLElement, notice: '', focus: true, binding: JSON.stringify(connectionController.getSnapshot().session) }); refresh(shell);
+    if(event.type!=='contextmenu'&&menus.get(shell)?.id===id){closeMenu(shell);return;}
+    menus.set(shell, { id, text, trigger: event.currentTarget as HTMLElement, notice: '', focus: event.type==='keydown', binding: JSON.stringify(connectionController.getSnapshot().session) }); refresh(shell);
   }
   function menuKey(shell: Shell, event: KeyboardEvent) {
     if (event.key === 'Tab') { closeMenu(shell, true); return; }
@@ -60,7 +67,7 @@ export function installLocalSpeechPlayback(Component: Shell) {
     }
   }
   p.renderVals = function () {
-    const out = original.call(this), source = [...(this.S().msgs || [])].reverse(), state = states.get(this);
+    const out = original.call(this), source = this.S().msgs || [], state = states.get(this);
     const cloud = selectVoiceRoute() === 'cloud';
     const available = cloud || createOnDeviceVoice() !== null;
     out.msgs = (out.msgs || []).map((message: Shell, index: number) => {
@@ -69,21 +76,28 @@ export function installLocalSpeechPlayback(Component: Shell) {
       const selected = state?.id === entry.id;
       const menu = menus.get(this), opened = menu?.id === entry.id;
       return { ...message, messageActionsOpen: opened, messageActionsRole: 'button', messageActionsTabIndex: 0, messageActionsLabel: 'Message actions: ' + entry.text, messageActionsPopup: 'menu',
-        openMessageActions: (event: MouseEvent) => { if (!window.getSelection()?.toString()) openMenu(this, entry.id, entry.text, event); },
+        openMessageActions: (event: MouseEvent) => { if(suppressedClicks.get(this)===entry.id){suppressedClicks.delete(this);event.preventDefault();event.stopPropagation();return;}if (window.getSelection()?.isCollapsed!==false) openMenu(this, entry.id, entry.text, event); },
         messageActionsKey: (event: KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') openMenu(this, entry.id, entry.text, event); },
-        messageActionsContext: (event: MouseEvent) => openMenu(this, entry.id, entry.text, event),
+        messageActionsContext: (event: MouseEvent) => {if(window.getSelection()?.isCollapsed===false)return;suppressedClicks.set(this,entry.id);openMenu(this, entry.id, entry.text, event);},
         messageActionsDown: (event: PointerEvent) => {
+          suppressedClicks.delete(this);cancelHold(this);
+          if(event.pointerType==='mouse'){holds.set(this,{x:event.clientX,y:event.clientY});return;}
           if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
-          cancelHold(this); const target = event.currentTarget as HTMLElement, binding = JSON.stringify(connectionController.getSnapshot().session);
-          holds.set(this, { x: event.clientX, y: event.clientY, timer: setTimeout(() => {
-            holds.delete(this); if (this.live === false || binding !== JSON.stringify(connectionController.getSnapshot().session) || !['sheet', 'full'].includes(this.S().chat) || !this.S().msgs?.some((m: Shell) => m.id === entry.id && m.text === entry.text)) return; menus.set(this, { id: entry.id, text: entry.text, trigger: target, notice: '', focus: true, binding: JSON.stringify(connectionController.getSnapshot().session) }); refresh(this);
+          const target = event.currentTarget as HTMLElement, binding = JSON.stringify(connectionController.getSnapshot().session);
+          holds.set(this, { x: event.clientX, y: event.clientY,start:caret(event.clientX,event.clientY), timer: setTimeout(() => {
+            const hold=holds.get(this);if(!hold)return;hold.timer=undefined;
+            if (this.live === false || window.getSelection()?.isCollapsed===false || binding !== JSON.stringify(connectionController.getSnapshot().session) || !['sheet', 'full'].includes(this.S().chat) || !this.S().msgs?.some((m: Shell) => m.id === entry.id && m.text === entry.text)) {cancelHold(this);return;}hold.opened=true;suppressedClicks.set(this,entry.id);menus.set(this, { id: entry.id, text: entry.text, trigger: target, notice: '', focus: false, binding: JSON.stringify(connectionController.getSnapshot().session) }); refresh(this);
           }, 500) });
         },
-        messageActionsMove: (event: PointerEvent) => { const hold = holds.get(this); if (hold && Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 8) cancelHold(this); },
+        messageActionsMove: (event: PointerEvent) => {
+          const hold=holds.get(this);if(!hold||Math.hypot(event.clientX-hold.x,event.clientY-hold.y)<=8)return;
+          if(hold.opened&&hold.start?.node.isConnected){const end=caret(event.clientX,event.clientY);if(end){hold.selecting=true;window.getSelection()?.setBaseAndExtent(hold.start.node,hold.start.offset,end.node,end.offset);closeMenu(this);}return;}
+          cancelHold(this);suppressedClicks.set(this,entry.id);closeMenu(this);
+        },
         messageActionsCancel: () => cancelHold(this),
         canReplyMessage: this.canReplyMessage?.(entry)===true, canEditMessage: this.canEditMessage?.(entry)===true,
         replyMessage: () => { closeMenu(this); this.replyToMessage?.(entry); }, editMessage: () => { closeMenu(this); this.editMessage?.(entry); },
-        closeMessageActions: () => closeMenu(this, true), menuKey: (event: KeyboardEvent) => menuKey(this, event),
+        closeMessageActions: (event: MouseEvent) => closeMenu(this, event.detail===0), menuKey: (event: KeyboardEvent) => menuKey(this, event),
         copyMessage: async () => {
           if (!menu || menus.get(this) !== menu || menu.binding !== JSON.stringify(connectionController.getSnapshot().session)) return;
           try { await navigator.clipboard.writeText(entry.text); if (menus.get(this) === menu) { menu.notice = 'Copied.'; refresh(this); } }
@@ -99,8 +113,12 @@ export function installLocalSpeechPlayback(Component: Shell) {
   };
   p.componentDidMount = function (...args: unknown[]) {
     const outside = (event: PointerEvent) => { if (!(event.target as Element)?.closest('[data-alpha-message-actions], [data-alpha-message-text]')) closeMenu(this); };
+    const selection=()=>{if(window.getSelection()?.isCollapsed===false){if(!holds.get(this)?.selecting)cancelHold(this);closeMenu(this);}};
+    const touchMove=(event:TouchEvent)=>{if(holds.get(this)?.opened)event.preventDefault();};
     document.addEventListener('pointerdown', outside, true);
-    listeners.set(this, () => document.removeEventListener('pointerdown', outside, true));
+    document.addEventListener('selectionchange',selection);
+    document.addEventListener('touchmove',touchMove,{passive:false});
+    listeners.set(this, () => {document.removeEventListener('pointerdown', outside, true);document.removeEventListener('selectionchange',selection);document.removeEventListener('touchmove',touchMove);});
     return mount?.apply(this, args);
   };
   p.componentDidUpdate = function (...args: unknown[]) {
