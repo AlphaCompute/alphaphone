@@ -184,7 +184,19 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   env.put("ELIZA_LOCAL_EMBEDDING_MODEL_PATH",model.getAbsolutePath());
   env.put("ELIZA_LOCAL_EMBEDDING_DIMENSIONS","384");
  }
+ static void configureNativeViews(java.io.InputStream policy,java.util.Map<String,String> env) throws java.io.IOException {
+  try(policy){
+   java.io.ByteArrayOutputStream output=new java.io.ByteArrayOutputStream();
+   byte[] buffer=new byte[4096];int count;
+   while((count=policy.read(buffer))!=-1){
+    if(output.size()+count>16384)throw new java.io.IOException("Native view launch policy is too large");
+    output.write(buffer,0,count);
+   }
+   env.put("ELIZA_NATIVE_VIEW_DECLARATIONS",output.toString(java.nio.charset.StandardCharsets.UTF_8.name()));
+  }
+ }
  static void configureEnvironment(Context context,java.util.Map<String,String> env) throws java.io.IOException {
+  configureNativeViews(context.getAssets().open("agent/native-view-declarations.json"),env);
   env.remove("ELIZA_MOBILE_WORKFLOWS");
   java.io.InputStream workerIndex=null;
   try {workerIndex=context.getAssets().open("agent/workflow-worker/files.sha256");}

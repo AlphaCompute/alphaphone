@@ -61,6 +61,7 @@ def verify(apk, release=False):
 
         for name in ['alpha-source.json', 'agent-bundle.js', 'workflow-worker/files.sha256', 'workflow-worker/manifest.json']:
             check('assets/agent/' + name, staged / name)
+        check('assets/agent/native-view-declarations.json', staged / 'native-view-declarations.json', file_hash(ROOT / 'config/native-view-declarations.json'))
         worker_manifest = json.loads((staged / 'workflow-worker/manifest.json').read_text())
         worker_files = worker_manifest.get('files')
         if worker_manifest.get('version') != 1 or not isinstance(worker_files, dict) or not worker_files:

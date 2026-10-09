@@ -35,7 +35,9 @@ class PackagedRuntimeTest(unittest.TestCase):
         worker = b'worker payload'
         manifest = json.dumps({'version': 1, 'sourceStampSha256': sha(stamp_bytes), 'files': {'worker.js': sha(worker)}}).encode()
         index = f'{sha(worker)}\tworker.js\n{sha(manifest)}\tmanifest.json\n'.encode()
-        self.entries = {'assets/agent/alpha-source.json': stamp_bytes,
+        self.write('config/native-view-declarations.json', b'[]')
+        self.entries = {'assets/agent/native-view-declarations.json': b'[]',
+                        'assets/agent/alpha-source.json': stamp_bytes,
                         'assets/agent/agent-bundle.js': b'agent payload',
                         'assets/agent/workflow-worker/worker.js': worker,
                         'assets/agent/workflow-worker/manifest.json': manifest,
@@ -58,10 +60,15 @@ class PackagedRuntimeTest(unittest.TestCase):
                 archive.writestr(name, data)
         return self.apk
 
+    def test_native_policy_must_match_reviewed_product_source(self):
+        self.write('config/native-view-declarations.json', b'["changed"]')
+        with self.assertRaises(ValueError):
+            verifier.verify(self.package(self.entries))
+
     def test_valid_payload_is_byte_verified_without_execution_claim(self):
         result = verifier.verify(self.package())
         self.assertEqual(result['upstreamCommit'], self.pin)
-        self.assertEqual(result['verifiedEntries'], 7)
+        self.assertEqual(result['verifiedEntries'], 8)
         self.assertFalse(result['runtimeExecution'])
 
     def test_each_payload_byte_and_required_entry_is_checked(self):
