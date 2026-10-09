@@ -15,7 +15,7 @@ for(const theme of ['light','dark'])test(`${theme} Clock review owns focus and l
  await expect(dialog).toHaveCount(0);await page.getByRole('button',{name:'Calendar',exact:true}).click();
  await expect(dialog).toHaveCount(0);
  await opener.click();await expect(dialog.getByRole('button',{name:'Confirm Clock request',exact:true})).toHaveCount(0);
- await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back')));await expect(dialog).toHaveCount(0);await expect(opener).toBeFocused();
+ await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));await expect(dialog).toHaveCount(0);await expect(page.getByRole('region',{name:'Calendar',exact:true})).toBeVisible();await expect(opener).toBeFocused();
 });
 
 for(const theme of ['light','dark'])test(`${theme} app Alarms separates saved records from the new form without opening an alarm`,async({page},info)=>{

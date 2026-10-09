@@ -273,7 +273,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       // native events must not navigate the shell before its dialog closes.
       const dialog = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]')).at(-1);
       if (dialog) { event.preventDefault(); event.stopImmediatePropagation(); if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close(); return; }
-      if (document.querySelector<HTMLElement>('.os')?.inert) return;
+      const inlineModal=Array.from(document.querySelectorAll<HTMLElement>('.os [role="dialog"][aria-modal="true"]')).some(dialog=>!dialog.closest('[inert],[hidden]')&&dialog.getAttribute('aria-hidden')!=='true'&&dialog.getClientRects().length>0&&getComputedStyle(dialog).visibility!=='hidden');
+      if (inlineModal||document.querySelector<HTMLElement>('.os')?.inert) return;
       connectionController.cancelViewNavigation();alphaClient.cancel(); this.back();
     };
     window.addEventListener('alpha-back', this.backHandler);
