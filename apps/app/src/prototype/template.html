@@ -118,7 +118,7 @@
             <div style="flex-grow: 1; min-width: 0">
               <div style="font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; {{r.nameCss}}">{{r.who}}</div>
               <div style="display: flex; align-items: center; gap: 5px; margin-top: 2px; font-size: 13px; color: var(--mut)">
-                <svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke-width: 2; {{r.dirCss}}"><path d="{{r.dirD}}"></path></svg>
+                <svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px;  {{r.dirCss}}"><path d="{{r.dirD}}"></path></svg>
                 <span>{{r.sub}}</span>
               </div>
               <sc-if value="{{r.hasNote}}" hint-placeholder-val="{{false}}">
@@ -130,7 +130,7 @@
         </div>
       </sc-for>
       <sc-if value="{{phone.noRecents}}" hint-placeholder-val="{{false}}">
-        <div style="display: flex; justify-content: center; padding-top: 80px; color: var(--mut)"><svg class="i" viewBox="0 0 24 24" style="width: 40px; height: 40px; stroke-width: 1.2"><path d="{{ic.clock}}"></path></svg></div>
+        <div style="display: flex; justify-content: center; padding-top: 80px; color: var(--mut)"><svg class="i" viewBox="0 0 24 24" style="width: 40px; height: 40px; "><path d="{{ic.clock}}"></path></svg></div>
       </sc-if>
     </div>
   </sc-if>
@@ -205,7 +205,7 @@
         </div>
       </sc-for>
       <sc-if value="{{phone.noVms}}" hint-placeholder-val="{{false}}">
-        <div style="display: flex; justify-content: center; padding-top: 80px; color: var(--mut)"><svg class="i" viewBox="0 0 24 24" style="width: 40px; height: 40px; stroke-width: 1.2"><path d="{{ic.phoneVm}}"></path></svg></div>
+        <div style="display: flex; justify-content: center; padding-top: 80px; color: var(--mut)"><svg class="i" viewBox="0 0 24 24" style="width: 40px; height: 40px; "><path d="{{ic.phoneVm}}"></path></svg></div>
       </sc-if>
     </div>
   </sc-if>
@@ -1099,7 +1099,7 @@
       <button class="ib" aria-label="Next page" onClick="{{browser.goFwd}}" style="width: 40px; opacity: {{browser.fwdOp}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.right}}"></path></svg></button>
       </div>
       <button class="ib" aria-label="Tabs" onClick="{{browser.openTabs}}"><span style="min-width: 21px; height: 21px; border: 1.6px solid currentColor; border-radius: 7px; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 3px; box-sizing: border-box">{{browser.nTabs}}</span></button>
-      <button class="ib" aria-label="Menu" onClick="{{browser.toggleMenu}}"><svg class="i" viewBox="0 0 24 24" style="stroke-width: 3"><path d="{{ic.more}}"></path></svg></button>
+      <button class="ib" aria-label="Menu" onClick="{{browser.toggleMenu}}"><svg class="i" viewBox="0 0 24 24" style=""><path d="{{ic.more}}"></path></svg></button>
     </sc-if>
     <sc-if value="{{browser.editing}}" hint-placeholder-val="{{false}}">
       <div style="flex-grow: 1; min-width: 0; margin-left: 6px; height: 44px; border-radius: 22px; background: var(--s2); display: flex; align-items: center; gap: 8px; padding: 0 6px 0 14px; box-shadow: inset 0 0 0 1.5px var(--acct)">
@@ -1296,12 +1296,12 @@
     <div class="drop" style="position: absolute; top: 98px; right: 10px; z-index: 8; width: 236px; border-radius: 24px; background: var(--s1); box-shadow: 0 0 0 1px var(--line), 0 20px 50px var(--shc); padding: 6px; display: flex; flex-direction: column; max-height: calc(100% - 120px); overflow-y: auto">
       <sc-if value="{{browser.nativeControls}}">
         <button class="tap" aria-label="Password manager" onClick="{{browser.openPasswordProvider}}" style="height:50px;border-radius:18px;display:flex;align-items:center;padding:0 14px;font-size:15px">Password manager</button>
-        <button class="tap" aria-label="Downloads" onClick="{{browser.openDownloads}}" style="height: 50px; border-radius: 18px; display: flex; align-items: center; gap: 14px; padding: 0 14px; font-size: 15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4"></path></svg>Downloads</button>
-        <button class="tap" aria-label="Reload page" onClick="{{browser.reload}}" style="height: 50px; border-radius: 18px; display: flex; align-items: center; gap: 14px; padding: 0 14px; font-size: 15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="M20 7v5h-5 M20 12a8 8 0 1 0-2.4 5.7"></path></svg>Reload page</button>
+        <button class="tap" aria-label="Downloads" onClick="{{browser.openDownloads}}" style="height: 50px; border-radius: 18px; display: flex; align-items: center; gap: 14px; padding: 0 14px; font-size: 15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.filesDown}}"></path></svg>Downloads</button>
+        <button class="tap" aria-label="Reload page" onClick="{{browser.reload}}" style="height: 50px; border-radius: 18px; display: flex; align-items: center; gap: 14px; padding: 0 14px; font-size: 15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.phRotate}}"></path></svg>Reload page</button>
         <button class="tap" aria-label="New private tab" onClick="{{browser.openPrivate}}" style="height:50px;border-radius:18px;display:flex;align-items:center;padding:0 14px;font-size:15px">New private tab</button>
         <sc-if value="{{browser.canClearSite}}"><button class="tap" aria-label="Clear data for this site" onClick="{{browser.clearSite}}" style="min-height:50px;border-radius:18px;display:flex;align-items:center;padding:0 14px;text-align:left;font-size:15px">Clear data for this site</button></sc-if>
         <button class="tap" aria-label="Clear browsing data" onClick="{{browser.clearData}}" style="height:50px;border-radius:18px;display:flex;align-items:center;padding:0 14px;font-size:15px">Clear browsing data</button>
-        <sc-if value="{{browser.loading}}"><button class="tap" aria-label="Stop loading" onClick="{{browser.stopLoading}}" style="height: 50px; border-radius: 18px; display: flex; align-items: center; gap: 14px; padding: 0 14px; font-size: 15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="M6 6h12v12H6z"></path></svg>Stop loading</button></sc-if>
+        <sc-if value="{{browser.loading}}"><button class="tap" aria-label="Stop loading" onClick="{{browser.stopLoading}}" style="height: 50px; border-radius: 18px; display: flex; align-items: center; gap: 14px; padding: 0 14px; font-size: 15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.stop}}"></path></svg>Stop loading</button></sc-if>
       </sc-if>
       <button class="tap" aria-label="{{browser.markLabel}}" onClick="{{browser.toggleMark}}" style="height: 50px; border-radius: 18px; display: flex; align-items: center; gap: 14px; padding: 0 14px; font-size: 15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: {{browser.markFill}}"><path d="{{ic.star}}"></path></svg>{{browser.markLabel}}</button>
       <button class="tap" aria-label="Bookmarks and history" onClick="{{browser.openLib}}" style="height: 50px; border-radius: 18px; display: flex; align-items: center; gap: 14px; padding: 0 14px; font-size: 15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.clock}}"></path></svg>Bookmarks &amp; history</button>
@@ -1554,7 +1554,7 @@
               </sc-if>
               <sc-if value="{{p.selecting}}" hint-placeholder-val="{{false}}">
                 <span class="photo-selection-badge" style="position: absolute; top: 7px; right: 7px; width: 22px; height: 22px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: #ffffff; {{p.selCss}}">
-                  <sc-if value="{{p.on}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke-width: 2.4"><path d="{{ic.check}}"></path></svg></sc-if>
+                  <sc-if value="{{p.on}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; "><path d="{{ic.check}}"></path></svg></sc-if>
                 </span>
               </sc-if>
             </button>
@@ -1640,7 +1640,7 @@
               </sc-if>
               <sc-if value="{{p.selecting}}" hint-placeholder-val="{{false}}">
                 <span class="photo-selection-badge" style="position: absolute; top: 7px; right: 7px; width: 22px; height: 22px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: #ffffff; {{p.selCss}}">
-                  <sc-if value="{{p.on}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke-width: 2.4"><path d="{{ic.check}}"></path></svg></sc-if>
+                  <sc-if value="{{p.on}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; "><path d="{{ic.check}}"></path></svg></sc-if>
                 </span>
               </sc-if>
             </button>
@@ -2016,10 +2016,10 @@
   <sc-if value="{{maps.isNav}}" hint-placeholder-val="{{false}}">
     <div class="drop" style="position: absolute; left: 12px; right: 12px; top: 50px; border-radius: 28px; background: var(--acc); color: #ffffff; padding: 18px 20px; display: flex; align-items: center; gap: 16px; z-index: 5; box-shadow: 0 10px 30px rgba(0,0,0,.5)">
       <sc-if value="{{maps.dr.nav.going}}" hint-placeholder-val="{{true}}">
-        <svg class="i" viewBox="0 0 24 24" style="width: 52px; height: 52px; stroke-width: 2"><path d="{{maps.dr.nav.icon}}"></path></svg>
+        <svg class="i" viewBox="0 0 24 24" style="width: 52px; height: 52px; "><path d="{{maps.dr.nav.icon}}"></path></svg>
       </sc-if>
       <sc-if value="{{maps.dr.nav.arrived}}" hint-placeholder-val="{{false}}">
-        <svg class="i" viewBox="0 0 24 24" style="width: 52px; height: 52px; stroke-width: 2"><path d="{{ic.check}}"></path></svg>
+        <svg class="i" viewBox="0 0 24 24" style="width: 52px; height: 52px; "><path d="{{ic.check}}"></path></svg>
       </sc-if>
       <div style="min-width: 0">
         <div class="serif" style="font-size: 40px; line-height: 1">{{maps.dr.nav.dist}}</div>
@@ -2055,7 +2055,7 @@
     <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
       <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Notes</h1>
       <button class="ib" aria-label="Record and transcribe" onClick="{{notes.record}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.notesWave}}"></path></svg></button>
-      <sc-if value="{{notes.canImportText}}"><button class="ib" aria-label="Import text note" disabled="{{notes.documentBusy}}" onClick="{{notes.importText}}"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 16v5h14v-5"></path></svg></button></sc-if>
+      <sc-if value="{{notes.canImportText}}"><button class="ib" aria-label="Import text note" disabled="{{notes.documentBusy}}" onClick="{{notes.importText}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.filesDown}}"></path></svg></button></sc-if>
       <sc-if value="{{notes.trashAvailable}}" hint-placeholder-val="{{false}}"><button class="ib" aria-label="Open Trash" title="{{notes.trashLabel}}" onClick="{{notes.openTrash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button></sc-if>
       <button class="ib" aria-label="New note" onClick="{{notes.newNote}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.plus}}"></path></svg></button>
     </div>
@@ -2171,7 +2171,7 @@
         <div class="scr" style="flex-grow: 1; overflow-y: auto; padding: 8px 12px 190px; touch-action: pan-y">
           <sc-for list="{{notes.ed.items}}" as="it" hint-placeholder-count="3">
             <div style="display: flex; align-items: center; gap: 2px; min-height: 48px">
-              <button aria-label="{{it.label}}" onClick="{{it.toggle}}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="width: 22px; height: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center; {{it.box}}"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke-width: 2.4"><path d="{{ic.check}}"></path></svg></span></button>
+              <button aria-label="{{it.label}}" onClick="{{it.toggle}}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="width: 22px; height: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center; {{it.box}}"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; "><path d="{{ic.check}}"></path></svg></span></button>
               <input aria-label="Item" value="{{it.t}}" onChange="{{it.onText}}" style="flex-grow: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 17px; {{it.css}}">
               <button class="ib" aria-label="Remove {{it.t}}" onClick="{{it.remove}}" style="color: var(--mut)"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{ic.x}}"></path></svg></button>
             </div>
@@ -2230,7 +2230,7 @@
             <div class="enter" style="padding: 8px 8px 10px 6px; border-radius: 24px; background: var(--s2); margin-top: 10px">
               <sc-for list="{{notes.vo.actions}}" as="a" hint-placeholder-count="3">
                 <div style="display: flex; align-items: flex-start; gap: 4px">
-                  <button aria-label="{{a.label}}" onClick="{{a.toggle}}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="width: 22px; height: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center; {{a.box}}"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke-width: 2.4"><path d="{{ic.check}}"></path></svg></span></button>
+                  <button aria-label="{{a.label}}" onClick="{{a.toggle}}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="width: 22px; height: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center; {{a.box}}"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; "><path d="{{ic.check}}"></path></svg></span></button>
                   <span style="font-size: 15px; line-height: 1.4; padding: 11px 8px 11px 0; {{a.css}}">{{a.t}}</span>
                 </div>
               </sc-for>
@@ -2242,7 +2242,7 @@
         <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 26px">
           <sc-for list="{{notes.vo.lines}}" as="l" hint-placeholder-count="4">
             <button onClick="{{l.seek}}" aria-label="Play from {{l.at}}" class="tap" style="display: flex; gap: 12px; align-items: flex-start; padding: 10px 8px; margin: 0 -8px; border-radius: 16px; text-align: left">
-              <span style="width: 30px; height: 30px; border-radius: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10.5px; font-weight: 700; {{l.chip}}">{{l.ini}}</span>
+              <span style="width: 30px; height: 30px; border-radius: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10.5px; font-weight: 700; {{l.chip}}">{{l.ini}}<sc-if value="{{l.statusIcon}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="{{l.statusIcon}}"></path></svg></sc-if></span>
               <div style="min-width: 0; flex-grow: 1">
                 <div style="font-size: 12px; color: var(--mut)">{{l.who}} · {{l.at}}</div>
                 <div style="font-size: 16px; line-height: 1.45; margin-top: 2px; {{l.css}}">{{l.t}}</div>
@@ -2356,7 +2356,7 @@
         <sc-if value="{{notes.rec.review}}"><textarea aria-label="Review transcript" disabled="{{notes.rec.transcriptDisabled}}" value="{{notes.rec.transcript}}" onChange="{{notes.rec.onTranscript}}" style="width:100%;min-height:180px;box-sizing:border-box;background:transparent;border:0;outline:none;color:var(--fg);font-family:inherit;font-size:18px;line-height:1.45;resize:vertical"></textarea></sc-if>
         <sc-for list="{{notes.rec.lines}}" as="l" hint-placeholder-count="3">
           <div class="enter" style="display: flex; gap: 12px; align-items: flex-start">
-            <span style="width: 30px; height: 30px; border-radius: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10.5px; font-weight: 700; {{l.chip}}">{{l.ini}}</span>
+            <span style="width: 30px; height: 30px; border-radius: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10.5px; font-weight: 700; {{l.chip}}">{{l.ini}}<sc-if value="{{l.statusIcon}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="{{l.statusIcon}}"></path></svg></sc-if></span>
             <span style="font-size: 18px; line-height: 1.45; padding-top: 2px; {{l.css}}">{{l.t}}</span>
           </div>
         </sc-for>
@@ -2418,7 +2418,7 @@
     </sc-for>
     <sc-if value="{{contacts.noHits}}" hint-placeholder-val="{{false}}">
       <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 64px; color: var(--mut)">
-        <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px; stroke-width: 1.4"><path d="{{ic.user}}"></path></svg>
+        <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px; "><path d="{{ic.user}}"></path></svg>
         <span style="font-size: 15px">No matches</span>
         <button onClick="{{contacts.addNew}}" aria-label="Add {{contacts.qRaw}}" style="display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px 0 12px; border-radius: 18px; background: var(--s2); color: var(--fg); font-size: 14px; font-weight: 600; margin-top: 4px">
           <svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{ic.plus}}"></path></svg><span>Add ‘{{contacts.qRaw}}’</span>
@@ -2488,7 +2488,7 @@
         <div style="display: flex; justify-content: center; margin-bottom: 22px">
           <span class="serif" style="width: 88px; height: 88px; border-radius: 44px; background: var(--s2); display: flex; align-items: center; justify-content: center; font-size: 34px; color: var(--fg)">
             <sc-if value="{{contacts.eHasIni}}" hint-placeholder-val="{{true}}">{{contacts.eIni}}</sc-if>
-            <sc-if value="{{contacts.eNoIni}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width: 36px; height: 36px; color: var(--mut); stroke-width: 1.3"><path d="{{ic.user}}"></path></svg></sc-if>
+            <sc-if value="{{contacts.eNoIni}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width: 36px; height: 36px; color: var(--mut); "><path d="{{ic.user}}"></path></svg></sc-if>
           </span>
         </div>
         <div style="display: flex; flex-direction: column; gap: 8px">
@@ -2615,7 +2615,7 @@
               <span style="width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--s2); color: var(--fg)"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{r.d}}"></path></svg></span>
               <div style="min-width: 0; flex-grow: 1"><div style="font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.name}}</div><div style="font-size: 13px; color: var(--mut); margin-top: 2px">{{r.sub}}</div></div>
               <sc-if value="{{r.isFolder}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut)"><path d="{{ic.right}}"></path></svg></sc-if>
-              <sc-if value="{{r.selOn}}" hint-placeholder-val="{{false}}"><span style="width: 24px; height: 24px; border-radius: 12px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke-width: 2.4"><path d="{{ic.check}}"></path></svg></span></sc-if>
+              <sc-if value="{{r.selOn}}" hint-placeholder-val="{{false}}"><span style="width: 24px; height: 24px; border-radius: 12px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; "><path d="{{ic.check}}"></path></svg></span></sc-if>
               <sc-if value="{{r.selOff}}" hint-placeholder-val="{{false}}"><span style="width: 24px; height: 24px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--mut); flex-shrink: 0"></span></sc-if>
             </button>
           </sc-for>
@@ -2626,7 +2626,7 @@
               <button onClick="{{r.tap}}" aria-label="{{r.label}}" class="tap" style="display: flex; flex-direction: column; justify-content: flex-start; border-radius: 22px; background: var(--s2); padding: 8px 8px 14px; text-align: left; position: relative; {{r.rowCss}}">
                 <span style="height: 96px; border-radius: 16px; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--fg)"><svg class="i" viewBox="0 0 24 24" style="width: 32px; height: 32px"><path d="{{r.d}}"></path></svg></span>
                 <div style="font-size: 14px; font-weight: 500; margin: 10px 6px 0; line-height: 1.3; overflow: hidden; word-break: break-word; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical">{{r.name}}</div>
-                <sc-if value="{{r.selOn}}" hint-placeholder-val="{{false}}"><span style="position: absolute; top: 14px; right: 14px; width: 24px; height: 24px; border-radius: 12px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--bg)"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke-width: 2.4"><path d="{{ic.check}}"></path></svg></span></sc-if>
+                <sc-if value="{{r.selOn}}" hint-placeholder-val="{{false}}"><span style="position: absolute; top: 14px; right: 14px; width: 24px; height: 24px; border-radius: 12px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--bg)"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; "><path d="{{ic.check}}"></path></svg></span></sc-if>
                 <sc-if value="{{r.selOff}}" hint-placeholder-val="{{false}}"><span style="position: absolute; top: 14px; right: 14px; width: 24px; height: 24px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--mut); background: var(--bg)"></span></sc-if>
               </button>
             </sc-for>
@@ -3081,7 +3081,7 @@
         <sc-if value="{{wallet.pay.isAuth}}" hint-placeholder-val="{{true}}">
           <div style="margin-top: auto; margin-bottom: 70px; display: flex; flex-direction: column; align-items: center; gap: 18px">
             <button aria-label="Confirm with fingerprint" onClick="{{wallet.pay.auth}}" style="position: relative; width: 96px; height: 96px; border-radius: 48px; background: #151515; color: #ffffff; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1.5px #333333">
-              <svg class="i" viewBox="0 0 24 24" style="width: 46px; height: 46px; stroke-width: 1.3"><path d="{{ic.fp}}"></path></svg>
+              <svg class="i" viewBox="0 0 24 24" style="width: 46px; height: 46px; "><path d="{{ic.fp}}"></path></svg>
             </button>
             <div style="font-size: 15px; color: #8F8F8F">Touch to pay</div>
           </div>
@@ -3098,7 +3098,7 @@
         </sc-if>
         <sc-if value="{{wallet.pay.isDone}}" hint-placeholder-val="{{false}}">
           <div class="enter" style="margin-top: auto; margin-bottom: 40px; display: flex; flex-direction: column; align-items: center">
-            <span style="width: 96px; height: 96px; border-radius: 48px; background: #0000FF; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 44px; height: 44px; stroke-width: 2"><path d="{{ic.check}}"></path></svg></span>
+            <span style="width: 96px; height: 96px; border-radius: 48px; background: #0000FF; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 44px; height: 44px; "><path d="{{ic.check}}"></path></svg></span>
             <div class="serif" style="font-size: 44px; margin-top: 18px; line-height: 1">{{wallet.pay.paid}}</div>
             <div style="font-size: 15px; color: #8F8F8F; margin-top: 8px">{{wallet.pay.paidAt}}</div>
             <button onClick="{{wallet.pay.done}}" style="margin-top: 26px; height: 48px; padding: 0 28px; border-radius: 24px; background: #262626; color: #ffffff; font-size: 15px; font-weight: 600; text-align: center">Done</button>
@@ -3203,7 +3203,7 @@
           <div style="display: flex; flex-direction: column; margin-top: 26px; border-top: 1px solid var(--line); padding-top: 8px">
             <sc-for list="{{workflows.fd.runs}}" as="r" hint-placeholder-count="3">
               <button onClick="{{r.open}}" aria-label="{{r.label}}" style="display: flex; align-items: center; gap: 14px; min-height: 60px; text-align: left">
-                <span style="width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; {{r.css}}"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke-width: 2.4"><path d="{{r.d}}"></path></svg></span>
+                <span style="width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; {{r.css}}"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; "><path d="{{r.d}}"></path></svg></span>
                 <span style="flex-grow: 1; min-width: 0"><span style="display: block; font-size: 15px">{{r.when}}</span><span style="display: block; font-size: 13px; color: var(--mut); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.sum}}</span></span>
                 <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut); flex-shrink: 0"><path d="{{ic.right}}"></path></svg>
               </button>
@@ -3223,7 +3223,7 @@
       <div class="scr" style="flex-grow: 1; overflow-y: auto; padding: 4px 24px 130px; touch-action: pan-y">
         <h1 class="serif" style="margin: 0; font-size: 34px; line-height: 1.05; letter-spacing: -.01em">{{workflows.r.when}}</h1>
         <div style="display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 15px">
-          <span style="width: 24px; height: 24px; border-radius: 12px; display: flex; align-items: center; justify-content: center; {{workflows.r.scss}}"><svg class="i" viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke-width: 2.6"><path d="{{workflows.r.sd}}"></path></svg></span>
+          <span style="width: 24px; height: 24px; border-radius: 12px; display: flex; align-items: center; justify-content: center; {{workflows.r.scss}}"><svg class="i" viewBox="0 0 24 24" style="width: 13px; height: 13px; "><path d="{{workflows.r.sd}}"></path></svg></span>
           <span style="font-weight: 600">{{workflows.r.status}}</span><span style="color: var(--mut)">{{workflows.r.flow}}</span>
         </div>
 
@@ -3272,7 +3272,7 @@
           <sc-for list="{{workflows.r.log}}" as="l" hint-placeholder-count="4">
             <div style="display: flex; gap: 14px">
               <div style="display: flex; flex-direction: column; align-items: center; width: 28px; flex-shrink: 0">
-                <span style="width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; {{l.css}}"><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke-width: 2.4"><path d="{{l.d}}"></path></svg></span>
+                <span style="width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; {{l.css}}"><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; "><path d="{{l.d}}"></path></svg></span>
                 <span style="width: 2px; flex-grow: 1; min-height: 12px; background: {{l.line}}"></span>
               </div>
               <div style="flex-grow: 1; display: flex; gap: 10px; padding: 3px 0 20px">
@@ -3994,8 +3994,8 @@
   <span>{{clock}}</span>
   <span style="display: flex; gap: 7px; align-items: center">
     <sc-if value="{{micLive}}" hint-placeholder-val="{{false}}"><span style="width: 7px; height: 7px; border-radius: 4px; background: #00C853"></span></sc-if>
-    <sc-if value="{{sbWifi}}" hint-placeholder-val="{{true}}"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke-width: 2"><path d="{{ic.wifi}}"></path></svg></sc-if>
-    <sc-if value="{{sbPlane}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke-width: 2"><path d="{{ic.plane}}"></path></svg></sc-if>
+    <sc-if value="{{sbWifi}}" hint-placeholder-val="{{true}}"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px; "><path d="{{ic.wifi}}"></path></svg></sc-if>
+    <sc-if value="{{sbPlane}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width: 15px; height: 15px; "><path d="{{ic.plane}}"></path></svg></sc-if>
     <span style="display: flex; align-items: flex-end; gap: 1.5px; height: 12px"><span style="width: 3px; height: 4px; background: currentColor; border-radius: 1px"></span><span style="width: 3px; height: 6px; background: currentColor; border-radius: 1px"></span><span style="width: 3px; height: 9px; background: currentColor; border-radius: 1px"></span><span style="width: 3px; height: 12px; background: currentColor; border-radius: 1px; opacity: .35"></span></span>
     <span style="display: flex; align-items: center; gap: 1px"><span style="width: 22px; height: 11px; border-radius: 3px; border: 1.3px solid currentColor; padding: 1.2px; box-sizing: border-box; display: flex"><span style="width: 78%; background: currentColor; border-radius: 1px"></span></span><span style="width: 2px; height: 4px; background: currentColor; border-radius: 0 1px 1px 0"></span></span>
   </span>
@@ -4005,7 +4005,7 @@
 
 <sc-if value="{{hasOngoing}}" hint-placeholder-val="{{false}}">
 <button onClick="{{ongoing.open}}" aria-label="Return to {{ongoing.label}}" style="position: absolute; top: 9px; left: 84px; z-index: 99; height: 26px; padding: 0 11px 0 9px; border-radius: 13px; background: {{ongoing.color}}; color: #ffffff; display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600">
-  <svg class="i" viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke-width: 2"><path d="{{ongoing.icon}}"></path></svg><span>{{ongoing.label}}</span>
+  <svg class="i" viewBox="0 0 24 24" style="width: 13px; height: 13px; "><path d="{{ongoing.icon}}"></path></svg><span>{{ongoing.label}}</span>
 </button>
 </sc-if>
 

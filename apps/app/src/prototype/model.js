@@ -1,3 +1,4 @@
+import iconCatalog from '../icon-catalog.json';
 /* Seeds, scripted replies and fixture images. Production builds resolve this
    specifier to ./fixtures.empty.js (same names, empty values). */
 import {
@@ -81,11 +82,6 @@ var IC = {
   spark: "M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18",
   dial: "M6 6h.01M12 6h.01M18 6h.01M6 12h.01M12 12h.01M18 12h.01M6 18h.01M12 18h.01M18 18h.01"
 };
-// Canonical path contracts stay stable; display uses the published Lucide assets.
-var ICON_ASSETS = Object.fromEntries([
-  ["kbd", "keyboard"], ["folder", "folder"], ["camera", "camera"],
-  ["flow", "workflow"], ["copy", "copy"], ["reply", "reply"], ["edit", "edit"]
-].map(function (entry) { return [IC[entry[0]], "/icons/lucide/" + entry[1] + ".svg"]; }));
 var DARK = { bg: "#000000", s1: "#0B0B0B", s2: "#151515", s3: "#262626", line: "#262626", fg: "#FFFFFF", mut: "#8F8F8F", acct: "#8A93FF", scrim: "rgba(0,0,0,.55)", frame: "#161616", shc: "rgba(0,0,0,.45)" };
 var LIGHT = { bg: "#FFFFFF", s1: "#FAFAFA", s2: "#F3F3F3", s3: "#E6E6E6", line: "#E3E3E3", fg: "#000000", mut: "#6B6B6B", acct: "#0000FF", scrim: "rgba(0,0,0,.18)", frame: "#DCDCDC", shc: "rgba(0,0,0,.12)" };
 var DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -5575,4 +5571,6 @@ class Component extends DCLogic {
 
 
 
+// Preserve canonical path contracts; resolve display after every IC extension exists.
+var ICON_ASSETS = Object.fromEntries(Object.entries(iconCatalog.ic).map(function (entry) { return [IC[entry[0]], '/icons/lucide/' + entry[1] + '.svg']; }));
 export { Component, VIEWS, ORDER, mockAttentionRows, HOME_DEFAULTS };

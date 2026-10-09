@@ -1,3 +1,4 @@
+import {iconStyle} from '../icon-style';
 import React from "react";
 import templateHtml from "./template.html?raw";
 /* Minimal renderer for the prototype's .dc.html template: {{holes}}, sc-if, sc-for, events, refs. */
@@ -107,7 +108,7 @@ import templateHtml from "./template.html?raw";
       }));
     }
     // Resolve both static IC references and dynamic row paths through one display map.
-    if (tag === "svg" && n.children.length === 1 && n.children[0].localName === "path") {
+    if (tag === "svg" && n.getAttribute("viewBox") === "0 0 24 24" && n.children.length === 1 && n.children[0].localName === "path") {
       var asset = scope.iconAssets?.[props(n.children[0], scope, 0).d];
       if (asset) {
         var original = props(n, scope, key);
@@ -117,13 +118,19 @@ import templateHtml from "./template.html?raw";
         });
         if (icon["aria-label"] && !icon.role) icon.role = "img";
         if (!icon["aria-label"] && !icon["aria-labelledby"] && !icon.role) icon["aria-hidden"] = "true";
-        icon.style = Object.assign({ display: "inline-block", width: original.width || "1em", height: original.height || "1em" }, original.style, {
-          backgroundColor: "currentColor", mask: 'url("' + asset + '") center / contain no-repeat',
-          WebkitMask: 'url("' + asset + '") center / contain no-repeat'
-        });
+        var libraryStyle = iconStyle(asset, !!original.style?.fill && original.style.fill !== "none");
+        icon.style = Object.assign({}, libraryStyle, original.style, { mask: libraryStyle.mask, WebkitMask: libraryStyle.WebkitMask, backgroundColor: "currentColor" });
+        if (original.width) icon.style.width = original.width;
+        if (original.height) icon.style.height = original.height;
         // Class-sized icons retain their established dimensions unless explicitly sized.
         if (original.className && !original.width && !original.style?.width) delete icon.style.width;
         if (original.className && !original.height && !original.style?.height) delete icon.style.height;
+        // Keep an existing badge/backplate separate from the glyph mask.
+        if (original.className?.split(/\s+/).some(function (name) { return name !== "i"; }) || original.style?.background || original.style?.backgroundColor) {
+          var outer = Object.assign({}, icon, { style: original.style });
+          delete outer["data-alpha-icon"];
+          return h("span", outer, h("span", { "aria-hidden": "true", "data-alpha-icon": asset, style: Object.assign({}, libraryStyle, { display: "block", width: "100%", height: "100%" }) }));
+        }
         return h("span", icon);
       }
     }

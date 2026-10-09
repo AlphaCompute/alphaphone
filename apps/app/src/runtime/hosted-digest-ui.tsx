@@ -1,3 +1,4 @@
+import {iconStyle} from '../icon-style';
 import {registerPlugin} from '../platform-plugins';
 import {openDomainRecovery} from '../browser/domain-recovery';
 import {browserDevProfile} from '../browser/dev-profile';
@@ -406,7 +407,7 @@ export function HostedDigestPanel() {
 						aria-label="Close scheduled digests"
 						onClick={() => setOpen(false)}
 					>
-						×
+						<span aria-hidden="true" data-alpha-icon="/icons/lucide/x.svg" style={iconStyle("x")}/>
 					</button>
 				</header>
 				<h1 id="digest-title">Scheduled digests</h1>

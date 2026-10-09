@@ -1,3 +1,4 @@
+import {iconStyle} from '../icon-style';
 import {openBookmarkRecovery,openAlertSoundRecovery,openPasswordProviderRecovery,openAlbumRecovery,openDevicePreferencesRecovery,openDeviceRolesRecovery} from './preference-recovery';
 import {devSurfacesEnabled} from '../build-flags';
 import {openNotificationRecovery} from './notification-recovery';
@@ -20,10 +21,10 @@ function DevelopmentDeviceControls({command}:Props) {
  const open=()=>{const phone=document.querySelector<HTMLElement>('.os');if(phone&&dialog.current){const theme=getComputedStyle(phone);for(const key of ['bg','fg','s2','line','mut'])dialog.current.style.setProperty(`--dev-${key}`,theme.getPropertyValue(`--${key}`));}dialog.current?.showModal();};
  const changeProfile=()=>{const url=new URL(location.href);if(browserDevProfile)url.searchParams.delete('mode');else url.searchParams.set('mode','dev');location.assign(url.href);};
  return <><div className="alpha-dev-tools" data-dev-profile={browserDevProfile?'true':'false'}>
- <button className="alpha-dev-opener" aria-label="Device controls" aria-describedby="alpha-dev-profile-label" title="Device controls" onClick={open}><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 6h4m4 0h10M3 12h10m4 0h4M3 18h4m4 0h10"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg></button>
+ <button className="alpha-dev-opener" aria-label="Device controls" aria-describedby="alpha-dev-profile-label" title="Device controls" onClick={open}><span aria-hidden="true" data-alpha-icon="/icons/lucide/sliders-horizontal.svg" style={{...iconStyle("sliders-horizontal"),width:"22px",height:"22px"}}/></button>
  <span id="alpha-dev-profile-label">{browserDevProfile?'Dev data':'Tools'}</span></div>
  <dialog ref={dialog} className="alpha-dev-controls" aria-label="Development device controls">
- <header><h2>Device controls</h2><button aria-label="Close device controls" onClick={()=>dialog.current?.close()}>×</button></header>
+ <header><h2>Device controls</h2><button aria-label="Close device controls" onClick={()=>dialog.current?.close()}><span aria-hidden="true" data-alpha-icon="/icons/lucide/x.svg" style={iconStyle("x")}/></button></header>
  <p>{browserDevProfile?'Development profile · local simulated data':'App profile'}</p>
  <div className="alpha-dev-actions">
  {([['home','Home'],['back','Back'],['power','Power'],['unlock','Unlock'],['boot','Restart'],['assistant','Assistant'],['shade','Notifications'],['background','Background'],['resume','Resume']] as [Command,string][]).map(([action,label])=><button key={action} onClick={()=>run(action)}>{label}</button>)}
