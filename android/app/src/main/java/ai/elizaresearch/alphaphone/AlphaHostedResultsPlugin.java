@@ -44,6 +44,20 @@ public class AlphaHostedResultsPlugin extends Plugin {
  /** Arms (or clears) the redacted renewal notice for a source bound to a scheduled loop. Only an identity and expiry cross the bridge. */
  @PluginMethod public void scheduleSourceRenewal(PluginCall call){submit(call,()->{try{String id=HostedResultNotices.sourceId(call.getString("sourceId"));Long expiresAt=call.getLong("expiresAt");if(expiresAt==null)throw new IllegalArgumentException();HostedDeliveryWorker.scheduleRenewal(getContext(),id,expiresAt,System.currentTimeMillis());call.resolve();}catch(Exception error){call.reject("Renewal reminder unavailable; the in-app notice remains");}});}
  @PluginMethod public void clearSourceRenewal(PluginCall call){submit(call,()->{try{HostedDeliveryWorker.cancelRenewal(getContext(),HostedResultNotices.sourceId(call.getString("sourceId")));call.resolve();}catch(Exception error){call.reject("Renewal reminder could not be cleared");}});}
+ /** One redacted notice per pending phone-step approval. Only an opaque ID, a route binding and the expiry cross the bridge; a tap opens the run read-only. */
+ @PluginMethod public void postWorkflowApprovalNotice(PluginCall call){submit(call,()->{try{
+  String id=call.getString("id"),binding=call.getString("bindingHash");Long expiresAt=call.getLong("expiresAt");JSONObject route=call.getObject("route");
+  if(!WorkflowNoticeDelivery.approvalId(id)||expiresAt==null||route==null)throw new IllegalArgumentException();
+  long now=System.currentTimeMillis();WorkflowNoticeTaps taps=WorkflowNoticeTapsFactory.create(getContext());WorkflowNoticeDelivery delivery=WorkflowNoticeTapsFactory.delivery(getContext());
+  for(String expired:delivery.expireApprovals(now))taps.forget(expired);
+  String status="expired";if(WorkflowNoticeDelivery.approvalTimeout(expiresAt,now)>0){taps.prepare(id,binding,route);status=delivery.publishApproval(id,binding,expiresAt,now);}
+  JSObject out=new JSObject();out.put("status",status);call.resolve(out);
+ }catch(Exception error){call.reject("Approval notice unavailable; the step stays waiting in Workflows");}});}
+ /** A decision (or an approval that is no longer pending) withdraws its notice; it is never reposted. */
+ @PluginMethod public void withdrawWorkflowApprovalNotice(PluginCall call){submit(call,()->{try{
+  String id=call.getString("id");if(!WorkflowNoticeDelivery.approvalId(id))throw new IllegalArgumentException();
+  WorkflowNoticeTapsFactory.delivery(getContext()).withdrawApproval(id);WorkflowNoticeTapsFactory.create(getContext()).forget(id);call.resolve();
+ }catch(Exception error){call.reject("Approval notice could not be withdrawn; it expires with the approval");}});}
  private static volatile String pendingRenewal;
  /** A Renew tap only opens the review for that source; it is consumed once and never renews by itself. */
  @PluginMethod public void pendingSourceRenewal(PluginCall call){String id=pendingRenewal;pendingRenewal=null;JSObject out=new JSObject();if(id!=null)out.put("sourceId",id);call.resolve(out);}
