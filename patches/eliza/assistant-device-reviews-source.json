@@ -1,8 +1,8 @@
 {
   "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
   "patch": "0046-assistant-device-reviews.patch",
-  "sha256": "1fba467537446f11a0f6f4b45a9ef579f216c756e09867ecaa5c709f26607e39",
-  "status": "Candidate for elizaOS develop; requires 0045 contracts; authored at reviewed runtime 45242af; not submitted upstream",
+  "sha256": "cc35c67621f702c273920b4e41d035435de3cf9b700bce988907fd1e9d2b6758",
+  "status": "Candidate for elizaOS develop; requires 0045 contracts; authored at reviewed runtime 45242af; updates the device-actions e2e grant list (also the pre-existing calendar.create/next-read and notes.query grants); not submitted upstream",
   "basePaths": [
     "plugins/plugin-assistant"
   ],
@@ -12,7 +12,8 @@
     "plugins/plugin-assistant/src/services/device-actions/contract.ts",
     "plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.test.ts",
     "plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts",
-    "plugins/plugin-assistant/src/services/device-actions/service.ts"
+    "plugins/plugin-assistant/src/services/device-actions/service.ts",
+    "plugins/plugin-assistant/test/device-actions.e2e.test.ts"
   ],
   "files": {
     "plugins/plugin-assistant/build.ts": "0c605bcbacab81d9b3a8d3a12537ef779719e9cf3736b504b5339d80388ec3f8",
@@ -909,7 +910,7 @@
     "plugins/plugin-assistant/src/utils/prompt-batcher/shared.test.ts": "5820339827d9e8cf8b85859387d7d7798c01b1bbdcc2031f0d60c5f163d891a1",
     "plugins/plugin-assistant/src/utils/prompt-batcher/shared.ts": "9dd4d41e6131b29c2bb6f93a724ea20047b2ce6cf890148be2e2907c9c4716ee",
     "plugins/plugin-assistant/test/clock-review-export.integration.test.ts": "b49d835a1d2c9aff2293deed6f7cd11897743334b9c7a0b1195d1f10fde69336",
-    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "ca03b777c35073fb72f7e3bc138f75c5d613be045c67fe9e030faae8d3febe2f",
+    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "344f88f3e454a54e562120166c80c388c309bdd1fd9d676cef3fecbf1740d88c",
     "plugins/plugin-assistant/test/notes-query.e2e.test.ts": "8e2f123859328f9bbe3b0e5e074e5abb1ade2c2d8591d3499f8918e697bdceba",
     "plugins/plugin-assistant/test/reminder-relative-create.integration.test.ts": "053934d2a408d9bc88beb4f921e8347bc9d570d3a02a7fb13246907bec382db1",
     "plugins/plugin-assistant/test/templates/authored-template-fixtures.ts": "4ea816107317017f788535bd9498c4cf2d748cd5fea6902079c00ba5767837f1",

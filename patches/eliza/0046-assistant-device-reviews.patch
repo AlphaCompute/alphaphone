@@ -635,3 +635,20 @@ index becb58e3f69fd222c6fe4af63a957c0e1f22e8c0..3831cfb5b394c440813e67695d5856cf
        } else if (
          (payload.operation.type === "read_selected_notes" ||
            payload.operation.type === "read_calendar_range") &&
+diff --git a/plugins/plugin-assistant/test/device-actions.e2e.test.ts b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+index 2e3378c2d98384153d591fb04cbe049af0b42e57..638a2b741cb8f8c1320f6c9c34a86cd5790d2167 100644
+--- a/plugins/plugin-assistant/test/device-actions.e2e.test.ts
++++ b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+@@ -1044,6 +1044,12 @@ test("device approval REST lifecycle survives restart and never duplicates claim
+           "reminders.create.v1",
+           "clock.handoff.v2",
+           "clock.alarms.v1",
++          "calendar.create.v1",
++          "calendar.next-read.v1",
++          "notes.query.v1",
++          "notes.search.v1",
++          "calendar.availability-read.v1",
++          "device.named-target.v1",
+         ].sort(),
+       );
+       expect(enrolled.body.capabilities).toContain("clock.handoff.v1");
