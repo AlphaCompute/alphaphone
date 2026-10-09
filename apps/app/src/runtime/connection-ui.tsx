@@ -700,10 +700,17 @@ export const connectionController = {
       // A selected development host can restore its existing Mac-owned Cloud account.
       // The server returns only a reference; canonical identity still owns readiness.
       if(cloudCredentialStore.acceptsReferences&&!isAndroid&&!browserDevProfile&&selection()?.kind!=='offline'&&new URLSearchParams(location.search).get('mode')!=='mock'){
-        await work('Checking your Cloud account…',async signal=>{
-          const credential=await cloudCredentialStore.read('production');signal.throwIfAborted();
-          if(credential?.credentialReference)await verifyService(makeCloud('production'),signal);
-        });
+        const restoreEpoch=epoch;
+        const canRestore=()=>restoreEpoch===epoch&&!operation&&!state.open&&selection()?.kind!=='offline';
+        try{
+          const credential=await cloudCredentialStore.read('production');
+          // An optional empty host store is not an account onboarding action.
+          if(credential?.credentialReference&&canRestore())await work('Checking your Cloud account…',async signal=>{
+            const current=await cloudCredentialStore.read('production');signal.throwIfAborted();
+            if(restoreEpoch!==epoch||current?.credentialId!==credential.credentialId||current?.credentialReference!==credential.credentialReference)throw Error('Cloud account changed. Try again.');
+            await verifyService(makeCloud('production'),signal);
+          });
+        }catch(error){if(canRestore())await work('Checking your Cloud account…',async()=>{throw error;});}
       }
       if (!testMocksEnabled && migrateLegacyMock()) return;
       if (testMocksEnabled && ((!isAndroid && !browserLocalAgentEnabled) || new URLSearchParams(location.search).get('mode') === 'mock')) return;

@@ -5,6 +5,9 @@ import { registerPlugin } from '../platform-plugins';
 import type { CloudNativeRequest, CloudCredentialStore, CloudCredential } from './cloud-protocol';
 import type { RemoteRequester, RemoteCredentialStore } from './remote-protocol';
 
+const nativeConnectionHeader=(Capacitor as typeof Capacitor&{PluginHeaders?:{name:string}[]}).PluginHeaders?.some(header=>header.name==='AlphaConnection')??false;
+const browserCloudHost=devSurfacesEnabled&&!Capacitor.isNativePlatform()&&!nativeConnectionHeader;
+
 const native = registerPlugin<{
   request(input: { requestId: string; url: string; method: string; headers: Record<string,string>; body?: string; credentialReference?:string; expiresAt?: number }): Promise<{status:number;data:unknown}>;
   cancel(input:{requestId:string}):Promise<void>;
@@ -13,7 +16,7 @@ const native = registerPlugin<{
   secureCompareExchange(input:{slot:string;expectedValue:string|null;value:string|null}):Promise<{status:"saved"|"conflict"}>;
   secureRemove(input:{slot:string}):Promise<void>;
   openExternal(input:{url:string;requestId:string}):Promise<void>;
-}>('AlphaConnection',devSurfacesEnabled&&!Capacitor.isNativePlatform()?{web:()=>new BrowserCloudConnection()}:undefined);
+}>('AlphaConnection',browserCloudHost?{web:()=>new BrowserCloudConnection()}:undefined);
 
 export const secureConnectionStore = {
   async readRaw(slot:string):Promise<string|null> { return (await native.secureRead({slot})).value; },
@@ -32,7 +35,7 @@ function serial<T>(operation:()=>Promise<T>):Promise<T> {
   const result=storageQueue.then(operation,operation);storageQueue=result.catch(()=>{});return result;
 }
 export const cloudCredentialStore:CloudCredentialStore={
-  acceptsReferences:devSurfacesEnabled&&!Capacitor.isNativePlatform(),
+  acceptsReferences:browserCloudHost,
   read:environment=>serial(async()=>{
     const value=await secureConnectionStore.read<CloudCredential>(`cloud:${environment}`);
     if(value&&!value.credentialId){value.credentialId=crypto.randomUUID();await secureConnectionStore.write(`cloud:${environment}`,value);}
