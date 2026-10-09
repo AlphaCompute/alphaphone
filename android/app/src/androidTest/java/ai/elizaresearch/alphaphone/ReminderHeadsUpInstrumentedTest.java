@@ -26,6 +26,19 @@ public class ReminderHeadsUpInstrumentedTest {
   }
   return false;
  }
+ // On API 36 the pinned heads-up row is drawn in a System UI window that is not reported to
+ // accessibility, so System UI's own HeadsUpManager entry map is the second evidence source:
+ // it lists exactly the notifications currently pinned as heads-up.
+ private static boolean pinnedHeadsUp(UiAutomation automation,String key)throws Exception{
+  try(java.io.InputStream in=new android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand("dumpsys activity service com.android.systemui"));java.io.BufferedReader reader=new java.io.BufferedReader(new java.io.InputStreamReader(in))){
+   String line;boolean map=false;
+   while((line=reader.readLine())!=null){
+    if(line.contains("[HeadsUpManagerImpl.mHeadsUpEntryMap]")){map=true;continue;}
+    if(map){if(line.trim().isEmpty()){map=false;continue;}if(line.trim().equals(key))return true;}
+   }
+  }
+  return false;
+ }
  @Test public void dueReminderIsShownHeadsUpWithoutOpeningTheShade()throws Exception{
   Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
   UiAutomation automation=InstrumentationRegistry.getInstrumentation().getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES);
@@ -38,8 +51,9 @@ public class ReminderHeadsUpInstrumentedTest {
    ReminderTestAccess.schedule(c,id,title,"Disposable heads-up fixture",System.currentTimeMillis()+1000);SystemClock.sleep(1500);
    ReminderTestAccess.deliver(c,id,ReminderTestAccess.read(c,id).getString("occurrenceId"));
    assertEquals("posted",ReminderTestAccess.read(c,id).getString("status"));
-   boolean shown=false;for(int i=0;i<50&&!shown;i++){shown=visible(automation,title);if(!shown)SystemClock.sleep(200);}
-   assertTrue("Heads-up notification visible in System UI",shown);
+   String key="0|"+c.getPackageName()+"|0|"+AlphaReminders.CONFIGURATION.notificationTagPrefix+id+"|"+android.os.Process.myUid();
+   boolean shown=false;for(int i=0;i<50&&!shown;i++){shown=visible(automation,title)||pinnedHeadsUp(automation,key);if(!shown)SystemClock.sleep(200);}
+   assertTrue("Heads-up notification shown by System UI without opening the shade",shown);
    assertEquals(NotificationManager.IMPORTANCE_HIGH,c.getSystemService(NotificationManager.class).getNotificationChannel(ReminderLifecycleTestAccess.dueChannel()).getImportance());
   }finally{ReminderTestAccess.cancel(c,id);assertTrue(new ReminderTestAccess.Envelope(c).records().edit().remove(id).commit());}
  }
