@@ -684,6 +684,14 @@ export const connectionController = {
     if (startup) return startup;
     startup = (async () => {
       if(browserDevProfile){const saved=selection();if(saved?.kind==='development'){if(saved.account!==(await readDevelopmentIdentity(saved.profile)).account){save({kind:'none'});return;}await work('Restoring development agent…',signal=>connectDevelopment(saved.profile,signal));return;}}
+      // A selected development host can restore its existing Mac-owned Cloud account.
+      // The server returns only a reference; canonical identity still owns readiness.
+      if(cloudCredentialStore.acceptsReferences&&!isAndroid&&!browserDevProfile&&selection()?.kind!=='offline'&&new URLSearchParams(location.search).get('mode')!=='mock'){
+        await work('Checking your Cloud account…',async signal=>{
+          const credential=await cloudCredentialStore.read('production');signal.throwIfAborted();
+          if(credential?.credentialReference)await verifyService(makeCloud('production'),signal);
+        });
+      }
       if (!testMocksEnabled && migrateLegacyMock()) return;
       if (testMocksEnabled && ((!isAndroid && !browserLocalAgentEnabled) || new URLSearchParams(location.search).get('mode') === 'mock')) return;
       if (!testMocksEnabled && !isAndroid && !browserLocalAgentEnabled) {

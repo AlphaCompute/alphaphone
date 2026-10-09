@@ -20,12 +20,15 @@ export function cloudEnvironmentAvailable(environment: CloudEnvironment): boolea
 export interface CloudCredential {
   /** Local generation identifier, never an authentication credential. */
   credentialId?: string;
-  token: string;
+  token?: string;
+  /** Development host reference; it is never a Cloud bearer credential. */
+  credentialReference?: string;
   expiresAt?: number;
   userId?: string;
   organizationId?: string;
 }
 export interface CloudCredentialStore {
+  acceptsReferences?: boolean;
   read(environment: CloudEnvironment): Promise<CloudCredential | null>;
   /** Must atomically reject an aborted signal before committing to native secure storage. */
   write(environment: CloudEnvironment, credential: CloudCredential, signal: AbortSignal): Promise<void>;
@@ -35,7 +38,7 @@ export interface CloudCredentialStore {
  * and return decoded JSON. It must never log headers, bodies, or auth URLs. */
 export interface CloudNativeRequest {
   (input: { url: string; method: AutomationsMethod; headers: Record<string, string>;
-    body?: unknown; signal: AbortSignal; timeoutMs: number; redirect: "error"; expiresAt?: number;
+    body?: unknown; credentialReference?: string; signal: AbortSignal; timeoutMs: number; redirect: "error"; expiresAt?: number;
   }): Promise<{ status: number; data: unknown }>;
 }
 export interface CloudLoginAttempt { sessionId: string; expiresAt: number; browserUrl: string }
@@ -132,6 +135,7 @@ export class CloudProtocol {
   }
   private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
     signal.throwIfAborted();
+    let credentialReference: string | undefined;
     const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
     if (options.authenticated) {
       const credential = await this.credentials.read(this.environment);
@@ -139,12 +143,16 @@ export class CloudProtocol {
       if (!credential) throw new CloudProtocolError("credentials-missing");
       if (options.credentialId && credential.credentialId !== options.credentialId) throw new Error("Cloud account changed");
       if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
-      headers.Authorization = `Bearer ${credential.token}`;
+      if(credential.credentialReference){
+        if(!this.credentials.acceptsReferences || credential.token)throw new CloudProtocolError("invalid-response");
+        credentialReference=credential.credentialReference;
+      }else if(credential.token)headers.Authorization = `Bearer ${credential.token}`;
+      else throw new CloudProtocolError("credentials-missing");
     }
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
     const response = await this.request({ url: (options.runtimeBase ?? this.authority.api) + path,
       method: options.method ?? (options.body === undefined ? "GET" : "POST"), headers, body: options.body,
-      signal, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error", ...(options.expiresAt === undefined ? {} : {expiresAt:options.expiresAt}) });
+      signal, credentialReference, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error", ...(options.expiresAt === undefined ? {} : {expiresAt:options.expiresAt}) });
     signal.throwIfAborted();
     if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status, response.data);
     options.onStatus?.(response.status);
@@ -252,8 +260,9 @@ export class CloudProtocol {
         if (data.status === "authenticated") {
           const token = ["token", "accessToken", "stewardToken", "sessionToken", "apiKey"]
             .flatMap(key => [response[key], data[key]]).find(value => typeof value === "string" && value.trim());
-          if (!token) throw new CloudProtocolError("credential-consumed");
-          const credential: CloudCredential = { token: string(token) };
+          const reference=data.credentialReference ?? response.credentialReference;
+          if(!token && !(this.credentials.acceptsReferences && typeof reference==="string" && /^browser-cloud-reference:[0-9a-f-]{36}$/.test(reference)))throw new CloudProtocolError("credential-consumed");
+          const credential: CloudCredential = token ? {token:string(token)} : {credentialReference:string(reference)};
           if (data.expiresAt != null) credential.expiresAt = timestamp(data.expiresAt);
           if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
           if (data.userId != null) credential.userId = string(data.userId);

@@ -1,3 +1,4 @@
+import {browserCloudDevBridge} from './scripts/browser-cloud-dev-bridge.ts';
 import {localOcrAssets} from './scripts/local-ocr-assets.ts';
 import {browserSpeechAssets} from './scripts/browser-speech-vite.ts';
 import { browserPdfAssets } from './scripts/browser-pdf-assets.ts';
@@ -100,7 +101,7 @@ function productionSurface(): Plugin[] {
 
 export default defineConfig({
   root: "apps/app",
-  plugins: [productionSurface(), localOcrAssets(), browserSpeechAssets(), browserPdfAssets(), browserFullReload(), react(), localAgentDevBridge()],
+  plugins: [productionSurface(), localOcrAssets(), browserSpeechAssets(), browserPdfAssets(), browserFullReload(), react(), localAgentDevBridge(), browserCloudDevBridge()],
   define: {
     'import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS': JSON.stringify(flagOn ? '1' : ''),
     __APP_VERSION__: JSON.stringify(appVersion),

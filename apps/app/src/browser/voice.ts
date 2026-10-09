@@ -1,3 +1,5 @@
+import {devSurfacesEnabled} from '../build-flags';
+import {browserCloudVoice,browserCloudCredential} from './cloud-connection';
 import type {LocalAgentProtocol} from '../runtime/local-agent';
 import {browserSpeechConnection as connectionController} from './agent-speech';
 import {recordingPcmSamples,recordingPcmWav} from './recording-pcm';
@@ -12,15 +14,17 @@ import { WebPlugin } from '@capacitor/core';
 // on the explicitly selected host agent, which keeps its credentials on the host.
 export class BrowserVoice extends WebPlugin {
  private connection=Promise.resolve(connectionController).then(connectionController=>{
-  let binding=connectionController.getSnapshot().session?.sessionId;
-  connectionController.subscribe(()=>{const next=connectionController.getSnapshot().session?.sessionId;if(next!==binding){binding=next;void this.releaseLocalSpeech();}});
+  const selected=()=>JSON.stringify([connectionController.getSnapshot().session?.sessionId,connectionController.getCloudEnvironment(),connectionController.getCloudClient()?.sessionId,connectionController.getCloudClient()?.credentialId]);
+  let binding=selected();
+  connectionController.subscribe(()=>{const next=selected();if(next!==binding){binding=next;void this.releaseLocalSpeech();}});
   return connectionController;
  });
  private speechRequest?:AbortController;
+ private speechRequestId?:string;
  private capture=new BrowserAudioCapture(event=>{void this.notifyListeners('recordingStopped',event);});
  private recognizer=new BrowserSpeechRecognizer();
  private speech=new Map<string,string>();
- private agentAudio=new Map<string,{blob:Blob;agent:LocalAgentProtocol;sessionId:string}>();
+ private agentAudio=new Map<string,{blob:Blob;agent?:LocalAgentProtocol;sessionId:string;cloud?:{environment:string;credentialId:string}}>();
  private audio?:HTMLAudioElement;
  private audioId?:string;
  private pendingAudioId?:string;
@@ -65,7 +69,32 @@ export class BrowserVoice extends WebPlugin {
   });
  }
 
- transcribeRecording(input:{recordingId:string}){return this.transcribeLocalRecording(input);}
+ private async cloudBinding(input:{environment:string;credentialId:string}) {
+  if(!devSurfacesEnabled)throw Error('Cloud voice requires the native app or a development host.');
+  const connection=await this.connection,binding=connection.getCloudClient();
+  if(!binding||connection.getCloudEnvironment()!==input.environment||binding.credentialId!==input.credentialId)throw Object.assign(Error('Sign in to Eliza Cloud before using voice.'),{code:'voice-http-401'});
+  const current=()=>{const next=connection.getCloudClient();if(document.hidden||connection.getCloudEnvironment()!==input.environment||next?.sessionId!==binding.sessionId||next.credentialId!==binding.credentialId)throw new DOMException('Cloud account changed','AbortError');};
+  current();return {sessionId:binding.sessionId,current};
+ }
+ async transcribeRecording(input:{recordingId:string;requestId:string;environment:string;credentialId:string}){
+  if(!devSurfacesEnabled)throw Error('Cloud voice requires the native app or a development host.');
+  return this.withAgentSpeech(async signal=>{
+   const binding=await this.cloudBinding(input),clip=this.capture.get(input.recordingId);if(!clip)throw Error('Record a clip first.');
+   const response=await browserCloudVoice(input,'stt',clip.blob,signal),result=await response.json();signal.throwIfAborted();binding.current();
+   if(result.local!==false||typeof result.text!=='string'||!result.text.trim())throw Error('Eliza Cloud returned no usable transcript.');
+   return {text:result.text,local:false};
+  },input.requestId);
+ }
+ async synthesize(input:{text:string;requestId:string;environment:string;credentialId:string}){
+  if(!devSurfacesEnabled)throw Error('Cloud voice requires the native app or a development host.');
+  return this.withAgentSpeech(async signal=>{
+   const binding=await this.cloudBinding(input),response=await browserCloudVoice(input,'tts',input.text,signal),blob=await response.blob();signal.throwIfAborted();binding.current();
+   if(!blob.size||blob.size>8*1024*1024||!['audio/mpeg','audio/mp3','audio/wav'].includes(blob.type.split(';')[0]))throw Error('Eliza Cloud returned no usable speech.');
+   const playbackId=crypto.randomUUID();this.agentAudio.set(playbackId,{blob,sessionId:binding.sessionId,cloud:{environment:input.environment,credentialId:input.credentialId}});
+   while(this.agentAudio.size>8)this.agentAudio.delete(this.agentAudio.keys().next().value!);
+   return {playbackId};
+  },input.requestId);
+ }
  async synthesizeLocal(input:{text:string}){
   if(typeof input.text!=='string'||!input.text.trim()||input.text.length>16000)throw Error('Choose text between 1 and 16000 characters.');
   return this.withAgentSpeech(async signal=>{
@@ -104,7 +133,10 @@ export class BrowserVoice extends WebPlugin {
    if(prepared){
     const connectionController=await this.connection;
     if(!current())throw new DOMException('Playback cancelled','AbortError');
-    if(connectionController.getBrowserSpeechAgent()!==prepared.agent||prepared.agent.session?.sessionId!==prepared.sessionId){this.agentAudio.delete(input.playbackId);throw new DOMException('Voice selection changed','AbortError');}
+    if(prepared.cloud){if(!devSurfacesEnabled)throw Error('Cloud voice requires a development host.');await browserCloudCredential(prepared.cloud.environment,prepared.cloud.credentialId,abort.signal);if(!current())throw new DOMException('Playback cancelled','AbortError');}
+    const cloud=connectionController.getCloudClient();
+    const stale=prepared.cloud ? connectionController.getCloudEnvironment()!==prepared.cloud.environment||cloud?.credentialId!==prepared.cloud.credentialId||cloud?.sessionId!==prepared.sessionId : !prepared.agent||connectionController.getBrowserSpeechAgent()!==prepared.agent||prepared.agent.session?.sessionId!==prepared.sessionId;
+    if(stale){this.agentAudio.delete(input.playbackId);throw new DOMException('Voice selection changed','AbortError');}
     const url=URL.createObjectURL(prepared.blob);let audio:HTMLAudioElement;
     try{audio=new Audio(url);audio.volume=browserMediaVolume();}catch(error){URL.revokeObjectURL(url);throw error;}
     this.audio=audio;
@@ -169,11 +201,11 @@ export class BrowserVoice extends WebPlugin {
  async remove(input:{audioId:string;noteId:string;operationId:string}){const result=await changeAudioDeleted(input.audioId,input.noteId,true,input.operationId);if(result.status==='removed'){if([this.audioId,this.pendingAudioId].includes(input.audioId))await this.stopPlayback();this.audioChanges?.postMessage({audioId:input.audioId,deleted:true});}return result;}
  async restore(input:{audioId:string;noteId:string;operationId:string}){return changeAudioDeleted(input.audioId,input.noteId,false,input.operationId);}
  async purge(input:{audioId:string;noteId:string;operationId:string}){if([this.audioId,this.pendingAudioId].includes(input.audioId))await this.stopPlayback();return purgeAudio(input.audioId,input.noteId,input.operationId);}
- private async withAgentSpeech<T>(run:(signal:AbortSignal)=>Promise<T>){
-  this.speechRequest?.abort();const controller=this.speechRequest=new AbortController();
+ private async withAgentSpeech<T>(run:(signal:AbortSignal)=>Promise<T>,requestId?:string){
+  this.speechRequest?.abort();const controller=this.speechRequest=new AbortController();this.speechRequestId=requestId;
   try{return await run(controller.signal);}finally{if(this.speechRequest===controller)this.speechRequest=undefined;}
  }
- async cancel(){this.speechRequest?.abort();this.speechRequest=undefined;this.recognizer.stop();this.capture.cancel();await this.stopPlayback();}
+ async cancel(input?:{requestId?:string}){if(input?.requestId&&input.requestId!==this.speechRequestId)return;this.speechRequest?.abort();this.speechRequest=undefined;this.recognizer.stop();this.capture.cancel();await this.stopPlayback();}
  async releaseLocalSpeech(){await this.cancel();this.recognizer.cancel();this.speech.clear();this.agentAudio.clear();this.capture.clear();}
 }
 function playbackWait<T>(work:Promise<T>,signal:AbortSignal):Promise<T>{
