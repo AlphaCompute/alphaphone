@@ -52,7 +52,7 @@ test('a selected document is listed in Recent, found by search and reopened from
  await page.addInitScript(offline);await page.goto('/');
  await page.getByRole('button',{name:'Files',exact:true}).click();
  const documents=page.getByRole('button',{name:'Documents',exact:true});
- await expect(documents).toContainText('Choose a PDF or Office file');await expect(documents).not.toContainText('items');
+ await expect(documents).toContainText('Choose a document · PDF or Office');await expect(documents).not.toContainText('items');
  const chooser=page.waitForEvent('filechooser');await documents.click();
  await (await chooser).setFiles({name:'Trip plan.txt',mimeType:'text/plain',buffer:Buffer.from('Pack the blue folder\nTrain at 9')});
  await expect(page.locator('[data-screen]')).toContainText('Pack the blue folder');

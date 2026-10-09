@@ -9,7 +9,7 @@ type Outcome={id:string;status:string;message:string};
 type Listing={status:string;message:string;folder?:Entry;entries?:Entry[];rootId?:string;entry?:Entry;cursor?:string;total?:number;outcomes?:Outcome[]};
 /** Category tiles open the system picker narrowed to a type; the provider decides. */
 const CATEGORIES:Record<string,{mime?:string[];hint:string}>={
- Documents:{mime:['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','application/vnd.oasis.opendocument.text','text/plain','application/rtf'],hint:'Choose a PDF or Office file'},
+ Documents:{mime:['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','application/vnd.oasis.opendocument.text','text/plain','application/rtf'],hint:'Choose a document · PDF or Office'},
  Recordings:{mime:['audio/*'],hint:'Choose an audio recording'},
  Downloads:{hint:'Choose any file · open the Downloads folder in the picker'},
  Receipts:{hint:'Choose any file · receipts are not detected automatically'},
