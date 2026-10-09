@@ -33,7 +33,8 @@ test('no brief yet, explicit calendar state with its device source, and no place
   await page.getByRole('button', { name: 'Back to apps', exact: true }).click();
   // The browser calendar is read from this browser; an empty calendar says so instead of neutral copy.
   const calendar = page.locator('[data-alpha-layer="home"] button[aria-label^="Open"]').first();
-  await expect(calendar).toHaveAttribute('aria-label', /^(Open your calendar\. No upcoming events\. Read .+ from this browser|Open calendar event: .+)$/);
+  await expect(calendar).toHaveAttribute('aria-label', /^(Open your calendar|Open calendar event: .+)$/);
+  await expect(calendar).toContainText(/Nothing coming up|Calendar/);
   await expect(calendar).toContainText(/Read .+ from this browser/);
   await expect(calendar).not.toContainText(/^(MC|JP|\+2)$/);
   await expect(page.locator('[data-alpha-layer="home"]').getByText(/^(MC|JP|\+2)$/)).toHaveCount(0);

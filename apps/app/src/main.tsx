@@ -133,13 +133,14 @@ function Phone() {
       const tools = devSurfacesEnabled && !isAndroid && !mock ? document.querySelector<HTMLElement>('.alpha-dev-tools') : null;
       const toolsInset = tools ? Math.max(56, Math.ceil(tools.getBoundingClientRect().height + (parseFloat(getComputedStyle(tools).bottom) || 0) + 2)) : 0;
       const available = Math.max(1, height - banner - (desktop ? 48 : 0) - toolsInset);
-      // Scale by the shorter side so rotating keeps the same type size; the longer side becomes
-      // extra canvas (landscape lays Home and the composer out side by side in phone.css).
-      const scale = desktop ? Math.min(1, available / 915) : Math.max(0.1, Math.min(window.innerWidth, available) / 412);
+      // Orientation comes from the screen, not the viewport, so a soft keyboard (adjustResize)
+      // never flips the layout. Landscape scales by the screen's shorter side so rotating keeps the
+      // same type size; the longer side becomes extra canvas (Home and the composer side by side).
+      const landscape = !desktop && window.screen.width > window.screen.height;
+      const scale = desktop ? Math.min(1, available / 915) : landscape ? Math.max(0.1, Math.min(window.innerWidth, window.screen.height) / 412) : window.innerWidth / 412;
       // Width follows the viewport in CSS, so a rotation never leaves the canvas wider than the
       // screen before this handler runs (a wider canvas would widen the mobile layout viewport).
       const width = desktop ? '412px' : `calc(100vw / ${scale})`;
-      const landscape = !desktop && window.innerWidth > available;
       document.documentElement.style.setProperty('--phone-scale', String(scale));
       document.documentElement.style.setProperty('--phone-width', width);
       document.documentElement.style.setProperty('--phone-height', `${desktop ? 915 : available / scale}px`);

@@ -17,9 +17,9 @@ test('attention: not connected offers Gmail setup in Connections instead of a de
 });
 test('attention: connected shows the unread count, source and read time and opens Inbox', () => {
   const card = H.presentHomeAttention({state: 'ready', unread: 3, source: 'Gmail', updatedAt: at(15, 4)}, now);
-  assert.deepEqual(card, {action: 'inbox', count: '3', text: 'unread · Gmail · 3:04 PM', label: 'Open Inbox: 3 unread emails in Gmail, updated 3:04 PM'});
+  assert.deepEqual(card, {action: 'inbox', count: '3', text: 'unread · Gmail · 3:04 PM', label: 'Open Inbox: 3 unread emails'});
   assert.equal(H.presentHomeAttention({state: 'ready', unread: 0, source: 'Gmail', updatedAt: new Date(at(9)).toISOString()}, now).text, 'Nothing unread · Gmail · 9:00 AM');
-  assert.equal(H.presentHomeAttention({state: 'ready', unread: 1, source: 'Gmail'}, now).label, 'Open Inbox: 1 unread email in Gmail');
+  assert.deepEqual(H.presentHomeAttention({state: 'ready', unread: 1, source: 'Gmail'}, now), {action: 'inbox', count: '1', text: 'unread · Gmail', label: 'Open Inbox: 1 unread email'});
 });
 test('attention: stale and error states are explicit and still open Inbox for recovery', () => {
   const stale = H.presentHomeAttention({state: 'stale', unread: 2, source: 'Gmail', updatedAt: at(8, 15, 6)}, now);
@@ -59,7 +59,9 @@ test('calendar: denied, error and retry copy replace neutral copy, and reads nam
   const ready = H.presentHomeCalendar({...base, state: 'ready'});
   assert.deepEqual([ready.title, ready.source], ['Nothing coming up', 'Read 3:04 PM from this device']);
   const event = H.presentHomeCalendar({...base, state: 'ready', agenda: {title: 'Dentist', begin: at(16), allDay: false, video: false, people: []}});
-  assert.deepEqual([event.title, event.time, event.video, event.source], ['Dentist', '4:00 PM', false, 'Read 3:04 PM from this device']);
+  assert.deepEqual([event.title, event.time, event.video, event.source, event.label], ['Dentist', '4:00 PM', false, 'Read 3:04 PM from this device', 'Open calendar event: Dentist']);
+  for (const state of ['denied', 'error', 'loading', 'ready', 'unavailable', 'not-connected']) assert.equal(H.presentHomeCalendar({...base, state}).label, 'Open your calendar', 'stable accessible name');
+  assert.equal(H.presentHomeCalendar({...base, state: 'ready', agenda: {title: 'Pay rent', begin: at(9), allDay: false, video: false, people: [], overdue: true}}).time, 'Overdue');
   assert.equal(H.presentHomeCalendar({...base, state: 'ready', agenda: {title: 'Trip', begin: at(0, 0, 9), allDay: true, video: true, people: []}}).time, 'Fri, Oct 9');
 });
 test('attendee initials come only from event names, capped with an overflow count', () => {

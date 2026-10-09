@@ -33,7 +33,8 @@ export function presentHomeAttention(summary: HomeAttentionSummary | null | unde
       if (unread === null) break;
       return {action: 'inbox' as const, count: String(unread),
         text: `${unread ? 'unread' : 'Nothing unread'} · ${source}${updated ? ` · ${whenLabel(updated, now)}` : ''}`,
-        label: `Open Inbox: ${plural(unread, 'unread email', 'unread emails')} in ${source}${updated ? `, updated ${whenLabel(updated, now)}` : ''}`};
+        // Stable accessible name; source and read time are in the visible text line.
+        label: `Open Inbox: ${plural(unread, 'unread email', 'unread emails')}`};
     case 'stale':
       return {action: 'inbox' as const, count: unread === null ? '—' : String(unread),
         text: updated ? `Not updated since ${whenLabel(updated, now)}` : 'Not updated recently',
@@ -78,17 +79,19 @@ export function presentHomeCalendar(input: {state: CalendarCardState; agenda: Ho
     const date = new Date(agenda.begin);
     const time = agenda.overdue ? 'Overdue' : agenda.begin <= now ? (agenda.allDay ? 'All day' : 'Now')
       : date.toDateString() === new Date(now).toDateString() ? (agenda.allDay ? 'All day' : formatTime(date)) : formatShortDate(date);
-    return {title: agenda.title, time, source, video: agenda.video, people: agenda.people, label: `Open calendar event: ${agenda.title}, ${time}${source ? `. ${source}` : ''}`};
+    // Accessible names stay stable ("Open calendar event: <title>" / "Open your calendar"); the
+    // visible time, state and source lines carry the rest.
+    return {title: agenda.title, time, source, video: agenda.video, people: agenda.people, label: `Open calendar event: ${agenda.title}`};
   }
-  const empty = (title: string, time: string, label: string) => ({title, time, source, video: false, people: [] as string[], label});
+  const empty = (title: string, time: string) => ({title, time, source, video: false, people: [] as string[], label: 'Open your calendar'});
   switch (state) {
-    case 'denied': return empty('Calendar access is off', 'Access denied', 'Calendar access is off. Open Calendar to allow access');
-    case 'error': return empty('Calendar could not be read', 'Tap to retry', 'Calendar could not be read. Open Calendar to retry');
-    case 'loading': return empty('Reading your calendar…', 'Calendar', 'Open your calendar. Reading events');
-    case 'ready': return empty('Nothing coming up', 'Calendar', `Open your calendar. No upcoming events${source ? `. ${source}` : ''}`);
-    case 'unavailable': return empty('Your calendar', 'Calendar', 'Open your calendar');
+    case 'denied': return empty('Calendar access is off', 'Access denied');
+    case 'error': return empty('Calendar could not be read', 'Tap to retry');
+    case 'loading': return empty('Reading your calendar…', 'Calendar');
+    case 'ready': return empty('Nothing coming up', 'Calendar');
+    case 'unavailable': return empty('Your calendar', 'Calendar');
   }
-  return empty('Connect your calendar', 'Calendar', 'Open Calendar to connect device calendars');
+  return empty('Connect your calendar', 'Calendar');
 }
 /** At most three attendee initials, with a "+N" overflow, derived only from event attendee names. */
 export function attendeeInitials(names: unknown[]): string[] {

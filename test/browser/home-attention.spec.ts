@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
 
 test('connected: the attention card shows unread mail with its source and opens Inbox', async ({ page }, info) => {
   await page.goto('/?mode=dev');
-  const card = page.getByRole('button', { name: /^Open Inbox: \d+ unread emails? in Development inbox, updated .+$/ });
+  const card = page.getByRole('button', { name: /^Open Inbox: \d+ unread emails?$/ });
   await expect(card).toBeVisible();
   await expect(card).toContainText(/(unread|Nothing unread) · Development inbox · /);
   await page.screenshot({ path: info.outputPath('home-connected.png') });
@@ -24,7 +24,8 @@ test('a failed calendar read shows the retry state instead of neutral copy, then
     proto.list = () => Promise.reject(Error('Calendar storage unavailable'));
     window.dispatchEvent(new Event('alpha:calendar-preferences'));
   });
-  await expect(card).toHaveAttribute('aria-label', 'Calendar could not be read. Open Calendar to retry');
+  await expect(card).toHaveAttribute('aria-label', 'Open your calendar');
+  await expect(card).toContainText('Calendar could not be read');
   await expect(card).toContainText('Tap to retry');
   await expect(card).not.toContainText(/from this browser/);
   await page.evaluate(async () => {
