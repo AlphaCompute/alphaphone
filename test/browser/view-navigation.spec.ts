@@ -273,3 +273,7 @@ for (const path of ['/workflows','/automations/extra','https://unexpected.invali
  test(`Automations alias still refuses noncanonical path ${path}`,async ({page})=>{
   await setup(page);const result=await page.evaluate(async path=>{const win=window as any;let refused=false;try{await win.client.deliver([win.summary('automations',{viewPath:path})],win.attempt,win.navigate);}catch{refused=true;}return {refused,requests:win.requests,switches:win.switches};},path);expect(result).toEqual({refused:true,requests:[],switches:0});
  });
+for(const id of ['phone','messages','contacts','wallet'])
+ test(`canonical navigation keeps deferred MVP ${id} unavailable`,async({page})=>{
+  await setup(page);const result=await page.evaluate(async id=>{const win=window as any;let refused=false;try{await win.client.deliver([win.summary(id)],win.attempt,win.navigate);}catch{refused=true;}return {refused,requests:win.requests,switches:win.switches};},id);expect(result).toEqual({refused:true,requests:[],switches:0});
+ });
