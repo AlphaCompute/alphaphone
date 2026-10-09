@@ -3154,9 +3154,8 @@
   </div>
   <sc-if value="{{workflows.automation.detail}}">
     <section ref="{{workflows.detailFocus}}" data-alpha-subview="automations-detail" class="automation-detail" aria-label="{{workflows.automation.title}}">
-      <div data-alpha-app-header="detail" class="automation-detail-header"><button class="ib" aria-label="Back to automations" disabled="{{workflows.automation.busy}}" onClick="{{workflows.automation.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></div>
-      <div class="automation-detail-body scr">
-        <h2 class="serif">{{workflows.automation.title}}</h2>
+      <div data-alpha-app-header="detail" class="automation-detail-header"><button class="ib" aria-label="Back to automations" disabled="{{workflows.automation.busy}}" onClick="{{workflows.automation.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button><h2 data-alpha-app-title class="serif">{{workflows.automation.title}}</h2></div>
+      <div data-alpha-app-scroll="automation-detail" class="automation-detail-body scr">
         <sc-if value="{{workflows.automation.creating}}"><div class="automation-new">
           <button disabled="{{workflows.automation.agentUnavailable}}" onClick="{{workflows.automation.createWorkflow}}">Workflow<span>{{workflows.automation.workflowDescription}}</span></button>
           <button disabled="{{workflows.automation.agentUnavailable}}" onClick="{{workflows.automation.createPrompt}}">Prompt automation<span>{{workflows.automation.promptDescription}}</span></button>
