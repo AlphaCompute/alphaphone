@@ -16,7 +16,8 @@ test('failed autosave keeps editable text and explicit retry can save it',async(
 });
 test('Send clears the retained draft and dispatches only the reviewed text once',async({page})=>{
  await page.goto('/?mode=dev');await page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');await c.initialize();await c.startDevelopment('local');(window as any).sendDraftBinding=await c.assistantDraftBinding(new AbortController().signal);const {LocalAgentProtocol}=await import('/src/runtime/local-agent.ts');(window as any).draftRequests=[];LocalAgentProtocol.prototype.send=async(_id,text)=>{(window as any).draftRequests.push(text);return {text:'Received'};};});
- await composer(page).fill('Reviewed draft');await expect(status(page)).toHaveText('Draft saved locally.');await composer(page).press('Enter');await expect.poll(()=>page.evaluate(()=>(window as any).draftRequests.length)).toBe(1);expect(await page.evaluate(async()=>(await(await(await import('/src/runtime/assistant-draft-store.ts')).assistantDraftStore((window as any).sendDraftBinding)).read())?.text)).toBe('');await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('');
+ await composer(page).fill('Reviewed draft');await expect(status(page)).toHaveText('Draft saved locally.');await composer(page).press('Enter');await expect.poll(()=>page.evaluate(()=>(window as any).draftRequests.length)).toBe(1);// The draft is kept until the dispatch is confirmed, then cleared once.
+ await expect.poll(()=>page.evaluate(async()=>(await(await(await import('/src/runtime/assistant-draft-store.ts')).assistantDraftStore((window as any).sendDraftBinding)).read())?.text)).toBe('');await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('');
 });
 
 test('connection changes restore only that connection draft and retain the offline copy',async({page})=>{
