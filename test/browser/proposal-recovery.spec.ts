@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // Real renderer, pairing, connection controller, proposal parser and journal
 // orchestration; synthetic HTTP/native boundaries, no provider or device effects.
-for (const mode of ['pending', 'wrong-owner', 'expired', 'wrong-reminder-context', 'rate-limit-empty', 'stale-session'] as const) {
+for (const mode of ['pending', 'wrong-owner', 'expired', 'wrong-reminder-context', 'rate-limit-empty', 'stale-session', 'notes-from-calendar'] as const) {
   test(`interrupted reply recovers only reviewable proposals: ${mode}`, async ({ page }) => {
     await page.addInitScript((mode) => {
       const w = window as any, store = new Map();
@@ -38,11 +38,12 @@ for (const mode of ['pending', 'wrong-owner', 'expired', 'wrong-reminder-context
             fixture.proposal = {
               id: 'fixture-proposal', digest: 'a'.repeat(64), state: 'pending', expiresAt: new Date(Date.now() + (mode === 'expired' ? -1 : 60000)).toISOString(),
               subjectUserId: mode === 'wrong-owner' ? 'another-owner' : 'fixture-owner', requestedBy: agentId, action: 'device_action',
-              payload: { action: 'device_action', version: 1, installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', operation: mode === 'wrong-reminder-context'
+              payload: { action: 'device_action', version: 1, installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', operation: mode === 'notes-from-calendar'
+                ? {type:'notes_query',query:{kind:'title',text:'Owned synthetic title'}} : mode === 'wrong-reminder-context'
                 ? { type: 'reminder_read_selected', target: { sourceId: 'fixture-source', sourceRevision: 'a'.repeat(64), reminderId: 'fixture-reminder', occurrenceId: 'fixture-occurrence', revision: 'b'.repeat(64) } }
                 : { type: 'create_note', title: 'Synthetic recovered note', body: 'Reviewed fixture only' } },
             };
-            return ok({ installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: ['reminders.local-record.v1'] });
+            return ok({ installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: ['reminders.local-record.v1','notes.query.v1'] });
           }
           if (pathname === '/api/workflow/status') return ok({});
           if (pathname === '/api/conversations' && input.method === 'POST') return ok({ conversation: { id: 'fixture-chat', title: 'Fixture' } });
@@ -85,6 +86,10 @@ for (const mode of ['pending', 'wrong-owner', 'expired', 'wrong-reminder-context
         return { status: 'succeeded', summary: 'Synthetic approved effect recorded' };
       });
     });
+    if(mode==='notes-from-calendar'){
+      await page.getByRole('button',{name:'Back to apps',exact:true}).click();
+      await page.getByRole('button',{name:'Calendar',exact:true}).click();
+    }
     await page.getByRole('button', { name: 'Type', exact: true }).click();
     const input = page.locator('[data-alpha-layer="composer"][aria-hidden="false"], [data-alpha-layer="conversation"][aria-hidden="false"]').getByRole('textbox').first();
     await input.fill('Propose a synthetic action; await explicit approval.'); await input.press('Enter');
@@ -97,6 +102,8 @@ for (const mode of ['pending', 'wrong-owner', 'expired', 'wrong-reminder-context
       });
       await expect.poll(() => page.evaluate(() => (window as any).recoveryProposalsReleased)).toBe(true);
       await expect(page.getByText(/Request cancelled\. A dispatched action may still need status reconciliation\./).first()).toBeVisible();
+    } else if(mode==='notes-from-calendar'){
+      await expect(page.getByText('Review Notes on Home',{exact:true})).toBeVisible();
     } else {
       const failure = mode === 'rate-limit-empty' ? /The agent provider is rate-limiting/
         : mode === 'pending' ? /The agent could not complete this response\./ : /The agent request failed/;
@@ -107,7 +114,13 @@ for (const mode of ['pending', 'wrong-owner', 'expired', 'wrong-reminder-context
       return { posts: f.posts, decisions: f.decisions, claims: f.claims, receipts: f.receipts, effects: f.effects, journal: f.journal };
     });
     expect(await counts()).toEqual({ posts: 1, decisions: 0, claims: 0, receipts: 0, effects: 0, journal: [] });
-    if (mode === 'pending') {
+    if(mode==='notes-from-calendar'){
+      await expect(page.locator('html')).toHaveAttribute('data-active-view','calendar');
+      await page.getByText('Review Notes on Home',{exact:true}).click();
+      await expect(page.locator('html')).toHaveAttribute('data-active-view','home');
+      await expect(page.getByText('Approve: notes query',{exact:true})).toBeVisible();
+      expect(await counts()).toEqual({posts:1,decisions:0,claims:0,receipts:0,effects:0,journal:[]});
+    } else if (mode === 'pending') {
       await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
       await page.getByText('Approve: Create note', { exact: true }).click();
       await expect(page.getByText('Synthetic approved effect recorded', { exact: true }).last()).toBeVisible();

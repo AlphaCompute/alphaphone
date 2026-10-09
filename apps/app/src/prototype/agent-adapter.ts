@@ -76,6 +76,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if(!original)return;
     try{const binding=connectionController.readReplyBinding(origin.conversationId,proposal.id,read.digest);shell.readReplyLeases??=new Map();shell.readReplyLeases.set(proposal.id,{origin:structuredClone(origin),digest:read.digest,binding,controller:new AbortController(),phase:'pending'});}catch{}
   }
+  function proposalCard(proposal:import('../runtime/alpha-client').ActionProposal){
+    const home=proposal.reviewDestination==='home';
+    return {type:'generic',icon:'check',title:home?'Review Notes on Home':'Approve: '+proposal.title,sub:home?'Open Home to choose and review a note. Nothing is shared yet.':'Tap to approve this exact action',proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,reviewDestination:proposal.reviewDestination,expiresAt:proposal.expiresAt};
+  }
   p.cancelReadReplyCompletions=function(onlyProposalId?:string){
     for(const [proposalId,lease] of this.readReplyLeases||[]){
       if(onlyProposalId!==undefined&&proposalId!==onlyProposalId)continue;
@@ -145,8 +149,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           if(!card?.proposalId||card.done)return message;
           const proposal=pending.get(card.proposalId);
           if(proposal){
-            if(card.recovered&&!card.reviewUnavailable&&card.expiresAt===proposal.expiresAt&&card.privateNotesRead===proposal.privateNotesRead&&JSON.stringify(card.proposalSession)===JSON.stringify(connection.session))return message;
-            return {...message,card:{...card,recovered:true,proposalSession:connection.session,privateNotesRead:proposal.privateNotesRead,expiresAt:proposal.expiresAt,reviewUnavailable:false,title:'Approve: '+proposal.title,sub:'Tap to approve this exact action'}};
+            if(card.recovered&&!card.reviewUnavailable&&card.expiresAt===proposal.expiresAt&&card.privateNotesRead===proposal.privateNotesRead&&card.reviewDestination===proposal.reviewDestination&&JSON.stringify(card.proposalSession)===JSON.stringify(connection.session))return message;
+            return {...message,card:{...card,...proposalCard(proposal),recovered:true,proposalSession:connection.session,reviewUnavailable:false}};
           }
           // Absence can also mean different source preconditions. It proves no
           // rejection or execution; preserve the history and disable only review.
@@ -154,7 +158,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           return {...message,card:{...card,reviewUnavailable:true,title:'Review unavailable',sub:'Not pending for this screen. Open the original selection to check again.'}};
         });
         const existing=new Set(msgs.map((message:Shell)=>message.card?.proposalId));
-        const recovered=proposals.filter(proposal=>!existing.has(proposal.id)).map(proposal=>({id:crypto.randomUUID(),from:'agent',text:proposal.description,card:{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,expiresAt:proposal.expiresAt,recovered:true,proposalSession:connection.session}}));
+        const recovered=proposals.filter(proposal=>!existing.has(proposal.id)).map(proposal=>({id:crypto.randomUUID(),from:'agent',text:proposal.description,card:{...proposalCard(proposal),recovered:true,proposalSession:connection.session}}));
         return recovered.length||msgs.some((message:Shell,index:number)=>message!==previous.msgs[index])?{msgs:[...msgs,...recovered]}:null;
       },()=>{if(current())scheduleExpiry();});
     }).catch(()=>{
@@ -747,7 +751,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       current();
       const awaiting=reply.proposals?.filter(proposal=>proposal.readReply?.origin.requestId===turnId&&proposal.readReply.origin.conversationId===identity.conversationId&&proposal.readReply.origin.inReplyTo===reply.userMessageId);
       if(awaiting&&awaiting.length>1)throw Error('More than one Notes review was returned. Use action history.');
-      for(const proposal of reply.proposals||[]){retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description,{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,expiresAt:proposal.expiresAt},undefined,belongs);}
+      for(const proposal of reply.proposals||[]){retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description,proposalCard(proposal),undefined,belongs);}
       return {requestId:turnId,conversationId:identity.conversationId,userMessageId:reply.userMessageId,assistantMessageId:reply.messageId,text:reply.text,complete:!reply.proposals?.length,...(reply.proposals?.length?{reviewRequired:true}:{}),...(awaiting?.length?{awaitingUserInput:{proposalId:awaiting[0].id,digest:awaiting[0].readReply!.digest}}:{})};
     }catch(error){
       input.navigation?.finish(false);
@@ -804,7 +808,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(reply.userMessageId&&identity)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===userMessageId?{...m,id:reply.userMessageId,messageBinding:identity}:m)}));
       if(this.messageReplyTarget===replyTarget)this.messageReplyTarget=undefined;
       if(sourceDraft&&sourceSession&&JSON.stringify(sourceSession)===JSON.stringify(connectionController.getSnapshot().session))this.agentSay('Review this answer before saving it with its source.',{type:'generic',icon:'note',title:'Review summary note',sub:sourceDraft.name,sourceSummary:{source:sourceDraft,text:reply.text,session:sourceSession}});
-      for (const proposal of reply.proposals || []) {retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id, privateNotesRead:proposal.privateNotesRead, expiresAt: proposal.expiresAt });}
+      for (const proposal of reply.proposals || []) {retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description,proposalCard(proposal));}
       try{await deliverNavigation(reply.actionResults);}catch(error){if(this.live)this.toast(error instanceof AlphaClientError?error.message:'Could not confirm the screen change. Check your screen.');}
     } catch (e) {
       let opened=false;
@@ -861,6 +865,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         context(this);
         const session=connectionController.getSnapshot().session;
         if(card.recovered&&JSON.stringify(card.proposalSession)!==JSON.stringify(session))throw Error('The agent changed. Review this action again.');
+        if(card.reviewDestination==='home'){this.goHome('sheet');return;}
         this.pendingActionRecoveryAbort?.abort();
         const approval=this.pendingActionApproval=new AbortController();
         this.pendingActionApprovalProposalId=card.proposalId;

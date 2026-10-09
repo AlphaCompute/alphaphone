@@ -29,3 +29,14 @@ test('foreign reply identities and malformed pending origin fail closed',async()
 test('explicit cancellation retires the known original reply without repeating an effect',async()=>{const f=fixture(),receipt=await f.approve();await f.actions.cancelReadReply('proposal',digest,new AbortController().signal);await assert.rejects(f.actions.completeReadReply(receipt.readReply,new AbortController().signal),/unavailable/);assert.deepEqual(f.calls.at(-1).body,{digest});assert.equal(f.executions,1);});
 
 test('explicitly selected empty Notes body remains a valid applied receipt and original answer input',async()=>{const f=fixture({selectedEmpty:true}),receipt=await f.approve();assert.equal(receipt.status,'succeeded');assert.equal(f.terminal[0].result.notesResult.record.fields.body,'');await f.actions.completeReadReply(receipt.readReply,new AbortController().signal);assert.equal(f.executions,1);});
+
+test('pending Notes discovery outside Home stays visible as navigation only and cannot claim a read',async()=>{
+ const f=fixture(),signal=new AbortController().signal,calendar={view:'calendar',revision:2,sensitive:false};
+ const pending=await f.actions.pending(calendar,signal);
+ assert.equal(pending.length,1);assert.equal(pending[0].reviewDestination,'home');
+ await assert.rejects(f.actions.approve('proposal',calendar,signal),/Home or Notes/);
+ assert.equal(f.executions,0);assert.equal(f.terminal.length,0);assert.equal(f.calls.some(c=>/decision|claim|receipt/.test(c.path)),false);
+ const home=await f.actions.pending(context,signal);assert.equal(home.length,1);assert.equal(home[0].reviewDestination,undefined);
+ const receipt=await f.actions.approve('proposal',context,signal);assert.equal(receipt.status,'succeeded');assert.equal(f.executions,1);
+ const privateContext=await fixture().actions.pending({...calendar,sensitive:true},signal);assert.equal(privateContext.length,0);
+});

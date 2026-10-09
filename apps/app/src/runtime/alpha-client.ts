@@ -54,6 +54,8 @@ export interface ActionProposal {
   readReply?: {origin:NativeNotesReadReplyOrigin;digest:string};
   /** Derived by the owning SDK from a validated Notes read operation. */
   privateNotesRead?:true;
+  /** Navigation-only presentation; the SDK still refuses reads outside Home/Notes. */
+  reviewDestination?:'home';
   title: string;
   /** Human-readable exact target/action review. Must contain no secret values. */
   description: string;

@@ -120,7 +120,7 @@ export class DeviceActions {
       if(isClockOperation(p.operation)){try{assertClockTimeZone(p.operation,context.timeZone);}catch{return false;}}
       if (isMapsOperation(p.operation)) {try {assertMapsContext(p.operation,context);}catch{return false;}}
       if (isReminderOperation(p.operation)) {try {assertReminderContext(p.operation,context);}catch{return false;}}
-      if(isNativeNotesQuery(p.operation)){try{assertNotesQueryContext(context);}catch{return false;}}
+      if(isNativeNotesQuery(p.operation)&&context.sensitive)return false;
       if (isNotesOperation(p.operation)) {try {assertNotesContext(p.operation,context);}catch{return false;}}
       if (isCalendarOperation(p.operation)) { try { assertCalendarContext(p.operation, context); } catch { return false; } }
       return true;
@@ -130,7 +130,6 @@ export class DeviceActions {
       if(isClockOperation(proposal.operation))assertClockTimeZone(proposal.operation,context.timeZone);
       if(isMapsOperation(proposal.operation))assertMapsContext(proposal.operation,context);
       if(isReminderOperation(proposal.operation))assertReminderContext(proposal.operation,context);
-      if(isNativeNotesQuery(proposal.operation))assertNotesQueryContext(context);
       if(isNotesOperation(proposal.operation))assertNotesContext(proposal.operation,context);
       if(isCalendarOperation(proposal.operation))assertCalendarContext(proposal.operation,context);
       this.proposals.set(proposal.id, { proposal, context: structuredClone(context) });
@@ -138,7 +137,7 @@ export class DeviceActions {
       const op = proposal.operation;
       const record = isReminderCreate(op)||isReminderOperation(op)||isNotesOperation(op)||isCalendarOperation(op)||op.type==='create_note'||op.type==='create_reminder'?presentDeviceRecordOperation(op,context.timeZone):undefined;
       const description = isNativeNotesQuery(op)?(op.query.kind==='title'?`Look for the title “${op.query.text}” locally. Choose and review one note before sharing its text.`:`Find the latest ${op.query.by} note locally. Unknown dates or ties require your choice; only the chosen note is shared.`):record?.description ?? (isClockOperation(op) ? describeClockHandoff(op) : isMapsOperation(op) ? 'Send the exact selected place location or route endpoints, mode and distance to the connected agent. This shares location information. It does not start navigation.' : op.type === 'open_view' ? `Open ${op.view} on this phone` : op.type==='browser_navigate'?`Open browser destination ${op.url}`:'Workflow phone read');
-      return { id: proposal.id, title: record?.title ?? op.type.replaceAll('_', ' '), description, expiresAt: proposal.expiresAt, contextRevision: context.revision,...(isNativeNotesQuery(op)||op.type==='notes_read_selected'?{privateNotesRead:true as const}:{}),...(proposal.readReplyOrigin?{readReply:{origin:structuredClone(proposal.readReplyOrigin),digest:proposal.digest}}:{}) };
+      return { id: proposal.id, title: record?.title ?? op.type.replaceAll('_', ' '), description, expiresAt: proposal.expiresAt, contextRevision: context.revision,...(isNativeNotesQuery(op)&&!['home','notes'].includes(context.view)?{reviewDestination:'home' as const}:{}),...(isNativeNotesQuery(op)||op.type==='notes_read_selected'?{privateNotesRead:true as const}:{}),...(proposal.readReplyOrigin?{readReply:{origin:structuredClone(proposal.readReplyOrigin),digest:proposal.digest}}:{}) };
     });
   }
   async pendingForWorkflow(review:WorkflowPhoneReview,context:ContextEnvelope,signal:AbortSignal):Promise<ActionProposal[]> {
@@ -160,6 +159,7 @@ export class DeviceActions {
     const reviewed = this.proposals.get(proposalId);
     if (!reviewed || contextKey(reviewed.context) !== contextKey(context) || context.sensitive || reviewed.proposal.expiresAt <= Date.now()) throw new Error('Review this action again from the current screen');
     if(isClockOperation(reviewed.proposal.operation))assertClockTimeZone(reviewed.proposal.operation,context.timeZone);
+    if(isNativeNotesQuery(reviewed.proposal.operation))assertNotesQueryContext(context);
     this.busy = true; this.proposals.delete(proposalId);
     const p = reviewed.proposal, operationId = crypto.randomUUID();
     try {
