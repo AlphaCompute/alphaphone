@@ -36,7 +36,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     ...out,
     empty: !out.libraryLoading && !out.libraryError && !(out.groups || []).some((group: Bag) => (group.items || []).length > 0),
   }));
-  let storageUsage={storageW:'0%',storageText:'Browser storage',storageBarStyle:'display:none'},storageActive=false,storagePending=false,storageEpoch=0;
+  let storageUsage={storageW:'0%',storageText:'App storage',storageBarStyle:'display:none'},storageActive=false,storagePending=false,storageEpoch=0;
   const filesLeave=views.files?.onLeave;
   if(browserDevProfile&&views.files)views.files.onLeave=(...args:any[])=>{storageActive=false;storagePending=false;storageEpoch++;return filesLeave?.(...args);};
   const refreshStorage=async(api:Bag)=>{if(storagePending||!api.isActive()||document.hidden)return;storagePending=true;const epoch=storageEpoch;try{const usage=await browserStorageUsage();if(epoch===storageEpoch&&api.isActive()){storageUsage=usage;api.set({browserStorageRevision:Date.now()});}}catch{if(epoch===storageEpoch&&api.isActive()){storageUsage={storageW:'0%',storageText:'Open Browser files to refresh storage',storageBarStyle:'display:none'};api.set({browserStorageRevision:Date.now()});}}finally{if(epoch===storageEpoch)storagePending=false;}};
@@ -115,7 +115,7 @@ export function installPrototypeHomeBindings(Component: any) {
   p.renderVals = function () {
     const out = render.call(this);
     let storageAccessWarning='';
-    if(!Capacitor.isNativePlatform())try{if(!window.indexedDB)throw Error();window.localStorage.getItem('alpha.appearance.v1');}catch{storageAccessWarning='Local storage is unavailable. Changes may not be saved. Check browser storage settings and reload.';}
+    if(!Capacitor.isNativePlatform())try{if(!window.indexedDB)throw Error();window.localStorage.getItem('alpha.appearance.v1');}catch{storageAccessWarning='Saving is unavailable. Changes may not be saved. Check your browser’s storage settings and reload.';}
     const activeView=this.S().view||'home';
     const attention = mockAttentionRows();
     return {

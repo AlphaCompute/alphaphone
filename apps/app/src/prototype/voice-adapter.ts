@@ -554,25 +554,25 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if(!Capacitor.isNativePlatform()) {
       if (onDeviceReady) {
         // Whisper tiny.en runs in this browser; English only, matching the OCR language policy.
-        labels.recorded='Transcribe in this browser';
-        messages.ready='Record up to 29 seconds. English-only speech recognition runs in this browser; audio is not uploaded. The first transcription loads a speech model of about 56 MB from this app.';
+        labels.recorded='Transcribe on this device';
+        messages.ready='Record up to 29 seconds. English-only speech recognition runs on this device; audio is not uploaded. The first transcription loads a speech model of about 56 MB from this app.';
         messages.recording='Recording. Stop does not transcribe or upload audio.';
-        messages.recorded='Microphone is off. Transcribe in this browser turns this recording into English text on this device. Nothing is uploaded.';
+        messages.recorded='Microphone is off. Transcribe on this device turns this recording into English text. Nothing is uploaded.';
         messages.transcribing=speechProgressMessage(progress);
-        if(!destination)messages.review=chatDestination?'Review and edit the transcript, then use it in the conversation. Press Send there to send it to your agent.':'Review and edit the transcript, then save the recording and transcript in this browser. Nothing is uploaded or sent to an agent.';
+        if(!destination)messages.review=chatDestination?'Review and edit the transcript, then use it in the conversation. Press Send there to send it to your agent.':'Review and edit the transcript, then save the recording and transcript in this app. Nothing is uploaded or sent to an agent.';
       } else {
         labels.recorded='Review transcript';
         messages.recording='Recording. Stop to review the audio.';
-        messages.ready='Record audio in this browser. You can add a transcript manually and save without signing in.';
+        messages.ready='Record audio in this app. You can add a transcript manually and save without signing in.';
         messages.recorded='Microphone is off. Enter the transcript to save with this recording.';
         messages.transcribing='Review the recording transcript.';
-        if(!destination)messages.review='Edit the transcript, listen, or save the recording in this browser.';
+        if(!destination)messages.review='Edit the transcript, listen, or save the recording in this app.';
       }
     }
-    if(browserDevProfile && selectedRoute==='agent'){messages.ready='Development voice uses browser recording, in-browser English transcription, review and playback.';messages.recorded='Transcribe this recording in your browser. Nothing is uploaded.';labels.recorded='Transcribe in this browser';}
+    if(browserDevProfile && selectedRoute==='agent'){messages.ready='Preview voice records, transcribes English and plays audio on this device.';messages.recorded='Transcribe this recording on this device. Nothing is uploaded.';labels.recorded='Transcribe on this device';}
     if(onDeviceReady&&connectionController.getBrowserSpeechAgent()){
       labels.recorded='Transcribe on this computer';
-      messages.ready='Record in this browser. English transcription runs on the local agent on this computer when you choose Transcribe.';
+      messages.ready='Record in this app. English transcription runs on the local agent on this computer when you choose Transcribe.';
       messages.recorded='Microphone is off. Transcribe on this computer sends this recording to your local development agent.';
       messages.transcribing='Transcribing on this computer. Nothing has been saved.';
       messages.review='Review the transcript, listen using the local agent on this computer, or save it with the recording. No chat message has been sent.';

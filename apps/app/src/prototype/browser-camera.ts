@@ -245,7 +245,7 @@ export const browserCamera={
   void browserCamera.stopPreview();const token=++generation,controller=new AbortController();starting=controller;
   let ownStream:MediaStream|null=null,ownVideo:HTMLVideoElement|null=null;
   try{
-   if(!navigator.mediaDevices?.getUserMedia)throw Error('Camera access is unavailable in this browser.');
+   if(!navigator.mediaDevices?.getUserMedia)throw Error('Camera access is unavailable here.');
    ownStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:options.direction==='front'?'user':'environment',width:{ideal:options.resolution.width},height:{ideal:options.resolution.height}}});
    controller.signal.throwIfAborted();if(token!==generation)throw Error('Camera cancelled.');
    const frame=document.querySelector<HTMLElement>(finder);if(!frame)throw Error('Camera view is closed.');
@@ -271,7 +271,7 @@ export const browserCamera={
   const canvas=drawCameraFrame(video,{zoom,mirror});
   const image=canvas.toDataURL('image/jpeg',0.85);if(!image.startsWith('data:image/jpeg;base64,'))throw Error('Photo encoding failed.');
   const photo={base64:image.slice('data:image/jpeg;base64,'.length),format:'jpeg',width,height};if(token!==generation)throw Error('Camera view changed.');
-  if(!photo.base64||photo.base64.length>12_000_000)throw Error('Photo is too large to save in this browser.');
+  if(!photo.base64||photo.base64.length>12_000_000)throw Error('Photo is too large to save in this app.');
   if(options?.saveToGallery===false)return photo;
   // Decimal time plus random suffix is sortable and keeps the existing receipt parser.
   const id=photoId();

@@ -33,8 +33,8 @@ export async function localAgentPackaged():Promise<boolean> {
   try{return (await native.getStatus?.())?.packaged===true;}catch{return false;}
 }
 const unavailableBridge: LocalAgentBridge = {
-  async start() { throw new Error('On-device agent is unavailable in this browser. Connect a remote agent or use Eliza Cloud.'); },
-  async request() { throw new Error('On-device agent is unavailable in this browser. Connect a remote agent or use Eliza Cloud.'); },
+  async start() { throw new Error('On-device agent is unavailable here. Connect to an agent or use Eliza Cloud.'); },
+  async request() { throw new Error('On-device agent is unavailable here. Connect to an agent or use Eliza Cloud.'); },
 };
 const browserBridge: LocalAgentBridge | null = developmentBridgeAllowed ? {
   async start() { return { state: 'host-managed' }; },

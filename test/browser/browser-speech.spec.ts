@@ -46,7 +46,7 @@ async function openRecorder(page:Page,input:'speech'|'silence'|'denied'){
  await page.goto('/');await microphone(page,input);
  await page.getByRole('button',{name:'Notes',exact:true}).click();
  await page.getByRole('button',{name:'Record and transcribe',exact:true}).click();
- await expect(recorder(page)).toContainText('English-only speech recognition runs in this browser');
+ await expect(recorder(page)).toContainText('English-only speech recognition runs on this device');
 }
 
 test('Notes transcribes a known phrase in the browser, keeps review, and records provenance',async({page},info)=>{
@@ -55,7 +55,7 @@ test('Notes transcribes a known phrase in the browser, keeps review, and records
  await openRecorder(page,'speech');await record(page);
  // Stop never loads the model or uploads anything.
  expect(requests).toEqual([]);
- await page.getByRole('button',{name:'Transcribe in this browser',exact:true}).click();
+ await page.getByRole('button',{name:'Transcribe on this device',exact:true}).click();
  await expect(page.getByRole('button',{name:'Cancel transcription',exact:true})).toBeVisible();
  const review=page.getByRole('textbox',{name:'Review transcript',exact:true});
  await expect(review).not.toHaveValue('',{timeout:90000});
@@ -77,7 +77,7 @@ test('Notes transcribes a known phrase in the browser, keeps review, and records
 test('silence reports no speech without loading the model and offers typing instead',async({page})=>{
  const requests=speechRequests(page);
  await openRecorder(page,'silence');await record(page);
- await page.getByRole('button',{name:'Transcribe in this browser',exact:true}).click();
+ await page.getByRole('button',{name:'Transcribe on this device',exact:true}).click();
  await expect(recorder(page)).toHaveAttribute('data-voice-state','no-speech');
  await expect(recorder(page)).toContainText('No speech was detected in this recording.');
  expect(requests).toEqual([]);
@@ -105,10 +105,10 @@ test('microphone denial is a distinct state with guidance and retries cleanly',a
 test('model load failure is reported, keeps the recording and allows typing',async({page})=>{
  await page.route('**/browser-speech/manifest.json',route=>route.fulfill({status:404,body:''}));
  await openRecorder(page,'speech');await record(page);
- await page.getByRole('button',{name:'Transcribe in this browser',exact:true}).click();
+ await page.getByRole('button',{name:'Transcribe on this device',exact:true}).click();
  await expect(recorder(page)).toHaveAttribute('data-voice-state','model');
  await expect(recorder(page)).toContainText('The speech model could not be loaded.');
- await expect(page.getByRole('button',{name:'Transcribe in this browser',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Transcribe on this device',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'Type transcript instead',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'Review transcript',exact:true})).toHaveValue('');
 });
@@ -118,7 +118,7 @@ for(const exit of ['cancel','background'] as const)test(`${exit} during model do
  let release:()=>void=()=>{};const held=new Promise<void>(resolve=>{release=resolve;});let decoderRequests=0;
  await page.route('**/browser-speech/whisper-tiny.en/decoder_model_merged_quantized.onnx',async route=>{decoderRequests++;await held;await route.continue().catch(()=>{});});
  await openRecorder(page,'speech');await record(page);
- await page.getByRole('button',{name:'Transcribe in this browser',exact:true}).click();
+ await page.getByRole('button',{name:'Transcribe on this device',exact:true}).click();
  await expect(recorder(page)).toContainText(/Loading the speech model from this app: \d+ of 56 MB/);
  await expect.poll(()=>decoderRequests).toBe(1);
  if(exit==='cancel'){await page.getByRole('button',{name:'Cancel transcription',exact:true}).click();await expect(recorder(page)).toContainText('Transcription cancelled.');}
@@ -138,7 +138,7 @@ test('chat Talk transcribes in the browser into the composer without sending',as
  let sent=0;page.on('request',request=>{if(request.method()==='POST'&&!new URL(request.url()).pathname.startsWith('/browser-speech/'))sent++;});
  await page.getByRole('button',{name:'Talk',exact:true}).first().click();
  await expect(recorder(page)).toBeVisible();await record(page);
- await page.getByRole('button',{name:'Transcribe in this browser',exact:true}).click();
+ await page.getByRole('button',{name:'Transcribe on this device',exact:true}).click();
  const review=page.getByRole('textbox',{name:'Review transcript',exact:true});
  await expect(review).not.toHaveValue('',{timeout:90000});
  expect(wordErrorRate(PHRASE,await review.inputValue())).toBeLessThanOrEqual(0.25);

@@ -57,7 +57,7 @@ export function installFilesTreeAdapter(views:Bag,accept:(module:string,result:N
   const FOLDER=currentApi.ic.folder;
   api=currentApi;const out=render(state,currentApi);
   out.locs=[...(out.locs||[]),{nativeTree:true,name:Capacitor.isNativePlatform()?'Choose folder':'Browser files',d:FOLDER,sub:Capacitor.isNativePlatform()?'Android folder access':'Browser files',go:()=>choose()}];
-  if(!Capacitor.isNativePlatform())out.locs.push({nativeTree:true,name:'Import folder',d:FOLDER,sub:'Copy files into browser storage',go:()=>choose(true)});
+  if(!Capacitor.isNativePlatform())out.locs.push({nativeTree:true,name:'Import folder',d:FOLDER,sub:'Import copies into app files',go:()=>choose(true)});
   if(!listing)out.locs.push({nativeTree:true,name:'Saved folder',d:FOLDER,sub:'Restore selected access',go:()=>{currentApi.set({folder:'__native_tree'});void load();}});
   else out.locs.push({nativeTree:true,name:listing.folder?.name||'Selected folder',d:FOLDER,sub:'Browse selected folder',go:()=>{currentApi.set({folder:'__native_tree'});void load(listing?.folder?.id);}});
   if(state.folder==='__native_tree'){

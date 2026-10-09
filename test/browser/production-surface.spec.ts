@@ -85,7 +85,7 @@ test('the chooser and Settings offer only production connections', async ({ page
   await page.goto('/?tools=1');
   const chooser = page.locator('.alpha-connection');
   // The browser build explains its real options on first run.
-  await expect(chooser.getByText('This browser has no on-device agent', { exact: true })).toBeVisible();
+  await expect(chooser.getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
   for (const summary of await chooser.locator('summary').all()) await summary.click();
   const text = await chooser.innerText();
   expect(text).not.toMatch(/mock mode/i);
@@ -105,8 +105,8 @@ test('the chooser and Settings offer only production connections', async ({ page
   expect(settingsText).not.toMatch(/staging/i);
   await page.getByText('About', { exact: true }).click();
   // The About header and the Runtime row both name the web runtime.
-  await expect(settings.getByText('Web browser', { exact: true }).first()).toBeVisible();
-  await expect(settings.getByText('Browser development', { exact: true })).toHaveCount(0);
+  await expect(settings.getByText('Web app', { exact: true }).first()).toBeVisible();
+  await expect(settings.getByText('Development preview', { exact: true })).toHaveCount(0);
   await expect(settings.getByText(/^\d+\.\d+\.\d+/).first()).toBeVisible();
   await settings.getByText('Open source licenses', { exact: true }).click();
   await expect(settings.getByText('Open source licenses', { exact: true }).first()).toBeVisible();
@@ -224,7 +224,7 @@ test('production browser speech: self-hosted Whisper transcribes under the shipp
   await expect(page.getByRole('button', { name: 'Stop recording', exact: true })).toBeVisible();
   await page.waitForTimeout(await page.evaluate(() => (window as any).spoken as number) * 1000 + 500);
   await page.getByRole('button', { name: 'Stop recording', exact: true }).click();
-  await page.getByRole('button', { name: 'Transcribe in this browser', exact: true }).click();
+  await page.getByRole('button', { name: 'Transcribe on this device', exact: true }).click();
   const review = page.getByRole('textbox', { name: 'Review transcript', exact: true });
   await expect(review).toHaveValue(/hold the side key to talk/i, { timeout: 90000 });
   expect(foreign).toEqual([]);
