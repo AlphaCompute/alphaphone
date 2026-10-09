@@ -52,8 +52,8 @@ export function createCloudVoice() {
     addListener: (event: 'recordingStopped', callback: (clip: VoiceClip) => void) => native.addListener(event, value => {
       try { check(); callback(value); } catch { /* Stale account events never update the new account. */ }
     }),
-    async speak(text: string, signal: AbortSignal,onStarted?:()=>void,queue=false) {
-      check();signal.throwIfAborted();const owned=new AbortController(),cancel=()=>owned.abort(signal.reason),current=()=>{check();if(document.hidden||connectionController.getSnapshot().open)throw new DOMException('Voice review changed','AbortError');};
+    async speak(text: string, signal: AbortSignal,onStarted?:()=>void,queue=false,assertCurrent?:()=>void) {
+      check();signal.throwIfAborted();const owned=new AbortController(),cancel=()=>owned.abort(signal.reason),current=()=>{check();assertCurrent?.();if(document.hidden||connectionController.getSnapshot().open)throw new DOMException('Voice review changed','AbortError');};
       const changed=()=>{try{current();}catch(error){owned.abort(error);}};
       const unsubscribe=connectionController.subscribe(changed);document.addEventListener('visibilitychange',changed);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
       let marked=false;
@@ -67,11 +67,16 @@ export function createCloudVoice() {
 // the preceding owned cleanup, including a failure to confirm that cleanup.
 let appSpeechRetirement:Promise<void>=Promise.resolve();
 export async function speakCloudText(text:string,signal:AbortSignal,onStarted?:()=>void,queue=false,assertCurrent?:()=>void){
-  const current=()=>{signal.throwIfAborted();assertCurrent?.();if(document.hidden||document.documentElement.dataset.devBackground==='true'||connectionController.getSnapshot().open||Array.from(document.querySelectorAll('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')).some(element=>element.getClientRects().length))throw new DOMException('Voice review changed','AbortError');};
+  const owned=new AbortController(),cancel=()=>owned.abort(signal.reason),retire=()=>owned.abort(new DOMException('Voice review changed','AbortError'));
+  if(signal.aborted)cancel();
+  const current=()=>{owned.signal.throwIfAborted();assertCurrent?.();if(document.hidden||document.documentElement.dataset.devBackground==='true'||connectionController.getSnapshot().open||Array.from(document.querySelectorAll('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')).some(element=>element.getClientRects().length))throw new DOMException('Voice review changed','AbortError');};
   current();
   if(!connectionController.getCloudEnvironment()||!connectionController.getCloudClient()?.sessionId||!connectionController.getCloudClient()?.credentialId){connectionController.openCloudAccount();throw Error('Sign in to Eliza Cloud to use Cloud voice.');}
   const voice=createCloudVoice(),previous=appSpeechRetirement;
-  const pending=(async()=>{await previous;current();try{await voice.speak(text,signal,onStarted,queue);current();}catch(error){const recovery=cloudVoiceFailure(error);if(recovery)throw Object.assign(new Error(recovery,{cause:error}),{code:(error as {code?:string}).code});throw error;}})();
+  let admitted=false;
+  const interrupted=new Promise<never>((_,reject)=>{owned.signal.addEventListener('abort',()=>{if(!admitted)reject(owned.signal.reason);},{once:true});});void interrupted.catch(()=>{});
+  signal.addEventListener('abort',cancel,{once:true});window.addEventListener('alpha:device-state',retire);window.addEventListener('pagehide',retire);if(signal.aborted)cancel();
+  const pending=(async()=>{await previous;current();admitted=true;let marked=false;try{await voice.speak(text,owned.signal,()=>{current();marked=true;markTtsPlaybackStarted();onStarted?.();},queue,current);current();}catch(error){const recovery=cloudVoiceFailure(error);if(recovery)throw Object.assign(new Error(recovery,{cause:error}),{code:(error as {code?:string}).code});throw error;}finally{if(marked)markTtsPlaybackEnded();}})();
   appSpeechRetirement=pending.catch(error=>{if(error?.code==='speech-cleanup-unconfirmed')throw error;});void appSpeechRetirement.catch(()=>{});
-  await pending;
+  try{await Promise.race([pending,interrupted]);}finally{signal.removeEventListener('abort',cancel);window.removeEventListener('alpha:device-state',retire);window.removeEventListener('pagehide',retire);}
 }
