@@ -1,0 +1,18 @@
+{
+  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "patch": "0071-notes-trash-maintenance.patch",
+  "sha256": "feb8a7269cac85acd7b392f0e90b29c3a44da35f6132703b09dfa2f60271352c",
+  "status": "Candidate for elizaOS develop (storage-agnostic Notes Trash maintenance pass behind host read/edit/lock/purge inputs); not submitted upstream; applies after 0070",
+  "basePaths": [],
+  "addedPaths": [
+    "plugins/plugin-notes"
+  ],
+  "changed": [
+    "plugins/plugin-notes/src/client/notes-trash-maintenance.ts",
+    "plugins/plugin-notes/test/notes-trash-maintenance.test.mjs"
+  ],
+  "files": {
+    "plugins/plugin-notes/src/client/notes-trash-maintenance.ts": "af70597711afe648ca418986fa3fe3efc1303c5e528b8a96f94fca4231470c60",
+    "plugins/plugin-notes/test/notes-trash-maintenance.test.mjs": "940b0a9ddb884437b64ca10c8ca12c4668ff1054b12eb56ab583ba1c80706a5d"
+  }
+}
