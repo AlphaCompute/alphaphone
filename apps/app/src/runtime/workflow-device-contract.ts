@@ -31,6 +31,11 @@ export function parseWorkflowRead(value:unknown):WorkflowReadOperation{
 }
 export function parseWorkflowReminderRead(value:unknown):WorkflowReminderReadOperation{const p=workflowObject(value);if(p.type!=='read_selected_reminders')fail();exact(p,['type','window','day','timeZone','maximumItems']);const timeZone=text(p.timeZone,100),day=text(p.day,10);if(p.window!==SELECTED_REMINDERS_WINDOW||!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isFinite(Date.parse(day+'T00:00:00Z'))||new Date(day+'T00:00:00Z').toISOString().slice(0,10)!==day||!Number.isInteger(p.maximumItems)||p.maximumItems<1||p.maximumItems>200)fail();try{new Intl.DateTimeFormat('en-US',{timeZone}).format(0);}catch{fail();}return {type:p.type,window:SELECTED_REMINDERS_WINDOW,day,timeZone,maximumItems:p.maximumItems};}
 export async function workflowSha(value:unknown):Promise<string>{const bytes=new TextEncoder().encode(JSON.stringify(value));return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');}
+/** Opaque identity of one pending phone-step approval notice. The ID and binding reveal nothing about the step; the route stays in encrypted native storage. */
+export async function workflowApprovalNotice(route:{scope:string;origin:string;ownerId:string;agentId:string;workflowId:string;runId:string;versionId:string},proposalId:string):Promise<{id:string;bindingHash:string}>{
+ if(typeof proposalId!=='string'||!proposalId||proposalId.length>256)fail();
+ return {id:'approval-'+await workflowSha(['workflow-approval-notice',route.scope,route.runId,proposalId]),bindingHash:await workflowSha(['workflow-approval-route',route.scope,route.origin,route.ownerId,route.agentId,route.workflowId,route.runId,route.versionId,proposalId])};
+}
 export function workflowBytes(value:unknown):number{return new TextEncoder().encode(JSON.stringify(value)).length;}
 export async function validateWorkflowResult(operation:WorkflowReadOperation,value:unknown):Promise<WorkflowReadResult>{
  if(workflowBytes(value)>65536)fail();const p=workflowObject(value);
