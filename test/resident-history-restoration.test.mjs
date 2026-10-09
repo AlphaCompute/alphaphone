@@ -154,7 +154,7 @@ function adapterRecoveryFixture() {
  const timers=new Map();let timerId=0,now=Date.now();
  class ClockDate extends Date{static now(){return now;}}
  const calls=[],toasts=[],document={hidden:false},state={msgs:[{id:'saved',from:'agent',text:'Queued for review',card:null}],draft:'Unsent draft',chat:'full',typing:false};
- const shell={live:true,S:()=>state,toast:text=>toasts.push(text),setState(update){const patch=typeof update==='function'?update(state):update;if(patch)Object.assign(state,patch);}};
+ const shell={live:true,S:()=>state,toast:text=>toasts.push(text),setState(update,complete){const patch=typeof update==='function'?update(state):update;if(patch)Object.assign(state,patch);complete?.();}};
  const box={Date:ClockDate,setTimeout:(fn,delay)=>{const id=++timerId;timers.set(id,{fn,at:now+delay});return id;},clearTimeout:id=>timers.delete(id),document,crypto,AbortController,alphaClient:{getState:()=>({context})},connectionController:{getSnapshot:()=>connection,pendingActions:async(c,signal)=>{calls.push({context:c,signal});return read(c,signal);}}};
  vm.runInNewContext(stripTypeScriptTypes(source.slice(start,end))+'\nglobalThis.recover=recoverPendingActions;',box);
  return {shell,state,calls,toasts,document,timers,advance:ms=>{now+=ms;for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.fn();}},recover:()=>box.recover(shell),read:fn=>{read=fn;},context:patch=>{context={...context,...patch};},connection:patch=>{connection={...connection,...patch};}};
@@ -207,6 +207,11 @@ test('successful refresh retires stale approval without changing history IDs or 
  f.read(async()=>[pendingReview]);f.context({revision:10});f.recover();await flushRecovery();
  assert.equal(f.state.msgs[1].id,before.id);assert.equal(f.state.msgs[1].card.reviewUnavailable,false);assert.equal(f.state.msgs[1].card.title,'Approve: '+pendingReview.title);assert.equal(f.state.msgs.length,3);
 });
+test('fresh authenticated pending evidence rebinds a retained card to the current session',async()=>{
+ const f=adapterRecoveryFixture();f.recover();await flushRecovery();const before=f.state.msgs[1];
+ f.connection({session:{sessionId:'reattached-session',ownerId:'owner',agentId:'agent',origin:'https://fixture.invalid'}});f.recover();await flushRecovery();
+ const after=f.state.msgs[1];assert.equal(after.id,before.id);assert.equal(after.card.proposalId,before.card.proposalId);assert.equal(after.card.proposalSession.sessionId,'reattached-session');assert.equal(after.card.reviewUnavailable,false);assert.equal(after.card.expiresAt,pendingReview.expiresAt);assert.equal(f.state.msgs.length,2);
+});
 test('failed refresh preserves pending review and never invents rejection or completion',async()=>{
  const f=adapterRecoveryFixture();f.recover();await flushRecovery();const before=f.state.msgs[1];
  f.read(async()=>{throw Error('Offline');});f.connection({history:{revision:2}});f.recover();await flushRecovery();
@@ -225,6 +230,12 @@ for(const mode of ['session','context','hidden','unmount'])test(`expiry callback
  const f=adapterRecoveryFixture();f.read(async()=>[{...pendingReview,expiresAt:Date.now()+10000}]);f.recover();await flushRecovery();const before=f.state.msgs[1];
  if(mode==='session')f.connection({session:{sessionId:'replacement'}});if(mode==='context')f.context({revision:10});if(mode==='hidden')f.document.hidden=true;if(mode==='unmount')f.shell.live=false;
  f.advance(10002);await flushRecovery();assert.equal(f.state.msgs[1],before);assert.equal(f.calls.length,1);
+});
+for(const mode of ['context','session'])test(`deferred expiry state update is discarded after ${mode} changes`,async()=>{
+ const f=adapterRecoveryFixture();f.read(async()=>[{...pendingReview,expiresAt:Date.now()+10000}]);f.recover();await flushRecovery();const before=f.state.msgs[1];
+ let queued,completed;f.shell.setState=(update,complete)=>{queued=update;completed=complete;};f.advance(10002);assert.equal(typeof queued,'function');
+ if(mode==='context')f.context({revision:10});else f.connection({session:{sessionId:'replacement'}});
+ assert.equal(queued(f.state),null);completed();await flushRecovery();assert.equal(f.state.msgs[1],before);assert.equal(f.calls.length,1);
 });
 test('unavailable and expired card taps never enter the approval path',async()=>{
  const source=fs.readFileSync('apps/app/src/prototype/agent-adapter.ts','utf8'),start=source.indexOf('  p.cardAct ='),end=source.indexOf('  p.startVoice =',start),p={};

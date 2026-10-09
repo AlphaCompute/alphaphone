@@ -91,7 +91,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           if(!card?.proposalId||card.done)return message;
           const proposal=pending.get(card.proposalId);
           if(proposal){
-            if(card.recovered&&!card.reviewUnavailable&&card.expiresAt===proposal.expiresAt)return message;
+            if(card.recovered&&!card.reviewUnavailable&&card.expiresAt===proposal.expiresAt&&JSON.stringify(card.proposalSession)===JSON.stringify(connection.session))return message;
             return {...message,card:{...card,recovered:true,proposalSession:connection.session,expiresAt:proposal.expiresAt,reviewUnavailable:false,title:'Approve: '+proposal.title,sub:'Tap to approve this exact action'}};
           }
           // Absence can also mean different source preconditions. It proves no
@@ -107,8 +107,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(current()&&Number.isFinite(nearest)&&nearest>Date.now())shell.pendingActionExpiryTimer=setTimeout(()=>{
         shell.pendingActionExpiryTimer=null;
         if(!current())return;
-        shell.setState((previous:Shell)=>({msgs:previous.msgs.map((message:Shell)=>message.card?.proposalId&&!message.card.done&&!message.card.reviewUnavailable&&message.card.expiresAt<=Date.now()?{...message,card:{...message.card,reviewUnavailable:true,title:'Review expired',sub:'This review has expired. Request a new action if still needed.'}}:message)}));
-        shell.pendingActionRecoveryKey=null;recoverPendingActions(shell);
+        shell.setState((previous:Shell)=>{
+          if(!current())return null;
+          return {msgs:previous.msgs.map((message:Shell)=>message.card?.proposalId&&!message.card.done&&!message.card.reviewUnavailable&&message.card.expiresAt<=Date.now()?{...message,card:{...message.card,reviewUnavailable:true,title:'Review expired',sub:'This review has expired. Request a new action if still needed.'}}:message)};
+        },()=>{if(current()){shell.pendingActionRecoveryKey=null;recoverPendingActions(shell);}});
       },Math.min(2147483647,Math.ceil(nearest-Date.now())+1));
     }).catch(()=>{
       if(!current())return;
