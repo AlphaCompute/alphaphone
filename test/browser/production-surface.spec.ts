@@ -94,7 +94,10 @@ test('the chooser and Settings offer only production connections', async ({ page
   expect(text).not.toContain('Development connections');
   await expect(chooser.getByLabel('Environment')).toHaveCount(0);
   await expect(chooser.getByRole('button', { name: 'Start local agent', exact: true })).toHaveCount(0);
-  for (const name of ['Sign in with Eliza Cloud', 'Connect remote agent', 'Continue offline']) await expect(chooser.getByRole('button', { name, exact: true })).toBeVisible();
+  for (const name of ['Connect remote agent', 'Continue offline', 'Manage Cloud account']) await expect(chooser.getByRole('button', { name, exact: true })).toBeVisible();
+  // Eliza Cloud refuses credentialed requests from this web origin, so no sign-in that always fails is offered.
+  await expect(chooser.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toHaveCount(0);
+  await expect(chooser.getByText(/Eliza Cloud sign-in is available in the Alpha Phone Android app/)).toBeVisible();
   await chooser.getByRole('button', { name: 'Continue offline', exact: true }).click();
   await expect(chooser).toHaveCount(0);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -282,11 +285,102 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
   if(mode==='funded')await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
   if(mode==='replaced')await expect(page.getByRole('alert')).toContainText(/account changed/i);
   if(mode==='unpackaged'||mode==='legacy-offline'){await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'Welcome to Alpha'})).toBeVisible();}
-  await expect(page.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(0);
+  // Every unconnected state offers the honest offline path; a connected agent closes Welcome.
+  await expect(page.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(mode==='funded'?0:1);
+  if(mode==='unavailable')await expect(page.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
+  if(mode!=='funded'){
+   await page.getByRole('button',{name:'Use local apps without AI',exact:true}).click();
+   await expect(page.getByRole('dialog',{name:'Welcome to Alpha'})).toHaveCount(0);
+   for(const view of ['Notes','Calendar']){
+    await page.getByRole('button',{name:view,exact:true}).click();
+    await expect(page.locator('html')).toHaveAttribute('data-active-view',view.toLowerCase());
+    await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));
+    await expect(page.locator('html')).toHaveAttribute('data-active-view','home');
+   }
+   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.connection.selection.v1')!))).toEqual({kind:'offline',localApps:true});
+  }
   const calls=await page.evaluate(()=>(window as any).residentCalls);
   expect(calls.some((c:any)=>c.url?.includes('/personal/')||c.url?.includes('/upgrade-tier'))).toBe(false);
   const native=calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method);
   if(mode==='funded')expect(native.indexOf('stop')).toBeLessThan(native.indexOf('configureCloudProvider'));
   else expect(native).not.toContain('start');
+  // Choosing local apps stops a packaged runtime and never configures inference.
+  if(mode!=='funded'){expect(native).not.toContain('configureCloudProvider');if(mode!=='unpackaged')expect(native).toContain('stop');}
  });
 }
+test('resident local apps without AI persist across restart and can be closed and reopened',async({page})=>{
+ await page.addInitScript(()=>{
+  const w=window as any;w.androidBridge={};w.residentCalls=[];
+  const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
+  w.Capacitor={PluginHeaders:[
+   {name:'DeviceApps',methods:methods(['buildInfo'])},
+   {name:'Agent',methods:methods(['getStatus','start','stop','request'])},
+   {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureRemove','secureCompareExchange','request','cancel','openExternal'])},
+   {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+   {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
+  ],nativePromise:async(plugin:string,method:string,input:any)=>{
+   w.residentCalls.push({plugin,method,url:input?.url});
+   if(plugin==='AlphaVoiceCloud')return{microphone:'granted'};
+   if(plugin==='DeviceApps')return{launcher:false,version:'local-apps-fixture'};
+   if(plugin==='AlphaNotifications')return{permissionGranted:true,appEnabled:true};
+   if(plugin==='Agent'&&method==='getStatus')return{packaged:true,state:'stopped',serviceActive:false,socketListening:false};
+   if(method==='secureRead')return{value:null};
+   // Network is off: every Cloud request fails.
+   if(plugin==='AlphaConnection'&&method==='request')throw Error('Connection request failed');
+   return {};
+  }};
+ });
+ await page.goto('/');
+ const welcome=page.getByRole('dialog',{name:'Welcome to Alpha'});
+ await expect(welcome).toBeVisible();
+ await page.keyboard.press('Escape');
+ await expect(welcome).toBeVisible();
+ await welcome.getByRole('button',{name:'Use local apps without AI',exact:true}).click();
+ await expect(welcome).toHaveCount(0);
+ await page.reload();
+ await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
+ await expect(welcome).toHaveCount(0);
+ const calls=await page.evaluate(()=>(window as any).residentCalls);
+ expect(calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method)).not.toContain('start');
+ expect(calls.filter((c:any)=>c.method==='request')).toEqual([]);
+ await page.getByRole('button',{name:'Settings',exact:true}).click();
+ await page.getByRole('button',{name:/Agent connection/}).click();
+ await expect(welcome).toBeVisible();
+ await expect(welcome.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();
+ await page.keyboard.press('Escape');
+ await expect(welcome).toHaveCount(0);
+});
+test('resident local apps keep a saved Cloud sign-in available without contacting Cloud',async({page})=>{
+ await page.addInitScript(()=>{
+  const w=window as any;w.androidBridge={};w.residentCalls=[];
+  localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline',localApps:true}));
+  const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
+  w.Capacitor={PluginHeaders:[
+   {name:'DeviceApps',methods:methods(['buildInfo'])},
+   {name:'Agent',methods:methods(['getStatus','start','stop','request'])},
+   {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureRemove','secureCompareExchange','request','cancel','openExternal'])},
+   {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+   {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
+  ],nativePromise:async(plugin:string,method:string,input:any)=>{
+   w.residentCalls.push({plugin,method,slot:input?.slot,url:input?.url});
+   if(plugin==='AlphaVoiceCloud')return{microphone:'granted'};
+   if(plugin==='DeviceApps')return{launcher:false,version:'local-apps-fixture'};
+   if(plugin==='AlphaNotifications')return{permissionGranted:true,appEnabled:true};
+   if(plugin==='Agent'&&method==='getStatus')return{packaged:true,state:'stopped',serviceActive:false,socketListening:false};
+   if(method==='secureRead')return{value:input?.slot==='cloud:production'?JSON.stringify({token:'synthetic-cloud-token',credentialId:'synthetic-credential'}):null};
+   if(plugin==='AlphaConnection'&&method==='request')throw Error('Connection request failed');
+   return {};
+  }};
+ });
+ await page.goto('/');
+ const welcome=page.getByRole('dialog',{name:'Welcome to Alpha'});
+ await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
+ await expect(welcome).toHaveCount(0);
+ await page.getByRole('button',{name:'Settings',exact:true}).click();
+ await page.getByRole('button',{name:/Agent connection/}).click();
+ await expect(welcome.getByRole('button',{name:'Retry saved connection',exact:true})).toBeVisible();
+ await expect(welcome.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(0);
+ const calls=await page.evaluate(()=>(window as any).residentCalls);
+ expect(calls.filter((c:any)=>c.method==='request')).toEqual([]);
+ expect(calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method)).not.toContain('start');
+});

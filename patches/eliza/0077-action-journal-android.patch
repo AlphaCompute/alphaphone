@@ -1,0 +1,633 @@
+diff --git a/plugins/plugin-native-action-journal/android/README.md b/plugins/plugin-native-action-journal/android/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..75ea798588c64fb618091705219ed3b8d2a7ab97
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/android/README.md
+@@ -0,0 +1,49 @@
++# Android action journal
++
++A host-configured, durable execution journal for device actions an owner has approved.
++Each proposal moves `reserved` -> `applying` -> `terminal` exactly once. No entry is
++permission to execute twice: a replayed reservation returns the stored entry, a changed
++replay is refused, success requires a recorded dispatch (`applying`), and a terminal state
++can only be replayed identically. This module performs no device action and grants no
++approval; keep owner/agent authorization in the host.
++
++## Host integration
++
++Include this Android library and its `:capacitor-android` dependency. Extend
++`ActionJournalPlugin` with a public no-argument constructor, annotate the subclass with the
++host's chosen `@CapacitorPlugin` name and return the configured journal from
++`createJournal()`. Every bridge in one process (for example a main Activity and an
++assistant Activity) must receive the same `ActionJournal` instance for the same storage, so
++one monitor serializes every transition. Register the subclass with each host bridge.
++
++`ActionJournal` takes:
++
++- `ActionJournalConfiguration`: the slot namespace and bounds. The namespace is
++  migration-sensitive: slots are `<namespace>:<scope>:index` and
++  `<namespace>:<scope>:entry:<proposalId>`. A host adopting the module keeps its existing
++  namespace. `ActionJournalConfiguration.standard(namespace)` uses 2048 entries,
++  64000-character records and 2000-character summaries.
++- `ActionJournal.Storage`: an existing durable, encrypted string store. A failed write must
++  throw. This library supplies no plaintext fallback.
++- `ActionJournal.ResultPolicy`: the host's admission of terminal results (`check`) and the
++  redacted copy a passive `list` exposes (`listView`). `ActionJournal.BOUNDED_RESULTS`
++  admits only small opaque results.
++
++Host-specific recoveries (for example re-reading a saved receipt instead of repeating an
++effect) use `ActionJournal.update`, which runs under the journal lock and refuses any change
++to an entry's identity (scope, proposal, operation id and hash, record). Subclasses add
++bridge methods with `work(call, needsId, task)`, which runs on the plugin's serial worker.
++
++## Crash ordering
++
++The index slot commits before the entry slot. A crash between them leaves a listed id
++without an entry, which `list` skips and an identical `reserve` completes; it never leaves
++an effect that the journal does not list. The journal is bounded: a full index refuses new
++proposals while existing replays keep working.
++
++## Verification
++
++`node --test test/native-host/journal.node.mjs` compiles the engine with `javac` against
++an org.json jar (`ELIZA_ORG_JSON_JAR`, or the Gradle cache copy) and runs synthetic JVM
++checks. A Java or APK build is not device acceptance; a host's own instrumentation must
++cover its storage, lifecycle and recovery paths.
+diff --git a/plugins/plugin-native-action-journal/android/build.gradle b/plugins/plugin-native-action-journal/android/build.gradle
+new file mode 100644
+index 0000000000000000000000000000000000000000..dcaef868313871c97b9fe5246445f4565e95ba9c
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/android/build.gradle
+@@ -0,0 +1,10 @@
++apply plugin: 'com.android.library'
++android {
++ namespace 'ai.eliza.plugins.actionjournal'
++ compileSdk rootProject.ext.compileSdkVersion
++ defaultConfig { minSdk 26; targetSdk rootProject.ext.targetSdkVersion }
++ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
++}
++dependencies {
++ implementation project(':capacitor-android')
++}
+diff --git a/plugins/plugin-native-action-journal/android/src/main/AndroidManifest.xml b/plugins/plugin-native-action-journal/android/src/main/AndroidManifest.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..c4e6c98d775b8f58dcb88dfab7c93a010e106bb3
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/android/src/main/AndroidManifest.xml
+@@ -0,0 +1 @@
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"/>
+diff --git a/plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournal.java b/plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournal.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..8df083b556f4d2895291aaecf15594f0c50c9d19
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournal.java
+@@ -0,0 +1,217 @@
++package ai.eliza.plugins.actionjournal;
++
++import java.nio.charset.StandardCharsets;
++import java.util.Iterator;
++import java.util.Objects;
++import java.util.Set;
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++/**
++ * Durable execution journal for host-approved device actions. Each entry moves
++ * reserved -> applying -> terminal exactly once; no entry is permission to execute twice.
++ *
++ * <p>The journal stores one index slot and one entry slot per proposal in a host-supplied
++ * durable store. The index commits before the entry, so a crash can leave a harmless listed
++ * id without an entry, never an unlisted effect. Hosts supply result validation and the
++ * passive list view through {@link ResultPolicy}; this class performs no action itself.
++ */
++public final class ActionJournal {
++ /** Durable, encrypted string store owned by the host. Writes must throw on failure. */
++ public interface Storage {
++  String read(String slot) throws Exception;
++  void write(String slot, String value) throws Exception;
++ }
++
++ /** Host-specific result admission and passive list redaction. */
++ public interface ResultPolicy {
++  /** Throw to refuse a terminal transition. {@code result} may be null. */
++  void check(JSONObject entry, String status, JSONObject result) throws Exception;
++  /** Returns the copy a passive list exposes. Must not mutate {@code entry}. */
++  default JSONObject listView(JSONObject entry) throws Exception { return entry; }
++ }
++
++ /** A host transition on one existing entry, run under the journal lock. */
++ public interface Transition { JSONObject apply(JSONObject entry) throws Exception; }
++
++ /** Result of {@link #reserve}: the stored entry and whether this call created it. */
++ public static final class Reservation {
++  public final JSONObject entry;
++  public final boolean created;
++  Reservation(JSONObject entry, boolean created) { this.entry = entry; this.created = created; }
++ }
++
++ /** Refused transition: the stored journal is unchanged. */
++ public static final class Refused extends IllegalStateException {
++  public Refused(String message) { super(message); }
++ }
++
++ public static final Set<String> STATUSES = Set.of("succeeded", "failed", "unknown", "cancelled");
++ /** Default policy: any result is a small, opaque summary without retained private reads. */
++ public static final ResultPolicy BOUNDED_RESULTS = (entry, status, result) -> {
++  if (result != null && (utf8(result) > 8000 || result.has("readResult"))) throw new IllegalArgumentException("Result too large");
++ };
++
++ private static final String SCOPE = "[a-f0-9]{64}", ID = "[A-Za-z0-9_-]{1,128}";
++ private final Object lock = new Object();
++ private final ActionJournalConfiguration configuration;
++ private final Storage storage;
++ private final ResultPolicy policy;
++ private final Clock clock;
++
++ /** Milliseconds since the epoch; replaceable only for deterministic tests. */
++ public interface Clock { long now(); }
++
++ public ActionJournal(ActionJournalConfiguration configuration, Storage storage, ResultPolicy policy) {
++  this(configuration, storage, policy, System::currentTimeMillis);
++ }
++
++ public ActionJournal(ActionJournalConfiguration configuration, Storage storage, ResultPolicy policy, Clock clock) {
++  this.configuration = Objects.requireNonNull(configuration);
++  this.storage = Objects.requireNonNull(storage);
++  this.policy = Objects.requireNonNull(policy);
++  this.clock = Objects.requireNonNull(clock);
++ }
++
++ /** The monitor that serializes every journal read-modify-write. Hosts may hold it for a compound transition. */
++ public Object lock() { return lock; }
++
++ public static String field(String value, String pattern) {
++  if (value == null || !value.matches(pattern)) throw new IllegalArgumentException("Invalid journal field");
++  return value;
++ }
++ public static String scope(String value) { return field(value, SCOPE); }
++ public static String id(String value) { return field(value, ID); }
++ public static int utf8(Object value) { return String.valueOf(value).getBytes(StandardCharsets.UTF_8).length; }
++
++ /** Structural JSON equality, independent of key order. */
++ public static boolean sameJson(Object a, Object b) throws Exception {
++  if (a instanceof JSONObject && b instanceof JSONObject) {
++   JSONObject left = (JSONObject) a, right = (JSONObject) b;
++   if (left.length() != right.length()) return false;
++   Iterator<String> keys = left.keys();
++   while (keys.hasNext()) { String name = keys.next(); if (!right.has(name) || !sameJson(left.get(name), right.get(name))) return false; }
++   return true;
++  }
++  if (a instanceof JSONArray && b instanceof JSONArray) {
++   JSONArray left = (JSONArray) a, right = (JSONArray) b;
++   if (left.length() != right.length()) return false;
++   for (int i = 0; i < left.length(); i++) if (!sameJson(left.get(i), right.get(i))) return false;
++   return true;
++  }
++  if (a == null || a == JSONObject.NULL) return b == null || b == JSONObject.NULL;
++  // Parsed and in-memory JSON may hold the same number as Integer, Long or Double.
++  if (a instanceof Number && b instanceof Number) {
++   try { return new java.math.BigDecimal(a.toString()).compareTo(new java.math.BigDecimal(b.toString())) == 0; }
++   catch (NumberFormatException notFinite) { return a.toString().equals(b.toString()); }
++  }
++  return Objects.equals(a, b);
++ }
++
++ public String entrySlot(String scope, String id) { return configuration.namespace + ":" + scope(scope) + ":entry:" + id(id); }
++ public String indexSlot(String scope) { return configuration.namespace + ":" + scope(scope) + ":index"; }
++
++ private JSONObject readEntry(String scope, String id) throws Exception {
++  String value = storage.read(entrySlot(scope, id));
++  return value == null ? null : new JSONObject(value);
++ }
++ private void writeEntry(String scope, String id, JSONObject entry) throws Exception { storage.write(entrySlot(scope, id), entry.toString()); }
++
++ /** Reserves one proposal. An identical replay returns the stored entry; a changed one is refused. */
++ public Reservation reserve(String scope, String id, String operationId, String operationHash, JSONObject record) throws Exception {
++  scope(scope); id(id); field(operationId, ID); field(operationHash, "[a-f0-9]{64}");
++  if (record == null || record.toString().length() > configuration.maxRecordChars) throw new IllegalArgumentException("Invalid journal record");
++  synchronized (lock) {
++   JSONObject entry = readEntry(scope, id);
++   if (entry != null) {
++    if (!operationHash.equals(entry.getString("operationHash")) || !sameJson(record, entry.getJSONObject("record"))) throw new Refused("Proposal is already journaled with a different operation");
++    return new Reservation(entry, false);
++   }
++   String saved = storage.read(indexSlot(scope));
++   JSONArray index = saved == null ? new JSONArray() : new JSONArray(saved);
++   boolean listed = false;
++   for (int i = 0; i < index.length(); i++) if (id.equals(index.getString(i))) listed = true;
++   if (!listed) {
++    if (index.length() >= configuration.maxEntries) throw new Refused("Action journal is full");
++    index.put(id);
++    storage.write(indexSlot(scope), index.toString());
++   }
++   // Index commits first: a crash can leave a harmless absent entry, never an unlisted effect.
++   entry = new JSONObject().put("scope", scope).put("proposalId", id).put("operationId", operationId).put("operationHash", operationHash)
++    .put("record", record).put("phase", "reserved").put("createdAt", clock.now());
++   writeEntry(scope, id, entry);
++   return new Reservation(entry, true);
++  }
++ }
++
++ /** Records the dispatch intent of one attempt. Only a reserved entry may start applying. */
++ public JSONObject markApplying(String scope, String id, String attemptId) throws Exception {
++  field(attemptId, ID);
++  synchronized (lock) {
++   JSONObject entry = readEntry(scope(scope), id(id));
++   if (entry == null || !"reserved".equals(entry.getString("phase"))) throw new Refused("Entry is not reserved");
++   entry.put("attemptId", attemptId).put("phase", "applying").put("applyingAt", clock.now());
++   writeEntry(scope, id, entry);
++   return entry;
++  }
++ }
++
++ /**
++  * Moves an entry to its single terminal state. An identical replay of the terminal state is
++  * returned unchanged; a different one is refused. Success requires a recorded dispatch.
++  */
++ public JSONObject finish(String scope, String id, String status, String summary, JSONObject result) throws Exception {
++  if (!STATUSES.contains(status) || summary == null || summary.length() > configuration.maxSummaryChars) throw new IllegalArgumentException("Invalid terminal status");
++  synchronized (lock) {
++   JSONObject entry = readEntry(scope(scope), id(id));
++   if (entry == null) throw new Refused("Entry is not journaled");
++   policy.check(entry, status, result);
++   if ("terminal".equals(entry.getString("phase"))) {
++    if (!status.equals(entry.getString("status")) || !summary.equals(entry.getString("summary")) || !sameJson(result, entry.optJSONObject("result"))) throw new Refused("Entry already finished differently");
++    return entry;
++   }
++   if ("succeeded".equals(status) && !"applying".equals(entry.getString("phase"))) throw new Refused("Success requires a recorded dispatch");
++   entry.put("phase", "terminal").put("status", status).put("summary", summary).put("finishedAt", clock.now());
++   if (result != null) entry.put("result", result);
++   writeEntry(scope, id, entry);
++   return entry;
++  }
++ }
++
++ /**
++  * Runs a host transition on an existing entry under the journal lock. The transition returns
++  * the entry to store, or the same instance unchanged to skip the write. Identity fields
++  * (scope, proposal, operation id and hash, record) can never change.
++  */
++ public JSONObject update(String scope, String id, Transition transition) throws Exception {
++  synchronized (lock) {
++   JSONObject entry = readEntry(scope(scope), id(id));
++   JSONObject before = entry == null ? null : new JSONObject(entry.toString());
++   JSONObject next = transition.apply(entry);
++   if (next == null || next == entry && (before == null || sameJson(before, next))) return next;
++   if (before == null) throw new Refused("Entry is not journaled");
++   for (String name : new String[]{"scope", "proposalId", "operationId", "operationHash", "record"})
++    if (!sameJson(before.opt(name), next.opt(name))) throw new Refused("Journal identity cannot change");
++   writeEntry(scope, id, next);
++   return next;
++  }
++ }
++
++ /** One exact entry, including retained private results. */
++ public JSONObject get(String scope, String id) throws Exception {
++  synchronized (lock) { return readEntry(scope(scope), id(id)); }
++ }
++
++ /** Every listed entry in reservation order, through the host's passive list view. */
++ public JSONArray list(String scope) throws Exception {
++  synchronized (lock) {
++   String saved = storage.read(indexSlot(scope(scope)));
++   JSONArray index = saved == null ? new JSONArray() : new JSONArray(saved), entries = new JSONArray();
++   for (int i = 0; i < index.length(); i++) {
++    JSONObject entry = readEntry(scope, index.getString(i));
++    if (entry != null) entries.put(policy.listView(entry));
++   }
++   return entries;
++  }
++ }
++}
+diff --git a/plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournalConfiguration.java b/plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournalConfiguration.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..7bc266ba7cc7488767234b48bf9fddf446b7c443
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournalConfiguration.java
+@@ -0,0 +1,24 @@
++package ai.eliza.plugins.actionjournal;
++
++/**
++ * Migration-sensitive journal identity and bounds. The namespace prefixes every storage slot
++ * ({@code <namespace>:<scope>:index} and {@code <namespace>:<scope>:entry:<proposalId>}), so a host
++ * adopting this module must keep its existing namespace. No request can override it.
++ */
++public final class ActionJournalConfiguration {
++ public final String namespace;
++ public final int maxEntries, maxRecordChars, maxSummaryChars;
++
++ public ActionJournalConfiguration(String namespace, int maxEntries, int maxRecordChars, int maxSummaryChars) {
++  if (namespace == null || !namespace.matches("[a-z0-9][a-z0-9._-]{0,63}(:[a-z0-9][a-z0-9._-]{0,63}){0,3}")) throw new IllegalArgumentException("Invalid journal namespace");
++  if (maxEntries < 1 || maxEntries > 65536 || maxRecordChars < 256 || maxRecordChars > 1_000_000 || maxSummaryChars < 1 || maxSummaryChars > 100_000)
++   throw new IllegalArgumentException("Invalid journal bounds");
++  this.namespace = namespace;
++  this.maxEntries = maxEntries;
++  this.maxRecordChars = maxRecordChars;
++  this.maxSummaryChars = maxSummaryChars;
++ }
++
++ /** The bounds used by the first host: 2048 entries, 64000-character records, 2000-character summaries. */
++ public static ActionJournalConfiguration standard(String namespace) { return new ActionJournalConfiguration(namespace, 2048, 64000, 2000); }
++}
+diff --git a/plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournalPlugin.java b/plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournalPlugin.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..3ce99863f498fd5ee32bab6b58389490ac4d0dd2
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournalPlugin.java
+@@ -0,0 +1,99 @@
++package ai.eliza.plugins.actionjournal;
++
++import com.getcapacitor.JSArray;
++import com.getcapacitor.JSObject;
++import com.getcapacitor.Plugin;
++import com.getcapacitor.PluginCall;
++import com.getcapacitor.PluginMethod;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++import java.util.concurrent.RejectedExecutionException;
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++/**
++ * Capacitor bridge over {@link ActionJournal}. Hosts extend this class with a public no-argument
++ * constructor, annotate the subclass with their chosen {@code @CapacitorPlugin} name and return
++ * their configured journal from {@link #journal()}. Every call runs on one serial worker; the
++ * journal never runs on the UI thread. Subclasses add host-specific recoveries with
++ * {@link #work}. This bridge performs no device action and grants no approval.
++ */
++public abstract class ActionJournalPlugin extends Plugin {
++ /** Host work on the journal. Runs on the serial worker; the result resolves the call. */
++ protected interface Task { JSObject run(ActionJournal journal, String scope, String proposalId) throws Exception; }
++
++ private final ExecutorService worker = Executors.newSingleThreadExecutor();
++ private volatile boolean destroyed;
++ private ActionJournal journal;
++
++ /**
++  * Returns the host's journal. Called on the worker thread after the bridge is available.
++  * Every bridge in one process (for example a main and an assistant Activity) must receive the
++  * same instance for the same storage, so that one monitor serializes all transitions.
++  */
++ protected abstract ActionJournal createJournal() throws Exception;
++
++ protected final synchronized ActionJournal journal() throws Exception {
++  if (journal == null) journal = createJournal();
++  return journal;
++ }
++ protected final ExecutorService worker() { return worker; }
++ protected final boolean destroyed() { return destroyed; }
++ /** The rejection text every refused or failed journal call uses. */
++ protected String refusal() { return "Action journal unavailable or transition rejected"; }
++
++ /** Runs {@code task} on the worker with a validated scope and, when required, proposal id. */
++ protected final void work(PluginCall call, boolean needsId, Task task) {
++  try {
++   worker.execute(() -> {
++    try {
++     if (destroyed) throw new IllegalStateException("Destroyed");
++     String scope = ActionJournal.scope(call.getString("scope"));
++     String id = needsId ? ActionJournal.id(call.getString("proposalId")) : null;
++     call.resolve(task.run(journal(), scope, id));
++    } catch (Exception error) { call.reject(refusal()); }
++   });
++  } catch (RejectedExecutionException retired) { call.reject(refusal()); }
++ }
++
++ public static JSObject entryResponse(JSONObject entry) throws Exception {
++  JSObject value = new JSObject();
++  value.put("entry", entry == null ? JSONObject.NULL : entry);
++  return value;
++ }
++
++ @PluginMethod public void reserve(PluginCall call) {
++  work(call, true, (journal, scope, id) -> {
++   ActionJournal.Reservation reservation = journal.reserve(scope, id, call.getString("operationId"), call.getString("operationHash"), call.getObject("record"));
++   JSObject value = entryResponse(reservation.entry);
++   value.put("created", reservation.created);
++   return value;
++  });
++ }
++ @PluginMethod public void markApplying(PluginCall call) {
++  work(call, true, (journal, scope, id) -> entryResponse(journal.markApplying(scope, id, call.getString("attemptId"))));
++ }
++ @PluginMethod public void finish(PluginCall call) {
++  work(call, true, (journal, scope, id) -> entryResponse(journal.finish(scope, id, call.getString("status"), call.getString("summary"), call.getObject("result"))));
++ }
++ @PluginMethod public void get(PluginCall call) {
++  work(call, true, (journal, scope, id) -> entryResponse(journal.get(scope, id)));
++ }
++ @PluginMethod public void list(PluginCall call) {
++  work(call, false, (journal, scope, id) -> {
++   JSONArray listed = journal.list(scope);
++   JSArray entries = new JSArray();
++   for (int i = 0; i < listed.length(); i++) entries.put(listed.get(i));
++   JSObject value = new JSObject();
++   value.put("entries", entries);
++   return value;
++  });
++ }
++
++ /** Subclasses overriding this must call super. Queued calls reject after destruction. */
++ @Override protected void handleOnDestroy() {
++  destroyed = true;
++  worker.shutdown();
++  super.handleOnDestroy();
++ }
++}
+diff --git a/plugins/plugin-native-action-journal/test/native-host/ActionJournalTest.java b/plugins/plugin-native-action-journal/test/native-host/ActionJournalTest.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..2ca70f018745532aa2639a3bb30b0f2399689e82
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/test/native-host/ActionJournalTest.java
+@@ -0,0 +1,149 @@
++import ai.eliza.plugins.actionjournal.ActionJournal;
++import ai.eliza.plugins.actionjournal.ActionJournalConfiguration;
++import java.util.HashMap;
++import java.util.Map;
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++/** JVM tests with an in-memory store and synthetic records only; no Android framework. */
++public final class ActionJournalTest {
++ private static int checks;
++ private static void check(boolean value) { checks++; if (!value) throw new AssertionError("Check " + checks); }
++ private interface Failing { void run() throws Exception; }
++ private static void refuses(Class<? extends Exception> type, Failing body) {
++  checks++;
++  try { body.run(); } catch (Exception error) { if (type.isInstance(error)) return; throw new AssertionError("Check " + checks + ": " + error); }
++  throw new AssertionError("Check " + checks + " should have been refused");
++ }
++
++ static final class Memory implements ActionJournal.Storage {
++  final Map<String, String> slots = new HashMap<>();
++  String failOn;
++  int writes;
++  public String read(String slot) { return slots.get(slot); }
++  public void write(String slot, String value) throws Exception {
++   if (failOn != null && slot.contains(failOn)) throw new java.io.IOException("Synthetic write failure");
++   writes++; slots.put(slot, value);
++  }
++ }
++
++ static final String SCOPE = "a".repeat(64), HASH = "b".repeat(64), OTHER_HASH = "c".repeat(64);
++
++ public static void main(String[] args) throws Exception {
++  long[] now = {1000};
++  Memory store = new Memory();
++  ActionJournal.ResultPolicy policy = new ActionJournal.ResultPolicy() {
++   public void check(JSONObject entry, String status, JSONObject result) throws Exception {
++    if ("succeeded".equals(status) && result == null) throw new IllegalArgumentException("Success needs a receipt");
++    ActionJournal.BOUNDED_RESULTS.check(entry, status, result);
++   }
++   public JSONObject listView(JSONObject entry) throws Exception {
++    JSONObject copy = new JSONObject(entry.toString());
++    JSONObject result = copy.optJSONObject("result");
++    if (result != null && result.has("private")) { result.remove("private"); copy.put("privateRetained", true); }
++    return copy;
++   }
++  };
++  ActionJournal journal = new ActionJournal(new ActionJournalConfiguration("action-journal:v1", 3, 256, 40), store, policy, () -> now[0]);
++  JSONObject record = new JSONObject().put("operation", new JSONObject().put("type", "create_note").put("title", "Synthetic"));
++
++  // Slot identity is the configured namespace; a host keeps its existing slots when adopting the module.
++  check(journal.indexSlot(SCOPE).equals("action-journal:v1:" + SCOPE + ":index"));
++  check(journal.entrySlot(SCOPE, "p1").equals("action-journal:v1:" + SCOPE + ":entry:p1"));
++  refuses(IllegalArgumentException.class, () -> journal.entrySlot("bad", "p1"));
++  refuses(IllegalArgumentException.class, () -> journal.entrySlot(SCOPE, "../p1"));
++  refuses(IllegalArgumentException.class, () -> new ActionJournalConfiguration("Bad Namespace", 1, 256, 1));
++  refuses(IllegalArgumentException.class, () -> new ActionJournalConfiguration("ok", 0, 256, 1));
++
++  // Reserve creates once; an identical replay returns the stored entry; a changed one is refused.
++  ActionJournal.Reservation first = journal.reserve(SCOPE, "p1", "op-1", HASH, record);
++  check(first.created && "reserved".equals(first.entry.getString("phase")) && first.entry.getLong("createdAt") == 1000);
++  now[0] = 2000;
++  ActionJournal.Reservation replay = journal.reserve(SCOPE, "p1", "op-1", HASH, new JSONObject(record.toString()));
++  check(!replay.created && replay.entry.getLong("createdAt") == 1000);
++  refuses(ActionJournal.Refused.class, () -> journal.reserve(SCOPE, "p1", "op-1", OTHER_HASH, record));
++  refuses(ActionJournal.Refused.class, () -> journal.reserve(SCOPE, "p1", "op-1", HASH, new JSONObject().put("operation", "changed")));
++  refuses(IllegalArgumentException.class, () -> journal.reserve(SCOPE, "p2", "op-2", HASH, new JSONObject().put("x", "y".repeat(300))));
++  refuses(IllegalArgumentException.class, () -> journal.reserve(SCOPE, "p2", "op-2", "short", record));
++
++  // Success requires a recorded dispatch; applying only follows reserved.
++  refuses(ActionJournal.Refused.class, () -> journal.finish(SCOPE, "p1", "succeeded", "Done", new JSONObject().put("ok", true)));
++  JSONObject applying = journal.markApplying(SCOPE, "p1", "attempt-1");
++  check("applying".equals(applying.getString("phase")) && "attempt-1".equals(applying.getString("attemptId")));
++  refuses(ActionJournal.Refused.class, () -> journal.markApplying(SCOPE, "p1", "attempt-2"));
++  refuses(IllegalArgumentException.class, () -> journal.finish(SCOPE, "p1", "succeeded", "Done", null));
++  refuses(IllegalArgumentException.class, () -> journal.finish(SCOPE, "p1", "maybe", "Done", null));
++  refuses(IllegalArgumentException.class, () -> journal.finish(SCOPE, "p1", "failed", "x".repeat(41), null));
++  refuses(IllegalArgumentException.class, () -> journal.finish(SCOPE, "p1", "succeeded", "Done", new JSONObject().put("readResult", "private")));
++  JSONObject receipt = new JSONObject().put("ok", true).put("private", "synthetic body");
++  JSONObject terminal = journal.finish(SCOPE, "p1", "succeeded", "Done", receipt);
++  check("terminal".equals(terminal.getString("phase")) && "succeeded".equals(terminal.getString("status")));
++
++  // The terminal state is final: an identical replay is returned, any other outcome is refused.
++  int writes = store.writes;
++  check(ActionJournal.sameJson(journal.finish(SCOPE, "p1", "succeeded", "Done", new JSONObject(receipt.toString())), terminal));
++  check(store.writes == writes);
++  refuses(ActionJournal.Refused.class, () -> journal.finish(SCOPE, "p1", "failed", "Done", null));
++  refuses(ActionJournal.Refused.class, () -> journal.finish(SCOPE, "p1", "succeeded", "Other", receipt));
++  refuses(ActionJournal.Refused.class, () -> journal.finish(SCOPE, "missing", "failed", "Never journaled", null));
++
++  // A non-dispatched entry may end as failed, cancelled or unknown without a receipt.
++  journal.reserve(SCOPE, "p2", "op-2", HASH, record);
++  check("cancelled".equals(journal.finish(SCOPE, "p2", "cancelled", "Rejected", null).getString("status")));
++
++  // The index commits before the entry: a failed entry write leaves a listed id with no entry,
++  // which list() skips and a later identical reserve completes.
++  store.failOn = ":entry:p3";
++  refuses(java.io.IOException.class, () -> journal.reserve(SCOPE, "p3", "op-3", HASH, record));
++  check(new JSONArray(store.read(journal.indexSlot(SCOPE))).length() == 3);
++  check(journal.get(SCOPE, "p3") == null && journal.list(SCOPE).length() == 2);
++  store.failOn = null;
++  check(journal.reserve(SCOPE, "p3", "op-3", HASH, record).created);
++  check(new JSONArray(store.read(journal.indexSlot(SCOPE))).length() == 3);
++
++  // Bounded: a full index refuses new proposals but keeps existing replays working.
++  refuses(ActionJournal.Refused.class, () -> journal.reserve(SCOPE, "p4", "op-4", HASH, record));
++  check(!journal.reserve(SCOPE, "p3", "op-3", HASH, record).created);
++
++  // Passive list goes through the host view and never rewrites stored private results.
++  JSONArray listed = journal.list(SCOPE);
++  check(listed.length() == 3 && "p1".equals(listed.getJSONObject(0).getString("proposalId")));
++  check(listed.getJSONObject(0).optBoolean("privateRetained") && !listed.getJSONObject(0).getJSONObject("result").has("private"));
++  check(journal.get(SCOPE, "p1").getJSONObject("result").has("private"));
++
++  // Scopes are isolated.
++  check(journal.list("d".repeat(64)).length() == 0 && journal.get("d".repeat(64), "p1") == null);
++
++  // Host transitions run under the lock, may annotate, and can never change identity.
++  JSONObject noted = journal.update(SCOPE, "p3", entry -> entry.put("hostMarker", new JSONObject().put("phase", "reviewing")));
++  check(noted.has("hostMarker") && journal.get(SCOPE, "p3").has("hostMarker"));
++  writes = store.writes;
++  journal.update(SCOPE, "p3", entry -> entry);
++  check(store.writes == writes);
++  refuses(ActionJournal.Refused.class, () -> journal.update(SCOPE, "p3", entry -> entry.put("operationHash", OTHER_HASH)));
++  refuses(ActionJournal.Refused.class, () -> journal.update(SCOPE, "p3", entry -> entry.put("record", new JSONObject())));
++  refuses(ActionJournal.Refused.class, () -> journal.update(SCOPE, "absent", entry -> new JSONObject()));
++  check(journal.update(SCOPE, "absent", entry -> entry) == null);
++  check(HASH.equals(journal.get(SCOPE, "p3").getString("operationHash")));
++
++  // Structural equality ignores key order and treats JSON null like absence only for null.
++  check(ActionJournal.sameJson(new JSONObject("{\"a\":1,\"b\":[1,{\"c\":2}]}"), new JSONObject("{\"b\":[1,{\"c\":2}],\"a\":1}")));
++  check(!ActionJournal.sameJson(new JSONObject("{\"a\":1}"), new JSONObject("{\"a\":2}")));
++  check(!ActionJournal.sameJson(new JSONArray("[1,2]"), new JSONArray("[2,1]")));
++  check(ActionJournal.sameJson(new JSONObject().put("n", 1000L), new JSONObject("{\"n\":1000}")));
++  check(!ActionJournal.sameJson(new JSONObject().put("n", "1000"), new JSONObject("{\"n\":1000}")));
++
++  // Concurrent reserves from two bridges of one process serialize on one journal.
++  ActionJournal shared = new ActionJournal(ActionJournalConfiguration.standard("action-journal:v1"), new Memory(), ActionJournal.BOUNDED_RESULTS);
++  int[] created = {0};
++  Thread[] threads = new Thread[8];
++  for (int i = 0; i < threads.length; i++) {
++   threads[i] = new Thread(() -> { try { if (shared.reserve(SCOPE, "race", "op-race", HASH, record).created) synchronized (created) { created[0]++; } } catch (Exception error) { throw new RuntimeException(error); } });
++   threads[i].start();
++  }
++  for (Thread thread : threads) thread.join();
++  check(created[0] == 1 && shared.list(SCOPE).length() == 1);
++
++  System.out.println(checks + " assertions passed");
++ }
++}
+diff --git a/plugins/plugin-native-action-journal/test/native-host/journal.node.mjs b/plugins/plugin-native-action-journal/test/native-host/journal.node.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..820f34fa3610592cdb44c110bb5a0bf2f4b25ec6
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/test/native-host/journal.node.mjs
+@@ -0,0 +1,36 @@
++import assert from "node:assert/strict";
++import { execFileSync } from "node:child_process";
++import fs from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { test } from "node:test";
++import { fileURLToPath } from "node:url";
++
++// Compiles the journal engine against org.json and runs the synthetic JVM checks.
++// ELIZA_ORG_JSON_JAR names the jar; otherwise the Gradle cache copy is used when present.
++const plugin = fileURLToPath(new URL("../..", import.meta.url));
++const sources = path.join(plugin, "android/src/main/java/ai/eliza/plugins/actionjournal");
++const cached = () => {
++  const root = path.join(os.homedir(), ".gradle/caches/modules-2/files-2.1/org.json/json");
++  if (!fs.existsSync(root)) return undefined;
++  for (const version of fs.readdirSync(root).sort().reverse())
++    for (const hash of fs.readdirSync(path.join(root, version))) {
++      const jar = path.join(root, version, hash, `json-${version}.jar`);
++      if (fs.existsSync(jar)) return jar;
++    }
++  return undefined;
++};
++const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
++
++test("journal transitions, replay, bounds, crash ordering and host policy", { skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)" }, (t) => {
++  const classes = fs.mkdtempSync(path.join(os.tmpdir(), "action-journal-"));
++  t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
++  const bin = (name) => (process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name);
++  execFileSync(
++    bin("javac"),
++    ["-cp", jar, "-d", classes, path.join(sources, "ActionJournal.java"), path.join(sources, "ActionJournalConfiguration.java"), path.join(plugin, "test/native-host/ActionJournalTest.java")],
++    { timeout: 60000 },
++  );
++  const output = execFileSync(bin("java"), ["-cp", [classes, jar].join(path.delimiter), "ActionJournalTest"], { timeout: 60000, encoding: "utf8" });
++  assert.match(output, /^\d+ assertions passed/);
++});

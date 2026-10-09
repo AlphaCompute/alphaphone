@@ -1,3 +1,5 @@
+// Registers AlphaConnection with its browser factory (HTTPS fetch, connection-slot secrets, Cloud sign-in tab).
+import '../runtime/native-connection';
 import './register-hosted-results';
 import {BrowserClock} from './clock';
 import { BrowserLocation } from './location';

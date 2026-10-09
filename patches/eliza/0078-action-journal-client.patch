@@ -1,0 +1,300 @@
+diff --git a/plugins/plugin-native-action-journal/README.md b/plugins/plugin-native-action-journal/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..4e7bcacfe154d85b1b80da936e09b38629cc1b39
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/README.md
+@@ -0,0 +1,20 @@
++# @elizaos/capacitor-action-journal
++
++A durable reserve -> apply -> finish journal for device actions an owner has approved.
++It records what one approved dispatch did, at most once, so an app can recover after a
++crash, a lost bridge callback or a dropped connection without repeating an effect.
++
++- Android: `android/` holds the host-configured engine and Capacitor bridge
++  (`ActionJournal`, `ActionJournalConfiguration`, `ActionJournalPlugin`). See
++  `android/README.md` for host integration, slot identity and crash ordering.
++- TypeScript: `registerActionJournal(name)` registers the host-named bridge;
++  `nextStep(entry)` says whether a reserved entry may be dispatched or must be reconciled;
++  `isJournalEntry` shape-checks bridge results. Browsers have no journal and fail closed.
++
++The journal grants no approval and performs no action. Hosts keep owner/agent
++authorization, the action itself, result admission (`ResultPolicy`) and any
++receipt-based recovery.
++
++`npm test` runs the TypeScript client checks and the JVM engine checks (the latter need
++`javac` and an org.json jar; see `android/README.md`). These are synthetic unit checks; a
++host's own instrumentation and device acceptance are still required.
+diff --git a/plugins/plugin-native-action-journal/package.json b/plugins/plugin-native-action-journal/package.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..30fb76b3211cd8746980617e8e4d4d087a849888
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/package.json
+@@ -0,0 +1,66 @@
++{
++  "name": "@elizaos/capacitor-action-journal",
++  "version": "2.0.3-beta.7",
++  "description": "Durable reserve/apply/finish journal for owner-approved device actions in Eliza apps.",
++  "type": "module",
++  "main": "./dist/esm/index.js",
++  "module": "./dist/esm/index.js",
++  "types": "./dist/esm/index.d.ts",
++  "exports": {
++    ".": {
++      "eliza-source": "./src/index.ts",
++      "types": "./dist/esm/index.d.ts",
++      "import": "./dist/esm/index.js"
++    },
++    "./package.json": "./package.json"
++  },
++  "files": [
++    "android/src/main/",
++    "android/build.gradle",
++    "android/README.md",
++    "dist/",
++    "src/"
++  ],
++  "author": "elizaOS",
++  "license": "MIT",
++  "repository": {
++    "type": "git",
++    "url": "git+https://github.com/elizaOS/eliza.git",
++    "directory": "plugins/plugin-native-action-journal"
++  },
++  "scripts": {
++    "build": "node ../../packages/scripts/rm-path-recursive.ts dist && tsc6 -p tsconfig.json",
++    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
++    "typecheck": "tsc --noEmit -p tsconfig.json",
++    "lint": "bunx @biomejs/biome check --write --unsafe .",
++    "lint:check": "bunx @biomejs/biome check .",
++    "format": "bunx @biomejs/biome format --write .",
++    "format:check": "bunx @biomejs/biome format .",
++    "test": "node --test --experimental-strip-types test/client.node.mjs test/native-host/journal.node.mjs"
++  },
++  "capacitor": {
++    "android": {
++      "src": "android"
++    }
++  },
++  "devDependencies": {
++    "@capacitor/core": "^8.3.1",
++    "@typescript/native": "npm:typescript@^7.0.2",
++    "typescript": "^6.0.3"
++  },
++  "peerDependencies": {
++    "@capacitor/core": "^8.3.1"
++  },
++  "publishConfig": {
++    "access": "public"
++  },
++  "elizaos": {
++    "platforms": [],
++    "runtime": "both",
++    "platformDetails": {
++      "browser": false,
++      "android": "Host-subclassed Capacitor plugin over a durable encrypted host store; the host chooses the bridge name.",
++      "ios": false
++    }
++  }
++}
+diff --git a/plugins/plugin-native-action-journal/src/client.ts b/plugins/plugin-native-action-journal/src/client.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..64f542bf9e9c6511230000a99dff6d47aaeec71f
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/src/client.ts
+@@ -0,0 +1,45 @@
++import type { ActionJournalEntry } from "./definitions.ts";
++
++/**
++ * What a caller may do after `reserve` returns an entry. Only a freshly created or still
++ * reserved entry may be dispatched. An applying entry has an unknown outcome and must be
++ * reconciled (a saved receipt, or the owner's confirmation), never dispatched again.
++ */
++export type JournalNextStep =
++  | { kind: "dispatch" }
++  | { kind: "reconcile"; since: number | null }
++  | { kind: "settled"; entry: ActionJournalEntry };
++
++export function nextStep(entry: ActionJournalEntry): JournalNextStep {
++  if (entry.phase === "reserved") return { kind: "dispatch" };
++  if (entry.phase === "applying")
++    return { kind: "reconcile", since: typeof entry.applyingAt === "number" ? entry.applyingAt : null };
++  if (entry.phase === "terminal" && entry.status) {
++    // A terminal unknown outcome still needs the owner; it is settled only as a record.
++    return entry.status === "unknown"
++      ? { kind: "reconcile", since: entry.finishedAt ?? null }
++      : { kind: "settled", entry };
++  }
++  throw new Error("Unrecognized action journal entry");
++}
++
++const SCOPE = /^[a-f0-9]{64}$/;
++const ID = /^[A-Za-z0-9_-]{1,128}$/;
++
++/** Shape check for entries read across the bridge; refuses anything a host could misread. */
++export function isJournalEntry(value: unknown): value is ActionJournalEntry {
++  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
++  const entry = value as Record<string, unknown>;
++  if (typeof entry.scope !== "string" || !SCOPE.test(entry.scope)) return false;
++  if (typeof entry.proposalId !== "string" || !ID.test(entry.proposalId)) return false;
++  if (typeof entry.operationId !== "string" || !ID.test(entry.operationId)) return false;
++  if (typeof entry.operationHash !== "string" || !SCOPE.test(entry.operationHash)) return false;
++  if (!entry.record || typeof entry.record !== "object" || Array.isArray(entry.record)) return false;
++  if (typeof entry.createdAt !== "number") return false;
++  if (entry.phase === "reserved") return entry.status === undefined;
++  if (entry.phase === "applying") return typeof entry.attemptId === "string" && entry.status === undefined;
++  if (entry.phase !== "terminal") return false;
++  return ["succeeded", "failed", "unknown", "cancelled"].includes(entry.status as string) &&
++    typeof entry.summary === "string" &&
++    (entry.status !== "succeeded" || typeof entry.attemptId === "string");
++}
+diff --git a/plugins/plugin-native-action-journal/src/definitions.ts b/plugins/plugin-native-action-journal/src/definitions.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ff6fced87c88992ea152e3392ebebd13dd5db09d
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/src/definitions.ts
+@@ -0,0 +1,58 @@
++/**
++ * Bridge contract of the Android action journal (`android/README.md`). The host chooses the
++ * Capacitor name and may add its own recovery methods. Nothing here performs an action or
++ * grants approval: a journal entry records what an approved dispatch did, at most once.
++ */
++export type ActionJournalPhase = "reserved" | "applying" | "terminal";
++export type ActionJournalStatus = "succeeded" | "failed" | "unknown" | "cancelled";
++
++export interface ActionJournalEntry {
++  /** 64 lowercase hex characters naming the owner/agent/device binding. */
++  scope: string;
++  proposalId: string;
++  operationId: string;
++  /** SHA-256 (hex) of the exact approved operation. */
++  operationHash: string;
++  record: Record<string, unknown>;
++  phase: ActionJournalPhase;
++  createdAt: number;
++  attemptId?: string;
++  applyingAt?: number;
++  status?: ActionJournalStatus;
++  summary?: string;
++  finishedAt?: number;
++  result?: Record<string, unknown>;
++}
++
++export interface ActionJournalScope {
++  scope: string;
++}
++export interface ActionJournalTarget extends ActionJournalScope {
++  proposalId: string;
++}
++
++export interface ActionJournalPlugin {
++  /** Creates the entry, or returns the identical stored one (`created: false`); a changed replay rejects. */
++  reserve(
++    input: ActionJournalTarget & {
++      operationId: string;
++      operationHash: string;
++      record: Record<string, unknown>;
++    },
++  ): Promise<{ created: boolean; entry: ActionJournalEntry }>;
++  /** Records dispatch intent. Only a reserved entry may start applying. */
++  markApplying(
++    input: ActionJournalTarget & { attemptId: string },
++  ): Promise<{ entry: ActionJournalEntry }>;
++  /** The single terminal transition; an identical replay resolves with the stored entry. */
++  finish(
++    input: ActionJournalTarget & {
++      status: ActionJournalStatus;
++      summary: string;
++      result?: Record<string, unknown>;
++    },
++  ): Promise<{ entry: ActionJournalEntry }>;
++  get(input: ActionJournalTarget): Promise<{ entry: ActionJournalEntry | null }>;
++  /** Reservation order, through the host's redacting list view. */
++  list(input: ActionJournalScope): Promise<{ entries: ActionJournalEntry[] }>;
++}
+diff --git a/plugins/plugin-native-action-journal/src/index.ts b/plugins/plugin-native-action-journal/src/index.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0c4c61dd95774125dcc83629b272ba4d58e16744
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/src/index.ts
+@@ -0,0 +1,23 @@
++/** Registers a host-named action journal bridge. Browsers have no journal and fail closed. */
++import { registerPlugin, WebPlugin } from "@capacitor/core";
++import type { ActionJournalPlugin } from "./definitions.ts";
++
++export * from "./client.ts";
++export * from "./definitions.ts";
++
++class UnavailableActionJournal extends WebPlugin {
++  private refuse(): Promise<never> {
++    return Promise.reject(this.unavailable("The action journal is available only in the native app."));
++  }
++  reserve() { return this.refuse(); }
++  markApplying() { return this.refuse(); }
++  finish() { return this.refuse(); }
++  get() { return this.refuse(); }
++  list() { return this.refuse(); }
++}
++
++/** `name` is the host subclass's `@CapacitorPlugin` name. */
++export function registerActionJournal<T extends ActionJournalPlugin = ActionJournalPlugin>(name: string): T {
++  if (!/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(name)) throw new Error("Invalid action journal plugin name");
++  return registerPlugin<T>(name, { web: () => new UnavailableActionJournal() as unknown as T });
++}
+diff --git a/plugins/plugin-native-action-journal/test/client.node.mjs b/plugins/plugin-native-action-journal/test/client.node.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a7bbd700efda902bb8dd371d847dfae45469c785
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/test/client.node.mjs
+@@ -0,0 +1,26 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import { isJournalEntry, nextStep } from "../src/client.ts";
++
++const base = { scope: "a".repeat(64), proposalId: "p1", operationId: "op-1", operationHash: "b".repeat(64), record: { operation: { type: "create_note" } }, createdAt: 1 };
++
++test("only a reserved entry may be dispatched; applying and unknown outcomes reconcile", () => {
++  assert.deepEqual(nextStep({ ...base, phase: "reserved" }), { kind: "dispatch" });
++  assert.deepEqual(nextStep({ ...base, phase: "applying", attemptId: "a1", applyingAt: 5 }), { kind: "reconcile", since: 5 });
++  assert.deepEqual(nextStep({ ...base, phase: "terminal", status: "unknown", summary: "Lost", finishedAt: 9 }), { kind: "reconcile", since: 9 });
++  const done = { ...base, phase: "terminal", status: "succeeded", summary: "Done", attemptId: "a1" };
++  assert.deepEqual(nextStep(done), { kind: "settled", entry: done });
++  assert.throws(() => nextStep({ ...base, phase: "other" }));
++});
++
++test("bridge entries are shape-checked before use", () => {
++  assert.equal(isJournalEntry({ ...base, phase: "reserved" }), true);
++  assert.equal(isJournalEntry({ ...base, phase: "applying", attemptId: "a1" }), true);
++  assert.equal(isJournalEntry({ ...base, phase: "terminal", status: "cancelled", summary: "Rejected" }), true);
++  assert.equal(isJournalEntry({ ...base, phase: "terminal", status: "succeeded", summary: "No dispatch" }), false);
++  assert.equal(isJournalEntry({ ...base, phase: "reserved", status: "failed" }), false);
++  assert.equal(isJournalEntry({ ...base, scope: "short", phase: "reserved" }), false);
++  assert.equal(isJournalEntry({ ...base, proposalId: "../x", phase: "reserved" }), false);
++  assert.equal(isJournalEntry({ ...base, record: [], phase: "reserved" }), false);
++  assert.equal(isJournalEntry(null), false);
++});
+diff --git a/plugins/plugin-native-action-journal/tsconfig.json b/plugins/plugin-native-action-journal/tsconfig.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a74fc8c04a82c530ce0d72bf8da321d7cf6fd6f
+--- /dev/null
++++ b/plugins/plugin-native-action-journal/tsconfig.json
+@@ -0,0 +1,20 @@
++{
++  "compilerOptions": {
++    "declaration": true,
++    "lib": ["ES2022", "DOM"],
++    "module": "ESNext",
++    "moduleResolution": "bundler",
++    "noFallthroughCasesInSwitch": true,
++    "noImplicitAny": true,
++    "noImplicitReturns": true,
++    "noUnusedLocals": true,
++    "noUnusedParameters": true,
++    "outDir": "dist/esm",
++    "rewriteRelativeImportExtensions": true,
++    "rootDir": "src",
++    "skipLibCheck": true,
++    "strict": true,
++    "target": "ES2022"
++  },
++  "include": ["src"]
++}
