@@ -33,7 +33,33 @@ test('journal write failure never dispatches the reviewed effect',async({page})=
  await setup(page);await queue(page);await chat(page);await page.evaluate(key=>{const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(v,k){if(k===key&&JSON.parse(JSON.parse(JSON.parse(v.raw).value).actions).journal.length)throw Error('Full');return put.call(this,v,k);};},key);await page.getByText('Approve: Create note',{exact:true}).click();await expect(page.getByText(/Action did not reach a confirmed result/).first()).toBeVisible();expect((await state(page)).journal).toHaveLength(0);expect((await state(page)).proposals[0].state).toBe('pending');expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())||'{"records":[]}').records.some((n:any)=>n.title==='Development note'))).toBe(false);
 });
 test('two tabs cannot execute the same development proposal twice',async({page,context})=>{
- await setup(page);await queue(page);await chat(page);const other=await context.newPage();await other.goto('/?mode=dev');await expect.poll(()=>other.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');return !!c.getSnapshot().session;})).toBe(true);await other.getByRole('textbox',{name:'Ask Alpha',exact:true}).fill('Review this proposal');await other.getByRole('textbox',{name:'Ask Alpha',exact:true}).press('Enter');await expect(other.getByText('Approve: Create note',{exact:true})).toBeVisible();await Promise.all([page.getByText('Approve: Create note',{exact:true}).click(),other.getByText('Approve: Create note',{exact:true}).click()]);await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('completed');expect((await state(page)).journal).toHaveLength(1);expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())!).records.filter((n:any)=>n.title==='Development note').length)).toBe(1);
+ await setup(page);await queue(page);await chat(page);
+ const other=await context.newPage();await other.goto('/?mode=dev');
+ await expect.poll(()=>other.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');return !!c.getSnapshot().session;})).toBe(true);
+ await other.getByRole('textbox',{name:'Ask Alpha',exact:true}).fill('Review this proposal');
+ await other.getByRole('textbox',{name:'Ask Alpha',exact:true}).press('Enter');
+ await expect(other.getByText('Approve: Create note',{exact:true})).toBeVisible();
+ // Queue both real UI intents before either storage claim can complete. Without
+ // this barrier the winning tab can disable the other button before its click,
+ // testing Playwright timing rather than the document's one-execution claim.
+ await page.evaluate(async key=>{
+  await new Promise<void>(ready=>{
+   void navigator.locks.request(JSON.stringify(['browser-document','alpha.browser.documents.v1',key]),async()=>{
+    ready();await new Promise<void>(resolve=>(window as any).releaseProposalClaim=resolve);
+   });
+  });
+ },key);
+ try{
+  await Promise.all([
+   page.getByText('Approve: Create note',{exact:true}).click(),
+   other.getByText('Approve: Create note',{exact:true}).click(),
+  ]);
+ }finally{
+  await page.evaluate(()=>(window as any).releaseProposalClaim());
+ }
+ await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('completed');
+ expect((await state(page)).journal).toHaveLength(1);
+ expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())!).records.filter((n:any)=>n.title==='Development note').length)).toBe(1);
 });
 test('Home cancels proposal authoring queued behind storage without publishing it',async({page})=>{
  await setup(page);await page.evaluate(async key=>{await new Promise<void>(ready=>{void navigator.locks.request(JSON.stringify(['browser-document','alpha.browser.documents.v1',key]),async()=>{ready();await new Promise<void>(resolve=>(window as any).releaseActionStore=resolve);});});},key);await page.getByRole('button',{name:'Queue action for review'}).click();await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));await expect(page.getByRole('dialog',{name:'Development connections'})).toHaveCount(0);await page.evaluate(()=>(window as any).releaseActionStore());await page.evaluate(key=>navigator.locks.request(JSON.stringify(['browser-document','alpha.browser.documents.v1',key]),()=>{}),key);expect(await page.evaluate(async key=>(await (await import('/src/browser/documents.ts')).browserDocuments.read(key))??null,key)).toBeNull();
