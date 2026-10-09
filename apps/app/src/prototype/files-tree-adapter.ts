@@ -105,8 +105,9 @@ export function installFilesTreeAdapter(views:Bag,accept:(module:string,result:N
  async function moveFolder(id?:string){if(!dialog||dialog.kind!=='move'||busy)return;busy=true;dialog={...dialog,folder:undefined,rows:[],error:undefined};repaint();try{const value=await tree.list({id});if(value.status==='ready'&&dialog?.kind==='move'){dialog={...dialog,folder:value.folder,rows:value.entries?.filter(e=>e.directory)};}else api?.toast(value.message);}catch{api?.toast('Destination folder unavailable.');}finally{busy=false;repaint();}}
  module.render=(state:Bag,currentApi:Bag)=>{
   api=currentApi;const out=render(state,currentApi);
-  // Category tiles: real pickers with honest hints instead of fixture counts.
-  if(Array.isArray(out.locs))out.locs=out.locs.map((loc:Bag)=>{const category=CATEGORIES[loc?.name];return category&&!loc.nativeTree?{...loc,sub:category.hint,go:()=>void pick(currentApi,category.mime)}:loc;});
+  // Category tiles: real pickers with honest hints instead of fixture counts. nativeTree keeps
+  // the data adapter's generic 'Choose a document' copy from replacing the category hint.
+  if(Array.isArray(out.locs))out.locs=out.locs.map((loc:Bag)=>{const category=CATEGORIES[loc?.name];return category&&!loc.nativeTree?{...loc,nativeTree:true,sub:category.hint,go:()=>void pick(currentApi,category.mime)}:loc;});
   // Recent: documents opened here (selected or from a chosen folder) and saved scan PDFs.
   const recentRows=filesIndex.list();
   const recentRow=(row:RecentFile)=>({id:'recent:'+row.key,name:row.name,chip:'',d:FILE,isFile:true,isFolder:false,selOn:false,selOff:false,rowCss:row.status==='revoked'?'opacity:.6':'',

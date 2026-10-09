@@ -480,9 +480,9 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   function hideAccess(){accessPanel?.remove();accessPanel=undefined;}
   function showAccess(kind:AccessKind){
     denied=kind;hideAccess();
-    const screen=document.querySelector<HTMLElement>(finder)?.closest<HTMLElement>('[data-screen]');if(!screen)return;
+    const vf=document.querySelector<HTMLElement>(finder),screen=vf?.closest<HTMLElement>('[data-alpha-layer]')||vf?.closest<HTMLElement>('[data-screen]');if(!screen)return;
     const panel=document.createElement('div');panel.setAttribute('role','alert');panel.setAttribute('aria-label',kind==='camera'?'Camera access is off':'Microphone access is off');panel.dataset.alphaCameraAccess=kind;
-    panel.style.cssText='position:absolute;left:16px;right:16px;top:38%;z-index:4;padding:16px;border-radius:20px;background:#1c1c1e;color:#fff;font:inherit;display:flex;flex-direction:column;gap:10px;text-align:center';
+    panel.style.cssText='position:absolute;left:16px;right:16px;top:38%;z-index:50;padding:16px;border-radius:20px;background:#1c1c1e;color:#fff;font:inherit;display:flex;flex-direction:column;gap:10px;text-align:center';
     const title=document.createElement('strong');title.textContent=kind==='camera'?'Camera access is off':'Microphone access is off';
     const detail=document.createElement('span');detail.style.cssText='font-size:14px;line-height:1.4;color:rgba(255,255,255,.8)';
     detail.textContent=kind==='camera'?(browserMode?'Allow camera access for this site in your browser settings, then try again.':'Allow camera access for Alpha in Android settings, then return here. The preview restarts when access is granted.'):(browserMode?'Allow microphone access for this site in your browser settings to record video with sound.':'Allow microphone access for Alpha in Android settings to record video with sound. Photos still work without it.');
