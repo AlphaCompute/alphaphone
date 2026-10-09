@@ -23,7 +23,7 @@ export class BrowserVoice extends WebPlugin {
  private speechRequestId?:string;
  private capture=new BrowserAudioCapture(event=>{void this.notifyListeners('recordingStopped',event);});
  private recognizer=new BrowserSpeechRecognizer();
- private speech=new Map<string,string>();
+ private speech=new Map<string,{text:string;requestId?:string}>();
  private agentAudio=new Map<string,{blob:Blob;requestId?:string;agent?:LocalAgentProtocol;sessionId:string;cloud?:{environment:string;credentialId:string}}>();
  private audio?:HTMLAudioElement;
  private audioId?:string;
@@ -33,6 +33,7 @@ export class BrowserVoice extends WebPlugin {
  private playbackAbort?:AbortController;
  private utterance?:SpeechSynthesisUtterance;
  private activeSpeechId?:string;
+ private activeSpeechRequestId?:string;
  constructor(){super();
   window.addEventListener('alpha:device-settings',()=>{if(this.audio)this.audio.volume=browserMediaVolume();});
   if(this.audioChanges)this.audioChanges.onmessage=event=>{if(event.data?.deleted&&[this.audioId,this.pendingAudioId].includes(event.data.audioId))void this.stopPlayback();};
@@ -53,6 +54,7 @@ export class BrowserVoice extends WebPlugin {
  stopRecording(){return this.capture.stop();}
  async cancelRecording(){this.capture.cancel();}
  async transcribeLocalRecording(input:{recordingId:string;requestId?:string}){
+  const requestId=input.requestId;
   const clip=this.capture.get(input.recordingId);if(!clip)throw Error('Record a clip first.');
   return this.withAgentSpeech(async signal=>{
    const connectionController=await this.connection;signal.throwIfAborted();
@@ -62,12 +64,11 @@ export class BrowserVoice extends WebPlugin {
    const samples=await recordingPcmSamples(clip.blob,signal);
    // Silence is reported before any model download.
    if(silentRecording(samples))throw speechError('no-speech','No speech detected.');
-   const requestId=input.requestId;
    const result=await this.recognizer.transcribe(samples,signal,progress=>{void this.notifyListeners('speechProgress',{requestId,...progress});});
    signal.throwIfAborted();
    if(result.noSpeech||!result.text.trim())throw speechError('no-speech','No speech detected.');
    return {text:result.text,local:true,execution:'browser',route:'browser',engine:result.engine,model:result.model,modelRevision:result.modelRevision,runtime:result.runtime,language:result.language};
-  });
+  },requestId);
  }
 
  private async cloudBinding(input:{environment:string;credentialId:string}) {
@@ -96,23 +97,24 @@ export class BrowserVoice extends WebPlugin {
    return {playbackId};
   },input.requestId);
  }
- async synthesizeLocal(input:{text:string}){
-  if(typeof input.text!=='string'||!input.text.trim()||input.text.length>16000)throw Error('Choose text between 1 and 16000 characters.');
+ async synthesizeLocal(input:{text:string;requestId?:string}){
+  const {text,requestId}=input;
+  if(typeof text!=='string'||!text.trim()||text.length>16000)throw Error('Choose text between 1 and 16000 characters.');
   return this.withAgentSpeech(async signal=>{
   const connectionController=await this.connection;signal.throwIfAborted();
   const agent=connectionController.getBrowserSpeechAgent();
   if(agent){
    const sessionId=agent.session?.sessionId;if(!sessionId)throw Error('Connect the local agent first.');
-   const blob=await agent.synthesizeSpeech(input.text,signal);signal.throwIfAborted();
+   const blob=await agent.synthesizeSpeech(text,signal);signal.throwIfAborted();
    if(connectionController.getBrowserSpeechAgent()!==agent||agent.session?.sessionId!==sessionId)throw new DOMException('Voice selection changed','AbortError');
-   const playbackId=crypto.randomUUID();this.agentAudio.set(playbackId,{blob,agent,sessionId});
+   const playbackId=crypto.randomUUID();this.agentAudio.set(playbackId,{blob,requestId,agent,sessionId});
    while(this.agentAudio.size>8)this.agentAudio.delete(this.agentAudio.keys().next().value!);
    return {playbackId,execution:'browser'};
   }
-  const playbackId=crypto.randomUUID();this.speech.set(playbackId,input.text);
+  const playbackId=crypto.randomUUID();this.speech.set(playbackId,{text,requestId});
   while(this.speech.size>8)this.speech.delete(this.speech.keys().next().value!);
   return {playbackId,execution:'browser'};
-  });
+  },requestId);
  }
  private releaseAudio(audio:HTMLAudioElement){
   audio.onended=null;audio.onerror=null;audio.pause();const url=audio.src;audio.removeAttribute('src');audio.load();URL.revokeObjectURL(url);
@@ -131,6 +133,7 @@ export class BrowserVoice extends WebPlugin {
   if(input.playbackId){
    this.activeSpeechId=input.playbackId;
    const prepared=this.agentAudio.get(input.playbackId);
+   this.activeSpeechRequestId=prepared?.requestId??this.speech.get(input.playbackId)?.requestId;
    if(prepared){
     const connectionController=await this.connection;
     if(!current())throw new DOMException('Playback cancelled','AbortError');
@@ -141,12 +144,12 @@ export class BrowserVoice extends WebPlugin {
     const url=URL.createObjectURL(prepared.blob);let audio:HTMLAudioElement;
     try{audio=new Audio(url);audio.volume=browserMediaVolume();}catch(error){URL.revokeObjectURL(url);throw error;}
     this.audio=audio;
-    const finish=(event:'playbackEnded'|'playbackFailed')=>{if(!current()||this.audio!==audio)return;this.releaseAudio(audio);this.activeSpeechId=undefined;this.agentAudio.delete(input.playbackId!);void this.notifyListeners(event,{playbackId:input.playbackId});};
+    const finish=(event:'playbackEnded'|'playbackFailed')=>{if(!current()||this.audio!==audio)return;this.releaseAudio(audio);this.activeSpeechId=undefined;this.activeSpeechRequestId=undefined;this.agentAudio.delete(input.playbackId!);void this.notifyListeners(event,{playbackId:input.playbackId});};
     audio.onended=()=>finish('playbackEnded');audio.onerror=()=>finish('playbackFailed');
     try{const playing=audio.play();void playing.then(()=>{if(!current())audio.pause();},()=>{});await playbackWait(playing,abort.signal);if(!current())throw new DOMException('Playback cancelled','AbortError');return;}
     catch(error){if(this.audio===audio)finish('playbackFailed');throw error;}
    }
-   const text=this.speech.get(input.playbackId);if(text===undefined)throw Error('Prepare speech first.');
+   const localSpeech=this.speech.get(input.playbackId);if(localSpeech===undefined)throw Error('Prepare speech first.');
    const engine=window.speechSynthesis;if(!engine)throw Error('Local speech is unavailable. Read the reply as text.');
    const voices=()=>engine.getVoices().filter(voice=>voice.localService===true);
    if(!voices().length)await new Promise<void>((resolve,reject)=>{
@@ -159,8 +162,8 @@ export class BrowserVoice extends WebPlugin {
    const local=voices(),language=navigator.language.split('-')[0];
    const voice=local.find(v=>v.lang===navigator.language)||local.find(v=>v.lang.split('-')[0]===language)||local[0];
    if(!voice)throw Error('No local browser voice is available. Read the reply as text.');
-   const speech=this.utterance=new SpeechSynthesisUtterance(text);speech.voice=voice;speech.volume=browserMediaVolume();
-   const finish=(event:'playbackEnded'|'playbackFailed')=>{if(!current()||this.utterance!==speech)return;this.utterance=undefined;this.activeSpeechId=undefined;speech.onend=null;speech.onerror=null;void this.notifyListeners(event,{playbackId:input.playbackId});};
+   const speech=this.utterance=new SpeechSynthesisUtterance(localSpeech.text);speech.voice=voice;speech.volume=browserMediaVolume();
+   const finish=(event:'playbackEnded'|'playbackFailed')=>{if(!current()||this.utterance!==speech)return;this.utterance=undefined;this.activeSpeechId=undefined;this.activeSpeechRequestId=undefined;speech.onend=null;speech.onerror=null;void this.notifyListeners(event,{playbackId:input.playbackId});};
    speech.onend=()=>finish('playbackEnded');speech.onerror=()=>finish('playbackFailed');
    try{engine.speak(speech);}catch(error){finish('playbackFailed');throw error;}return;
   }
@@ -182,9 +185,14 @@ export class BrowserVoice extends WebPlugin {
   }catch(error){if(current()){const playbackId=this.activeSpeechId;this.activeSpeechId=undefined;if(playbackId)void this.notifyListeners('playbackFailed',{playbackId,message:error instanceof Error?error.message:'Speech playback failed.'});await this.stopPlayback();}throw error;}
  }
  async stopPlayback(input?:{playbackId?:string;requestId?:string}){
-  if(input?.requestId&&(!this.activeSpeechId||this.agentAudio.get(this.activeSpeechId)?.requestId!==input.requestId))return;
-  if(input?.playbackId&&this.activeSpeechId!==input.playbackId)return;
-  const stopped=this.activeSpeechId;this.activeSpeechId=undefined;
+  if(input?.playbackId&&this.activeSpeechId!==input.playbackId){
+   const prepared=this.agentAudio.get(input.playbackId)??this.speech.get(input.playbackId);
+   if(input.requestId!==undefined&&prepared?.requestId===input.requestId){this.agentAudio.delete(input.playbackId);this.speech.delete(input.playbackId);}
+   return;
+  }
+  if(input?.requestId!==undefined&&(!this.activeSpeechId||this.activeSpeechRequestId!==input.requestId))return;
+  const stopped=this.activeSpeechId;this.activeSpeechId=undefined;this.activeSpeechRequestId=undefined;
+  if(stopped&&input?.requestId!==undefined){this.agentAudio.delete(stopped);this.speech.delete(stopped);}
   ++this.playbackGeneration;this.pendingAudioId=undefined;this.playbackAbort?.abort();this.playbackAbort=undefined;
   if(this.utterance){this.utterance.onend=null;this.utterance.onerror=null;this.utterance=undefined;window.speechSynthesis?.cancel();}
   if(this.audio)this.releaseAudio(this.audio);
@@ -205,13 +213,15 @@ export class BrowserVoice extends WebPlugin {
  async purge(input:{audioId:string;noteId:string;operationId:string}){if([this.audioId,this.pendingAudioId].includes(input.audioId))await this.stopPlayback();return purgeAudio(input.audioId,input.noteId,input.operationId);}
  private async withAgentSpeech<T>(run:(signal:AbortSignal)=>Promise<T>,requestId?:string){
   this.speechRequest?.abort();const controller=this.speechRequest=new AbortController();this.speechRequestId=requestId;
-  try{return await run(controller.signal);}finally{if(this.speechRequest===controller)this.speechRequest=undefined;}
+  try{const result=await run(controller.signal);controller.signal.throwIfAborted();return result;}finally{if(this.speechRequest===controller){this.speechRequest=undefined;this.speechRequestId=undefined;}}
  }
  async cancel(input?:{requestId?:string}){
-  if(input?.requestId){
-   if(input.requestId===this.speechRequestId){this.speechRequest?.abort();this.speechRequest=undefined;this.speechRequestId=undefined;}
-   await this.stopPlayback({requestId:input.requestId});
-   for(const [id,audio] of this.agentAudio)if(audio.requestId===input.requestId)this.agentAudio.delete(id);
+  const requestId=input?.requestId;
+  if(requestId!==undefined){
+   if(requestId===this.speechRequestId){this.speechRequest?.abort();this.speechRequest=undefined;this.speechRequestId=undefined;}
+   await this.stopPlayback({requestId});
+   for(const [id,audio] of this.agentAudio)if(audio.requestId===requestId)this.agentAudio.delete(id);
+   for(const [id,speech] of this.speech)if(speech.requestId===requestId)this.speech.delete(id);
    return;
   }
   this.speechRequest?.abort();this.speechRequest=undefined;this.speechRequestId=undefined;this.recognizer.stop();this.capture.cancel();await this.stopPlayback();

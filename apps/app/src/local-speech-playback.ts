@@ -16,7 +16,7 @@ async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSigna
  let interrupt!:(reason:unknown)=>void,ended!:()=>void,failed!:(error:Error)=>void;
  const interrupted=new Promise<never>((_,reject)=>interrupt=reject),finished=new Promise<void>((resolve,reject)=>{ended=resolve;failed=reject;});void interrupted.catch(()=>{});void finished.catch(()=>{});
  const media=(run:()=>Promise<unknown>)=>strictDrain?Promise.resolve().then(run).catch(cause=>{throw Object.assign(Error('Owned speech cleanup could not be confirmed.'),{code:'speech-cleanup-unconfirmed',cause});}):bounded(run);
- const dispose=()=>{if(cleanup)return cleanup;active=false;cleanup=Promise.all([...Array.from(handles,h=>bounded(()=>h.remove())),...(native||prepare?[media(()=>voice.cancel({requestId}))]:[]),...(playbackId||native||prepare?[media(()=>voice.stopPlayback({playbackId,requestId}))]:[])]).then(()=>{});void cleanup.catch(()=>{});handles.clear();return cleanup;};
+ const dispose=()=>{if(cleanup)return cleanup;active=false;cleanup=Promise.all([...Array.from(handles,h=>bounded(()=>h.remove())),media(()=>voice.cancel({requestId})),...(playbackId||native||prepare?[media(()=>voice.stopPlayback({playbackId,requestId}))]:[])]).then(()=>{});void cleanup.catch(()=>{});handles.clear();return cleanup;};
  const abort=()=>{interrupt(signal.reason??new DOMException('Speech cancelled','AbortError'));void dispose();};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
  const wait=(prepared=false)=>Promise.race([new Promise<void>(resolve=>setTimeout(resolve,100)),interrupted,...(prepared?[finished.then(()=>{throw Error('Speech finished while waiting for playback.');})]:[])]);
  try{
