@@ -186,15 +186,28 @@ for(const viewport of [{width:412,height:915},{width:1440,height:500}])for(const
  await pull(true);await expect(page.getByRole('button',{name:'Resize chat',exact:true})).toBeVisible();await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('');await page.screenshot({animations:'disabled',path:test.info().outputPath(`empty-placeholder-${pointer}.png`)});await cdp?.detach();
 });
 
-for(const view of ['Settings','Notes','Files'])test(`${view} keeps its app header painted behind the chat sheet and usable after dismiss`,async({page},info)=>{
+for(const view of ['Settings','Notes','Files'])test(`${view} Back works directly beside nonblocking half chat while full chat isolates the app`,async({page},info)=>{
  await page.setViewportSize({width:412,height:915});await page.goto('/');await page.getByRole('button',{name:view,exact:true}).click();
- const app=page.locator('[data-alpha-layer="app"]'),back=app.locator('button[aria-label="Back to apps"]'),header=back.locator('xpath=ancestor::*[@data-alpha-app-header][1]');
- const before=await header.boundingBox();await page.getByRole('button',{name:'Open conversation',exact:true}).click();await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();
- await expect(back).toHaveCount(1);await expect(back).toBeVisible();await expect(app).toHaveAttribute('inert','');await expect(app).toHaveAttribute('aria-hidden','true');expect((await back.boundingBox())!.height).toBeGreaterThanOrEqual(44);expect((await header.boundingBox())!.x).toBeCloseTo(before!.x,1);
- // Keep modal background controls out of keyboard navigation; only their painting changes.
- await expect(app.getByRole('button',{name:'Back to apps',exact:true})).toHaveCount(0);await page.screenshot({path:info.outputPath('header-behind-sheet.png'),animations:'disabled'});
- await page.getByRole('button',{name:'Expand chat',exact:true}).click();await expect(back).toHaveCount(1);await expect(app).toHaveAttribute('inert','');await page.getByRole('button',{name:'Minimize chat',exact:true}).click();
- await expect(app.getByRole('button',{name:'Back to apps',exact:true})).toBeVisible();await back.press('Enter');await expect(page.getByRole('button',{name:'Calendar',exact:true})).toBeVisible();
+ const app=page.locator('[data-alpha-layer="app"]'),back=app.locator('button[aria-label="Back to apps"]');
+ await page.getByRole('button',{name:'Open conversation',exact:true}).click();await page.getByRole('textbox',{name:'Message Alpha',exact:true}).fill('Keep this unsent draft');await page.locator('[data-alpha-layer=conversation]').evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished.catch(()=>{}))));
+ await expect(back).toBeVisible();await expect(app).not.toHaveAttribute('inert','');await expect(app).toHaveAttribute('aria-hidden','false');await back.click({trial:true});expect((await back.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+ await page.screenshot({path:info.outputPath('header-live-beside-sheet.png'),animations:'disabled'});await back.click();await expect(page.locator('html')).toHaveAttribute('data-active-view','home');await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toHaveValue('Keep this unsent draft');
+ await page.getByRole('button',{name:view,exact:true}).click();await page.getByRole('button',{name:'Open conversation',exact:true}).click();await page.getByRole('button',{name:'Expand chat',exact:true}).click();
+ await expect(app).toHaveAttribute('inert','');await expect(app).toHaveAttribute('aria-hidden','true');await expect(app.getByRole('button',{name:'Back to apps',exact:true})).toHaveCount(0);
+ for(let i=0;i<8;i++){await page.keyboard.press('Tab');expect(await page.evaluate(()=>!!document.activeElement?.closest('[inert]'))).toBe(false);}
+ await page.getByRole('button',{name:'Shrink chat',exact:true}).click();await expect(app).not.toHaveAttribute('inert','');await back.press('Enter');await expect(page.locator('html')).toHaveAttribute('data-active-view','home');
+});
+test('half chat keeps app scrolling and keyboard-focused Settings controls above the sheet',async({page})=>{
+ await page.setViewportSize({width:412,height:640});await page.goto('/');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+ const panel=page.locator('[data-alpha-layer="conversation"]'),app=page.locator('[data-alpha-layer="app"]');await panel.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished.catch(()=>{}))));
+ const scroll=app.locator('[data-alpha-app-scroll="settings"]'),target=app.getByRole('button',{name:'Agent connection',exact:true});await scroll.evaluate(el=>el.scrollTop=0);await target.focus();await expect(target).toBeFocused();
+ expect((await target.boundingBox())!.y+(await target.boundingBox())!.height).toBeLessThanOrEqual((await panel.boundingBox())!.y-8);await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();
+ await app.getByRole('button',{name:'Back to apps',exact:true}).click();await page.getByRole('button',{name:'Open conversation',exact:true}).click();const home=page.locator('[data-alpha-layer="home"]');await expect(home).not.toHaveAttribute('inert','');await home.hover({position:{x:30,y:60}});await page.mouse.wheel(0,120);await expect.poll(()=>home.evaluate(el=>el.scrollTop)).toBeGreaterThan(0);await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();
+});
+test('Calendar month dialog retains priority and focus over half chat',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:'Calendar',exact:true}).click();await page.getByRole('button',{name:'Open conversation',exact:true}).click();await page.getByRole('button',{name:'Month view',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Choose calendar date',exact:true});await expect(dialog).toBeVisible();await expect(page.locator('[data-alpha-layer="conversation"]')).toBeHidden();await expect.poll(()=>dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);
+ const first=dialog.getByRole('button').first(),last=dialog.getByRole('button').last();await last.focus();await page.keyboard.press('Tab');await expect(first).toBeFocused();await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(page.getByRole('button',{name:'Month view',exact:true})).toBeFocused();await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();
 });
 for(const key of ['Enter','Space'])test(`chat Alpha brand returns Home with ${key} and keeps the unsent draft`,async({page})=>{
  await page.goto('/');await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'Open conversation',exact:true}).click();await page.getByRole('textbox',{name:'Message Alpha',exact:true}).fill('Keep this exact unsent draft');

@@ -1,9 +1,9 @@
-import { TAP_SLOP } from "../../../../.eliza/client-features/packages/ui/src/gestures/constants";
 import {
 	clamp01,
 	OVERLAY_EASE,
 } from "../../../../.eliza/client-features/packages/ui/src/components/shell/chat-overlay-motion.ts";
 import { resolveChatPanelLayout } from "../../../../.eliza/client-features/packages/ui/src/components/shell/chat-panel-layout.ts";
+import { TAP_SLOP } from "../../../../.eliza/client-features/packages/ui/src/gestures/constants";
 
 const PANEL_TRANSITION = `height .42s cubic-bezier(${OVERLAY_EASE.join(",")}), border-radius .42s, opacity .2s`;
 type Shell = any;
@@ -208,6 +208,30 @@ export function installChatOverlayMotion(Component: Shell) {
 					? geometry.half
 					: 0);
 		out.panelTransition = drag?.moved ? "none" : PANEL_TRANSITION;
+		// As in OG's scroll clearance, reserve the resting sheet's footprint and
+		// reveal focused app controls without changing the sheet or focus owner.
+		out.focusAppContent = (event: FocusEvent) => {
+			const target = event.target;
+			if (
+				shell.S().chat !== "sheet" ||
+				!(target instanceof HTMLElement) ||
+				target.closest('[inert],[role="dialog"]') ||
+				document.querySelector("dialog[open]")
+			)
+				return;
+			const scroll = target.closest<HTMLElement>(
+				'[data-alpha-app-scroll],[data-alpha-layer="home"],.calendar-timeline,.calendar-draft-fields',
+			);
+			const panel = document.querySelector<HTMLElement>(
+				'[data-alpha-layer="conversation"]',
+			);
+			if (!scroll || !panel || target === scroll) return;
+			const hidden =
+				target.getBoundingClientRect().bottom -
+				panel.getBoundingClientRect().top +
+				12;
+			if (hidden > 0) scroll.scrollTop += hidden / geometry.scale;
+		};
 		out.pillDragStyle = drag?.moved
 			? `opacity:${1 - clamp01(drag.height / Math.max(1, drag.half))}`
 			: "";

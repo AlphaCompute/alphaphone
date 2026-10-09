@@ -160,3 +160,13 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 .standalone-app [data-alpha-browser-header] .app-header-back{width:44px;min-width:44px}
 .standalone-app [data-alpha-browser-header] .ib{width:44px!important;min-width:44px}
 .browser-page-controls{display:flex;align-items:center;flex-shrink:0}
+
+/* The resting half chat is nonblocking. Reserve its footprint in the existing
+   vertical app scrollareas so the last controls can be focused above it. */
+[data-screen][data-alpha-chat-half="true"] :is([data-alpha-app-scroll],[data-alpha-layer="home"],.calendar-timeline,.calendar-draft-fields) {
+ padding-bottom:calc(var(--alpha-chat-clearance,0px) + 16px)!important;
+ scroll-padding-bottom:calc(var(--alpha-chat-clearance,0px) + 16px);
+}
+
+/* Existing inline app dialogs own focus above a nonblocking half sheet too. */
+[data-screen][data-alpha-chat-half="true"]:has([data-alpha-layer="app"] [role="dialog"]) [data-alpha-layer="conversation"] { visibility:hidden; }

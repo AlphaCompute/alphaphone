@@ -8,7 +8,7 @@
 <button aria-label="Side key. Tap to lock or wake, hold to talk" onPointerDown="{{pDown}}" onPointerUp="{{pUp}}" onPointerLeave="{{pCancel}}" style="position: absolute; right: -6px; top: 214px; width: 7px; height: 76px; border-radius: 0 5px 5px 0; background: #2e2e2e"></button>
 <div style="position: absolute; right: -5px; top: 316px; width: 6px; height: 118px; border-radius: 0 4px 4px 0; background: #262626"></div>
 
-<div data-screen="1" onPointerDown="{{gDown}}" onPointerUp="{{gUp}}" onPointerCancel="{{gCancel}}" style="position: absolute; top: 12px; left: 14px; width: 412px; height: 915px; border-radius: 48px; overflow: hidden; background: var(--bg); color: var(--fg); user-select: none; -webkit-user-select: none; touch-action: none; font-size: 15px">
+<div data-screen="1" data-alpha-chat-half="{{nonblockingChat}}" onPointerDown="{{gDown}}" onPointerUp="{{gUp}}" onPointerCancel="{{gCancel}}" style="position: absolute; top: 12px; left: 14px; width: 412px; height: 915px; border-radius: 48px; overflow: hidden; background: var(--bg); color: var(--fg); user-select: none; -webkit-user-select: none; touch-action: none; font-size: 15px; --alpha-chat-clearance:{{panelH}}px">
 
 <div data-alpha-system-cutout style="position: absolute; top: 13px; left: 195px; width: 22px; height: 22px; border-radius: 11px; background: #000; box-shadow: 0 0 0 1.5px #111; z-index: 99; pointer-events: none"></div>
 
@@ -16,7 +16,7 @@
 <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
 <sc-if value="{{showAppBack}}"><button data-alpha-app-back-fallback aria-label="Back to apps" onClick="{{backToApps}}" style="position:absolute;top:0;left:12px;z-index:44;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--fg);font-size:14px"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="{{ic.back}}"></path></svg>Apps</button></sc-if>
 
-<div data-alpha-layer="home" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; display: flex; flex-direction: column; padding: 20px 0 108px; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
+<div data-alpha-layer="home" onFocusCapture="{{focusAppContent}}" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; display: flex; flex-direction: column; padding: 20px 0 108px; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
 <sc-if value="{{storageAccessWarning}}" hint-placeholder-val="{{false}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
   <div class="scr" style="display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px; scroll-padding-left: 24px; touch-action: pan-x; flex-shrink: 0">
     <button onClick="{{goCalendar}}" aria-label="{{homeCalendarLabel}}" style="flex-shrink: 0; scroll-snap-align: start; width: 280px; height: 196px; border-radius: 30px; background: var(--acc); color: #ffffff; padding: 22px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
@@ -70,7 +70,7 @@
 
 
 <sc-if value="{{isView}}" hint-placeholder-val="{{false}}">
-<div data-alpha-layer="app" role="region" aria-label="{{activeViewLabel}}" aria-hidden="{{appHidden}}" inert="{{appHidden}}" class="enter" style="position: absolute; inset: 0; z-index: 20; background: {{viewBg}}; color: {{viewFg}}; display: flex; flex-direction: column">
+<div data-alpha-layer="app" onFocusCapture="{{focusAppContent}}" role="region" aria-label="{{activeViewLabel}}" aria-hidden="{{appHidden}}" inert="{{appHidden}}" class="enter" style="position: absolute; inset: 0; z-index: 20; background: {{viewBg}}; color: {{viewFg}}; display: flex; flex-direction: column">
 <sc-if value="{{storageAccessWarning}}" hint-placeholder-val="{{false}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
 
 <sc-if value="{{is.phone}}" hint-placeholder-val="{{false}}">

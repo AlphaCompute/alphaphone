@@ -117,6 +117,7 @@ export function installPrototypeHomeBindings(Component: any) {
     let storageAccessWarning='';
     if(!Capacitor.isNativePlatform())try{if(!window.indexedDB)throw Error();window.localStorage.getItem('alpha.appearance.v1');}catch{storageAccessWarning='Saving is unavailable. Changes may not be saved. Check your browser’s storage settings and reload.';}
     const activeView=this.S().view||'home';
+    const chatModal=out.panelPE==='auto'&&this.S().chat==='full';
     const attention = mockAttentionRows();
     return {
       ...NEUTRAL_HOME,
@@ -125,10 +126,11 @@ export function installPrototypeHomeBindings(Component: any) {
       homePeopleVisibility: attention.length ? 'visible' : 'hidden',
       ...out,
       activeViewLabel: activeView[0].toUpperCase()+activeView.slice(1), storageAccessWarning,
-      // Keep translated/collapsed layers painted for the reference animations,
-      // but prevent their controls receiving focus or accessibility navigation.
-      homeHidden: !!(out.isView || out.shadeY === '0' || out.panelPE === 'auto' || out.voiceOn),
-      appHidden: !!(out.shadeY === '0' || out.panelPE === 'auto' || out.voiceOn),
+      nonblockingChat:out.panelPE==='auto'&&this.S().chat==='sheet',
+      // OG's resting half sheet leaves the app interactive. Full chat, shade
+      // and voice still retire the covered layer's focus/accessibility controls.
+      homeHidden: !!(out.isView || out.shadeY === '0' || chatModal || out.voiceOn),
+      appHidden: !!(out.shadeY === '0' || chatModal || out.voiceOn),
       conversationHidden: out.panelPE !== 'auto' || out.shadeY === '0' || !!out.voiceOn,
       shadeHidden: out.shadeY !== '0' || !!out.voiceOn,
       dockHidden: out.shadeY === '0' || !!out.voiceOn,

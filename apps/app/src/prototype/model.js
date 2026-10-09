@@ -5517,7 +5517,7 @@ class Component extends DCLogic {
       panelComposer: panelOpen && !voiceOn,
       panelH: !isOn ? 0 : (S.chat === "full" ? 915 : (S.chat === "sheet" ? 560 : 0)), panelR: S.chat === "full" ? "0px" : "30px 30px 0 0",
       panelOp: panelOpen ? 1 : 0, panelPE: panelOpen ? "auto" : "none", panelTop: S.chat === "full" && this.props.systemShell !== false ? 40 : 4,
-      scrimOp: isOn && S.chat === "sheet" ? 1 : 0, scrimPE: isOn && S.chat === "sheet" ? "auto" : "none",
+      scrimOp: 0, scrimPE: "none",
       sizeIcon: S.chat === "full" ? IC.shrink : IC.expand, sizeLabel: S.chat === "full" ? "Shrink chat" : "Expand chat",
       showComposer: showComposer, showPill: showPill, cmpBottom: 28,
       cmpPlaceholder: (mod && mod.placeholder) ? mod.placeholder : "Ask " + name,
