@@ -11,6 +11,8 @@ import { DailyApps } from '../daily';
 import { connectionController } from '../runtime/connection-ui';
 import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, gmailReadable, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
+import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
+import { buildDiagnostics, diagnosticsFileName, diagnosticsText } from '../runtime/diagnostics-export';
 import { leavePasswordManager, passwordEntryPage, passwordManagerGroups, passwordManagerLifecycle, refreshPasswordManager, PASSWORD_PAGES } from '../passwords/password-manager';
 
 type Bag = Record<string, any>;
@@ -56,7 +58,8 @@ async function recoveryNeeded(): Promise<RecoveryDomain[]> {
   const checks: Array<[RecoveryDomain, Promise<boolean>]> = [
     ['notifications', probe(notificationDocument)],
     ['device settings', probe({ capture: signal => readDevicePreferences(signal).then(() => ({ format: 'domain', legacyChanged: false })), readRaw: async () => null })],
-    ['device roles', probe(deviceRolesDocument)],
+    // Simulated device roles exist only in test-mocks builds; production browsers have none to recover.
+    ...(testMocksEnabled ? [['device roles', probe(deviceRolesDocument)] as [RecoveryDomain, Promise<boolean>]] : []),
     ['alert sound history', probe(alertSoundDocument)],
   ];
   const results = await Promise.all(checks.map(async ([name, check]) => [name, await check] as const));
@@ -67,10 +70,29 @@ const device = registerPlugin<{
   openPasswordProvider(input:{action:string}):Promise<{status:string;destination?:string}>;
   openSettings(input: { page: string }): Promise<{ status: string }>;
   setTextScale(input:{percent:number}):Promise<{textScalePercent:number;effectiveTextZoom:number}>;
+  diagnosticsFacts(): Promise<Bag>;
+  shareDiagnostics(input: { text: string }): Promise<{ status: string }>;
 }>('AlphaDevice');
+const deviceApps = registerPlugin<{ buildInfo(): Promise<{ launcher?: boolean; version?: string }> }>('DeviceApps');
 const notifications = registerPlugin<{status():Promise<Bag>;openAppSettings():Promise<Bag>;openChannelSettings(input:{id:string}):Promise<{status:string}>;crossAppStatus():Promise<Bag>;notificationApps():Promise<{apps:Bag[]}>;setNotificationPolicy(input:Bag):Promise<Bag>;resumeCrossApp(input:{expectedRevision:string}):Promise<Bag>;openNotificationAccess():Promise<Bag>;notificationHistory():Promise<{items:Bag[]}>;clearNotificationHistory():Promise<void>}>('AlphaNotifications');
 const speech = registerPlugin<{localSpeechStatus(input:{requestId:string}):Promise<{ready:boolean;execution:string}>}>('AlphaVoiceCloud');
-const system = registerPlugin<{ getDeviceSettings(): Promise<Bag> }>('ElizaSystem');
+const system = registerPlugin<{ getDeviceSettings(): Promise<Bag>; getStatus(): Promise<{ roles?: Bag[] }>; requestRole(input: { role: string }): Promise<{ role: string; held: boolean; resultCode: number }> }>('ElizaSystem');
+type RoleRow = { role: string; held: boolean; available: boolean; holders: string[] };
+/** Android role state exactly as ElizaSystem.getStatus() reports it; malformed rows are dropped. */
+export function readRoles(status: unknown): Record<string, RoleRow> {
+  const out: Record<string, RoleRow> = {};
+  const rows = (status as { roles?: unknown })?.roles;
+  if (!Array.isArray(rows)) return out;
+  for (const row of rows) if (row && typeof row.role === 'string' && typeof row.held === 'boolean' && typeof row.available === 'boolean')
+    out[row.role] = { role: row.role, held: row.held, available: row.available, holders: Array.isArray(row.holders) ? row.holders.filter((h: unknown) => typeof h === 'string') : [] };
+  return out;
+}
+export function roleValue(row: RoleRow | undefined): string {
+  if (!row) return 'Unavailable';
+  if (!row.available) return 'Not available on this device';
+  if (row.held) return 'Alpha Phone';
+  return row.holders.length ? 'Another app' : 'None selected';
+}
 
 /** Keep the reference settings components; never present fixture device facts. */
 export function installSettingsAdapter(Component: any, views: Bag) {
@@ -81,6 +103,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   let recovery: RecoveryDomain[] = [];
   let capabilityAbort: AbortController | null = null;
   let gmailAccounts: GmailAccount[] = [], gmailBusy = '', gmailNotice = '', settingsApi: Bag | undefined;
+  let roles: Record<string, RoleRow> | null = null, launcher: boolean | null = null, roleBusy = false, roleNotice = '';
+  let crashLog: CrashLog | null = null, crashBusy = false, diagnosticsBusy = false;
   let gmail = 'Not checked', digests = 'Not checked', localSpeech = 'Not checked', speechChecking = false, speechGeneration = 0;
   const changed = () => owner?.vset('settings', { capabilityReadAt: Date.now() });
   async function refreshCapabilities() {
@@ -139,11 +163,70 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     } catch { if (owner === instance && token === speechGeneration) localSpeech = 'Not ready; try again'; }
     finally { if (owner === instance && token === speechGeneration) { speechChecking = false; changed(); } }
   }
+  /** Android shows its own role dialog; the result is read back from getStatus, never assumed. */
+  async function requestHome(api: Bag) {
+    if (roleBusy) return;
+    const instance = owner; roleBusy = true; roleNotice = ''; changed();
+    try {
+      await system.requestRole({ role: 'home' });
+      const next = readRoles(await system.getStatus());
+      if (owner !== instance) return;
+      roles = next;
+      roleNotice = next.home?.held ? 'Alpha Phone is your Home app' : 'Home app not changed';
+      api.toast(roleNotice);
+    } catch { if (owner === instance) { roleNotice = 'Home app change is unconfirmed'; api.toast('Android did not confirm a Home app change.'); } }
+    finally { roleBusy = false; if (owner === instance) { changed(); void refresh(); } }
+  }
+  /** Redacted by construction (diagnostics-export.ts). Shared through Android's chooser or saved as a file. */
+  async function exportDiagnostics(api: Bag) {
+    if (diagnosticsBusy) return;
+    const instance = owner, native = Capacitor.isNativePlatform(); diagnosticsBusy = true; changed();
+    try {
+      const [buildFacts, problems, roleState] = await Promise.allSettled([native ? device.diagnosticsFacts() : Promise.resolve({}), readCrashLog(), native ? system.getStatus() : Promise.resolve({ roles: [] })]);
+      const value: Bag = buildFacts.status === 'fulfilled' ? buildFacts.value : {};
+      const connection = connectionController.getSnapshot();
+      const report = buildDiagnostics({
+        platform: native ? 'android' : 'web',
+        app: native ? { version: value.appVersion, versionCode: value.versionCode, variant: value.variant, buildType: value.buildType, testMocks: value.testMocks } : { version: buildVersion, testMocks: testMocksEnabled },
+        os: native ? { androidRelease: value.androidRelease, securityPatch: value.securityPatch, sdkInt: value.sdkInt } : {},
+        upstreamPin: value.upstreamPin, runtimeHashes: value.runtimeHashes,
+        permissions: { ...(facts.permissions || {}), ...(typeof delivery.appEnabled === 'boolean' ? { Notifications: delivery.appEnabled && delivery.permissionGranted === true } : {}) },
+        roles: roleState.status === 'fulfilled' ? Object.values(readRoles(roleState.value)) : [],
+        crashes: problems.status === 'fulfilled' ? problems.value.entries : [],
+        connection: { kind: connection.kind, connected: !!connection.session },
+      });
+      const text = diagnosticsText(report);
+      if (native) {
+        const result = await device.shareDiagnostics({ text });
+        if (result?.status !== 'opened') throw Error('Share unconfirmed');
+        if (owner === instance) api.toast('Choose where to share the diagnostics. They contain no notes, keys or account IDs.');
+      } else {
+        const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+        const link = document.createElement('a'); link.href = url; link.download = diagnosticsFileName(report); link.hidden = true;
+        document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        if (owner === instance) api.toast('Diagnostics saved. They contain no notes, keys or account IDs.');
+      }
+    } catch { if (owner === instance) api.toast('Diagnostics could not be exported.'); }
+    finally { diagnosticsBusy = false; if (owner === instance) changed(); }
+  }
+  async function clearProblems(api: Bag) {
+    if (crashBusy || !window.confirm('Clear the local problem log?')) return;
+    const instance = owner; crashBusy = true; changed();
+    try { await clearCrashLog(); crashLog = await readCrashLog(); if (owner === instance) api.toast('Problem log cleared'); }
+    catch { if (owner === instance) api.toast('The problem log could not be cleared.'); }
+    finally { crashBusy = false; if (owner === instance) changed(); }
+  }
   async function refresh() {
     const instance = owner, token = ++generation;
     if (!instance) return;
-    const [state, settings, noticeState, crossState, metadata] = await Promise.allSettled([device.snapshot(), system.getDeviceSettings(), notifications.status(), notifications.crossAppStatus(), history===null?Promise.resolve(null):notifications.notificationHistory()]);
+    const native = Capacitor.isNativePlatform();
+    const [state, settings, noticeState, crossState, metadata, roleState, build, problems] = await Promise.allSettled([device.snapshot(), system.getDeviceSettings(), notifications.status(), notifications.crossAppStatus(), history===null?Promise.resolve(null):notifications.notificationHistory(),
+      // Browsers have no Android roles: the web plugin rejects, so nothing is shown there.
+      native ? system.getStatus() : Promise.reject(Error('No device roles')), native && launcher === null ? deviceApps.buildInfo() : Promise.resolve(null), readCrashLog()]);
     if (owner !== instance || generation !== token) return;
+    roles = roleState.status === 'fulfilled' ? readRoles(roleState.value) : null;
+    if (build.status === 'fulfilled' && build.value) launcher = build.value.launcher === true;
+    crashLog = problems.status === 'fulfilled' ? problems.value : null;
     facts = state.status === 'fulfilled' ? state.value : {};
     controls = settings.status === 'fulfilled' ? settings.value : {};
     delivery = noticeState.status === 'fulfilled' ? noticeState.value : {};
@@ -188,7 +271,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     }
   };
   p.componentWillUnmount = function () {
-    if (owner === this) { capabilityAbort?.abort(); capabilityAbort = null; ++speechGeneration; owner = null; ++generation; facts = {}; controls = {}; delivery = {}; cross={}; choices=null; history=null; }
+    if (owner === this) { capabilityAbort?.abort(); capabilityAbort = null; ++speechGeneration; owner = null; ++generation; facts = {}; controls = {}; delivery = {}; cross={}; choices=null; history=null; roles=null; crashLog=null; roleNotice=''; }
     window.removeEventListener('storage',this.appearanceStorageListener);
     window.removeEventListener('pageshow',this.appearanceResumeListener);
     this.settingsConnectionUnsubscribe?.();
@@ -214,6 +297,9 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const info = (label: string, val: string): Bag => ({ kInfo: true, label, val, hasVal: true, noAB: true });
     const nav = (label: string, page: string): Bag => ({ kNav: true, label, lbl: label, chev: true, noAB: true, go: manage(page) });
     const group = (rows: Bag[]) => ({ css: 'background:var(--s2);padding:4px 0', rows });
+    const problemCount = crashLog ? crashLog.entries.length : null;
+    const problemsRow = (): Bag => ({ kNav:true, label:'Problem log', lbl:'Problem log', val: problemCount === null ? 'Unavailable' : problemCount ? `${problemCount} recorded` : 'None recorded', hasVal:true, chev:true, noAB:true, go:()=>{ api.set({ page:'problems' }); void refresh(); } });
+    const diagnosticsRow = (): Bag => ({ kNav:true, label:'Export diagnostics', lbl: diagnosticsBusy ? 'Preparing diagnostics…' : 'Export diagnostics', chev:true, noAB:true, go:()=>void exportDiagnostics(api) });
     const licensesRow = (): Bag => ({ kNav:true, label:'Open source licenses', lbl:'Open source licenses', chev:true, noAB:true, go:()=>{ api.set({ page:'licenses' }); void loadLicenses(changed); } });
     const percent = typeof facts.batteryPercent === 'number' ? `${facts.batteryPercent}%` : 'Unavailable';
     const active = (key: string) => typeof facts[key] === 'boolean' ? facts[key] ? 'Active connection' : 'Not active' : 'Unavailable';
@@ -257,10 +343,25 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           const entry=state.page==='password-entry'?passwordEntryPage(helpers,()=>api.set({page:'password-provider'})):null;
           if(entry)out.stack.push(entry);else if(state.page==='password-entry')queueMicrotask(()=>api.set({page:'password-provider'}));
         }else leavePasswordManager();
+        if(native){
+          const home=roles?.home,canRequestHome=launcher===true&&!!home&&home.available&&!home.held;
+          page.groups.push(group([info('Home app',roles?roleValue(home):'Unavailable'),info('Assistant app',roles?roleValue(roles.assistant):'Unavailable'),
+            ...(roleNotice?[info('Last change',roleNotice)]:[]),
+            ...(canRequestHome?[{kNav:true,label:'Make Alpha your Home app',lbl:roleBusy?'Waiting for Android…':'Make Alpha your Home app',chev:true,noAB:true,go:()=>void requestHome(api)}]:[]),
+            nav('Default apps in Android','default-apps')]));
+        }
         page.groups.push(group([{kNav:true,label:'Scheduled digests',lbl:'Scheduled digests',chev:true,noAB:true,go:()=>window.dispatchEvent(new Event('alpha:hosted-digests'))}]));
         page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>connectionController.open()}]));
         if(testMocksEnabled)page.groups.push(group([{kNav:true,label:'Try mock mode',lbl:'Try mock mode',chev:true,noAB:true,go:()=>connectionController.mock()}]));
         if(recovery.length)page.groups.push(group([info('Saved data needs recovery','Back up before resetting'),...recovery.map(name=>({kNav:true,label:recoveryActions[name].label,lbl:recoveryActions[name].label,chev:true,noAB:true,go:()=>recoveryActions[name].open()}))]));
+        if(state.page==='problems'){
+          const rows=crashLog?[...crashLog.entries].reverse().map(entry=>{const line=describeCrashEntry(entry);return {kLog:true,time:new Date(entry.at).toLocaleString(),text:`${line.title} · ${line.detail}`};}):[];
+          out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Problem log',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[
+            group([info('Kept on this device','Failure classes only, 30 days, no content'),...(crashLog&&!crashLog.exitHistory&&native?[info('Android exit history','Needs Android 11 or newer')]:[])]),
+            group(crashLog?(rows.length?rows:[info('No problems recorded','')]):[info('Problem log unavailable','Try again later')]),
+            group([diagnosticsRow(),...(crashLog?.entries.length?[{kNav:true,label:'Clear problem log',lbl:crashBusy?'Clearing…':'Clear problem log',chev:true,noAB:true,go:()=>void clearProblems(api)}]:[])]),
+          ]});
+        }
         if(state.page==='licenses')out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Open source licenses',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:licenses.status==='ready'?licenses.items.map(item=>group([info(item.name,`${item.version} · ${item.license}`),...(typeof item.source==='string'&&item.source?[{kLog:true,time:'Source',text:item.source}]:[]),...(typeof item.text==='string'&&item.text?[{kLog:true,time:'License',text:item.text}]:[])])):[group([info(licenses.status==='unavailable'?'License notices unavailable':'Loading license notices…',licenses.status==='unavailable'?'Reinstall or update the app to restore them':'')])]});
         if (owner?.props.systemShell === false) {
           const systemOnly = new Set(['Wi-Fi', 'Bluetooth', 'Mobile data', 'Battery', 'Sound & vibration']);
@@ -292,7 +393,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           {kNav:true,label:'Scheduled digests',lbl:'Scheduled digests',chev:true,noAB:true,go:()=>window.dispatchEvent(new Event('alpha:hosted-digests'))},
         ])]:[group([info('Cloud speech', account ? 'Check in voice controls' : 'Cloud sign-in required'), info('Wake word', 'Not available'), { kNav:true, label:'Scheduled digests', lbl:'Scheduled digests', val:digests, hasVal:true, chev:true, noAB:true, go:()=>window.dispatchEvent(new Event('alpha:hosted-digests')) }, info('Personality settings', 'Managed by your agent')])];
       } else if (page.title === 'Battery') {
-        page.hero = { ...page.hero, big: percent, sub: facts.readAt ? facts.charging ? 'Charging' : 'On battery' : 'Device reading unavailable', hasMeter: typeof facts.batteryPercent === 'number', meter: facts.batteryPercent ?? 0 };
+        page.hero = { ...page.hero, big: percent, sub: typeof facts.charging === 'boolean' ? facts.charging ? 'Charging' : 'On battery' : 'Battery reading unavailable', hasMeter: typeof facts.batteryPercent === 'number', meter: facts.batteryPercent ?? 0 };
         page.groups = [group([info('Battery saver', typeof facts.powerSave === 'boolean' ? facts.powerSave ? 'On' : 'Off' : 'Unavailable'), nav('Manage battery in Android', 'battery')])];
       } else if (page.title === 'About') {
         page.hero = { ...page.hero, big: facts.model || 'This phone', sub: facts.manufacturer || 'Device information unavailable' };
@@ -300,7 +401,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           info('Alpha Phone', facts.appVersion || buildVersion), info('Android', facts.androidRelease || 'Unavailable'),
           info('Build', facts.build || 'Unavailable'), info('Security patch', facts.securityPatch || 'Unavailable'),
           info('Runtime', 'Android app'), info('Agent execution', runtimeLocation), info('Agent', target), info('Inference model', 'Not reported by agent'),
-        ]), group([nav('Android device information', 'about')]), group([licensesRow()])];
+        ]), group([problemsRow(), diagnosticsRow()]), group([nav('Android device information', 'about')]), group([licensesRow()])];
       } else if (page.title === 'Wi-Fi') {
         page.hasHdrTog = false; page.hdrTog = null;
         page.hero = { ...page.hero, big: active('wifiActive'), sub: 'Wi-Fi transport · network names stay in Android settings' };
@@ -314,7 +415,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         page.hero = { ...page.hero, big: target, sub: Capacitor.isNativePlatform()?'Conversation uses the selected agent; speech can run on this phone':'Conversation uses the selected agent; local speech runs on the development computer when configured' };
         page.groups = [group([info('Connection', connection.kind), info('Inference model', 'Not reported by agent'), info('On-device speech', localSpeech), { kNav:true, label:'Check on-device speech', lbl:speechChecking?'Checking speech…':'Check on-device speech', chev:true, noAB:true, go:()=>void checkSpeech() }])];
       } else if (page.title === 'Developer') {
-        page.groups = [group([info('App version', facts.appVersion || 'Unavailable'), info('Device uptime', typeof facts.uptimeMs === 'number' ? `${Math.floor(facts.uptimeMs / 60000)} min` : 'Unavailable'), info('NPU usage', 'Unavailable'), info('Agent memory', connection.session?'Usage not reported by agent':'Not connected')]), group([nav('Android developer settings', 'developer')])];
+        page.groups = [group([info('App version', facts.appVersion || buildVersion), info('Agent memory', connection.session?'Usage not reported by agent':'Not connected')]), group([problemsRow(), diagnosticsRow()]), group([nav('Android developer settings', 'developer')])];
       } else if (page.title === 'Notifications') {
         const custom = (label:string,go:()=>void):Bag=>({kNav:true,label,lbl:label,chev:true,noAB:true,busy:notificationBusy,hasVal:notificationBusy,val:'Working…',go:()=>{if(!notificationBusy)go();}});
         const run = async (task:()=>Promise<void>)=>{if(notificationBusy)return;notificationBusy=true;changed();const current=owner;try{await task();if(owner===current)await refresh();}catch{if(owner===current)api.toast('Notification settings changed or are unavailable. Refresh and try again.');}finally{notificationBusy=false;if(owner===current)changed();}};
@@ -345,7 +446,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         page.groups = [group([info('Alpha notifications', topValues.Notifications),info('Do Not Disturb',interruption[delivery.interruption]||'Unavailable'),info('Delivery timing','Android battery policies may delay alerts'),Capacitor.isNativePlatform()?nav('Manage Alpha notifications', 'notifications'):custom('Manage Alpha notifications',()=>void run(async()=>{await notifications.openAppSettings();}))]),
           ...((delivery.channels||[]).map((channel:Bag)=>group([info(channel.name,channel.blocked?'Channel blocked':channel.groupBlocked?'Channel group blocked':!delivery.appEnabled||!delivery.permissionGranted?'App notifications off':channel.importance<=2?'Silent channel':'Channel allowed'),{kNav:true,label:`Manage ${channel.name}`,lbl:`Manage ${channel.name}`,chev:true,noAB:true,go:()=>void notifications.openChannelSettings({id:channel.id}).catch(()=>api.toast('This notification channel is unavailable.'))}]))),group(crossRows)];
       } else if (page.title === 'Privacy & data') {
-        const permissionLabels=new Set(['Microphone','Location','Camera','Contacts']);
+        // Alpha declares no Contacts permission; Calendar is the fourth runtime grant it uses.
+        const permissionLabels=new Set(['Microphone','Location','Camera','Calendar']);
         const permissionValue=(label:string)=>{
           if(!Capacitor.isNativePlatform())return ({granted:'Granted in browser',prompt:'Ask when used',denied:'Blocked in browser',unknown:'Managed by browser'} as Bag)[facts.permissionStates?.[label]]??'Managed by browser';
           if(typeof facts.permissions?.[label]!=='boolean')return 'Unavailable';
@@ -353,7 +455,12 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           return facts.permissions[label]?'Allowed for Alpha':'Not allowed';
         };
         // Keep connection privacy and Activity; replace only prototype permission rows.
-        page.groups=page.groups.map((g:Bag)=>({...g,rows:g.rows.map((row:Bag)=>permissionLabels.has(row.label)?info(row.label,permissionValue(row.label)):row)}));
+        page.groups=page.groups.map((g:Bag)=>{
+          if(!g.rows.some((row:Bag)=>permissionLabels.has(row.label)||row.label==='Contacts'))return g;
+          const rows=g.rows.filter((row:Bag)=>row.label!=='Contacts').map((row:Bag)=>permissionLabels.has(row.label)?info(row.label,permissionValue(row.label)):row);
+          if(!rows.some((row:Bag)=>row.label==='Calendar'))rows.push(info('Calendar',permissionValue('Calendar')));
+          return {...g,rows};
+        });
         page.groups.push(group([nav('Manage Alpha permissions','privacy')]));
       } else if (page.title === 'Sound & vibration') {
         const volume = (label: string, stream: string) => {
@@ -377,7 +484,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     }
     if(!Capacitor.isNativePlatform()) {
       for(const page of out.stack){
-        if(page.title==='About')page.groups=[group([info('Alpha Phone',buildVersion),info('Runtime',devSurfacesEnabled?'Browser development':'Web browser'),info('Agent execution',runtimeLocation),info('Agent',target),info('Inference model','Not reported by agent'),info('Storage','This browser profile')]),group([licensesRow()])];
+        if(page.title==='About')page.groups=[group([info('Alpha Phone',buildVersion),info('Runtime',devSurfacesEnabled?'Browser development':'Web browser'),info('Agent execution',runtimeLocation),info('Agent',target),info('Inference model','Not reported by agent'),info('Storage','This browser profile')]),group([problemsRow(),diagnosticsRow()]),group([licensesRow()])];
       }
       const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Manage brightness in Android','Brightness').replaceAll('Manage sound in Android','Sound settings').replaceAll('Unavailable','Browser managed').replaceAll('Manage in Android','Browser device').replaceAll('in Android','in browser').replaceAll('Android settings','Browser device settings').replaceAll('Android Calendar','Browser calendar').replaceAll('Android device information','Browser device information').replaceAll('Android developer settings','Browser developer settings').replaceAll('Device accounts in Android','Browser accounts').replaceAll('On this phone','In this browser').replaceAll('on this phone','in this browser').replaceAll('Android access not granted','Development event access off').replaceAll('Waiting for Android listener','Waiting for local events').replaceAll('Selected apps connected','Selected development apps connected').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Browser setting').replaceAll('Wi-Fi transport · network names stay in Android settings','Development network');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
       return browserLabels(out);

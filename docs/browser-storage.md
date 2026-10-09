@@ -29,7 +29,7 @@ readers. Alpha supplies domain names and legacy recovery policy.
 | Real Cloud setup intents | `runtime/cloud-personal-intent.ts`, `runtime/connection-ui.tsx`; browser owner-scoped activation/cutover intent with revision-bound admission and acknowledgement | Status queries capture the prior intent; late responses cannot clear a replacement request. Failed first writes prevent dispatch; cancelled undispatched admissions can clear only their own revision. Exact legacy backup and reviewed reset are available. Android retains its renderer slot and now compares the expected intent before updates. Real-provider qualification remains a separate gate. |
 | Development Cloud account selection | `browser/development-account-document.ts`, `browser/development-identity.ts`; canonical account/session document, invalidated identity snapshot, async admission and restore | Selection publishes only after a committed write. Canonical checks reject stale sessions even without a cross-tab event; delayed hydration cannot replace a newer selection. Exact legacy bytes, malformed-state backup and revision-checked reset remain available. Captured old journals may finish existing receipts but cannot admit new effects. |
 | Conversation restart choices | `runtime/conversation-selection.ts`, history restoration and new conversation creation in `runtime/connection-ui.tsx` | Atomic owner-key updates retain other owners, unique revisions refuse stale same-owner completion, and queued writes recheck connection authority. Exact legacy bytes and browser backup/reset are retained. Active chats stay tab-local until retirement. Owning cases cover competing owners, stale same-owner completions, queued cancellation, recovery and history restoration. Native storage keeps its installed format; native and full-product qualification remain separate. |
-| Device preferences and roles | `browser/device-preferences.ts`, `browser/device.ts`; canonical writes/readback, ordered cache hydration for synchronous rendering/audio, asynchronous sensor admission and role documents | Unavailable settings keep recovery reachable, mute audio and disable sensor access. Device/storage suites cover ordered hydration, concurrent changes and cancellation during settings or location reads. |
+| Device preferences and roles | `browser/device-preferences.ts`, `browser/device.ts`; canonical writes/readback, ordered cache hydration for synchronous rendering/audio, asynchronous sensor admission and role documents | Unavailable settings keep recovery reachable, mute audio and disable sensor access. Device/storage suites cover ordered hydration, concurrent changes and cancellation during settings or location reads. Simulated battery, network, sensor and role values are used only in test-mocks builds; without the switch the browser device reports real facts (Battery Status API where offered, `navigator.onLine`), omits uptime and transports, and its role methods reject. |
 | Browser saved tabs and history | `browser/preference-documents.ts` `alpha.browser.session.v1` (development surface), `BrowserSessionStore` on Android; normal tabs (last committed address, title) and history only, never private tabs | Product decision: tabs keep sign-ins and restore after a cold start. `browser-signins.spec.ts` covers restore, private exclusion and confirmed Clear browsing data. The development frames are sandboxed with opaque origins and keep no cookies; Android site data is covered by native instrumentation. |
 | Browser bookmarks and notification sound history | `browser/preference-documents.ts`; awaited bookmark reads/writes, cross-tab bookmark refresh and transactional sound claims; separate backup/reset controls | Clock/storage suites cover bookmark refresh, sound receipts and recovery. Empty reads and unchanged sound polling do not initialize records; older bytes remain available for backup. |
 | Development password provider | `browser/password-provider.ts`, `browser/preference-documents.ts`; asynchronous device status, canonical provider selection, cross-tab retirement and backup/reset | Provider lifecycle, storage and compact large-text suites cover pending dialog cancellation, retired sample fills and recovery. This is the development sample provider, not real Proton credentials or native autofill acceptance. |
@@ -76,6 +76,19 @@ switch is off, startup rewrites a saved `{kind:'mock'}` connection selection to
 treated as signed out, and a Clock request made in mock mode fails closed without
 writing handoff history or opening Clock. These are migration rules for older saved
 state, not new storage domains.
+
+## Local problem log
+
+`runtime/crash-log.ts` keeps failure classes only: renderer failure kind
+(`render`/`startup`/`uncaught`) and error class name, never messages, stacks, URLs or
+content. The web build stores them in `alpha.crash-log.v1` in this browser profile (best
+effort: 50 entries, 30 days, unreadable bytes read as empty and storage failures are
+ignored). Android keeps the log natively in `AlphaCrashLog` (no-backup
+`crash-log/v1.json`), adding uncaught exception classes and Android's recorded process
+exit reasons (`getHistoricalProcessExitReasons`, Android 11+). Settings > About shows
+it, and Export diagnostics (`runtime/diagnostics-export.ts`) shares or saves an
+allowlisted JSON report (versions, pin, runtime hashes, permission and role state,
+recent failure classes) with no content, keys or account identifiers.
 
 ## Native Clock handoff history
 
@@ -179,9 +192,23 @@ deletion that never committed).
 
 Entries expire exactly 3 days (`NOTES_TRASH_RETENTION_MS`) after `deletedAt`
 ([decision P-06](decisions.md#october-7-owner-product-decisions)).
-Maintenance runs at startup, once saved Notes open, and each time Notes opens. It
-reads authoritative storage, only takes the lock when there is work, and is
-idempotent: an interrupted purge is simply repeated. Restore reinserts the
+Maintenance runs at startup once saved Notes open, each time Notes opens, whenever the
+app returns to the foreground (`visibilitychange` and the native `appResumed` event) and
+every 15 minutes (`NOTES_TRASH_MAINTENANCE_INTERVAL_MS`) while the shell is alive, from
+`prototype/notes-trash-adapter.ts`, so expiry never waits for the user to open Notes.
+Background passes repaint Notes only when they removed something. It reads
+authoritative storage, only takes the lock when there is work, and is idempotent: an
+interrupted purge is simply repeated. On Android a native backstop
+(`AlphaNoteAudioPlugin.sweepExpiredTrash`, run when the plugin loads and by the
+`alpha-notes-trash-backstop` periodic WorkManager job every 6 hours) applies the same
+rules while the renderer is not running: it erases the recording of each expired entry
+whose deletion owns the audio trash, skips any entry whose note is saved again, whose
+recording a saved note references or whose deletion is under review, and removes the
+erased entries from `notes-trash:v1:device` by compare-and-exchange. It copies kept
+entries byte for byte, so the slot stays in the renderer's exact `JSON.stringify` form
+and a concurrent renderer edit wins; unreadable or unrecognized stores make it a no-op.
+`notes-trash-resume.spec.ts` (fake clock: text and voice entries erased on a resume at
+Home, and by the timer alone) and `NotesTrashBackstopInstrumentedTest` cover these. Restore reinserts the
 byte-identical record (same id, so the same revision under the store's hash rule;
 browser date stamping is skipped) and refuses to overwrite a saved note with the same
 id. Voice restores use the reviewed audio-restore path; Delete forever, Empty Trash
