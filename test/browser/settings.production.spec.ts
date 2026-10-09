@@ -6,6 +6,9 @@ import {test,expect,type Page} from '@playwright/test';
 // not appear.
 const offline=()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
 test.describe.configure({timeout:240_000});
+// The development lane serves a flag-on build where simulated facts are expected; these
+// assertions hold only for the flag-off production build.
+test.beforeEach(async({},testInfo)=>{test.skip(testInfo.project.name!=='production','Production lane only (flag-off build)');});
 
 const current=(page:Page)=>page.locator('[data-settings-page]:not([inert])').last();
 async function snapshot(page:Page){
