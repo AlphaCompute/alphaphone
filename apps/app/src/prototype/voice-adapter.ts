@@ -93,7 +93,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   let listener: PluginListenerHandle | undefined, tick: ReturnType<typeof setInterval> | undefined;
   let stopping = Promise.resolve();
   type Driver = typeof voice | ReturnType<typeof createCloudVoice>;
-  let driver: Driver = voice, cloudMode = false, deviceOnly = false;
+  let driver: Driver = voice, cloudMode = false, cloudConnectRequired = false, deviceOnly = false;
   let pairedVoice: ReturnType<typeof createPairedVoice> = null, pairedReady = false, pairedAsrReady = false;
   let selectedRoute: 'device' | 'agent' | 'manual' = 'device', preparingPaired = false;
   let onDeviceVoice: ReturnType<typeof createOnDeviceVoice> = null, onDeviceReady = false, preparingLocal = false;
@@ -121,9 +121,11 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     const selected = selectVoiceRoute(preference), route = selected === 'cloud' ? 'agent' : selected;
     stopLocalSpeechPlayback(); cleanup(); reprepare = false; destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; failure = ''; recognized = undefined; draft = ''; selectedRoute = route;
     cloudMode = selected === 'cloud';
-    deviceOnly = browserDevProfile || !cloudMode && (localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
-    driver = cloudMode ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
-    onDeviceVoice = route === 'device' || browserDevProfile && route === 'agent' ? preparedLocal || createOnDeviceVoice() : null;
+    cloudConnectRequired = cloudMode && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId);
+    deviceOnly = !cloudMode && (browserDevProfile || localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
+    driver = cloudMode && !cloudConnectRequired ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
+    if (cloudConnectRequired) error = 'Sign in to Eliza Cloud to use voice.';
+    onDeviceVoice = !cloudMode && (route === 'device' || browserDevProfile && route === 'agent') ? preparedLocal || createOnDeviceVoice() : null;
     if (route === 'manual') { cloudMode = false; deviceOnly = true; driver = deviceVoice; }
     if (route === 'device') { cloudMode = false; deviceOnly = true; driver = deviceVoice; if (!onDeviceVoice) error = 'On-device speech is unavailable. Choose another voice service explicitly or use the keyboard.'; }
     if (preparedLocal) { onDeviceReady = true; cloudMode = false; deviceOnly = true; driver = deviceVoice; }
@@ -177,6 +179,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     finally { if (token === generation) { busy = false; refresh(); } }
   }
   async function start(token: number) {
+    if (cloudConnectRequired) throw new Error('Sign in to Eliza Cloud to use voice.');
     if (selectedRoute === 'device' && !onDeviceReady) throw new Error('On-device speech is not ready');
     if (!Capacitor.isPluginAvailable(cloudMode || deviceOnly ? 'AlphaVoiceCloud' : 'DevelopmentAgent')) throw new Error('Voice unavailable');
     stage = 'starting'; refresh(); await stopping;
@@ -198,6 +201,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     started = Date.now(); stage = 'recording'; tick = setInterval(refresh, 250); refresh();
   }
   async function primary() {
+    if (cloudConnectRequired) { cleanup(); connectionController.openCloudAccount(); return; }
     if (stage === 'transcribing') { reopen('Transcription cancelled. Record again to continue.'); return; }
     if (stage === 'review') {
       if (!api || !draft.trim()) return;
@@ -551,7 +555,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (selectedRoute === 'device' && !onDeviceReady && !preparingLocal && stage === 'ready') labels.ready = 'On-device speech unavailable';
     if (preparingPaired && stage === 'ready') { labels.ready = 'Checking selected agent voice'; messages.ready = 'Checking transcription and playback on your selected agent. No audio is uploaded.'; }
     if (preparingLocal && stage === 'ready') { labels.ready = 'Preparing on-device speech'; messages.ready = 'Loading and checking speech models on this phone. Nothing is uploaded.'; }
-    if(!Capacitor.isNativePlatform()) {
+    if(!Capacitor.isNativePlatform() && !cloudMode) {
       if (onDeviceReady) {
         // Whisper tiny.en runs in this browser; English only, matching the OCR language policy.
         labels.recorded='Transcribe on this device';
@@ -569,7 +573,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
         if(!destination)messages.review='Edit the transcript, listen, or save the recording in this app.';
       }
     }
-    if(browserDevProfile && selectedRoute==='agent'){messages.ready='Preview voice records, transcribes English and plays audio on this device.';messages.recorded='Transcribe this recording on this device. Nothing is uploaded.';labels.recorded='Transcribe on this device';}
+    if(browserDevProfile && selectedRoute==='agent' && !cloudMode){messages.ready='Preview voice records, transcribes English and plays audio on this device.';messages.recorded='Transcribe this recording on this device. Nothing is uploaded.';labels.recorded='Transcribe on this device';}
     if(onDeviceReady&&connectionController.getBrowserSpeechAgent()){
       labels.recorded='Transcribe on this computer';
       messages.ready='Record in this app. English transcription runs on the local agent on this computer when you choose Transcribe.';
@@ -583,16 +587,16 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       state: failure || stage,
       typeChoice: canType,
       typeInstead: () => { if (stage !== 'recorded' || !clip || busy) return; draft = ''; recognized = undefined; error = ''; failure = ''; stage = 'review'; refresh(); },
-      manualChoice: stage === 'ready' && !busy && !preparingLocal && selectedRoute !== 'manual',
+      manualChoice: !cloudMode && stage === 'ready' && !busy && !preparingLocal && selectedRoute !== 'manual',
       recordOnly: () => { const target = destination, chat = chatDestination; enter(target, undefined, 'manual'); chatDestination = chat; refresh(); },
-      routeChoice: stage === 'ready' && !busy && document.documentElement.dataset.connectionMode !== 'mock' && (!!connectionController.getPairedVoiceBinding() || connectionController.getCloudEnvironment() !== null),
+      routeChoice: !cloudMode && stage === 'ready' && !busy && document.documentElement.dataset.connectionMode !== 'mock' && (!!connectionController.getPairedVoiceBinding() || connectionController.getCloudEnvironment() !== null),
       routeLabel: browserDevProfile ? (selectedRoute === 'device' ? 'Use development voice' : 'Use browser voice') : selectedRoute === 'device' ? (connectionController.getCloudEnvironment() !== null ? 'Use Eliza Cloud voice' : 'Use selected agent voice') : 'Use on-device voice',
       changeRoute: () => { if (stage !== 'ready' || busy) return; const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute === 'device' ? 'agent' : 'device'); chatDestination = chat; refresh(); },
       clock: `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`, clockCss: '', live: stage === 'recording', paused: stage !== 'recording', dotCss: `background:${stage === 'recording' ? '#E53935' : 'var(--mut)'}`,
       levels: !Capacitor.isNativePlatform()&&stage==='recording'?recordingLevels(recordingId):Array.from({ length: 44 }, () => ({ h: 4 })),
       lines: [{ ini: '', statusIcon:current.ic.info, t: error || messages[stage], chip: 'background:var(--s2);color:var(--fg)', css: '' }],
       review: stage === 'review', transcript: draft, transcriptDisabled: busy, onTranscript: (e: Event) => { if (busy) return; draft = (e.target as HTMLTextAreaElement).value; refresh(); },
-      primaryLabel: labels[stage], primaryIcon: stage === 'review' ? current.ic.check : stage === 'recording' || stage === 'transcribing' ? current.ic.stop : current.ic.mic,
+      primaryLabel: cloudConnectRequired ? 'Connect Eliza Cloud' : labels[stage], primaryIcon: cloudConnectRequired ? current.ic.user : stage === 'review' ? current.ic.check : stage === 'recording' || stage === 'transcribing' ? current.ic.stop : current.ic.mic,
       primaryDisabled: (selectedRoute === 'device' && !onDeviceReady) || preparingLocal || preparingPaired || stage === 'starting' || (busy && stage !== 'transcribing') || (stage === 'review' && !draft.trim()),
       pauseLabel: (onDeviceReady || cloudMode || pairedReady) && stage === 'review' ? playing ? 'Stop audio' : 'Listen to transcript' : ['recorded', 'review'].includes(stage) ? 'Record again' : 'Cancel recording', pauseIcon: (onDeviceReady || cloudMode || pairedReady) && stage === 'review' ? playing ? current.ic.stop : current.ic.play : ['recorded', 'review'].includes(stage) ? current.ic.mic : current.ic.x,
       stop: () => { void primary(); }, discard: () => cleanup(), toggle: () => { if ((onDeviceReady || cloudMode || pairedReady) && stage === 'review') { void listen(); } else if (['recorded', 'review'].includes(stage)) { const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute); chatDestination = chat; } else cleanup(); },

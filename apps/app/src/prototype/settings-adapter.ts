@@ -324,8 +324,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Mobile data') {
         page.groups = [group([info('Mobile connection', active('cellularActive')), nav('Manage mobile networks', 'mobile')])];
       } else if (page.title === 'Models') {
-        page.hero = { ...page.hero, big: target, sub: Capacitor.isNativePlatform()?'Conversation uses the selected agent; speech can run on this phone':'Conversation uses the selected agent; local speech runs on the development computer when configured' };
-        page.groups = [group([info('Connection', connection.kind), info('Inference model', 'Not reported by agent'), info('On-device speech', localSpeech), { kNav:true, label:'Check on-device speech', lbl:speechChecking?'Checking speech…':'Check on-device speech', chev:true, noAB:true, go:()=>void checkSpeech() }])];
+        page.hero = { ...page.hero, big: target, sub: 'Conversation uses the selected agent. Voice uses Eliza Cloud.' };
+        page.groups = [group([info('Connection', connection.kind), info('Inference model', 'Not reported by agent'), info('Voice', account ? 'Eliza Cloud' : 'Sign-in required'), { kNav:true, label:'Eliza Cloud account', lbl:'Eliza Cloud account', chev:true, noAB:true, go:()=>connectionController.openCloudAccount() }])];
       } else if (page.title === 'Developer') {
         page.groups = [group([info('App version', facts.appVersion || 'Unavailable'), info('Device uptime', typeof facts.uptimeMs === 'number' ? `${Math.floor(facts.uptimeMs / 60000)} min` : 'Unavailable'), info('NPU usage', 'Unavailable'), info('Agent memory', connection.session?'Usage not reported by agent':'Not connected')]), group([nav('Android developer settings', 'developer')])];
       } else if (page.title === 'Notifications') {

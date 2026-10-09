@@ -46,6 +46,7 @@ export function installLocalSpeechPlayback(Component: Shell) {
     if (old?.id === id && old.controller) { stop(shell); refresh(shell); return; }
     stopLocalSpeechPlayback(); stop(shell);
     const cloud = selectVoiceRoute() === 'cloud';
+    if (cloud && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId)) { connectionController.openCloudAccount(); return; }
     const voice = cloud ? createCloudVoice() : createOnDeviceVoice(); if (!voice) return;
     const controller = new AbortController(), state: Reading = { id, text, controller, message: cloud ? 'Preparing audio…' : 'Preparing audio on this phone…' };
     states.set(shell, state); cancelOwner = shell; cancelCurrent = () => { stop(shell); refresh(shell); }; refresh(shell);
