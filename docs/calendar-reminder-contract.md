@@ -56,7 +56,7 @@ being restored. Scheduling failure is distinct from durable storage success.
 A one-off reminder is an absolute instant (`dueAt`, epoch milliseconds). It is not
 a civil time. When the phone's time zone changes, the reminder keeps the same
 instant and alarm; only its rendered wall time and Calendar day follow the new
-zone (`reminderEvents` in `reminder-adapter.ts`). A 09:00 reminder created in New
+zone (`reminderEvents` in `apps/app/src/runtime/reminder-creations.ts`). A 09:00 reminder created in New
 York shows as 06:00 after moving to Los Angeles and still fires at the same moment.
 Repeats are different: they keep their pinned IANA `recurrence.zone` and civil
 date/time, as described above. Reschedule a one-off explicitly to keep a local
