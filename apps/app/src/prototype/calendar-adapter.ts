@@ -47,7 +47,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       owner.vset('calendar',{nativeCalendarStatus:status});return;
     }
     agentSelection=undefined;agentSelectionKey='';agentSelectionEpoch++;
-    const currentOwner=owner,range=desired||rangeFor(owner.vget('calendar')), token=++generation;desired=range;attemptedKey=range.key;runningToken=token;loading=true;loadFailed=false;status='Loading calendars…';
+    const currentOwner=owner,range=desired||rangeFor(owner.vget('calendar')), token=++generation;desired=range;attemptedKey=range.key;runningToken=token;loading=true;loadFailed=false;status='Loading calendars…';currentOwner.vset('calendar',{nativeCalendarStatus:status});
     try {
       if(request) {const permission=await calendar.requestAccess();if(owner!==currentOwner||token!==generation)return;if(permission.status!=='granted'){loadedKey='';status='Calendar access denied';calendars=[];currentOwner.nativeCalendarRows=[];await currentOwner.refreshReminders();return;}}
       const result=await calendar.list({begin:range.begin,end:range.end});
@@ -55,13 +55,24 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       if(result.status!=='ready'){loadedKey='';status='Connect device calendars';calendars=[];currentOwner.nativeCalendarRows=[];await currentOwner.refreshReminders();return;}
       try{await readCreations();}catch{if(owner===currentOwner&&token===generation){creationPending=null;creationRecoveryFailed=true;}}
       if(owner!==currentOwner||token!==generation)return;
-      loadedKey=range.key;truncated=!!result.truncated;calendars=result.calendars;status=result.truncated?'Calendar range limited to 2,000 events':'Device calendars connected';
+      loadedKey=range.key;truncated=!!result.truncated;calendars=result.calendars;status=result.truncated?'Calendar range limited to 2,000 events':Capacitor.isNativePlatform()?(calendars.length?'Device calendar access allowed':'No device calendars found'):'Local calendar ready';
       currentOwner.nativeCalendarRows=result.events.map(mapEvent);
       await currentOwner.refreshReminders();
       if(request)currentOwner.calendarWriteUncertain=false;
     }catch{if(owner===currentOwner&&token===generation){loadedKey='';loadFailed=true;status=Capacitor.isNativePlatform()?'Calendar range could not be loaded. Open device calendars to retry.':'Browser calendar could not be loaded. Retry or open Calendar recovery.';}}
     finally{if(runningToken===token){loading=false;if(token!==generation&&attemptedKey===range.key)attemptedKey='';}if(owner===currentOwner){currentOwner.vset('calendar',{nativeCalendarStatus:status});if(desired?.key!==attemptedKey)schedule();}}
   }
+  // One presentation seam over the existing display sources/preferences. These
+  // controls never create native agent read grants or change source identities.
+  views.calendar.displaySources=()=>{
+    const currentOwner=owner,native=Capacitor.isNativePlatform();
+    const current=()=>owner===currentOwner&&!!currentOwner?.live&&!document.hidden;
+    return {native,loading,status,error:loadFailed,ready:!!loadedKey&&!loadFailed,
+      connect:()=>{if(current()&&!loading)void refresh(true);},
+      sources:(loadFailed?[]:calendars).map(c=>({id:c.id,name:!native&&c.local?'In this app':c.name||'Unnamed calendar',account:!native&&c.local?'Saved on this device':c.account||'Device calendar',on:c.visible!==false,color:c.color,
+        change:async(action:'visibility'|'color')=>{if(!current()||loading||!calendars.includes(c)||native)return;try{await calendar.changePreferences({action});}catch{if(current())currentOwner.toast('Calendar settings could not be saved. Try again.');}}
+      }))};
+  };
   let navigationEpoch=0;
   const openCalendarEvent=(event:Event)=>{
     const request=(event as CustomEvent).detail,currentOwner=owner,epoch=++navigationEpoch;
@@ -140,11 +151,6 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     const gridStart=new Date(monthBase);gridStart.setDate(1-(monthBase.getDay()+6)%7);
     const gridOff=(civilDay(gridStart)-civilDay(new Date(api.now)))/DAY;
     out.mdays=out.mdays.map((d:Bag,i:number)=>occupied(gridOff+i)?{...d,dot:gridOff+i===0?'var(--acct)':'var(--fg)'}:d);
-    const connect=()=>void refresh(true);
-    out.calRows=[{name:'Device calendars',sub:loading?'Loading calendars…':status,on:calendars.length>0,sw:'var(--acc)',track:api.track(calendars.length>0),kx:api.kx(calendars.length>0),dim:'',toggle:connect,color:connect},
-      ...calendars.map(c=>{const browser=!Capacitor.isNativePlatform(),on=!browser||c.visible!==false;
-        const change=async(action:'visibility'|'color')=>{try{await calendar.changePreferences({action});}catch{api.toast('Calendar settings could not be saved. Try again.');}};
-        return {name:c.name,sub:c.local?'On this device':c.account,on,sw:browser?(({acc:'var(--acct)',fg:'var(--fg)',mut:'var(--mut)'} as Record<string,string>)[c.color]||'var(--acct)'):'var(--acc)',track:api.track(on),kx:api.kx(on),dim:on?'':'opacity:.5',toggle:()=>browser?void change('visibility'):api.toast('Manage calendar visibility in Android Calendar.'),color:()=>browser?void change('color'):api.toast('Manage calendar colors in Android Calendar.')};})];
     const newEvent=async(separateCreation=false)=>{
       const activeOwner=owner,now=new Date(),day=Number(state.day||0),hour=now.getHours()+now.getMinutes()/60;
       const draft={id:null,creationId:crypto.randomUUID(),separateCreation,title:'',off:day,t:day===0?Math.min(21,Math.ceil(hour+.01)):10,d:1,where:'',video:false,who:[],cal:'native:local',repeat:'none',alert:null,notes:''};
@@ -176,8 +182,8 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       const f=state.form;
       const reviewedDate=wallTime(Number(f.off||0),12);
       out.f.nativeReviewDate=reviewedDate?reviewedDate.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'Choose a valid local date';
-      const destinations=[{id:'local',name:(Capacitor.isNativePlatform()?'On this phone':'In this browser')},...calendars.filter(c=>c.writable&&!c.local).map(c=>({id:c.id,name:c.name}))];
-      out.f.cals=f.alphaCalendarId ? [{name:(Capacitor.isNativePlatform()?'On this phone':'In this browser'),dot:'var(--acc)',css:'background:var(--fg);color:var(--bg)',pick:()=>{}}] : [...out.f.cals.filter((c:Bag)=>c.name==='Reminders'),...destinations.map(c=>({name:c.name,dot:'var(--acc)',css:f.cal===`native:${c.id}`?'background:var(--fg);color:var(--bg)':'background:var(--bg)',pick:()=>api.set({form:{...api.get('calendar').form,cal:`native:${c.id}`,alert:null}})}))];
+      const destinations=[{id:'local',name:(Capacitor.isNativePlatform()?'On this phone':'In this app')},...calendars.filter(c=>c.writable&&!c.local).map(c=>({id:c.id,name:c.name}))];
+      out.f.cals=f.alphaCalendarId ? [{name:(Capacitor.isNativePlatform()?'On this phone':'In this app'),dot:'var(--acc)',css:'background:var(--fg);color:var(--bg)',pick:()=>{}}] : [...out.f.cals.filter((c:Bag)=>c.name==='Reminders'),...destinations.map(c=>({name:c.name,dot:'var(--acc)',css:f.cal===`native:${c.id}`?'background:var(--fg);color:var(--bg)':'background:var(--bg)',pick:()=>api.set({form:{...api.get('calendar').form,cal:`native:${c.id}`,alert:null}})}))];
       if(f.cal?.startsWith('native:'))out.f.save=async()=>{
         if(owner?.calendarSaving)return;
         if(owner?.calendarWriteUncertain&&api.get('calendar').form?.alphaCalendarId){api.toast('Refresh device calendars and check the previous event before saving again.');return;}

@@ -250,6 +250,18 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           info('Compatibility','Proton may show a browser warning. Check the website address before filling.'),
           ...(native?[action('Choose password provider in Android','settings'),...(provider.installation==='installed'?[action('Open Proton Pass','open')]:provider.installation==='absent'?[action('Get Proton Pass from Proton','install')]:[]),{kNav:true,label:'Refresh password provider status',lbl:'Refresh password provider status',chev:true,noAB:true,go:()=>void refresh()}]:[]),
         ]);
+        page.groups.push(group([{kNav:true,label:'Calendar',lbl:'Calendar',chev:true,noAB:true,go:()=>api.set({page:'calendar'})}]));
+        if(state.page==='calendar'){
+          const display=views.calendar.displaySources?.(),rows:Bag[]=[info('Display only','Agent access is reviewed separately')];
+          if(display){rows.push(info(display.native?'Device calendars':'In this app',display.loading?'Loading calendars…':display.status));
+            rows.push({kNav:true,label:display.native?'Connect or refresh device calendars':'Refresh calendar',lbl:display.native?'Connect or refresh device calendars':'Refresh calendar',busy:display.loading,chev:true,noAB:true,go:display.connect});
+            for(const source of display.sources||[])if(display.native)rows.push(info(source.name,source.account));else rows.push({kCalendarDisplay:true,label:source.name,sub:source.account,on:source.on,busy:display.loading,aria:`Show ${source.name} calendar`,track:api.track(source.on),kx:api.kx(source.on),toggle:()=>void source.change('visibility'),color:()=>void source.change('color'),colorLabel:`Change ${source.name} calendar color`,sw:({acc:'var(--acct)',fg:'var(--fg)',mut:'var(--mut)'} as Bag)[source.color]||'var(--acct)'});
+            if(display.native)rows.push(info('Calendar visibility','Managed in Android Calendar'));
+          }else rows.push(info('Calendar access','Not available in this version'));
+          const groups=[{...group(rows),cap:'Calendars shown in Alpha',hasCap:true}];
+          if(!Capacitor.isNativePlatform())groups.push({...group([{kNav:true,label:'Calendar backups',lbl:'Calendar backups',sub:'Events saved in this app',hasSub:true,chev:true,noAB:true,go:()=>openCalendarRecovery()}]),cap:'Saved data',hasCap:true});
+          out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Calendar',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups});
+        }
         page.groups.push(group([{kNav:true,label:'Password manager',lbl:'Password manager',chev:true,noAB:true,go:()=>api.set({page:'password-provider'})}]));
         if(PASSWORD_PAGES.includes(state.page)){
           const helpers={info,group,toast:(message:string)=>api.toast(message),set:(patch:Bag)=>api.set(patch),ic:api.ic||{}};
@@ -356,7 +368,6 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         // Keep connection privacy and Activity; replace only prototype permission rows.
         page.groups=page.groups.map((g:Bag)=>({...g,rows:g.rows.map((row:Bag)=>permissionLabels.has(row.label)?info(row.label,permissionValue(row.label)):row)}));
         page.groups.push(group([nav('Manage Alpha permissions','privacy')]));
-        if(!Capacitor.isNativePlatform())page.groups.push({...group([{kNav:true,label:'Calendar backups',lbl:'Calendar backups',sub:'Events saved in this browser',hasSub:true,chev:true,noAB:true,go:()=>openCalendarRecovery()}]),cap:'Saved data',hasCap:true});
       } else if (page.title === 'Sound & vibration') {
         const volume = (label: string, stream: string) => {
           const value = controls.volumes?.find((v: Bag) => v.stream === stream);
@@ -381,7 +392,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       for(const page of out.stack){
         if(page.title==='About')page.groups=[group([info('Alpha Phone',buildVersion),info('Runtime',devSurfacesEnabled?'Development preview':'Web app'),info('Agent execution',runtimeLocation),info('Agent',target),info('Inference model','Not reported by agent'),info('Storage','App storage')]),group([licensesRow()])];
       }
-      const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Manage brightness in Android','Brightness').replaceAll('Manage sound in Android','Sound settings').replaceAll('Unavailable','Browser managed').replaceAll('Manage in Android','Browser device').replaceAll('in Android','in browser').replaceAll('Android settings','Browser device settings').replaceAll('Android Calendar','Browser calendar').replaceAll('Android device information','Browser device information').replaceAll('Android developer settings','Browser developer settings').replaceAll('Device accounts in Android','Browser accounts').replaceAll('On this phone','In this browser').replaceAll('on this phone','in this browser').replaceAll('Android access not granted','Development event access off').replaceAll('Waiting for Android listener','Waiting for local events').replaceAll('Selected apps connected','Selected development apps connected').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Browser setting').replaceAll('Wi-Fi transport · network names stay in Android settings','Development network');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
+      const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Manage brightness in Android','Brightness').replaceAll('Manage sound in Android','Sound settings').replaceAll('Unavailable','Browser managed').replaceAll('Manage in Android','Browser device').replaceAll('in Android','in browser').replaceAll('Android settings','Browser device settings').replaceAll('Android Calendar','Browser calendar').replaceAll('Android device information','Browser device information').replaceAll('Android developer settings','Browser developer settings').replaceAll('Device accounts in Android','Browser accounts').replaceAll('On this phone','In this app').replaceAll('on this phone','in this app').replaceAll('Android access not granted','Development event access off').replaceAll('Waiting for Android listener','Waiting for local events').replaceAll('Selected apps connected','Selected development apps connected').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Browser setting').replaceAll('Wi-Fi transport · network names stay in Android settings','Development network');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
       return browserLabels(out);
     }
     return out;

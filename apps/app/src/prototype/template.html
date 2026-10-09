@@ -829,7 +829,7 @@
   </div>
   <sc-if value="{{calendar.clock}}" hint-placeholder-val="{{false}}">
     <div ref="{{calendar.clock.modalRef}}" role="dialog" aria-modal="true" aria-label="Clock alarms" style="position:absolute;inset:0;z-index:35;background:var(--bg);display:flex;flex-direction:column;padding:{{calendar.clock.topPadding}} 24px 120px;overflow:auto;box-sizing:border-box">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px"><button class="ib" aria-label="Close Clock" aria-disabled="{{calendar.clock.busy}}" onClick="{{calendar.clock.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button><h2 class="serif" style="font-size:32px;margin:0">Clock</h2></div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px"><button class="ib" aria-label="Close Clock" aria-disabled="{{calendar.clock.busy}}" onClick="{{calendar.clock.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button><h2 class="serif" style="font-size:26px;margin:0">Alarms</h2></div>
       <p style="font-size:14px;line-height:1.5;color:var(--mut);margin:0 0 18px">Alarms are managed by your installed Clock app. Check the result there after every request.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:24px"><sc-for list="{{calendar.clock.actions}}" as="item"><button class="tap" onClick="{{item.pick}}" style="padding:14px;border-radius:18px;font-size:15px;font-weight:600;{{item.css}}">{{item.label}}</button></sc-for></div>
       <sc-if value="{{calendar.clock.isSet}}" hint-placeholder-val="{{true}}"><label style="font-size:14px;display:flex;flex-direction:column;gap:8px;margin-bottom:18px">Alarm time<input aria-label="Alarm time" type="time" value="{{calendar.clock.time}}" onChange="{{calendar.clock.onTime}}" style="font:inherit;font-size:28px;color:var(--fg);background:var(--s2);border:0;border-radius:16px;padding:14px"></label><label style="font-size:14px;display:flex;flex-direction:column;gap:8px;margin-bottom:14px">Label<input aria-label="Alarm label" maxlength="200" value="{{calendar.clock.label}}" onChange="{{calendar.clock.onLabel}}" style="font:inherit;color:var(--fg);background:var(--s2);border:0;border-radius:16px;padding:14px"></label><p style="font-size:13px;color:var(--mut)">Phone time zone: {{calendar.clock.zone}}</p></sc-if>
@@ -850,17 +850,6 @@
             <span style="width: 38px; height: 38px; border-radius: 19px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; {{m.cs}}">{{m.n}}</span>
             <span style="width: 4px; height: 4px; border-radius: 2px; background: {{m.dot}}"></span>
           </button>
-        </sc-for>
-      </div>
-      <div style="display: flex; flex-direction: column; margin-top: 12px; padding: 0 4px; border-radius: 24px; background: var(--s2)">
-        <sc-for list="{{calendar.calRows}}" as="c" hint-placeholder-count="2">
-          <div style="display: flex; align-items: center; gap: 6px; min-height: 56px">
-            <button aria-label="Change {{c.name}} color" onClick="{{c.color}}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="width: 18px; height: 18px; border-radius: 9px; background: {{c.sw}}"></span></button>
-            <div style="flex-grow: 1; min-width: 0; {{c.dim}}"><div style="font-size: 15px; font-weight: 600">{{c.name}}</div><div style="font-size: 12.5px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.sub}}</div></div>
-            <button aria-label="Show {{c.name}} calendar" aria-pressed="{{c.on}}" onClick="{{c.toggle}}" style="position: relative; width: 52px; height: 32px; border-radius: 16px; flex-shrink: 0; margin-right: 8px; transition: background .25s; {{c.track}}">
-              <span style="position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 13px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .25s cubic-bezier(.19,1,.22,1); transform: translateX({{c.kx}}px)"></span>
-            </button>
-          </div>
         </sc-for>
       </div>
     </div>
@@ -3595,6 +3584,8 @@
                   </button>
                 </div>
               </sc-if>
+
+              <sc-if value="{{r.kCalendarDisplay}}"><div style="display:flex;align-items:center;gap:10px;padding:8px 16px;min-height:62px;box-sizing:border-box"><button class="ib" aria-label="{{r.colorLabel}}" disabled="{{r.busy}}" onClick="{{r.color}}" style="min-height:52px;min-width:52px"><span style="width:18px;height:18px;border-radius:9px;background:{{r.sw}}"></span></button><div style="flex:1;min-width:0"><div>{{r.label}}</div><div style="font-size:13px;color:var(--mut)">{{r.sub}}</div></div><button role="switch" aria-label="{{r.aria}}" aria-checked="{{r.on}}" disabled="{{r.busy}}" onClick="{{r.toggle}}" style="min-width:52px;min-height:52px;width:52px;height:52px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;padding:0;flex-shrink:0"><span aria-hidden="true" style="position:relative;display:block;width:52px;height:32px;border-radius:16px;{{r.track}}"><span style="position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:13px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transform:translateX({{r.kx}}px)"></span></span></button></div></sc-if>
 
               <sc-if value="{{r.kSlider}}" hint-placeholder-val="{{false}}">
                 <div style="padding: 12px 18px 8px">
