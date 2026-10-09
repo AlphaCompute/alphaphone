@@ -11,7 +11,7 @@ const token = 'synthetic-machine-session';
 // The development chromium lane also matches this file; it asserts the flag-off bundle only.
 test.beforeEach(({}, testInfo) => { test.skip(testInfo.project.name !== 'production', 'Production bundle only'); });
 
-interface AgentFixture { requests: Array<{ method: string; path: string; authorization?: string; body?: any }>; revoked: boolean }
+interface AgentFixture { requests: Array<{ method: string; path: string; authorization?: string; body?: any }>; revoked: boolean; messages: Array<Record<string, unknown>> }
 
 async function serveAgent(route: Route, fixture: AgentFixture, page: import('@playwright/test').Page) {
   const request = route.request(), url = new URL(request.url());
@@ -29,13 +29,18 @@ async function serveAgent(route: Route, fixture: AgentFixture, page: import('@pl
   if (url.pathname === '/api/client-devices/register') return json(200, { installationId: request.headers()['x-eliza-device-id'], enrollmentId: 'synthetic-enrollment', capabilities: [] });
   if (url.pathname === '/api/client-devices/revoke' || url.pathname === '/api/auth/logout') { if (url.pathname === '/api/auth/logout') fixture.revoked = true; return json(200, { ok: true }); }
   if (url.pathname === '/api/client-devices/proposals') return json(200, { proposals: [] });
-  if (url.pathname === '/api/conversations') return request.method() === 'POST' ? json(200, { conversation: { id: conversation, title: 'Alpha Phone' } }) : json(200, { conversations: [] });
-  if (url.pathname === `/api/conversations/${conversation}/messages` && request.method() === 'POST') return json(200, { text: 'Synthetic remote reply', agentName: 'Synthetic remote' });
+  if (url.pathname === '/api/conversations') return request.method() === 'POST' ? json(200, { conversation: { id: conversation, title: 'Alpha Phone' } }) : json(200, { conversations: fixture.messages.length ? [{ id: conversation, title: 'Alpha Phone' }] : [] });
+  if (url.pathname === `/api/conversations/${conversation}/messages` && request.method() === 'GET') return json(200, { messages: fixture.messages });
+  if (url.pathname === `/api/conversations/${conversation}/messages` && request.method() === 'POST') {
+    const now = Date.now();
+    fixture.messages.push({ id: '9a8b7c6d-0000-4000-8000-000000000001', role: 'user', text: body.text, timestamp: now }, { id: '9a8b7c6d-0000-4000-8000-000000000002', role: 'assistant', text: 'Synthetic remote reply', timestamp: now + 1 });
+    return json(200, { text: 'Synthetic remote reply', agentName: 'Synthetic remote' });
+  }
   return json(404, {});
 }
 
 test('the web build pairs a synthetic HTTPS remote agent, sends one message and revokes on disconnect', async ({ page }) => {
-  const fixture: AgentFixture = { requests: [], revoked: false };
+  const fixture: AgentFixture = { requests: [], revoked: false, messages: [] };
   const foreign: string[] = [];
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
@@ -65,10 +70,15 @@ test('the web build pairs a synthetic HTTPS remote agent, sends one message and 
   expect(sends[0].body.text).toContain('Hello from the web build');
   expect(typeof sends[0].body.clientMessageId).toBe('string');
 
-  // Reload restores the paired session from the browser secret store without re-pairing.
+  // Reload restores the paired session from the browser secret store without re-pairing, and
+  // the saved conversation comes back from the agent's persisted history.
   await page.reload();
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
   expect(fixture.requests.filter(item => item.path === '/api/auth/pair')).toHaveLength(1);
+  await expect.poll(() => fixture.requests.filter(item => item.method === 'GET' && item.path.startsWith(`/api/conversations/${conversation}/messages`)).length).toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click();
+  await expect(page.getByText('Synthetic remote reply', { exact: true })).toBeVisible();
+  await expect(page.getByText('Hello from the web build', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: /Agent connection/ }).click();
