@@ -1,7 +1,10 @@
 import {test,expect} from '@playwright/test';
+import {installCloudVoiceFixture} from './cloud-voice-fixture';
 test('Notes records, reviews, saves, reloads, plays and restores the same retained audio',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.addInitScript(()=>{const play=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(){this.muted=true;return play.call(this);};});
  await page.goto('/');
+ await installCloudVoiceFixture(page,'A recorded note saved through the real Notes interface.');
  // Firefox defers Web Audio in background tabs even after a synthetic input click.
  await page.bringToFront();
  await page.evaluate(()=>{
@@ -16,12 +19,13 @@ test('Notes records, reviews, saves, reloads, plays and restores the same retain
  await page.getByRole('button',{name:'Notes',exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>(window as any).fixture.ctx.state)).toBe('running');
  await page.getByRole('button',{name:'Record and transcribe',exact:true}).click();
- await page.getByRole('button',{name:'Record without transcription',exact:true}).click();
  await page.getByRole('button',{name:'Start recording',exact:true}).click();
  await expect(page.getByRole('button',{name:'Stop recording',exact:true})).toBeVisible();
  await expect.poll(()=>page.evaluate(()=>(window as any).recordedBytes)).toBeGreaterThan(0);
  await page.getByRole('button',{name:'Stop recording',exact:true}).click();
- await page.getByRole('button',{name:'Review transcript',exact:true}).click();
+ await page.getByRole('button',{name:'Transcribe with Eliza Cloud',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).cloudVoiceFixture.transcriptions.length)).toBe(1);
+ expect(await page.evaluate(()=>(window as any).cloudVoiceFixture.transcriptions[0].credentialId)).toBe('synthetic-cloud-credential');
  await page.getByRole('textbox',{name:'Review transcript',exact:true}).fill('A recorded note saved through the real Notes interface.');
  await page.getByRole('button',{name:'Save note',exact:true}).click();
  await expect(page.getByRole('button',{name:'Play recording',exact:true})).toBeVisible();
