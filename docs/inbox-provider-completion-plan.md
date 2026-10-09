@@ -58,6 +58,11 @@ Independently of these patches, the client now:
   `{supported:false}`. The local credential is cleared either way. The Android transport admits only GET
   and POST today, so no revocation is sent on Android yet.
 
+Known limit of 0058 editing: the editable content is the draft's text/plain part and literal recipient
+addresses. A draft that also has a text/html alternative (Gmail's usual form) is offered for editing, and
+replacing it after review keeps only the plain text and drops recipient display names. Reply drafts,
+drafts with attachments and HTML-only drafts stay in Gmail.
+
 The generic `runtime/gmail-mailbox.ts` helpers (failure classification, confirmed disconnect, reviewed
 read state) take their client as an input and are candidates for an upstream client package together
 with the 0055-0059 series; that contribution has not been submitted.
