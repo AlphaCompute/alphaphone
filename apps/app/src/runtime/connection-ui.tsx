@@ -295,6 +295,7 @@ async function connectDevelopment(profile:DevelopmentProfile,signal:AbortSignal)
  const identity=await readDevelopmentIdentity(profile,signal);const client=new LocalAgentProtocol(developmentBridge(profile,identity));const {session,name}=await client.connect(signal);signal.throwIfAborted();const credential=developmentCredential(profile,identity),scope=await actionScope(JSON.stringify([client.origin,session.ownerId,session.agentId,credential.installationId]));const actions=new DeviceActions(session,credential,scope,(path,body,signal)=>client.request(path,body,signal),developmentJournal(profile,identity),(op,id,context,signal,binding,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,signal,binding,workflowRoute,journalIdentity),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:'unknown'}),true,true);await retire();signal.throwIfAborted();await verifyDevelopmentIdentity(identity,signal);const workflowProtocol=2 as const;save({kind:'development',profile,...(identity.account?{account:identity.account}:{})});developmentVoiceExpiresAt=Date.now()+3600000;activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
 }
 async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
+  update({residentBalance:null});
   cloud = makeCloud('production');
   await verifyService(cloud,signal);
   const account=service;
@@ -1092,9 +1093,9 @@ export function ConnectionChooser() {
     <header><h1 id="connection-title">Welcome to Alpha</h1></header>
     <p>Your agent runs on this phone. Sign in to Eliza Cloud to use your account credits for AI.</p>
     {snapshot.cloudAccount ? <>
-      {typeof snapshot.residentBalance==='number'&&<p>{snapshot.residentBalance>0?'Credits available':'Add credits to continue'}</p>}
+      <p>{typeof snapshot.residentBalance==='number'?snapshot.residentBalance>0?'Credits available':'Add credits to continue':snapshot.busy?'Checking credits…':'Credits unavailable. Try again.'}</p>
       {typeof snapshot.residentBalance==='number'&&snapshot.residentBalance<=0&&<button disabled={snapshot.busy} onClick={()=>void connectionController.residentTopUp()}>Add credits in Eliza Cloud</button>}
-      <button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>{snapshot.residentBalance!=null&&snapshot.residentBalance<=0?'Check credits again':'Continue'}</button>
+      <button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>{snapshot.residentBalance==null||snapshot.residentBalance<=0?'Check credits again':'Continue'}</button>
       <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudSignOut()}>Sign out</button>
     </>:<>
       {snapshot.residentSavedCredential&&<button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Retry saved connection</button>}
