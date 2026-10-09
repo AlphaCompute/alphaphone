@@ -6,10 +6,10 @@ import {isReminderCreate,validateReminderCreate,validateReminderCreateResult,typ
 import {isClockOperation,validateClockOperation,validateClockResult,assertClockTimeZone,describeClockHandoff,type ClockOperation,type ClockHandoffResult} from './clock-contract.ts';
 import { isMapsOperation, validateMapsOperation, validateMapsResult, type MapsOperation, type MapsResult } from './maps-contract';
 import { validateMapsSelectedObject } from '../maps/agent-context';
-import {type ReminderOperation,type ReminderResult,isReminderOperation,validateReminderOperation,validateReminderResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
-import {type NotesOperation,type NotesResult,isNotesOperation,validateNotesOperation,validateNotesResult} from './notes-contract';
-import {type CalendarOperation,type CalendarResult,calendarCapabilityAvailable,isCalendarOperation,validateCalendarOperation,validateCalendarResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts';
-import {type ForegroundReviewOperation,type ForegroundReviewResult,foregroundReviewCapabilityAvailable,validateForegroundReviewOperation,validateForegroundReviewResult} from '../../../../.eliza/patched/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts';
+import {type ReminderOperation,type ReminderResult,isReminderOperation,reminderFields,validateReminderOperation,validateReminderResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
+import {type NotesOperation,type NotesResult,type NotesTarget,isNotesOperation,notesFields,validateNotesOperation,validateNotesResult} from './notes-contract';
+import {type CalendarOperation,type CalendarResult,type CalendarRecordResult,calendarCapabilityAvailable,calendarFields,isCalendarOperation,validateCalendarOperation,validateCalendarResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts';
+import {type DeviceReviewOperation,type CalendarAvailabilityResult,type NotesSearchResult,type NamedTargetResult,type NamedTargetValidators,deviceReviewCapabilityAvailable,isCalendarAvailabilityOperation,isNotesSearchOperation,validateCalendarAvailabilityOperation,validateCalendarAvailabilityResult,validateNotesSearchOperation,validateNotesSearchResult,validateNamedTargetOperation,validateNamedTargetResult} from '../../../../.eliza/patched/packages/contracts/src/device-reviews.ts';
 import { isMvpView } from "../prototype/mvp-features";
 import { parseWorkflowBinding, parseWorkflowRead, validateWorkflowResult, assertWorkflowOperation, type WorkflowReadOperation, type WorkflowReadResult, type WorkflowDeviceBinding, type WorkflowPhoneReview } from './workflow-device-contract';
 import type { ActionProposal, ContextEnvelope, OperationReceipt, VerifiedSession } from './alpha-client';
@@ -21,6 +21,28 @@ export type DeviceOperation = ReminderCreateOperation | WorkflowPresentationOper
 /** Kept in step with the patched contract's FOREGROUND_REVIEW_TYPES (asserted by test-device-actions). */
 export const FOREGROUND_OPERATION_TYPES: readonly string[] = ['calendar_availability','notes_search','notes_named','calendar_named','reminder_named'];
 function isForegroundReview(value: unknown): value is ForegroundReviewOperation { return !!value && typeof value === 'object' && FOREGROUND_OPERATION_TYPES.includes(String((value as {type?:unknown}).type)); }
+export type ForegroundReviewOperation = DeviceReviewOperation;
+/** Exact selected-record operation a named proposal resolves to after the owner's choice. */
+export type NamedTargetExactOperation = Extract<NotesOperation|CalendarOperation|ReminderOperation,{target:unknown}>;
+export type ForegroundReviewResult = CalendarAvailabilityResult|NotesSearchResult<NotesTarget,NotesResult>|NamedTargetResult<NamedTargetExactOperation,NotesResult|CalendarRecordResult|ReminderResult>;
+/** Shared device-review contracts bound to this renderer's Notes, Calendar and reminder contracts.
+ * Methods resolve their validators on call, so loading this module touches no domain contract. */
+export const namedTargetValidators:NamedTargetValidators<NamedTargetExactOperation,NotesResult|CalendarRecordResult|ReminderResult>={
+ notesFields:value=>notesFields(value),calendarFields:value=>calendarFields(value),reminderFields:value=>reminderFields(value),
+ exact(value){const exact=isNotesOperation(value)?validateNotesOperation(value):isCalendarOperation(value)?validateCalendarOperation(value):isReminderOperation(value)?validateReminderOperation(value):undefined;if(!exact||!('target' in exact))throw Error('Unsupported named target operation');return exact;},
+ record(operation,value){if(isNotesOperation(operation))return validateNotesResult(operation,value);if(isCalendarOperation(operation)){const result=validateCalendarResult(operation,value);if(result.kind==='calendar_read_next')throw Error('Unexpected Calendar discovery result');return result;}return validateReminderResult(operation,value);},
+};
+export function selectedNotesRead(target:unknown,record:unknown):{target:NotesTarget;record:NotesResult}{const selected=validateNotesOperation({type:'notes_read_selected',target});if(selected.type!=='notes_read_selected')throw Error('Invalid selected Notes read');return {target:selected.target,record:validateNotesResult(selected,record)};}
+export function validateForegroundReviewOperation(value:unknown):ForegroundReviewOperation{
+ if(isCalendarAvailabilityOperation(value))return validateCalendarAvailabilityOperation(value);
+ if(isNotesSearchOperation(value))return validateNotesSearchOperation(value);
+ return validateNamedTargetOperation(value,namedTargetValidators);
+}
+export function validateForegroundReviewResult(operation:ForegroundReviewOperation,value:unknown):ForegroundReviewResult{
+ if(operation.type==='calendar_availability')return validateCalendarAvailabilityResult(operation,value);
+ if(operation.type==='notes_search')return validateNotesSearchResult(operation,value,selectedNotesRead);
+ return validateNamedTargetResult(operation,value,namedTargetValidators);
+}
 /** Every operation a proposal may carry. Foreground reviews run through their own executor. */
 export type ReviewableDeviceOperation = DeviceOperation | ForegroundReviewOperation;
 /** Runs the phone's local review (calendar choice, note choice, record disambiguation)
@@ -176,7 +198,7 @@ export class DeviceActions {
     const workflow=payload.workflow===undefined?undefined:parseWorkflowBinding(payload.workflow),op=validateReviewableDeviceOperation(payload.operation);
     if(isCalendarOperation(op)&&(op.type==='calendar_create_local'||op.type==='calendar_read_next')&&!calendarCapabilityAvailable(op.type,this.credential.capabilities))throw Error('This agent has not negotiated native Calendar creation or discovery. Reconnect to a compatible agent.');
     if(isNativeNotesQuery(op)&&!this.credential.capabilities?.includes(NOTES_QUERY_CAPABILITY))throw Error('Notes discovery was not negotiated with this agent');
-    if(isForegroundReview(op)&&(!foregroundReviewCapabilityAvailable(op.type,this.credential.capabilities)||!this.executeForeground))throw Error('This action was not negotiated with this agent. Reconnect to a compatible agent.');
+    if(isForegroundReview(op)&&(!deviceReviewCapabilityAvailable(op.type,this.credential.capabilities)||!this.executeForeground))throw Error('This action was not negotiated with this agent. Reconnect to a compatible agent.');
     if(isReminderCreate(op)&&!this.reminderCreate)throw Error('This agent does not support reviewed reminder creation. Reconnect to a compatible agent.');
     if(isReminderOperation(op)&&(op.target.timingVersion===2||op.type==='reminder_update'&&op.fields.schedule?.alertMinutes!==undefined)&&!this.reminderV2)throw Error('This agent does not support this reminder timing. Reconnect to a compatible agent.');
     if((['read_selected_notes','read_calendar_range','post_notification','speak_text'].includes(op.type))&&!workflow)throw new Error('Workflow binding required for phone reads');

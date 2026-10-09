@@ -15,15 +15,6 @@ index 2635760e9ae400b0d8ad1263dd8e30235af09402..fabb692b47cd34d26baf935397ed46c3
      }
    },
    "scripts": {
-diff --git a/packages/contracts/src/index.ts b/packages/contracts/src/index.ts
-index 6fbcd35250a05c87c49424da90997692f28f5126..287625ec8bf76ab9cc6e23f58d1b8ceaa5719b94 100644
---- a/packages/contracts/src/index.ts
-+++ b/packages/contracts/src/index.ts
-@@ -132,3 +132,4 @@ export * from "./native-transcript.js";
- export * from "./os-intent/assistant-launch.js";
- export * from "./os-intent/contract.js";
- export * from "./os-intent/decode.js";
-+export * from "./runtime-capabilities.js";
 diff --git a/packages/contracts/src/runtime-capabilities.test.ts b/packages/contracts/src/runtime-capabilities.test.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..38ff297c60951f57f0819e141d4804b2a612d606
