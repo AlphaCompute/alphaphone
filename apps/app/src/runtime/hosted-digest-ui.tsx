@@ -371,7 +371,8 @@ export function HostedDigestPanel() {
   if(!selectedCalendars.length&&!selectedReminders){setMessage('Select a calendar or reminders first.');return;}
   try{new Intl.DateTimeFormat('en',{timeZone:zone}).format(0);if(!Number.isInteger(hours)||hours<1||hours>DIGEST_SOURCE_MAX_HOURS)throw Error();}catch{setMessage('Choose a valid time zone and expiry from 1 to 168 hours (7 days).');return;}
   let expectedBinding:Record<string,unknown>;try{expectedBinding=await nativeSources.nativeSourceIdentity({sessionId:b.sessionId});if(binding.current!==b)return;}catch{setMessage('Reconnect the current phone enrollment before reviewing sources.');return;}
-  const sourceId=crypto.randomUUID(),observedAt=new Date().toISOString(),expiresAt=Date.now()+hours*3600000;
+  // One clock reading: the agent refuses an expiry later than observedAt + 7 days, so a 168-hour source must not drift past it.
+  const sourceId=crypto.randomUUID(),reviewedAt=Date.now(),observedAt=new Date(reviewedAt).toISOString(),expiresAt=reviewedAt+hours*3600000;
   const scope={calendars:selectedCalendars.map(id=>({id,revision:calendarChoices.find(calendar=>calendar.id===id)!.sourceRevision})),reminders:selectedReminders,timeZone:zone,window:'owner_day_and_overdue_reminders',maximumItems:200,modelEgress:true};
   const renews=renewing&&sources.find(s=>s.id===renewing)?.live?.provider==='native'?renewing:null,rebind=renewalLoops(renews);
   setReview({path:'sources',body:{id:sourceId,kind:'tasks',label:nativeLabel.trim(),observedAt,expiresAt:new Date(expiresAt).toISOString(),confirmed:true},nativeConsent:{sourceId,scope,expiresAt,expectedBinding},...(renews?{renews,rebind}:{}),summary:`Allow ${connection.name||'your on-device agent'} to read the selected sources on this phone until ${new Date(expiresAt).toLocaleString()}?\nCalendars: ${calendarChoices.filter(c=>selectedCalendars.includes(c.id)).map(c=>c.name+' ('+c.account+')').join(', ')||'none'}. Reminders: ${selectedReminders?'open reminders due today and overdue'+(features.nativeEvening?'; evening briefs also list reminders completed today':''):'excluded'}.\nThe brief uses only event titles and times for the local day in ${zone}, plus selected reminders’ titles, due times and status. At most 200 items; overflow fails. Calendar descriptions, attendees, locations and reminder bodies are excluded.\nThese fields may be sent to this agent’s configured text model. The agent may read these sources while Alpha is in the background or the phone is locked. Each recurring brief is a separately reviewed schedule. ${features.sourcePause?'Schedules pause when this source expires':'Schedules can no longer read it after it expires'}; renew it here. You can revoke the source here. Briefs are saved privately with this agent; phone notifications follow your current result-notification setting. No app writes, inbox reads, messages or voice are authorized.${renewalNote(renews)}`});
@@ -395,6 +396,10 @@ export function HostedDigestPanel() {
 			source = sources.find((s) => s.id === (sourceId || old?.spec.sourceId));
 		if (!source) {
 			setMessage("Choose a reviewed source first.");
+			return;
+		}
+		if (template === "evening" && source.live?.provider === "native" && !features.nativeEvening) {
+			setMessage("This agent offers phone-source evening briefs only after it advertises them.");
 			return;
 		}
 		if (
@@ -557,9 +562,11 @@ export function HostedDigestPanel() {
 										busy
 									}
 									onClick={() => {
-										const observedAt = new Date().toISOString(),
+										// One clock reading keeps a 168-hour expiry within the agent's observedAt + 7 days bound.
+										const reviewedAt = Date.now(),
+											observedAt = new Date(reviewedAt).toISOString(),
 											expiresAt = new Date(
-												Date.now() + hours * 3600000,
+												reviewedAt + hours * 3600000,
 											).toISOString();
 										const renews=renewing&&!sources.find(s=>s.id===renewing)?.live?renewing:null;
 										setReview({

@@ -45,3 +45,13 @@ test('morning and evening schedules can share one reviewed source',async({page})
  const schedules=panel.getByRole('region',{name:'Digest schedules'});await expect(schedules).toContainText('Morning at 08:00 (UTC) · Shared source · On');await expect(schedules).toContainText('Evening at 18:00 (UTC) · Shared source · On');
  const state=await digests(page);expect(new Set(state.loops.map((l:any)=>l.spec.sourceId)).size).toBe(1);expect(state.loops.map((l:any)=>l.spec.template).sort()).toEqual(['evening','morning']);
 });
+test('a default 7-day snapshot expires exactly at the agent bound of observedAt plus 7 days',async({page})=>{
+ // Real clock: observedAt and expiresAt must come from one reading, or a 168-hour source drifts past the agent's bound.
+ await page.goto('/?mode=dev');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();await page.getByRole('button',{name:'Connect development profile'}).click();
+ await page.evaluate(()=>window.dispatchEvent(new Event('alpha:hosted-digests')));const panel=page.getByRole('dialog',{name:'Scheduled digests',exact:true});
+ await panel.getByText('Share a snapshot',{exact:true}).click();await expect(panel.getByLabel('Expires after hours',{exact:true})).toHaveValue('168');
+ await panel.getByLabel('Label',{exact:true}).fill('Week source');await panel.getByLabel('Snapshot text',{exact:true}).fill('Week content');
+ await panel.getByRole('button',{name:'Review snapshot',exact:true}).click();await panel.getByRole('button',{name:'Confirm',exact:true}).click();
+ await expect.poll(async()=>(await digests(page)).sources.length).toBe(1);
+ const [source]=(await digests(page)).sources;expect(Date.parse(source.expiresAt)-Date.parse(source.observedAt)).toBe(168*3600000);
+});

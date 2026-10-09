@@ -102,8 +102,10 @@ export function HostedLiveSourcePicker({
 			!range(maxItems, 25)
 		)
 			return;
-		const observedAt = new Date().toISOString(),
-			expiresAt = new Date(Math.min(Date.now() + expiresHours * 3600000, account.expiresAt ? Date.parse(account.expiresAt) : Infinity)).toISOString(),
+		// One clock reading keeps a 168-hour expiry within the agent's observedAt + 7 days bound.
+		const reviewedAt = Date.now(),
+			observedAt = new Date(reviewedAt).toISOString(),
+			expiresAt = new Date(Math.min(reviewedAt + expiresHours * 3600000, account.expiresAt ? Date.parse(account.expiresAt) : Infinity)).toISOString(),
 			label =
 				account.label +
 				" · " +

@@ -131,7 +131,11 @@ export function installWorkflowAdapter(Component:any,views:Bag){
   for(const proposalId of resolved){try{await native.withdrawWorkflowApprovalNotice({id:(await workflowApprovalNotice(route,proposalId)).id});}catch{/* It still expires with the approval. */}}
   for(const step of pending){if(!(step.expiresAt>Date.now()))continue;try{const {id,bindingHash}=await workflowApprovalNotice(route,step.id);await native.postWorkflowApprovalNotice({id,bindingHash,expiresAt:step.expiresAt,route});}catch{/* The step stays waiting in Workflows. */}}
  }
- const reviewPhone=()=>{if(!receipt||operation)return;const selected=receipt,previous=phoneReview?.runId===selected.id?phoneSteps.map(step=>step.id):[];phoneSteps=[];phoneConfirm=null;void work(async(client,signal,valid)=>{const context=phoneContext(selected),review=await client.phoneReview(selected,signal);if(!valid())return;phoneContext(selected);const steps=review.finished||review.cancellationRequestedAt?[]:await connectionController.workflowPhoneActions(review,context,signal);if(valid()){phoneContext(selected);void syncApprovalNotices(selected,steps,previous.filter(id=>!steps.some(step=>step.id===id)));phoneReview=review;phoneSteps=steps;phoneStatus=steps.length?'Review the exact destination, sources and operation. Each step needs separate approval.':'No pending phone steps in this execution. Refresh explicitly if its next step becomes ready.';}});};
+ // Serialized: a decision's withdrawal always reaches the native ledger after any post still in flight
+ // from the preceding review, so a decided approval can never be posted afterwards.
+ let approvalNotices:Promise<void>=Promise.resolve();
+ const queueApprovalNotices=(run:WorkflowRun,pending:ActionProposal[],resolved:string[])=>{approvalNotices=approvalNotices.then(()=>syncApprovalNotices(run,pending,resolved)).catch(()=>{});};
+ const reviewPhone=()=>{if(!receipt||operation)return;const selected=receipt,previous=phoneReview?.runId===selected.id?phoneSteps.map(step=>step.id):[];phoneSteps=[];phoneConfirm=null;void work(async(client,signal,valid)=>{const context=phoneContext(selected),review=await client.phoneReview(selected,signal);if(!valid())return;phoneContext(selected);const steps=review.finished||review.cancellationRequestedAt?[]:await connectionController.workflowPhoneActions(review,context,signal);if(valid()){phoneContext(selected);queueApprovalNotices(selected,steps,previous.filter(id=>!steps.some(step=>step.id===id)));phoneReview=review;phoneSteps=steps;phoneStatus=steps.length?'Review the exact destination, sources and operation. Each step needs separate approval.':'No pending phone steps in this execution. Refresh explicitly if its next step becomes ready.';}});};
  const decidePhone=(proposal:ActionProposal,approved:boolean)=>{
   if(!receipt||!phoneReview||operation)return;
   const key=proposal.id+':'+String(approved);if(phoneConfirm!==key){phoneConfirm=key;publish();return;}
@@ -139,8 +143,8 @@ export function installWorkflowAdapter(Component:any,views:Bag){
   void work(async(client,signal,valid)=>{
    const context=phoneContext(selected),current=await client.phoneReview(selected,signal);signal.throwIfAborted();if(!valid())return;phoneContext(selected);
    if(current.finished||current.cancellationRequestedAt||current.specDigest!==reviewed.specDigest)throw new Error('Workflow execution changed; review again');
-   if(approved){const result=await connectionController.execute(proposal,context,signal);void syncApprovalNotices(selected,[],[proposal.id]);if(valid())phoneStatus=result.summary;}
-   else{await connectionController.rejectWorkflowPhoneAction(proposal.id,current,context,signal);void syncApprovalNotices(selected,[],[proposal.id]);if(valid())phoneStatus='Phone step denied. No device action was performed.';}
+   if(approved){const result=await connectionController.execute(proposal,context,signal);queueApprovalNotices(selected,[],[proposal.id]);if(valid())phoneStatus=result.summary;}
+   else{await connectionController.rejectWorkflowPhoneAction(proposal.id,current,context,signal);queueApprovalNotices(selected,[],[proposal.id]);if(valid())phoneStatus='Phone step denied. No device action was performed.';}
    if(valid()){phoneSteps=[];phoneReview=null;phoneConfirm=null;}
   });
  };
