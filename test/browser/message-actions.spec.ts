@@ -19,7 +19,7 @@ for(const theme of ['light','dark'])test(`tap reveals quiet actions and copies e
  await conversation(page,theme);await expect(menu(page)).toHaveCount(0);await expect(page.getByText('Listen with Cloud',{exact:true})).toHaveCount(0);await expect(page.getByText('Listen on phone',{exact:true})).toHaveCount(0);
  const bounds=await agent(page).boundingBox();await page.touchscreen.tap(bounds!.x+20,bounds!.y+10);await expect(menu(page)).toBeVisible();
  await menu(page).getByRole('menuitem',{name:'Copy',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).copiedMessage)).toBe(answer);await expect(page.getByRole('status').filter({hasText:'Copied.'})).toBeVisible();
- await expect(menu(page).getByRole('menuitem',{name:'Copy',exact:true}).locator('svg path')).toHaveAttribute('d',/M9 9/);
+ await expect(menu(page).getByRole('menuitem',{name:'Copy',exact:true}).locator('[data-alpha-icon]')).toHaveAttribute('data-alpha-icon','/icons/lucide/copy.svg');
  await page.screenshot({path:info.outputPath('message-actions-'+theme+'.png'),animations:'disabled'});
  await page.getByRole('textbox',{name:'Message Alpha',exact:true}).click();await expect(menu(page)).toHaveCount(0);
 });

@@ -5,7 +5,41 @@
   "sourceFiles": {
     "workflow.mjs": "fdcc9fdcd45626f486c98e03a8662460b07fbedfb792aca93fd828e7ff29895e",
     "inbox.mjs": "d0d6ff3394594f868c661ae67be87cbc4a4abc740af9de90f182f2d32f9e3e6d",
-    "calendar.mjs": "5ac4c9e6dd1c7266a83491c02a2420d47408a885fcb1c8af65f1714653d72b33"
+    "calendar.mjs": "5ac4c9e6dd1c7266a83491c02a2420d47408a885fcb1c8af65f1714653d72b33",
+    "keyboard.mjs": "3fb4b62c33992eb5190eeb44ec9bd181d8c9259985586e4d0570f030c70c1aa9",
+    "folder.mjs": "6b59595a5bcc63410979e0b33a09e152e34b7847cbd21229e745d76993812657",
+    "camera.mjs": "41e7eff94bc1c4a14a6f66b4bf3c05cdbf947dfd1f3073350b6e6af70c4af973",
+    "copy.mjs": "bb1f700056290514fde7a7a26f9a43693237f4d7eda92b9ac683163b1c8747cb",
+    "reply.mjs": "069f8d2c09a3493b8023c999c622f95e618bccd21029b3976d8228171da2667b",
+    "pencil.mjs": "1cbcc8e4cb24f0bca5b95d8e5559eb25a91d4ce292dbc152fd8742d21f0419e3"
   },
-  "conversion": "SVG attributes and exact icon nodes exported by the installed published package; React key attributes removed and stroke attribute names serialized as standard SVG. Geometry unchanged."
+  "conversion": "SVG attributes and exact icon nodes exported by the installed published package; React key attributes removed and stroke attribute names serialized as standard SVG. Geometry unchanged.",
+  "assets": {
+    "keyboard.svg": {
+      "source": "keyboard.mjs",
+      "sha256": "8aa79959879e374cadcd98cc2fc71a437e05a6c5d824175aa4e9f72294d35e53"
+    },
+    "folder.svg": {
+      "source": "folder.mjs",
+      "sha256": "bb58028b546f2de30e9cb6d537581b52af5b3494f34dea474d3878ba68ab429a"
+    },
+    "camera.svg": {
+      "source": "camera.mjs",
+      "sha256": "ffdb5a37a75df3ae99382e3acc01ad13dc93f76ee94a4a33a49b178adfc79235"
+    },
+    "copy.svg": {
+      "source": "copy.mjs",
+      "sha256": "971362e0a42c031154efb4e54c290bda9dc44ee0ba7dcfd9db8a484c9673e6f6"
+    },
+    "reply.svg": {
+      "source": "reply.mjs",
+      "sha256": "3994aa6f75d3059fabd8cecb7e8c32e728c940e0636f94ab7d9faa8d597231c4"
+    },
+    "edit.svg": {
+      "source": "pencil.mjs",
+      "sha256": "6a2f7e7e807646cde7411b743cdf401022baa025e695952c54475938c5ee46f9"
+    }
+  },
+  "license": "ISC",
+  "licenseSha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57"
 }

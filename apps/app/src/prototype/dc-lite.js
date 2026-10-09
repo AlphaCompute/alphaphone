@@ -106,6 +106,27 @@ import templateHtml from "./template.html?raw";
         return h(React.Fragment, { key: i }, kids(n.childNodes, s));
       }));
     }
+    // Resolve both static IC references and dynamic row paths through one display map.
+    if (tag === "svg" && n.children.length === 1 && n.children[0].localName === "path") {
+      var asset = scope.iconAssets?.[props(n.children[0], scope, 0).d];
+      if (asset) {
+        var original = props(n, scope, key);
+        var icon = { key: key, "data-alpha-icon": asset };
+        Object.keys(original).forEach(function (name) {
+          if (["className", "id", "title", "role", "tabIndex"].includes(name) || name.startsWith("aria-") || /^on[A-Z]/.test(name)) icon[name] = original[name];
+        });
+        if (icon["aria-label"] && !icon.role) icon.role = "img";
+        if (!icon["aria-label"] && !icon["aria-labelledby"] && !icon.role) icon["aria-hidden"] = "true";
+        icon.style = Object.assign({ display: "inline-block", width: original.width || "1em", height: original.height || "1em" }, original.style, {
+          backgroundColor: "currentColor", mask: 'url("' + asset + '") center / contain no-repeat',
+          WebkitMask: 'url("' + asset + '") center / contain no-repeat'
+        });
+        // Class-sized icons retain their established dimensions unless explicitly sized.
+        if (original.className && !original.width && !original.style?.width) delete icon.style.width;
+        if (original.className && !original.height && !original.style?.height) delete icon.style.height;
+        return h("span", icon);
+      }
+    }
     var isSvg = n.namespaceURI === "http://www.w3.org/2000/svg";
     var tname = isSvg ? n.localName : tag;
     var c = kids(n.childNodes, scope);
