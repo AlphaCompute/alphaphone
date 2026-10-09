@@ -69,9 +69,11 @@ test('wide native standalone keeps a usable transcript and touch navigation at n
   await expect.poll(()=>transcript.evaluate(e=>e.clientHeight)).toBeGreaterThanOrEqual(80);
   const screen=await frame.locator('[data-screen]').boundingBox();
   expect(screen!.width).toBeGreaterThanOrEqual(880);
-  const header=await frame.getByRole('button',{name:'Go Home',exact:true}).boundingBox();
-  const content=await transcript.boundingBox();
-  expect(content!.y).toBeGreaterThanOrEqual(header!.y+header!.height);
+  // Measure both edges in one animation frame; separate browser calls can sample different sheet positions.
+  await expect.poll(()=>transcript.evaluate(node=>{
+   const header=node.closest('[data-screen]')!.querySelector('[aria-label="Go Home"]')!;
+   return node.getBoundingClientRect().top-header.getBoundingClientRect().bottom;
+  })).toBeGreaterThanOrEqual(0);
   await page.screenshot({path:testInfo.outputPath('native-wide-chat.png'),animations:'disabled'});
   await frame.getByRole('button',{name:'Minimize chat',exact:true}).tap();
   await open.tap();
