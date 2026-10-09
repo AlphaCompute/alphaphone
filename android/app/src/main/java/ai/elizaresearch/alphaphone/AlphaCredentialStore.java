@@ -23,7 +23,66 @@ final class AlphaCredentialStore {
  String slotHash(String name)throws Exception{return slots.slotHash(name);}
  AtomicFile slotFile(String hash)throws Exception{return slots.slotFile(hash);}
  String readCredentialSlot(String name)throws Exception{return slots.read(name);}
- void writeCredentialSlot(String name,String value)throws Exception{slots.write(name,value);}
- void removeCredentialSlot(String name)throws Exception{slots.remove(name);}
- boolean compareExchangeCredentialSlot(String name,String expected,String value)throws Exception{return slots.compareExchange(name,expected,value);}
+ // Invalidate first: a crash or failed credential write must never resurrect an old admission.
+ void writeCredentialSlot(String name,String value)throws Exception{
+  synchronized(JsonCredentialSlots.LOCK){
+   if(("cloud:production".equals(name)||"cloud:staging".equals(name))
+      &&!java.util.Objects.equals(slots.read(name),value))invalidateProviderAdmission(name);
+   slots.write(name,LocalAgentProviderAdmission.PROVIDER_SLOT.equals(name)?LocalAgentProviderAdmission.withoutAdmission(value):value);
+  }
+ }
+ void removeCredentialSlot(String name)throws Exception{
+  synchronized(JsonCredentialSlots.LOCK){invalidateProviderAdmission(name);slots.remove(name);}
+ }
+ boolean compareExchangeCredentialSlot(String name,String expected,String value)throws Exception{
+  synchronized(JsonCredentialSlots.LOCK){
+   if(!java.util.Objects.equals(slots.read(name),expected))return false;
+   if(value==null)removeCredentialSlot(name);else writeCredentialSlot(name,value);
+   return true;
+  }
+ }
+ private void invalidateProviderAdmission(String changedSlot)throws Exception{
+  if(!"cloud:production".equals(changedSlot)&&!"cloud:staging".equals(changedSlot))return;
+  String saved=slots.read(LocalAgentProviderAdmission.PROVIDER_SLOT);
+  if(saved==null)return;
+  org.json.JSONObject provider=new org.json.JSONObject(saved);
+  if("elizacloud".equals(provider.optString("provider"))&&changedSlot.equals("cloud:"+provider.optString("environment","production")))
+   slots.write(LocalAgentProviderAdmission.PROVIDER_SLOT,LocalAgentProviderAdmission.withoutAdmission(saved));
+ }
+ /** Only explicit, validated native provider configuration may establish admission identity. */
+ String compareExchangeProviderAdmission(String expected,String selection,String credentialSlot,String expectedCredential)throws Exception{
+  synchronized(JsonCredentialSlots.LOCK){
+   if(!java.util.Objects.equals(slots.read(LocalAgentProviderAdmission.PROVIDER_SLOT),expected)
+      ||credentialSlot!=null&&!java.util.Objects.equals(slots.read(credentialSlot),expectedCredential))return null;
+   org.json.JSONObject requested=new org.json.JSONObject(selection);
+   boolean cloud="elizacloud".equals(requested.optString("provider"));
+   if(cloud?!"cloud:production".equals(credentialSlot):credentialSlot!=null||expectedCredential!=null)throw new IllegalArgumentException();
+   String admitted=LocalAgentProviderAdmission.admit(expected,selection,expectedCredential);
+   slots.write(LocalAgentProviderAdmission.PROVIDER_SLOT,admitted);
+   return admitted;
+  }
+ }
+ /** Account invalidation may strip this admission, but never overwrite a newer CAS revision. */
+ void rollbackProviderAdmission(String admitted,String previous)throws Exception{
+  synchronized(JsonCredentialSlots.LOCK){
+   String current=slots.read(LocalAgentProviderAdmission.PROVIDER_SLOT);
+   if(current==null)return;
+   org.json.JSONObject held=new org.json.JSONObject(current);
+   if(!java.util.Objects.equals(current,admitted)
+      &&(held.has("admissionGeneration")||held.has("admissionFingerprint")
+       ||!LocalAgentProviderAdmission.withoutAdmission(admitted).equals(held.toString())))return;
+   if(previous==null)slots.remove(LocalAgentProviderAdmission.PROVIDER_SLOT);
+   else slots.write(LocalAgentProviderAdmission.PROVIDER_SLOT,LocalAgentProviderAdmission.withoutAdmission(previous));
+  }
+ }
+ /** Read-only correlation, not an authorization or migration API. Legacy selections remain unavailable. */
+ String providerAdmissionGeneration()throws Exception{
+  synchronized(JsonCredentialSlots.LOCK){
+   String saved=slots.read(LocalAgentProviderAdmission.PROVIDER_SLOT);
+   if(saved==null)return null;
+   org.json.JSONObject selected=new org.json.JSONObject(saved);
+   String credential="elizacloud".equals(selected.optString("provider"))?slots.read("cloud:production"):null;
+   return LocalAgentProviderAdmission.currentGeneration(saved,credential);
+  }
+ }
 }

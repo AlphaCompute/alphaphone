@@ -27,6 +27,11 @@ ${method(' static void configureLocalEmbeddings(')}
   java.util.function.IntConsumer beforeRead=n->{};
   AlphaCredentialStore(String provider,String cloud){this.provider=provider;this.cloud=cloud;}
   String readCredentialSlot(String slot){if(slot.equals("cloud:production")){beforeRead.accept(++cloudReads);return cloud;}return provider;}
+  void rollbackProviderAdmission(String admitted,String previous){compareExchangeCredentialSlot("local-agent-provider:v1",admitted,previous);}
+  String compareExchangeProviderAdmission(String expected,String value,String slot,String credential){
+   if(!Objects.equals(cloud,credential))return null;
+   return compareExchangeCredentialSlot("local-agent-provider:v1",expected,value)?value:null;
+  }
   boolean compareExchangeCredentialSlot(String slot,String expected,String value){
    exchanges++;if(initialConflict&&exchanges==1){provider="concurrent-selection";return false;}
    if(!Objects.equals(provider,expected))return false;provider=value;return true;
@@ -138,7 +143,7 @@ test('Cloud configuration takes a credential reference and stores no copied toke
  assert.doesNotMatch(configure,/call.getString\("(?:apiKey|token)"/);
  assert.doesNotMatch(configure,/\.put\("(?:apiKey|token|key)"/);
  assert.equal((binding.match(/cloudProviderToken\(/g)||[]).length,2);
- assert.match(binding,/compareExchangeCredentialSlot\("local-agent-provider:v1",binding,previous\)/);
+ assert.match(binding,/rollbackProviderAdmission\(binding,previous\)/);
  const environment=method(' static void configureEnvironment(');
  assert.match(environment,/readCredentialSlot\("cloud:production"\)/);
  assert.match(environment,/applyProviderEnvironment\(/);

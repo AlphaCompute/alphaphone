@@ -62,7 +62,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   String key=call.getString("apiKey",""),model=call.getString("model","");
   if(!validProviderToken(key,1024)||!model.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,127}")){call.reject("Enter a valid Cerebras key and model.");return;}
   workers.execute(()->{try{
-   new AlphaCredentialStore(getContext()).writeCredentialSlot("local-agent-provider:v1",new JSONObject().put("key",key).put("model",model).toString());
+   bindDirectProvider(new AlphaCredentialStore(getContext()),key,model);
    call.resolve(new JSObject().put("configured",true));
   }catch(Exception error){call.reject("Provider could not be saved securely.");}});
  }
@@ -83,18 +83,28 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  static void bindCloudProvider(AlphaCredentialStore store,String credentialId,String model) throws Exception {
   if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
   String previous=store.readCredentialSlot("local-agent-provider:v1");
-  cloudProviderToken(store.readCredentialSlot("cloud:production"),credentialId,System.currentTimeMillis());
+  String cloud=store.readCredentialSlot("cloud:production");
+  cloudProviderToken(cloud,credentialId,System.currentTimeMillis());
   // A unique revision distinguishes two concurrent admissions for the same account/model.
-  String binding=new JSONObject().put("provider","elizacloud").put("credentialId",credentialId).put("model",model)
+  String selection=new JSONObject().put("provider","elizacloud").put("credentialId",credentialId).put("model",model)
    .put("revision",java.util.UUID.randomUUID().toString()).toString();
-  if(!store.compareExchangeCredentialSlot("local-agent-provider:v1",previous,binding))throw new IllegalStateException();
+  String binding=store.compareExchangeProviderAdmission(previous,selection,"cloud:production",cloud);
+  if(binding==null)throw new IllegalStateException();
   try{
    cloudProviderToken(store.readCredentialSlot("cloud:production"),credentialId,System.currentTimeMillis());
    if(!binding.equals(store.readCredentialSlot("local-agent-provider:v1")))throw new IllegalStateException();
   }catch(Exception unavailable){
-   store.compareExchangeCredentialSlot("local-agent-provider:v1",binding,previous);
+   store.rollbackProviderAdmission(binding,previous);
    throw unavailable;
   }
+ }
+ /** Direct configuration is also an explicit native admission; renderer metadata is never accepted. */
+ static void bindDirectProvider(AlphaCredentialStore store,String key,String model)throws Exception {
+  if(!validProviderToken(key,1024)||!model.matches(PROVIDER_MODEL_PATTERN))throw new IllegalArgumentException();
+  String previous=store.readCredentialSlot("local-agent-provider:v1");
+  String selection=new JSONObject().put("provider","cerebras").put("key",key).put("model",model)
+   .put("revision",java.util.UUID.randomUUID().toString()).toString();
+  if(store.compareExchangeProviderAdmission(previous,selection,null,null)==null)throw new IllegalStateException();
  }
  static boolean validProviderToken(String token,int maximumLength) {
   if(token==null||token.length()<8||token.length()>maximumLength)return false;
