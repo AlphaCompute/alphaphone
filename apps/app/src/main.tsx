@@ -1,3 +1,4 @@
+import {installChatOverlayMotion} from './prototype/chat-overlay-motion-adapter';
 import {installSubviewAccessibility} from './prototype/subview-accessibility';
 import {installCalendarMonthFocus} from './prototype/calendar-month-focus';
 import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-adapter';
@@ -96,6 +97,7 @@ if(devSurfacesEnabled&&simulatedApps)installSimulatedApps(Component,VIEWS,simula
 if(developmentAgentWorkflows)installWorkflowAdapter(Component,VIEWS);
 installSubviewAccessibility(VIEWS);
 installCalendarMonthFocus(Component, VIEWS);
+installChatOverlayMotion(Component);
 installClockAdapter(Component, VIEWS, { simulated: testMocksEnabled && fixture, browser: !isAndroid });
 /** A browser cannot read or change radios and sensors; show that instead of fixture toggles. */
 function installBrowserCapabilityTiles(Component:any){

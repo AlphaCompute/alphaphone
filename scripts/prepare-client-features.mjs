@@ -32,6 +32,8 @@ function matches(actual, expected) {
     Object.entries(expected).every(([file, digest]) => actual[file] === digest);
 }
 export const CLIENT_FEATURE_PATHS = [
+  'packages/ui/src/components/shell/chat-overlay-motion.ts',
+  'packages/ui/src/components/shell/chat-panel-layout.ts',
   'packages/core/src/events.ts',
   'packages/core/src/i18n/language.ts',
   'packages/core/src/views/view-interact-protocol.ts',

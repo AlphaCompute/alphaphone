@@ -24,7 +24,7 @@ test('chat handle captures an upward and downward drag outside its bounds', asyn
   const handle=page.getByRole('button',{name:'Resize chat',exact:true});
   await expect(handle).toBeVisible();
   const panel=page.locator('[data-alpha-layer=conversation]');
-  await expect(panel).toHaveCSS('height','560px');
+  await expect.poll(()=>panel.evaluate(el=>parseFloat(getComputedStyle(el).height))).toBe(await page.evaluate(()=>{const h=document.querySelector<HTMLElement>('[data-screen]')!.clientHeight;return Math.min(h,Math.max(200,h-72),Math.max(200,Math.round(h*.46)));}));
   let box=(await handle.boundingBox())!;
   await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
   await page.mouse.down();
@@ -38,7 +38,7 @@ test('chat handle captures an upward and downward drag outside its bounds', asyn
   await page.mouse.move(box.x+box.width/2,box.y+220,{steps:12});
   await page.mouse.up();
   await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();
-  await expect(panel).toHaveCSS('height','560px');
+  await expect.poll(()=>panel.evaluate(el=>parseFloat(getComputedStyle(el).height))).toBe(await page.evaluate(()=>{const h=document.querySelector<HTMLElement>('[data-screen]')!.clientHeight;return Math.min(h,Math.max(200,h-72),Math.max(200,Math.round(h*.46)));}));
 });
 
 
@@ -100,4 +100,24 @@ for(const viewport of [{width:412,height:915},{width:1440,height:500}])test(`Fil
 
 test('a non-overflowing Files list has no edge fade',async({page})=>{
  await page.setViewportSize({width:412,height:1400});await page.goto('/');await page.getByRole('button',{name:'Files',exact:true}).click();const scroll=page.locator('[data-alpha-app-scroll="files"]');await expect(scroll).toBeVisible();expect(await scroll.evaluate(el=>el.scrollHeight-el.clientHeight)).toBeLessThanOrEqual(1);await expect.poll(()=>scroll.evaluate(el=>({top:parseFloat(getComputedStyle(el).getPropertyValue('--calendar-scroll-fade-top')),bottom:parseFloat(getComputedStyle(el).getPropertyValue('--calendar-scroll-fade-bottom'))}))).toEqual({top:0,bottom:0});
+});
+
+test('small sheet follows the mouse down continuously and settles directly to pill',async({page},info)=>{
+ await page.goto('/');await page.getByRole('button',{name:'Open conversation',exact:true}).click();const handle=page.getByRole('button',{name:'Resize chat',exact:true}),panel=page.locator('[data-alpha-layer="conversation"]');const before=await panel.evaluate(el=>parseFloat(getComputedStyle(el).height)),box=(await handle.boundingBox())!;await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2,box.y+box.height/2+80,{steps:8});await expect(panel).toHaveCSS('transition-property','none');const during=await panel.evaluate(el=>parseFloat(getComputedStyle(el).height));expect(during).toBeLessThan(before-60);expect(during).toBeGreaterThan(0);await page.screenshot({path:info.outputPath('chat-follow-finger.png'),animations:'disabled'});await page.mouse.up();await expect(page.getByRole('button',{name:'Open conversation',exact:true})).toBeVisible();await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveCount(0);await expect(panel).toHaveCSS('height','0px');
+});
+
+test('touch capture can close the small sheet and pull the same pill into a sheet',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:'Open conversation',exact:true}).click();const cdp=await page.context().newCDPSession(page),handle=page.getByRole('button',{name:'Resize chat',exact:true}),panel=page.locator('[data-alpha-layer="conversation"]');let box=(await handle.boundingBox())!,x=box.x+box.width/2,y=box.y+box.height/2;await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+90,id:1}]});await expect(panel).toHaveCSS('transition-property','none');await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});const pill=page.getByRole('button',{name:'Open conversation',exact:true});await expect(pill).toBeVisible();box=(await pill.boundingBox())!;x=box.x+box.width/2;y=box.y+box.height/2;await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:2}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y-120,id:2}]});await expect(panel).toHaveCSS('transition-property','none');expect(await panel.evaluate(el=>parseFloat(getComputedStyle(el).height))).toBeGreaterThan(100);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toBeVisible();await cdp.detach();
+});
+
+test('touch cancellation restores the prior detent without a click; keyboard controls still work',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:'Open conversation',exact:true}).click();const panel=page.locator('[data-alpha-layer="conversation"]'),before=await panel.evaluate(el=>getComputedStyle(el).height),handle=page.getByRole('button',{name:'Resize chat',exact:true}),box=(await handle.boundingBox())!,cdp=await page.context().newCDPSession(page),x=box.x+box.width/2,y=box.y+box.height/2;await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+60,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await expect(panel).toHaveCSS('height',before);await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();await cdp.detach();
+});
+
+test('a tiny pill pointer wobble keeps the Type click and never opens a sheet',async({page})=>{
+ await page.goto('/');const type=page.getByRole('button',{name:'Type',exact:true}),box=(await type.boundingBox())!;await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+1,box.y+box.height/2-2);await page.mouse.up();await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Resize chat',exact:true})).toHaveCount(0);
+});
+
+test('short viewports keep the resized panel and grabber within the screen',async({page})=>{
+ await page.setViewportSize({width:412,height:300});await page.goto('/');await page.getByRole('button',{name:'Open conversation',exact:true}).click();const panel=page.locator('[data-alpha-layer="conversation"]'),handle=page.getByRole('button',{name:'Resize chat',exact:true});await expect(handle).toBeInViewport();expect((await panel.boundingBox())!.height).toBeLessThanOrEqual(300);await page.getByRole('button',{name:'Expand chat',exact:true}).focus();await page.keyboard.press('Enter');await expect(page.getByRole('button',{name:'Shrink chat',exact:true})).toBeVisible();await expect(handle).toBeInViewport();await page.getByRole('button',{name:'Shrink chat',exact:true}).press('Enter');await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();await page.getByRole('button',{name:'Minimize chat',exact:true}).press('Enter');await expect(page.getByRole('button',{name:'Open conversation',exact:true})).toBeVisible();
 });
