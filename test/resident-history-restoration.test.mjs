@@ -150,13 +150,15 @@ test('recovered approval rereads exact pending identity before existing journale
 
 function adapterRecoveryFixture() {
  const source=fs.readFileSync('apps/app/src/prototype/agent-adapter.ts','utf8'),start=source.indexOf('  function recoverPendingActions('),end=source.indexOf('  function context(',start);
+ const cardStart=source.indexOf('  function proposalCard('),cardEnd=source.indexOf('  p.cancelReadReplyCompletions',cardStart);
+ assert.ok(cardStart>=0&&cardEnd>cardStart,'Load the production proposal-card helper with its caller');
  let context={...reviewContext},connection={session:{sessionId:'fixture-session',ownerId:'owner',agentId:'agent',origin:'https://fixture.invalid'},history:{revision:1},phoneActionsAvailable:true,open:false,busy:false},read=async()=>[pendingReview];
  const timers=new Map();let timerId=0,now=Date.now();
  class ClockDate extends Date{static now(){return now;}}
  const calls=[],toasts=[],document={hidden:false},state={msgs:[{id:'saved',from:'agent',text:'Queued for review',card:null}],draft:'Unsent draft',chat:'full',typing:false};
  const shell={live:true,S:()=>state,toast:text=>toasts.push(text),setState(update,complete){const patch=typeof update==='function'?update(state):update;if(patch)Object.assign(state,patch);complete?.();}};
  const box={Date:ClockDate,setTimeout:(fn,delay)=>{const id=++timerId;timers.set(id,{fn,at:now+delay});return id;},clearTimeout:id=>timers.delete(id),document,crypto,AbortController,alphaClient:{getState:()=>({context})},connectionController:{getSnapshot:()=>connection,pendingActions:async(c,signal)=>{calls.push({context:c,signal});return read(c,signal);}}};
- vm.runInNewContext(stripTypeScriptTypes(source.slice(start,end))+'\nglobalThis.recover=recoverPendingActions;',box);
+ vm.runInNewContext(stripTypeScriptTypes(source.slice(cardStart,cardEnd)+source.slice(start,end))+'\nglobalThis.recover=recoverPendingActions;',box);
  // Deadlines and advances share this clock, including time spent compiling the VM fixture.
  return {shell,state,calls,toasts,document,timers,now:()=>now,advance:ms=>{now+=ms;for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.fn();}},recover:()=>box.recover(shell),read:fn=>{read=fn;},context:patch=>{context={...context,...patch};},connection:patch=>{connection={...connection,...patch};}};
 }
