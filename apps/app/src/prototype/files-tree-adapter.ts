@@ -92,6 +92,8 @@ export function installFilesTreeAdapter(views:Bag,accept:(module:string,result:N
    const entry=request.entry;
    const value=request.entries&&['move','delete'].includes(request.kind)?await tree.changeMany({items:request.entries.map(e=>({id:e.id,expectedRevision:e.revision})),action:request.kind as 'move'|'delete',destinationId:request.folder?.id,confirmPermanent:request.kind==='delete'}):request.kind==='create'?await tree.createFolder({id:folder.id,name:request.name}):request.kind==='rename'&&entry?await tree.rename({id:entry.id,name:request.name,expectedRevision:entry.revision}):request.kind==='delete'&&entry?await tree.delete({id:entry.id,expectedRevision:entry.revision,confirmPermanent:true}):request.kind==='move'&&entry&&request.folder?await tree.move({id:entry.id,destinationId:request.folder.id,expectedRevision:entry.revision}):{status:'unsupported',message:'Choose a supported action.'};
    if(value.status==='partial'){dialog=undefined;api?.toast(value.message);if(selected&&request.entries?.some(e=>e.id===selected?.id&&value.outcomes?.some(o=>o.id===e.id&&['moved','deleted'].includes(o.status)))){clearSelected();selected=undefined;api?.set({open:null});}apply(await tree.list({id:folder.id}));return;}
+   // Folder access ended (possibly mid-batch with nothing changed): leave the folder, never keep stale rows.
+   if(value.status==='revoked'){dialog=undefined;api?.toast(value.message);apply(value);return;}
    if(!['created','renamed','deleted','moved'].includes(value.status)){request.error=value.message;api?.toast(value.message);return;}
    dialog=undefined;api?.toast(value.message);
    const wasPreview=selected?.id===entry?.id;
