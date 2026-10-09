@@ -80,7 +80,27 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     clearTimeout(shell.pendingActionExpiryTimer);shell.pendingActionExpiryTimer=null;
     if(!key)return;
     const controller=shell.pendingActionRecoveryAbort=new AbortController();
-    const current=()=>shell.live&&!controller.signal.aborted&&shell.pendingActionRecoveryKey===key&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(connection.session)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(currentContext)&&!document.hidden&&!connectionController.getSnapshot().open&&!connectionController.getSnapshot().busy;
+    const bound=()=>shell.live&&!controller.signal.aborted&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(connection.session)&&connectionController.getSnapshot().history?.revision===connection.history?.revision&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(currentContext)&&!document.hidden&&!connectionController.getSnapshot().open&&!connectionController.getSnapshot().busy;
+    const current=()=>bound()&&shell.pendingActionRecoveryKey===key;
+    const scheduleExpiry=()=>{
+      clearTimeout(shell.pendingActionExpiryTimer);shell.pendingActionExpiryTimer=null;
+      if(!bound())return;
+      const nearest=Math.min(...shell.S().msgs.filter((message:Shell)=>message.card?.proposalId&&!message.card.done&&!message.card.reviewUnavailable&&Number.isFinite(message.card.expiresAt)).map((message:Shell)=>message.card.expiresAt));
+      if(!Number.isFinite(nearest))return;
+      shell.pendingActionExpiryTimer=setTimeout(()=>{
+        shell.pendingActionExpiryTimer=null;
+        if(!bound())return;
+        shell.setState((previous:Shell)=>{
+          if(!bound())return null;
+          return {msgs:previous.msgs.map((message:Shell)=>message.card?.proposalId&&!message.card.done&&!message.card.reviewUnavailable&&message.card.expiresAt<=Date.now()?{...message,card:{...message.card,reviewUnavailable:true,title:'Review expired',sub:'This review has expired. Request a new action if still needed.'}}:message)};
+        },()=>{
+          if(!bound())return;
+          // A failed read cannot erase known expiries or start retry polling.
+          if(shell.pendingActionRecoveryFailedKey===key)scheduleExpiry();
+          else{shell.pendingActionRecoveryKey=null;recoverPendingActions(shell);}
+        });
+      },Math.min(2147483647,Math.max(0,Math.ceil(nearest-Date.now())+1)));
+    };
     void connectionController.pendingActions(currentContext,controller.signal).then(proposals=>{
       if(!current())return;
       shell.setState((previous:Shell)=>{
@@ -102,20 +122,12 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const existing=new Set(msgs.map((message:Shell)=>message.card?.proposalId));
         const recovered=proposals.filter(proposal=>!existing.has(proposal.id)).map(proposal=>({id:crypto.randomUUID(),from:'agent',text:proposal.description,card:{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,expiresAt:proposal.expiresAt,recovered:true,proposalSession:connection.session}}));
         return recovered.length||msgs.some((message:Shell,index:number)=>message!==previous.msgs[index])?{msgs:[...msgs,...recovered]}:null;
-      });
-      const nearest=Math.min(...proposals.map(proposal=>proposal.expiresAt));
-      if(current()&&Number.isFinite(nearest)&&nearest>Date.now())shell.pendingActionExpiryTimer=setTimeout(()=>{
-        shell.pendingActionExpiryTimer=null;
-        if(!current())return;
-        shell.setState((previous:Shell)=>{
-          if(!current())return null;
-          return {msgs:previous.msgs.map((message:Shell)=>message.card?.proposalId&&!message.card.done&&!message.card.reviewUnavailable&&message.card.expiresAt<=Date.now()?{...message,card:{...message.card,reviewUnavailable:true,title:'Review expired',sub:'This review has expired. Request a new action if still needed.'}}:message)};
-        },()=>{if(current()){shell.pendingActionRecoveryKey=null;recoverPendingActions(shell);}});
-      },Math.min(2147483647,Math.ceil(nearest-Date.now())+1));
+      },()=>{if(current())scheduleExpiry();});
     }).catch(()=>{
       if(!current())return;
       shell.pendingActionRecoveryKey=null;shell.pendingActionRecoveryFailedKey=key;
       shell.toast('Pending actions could not be checked. Return to the app or reopen the selected item to retry.');
+      scheduleExpiry();
     });
   }
   function openInternalView(shell:Shell,target:string):boolean {

@@ -215,7 +215,7 @@ test('fresh authenticated pending evidence rebinds a retained card to the curren
 test('failed refresh preserves pending review and never invents rejection or completion',async()=>{
  const f=adapterRecoveryFixture();f.recover();await flushRecovery();const before=f.state.msgs[1];
  f.read(async()=>{throw Error('Offline');});f.connection({history:{revision:2}});f.recover();await flushRecovery();
- assert.equal(f.state.msgs[1],before);assert.equal(before.card.reviewUnavailable,undefined);assert.equal(f.toasts.length,1);assert.equal(f.timers.size,0);
+ assert.equal(f.state.msgs[1],before);assert.equal(before.card.reviewUnavailable,undefined);assert.equal(f.toasts.length,1);assert.equal(f.timers.size,1);
 });
 test('one nearest expiry timer disables expired review without execution or repeated polling',async()=>{
  const f=adapterRecoveryFixture(),deadline=Date.now()+10000;
@@ -225,6 +225,14 @@ test('one nearest expiry timer disables expired review without execution or repe
  assert.equal(f.state.msgs[1].card.title,'Review expired');assert.equal(f.state.msgs[1].card.reviewUnavailable,true);assert.equal(f.state.msgs[1].card.done,undefined);
  assert.equal(f.state.msgs[2].card.reviewUnavailable,undefined);assert.equal(f.calls.length,2);assert.equal(f.timers.size,1);
  f.recover();await flushRecovery();assert.equal(f.calls.length,2);
+});
+test('later known expiry still retires locally when the first expiry refresh fails offline',async()=>{
+ const f=adapterRecoveryFixture(),deadline=Date.now()+10000;
+ f.read(async()=>[{...pendingReview,expiresAt:deadline},{...pendingReview,id:'later-review',expiresAt:deadline+20000}]);f.recover();await flushRecovery();
+ f.read(async()=>{throw Error('Offline');});f.advance(10002);await flushRecovery();
+ assert.equal(f.state.msgs[1].card.title,'Review expired');assert.equal(f.state.msgs[2].card.reviewUnavailable,undefined);assert.equal(f.calls.length,2);assert.equal(f.timers.size,1);assert.equal(f.toasts.length,1);
+ f.advance(20000);await flushRecovery();
+ assert.equal(f.state.msgs[2].card.title,'Review expired');assert.equal(f.state.msgs[2].card.reviewUnavailable,true);assert.equal(f.state.msgs[2].card.done,undefined);assert.equal(f.calls.length,2);assert.equal(f.timers.size,0);assert.equal(f.toasts.length,1);
 });
 for(const mode of ['session','context','hidden','unmount'])test(`expiry callback cannot alter cards after ${mode}`,async()=>{
  const f=adapterRecoveryFixture();f.read(async()=>[{...pendingReview,expiresAt:Date.now()+10000}]);f.recover();await flushRecovery();const before=f.state.msgs[1];
