@@ -22,7 +22,7 @@
     <button onClick="{{goCalendar}}" aria-label="{{homeCalendarLabel}}" style="flex-shrink: 0; scroll-snap-align: start; width: 280px; height: 196px; border-radius: 30px; background: var(--acc); color: #ffffff; padding: 22px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
       <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
         <span style="font-size: 14px; font-weight: 600; color: rgba(255,255,255,.85)">{{homeCalendarTime}}</span>
-        <svg class="i" viewBox="0 0 24 24"><path d="{{ic.cal}}"></path></svg>
+        <span aria-hidden="true" style="display:block;flex-shrink:0;width:24px;height:24px;background:#ffffff;mask:url('/icons/lucide/calendar.svg') center/contain no-repeat;-webkit-mask:url('/icons/lucide/calendar.svg') center/contain no-repeat"></span>
       </div>
       <div class="serif" style="font-size: 36px; line-height: 1.02; letter-spacing: -.01em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical">{{homeCalendarTitle}}</div>
       <div style="display: flex; visibility: {{homePeopleVisibility}}">
@@ -32,12 +32,13 @@
       </div>
     </button>
     <button onClick="{{goFlows}}" aria-label="{{homeWorkflowLabel}}" style="flex-shrink: 0; scroll-snap-align: start; width: max-content; min-width: 172px; max-width: calc(100% - 48px); height: 196px; border-radius: 30px; background: var(--s2); padding: 22px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
-      <svg class="i" viewBox="0 0 24 24" style="color: var(--acct)"><path d="{{ic.flow}}"></path></svg>
-      <span class="serif" style="font-size: 30px; line-height: 1.02; min-width: 0; max-width: 100%; overflow-wrap: anywhere">{{homeWorkflowTitle}}</span>
-      <span class="mono" style="color: var(--mut)">{{homeWorkflowTime}}</span>
+      <div style="display:flex;justify-content:flex-end;width:100%"><span aria-hidden="true" style="display:block;flex-shrink:0;width:24px;height:24px;background:var(--acct);mask:url('/icons/lucide/workflow.svg') center/contain no-repeat;-webkit-mask:url('/icons/lucide/workflow.svg') center/contain no-repeat"></span></div>
+      <sc-if value="{{homeWorkflowHasRows}}" hint-placeholder-val="{{false}}"><div style="display:flex;flex-direction:column;gap:10px;max-width:260px;min-width:0;text-align:left"><sc-for list="{{homeWorkflowRows}}" as="flow"><div style="min-width:0"><div style="font-size:18px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{flow.name}}</div><div style="font-size:12px;line-height:1.4;color:var(--mut)">{{flow.status}}</div></div></sc-for></div></sc-if>
+      <sc-if value="{{homeWorkflowTitle}}" hint-placeholder-val="{{false}}"><span class="serif" style="font-size:26px;line-height:1.1;min-width:0;max-width:260px;text-align:left;overflow-wrap:anywhere">{{homeWorkflowTitle}}</span></sc-if>
+      <span style="font-size:12px;line-height:1.4;color:var(--mut)">{{homeWorkflowTime}}</span>
     </button>
     <button onClick="{{goTriage}}" aria-label="{{homeAttentionLabel}}" style="flex-shrink: 0; scroll-snap-align: start; width: 172px; height: 196px; border-radius: 30px; background: var(--s2); padding: 22px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
-      <svg class="i" viewBox="0 0 24 24" style="color: var(--mut)"><path d="{{ic.inbox}}"></path></svg>
+      <div style="display:flex;justify-content:flex-end;width:100%"><span aria-hidden="true" style="display:block;flex-shrink:0;width:24px;height:24px;background:var(--mut);mask:url('/icons/lucide/inbox.svg') center/contain no-repeat;-webkit-mask:url('/icons/lucide/inbox.svg') center/contain no-repeat"></span></div>
       <span class="serif" style="font-size: 72px; line-height: .85">{{homeAttentionCount}}</span>
       <div style="display: flex; gap: 2px; visibility: {{homePeopleVisibility}}">
         <sc-for list="{{homeAttentionPeople}}" as="person">

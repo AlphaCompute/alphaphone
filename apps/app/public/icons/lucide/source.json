@@ -1,0 +1,11 @@
+{
+  "package": "lucide-react",
+  "version": "1.18.0",
+  "repository": "https://github.com/lucide-icons/lucide",
+  "sourceFiles": {
+    "workflow.mjs": "fdcc9fdcd45626f486c98e03a8662460b07fbedfb792aca93fd828e7ff29895e",
+    "inbox.mjs": "d0d6ff3394594f868c661ae67be87cbc4a4abc740af9de90f182f2d32f9e3e6d",
+    "calendar.mjs": "5ac4c9e6dd1c7266a83491c02a2420d47408a885fcb1c8af65f1714653d72b33"
+  },
+  "conversion": "SVG attributes and exact icon nodes exported by the installed published package; React key attributes removed and stroke attribute names serialized as standard SVG. Geometry unchanged."
+}
