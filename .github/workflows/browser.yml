@@ -55,6 +55,8 @@ jobs:
             --output "$jar"
           echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum --check --strict
           echo "ALPHA_JSON_JAR=$jar" >> "$GITHUB_ENV"
+          # The upstream action-journal plugin tests (reference patches 0077-0078) read the upstream name.
+          echo "ELIZA_ORG_JSON_JAR=$jar" >> "$GITHUB_ENV"
       - run: npm run verify
       # Recorded develop compare; warns (never networks) when develop cannot reach the pin.
       - name: Report upstream develop reachability
