@@ -21,7 +21,7 @@ async function workflowRequest(identity:DevelopmentIdentity,path:string,body:any
  const editState=<R>(editor:(state:State,document:ExecutionDocument)=>R|Promise<R>,requestSignal=signal)=>editExecutionPart(identity,'workflows',initial,async(data,document)=>{await check();const result=await editor(data,document);await check();return result;},requestSignal);
  const read=async()=>{const state=await readExecutionPart(identity,'workflows',initial,signal);await check();if(!Array.isArray(state.workflows)||!Array.isArray(state.receipts)||state.workflows.length>100||state.receipts.length>500)throw Error('Development workflows need recovery.');return state;};
  if(path.startsWith('/api/workflow/hosted/'))return developmentDigestRequest(identity,path,body,signal);
- if(path==='/api/workflow/status')return {hostedDigestProtocol:1,engine:'smthrs',status:'ready',manualSubmissionProtocol:1,metadataMutationProtocol:1,lifecycleMutationProtocol:1};
+ if(path==='/api/workflow/status')return {hostedDigestProtocol:1,hostedDigestSourcePauseProtocol:1,engine:'smthrs',status:'ready',manualSubmissionProtocol:1,metadataMutationProtocol:1,lifecycleMutationProtocol:1};
  if(path==='/api/workflow/phone/catalog')return catalog;
  if(path==='/api/workflow/workflows'&&body===undefined)return {workflows:(await read()).workflows.filter(w=>!w.removed).map(publicWorkflow)};
  if(path==='/api/workflow/removed-workflows'&&body===undefined)return {workflows:(await read()).workflows.filter(w=>w.removed).map(publicWorkflow)};

@@ -274,10 +274,24 @@ index 0000000000000000000000000000000000000000..3e8efbbbb214718ff223cc08ab39a69a
 +  }
 +}, 180000);
 diff --git a/plugins/plugin-workflow/__tests__/integration/hosted-native-source-http.test.ts b/plugins/plugin-workflow/__tests__/integration/hosted-native-source-http.test.ts
-index 120598ef565c8b0b4467760f0a060e659b1f4bb2..aeb4951aabd3072dcb33c7a1e96591b74fb17d3f 100644
+index 120598ef565c8b0b4467760f0a060e659b1f4bb2..4e97cd3a7ea8093308e5384bc4b19523b30efeda 100644
 --- a/plugins/plugin-workflow/__tests__/integration/hosted-native-source-http.test.ts
 +++ b/plugins/plugin-workflow/__tests__/integration/hosted-native-source-http.test.ts
-@@ -413,7 +413,7 @@ test('native selected source persists through HTTP; explicit dossier has one mod
+@@ -208,6 +208,13 @@ test('native selected source persists through HTTP; explicit dossier has one mod
+       });
+       return { status: response.status, body: (await response.json()) as any };
+     };
++    // Clients offer native evening briefs and lapsed-source pausing only when the agent advertises them.
++    expect((await call('/status')).body).toMatchObject({
++      hostedDigestProtocol: 1,
++      hostedDigestSourcePauseProtocol: 1,
++      hostedNativeSourceProtocol: 1,
++      hostedNativeEveningProtocol: 1,
++    });
+     const noSource = await workflowAction.handler(
+       state.runtime,
+       {
+@@ -413,7 +420,7 @@ test('native selected source persists through HTTP; explicit dossier has one mod
      expect(
        (
          await call('/hosted/loops', {
@@ -286,6 +300,35 @@ index 120598ef565c8b0b4467760f0a060e659b1f4bb2..aeb4951aabd3072dcb33c7a1e96591b7
            mutationId: randomUUID(),
            confirmed: true,
          })
+diff --git a/plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts b/plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts
+index 320d99ebb7b5a5e3c2456611e1a5dbab49601201..c1269c05e2e73390dab879e4e2d0b8e5448d9356 100644
+--- a/plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts
++++ b/plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts
+@@ -45,6 +45,7 @@ describe('native workflow routes', () => {
+       lifecycleMutationProtocol: 1,
+       typedAuthoringProtocol: 1,
+       hostedDigestProtocol: 1,
++      hostedDigestSourcePauseProtocol: 1,
+     });
+   });
+ 
+diff --git a/plugins/plugin-workflow/src/routes/workflow-routes.ts b/plugins/plugin-workflow/src/routes/workflow-routes.ts
+index 533c20bbfec1b35473d987183b01050d3c5fee49..96f202b7cb8116b6364c18d7f2be703fe604f967 100644
+--- a/plugins/plugin-workflow/src/routes/workflow-routes.ts
++++ b/plugins/plugin-workflow/src/routes/workflow-routes.ts
+@@ -239,7 +239,11 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
+         lifecycleMutationProtocol: 1,
+         typedAuthoringProtocol: 1,
+         hostedDigestProtocol: 1,
+-        ...(hostedNativeSourcesAvailable() ? { hostedNativeSourceProtocol: 1 } : {}),
++        // Lapsed-source schedules pause (one unavailable result, schedule removed) and loops report sourceState.
++        hostedDigestSourcePauseProtocol: 1,
++        ...(hostedNativeSourcesAvailable()
++          ? { hostedNativeSourceProtocol: 1, hostedNativeEveningProtocol: 1 }
++          : {}),
+       });
+       return;
+     }
 diff --git a/plugins/plugin-workflow/src/services/embedded-workflow-service.ts b/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
 index 4adbcb38272cbc7e2da86d85e1a4720bcedc1548..477f468c2a416e089e2e16d5c194060387025923 100644
 --- a/plugins/plugin-workflow/src/services/embedded-workflow-service.ts

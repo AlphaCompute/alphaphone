@@ -1,8 +1,8 @@
 {
   "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
   "patch": "0050-workflow-native-digest-loops.patch",
-  "sha256": "7145332329accc40ced20cbf40246c9618cb9e149141dbc87ebfeccf1b87e03a",
-  "status": "Candidate for elizaOS develop; authored at reviewed runtime 45242af with plugin-workflow hosted digest vitest (3 files) passing; not submitted upstream",
+  "sha256": "9d2f87dc6ae442172b361532573d26f55d3ce7358b3e6f64527d0f693865612b",
+  "status": "Candidate for elizaOS develop; authored at reviewed runtime 45242af with plugin-workflow hosted digest vitest (3 files) and workflow-routes unit test passing; not submitted upstream",
   "basePaths": [
     "plugins/plugin-workflow"
   ],
@@ -10,6 +10,8 @@
   "changed": [
     "plugins/plugin-workflow/__tests__/integration/hosted-native-evening-http.test.ts",
     "plugins/plugin-workflow/__tests__/integration/hosted-native-source-http.test.ts",
+    "plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts",
+    "plugins/plugin-workflow/src/routes/workflow-routes.ts",
     "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
     "plugins/plugin-workflow/src/services/hosted-digest.ts",
     "plugins/plugin-workflow/src/services/hosted-native-source.ts",
@@ -30,7 +32,7 @@
     "plugins/plugin-workflow/__tests__/integration/hosted-digests-http.test.ts": "305b892ce9caf4738a90fc3a1dfcca297affc6b23c8b77e2383f5e5cdac9c967",
     "plugins/plugin-workflow/__tests__/integration/hosted-live-google-http.test.ts": "f419f73dc46e0a87fd1dc0a12c66ae34c903d8a04dbd563a5a1ebd72ccde96be",
     "plugins/plugin-workflow/__tests__/integration/hosted-native-evening-http.test.ts": "4a3b0e01b400f313a651297798608b6da2f1f9ffef2e0ceaf70f7a18e4571620",
-    "plugins/plugin-workflow/__tests__/integration/hosted-native-source-http.test.ts": "985e5178c9f156b8c1c37c765411aec29931f3039ed78bdd371e1537fd9cb171",
+    "plugins/plugin-workflow/__tests__/integration/hosted-native-source-http.test.ts": "65ca3c1337e5579751016ea23795d3f32f812eae271928cfdb55e458411b6943",
     "plugins/plugin-workflow/__tests__/integration/lifecycle-mutations-e2e.test.ts": "b16c4287a8218f1dd4bbb847d039b24868b82115ff7351b0d933ff0feb3d8a6a",
     "plugins/plugin-workflow/__tests__/integration/manual-submission-e2e.test.ts": "85764eb1983a12c2ac3b1ef687a6709e68631d11e2a915ee4fe61da9bb17494e",
     "plugins/plugin-workflow/__tests__/integration/metadata-mutations-e2e.test.ts": "96432dc209f15fb315838c1987d5857ff0b82c7ca52e041afef120fe49e248bb",
@@ -64,7 +66,7 @@
     "plugins/plugin-workflow/__tests__/unit/workflow-dispatch.test.ts": "3d00a3e78e5bd4f04fc793a272329336fff86614946c2e7ab8401c90aa4f9cf9",
     "plugins/plugin-workflow/__tests__/unit/workflow-json.test.ts": "11ff87c4856b33893fb29f85ff9dc52c7a0868252c8a8443627567883725a0f5",
     "plugins/plugin-workflow/__tests__/unit/workflow-owner-isolation.test.ts": "3e9fd8e774a3efe55150018dd11ce9ac1308b3acae3fbe1468f06f29375814eb",
-    "plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts": "6f25190b0195adab69aa57f36207511573e26e2a79567ab7024576c2f7d27923",
+    "plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts": "bf50c3dfa7ea592a1c2bc9f0f3e36634d48a299529327331aa651d9b7df995c3",
     "plugins/plugin-workflow/__tests__/unit/workflow-state-root-permissions.test.ts": "ef2e4210d160e62adc4053296e5cec444122911f18e7afa5cf59769a72cf9f7c",
     "plugins/plugin-workflow/__tests__/unit/workflow-status.test.ts": "c3e07c105bb416f4eef87e28ac26d63383735f1f7adb42f4a2bc44b56fd26df8",
     "plugins/plugin-workflow/.env.example": "43c2b831b4ba922f0d2630d407e083577904b369a222f4aa17724acbf7badf06",
@@ -99,7 +101,7 @@
     "plugins/plugin-workflow/src/routes/automations.ts": "e48d86bcb46fb709e645718cf1eb3bad2eb4735b1a363c29c90bc9bf6d50d3fb",
     "plugins/plugin-workflow/src/routes/index.ts": "e28e39bb43c2cf265273e0aaa16bdf3d4709089872639445ad9aedbce6f14dc3",
     "plugins/plugin-workflow/src/routes/workbench-todos.ts": "766f0a7aa777822488cd82ceb9b21d9e41dd3503e82b37c132ed020251c2fc45",
-    "plugins/plugin-workflow/src/routes/workflow-routes.ts": "f19e0b8fc26b55cb44740bad4002ac6b2af6433e309797189f253cfa8af50085",
+    "plugins/plugin-workflow/src/routes/workflow-routes.ts": "6facab0de88a69841fb15fc01014d8419de2e85e0204d5c2037894ea70f0ba77",
     "plugins/plugin-workflow/src/services/embedded-workflow-service.ts": "cb2176dfd42eb8c82ab2c6ba86b77ce259725d120e303a8da61967829f23f540",
     "plugins/plugin-workflow/src/services/hosted-digest.ts": "2b69c2514caf5a34640a5271be71bd8c0f25b0785ee276f4ca98d037c19c88cf",
     "plugins/plugin-workflow/src/services/hosted-google-source.ts": "e4708e8277e72f2b7ccef9a3a2a812cc01d783a5d74ab1b7fa64fc8cbff4a702",

@@ -91,6 +91,14 @@ export interface DigestSpec {
 	enabled: boolean;
 }
 export type DigestSourceState = "current" | "expired" | "revoked";
+export interface DigestCapabilities {
+	digests: boolean;
+	nativeSources: boolean;
+	/** Agent accepts evening loops over a native phone source (its own prompt and read window). */
+	nativeEvening: boolean;
+	/** Agent pauses a loop whose source lapsed (no daily failure briefs) and reports sourceState. */
+	sourcePause: boolean;
+}
 export interface DigestLoop {
 	id: string;
 	versionId: string;
@@ -123,13 +131,14 @@ export function digestRenewals(sources: DigestSource[], loops: DigestLoop[], now
 	}
 	return out;
 }
-/** Loop state shown to the owner. A lapsed source pauses the loop instead of producing failure briefs. */
-export function digestLoopState(loop: DigestLoop, sources: DigestSource[], now = Date.now()): string {
+/** Loop state shown to the owner. Only an agent that advertises pausing is described as paused; an older agent still runs the schedule and records an unavailable result. */
+export function digestLoopState(loop: DigestLoop, sources: DigestSource[], now = Date.now(), pauses = false): string {
 	if (loop.removed) return "Removed";
 	if (!loop.spec.enabled || !loop.active) return "Paused";
 	const source = sources.find((s) => s.id === loop.spec.sourceId);
-	if (loop.sourceState === "revoked" || source?.revoked) return "Source revoked — paused";
-	if (loop.sourceState === "expired" || !source || Date.parse(source.expiresAt) <= now) return "Source expired — paused";
+	const suffix = pauses ? " — paused" : " — renew to resume";
+	if (loop.sourceState === "revoked" || source?.revoked) return "Source revoked" + suffix;
+	if (loop.sourceState === "expired" || !source || Date.parse(source.expiresAt) <= now) return "Source expired" + suffix;
 	return "On";
 }
 export interface RetainedDigestSummary {
@@ -238,7 +247,8 @@ export class HostedDigestProtocol {
 			signal: AbortSignal,
 		) => Promise<unknown>,
 	) {}
- async nativeSourcesAvailable(signal:AbortSignal):Promise<boolean>{return object(await this.request('/api/workflow/status',undefined,signal)).hostedNativeSourceProtocol===1;}
+ /** What this agent advertises. Older agents omit the pause and native evening flags, so the app neither offers nor claims them. */
+ async capabilities(signal:AbortSignal):Promise<DigestCapabilities>{const v=object(await this.request('/api/workflow/status',undefined,signal));return {digests:v.hostedDigestProtocol===1,nativeSources:v.hostedNativeSourceProtocol===1,nativeEvening:v.hostedNativeSourceProtocol===1&&v.hostedNativeEveningProtocol===1,sourcePause:v.hostedDigestSourcePauseProtocol===1};}
 	async available(signal: AbortSignal) {
 		return (
 			object(await this.request("/api/workflow/status", undefined, signal))
