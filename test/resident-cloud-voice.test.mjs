@@ -26,11 +26,11 @@ test('production resident chooses Cloud only with a bound account; explicit loca
 });
 test('message Listen uses Cloud and a billing error never falls back to device speech',async()=>{
  const f=fixture();f.error={code:'voice-http-402'};
- const row=f.shell.renderVals().msgs[0];assert.equal(row.localSpeechLabel,'Listen with Cloud');row.localSpeech();
+ const row=f.shell.renderVals().msgs[0];assert.equal(row.localSpeechLabel,'Read aloud');row.localSpeech();
  await new Promise(r=>setImmediate(r));assert.equal(f.cloudCalls,1);assert.equal(f.localCalls,0);assert.match(f.shell.renderVals().msgs[0].localSpeechMessage,/Add credits in Settings/);
 });
 test('local message playback remains when Cloud is not selected; auth recovery stays distinct',async()=>{
- const f=fixture();f.account=false;const row=f.shell.renderVals().msgs[0];assert.equal(row.localSpeechLabel,'Listen on phone');row.localSpeech();await new Promise(r=>setImmediate(r));assert.equal(f.localCalls,1);assert.equal(f.cloudCalls,0);
+ const f=fixture();f.account=false;const row=f.shell.renderVals().msgs[0];assert.equal(row.localSpeechLabel,'Read aloud');row.localSpeech();await new Promise(r=>setImmediate(r));assert.equal(f.localCalls,1);assert.equal(f.cloudCalls,0);
  assert.match(f.box.cloudVoiceFailure({code:'voice-http-401'}),/Sign in/);assert.match(f.box.cloudVoiceFailure({code:'voice-http-403'}),/Sign in/);assert.equal(f.box.cloudVoiceFailure({code:'voice-http-503'}),null);
 });
 test('native HTTP failure retains exact status without returning response bodies',()=>{

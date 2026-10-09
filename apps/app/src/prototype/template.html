@@ -3700,15 +3700,12 @@
     <sc-for list="{{msgs}}" as="m" hint-placeholder-count="2">
       <div style="display: flex; flex-direction: column">
         <sc-if value="{{m.isUser}}" hint-placeholder-val="{{false}}">
-          <div style="align-self: flex-end; max-width: 80%; background: var(--acc); color: #ffffff; padding: 11px 16px; border-radius: 22px 22px 6px 22px; font-size: 15px; line-height: 1.4">{{m.text}}</div>
+          <div data-alpha-message-text role="{{m.messageActionsRole}}" tabIndex="{{m.messageActionsTabIndex}}" aria-label="{{m.messageActionsLabel}}" aria-haspopup="{{m.messageActionsPopup}}" aria-expanded="{{m.messageActionsOpen}}" onClick="{{m.openMessageActions}}" onKeyDown="{{m.messageActionsKey}}" onContextMenu="{{m.messageActionsContext}}" onPointerDown="{{m.messageActionsDown}}" onPointerMove="{{m.messageActionsMove}}" onPointerUp="{{m.messageActionsCancel}}" onPointerCancel="{{m.messageActionsCancel}}" style="align-self: flex-end; max-width: 80%; background: var(--acc); color: #ffffff; padding: 11px 16px; border-radius: 22px 22px 6px 22px; font-size: 15px; line-height: 1.4">{{m.text}}</div>
         </sc-if>
         <sc-if value="{{m.isAgent}}" hint-placeholder-val="{{true}}">
           <div style="display: flex; flex-direction: column; gap: 12px">
-            <div style="font-size: 16px; line-height: 1.5">{{m.text}}</div>
-            <sc-if value="{{m.localSpeechAvailable}}" hint-placeholder-val="{{false}}">
-              <button class="tap" aria-label="{{m.localSpeechLabel}}" onClick="{{m.localSpeech}}" style="align-self: flex-start; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 22px; background: var(--s2); color: var(--acct); font-size: 13px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{ic.wave}}"></path></svg>{{m.localSpeechLabel}}</button>
-              <sc-if value="{{m.localSpeechNotice}}" hint-placeholder-val="{{false}}"><div role="status" style="font-size: 12px; line-height: 1.4; color: var(--mut)">{{m.localSpeechMessage}}</div></sc-if>
-            </sc-if>
+            <div data-alpha-message-text role="{{m.messageActionsRole}}" tabIndex="{{m.messageActionsTabIndex}}" aria-label="{{m.messageActionsLabel}}" aria-haspopup="{{m.messageActionsPopup}}" aria-expanded="{{m.messageActionsOpen}}" onClick="{{m.openMessageActions}}" onKeyDown="{{m.messageActionsKey}}" onContextMenu="{{m.messageActionsContext}}" onPointerDown="{{m.messageActionsDown}}" onPointerMove="{{m.messageActionsMove}}" onPointerUp="{{m.messageActionsCancel}}" onPointerCancel="{{m.messageActionsCancel}}" style="font-size: 16px; line-height: 1.5">{{m.text}}</div>
+
 
             <sc-if value="{{m.cAgenda}}" hint-placeholder-val="{{false}}">
               <button onClick="{{m.act}}" style="border-radius: 22px; background: var(--s2); overflow: hidden; text-align: left">
@@ -3796,6 +3793,14 @@
               </div>
             </sc-if>
           </div>
+        </sc-if>
+        <sc-if value="{{m.messageActionsOpen}}" hint-placeholder-val="{{false}}">
+          <div data-alpha-message-actions role="menu" aria-label="Message actions" onKeyDown="{{m.menuKey}}" style="align-self: flex-start; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; padding: 4px; border-radius: 14px; background: var(--s2)">
+            <button class="tap" role="menuitem" onClick="{{m.copyMessage}}" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 600">Copy</button>
+            <sc-if value="{{m.localSpeechAvailable}}" hint-placeholder-val="{{false}}"><button class="tap" role="menuitem" onClick="{{m.localSpeech}}" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; color: var(--acct); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{ic.wave}}"></path></svg>{{m.localSpeechLabel}}</button></sc-if>
+            <button class="tap" role="menuitem" aria-label="Close message actions" onClick="{{m.closeMessageActions}}" style="min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{ic.x}}"></path></svg></button>
+          </div>
+          <div role="status" style="margin-top: 4px; font-size: 13px; line-height: 1.4; color: var(--mut)">{{m.messageActionsNotice}} {{m.localSpeechMessage}}</div>
         </sc-if>
       </div>
     </sc-for>
