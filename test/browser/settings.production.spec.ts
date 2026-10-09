@@ -100,7 +100,8 @@ test('production Settings shows no fixture device facts and reports the model ho
  // Browsers have no Android roles: no role rows, and the role API rejects.
  await openSettings(page);
  await expect(current(page).getByText('Home app',{exact:true})).toHaveCount(0);
- expect(await page.evaluate(async()=>{const plugins=(window as any).Capacitor?.Plugins;try{await plugins.ElizaSystem.getStatus();return 'resolved';}catch{return 'rejected';}})).toBe('rejected');
+ // The registered web plugin itself must reject for this reason; a missing plugin is not a pass.
+ for(const method of ['getStatus','requestRole'])expect(await page.evaluate(async(method)=>{const plugin=(window as any).Capacitor?.Plugins?.ElizaSystem;if(typeof plugin?.[method]!=='function')return 'missing';try{await plugin[method]({role:'home'});return 'resolved';}catch(error){return error instanceof Error?error.message:'non-error';}},method)).toBe('Device roles are managed by the operating system, not this browser.');
 });
 
 test('production Export diagnostics saves redacted JSON',async({page})=>{

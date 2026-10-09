@@ -75,14 +75,16 @@ public final class SettingsRolesInstrumentedTest {
  }
 
  /**
-  * `pm revoke` kills the app process, and with it this instrumentation, so the runner sets the
-  * grant between runs and passes the expected state (settingsCalendar=granted|revoked).
+  * `pm revoke` kills the app process, and with it this instrumentation, so a permission-changing
+  * runner sets the grant between runs and passes the expected state (settingsCalendar=granted|revoked).
+  * Without that argument the row is still compared with the current runtime grant, so the test
+  * never skips; covering both states needs the two runs.
   */
  @Test public void calendarRowMatchesRuntimeGrant()throws Exception{
   String expected=InstrumentationRegistry.getArguments().getString("settingsCalendar");
-  Assume.assumeTrue("Permission-changing runner required","granted".equals(expected)||"revoked".equals(expected));
+  assertTrue("settingsCalendar must be granted or revoked when given",expected==null||"granted".equals(expected)||"revoked".equals(expected));
   boolean granted=context.checkSelfPermission(Manifest.permission.READ_CALENDAR)==PackageManager.PERMISSION_GRANTED;
-  assertEquals("Runner applied the requested grant","granted".equals(expected),granted);
+  if(expected!=null)assertEquals("Runner applied the requested grant","granted".equals(expected),granted);
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    AppNavigation.liveMode();settings();button("Privacy & data");
    String row="[...document.querySelectorAll('[aria-label],*')].some(e=>e.childElementCount<4&&e.textContent.includes('Calendar')&&e.textContent.includes("+JSONObject.quote(granted?"Allowed for Alpha":"Not allowed")+"))";
