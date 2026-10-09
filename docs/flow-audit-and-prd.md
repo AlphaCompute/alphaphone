@@ -20,7 +20,7 @@ Critical design gaps:
 6. Camera/photo/file actions require durable content URIs and permission/lifecycle handling, not seeded objects or base64 screenshots passed indiscriminately to an agent.
 7. Voice requires actual captured audio and editable transcription, with interruptions and retention handled independently of generated text.
 8. Browser and credential work require origin-bound native boundaries. The production WebView must not navigate to arbitrary third-party pages while retaining the app bridge.
-9. Prototype claims about local models, enclave privacy, attestation, Android version, and available battery are unverified and conflict with cloud-only execution. Replace with actual capability/status evidence.
+9. Prototype claims about local models, enclave privacy, attestation, Android version, and available battery are unverified. The agent now runs on the phone while text inference is hosted (Cerebras, Qwen), so local-model and enclave claims remain false. Replace them with actual capability/status evidence.
 10. Calendar/workflow/reminder time semantics, drafts, account switching, duplicate results, and lost responses need first-class states.
 
 ## Product decisions for implementation

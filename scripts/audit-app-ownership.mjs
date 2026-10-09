@@ -28,13 +28,27 @@ function ownership(file) {
   return { owner: 'shared platform client; Alpha composition', disposition: 'split', reason: 'Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.' };
 }
 
+// Usage: node scripts/audit-app-ownership.mjs [--check] [output.json]
+// --check regenerates in memory and fails when the committed inventory is stale.
+const args = process.argv.slice(2);
+const check = args.includes('--check');
+const unknown = args.filter(arg => arg.startsWith('-') && arg !== '--check');
+if (unknown.length) { console.error(`Unknown option: ${unknown.join(' ')}`); process.exit(2); }
+const output = args.find(arg => !arg.startsWith('-')) || 'docs/app-ownership-inventory.json';
 const root = 'apps/app';
+// Inventory tracked and untracked-but-not-ignored files, so local build output never enters it.
+let admitted = null;
+try {
+  admitted = new Set(execFileSync('git', ['ls-files', '-z', '-co', '--exclude-standard', '--', root], { encoding: 'utf8' }).split('\0').filter(Boolean).map(file => path.posix.relative(root, file)));
+} catch { admitted = null; }
 const files = [];
 function visit(directory) {
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a,b)=>a.name.localeCompare(b.name))) {
+  // A fixed collation locale keeps --check independent of the machine's LANG/LC_ALL.
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a,b)=>a.name.localeCompare(b.name, 'en'))) {
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) { visit(full); continue; }
     const file = path.relative(root, full).split(path.sep).join('/');
+    if (admitted && !admitted.has(file)) continue;
     const bytes = fs.readFileSync(full);
     const source = /\.(?:tsx?|js|css|html|json|md|svg)$/.test(file) ? bytes.toString('utf8') : null;
     const imports = new Set(), exports = new Set();
@@ -82,6 +96,21 @@ function trace(file) {
 }
 trace('src/main.tsx');
 for (const file of files) if(file.file.startsWith('src/')) file.reachableFromMain = reached.has(file.file);
-const output = process.argv[2] || 'docs/app-ownership-inventory.json';
-fs.writeFileSync(output, JSON.stringify({ schema:1, sourceCommit:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(), scope:root, note:'Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.', files },null,2)+'\n');
+// A content digest instead of a commit hash keeps the inventory reproducible: it is
+// fresh exactly when it describes the current apps/app bytes, whatever commit holds it.
+const sourceDigest = createHash('sha256').update(files.map(file => `${file.file}\0${file.sha256}\n`).join('')).digest('hex');
+const text = JSON.stringify({ schema:2, sourceDigest, scope:root, note:'Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.', files },null,2)+'\n';
+if (check) {
+  const current = fs.existsSync(output) ? fs.readFileSync(output, 'utf8') : '';
+  if (current === text) { console.log(`${output} is current (${files.length} files)`); process.exit(0); }
+  let previous = [];
+  try { previous = JSON.parse(current).files || []; } catch {}
+  const before = new Map(previous.map(file => [file.file, JSON.stringify(file)]));
+  const after = new Map(files.map(file => [file.file, JSON.stringify(file)]));
+  const changed = [...new Set([...before.keys(), ...after.keys()])].filter(file => before.get(file) !== after.get(file)).sort();
+  console.error(`${output} is stale; ${changed.length} file entries differ${changed.length ? `: ${changed.slice(0, 20).join(', ')}${changed.length > 20 ? ', …' : ''}` : ' (header only)'}.`);
+  console.error('Regenerate it with: node scripts/audit-app-ownership.mjs');
+  process.exit(1);
+}
+fs.writeFileSync(output, text);
 console.log(`${files.length} files inventoried in ${output}`);

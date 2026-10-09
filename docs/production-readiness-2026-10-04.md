@@ -1,5 +1,13 @@
 # Production readiness record — October 4, 2026
 
+> **Superseded.** This is a dated record of the October 4–5 production-surface work and
+> its integrated-head results. It is not current status. Since then the aggregate smoke
+> runners and their CI jobs were removed (October 8, commit `49b1bf4c`), the upstream pin
+> moved, and the Android build broke at the current pin. Use
+> [current status](mvp-current-status.md) for the present state and the
+> [verification guide](verification.md) for current gates. Results below are class S or B
+> for the source named in each row only.
+
 This record covers the work that takes Alpha Phone out of demo mode: production builds
 are the live app, and every mock, fixture and developer surface is behind one build-time
 switch. It lists what changed per work package, the commands that qualify it, the
@@ -75,7 +83,7 @@ only.
 | `npm run android:build` (includes `verify-apks.mjs`) | B | Pass after `agent:prepare`, `agent:build-workflow-worker`, `agent:stage-android` and a local speech AAR build: four APKs with the packaged resident runtime, no test-mock classes, clean bundle audit of each `assets/public`; releases unsigned (no `ELIZAOS_*` key here) and recorded distributable by runtime |
 | `npm run android:build -- --test-mocks` | B | Pass: four APKs plus instrumentation in `artifacts/test-mocks/` only, recorded `testMocks: true` and not distributable; the distribution APKs were not rewritten. It now ends by rebuilding and syncing the flag-off bundle, also after a failure, so `web-dist` and the Android web assets do not stay flag-on |
 | `node scripts/qualify-head.mjs` | S/B | Not run on this head |
-| `ANDROID_SERIAL=… npm run android:smoke` on distribution APKs | E | Not run |
+| Emulator run of the aggregate native suite on distribution APKs (runner removed October 8) | E | Not run |
 | Upgrade from saved mock state (runbook) | E, then D | Not run |
 | Signed release install and R8 behavior | E, then D | Not run (no release key here) |
 

@@ -44,24 +44,21 @@ an explicit usability limitation, not exactly-once execution.
   Smithers execution accepted and cancelled while an arithmetic-only module
   waits180seconds before running. The fixture is inactive. This proves worker
   cancellation, not completed-effect rollback or phone UI acceptance.
-- `WorkflowCancellationInstrumentedTest` and
-  `scripts/android-workflow-cancellation-smoke.mjs`: native gate,
-  `workflowCancellation=true`, archived matching app/test hashes, exact reviewed
+- `WorkflowCancellationInstrumentedTest` (native gate `workflowCancellation=true`)
+  with its dedicated wrapper: archived matching app/test hashes, exact reviewed
   held arithmetic source, both variants, real Notes-independent Workflows UI.
-  Runner additionally verifies exactly one new server execution, matching
+  The wrapper additionally verified exactly one new server execution, matching
   version, terminal cancelled. Build67 passed both archived variants after the
   exact-current-receipt test repair; see `test-results/prototype-build67/workflow-cancellation/result.json`.
 
-```sh
-ANDROID_SERIAL=emulator-N \
-ALPHA_BUILD_ARCHIVE=/absolute/archived-build \
-ALPHA_WORKFLOW_FIXTURE_ID=4b16eb24-3559-4478-97b7-43b97f5294c5 \
-node scripts/android-workflow-cancellation-smoke.mjs
-```
-
-The fixture UUID is evidence for the current isolated47840 profile, not a
-portable default. The runner requires it explicitly and verifies exact source,
-owner, inactive state and version before each run. Cloud workflow management,
+The wrapper was removed on October 8 with the other aggregate smoke runners, at
+the owner's request, so this Build67 result is historical and no repository runner
+reproduces it today. A direct `adb shell am instrument` run of the class with
+`-e workflowCancellation true` on an owned disposable emulator omits the wrapper's
+server-side execution checks and is a different, narrower result. The archived
+fixture UUID `4b16eb24-3559-4478-97b7-43b97f5294c5` belonged to the isolated47840
+profile; it is not a portable default, and any re-run must verify exact source,
+owner, inactive state and version first. Cloud workflow management,
 phone triggers, workflow creation/editing and approval decisions remain separate
 gaps.
 
@@ -101,9 +98,9 @@ facade; the service principal-isolation fixture is not production multitenant
 login proof. Admission deduplication does not guarantee exactly-once external
 workflow effects.
 
-`WorkflowSubmissionInstrumentedTest` (`workflowSubmission=true`) and
-`scripts/android-workflow-submission-smoke.mjs` are prepared for Build67. The
-runner creates inactive arithmetic-only fixtures on47848 and a loopback47849
+`WorkflowSubmissionInstrumentedTest` (`workflowSubmission=true`) and its
+dedicated wrapper (removed on October 8 with the aggregate smoke runners) were
+prepared for Build67. The wrapper created inactive arithmetic-only fixtures on47848 and a loopback47849
 proxy that drops each accepted run response. It requires genuine phone pairing,
 persistent unknown status, Activity recreation, exact-key reconciliation and a
 visible receipt, then verifies one POST and one backend execution. It preserves

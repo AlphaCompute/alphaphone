@@ -10,7 +10,10 @@ recommendations are inspection pointers, not completed extraction decisions.
 
 Scope: every file in `apps/app`, including `src`, public assets and the entry HTML.
 The machine-readable companion is [app-ownership-inventory.json](app-ownership-inventory.json).
-Regenerate it with `node scripts/audit-app-ownership.mjs`. It records file hashes,
+Regenerate it with `node scripts/audit-app-ownership.mjs` whenever a file under `apps/app`
+changes; `node scripts/audit-app-ownership.mjs --check` fails on a stale inventory and
+`test/app-ownership-freshness.test.mjs` runs that check in `npm test`. The inventory
+records a content digest of the inventoried bytes, not a commit. It records file hashes,
 imports, exports, proposed owners, and line locations of product/storage/host/UI
 dependencies. This is an exhaustive static inventory, not a claim that every
 behavior has been semantically reviewed or migrated.
