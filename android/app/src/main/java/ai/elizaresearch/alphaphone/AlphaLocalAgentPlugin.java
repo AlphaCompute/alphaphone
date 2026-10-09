@@ -21,9 +21,12 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private static long expiresAt;
  private static final Object lifecycleLock=new Object(), enrollmentLock=new Object();
  private static long lifecycleEpoch;
+ private static volatile long credentialMutationEpoch=-1;
+ private static long credentialShutdownRequest=-1;
  private static String startRequestId;
  private static long startRequestEpoch;
  private static boolean startOwnsLaunch;
+ private static long credentialIntentEpoch;
  private final java.util.Set<String> cancelledStarts=new java.util.HashSet<>();
  private static boolean accepting=true,stopping;
  private volatile boolean disposed;
@@ -40,6 +43,44 @@ public final class AlphaLocalAgentPlugin extends Plugin {
 
  private static final class Superseded extends Exception {}
  private static void clearEnrollment(){rootToken=null;ownerToken=null;ownerIdentity=null;expiresAt=0;}
+ static long reserveCredentialIntent(){synchronized(lifecycleLock){return ++credentialIntentEpoch;}}
+ static void requireCredentialIntent(long intent){synchronized(lifecycleLock){if(intent!=credentialIntentEpoch)throw new IllegalStateException("Credential intent changed");}}
+ interface CredentialMutation<T> {
+  boolean requiresShutdown()throws Exception;
+  T commit()throws Exception;
+ }
+ /** Slot classification/commit are atomic; observing shutdown must never hold the vault lock. */
+ static <T> T mutateCredentials(Context context,Runnable assertOwner,CredentialMutation<T> mutation)throws Exception {
+  final long epoch;
+  synchronized(lifecycleLock){
+   assertOwner.run();
+   synchronized(ai.eliza.plugins.securestore.nativeonly.JsonCredentialSlots.LOCK){
+    if(!mutation.requiresShutdown())return mutation.commit();
+   }
+   startRequestId=null;startOwnsLaunch=false;
+   invalidateCalls();epoch=++lifecycleEpoch;credentialMutationEpoch=epoch;accepting=false;stopping=true;clearEnrollment();
+  }
+  try{
+   final long stopRequest;
+   synchronized(lifecycleLock){assertOwner.run();if(epoch!=lifecycleEpoch||credentialMutationEpoch!=epoch)throw new Superseded();credentialShutdownRequest=-2;stopRequest=ElizaAgentService.stopForCredentialChange(context);credentialShutdownRequest=stopRequest;}
+   long deadline=android.os.SystemClock.elapsedRealtime()+15000;
+   while(true){
+    synchronized(lifecycleLock){assertOwner.run();if(epoch!=lifecycleEpoch||credentialMutationEpoch!=epoch)throw new Superseded();}
+    JSONObject status=ElizaAgentService.getLocalAgentBootState(context);
+    synchronized(lifecycleLock){
+     assertOwner.run();if(epoch!=lifecycleEpoch||credentialMutationEpoch!=epoch)throw new Superseded();
+     if(shutdownConfirmed(status)&&ElizaAgentService.isCredentialShutdownConfirmed(stopRequest)){
+      synchronized(ai.eliza.plugins.securestore.nativeonly.JsonCredentialSlots.LOCK){return mutation.commit();}
+     }
+    }
+    if(android.os.SystemClock.elapsedRealtime()>=deadline)throw new IllegalStateException("Native shutdown unconfirmed");
+    Thread.sleep(50);
+   }
+  }finally{
+   synchronized(lifecycleLock){if(credentialMutationEpoch==epoch)credentialMutationEpoch=-1;}
+  }
+ }
+ static boolean providerAdmissionReadable(){return credentialMutationEpoch<0;}
  private void requireCurrent(long epoch) throws Superseded {
   synchronized(lifecycleLock){if(disposed||!accepting||epoch!=lifecycleEpoch)throw new Superseded();}
  }
@@ -61,8 +102,10 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
   String key=call.getString("apiKey",""),model=call.getString("model","");
   if(!validProviderToken(key,1024)||!model.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,127}")){call.reject("Enter a valid Cerebras key and model.");return;}
+  final long configuration=reserveCredentialIntent();
   workers.execute(()->{try{
-   bindDirectProvider(new AlphaCredentialStore(getContext()),key,model);
+   AlphaCredentialStore store=new AlphaCredentialStore(getContext(),()->{if(disposed)throw new IllegalStateException("Local agent bridge closed");requireCredentialIntent(configuration);});
+   bindDirectProvider(store,key,model);store.assertCurrent();
    call.resolve(new JSObject().put("configured",true));
   }catch(Exception error){call.reject("Provider could not be saved securely.");}});
  }
@@ -73,8 +116,10 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version.");return;}
   String credentialId=call.getString("credentialId",""),model=call.getString("model","");
   if(!CLOUD_PROVIDER_MODEL.equals(model)){call.reject("Choose a supported Cloud model.");return;}
+  final long configuration=reserveCredentialIntent();
   try{workers.execute(()->{try{
-   bindCloudProvider(new AlphaCredentialStore(getContext()),credentialId,model);
+   AlphaCredentialStore store=new AlphaCredentialStore(getContext(),()->{if(disposed)throw new IllegalStateException("Local agent bridge closed");requireCredentialIntent(configuration);});
+   bindCloudProvider(store,credentialId,model);store.assertCurrent();
    call.resolve(new JSObject().put("configured",true));
   }catch(Exception unavailable){call.reject("Cloud account changed or is unavailable. Sign in again before starting the local agent.");}});}
   catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
@@ -84,11 +129,14 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
   String previous=store.readCredentialSlot("local-agent-provider:v1");
   String cloud=store.readCredentialSlot("cloud:production");
-  cloudProviderToken(cloud,credentialId,System.currentTimeMillis());
+  store.assertCurrent();
+  String token=cloudProviderToken(cloud,credentialId,System.currentTimeMillis());
+  JSONObject identity=AlphaConnectionPlugin.readCloudIdentity(token);
+  store.assertCurrent();
   // A unique revision distinguishes two concurrent admissions for the same account/model.
   String selection=new JSONObject().put("provider","elizacloud").put("credentialId",credentialId).put("model",model)
    .put("revision",java.util.UUID.randomUUID().toString()).toString();
-  String binding=store.compareExchangeProviderAdmission(previous,selection,"cloud:production",cloud);
+  String binding=store.compareExchangeProviderAdmission(previous,selection,"cloud:production",cloud,identity);
   if(binding==null)throw new IllegalStateException();
   try{
    cloudProviderToken(store.readCredentialSlot("cloud:production"),credentialId,System.currentTimeMillis());
@@ -104,7 +152,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   String previous=store.readCredentialSlot("local-agent-provider:v1");
   String selection=new JSONObject().put("provider","cerebras").put("key",key).put("model",model)
    .put("revision",java.util.UUID.randomUUID().toString()).toString();
-  if(store.compareExchangeProviderAdmission(previous,selection,null,null)==null)throw new IllegalStateException();
+  if(store.compareExchangeProviderAdmission(previous,selection,null,null,null)==null)throw new IllegalStateException();
  }
  static boolean validProviderToken(String token,int maximumLength) {
   if(token==null||token.length()<8||token.length()>maximumLength)return false;
@@ -219,6 +267,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }
  }
  static void configureEnvironment(Context context,java.util.Map<String,String> env) throws java.io.IOException {
+  final long epoch;
+  synchronized(lifecycleLock){if(!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider is retiring");epoch=lifecycleEpoch;}
   configureNativeViews(context.getAssets().open("agent/native-view-declarations.json"),env);
   env.remove("ELIZA_MOBILE_WORKFLOWS");
   java.io.InputStream workerIndex=null;
@@ -252,6 +302,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    env.put("CEREBRAS_BASE_URL",endpoint);env.put("OPENAI_BASE_URL",endpoint);
    env.put("OPENAI_API_KEY","synthetic-resident-recovery-only");env.put("ELIZA_PROVIDER","cerebras");
   }
+  synchronized(lifecycleLock){if(epoch!=lifecycleEpoch||!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider changed");}
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
  @PluginMethod public void start(PluginCall call) {
@@ -276,9 +327,11 @@ public final class AlphaLocalAgentPlugin extends Plugin {
      if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
      if(observedEpoch!=lifecycleEpoch)continue;
      if(disposed){call.reject("Local agent bridge is closed.");return;}
+     if(credentialMutationEpoch>=0){call.reject("Local provider is changing; wait before starting.");return;}
+     if(credentialShutdownRequest!=-1&&(credentialShutdownRequest<0||!ElizaAgentService.isCredentialShutdownConfirmed(credentialShutdownRequest))){call.reject("Provider shutdown is unconfirmed; check the local agent before starting.");return;}
      if(stopping&&shutdownConfirmed(nativeState))stopping=false;
      if(stopping){call.reject("Local agent is stopping; wait for stopped status before starting.");return;}
-     invalidateCalls();admitted=++lifecycleEpoch;accepting=true;clearEnrollment();pending.add(call);
+     invalidateCalls();admitted=++lifecycleEpoch;credentialShutdownRequest=-1;accepting=true;clearEnrollment();pending.add(call);
      startRequestId=requestId;startRequestEpoch=admitted;startOwnsLaunch=shutdownConfirmed(nativeState);
      ElizaAgentService.start(getContext());break;
     }
@@ -348,7 +401,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     synchronized(lifecycleLock){
      if(observedEpoch!=lifecycleEpoch)continue;
      if(stopping||!accepting){
-      boolean stopped=shutdownConfirmed(status);
+      boolean stopped=shutdownConfirmed(status)&&(credentialShutdownRequest==-1||credentialShutdownRequest>=0&&ElizaAgentService.isCredentialShutdownConfirmed(credentialShutdownRequest));
       if(stopped)stopping=false;
       status.put("state",stopped?"stopped":"stopping");
      }

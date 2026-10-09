@@ -86,16 +86,25 @@ public final class AlphaConnectionPlugin extends Plugin {
   if (parser.nextClean() != 0) throw new IllegalArgumentException();
   return parsed;
  }
- /** value is serialized JSON; native code never interprets credential fields. */
+ /** Serialized JSON metadata cannot supply native identity or bypass runtime retirement. */
  @PluginMethod public void secureWrite(PluginCall call) {
+  final String name;final long intent;
+  try{name=RendererCredentialSlots.requireAllowed(call.getString("slot"));intent=credentialIntent(name);}
+  catch(Exception invalid){call.reject("Secure storage write failed");return;}
   submit(call,() -> {
    try {
-    writeCredentialSlot(RendererCredentialSlots.requireAllowed(call.getString("slot")), call.getString("value"));
+    storage(intent).writeCredentialSlot(name,call.getString("value"));
     call.resolve();
    } catch (Exception error) { call.reject("Secure storage write failed"); }
   });
  }
- private AlphaCredentialStore storage(){return new AlphaCredentialStore(getContext());}
+ private long credentialIntent(String name){
+  return "cloud:production".equals(name)||"cloud:staging".equals(name)?AlphaLocalAgentPlugin.reserveCredentialIntent():0;
+ }
+ private AlphaCredentialStore storage(long intent){
+  return new AlphaCredentialStore(getContext(),()->{if(destroyed)throw new IllegalStateException("Connection closed");if(intent!=0)AlphaLocalAgentPlugin.requireCredentialIntent(intent);});
+ }
+ private AlphaCredentialStore storage(){return new AlphaCredentialStore(getContext(),()->{if(destroyed)throw new IllegalStateException("Connection closed");});}
  void writeCredentialSlot(String name,String value)throws Exception{storage().writeCredentialSlot(name,value);}
  String readCredentialSlot(String name)throws Exception{return storage().readCredentialSlot(name);}
  void removeCredentialSlot(String name)throws Exception{storage().removeCredentialSlot(name);}
@@ -123,9 +132,12 @@ public final class AlphaConnectionPlugin extends Plugin {
   });
  }
  @PluginMethod public void secureRemove(PluginCall call) {
+  final String name;final long intent;
+  try{name=RendererCredentialSlots.requireAllowed(call.getString("slot"));intent=credentialIntent(name);}
+  catch(Exception invalid){call.reject("Secure storage removal failed");return;}
   submit(call,() -> {
    try {
-    removeCredentialSlot(RendererCredentialSlots.requireAllowed(call.getString("slot")));
+    storage(intent).removeCredentialSlot(name);
     call.resolve();
    } catch (Exception error) { call.reject("Secure storage removal failed"); }
   });
@@ -147,6 +159,21 @@ public final class AlphaConnectionPlugin extends Plugin {
    output.write(buffer, 0, count);
   }
   return output.toByteArray();
+ }
+ /** Fixed authenticated identity route; no renderer URL or identity field is accepted. */
+ static JSONObject readCloudIdentity(String token)throws Exception {
+  if(!AlphaLocalAgentPlugin.validProviderToken(token,16384))throw new IllegalArgumentException();
+  HttpURLConnection connection=(HttpURLConnection)validatedUrl("https://api.eliza.app/api/v1/user",false).toURL().openConnection();
+  try{
+   connection.setInstanceFollowRedirects(false);connection.setUseCaches(false);
+   connection.setConnectTimeout(20000);connection.setReadTimeout(20000);connection.setRequestMethod("GET");
+   connection.setRequestProperty("Accept","application/json");connection.setRequestProperty("Authorization","Bearer "+token);
+   if(connection.getResponseCode()!=200||connection.getContentLengthLong()>RESPONSE_LIMIT)throw new SecurityException("Cloud identity unavailable");
+   byte[] bytes;try(InputStream input=connection.getInputStream()){bytes=readBounded(input,RESPONSE_LIMIT);}
+   JSONObject response=(JSONObject)parseJson(new String(bytes,StandardCharsets.UTF_8));
+   if(!Boolean.TRUE.equals(response.opt("success")))throw new SecurityException("Cloud identity unavailable");
+   return LocalAgentProviderAdmission.verifiedCloudIdentity(response.getJSONObject("data"));
+  }finally{connection.disconnect();}
  }
  static boolean validDeviceCapabilities(String value) {
   if(value==null||value.contains("\r")||value.contains("\n"))return false;

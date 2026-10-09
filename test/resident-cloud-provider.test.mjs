@@ -26,9 +26,10 @@ ${method(' static void configureLocalEmbeddings(')}
   String provider,cloud; int cloudReads=0,exchanges=0; boolean initialConflict=false;
   java.util.function.IntConsumer beforeRead=n->{};
   AlphaCredentialStore(String provider,String cloud){this.provider=provider;this.cloud=cloud;}
+  void assertCurrent(){}
   String readCredentialSlot(String slot){if(slot.equals("cloud:production")){beforeRead.accept(++cloudReads);return cloud;}return provider;}
   void rollbackProviderAdmission(String admitted,String previous){compareExchangeCredentialSlot("local-agent-provider:v1",admitted,previous);}
-  String compareExchangeProviderAdmission(String expected,String value,String slot,String credential){
+  String compareExchangeProviderAdmission(String expected,String value,String slot,String credential,JSONObject identity){
    if(!Objects.equals(cloud,credential))return null;
    return compareExchangeCredentialSlot("local-agent-provider:v1",expected,value)?value:null;
   }
@@ -37,6 +38,7 @@ ${method(' static void configureLocalEmbeddings(')}
    if(!Objects.equals(provider,expected))return false;provider=value;return true;
   }
  }
+ static class AlphaConnectionPlugin {static JSONObject readCloudIdentity(String token){return new JSONObject();}}
  static final String ID="d32f7f34-962b-47b7-8f0d-f2fe7f12610a";
  static final long NOW=10000;
  interface Checked {void run()throws Exception;}
