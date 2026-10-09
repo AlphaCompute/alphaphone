@@ -9,7 +9,7 @@ let capabilitiesDown=true,routesDown=false,capabilityRequests=0;
 await page.route('http://127.0.0.1:47850/capabilities',route=>{capabilityRequests++;return capabilitiesDown?route.abort('connectionrefused'):route.continue();});
 await page.route('http://127.0.0.1:47850/route?*',route=>routesDown?route.abort('connectionrefused'):route.continue());
 try{
- await page.goto('http://127.0.0.1:5194',{waitUntil:'load'});await page.getByRole('button',{name:'Maps',exact:true}).click();
+ await page.goto(`http://127.0.0.1:${Number(process.env.ALPHA_BROWSER_TEST_PORT||5194)}`,{waitUntil:'load'});await page.getByRole('button',{name:'Maps',exact:true}).click();
  await page.getByText('Regional Maps is unavailable. Submit a search to retry the configured connection.',{exact:true}).waitFor();
  assert.equal(capabilityRequests,1);assert.equal(await page.locator('[data-alpha-map-plane] canvas').count(),0);
  capabilitiesDown=false;

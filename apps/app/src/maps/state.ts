@@ -1,8 +1,8 @@
-import { MapsController as SharedMapsController } from '../../../../.eliza/client-features/plugins/plugin-maps/src/client/state.ts';
+import { MapsController as SharedMapsController } from '../../../../.eliza/patched/plugins/plugin-maps/src/client/state.ts';
 import type { MapsProvider, ProviderConfig } from './contracts';
 import { NativeMapsLocation } from './native-location';
 import { SavedPlaces } from './saved-places';
-export type { MapsState } from '../../../../.eliza/client-features/plugins/plugin-maps/src/client/state.ts';
+export type { MapsState } from '../../../../.eliza/patched/plugins/plugin-maps/src/client/state.ts';
 /** Compose the shared controller with this installation's storage and device bridge. */
 export class MapsController extends SharedMapsController {
  constructor(config: ProviderConfig = { status: 'unconfigured' }, provider?: MapsProvider, savedPlaces = new SavedPlaces(), location = new NativeMapsLocation()) {

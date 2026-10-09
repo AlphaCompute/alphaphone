@@ -1,0 +1,1093 @@
+diff --git a/plugins/plugin-maps/src/client/contracts.ts b/plugins/plugin-maps/src/client/contracts.ts
+index 22f3436954c5e8363b7cc26ce1b072863810e1e1..235ae5ef89d3c478b4e01d37cd88e162f41c10d7 100644
+--- a/plugins/plugin-maps/src/client/contracts.ts
++++ b/plugins/plugin-maps/src/client/contracts.ts
+@@ -1,6 +1,28 @@
+ /** Device-client contracts. No prototype place, route or location is a fallback. */
+ export type Coordinate = Readonly<{ latitude: number; longitude: number }>;
+ export type TravelMode = "drive" | "walk" | "bicycle" | "transit";
++/** Provider-neutral turn vocabulary for a route step. A step without one is still valid. */
++export const MANEUVERS = [
++  "depart",
++  "continue",
++  "slight-left",
++  "left",
++  "sharp-left",
++  "slight-right",
++  "right",
++  "sharp-right",
++  "keep-left",
++  "keep-right",
++  "u-turn",
++  "roundabout",
++  "arrive",
++] as const;
++export type Maneuver = (typeof MANEUVERS)[number];
++export function isManeuver(value: unknown): value is Maneuver {
++  return (
++    typeof value === "string" && (MANEUVERS as readonly string[]).includes(value)
++  );
++}
+ export type MapsFailureCode =
+   | "unconfigured"
+   | "unavailable"
+@@ -57,9 +79,18 @@ export type Place = Readonly<{
+   address?: string;
+   website?: string;
+   phone?: string;
++  /** Source opening-hours text (for example OSM `opening_hours`), shown verbatim. */
++  openingHours?: string;
+   attribution: string;
+   fetchedAt: number;
+ }>;
++export type RouteStep = Readonly<{
++  instruction: string;
++  coordinate: Coordinate;
++  /** Length of this step, from its maneuver to the next one. */
++  distanceMeters: number;
++  maneuver?: Maneuver;
++}>;
+ export type Route = Readonly<{
+   providerId: string;
+   id: string;
+@@ -69,11 +100,7 @@ export type Route = Readonly<{
+   geometry: readonly Coordinate[];
+   distanceMeters: number;
+   durationSeconds: number;
+-  steps: readonly Readonly<{
+-    instruction: string;
+-    coordinate: Coordinate;
+-    distanceMeters: number;
+-  }>[];
++  steps: readonly RouteStep[];
+   attribution: string;
+   fetchedAt: number;
+   traffic: ProviderCapabilities["traffic"];
+@@ -142,6 +169,11 @@ export function place(value: unknown, expectedProvider?: string): Place {
+       "invalid-response",
+       "The place phone number is invalid.",
+     );
++  if (p.openingHours !== undefined && !boundedText(p.openingHours, 255))
++    throw new MapsFailure(
++      "invalid-response",
++      "The place opening hours are invalid.",
++    );
+   if (p.website !== undefined) {
+     let url: URL;
+     try {
+@@ -171,6 +203,7 @@ export function place(value: unknown, expectedProvider?: string): Place {
+     ...(p.address ? { address: p.address } : {}),
+     ...(p.phone ? { phone: p.phone } : {}),
+     ...(p.website ? { website: p.website } : {}),
++    ...(p.openingHours ? { openingHours: p.openingHours } : {}),
+     attribution: p.attribution,
+     fetchedAt: p.fetchedAt,
+   };
+diff --git a/plugins/plugin-maps/src/client/location.ts b/plugins/plugin-maps/src/client/location.ts
+index 2f668198732cd5ffb4bed34e22fae37638d3f07f..962df611e50b93814e895a4badf08aebe6e478df 100644
+--- a/plugins/plugin-maps/src/client/location.ts
++++ b/plugins/plugin-maps/src/client/location.ts
+@@ -4,6 +4,9 @@ export type Position = Readonly<{
+   accuracyMeters: number;
+   timestamp: number;
+   precision: "precise" | "approximate" | "unknown";
++  /** Direction of travel in degrees clockwise from true north, when the device reports one. */
++  headingDegrees?: number;
++  speedMetersPerSecond?: number;
+ }>;
+ /** Host-owned permission and lifecycle boundary; a controller never discovers a device. */
+ export interface MapsLocation {
+diff --git a/plugins/plugin-maps/src/client/map-plane.ts b/plugins/plugin-maps/src/client/map-plane.ts
+index 3c8846d5ae427ac81d2a18c8c444796ef5d14c9a..101609f8a5e0b4f90f62cfa67574a2c64ed3081c 100644
+--- a/plugins/plugin-maps/src/client/map-plane.ts
++++ b/plugins/plugin-maps/src/client/map-plane.ts
+@@ -9,11 +9,28 @@ import {
+ import type { Coordinate, Route } from "./contracts.ts";
+ export type RegionalMap = {
+   base: string;
++  providerId?: string;
+   region: string;
+   bounds: [number, number, number, number];
+   attribution: string;
+ };
++/** A search result or other candidate drawn on the map; tapping reports its id. */
++export type MapPin = Readonly<{ id: string; label: string; coordinate: Coordinate }>;
++/** Device position from an explicit location session; heading only while moving. */
++export type MapPosition = Readonly<{
++  coordinate: Coordinate;
++  accuracyMeters: number;
++  headingDegrees?: number;
++}>;
++export type MapOverlay = Readonly<{
++  pins?: readonly MapPin[];
++  position?: MapPosition | null;
++  /** Keep the camera on the position, rotated to its heading (navigation). */
++  follow?: boolean;
++}>;
+ export interface MapPlaneOptions {
++  /** Called when the user taps a result pin. */
++  onPin?(id: string): void;
+   fontUrl: string;
+   workerUrl: string;
+   accent: string;
+@@ -33,6 +50,11 @@ export class MapPlane {
+   private lastRoute = "";
+   private requested?: Coordinate;
+   private requestedRoute?: Route | null;
++  private requestedOverlay: MapOverlay = {};
++  private pins = new Map<string, { key: string; marker: Marker }>();
++  private position?: Marker;
++  private lastPosition = "";
++  private following = false;
+   constructor(
+     container: HTMLElement,
+     region: RegionalMap,
+@@ -187,13 +209,89 @@ export class MapPlane {
+     });
+     this.map.on("load", () => {
+       container.dataset.mapReady = "true";
+-      this.update(this.requested, this.requestedRoute);
++      this.update(this.requested, this.requestedRoute, this.requestedOverlay);
+     });
+   }
+-  update(selected?: Coordinate, route?: Route | null) {
++  private drawPins(pins: readonly MapPin[]) {
++    const wanted = new Set(pins.map((pin) => pin.id));
++    for (const [id, entry] of this.pins)
++      if (!wanted.has(id)) {
++        entry.marker.remove();
++        this.pins.delete(id);
++      }
++    for (const pin of pins) {
++      const key = `${pin.label}|${pin.coordinate.longitude},${pin.coordinate.latitude}`;
++      const existing = this.pins.get(pin.id);
++      if (existing?.key === key) continue;
++      existing?.marker.remove();
++      const element = document.createElement("button");
++      element.type = "button";
++      element.dataset.mapPin = pin.id;
++      element.setAttribute("aria-label", pin.label);
++      element.style.cssText = `width:22px;height:22px;border-radius:11px;border:3px solid ${this.options.accent};background:#fff;padding:0;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.35)`;
++      element.addEventListener("click", (event) => {
++        event.stopPropagation();
++        this.options.onPin?.(pin.id);
++      });
++      const marker = new Marker({ element })
++        .setLngLat([pin.coordinate.longitude, pin.coordinate.latitude])
++        .addTo(this.map);
++      this.pins.set(pin.id, { key, marker });
++    }
++  }
++  private drawPosition(position: MapPosition | null | undefined, follow: boolean) {
++    if (!position) {
++      this.position?.remove();
++      this.position = undefined;
++      this.lastPosition = "";
++      return;
++    }
++    const { coordinate, headingDegrees } = position;
++    if (!this.position) {
++      const element = document.createElement("div");
++      element.dataset.mapPosition = "";
++      element.setAttribute("role", "img");
++      element.setAttribute("aria-label", "Your position");
++      element.style.cssText = "width:28px;height:28px;position:relative;pointer-events:none";
++      const cone = document.createElement("span");
++      cone.dataset.mapHeading = "";
++      cone.style.cssText = `position:absolute;left:7px;top:-9px;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:14px solid ${this.options.accent};opacity:.85`;
++      const dot = document.createElement("span");
++      dot.style.cssText = `position:absolute;left:5px;top:5px;width:18px;height:18px;border-radius:9px;background:${this.options.accent};border:3px solid #fff;box-sizing:border-box;box-shadow:0 1px 6px rgba(0,0,0,.4)`;
++      element.append(cone, dot);
++      this.position = new Marker({ element, rotationAlignment: "map" })
++        .setLngLat([coordinate.longitude, coordinate.latitude])
++        .addTo(this.map);
++    }
++    const element = this.position.getElement();
++    const cone = element.querySelector<HTMLElement>("[data-map-heading]");
++    if (cone) cone.style.display = headingDegrees === undefined ? "none" : "";
++    element.dataset.mapPosition =
++      headingDegrees === undefined ? "" : String(Math.round(headingDegrees));
++    this.position
++      .setLngLat([coordinate.longitude, coordinate.latitude])
++      .setRotation(headingDegrees ?? 0);
++    const key = `${coordinate.longitude},${coordinate.latitude},${headingDegrees ?? ""},${follow}`;
++    if (follow && key !== this.lastPosition)
++      this.map.easeTo({
++        center: [coordinate.longitude, coordinate.latitude],
++        zoom: Math.max(this.map.getZoom(), 16.5),
++        bearing: headingDegrees ?? this.map.getBearing(),
++        duration: 500,
++      });
++    this.lastPosition = key;
++  }
++  update(selected?: Coordinate, route?: Route | null, overlay: MapOverlay = {}) {
+     this.requested = selected;
+     this.requestedRoute = route;
++    this.requestedOverlay = overlay;
+     if (!this.map.isStyleLoaded()) return;
++    this.drawPins(overlay.pins || []);
++    this.drawPosition(overlay.position, !!overlay.follow);
++    // Leaving navigation returns the camera to a north-up overview.
++    if (this.following && !overlay.follow)
++      this.map.easeTo({ bearing: 0, duration: 350 });
++    this.following = !!overlay.follow;
+     const key = selected ? `${selected.longitude},${selected.latitude}` : "";
+     if (key !== this.lastSelection) {
+       this.lastSelection = key;
+@@ -203,10 +301,11 @@ export class MapPlane {
+         this.marker = new Marker({ color: this.options.accent })
+           .setLngLat([selected.longitude, selected.latitude])
+           .addTo(this.map);
+-        this.map.easeTo({
+-          center: [selected.longitude, selected.latitude],
+-          duration: 350,
+-        });
++        if (!overlay.follow)
++          this.map.easeTo({
++            center: [selected.longitude, selected.latitude],
++            duration: 350,
++          });
+       }
+     }
+     const routeKey = route?.id || "";
+@@ -232,7 +331,7 @@ export class MapPlane {
+         paint: { "line-color": this.options.accent, "line-width": 6 },
+       });
+     }
+-    if (route) {
++    if (route && !overlay.follow) {
+       const p = route.geometry;
+       this.map.fitBounds(
+         [
+@@ -250,6 +349,9 @@ export class MapPlane {
+     }
+   }
+   destroy() {
++    for (const entry of this.pins.values()) entry.marker.remove();
++    this.pins.clear();
++    this.position?.remove();
+     this.marker?.remove();
+     this.map.remove();
+   }
+diff --git a/plugins/plugin-maps/src/client/native-location.ts b/plugins/plugin-maps/src/client/native-location.ts
+index 3800305e70cb6dc5a0f8f49ab4b0eb6575899283..540e8b853938cc0e86e99815bcccf7935aab4789 100644
+--- a/plugins/plugin-maps/src/client/native-location.ts
++++ b/plugins/plugin-maps/src/client/native-location.ts
+@@ -8,6 +8,8 @@ type Fix = {
+     longitude: number;
+     accuracy: number;
+     timestamp: number;
++    heading?: number | null;
++    speed?: number | null;
+   };
+   cached: boolean;
+ };
+@@ -170,6 +172,8 @@ export class NativeMapsLocation {
+               "invalid-response",
+               "A fresh location fix is not available.",
+             );
++          const heading = coords.heading,
++            speed = coords.speed;
+           onFix({
+             coordinate: position,
+             accuracyMeters: coords.accuracy,
+@@ -179,6 +183,18 @@ export class NativeMapsLocation {
+               permission.accuracy === "approximate"
+                 ? permission.accuracy
+                 : "unknown",
++            // A reported bearing is only meaningful while the device is moving.
++            ...(typeof heading === "number" &&
++            Number.isFinite(heading) &&
++            heading >= 0 &&
++            heading <= 360 &&
++            typeof speed === "number" &&
++            speed > 0.5
++              ? { headingDegrees: heading % 360 }
++              : {}),
++            ...(typeof speed === "number" && Number.isFinite(speed) && speed >= 0
++              ? { speedMetersPerSecond: speed }
++              : {}),
+           });
+           if (oneShot) void this.stop().catch(onError);
+         } catch (error) {
+diff --git a/plugins/plugin-maps/src/client/regional-provider.ts b/plugins/plugin-maps/src/client/regional-provider.ts
+index d9e49ea5bd1b74c0c55c7935d8035380c10c959d..2e8adee313ffbe833b86c16c25bdb9af76eadaa5 100644
+--- a/plugins/plugin-maps/src/client/regional-provider.ts
++++ b/plugins/plugin-maps/src/client/regional-provider.ts
+@@ -8,13 +8,16 @@ import {
+ } from "./contracts.ts";
+ export type RegionalMap = {
+   base: string;
++  /** Provider identity reported by the configured gateway's capabilities. */
++  providerId: string;
+   region: string;
+   bounds: [number, number, number, number];
+   attribution: string;
+ };
+ export interface RegionalOptions {
+   baseUrl?: string;
+-  providerId: string;
++  /** Optional pin. When omitted, the configured gateway's reported provider id is used. */
++  providerId?: string;
+   nativeGateway: string;
+   developmentHosts: readonly string[];
+   development: boolean;
+@@ -32,6 +35,37 @@ export interface RegionalOptions {
+     provider: MapsProvider,
+   ): void;
+ }
++/** West, south, east, north in degrees; a non-empty box that does not cross the antimeridian. */
++function validBounds(value: unknown): value is [number, number, number, number] {
++  if (
++    !Array.isArray(value) ||
++    value.length !== 4 ||
++    !value.every((v) => typeof v === "number" && Number.isFinite(v))
++  )
++    return false;
++  const [west, south, east, north] = value as number[];
++  return (
++    west >= -180 &&
++    east <= 180 &&
++    south >= -90 &&
++    north <= 90 &&
++    west < east &&
++    south < north
++  );
++}
++/** Whether a coordinate lies inside the configured gateway's reported coverage. */
++export function insideRegion(
++  region: Pick<RegionalMap, "bounds">,
++  point: Coordinate,
++): boolean {
++  const [west, south, east, north] = region.bounds;
++  return (
++    point.longitude >= west &&
++    point.longitude <= east &&
++    point.latitude >= south &&
++    point.latitude <= north
++  );
++}
+ /** Explicit trusted host configuration; no storage, chat, or public-provider discovery. */
+ export function createRegionalMaps(options: RegionalOptions) {
+   options = { ...options, developmentHosts: [...options.developmentHosts] };
+@@ -220,12 +254,13 @@ export function createRegionalMaps(options: RegionalOptions) {
+         meta = await request(base, "/capabilities", signal);
+       diagnostic.stage = "capabilities-validation";
+       if (
+-        meta.providerId !== options.providerId ||
++        typeof meta.providerId !== "string" ||
++        !/^[a-z0-9][a-z0-9._-]{0,79}$/.test(meta.providerId) ||
++        (options.providerId !== undefined &&
++          meta.providerId !== options.providerId) ||
+         typeof meta.region !== "string" ||
+         meta.region.length > 100 ||
+-        !Array.isArray(meta.bounds) ||
+-        meta.bounds.length !== 4 ||
+-        !meta.bounds.every(Number.isFinite) ||
++        !validBounds(meta.bounds) ||
+         typeof meta.attribution !== "string" ||
+         meta.attribution.length > 1000
+       )
+@@ -249,6 +284,7 @@ export function createRegionalMaps(options: RegionalOptions) {
+         throw new Error("Invalid regional capabilities");
+       region = {
+         base,
++        providerId: meta.providerId,
+         region: meta.region,
+         bounds: meta.bounds,
+         attribution: meta.attribution,
+diff --git a/plugins/plugin-maps/src/client/route-distance.ts b/plugins/plugin-maps/src/client/route-distance.ts
+index e189b4e1b4f69c8bd3e007fa5abb5eb3caded5f4..115b5e9e2faf551bc24d3e68b412607c53953c89 100644
+--- a/plugins/plugin-maps/src/client/route-distance.ts
++++ b/plugins/plugin-maps/src/client/route-distance.ts
+@@ -1,4 +1,4 @@
+-import type { Coordinate } from "./contracts.ts";
++import type { Coordinate, RouteStep } from "./contracts.ts";
+ 
+ const radians = Math.PI / 180;
+ const earthRadius = 6371000;
+@@ -59,3 +59,123 @@ export function distanceToRoute(
+   }
+   return nearest * earthRadius;
+ }
++
++export type RouteGeometry = Readonly<{
++  geometry: readonly Coordinate[];
++  steps: readonly RouteStep[];
++  durationSeconds: number;
++}>;
++export type RouteProgress = Readonly<{
++  /** Distance from the point to the nearest position on the route line. */
++  offRouteMeters: number;
++  /** Distance travelled along the route line at that nearest position. */
++  alongMeters: number;
++  remainingMeters: number;
++  /** Provider duration scaled by the remaining share of distance (no live traffic). */
++  remainingSeconds: number;
++  /** Index of the step currently being travelled. */
++  stepIndex: number;
++  /** Where each step's maneuver lies along the line, in metres from its start. */
++  maneuverAlongMeters: readonly number[];
++  /** The upcoming maneuver and the distance along the route to it. */
++  next?: Readonly<{ index: number; step: RouteStep; distanceMeters: number }>;
++  /** The maneuver after `next`, if any. */
++  then?: Readonly<{ index: number; step: RouteStep }>;
++}>;
++type Projection = { distance: number; along: number };
++/** Nearest position on the line at or beyond `minimumAlong` metres from its start. */
++function project(
++  point: Coordinate,
++  line: readonly Coordinate[],
++  lengths: readonly number[],
++  minimumAlong = 0,
++): Projection {
++  let best: Projection = {
++    distance:
++      lengths.length || !line.length
++        ? Infinity
++        : angle(line[0], point) * earthRadius,
++    along: 0,
++  };
++  let travelled = 0;
++  for (let i = 0; i < lengths.length; i++) {
++    const length = lengths[i];
++    if (travelled + length >= minimumAlong) {
++      const start = line[i],
++        end = line[i + 1];
++      // Local planar frame around the segment start; adequate for route segments.
++      const scale = Math.cos(start.latitude * radians);
++      const ex = (end.longitude - start.longitude) * scale,
++        ey = end.latitude - start.latitude;
++      const px = (point.longitude - start.longitude) * scale,
++        py = point.latitude - start.latitude;
++      const squared = ex * ex + ey * ey;
++      const lowest =
++        length > 0 ? Math.max(0, Math.min(1, (minimumAlong - travelled) / length)) : 0;
++      const t =
++        squared > 0
++          ? Math.max(lowest, Math.min(1, (px * ex + py * ey) / squared))
++          : lowest;
++      const projected = {
++        latitude: start.latitude + t * (end.latitude - start.latitude),
++        longitude: start.longitude + t * (end.longitude - start.longitude),
++      };
++      const distance = angle(projected, point) * earthRadius;
++      if (distance < best.distance)
++        best = { distance, along: travelled + t * length };
++    }
++    travelled += length;
++  }
++  return best;
++}
++/** Locate a point on a route: nearest position, distance along it, and the next two maneuvers.
++ * Each step's maneuver is placed where its coordinate meets the line, in route order. */
++export function routeProgress(
++  point: Coordinate,
++  route: RouteGeometry,
++): RouteProgress {
++  const line = route.geometry;
++  const lengths: number[] = [];
++  let total = 0;
++  for (let i = 0; i + 1 < line.length; i++) {
++    const length = angle(line[i], line[i + 1]) * earthRadius;
++    lengths.push(length);
++    total += length;
++  }
++  const here = project(point, line, lengths);
++  const along = here.along;
++  // Maneuvers never move backwards along the line, so a route that revisits a
++  // street still orders its steps correctly.
++  const starts: number[] = [];
++  for (const step of route.steps)
++    starts.push(project(step.coordinate, line, lengths, starts.at(-1) ?? 0).along);
++  // A maneuver counts as reached within a metre, absorbing projection rounding.
++  let stepIndex = 0;
++  for (let i = 0; i < starts.length; i++)
++    if (starts[i] <= along + 1) stepIndex = i;
++  const remainingMeters = Math.max(0, total - along);
++  const nextIndex = stepIndex + 1;
++  const next =
++    nextIndex < route.steps.length
++      ? {
++          index: nextIndex,
++          step: route.steps[nextIndex],
++          distanceMeters: Math.max(0, starts[nextIndex] - along),
++        }
++      : undefined;
++  const then =
++    nextIndex + 1 < route.steps.length
++      ? { index: nextIndex + 1, step: route.steps[nextIndex + 1] }
++      : undefined;
++  return {
++    offRouteMeters: here.distance,
++    alongMeters: along,
++    remainingMeters,
++    remainingSeconds:
++      total > 0 ? (route.durationSeconds * remainingMeters) / total : 0,
++    stepIndex,
++    maneuverAlongMeters: starts,
++    ...(next ? { next } : {}),
++    ...(then ? { then } : {}),
++  };
++}
+diff --git a/plugins/plugin-maps/src/client/state.ts b/plugins/plugin-maps/src/client/state.ts
+index a9b8908edb92e992c86de5e059ea1f417e983292..66aeea9e4f72d96c9fd9921917dac0801fe359dd 100644
+--- a/plugins/plugin-maps/src/client/state.ts
++++ b/plugins/plugin-maps/src/client/state.ts
+@@ -4,6 +4,7 @@ import {
+   configuredProvider,
+   coordinate,
+   failure,
++  isManeuver,
+   MapsFailure,
+   type MapsProvider,
+   type Place,
+@@ -29,6 +30,10 @@ export type MapsState = Readonly<{
+   search: ResultState<readonly Place[]>;
+   selection: ResultState<Place | null>;
+   origin: Coordinate | null;
++  /** Name of a chosen origin (place or saved place); null for coordinates and fixes. */
++  originLabel: string | null;
++  /** Place search for the route origin, independent of the destination search. */
++  originSearch: ResultState<readonly Place[]>;
+   position: ResultState<Position | null>;
+   mode: TravelMode;
+   route: ResultState<Route | null>;
+@@ -42,6 +47,7 @@ export class MapsController {
+   private detailRequest?: AbortController;
+   private detailPending?: Promise<void>;
+   private routeRequest?: AbortController;
++  private originRequest?: AbortController;
+   private active = true;
+   constructor(
+     private config: ProviderConfig,
+@@ -56,6 +62,8 @@ export class MapsController {
+       search: idle([]),
+       selection: idle(null),
+       origin: null,
++      originLabel: null,
++      originSearch: idle([]),
+       position: idle(null),
+       mode: "drive",
+       route: idle(null),
+@@ -75,6 +83,7 @@ export class MapsController {
+       ...structuredClone(this.state),
+       search: copy(this.state.search),
+       selection: copy(this.state.selection),
++      originSearch: copy(this.state.originSearch),
+       route: copy(this.state.route),
+       position: copy(this.state.position),
+       saved: copy(this.state.saved),
+@@ -89,6 +98,7 @@ export class MapsController {
+     this.searchRequest?.abort();
+     this.detailRequest?.abort();
+     this.detailRequest = undefined;
++    this.cancelOriginSearch();
+     this.invalidateRoute();
+     this.config = config;
+     this.provider = provider;
+@@ -120,6 +130,76 @@ export class MapsController {
+   private admitted() {
+     return configuredProvider(this.config, this.provider);
+   }
++  private async queryPlaces(
++    text: string,
++    signal: AbortSignal,
++  ): Promise<readonly Place[] | undefined> {
++    if (!boundedText(text, 300))
++      throw new MapsFailure(
++        "unsupported",
++        "Use a search of at most 300 characters.",
++      );
++    const provider = this.admitted();
++    if (!this.capabilities().search)
++      throw new MapsFailure(
++        "unsupported",
++        "This provider does not support place search.",
++      );
++    const result = await provider.search(text, signal);
++    if (signal.aborted || !this.active) return undefined;
++    if (!Array.isArray(result) || result.length > 50)
++      throw new MapsFailure(
++        "invalid-response",
++        "The search response is invalid.",
++      );
++    return result.map((item) => place(item, provider.providerId));
++  }
++  /** Search the provider for a route origin. Editing or choosing an origin cancels it. */
++  async searchOrigin(query: string) {
++    this.originRequest?.abort();
++    this.originRequest = undefined;
++    const text = query.trim();
++    if (!text) {
++      this.update({ originSearch: idle([]) });
++      return;
++    }
++    const request = new AbortController();
++    this.originRequest = request;
++    this.update({ originSearch: { phase: "loading", value: [], error: null } });
++    try {
++      const items = await this.queryPlaces(text, request.signal);
++      if (!items || this.originRequest !== request) return;
++      this.originRequest = undefined;
++      this.update({
++        originSearch: {
++          phase: items.length ? "ready" : "empty",
++          value: items,
++          error: null,
++        },
++      });
++    } catch (error) {
++      if (!request.signal.aborted && this.active && this.originRequest === request) {
++        this.originRequest = undefined;
++        this.update({
++          originSearch: { phase: "error", value: [], error: failure(error) },
++        });
++      }
++    }
++  }
++  cancelOriginSearch() {
++    this.originRequest?.abort();
++    this.originRequest = undefined;
++    if (this.state.originSearch.phase !== "idle")
++      this.update({ originSearch: idle([]) });
++  }
++  /** Saved places whose label contains the text, for origin and destination pickers. */
++  savedMatches(query: string): readonly SavedPlace[] {
++    const text = query.trim().toLocaleLowerCase();
++    if (!text) return [];
++    return this.state.saved.value.filter((item) =>
++      item.label.toLocaleLowerCase().includes(text),
++    );
++  }
+   async search(query: string) {
+     this.searchRequest?.abort();
+     this.detailRequest?.abort();
+@@ -131,30 +211,8 @@ export class MapsController {
+     this.searchRequest = request;
+     this.update({ search: { phase: "loading", value: [], error: null } });
+     try {
+-      if (!boundedText(text, 300))
+-        throw new MapsFailure(
+-          "unsupported",
+-          "Use a search of at most 300 characters.",
+-        );
+-      const provider = this.admitted();
+-      if (!this.capabilities().search)
+-        throw new MapsFailure(
+-          "unsupported",
+-          "This provider does not support place search.",
+-        );
+-      const result = await provider.search(text, request.signal);
+-      if (
+-        request.signal.aborted ||
+-        !this.active ||
+-        this.searchRequest !== request
+-      )
+-        return;
+-      if (!Array.isArray(result) || result.length > 50)
+-        throw new MapsFailure(
+-          "invalid-response",
+-          "The search response is invalid.",
+-        );
+-      const items = result.map((item) => place(item, provider.providerId));
++      const items = await this.queryPlaces(text, request.signal);
++      if (!items || this.searchRequest !== request) return;
+       this.update({
+         search: {
+           phase: items.length ? "ready" : "empty",
+@@ -218,18 +276,36 @@ export class MapsController {
+     }
+   }
+   clearOrigin() {
++    this.cancelOriginSearch();
+     this.invalidateRoute();
+-    this.update({ origin: null });
++    this.update({ origin: null, originLabel: null });
+   }
+-  setOrigin(value: Coordinate) {
++  setOrigin(value: Coordinate, label?: string) {
+     const origin = coordinate(value);
++    if (label !== undefined && !boundedText(label, 300))
++      throw new MapsFailure("unsupported", "The origin name is invalid.");
++    this.cancelOriginSearch();
+     void this.nativeLocation.stop().catch((error) =>
+       this.update({
+         position: { phase: "error", value: null, error: failure(error) },
+       }),
+     );
+     this.invalidateRoute();
+-    this.update({ origin, position: idle(null) });
++    this.update({ origin, originLabel: label ?? null, position: idle(null) });
++  }
++  /** Use a chosen origin candidate and plan from it. */
++  chooseOrigin(candidate: Place | SavedPlace) {
++    if ("label" in candidate) this.setOrigin(candidate.coordinate, candidate.label);
++    else {
++      const chosen = place(candidate, this.admitted().providerId);
++      this.setOrigin(chosen.coordinate, chosen.name);
++    }
++    return this.planRoute();
++  }
++  /** Explicit user request to plan again from a position, for example while off route. */
++  reroute(from: Coordinate, label?: string) {
++    this.setOrigin(from, label);
++    return this.planRoute();
+   }
+   setMode(mode: TravelMode) {
+     if (!["drive", "walk", "bicycle", "transit"].includes(mode))
+@@ -333,13 +409,19 @@ export class MapsController {
+         if (
+           !boundedText(step.instruction, 2000) ||
+           !Number.isFinite(step.distanceMeters) ||
+-          step.distanceMeters < 0
++          step.distanceMeters < 0 ||
++          (step.maneuver !== undefined && !isManeuver(step.maneuver))
+         )
+           throw new MapsFailure(
+             "invalid-response",
+             "A route instruction is invalid.",
+           );
+-        return { ...step, coordinate: coordinate(step.coordinate) };
++        return {
++          instruction: step.instruction,
++          coordinate: coordinate(step.coordinate),
++          distanceMeters: step.distanceMeters,
++          ...(step.maneuver ? { maneuver: step.maneuver } : {}),
++        };
+       });
+       this.update({
+         route: {
+@@ -395,6 +477,7 @@ export class MapsController {
+     this.searchRequest?.abort();
+     this.detailRequest?.abort();
+     this.routeRequest?.abort();
++    this.originRequest?.abort();
+     try {
+       await this.nativeLocation.stop();
+     } finally {
+diff --git a/plugins/plugin-maps/src/client/tsconfig.json b/plugins/plugin-maps/src/client/tsconfig.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..e426a40dc0b12ffb85ba8be6e176b18ee79aab92
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/tsconfig.json
+@@ -0,0 +1,14 @@
++{
++  "//": "Self-contained settings for the device client, which hosts consume outside the monorepo (for example from a copied source tree), so it does not extend the workspace root.",
++  "compilerOptions": {
++    "target": "ES2022",
++    "lib": ["ES2022", "DOM", "DOM.Iterable"],
++    "module": "ESNext",
++    "moduleResolution": "bundler",
++    "strict": true,
++    "skipLibCheck": true,
++    "allowImportingTsExtensions": true,
++    "noEmit": true
++  },
++  "include": ["./**/*.ts"]
++}
+diff --git a/plugins/plugin-maps/test/navigation-client.test.mjs b/plugins/plugin-maps/test/navigation-client.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..293e1782e929c796678c4a8dbfc55c6b49730978
+--- /dev/null
++++ b/plugins/plugin-maps/test/navigation-client.test.mjs
+@@ -0,0 +1,299 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { isManeuver, place } from "../src/client/contracts.ts";
++import {
++  createRegionalMaps,
++  insideRegion,
++} from "../src/client/regional-provider.ts";
++import { routeProgress } from "../src/client/route-distance.ts";
++import { SavedPlaces } from "../src/client/saved-places.ts";
++import { MapsController } from "../src/client/state.ts";
++
++const storage = () => {
++  const values = new Map();
++  return {
++    getItem: (key) => values.get(key) ?? null,
++    setItem: (key, value) => values.set(key, value),
++  };
++};
++const location = () => ({
++  awaitingPermission: () => false,
++  start: async () => {},
++  stop: async () => {},
++});
++const config = {
++  status: "configured",
++  providerId: "test",
++  connectionId: "conn_test_navigation_123",
++  revision: "one",
++  capabilities: {
++    map: true,
++    search: true,
++    placeDetails: false,
++    modes: ["walk"],
++    traffic: "none",
++    transit: "none",
++    offline: { map: false, search: false, routing: false },
++  },
++};
++const candidate = (name, latitude = 1, longitude = 2, extra = {}) => ({
++  providerId: "test",
++  id: name,
++  name,
++  coordinate: { latitude, longitude },
++  attribution: "Test data",
++  fetchedAt: Date.now(),
++  ...extra,
++});
++// A straight 200 m walk north along a meridian, with one turn after 100 m.
++const north = (meters) => ({ latitude: meters / 111195, longitude: 0 });
++const routeFor = (from, to, steps) => ({
++  providerId: "test",
++  id: `route-${from.latitude}-${to.latitude}`,
++  from,
++  to,
++  mode: "walk",
++  geometry: [from, north(100), to],
++  distanceMeters: 200,
++  durationSeconds: 200,
++  steps,
++  attribution: "Test data",
++  fetchedAt: Date.now(),
++  traffic: "none",
++});
++const steps = [
++  {
++    instruction: "Head north",
++    coordinate: north(0),
++    distanceMeters: 100,
++    maneuver: "depart",
++  },
++  {
++    instruction: "Turn left onto Test Street",
++    coordinate: north(100),
++    distanceMeters: 100,
++    maneuver: "left",
++  },
++  {
++    instruction: "Arrive at destination",
++    coordinate: north(200),
++    distanceMeters: 0,
++    maneuver: "arrive",
++  },
++];
++
++function controllerWith(provider, saved = new SavedPlaces("test", storage())) {
++  const controller = new MapsController(
++    config,
++    { providerId: "test", connectionId: config.connectionId, ...provider },
++    saved,
++    location(),
++  );
++  controller.setMode("walk");
++  return controller;
++}
++
++test("maneuver vocabulary is closed", () => {
++  assert.equal(isManeuver("left"), true);
++  assert.equal(isManeuver("arrive"), true);
++  assert.equal(isManeuver("teleport"), false);
++  assert.equal(isManeuver(undefined), false);
++});
++
++test("route progress reports the next and following maneuver and the remaining share", () => {
++  const route = { geometry: [north(0), north(100), north(200)], steps, durationSeconds: 200 };
++  const start = routeProgress(north(0), route);
++  assert.equal(start.stepIndex, 0);
++  assert.equal(start.next.step.maneuver, "left");
++  assert.ok(Math.abs(start.next.distanceMeters - 100) < 0.5);
++  assert.equal(start.then.step.maneuver, "arrive");
++  assert.deepEqual(
++    start.maneuverAlongMeters.map((value) => Math.round(value)),
++    [0, 100, 200],
++  );
++  assert.ok(Math.abs(start.remainingMeters - 200) < 0.5);
++  assert.ok(Math.abs(start.remainingSeconds - 200) < 0.5);
++  const midway = routeProgress({ latitude: north(40).latitude, longitude: 0.0001 }, route);
++  assert.ok(Math.abs(midway.next.distanceMeters - 60) < 0.5);
++  assert.ok(midway.offRouteMeters > 10 && midway.offRouteMeters < 12);
++  const turned = routeProgress(north(150), route);
++  assert.equal(turned.stepIndex, 1);
++  assert.equal(turned.next.step.maneuver, "arrive");
++  assert.equal(turned.then, undefined);
++  assert.ok(Math.abs(turned.remainingSeconds - 50) < 0.5);
++  const arrived = routeProgress(north(200), route);
++  assert.equal(arrived.next, undefined);
++  assert.ok(arrived.remainingMeters < 0.5);
++});
++
++test("route steps keep valid maneuvers and reject unknown ones", async () => {
++  let bad = false;
++  const controller = controllerWith({
++    route: async (from, to) =>
++      routeFor(
++        from,
++        to,
++        bad ? [{ ...steps[0], maneuver: "teleport" }] : steps,
++      ),
++  });
++  controller.setOrigin(north(0));
++  await controller.select(candidate("Destination", north(200).latitude, 0), false);
++  await controller.planRoute();
++  assert.deepEqual(
++    controller.snapshot().route.value.steps.map((step) => step.maneuver),
++    ["depart", "left", "arrive"],
++  );
++  bad = true;
++  await controller.planRoute();
++  assert.equal(controller.snapshot().route.phase, "error");
++  await controller.leave();
++});
++
++test("origin search is independent of the destination and cancelled by editing", async () => {
++  const pending = [];
++  const controller = controllerWith({
++    search: (query, signal) =>
++      new Promise((resolve) => pending.push({ query, signal, resolve })),
++    route: async (from, to) => routeFor(from, to, steps),
++  });
++  await controller.select(candidate("Destination", north(200).latitude, 0), false);
++  const stale = controller.searchOrigin("Old origin");
++  assert.equal(controller.snapshot().originSearch.phase, "loading");
++  controller.clearOrigin();
++  assert.equal(pending[0].signal.aborted, true, "editing aborts the request");
++  pending[0].resolve([candidate("Old origin")]);
++  await stale;
++  assert.equal(controller.snapshot().originSearch.phase, "idle");
++  assert.equal(controller.snapshot().selection.value.name, "Destination");
++
++  const current = controller.searchOrigin("Start");
++  pending[1].resolve([candidate("Start", north(0).latitude, 0)]);
++  await current;
++  const found = controller.snapshot().originSearch;
++  assert.equal(found.phase, "ready");
++  await controller.chooseOrigin(found.value[0]);
++  const state = controller.snapshot();
++  assert.equal(state.originLabel, "Start");
++  assert.equal(state.originSearch.phase, "idle");
++  assert.equal(state.route.phase, "ready");
++  assert.equal(state.route.value.from.latitude, north(0).latitude);
++  assert.equal(state.selection.value.name, "Destination");
++  await controller.leave();
++});
++
++test("saved places match origin text and can be chosen as the origin", async () => {
++  const saved = new SavedPlaces("test", storage());
++  saved.save({ label: "Home base", coordinate: north(0) });
++  saved.save({ label: "Office", coordinate: north(50) });
++  const controller = controllerWith(
++    { route: async (from, to) => routeFor(from, to, steps) },
++    saved,
++  );
++  assert.deepEqual(
++    controller.savedMatches("home").map((item) => item.label),
++    ["Home base"],
++  );
++  assert.deepEqual(controller.savedMatches("  "), []);
++  await controller.select(candidate("Destination", north(200).latitude, 0), false);
++  await controller.chooseOrigin(controller.savedMatches("home")[0]);
++  assert.equal(controller.snapshot().originLabel, "Home base");
++  assert.equal(controller.snapshot().route.phase, "ready");
++  await controller.reroute(north(40));
++  assert.equal(controller.snapshot().originLabel, null);
++  assert.equal(controller.snapshot().route.value.from.latitude, north(40).latitude);
++  await controller.leave();
++});
++
++test("place details keep bounded opening hours, phone and website", () => {
++  const detail = place(
++    candidate("Cafe", 1, 2, {
++      openingHours: "Mo-Fr 08:00-18:00",
++      phone: "+377 93 00 00 00",
++      website: "https://example.org/",
++    }),
++    "test",
++  );
++  assert.equal(detail.openingHours, "Mo-Fr 08:00-18:00");
++  assert.equal(detail.phone, "+377 93 00 00 00");
++  assert.throws(
++    () => place(candidate("Cafe", 1, 2, { openingHours: "x".repeat(300) })),
++    /opening hours/,
++  );
++});
++
++test("regional provider takes provider identity and bounds from the configured gateway", async () => {
++  const configured = [];
++  const meta = (providerId, bounds) => ({
++    providerId,
++    connectionId: "conn_regional_test_0001",
++    revision: "r1",
++    region: "Test region",
++    bounds,
++    attribution: "Test data",
++    capabilities: {
++      map: true,
++      search: true,
++      placeDetails: true,
++      modes: ["walk"],
++      traffic: "none",
++      transit: "none",
++      offline: { map: false, search: false, routing: false },
++    },
++  });
++  let response = meta("osm-test-region", [10, 20, 11, 21]);
++  const realFetch = globalThis.fetch;
++  globalThis.fetch = async () => new Response(JSON.stringify(response));
++  try {
++    const maps = (providerId) =>
++      createRegionalMaps({
++        baseUrl: "https://maps.example/",
++        ...(providerId ? { providerId } : {}),
++        nativeGateway: "",
++        developmentHosts: [],
++        development: false,
++        isNative: () => false,
++        developmentBuild: async () => false,
++        transport: { request: async () => ({ status: 500, data: "" }), cancel: async () => {} },
++        configure: (value) => configured.push(value),
++      });
++    const open = maps();
++    await open.initializeRegionalMaps();
++    assert.equal(open.regionalMap().providerId, "osm-test-region");
++    assert.deepEqual(open.regionalMap().bounds, [10, 20, 11, 21]);
++    assert.equal(configured.at(-1).providerId, "osm-test-region");
++    assert.equal(insideRegion(open.regionalMap(), { latitude: 20.5, longitude: 10.5 }), true);
++    assert.equal(insideRegion(open.regionalMap(), { latitude: 43.7, longitude: 7.4 }), false);
++
++    const pinned = maps("another-provider");
++    await pinned.initializeRegionalMaps();
++    assert.equal(pinned.regionalMap(), undefined, "an explicit pin still refuses a different gateway");
++
++    response = meta("osm-test-region", [11, 20, 10, 21]);
++    const inverted = maps();
++    await inverted.initializeRegionalMaps();
++    assert.equal(inverted.regionalMap(), undefined, "inverted bounds are refused");
++    assert.equal(inverted.regionalDiagnostics().error, "initialization-failed");
++  } finally {
++    globalThis.fetch = realFetch;
++  }
++});
++
++test("maneuvers are placed by their coordinates, in route order, whatever the step-length convention", () => {
++  // Cumulative step distances and a line that passes the same point twice.
++  const route = {
++    geometry: [north(0), north(100), north(200), north(100)],
++    durationSeconds: 300,
++    steps: [
++      { instruction: "Start", coordinate: north(0), distanceMeters: 0 },
++      { instruction: "U-turn", coordinate: north(200), distanceMeters: 200, maneuver: "u-turn" },
++      { instruction: "Arrive", coordinate: north(100), distanceMeters: 300, maneuver: "arrive" },
++    ],
++  };
++  const start = routeProgress(north(0), route);
++  assert.equal(start.next.step.instruction, "U-turn");
++  assert.ok(Math.abs(start.next.distanceMeters - 200) < 0.5);
++  const atTurn = routeProgress(north(200), route);
++  assert.equal(atTurn.stepIndex, 1);
++  assert.equal(atTurn.next.step.instruction, "Arrive");
++  assert.ok(Math.abs(atTurn.next.distanceMeters - 100) < 0.5, "the revisited point is the later maneuver");
++});
