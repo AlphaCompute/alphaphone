@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import { test, expect, type Page } from '@playwright/test';
 
 // Settings → Password manager over the shared plugin-native-passwords contract.
@@ -60,7 +61,7 @@ test('development vault: unlock, search, add, generate, edit and delete without 
   await expect(page.getByRole('button', { name: 'Remove shop.example.test', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Generate a strong password', exact: true }).click();
   await page.getByRole('button', { name: 'Length: 32', exact: true }).click();
-  await expect(page.getByText(/^32 characters, generated (on this phone|in this browser) when you save$/)).toBeVisible();
+  await expect(page.getByText(/^32 characters, generated (on this phone|in this app) when you save$/)).toBeVisible();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved with a new 32-character password.', { exact: true })).toBeVisible();
   await noSecretOutsideDialogs(page);
@@ -236,7 +237,7 @@ test('leaving Settings for another view locks the development vault', async ({ p
   await page.getByRole('button', { name: 'Unlock passwords', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Open Example sign-in', exact: true })).toBeVisible();
   expect(await page.evaluate(async () => (await import('/src/passwords/password-manager.ts')).passwordManagerHoldsEntries())).toBe(true);
-  await page.getByRole('button', { name: 'Back to apps', exact: true }).click();
+  await returnToApps(page);
   await expect.poll(async () => (await agentContext(page)).view).not.toBe('settings');
   // Locked and forgotten as soon as Settings is left, not only when it is reopened.
   expect(await page.evaluate(async () => (await import('/src/passwords/password-manager.ts')).passwordManagerHoldsEntries())).toBe(false);
