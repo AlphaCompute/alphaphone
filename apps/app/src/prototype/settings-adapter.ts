@@ -1,5 +1,6 @@
 import {browserDevProfile as devProfileQuery} from '../browser/dev-profile';
 import {testMocksEnabled,devSurfacesEnabled} from '../build-flags';
+import {openCalendarRecovery} from '../browser/calendar-recovery';
 import {openNotificationRecovery} from '../browser/notification-recovery';
 import {openAlertSoundRecovery,openDevicePreferencesRecovery,openDeviceRolesRecovery} from '../browser/preference-recovery';
 import {notificationDocument} from '../browser/notification-store';
@@ -355,6 +356,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         // Keep connection privacy and Activity; replace only prototype permission rows.
         page.groups=page.groups.map((g:Bag)=>({...g,rows:g.rows.map((row:Bag)=>permissionLabels.has(row.label)?info(row.label,permissionValue(row.label)):row)}));
         page.groups.push(group([nav('Manage Alpha permissions','privacy')]));
+        if(!Capacitor.isNativePlatform())page.groups.push({...group([{kNav:true,label:'Calendar backups',lbl:'Calendar backups',sub:'Events saved in this browser',hasSub:true,chev:true,noAB:true,go:()=>openCalendarRecovery()}]),cap:'Saved data',hasCap:true});
       } else if (page.title === 'Sound & vibration') {
         const volume = (label: string, stream: string) => {
           const value = controls.volumes?.find((v: Bag) => v.stream === stream);

@@ -94,7 +94,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     out.emptyText=rangeReady?(truncated?'Calendar results incomplete. Some events may be missing.':reminderStale?'Reminders unavailable. Retry before relying on this schedule.':'No visible events or reminders for this day.'):status;
     out.nativeStatusLabel=[rangeReady&&truncated?'Calendar results incomplete. Some events may be missing.':'',reminderStale?'Reminders may be out of date. Tap to retry.':''].filter(Boolean).join(' ');
     out.nativeStatusRetry=()=>{void refresh(false,true);void owner?.refreshReminders();};
-    out.browserBackup=!Capacitor.isNativePlatform()&&!loadFailed&&!loading;out.browserRecovery=!Capacitor.isNativePlatform()&&loadFailed&&!loading;out.openBrowserRecovery=openCalendarRecovery;
+    out.browserRecovery=!Capacitor.isNativePlatform()&&loadFailed&&!loading;out.openBrowserRecovery=openCalendarRecovery;
     out.reminderRecovery=!Capacitor.isNativePlatform()&&reminderStale;out.openReminderRecovery=openReminderRecovery;out.openReminderCreationRecovery=openReminderCreationRecovery;out.openReminderActionRecovery=openReminderActionRecovery;
     if(!rangeReady&&!state.open&&!state.form)out.empty=true;
     const allDay=(state.events||[]).filter((e:Bag)=>e.alphaCalendarId&&e.allDay);

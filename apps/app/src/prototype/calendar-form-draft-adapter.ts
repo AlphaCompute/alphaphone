@@ -39,12 +39,20 @@ export function installCalendarFormDraftAdapter(Component:any,views:Bag){
   if(!shell||!controller)return out;
   const active=!!state.form&&!state.form.id;
   out.formDraftAvailable=!state.form&&!!shell.calendarDraftText;
+  out.canDiscardFormDraft=active&&!!shell.calendarDraftText;
   out.formDraftStatus=active?(shell.calendarFormValidationError?'This form is too large or has unsupported values. Current edits are not saved.':draft.message.replace('before sending','before saving')):'';
   out.formDraftConflict=active&&draft.conflict;
   out.formDraftError=active&&draft.error;out.formDraftListError=!state.form&&draft.error;
   out.formDraftSavedTitle=(()=>{try{return decodeCalendarForm(draft.savedText).form.title||'Untitled event';}catch{return 'Saved form unavailable';}})();
   const restore=(saved=false)=>{try{shell.calendarDraftRestore=true;if(saved)controller.restoreSaved();else{const restored=decodeCalendarForm(shell.calendarDraftText);shell.calendarDraftAnchor=new Date();shell.calendarDraftIdentity=restored.form.creationId;api.set({form:restored.form,open:null,month:null});if(restored.zone!==Intl.DateTimeFormat().resolvedOptions().timeZone)api.toast('Time zone changed. Review the restored date and time before saving.');}}catch{api.toast('The saved form could not be restored. Open form recovery.');}finally{shell.calendarDraftRestore=false;}};
-  out.discardFormDraft=()=>{if(state.form||!window.confirm('Discard this retained form? Saved events and reminders will not change.'))return;const text=shell.calendarDraftText;void controller.consume(text,()=>shell.live&&!shell.vget('calendar').form&&shell.calendarDraftText===text).catch(()=>api.toast('The retained form changed or could not be cleared. Resume it to review both copies.'));};
+  out.discardFormDraft=()=>{
+   const form=state.form;if(!active||!window.confirm('Discard this draft? Saved events and reminders will not change.'))return;
+   const text=shell.calendarDraftText;
+   const current=()=>owner===shell&&shell.live&&api.isActive()&&shell.vget('calendar').form===form&&shell.calendarDraftText===text;
+   if(!current())return;
+   shell.calendarDraftSuppressed=text;
+   void controller.consume(text,current).then(()=>{if(owner===shell&&shell.live&&api.isActive()&&shell.vget('calendar').form===form)api.set({form:null,open:null});}).catch(()=>{shell.calendarDraftSuppressed=undefined;api.toast('The retained form changed or could not be cleared. Review both copies before discarding.');});
+  };
   out.resumeFormDraft=()=>restore();out.restoreFormDraft=()=>restore(true);out.replaceFormDraft=()=>controller.keepCurrent();out.retryFormDraft=()=>controller.retry();
   out.recoverFormDraft=()=>{const recovery=controller.recovery();if(!recovery)return;shell.calendarDraftRecovery?.abort();const abort=shell.calendarDraftRecovery=new AbortController();openDomainRecovery({capture:async signal=>{const captured=await recovery.capture(signal);return {...captured,raw:JSON.stringify({saved:captured.raw,currentForm:shell.vget('calendar').form?snapshotCalendarForm(shell.vget('calendar').form):shell.calendarDraftText})};},reset:recovery.reset},'calendar form','Calendar form recovery','Save a backup before resetting the retained form. This does not change events or reminders. Reloading discards current unsaved edits.',abort.signal,undefined,Capacitor.getPlatform()==='android'?'device':'browser');};
   const newEvent=out.newEvent;out.newEvent=()=>{if(shell.calendarDraftText&&!state.form){restore();return;}newEvent();};
