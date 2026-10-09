@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import fs f
 test('native production playback methods distinguish completion, replacement and scoped stop',()=>{
  const source=fs.readFileSync(new URL('../android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaVoiceCloudPlugin.java',import.meta.url),'utf8');
  const extract=signature=>{const start=source.indexOf(signature);assert.ok(start>=0);let cursor=source.indexOf('{',start),depth=1;while(depth&&++cursor<source.length){if(source[cursor]==='{')depth++;else if(source[cursor]==='}')depth--;}assert.equal(depth,0);return source.slice(start,cursor+1);};
- const methods=['public void play(PluginCall call)','private void clearPlayback()','private void clearPlayback(boolean stopped)','public void stopPlayback(PluginCall call)','public void synthesizeLocal(PluginCall call)'].map(extract).join('\n');
+ const methods=['public void play(PluginCall call)','private void clearPlayback()','private void clearPlayback(boolean stopped)','public void stopPlayback(PluginCall call)','public void synthesizeLocal(PluginCall call)','public void synthesize(PluginCall call)'].map(extract).join('\n');
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-native-speech-'));
  try{fs.writeFileSync(path.join(directory,'NativeSpeechHarness.java'),`import java.io.*;import java.util.*;
 public class NativeSpeechHarness {
@@ -13,6 +13,7 @@ public class NativeSpeechHarness {
  Queue main=new Queue();Map<String,Object> pending=new HashMap<>();List<String> events=new ArrayList<>();File playbackFile;String playbackId,playbackRequestId;PluginCall preparingPlayback;MediaPlayer player;boolean destroyed;int syntheses;
  void notifyListeners(String event,JSObject data){events.add(event+":"+data.get("playbackId"));}
  void synthesizeLocalNow(PluginCall call){syntheses++;}
+ void synthesizeAudio(PluginCall call,boolean paired){syntheses++;}
  void prepare(String id)throws Exception{playbackFile=File.createTempFile("native-speech-",".wav");playbackId=id;playbackRequestId="request-"+id;}
  static void check(boolean v){if(!v)throw new AssertionError();}
  ${methods}
@@ -22,6 +23,7 @@ public class NativeSpeechHarness {
   h.prepare("three");h.clearPlayback();check(h.events.get(2).equals("playbackStopped:three"));h.clearPlayback();check(h.events.size()==3);
   h.prepare("new");PluginCall stop=new PluginCall();stop.request="request-old";h.stopPlayback(stop);h.main.flush();check(h.playbackId.equals("new"));check(h.events.size()==3);stop.request="request-new";h.stopPlayback(stop);h.main.flush();check(h.events.get(3).equals("playbackStopped:new"));
   h.prepare("other");PluginCall queued=new PluginCall();queued.replace=false;h.synthesizeLocal(queued);h.main.flush();check(queued.code.equals("playback-busy")&&h.syntheses==0&&h.playbackId.equals("other"));h.clearPlayback();queued=new PluginCall();queued.replace=false;h.pending.put("other",new Object());h.synthesizeLocal(queued);h.main.flush();check(queued.code.equals("playback-busy")&&h.syntheses==0);h.pending.clear();queued=new PluginCall();queued.replace=false;h.synthesizeLocal(queued);h.main.flush();check(h.syntheses==1);
+  h.prepare("foreign-cloud");queued=new PluginCall();queued.replace=false;h.synthesize(queued);h.main.flush();check(queued.code.equals("playback-busy")&&h.syntheses==1&&h.playbackId.equals("foreign-cloud"));h.clearPlayback();queued=new PluginCall();queued.replace=false;h.pending.put("other",new Object());h.synthesize(queued);h.main.flush();check(queued.code.equals("playback-busy")&&h.syntheses==1);h.pending.clear();queued=new PluginCall();queued.replace=false;h.synthesize(queued);h.main.flush();check(h.syntheses==2);
   System.out.println("PASS native terminal ownership");
  }
 }`);

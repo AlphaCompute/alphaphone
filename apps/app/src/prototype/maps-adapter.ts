@@ -30,7 +30,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   let query = '', searching = false, message = '', disposed = false, revision = 0, locating = false;
   const lifecycle={releases:0,hidden:0,permissionHeld:0,providerActivations:0,lastRelease:''};
   let initialization: Promise<void> | undefined, searchIntent = 0;
-  const navigationVoice=new NavigationVoice(()=>{message='Voice guidance paused. Tap Enable voice guidance to retry.';invalidate();});
+  const navigationVoice=new NavigationVoice(error=>{message=(error instanceof Error?error.message+' ':'')+'Voice guidance paused. Tap Enable voice guidance to retry.';invalidate();});
   const searchIdentity = {};
   let pendingHandoff: {query:string;intent:number}|undefined;
   let sharing: {abort:AbortController;current:()=>boolean}|undefined;

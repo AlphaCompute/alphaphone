@@ -87,8 +87,9 @@ export class BrowserVoice extends WebPlugin {
    return {text:result.text,local:false};
   },input.requestId);
  }
- async synthesize(input:{text:string;requestId:string;environment:string;credentialId:string}){
+ async synthesize(input:{text:string;requestId:string;environment:string;credentialId:string;replace?:boolean}){
   if(!devSurfacesEnabled)throw Error('Cloud voice requires the native app or a development host.');
+  if(input.replace===false&&(this.activeSpeechId||this.audio||this.pendingAudioId||this.speechRequest))throw Object.assign(Error('Playback is busy.'),{code:'playback-busy'});
   return this.withAgentSpeech(async signal=>{
    const binding=await this.cloudBinding(input),response=await browserCloudVoice(input,'tts',input.text,signal),blob=await response.blob();signal.throwIfAborted();binding.current();
    if(!blob.size||blob.size>8*1024*1024||!['audio/mpeg','audio/mp3','audio/wav'].includes(blob.type.split(';')[0]))throw Error('Eliza Cloud returned no usable speech.');
