@@ -146,7 +146,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       });
       return continuation?continuation.apply(view,check,commit):commit();
     });
-    if(delivered.status==='delivered')shell.toast(`Opened ${delivered.label}.`);else if(delivered.status==='unknown')shell.toast('Could not confirm the screen change. Check your screen.');
+    if(delivered.status==='delivered'&&!continuation)shell.toast(`Opened ${delivered.label}.`);else if(delivered.status==='unknown')shell.toast('Could not confirm the screen change. Check your screen.');
     return delivered.status==='delivered';
   }
   function context(shell: Shell) {
