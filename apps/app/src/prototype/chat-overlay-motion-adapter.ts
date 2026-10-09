@@ -7,7 +7,7 @@ import {
 } from "../../../../.eliza/client-features/packages/ui/src/components/shell/chat-panel-layout.ts";
 
 type Shell = any;
-type Mode = "hidden" | "sheet" | "full";
+type Mode = "hidden" | "input" | "sheet" | "full";
 type Drag = {
 	id: number;
 	owner: HTMLElement;
@@ -25,7 +25,7 @@ type Drag = {
 	half: number;
 	moved: boolean;
 };
-/** Product gesture binding over shared pure geometry; never owns transcript/input gestures. */
+/** Product gesture binding over shared pure geometry; never owns transcript or editable-control gestures. */
 export function installChatOverlayMotion(Component: Shell) {
 	const p = Component.prototype,
 		render = p.renderVals,
@@ -121,7 +121,11 @@ export function installChatOverlayMotion(Component: Shell) {
 		out.pillDragStyle = drag?.moved
 			? `opacity:${1 - clamp01(drag.height / Math.max(1, drag.half))}`
 			: "";
-		if (drag?.moved) {
+		out.inputDragStyle =
+			drag?.mode === "input" && drag.moved
+				? `transform:translateY(${(drag.lastY - drag.y) / drag.scale}px);opacity:${1 - clamp01(Math.abs(drag.lastY - drag.y) / drag.scale / Math.max(80, drag.half))};transition:none;animation:none`
+				: "";
+		if (drag?.moved && (drag.mode !== "input" || drag.height > 0)) {
 			out.conversationHidden = false;
 			out.panelComposer = true;
 			out.panelOp = 1;
@@ -134,7 +138,17 @@ export function installChatOverlayMotion(Component: Shell) {
 					shell.chatMotion ||
 					event.isPrimary === false ||
 					event.button !== 0 ||
-					!["hidden", "sheet", "full"].includes(shell.S().chat)
+					!["hidden", "input", "sheet", "full"].includes(shell.S().chat)
+				)
+					return;
+				// Input motion belongs only to its background and Alpha button.
+				// Textarea, editable, Send and Talk targets keep their native behavior.
+				if (
+					shell.S().chat === "input" &&
+					(!(event.target instanceof Element) ||
+						!event.target.closest(
+							"[data-alpha-input-drag-background],[data-alpha-input-drag-alpha]",
+						))
 				)
 					return;
 				event.stopPropagation();
@@ -168,7 +182,14 @@ export function installChatOverlayMotion(Component: Shell) {
 							? g.full
 							: mode === "sheet"
 								? g.half
-								: Math.min(80, g.half),
+								: Math.min(
+										mode === "input"
+											? (document.querySelector<HTMLElement>(
+													"[data-alpha-input-bar]",
+												)?.clientHeight || 62) + 28
+											: 80,
+										g.half,
+									),
 					height: mode === "full" ? g.full : mode === "sheet" ? g.half : 0,
 					full: g.full,
 					half: g.half,
@@ -188,7 +209,10 @@ export function installChatOverlayMotion(Component: Shell) {
 				if (dt > 0) d.velocity = (event.clientY - d.lastY) / d.scale / dt;
 				d.lastY = event.clientY;
 				d.lastAt = event.timeStamp;
-				d.height = clamp01((d.start - delta) / Math.max(1, d.full)) * d.full;
+				d.height =
+					d.mode === "input" && delta > 0
+						? 0
+						: clamp01((d.start - delta) / Math.max(1, d.full)) * d.full;
 				// Paint subsequent pointer positions directly: rebuilding the entire app
 				// per movement would put React work between the finger and the sheet.
 				const panel = document.querySelector<HTMLElement>(
@@ -205,6 +229,19 @@ export function installChatOverlayMotion(Component: Shell) {
 					pill.style.opacity = String(
 						1 - clamp01(d.height / Math.max(1, d.half)),
 					);
+				if (d.mode === "input") {
+					const input = document.querySelector<HTMLElement>(
+						"[data-alpha-input-bar]",
+					);
+					if (input) {
+						input.style.transform = `translateY(${delta}px)`;
+						input.style.opacity = String(
+							1 - clamp01(Math.abs(delta) / Math.max(80, d.half)),
+						);
+						input.style.transition = "none";
+						input.style.animation = "none";
+					}
+				}
 				if (firstMove) shell.setState({});
 			},
 			up(event: PointerEvent) {
@@ -215,7 +252,9 @@ export function installChatOverlayMotion(Component: Shell) {
 				if (event.timeStamp - d.lastAt > 120) d.velocity = 0;
 				const delta = (event.clientY - d.y) / d.scale,
 					deliberate =
-						d.moved && (Math.abs(delta) >= 40 || Math.abs(d.velocity) >= 0.6);
+						d.moved &&
+						Math.abs(delta) >= 8 &&
+						(Math.abs(delta) >= 40 || Math.abs(d.velocity) >= 0.6);
 				let next = d.mode;
 				if (deliberate) {
 					if (delta < 0)
@@ -244,6 +283,7 @@ export function installChatOverlayMotion(Component: Shell) {
 		};
 		out.grabSw = handlers;
 		out.pillSw = handlers;
+		out.inputSw = handlers;
 		// A captured drag may end over a former pill button. It must not synthesize
 		// a second action (including Type/Talk) after committing its detent.
 		for (const name of ["openSheet", "toInput", "startVoice"]) {
