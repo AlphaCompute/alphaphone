@@ -1,5 +1,5 @@
-import { reviewMailAttachment, type MailAttachment } from './inbox-attachment';
-import type { GmailInboxReceipt } from './cloud-protocol';
+import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
+import type { GmailInboxReceipt } from './cloud-protocol.ts';
 
 type Bag = Record<string, unknown>;
 export interface InboxOperationRecord {
