@@ -1874,7 +1874,15 @@
 
   
   <sc-if value="{{maps.native}}" hint-placeholder-val="{{false}}">
-    <div role="status" data-alpha-maps-status style="position: absolute; left: 20px; right: 20px; top: {{maps.nativeStatusTop}}px; z-index: 2; padding: 16px; border-radius: 22px; background: var(--bg); color: var(--mut); font-size: 14px; line-height: 1.45; box-shadow: 0 0 0 1px var(--line)">{{maps.nativeStatus}}</div>
+    <div data-alpha-maps-status data-location-state="{{maps.nativeLocationState}}" data-map-state="{{maps.nativeMapState}}" style="position: absolute; left: 20px; right: 20px; top: {{maps.nativeStatusTop}}px; max-height:calc(100% - {{maps.nativeStatusTop}}px - 110px); overflow-y:auto; box-sizing:border-box; z-index: 2; padding: 16px; border-radius: 22px; background: var(--bg); color: var(--mut); font-size: 14px; line-height: 1.45; box-shadow: 0 0 0 1px var(--line)">
+      <p role="status" style="margin:0">{{maps.nativeStatus}}</p>
+      <sc-if value="{{maps.nativeStatusControls}}"><sc-if value="{{maps.nativeMapStatus}}"><p style="margin:6px 0">{{maps.nativeMapStatus}}</p></sc-if><p style="margin:6px 0">{{maps.nativeLocationHelp}}</p><div style="display:flex;flex-wrap:wrap;gap:8px">
+        <button class="tap" aria-label="{{maps.nativeLocationLabel}}" disabled="{{maps.nativeLocationBusy}}" onClick="{{maps.nativeLocation}}" style="min-height:52px;padding:0 16px;border-radius:26px;background:var(--acc);color:#fff;font:inherit">{{maps.nativeLocationLabel}}</button>
+        <button class="tap" aria-label="Enter coordinates" onClick="{{maps.nativeManualLocation}}" style="min-height:52px;padding:0 12px;border-radius:26px;background:var(--s2);color:var(--fg);font:inherit">Enter coordinates</button>
+        <sc-if value="{{maps.nativeLocationDenied}}"><button class="tap" aria-label="Location settings" onClick="{{maps.nativeLocationSettings}}" style="min-height:52px;padding:0 12px;border-radius:26px;background:var(--s2);color:var(--fg);font:inherit">Location settings</button></sc-if>
+        <sc-if value="{{maps.nativeMapRetry}}"><button class="tap" aria-label="Retry map" onClick="{{maps.retryNativeMap}}" style="min-height:52px;padding:0 12px;border-radius:26px;background:var(--s2);color:var(--fg);font:inherit">Retry map</button></sc-if>
+      </div></sc-if>
+    </div>
   </sc-if>
   <sc-if value="{{maps.showSearch}}" hint-placeholder-val="{{true}}">
     <div data-alpha-app-header="main" data-alpha-app-header-overlay style="position: absolute; left: 12px; right: 12px; top: 52px; height: 54px; border-radius: 27px; background: var(--bg); box-shadow: 0 6px 22px var(--shc), 0 0 0 1px var(--line); display: flex; align-items: center; padding: 0 5px; z-index: 3">
