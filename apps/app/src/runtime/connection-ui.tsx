@@ -84,12 +84,14 @@ const actionJournal = registerPlugin<ActionJournal>('AlphaActionJournal');
 let cloud = makeCloud('production');
 let service: { client: CloudProtocol; identity: CloudServiceSession } | null = null;
 function detachService() { for(const request of automationsRequests)request.abort(new DOMException('Cloud account changed','AbortError')); clearPersonalSetup(); service = null; update({ cloudAccount: null }); }
-async function verifyService(client: CloudProtocol, signal: AbortSignal) {
+async function verifyService(client: CloudProtocol, signal: AbortSignal, expected?:{credentialId:string;credentialReference?:string}) {
   const credential = await cloudCredentialStore.read(client.environment); signal.throwIfAborted();
+  if(expected&&(credential?.credentialId!==expected.credentialId||credential?.credentialReference!==expected.credentialReference))throw new Error('Cloud account changed. Try again.');
   if(isAndroid && !testMocksEnabled)update({residentSavedCredential:!!credential?.credentialId});
   if (!credential?.credentialId) throw new Error('Cloud credentials are unavailable. Sign in again.');
   const identity = await client.identity(signal); signal.throwIfAborted();
-  if ((await cloudCredentialStore.read(client.environment))?.credentialId !== credential.credentialId) throw new Error('Cloud account changed. Try again.');
+  const current=await cloudCredentialStore.read(client.environment);
+  if (current?.credentialId !== credential.credentialId || expected&&current?.credentialReference!==expected.credentialReference) throw new Error('Cloud account changed. Try again.');
   signal.throwIfAborted();
   const same = service?.identity.environment === client.environment && service.identity.userId === identity.userId && service.identity.organizationId === identity.organizationId && service.identity.credentialId === credential.credentialId;
   const account = { ...identity, credentialId: credential.credentialId, environment: client.environment, sessionId: same ? service!.identity.sessionId : crypto.randomUUID() };
@@ -704,13 +706,19 @@ export const connectionController = {
         const canRestore=()=>restoreEpoch===epoch&&!operation&&!state.open&&selection()?.kind!=='offline';
         try{
           const credential=await cloudCredentialStore.read('production');
+          // A user choice during discovery also retires automatic agent startup.
+          if(!canRestore())return;
           // An optional empty host store is not an account onboarding action.
-          if(credential?.credentialReference&&canRestore())await work('Checking your Cloud account…',async signal=>{
-            const current=await cloudCredentialStore.read('production');signal.throwIfAborted();
-            if(restoreEpoch!==epoch||current?.credentialId!==credential.credentialId||current?.credentialReference!==credential.credentialReference)throw Error('Cloud account changed. Try again.');
-            await verifyService(makeCloud('production'),signal);
-          });
-        }catch(error){if(canRestore())await work('Checking your Cloud account…',async()=>{throw error;});}
+          if(credential?.credentialReference&&credential.credentialId){
+            const expected={credentialId:credential.credentialId,credentialReference:credential.credentialReference};
+            await work('Checking your Cloud account…',async signal=>{
+              const current=await cloudCredentialStore.read('production');signal.throwIfAborted();
+              if(restoreEpoch!==epoch||current?.credentialId!==expected.credentialId||current?.credentialReference!==expected.credentialReference)throw Error('Cloud account changed. Try again.');
+              await verifyService(makeCloud('production'),signal,expected);
+            });
+            if(restoreEpoch!==epoch||state.error||service?.identity.credentialId!==expected.credentialId)return;
+          }
+        }catch(error){if(canRestore())await work('Checking your Cloud account…',async()=>{throw error;});return;}
       }
       if (!testMocksEnabled && migrateLegacyMock()) return;
       if (testMocksEnabled && ((!isAndroid && !browserLocalAgentEnabled) || new URLSearchParams(location.search).get('mode') === 'mock')) return;
