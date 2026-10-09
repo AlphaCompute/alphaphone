@@ -1,4 +1,4 @@
-import {scanEventDraft,suggestScanEventDetails,type ScanEventDraft,type ScanEventSuggestion} from './scan-event';
+import {scanEventDraft,scanAllDayEventDraft,suggestScanEventDetails,type ScanEventDraft,type ScanEventSuggestion} from './scan-event';
 
 const repeatLabel:Record<NonNullable<ScanEventSuggestion['recurrence']>['repeat'],string>={daily:'daily',weekdays:'on weekdays',weekly:'weekly'};
 /** Suggestions only. Every inference is listed, repeats need an explicit tick and Calendar's own Save remains the only write. */
@@ -25,6 +25,6 @@ export function createScanEventReview(text:()=>string,active:()=>boolean,review:
   source.hidden=!suggested.sourceZone;source.textContent=suggested.sourceZone?`Printed time zone: ${suggested.sourceZone}. The start time above is converted to your local time.`:'';
   const hint=suggested.recurrence;repeat.label.hidden=!hint;repeat.value.checked=false;if(hint){repeat.text.textContent=`Repeat ${repeatLabel[hint.repeat]} (suggested from “${hint.evidence}”)`;repeat.value.setAttribute('aria-label',repeat.text.textContent);}};
  details.addEventListener('toggle',initialize);
- form.onsubmit=event=>{event.preventDefault();if(submitted||!active())return;try{const hint=suggested?.recurrence;const draft=scanEventDraft({title:title.value,date:date.value,time:time.value,minutes:Number(minutes.value),location:location.value,allDay:allDay.value.checked,repeat:hint&&repeat.value.checked?hint.repeat:'none'},text());if(!review(draft)){status.textContent='Calendar could not open. Your draft remains here.';return;}submitted=true;button.disabled=true;}catch(error){status.textContent=error instanceof Error?error.message:'Check the event details.';}};
+ form.onsubmit=event=>{event.preventDefault();if(submitted||!active())return;try{const hint=suggested?.recurrence;const reviewedRepeat=hint&&repeat.value.checked?hint.repeat:'none';const draft=allDay.value.checked?scanAllDayEventDraft({title:title.value,date:date.value,location:location.value,repeat:reviewedRepeat},text()):scanEventDraft({title:title.value,date:date.value,time:time.value,minutes:Number(minutes.value),location:location.value,repeat:reviewedRepeat},text());if(!review(draft)){status.textContent='Calendar could not open. Your draft remains here.';return;}submitted=true;button.disabled=true;}catch(error){status.textContent=error instanceof Error?error.message:'Check the event details.';}};
  details.append(summary,description,zone,notes,source,form);return details;
 }
