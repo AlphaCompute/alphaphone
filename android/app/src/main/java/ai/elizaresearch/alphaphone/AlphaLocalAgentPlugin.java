@@ -377,18 +377,30 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    return ResidentResultSession.snapshot(ownerIdentity,ownerToken,expiresAt,currentRoot);
   }
  }
- private static JSONObject raw(String path,String method,String body,String token,JSONObject supplied) throws Exception {
+ /** Native-only read of the already enrolled machine session. Never calls enroll or setup. */
+ static JSONObject captureReminderOwnerSession()throws Exception{
+  synchronized(lifecycleLock){return captureResultSession(ownerIdentity);}
+ }
+ static JSONObject readReminderOwnerRoute(JSONObject expected,String path,JSONObject deviceHeaders)throws Exception{
+  if(!java.util.Arrays.asList("/api/auth/me","/api/agents","/api/client-devices/context").contains(path))throw new SecurityException("Native owner route unavailable");
+  JSONObject before=captureReminderOwnerSession();
+  if(!before.toString().equals(expected.toString()))throw new SecurityException("Native owner session changed");
+  JSONObject result=raw(path,"GET",null,expected.getString("token"),deviceHeaders,3000);
+  if(!captureReminderOwnerSession().toString().equals(expected.toString()))throw new SecurityException("Native owner session changed");
+  return result;
+ }
+ private static JSONObject raw(String path,String method,String body,String token,JSONObject supplied,int timeoutMs) throws Exception {
   JSONObject headers=new JSONObject();headers.put("Accept","application/json");headers.put("Content-Type","application/json");
   if(token!=null)headers.put("Authorization","Bearer "+token);
   if(supplied!=null)for(String key:new String[]{"X-Eliza-Device-Id","X-Eliza-Device-Key","X-Eliza-Device-Capabilities"}){
    if(supplied.has(key)){String value=supplied.getString(key);if(value.length()>2048||value.contains("\r")||value.contains("\n"))throw new IllegalArgumentException();headers.put(key,value);}
   }
-  JSONObject input=new JSONObject().put("path",path).put("method",method).put("headers",headers).put("timeoutMs",120000);
+  JSONObject input=new JSONObject().put("path",path).put("method",method).put("headers",headers).put("timeoutMs",timeoutMs);
   if(body!=null)input.put("body",body);
   return new JSONObject(ElizaAgentService.requestLocalAgent(input.toString()));
  }
  private static JSONObject json(String path,String method,JSONObject body,String token) throws Exception {
-  JSONObject response=raw(path,method,body==null?null:body.toString(),token,null);
+  JSONObject response=raw(path,method,body==null?null:body.toString(),token,null,120000);
   if(response.getInt("status")!=200)throw new IllegalStateException("Local enrollment unavailable");
   return new JSONObject(response.getString("body"));
  }
@@ -436,7 +448,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    String token=enroll(epoch);
    synchronized(lifecycleLock){requireCurrent(epoch);if(expectedOwner!=null&&!expectedOwner.equals(ownerIdentity)){resolveCurrent(call,epoch,new JSObject().put("status",409).put("body","{\"error\":\"Local owner changed; reconnect before continuing\"}"));return;}}
    requireCurrent(epoch);
-   JSONObject result=raw(path,method,body,token,headers);
+   JSONObject result=raw(path,method,body,token,headers,120000);
    requireCurrent(epoch);
    if(result.getInt("status")==401)synchronized(lifecycleLock){requireCurrent(epoch);clearEnrollment();}
    if(path.equals("/api/auth/me")&&result.getInt("status")==200){JSONObject who=new JSONObject(result.getString("body"));who.getJSONObject("session").put("id","native-owned-session");result.put("body",who.toString());result.remove("bodyBase64");}

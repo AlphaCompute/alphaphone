@@ -88,4 +88,19 @@ final class AlphaCredentialStore {
    return LocalAgentProviderAdmission.currentGeneration(saved,credential);
   }
  }
+ /** Private whitelist only; neither the logical fingerprint nor billing credentials leave the store. */
+ org.json.JSONObject providerAdmissionSnapshot()throws Exception{
+  synchronized(JsonCredentialSlots.LOCK){
+   String saved=slots.read(LocalAgentProviderAdmission.PROVIDER_SLOT);
+   if(saved==null)throw new SecurityException("Native provider binding unavailable");
+   org.json.JSONObject selected=new org.json.JSONObject(saved);
+   String kind=selected.optString("provider","cerebras");
+   String cloud="elizacloud".equals(kind)?slots.read("cloud:production"):null;
+   String generation=LocalAgentProviderAdmission.currentGeneration(saved,cloud);
+   if(generation==null)throw new SecurityException("Native provider binding unavailable");
+   String accountRef="elizacloud".equals(kind)?"cloud:production:"+selected.getString("credentialId"):"native-local";
+   return new org.json.JSONObject().put("provider",kind).put("environment","production").put("accountRef",accountRef).put("sessionGeneration",generation);
+  }
+ }
+
 }

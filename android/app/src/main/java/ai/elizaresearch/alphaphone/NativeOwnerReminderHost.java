@@ -1,0 +1,73 @@
+package ai.elizaresearch.alphaphone;
+
+import android.content.Context;
+import org.json.*;
+
+/** Private identity projection only. No enrollment, permission request, scheduler or notification effect. */
+final class NativeOwnerReminderHost {
+ interface Ports {
+  JSONObject provider()throws Exception;
+  JSONObject ownerSession()throws Exception;
+  String device(String slot)throws Exception;
+  JSONObject exchange(JSONObject session,String path,JSONObject deviceHeaders)throws Exception;
+ }
+ private final Ports ports;
+ NativeOwnerReminderHost(Context context){
+  AlphaCredentialStore store=new AlphaCredentialStore(context.getApplicationContext());
+  ports=new Ports(){
+   public JSONObject provider()throws Exception{return store.providerAdmissionSnapshot();}
+   public JSONObject ownerSession()throws Exception{return AlphaLocalAgentPlugin.captureReminderOwnerSession();}
+   public String device(String slot)throws Exception{return store.readCredentialSlot(slot);}
+   public JSONObject exchange(JSONObject session,String path,JSONObject headers)throws Exception{return AlphaLocalAgentPlugin.readReminderOwnerRoute(session,path,headers);}
+  };
+ }
+ JSONObject read()throws Exception{return read(ports);}
+ static JSONObject read(Ports ports)throws Exception{
+  JSONObject provider=new JSONObject(ports.provider().toString()),session=new JSONObject(ports.ownerSession().toString());
+  String subject=HostedInbox.id(session.getString("ownerId"));
+  class Current {
+   String deviceSlot;JSONObject device;
+   final long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(12);
+   void check()throws Exception{
+    if(System.nanoTime()>=deadline||session.getLong("expiresAt")<=System.currentTimeMillis()+30000
+       ||!session.toString().equals(ports.ownerSession().toString())
+       ||!provider.toString().equals(ports.provider().toString()))throw new SecurityException("Native owner binding changed");
+    if(device!=null){
+     String raw=ports.device(deviceSlot);if(raw==null)throw new SecurityException("Native enrollment missing");
+     JSONObject current=new JSONObject(raw);
+     for(String field:new String[]{"installationId","enrollmentId","key"})if(!device.getString(field).equals(current.getString(field)))throw new SecurityException("Native enrollment changed");
+    }
+   }
+   JSONObject get(String path,JSONObject headers)throws Exception{
+    check();JSONObject response=ports.exchange(new JSONObject(session.toString()),path,headers);check();
+    if(response.getInt("status")!=200)throw new SecurityException("Native owner context unavailable");
+    String body=response.getString("body");if(body.length()>65536)throw new SecurityException("Native owner response too large");return new JSONObject(body);
+   }
+   void owner()throws Exception{
+    JSONObject me=get("/api/auth/me",null),identity=me.getJSONObject("identity"),access=me.getJSONObject("access"),machine=me.getJSONObject("session");
+    if(!subject.equals(identity.getString("id"))||!"owner".equals(identity.getString("kind"))
+       ||!"OWNER".equals(access.getString("role"))||!"session".equals(access.getString("mode"))
+       ||!"machine".equals(machine.getString("kind"))||!session.getString("token").equals(machine.getString("id"))
+       ||machine.getLong("expiresAt")!=session.getLong("expiresAt"))throw new SecurityException("Native owner session unavailable");
+   }
+  }
+  Current current=new Current();current.owner();
+  JSONArray agents=current.get("/api/agents",null).getJSONArray("agents");
+  if(agents.length()!=1||!"running".equals(agents.getJSONObject(0).getString("status")))throw new SecurityException("Native agent unavailable");
+  String agent=HostedInbox.id(agents.getJSONObject(0).getString("id"));
+  current.deviceSlot="device:"+HostedResultNotices.hash(new JSONArray().put("https://device.alpha.invalid").put(subject).put(agent).toString());
+  String raw=ports.device(current.deviceSlot);if(raw==null)throw new SecurityException("Native device enrollment unavailable");
+  current.device=new JSONObject(raw);String installation=current.device.getString("installationId"),enrollment=current.device.getString("enrollmentId"),key=current.device.getString("key");
+  if(!installation.matches("[a-f0-9-]{36}")||!key.matches("[a-f0-9]{64}"))throw new SecurityException("Native device enrollment unavailable");
+  HostedInbox.id(enrollment);current.check();
+  JSONObject device=current.get("/api/client-devices/context",new JSONObject().put("X-Eliza-Device-Id",installation).put("X-Eliza-Device-Key",key));
+  for(String field:new String[]{"subjectUserId","agentId","installationId","enrollmentId"}){
+   String expected=field.equals("subjectUserId")?subject:field.equals("agentId")?agent:field.equals("installationId")?installation:enrollment;
+   if(!expected.equals(device.getString(field)))throw new SecurityException("Native enrolled device changed");
+  }
+  current.owner();current.check();
+  String account=provider.getString("accountRef");if("native-local".equals(account))account+=":"+subject;
+  return new JSONObject().put("protocol",1).put("subjectUserId",subject).put("agentId",agent).put("installationId",installation).put("enrollmentId",enrollment)
+   .put("accountRef",account).put("environment",provider.getString("environment")).put("sessionGeneration",provider.getString("sessionGeneration"));
+ }
+}

@@ -45,6 +45,7 @@ public class AdmissionTest {
  public static void main(String[] args)throws Exception {
   String original=credential("synthetic-token","synthetic-owner");store.writeCredentialSlot(CLOUD,original);bind();String first=generation(),firstBytes=store.readCredentialSlot(SLOT),revision=new JSONObject(firstBytes).getString("revision");
   check(first!=null,"Explicit native binding missing generation");cases++;
+  JSONObject projection=store.providerAdmissionSnapshot();check(projection.length()==4&&first.equals(projection.getString("sessionGeneration"))&&!projection.toString().contains("admissionFingerprint")&&!projection.toString().contains("synthetic-token"),"Private provider snapshot leaked or minted identity");
   bind();check(first.equals(generation()),"Identical restore changed stable generation");check(!revision.equals(new JSONObject(store.readCredentialSlot(SLOT)).getString("revision")),"CAS revision did not rotate");cases++;
   String beforeRead=store.readCredentialSlot(SLOT);check(first.equals(generation())&&beforeRead.equals(store.readCredentialSlot(SLOT)),"Read mutated authority");cases++;
   for(String changed:new String[]{credential("replacement-token","synthetic-owner"),credential("synthetic-token","other-owner"),new JSONObject(original).put("credentialId",UUID.randomUUID().toString()).toString(),new JSONObject(original).put("organizationId","other-org").toString()}){
