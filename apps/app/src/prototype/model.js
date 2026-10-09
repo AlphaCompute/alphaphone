@@ -5501,7 +5501,7 @@ class Component extends DCLogic {
       goTriage: function () { self.send("What needs me?"); },
       goFlows: function () { self.openView("workflows", copy("shell").homeWorkflow || null); },
       goSettings: function () { self.openView("settings"); },
-      tiles: tiles, bright: S.bright, onBright: function () { self.openView("settings", { page: "display" }); }, shadeN: shadeN, shadeY: isOn && S.shade ? "0" : "-100%",
+      tiles: tiles, bright: S.bright, brightHandoff: true, brightSlider: false, onBright: function () { self.openView("settings", { page: "display" }); }, shadeN: shadeN, shadeY: isOn && S.shade ? "0" : "-100%",
       closeShade: function () { self.setState({ shade: false }); }, clearAll: function () { self.setState({ nGone: NOTIFS.map(function (n) { return n.id; }), shade: false }); },
       lockCamera: function () { self.setState({ screen: "home", secure: true }); self.openView("camera"); },
       msgs: msgs, typing: S.typing, sugg: sugg, showSugg: panelOpen && !S.draft && !S.typing && !voiceOn,

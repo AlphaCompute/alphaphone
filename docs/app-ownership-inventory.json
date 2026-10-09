@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "b402d616af7919b619ca53c97e35f578d4c27d0efd1676d190c53edf2e79e706",
+  "sourceDigest": "1d051fe67af3da3b3980d392c8d5983b1d36f1f208adfb4af1ff06c28a6aabfb",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -1955,8 +1955,8 @@
     {
       "file": "src/browser/device-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 2472,
-      "sha256": "891f5839d31a8acd5ac7563c11308e138757c078d8e5ff73808f3ed13dab6cda",
+      "bytes": 2510,
+      "sha256": "c0686b824722cb0cc0e2c0fec7b3e74530bca29878fefd1834e79e02a3e38b06",
       "lines": 12,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
@@ -10178,8 +10178,8 @@
     {
       "file": "src/prototype/model.js",
       "upstreamCandidate": [],
-      "bytes": 418837,
-      "sha256": "e0413fc2ea1c579272c4e4d73aab688e2a782e9d9110d49a22b93b467fe5550b",
+      "bytes": 418879,
+      "sha256": "9088dd76dd8d70f0d2fd604c940ca8a13a842c28521eeafa6963de493edc89da",
       "lines": 5565,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
@@ -13070,9 +13070,9 @@
     {
       "file": "src/prototype/template.html",
       "upstreamCandidate": [],
-      "bytes": 457503,
-      "sha256": "c14f73032e557b9d1a955e38bcaade932f9623322d81822477adaa77a11c3a85",
-      "lines": 4153,
+      "bytes": 457796,
+      "sha256": "ff607f6ebe97fa471b0773b6c3ac24a84e176d5ba68b5320a40a06139285d6a9",
+      "lines": 4154,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -15626,27 +15626,21 @@
           ]
         },
         {
-          "line": 3993,
+          "line": 3994,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3997,
+          "line": 3998,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 4001,
+          "line": 4002,
           "tags": [
             "presentation"
-          ]
-        },
-        {
-          "line": 4010,
-          "tags": [
-            "identity-or-compatibility"
           ]
         },
         {
@@ -15656,127 +15650,127 @@
           ]
         },
         {
-          "line": 4023,
+          "line": 4012,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 4024,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4037,
+          "line": 4038,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4042,
+          "line": 4043,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4044,
+          "line": 4045,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4053,
+          "line": 4054,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4064,
+          "line": 4065,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4072,
+          "line": 4073,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4074,
+          "line": 4075,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4081,
+          "line": 4082,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4093,
+          "line": 4094,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4098,
+          "line": 4099,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4101,
+          "line": 4102,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4103,
+          "line": 4104,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4105,
+          "line": 4106,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4111,
+          "line": 4112,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4114,
+          "line": 4115,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4118,
+          "line": 4119,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4120,
+          "line": 4121,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4127,
+          "line": 4128,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4130,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 4136,
+          "line": 4131,
           "tags": [
             "presentation"
           ]
@@ -15788,19 +15782,25 @@
           ]
         },
         {
-          "line": 4142,
+          "line": 4138,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 4145,
+          "line": 4143,
           "tags": [
             "presentation"
           ]
         },
         {
           "line": 4146,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 4147,
           "tags": [
             "presentation"
           ]

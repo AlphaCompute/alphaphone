@@ -44,7 +44,12 @@ async function remoteAgent(page: Page, mode: Mode) {
         if (path === '/api/workflow/status') return ok({ status: 'unavailable' });
         if (path === '/api/conversations' && input.method === 'POST') { f.created = true; return ok({ conversation: { id: 'fixture-chat', title: 'Alpha Phone' } }); }
         if (path === '/api/conversations' && input.method === 'GET') return ok({ conversations: f.created ? [{ id: 'fixture-chat', title: 'Alpha Phone' }] : [] });
-        if (path === '/api/conversations/fixture-chat/messages' && input.method === 'POST') { f.posts++; return { status: 502, data: { error: 'upstream reset' } }; }
+        if (path === '/api/conversations/fixture-chat/messages' && input.method === 'POST') {
+          // Record each POST's message identity: a reconciliation repeats the same clientMessageId
+          // and body (the agent returns the durable outcome for that key); a resend would not.
+          f.posts++; const body = JSON.parse(input.body || '{}'); (f.messageIds ||= []).push(body.clientMessageId ?? null); (f.bodies ||= []).push(JSON.stringify(body));
+          return { status: 502, data: { error: 'upstream reset' } };
+        }
         if (path === '/api/conversations/fixture-chat/messages' && input.method === 'GET') {
           f.historyReads++;
           return ok({ messages: [{ id: 'u1', role: 'user', text: 'Was this delivered?' }, { id: 'a1', role: 'assistant', text: 'Yes, your message arrived. Here is the reply.' }] });
@@ -120,8 +125,13 @@ test('a failure after dispatch offers Check for reply and never resends', async 
   // The message may have been received, so it is not offered again as a draft.
   await expect(composer(page)).toHaveValue('');
   await expect.poll(() => savedDraft(page, key)).toBe('');
-  expect(await page.evaluate(() => (window as any).dispatchFixture.posts)).toBe(1);
+  // One logical send: the transport may reconcile a dropped response once by repeating the identical
+  // request under the same clientMessageId, which the agent deduplicates. It never sends a new message.
+  const sent = await page.evaluate(() => { const f = (window as any).dispatchFixture; return { posts: f.posts, ids: [...new Set(f.messageIds)], bodies: [...new Set(f.bodies)] }; });
+  expect(sent.posts).toBeGreaterThanOrEqual(1); expect(sent.posts).toBeLessThanOrEqual(2);
+  expect(sent.ids).toHaveLength(1); expect(typeof sent.ids[0]).toBe('string'); expect(sent.bodies).toHaveLength(1);
   await check.click();
   await expect(page.getByText('Yes, your message arrived. Here is the reply.', { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => { const f = (window as any).dispatchFixture; return { posts: f.posts, historyReads: f.historyReads }; })).toEqual({ posts: 1, historyReads: 1 });
+  // Check for reply only reads history; nothing is posted again.
+  expect(await page.evaluate(() => { const f = (window as any).dispatchFixture; return { posts: f.posts, historyReads: f.historyReads }; })).toEqual({ posts: sent.posts, historyReads: 1 });
 });

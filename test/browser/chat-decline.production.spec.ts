@@ -101,13 +101,19 @@ const fixture = (page: Page) => page.evaluate(() => {
   const f = (window as any).declineFixture;
   return { decisions: f.decisions, reconciliations: f.reconciliations, effects: f.effects, journal: f.journal, states: f.proposals.map((p: any) => [p.id, p.state]), unexpected: f.unexpected };
 });
-async function connected(page: Page) {
+async function connected(page: Page, options: { review?: boolean } = {}) {
   await page.goto('/');
   // Development builds offer an explicit start; production starts the funded resident agent itself.
   const start = page.locator('.alpha-connection').getByRole('button', { name: 'Start local agent', exact: true });
   await expect.poll(async () => await start.isVisible().catch(() => false) || await page.evaluate(() => (window as any).declineFixture.installationId !== ''), { timeout: 30_000 }).toBe(true);
   if (await start.isVisible().catch(() => false)) await start.click();
   await expect.poll(() => page.evaluate(() => (window as any).declineFixture.installationId), { timeout: 30_000 }).not.toBe('');
+  if (options.review) {
+    // An uncertain phone action surfaces itself after connecting; close that notice to review it from Activity.
+    await expect(page.locator('.alpha-connection').getByText('A phone action needs your review. Check this phone, then record whether it happened.', { exact: true })).toBeVisible({ timeout: 30_000 });
+    const close = page.getByRole('button', { name: 'Close connection settings' }).first();
+    if (await close.isVisible().catch(() => false)) await close.click(); else await page.keyboard.press('Escape');
+  }
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
 }
 
@@ -138,18 +144,15 @@ test('a proposal is declined from its chat card and the agent records the reject
 test('Activity reconciles a reconciliation-required entry as not applied', async ({ page }) => {
   test.setTimeout(90_000);
   await residentAgent(page, 'reconcile');
-  await connected(page);
+  await connected(page, { review: true });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByText('Privacy & data', { exact: true }).click();
   await page.getByRole('button', { name: 'Activity', exact: true }).click();
   const app = page.locator('[data-alpha-layer="app"]');
-  await app.getByRole('button', { name: 'Load phone action history', exact: true }).click();
-  // The explicit read reports progress in the connection panel; close it once the read finished.
-  await expect(page.locator('.alpha-connection').getByText(/Review local effects before resolving/)).toBeVisible();
-  // Development builds show a close button; the production Android dialog closes with Back/Escape.
-  const close = page.getByRole('button', { name: 'Close connection settings' }).first();
-  if (await close.isVisible().catch(() => false)) await close.click(); else await page.keyboard.press('Escape');
-  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+  // The review read after connecting already loaded the history, so Activity lists the entry
+  // without a separate Load (it offers Refresh instead).
+  await expect(app.getByRole('button', { name: 'Refresh phone action history', exact: true })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Load phone action history', exact: true })).toHaveCount(0);
   await expect(app.getByText('Needs your review', { exact: true })).toBeVisible();
   await expect(app.getByRole('button', { name: 'It happened', exact: true })).toBeVisible();
   await app.getByRole('button', { name: 'It did not happen', exact: true }).click();

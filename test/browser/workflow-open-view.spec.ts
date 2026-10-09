@@ -105,7 +105,8 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
       const beforeSync=(await counts()).receipts;
       await page.getByRole('button',{name:'Sync recorded receipts',exact:true}).click();
       await expect.poll(async()=> (await counts()).receipts).toBe(beforeSync+1);
-      await expect(page.getByText('done',{exact:true})).toBeVisible();
+      // History shows the agent state, then this phone's journal outcome.
+      await expect(page.getByText('done · this phone: succeeded',{exact:true})).toBeVisible();
       expect(await counts()).toEqual({ posts: 1, decisions: 1, claims: 1, receipts: beforeSync+1, workflowLists: 1, journal: ['reserve', 'markApplying', 'finish'] });
       expect(await page.evaluate(()=>new Set((window as any).navigationFixture.receiptBodies).size)).toBe(1);
     } else {

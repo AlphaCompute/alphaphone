@@ -13,10 +13,10 @@ async function openNote(page:Page){
  await page.getByRole('textbox',{name:'Note',exact:true}).fill('Milk and eggs.');
  await page.waitForTimeout(500);
 }
-/** The Notes editor button once the template binds it; the module entry point otherwise. */
+/** Starts reading through the module entry point the editor button calls, so the resolved
+ * outcome is observable. The editor button itself is covered by its own test below. */
 async function readAloud(page:Page){
- const button=page.getByRole('button',{name:'Read aloud',exact:true});
- if(await button.count()){await button.click();return;}
+ await expect(page.getByRole('button',{name:'Read aloud',exact:true})).toBeVisible();
  await page.evaluate(async()=>{
   const raw=await(await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw();
   const note=JSON.parse(raw!).records.find((n:any)=>n.title==='Groceries');
@@ -49,4 +49,16 @@ test('leaving the note stops reading; a finished reading reports completion',asy
  await page.evaluate(()=>(window as any).voiceFixture.finish());
  await expect.poll(()=>page.evaluate(()=>(window as any).voiceFixture.outcome)).toBe('finished');
  expect(await reading(page)).toBeNull();
+});
+test('the editor Read aloud button reads the open note and Stop reading stops it',async({page})=>{
+ const posts:string[]=[];page.on('request',request=>{if(request.method()==='POST')posts.push(request.url());});
+ await openNote(page);
+ await page.getByRole('button',{name:'Read aloud',exact:true}).click();
+ await expect.poll(()=>spoken(page)).toEqual(['Groceries. Milk and eggs.']);
+ await expect.poll(async()=>(await reading(page))?.state).toBe('reading');
+ await page.getByRole('button',{name:'Stop reading',exact:true}).click();
+ await expect.poll(()=>reading(page)).toBeNull();
+ expect(await page.evaluate(()=>(window as any).voiceFixture.cancels)).toBeGreaterThan(0);
+ await expect(page.getByRole('button',{name:'Read aloud',exact:true})).toBeVisible();
+ expect(posts).toEqual([]);
 });

@@ -3990,7 +3990,8 @@
   </div>
   <div style="display: flex; align-items: center; gap: 12px; padding: 14px 10px 6px; color: var(--mut)">
     <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{ic.sun}}"></path></svg>
-    <button class="tap" onClick="{{onBright}}" style="min-height: 44px; padding: 0 14px; border-radius: 22px; background: var(--s2); color: var(--fg); font-size: 14px">Display settings</button>
+    <sc-if value="{{brightSlider}}" hint-placeholder-val="{{false}}"><input type="range" min="0" max="100" value="{{bright}}" disabled="{{deviceSettingsPending}}" onChange="{{onBright}}" aria-label="Brightness"></sc-if>
+    <sc-if value="{{brightHandoff}}" hint-placeholder-val="{{true}}"><button class="tap" onClick="{{onBright}}" style="min-height: 44px; padding: 0 14px; border-radius: 22px; background: var(--s2); color: var(--fg); font-size: 14px">Display settings</button></sc-if>
   </div>
   <sc-if value="{{deviceSettingsMessage}}"><p role="status">{{deviceSettingsMessage}}</p></sc-if>
   </sc-if>
