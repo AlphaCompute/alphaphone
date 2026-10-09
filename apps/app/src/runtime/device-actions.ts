@@ -121,7 +121,9 @@ function assertNotesQueryContext(context:ContextEnvelope){if(context.sensitive||
 /** Foreground reviews resolve locally; they are offered only where the owner can see the result. */
 function assertForegroundContext(operation:ForegroundReviewOperation,context:ContextEnvelope){
  if(context.sensitive)throw new ContextNotice('Unlock the phone to review this action.');
- if(operation.type==='calendar_availability'){if(!['home','calendar'].includes(context.view))throw new ContextNotice('Open Home or Calendar to review this availability check.');return;}
+ if(operation.type==='calendar_availability'){if(!['home','calendar'].includes(context.view))throw new ContextNotice('Open Home or Calendar to review this availability check.');
+  // All-day events block the owner's local days, so the check must use this phone's time zone.
+  if(operation.timeZone!==context.timeZone)throw new ContextNotice('This availability check used a different time zone. Ask again from this phone.');return;}
  if(operation.type==='notes_search'){if(!['home','notes'].includes(context.view))throw new ContextNotice('Open Home or Notes to review this Notes search.');return;}
  // Name-targeted edits are requested from Home and resolved by a local choice, never by a selection elsewhere.
  if(context.view!=='home')throw new ContextNotice('Return to Home to choose the record for this action.');

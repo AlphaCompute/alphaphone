@@ -80,7 +80,11 @@ async function reviewNoticesAndForeground(){
  assert.deepEqual(away.map(item=>item.notice),['Check availability: Open Home or Calendar to review this availability check.','Delete note by name: Return to Home to choose the record for this action.','Search notes: Open Home or Notes to review this Notes search.']);
  const calendarView=await client().pendingReview({...home,view:'calendar'},signal());
  assert.deepEqual(calendarView.map(item=>item.proposal?.id??item.notice),['free-busy','Delete note by name: Return to Home to choose the record for this action.','Search notes: Open Home or Notes to review this Notes search.']);
+ // All-day days are the phone's local days: another zone is a notice, never an approvable card.
+ const elsewhere=await client().pendingReview({...home,timeZone:'Europe/London'},signal());
+ assert.equal(elsewhere[0].proposal,null);assert.equal(elsewhere[0].notice,'Check availability: This availability check used a different time zone. Ask again from this phone.');
  const actions=client(),cards=await actions.pending(home,signal());
+ await assert.rejects(actions.approve('free-busy',{...home,timeZone:'Europe/London'},signal()));
  assert.deepEqual(cards.map(card=>card.title),['Check availability','Delete note by name','Search notes']);
  assert.match(cards[0].description,/You choose which calendars this phone reads\. Only busy times are shared/);
  assert.match(cards[1].description,/Find “Groceries” in Notes on this phone\. You choose the exact note/);
