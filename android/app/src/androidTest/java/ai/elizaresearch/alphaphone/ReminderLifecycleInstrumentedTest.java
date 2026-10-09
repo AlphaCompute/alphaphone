@@ -67,6 +67,10 @@ public class ReminderLifecycleInstrumentedTest {
    try{ReminderLifecycleTestAccess.saveTodo(c,id,"Different text","");fail("Existing ID overwritten");}catch(IllegalArgumentException expected){}
    Intent alarm=new Intent(c,ReminderReceiver.class).setAction(AlphaReminders.CONFIGURATION.remindAction).setData(Uri.parse(AlphaReminders.CONFIGURATION.alarmUriPrefix+id+"/"+saved.getString("occurrenceId")));
    assertNull("No AlarmManager route",PendingIntent.getBroadcast(c,0,alarm,PendingIntent.FLAG_NO_CREATE|PendingIntent.FLAG_IMMUTABLE));
+   // Notification decisions never apply to a to-do: Snooze would otherwise arm an alarm.
+   for(String action:new String[]{"snooze","done"})try{ReminderTestAccess.decide(c,id,saved.getString("occurrenceId"),action);fail("reminderDecision changed a to-do: "+action);}catch(IllegalArgumentException expected){}
+   assertEquals("Refused decisions leave the to-do unchanged",saved.toString(),ReminderTestAccess.read(c,id).toString());
+   assertNull("No AlarmManager route after refused Snooze",PendingIntent.getBroadcast(c,0,alarm,PendingIntent.FLAG_NO_CREATE|PendingIntent.FLAG_IMMUTABLE));
    ReminderTestAccess.restore(c);assertNull("Restore never posts a to-do",notification(id));
    JSONObject listed=find(ReminderTestAccess.list(c),id);assertNotNull(listed);assertFalse(listed.has("at"));
    JSONObject target=ReminderTestAccess.selected(c,id);

@@ -1,8 +1,8 @@
 diff --git a/plugins/plugin-native-reminders/android/README.md b/plugins/plugin-native-reminders/android/README.md
-index 292ce1faef2c1bba255bd301532e1cbc961b4744..edf117ca5b26632add377bed2bfb7455a8f321df 100644
+index 292ce1faef2c1bba255bd301532e1cbc961b4744..aa7f0d0a787d955adac361f5c22573e273d30469 100644
 --- a/plugins/plugin-native-reminders/android/README.md
 +++ b/plugins/plugin-native-reminders/android/README.md
-@@ -30,3 +30,23 @@ intents for retry; it never falls back to storage on the UI thread. Foreground
+@@ -30,3 +30,24 @@ intents for retry; it never falls back to storage on the UI thread. Foreground
  and unlocked-state admission happens on the UI thread before queued tap actions.
  Destroyed hosts reject queued actions. Notification delivery and engine operations
  retain their existing store lock and durable receipt semantics.
@@ -25,7 +25,8 @@ index 292ce1faef2c1bba255bd301532e1cbc961b4744..edf117ca5b26632add377bed2bfb7455
 +`saveTodo` stores an undated to-do: status `todo`, mode `none`, `undated: true`, no `at`
 +and no AlarmManager entry or notification. A retried save with the same ID and text is
 +idempotent. `todoDecision` takes the exact reviewed target and `done`, `reopen` or
-+`cancel`. Reviewed `operateReminder` operations refuse undated to-dos.
++`cancel`. Reviewed `operateReminder` operations and `reminderDecision` refuse undated
++to-dos.
 diff --git a/plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderConfiguration.java b/plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderConfiguration.java
 index ab46b3baf6696a714067af24d16c529406a769bd..5c93cf78fd50bf551fb26a6935a6aab39700c493 100644
 --- a/plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderConfiguration.java
@@ -62,7 +63,7 @@ index 0c61cbaf74a26b3d805376eb46eae0f0d8e36664..da492dcbb116bef946108a881162d423
   public void captureTap(String token)throws Exception{taps().capture(token);}
   public JSONObject consumeTap(String token)throws Exception{return taps().consume(token);}
 diff --git a/plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderPlugin.java b/plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderPlugin.java
-index f85c62ec940b4b303181cf351aa5eaf22b5aee8d..365db97b73edbdf8320527c54df1c70635cd1a1d 100644
+index f85c62ec940b4b303181cf351aa5eaf22b5aee8d..0a24eb2c14659aca2b74f9b76a4a80035285f826 100644
 --- a/plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderPlugin.java
 +++ b/plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderPlugin.java
 @@ -35,7 +35,7 @@ public abstract class ReminderPlugin extends Plugin {
@@ -74,11 +75,13 @@ index f85c62ec940b4b303181cf351aa5eaf22b5aee8d..365db97b73edbdf8320527c54df1c706
   private static Double number(PluginCall call,String key){Object value=call.getData().opt(key);return value instanceof Number?((Number)value).doubleValue():null;}
   private void openReminder(Intent intent) {
    if (intent == null) return;
-@@ -114,12 +114,24 @@ public abstract class ReminderPlugin extends Plugin {
+@@ -113,13 +113,25 @@ public abstract class ReminderPlugin extends Plugin {
+   if (at == null || at <= System.currentTimeMillis()) { reminderResult(call, "past", "Choose a future reminder time"); return; }
    try {
     org.json.JSONObject timing=ReminderStore.explicitTiming(call.getData(),at.longValue(),call.getObject("recurrence"));
-    if(!ReminderStore.noAlert(timing)&&!engine().store.allowed(engine().context)){reminderResult(call,"permission-denied","Enable app notifications and its "+configuration.channelName+" channel in Android settings");return;}
+-   if(!ReminderStore.noAlert(timing)&&!engine().store.allowed(engine().context)){reminderResult(call,"permission-denied","Enable app notifications and its "+configuration.channelName+" channel in Android settings");return;}
 -   org.json.JSONObject saved=engine().store.schedule(engine().context,call.getString("id"),call.getString("title"),call.getString("body",""),at.longValue(),call.getObject("recurrence"),timing);
++   if(!ReminderStore.noAlert(timing)&&!engine().store.allowed(engine().context)){reminderResult(call,"permission-denied","Enable app notifications and its "+configuration.channelName+" (due) channel in Android settings");return;}
 +   final org.json.JSONObject saved;
 +   try{saved=engine().store.schedule(engine().context,call.getString("id"),call.getString("title"),call.getString("body",""),at.longValue(),call.getObject("recurrence"),timing);}
 +   catch(ReminderStore.StorageFull full){reminderResult(call,"storage-full","Reminder storage is full. Complete or cancel an existing reminder before adding another.");return;}
@@ -101,7 +104,7 @@ index f85c62ec940b4b303181cf351aa5eaf22b5aee8d..365db97b73edbdf8320527c54df1c706
    try { call.resolve(JSObject.fromJSONObject(engine().store.decide(engine().context,call.getString("id"),call.getString("occurrenceId"),call.getString("action")))); }
    catch(RuntimeException|org.json.JSONException error){reminderResult(call,"failed","The reminder action could not be saved");}
 diff --git a/plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderStore.java b/plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderStore.java
-index e1a77c9845c68e1bed59e79f9c3fbf287a6e5b72..5f250ceaed73da502fbb996f14dd987d48338f3a 100644
+index e1a77c9845c68e1bed59e79f9c3fbf287a6e5b72..64ac7c6000bdf765d390e0834f1ac31241fb2482 100644
 --- a/plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderStore.java
 +++ b/plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderStore.java
 @@ -23,6 +23,7 @@ import java.util.UUID;
@@ -229,7 +232,16 @@ index e1a77c9845c68e1bed59e79f9c3fbf287a6e5b72..5f250ceaed73da502fbb996f14dd987d
      .setContentTitle(value.getString("title")).setContentText(value.getString("body"))
      .setStyle(new Notification.BigTextStyle().bigText(value.getString("body")))
      .setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(publicVersion)
-@@ -293,6 +330,51 @@ final class ReminderStore {
+@@ -254,6 +291,8 @@ final class ReminderStore {
+   JSONObject value=read(context,id);
+   if(value==null||!occurrence.equals(value.optString("occurrenceId"))||"cancelled".equals(value.optString("status"))||"completed".equals(value.optString("status")))return new JSONObject().put("status","stale");
+   if(!action.equals("done")&&!action.equals("snooze"))throw new IllegalArgumentException("Unknown reminder action");
++  // Undated to-dos have no instant or alert: Done/Snooze would arm an alarm. Use todoDecision.
++  if(value.optBoolean("undated"))throw new IllegalArgumentException("Change undated to-dos from the to-do list");
+   if(action.equals("snooze")&&noAlert(value))throw new IllegalArgumentException("Edit this reminder to enable a reviewed alert before snoozing");
+   if(action.equals("snooze")&&"scheduled".equals(value.optString("status"))&&value.has("snoozedAt"))return new JSONObject().put("status","unchanged");
+   long now=System.currentTimeMillis();
+@@ -293,6 +332,51 @@ final class ReminderStore {
    if("scheduled".equals(value.getString("status")))try{arm(context,id,value.getLong("at"));}catch(RuntimeException error){value.put("status","scheduling-failed");if(!prefs(context).edit().putString(id,value.toString()).commit())throw new IllegalStateException("Reminder failure state could not be saved");}
    return new JSONObject().put("status",value.getString("status"));
   }
@@ -281,7 +293,7 @@ index e1a77c9845c68e1bed59e79f9c3fbf287a6e5b72..5f250ceaed73da502fbb996f14dd987d
   static String digest(String value){try{byte[] bytes=java.security.MessageDigest.getInstance("SHA-256").digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte b:bytes)out.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return out.toString();}catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}}
   private String canonical(Object value)throws JSONException{if(value instanceof JSONObject){JSONObject obj=(JSONObject)value;ArrayList<String> keys=new ArrayList<>();for(java.util.Iterator<String> it=obj.keys();it.hasNext();)keys.add(it.next());java.util.Collections.sort(keys);StringBuilder s=new StringBuilder("{");for(String key:keys){if(s.length()>1)s.append(',');s.append(JSONObject.quote(key)).append(':').append(canonical(obj.get(key)));}return s.append('}').toString();}if(value instanceof JSONArray){JSONArray a=(JSONArray)value;StringBuilder s=new StringBuilder("[");for(int i=0;i<a.length();i++){if(i>0)s.append(',');s.append(canonical(a.get(i)));}return s.append(']').toString();}return value instanceof String?JSONObject.quote((String)value):String.valueOf(value);}
   private void exactKeys(JSONObject v,String...keys)throws JSONException{java.util.Set<String> expected=new java.util.HashSet<>(java.util.Arrays.asList(keys));if(v.length()!=expected.size())throw new IllegalArgumentException("Unexpected reminder fields");for(String key:keys)if(!v.has(key))throw new IllegalArgumentException("Missing reminder field");}
-@@ -332,6 +414,7 @@ final class ReminderStore {
+@@ -332,6 +416,7 @@ final class ReminderStore {
    String id=creating?operationId:target.getString("reminderId");
    if(creating){if(store.value.getJSONObject("records").has(id))throw new IllegalArgumentException("Reminder creation ID already exists");}
    else if(!canonical(target).equals(canonical(selected(context,id))))throw new IllegalArgumentException("Selected reminder changed");

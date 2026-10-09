@@ -12,16 +12,22 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
  const draftId=crypto.randomUUID();let draftRevision=0;
  const selection=()=>open?{kind:'clock-draft',id:draftId,revision:String(draftRevision)}:undefined;
  let owner:any,open=false,action:ClockRequest['action']='set',time='07:00',label='',snooze='10',days:ClockDay[]=[],review:ClockRequest|null=null,busy=false,message='',generation=0;
+ // Repeat days reach Clock only when the native handoff reports it carries EXTRA_DAYS
+ // (surfaceInfo clockRepeatDaysVersion 1). Otherwise the chips are hidden and a repeat is refused,
+ // so a reviewed repeat is never sent as, or silently reduced to, a one-time alarm.
+ let repeatSupported=false;
  // Mock simulation exists only in test-mocks builds. A flag-off build that is
  // somehow asked to simulate fails closed instead of opening the real Clock.
  const mockRequested=()=>options.simulated||document.documentElement.dataset.connectionMode==='mock';
  const simulated=()=>testMocksEnabled&&mockRequested();
+ const repeatAvailable=()=>simulated()||repeatSupported;
  const blocked=()=>!testMocksEnabled&&mockRequested();
  const publish=()=>{++draftRevision;owner?.vset('calendar',{});};
  const history=createClockHandoffHistory(secureConnectionStore,()=>localStorage.getItem(clockHandoffLegacyKey));
  let snapshot:ClockHandoffSnapshot|null=null,loading=false,historyGeneration=0;
  const restore=async()=>{
   if(simulated()||options.browser)return;
+  if(!repeatSupported)void Promise.resolve().then(()=>DailyApps.surfaceInfo()).then(info=>{if((info as {clockRepeatDaysVersion?:number}).clockRepeatDaysVersion===1&&!repeatSupported){repeatSupported=true;publish();}}).catch(()=>{/* Unknown support keeps repeats off. */});
   const token=++historyGeneration,view=generation;snapshot=null;loading=true;publish();
   try {
    const saved=await history.read();if(token!==historyGeneration||view!==generation)return;
@@ -42,6 +48,7 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
  const change=(fn:()=>void)=>{if(busy)return;fn();review=null;publish();};
  // One-time requests keep the original builder; a repeat uses the contract's validated builder.
  const build=():ClockRequest=>{
+  if(action==='set'&&days.length&&!repeatAvailable())throw Error('Repeating alarms are not available in this version. Clear the repeat days, or set the repeat in Clock.');
   if(action==='set'&&days.length)return buildClockRequest({action,time,label,snooze,days},currentClockTimeZone()) as ClockRequest;
   if(action==='set'){
    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)||label.length>200||label.includes('\0'))throw Error('Choose a valid time and a label up to 200 characters.');
@@ -94,7 +101,8 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
    close,
    actions:actions.map(kind=>({label:kind==='set'?'Set alarm':kind==='show'?'Show alarms':kind==='snooze'?'Snooze':'Dismiss',pick:()=>change(()=>{action=kind;}),css:action===kind?'background:var(--fg);color:var(--bg)':'background:var(--s2);color:var(--fg)'})),
    // Repeat-day chips (Sunday=1 … Saturday=7), Monday first; none selected is a one-time alarm.
-   days:[2,3,4,5,6,7,1].map(day=>({label:dayNames[day-1],on:days.includes(day as ClockDay),aria:`Repeat on ${dayNames[day-1]}`,toggle:()=>change(()=>{days=days.includes(day as ClockDay)?days.filter(d=>d!==day):[...days,day as ClockDay].sort((a,b)=>a-b);})})),
+   repeatAvailable:repeatAvailable(),
+   days:!repeatAvailable()&&!days.length?[]:[2,3,4,5,6,7,1].map(day=>({label:dayNames[day-1],on:days.includes(day as ClockDay),aria:`Repeat on ${dayNames[day-1]}`,toggle:()=>change(()=>{days=days.includes(day as ClockDay)?days.filter(d=>d!==day):[...days,day as ClockDay].sort((a,b)=>a-b);})})),
    repeatText:days.length?`Repeats ${describeClockDays(days)}`:'One time',
    onTime:(e:Bag)=>change(()=>{time=e.target.value;}),onLabel:(e:Bag)=>change(()=>{label=e.target.value;}),onSnooze:(e:Bag)=>change(()=>{snooze=e.target.value;}),
    prepare:()=>{if(busy||loading)return;try{review=build();message='';}catch(error){message=(error as Error).message;}publish();},

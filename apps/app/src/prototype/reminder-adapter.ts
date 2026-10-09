@@ -358,6 +358,8 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         const when=new Date(schedule.dueAt).toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
         if(!window.confirm(mode==='open'?`Reopen “${event.title}” with no alert? It stays open, due ${when}.`:`Reopen “${event.title}” and alert ${when}? Delivery is approximate.`))return;
         if(!stillSelected())return;
+        // The reviewed time must still be in the future; never shift it silently after review.
+        if(schedule.at<=Date.now()){api.toast('The reviewed time passed while this was open. Reopen it again to choose a new time. Nothing was saved.');return;}
         reopenOwner.reminderSaving=true;
         let createdInput:Bag=null,dispatched=false;
         try{

@@ -1,8 +1,8 @@
 {
   "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
   "patch": "0040-reminders-lifecycle.patch",
-  "sha256": "0d2ae34ad46ff4ea532d2f8be96dcbec36c75e50611575acd3abe0bf335db523",
-  "status": "Candidate for elizaOS develop; stable scheduleReminder refusal codes (storage-full kept), once-per-boot re-post of posted reminders, high-importance due channel with migration, undated to-dos; not yet submitted upstream",
+  "sha256": "a84990b36e4a7fb247fba8db7615df540fb57a0df05fc367af97aee3491cb28b",
+  "status": "Candidate for elizaOS develop; stable scheduleReminder refusal codes (storage-full kept), once-per-boot re-post of posted reminders, high-importance due channel with migration, undated to-dos (refused by reminderDecision and reviewed operations); not yet submitted upstream",
   "basePaths": [
     "plugins/plugin-native-reminders"
   ],
@@ -17,16 +17,16 @@
   ],
   "files": {
     "plugins/plugin-native-reminders/android/build.gradle": "5cd5796b2ca148756d7781c0688640a3bafceae4ccb7b0b2261d4f9e84e0c019",
-    "plugins/plugin-native-reminders/android/README.md": "c414138f03524e894803aecc4da082aa855fbef09019695dcae528549bfe208b",
+    "plugins/plugin-native-reminders/android/README.md": "b886cd753d412044731629dc0c615fef6fa3577ad899f3211f409c881d2e17ac",
     "plugins/plugin-native-reminders/android/src/androidTest/java/ai/eliza/plugins/reminders/ReminderEngineIdentityInstrumentedTest.java": "7d5c06a8ae0999848ce67890b514ee60478c6a95bf13c1bb82edc73ac79909ba",
     "plugins/plugin-native-reminders/android/src/main/AndroidManifest.xml": "ed4cf3d58ca01a0a23dd5261f2c821e484962919773aadc44aff1f4997b44e91",
     "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderConfiguration.java": "3e813608c09c01a4ab3fe1cdbf08680f21fe0ad81c836a367fdbcce4b35000b9",
     "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderEngine.java": "392d19a2829316fe9208111d9fcaa1e46fa34b6c4946b9b953d8eeb7353ca606",
     "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderEnvelope.java": "cca3f0cae8d49dfb923e6a5c1858fb2d7b16a7a59f8649aabb598f0a32316b96",
     "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderIo.java": "9b933e77ebce9ebe06eb8b4c8982bdbb6941ef4c15c1f1bed9736c3167a1a7f6",
-    "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderPlugin.java": "643e76bd32d9bd2eaff500f33493ab1df1823471428092908005af8df4f9e0d4",
+    "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderPlugin.java": "a6706922a143ab2e9da7e640b36cab250dc9bb9399434f77326ef36f2f66fed2",
     "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderReceiver.java": "41221fdd128dfce6d1d5baa08265253fcb28007e4d894931bb30917b80f4d9c2",
-    "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderStore.java": "fafe8a09b145a04f7cb7700697876128106003ab1f6c8fb7c14ec6d481c4fe0b",
+    "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderStore.java": "551b5c92b40a9e51255607ced5a071a91bb9fea482455fbd14f4f1a8f9ea3fc6",
     "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderTaps.java": "0c3d1e5fcb8dcc1e110e0d1bbda1ba1d5a55152a64f095e8a0dce8b3e2968a17",
     "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/SecureStringStore.java": "5855cbf72e9ad6dc8d0ddf7e74dbc0025e51a836a6c98a8c05847b162a72c8a2",
     "plugins/plugin-native-reminders/package.json": "cb2c39f6036ad2ac5ce8198756a2101742d796189f9fb2c3722278d68f969c97",

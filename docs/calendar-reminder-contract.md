@@ -75,25 +75,31 @@ status is found by readback and is not retired.
 
 `overdueReminders()` lists reminders that are due and not done, oldest first:
 `posted` rows, and `scheduled` rows whose due instant has passed (delayed or
-snoozed). Calendar receives them as an Overdue list.
+snoozed). The Calendar adapter exposes them as `overdueReminders` for an Overdue
+section; the template rendering and the Home agenda rows are not added yet.
 
 A completed one-off can be reopened through a reviewed `reminder_update`. The
 renderer then reads the reminder back and requires a new open occurrence at the
 reviewed due time. "Reopen" keeps it open with no alert. "Reopen tomorrow" alerts
-at the original local clock time tomorrow.
+at the original local clock time tomorrow. The adapter exposes these as
+`reminderReopen` and `reminderReopenTomorrow`; the detail-sheet buttons are not
+rendered yet.
 
 Undated to-dos (`reminderTodoVersion` 1) have no `at`, no AlarmManager entry and no
 notification. They are listed without a Calendar day and can be completed,
 reopened or deleted through the exact reviewed target (`todoDecision`). Reviewed
-`operateReminder` operations refuse them. A retried save with the same ID and text
-is idempotent.
+`operateReminder` operations and notification decisions (`reminderDecision`) refuse
+them. A retried save with the same ID and text is idempotent. The adapter exposes
+`todos` and `addTodo`; the to-do list is not rendered in the template yet.
 
 ## Reboot re-post and due channel
 
 Android clears posted notifications on reboot. `restore` re-posts each `posted`
 record once per boot (`Settings.Global.BOOT_COUNT`). The re-post uses the same
-occurrence, exact target, tap route and Done/Snooze actions, and never advances
-recurrence. If a posted notice cannot be re-posted, for example while notifications
+occurrence, exact target and Done/Snooze actions, and the same tap route while that
+route is unconsumed (a consumed tap gets a fresh route). It never advances
+recurrence. Only a simulated boot-ID change is covered on the emulator; an actual
+reboot has not been run. If a posted notice cannot be re-posted, for example while notifications
 are disabled, the boot is not marked and a later restore retries it.
 
 Due reminders post on a separate high-importance channel, `alpha-local-reminders-due`.
