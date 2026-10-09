@@ -14,7 +14,7 @@ function retainSpeechRetirement(pending:Promise<void>){
 }
 export function stopLocalSpeechPlayback() { const pending=cancelCurrent?.(); cancelCurrent = undefined; cancelOwner = undefined;return pending?retainSpeechRetirement(Promise.resolve(pending)):speechRetirement; }
 type Shell = any;
-type Reading = { id: string; text: string; pending?:Promise<void>;controller?: AbortController; message: string };
+type Reading = { id: string; text: string; pending?:Promise<void>;current?:()=>boolean;controller?: AbortController; message: string };
 /** Message actions use the existing speech route; playback always requires a user gesture. */
 export function installLocalSpeechPlayback(Component: Shell) {
   const p = Component.prototype, original = p.renderVals, mount = p.componentDidMount, update = p.componentDidUpdate, unmount = p.componentWillUnmount;
@@ -50,30 +50,38 @@ export function installLocalSpeechPlayback(Component: Shell) {
   async function listen(shell: Shell, id: string, text: string) {
     const old = states.get(shell);
     if (old?.id === id && old.controller) { stop(shell); refresh(shell); return; }
-    try{const retiring=shell.stopVoiceConversation?.();if(retiring)await retiring;const previousSpeech=stopLocalSpeechPlayback();if(previousSpeech)await previousSpeech;}catch{shell.toast('Audio retirement could not be confirmed. Close the app before starting audio again.');return;}
-    stop(shell);
+    const selection=()=>JSON.stringify([connectionController.getSnapshot().session,connectionController.getSnapshot().history?.conversationId,connectionController.getCloudEnvironment(),connectionController.getCloudClient()?.sessionId,connectionController.getCloudClient()?.credentialId]);
+    const binding=selection(),view=shell.S().view,entry=(shell.S().msgs||[]).find((row:Shell)=>row.id===id&&row.text===text),messageBinding=JSON.stringify(entry?.messageBinding);
+    const previousSpeech=stopLocalSpeechPlayback();stop(shell);
+    const retiring=shell.stopVoiceConversation?.();
     const cloud = selectVoiceRoute() === 'cloud';
-    if (cloud && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId)) { connectionController.openCloudAccount(); return; }
-    const voice = cloud ? createCloudVoice() : createOnDeviceVoice(); if (!voice) return;
-    const controller = new AbortController(), state: Reading = { id, text, controller, message: cloud ? 'Preparing audio…' : 'Preparing audio on this phone…' };
-    states.set(shell, state); cancelOwner = shell; cancelCurrent = () => { stop(shell); refresh(shell);return state.pending; }; refresh(shell);
+    const controller = new AbortController(), state: Reading = { id, text, controller, message: 'Waiting for the previous audio to stop…' };
+    const current=()=>states.get(shell)===state&&!controller.signal.aborted&&shell.live!==false&&!document.hidden&&!connectionController.getSnapshot().open&&selection()===binding&&shell.S().view===view&&['sheet','full'].includes(shell.S().chat)&&(shell.S().msgs||[]).some((row:Shell)=>row.id===id&&row.text===text&&JSON.stringify(row.messageBinding)===messageBinding);
+    state.current=current;states.set(shell,state);cancelOwner=shell;cancelCurrent=()=>{stop(shell);refresh(shell);return state.pending;};refresh(shell);
     try {
+      if(retiring){await retiring;if(!current())return;}
+      if(previousSpeech){await previousSpeech;if(!current())return;}
+      if(!current())return;
+      if (cloud && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId)) { stop(shell);connectionController.openCloudAccount();return; }
+      const voice = cloud ? createCloudVoice() : createOnDeviceVoice(); if (!voice) {stop(shell);return;}
+      state.message=cloud?'Preparing audio…':'Preparing audio on this phone…';refresh(shell);
       if ('ready' in voice) {
         planLocalSpeech(text);
         if (!await voice.ready(controller.signal)) throw new Error('On-device speech models are unavailable. The written message is still available.');
       }
-      if (controller.signal.aborted || states.get(shell) !== state) return;
+      if (!current()) return;
       state.message = 'Reading aloud…'; refresh(shell);
+      if(!current())return;
       const pending=state.pending=voice.speak(text, controller.signal);await pending;
-      if (states.get(shell) === state) { state.controller = undefined; state.message = 'Finished reading.'; refresh(shell); }
+      if (current()) { state.controller = undefined; state.message = 'Finished reading.'; refresh(shell); }
     } catch (error) {
       if((error as {code?:string})?.code==='speech-cleanup-unconfirmed'&&state.pending)retainSpeechRetirement(state.pending);
-      if (states.get(shell) !== state) return;
+      if (!current()) return;
       state.controller = undefined;
       const recovery = cloud ? cloudVoiceFailure(error) : null;
       state.message = controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError') ? 'Reading stopped.' : recovery || (error instanceof Error ? error.message + ' The complete message may not have been read.' : 'Reading stopped before completion. The written message is still available.');
       refresh(shell);
-    }
+    } finally {if(states.get(shell)===state&&!current()){stop(shell);refresh(shell);}}
   }
   p.renderVals = function () {
     const out = original.call(this), source = this.S().msgs || [], state = states.get(this);
@@ -135,7 +143,7 @@ export function installLocalSpeechPlayback(Component: Shell) {
     if (!['sheet', 'full'].includes(value.chat)) cancelHold(this);
     if (menu && (menu.binding !== JSON.stringify(connectionController.getSnapshot().session) || !['sheet', 'full'].includes(value.chat) || !(value.msgs || []).some((m: Shell) => m.id === menu.id && m.text === menu.text))) { cancelHold(this); closeMenu(this); }
     else if (menu?.focus) { menu.focus = false; document.querySelector<HTMLElement>('[data-alpha-message-actions] [role="menuitem"]')?.focus(); }
-    if (state && (!['sheet', 'full'].includes(value.chat) || !(value.msgs || []).some((m: Shell) => m.id === state.id && m.text === state.text))) { stop(this); refresh(this); }
+    if (state && (state.current&&!state.current()||!['sheet', 'full'].includes(value.chat) || !(value.msgs || []).some((m: Shell) => m.id === state.id && m.text === state.text))) { stop(this); refresh(this); }
     return update?.apply(this, args);
   };
   p.componentWillUnmount = function (...args: unknown[]) { cancelHold(this); menus.delete(this); listeners.get(this)?.(); listeners.delete(this); stop(this); return unmount?.apply(this, args); };

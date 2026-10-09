@@ -677,6 +677,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     await this.draftBindingTask;signal.throwIfAborted();context(this);
     if(!this.live||document.hidden||!connectionController.voiceConversationCurrent(binding)||JSON.stringify(alphaClient.getState().context)!==expected)throw Error('The voice conversation changed.');
     await this.connectAgent();signal.throwIfAborted();
+    if(!this.live||document.hidden||!connectionController.voiceConversationCurrent(binding)||JSON.stringify(alphaClient.getState().context)!==expected)throw Error('The voice conversation changed.');
     return {binding,context:alphaClient.getState().context};
   };
   p.sendVoiceTurn = async function(input:{text:string;turnId:string;voiceTurnSignal:import('../runtime/alpha-client').VoiceTurnSignal;signal:AbortSignal;binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope;assertCurrent:()=>void}){
@@ -702,7 +703,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     }finally{if(this.voiceSendTurnId===turnId&&this.live)await new Promise<void>(resolve=>this.setState(()=>this.voiceSendTurnId===turnId&&connectionController.voiceConversationCurrent(binding,false)?{typing:false}:null,()=>{if(this.voiceSendTurnId===turnId)this.voiceSendTurnId=undefined;resolve();}));}
   };
   p.send = async function (argument?: string, expectedSession?: {sessionId:string;agentId:string;ownerId:string;origin:string}) {
-    const retiring=this.stopVoiceConversation?.();if(retiring)await retiring;
+    const before=this.S(),reply=this.messageReplyTarget,edit=this.messageEditTarget;
+    const sendBinding=()=>JSON.stringify([connectionController.getSnapshot().session,connectionController.getSnapshot().history?.conversationId,connectionController.getCloudClient()?.sessionId,connectionController.getCloudClient()?.credentialId]);
+    const binding=this.stopVoiceConversation?sendBinding():undefined,draft=String(before.draft||''),view=before.view;
+    const retiring=this.stopVoiceConversation?.();if(retiring){await retiring;const now=this.S();if(!this.live||document.hidden||connectionController.getSnapshot().open||sendBinding()!==binding||now.view!==view||String(now.draft||'')!==draft||this.messageReplyTarget!==reply||this.messageEditTarget!==edit)return;}
     let s = this.S(); const text = String(argument ?? s.draft).trim();
     if (!text || s.typing || this.draftSendPending) return;
     const editTarget:ConversationMessageTarget|undefined=this.messageEditTarget,replyTarget:ConversationMessageTarget|undefined=this.messageReplyTarget,editView=s.view;
