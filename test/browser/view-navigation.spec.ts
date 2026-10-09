@@ -262,3 +262,14 @@ test("an owner change during acknowledgment cannot report delivery in the replac
 	});
 	expect(result).toEqual({ status: "unknown" });
 });
+
+for (const [registered, local] of [["inbox","inbox"],["calendar","calendar"],["browser","browser"],["camera","camera"],["photos","photos"],["maps","maps"],["notes","notes"],["files","files"],["automations","workflows"],["settings","settings"]])
+ test(`canonical ${registered} handoff retains its binding and opens Alpha ${local}`, async ({page}) => {
+  await setup(page);
+  const value=await page.evaluate(async ({registered})=>{const win=window as any;const summary=win.summary(registered);const result=await win.client.deliver([summary],win.attempt,win.navigate);return {result,view:win.current.view,metadata:win.client.metadata(win.current),requests:win.requests};},{registered});
+  expect(value.result.status).toBe('delivered');expect(value.view).toBe(local);expect(value.metadata.uiView).toBe(registered);expect(value.requests[0].body.viewId).toBe(registered);expect(value.requests[1].body).toMatchObject({viewId:registered,success:true,result:{switched:true}});
+ });
+for (const path of ['/workflows','/automations/extra','https://unexpected.invalid/automations'])
+ test(`Automations alias still refuses noncanonical path ${path}`,async ({page})=>{
+  await setup(page);const result=await page.evaluate(async path=>{const win=window as any;let refused=false;try{await win.client.deliver([win.summary('automations',{viewPath:path})],win.attempt,win.navigate);}catch{refused=true;}return {refused,requests:win.requests,switches:win.switches};},path);expect(result).toEqual({refused:true,requests:[],switches:0});
+ });

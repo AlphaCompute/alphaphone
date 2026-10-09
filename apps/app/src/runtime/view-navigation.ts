@@ -25,7 +25,13 @@ const object = (value: unknown): Record<string, unknown> => {
 	return value as Record<string, unknown>;
 };
 const localView = (id: string) =>
-	id === "chat" ? "home" : id === "reminders" ? "calendar" : id;
+	id === "chat"
+		? "home"
+		: id === "reminders"
+			? "calendar"
+			: id === "automations"
+				? "workflows"
+				: id;
 export class ViewNavigationClient {
 	readonly clientId = crypto.randomUUID();
 	private disposed = false;
@@ -45,7 +51,12 @@ export class ViewNavigationClient {
 			? {
 					viewClientId: this.clientId,
 					viewDelivery: "completed-action",
-					uiView: context.view === "home" ? "chat" : context.view,
+					uiView:
+						context.view === "home"
+							? "chat"
+							: context.view === "workflows"
+								? "automations"
+								: context.view,
 				}
 			: {};
 	}
