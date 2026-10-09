@@ -20,7 +20,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
  const profile=path.resolve(options.profile),stateFile=path.join(profile,'credentials.json'),initialFile=path.join(profile,'initial-credential.json'),fetchCloud=options.request??fetch;
  let queue:Promise<unknown>=Promise.resolve();
  const pending=new Map<string,{environment:Environment;expiresAt:number;previousReference:string|null}>();
- const claims=new Map<string,Credential>();
+ const claims=new Map<string,{environment:Environment;previousReference:string|null;expiresAt:number;credential:Credential}>();
  const active=new Map<string,{controller:AbortController;credentialId?:string}>();
  async function privateFile(file:string){const st=await lstat(file);if(!st.isFile()||st.isSymbolicLink()||st.uid!==process.getuid?.()||(st.mode&0o077))throw Error('Private Cloud file required');return readFile(file,'utf8');}
  async function directory(){await mkdir(profile,{recursive:true,mode:0o700});const st=await lstat(profile);if(!st.isDirectory()||st.isSymbolicLink()||st.uid!==process.getuid?.()||(st.mode&0o077))throw Error('Private Cloud directory required');}
@@ -54,8 +54,11 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
      const state=await load(),old=state[env],expected=data.previousReference??null;if((old?.credentialReference??null)!==expected)throw Error('Cloud account changed');
      if(data.operation==='secureCompareExchange'&&data.expectedValue!==(old?JSON.stringify(publicCredential(old)):null)){send(res,200,{status:'conflict'});return;}
      if(data.operation==='secureRemove'||data.value===null){delete state[env];retire(old?.credentialId);await save(state);send(res,200,data.operation==='secureCompareExchange'?{status:'saved'}:{});return;}
-     const value=object(JSON.parse(data.value)),claimed=claims.get(value.credentialReference);
-     if(!claimed||value.token||!UUID.test(value.credentialId)||value.userId!==undefined&&value.userId!==claimed.userId||value.organizationId!==undefined&&value.organizationId!==claimed.organizationId)throw Error('Cloud credential reference unavailable');
+     const value=object(JSON.parse(data.value)),claim=claims.get(value.credentialReference);
+     if(claim&&claim.expiresAt<=Date.now())throw refusal(410,'expired');
+     if(!claim||claim.environment!==env||claim.previousReference!==(old?.credentialReference??null)||value.token||!UUID.test(value.credentialId))throw refusal(409,'account-changed');
+     const claimed=claim.credential;
+     if(value.userId!==undefined&&value.userId!==claimed.userId||value.organizationId!==undefined&&value.organizationId!==claimed.organizationId)throw refusal(409,'account-changed');
      controller.signal.throwIfAborted();state[env]={...claimed,credentialId:value.credentialId};retire(old?.credentialId);await save(state);claims.delete(value.credentialReference);send(res,200,data.operation==='secureCompareExchange'?{status:'saved'}:{});
     });return;
    }
@@ -70,7 +73,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
       const token=['token','accessToken','stewardToken','sessionToken','apiKey'].map(k=>result[k]).find(v=>typeof v==='string'&&v.trim());if(!token){send(res,200,{status:response.status,data:{status:'authenticated'}});return;}
       const identityResponse=await canonical(env,'/api/v1/user',controller.signal,{}, {token}as Credential),identity=object(await identityResponse.json()),who=object(identity.data??identity);if(!identityResponse.ok||!UUID.test(who.id)||!UUID.test(who.organization_id))throw Error('Cloud owner verification failed');
       if(result.expiresAt&&(!Number.isFinite(Date.parse(result.expiresAt))||Date.parse(result.expiresAt)<=Date.now()))throw Error('Cloud credential expired');
-      const reference='browser-cloud-reference:'+randomUUID(),claimed:Credential={token,credentialReference:reference,credentialId:randomUUID(),userId:who.id,organizationId:who.organization_id,...(result.expiresAt?{expiresAt:Date.parse(result.expiresAt)}:{})};controller.signal.throwIfAborted();claims.set(reference,claimed);pending.delete(id);send(res,200,{status:response.status,data:{status:'authenticated',credentialReference:reference,userId:who.id,organizationId:who.organization_id,...(result.expiresAt?{expiresAt:result.expiresAt}:{})}});return;
+      const reference='browser-cloud-reference:'+randomUUID(),claimed:Credential={token,credentialReference:reference,credentialId:randomUUID(),userId:who.id,organizationId:who.organization_id,...(result.expiresAt?{expiresAt:Date.parse(result.expiresAt)}:{})};controller.signal.throwIfAborted();if(login.expiresAt<=Date.now())throw refusal(410,'expired');if(((await load())[env]?.credentialReference??null)!==login.previousReference)throw refusal(409,'account-changed');controller.signal.throwIfAborted();claims.set(reference,{environment:env,previousReference:login.previousReference,expiresAt:login.expiresAt,credential:claimed});pending.delete(id);send(res,200,{status:response.status,data:{status:'authenticated',credentialReference:reference,userId:who.id,organizationId:who.organization_id,...(result.expiresAt?{expiresAt:result.expiresAt}:{})}});return;
      }send(res,200,{status:response.status,data:result});return;}
     if(method!=='GET'||input.body!==undefined||!['/api/v1/user','/api/v1/credits/balance','/api/v1/eliza/google/accounts?side=owner'].includes(route))throw Error('Unsupported Cloud route');
     const c=await admitted(env,input.credentialReference);active.get(ownedId)!.credentialId=c.credentialId;const response=await canonical(env,route,controller.signal,{},c);let result=await response.json();await current(env,c,controller.signal);if(response.ok&&route==='/api/v1/user'&&result.success===true){const who=object(result.data);result={success:true,data:{id:who.id,organization_id:who.organization_id,...(typeof who.email==='string'?{email:who.email}:{})}};}send(res,200,{status:response.status,data:result});return;

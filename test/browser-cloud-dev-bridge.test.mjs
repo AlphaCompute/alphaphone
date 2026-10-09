@@ -15,11 +15,11 @@ const secret='synthetic-cloud-credential-not-a-real-key';
 async function fixture(){
  const profile=await mkdtemp(join(tmpdir(),'alpha-browser-cloud-')),file=join(profile,'existing-secret');await writeFile(file,secret,{mode:0o600});
  const seed={environment:'production',credentialFile:file,credentialSha256:createHash('sha256').update(secret).digest('hex'),userId:owner,organizationId:org,credentialReference:reference,credentialId};await writeFile(join(profile,'initial-credential.json'),JSON.stringify(seed),{mode:0o600});
- const calls=[];let response=async()=>new Response('{}');const session=randomUUID();
+ const calls=[];let response=async()=>new Response('{}'),pollResponse=async()=>Response.json({status:'authenticated',apiKey:secret});const session=randomUUID();
  const request=async(url,input={})=>{
   const path=new URL(url).pathname;calls.push({url,input});
   if(path==='/api/auth/cli-session')return Response.json({sessionId:session,expiresAt:new Date(Date.now()+60000).toISOString()});
-  if(path==='/api/auth/cli-session/'+session)return Response.json({status:'authenticated',apiKey:secret});
+  if(path==='/api/auth/cli-session/'+session)return pollResponse();
   assert.equal(new Headers(input.headers).get('Authorization'),'Bearer '+secret);
   if(path==='/api/v1/user')return Response.json({success:true,data:{id:owner,organization_id:org,email:'owned@example.invalid'}});
   if(path==='/api/v1/credits/balance')return Response.json({balance:4});
@@ -29,7 +29,7 @@ async function fixture(){
  const start=async()=>{server=createServer(createBrowserCloudDevHandler({profile,request}));await new Promise(r=>server.listen(0,'127.0.0.1',r));origin=`http://127.0.0.1:${server.address().port}`;};await start();
  const send=(data,options={})=>fetch(origin,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Alpha-Browser-Cloud':'1',...(options.headers||{})},body:JSON.stringify(data),signal:options.signal});
  const rpc=async data=>{const r=await send(data);return {status:r.status,data:await r.json()};};
- return {profile,file,calls,send,rpc,setResponse:fn=>{response=fn;},origin:()=>origin,session,restart:async()=>{await new Promise(r=>server.close(r));await start();},close:async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));await rm(profile,{recursive:true,force:true});}};
+ return {profile,file,calls,send,rpc,setResponse:fn=>{response=fn;},setPollResponse:fn=>{pollResponse=fn;},origin:()=>origin,session,restart:async()=>{await new Promise(r=>server.close(r));await start();},close:async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));await rm(profile,{recursive:true,force:true});}};
 }
 test('existing Mac credential becomes a real canonical identity/credit reference, never a browser bearer',async()=>{
  const f=await fixture();try{
@@ -86,4 +86,38 @@ test('cancel closes an in-flight Cloud audio stream; stale account audio cannot 
 test('native production Cloud stores never admit a development reference as a bearer',async()=>{
  let writes=0;const id=randomUUID(),client=new CloudProtocol('production',async input=>({status:200,data:input.url.endsWith('/api/auth/cli-session')?{sessionId:id,expiresAt:new Date(Date.now()+60000).toISOString()}:{status:'authenticated',credentialReference:reference}}),{read:async()=>null,write:async()=>{writes++;},clear:async()=>{}},async()=>{});
  await assert.rejects(client.login(new AbortController().signal),e=>e.code==='credential-consumed');assert.equal(writes,0);
+});
+
+async function claim(f){
+ await f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app/api/auth/cli-session',method:'POST',headers:{Accept:'application/json'},body:'{}'}});
+ return f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app/api/auth/cli-session/'+f.session,method:'GET',headers:{Accept:'application/json'}}});
+}
+test('login claim cannot cross Cloud environments or resurrect after logout',async()=>{
+ const f=await fixture();try{
+  const result=await claim(f),ref=result.data.data.credentialReference;assert.match(ref,/^browser-cloud-reference:/);
+  const value=JSON.stringify({credentialReference:ref,credentialId:randomUUID(),userId:owner,organizationId:org});
+  assert.equal((await f.rpc({operation:'secureWrite',slot:'cloud:staging',previousReference:null,value})).status,409);
+  assert.equal((await f.rpc({operation:'secureRead',slot:'cloud:staging'})).data.value,null);
+  assert.equal((await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:reference})).status,200);
+  assert.equal((await f.rpc({operation:'secureWrite',slot:'cloud:production',previousReference:null,value})).status,409);
+  assert.equal((await f.rpc({operation:'secureRead',slot:'cloud:production'})).data.value,null);
+ }finally{await f.close();}
+});
+for(const change of ['logout','replacement'])test('in-flight login poll cannot publish a claim after '+change,async()=>{
+ const f=await fixture();try{
+  const entered=Promise.withResolvers(),release=Promise.withResolvers();f.setPollResponse(async()=>{entered.resolve();await release.promise;return Response.json({status:'authenticated',apiKey:secret});});
+  const pending=claim(f);await entered.promise;
+  let replacement;
+  if(change==='logout')await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:reference});
+  else{replacement={credentialReference:'browser-cloud-reference:'+randomUUID(),credentialId:randomUUID(),token:secret,userId:owner,organizationId:org};await writeFile(join(f.profile,'credentials.json'),JSON.stringify({production:replacement}),{mode:0o600});}
+  release.resolve();const result=await pending;assert.equal(result.status,409);assert.equal(result.data.credentialReference,undefined);
+  const current=(await f.rpc({operation:'secureRead',slot:'cloud:production'})).data.value;assert.equal(current===null?null:JSON.parse(current).credentialReference,replacement?.credentialReference??null);
+ }finally{await f.close();}
+});
+test('expired pending login references cannot be committed to the private store',async()=>{
+ const f=await fixture(),clock=Date.now;try{
+  const result=await claim(f),ref=result.data.data.credentialReference;Date.now=()=>clock()+120000;
+  const write=await f.rpc({operation:'secureWrite',slot:'cloud:production',previousReference:reference,value:JSON.stringify({credentialReference:ref,credentialId:randomUUID(),userId:owner,organizationId:org})});assert.equal(write.status,410);
+  assert.equal(JSON.parse((await f.rpc({operation:'secureRead',slot:'cloud:production'})).data.value).credentialReference,reference);
+ }finally{Date.now=clock;await f.close();}
 });
