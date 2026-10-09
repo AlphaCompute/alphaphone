@@ -34,7 +34,7 @@ function listVendorFiles() {
   return vendorFiles;
 }
 
-/** True when `reference` names an upstream file or directory whose containing upstream directory `text` also names. */
+/** True when `reference` names a file or directory below an upstream package directory that `text` also names. */
 export function vendorRelativeInContext(reference, text, files) {
   const target = reference.replace(/\/$/, '');
   return files.some(file => {
@@ -42,8 +42,10 @@ export function vendorRelativeInContext(reference, text, files) {
     return segments.some((_, index) => {
       const rest = segments.slice(index).join('/');
       if (rest !== target && !rest.startsWith(`${target}/`)) return false;
+      // A bare `scripts/...` that matches only the upstream root is too ambiguous to accept:
+      // a deleted product script would pass whenever the document mentions vendor/eliza.
       const prefix = segments.slice(0, index).join('/');
-      return prefix ? text.includes(`${prefix}/`) : text.includes('vendor/eliza');
+      return prefix !== '' && text.includes(`${prefix}/`);
     });
   });
 }
@@ -71,7 +73,7 @@ test('an upstream-relative script path needs its upstream directory named in the
   assert.equal(vendorRelativeInContext('scripts/mobile', 'Upstream `packages/app/app.config.ts`.', files), true);
   assert.equal(vendorRelativeInContext('scripts/mobile/con', 'Upstream `packages/app/app.config.ts`.', files), false);
   assert.equal(vendorRelativeInContext('scripts/release.mjs', 'Run it here.', files), false);
-  assert.equal(vendorRelativeInContext('scripts/release.mjs', 'In `vendor/eliza`, run it.', files), true);
+  assert.equal(vendorRelativeInContext('scripts/release.mjs', 'In `vendor/eliza`, run it.', files), false);
 });
 
 // Stale references in documents this check does not yet own. Each entry must still be
