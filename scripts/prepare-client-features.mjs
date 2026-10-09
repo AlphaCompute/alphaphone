@@ -32,6 +32,21 @@ function matches(actual, expected) {
     Object.entries(expected).every(([file, digest]) => actual[file] === digest);
 }
 export const CLIENT_FEATURE_PATHS = [
+  'packages/ui/src/voice/batch-conversation.ts',
+  'packages/ui/src/voice/voice-activity.ts',
+  'packages/ui/src/voice/tts-playback-activity.ts',
+  'packages/ui/src/voice/end-of-turn.ts',
+  'packages/ui/src/voice/voice-chat-playback.ts',
+  'packages/ui/src/voice/speech-segments.ts',
+  'packages/voice/src/batch-protocol.ts',
+  'packages/voice/src/respond-gate.ts',
+  'packages/voice/src/voice-eot.ts',
+  'packages/core/src/voice-protocol.ts',
+  'packages/core/src/utils/string-boundaries.ts',
+  'packages/core/src/spoken-text.ts',
+  'packages/core/src/utils/reasoning-tags.ts',
+  'packages/core/src/errors.ts',
+  'packages/core/src/utils/errors.ts',
   'packages/ui/src/components/shell/chat-overlay-motion.ts',
   'packages/ui/src/components/shell/use-pull-gesture.ts',
   'packages/ui/src/gestures/constants.ts',
