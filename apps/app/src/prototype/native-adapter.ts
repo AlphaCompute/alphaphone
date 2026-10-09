@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { DailyApps, type Action, type NativeResult } from '../daily';
 import { registerPlugin } from '../platform-plugins';
 import { connectionController, type ConnectionSnapshot } from '../runtime/connection-ui';
+import * as cameraAdapter from './camera-adapter';
 
 type Bag = Record<string, any>;
 type Callback = (...args: any[]) => any;
@@ -29,8 +30,9 @@ export function egressPrivacy(connection: Pick<ConnectionSnapshot, 'kind' | 'ses
   if (connection.session || connection.cloudAccount) return { big: 'Not reported', sub: 'Depends on the selected agent; not reported' };
   return { big: 'Offline', sub: 'No agent connected; no hosted inference requests' };
 }
-/** Only a verified resident session on Android reports its configured hosted model. */
-function residentModelLabel(connection: ConnectionSnapshot, refresh: () => void): string | null {
+/** Only a verified resident session on Android reports its configured hosted model.
+ * Exported for the Settings rows that show it (About and Models). */
+export function residentModelLabel(connection: ConnectionSnapshot, refresh: () => void): string | null {
   const sessionId = connection.session?.sessionId;
   if (!sessionId || connection.kind !== 'resident' || !Capacitor.isNativePlatform()) return null;
   if (providerStatus?.sessionId === sessionId) return providerStatus.label;
@@ -48,6 +50,49 @@ function residentModelLabel(connection: ConnectionSnapshot, refresh: () => void)
 }
 const externalModules = new Set(['phone', 'messages', 'inbox', 'browser', 'camera', 'photos', 'maps', 'calendar', 'contacts', 'files', 'settings', 'wallet', 'workflows']);
 const text = (value: unknown) => typeof value === 'string' ? value : '';
+
+// tile-facts:begin (dependency-free; exercised by test/shade-tile-facts.test.mjs)
+export type TileKey = 'wifi' | 'bt' | 'dnd' | 'mic' | 'loc' | 'plane' | 'torch';
+/** Only directly observed native facts. A missing key means unknown: no on/off is shown. */
+export type TileFacts = Partial<Record<TileKey, boolean>>;
+export const tileKeys: Record<string, TileKey> = { 'Wi-Fi': 'wifi', 'Bluetooth': 'bt', 'Do not disturb': 'dnd', 'Agent can listen': 'mic', 'Location': 'loc', 'Airplane mode': 'plane', 'Flashlight': 'torch' };
+/** Settings page each tile hands off to (AlphaDevice.openSettings). The flashlight is a direct control. */
+export const tileSettingsPages: Partial<Record<TileKey, string>> = { wifi: 'wifi', bt: 'bluetooth', dnd: 'dnd', plane: 'mobile', loc: 'privacy', mic: 'privacy' };
+/** AlphaDevice.snapshot() reports an active Wi-Fi transport, which proves Wi-Fi is on. No active
+ * transport does not prove it is off (it may be on and disconnected), so false is not a fact. */
+export function tileFactsFromSnapshot(snapshot: unknown, torch?: boolean): TileFacts {
+  const facts: TileFacts = {};
+  if (snapshot && typeof snapshot === 'object' && (snapshot as { wifiActive?: unknown }).wifiActive === true) facts.wifi = true;
+  if (typeof torch === 'boolean') facts.torch = torch;
+  return facts;
+}
+export type ShadeTile = { label: string; on?: boolean; css?: string; toggle?: () => void; [key: string]: unknown };
+/** Present tiles with state only from native facts. Hide the flashlight without a native control. */
+export function honestTiles(tiles: ShadeTile[], facts: TileFacts, options: { flashlight: boolean; act: (key: TileKey | null, tile: ShadeTile) => void }): ShadeTile[] {
+  return tiles.filter(tile => tileKeys[tile.label] !== 'torch' || options.flashlight).map(tile => {
+    const key = tileKeys[tile.label] ?? null, fact = key ? facts[key] : undefined;
+    const on = typeof fact === 'boolean' ? fact : undefined;
+    return { ...tile, on, css: on ? 'background:var(--acc);color:#fff' : 'background:var(--s2);color:var(--fg)', toggle: () => options.act(key, tile) };
+  });
+}
+/** One settings handoff per brightness gesture: repeated change events inside the window are ignored. */
+export function handoffGate(windowMs = 2000, now: () => number = () => Date.now()) {
+  let last = -Infinity, inFlight = false;
+  return {
+    begin(): boolean { const at = now(); if (inFlight || at - last < windowMs) return false; inFlight = true; last = at; return true; },
+    end() { inFlight = false; last = now(); },
+  };
+}
+// tile-facts:end
+/** MIME filter for a Files location tile. Unknown locations accept any document. */
+function locationMime(name: string): string {
+  const key = name.toLowerCase();
+  if (/(picture|image|photo)/.test(key)) return 'image/*';
+  if (/(music|audio|recording)/.test(key)) return 'audio/*';
+  if (/video|movie/.test(key)) return 'video/*';
+  if (/doc|pdf/.test(key)) return 'application/pdf,text/*,application/*';
+  return '*/*';
+}
 
 /** Keep the prototype's render tree and local navigation; replace simulated effects.
  * Install once before mounting. Component is accepted for the extraction seam but
@@ -120,6 +165,10 @@ export function installPrototypeNativeAdapters(
     if(browserDevProfile&&['photos','files'].includes(module)&&['askQ','askSearch'].includes(key))return ()=>{
       const query=text(api.get(module).q).trim();if(query)api.composeContentQuestion(module==='files'?'Find the file '+query:query);
     };
+    // The reviewed local-OCR question flow, when installed, asks about the open capture.
+    const askAboutCapture = (cameraAdapter as unknown as Record<string, unknown>).askAboutCapture;
+    if (['camera', 'photos'].includes(module) && ['ask', 'askQ', 'askSearch'].includes(key) && typeof askAboutCapture === 'function')
+      return () => (askAboutCapture as (input: Bag) => unknown)({ module, key, row, state: api.get(module), api });
     if (['camera', 'photos', 'files'].includes(module) && ['ask', 'askQ', 'askSearch', 'saveSum'].includes(key)) return unavailable(api, 'Content analysis is not connected. No photo or document content has been sent.');
     if (module === 'workflows' && ['run', 'again', 'toggle', 'save'].includes(key)) return unavailable(api, 'Workflow execution is not connected. No automation has been activated or run.');
     const native = (action: Action, payload: Bag = {}) => () => perform(module, api, action, payload);
@@ -185,7 +234,8 @@ export function installPrototypeNativeAdapters(
       if (['save', 'del', 'toggleFav'].includes(key)) return native('contacts');
     }
     if (module === 'files') {
-      if (key === 'go' && path.startsWith('locs.')) return native(row.name === 'Photos' ? 'photos' : 'files');
+      // Photos opens Alpha Photos; each location opens a picker filtered to its kind of file.
+      if (key === 'go' && path.startsWith('locs.')) return row.name === 'Photos' ? () => api.open('photos') : native('files', { mime: locationMime(text(row.name)) });
       if (key === 'tap' && row.isFile) return native('files');
       if (key === 'rnKey') return (e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); void perform(module, api, 'files'); } };
       if (key === 'go' && path.startsWith('moveTo.')) return native('files');
@@ -205,7 +255,8 @@ export function installPrototypeNativeAdapters(
       if (st.page === 'privacy' && key === 'go' && row.label === 'Activity') return () => api.set({ log: true });
       if (key === 'pick' && st.page !== 'display') return unavailable(api, 'This setting needs a connected provider. No change was applied.');
       if (key === 'onPw' || (st.adding && ['change', 'onKey', 'go', 'ok'].includes(key))) return native('settings');
-      if (key === 'ok') return st.sheet?.kind === 'wipe' ? unavailable(api, 'Memory deletion is not connected. Nothing has been erased.') : native('settings');
+      // Memory deletion is not offered; a stale wipe sheet only closes.
+      if (key === 'ok') return st.sheet?.kind === 'wipe' ? () => api.set({ sheet: null }) : native('settings');
       if (['toggle', 'sw', 'change', 'set'].includes(key)) {
         if (st.page === 'display' && row.label === 'Text size') return original;
         return native(st.page === 'notifications' ? 'notifications' : 'settings');
@@ -239,6 +290,10 @@ export function installPrototypeNativeAdapters(
     }
     return result;
   }
+  function activityState(state: string) {
+    const labels: Record<string, string> = { pending: 'Waiting for approval', reconciliation_required: 'Needs your review', executing: 'Outcome unknown', approved: 'Approved', rejected: 'Declined', succeeded: 'Completed', completed: 'Completed', failed: 'Failed', expired: 'Expired', not_applied: 'Did not happen', cancelled: 'Cancelled' };
+    return labels[state] ?? state;
+  }
   function activityValue(connection: ConnectionSnapshot) {
     if (!connection.session) return 'Not connected';
     if (!connection.phoneActionsAvailable) return 'Not reported by agent';
@@ -257,7 +312,8 @@ export function installPrototypeNativeAdapters(
         for (const group of page.groups) for (const row of group.rows || []) if (row.label === 'Inference model') { row.val = model; row.hasVal = true; }
       if (st.page === 'privacy' && st.log && page.title === 'Activity') {
         const sessionId = connection.session?.sessionId ?? null;
-        // Explicit read: the connection panel shows progress, errors and reconcile controls.
+        // Reading history is an explicit step. Progress and errors appear in the connection panel;
+        // decline and reconcile controls are rendered here, beside each entry.
         const load = (label: string) => nav(label, () => {
           const before = connectionController.getSnapshot().actionHistory;
           void connectionController.actionHistory().then(() => {
@@ -266,17 +322,36 @@ export function installPrototypeNativeAdapters(
             try { api.set({ actionHistoryReadAt: Date.now() }); } catch { /* view closed */ }
           });
         });
-        const rows: Bag[] = !connection.session
-          ? [info('Connect an agent to see activity', ''), nav('Agent connection', () => connectionController.open())]
+        // A decision clears the read history; show it as unread rather than as empty.
+        const decide = (label: string, run: () => Promise<unknown>) => nav(label, () => {
+          void run().finally(() => { actionHistoryRead = null; try { api.set({ actionHistoryReadAt: Date.now() }); } catch { /* view closed */ } });
+        });
+        const controller = connectionController as typeof connectionController & { rejectProposal?(id: string): Promise<unknown>; reconcile?(id: string, applied: boolean): Promise<unknown> };
+        const decline = (id: string) => controller.rejectProposal ? controller.rejectProposal(id) : controller.rejectAction(id);
+        const reconcile = (id: string, applied: boolean) => controller.reconcile ? controller.reconcile(id, applied) : controller.reconcileAction(id, applied ? 'applied' : 'not_applied');
+        const entryRows = (entry: ConnectionSnapshot['actionHistory'][number]): Bag[] => [
+          info(entry.description, activityState(entry.state)),
+          ...(entry.state === 'pending' ? [decide('Decline', () => decline(entry.id))]
+            : ['executing', 'reconciliation_required'].includes(entry.state) ? [
+              info('Check this phone, then confirm whether this exact action happened. Nothing is repeated.', ''),
+              decide('It happened', () => reconcile(entry.id, true)),
+              decide('It did not happen', () => reconcile(entry.id, false)),
+            ] : []),
+        ];
+        const groups: Bag[] = !connection.session
+          ? [{ rows: [info('Connect an agent to see activity', ''), nav('Agent connection', () => connectionController.open())] }]
           : !connection.phoneActionsAvailable
-            ? [info('Phone action history', 'Not reported by agent')]
+            ? [{ rows: [info('Phone action history', 'Not reported by agent')] }]
             : connection.actionHistory.length
-              ? [...connection.actionHistory.map(entry => info(entry.description, entry.state)), load('Refresh phone action history')]
+              ? [...connection.actionHistory.map(entry => ({ rows: entryRows(entry) })), { rows: [load('Refresh phone action history')] }]
               : actionHistoryRead === sessionId
-                ? [info('No phone actions recorded', ''), load('Refresh phone action history')]
-                : [info('Phone action history', 'Not loaded'), load('Load phone action history')];
-        page.groups = [{ rows }, { rows: [nav('Workflow runs', () => api.open('workflows'))] }];
+                ? [{ rows: [info('No phone actions recorded', ''), load('Refresh phone action history')] }]
+                : [{ rows: [info('Phone action history', 'Not loaded'), load('Load phone action history')] }];
+        page.groups = [...groups, { rows: [nav('Workflow runs', () => api.open('workflows'))] }];
       }
+      // Memory deletion is not connected; do not offer a control that only explains that.
+      for (const group of page.groups) if (Array.isArray(group?.rows)) group.rows = group.rows.filter((row: Bag) => row?.label !== 'Wipe memory');
+      page.groups = page.groups.filter((group: Bag) => !Array.isArray(group?.rows) || group.rows.length);
     }
     return out;
   }
