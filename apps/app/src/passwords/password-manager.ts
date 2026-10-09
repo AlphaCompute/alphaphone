@@ -204,9 +204,12 @@ export function passwordManagerGroups(helpers: Helpers): Bag[] {
         await refresh();
       }), { sub: 'From a CSV file. You review each website first.' }),
       nav(busy === 'export' ? 'Exporting…' : 'Export passwords', () => void run('export', async () => {
-        const result = await move.exportVault();
-        notice = `Exported ${result.exported} ${result.exported === 1 ? 'password' : 'passwords'}. The file is not encrypted; delete it when you are done.`;
-        await refresh();
+        // Native export locks the vault before its fresh authentication, so the list is
+        // refreshed after a cancelled or failed export too.
+        try {
+          const result = await move.exportVault();
+          notice = `Exported ${result.exported} ${result.exported === 1 ? 'password' : 'passwords'}. The file is not encrypted; delete it when you are done.`;
+        } finally { await refresh(); }
       }), { sub: 'Unencrypted CSV file. Asks for your screen lock.' }),
     ]));
   }
