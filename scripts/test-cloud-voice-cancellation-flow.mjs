@@ -19,7 +19,7 @@ evaluate(await fs.readFile(new URL('apps/app/src/runtime/voice-selection.ts',roo
 evaluate(await fs.readFile(new URL('apps/app/src/prototype/voice-adapter.ts',root),'utf8'),'globalThis.install=installPrototypeVoiceAdapter;');
 class Shell{constructor(){this.state={view:'notes'};this.notes={list:[]};}S(){return this.state;}setState(p){Object.assign(this.state,p);}openView(v){this.state.view=v;}goHome(){this.state.view=null;}toast(){}vset(_,p){Object.assign(this.notes,p);return true;}startVoice(){}componentWillUnmount(){}}
 const views={notes:{render:()=>({ed:{}}),back:()=>false,onLeave:()=>{}}};box.install(Shell,views);const shell=new Shell();const api={get:()=>shell.notes,setView:(_,p)=>Object.assign(shell.notes,p),set:p=>Object.assign(shell.notes,p),ic:{}};const render=()=>views.notes.render(shell.notes,api);
-render().record();render().rec.changeRoute();await tick();render().rec.stop();await tick();render().rec.stop();await tick();render().rec.stop();await tick();assert.equal(render().rec.review,true);
+render().record();assert.equal(render().rec.manualChoice,false);assert.equal(render().rec.routeChoice,false);await tick();render().rec.stop();await tick();render().rec.stop();await tick();render().rec.stop();await tick();assert.equal(render().rec.review,true);
 render().rec.toggle();await tick();assert.equal(plays,1);assert.equal(render().rec.pauseLabel,'Stop audio');render().rec.toggle();await new Promise(r=>setTimeout(r,650));
 
 assert.equal(render().rec.pauseLabel,'Listen to transcript');assert.equal(stops.filter(s=>s?.requestId===request).length,1,'idempotent request-scoped cleanup');
