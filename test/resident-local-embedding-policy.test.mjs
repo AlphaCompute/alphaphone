@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 
-test('local embedding policy requires complete packaged host and model, preserving Cloud text and speech',()=>{
+test('direct-provider local embedding policy requires complete packaged host and model, preserving text and speech',()=>{
  const source=fs.readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java','utf8');
  const start=source.indexOf(' static void configureLocalEmbeddings('),end=source.indexOf(' static void configureEnvironment(',start);assert.ok(start>=0&&end>start);
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-embedding-policy-'));

@@ -124,12 +124,18 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    env.put("ELIZAOS_CLOUD_API_KEY",token);
    env.put("ELIZAOS_CLOUD_BASE_URL",CLOUD_PROVIDER_BASE);
    env.put("ELIZAOS_CLOUD_USE_INFERENCE","true");
+   env.put("ELIZAOS_CLOUD_USE_EMBEDDINGS","true");
+   env.put("ELIZAOS_CLOUD_EMBEDDING_MODEL","bge-small-en-v1.5");
+   env.put("ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS","384");
+   env.put("ELIZA_DISABLE_LOCAL_EMBEDDINGS","true");
+   env.put("ELIZA_LOCAL_EMBEDDING_ENABLED","0");
+   env.remove("ELIZA_LOCAL_EMBEDDING_MODEL_PATH");env.remove("ELIZA_LOCAL_EMBEDDING_DIMENSIONS");
    env.put("ELIZAOS_CLOUD_SMALL_MODEL",model);
    env.put("ELIZAOS_CLOUD_LARGE_MODEL",model);
   }else if("cerebras".equals(kind)){
    String key=provider.getString("key");
    if(!model.matches(PROVIDER_MODEL_PATTERN)||!validProviderToken(key,1024))throw new IllegalArgumentException();
-   for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL"})env.remove(name);
+   for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL","ELIZAOS_CLOUD_USE_EMBEDDINGS","ELIZAOS_CLOUD_EMBEDDING_MODEL","ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS","ELIZA_DISABLE_LOCAL_EMBEDDINGS","ELIZA_LOCAL_EMBEDDING_ENABLED"})env.remove(name);
    env.put("CEREBRAS_API_KEY",key);
    env.put("CEREBRAS_MODEL",model);
    env.put("CEREBRAS_SMALL_MODEL",model);
@@ -193,7 +199,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(saved==null)throw new IllegalStateException("Configure a model provider before starting the local agent");
   JSONObject provider=new JSONObject(saved);
   applyProviderEnvironment(provider,"elizacloud".equals(provider.optString("provider"))?new AlphaCredentialStore(context).readCredentialSlot("cloud:production"):null,env,System.currentTimeMillis());
-  configureLocalEmbeddings(new File(context.getApplicationInfo().nativeLibraryDir),context.getFilesDir(),env);
+  if(!"elizacloud".equals(provider.optString("provider","cerebras")))configureLocalEmbeddings(new File(context.getApplicationInfo().nativeLibraryDir),context.getFilesDir(),env);
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
   // A packaged app has no repository character file to discover above its workspace.

@@ -14,13 +14,14 @@ test('resident Cloud binding validates credentials and keeps provider environmen
  assert.ok(jsonJar&&fs.existsSync(jsonJar),'Set ALPHA_JSON_JAR or install the pinned Gradle JSON test dependency');
  const constants=['CLOUD_PROVIDER_MODEL','CLOUD_PROVIDER_BASE','PROVIDER_MODEL_PATTERN'].map(name=>source.match(new RegExp(' static final String '+name+'=[^;]+;'))[0]).join('\n');
  try{
- fs.writeFileSync(path.join(dir,'CloudProviderTest.java'),`import java.util.*;import org.json.JSONObject;
+ fs.writeFileSync(path.join(dir,'CloudProviderTest.java'),`import java.util.*;import java.io.*;import java.nio.file.*;import org.json.JSONObject;
 public class CloudProviderTest {
 ${constants}
 ${method(' static boolean validProviderToken(')}
 ${method(' static String cloudProviderToken(')}
 ${method(' static void bindCloudProvider(')}
 ${method(' static void applyProviderEnvironment(')}
+${method(' static void configureLocalEmbeddings(')}
  static class AlphaCredentialStore {
   String provider,cloud; int cloudReads=0,exchanges=0; boolean initialConflict=false;
   java.util.function.IntConsumer beforeRead=n->{};
@@ -51,12 +52,23 @@ ${method(' static void applyProviderEnvironment(')}
   applyProviderEnvironment(binding(),credential().toString(),env,NOW);
   if(!"true".equals(env.get("ELIZAOS_CLOUD_USE_INFERENCE"))||!CLOUD_PROVIDER_BASE.equals(env.get("ELIZAOS_CLOUD_BASE_URL"))||!CLOUD_PROVIDER_MODEL.equals(env.get("ELIZAOS_CLOUD_SMALL_MODEL"))||!CLOUD_PROVIDER_MODEL.equals(env.get("ELIZAOS_CLOUD_LARGE_MODEL"))||!"synthetic-cloud-token".equals(env.get("ELIZAOS_CLOUD_API_KEY"))||!"preserved".equals(env.get("UNRELATED")))throw new AssertionError("Wrong cloud configuration");
   if(env.containsValue("stale-direct-provider"))throw new AssertionError("Direct provider retained");
+  if(!"true".equals(env.get("ELIZAOS_CLOUD_USE_EMBEDDINGS"))||!"bge-small-en-v1.5".equals(env.get("ELIZAOS_CLOUD_EMBEDDING_MODEL"))||!"384".equals(env.get("ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS"))||!"true".equals(env.get("ELIZA_DISABLE_LOCAL_EMBEDDINGS"))||!"0".equals(env.get("ELIZA_LOCAL_EMBEDDING_ENABLED")))throw new AssertionError("Cloud BGE policy missing");
+  File nativeDir=new File("${dir}/native"),filesDir=new File("${dir}/files");nativeDir.mkdirs();
+  File engine=new File(nativeDir,"libelizainference.so"),jni=new File(nativeDir,"libelizavoicejni.so"),embedding=new File(filesDir,".eliza/local-inference/models/bge-small-en-v1.5-f16.gguf");embedding.getParentFile().mkdirs();
+  for(boolean packaged:new boolean[]{false,true}){
+   if(packaged){Files.writeString(engine.toPath(),"fixture");Files.writeString(jni.toPath(),"fixture");Files.writeString(embedding.toPath(),"fixture");}
+   JSONObject provider=binding();Map<String,String> selected=new HashMap<>(env);
+   ${source.split('\n').find(line=>line.includes('if(!"elizacloud".equals')&&line.includes('configureLocalEmbeddings(')).replace('new File(context.getApplicationInfo().nativeLibraryDir)','nativeDir').replace('context.getFilesDir()','filesDir').replace(',env);',',selected);')}
+   if(!selected.equals(env))throw new AssertionError("Packaged local assets overrode verified Cloud selection");
+  }
   Map<String,String> before=new HashMap<>(env);
   refuses(()->applyProviderEnvironment(binding(),null,env,NOW));
   refuses(()->applyProviderEnvironment(binding().put("model","unsupported"),credential().toString(),env,NOW));
   if(!before.equals(env))throw new AssertionError("Rejected configuration mutated environment");
   applyProviderEnvironment(new JSONObject().put("key","synthetic-cerebras").put("model","direct-model"),null,env,NOW);
   if(env.containsKey("ELIZAOS_CLOUD_API_KEY")||env.containsKey("ELIZAOS_CLOUD_BASE_URL")||!"false".equals(env.get("ELIZAOS_CLOUD_USE_INFERENCE"))||!"synthetic-cerebras".equals(env.get("CEREBRAS_API_KEY")))throw new AssertionError("Direct path lost exclusivity");
+  if(env.containsKey("ELIZAOS_CLOUD_EMBEDDING_MODEL")||env.containsKey("ELIZAOS_CLOUD_USE_EMBEDDINGS")||env.containsKey("ELIZA_DISABLE_LOCAL_EMBEDDINGS")||env.containsKey("ELIZA_LOCAL_EMBEDDING_ENABLED"))throw new AssertionError("Cloud embedding policy leaked into direct selection");
+  configureLocalEmbeddings(nativeDir,filesDir,env);if(!"1".equals(env.get("ELIZA_LOCAL_EMBEDDING_ENABLED"))||!"false".equals(env.get("ELIZAOS_CLOUD_USE_EMBEDDINGS")))throw new AssertionError("Direct packaged local policy changed");
   refuses(()->applyProviderEnvironment(new JSONObject().put("provider","unknown").put("model","direct-model"),null,env,NOW));
   String original=new JSONObject().put("key","synthetic-cerebras").put("model","direct-model").toString();
   String current=credential().put("expiresAt",System.currentTimeMillis()+60000).toString();
