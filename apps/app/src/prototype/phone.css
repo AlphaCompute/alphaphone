@@ -125,7 +125,7 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 @keyframes calendar-scroll-fade-top { from { --calendar-scroll-fade-top:0px; } to { --calendar-scroll-fade-top:12px; } }
 @keyframes calendar-scroll-fade-bottom { from { --calendar-scroll-fade-bottom:12px; } to { --calendar-scroll-fade-bottom:0px; } }
 @supports (animation-timeline:scroll()) {
- .calendar-timeline {
+ .calendar-timeline,.standalone-app [data-alpha-app-scroll] {
   -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 var(--calendar-scroll-fade-top),#000 calc(100% - var(--calendar-scroll-fade-bottom)),transparent 100%);
   mask-image:linear-gradient(to bottom,transparent 0,#000 var(--calendar-scroll-fade-top),#000 calc(100% - var(--calendar-scroll-fade-bottom)),transparent 100%);
   -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
@@ -135,3 +135,23 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
   animation-fill-mode:both;
  }
 }
+
+/* Standalone app chrome reuses each view's own header and its existing actions. */
+.app-header-back { display:flex; align-items:center; justify-content:center; width:52px; height:52px; min-width:52px; min-height:52px; flex-shrink:0; color:inherit; border-radius:16px; }
+.app-header-back .i { width:22px; height:22px; }
+.app-header-back:focus-visible { outline:2px solid var(--acct); outline-offset:-2px; }
+.standalone-app [data-screen]:has([data-alpha-app-header]) [data-alpha-app-back-fallback] { display:none!important; }
+.standalone-app [data-alpha-app-header] { margin-top:0!important; height:52px!important; min-height:52px; padding-left:8px!important; padding-right:8px!important; gap:2px!important; box-sizing:border-box; }
+.standalone-app [data-alpha-app-header-overlay] { top:0!important; }
+.standalone-app [data-alpha-app-header] [data-alpha-app-title] { font-family:inherit; font-size:20px!important; line-height:1.2; letter-spacing:normal!important; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.standalone-app [data-alpha-app-header] .ib { width:52px!important; height:52px!important; min-width:52px; min-height:52px; flex-shrink:0; }
+.standalone-app [data-alpha-app-scroll] { min-height:0; overscroll-behavior:contain; }
+
+.app-header-action-icon { display:none; }
+.standalone-app [data-alpha-app-header] [data-alpha-header-icon-action] { width:52px; height:52px; min-width:52px; min-height:52px; padding:0!important; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.standalone-app [data-alpha-app-header] .app-header-action-label { display:none; }
+.standalone-app [data-alpha-app-header] .app-header-action-icon { display:block; }
+.app-header-context { display:none; }
+.standalone-app [data-alpha-app-header] .app-header-context { display:block; flex:1; }
+
+.standalone-app .notes-layout { padding-top:0!important; }

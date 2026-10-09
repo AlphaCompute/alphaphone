@@ -14,7 +14,7 @@
 
 
 <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
-<sc-if value="{{showAppBack}}"><button aria-label="Back to apps" onClick="{{backToApps}}" style="position:absolute;top:0;left:12px;z-index:44;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--fg);font-size:14px"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="{{ic.back}}"></path></svg>Apps</button></sc-if>
+<sc-if value="{{showAppBack}}"><button data-alpha-app-back-fallback aria-label="Back to apps" onClick="{{backToApps}}" style="position:absolute;top:0;left:12px;z-index:44;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--fg);font-size:14px"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="{{ic.back}}"></path></svg>Apps</button></sc-if>
 
 <div data-alpha-layer="home" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; display: flex; flex-direction: column; padding: 20px 0 108px; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
 <sc-if value="{{storageAccessWarning}}" hint-placeholder-val="{{false}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
@@ -512,14 +512,16 @@
 <div onFocusCapture="{{inbox.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <div data-alpha-subview="inbox-list" inert="{{inbox.listCovered}}" aria-hidden="{{inbox.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{inbox.notSearching}}" hint-placeholder-val="{{true}}">
-    <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
-      <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Inbox</h1>
+    <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
+      <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Inbox</h1>
       <button class="ib" aria-label="Search email" onClick="{{inbox.openSearch}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.search}}"></path></svg></button>
       <button class="ib" aria-label="Compose" disabled="{{inbox.composeDisabled}}" onClick="{{inbox.compose}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.plus}}"></path></svg></button>
     </div>
   </sc-if>
   <sc-if value="{{inbox.searching}}" hint-placeholder-val="{{false}}">
-    <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 16px; flex-shrink: 0">
+    <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 16px; flex-shrink: 0">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
       <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 4px 0 16px; border-radius: 24px; background: var(--s2)">
         <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut)"><path d="{{ic.search}}"></path></svg>
         <input aria-label="Search mail" placeholder="Search mail" value="{{inbox.q}}" onChange="{{inbox.onQ}}" style="flex-grow: 1; min-width: 0; height: 44px; border: 0; outline: 0; padding: 0; background: transparent; color: var(--fg); font-size: 16px">
@@ -533,7 +535,7 @@
     </sc-for>
   </div>
 
-  <div class="scr" style="flex-grow: 1; overflow-y: auto; padding-bottom: 120px; touch-action: pan-y">
+  <div class="scr" data-alpha-app-scroll="inbox" style="flex-grow: 1; overflow-y: auto; padding-bottom: 120px; touch-action: pan-y">
     <sc-for list="{{inbox.rows}}" as="it" hint-placeholder-count="6">
       <div onPointerDown="{{it.down}}" onPointerUp="{{it.up}}" style="position: relative; overflow: hidden; touch-action: pan-y">
         <div style="position: absolute; inset: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 24px; background: var(--s2); color: var(--mut)">
@@ -581,7 +583,7 @@
   </div>
   <sc-if value="{{inbox.detail}}" hint-placeholder-val="{{false}}">
     <div ref="{{inbox.detailFocus}}" data-alpha-subview="inbox-detail" inert="{{inbox.detailCovered}}" aria-hidden="{{inbox.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to inbox" onClick="{{back}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
         <button class="ib" aria-label="Reply" onClick="{{inbox.d.reply}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.reply}}"></path></svg></button>
@@ -636,7 +638,7 @@
 
   <sc-if value="{{inbox.composing}}" hint-placeholder-val="{{false}}">
     <div ref="{{inbox.composeFocus}}" data-alpha-subview="inbox-composing" inert="{{inbox.composeCovered}}" aria-hidden="{{inbox.composeCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 5">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 12px 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 12px 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back from draft" onClick="{{back}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
         <sc-if value="{{inbox.c.local}}">
@@ -735,9 +737,10 @@
 <sc-if value="{{is.calendar}}" hint-placeholder-val="{{false}}">
 <div onFocusCapture="{{calendar.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <div data-alpha-subview="calendar-list" inert="{{calendar.listCovered}}" aria-hidden="{{calendar.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
-  <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
+  <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
     <button onClick="{{calendar.toggleMonth}}" aria-label="Month view" aria-expanded="{{calendar.monthOpen}}" style="display: flex; align-items: center; gap: 6px; height: 48px; flex-grow: 1; min-width: 0">
-      <h1 class="serif" style="margin: 0; font-size: 32px; letter-spacing: -.01em; white-space: nowrap">{{calendar.month}}</h1>
+      <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; letter-spacing: -.01em; white-space: nowrap">{{calendar.month}}</h1>
       <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut); margin-top: 4px"><path d="{{calendar.chevron}}"></path></svg>
     </button>
     <button class="ib" aria-label="Clock alarms" onClick="{{calendar.openClock}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.clock}}"></path></svg></button>
@@ -868,7 +871,7 @@
 
   <sc-if value="{{calendar.detail}}" hint-placeholder-val="{{false}}">
     <div ref="{{calendar.detailFocus}}" data-alpha-subview="calendar-detail" inert="{{calendar.detailCovered}}" aria-hidden="{{calendar.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to calendar" onClick="{{calendar.ev.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
         <button class="ib" aria-label="Edit event" disabled="{{calendar.ev.busy}}" onClick="{{calendar.ev.edit}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.edit}}"></path></svg></button>
@@ -959,7 +962,7 @@
 
   <sc-if value="{{calendar.form}}" hint-placeholder-val="{{false}}">
     <div ref="{{calendar.formFocus}}" data-alpha-subview="calendar-form" class="enter calendar-draft" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 6">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 16px 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 16px 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to calendar" onClick="{{calendar.f.cancel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
         <button aria-label="Save event" aria-disabled="{{calendar.f.saveOff}}" onClick="{{calendar.f.save}}" style="height: 36px; padding: 0 18px; border-radius: 18px; font-weight: 600; font-size: 15px; transition: background .2s; {{calendar.f.saveCss}}">Save</button>
@@ -1084,7 +1087,8 @@
 <sc-if value="{{is.browser}}" hint-placeholder-val="{{false}}">
 <div onFocusCapture="{{browser.captureSubviewFocus}}" ref="{{browser.rootRef}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <div data-alpha-subview="browser-list" inert="{{browser.listCovered}}" aria-hidden="{{browser.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
-  <div style="flex-shrink: 0; display: flex; align-items: center; gap: 2px; height: 56px; margin-top: 44px; padding: 0 6px; position: relative; z-index: 3; background: var(--bg)">
+  <div data-alpha-app-header="main" style="flex-shrink: 0; display: flex; align-items: center; gap: 2px; height: 56px; margin-top: 44px; padding: 0 6px; position: relative; z-index: 3; background: var(--bg)">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
     <sc-if value="{{browser.notEditing}}" hint-placeholder-val="{{true}}">
       <button class="ib" aria-label="Previous page" onClick="{{browser.goBack}}" style="width: 40px; opacity: {{browser.backOp}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.back}}"></path></svg></button>
       <button class="ib" aria-label="Next page" onClick="{{browser.goFwd}}" style="width: 40px; opacity: {{browser.fwdOp}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.right}}"></path></svg></button>
@@ -1113,7 +1117,7 @@
       <button aria-label="Stop and take over" onClick="{{browser.stopAg}}" style="width: 40px; height: 40px; border-radius: 20px; background: #fff; color: #0000FF; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{ic.x}}"></path></svg></button>
     </div>
   </sc-if>
-  <div data-bscroll="1" role="region" aria-label="Browser page" class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; position: relative; user-select: text; -webkit-user-select: text">
+  <div data-bscroll="1" data-alpha-app-scroll="browser" role="region" aria-label="Browser page" class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; position: relative; user-select: text; -webkit-user-select: text">
     <sc-if value="{{browser.isNews}}" hint-placeholder-val="{{true}}">
       <div style="position: relative; height: 210px; background: {{browser.heroNews}}; overflow: hidden"><div style="display: {{browser.heroArt}}">
         <div style="position: absolute; left: 60px; top: 0; bottom: 0; width: 1px; background: #0000FF"></div>
@@ -1332,9 +1336,9 @@
   </div>
   <sc-if value="{{browser.tabsOpen}}" hint-placeholder-val="{{false}}">
     <div ref="{{browser.tabsFocus}}" data-alpha-subview="browser-tabs" inert="{{browser.tabsCovered}}" aria-hidden="{{browser.tabsCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 9">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 4px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 4px; flex-shrink: 0">
         <button class="ib" aria-label="Back to page" onClick="{{browser.closeTabs}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
-        <h1 class="serif" style="margin: 0; font-size: 26px; flex-grow: 1; letter-spacing: -.01em">{{browser.tabsTitle}}</h1>
+        <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 26px; flex-grow: 1; letter-spacing: -.01em">{{browser.tabsTitle}}</h1>
         <sc-if value="{{browser.nativeControls}}"><button aria-label="New private tab" onClick="{{browser.openPrivate}}" style="height: 36px; padding: 0 12px; border-radius: 18px; background: var(--s2); font-size: 13.5px; font-weight: 600">Private</button></sc-if>
         <button class="ib" aria-label="New tab" onClick="{{browser.newTab}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.plus}}"></path></svg></button>
       </div>
@@ -1359,7 +1363,7 @@
 
   <sc-if value="{{browser.lib}}" hint-placeholder-val="{{false}}">
     <div ref="{{browser.libraryFocus}}" data-alpha-subview="browser-library" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 9">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 12px 0 8px; gap: 8px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 12px 0 8px; gap: 8px; flex-shrink: 0">
         <button class="ib" aria-label="Back to page" onClick="{{browser.closeLib}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="display: flex; gap: 2px; padding: 3px; border-radius: 23px; background: var(--s2)">
           <button aria-label="Bookmarks" onClick="{{browser.libMarks}}" style="height: 38px; padding: 0 16px; border-radius: 19px; font-size: 14px; font-weight: 600; {{browser.libMarksCss}}">Bookmarks</button>
@@ -1414,9 +1418,10 @@
     <span style="position: absolute; inset: 0; display: block; background: #ffffff; pointer-events: none; opacity: {{camera.flOp}}; transition: {{camera.flTr}}"></span>
   </button>
 
-  <div style="position: absolute; left: 0; right: 0; top: 44px; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; z-index: 2">
+  <div data-alpha-app-header="main" data-alpha-app-header-overlay style="position: absolute; left: 0; right: 0; top: 44px; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; z-index: 2">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if><span data-alpha-app-title class="app-header-context">Camera</span>
     <button class="ib" aria-label="{{camera.flashLabel}}" onClick="{{camera.toggleFlash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{camera.flashIcon}}"></path></svg></button>
-    <sc-if value="{{camera.importAvailable}}"><button aria-label="Choose image" onClick="{{camera.importImage}}" style="min-height:44px;padding:0 16px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit">Choose image</button><button aria-label="Scan document" onClick="{{camera.scanDocument}}" style="min-height:44px;padding:0 12px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit">Scan document</button></sc-if>
+    <sc-if value="{{camera.importAvailable}}"><button data-alpha-header-icon-action aria-label="Choose image" onClick="{{camera.importImage}}" style="min-height:44px;padding:0 16px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit"><span class="app-header-action-label">Choose image</span><svg class="i app-header-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.photo}}"></path></svg></button><button data-alpha-header-icon-action aria-label="Scan document" onClick="{{camera.scanDocument}}" style="min-height:44px;padding:0 12px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit"><span class="app-header-action-label">Scan document</span><svg class="i app-header-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.camScan}}"></path></svg></button></sc-if>
     <sc-if value="{{camera.rec}}" hint-placeholder-val="{{false}}">
       <span style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 15px; background: #E53935; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums"><span class="dot" style="width: 7px; height: 7px; border-radius: 4px; background: #ffffff"></span>{{camera.recTime}}</span>
     </sc-if>
@@ -1489,8 +1494,9 @@
 <div onFocusCapture="{{photos.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <div data-alpha-subview="photos-list" inert="{{photos.listCovered}}" aria-hidden="{{photos.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{photos.hdr}}" hint-placeholder-val="{{true}}">
-    <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
-      <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">{{photos.title}}</h1>
+    <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
+      <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">{{photos.title}}</h1>
       <div style="display: flex; gap: 2px; padding: 3px; border-radius: 24px; background: var(--s2); margin-right: 6px">
         <sc-for list="{{photos.tabs}}" as="t" hint-placeholder-count="2">
           <button aria-label="{{t.label}}" aria-pressed="{{t.on}}" onClick="{{t.pick}}" style="width: 48px; height: 38px; border-radius: 19px; display: flex; align-items: center; justify-content: center; transition: background .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{t.d}}"></path></svg></button>
@@ -1504,7 +1510,7 @@
   </sc-if>
   <sc-if value="{{photos.copyRecovery}}" hint-placeholder-val="{{false}}"><button aria-label="Recover browser saved-copy request" onClick="{{photos.openCopyRecovery}}" style="margin:8px 16px;padding:10px;border-radius:12px;background:var(--s2);color:var(--fg)">Saved-copy recovery</button></sc-if>
   <sc-if value="{{photos.searching}}" hint-placeholder-val="{{false}}">
-    <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 16px; flex-shrink: 0">
+    <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 16px; flex-shrink: 0">
       <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 4px 0 16px; border-radius: 23px; background: var(--s2)">
         <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut)"><path d="{{ic.search}}"></path></svg>
         <input ref="{{photos.searchRef}}" aria-label="Search photos" placeholder="People, places, days" value="{{photos.q}}" onChange="{{photos.onQ}}" style="flex-grow: 1; min-width: 0; height: 44px; background: transparent; border: 0; outline: none; color: var(--fg); font-size: 16px">
@@ -1513,9 +1519,9 @@
     </div>
   </sc-if>
   <sc-if value="{{photos.selecting}}" hint-placeholder-val="{{false}}">
-    <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 8px; gap: 6px; flex-shrink: 0">
+    <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 8px; gap: 6px; flex-shrink: 0">
       <button class="ib" aria-label="Cancel selection" onClick="{{photos.selCancel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button>
-      <h1 class="serif" style="margin: 0; font-size: 32px; letter-spacing: -.01em">{{photos.selN}}</h1>
+      <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; letter-spacing: -.01em">{{photos.selN}}</h1>
     </div>
   </sc-if>
 
@@ -1529,7 +1535,7 @@
         </button>
       </div>
     </sc-if>
-    <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding-bottom: 180px">
+    <div class="scr" data-alpha-app-scroll="photos" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding-bottom: 180px">
       <sc-for list="{{photos.groups}}" as="g" hint-placeholder-count="3">
         <div style="display: flex; align-items: baseline; gap: 8px; padding: 14px 20px 8px">
           <span style="font-size: 14px; font-weight: 600">{{g.label}}</span>
@@ -1578,7 +1584,7 @@
   </sc-if>
 
   <sc-if value="{{photos.isAlb}}" hint-placeholder-val="{{false}}">
-    <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding-bottom: 180px">
+    <div class="scr" data-alpha-app-scroll="photos" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding-bottom: 180px">
       <sc-if value="{{photos.hasPeople}}" hint-placeholder-val="{{true}}">
         <div class="scr" style="display: flex; gap: 16px; overflow-x: auto; padding: 8px 20px 22px; touch-action: pan-x">
           <sc-for list="{{photos.people}}" as="pp" hint-placeholder-count="5">
@@ -1614,16 +1620,16 @@
   </div>
   <sc-if value="{{photos.album}}" hint-placeholder-val="{{false}}">
     <div ref="{{photos.albumFocus}}" data-alpha-subview="photos-album" inert="{{photos.albumCovered}}" aria-hidden="{{photos.albumCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to albums" onClick="{{photos.alb.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
-        <h1 class="serif" style="margin: 0 0 0 4px; font-size: 26px; letter-spacing: -.01em; flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{photos.alb.title}}</h1>
+        <h1 data-alpha-app-title class="serif" style="margin: 0 0 0 4px; font-size: 26px; letter-spacing: -.01em; flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{photos.alb.title}}</h1>
         <span style="font-size: 13px; color: var(--mut); padding: 0 8px">{{photos.alb.count}}</span>
         <sc-if value="{{photos.alb.isCustom}}"><button class="ib" aria-label="Manage album" onClick="{{photos.alb.manage}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.more}}"></path></svg></button></sc-if>
         <sc-if value="{{photos.alb.isTrash}}" hint-placeholder-val="{{false}}">
           <button class="ib" aria-label="Delete all forever" onClick="{{photos.alb.emptyTrash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
         </sc-if>
       </div>
-      <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding: 8px 0 180px">
+      <div class="scr" data-alpha-app-scroll="photos" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding: 8px 0 180px">
         <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px">
           <sc-for list="{{photos.alb.items}}" as="p" hint-placeholder-count="6">
             <button data-owned-media-id="{{p.nativeMediaId}}" aria-label="{{p.alt}}" onClick="{{p.tap}}" onPointerDown="{{p.pd}}" onPointerUp="{{p.pu}}" onPointerLeave="{{p.pu}}" onPointerCancel="{{p.pu}}" style="position: relative; display: block; aspect-ratio: 1; overflow: hidden; background: var(--s2); {{p.dim}}">
@@ -1676,7 +1682,7 @@
         <button class="photo-playback-control" aria-label="Pause video" onClick="{{photos.v.pause}}" style="position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; margin: -36px 0 0 -36px; border-radius: 36px; background: rgba(0,0,0,.7); color: #ffffff; display: flex; align-items: center; justify-content: center; z-index: 2; opacity: {{photos.v.chromeOp}}; pointer-events: {{photos.v.chromePE}}; transition: opacity .25s"><svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{ic.pause}}"></path></svg></button>
       </sc-if>
       <div style="position: absolute; left: 0; right: 0; top: 0; height: 150px; background: linear-gradient(to bottom, rgba(0,0,0,.8) 100px, rgba(0,0,0,0)); pointer-events: none; opacity: {{photos.v.chromeOp}}; transition: opacity .25s; z-index: 3">
-        <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 6px; pointer-events: {{photos.v.chromePE}}">
+        <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 6px; pointer-events: {{photos.v.chromePE}}">
           <button class="ib" aria-label="Back from photo" onClick="{{back}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
           <div style="flex-grow: 1; min-width: 0">
             <div style="font-size: 15px; font-weight: 600">{{photos.v.day}}</div>
@@ -1747,7 +1753,7 @@
 
   <sc-if value="{{photos.editing}}" hint-placeholder-val="{{false}}">
     <div ref="{{photos.editFocus}}" data-alpha-subview="photos-edit" class="fadein" style="position: absolute; inset: 0; z-index: 14; background: #000000; color: #ffffff; display: flex; flex-direction: column">
-      <div style="display: flex; align-items: center; justify-content: space-between; height: 56px; margin-top: 44px; padding: 0 8px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; justify-content: space-between; height: 56px; margin-top: 44px; padding: 0 8px; flex-shrink: 0">
         <button class="ib" aria-label="Cancel edit" onClick="{{photos.v.ed.cancel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button>
         <button aria-label="Save edit" disabled="{{photos.v.ed.saveDisabled}}" onClick="{{photos.v.ed.save}}" style="height: 36px; padding: 0 18px; border-radius: 18px; background: var(--acc); color: #ffffff; font-size: 15px; font-weight: 600; margin-right: 8px">Save</button>
       </div>
@@ -1801,7 +1807,7 @@
 
   <sc-if value="{{photos.viewEmpty}}" hint-placeholder-val="{{false}}">
     <div ref="{{photos.emptyFocus}}" data-alpha-subview="photos-empty" style="position: absolute; inset: 0; z-index: 10; background: #000000; color: #ffffff">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px">
         <button class="ib" aria-label="Back from photo" onClick="{{back}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
       </div>
       <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 250px; color: rgba(255,255,255,.6)">
@@ -1869,7 +1875,8 @@
     <div role="status" data-alpha-maps-status style="position: absolute; left: 20px; right: 20px; top: {{maps.nativeStatusTop}}px; z-index: 2; padding: 16px; border-radius: 22px; background: var(--bg); color: var(--mut); font-size: 14px; line-height: 1.45; box-shadow: 0 0 0 1px var(--line)">{{maps.nativeStatus}}</div>
   </sc-if>
   <sc-if value="{{maps.showSearch}}" hint-placeholder-val="{{true}}">
-    <div style="position: absolute; left: 12px; right: 12px; top: 52px; height: 54px; border-radius: 27px; background: var(--bg); box-shadow: 0 6px 22px var(--shc), 0 0 0 1px var(--line); display: flex; align-items: center; padding: 0 5px; z-index: 3">
+    <div data-alpha-app-header="main" data-alpha-app-header-overlay style="position: absolute; left: 12px; right: 12px; top: 52px; height: 54px; border-radius: 27px; background: var(--bg); box-shadow: 0 6px 22px var(--shc), 0 0 0 1px var(--line); display: flex; align-items: center; padding: 0 5px; z-index: 3">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
       <button class="ib" aria-label="{{maps.searchLabel}}" onClick="{{maps.searchLead}}"><svg class="i" viewBox="0 0 24 24"><path d="{{maps.searchIcon}}"></path></svg></button>
       <input aria-label="Search places" placeholder="Search" value="{{maps.q}}" onChange="{{maps.onQ}}" onClick="{{maps.focusQ}}" onKeyDown="{{maps.qKey}}" style="flex-grow: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 16px; padding: 0 4px">
       <sc-if value="{{maps.hasQ}}" hint-placeholder-val="{{false}}">
@@ -2035,8 +2042,9 @@
   <div class="notes-workspace" style="position:relative;display:flex;flex-direction:column;flex:1;min-height:0">
   <div data-alpha-subview="notes-list" inert="{{notes.listCovered}}" aria-hidden="{{notes.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{notes.notSearching}}" hint-placeholder-val="{{true}}">
-    <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
-      <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Notes</h1>
+    <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
+      <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Notes</h1>
       <button class="ib" aria-label="Record and transcribe" onClick="{{notes.record}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.notesWave}}"></path></svg></button>
       <sc-if value="{{notes.canImportText}}"><button class="ib" aria-label="Import text note" disabled="{{notes.documentBusy}}" onClick="{{notes.importText}}"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 16v5h14v-5"></path></svg></button></sc-if>
       <sc-if value="{{notes.trashAvailable}}" hint-placeholder-val="{{false}}"><button class="ib" aria-label="Open Trash" title="{{notes.trashLabel}}" onClick="{{notes.openTrash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button></sc-if>
@@ -2044,7 +2052,8 @@
     </div>
   </sc-if>
   <sc-if value="{{notes.searching}}" hint-placeholder-val="{{false}}">
-    <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px 0 12px; gap: 4px; flex-shrink: 0">
+    <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px 0 12px; gap: 4px; flex-shrink: 0">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
       <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px; border-radius: 24px; background: var(--s2)">
         <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut)"><path d="{{ic.search}}"></path></svg>
         <input aria-label="Search notes" placeholder="Search" value="{{notes.q}}" onChange="{{notes.onQ}}" style="flex-grow: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 16px">
@@ -2053,7 +2062,7 @@
     </div>
   </sc-if>
 
-  <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding: 8px 16px 190px; box-sizing: border-box">
+  <div class="scr" data-alpha-app-scroll="notes" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding: 8px 16px 190px; box-sizing: border-box">
     <sc-if value="{{notes.notSearching}}" hint-placeholder-val="{{true}}">
       <button onClick="{{notes.search}}" aria-label="Search notes" style="display: flex; align-items: center; gap: 10px; width: 100%; height: 48px; padding: 0 16px; margin-bottom: 12px; border-radius: 24px; background: var(--s2); color: var(--mut); font-size: 16px; box-sizing: border-box"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{ic.search}}"></path></svg>Search</button>
     </sc-if>
@@ -2130,7 +2139,7 @@
   </div>
   <sc-if value="{{notes.isEdit}}" hint-placeholder-val="{{false}}">
     <div ref="{{notes.editorFocus}}" data-alpha-subview="notes-editor" inert="{{notes.detailCovered}}" aria-hidden="{{notes.detailCovered}}" class="enter note-editor" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to notes" onClick="{{notes.ed.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
         <button class="ib" aria-label="{{notes.ed.dictLabel}}" onClick="{{notes.ed.dictate}}" style="{{notes.ed.dictCss}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.mic}}"></path></svg></button>
@@ -2170,7 +2179,7 @@
   
   <sc-if value="{{notes.isVoice}}" hint-placeholder-val="{{false}}">
     <div ref="{{notes.voiceFocus}}" data-alpha-subview="notes-voice" inert="{{notes.detailCovered}}" aria-hidden="{{notes.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to notes" onClick="{{notes.vo.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
         <button class="ib" aria-label="{{notes.vo.pinLabel}}" onClick="{{notes.vo.pin}}" style="{{notes.vo.pinCss}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.notesPin}}"></path></svg></button>
@@ -2239,7 +2248,7 @@
   
   <sc-if value="{{notes.isLink}}" hint-placeholder-val="{{false}}">
     <div ref="{{notes.linkFocus}}" data-alpha-subview="notes-link" inert="{{notes.detailCovered}}" aria-hidden="{{notes.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to notes" onClick="{{notes.lk.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
         <button class="ib" aria-label="{{notes.lk.pinLabel}}" onClick="{{notes.lk.pin}}" style="{{notes.lk.pinCss}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.notesPin}}"></path></svg></button>
@@ -2501,13 +2510,15 @@
 <div onFocusCapture="{{files.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <div data-alpha-subview="files-list" inert="{{files.listCovered}}" aria-hidden="{{files.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{files.notSearching}}" hint-placeholder-val="{{true}}">
-    <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
-      <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Files</h1>
+    <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
+      <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Files</h1>
       <button class="ib" aria-label="Search files" onClick="{{files.search}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.search}}"></path></svg></button>
     </div>
   </sc-if>
   <sc-if value="{{files.searching}}" hint-placeholder-val="{{false}}">
-    <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 12px; gap: 4px; flex-shrink: 0">
+    <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 12px; gap: 4px; flex-shrink: 0">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
       <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px; border-radius: 24px; background: var(--s2)">
         <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut)"><path d="{{ic.search}}"></path></svg>
         <input aria-label="Search files" placeholder="Search" value="{{files.q}}" onChange="{{files.onQ}}" style="flex-grow: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 16px">
@@ -2517,7 +2528,7 @@
   </sc-if>
 
   <sc-if value="{{files.top}}" hint-placeholder-val="{{true}}">
-  <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding: 8px 16px 150px; box-sizing: border-box">
+  <div class="scr" data-alpha-app-scroll="files" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding: 8px 16px 150px; box-sizing: border-box">
     <sc-if value="{{files.noQuery}}" hint-placeholder-val="{{true}}">
       <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
         <sc-for list="{{files.locs}}" as="l" hint-placeholder-count="5">
@@ -2568,15 +2579,15 @@
   <sc-if value="{{files.inFolder}}" hint-placeholder-val="{{false}}">
     <div ref="{{files.folderFocus}}" data-alpha-subview="files-folder" inert="{{files.detailCovered}}" aria-hidden="{{files.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
       <sc-if value="{{files.notSel}}" hint-placeholder-val="{{true}}">
-        <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+        <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
           <button class="ib" aria-label="Back to files" onClick="{{files.fd.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
-          <h1 class="serif" style="margin: 0 0 0 6px; font-size: 26px; flex-grow: 1; min-width: 0; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{files.fd.name}}</h1>
+          <h1 data-alpha-app-title class="serif" style="margin: 0 0 0 6px; font-size: 26px; flex-grow: 1; min-width: 0; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{files.fd.name}}</h1>
           <button class="ib" aria-label="View and sort" onClick="{{files.fd.openMenu}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{files.fd.viewIcon}}"></path></svg></button>
           <button class="ib" aria-label="Select files" onClick="{{files.fd.select}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.filesSelect}}"></path></svg></button>
         </div>
       </sc-if>
       <sc-if value="{{files.isSel}}" hint-placeholder-val="{{false}}">
-        <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+        <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
           <button class="ib" aria-label="Exit selection" onClick="{{files.exitSel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button>
           <button onClick="{{files.selAll}}" aria-label="Select all" style="flex-grow: 1; text-align: left; height: 44px; padding-left: 6px"><span class="serif" style="font-size: 28px">{{files.selCount}}</span></button>
           <button class="ib" aria-label="Share selected" onClick="{{files.selShare}}" style="opacity: {{files.selOp}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button>
@@ -2631,7 +2642,7 @@
   
   <sc-if value="{{files.isPreview}}" hint-placeholder-val="{{false}}">
     <div ref="{{files.previewFocus}}" data-alpha-subview="files-preview" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 6">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back" onClick="{{files.pv.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
         <button class="ib" aria-label="Share file" onClick="{{files.pv.share}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button>
@@ -3097,12 +3108,13 @@
 <sc-if value="{{is.workflows}}" hint-placeholder-val="{{false}}">
 <div onFocusCapture="{{workflows.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <div data-alpha-subview="workflows-list" inert="{{workflows.listCovered}}" aria-hidden="{{workflows.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
-  <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
-    <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Workflows</h1>
+  <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
+    <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Workflows</h1>
     <sc-if value="{{workflows.localHistory}}"><button aria-label="Manage workflow history" onClick="{{workflows.localHistory}}" style="min-height:44px;padding:8px">History</button></sc-if>
     <button class="ib" aria-label="New workflow" onClick="{{workflows.newFlow}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.plus}}"></path></svg></button>
   </div>
-  <div class="scr" style="flex-grow: 1; overflow-y: auto; padding: 8px 16px 120px; display: flex; flex-direction: column; gap: 10px; touch-action: pan-y">
+  <div class="scr" data-alpha-app-scroll="workflows" style="flex-grow: 1; overflow-y: auto; padding: 8px 16px 120px; display: flex; flex-direction: column; gap: 10px; touch-action: pan-y">
     <sc-for list="{{workflows.cards}}" as="f" hint-placeholder-count="4">
       <div style="display: flex; align-items: flex-start; gap: 12px; padding: 18px 16px 18px 20px; border-radius: 24px; background: var(--s2); flex-shrink: 0">
         <button onClick="{{f.open}}" style="flex-grow: 1; min-width: 0; text-align: left; {{f.dim}}">
@@ -3126,7 +3138,7 @@
   </div>
   <sc-if value="{{workflows.detail}}" hint-placeholder-val="{{false}}">
     <div ref="{{workflows.detailFocus}}" data-alpha-subview="workflows-detail" inert="{{workflows.detailCovered}}" aria-hidden="{{workflows.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to workflows" onClick="{{workflows.fd.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
         <button class="ib" aria-label="{{workflows.fd.deleteLabel}}" onClick="{{workflows.fd.del}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
@@ -3196,7 +3208,7 @@
   
   <sc-if value="{{workflows.runOpen}}" hint-placeholder-val="{{false}}">
     <div ref="{{workflows.runFocus}}" data-alpha-subview="workflows-runOpen" inert="{{workflows.runCovered}}" aria-hidden="{{workflows.runCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 5">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to {{workflows.r.flow}}" onClick="{{workflows.r.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
       </div>
       <div class="scr" style="flex-grow: 1; overflow-y: auto; padding: 4px 24px 130px; touch-action: pan-y">
@@ -3274,7 +3286,7 @@
   
   <sc-if value="{{workflows.builder}}" hint-placeholder-val="{{false}}">
     <div ref="{{workflows.builderFocus}}" data-alpha-subview="workflows-builder" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 6">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 16px 0 8px; gap: 2px; flex-shrink: 0">
+      <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 16px 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to workflows" onClick="{{workflows.b.cancel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
         <button aria-label="Save workflow" aria-disabled="{{workflows.b.saveOff}}" onClick="{{workflows.b.save}}" style="height: 36px; padding: 0 18px; border-radius: 18px; font-weight: 600; font-size: 15px; {{workflows.b.saveCss}}">Save</button>
@@ -3433,7 +3445,7 @@
                 <button onClick="{{c.pick}}" style="min-height: 48px; padding: 10px 18px; border-radius: 24px; text-align: left; font-size: 15px; {{c.css}}">{{c.label}}</button>
               </sc-for>
             </div>
-            <div style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px; border-radius: 16px; margin-top: 10px; background: var(--s2); {{workflows.b.sp.freeTextStyle}}">
+            <div data-alpha-app-header="detail" style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px; border-radius: 16px; margin-top: 10px; background: var(--s2); {{workflows.b.sp.freeTextStyle}}">
               <svg class="i" viewBox="0 0 24 24" style="color: var(--mut)"><path d="{{ic.edit}}"></path></svg>
               <input value="{{workflows.b.sp.text}}" onChange="{{workflows.b.sp.onText}}" placeholder="In your words" aria-label="Step text" style="flex-grow: 1; min-width: 0; font-size: 16px; border: none; outline: none; background: transparent; color: var(--fg); height: 44px">
             </div>
@@ -3468,14 +3480,15 @@
   <sc-for list="{{settings.stack}}" as="p" hint-placeholder-count="1">
     <div data-settings-page="{{p.title}}" class="{{p.cls}}" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: {{p.z}}">
       <sc-if value="{{p.isTop}}" hint-placeholder-val="{{true}}">
-        <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
-          <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">{{p.title}}</h1>
+        <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
+    <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
+          <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">{{p.title}}</h1>
         </div>
       </sc-if>
       <sc-if value="{{p.notTop}}" hint-placeholder-val="{{false}}">
-        <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 16px 0 8px; gap: 4px; flex-shrink: 0">
+        <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 16px 0 8px; gap: 4px; flex-shrink: 0">
           <button class="ib" aria-label="{{p.backLabel}}" onClick="{{p.back}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
-          <h1 class="serif" style="margin: 0; font-size: 26px; flex-grow: 1; min-width: 0; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.title}}</h1>
+          <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 26px; flex-grow: 1; min-width: 0; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.title}}</h1>
           <sc-if value="{{p.hasHdrTog}}" hint-placeholder-val="{{false}}">
             <button aria-label="{{p.hdrTog.aria}}" aria-pressed="{{p.hdrTog.on}}" onClick="{{p.hdrTog.toggle}}" style="position: relative; width: 52px; height: 32px; border-radius: 16px; flex-shrink: 0; transition: background .25s; {{p.hdrTog.track}}">
               <span style="position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 13px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .25s cubic-bezier(.19,1,.22,1); transform: translateX({{p.hdrTog.kx}}px)"></span>
@@ -3484,7 +3497,7 @@
         </div>
       </sc-if>
 
-      <div class="scr" style="flex-grow: 1; overflow-y: auto; padding: 4px 0 130px; touch-action: pan-y">
+      <div class="scr" data-alpha-app-scroll="settings" style="flex-grow: 1; overflow-y: auto; padding: 4px 0 130px; touch-action: pan-y">
         <sc-if value="{{p.isTop}}" hint-placeholder-val="{{true}}">
           <div style="margin: 4px 16px 14px; padding: 18px 16px 16px 18px; border-radius: 30px; background: var(--s2)">
             <div style="display: flex; align-items: center; gap: 14px">
