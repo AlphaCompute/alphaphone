@@ -10,7 +10,7 @@ export interface AutomationRow {
 }
 export interface AutomationIssue {source:'automations'|'schedules'|'reminders'|'device';message:string;unavailable:boolean}
 export interface AutomationSnapshot {rows:AutomationRow[];issues:AutomationIssue[]}
-export interface PromptDraft {title:string;instructions:string;triggerType:'once'|'cron'|'event';scheduledAt:string;cron:string;eventKind:string;timezone:string}
+export interface PromptDraft {title:string;instructions:string;triggerType:'once'|'cron'|'event';scheduledAt:string;cron:string;eventKind:string;timezone:string;originalScheduledAt?:string;originalEnabled?:boolean}
 export interface ReminderDraft {message:string;due:string;timezone:string;idempotencyKey:string}
 export type ScheduledVerb = 'snooze'|'skip'|'complete'|'dismiss'|'escalate'|'acknowledge'|'edit'|'reopen'|'fire';
 const object=(value:unknown):ObjectValue=>{if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid automation response.');return value as ObjectValue;};
@@ -18,6 +18,15 @@ const text=(value:unknown):string=>typeof value==='string'?value:'';
 export function automationId(value:unknown):string {const id=text(value);if(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(id)||id.includes('..'))throw Error('Automation identity is unavailable.');return id;}
 const list=(value:unknown):unknown[]=>{if(!Array.isArray(value))throw Error('Invalid automation list.');return value;};
 export class AutomationOutcomeError extends Error {readonly outcomeKnown=true;}
+/** Native datetime-local controls use the browser's zone; stored instants keep their zone. */
+export function automationLocalDateInput(stamp:string|number):string{const date=new Date(stamp);return Number.isFinite(date.getTime())?new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16):'';}
+function localDate(value:string):Date{
+ const fields=/^(\d{4,})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/.exec(value),date=new Date(value);
+ if(!fields||!Number.isFinite(date.getTime()))throw Error('Choose a valid local date and time.');
+ const expected=fields.slice(1,7).map(part=>Number(part||0)),actual=[date.getFullYear(),date.getMonth()+1,date.getDate(),date.getHours(),date.getMinutes(),date.getSeconds()];
+ if(expected.some((part,index)=>part!==actual[index])||date.getMilliseconds()!==Number((fields[7]||'').padEnd(3,'0')))throw Error('This local time does not exist. Choose another time.');
+ return date;
+}
 const at=(value:unknown)=>{const stamp=Date.parse(text(value));return Number.isFinite(stamp)?new Date(stamp).toLocaleString():'';};
 function schedule(value:unknown):string {
  const t=object(value);switch(t.triggerType??t.kind){
@@ -73,7 +82,7 @@ export class AutomationsProtocol {
  async savePrompt(draft:PromptDraft,signal:AbortSignal,id?:string):Promise<void>{
   const title=draft.title.trim(),instructions=draft.instructions.trim();if(!title||!instructions)throw Error('Add a name and instructions.');
   const request:ObjectValue={kind:'prompt',displayName:title,instructions,triggerType:draft.triggerType,timezone:draft.timezone};
-  if(draft.triggerType==='once'){const date=new Date(draft.scheduledAt);if(!Number.isFinite(date.getTime())||date.getTime()<=Date.now())throw Error('Choose a future time.');request.scheduledAtIso=date.toISOString();}
+  if(draft.triggerType==='once'){const unchanged=!!id&&!!draft.originalScheduledAt&&draft.scheduledAt===automationLocalDateInput(draft.originalScheduledAt),date=unchanged?new Date(draft.originalScheduledAt!):localDate(draft.scheduledAt);if(!Number.isFinite(date.getTime())||(date.getTime()<=Date.now()&&!(unchanged&&draft.originalEnabled===false)))throw Error('Choose a future time.');request.scheduledAtIso=unchanged?draft.originalScheduledAt:date.toISOString();}
   else if(draft.triggerType==='cron'){if(!draft.cron.trim())throw Error('Add a cron schedule.');request.cronExpression=draft.cron.trim();}
   else {if(!draft.eventKind.trim())throw Error('Add an event name.');request.eventKind=draft.eventKind.trim();}
   if(!id)Object.assign(request,{wakeMode:'inject_now',enabled:false});
@@ -90,13 +99,13 @@ export class AutomationsProtocol {
   return result;
  }
  async createReminder(draft:ReminderDraft,signal:AbortSignal):Promise<void>{
-  const title=draft.message.trim(),due=new Date(draft.due);if(!title||!Number.isFinite(due.getTime())||due.getTime()<=Date.now())throw Error('Add a reminder and a future time.');
+  const title=draft.message.trim(),due=localDate(draft.due);if(!title||due.getTime()<=Date.now())throw Error('Add a reminder and a future time.');
   const result=object(await this.request('/api/lifeops/definitions','POST',{idempotencyKey:draft.idempotencyKey,kind:'habit',title,timezone:draft.timezone,cadence:{kind:'once',dueAt:due.toISOString(),visibilityLeadMinutes:0},metadata:{ownerSurface:'OWNER_REMINDERS',nativeProjection:'in_app_only'},reminderPlan:{steps:[{channel:'in_app',offsetMinutes:0,label:'Notify'}]}},signal));
   if(!object(result.definition).id)throw Error('Reminder creation was not confirmed.');
  }
  async editReminder(row:AutomationRow,message:string,due:string,signal:AbortSignal){
   if(row.kind!=='reminder'||!message.trim())throw Error('Add a reminder message.');const definition=object(row.record.definition),payload:ObjectValue=definition.cadence?.kind==='once'&&definition.metadata?.ownerSurface==='OWNER_REMINDERS'&&text(definition.description).trim()?{description:message.trim()}:{title:message.trim()};
-  if(definition.cadence?.kind==='once'&&due&&new Date(due).getTime()!==Date.parse(definition.cadence.dueAt)){const date=new Date(due);if(!Number.isFinite(date.getTime())||date.getTime()<=Date.now())throw Error('Choose a future time.');payload.cadence={...definition.cadence,dueAt:date.toISOString()};}
+  if(definition.cadence?.kind==='once'&&due&&due!==automationLocalDateInput(definition.cadence.dueAt)){const date=localDate(due);if(date.getTime()<=Date.now())throw Error('Choose a future time.');payload.cadence={...definition.cadence,dueAt:date.toISOString()};}
   const result=object(await this.request('/api/lifeops/definitions/'+automationId(row.id),'PUT',payload,signal)),saved=object(result.definition);if(saved.id!==row.id||Object.entries(payload).some(([field,value])=>field!=='cadence'&&saved[field]!==value)||(payload.cadence&&saved.cadence?.dueAt!==payload.cadence.dueAt))throw Error('Reminder edit was not confirmed.');
  }
  async cancelReminder(id:string,signal:AbortSignal){const definition=object(object(await this.request('/api/lifeops/definitions/'+automationId(id),'PUT',{status:'archived'},signal)).definition);if(definition.id!==id||definition.status!=='archived')throw Error('Reminder cancellation was not confirmed.');}
