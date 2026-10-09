@@ -4,6 +4,7 @@ import {verifyWorkerArtifact,workerHash} from './workflow-worker-artifact.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {nativeViewPolicyPath} from './native-view-policy.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const source=sourceDirectory(root);
 if(!fs.existsSync(path.join(source,'.alpha-runtime-source.json')))throw Error('Run npm run agent:prepare first.');
@@ -19,5 +20,7 @@ const runner=path.join(source,'.alpha-stage-runtime.ts');
 fs.writeFileSync(runner,`import {stageAndroidAgentRuntime} from './packages/app/scripts/lib/stage-android-agent.ts';\nawait stageAndroidAgentRuntime({androidDir:${JSON.stringify(path.join(root,'android'))},spikeDir:${JSON.stringify(path.join(source,'packages/app/scripts'))}});\n`);
 try{execFileSync(process.env.ALPHA_BUN||'bun',[runner],{cwd:source,env,stdio:'inherit'});}finally{fs.unlinkSync(runner);}
 fs.copyFileSync(path.join(source,'.alpha-runtime-source.json'),path.join(root,'android/app/src/main/assets/agent/alpha-source.json'));
+// Host configuration is separate from the authenticated, unmodified producer source.
+fs.copyFileSync(nativeViewPolicyPath,path.join(root,'android/app/src/main/assets/agent/native-view-declarations.json'));
 execFileSync(process.execPath,[path.join(root,'scripts/stage-workflow-worker.mjs')],{cwd:root,env:process.env,stdio:'inherit'});
 console.log('Android runtime payload staged for ARM64 and x86_64. This is not device execution evidence.');

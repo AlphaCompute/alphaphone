@@ -1,9 +1,10 @@
+import {iconStyle} from '../icon-style';
 import React from "react";
 import templateHtml from "./template.html?raw";
 /* Minimal renderer for the prototype's .dc.html template: {{holes}}, sc-if, sc-for, events, refs. */
 
   var h = React.createElement;
-  var EVENTS = { onfocuscapture: "onFocusCapture", onclick: "onClick", onpointerdown: "onPointerDown", onpointerup: "onPointerUp", onpointerleave: "onPointerLeave", onpointercancel: "onPointerCancel", onlostpointercapture: "onLostPointerCapture", onchange: "onChange", onkeydown: "onKeyDown", oninput: "onInput" };
+  var EVENTS = { onfocuscapture: "onFocusCapture", onclick: "onClick", oncontextmenu: "onContextMenu", onpointermove: "onPointerMove", onpointerdown: "onPointerDown", onpointerup: "onPointerUp", onpointerleave: "onPointerLeave", onpointercancel: "onPointerCancel", onlostpointercapture: "onLostPointerCapture", onchange: "onChange", onkeydown: "onKeyDown", oninput: "onInput" };
   var HOLE = /\{\{\s*([^}]+?)\s*\}\}/g;
   var WHOLE = /^\{\{\s*([^}]+?)\s*\}\}$/;
 
@@ -105,6 +106,33 @@ import templateHtml from "./template.html?raw";
         var s = Object.create(scope); s[as] = item; s.$index = i;
         return h(React.Fragment, { key: i }, kids(n.childNodes, s));
       }));
+    }
+    // Resolve both static IC references and dynamic row paths through one display map.
+    if (tag === "svg" && n.getAttribute("viewBox") === "0 0 24 24" && n.children.length === 1 && n.children[0].localName === "path") {
+      var asset = scope.iconAssets?.[props(n.children[0], scope, 0).d];
+      if (asset) {
+        var original = props(n, scope, key);
+        var icon = { key: key, "data-alpha-icon": asset };
+        Object.keys(original).forEach(function (name) {
+          if (["className", "id", "title", "role", "tabIndex"].includes(name) || name.startsWith("aria-") || /^on[A-Z]/.test(name)) icon[name] = original[name];
+        });
+        if (icon["aria-label"] && !icon.role) icon.role = "img";
+        if (!icon["aria-label"] && !icon["aria-labelledby"] && !icon.role) icon["aria-hidden"] = "true";
+        var libraryStyle = iconStyle(asset, !!original.style?.fill && original.style.fill !== "none");
+        icon.style = Object.assign({}, libraryStyle, original.style, { mask: libraryStyle.mask, WebkitMask: libraryStyle.WebkitMask, backgroundColor: "currentColor" });
+        if (original.width) icon.style.width = original.width;
+        if (original.height) icon.style.height = original.height;
+        // Class-sized icons retain their established dimensions unless explicitly sized.
+        if (original.className && !original.width && !original.style?.width) delete icon.style.width;
+        if (original.className && !original.height && !original.style?.height) delete icon.style.height;
+        // Keep an existing badge/backplate separate from the glyph mask.
+        if (original.className?.split(/\s+/).some(function (name) { return name !== "i"; }) || original.style?.background || original.style?.backgroundColor) {
+          var outer = Object.assign({}, icon, { style: original.style });
+          delete outer["data-alpha-icon"];
+          return h("span", outer, h("span", { "aria-hidden": "true", "data-alpha-icon": asset, style: Object.assign({}, libraryStyle, { display: "block", width: "100%", height: "100%" }) }));
+        }
+        return h("span", icon);
+      }
     }
     var isSvg = n.namespaceURI === "http://www.w3.org/2000/svg";
     var tname = isSvg ? n.localName : tag;

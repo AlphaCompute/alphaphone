@@ -1,3 +1,4 @@
+import {BatchVoiceConversation,type BatchVoiceState} from '@elizaos/ui/voice/batch-conversation';
 import {recordingRevision} from './summary-source';
 import {reviewContentQuestion} from '../browser/content-question';
 import {recordingLevels} from '../browser/audio-levels';
@@ -40,7 +41,7 @@ const noteAudio = registerPlugin<{
   purge(input: { audioId: string; noteId: string; operationId:string }): Promise<{audioId:string;noteId:string;operationId:string;status:string}>;
 }>('AlphaNoteAudio');
 
-/** Real voice state presented in the prototype Notes recording canvas. */
+/** One owned recorder, shared by Notes dictation and the chat voice mode. */
 export function installPrototypeVoiceAdapter(Component: any, views: Record<string, Bag>) {
   installLocalSpeechPlayback(Component);
   const notes = views.notes, render = notes.render, back = notes.back, leave = notes.onLeave;
@@ -77,13 +78,14 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   // Distinct failure kinds keep their own guidance; progress belongs to the current transcription.
   let failure: VoiceFailure | '' = '', progress: SpeechProgressEvent | undefined;
   let recognized: { text: string; provenance: TranscriptProvenance } | undefined;
+  let savedStarting:Promise<void>|undefined;
   let savedPlaying: string | undefined, savedPosition = 0, savedEpoch = 0, savedTick: ReturnType<typeof setInterval> | undefined;
-  const stopSaved = () => { const owned = savedPlaying !== undefined; ++savedEpoch; savedPlaying = undefined; savedPosition = 0; if (savedTick) clearInterval(savedTick); savedTick = undefined; if (owned) void noteAudio.stop().catch(() => {}); };
+  const stopSaved = () => { const owned = savedPlaying !== undefined; ++savedEpoch; savedPlaying = undefined; savedPosition = 0; if (savedTick) clearInterval(savedTick); savedTick = undefined; if (owned) {const pending=savedStarting;stopping=stopping.then(async()=>{try{await pending;}catch{}await noteAudio.stop();}).catch(failure=>{mediaUnconfirmed=failure;throw failure;});void stopping.catch(()=>{});} };
   async function playSaved(note: Bag) {
     if (savedPlaying === note.audio.audioId) { stopSaved(); refresh(); return; }
     stopSaved(); const epoch = savedEpoch; savedPlaying = note.audio.audioId; refresh();
     try {
-      await noteAudio.play({ audioId: note.audio.audioId });
+      await stopping;if(epoch!==savedEpoch)return;const pending=savedStarting=noteAudio.play({ audioId: note.audio.audioId });try{await pending;}finally{if(savedStarting===pending)savedStarting=undefined;}
       if (epoch !== savedEpoch) return;
       savedTick = setInterval(() => { void noteAudio.state().then(value => { if (epoch !== savedEpoch) return; if (!value.playing || value.audioId !== savedPlaying) { stopSaved(); refresh(); return; } savedPosition = value.positionMs; refresh(); }).catch(() => { if (epoch === savedEpoch) { stopSaved(); refresh(); } }); }, 250);
     } catch { if (epoch === savedEpoch) { stopSaved(); api?.toast('This saved recording could not be played. The transcript is still available.'); refresh(); } }
@@ -93,17 +95,34 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   let listener: PluginListenerHandle | undefined, tick: ReturnType<typeof setInterval> | undefined;
   let stopping = Promise.resolve();
   type Driver = typeof voice | ReturnType<typeof createCloudVoice>;
-  let driver: Driver = voice, cloudMode = false, deviceOnly = false;
+  let startingCapture:ReturnType<Driver['startRecording']>|undefined;
+  let driver: Driver = voice, cloudMode = false, cloudConnectRequired = false, deviceOnly = false;
   let pairedVoice: ReturnType<typeof createPairedVoice> = null, pairedReady = false, pairedAsrReady = false;
   let selectedRoute: 'device' | 'agent' | 'manual' = 'device', preparingPaired = false;
   let onDeviceVoice: ReturnType<typeof createOnDeviceVoice> = null, onDeviceReady = false, preparingLocal = false;
   let transcription: AbortController | undefined;
   let readiness: AbortController | undefined;
   let playback: AbortController | undefined, playing = false;
-  let chatDestination: { shell: any; view: string | null } | undefined;
-  const refresh = () => api?.setView('notes', { nativeVoiceRevision: Date.now() });
+  type ChatDestination={shell:any;view:string|null;chat:string;draft:string;reply:unknown;edit:unknown;binding:string;opener?:HTMLElement};
+  let chatDestination:ChatDestination|undefined;
+  let ownedNavigation:{chat:ChatDestination;view:string;detent:string;applying:boolean;turnId:string;context?:import('../runtime/alpha-client').ContextEnvelope}|undefined;
+  let conversationVoice:BatchVoiceConversation<Clip>|undefined;
+  let conversationState:BatchVoiceState={phase:'idle'};
+  let conversationReviewRequired=false;
+  let conversationSpeech:Promise<void>|undefined;
+  let notesSpeech:Promise<void>|undefined;
+  let conversationPrepared:{binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope}|undefined;
+  let conversationLevels:number[]=[];
+  let conversationLastTranscript='',conversationLastReply='';
+  let mediaUnconfirmed:unknown;
+  let retirement:{shell:any;phase:'stopping'|'error';returnChat:string;view:string|null;binding:string;panelChat:string;promise:Promise<void>;approval?:AbortController;proposalId?:string}|undefined;
+  const refresh = () => chatDestination ? chatDestination.shell.setState({}) : api?.setView('notes', { nativeVoiceRevision: Date.now() });
   const stopClock = () => { if (tick) clearInterval(tick); tick = undefined; };
-  function cleanup(close = true) {
+  function cleanup(close = true,publish=true) {
+    ownedNavigation=undefined;
+    const hadCapture=!!recordingId||!!startingCapture||!!clip;
+    const previousChat=chatDestination;const chatShell=previousChat?.shell,previousConversation=conversationVoice,previousSpeech=conversationSpeech,previousNotesSpeech=notesSpeech;conversationVoice=undefined;conversationPrepared=undefined;
+    const conversationStopped=previousConversation?.stop();
     closeTranscriptQuestion?.();
     ++generation; readiness?.abort(); readiness = undefined; transcription?.abort(); transcription = undefined; pairedVoice = null; onDeviceVoice = null; onDeviceReady = false; preparingLocal = false; preparingPaired = false; pairedReady = false; pairedAsrReady = false; busy = false; stopClock(); stopSaved();
     if (requestId) void driver.cancel({ requestId }).catch(() => {});
@@ -111,19 +130,29 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     requestId = undefined;
     if (listener) void listener.remove(); listener = undefined;
     const previous = driver;
-    stopping = stopping.then(async () => { try { await previous.cancelRecording(); } catch {} });
+    const pendingStart=startingCapture;
+    stopping = stopping.then(async () => { await conversationStopped;await previousSpeech?.catch(error=>{if(error?.code==='speech-cleanup-unconfirmed')throw error;});await previousNotesSpeech?.catch(error=>{if(error?.code==='speech-cleanup-unconfirmed')throw error;});if(pendingStart)try{await pendingStart;}catch{}try { await previous.cancelRecording(); } catch(error) {if(hadCapture||previousConversation)throw error;} });
+    stopping=stopping.catch(failure=>{mediaUnconfirmed=failure;throw failure;});void stopping.catch(()=>{});
+    if(chatShell&&(previousConversation||previousSpeech||hadCapture)){
+      const held:NonNullable<typeof retirement>={shell:chatShell,phase:'stopping',returnChat:previousChat!.chat,view:previousChat!.view,binding:previousChat!.binding,panelChat:chatShell.S().chat,promise:stopping,approval:chatShell.pendingActionApproval,proposalId:chatShell.pendingActionApprovalProposalId};retirement=held;
+      void stopping.then(()=>{if(retirement!==held)return;retirement=undefined;if(chatShell.live!==false)chatShell.setState((state:any)=>({...(composerBinding()===held.binding&&(state.view||null)===held.view&&state.chat===held.panelChat?{chat:held.returnChat}:{})}));},()=>{if(retirement!==held)return;held.phase='error';if(chatShell.live!==false)chatShell.setState({});});
+    }
     clip = undefined; recordingId = undefined;
     progress = undefined;
     if (close) { stage = 'closed'; draft = ''; destination = undefined; chatDestination = undefined; failure = ''; recognized = undefined; }
-    refresh();
+    if(publish){if(chatShell)chatShell.setState({});else refresh();}
   }
-  function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, preference: 'default' | 'device' | 'agent' | 'manual' = 'default') {
-    const selected = selectVoiceRoute(preference), route = selected === 'cloud' ? 'agent' : selected;
-    stopLocalSpeechPlayback(); cleanup(); reprepare = false; destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; failure = ''; recognized = undefined; draft = ''; selectedRoute = route;
+  function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, preference: 'default' | 'device' | 'agent' | 'manual' = 'default', chat?:ChatDestination) {
+    const selected = chat ? 'cloud' : selectVoiceRoute(preference), route = selected === 'cloud' ? 'agent' : selected;
+    const previousChat=chatDestination;
+    stopLocalSpeechPlayback(); cleanup(true,!chat); chatDestination=chat;reprepare = false; destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; failure = ''; recognized = undefined; draft = ''; selectedRoute = route;
+    if(previousChat&&!chat)previousChat.shell.setState({chat:previousChat.chat});
     cloudMode = selected === 'cloud';
-    deviceOnly = browserDevProfile || !cloudMode && (localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
-    driver = cloudMode ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
-    onDeviceVoice = route === 'device' || browserDevProfile && route === 'agent' ? preparedLocal || createOnDeviceVoice() : null;
+    cloudConnectRequired = cloudMode && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId);
+    deviceOnly = !cloudMode && (browserDevProfile || localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
+    driver = cloudMode && !cloudConnectRequired ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
+    if (cloudConnectRequired) error = 'Sign in to Eliza Cloud to use voice.';
+    onDeviceVoice = !cloudMode && (route === 'device' || browserDevProfile && route === 'agent') ? preparedLocal || createOnDeviceVoice() : null;
     if (route === 'manual') { cloudMode = false; deviceOnly = true; driver = deviceVoice; }
     if (route === 'device') { cloudMode = false; deviceOnly = true; driver = deviceVoice; if (!onDeviceVoice) error = 'On-device speech is unavailable. Choose another voice service explicitly or use the keyboard.'; }
     if (preparedLocal) { onDeviceReady = true; cloudMode = false; deviceOnly = true; driver = deviceVoice; }
@@ -163,7 +192,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   let reprepare = false;
   function reopen(message: string) {
     const target = destination, chat = chatDestination, route = selectedRoute;
-    enter(target, undefined, route); chatDestination = chat; error = message; refresh();
+    enter(target, undefined, route,chat); error = message; refresh();
   }
   async function act(task: (token: number) => Promise<void>) {
     if (busy) return;
@@ -177,6 +206,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     finally { if (token === generation) { busy = false; refresh(); } }
   }
   async function start(token: number) {
+    if (cloudConnectRequired) throw new Error('Sign in to Eliza Cloud to use voice.');
     if (selectedRoute === 'device' && !onDeviceReady) throw new Error('On-device speech is not ready');
     if (!Capacitor.isPluginAvailable(cloudMode || deviceOnly ? 'AlphaVoiceCloud' : 'DevelopmentAgent')) throw new Error('Voice unavailable');
     stage = 'starting'; refresh(); await stopping;
@@ -191,23 +221,30 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     });
     if (token !== generation) { await handle.remove(); return; }
     listener = handle;
-    const result = onDeviceReady ? await deviceVoice.startRecording({ maxDurationMs: 29000 }) : await driver.startRecording();
+    const capture=onDeviceReady?deviceVoice.startRecording({maxDurationMs:29000}):driver.startRecording();
+    startingCapture=capture;
+    let result:Awaited<typeof capture>;
+    try{result=await capture;}finally{if(startingCapture===capture)startingCapture=undefined;}
     if (token !== generation) return;
     recordingId = result.recordingId;
     if (stage === 'recorded') return; // Automatic-stop event can race promise delivery.
     started = Date.now(); stage = 'recording'; tick = setInterval(refresh, 250); refresh();
   }
   async function primary() {
+    if(chatDestination&&!chatCurrent()){cleanup();return;}
+    if (cloudConnectRequired) { cleanup(); connectionController.openCloudAccount(); return; }
     if (stage === 'transcribing') { reopen('Transcription cancelled. Record again to continue.'); return; }
     if (stage === 'review') {
-      if (!api || !draft.trim()) return;
+      if (!draft.trim()) return;
       if (chatDestination) {
-        const { shell, view } = chatDestination, text = draft;
+        if(!chatCurrent()){cleanup();return;}
+        const { shell, chat, draft:previousDraft } = chatDestination;
+        const text=previousDraft?[previousDraft,draft].join('\n'):draft;
         cleanup();
-        if (view) shell.openView(view); else shell.goHome();
-        shell.setState({ chat: 'sheet', draft: text, voice: 'off' });
+        shell.setState({chat:['input','sheet','full'].includes(chat)?chat:'input',draft:text,voice:'off'});
         return;
       }
+      if(!api)return;
       if(api.storageReady?.()===false){error='Notes has a pending or unconfirmed save. Wait or reopen Notes to inspect before saving again.';refresh();return;}
       const current = api.get('notes').list || [];
       const target = destination && current.find((n: Bag) => n.id === destination!.id);
@@ -283,12 +320,11 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (!speaker || !draft.trim()) return;
     const token = generation, controller = new AbortController();
     playback = controller; playing = true; error = ''; refresh();
-    try { await speaker.speak(draft, controller.signal); }
-    catch (failure) { if (token === generation && !controller.signal.aborted) error = (cloudMode && cloudVoiceFailure(failure)) || 'Audio could not be played by the selected voice service. Your transcript is still available.'; }
-    finally { if (token === generation) { playback = undefined; playing = false; refresh(); } }
+    const pending=notesSpeech=speaker.speak(draft, controller.signal);
+    try { await pending; }
+    catch (failure) { if((failure as {code?:string})?.code==='speech-cleanup-unconfirmed'){mediaUnconfirmed=failure;stopping=Promise.reject(failure);void stopping.catch(()=>{});}if (token === generation && !controller.signal.aborted) error = (cloudMode && cloudVoiceFailure(failure)) || 'Audio could not be played by the selected voice service. Your transcript is still available.'; }
+    finally { if(notesSpeech===pending)notesSpeech=undefined;if (token === generation) { playback = undefined; playing = false; refresh(); } }
   }
-  const originalStartVoice = Component.prototype.startVoice;
-  let composerProbe = 0;
   const composerBinding = () => JSON.stringify([
     connectionController.getSnapshot().session?.sessionId,
     connectionController.getCloudClient()?.sessionId,
@@ -296,45 +332,147 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     connectionController.getCloudEnvironment(),
     document.documentElement.dataset.connectionMode,
   ]);
-  // A navigation away and back still retires preparation for the original screen.
+  function chatCurrent(){
+    const chat=chatDestination;if(!chat)return false;const state=chat.shell.S(),view=state.view||'home',owned=ownedNavigation?.chat===chat?ownedNavigation:undefined;
+    let contextCurrent=!conversationPrepared||chat.shell.voiceConversationCurrent(conversationPrepared);
+    // Only the claimed destination may transition before its React callback pins the exact ACK context.
+    if(!contextCurrent&&owned&&view===owned.view&&conversationPrepared){try{const actual=chat.shell.voiceConversationContext(conversationPrepared.binding);contextCurrent=actual.view===owned.view&&(owned.context?JSON.stringify(actual)===JSON.stringify(owned.context):owned.view!==(chat.view||'home'));}catch{contextCurrent=false;}}
+    return chat.shell.live!==false&&!document.hidden&&!connectionController.getSnapshot().open
+      &&['sheet','full'].includes(state.chat)&&((state.view||null)===chat.view||!!owned&&view===owned.view)&&String(state.draft||'')===chat.draft
+      &&chat.shell.messageReplyTarget===chat.reply&&chat.shell.messageEditTarget===chat.edit&&composerBinding()===chat.binding&&contextCurrent;
+  }
+  function navigationContinuation(chat:ChatDestination,token:number,turnId:string):import('../runtime/alpha-client').VoiceNavigationContinuation{
+    let held:typeof ownedNavigation,attempted=false;
+    return {
+      async apply(view,check,commit){
+        attempted=true;check();if(chat.shell.voiceSendTurnId!==turnId||token!==generation||chatDestination!==chat||!chatCurrent()||ownedNavigation)throw Error('Voice navigation changed.');
+        held={chat,view,detent:chat.shell.S().chat,applying:true,turnId};ownedNavigation=held;
+        let pending:Promise<boolean>;try{pending=commit(held.detent,value=>{if(chat.shell.voiceSendTurnId!==turnId||ownedNavigation!==held||token!==generation||chatDestination!==chat)throw Error('Voice navigation changed.');const actual=chat.shell.voiceConversationContext(conversationPrepared!.binding);if(value.view!==held!.view||JSON.stringify(actual)!==JSON.stringify(value))throw Error('Voice navigation changed.');held!.context=value;});}finally{held.applying=false;}
+        const switched=await pending;
+        if(!switched||ownedNavigation!==held||token!==generation||chatDestination!==chat||!chatCurrent())return false;
+        return !!held.context;
+      },
+      finish(delivered){
+        if(!attempted)return;
+        attempted=false;
+        if(!held||chat.shell.voiceSendTurnId!==turnId||ownedNavigation!==held||token!==generation||chatDestination!==chat)return;
+        if(!delivered||!held.context||!chatCurrent()||(chat.shell.S().view||'home')!==held.view){cleanup();return;}
+        try{const next=chat.shell.voiceConversationContext(conversationPrepared!.binding);if(next.view!==held.view||JSON.stringify(next)!==JSON.stringify(held.context))throw Error('Voice navigation changed.');chat.view=held.view==='home'?null:held.view;conversationPrepared={...conversationPrepared!,context:next};ownedNavigation=undefined;return next;}catch{cleanup();return;}
+      },
+    };
+  }
+  function cancelChat(keyboard=false){
+    const chat=chatDestination;if(!chat){if(retirement)retirement.returnChat=keyboard?'input':retirement.returnChat;return;}if(!keyboard){chat.shell.pendingActionApproval?.abort();chat.shell.cancelReadReplyCompletions?.();}cleanup();
+    if(retirement&&retirement.shell===chat.shell){retirement.returnChat=keyboard?(chat.chat==='full'?'full':'input'):chat.chat;chat.shell.setState({chat:chat.shell.S().chat==='full'?'full':'sheet'});return;}
+    chat.shell.setState({chat:keyboard?(chat.chat==='full'?'full':'input'):chat.chat},()=>{
+      if(chat.shell.live===false||connectionController.getSnapshot().open||(chat.shell.S().view||null)!==chat.view)return;
+      const opener=chat.opener?.isConnected?chat.opener:document.querySelector<HTMLElement>('[data-alpha-composer], [data-alpha-layer="pill"] button[aria-label="Talk"]');
+      if(opener&&!opener.closest('[inert]'))opener.focus({preventScroll:true});
+    });
+  }
+  // User navigation retires media; only the exact synchronous claimed projection retains it.
   for (const method of ['openView', 'goHome', 'back']) {
     const original = Component.prototype[method];
     if (typeof original === 'function') Component.prototype[method] = function (...args: any[]) {
-      ++composerProbe; return original.apply(this, args);
+
+      if(retirement?.shell===this&&method==='back'){this.toast('Voice media is still stopping.');return;}
+      const owned=ownedNavigation;const ownEffect=owned?.applying&&owned.chat.shell===this&&(method==='goHome'?owned.view==='home':method==='openView'&&args[0]===owned.view);
+      if(chatDestination?.shell===this&&!ownEffect){if(method==='back'){cancelChat();return;}cleanup();}
+      return original.apply(this,args);
     };
   }
-  Component.prototype.startVoice = async function (...args: any[]) {
-    const probe = ++composerProbe, view = this.S().view || null, selected = composerBinding();
-    const current = () => probe === composerProbe && selected === composerBinding()
-      && (this.S().view || null) === view && this.live !== false
-      && !document.hidden && !connectionController.getSnapshot().open;
-    if (!current()) return;
-    if (selectVoiceRoute() === 'cloud') { this.openView('notes'); enter(undefined, undefined, 'agent'); chatDestination = { shell: this, view }; refresh(); return; }
-    const local = createOnDeviceVoice();
-    if (local) {
-      try {
-        this.toast('Preparing on-device speech.');
-        const ready = await local.ready(new AbortController().signal);
-        if (!current()) return;
-        if (ready) { this.openView('notes'); enter(undefined, local); onDeviceVoice = local; onDeviceReady = true; cloudMode = false; deviceOnly = true; driver = deviceVoice; chatDestination = { shell: this, view }; refresh(); return; }
-      } catch { /* Only the still-owned request may offer its fallback. */ }
-    }
-    if (!current()) return;
-    if (connectionController.getCloudEnvironment() === null) {
-      const paired = createPairedVoice();
-      if (paired) {
-        try {
-          const ready = await paired.transcriptionReady(new AbortController().signal);
-          if (!current()) return;
-          if (!ready) { this.toast('Standalone Whisper transcription is unavailable on this agent. Use the keyboard or record a note with a manual transcript.'); return; }
-          this.openView('notes'); enter(); pairedAsrReady = true; chatDestination = { shell: this, view }; refresh(); return;
-        } catch { if (current()) this.toast('Agent transcription is unavailable. Check this connection or use the keyboard.'); return; }
-      }
-      if (localStorage.getItem('alpha.connection.selection.v1') !== null) { this.toast('Sign in to Eliza Cloud to use voice with this agent, or use the keyboard.'); return; }
-      return originalStartVoice?.apply(this, args);
-    }
-    this.openView('notes'); enter(); chatDestination = { shell: this, view }; refresh();
+  async function captureConversationAudio(selected:ReturnType<typeof createCloudVoice>,current:()=>void,input:{signal:AbortSignal;onActivity:(value:{peak:number;rms?:number})=>void;onEnd:(error?:unknown)=>void}){
+    let active=true,recording=false,id:string|undefined,ended:Clip|undefined,problem:unknown,endId:string|undefined,handle:PluginListenerHandle|undefined,poll:ReturnType<typeof setTimeout>|undefined,cancelling:Promise<void>|undefined;
+    const check=()=>{input.signal.throwIfAborted();current();};
+    const detach=async()=>{if(poll)clearTimeout(poll);poll=undefined;if(handle){const previous=handle;handle=undefined;await previous.remove();}};
+    const cancel=()=>{if(cancelling)return cancelling;active=false;recording=false;input.signal.removeEventListener('abort',aborted);cancelling=(async()=>{try{await detach();}finally{try{await selected.cancelRecording();}catch(failure){mediaUnconfirmed=failure;stopping=Promise.reject(failure);void stopping.catch(()=>{});throw failure;}}})();return cancelling;};
+    const aborted=()=>{recording=false;if(poll)clearTimeout(poll);void selected.cancelRecording().catch(()=>{});};
+    input.signal.addEventListener('abort',aborted,{once:true});if(input.signal.aborted)aborted();
+    try{
+      await stopping;check();
+      handle=await selected.addListener('recordingStopped',value=>{
+        if(!active||input.signal.aborted||id&&value.recordingId!==id)return;
+        if(!value.recordingId)return;
+        endId=value.recordingId;if(Number.isFinite(value.durationMs))ended=value;else problem=Error('Microphone capture was interrupted.');
+        if(id){recording=false;if(poll)clearTimeout(poll);input.onEnd(problem);}
+      });check();
+      const pending=selected.startRecording();startingCapture=pending;
+      let result:Awaited<typeof pending>;try{result=await pending;}finally{if(startingCapture===pending)startingCapture=undefined;}
+      check();id=result.recordingId;recordingId=id;started=Date.now();recording=true;conversationLevels=[];
+      if(endId&&endId!==id){ended=undefined;problem=undefined;}
+      const sample=async()=>{
+        if(!active||!recording||input.signal.aborted)return;
+        try{check();const value=await selected.getRecordingMetrics(id!);check();if(!active||!recording)return;conversationLevels=[...conversationLevels.slice(-43),value.peak];input.onActivity(value);refresh();if(active&&recording&&!input.signal.aborted)poll=setTimeout(()=>{void sample();},50);}
+        catch(error){if(!active||input.signal.aborted)return;recording=false;problem=error;input.onEnd(error);}
+      };
+      if(ended||problem){recording=false;input.onEnd(problem);}else void sample();
+      return {
+        stop:async()=>{check();recording=false;await detach();check();if(problem)throw problem;const value=ended??await selected.stopRecording();check();if(value.recordingId!==id||!Number.isFinite(value.durationMs))throw Error('Recording identity changed.');clip=value;return value;},
+        cancel,
+      };
+    }catch(error){await cancel();throw error;}
+  }
+  async function beginConversation(){
+    const chat=chatDestination;if(!chat||!chatCurrent())return;
+    const token=generation;
+    if(cloudConnectRequired){conversationState={phase:'error'};error='Sign in to Eliza Cloud to use voice.';refresh();return;}
+    const controller=new AbortController();readiness=controller;conversationReviewRequired=false;conversationState={phase:'starting'};error='';refresh();
+    const current=()=>{controller.signal.throwIfAborted();if(token!==generation||chatDestination!==chat||!chatCurrent())throw new DOMException('Voice conversation changed','AbortError');};
+    try{
+      current();const prepared=await chat.shell.prepareVoiceConversation(controller.signal);current();conversationPrepared=prepared;current();
+      const selected=createCloudVoice();driver=selected;cloudMode=true;
+      const previous=conversationVoice;conversationVoice=undefined;await previous?.stop();current();
+      const conversation:BatchVoiceConversation<Clip>=new BatchVoiceConversation<Clip>({
+        conversationId:prepared.binding.conversationId,assertCurrent:current,
+        capture:input=>{current();conversationPrepared={...conversationPrepared!,context:chat.shell.voiceConversationContext(prepared.binding)};current();return captureConversationAudio(selected,current,input);},
+        transcribe:async(value,signal)=>{
+          signal.throwIfAborted();current();const request=crypto.randomUUID();requestId=request;
+          let interrupt!:(error:unknown)=>void;const cancelled=new Promise<never>((_,reject)=>interrupt=reject);
+          const abort=()=>{void selected.cancel({requestId:request}).catch(()=>{});interrupt(signal.reason??new DOMException('Transcription cancelled','AbortError'));};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+          try{current();const result=await Promise.race([selected.transcribeRecording({recordingId:value.recordingId,requestId:request}),cancelled]);signal.throwIfAborted();current();conversationLastTranscript=result.text;return result.text;}
+          finally{signal.removeEventListener('abort',abort);if(requestId===request)requestId=undefined;}
+        },
+        send:async input=>{input.signal.throwIfAborted();current();const turn={...conversationPrepared!};const result=await chat.shell.sendVoiceTurn({...input,...turn,assertCurrent:current,navigation:navigationContinuation(chat,token,input.turnId)});input.signal.throwIfAborted();current();conversationLastReply=result.text;conversationReviewRequired=result.reviewRequired===true&&!result.awaitingUserInput;return result;},
+        speak:async input=>{input.signal.throwIfAborted();current();const pending=selected.speak(input.text,input.signal,()=>{current();input.onStarted();});conversationSpeech=pending;try{await pending;input.signal.throwIfAborted();current();}catch(failure){if((failure as {code?:string})?.code==='speech-cleanup-unconfirmed'){mediaUnconfirmed=failure;stopping=Promise.reject(failure);void stopping.catch(()=>{});}throw failure;}finally{if(conversationSpeech===pending)conversationSpeech=undefined;}},
+        onState:value=>{if(token!==generation||chatDestination!==chat||conversationVoice!==conversation)return;conversationState=value;if(value.phase==='error')error=cloudVoiceFailure(value.error)||'Voice stopped. Check your connection and conversation history before trying again.';if(value.phase==='listening'){stopClock();tick=setInterval(refresh,250);}else stopClock();refresh();},
+      });
+      conversationVoice=conversation;await conversation.start();current();
+    }catch(failure){if(token!==generation||controller.signal.aborted)return;conversationState={phase:'error',error:failure};error=cloudVoiceFailure(failure)||(failure instanceof Error?failure.message:'Voice could not start.');refresh();}
+  }
+  Component.prototype.stopVoiceConversation = function(){if(chatDestination?.shell===this){cancelChat();return stopping;}if(retirement&&retirement.shell===this)return retirement.promise;if(mediaUnconfirmed)return stopping;};
+  Component.prototype.resumeReadReplyVoice=function(hint:import('../runtime/alpha-client').NativeNotesReadReplyHint,reply:import('../runtime/alpha-client').NativeNotesReadReply){
+    if(chatDestination?.shell!==this||!chatCurrent()||document.querySelector('dialog[open]')||conversationState.phase!=='awaiting-user-input'||!conversationState.awaitingUserInput)return false;
+    const pause=conversationState.awaitingUserInput;
+    if(hint.proposalId!==pause.proposalId||hint.digest!==pause.digest||hint.requestId!==pause.requestId||hint.conversationId!==pause.conversationId||hint.inReplyTo!==pause.userMessageId||reply.requestId!==pause.requestId||reply.conversationId!==pause.conversationId||reply.inReplyTo!==pause.userMessageId)return false;
+    return conversationVoice?.resume({pause,reply:{requestId:reply.requestId,conversationId:reply.conversationId,userMessageId:reply.inReplyTo,assistantMessageId:reply.messageId,text:reply.text,complete:true}})??false;
   };
+  Component.prototype.prepareDeviceReadReview=async function(proposalId:string,digest:string|undefined,signal:AbortSignal){
+    signal.throwIfAborted();if(stage!=='closed'&&!chatDestination)throw Error('Finish or discard the Notes recording before reviewing this request.');
+    const binding=composerBinding(),pause=conversationState.awaitingUserInput;
+    if(chatDestination?.shell===this&&!(conversationState.phase==='awaiting-user-input'&&pause?.proposalId===proposalId&&pause.digest===digest&&chatCurrent()))cleanup();
+    const reading=stopLocalSpeechPlayback();stopSaved();await Promise.all([stopping,Promise.resolve(reading)]);signal.throwIfAborted();
+    if(this.live===false||document.hidden||connectionController.getSnapshot().open||composerBinding()!==binding)throw Error('The Notes review changed.');
+  };
+  Component.prototype.retireReadReplyVoice=function(proposalId:string){if(chatDestination?.shell===this&&conversationState.awaitingUserInput?.proposalId===proposalId)cleanup();};
+  Component.prototype.startVoice = async function () {
+    if(this.live===false||document.hidden||connectionController.getSnapshot().open||chatDestination?.shell===this)return;
+    if(this.pendingActionApproval||document.querySelector('dialog[open]')){this.toast('Finish or cancel the current review before starting voice.');return;}
+    if(retirement||mediaUnconfirmed){this.toast('Voice media has not finished stopping. Close the app if this continues.');return;}
+    if(stage!=='closed'){this.toast('Finish or discard the Notes recording before starting a voice conversation.');return;}
+    const state=this.S();
+    const chat:ChatDestination={shell:this,view:state.view||null,chat:state.chat,draft:String(state.draft||''),reply:this.messageReplyTarget,edit:this.messageEditTarget,binding:composerBinding(),...(typeof HTMLElement!=='undefined'&&document.activeElement instanceof HTMLElement?{opener:document.activeElement}:{})};
+    const readingStopped=stopLocalSpeechPlayback();
+    enter(undefined,undefined,'default',chat);stopping=Promise.all([stopping,Promise.resolve(readingStopped)]).then(()=>{}).catch(failure=>{mediaUnconfirmed=failure;throw failure;});void stopping.catch(()=>{});conversationLastTranscript='';conversationLastReply='';const token=generation;
+    await new Promise<void>(resolve=>this.setState({chat:state.chat==='full'?'full':'sheet',voice:'off'},()=>{document.querySelector<HTMLElement>('[data-alpha-chat-recorder] button')?.focus({preventScroll:true});if(chatDestination===chat&&generation===token)void beginConversation().finally(resolve);else resolve();}));
+  };
+  function conversationRecorderView(icons:Bag){
+    const token=generation,chat=chatDestination,owned=()=>token===generation&&chatDestination===chat&&chatCurrent();
+    const phase=conversationState.phase,live=phase==='listening',seconds=live?(Date.now()-started)/1000:(clip?.durationMs||0)/1000;
+    const messages:Record<string,string>={idle:'Voice conversation stopped.',starting:'Starting voice conversation…',listening:'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and sent to this conversation; matching replies play aloud.',transcribing:'Transcribing your speech with Eliza Cloud…',thinking:'Waiting for your agent’s reply…','awaiting-user-input':'Microphone off. Review the Notes request in this conversation. Only the note you explicitly share can be used for the answer.','preparing-speech':'Preparing the matching reply with Eliza Cloud…',speaking:'Alpha is speaking. The microphone is off.',error:error||'Voice stopped. Check history before starting again.'};
+    const primary=()=>{if(!owned())return;if(mediaUnconfirmed){cancelChat();return;}if(cloudConnectRequired){cleanup();connectionController.openCloudAccount();}else if(!connectionController.getSnapshot().session){cleanup();connectionController.open();}else if(phase==='error'&&!conversationReviewRequired)void beginConversation();else cancelChat();};
+    const awaiting=phase==='awaiting-user-input'||conversationReviewRequired;
+    return {state:phase,flex:awaiting?'0 0 auto':'1',clockSize:awaiting?28:48,clock:awaiting?'Review':`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`,live,levels:conversationLevels.map(peak=>({h:4+Math.round(44*peak)})),lines:[{t:conversationReviewRequired?'Microphone off. Review the phone action in this conversation. Switch to keyboard to continue; voice cannot resume this older request.':error||messages[phase]}],review:false,typeChoice:false,lastTranscript:awaiting?'':conversationLastTranscript,lastReply:awaiting?'':conversationLastReply,primaryLabel:mediaUnconfirmed?'Stop voice conversation':cloudConnectRequired?'Connect Eliza Cloud':!connectionController.getSnapshot().session?'Connect agent':phase==='error'&&!conversationReviewRequired?'Start voice conversation':'Stop voice conversation',primaryIcon:cloudConnectRequired?icons.user:phase==='error'&&!conversationReviewRequired?icons.mic:icons.stop,primaryDisabled:false,stop:primary,discard:()=>{if(owned())cancelChat();},keyboard:()=>{if(owned())cancelChat(true);}};
+  }
   async function deletionReceipt(row:AudioDeletion,status:'removed'|'restored'){
     const result=await noteAudio.deletionStatus({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
     if(result.audioId!==row.audioId||result.noteId!==row.note.id||result.operationId!==row.id||result.status!==status)throw Error('Audio operation unconfirmed');
@@ -478,7 +616,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       vo.play = () => { void playSaved(selected); };
       vo.lines = [{ ini: 'You', who: 'You', t: selected.body || selected.audio.transcript, at: '0:00', chip: 'background:var(--acc);color:#fff', css: '', seek: () => { void playSaved(selected); } }];
       vo.bars = vo.bars.map((bar: Bag) => ({ ...bar, h: 4 })); // No invented amplitude analysis.
-      vo.share = () => current.toast('Audio stays on this phone. Sharing recordings is not available yet.');
+      vo.share = () => current.toast('Audio stays in this app. Sharing recordings is not available yet.');
       const reviewed=structuredClone(selected);
       vo.del = () => { void (async () => {
         if(deletionBusy)return;deletionBusy=true;stopSaved();
@@ -533,93 +671,115 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       const end = editor && editor.value === body ? editor.selectionEnd : body.length;
       enter({ id: n.id, body, revision: JSON.stringify(n), start, end });
     };
-    if (stage === 'closed') return result;
+    if (stage === 'closed'||chatDestination) return result;
+    result.recording=true;result.rec=recorderView(current.ic);return result;
+  };
+  function recorderView(icons:Bag){
+    const token=generation,chat=chatDestination;
+    const owned=()=>token===generation&&chatDestination===chat&&(!chat||chatCurrent());
     const seconds = stage === 'recording' ? (Date.now() - started) / 1000 : (clip?.durationMs || 0) / 1000;
     const labels: Bag = { ready: 'Start recording', starting: 'Starting microphone', recording: 'Stop recording', recorded: onDeviceReady ? 'Transcribe on this phone' : pairedAsrReady ? 'Transcribe with agent Whisper' : deviceOnly ? 'Review recording' : cloudMode ? 'Transcribe with Eliza Cloud' : 'Transcribe locally', transcribing: 'Cancel transcription', review: chatDestination ? 'Use in conversation' : destination ? 'Apply transcript' : 'Save note' };
-    const messages: Bag = { ready: deviceOnly ? 'Record up to 59 seconds on this phone. You can add a transcript manually and save without signing in. Nothing is uploaded.' : cloudMode ? 'Record up to 59 seconds. Audio stays on this phone until you choose Transcribe with Eliza Cloud.' : 'Development voice: record up to 59 seconds. Audio goes to this computer only after you choose Transcribe locally.', starting: 'Waiting for microphone access.', recording: 'Recording. Waveform levels are unavailable. Stop does not upload audio.', recorded: deviceOnly ? 'Microphone is off. Review the recording and enter a transcript manually. Cloud transcription is not connected; nothing is uploaded.' : cloudMode ? 'Microphone is off. Choose Transcribe with Eliza Cloud to upload this recording to your selected Cloud account.' : 'Microphone is off. Choose Transcribe locally to process this clip on the connected development computer.', transcribing: cloudMode ? 'Transcribing with Eliza Cloud. Nothing has been saved.' : 'Transcribing on the local computer. Nothing has been saved.', review: deviceOnly ? 'Enter a transcript manually, then save it with this recording on the phone. Nothing is uploaded or sent to an agent.' : chatDestination ? 'Review the transcript, then use it in the conversation. Press Send there to send it to your agent.' : 'Review and edit the transcript, then save the recording and transcript on this phone. Nothing is sent to the agent.' };
-    if (pairedAsrReady) { messages.ready = 'Record up to 59 seconds. English transcription uses your selected agent. Audio stays on this phone until you choose Transcribe with agent Whisper.'; messages.recorded = 'Microphone is off. Transcribe with agent Whisper uploads this recording to your selected agent for English speech recognition.'; messages.transcribing = 'Transcribing with your selected agent. Nothing has been saved.'; messages.review = chatDestination ? 'Review the agent transcript, then use it in the conversation. Press Send there to send the message.' : 'Review and edit the agent transcript, then save it with the recording on this phone. Nothing is sent as a chat message.'; }
+    const messages: Bag = { ready: deviceOnly ? 'Record up to 59 seconds in this app. You can add a transcript manually and save without signing in. Nothing is uploaded.' : cloudMode ? 'Record up to 59 seconds. Audio stays in this app until you choose Transcribe with Eliza Cloud.' : 'Development voice: record up to 59 seconds. Audio goes to this computer only after you choose Transcribe locally.', starting: 'Waiting for microphone access.', recording: 'Recording. Waveform levels are unavailable. Stop does not upload audio.', recorded: deviceOnly ? 'Microphone is off. Review the recording and enter a transcript manually. Cloud transcription is not connected; nothing is uploaded.' : cloudMode ? 'Microphone is off. Choose Transcribe with Eliza Cloud to upload this recording to your selected Cloud account.' : 'Microphone is off. Choose Transcribe locally to process this clip on the connected development computer.', transcribing: cloudMode ? 'Transcribing with Eliza Cloud. Nothing has been saved.' : 'Transcribing on the local computer. Nothing has been saved.', review: deviceOnly ? 'Enter a transcript manually, then save it with this recording in this app. Nothing is uploaded or sent to an agent.' : chatDestination ? 'Review the transcript, then use it in the conversation. Press Send there to send it to your agent.' : 'Review and edit the transcript, then save the recording and transcript in this app. Nothing is sent to the agent.' };
+    if (pairedAsrReady) { messages.ready = 'Record up to 59 seconds. English transcription uses your selected agent. Audio stays in this app until you choose Transcribe with agent Whisper.'; messages.recorded = 'Microphone is off. Transcribe with agent Whisper uploads this recording to your selected agent for English speech recognition.'; messages.transcribing = 'Transcribing with your selected agent. Nothing has been saved.'; messages.review = chatDestination ? 'Review the agent transcript, then use it in the conversation. Press Send there to send the message.' : 'Review and edit the agent transcript, then save it with the recording in this app. Nothing is sent as a chat message.'; }
     if (onDeviceReady) {
       messages.ready = 'Record up to 29 seconds. English transcription runs on this phone. Nothing is uploaded.';
       messages.recorded = 'Microphone is off. Transcribe on this phone processes this recording without uploading audio.';
       messages.transcribing = 'Transcribing on this phone. Nothing has been saved or uploaded.';
-      messages.review = chatDestination ? 'Review the transcript, then use it in the conversation. Press Send there to send it to your agent.' : 'Review and edit the transcript, then save it on this phone. Nothing is uploaded.';
+      messages.review = chatDestination ? 'Review the transcript, then use it in the conversation. Press Send there to send it to your agent.' : 'Review and edit the transcript, then save it in this app. Nothing is uploaded.';
       if (stage === 'review') messages.review += ' Listen also runs on this phone. Unfamiliar English names are spelled; numbers are read digit by digit. Unsupported symbols require editing.';
     }
     if (destination) messages.review = 'Review the transcript, then insert it at your saved selection. This keeps your text note; the recording is discarded after applying. ' + (onDeviceReady ? 'Nothing was uploaded.' : cloudMode ? 'Eliza Cloud processed the audio. No chat message was sent.' : pairedAsrReady ? 'Your selected agent processed the audio. No chat message was sent.' : 'No chat message was sent.');
-    if (pairedReady && stage === 'review' && !destination) messages.review = playing ? 'Playing selected-agent audio. Tap Stop audio to stop. Your recording remains on this phone.' : 'Save keeps this recording and transcript on the phone. Listen to transcript sends only this text to your selected agent for audio playback.';
+    if (pairedReady && stage === 'review' && !destination) messages.review = playing ? 'Playing selected-agent audio. Tap Stop audio to stop. Your recording remains in this app.' : 'Save keeps this recording and transcript in this app. Listen to transcript sends only this text to your selected agent for audio playback.';
     if (cloudMode && stage === 'review') messages.review += playing ? ' Playing Cloud audio. Tap Stop audio to stop.' : ' Listen to transcript sends this text to Eliza Cloud for audio playback.';
     if (selectedRoute === 'device' && !onDeviceReady && !preparingLocal && stage === 'ready') labels.ready = 'On-device speech unavailable';
     if (preparingPaired && stage === 'ready') { labels.ready = 'Checking selected agent voice'; messages.ready = 'Checking transcription and playback on your selected agent. No audio is uploaded.'; }
     if (preparingLocal && stage === 'ready') { labels.ready = 'Preparing on-device speech'; messages.ready = 'Loading and checking speech models on this phone. Nothing is uploaded.'; }
-    if(!Capacitor.isNativePlatform()) {
+    if(!Capacitor.isNativePlatform() && !cloudMode) {
       if (onDeviceReady) {
         // Whisper tiny.en runs in this browser; English only, matching the OCR language policy.
-        labels.recorded='Transcribe in this browser';
-        messages.ready='Record up to 29 seconds. English-only speech recognition runs in this browser; audio is not uploaded. The first transcription loads a speech model of about 56 MB from this app.';
+        labels.recorded='Transcribe on this device';
+        messages.ready='Record up to 29 seconds. English-only speech recognition runs on this device; audio is not uploaded. The first transcription loads a speech model of about 56 MB from this app.';
         messages.recording='Recording. Stop does not transcribe or upload audio.';
-        messages.recorded='Microphone is off. Transcribe in this browser turns this recording into English text on this device. Nothing is uploaded.';
+        messages.recorded='Microphone is off. Transcribe on this device turns this recording into English text. Nothing is uploaded.';
         messages.transcribing=speechProgressMessage(progress);
-        if(!destination)messages.review=chatDestination?'Review and edit the transcript, then use it in the conversation. Press Send there to send it to your agent.':'Review and edit the transcript, then save the recording and transcript in this browser. Nothing is uploaded or sent to an agent.';
+        if(!destination)messages.review=chatDestination?'Review and edit the transcript, then use it in the conversation. Press Send there to send it to your agent.':'Review and edit the transcript, then save the recording and transcript in this app. Nothing is uploaded or sent to an agent.';
       } else {
         labels.recorded='Review transcript';
         messages.recording='Recording. Stop to review the audio.';
-        messages.ready='Record audio in this browser. You can add a transcript manually and save without signing in.';
+        messages.ready='Record audio in this app. You can add a transcript manually and save without signing in.';
         messages.recorded='Microphone is off. Enter the transcript to save with this recording.';
         messages.transcribing='Review the recording transcript.';
-        if(!destination)messages.review='Edit the transcript, listen, or save the recording in this browser.';
+        if(!destination)messages.review='Edit the transcript, listen, or save the recording in this app.';
       }
     }
-    if(browserDevProfile && selectedRoute==='agent'){messages.ready='Development voice uses browser recording, in-browser English transcription, review and playback.';messages.recorded='Transcribe this recording in your browser. Nothing is uploaded.';labels.recorded='Transcribe in this browser';}
+    if(browserDevProfile && selectedRoute==='agent' && !cloudMode){messages.ready='Preview voice records, transcribes English and plays audio on this device.';messages.recorded='Transcribe this recording on this device. Nothing is uploaded.';labels.recorded='Transcribe on this device';}
     if(onDeviceReady&&connectionController.getBrowserSpeechAgent()){
       labels.recorded='Transcribe on this computer';
-      messages.ready='Record in this browser. English transcription runs on the local agent on this computer when you choose Transcribe.';
+      messages.ready='Record in this app. English transcription runs on the local agent on this computer when you choose Transcribe.';
       messages.recorded='Microphone is off. Transcribe on this computer sends this recording to your local development agent.';
       messages.transcribing='Transcribing on this computer. Nothing has been saved.';
       messages.review='Review the transcript, listen using the local agent on this computer, or save it with the recording. No chat message has been sent.';
     }
-    result.recording = true;
     const canType = stage === 'recorded' && !!clip && !busy && (failure === 'no-speech' || failure === 'model' || failure === 'recognition');
-    result.rec = {
+    return {
       state: failure || stage,
       typeChoice: canType,
-      typeInstead: () => { if (stage !== 'recorded' || !clip || busy) return; draft = ''; recognized = undefined; error = ''; failure = ''; stage = 'review'; refresh(); },
-      manualChoice: stage === 'ready' && !busy && !preparingLocal && selectedRoute !== 'manual',
-      recordOnly: () => { const target = destination, chat = chatDestination; enter(target, undefined, 'manual'); chatDestination = chat; refresh(); },
-      routeChoice: stage === 'ready' && !busy && document.documentElement.dataset.connectionMode !== 'mock' && (!!connectionController.getPairedVoiceBinding() || connectionController.getCloudEnvironment() !== null),
+      typeInstead: () => { if (!owned()||stage !== 'recorded' || !clip || busy) return; draft = ''; recognized = undefined; error = ''; failure = ''; stage = 'review'; refresh(); },
+      manualChoice: !cloudMode && stage === 'ready' && !busy && !preparingLocal && selectedRoute !== 'manual',
+      recordOnly: () => { if(!owned())return;const target = destination, chat = chatDestination; enter(target, undefined, 'manual',chat); refresh(); },
+      routeChoice: !cloudMode && stage === 'ready' && !busy && document.documentElement.dataset.connectionMode !== 'mock' && (!!connectionController.getPairedVoiceBinding() || connectionController.getCloudEnvironment() !== null),
       routeLabel: browserDevProfile ? (selectedRoute === 'device' ? 'Use development voice' : 'Use browser voice') : selectedRoute === 'device' ? (connectionController.getCloudEnvironment() !== null ? 'Use Eliza Cloud voice' : 'Use selected agent voice') : 'Use on-device voice',
-      changeRoute: () => { if (stage !== 'ready' || busy) return; const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute === 'device' ? 'agent' : 'device'); chatDestination = chat; refresh(); },
+      changeRoute: () => { if (!owned()||stage !== 'ready' || busy) return; const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute === 'device' ? 'agent' : 'device',chat); refresh(); },
       clock: `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`, clockCss: '', live: stage === 'recording', paused: stage !== 'recording', dotCss: `background:${stage === 'recording' ? '#E53935' : 'var(--mut)'}`,
       levels: !Capacitor.isNativePlatform()&&stage==='recording'?recordingLevels(recordingId):Array.from({ length: 44 }, () => ({ h: 4 })),
-      lines: [{ ini: error ? '!' : 'i', t: error || messages[stage], chip: 'background:var(--s2);color:var(--fg)', css: '' }],
-      review: stage === 'review', transcript: draft, transcriptDisabled: busy, onTranscript: (e: Event) => { if (busy) return; draft = (e.target as HTMLTextAreaElement).value; refresh(); },
-      primaryLabel: labels[stage], primaryIcon: stage === 'review' ? current.ic.check : stage === 'recording' || stage === 'transcribing' ? current.ic.stop : current.ic.mic,
+      lines: [{ ini: '', statusIcon:icons.info, t: error || messages[stage], chip: 'background:var(--s2);color:var(--fg)', css: '' }],
+      review: stage === 'review', transcript: draft, transcriptDisabled: busy, onTranscript: (e: Event) => { if (!owned()||busy) return; draft = (e.target as HTMLTextAreaElement).value; refresh(); },
+      primaryLabel: cloudConnectRequired ? 'Connect Eliza Cloud' : labels[stage], primaryIcon: cloudConnectRequired ? icons.user : stage === 'review' ? icons.check : stage === 'recording' || stage === 'transcribing' ? icons.stop : icons.mic,
       primaryDisabled: (selectedRoute === 'device' && !onDeviceReady) || preparingLocal || preparingPaired || stage === 'starting' || (busy && stage !== 'transcribing') || (stage === 'review' && !draft.trim()),
-      pauseLabel: (onDeviceReady || cloudMode || pairedReady) && stage === 'review' ? playing ? 'Stop audio' : 'Listen to transcript' : ['recorded', 'review'].includes(stage) ? 'Record again' : 'Cancel recording', pauseIcon: (onDeviceReady || cloudMode || pairedReady) && stage === 'review' ? playing ? current.ic.stop : current.ic.play : ['recorded', 'review'].includes(stage) ? current.ic.mic : current.ic.x,
-      stop: () => { void primary(); }, discard: () => cleanup(), toggle: () => { if ((onDeviceReady || cloudMode || pairedReady) && stage === 'review') { void listen(); } else if (['recorded', 'review'].includes(stage)) { const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute); chatDestination = chat; } else cleanup(); },
+      pauseLabel: (onDeviceReady || cloudMode || pairedReady) && stage === 'review' ? playing ? 'Stop audio' : 'Listen to transcript' : ['recorded', 'review'].includes(stage) ? 'Record again' : 'Cancel recording', pauseIcon: (onDeviceReady || cloudMode || pairedReady) && stage === 'review' ? playing ? icons.stop : icons.play : ['recorded', 'review'].includes(stage) ? icons.mic : icons.x,
+      stop: () => { if(owned())void primary(); }, discard: () => {if(owned())chatDestination?cancelChat():cleanup();}, keyboard:()=>{if(owned())cancelChat(true);}, toggle: () => { if(!owned())return;if ((onDeviceReady || cloudMode || pairedReady) && stage === 'review') { void listen(); } else if (['recorded', 'review'].includes(stage)) { const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute,chat); } else if(chatDestination)cancelChat();else cleanup(); },
     };
-    return result;
+  }
+  const originalVals=Component.prototype.renderVals;
+  Component.prototype.renderVals=function(){
+    const out=originalVals.call(this),retiring=retirement?.shell===this,active=retiring||chatDestination?.shell===this&&stage!=='closed'&&chatCurrent();
+    const heldRetirement=retirement,hold=(cancelApproval=true)=>{if(!heldRetirement||retirement!==heldRetirement||heldRetirement.shell!==this)return;if(cancelApproval&&heldRetirement.approval&&this.pendingActionApproval===heldRetirement.approval){heldRetirement.approval.abort();if(heldRetirement.proposalId)this.cancelReadReplyCompletions?.(heldRetirement.proposalId);}this.toast('Voice media is still stopping. Close the app if it cannot finish.');};
+    const awaiting=active&&!retiring&&(conversationState.phase==='awaiting-user-input'||conversationReviewRequired);
+    out.chatRecorder=retiring?{state:retirement!.phase,flex:'1',clockSize:48,clock:'Voice',live:false,levels:[],lines:[{t:retirement!.phase==='error'?'Could not confirm voice media stopped. Close the app before starting voice again.':'Stopping the microphone and audio…'}],review:false,typeChoice:false,primaryLabel:'Stop voice conversation',primaryIcon:out.ic?.stop,primaryDisabled:false,stop:()=>hold(),discard:()=>hold(),keyboard:()=>{if(retirement&&retirement.shell===this){retirement.returnChat='input';hold(false);}}}:active?{...conversationRecorderView(out.ic||{}),awaiting}:null;out.showChatHistory=!active||awaiting;out.chatHistoryInert=active&&!awaiting;out.chatVoiceActive=active;out.chatHistoryStyle=active&&!awaiting?'display:none':'';
+    if(retiring){out.conversationHidden=false;out.panelOp=1;out.panelPE='auto';if(!out.panelH)out.panelH=560;}
+    if(active){
+      out.panelComposer=false;out.showSugg=false;out.showComposer=false;out.showPill=false;out.canStopReply=false;
+      out.closeChat=()=>retiring?hold():cancelChat();
+    }
+    return out;
+  };
+  const updated=Component.prototype.componentDidUpdate;
+  Component.prototype.componentDidUpdate=function(...args:any[]){
+    updated?.apply(this,args);
+    if(chatDestination?.shell===this){if(!chatCurrent()||!['sheet','full'].includes(this.S().chat))cleanup();else conversationVoice?.recheck();}
   };
   const immersive = notes.immersive;
-  notes.immersive = (state: Bag, current: Bag) => stage !== 'closed' ? { noPill: true } : immersive?.(state, current);
-  notes.back = (state: Bag, current: Bag) => { if (stage !== 'closed') { cleanup(); return true; } return back?.(state, current); };
-  notes.onLeave = (current: Bag) => { closeTranscriptQuestion?.();cleanup(); leave?.(current); };
+  notes.immersive = (state: Bag, current: Bag) => stage !== 'closed'&&!chatDestination ? { noPill: true } : immersive?.(state, current);
+  notes.back = (state: Bag, current: Bag) => { if (stage !== 'closed'&&!chatDestination) { cleanup(); return true; } return back?.(state, current); };
+  notes.onLeave = (current: Bag) => { closeTranscriptQuestion?.();if(!ownedNavigation?.applying)cleanup(); leave?.(current); };
   const visibility = () => {
     // Speech preparation is foreground-only; returning prepares the same route again.
     if (!document.hidden) { if (reprepare && stage === 'ready' && !busy) { reprepare = false; reopen(error); } return; }
-    ++composerProbe; stopSaved();
+    stopSaved();
     if (playing) { playback?.abort(); playing = false; refresh(); }
+    if(chatDestination){cleanup();return;}
     if (['recording', 'transcribing'].includes(stage)) { cleanup(false); stage = 'ready'; error = 'Voice stopped when the app left the foreground. Record again to continue.'; reprepare = true; refresh(); }
   };
-  const pagehide = () => { ++composerProbe; if (stage !== 'closed') cleanup(); };
+  const pagehide = () => { if (stage !== 'closed') cleanup(); };
   const binding = composerBinding;
   let account = binding();
   const unsubscribe = connectionController.subscribe(() => {
     const next = binding();
-    if (connectionController.getSnapshot().open) { closeTranscriptQuestion?.(); ++composerProbe; if (stage !== 'closed') cleanup(); }
-    if (next !== account) { closeTranscriptQuestion?.(); ++composerProbe; account = next; stopSaved(); if (stage !== 'closed') cleanup(); }
+    if (connectionController.getSnapshot().open) { closeTranscriptQuestion?.(); if (stage !== 'closed') cleanup(); }
+    if (next !== account) { closeTranscriptQuestion?.(); account = next; stopSaved(); if (stage !== 'closed') cleanup(); }
   });
   document.addEventListener('visibilitychange', visibility);
   window.addEventListener('pagehide', pagehide);
   const unmount = Component.prototype.componentWillUnmount;
-  Component.prototype.componentWillUnmount = function () { ++composerProbe; api = undefined; cleanup(); unsubscribe(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', pagehide); unmount?.call(this); };
+  Component.prototype.componentWillUnmount = function () { api = undefined; chatDestination=undefined;cleanup(); unsubscribe(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', pagehide); unmount?.call(this); };
 }

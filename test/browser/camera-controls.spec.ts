@@ -46,7 +46,7 @@ test('flash requires a confirmed torch capability and never applies a brightness
 
 test('rendered zoom selection captures cropped pixels and switching resets the control',async({page})=>{
  await page.getByRole('button',{name:'Zoom 2x',exact:true}).click();await expect(page.getByRole('button',{name:'Zoom 2x',exact:true})).toHaveCSS('width','40px');await page.getByRole('button',{name:'Take photo',exact:true}).click();
- await expect(page.getByText('Photo saved in this browser. Clearing site data removes saved photos.',{exact:true})).toBeVisible();
+ await expect(page.getByText('Photo saved in this app. Clearing app data removes saved photos.',{exact:true})).toBeVisible();
  const pixel=await page.evaluate(async()=>{const {browserPhotoLibrary}=await import('/src/prototype/browser-camera.ts');const row=(await browserPhotoLibrary.list()).items[0],image=new Image();image.src=row.image;await image.decode();const canvas=document.createElement('canvas');canvas.width=320;canvas.height=240;const ctx=canvas.getContext('2d')!;ctx.drawImage(image,0,0);return Array.from(ctx.getImageData(20,120,1,1).data);});expect(pixel[1]).toBeGreaterThan(230);
  await page.getByRole('button',{name:'Switch camera',exact:true}).click();await expect(page.getByRole('button',{name:'Zoom 2x',exact:true})).toHaveCount(0);await page.getByRole('button',{name:'Switch camera',exact:true}).click();await expect(page.getByRole('button',{name:'Zoom 1x',exact:true})).toHaveCSS('width','40px');
 });

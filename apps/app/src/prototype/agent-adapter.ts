@@ -1,3 +1,6 @@
+import {BrowserReviews} from '../browser/review';
+import type {ConversationMessageTarget} from '../runtime/alpha-client';
+import {AlphaClientError} from '../runtime/alpha-client';
 import {formatDeviceRecordDateTime} from "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts";
 import {isNativeNotesQuery} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
 import {executeNotesQuery} from './notes-query-executor';
@@ -14,7 +17,7 @@ import {summarySourceOf as sourceOf,recordingSourceOf,recordingRevision,type Sum
 import {reviewAgentClock} from '../runtime/clock-agent-review';
 import {isReminderCreate,validateReminderCreateResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts';
 import {publishWorkflowNotice} from '../browser/workflow-notices';
-import {speakLocalText} from '../local-speech-playback';
+import {speakCloudText} from '../runtime/cloud-voice';
 import {browserDevProfile} from '../browser/dev-profile';
 import {stampNoteChanges} from '../runtime/note-dates';
 import {isClockOperation,assertClockTimeZone,currentClockTimeZone,validateClockResult} from '../runtime/clock-contract';
@@ -56,6 +59,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   const originalSet = p.vset;
   const originalApi = p.api;
   const originalVals = p.renderVals;
+  const messageReviews=new BrowserReviews();
   const notesRender = views.notes.render;
   // Navigation resets transient view state, but must retain the actual storage receipt.
   views.notes.persist = [...new Set([...(views.notes.persist || []), 'storageStatus'])];
@@ -63,6 +67,43 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   function sizeComposer(){
     for(const input of document.querySelectorAll<HTMLTextAreaElement>('textarea[data-alpha-composer]')){
       input.style.height='44px';input.style.height=`${Math.max(44,input.scrollHeight)}px`;
+    }
+  }
+  function retainReadReply(shell:Shell,proposal:import('../runtime/alpha-client').ActionProposal,identity?:{conversationId:string;session:unknown},userMessageId?:string){
+    const read=proposal.readReply;if(!read||shell.readReplyLeases?.has(proposal.id))return;
+    const origin=read.origin;
+    const original=identity&&userMessageId===origin.inReplyTo&&identity.conversationId===origin.conversationId||shell.S().msgs.some((message:Shell)=>message.id===origin.inReplyTo&&message.from==='user'&&message.messageBinding?.conversationId===origin.conversationId&&JSON.stringify(message.messageBinding.session)===JSON.stringify(connectionController.getSnapshot().session));
+    if(!original)return;
+    try{const binding=connectionController.readReplyBinding(origin.conversationId,proposal.id,read.digest);shell.readReplyLeases??=new Map();shell.readReplyLeases.set(proposal.id,{origin:structuredClone(origin),digest:read.digest,binding,controller:new AbortController(),phase:'pending'});}catch{}
+  }
+  function proposalCard(proposal:import('../runtime/alpha-client').ActionProposal){
+    const home=proposal.reviewDestination==='home';
+    return {type:'generic',icon:'check',title:home?'Review Notes on Home':'Approve: '+proposal.title,sub:home?'Open Home to choose and review a note. Nothing is shared yet.':'Tap to approve this exact action',proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,reviewDestination:proposal.reviewDestination,expiresAt:proposal.expiresAt};
+  }
+  p.cancelReadReplyCompletions=function(onlyProposalId?:string){
+    for(const [proposalId,lease] of this.readReplyLeases||[]){
+      if(onlyProposalId!==undefined&&proposalId!==onlyProposalId)continue;
+      if(this.pendingActionApprovalProposalId===proposalId)this.pendingActionApproval?.abort();
+      if(lease.phase==='cancelled'||lease.phase==='done')continue;
+      lease.phase='cancelled';lease.controller.abort();
+      void connectionController.cancelReadReply(lease.binding).catch(()=>{});
+    }
+  };
+  async function completeReadReply(shell:Shell,receipt:import('../runtime/alpha-client').OperationReceipt){
+    const hint=receipt.readReply,lease=hint&&shell.readReplyLeases?.get(hint.proposalId);
+    if(!hint||!lease||lease.phase!=='pending')return false;
+    const current=()=>{lease.controller.signal.throwIfAborted();if(!shell.live||document.hidden||alphaClient.getState().context.sensitive||!connectionController.readReplyCurrent(lease.binding)||hint.digest!==lease.digest||JSON.stringify({version:hint.version,requestId:hint.requestId,conversationId:hint.conversationId,inReplyTo:hint.inReplyTo})!==JSON.stringify(lease.origin)||!shell.S().msgs.some((m:Shell)=>m.id===hint.inReplyTo&&m.from==='user'&&m.messageBinding?.conversationId===hint.conversationId&&JSON.stringify(m.messageBinding.session)===JSON.stringify(lease.binding.session)))throw Error('The original Notes conversation changed.');};
+    current();lease.phase='completing';
+    try{
+      const reply=await connectionController.completeReadReply(hint,lease.binding,lease.controller.signal);current();
+      await new Promise<void>(resolve=>shell.setState((previous:Shell)=>{
+        try{current();}catch{return null;}
+        if(previous.msgs.some((m:Shell)=>m.id===reply.messageId))return null;
+        return {msgs:[...previous.msgs,{id:reply.messageId,from:'agent',text:reply.text,messageBinding:{conversationId:reply.conversationId,session:lease.binding.session},inReplyTo:reply.inReplyTo,card:null}]};
+      },resolve));current();lease.phase='done';shell.resumeReadReplyVoice?.(hint,reply);return true;
+    }catch(error){
+      if(lease.phase!=='cancelled')lease.phase='unconfirmed';
+      throw error;
     }
   }
   function recoverPendingActions(shell:Shell) {
@@ -73,24 +114,78 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if(!key)shell.pendingActionRecoveryFailedKey=null;
     if(shell.pendingActionRecoveryKey===key||key!==null&&shell.pendingActionRecoveryFailedKey===key)return;
     shell.pendingActionRecoveryFailedKey=null;shell.pendingActionRecoveryKey=key;shell.pendingActionRecoveryAbort?.abort();
+    clearTimeout(shell.pendingActionExpiryTimer);shell.pendingActionExpiryTimer=null;
     if(!key)return;
     const controller=shell.pendingActionRecoveryAbort=new AbortController();
-    const current=()=>shell.live&&!controller.signal.aborted&&shell.pendingActionRecoveryKey===key&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(connection.session)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(currentContext)&&!document.hidden&&!connectionController.getSnapshot().open&&!connectionController.getSnapshot().busy;
+    const bound=()=>shell.live&&!controller.signal.aborted&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(connection.session)&&connectionController.getSnapshot().history?.revision===connection.history?.revision&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(currentContext)&&!document.hidden&&!connectionController.getSnapshot().open&&!connectionController.getSnapshot().busy;
+    const current=()=>bound()&&shell.pendingActionRecoveryKey===key;
+    const scheduleExpiry=()=>{
+      clearTimeout(shell.pendingActionExpiryTimer);shell.pendingActionExpiryTimer=null;
+      if(!bound())return;
+      const nearest=Math.min(...shell.S().msgs.filter((message:Shell)=>message.card?.proposalId&&!message.card.done&&!message.card.reviewUnavailable&&Number.isFinite(message.card.expiresAt)).map((message:Shell)=>message.card.expiresAt));
+      if(!Number.isFinite(nearest))return;
+      shell.pendingActionExpiryTimer=setTimeout(()=>{
+        shell.pendingActionExpiryTimer=null;
+        if(!bound())return;
+        shell.setState((previous:Shell)=>{
+          if(!bound())return null;
+          return {msgs:previous.msgs.map((message:Shell)=>message.card?.proposalId&&!message.card.done&&!message.card.reviewUnavailable&&message.card.expiresAt<=Date.now()?{...message,card:{...message.card,reviewUnavailable:true,title:'Review expired',sub:'This review has expired. Request a new action if still needed.'}}:message)};
+        },()=>{
+          if(!bound())return;
+          // A failed read cannot erase known expiries or start retry polling.
+          if(shell.pendingActionRecoveryFailedKey===key)scheduleExpiry();
+          else{shell.pendingActionRecoveryKey=null;recoverPendingActions(shell);}
+        });
+      },Math.min(2147483647,Math.max(0,Math.ceil(nearest-Date.now())+1)));
+    };
     void connectionController.pendingActions(currentContext,controller.signal).then(proposals=>{
       if(!current())return;
+      for(const proposal of proposals)if(proposal.readReply)retainReadReply(shell,proposal);
       shell.setState((previous:Shell)=>{
         if(!current())return null;
-        const ids=new Set(proposals.map(proposal=>proposal.id));
-        const msgs=previous.msgs.map((message:Shell)=>ids.has(message.card?.proposalId)&&!message.card.done&&!message.card.recovered?{...message,card:{...message.card,recovered:true,proposalSession:connection.session}}:message);
+        const pending=new Map(proposals.map(proposal=>[proposal.id,proposal]));
+        const msgs=previous.msgs.map((message:Shell)=>{
+          const card=message.card;
+          if(!card?.proposalId||card.done)return message;
+          const proposal=pending.get(card.proposalId);
+          if(proposal){
+            if(card.recovered&&!card.reviewUnavailable&&card.expiresAt===proposal.expiresAt&&card.privateNotesRead===proposal.privateNotesRead&&card.reviewDestination===proposal.reviewDestination&&JSON.stringify(card.proposalSession)===JSON.stringify(connection.session))return message;
+            return {...message,card:{...card,...proposalCard(proposal),recovered:true,proposalSession:connection.session,reviewUnavailable:false}};
+          }
+          // Absence can also mean different source preconditions. It proves no
+          // rejection or execution; preserve the history and disable only review.
+          if(card.reviewUnavailable)return message;
+          return {...message,card:{...card,reviewUnavailable:true,title:'Review unavailable',sub:'Not pending for this screen. Open the original selection to check again.'}};
+        });
         const existing=new Set(msgs.map((message:Shell)=>message.card?.proposalId));
-        const recovered=proposals.filter(proposal=>!existing.has(proposal.id)).map(proposal=>({id:crypto.randomUUID(),from:'agent',text:proposal.description,card:{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,recovered:true,proposalSession:connection.session}}));
+        const recovered=proposals.filter(proposal=>!existing.has(proposal.id)).map(proposal=>({id:crypto.randomUUID(),from:'agent',text:proposal.description,card:{...proposalCard(proposal),recovered:true,proposalSession:connection.session}}));
         return recovered.length||msgs.some((message:Shell,index:number)=>message!==previous.msgs[index])?{msgs:[...msgs,...recovered]}:null;
-      });
+      },()=>{if(current())scheduleExpiry();});
     }).catch(()=>{
       if(!current())return;
       shell.pendingActionRecoveryKey=null;shell.pendingActionRecoveryFailedKey=key;
       shell.toast('Pending actions could not be checked. Return to the app or reopen the selected item to retry.');
+      scheduleExpiry();
     });
+  }
+  function openInternalView(shell:Shell,target:string,chat?:string):boolean {
+    if(!['home','reminders','notifications'].includes(target)&&!isMvpView(target))return false;
+    const view=target==='reminders'?'calendar':target;
+    if(view!=='home'&&!views[view])return false;
+    if(view==='home')shell.goHome(chat);else shell.openView(view,undefined,chat);
+    return true;
+  }
+  async function deliverChatNavigation(shell:Shell,navigation:ReturnType<typeof connectionController.captureViewNavigation>,results:readonly unknown[]|undefined,current?:()=>void,continuation?:import('../runtime/alpha-client').VoiceNavigationContinuation){
+    if(!navigation||!results?.length)return false;
+    const attempt={...navigation.attempt,current:()=>{navigation.attempt.current();current?.();}};
+    const delivered=await navigation.client.deliver(results,attempt,(view,check)=>{
+      const commit=(chat?:string,onCommitted?:(value:import('../runtime/alpha-client').ContextEnvelope)=>void)=>new Promise<boolean>((resolve,reject)=>{
+        try{check();if(!openInternalView(shell,view,chat)){resolve(false);return;}shell.setState({},()=>{try{context(shell);const switched=shell.live&&(shell.S().view||'home')===view;if(switched)onCommitted?.(alphaClient.getState().context);resolve(switched);}catch(error){reject(error);}});}catch(error){reject(error);}
+      });
+      return continuation?continuation.apply(view,check,commit):commit();
+    });
+    if(delivered.status==='delivered'&&!continuation)shell.toast(`Opened ${delivered.label}.`);else if(delivered.status==='unknown')shell.toast('Could not confirm the screen change. Check your screen.');
+    return delivered.status==='delivered';
   }
   function context(shell: Shell) {
     const s = shell.S();
@@ -144,6 +239,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       sensitive: view === 'wallet' || (view === 'settings' && passwordSurfaceOpen(shell.vget('settings'))) || s.secure === true || s.screen === 'lock' || s.screen === 'off' || document.hidden || shell.pageSuspended === true || connectionController.getSnapshot().open,
       ...(selected && shell.notesSelection ? { selectedObject: shell.notesSelection } : providerSelection ? { selectedObject: providerSelection } : ['files','photos'].includes(view) && shell.vget(view).open === '__native_selected_document' && shell.selectedContext ? { selectedObject: shell.selectedContext } : {}),
     });
+    if(alphaClient.getState().context.sensitive||[...(shell.readReplyLeases?.values()||[])].some((lease:any)=>lease.phase!=='cancelled'&&lease.phase!=='done'&&!connectionController.readReplyCurrent(lease.binding)))shell.cancelReadReplyCompletions?.();
     updateBackAvailability(shell);
     recoverPendingActions(shell);
   }
@@ -160,6 +256,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     this.connectionUnsubscribe = connectionController.subscribe(() => {
       const session = connectionController.getSnapshot().session?.sessionId;
       if (session !== this.connectionSession) {
+        cancelMessageContext(this);
         this.draftRecoveryAbort?.abort();this.composerDraft.retire();
         this.closeSummaryReview?.();this.reviewedSourceDraft=null;
         clearMapsSelection();
@@ -169,10 +266,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       }
       const history = connectionController.getSnapshot().history;
       if (history && history.sessionId === session && this.restoredHistory !== history) {
-        if(!history.automatic){this.draftRecoveryAbort?.abort();this.composerDraft.retire();this.reviewedSourceDraft=null;}
+        if(!history.automatic){cancelMessageContext(this);this.draftRecoveryAbort?.abort();this.composerDraft.retire();this.reviewedSourceDraft=null;}
         this.restoredHistory = history;
         alphaClient.disconnect();
-        if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, card: null })), typing: false, ...(history.automatic?{}:{draft:'',chat:'full'}) });
+        if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, messageBinding:{conversationId:history.conversationId,session:connectionController.getSnapshot().session}, card: null })), typing: false, ...(history.automatic?{}:{draft:'',chat:'full'}) });
       }
       if (this.live) {context(this);this.refreshDraftBinding();}
     });
@@ -207,7 +304,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       originalSet.call(this,'notes',{list:[],storageStatus:'Saved notes need recovery. Original data retained.'});this.toast('Saved notes could not be opened. No new edits are allowed.');}});
     this.notesCommittedHandler=()=>{if(this.live&&this.notesStore&&!this.notesStorageFailed&&!this.notesPending){this.notesRaw=this.notesStore.raw;originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':''});context(this);}};
     window.addEventListener('alpha:notes-committed',this.notesCommittedHandler);
-    this.visibilityHandler = () => { if (this.live) context(this); };
+    this.visibilityHandler = () => { if(document.hidden)connectionController.cancelViewNavigation();if (this.live) context(this); };
     this.pageHideHandler = () => { notesRecovery?.abort();this.pageSuspended = true; if (this.live) context(this); };
     this.pageShowHandler = () => { this.pageSuspended = false; if (this.live) context(this); };
     document.addEventListener('visibilitychange', this.visibilityHandler);
@@ -218,11 +315,12 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       // native events must not navigate the shell before its dialog closes.
       const dialog = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]')).at(-1);
       if (dialog) { event.preventDefault(); event.stopImmediatePropagation(); if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close(); return; }
-      if (document.querySelector<HTMLElement>('.os')?.inert) return;
-      alphaClient.cancel(); this.back();
+      const inlineModal=Array.from(document.querySelectorAll<HTMLElement>('.os [role="dialog"][aria-modal="true"]')).some(dialog=>!dialog.closest('[inert],[hidden]')&&dialog.getAttribute('aria-hidden')!=='true'&&dialog.getClientRects().length>0&&getComputedStyle(dialog).visibility!=='hidden');
+      if (inlineModal||document.querySelector<HTMLElement>('.os')?.inert) return;
+      connectionController.cancelViewNavigation();alphaClient.cancel(); this.back();
     };
     window.addEventListener('alpha-back', this.backHandler);
-    this.homeHandler = () => { alphaClient.cancel(); this.goHome(); };
+    this.homeHandler = () => { connectionController.cancelViewNavigation();alphaClient.cancel(); this.goHome(); };
     window.addEventListener('launcher-home', this.homeHandler);
     this.selectionHandler = (event: CustomEvent) => { this.selectedContext = event.detail; context(this); };
     window.addEventListener('alpha-selected-context', this.selectionHandler);
@@ -238,7 +336,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if (connection.session) {
         alphaClient.attachVerifiedTransport({
           session: connection.session,
-          send: ({ text, context, requestId, signal, onText }) => connectionController.send(text, context, requestId, signal, onText),
+          send: ({ text, context, requestId, signal, onText, replyTo, onReplyReady, channelType, expectedConversationId,voiceTurnSignal }) => connectionController.send(text, context, requestId, signal, onText,replyTo,onReplyReady,channelType,expectedConversationId,voiceTurnSignal),
           // Remote text is not authority to execute device actions. This path
           // accepts chat only until the server supports verified proposals.
           execute: ({ proposal, context, signal }) => connectionController.execute(proposal, context, signal),
@@ -306,6 +404,12 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       signal.throwIfAborted();if(!isReminderOperation(operation)&&!isReminderCreate(operation))return {status:'unknown'};
       const result=await DailyApps.reminderOperationReceipt({operation,operationId,bindingHash});signal.throwIfAborted();
       return result.status==='succeeded'?{status:'succeeded',reminderResult:isReminderCreate(operation)?validateReminderCreateResult(operation,result.result,operationId):validateReminderResult(operation,result.result)}:{status:'unknown'};
+    });
+    connectionController.setNavigationContext(()=>this.live?alphaClient.getState().context:null);
+    connectionController.setDeviceReadReview(async(proposal,expectedContext,signal)=>{
+      if(typeof this.prepareDeviceReadReview!=='function')throw Error('Notes review is unavailable. Nothing was shared.');
+      await this.prepareDeviceReadReview(proposal.id,proposal.readReply?.digest,signal);signal.throwIfAborted();context(this);
+      if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('The Notes review changed. Nothing was shared.');
     });
     connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute, journalIdentity) => {
       signal.throwIfAborted(); context(this);
@@ -405,7 +509,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         }
         if(operation.type==='post_notification'){await publishWorkflowNotice(operationId,operation.body,signal,operation.title,bindingHash);return {status:'succeeded',summary:'Posted the reviewed notification in the browser Inbox.'};}
         const speechAbort=new AbortController(),stop=()=>speechAbort.abort();signal.addEventListener('abort',stop,{once:true});window.addEventListener('alpha:stop-workflow-speech',stop);
-        try{signal.throwIfAborted();await speakLocalText(operation.text,speechAbort.signal,undefined,true);return {status:'succeeded',summary:'Finished reading the reviewed text aloud.'};}finally{signal.removeEventListener('abort',stop);window.removeEventListener('alpha:stop-workflow-speech',stop);}
+        const currentSpeech=()=>{speechAbort.signal.throwIfAborted();context(this);if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Workflow review context changed');};
+        const unsubscribe=alphaClient.subscribe(()=>{try{currentSpeech();}catch(error){speechAbort.abort(error);}});
+        try{signal.throwIfAborted();await speakCloudText(operation.text,speechAbort.signal,undefined,true,currentSpeech);currentSpeech();return {status:'succeeded',summary:'Finished reading the reviewed text aloud.'};}finally{unsubscribe();signal.removeEventListener('abort',stop);window.removeEventListener('alpha:stop-workflow-speech',stop);}
       }
       if (operation.type === 'create_note') {
         if (this.notesStorageFailed) return { status: 'failed', summary: 'Notes storage is unavailable. Nothing saved.' };
@@ -449,12 +555,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         return { status: 'succeeded', summary: presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary };
       }
       if (operation.type === 'open_view') {
-        if (!['home','reminders','notifications'].includes(operation.view) && !isMvpView(operation.view)) return {status:'failed',summary:'This app is deferred from the MVP'};
-        // Navigation changes the view epoch; journal completion still runs after
-        // this synchronous effect even if the conversation cancels its wait.
-        const view = operation.view === 'reminders' ? 'calendar' : operation.view;
-        if (view !== 'home' && !views[view]) return { status: 'failed', summary: 'This view is unavailable.' };
-        if (view === 'home') this.goHome(); else this.openView(view);
+        // Navigation changes the view epoch; journal completion still runs after it.
+        if(!openInternalView(this,operation.view))return {status:'failed',summary:'This view is unavailable.'};
         return { status: 'succeeded', summary: `Opened ${operation.view} on this phone.` };
       }
       if (!this.browserNavigateApproved) return { status: 'failed', summary: 'Approved browser navigation is unavailable. No page opened.' };
@@ -463,9 +565,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     });
     context(this);
   };
-  p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); sizeComposer();this.composerDraft?.edit(String(this.S().draft||'')); };
+  p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); sizeComposer();this.composerDraft?.edit(String(this.S().draft||''));const selected=this.messageReplyTarget||this.messageEditTarget;if(selected&&(JSON.stringify(selected.session)!==JSON.stringify(connectionController.getSnapshot().session)||!this.S().msgs.some((m:Shell)=>m.id===selected.messageId&&m.text===selected.text))){cancelMessageContext(this);this.setState({});} };
   p.componentWillUnmount = function () {
-    this.pendingActionRecoveryAbort?.abort();this.pendingActionApproval?.abort();
+    this.cancelReadReplyCompletions?.();
+    cancelMessageContext(this);connectionController.cancelViewNavigation();
+    this.pendingActionRecoveryAbort?.abort();this.pendingActionApproval?.abort();clearTimeout(this.pendingActionExpiryTimer);
     this.draftRecoveryAbort?.abort();this.composerDraft?.retire(false);this.draftBindingAbort?.abort();
     this.notesOpenAbort?.abort();if(activeShell===this){activeShell=null;notesRecovery?.abort();}
     this.closeSummaryReview?.();
@@ -580,8 +684,20 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     };
     return api;
   };
+  function cancelMessageContext(shell:Shell){if(shell.messageEditTarget)messageReviews.cancel('edit-message-'+shell.messageEditTarget.messageId);shell.messageEditTarget=undefined;shell.messageReplyTarget=undefined;}
+  function messageTarget(message:Shell):ConversationMessageTarget|undefined {
+    if(!message.messageBinding||message.streaming||message.interrupted||message.card)return;
+    return {...message.messageBinding,messageId:message.id,text:message.text,from:message.from};
+  }
+  p.canReplyMessage=function(message:Shell){const target=messageTarget(message);return !!target&&!this.S().typing&&!this.draftSendPending&&connectionController.messageTargetCurrent(target);};
+  p.canEditMessage=function(message:Shell){return message.from==='user'&&this.canReplyMessage(message)&&connectionController.canEditMessages();};
+  p.replyToMessage=function(message:Shell){if(!this.canReplyMessage(message))return;this.messageEditTarget=undefined;this.messageReplyTarget=messageTarget(message);this.setState({chat:'full'},()=>document.querySelector<HTMLTextAreaElement>('[data-alpha-layer="conversation"] textarea[data-alpha-composer]')?.focus());};
+  p.editMessage=function(message:Shell){if(!this.canEditMessage(message))return;if(this.S().draft.trim()){this.toast('Finish or clear your current draft before editing a message.');return;}this.messageReplyTarget=undefined;this.messageEditTarget=messageTarget(message);this.setState({draft:message.text,chat:'full'},()=>document.querySelector<HTMLTextAreaElement>('[data-alpha-layer="conversation"] textarea[data-alpha-composer]')?.focus());};
   p.renderVals = function () {
     const out = originalVals.call(this);
+    const composeTarget=this.messageEditTarget||this.messageReplyTarget;
+    out.messageComposeContext=composeTarget?(this.messageEditTarget?'Editing message':'Replying to '+(composeTarget.from==='user'?'your message':out.name))+': '+composeTarget.text.replace(/\s+/g,' ').slice(0,160):'';
+    out.cancelMessageContext=()=>{cancelMessageContext(this);this.setState({});};
     const draft=this.composerDraft?.state;
     out.draftRecovery=!!draft?.error&&!!this.composerDraft?.recovery();
     out.recoverDraft=()=>{const recovery=this.composerDraft?.recovery();if(!recovery)return;this.draftRecoveryAbort?.abort();const controller=this.draftRecoveryAbort=new AbortController();openDomainRecovery({capture:async signal=>{const captured=await recovery.capture(signal);return {...captured,raw:JSON.stringify({saved:captured.raw,currentDraft:String(this.S().draft||'')})};},reset:recovery.reset},'assistant draft','Assistant draft recovery','Download the saved bytes and current text before resetting this conversation’s draft. Reset does not delete messages or send anything. Reloading discards the current unsaved text.',controller.signal,undefined,Capacitor.getPlatform()==='android'?'device':'browser');};
@@ -592,7 +708,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&!event.nativeEvent?.isComposing&&event.keyCode!==229){event.preventDefault();void this.send();}
     };
     out.canStopReply=!!this.S().typing&&alphaClient.getState().pending;
-    out.stopReply=()=>alphaClient.cancel();
+    out.stopReply=()=>{connectionController.cancelViewNavigation();alphaClient.cancel();};
     if (isAndroid) {
       out.showStatus = false; out.showIndicator = false;
       const style = out.sbColor === '#ffffff' || out.sbColor === '#FFFFFF' ? SystemBarsStyle.Dark : SystemBarsStyle.Light;
@@ -604,9 +720,65 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     out.onBright = () => void DailyApps.perform({ action: 'settings' }).catch(() => this.toast('Android settings is unavailable.'));
     return out;
   };
+  p.voiceConversationCurrent = function(prepared:{binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope}){return !alphaClient.getState().context.sensitive&&connectionController.voiceConversationCurrent(prepared.binding)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(prepared.context);};
+  p.voiceConversationContext = function(binding:import('../runtime/alpha-client').VoiceConversationBinding){const value=alphaClient.getState().context;if(!this.live||document.hidden||value.sensitive||!connectionController.voiceConversationCurrent(binding))throw Error('The voice conversation changed.');return value;};
+  p.prepareVoiceConversation = async function(signal:AbortSignal){
+    if(!connectionController.getSnapshot().session)throw Error('Connect an agent in Settings to start a voice conversation.');
+    signal.throwIfAborted();context(this);if(alphaClient.getState().context.sensitive)throw Error('Return to Home or another app before starting voice.');const expected=JSON.stringify(alphaClient.getState().context);
+    const binding=await connectionController.prepareVoiceConversation(signal);signal.throwIfAborted();
+    await this.draftBindingTask;signal.throwIfAborted();context(this);
+    if(!this.live||document.hidden||!connectionController.voiceConversationCurrent(binding)||JSON.stringify(alphaClient.getState().context)!==expected)throw Error('The voice conversation changed.');
+    await this.connectAgent();signal.throwIfAborted();
+    if(!this.live||document.hidden||!connectionController.voiceConversationCurrent(binding)||JSON.stringify(alphaClient.getState().context)!==expected)throw Error('The voice conversation changed.');
+    return {binding,context:alphaClient.getState().context};
+  };
+  p.sendVoiceTurn = async function(input:{text:string;turnId:string;voiceTurnSignal:import('../runtime/alpha-client').VoiceTurnSignal;signal:AbortSignal;binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope;assertCurrent:()=>void;navigation?:import('../runtime/alpha-client').VoiceNavigationContinuation}){
+    const {text,turnId,signal,binding}=input;let acceptedContext=input.context;
+    const belongs=()=>{try{signal.throwIfAborted();input.assertCurrent();return this.live&&!document.hidden&&connectionController.voiceConversationCurrent(binding)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(acceptedContext);}catch{return false;}};
+    const current=()=>{signal.throwIfAborted();input.assertCurrent();context(this);if(!belongs())throw Error('The voice conversation changed.');};
+    current();if(alphaClient.getState().pending||this.S().typing||this.draftSendPending)throw Error('Wait for the current conversation turn.');
+    this.voiceSendTurnId=turnId;
+    const navigation=connectionController.captureViewNavigation(input.context),userId=crypto.randomUUID(),streamId=crypto.randomUUID();let streamed=false;
+    try{
+      await new Promise<void>(resolve=>this.setState((previous:Shell)=>belongs()?{msgs:[...previous.msgs,{id:userId,from:'user',text}],typing:true}:null,resolve));
+      current();
+      const reply=await alphaClient.send(text,value=>{current();streamed=true;this.setState((previous:Shell)=>belongs()?{msgs:previous.msgs.some((m:Shell)=>m.id===streamId)?previous.msgs.map((m:Shell)=>m.id===streamId?{...m,text:value}:m):[...previous.msgs,{id:streamId,from:'agent',text:value,streaming:true}]}:null);},undefined,undefined,{channelType:'VOICE_DM',requestId:turnId,signal,expectedConversationId:binding.conversationId,voiceTurnSignal:input.voiceTurnSignal});
+      current();const identity=reply.messageBinding;
+      if(!reply.messageId||!reply.userMessageId||!identity||identity.conversationId!==binding.conversationId||JSON.stringify(identity.session)!==JSON.stringify(binding.session)||!reply.text.trim())throw Error('The voice reply could not be matched to this conversation. Check history before speaking again.');
+      await new Promise<void>(resolve=>this.setState((previous:Shell)=>belongs()?{msgs:[...previous.msgs.filter((m:Shell)=>m.id!==streamId).map((m:Shell)=>m.id===userId?{...m,id:reply.userMessageId,messageBinding:identity}:m),{id:reply.messageId,from:'agent',text:reply.text,messageBinding:identity,streaming:false}]}:null,resolve));current();
+      const delivered=await deliverChatNavigation(this,navigation,reply.actionResults,current,input.navigation);
+      const nextContext=input.navigation?.finish(delivered);if(nextContext)acceptedContext=nextContext;
+      current();
+      const awaiting=reply.proposals?.filter(proposal=>proposal.readReply?.origin.requestId===turnId&&proposal.readReply.origin.conversationId===identity.conversationId&&proposal.readReply.origin.inReplyTo===reply.userMessageId);
+      if(awaiting&&awaiting.length>1)throw Error('More than one Notes review was returned. Use action history.');
+      for(const proposal of reply.proposals||[]){retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description,proposalCard(proposal),undefined,belongs);}
+      return {requestId:turnId,conversationId:identity.conversationId,userMessageId:reply.userMessageId,assistantMessageId:reply.messageId,text:reply.text,complete:!reply.proposals?.length,...(reply.proposals?.length?{reviewRequired:true}:{}),...(awaiting?.length?{awaitingUserInput:{proposalId:awaiting[0].id,digest:awaiting[0].readReply!.digest}}:{})};
+    }catch(error){
+      input.navigation?.finish(false);
+      if(streamed&&this.live)this.setState((previous:Shell)=>this.voiceSendTurnId===turnId&&connectionController.voiceConversationCurrent(binding,false)?{msgs:previous.msgs.map((m:Shell)=>m.id===streamId?{...m,streaming:false,interrupted:true}:m)}:null);
+      throw error;
+    }finally{if(this.voiceSendTurnId===turnId&&this.live)await new Promise<void>(resolve=>this.setState(()=>this.voiceSendTurnId===turnId&&connectionController.voiceConversationCurrent(binding,false)?{typing:false}:null,()=>{if(this.voiceSendTurnId===turnId)this.voiceSendTurnId=undefined;resolve();}));}
+  };
   p.send = async function (argument?: string, expectedSession?: {sessionId:string;agentId:string;ownerId:string;origin:string}) {
-    const s = this.S(); const text = String(argument ?? s.draft).trim();
+    const before=this.S(),reply=this.messageReplyTarget,edit=this.messageEditTarget;
+    const sendBinding=()=>JSON.stringify([connectionController.getSnapshot().session,connectionController.getSnapshot().history?.conversationId,connectionController.getCloudEnvironment?.(),connectionController.getCloudClient()?.sessionId,connectionController.getCloudClient()?.credentialId]);
+    if(this.stopVoiceConversation)context(this);const expectedContext=JSON.stringify(alphaClient.getState().context);
+    const binding=this.stopVoiceConversation?sendBinding():undefined,draft=String(before.draft||''),view=before.view;
+    const retiring=this.stopVoiceConversation?.();if(retiring){await retiring;context(this);const now=this.S();if(JSON.stringify(alphaClient.getState().context)!==expectedContext||!this.live||document.hidden||connectionController.getSnapshot().open||sendBinding()!==binding||now.view!==view||String(now.draft||'')!==draft||this.messageReplyTarget!==reply||this.messageEditTarget!==edit)return;}
+    let s = this.S(); const text = String(argument ?? s.draft).trim();
     if (!text || s.typing || this.draftSendPending) return;
+    const editTarget:ConversationMessageTarget|undefined=this.messageEditTarget,replyTarget:ConversationMessageTarget|undefined=this.messageReplyTarget,editView=s.view;
+    if(editTarget){
+      if(argument!==undefined||!connectionController.messageTargetCurrent(editTarget))return;
+      this.draftSendPending=true;
+      try {
+        if(!await messageReviews.confirm('edit-message-'+editTarget.messageId,'Edit and resend message','This replaces the selected message and all later messages in this conversation. It does not undo actions that already ran.\n\nOriginal: '+editTarget.text+'\n\nReplacement: '+text,'Edit and resend'))return;
+        if(!this.live||document.hidden||String(this.S().draft).trim()!==text||!connectionController.messageTargetCurrent(editTarget))throw Error('The draft or conversation changed. Nothing was replaced.');
+        await connectionController.truncateMessage(editTarget);this.messageEditTarget=undefined;s=this.S();
+        if(!this.live||document.hidden||s.view!==editView||String(s.draft).trim()!==text)throw Error('History was replaced. Your draft changed, so nothing was resent.');
+      } catch(error){if(error&&typeof error==='object'&&'historyChanged' in error)this.messageEditTarget=undefined;this.toast(error instanceof Error?error.message:'Message replacement failed.');return;}
+      finally{this.draftSendPending=false;}
+    }
     const sourceDraft=this.reviewedSourceDraft?.draft.trim()===text?sourceOf(this.reviewedSourceDraft.source):undefined;
     context(this);
     const revision=alphaClient.getState().context.revision,connection=connectionController.getSnapshot(),sessionId=connection.session?.sessionId,conversationId=connection.history?.conversationId;
@@ -614,33 +786,50 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     this.draftSendPending=true;
     try{await this.draftBindingTask;await this.composerDraft.consume(String(s.draft||'').trim(),current);}catch(error){this.toast(error instanceof Error?error.message:'Draft could not be prepared. Nothing was sent.');return;}finally{this.draftSendPending=false;}
     this.reviewedSourceDraft=null;
-    const streamedId=crypto.randomUUID();let streamed=false;
+    const streamedId=crypto.randomUUID(),userMessageId=crypto.randomUUID();let streamed=false;
     const replaceStream=(value:string,streaming=true)=>this.setState((previous:Shell)=>({msgs:previous.msgs.map((message:Shell)=>message.id===streamedId?{...message,text:value,streaming}:message)}));
-    this.setState({ msgs: [...s.msgs, { id: crypto.randomUUID(), from: 'user', text }], draft: '', typing: true, chat: s.chat === 'full' ? 'full' : 'sheet', shade: false });
+    this.setState({ msgs: [...s.msgs, { id: userMessageId, from: 'user', text }], draft: '', typing: true, chat: s.chat === 'full' ? 'full' : 'sheet', shade: false });
+    let navigation:ReturnType<typeof connectionController.captureViewNavigation>|undefined,readyNavigation:readonly unknown[]|undefined;
+    const deliverNavigation=(results:readonly unknown[]|undefined)=>deliverChatNavigation(this,navigation,results);
     try {
       await this.connectAgent(); context(this);
       if (alphaClient.getState().context.revision !== revision) throw new Error('The active screen changed. Please send your request again.');
       if(expectedSession&&(JSON.stringify(connectionController.getSnapshot().session)!==JSON.stringify(expectedSession)||document.hidden))throw new Error('Agent changed. Review this message again.');
       const sourceSession=connectionController.getSnapshot().session;
+      navigation=connectionController.captureViewNavigation(alphaClient.getState().context);
       const reply = await alphaClient.send(text,value=>{
         if(!this.live)return;
         if(streamed)replaceStream(value);
         else{streamed=true;this.setState((previous:Shell)=>({msgs:[...previous.msgs,{id:streamedId,from:'agent',text:value,card:null,streaming:true}]}));}
-      });
+      },replyTarget,results=>{readyNavigation=results;});
       if (!this.live) return;
-      if(streamed)replaceStream(reply.text,false);else this.agentSay(reply.text);
+      const identity=reply.messageBinding;
+      if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===streamedId?{...m,id:reply.messageId||m.id,messageBinding:reply.messageId?identity:undefined,text:reply.text,streaming:false}:m)}));else this.agentSay(reply.text,undefined,reply.messageId&&identity?{id:reply.messageId,messageBinding:identity}:undefined);
+      if(reply.userMessageId&&identity)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===userMessageId?{...m,id:reply.userMessageId,messageBinding:identity}:m)}));
+      if(this.messageReplyTarget===replyTarget)this.messageReplyTarget=undefined;
       if(sourceDraft&&sourceSession&&JSON.stringify(sourceSession)===JSON.stringify(connectionController.getSnapshot().session))this.agentSay('Review this answer before saving it with its source.',{type:'generic',icon:'note',title:'Review summary note',sub:sourceDraft.name,sourceSummary:{source:sourceDraft,text:reply.text,session:sourceSession}});
-      for (const proposal of reply.proposals || []) this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id });
-    } catch (e) { if (this.live) {const message=e instanceof Error?e.message:'The agent could not complete this request.';if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));else this.agentSay(message);} }
+      for (const proposal of reply.proposals || []) {retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description,proposalCard(proposal));}
+      try{await deliverNavigation(reply.actionResults);}catch(error){if(this.live)this.toast(error instanceof AlphaClientError?error.message:'Could not confirm the screen change. Check your screen.');}
+    } catch (e) {
+      let opened=false;
+      // reply_ready is authoritative generation metadata, not saved history.
+      // Drain the stream first so our own view change cannot cancel its persistence.
+      if(this.live&&e instanceof AlphaClientError&&e.code==='transport-failed'&&readyNavigation){try{opened=await deliverNavigation(readyNavigation);}catch{}}
+      if(this.live){const message=opened?'The screen opened, but the conversation response was interrupted. Check history before sending again.':e instanceof Error?e.message:'The agent could not complete this request.';
+        if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));
+        else if(opened)this.setState((previous:Shell)=>({msgs:[...previous.msgs,{id:crypto.randomUUID(),from:'agent',text:message,card:null}]}));else this.agentSay(message);
+      }
+    }
     finally { if (this.live) this.setState({ typing: false }); }
   };
-  p.agentSay = function (text: string, card?: Shell) {
+  p.agentSay = function (text: string, card?: Shell, identity?:{id:string;messageBinding:{conversationId:string;session:unknown}},current?:()=>boolean) {
     this.setState((previous: Shell) => {
+      if(current&&!current())return null;
       const chat = previous.chat === 'full' ? 'full' : 'sheet';
       // Recovery and a chat reply can publish the same pending action. Decide
       // inside the state update so either arrival order retains one approval.
       if (card?.proposalId && (previous.msgs || []).some((message: Shell) => message.card?.proposalId === card.proposalId)) return { chat };
-      return { chat, msgs: [...(previous.msgs || []), { id: crypto.randomUUID(), from: 'agent', text, card: card || null }] };
+      return { chat, msgs: [...(previous.msgs || []), { id: crypto.randomUUID(), ...identity, from: 'agent', text, card: card || null }] };
     });
   };
   p.reply = function () { return { text: 'Connect an agent to continue.' }; };
@@ -668,17 +857,23 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       return;
     }
     if (card.proposalId && !card.done) {
-      if(this.pendingActionApproval)return;
+      if(card.reviewUnavailable||this.pendingActionApproval)return;
+      if(card.expiresAt<=Date.now()){
+        this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===message.id?{...m,card:{...m.card,reviewUnavailable:true,title:'Review expired',sub:'This review has expired. Request a new action if still needed.'}}:m)}));return;
+      }
       try {
         context(this);
         const session=connectionController.getSnapshot().session;
         if(card.recovered&&JSON.stringify(card.proposalSession)!==JSON.stringify(session))throw Error('The agent changed. Review this action again.');
+        if(card.reviewDestination==='home'){this.goHome('sheet');return;}
         this.pendingActionRecoveryAbort?.abort();
         const approval=this.pendingActionApproval=new AbortController();
+        this.pendingActionApprovalProposalId=card.proposalId;
         this.pendingActionApprovalContext=alphaClient.getState().context;this.pendingActionApprovalSession=session;
         const sessionId = session?.sessionId;
         const beforeView = this.S().view;
         let receipt;
+        const readLease=this.readReplyLeases?.get(card.proposalId);
         try { receipt = card.recovered?await connectionController.approvePendingAction(card.proposalId,alphaClient.getState().context,approval.signal):await alphaClient.approve(card.proposalId); }
         catch (error) {
           // Navigation may cancel the context-bound chat wait after the effect.
@@ -686,12 +881,18 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           receipt = await connectionController.actionReceipt(card.proposalId, sessionId);
           if (!receipt) throw error;
         }
-        if (!this.live || connectionController.getSnapshot().session?.sessionId !== sessionId) return;
-        this.setState({ msgs: this.S().msgs.map((m: Shell) => m.id === message.id ? { ...m, card: { ...m.card, done: true, sub: receipt.summary, title: receipt.status === 'succeeded' ? 'Completed' : 'Not completed' } } : m) });
-        if (this.S().view !== beforeView) this.toast(receipt.summary);
-        else this.agentSay(receipt.summary);
-      } catch (e) { if(this.live&&(!card.recovered||JSON.stringify(card.proposalSession)===JSON.stringify(connectionController.getSnapshot().session)))this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
-      finally {this.pendingActionApproval=null;if(this.live)context(this);}
+        if (!this.live || JSON.stringify(connectionController.getSnapshot().session)!==JSON.stringify(session)||readLease&&!connectionController.readReplyCurrent(readLease.binding)) return;
+        this.setState((previous:Shell)=>this.live&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(session)&&(!readLease||connectionController.readReplyCurrent(readLease.binding))?{ msgs: previous.msgs.map((m: Shell) => m.id === message.id ? { ...m, card: { ...m.card, done: true, sub: receipt.summary, title: receipt.status === 'succeeded' ? 'Completed' : 'Not completed' } } : m) }:null);
+        if(receipt.readReply&&this.readReplyLeases?.has(receipt.proposalId)){
+          try{await completeReadReply(this,receipt);}
+          catch{if(this.live&&readLease?.phase==='unconfirmed')this.setState((previous:Shell)=>this.live&&readLease.phase==='unconfirmed'&&connectionController.readReplyCurrent(readLease.binding)?{msgs:previous.msgs.map((m:Shell)=>m.id===message.id?{...m,card:{...m.card,sub:receipt.summary+' The answer is unconfirmed. Check conversation history before trying again.'}}:m)}:null);}
+        }else {
+          if(receipt.status!=='succeeded'){this.cancelReadReplyCompletions?.(receipt.proposalId);this.retireReadReplyVoice?.(receipt.proposalId);}
+          if (this.S().view !== beforeView) this.toast(receipt.summary);
+          else this.agentSay(receipt.summary);
+        }
+      } catch (e) { const readLease=this.readReplyLeases?.get(card.proposalId);if(this.live&&(!readLease||readLease.phase!=='cancelled'&&connectionController.readReplyCurrent(readLease.binding))&&(!card.recovered||JSON.stringify(card.proposalSession)===JSON.stringify(connectionController.getSnapshot().session)))this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
+      finally {this.pendingActionApproval=null;this.pendingActionApprovalProposalId=null;if(this.live)context(this);}
     } else if (card.go) this.openView(card.go.view, card.go.patch);
   };
   p.startVoice = async function () {
@@ -701,7 +902,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       else this.toast(result.message || 'Speech recognition is unavailable on this device.');
     } catch { this.toast('Speech recognition is unavailable on this device.'); }
   };
-  p.stopVoice = function () { alphaClient.cancel(); this.setState({ voice: 'off', typing: false }); };
+  p.stopVoice = function () { this.pendingActionApproval?.abort();this.cancelReadReplyCompletions?.();alphaClient.cancel(); this.setState({ voice: 'off', typing: false }); };
   views.notes.render = function (state: Shell, api: Shell) {
     const out = notesRender({ ...state, record: false }, api);
     out.storageStatus=state.storageStatus;

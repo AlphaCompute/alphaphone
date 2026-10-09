@@ -86,16 +86,25 @@ public final class AlphaConnectionPlugin extends Plugin {
   if (parser.nextClean() != 0) throw new IllegalArgumentException();
   return parsed;
  }
- /** value is serialized JSON; native code never interprets credential fields. */
+ /** Serialized JSON metadata cannot supply native identity or bypass runtime retirement. */
  @PluginMethod public void secureWrite(PluginCall call) {
+  final String name;final long intent;
+  try{name=RendererCredentialSlots.requireAllowed(call.getString("slot"));intent=credentialIntent(name);}
+  catch(Exception invalid){call.reject("Secure storage write failed");return;}
   submit(call,() -> {
    try {
-    writeCredentialSlot(RendererCredentialSlots.requireAllowed(call.getString("slot")), call.getString("value"));
+    storage(intent).writeCredentialSlot(name,call.getString("value"));
     call.resolve();
    } catch (Exception error) { call.reject("Secure storage write failed"); }
   });
  }
- private AlphaCredentialStore storage(){return new AlphaCredentialStore(getContext());}
+ private long credentialIntent(String name){
+  return "cloud:production".equals(name)||"cloud:staging".equals(name)?AlphaLocalAgentPlugin.reserveCredentialIntent():0;
+ }
+ private AlphaCredentialStore storage(long intent){
+  return new AlphaCredentialStore(getContext(),()->{if(destroyed)throw new IllegalStateException("Connection closed");if(intent!=0)AlphaLocalAgentPlugin.requireCredentialIntent(intent);});
+ }
+ private AlphaCredentialStore storage(){return new AlphaCredentialStore(getContext(),()->{if(destroyed)throw new IllegalStateException("Connection closed");});}
  void writeCredentialSlot(String name,String value)throws Exception{storage().writeCredentialSlot(name,value);}
  String readCredentialSlot(String name)throws Exception{return storage().readCredentialSlot(name);}
  void removeCredentialSlot(String name)throws Exception{storage().removeCredentialSlot(name);}
@@ -123,9 +132,12 @@ public final class AlphaConnectionPlugin extends Plugin {
   });
  }
  @PluginMethod public void secureRemove(PluginCall call) {
+  final String name;final long intent;
+  try{name=RendererCredentialSlots.requireAllowed(call.getString("slot"));intent=credentialIntent(name);}
+  catch(Exception invalid){call.reject("Secure storage removal failed");return;}
   submit(call,() -> {
    try {
-    removeCredentialSlot(RendererCredentialSlots.requireAllowed(call.getString("slot")));
+    storage(intent).removeCredentialSlot(name);
     call.resolve();
    } catch (Exception error) { call.reject("Secure storage removal failed"); }
   });
@@ -147,6 +159,21 @@ public final class AlphaConnectionPlugin extends Plugin {
    output.write(buffer, 0, count);
   }
   return output.toByteArray();
+ }
+ /** Fixed authenticated identity route; no renderer URL or identity field is accepted. */
+ static JSONObject readCloudIdentity(String token)throws Exception {
+  if(!AlphaLocalAgentPlugin.validProviderToken(token,16384))throw new IllegalArgumentException();
+  HttpURLConnection connection=(HttpURLConnection)validatedUrl("https://api.eliza.app/api/v1/user",false).toURL().openConnection();
+  try{
+   connection.setInstanceFollowRedirects(false);connection.setUseCaches(false);
+   connection.setConnectTimeout(20000);connection.setReadTimeout(20000);connection.setRequestMethod("GET");
+   connection.setRequestProperty("Accept","application/json");connection.setRequestProperty("Authorization","Bearer "+token);
+   if(connection.getResponseCode()!=200||connection.getContentLengthLong()>RESPONSE_LIMIT)throw new SecurityException("Cloud identity unavailable");
+   byte[] bytes;try(InputStream input=connection.getInputStream()){bytes=readBounded(input,RESPONSE_LIMIT);}
+   JSONObject response=(JSONObject)parseJson(new String(bytes,StandardCharsets.UTF_8));
+   if(!Boolean.TRUE.equals(response.opt("success")))throw new SecurityException("Cloud identity unavailable");
+   return LocalAgentProviderAdmission.verifiedCloudIdentity(response.getJSONObject("data"));
+  }finally{connection.disconnect();}
  }
  static boolean validDeviceCapabilities(String value) {
   if(value==null||value.contains("\r")||value.contains("\n"))return false;
@@ -189,7 +216,8 @@ public final class AlphaConnectionPlugin extends Plugin {
     }
     int responseLimit=url.getPath().startsWith("/api/v1/eliza/google/gmail/inbox-v1/")?8*1024*1024:RESPONSE_LIMIT;
     String method = call.getString("method", "GET");
-    if (!Set.of("GET", "POST").contains(method)) throw new IllegalArgumentException();
+    String route=url.getRawPath()+(url.getRawQuery()==null?"":"?"+url.getRawQuery());
+    if((AutomationsRoutes.owns(url.getPath())||AutomationsRoutes.owns(route))?!AutomationsRoutes.allowed(route,method):!Set.of("GET","POST").contains(method))throw new IllegalArgumentException();
     if("GET".equals(method)&&("api.eliza.app".equals(url.getHost())||"api-staging.eliza.app".equals(url.getHost()))&&url.getPath().matches("/api/auth/cli-session/[0-9a-fA-F-]{36}")){
      // Gate only future dispatch. A claim already sent must finish and may be saved while backgrounded.
      long expiresAt=call.getLong("expiresAt",System.currentTimeMillis()+30000);
@@ -218,7 +246,7 @@ public final class AlphaConnectionPlugin extends Plugin {
     }
     String body = call.getString("body");
     if (body != null) {
-     if (!"POST".equals(method)) throw new IllegalArgumentException();
+     if (!("POST".equals(method)||"PUT".equals(method)&&AutomationsRoutes.allowed(route,method))) throw new IllegalArgumentException();
      byte[] encoded = body.getBytes(StandardCharsets.UTF_8);
      if (encoded.length > responseLimit) throw new IllegalArgumentException();
      parseJson(body); connection.setDoOutput(true); connection.setFixedLengthStreamingMode(encoded.length);

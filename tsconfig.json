@@ -22,6 +22,15 @@
     "paths": {
       "@elizaos/contracts/native-notes-query": [
         "./.eliza/client-features/packages/contracts/src/native-notes-query.ts"
+      ],
+      "@elizaos/voice/turn": [
+        "./.eliza/client-features/packages/voice/src/turn.ts"
+      ],
+      "@elizaos/core/speech": [
+        "./.eliza/client-features/packages/core/src/speech.ts"
+      ],
+      "@elizaos/ui/voice/batch-conversation": [
+        "./.eliza/client-features/packages/ui/src/voice/batch-conversation.ts"
       ]
     }
   },

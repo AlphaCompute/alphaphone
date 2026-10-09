@@ -42,7 +42,7 @@ for(const mode of ['reset','leave'])test(`workflow request recovery uses the cap
  const dialog=page.getByRole('dialog',{name:'Browser workflow request recovery'});await expect(dialog).toContainText('does not cancel executions');
  if(mode==='leave'){await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));await expect(dialog).toHaveCount(0);expect(await page.evaluate(key=>localStorage.getItem(key),key)).toBe(' {unreadable intent ');return;}
  const download=page.waitForEvent('download');await dialog.getByRole('button',{name:'Download workflow requests backup',exact:true}).click();const stream=await(await download).createReadStream(),chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk));expect(JSON.parse(Buffer.concat(chunks).toString()).entries[key]).toBe(' {unreadable intent ');
- await dialog.getByRole('button',{name:'Reset browser workflow requests',exact:true}).click();await dialog.getByRole('button',{name:'Confirm workflow requests reset',exact:true}).click();await expect(dialog).toHaveCount(0);
+ await dialog.getByRole('button',{name:'Reset app workflow requests',exact:true}).click();await dialog.getByRole('button',{name:'Confirm workflow requests reset',exact:true}).click();await expect(dialog).toHaveCount(0);
  await expect.poll(()=>page.evaluate(async()=>{const session=(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().session;return session?{origin:session.origin,ownerId:session.ownerId,agentId:session.agentId}:null;})).toEqual(capturedOwner);
  expect(await page.evaluate(async owner=>{const {WorkflowIntentStore}=await import('/src/runtime/workflow-intents.ts');return await new WorkflowIntentStore(owner).load();},capturedOwner)).toEqual({});
 });

@@ -1,3 +1,4 @@
+import {browserCloudDevBridge} from './scripts/browser-cloud-dev-bridge.ts';
 import {localOcrAssets} from './scripts/local-ocr-assets.ts';
 import {browserSpeechAssets} from './scripts/browser-speech-vite.ts';
 import { browserPdfAssets } from './scripts/browser-pdf-assets.ts';
@@ -100,7 +101,7 @@ function productionSurface(): Plugin[] {
 
 export default defineConfig({
   root: "apps/app",
-  plugins: [productionSurface(), localOcrAssets(), browserSpeechAssets(), browserPdfAssets(), browserFullReload(), react(), localAgentDevBridge()],
+  plugins: [productionSurface(), localOcrAssets(), browserSpeechAssets(), browserPdfAssets(), browserFullReload(), react(), localAgentDevBridge(), browserCloudDevBridge()],
   define: {
     'import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS': JSON.stringify(flagOn ? '1' : ''),
     __APP_VERSION__: JSON.stringify(appVersion),
@@ -113,6 +114,9 @@ export default defineConfig({
   optimizeDeps: { include: ['onnxruntime-web/wasm'] },
   resolve: {
     alias: {
+      "@elizaos/voice/turn": fileURLToPath(new URL("./.eliza/client-features/packages/voice/src/turn.ts",import.meta.url)),
+      "@elizaos/core/speech": fileURLToPath(new URL("./.eliza/client-features/packages/core/src/speech.ts",import.meta.url)),
+      "@elizaos/ui/voice/batch-conversation": fileURLToPath(new URL("./.eliza/client-features/packages/ui/src/voice/batch-conversation.ts",import.meta.url)),
       "@elizaos/contracts/native-notes-query": fileURLToPath(new URL("./.eliza/client-features/packages/contracts/src/native-notes-query.ts",import.meta.url)),
       // The external-WebAssembly build: the bundled variant would make Vite emit a second,
       // unverified copy of the 14 MB runtime into assets/ (and so into every APK).

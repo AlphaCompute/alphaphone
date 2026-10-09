@@ -18,9 +18,11 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   view.state = { ...view.state, mails: [], sent: [], open: null, compose: null, q: null, nativeMailSelection: null };
   view.reply = () => null;
   let shell: Bag | undefined, api: Bag | undefined;
-  let accounts: GmailAccount[] = [], messages: GmailMessage[] = [];
+  let accounts: GmailAccount[] = [], messages: GmailMessage[] = [], accountsChecked = false;
   let loadedQuery = '', nextPageToken: string | null = null, folder: 'inbox' | 'sent' = 'inbox';
-  // Only a boolean leaves this closure: the Home badge reflects the last loaded Inbox page(s).
+  // Home retains only metadata from Inbox pages the user already loaded, never message bodies.
+  let inboxPreview: {sessionId:string;accountId:string;messages:Pick<GmailMessage,'id'|'subject'|'from'|'unread'>[];more:boolean}|null=null;
+  let homeFailure:GmailFailureKind|null=null;
   let hasUnread = false;
   let failure: { kind: GmailFailureKind; retry: () => void } | null = null;
   // A moved email (From switcher) names its target account and how to return it to the source.
@@ -45,7 +47,10 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   provider.setEditor((proposal,reference)=>drafts.editProvider(proposal,reference));
   const readable = () => accounts.filter(gmailReadable);
   const currentQuery = () => String(api?.get('inbox')?.q || '').trim() || (folder === 'sent' ? 'in:sent' : 'in:inbox');
-  const recountUnread = () => { if (loadedQuery === 'in:inbox') hasUnread = messages.some(m => m.unread); };
+  const recountUnread = (more=inboxPreview?.more??nextPageToken!==null) => {
+    if (loadedQuery === 'in:inbox') inboxPreview={sessionId:connectionController.getCloudClient()?.sessionId||'',accountId:selected,messages:messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),more};
+    hasUnread=!!inboxPreview?.messages.some(m=>m.unread);
+  };
   drafts.setFromSwitch({ count: () => readable().length, cycle: () => void switchFrom() });
   provider.setObservers({
     // A stale review was discarded without dispatch; reload the open message so the user sees its current state.
@@ -53,15 +58,17 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     receipt: receipt => {
       const id = typeof receipt.providerResult?.messageId === 'string' ? receipt.providerResult.messageId : '';
       if (!id || !['archive', 'trash'].includes(receipt.kind) || !messages.some(m => m.id === id)) return;
-      messages = messages.filter(m => m.id !== id); recountUnread();
+      messages = messages.filter(m => m.id !== id);
+      if(inboxPreview?.accountId===selected)inboxPreview.messages=inboxPreview.messages.filter(m=>m.id!==id);
+      recountUnread();
       if (body?.message.id === id) { body = null; thread = null; publish({ open: null, nativeMailSelection: null }); } else publish();
     },
   });
   function clear() {
     void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;provider.reset(); drafts.reset();
     generation++; operation?.abort(); operation = null;
-    thread=null; accounts = []; messages = []; selected = ''; loadedQuery = ''; nextPageToken = null; body = null; phase = 'idle'; revision = '';
-    hasUnread = false; failure = null; pendingCompose = null; disconnecting = false; resumeDraftFor = '';
+    thread=null; accounts = []; accountsChecked = false; messages = []; selected = ''; loadedQuery = ''; nextPageToken = null; body = null; phase = 'idle'; revision = '';
+    hasUnread = false; inboxPreview=null;homeFailure=null; failure = null; pendingCompose = null; disconnecting = false; resumeDraftFor = '';
     readStateInFlight.clear(); readStateUnconfirmed.clear(); seenCursors = new Set();
     status = 'Connect Eliza Cloud to use Gmail';
     publish({ mails: [], sent: [], open: null, compose: null, nativeMailSelection: null });
@@ -80,9 +87,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   async function work(label: string, task: (binding: NonNullable<ReturnType<typeof connectionController.getCloudClient>>, signal: AbortSignal, valid: () => boolean) => Promise<void>, retry?: () => void, keep = false) {
     if (operation) return;
     const binding = connectionController.getCloudClient();
-    if (!binding) { connectionController.open(); return; }
+    if (!binding) { connectionController.openCloudAccount(); return; }
     const token = ++generation, controller = new AbortController();
-    operation = controller; phase = 'busy'; status = label; failure = null; publish();
+    operation = controller; phase = 'busy'; status = label; failure = null; homeFailure=null;publish();
     const valid = () => token === generation && !controller.signal.aborted && binding.sessionId === connectionController.getCloudClient()?.sessionId;
     try { await task(binding, controller.signal, valid); }
     catch (error) {
@@ -91,6 +98,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       }
       if (valid()) {
         const classified = classifyGmailFailure(error, 'read');
+        homeFailure=classified.kind;
+        if(classified.kind==='revoked'){inboxPreview=null;hasUnread=false;}
         if (!keep) { messages = []; nextPageToken = null; }
         body = null; thread = null; phase = 'error'; status = classified.message;
         failure = retry ? { kind: classified.kind, retry } : null;
@@ -104,8 +113,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     await work('Checking Gmail connection…', async ({ client }, signal, valid) => {
       const result = await client.gmailAccounts(signal);
       if (!valid()) return;
-      const previous=selected;accounts = result;
+      const previous=selected;accounts = result; accountsChecked = true;
       if (!accounts.some(a => a.connectionId === selected && a.connected && a.grantedCapabilities.includes('google.gmail.triage'))) selected = accounts.find(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage'))?.connectionId || '';
+      if(previous!==selected){inboxPreview=null;hasUnread=false;}
       const retained=preserveSelection&&!!selected&&selected===previous;
       if(!retained){void attachmentNative.cancel().catch(()=>{});attachmentView=null;contextReview=null;thread=null;messages=[];body=null;}
       void provider.bind(selected); void drafts.bind(selected, accounts.find(a => a.connectionId === selected)?.label || '');
@@ -119,7 +129,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   function selectAccount(a: GmailAccount, force = false) {
     if (operation && !force) return;
     if (operation) { generation++; operation.abort(); operation = null; phase = 'ready'; }
-    void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;selected = gmailReadable(a) ? a.connectionId! : ''; void provider.bind(selected); void drafts.bind(selected, a.label); messages = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; failure = null;
+    void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;inboxPreview=null;homeFailure=null;hasUnread=false;selected = gmailReadable(a) ? a.connectionId! : ''; void provider.bind(selected); void drafts.bind(selected, a.label); messages = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; failure = null;
     status = selected ? 'Loading Gmail…' : 'This account needs Gmail authorization';
     publish({ open: null, nativeMailSelection: null });
     if (selected) void load();
@@ -152,7 +162,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if (result.accounts) accounts = result.accounts;
       if (result.outcome === 'disconnected') {
         void attachmentNative.cancel().catch(()=>{}); contextReview = null; attachmentView = null;
-        messages = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; hasUnread = false;
+        messages = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; hasUnread = false;inboxPreview=null;
         selected = readable()[0]?.connectionId || '';
         void provider.bind(selected); void drafts.bind(selected, accounts.find(a => a.connectionId === selected)?.label || '');
       }
@@ -191,7 +201,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       nextPageToken = next && !seenCursors.has(next) ? next : null;
       if (nextPageToken) seenCursors.add(nextPageToken);
       loadedQuery = query; revision = result.syncedAt;
-      recountUnread();
+      recountUnread(result.nextPageToken!=null);
       if (!pageToken) body = null;
       status = messages.length ? `${messages.length} messages loaded` : query === 'in:inbox' ? 'Your Inbox is empty' : query === 'in:sent' ? 'No sent messages' : 'No messages match this search';
       publish(pageToken ? {} : { open: null, nativeMailSelection: null });
@@ -219,6 +229,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if (!current()) return;
       if (!result) { if (explicit) api?.toast('Read state was not confirmed. Refresh to check it before trying again.'); return; }
       const update = (m: GmailMessage) => m.id === message.id ? { ...m, unread } : m;
+      if(inboxPreview?.sessionId===binding.sessionId&&inboxPreview.accountId===accountId)inboxPreview.messages=inboxPreview.messages.map(m=>m.id===message.id?{...m,unread}:m);
       messages = messages.map(update); recountUnread();
       if (thread) thread = { ...thread, messages: thread.messages.map(row => row.message.id === message.id ? { ...row, message: update(row.message), historyId: result.historyId ?? row.historyId } : row) };
       if (body?.message.id === message.id) body = { ...body, message: update(body.message), historyId: result.historyId ?? body.historyId };
@@ -298,6 +309,18 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     return false;
   };
   view.badge = () => hasUnread;
+  // Home uses only already-authorized cached metadata; opening Home never reads mail.
+  const homeRender = p.renderVals;
+  p.renderVals = function () {
+    const out = homeRender.call(this), binding=connectionController.getCloudClient(),connected = readable().length > 0;
+    const cached=inboxPreview?.sessionId===binding?.sessionId&&inboxPreview?.accountId===selected?inboxPreview:null;
+    const unread=cached?.messages.filter(m=>m.unread)||[],pending=phase==='busy'||phase==='scheduled';
+    const count=unread.length?`${unread.length}${cached?.more?'+':''} unread`:'';
+    return {...out,homeAttentionLabel:count?`Open Inbox: ${count} email${unread.length===1?'':'s'}`:!binding||accountsChecked&&!connected?'Connect email':'Open Inbox',
+      homeInboxCount:count,homeInboxRows:unread.slice(0,2).map(m=>({subject:m.subject||'(no subject)',from:m.from})),homeInboxHasRows:unread.length>0,
+      homeInboxTitle:unread.length?'':homeFailure==='revoked'?'Reconnect email':homeFailure?'Email unavailable':pending?'Loading email…':cached&&!cached.more?'No unread email':!binding||accountsChecked&&!connected?'Connect email':'Inbox',
+      homeInboxStatus:homeFailure?'Open to retry':pending?'Updating email…':cached?(cached.more?'From loaded messages':accounts.find(a=>a.connectionId===selected)?.label||''):connected?'Open to load email':binding&&!accountsChecked?'Open to check email':''};
+  };
   // Mail content is never sent to the agent automatically, so chips ask only for help the agent can give.
   // Sharing one message goes through the explicit "Review email with agent" review.
   view.suggestions = (st: Bag) => drafts.render().composing ? ['Help me write this email'] : st.open != null ? ['Help me write a reply'] : ['Help me write an email', 'Help me organize my inbox'];
@@ -349,7 +372,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       ...(selected&&!provider.capabilities()?.mailboxMutations?[chip('Authorize mailbox changes',()=>void connect('mailbox'))]:[]),
       ...accounts.filter(a => a.connectionId).map(a => chip(a.label, () => selectAccount(a), a.connectionId === selected)),
       ...(selected ? [chip('Disconnect Gmail', () => void disconnect())] : []),
-    ] : [chip('Connect Eliza Cloud', () => connectionController.open())];
+    ] : [chip('Connect Eliza Cloud', () => connectionController.openCloudAccount())];
     chips.push(...drafts.chips(chip), ...provider.chips(chip));
 
     if (operation && !disconnecting) chips.push(chip('Cancel', cancelRead));
@@ -390,7 +413,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if ((event as CustomEvent).detail?.source === 'inbox') return;
       if (api?.isActive() && !operation) { void refreshAccounts(); return; }
       // Drop provider content now; the next open re-checks accounts and rebinds drafts per account.
-      generation++; operation?.abort(); operation = null; messages = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; hasUnread = false; failure = null;
+      generation++; operation?.abort(); operation = null; messages = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; hasUnread = false; inboxPreview=null;homeFailure=null;accountsChecked=false;failure = null;
       phase = 'idle'; status = 'Checking Gmail connection…'; publish({ open: null, nativeMailSelection: null });
     };
     window.addEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);

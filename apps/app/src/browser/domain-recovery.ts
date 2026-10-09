@@ -11,7 +11,7 @@ export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'
  const text=document.createElement('p');text.textContent=description;
  const status=document.createElement('p');status.setAttribute('role','status');status.textContent=`Reading saved ${name}…`;
  const button=(label:string)=>{const b=document.createElement('button');b.textContent=label;b.style.cssText='min-height:44px;margin:4px;padding:10px;font:inherit';return b;};
- const backup=button(`Download ${name} backup`),legacy=button(`Download older ${name} copy`),reset=button(`Reset ${storage} ${name}`),close=button('Close recovery');backup.disabled=reset.disabled=true;legacy.hidden=true;
+ const backup=button(`Download ${name} backup`),legacy=button(`Download older ${name} copy`),reset=button(`Reset ${storage==='browser'?'app':storage} ${name}`),close=button('Close recovery');backup.disabled=reset.disabled=true;legacy.hidden=true;
  const download=(raw:string,name:string)=>{
   if(busy||closed)return;
   if(storage==='device'){
@@ -32,7 +32,7 @@ export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'
  backup.onclick=()=>{if(captured?.raw!==null&&captured?.raw!==undefined)download(captured.raw,captured.format==='domain'?`Alpha-${name}-recovery.txt`:`Alpha-${name}-store-recovery.txt`);};
  legacy.onclick=()=>{if(captured?.legacy!==null&&captured?.legacy!==undefined)download(captured.legacy,`Alpha-${name}-older-copy.txt`);};
  reset.onclick=()=>{if(busy||closed||!captured)return;if(!confirming){confirming=true;reset.textContent=`Confirm ${name} reset`;status.textContent=`This clears the active ${name}. Download any copies you want to keep before confirming.`;return;}busy=true;reset.disabled=true;
-  void (async()=>{try{if(document.hidden)throw Error('Reset cancelled.');await domain.reset(captured!,abort.signal);if(!closed){status.textContent=`${name[0].toUpperCase()+name.slice(1)} reset. Reloading…`;location.reload();}}catch(error){if(!closed){status.textContent=error instanceof Error?error.message:`Reset could not be confirmed. Reload to inspect the ${name}.`;confirming=false;reset.textContent=`Reset ${storage} ${name}`;reset.disabled=false;}}finally{busy=false;}})();
+  void (async()=>{try{if(document.hidden)throw Error('Reset cancelled.');await domain.reset(captured!,abort.signal);if(!closed){status.textContent=`${name[0].toUpperCase()+name.slice(1)} reset. Reloading…`;location.reload();}}catch(error){if(!closed){status.textContent=error instanceof Error?error.message:`Reset could not be confirmed. Reload to inspect the ${name}.`;confirming=false;reset.textContent=`Reset ${storage==='browser'?'app':storage} ${name}`;reset.disabled=false;}}finally{busy=false;}})();
  };
  const importLabel=document.createElement('label');importLabel.textContent='Choose calendar backup';
  const file=document.createElement('input');file.type='file';file.accept='.txt,.json,application/json,text/plain';file.setAttribute('aria-label','Choose calendar backup');importLabel.append(file);

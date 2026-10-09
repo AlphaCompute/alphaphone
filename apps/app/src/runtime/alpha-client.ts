@@ -1,5 +1,7 @@
 /** Browser-safe boundary. The composition root supplies an authenticated transport;
  * this module neither invents endpoints nor handles credentials. */
+import type {NativeNotesReadReplyOrigin,NativeNotesReadReplyHint} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
+export type {NativeNotesReadReply,NativeNotesReadReplyHint} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
 export type AlphaView =
   | "home"
   | "assistant"
@@ -48,6 +50,12 @@ export interface ContextEnvelope extends ViewContext {
 }
 export interface ActionProposal {
   id: string;
+  /** Server-retained original request correlation, never approval authority. */
+  readReply?: {origin:NativeNotesReadReplyOrigin;digest:string};
+  /** Derived by the owning SDK from a validated Notes read operation. */
+  privateNotesRead?:true;
+  /** Navigation-only presentation; the SDK still refuses reads outside Home/Notes. */
+  reviewDestination?:'home';
   title: string;
   /** Human-readable exact target/action review. Must contain no secret values. */
   description: string;
@@ -57,14 +65,36 @@ export interface ActionProposal {
   expiresAt: number;
   contextRevision: number;
 }
-export interface AgentReply {
+export interface ConversationMessageTarget {
+  messageId: string;
+  conversationId: string;
+  session: VerifiedSession;
   text: string;
+  from: 'user' | 'agent';
+}
+export type VoiceTurnSignal = import('@elizaos/voice/turn').VoiceTurnSignal;
+export type ChatChannel = 'DM' | 'VOICE_DM';
+export interface VoiceConversationBinding { conversationId:string;session:VerifiedSession;connectionEpoch:number }
+export interface ReadReplyBinding extends VoiceConversationBinding {cloudAccount:string}
+/** Local host projection invoked only inside the canonical claimed view effect. Never wire metadata or authority. */
+export interface VoiceNavigationContinuation {
+ apply(view:string,current:()=>void,commit:(chat:string,onCommitted:(context:ContextEnvelope)=>void)=>Promise<boolean>):Promise<boolean>;
+ finish(delivered:boolean):ContextEnvelope|undefined;
+}
+export interface AgentReply {
+  messageId?: string;
+  userMessageId?: string;
+  messageBinding?: { conversationId: string; session: VerifiedSession };
+  text: string;
+  actionResults?: readonly unknown[];
   proposals?: ActionProposal[];
 }
 export interface OperationReceipt {
   proposalId: string;
   status: "succeeded" | "denied" | "cancelled" | "failed" | "unknown";
   summary: string;
+  /** Present only after a confirmed applied native read receipt. */
+  readReply?:NativeNotesReadReplyHint;
 }
 export interface VerifiedSessionTransport {
   /** Must be server-verified, not derived from a user-entered owner ID. */
@@ -72,9 +102,14 @@ export interface VerifiedSessionTransport {
   send(input: {
     requestId: string;
     text: string;
+    channelType?: ChatChannel;
+    expectedConversationId?: string;
+    voiceTurnSignal?: VoiceTurnSignal;
     context: ContextEnvelope;
     signal: AbortSignal;
     onText?:(text:string)=>void;
+    onReplyReady?:(results:readonly unknown[]|undefined)=>void;
+    replyTo?: ConversationMessageTarget;
   }): Promise<AgentReply>;
   /** Server must revalidate ownership, context/preconditions, approval and dedupe. */
   execute(input: {
@@ -311,15 +346,19 @@ export class AlphaClient {
       return reply.text;
     },signal,automatic);
   }
-  async send(text: string, onText?:(text:string)=>void): Promise<AgentReply> {
+  async send(text: string, onText?:(text:string)=>void, replyTo?:ConversationMessageTarget,onReplyReady?:(results:readonly unknown[]|undefined)=>void,options?:{channelType:ChatChannel;requestId?:string;signal?:AbortSignal;expectedConversationId?:string;voiceTurnSignal?:VoiceTurnSignal}): Promise<AgentReply> {
     if (!text.trim()) throw new Error("Enter a message.");
+    if(options?.channelType==='VOICE_DM'&&replyTo)throw Error("A voice turn cannot resend or edit a selected message.");
     return this.run(async (transport, context, signal) => {
       let accepting=true;let result:AgentReply;
       try { result = await transport.send({
-        requestId: crypto.randomUUID(),
+        requestId: options?.requestId ?? crypto.randomUUID(),
+        ...(options?{channelType:options.channelType,expectedConversationId:options.expectedConversationId,voiceTurnSignal:options.voiceTurnSignal}:{}),
         text: text.trim(),
+        ...(replyTo?{replyTo}:{}),
         context,
         signal,
+        onReplyReady:results=>{if(!accepting||signal.aborted||this.transport!==transport||this.context.revision!==context.revision)return;onReplyReady?.(results);},
         onText:value=>{if(!accepting||signal.aborted)return;if(typeof value!=='string'||value.length>200000)throw new AlphaClientError('invalid-response','Invalid streamed reply.');onText?.(value);},
       }); } finally {accepting=false;}
       if (signal.aborted)
@@ -358,9 +397,13 @@ export class AlphaClient {
       this.proposals = next;
       return {
         text: result.text,
+        ...(result.messageId?{messageId:result.messageId}:{}),
+        ...(result.userMessageId?{userMessageId:result.userMessageId}:{}),
+        ...(result.messageBinding?{messageBinding:result.messageBinding}:{}),
+        ...(Array.isArray(result.actionResults)?{actionResults:result.actionResults}:{}),
         proposals: [...next.values()].map((p) => ({ ...p })),
       };
-    });
+    },options?.signal);
   }
   /** Call only after the user reviews and explicitly approves this exact proposal. */
   async approve(proposalId: string): Promise<OperationReceipt> {

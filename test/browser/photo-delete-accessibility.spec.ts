@@ -1,4 +1,6 @@
+import {guardCalendarFixture as guardNoMedia} from './calendar-draft-readiness';
 import {test,expect} from '@playwright/test';
+test.beforeEach(async({context,page})=>{await guardNoMedia(context);await page.route(/^https?:\/\/(?!127\.0\.0\.1:|localhost:)/,route=>route.abort());});
 for(const theme of ['light','dark'])for(const height of [915,420])test(`photo deletion review owns focus ${theme} ${height}`,async({page},info)=>{
  await page.setViewportSize({width:412,height});
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));

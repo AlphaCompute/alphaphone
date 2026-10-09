@@ -26,8 +26,8 @@ final class WorkflowNoticePoster implements WorkflowNoticeDelivery.Poster {
  }
  public void post(String id,String title,String body)throws Exception{
   if(!allowed())throw new SecurityException("Notification delivery is disabled");
-  Notification redacted=new Notification.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle("Alpha Phone workflow").setContentText("Unlock to review this notification.").build();
-  Notification.Builder notice=new Notification.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText(body).setStyle(new Notification.BigTextStyle().bigText(body)).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted).setOnlyAlertOnce(true).setAutoCancel(false).setCategory(Notification.CATEGORY_STATUS);
+  Notification redacted=new Notification.Builder(context,CHANNEL).setSmallIcon(R.drawable.notification_icon).setContentTitle("Alpha Phone workflow").setContentText("Unlock to review this notification.").build();
+  Notification.Builder notice=new Notification.Builder(context,CHANNEL).setSmallIcon(R.drawable.notification_icon).setContentTitle(title).setContentText(body).setStyle(new Notification.BigTextStyle().bigText(body)).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted).setOnlyAlertOnce(true).setAutoCancel(false).setCategory(Notification.CATEGORY_STATUS);
   Intent launch=context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
   String token=WorkflowNoticeTapsFactory.create(context).token(id);
   if(launch==null||token==null)throw new IllegalStateException("Workflow notification route unavailable");

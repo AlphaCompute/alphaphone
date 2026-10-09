@@ -12,7 +12,7 @@ export const DENYLIST = Object.freeze([
   'Enter mock mode', 'Try mock mode', 'Exit mock mode', 'mock-mode-banner', 'Mock mode ·',
   '10.0.2.2:2138', 'cloud-staging', 'api-staging.eliza.app',
   'alpha-dev-tools', 'Development connections', 'Development card', 'Device controls',
-  'Browser development device', 'Development reply', '__alpha-local-agent',
+  'Browser development device', 'Development reply', '__alpha-local-agent', '__alpha-browser-cloud',
   'emulator development agent', 'Simulate Clock request',
   'Maya Chen', 'Jordan Park', 'Priya Nair', 'Alex Kim', 'you@gmail.example', 'Ritual Coffee',
   'news.example', 'Design review at', 'Unlock for details',

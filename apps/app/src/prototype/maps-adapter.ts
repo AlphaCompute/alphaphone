@@ -1,3 +1,5 @@
+import {registerPlugin} from '../platform-plugins';
+import {isAndroid} from '../native';
 import {distanceToRoute} from '../maps/route-distance';
 import {NavigationVoice} from '../maps/navigation-voice';
 import {placeShare,routeShare,shareMap,type MapShare} from '../maps/share';
@@ -17,16 +19,18 @@ const coordLabel = (point: Coordinate) => `${point.latitude.toFixed(5)}, ${point
 
 /** Exact prototype chrome with honest no-provider state and real local/native flows. */
 export function installPrototypeMapsAdapter(_Component: unknown, views: Record<string, Bag>): () => void {
+  const device=registerPlugin<{openSettings(input:{page:string}):Promise<unknown>}>('AlphaDevice');
   const module = views.maps; if (!module) return () => {};
   const original = { render: module.render, back: module.back, onLeave: module.onLeave, reply: module.reply, suggestions: module.suggestions, ongoing: module.ongoing };
   let api: Bag | undefined, controller: MapsController | undefined, state: MapsState | undefined;
   let unsubscribe: (() => void) | undefined, selected: Selection | undefined;
   let plane: MapPlane | undefined, planeElement: HTMLElement | undefined, initialized=false, directions=false, originText='', navigating=false, navStep=0, navDistance=0, arrived=false;
   const navigationLocation=new NativeMapsLocation();
+  let mapGeneration=0,mapFailed=false,mapObserver:MutationObserver|undefined;
   let query = '', searching = false, message = '', disposed = false, revision = 0, locating = false;
   const lifecycle={releases:0,hidden:0,permissionHeld:0,providerActivations:0,lastRelease:''};
   let initialization: Promise<void> | undefined, searchIntent = 0;
-  const navigationVoice=new NavigationVoice(()=>{message='Voice guidance paused. Tap Enable voice guidance to retry.';invalidate();});
+  const navigationVoice=new NavigationVoice(error=>{message=(error instanceof Error?error.message+' ':'')+'Voice guidance paused. Tap Enable voice guidance to retry.';invalidate();});
   const searchIdentity = {};
   let pendingHandoff: {query:string;intent:number}|undefined;
   let sharing: {abort:AbortController;current:()=>boolean}|undefined;
@@ -81,7 +85,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     sharing?.abort.abort();sharing=undefined;navigationVoice.pause();
     lifecycle.releases++;lifecycle.lastRelease=cancelIntent?'leave-or-background':'provider-switch';message='';
     if(cancelIntent){++searchIntent;discardHandoff();}
-    plane?.destroy(); plane=undefined; planeElement=undefined; directions=false; navigating=false; void navigationLocation.stop().catch(()=>{});
+    ++mapGeneration;mapObserver?.disconnect();mapObserver=undefined;mapFailed=false;plane?.destroy(); plane=undefined; planeElement=undefined; directions=false; navigating=false; void navigationLocation.stop().catch(()=>{});
     clearMapsSelection(); ++revision; locating = false; unsubscribe?.(); unsubscribe = undefined;
     const old = controller; controller = undefined; state = undefined;
     void old?.leave().catch(error => { message = failure(error).message; });
@@ -116,7 +120,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
       message='';void ensure().search(requestedQuery);
     })();
   }
-  function locate() { discardHandoff();message = ''; locating = true; if(!directions)selected = undefined; searching = false; void ensure().locate(); invalidate(); }
+  function locate() { if(disposed||locating||document.hidden||!api?.isActive())return;discardHandoff();message = ''; locating = true; if(!directions)selected = undefined; searching = false; void ensure().locate(); invalidate(); }
   function save() {
     if (!selected) return;
     try {
@@ -149,14 +153,28 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     const error = snapshot.saved.error || snapshot.position.error || snapshot.search.error || snapshot.route.error;
     const pending = locating || snapshot.search.phase === 'loading';
     const unconfigured = snapshot.provider.status === 'unconfigured';
-    const status = snapshot.route.error?.message || message || error?.message || (pending ? 'Finding location…' : unconfigured && regionalDiagnostics().configured && regionalDiagnostics().error ? 'Regional Maps is unavailable. Submit a search to retry the configured connection.' : unconfigured ? 'Maps provider not connected. Search and route planning need a connection. Enter latitude, longitude or use Recenter to save a place.' : (regionalMap()?.region || 'Regional Maps'));
+    const region=regionalMap(),diagnostic=regionalDiagnostics();
+    const point=selected?.coordinate;
+    const outsideCoverage=!!point&&!!region&&(point.longitude<region.bounds[0]||point.latitude<region.bounds[1]||point.longitude>region.bounds[2]||point.latitude>region.bounds[3]);
+    const locationState=locating?'loading':snapshot.position.phase==='ready'||!!selected?'ready':snapshot.position.error?.code==='permission-denied'?'denied':snapshot.position.phase==='error'?'unavailable':'not-set';
+    const mapState=mapFailed?'error':region?(outsideCoverage?'outside-coverage':planeElement?.dataset.mapReady==='true'?'ready':'loading'):initialization&&diagnostic.configured?'loading':diagnostic.error?'error':'unconfigured';
+    const mapStatus=mapFailed?'Map rendering is unavailable. Retry the map, or use coordinates and saved places.':outsideCoverage?`This location is outside ${region!.region} map coverage. Its coordinates are retained.`:unconfigured&&diagnostic.error?'The configured Maps service is unavailable. Retry the connection or enter coordinates.':unconfigured?'Map tiles are not connected. A Maps provider is needed for the map, search and routes.':mapState==='loading'?'Loading map…':region?.region||'Connected Maps';
+    const status=snapshot.route.error?.message||message||error?.message||(pending?'Finding location…':mapStatus);
     const isPlace = !!selected && !directions && !navigating;
     Object.assign(data, {
       rootRef:(element:HTMLElement)=>{if(element)element.dataset.mapDiagnostics=JSON.stringify({...regionalDiagnostics(),lifecycle:{...lifecycle,locating,permissionPending:controller?.awaitingLocationPermission()||navigationLocation.awaitingPermission(),position:state?.position.phase}});},
       notNative:false, hasNativeMap:!!regionalMap(),mapAttribution:regionalMap()?.attribution||'',attributionBottom:directions?310:isPlace?410:130,
-      mapRef:(element:HTMLElement)=>{const region=regionalMap();if(element&&region){if(element!==planeElement){plane?.destroy();planeElement=element;plane=new MapPlane(element,region,()=>{message='Map tiles unavailable. Search and saved places remain usable.';invalidate();},data.C);}plane?.update(selected?.coordinate,snapshot.route.value);}},
+      mapRef:(element:HTMLElement)=>{if(element&&region){if(element!==planeElement&&!mapFailed){mapObserver?.disconnect();plane?.destroy();planeElement=element;const generation=++mapGeneration;delete element.dataset.mapReady;delete element.dataset.mapError;try{plane=new MapPlane(element,region,()=>{if(generation!==mapGeneration||planeElement!==element||disposed||!api?.isActive())return;mapFailed=true;invalidate();},data.C);mapObserver=new MutationObserver(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});mapObserver.observe(element,{attributes:true,attributeFilter:['data-map-ready']});}catch{mapFailed=true;element.replaceChildren();queueMicrotask(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});}}plane?.update(outsideCoverage?undefined:selected?.coordinate,snapshot.route.value);}},
       native: true, nativeStatus: status, nativeStatusTop: directions?232:isPlace ? 128 : searching ? 130 : 174,
       nativeSavedEmpty: !saved.length, nativeLocationBusy: locating, nativeLocation: locate,
+      nativeLocationState:locationState,nativeMapState:mapState,nativeMapStatus:status===mapStatus?'':mapStatus,
+      nativeLocationLabel:locating?'Finding location…':locationState==='ready'?'Use current location':'Add location',
+      nativeLocationDenied:locationState==='denied',nativeStatusControls:!searching&&!directions&&!navigating,
+      nativeLocationHelp:locationState==='denied'?(isAndroid?'Allow location in app settings, or enter coordinates.':'Allow location in browser site settings, or enter coordinates.'):'Location access does not share it with your agent.',
+      nativeLocationSettings:()=>{if(disposed||document.hidden||!currentApi.isActive())return;void device.openSettings({page:'privacy'}).catch(()=>{if(!disposed&&currentApi.isActive()){message='Location settings could not be opened. Check device or browser permissions, or enter coordinates.';invalidate();}});},
+      nativeManualLocation:()=>{if(disposed||document.hidden||!currentApi.isActive())return;release();query='';searching=false;message='Enter latitude, longitude in Search, then press Enter.';invalidate();queueMicrotask(()=>{if(!disposed&&!document.hidden&&currentApi.isActive())document.querySelector<HTMLInputElement>('input[aria-label="Search places"]')?.focus();});},
+      nativeMapRetry:mapFailed||!!diagnostic.error,
+      retryNativeMap:()=>{if(disposed||document.hidden||!currentApi.isActive())return;++mapGeneration;mapObserver?.disconnect();mapObserver=undefined;plane?.destroy();plane=undefined;planeElement=undefined;mapFailed=false;message='';if(diagnostic.error&&!initialization)initialization=initializeRegionalMaps().finally(()=>{initialization=undefined;invalidate();});invalidate();},
       mode:navigating?'nav':directions?'dir':isPlace?'place':searching?'results':'base', isBase:!isPlace&&!searching&&!directions&&!navigating,isResults:searching&&!isPlace&&!directions&&!navigating,isPlace,isDir:directions&&!navigating,isNav:navigating,
       showSearch:!directions&&!navigating, showRec:!navigating, grid: '', major: '', fwy: '', water: '', parks: '', rwy: '', routeD: '', doneD: '', hasRoute: false, pins: [], labels: [], meCss: 'display:none;',
       mapDown: () => {}, mapUp: () => {}, q: query, hasQ: !!query, searchLabel: isPlace || searching ? 'Back' : 'Search',

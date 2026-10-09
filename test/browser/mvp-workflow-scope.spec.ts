@@ -7,11 +7,12 @@ for (const theme of ['light', 'dark']) {
     await expect(page.getByText('Receipts to Files', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Morning brief Spoken rundown of your day, weekdays at 7', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Weekly review One-page recap of your week, Fridays at 5', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'New workflow', exact: true }).click();
+    await page.getByRole('button', { name: 'New automation', exact: true }).click();
     await page.getByRole('button', { name: 'Edit When step', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Message trigger', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Email trigger', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Close', exact: true }).click({ position: { x: 4, y: 4 } });
+    await page.screenshot({path:test.info().outputPath('workflow-step-editor-close.png'),animations:'disabled'});
+    await page.getByRole('button', { name: 'Close step editor', exact: true }).click();
     for (const [kind, omitted] of [
       ['Read', ['New messages']],
       ['If', ["It's from a favorite"]],

@@ -51,7 +51,7 @@ function installDevelopmentApps(Component:any,views:Bag,original:Bag){
     // React may not have committed the previous synchronous write yet.
     const value={...this.vget(name),...JSON.parse(snapshots.get('alpha.dev.app.'+name)||'{}'),...patch},stored:Bag={};for(const key of fields)stored[key]=value[key];
     try{writer.write('alpha.dev.app.'+name,JSON.stringify(stored));}
-    catch(error){this.toast(error instanceof Error&&/development|Saved app data changed/.test(error.message)?error.message:'Could not save '+views[name].title+'. Your changes are still here. Try again after freeing browser storage.');throw Error('Development app save failed.');}
+    catch(error){this.toast(error instanceof Error&&/development|Saved app data changed/.test(error.message)?error.message:'Could not save '+views[name].title+'. Your changes are still here. Try again after freeing app storage.');throw Error('Development app save failed.');}
   }
   const result=set.call(this,name,patch);if(name==='messages'&&patch.threads||name==='inbox'&&patch.mails||name==='workflows'&&patch.flows)queueMicrotask(()=>window.dispatchEvent(new Event('alpha:dev-app-change')));return result;
  };

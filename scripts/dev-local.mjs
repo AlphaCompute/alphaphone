@@ -17,7 +17,7 @@ const configuredEnvironment=developmentSpeechEnvironment(profile);
 const port=Number(process.env.ALPHA_REMOTE_PORT||47849);
 if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid local agent port');
 const source=process.env.ALPHA_ELIZA_SOURCE?resolve(process.env.ALPHA_ELIZA_SOURCE):sourceDirectory(resolve(import.meta.dirname,'..'));
-if(!process.env.ALPHA_ELIZA_SOURCE)execFileSync(process.execPath,['scripts/prepare-local-agent.mjs','--source-only'],{stdio:'inherit'});
+if(!process.env.ALPHA_ELIZA_SOURCE)execFileSync(process.execPath,['scripts/prepare-local-agent.mjs'],{stdio:'inherit'});
 if(!existsSync(join(source,'node_modules')))throw Error('Install the pinned Eliza runtime dependencies in a prepared source checkout, then set ALPHA_ELIZA_SOURCE to that checkout. Do not edit vendor/eliza.');
 await new Promise((resolve,reject)=>{const server=createServer();server.once('error',reject);server.listen(port,'127.0.0.1',()=>server.close(resolve));});
 const metadata=join(profile,'process.json');

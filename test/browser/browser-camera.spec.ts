@@ -22,13 +22,13 @@ test('browser camera persists a real encoded frame, releases capture and restore
  expect(await page.evaluate(async()=>{const {browserPhotoLibrary}=await import('/src/prototype/browser-camera.ts');return (await browserPhotoLibrary.list()).items.length;})).toBe(0);
  await page.evaluate(()=>(window as any).restorePhotoWrites());
  await page.getByRole('button',{name:'Take photo',exact:true}).click();
- await expect(page.getByText('Photo saved in this browser. Clearing site data removes saved photos.',{exact:true})).toBeVisible();
+ await expect(page.getByText('Photo saved in this app. Clearing app data removes saved photos.',{exact:true})).toBeVisible();
  await page.screenshot({path:info.outputPath('capture.png')});
  await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));
  await expect.poll(()=>page.evaluate(()=>(window as any).cameraTracks.getTracks().every((t:MediaStreamTrack)=>t.readyState==='ended'))).toBe(true);
  await page.reload();await page.getByRole('button',{name:'Photos',exact:true}).click();
  const saved=page.getByRole('button',{name:/Captured photo/});await expect(saved).toHaveCount(1);await saved.click();
- await expect(page.getByText(/saved in this browser/)).toBeVisible();
+ await expect(page.getByText(/saved in this app/)).toBeVisible();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Share photo',exact:true}).click();
  expect((await download).suggestedFilename()).toMatch(/^Alpha-photo-\d+\.jpg$/);
  await page.getByRole('button',{name:'Favorite',exact:true}).click();

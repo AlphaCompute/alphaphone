@@ -1,10 +1,11 @@
+import type {ChatChannel} from './alpha-client';
 /** Eliza app-host REST protocol. Native composition owns network and secure storage.
  * Reference: packages/app/src/api/auth-{pairing,session}-routes.ts and
  * packages/agent/src/api/conversation-routes.ts in elizaOS.
  */
 export interface RemoteRequest {
   url: string;
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PUT" | "DELETE";
   headers: Record<string, string>;
   body?: string;
   signal?: AbortSignal;
@@ -44,6 +45,7 @@ export interface RemoteAuthStatus {
 export interface RemoteConversation { id: string; [key: string]: unknown }
 export interface RemoteChatReply {
   text: string;
+  actionResults?: readonly unknown[];
   agentName: string;
   interrupted?: boolean;
   noResponseReason?: "ignored";
@@ -221,14 +223,18 @@ export class RemoteProtocol {
     const conversation = object(value.conversation);
     return { ...conversation, id: string(conversation.id) };
   }
+  async truncateMessages(id:string,messageId:string,signal:AbortSignal):Promise<void> {
+    const value=object(await this.authorized(`/api/conversations/${encodeURIComponent(string(id))}/messages/truncate`,'POST',{messageId,inclusive:true},signal));
+    if(value.ok!==true||!Number.isSafeInteger(value.deletedCount)||Number(value.deletedCount)<1)throw new RemoteProtocolError('message_replacement_unconfirmed');
+  }
   async messages(id: string, signal?: AbortSignal): Promise<{ messages: Record<string, unknown>[]; hasMore?: boolean }> {
     const value = object(await this.authorized(`/api/conversations/${encodeURIComponent(string(id))}/messages`, "GET", undefined, signal));
     if (!Array.isArray(value.messages)) throw new RemoteProtocolError("invalid_response");
     return { messages: value.messages.map(object), ...(typeof value.hasMore === "boolean" ? { hasMore: value.hasMore } : {}) };
   }
-  async send(id: string, text: string, options: { metadata?: Record<string, unknown>; clientMessageId?: string; signal?: AbortSignal } = {}): Promise<RemoteChatReply> {
+  async send(id: string, text: string, options: { metadata?: Record<string, unknown>; clientMessageId?: string; channelType?:ChatChannel; signal?: AbortSignal } = {}): Promise<RemoteChatReply> {
     const value = object(await this.authorized(`/api/conversations/${encodeURIComponent(string(id))}/messages`, "POST", {
-      text: string(text), channelType: "DM", ...(options.metadata ? { metadata: options.metadata } : {}), ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
+      text: string(text), channelType: options.channelType ?? "DM", ...(options.metadata ? { metadata: options.metadata } : {}), ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
     }, options.signal));
     if (typeof value.text !== "string" || typeof value.agentName !== "string") throw new RemoteProtocolError("invalid_response");
     // Preserve terminal failures and ignored/interrupted turns for the UI; never synthesize success.

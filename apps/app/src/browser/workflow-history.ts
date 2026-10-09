@@ -38,7 +38,7 @@ export function openWorkflowHistory(read:()=>Bag,write:(patch:Bag)=>void,isRunni
  let confirming=false;
  remove.onclick=()=>{
   if(!plan)return;
-  if(!confirming){confirming=true;remove.textContent='Confirm remove finished runs';status.textContent='This removes finished run logs and outputs from this browser. Download history first if you want to retain them.';return;}
+  if(!confirming){confirming=true;remove.textContent='Confirm remove finished runs';status.textContent='This removes finished run logs and outputs from this app. Download history first if you want to retain them.';return;}
   try{
    if(isRunning()||JSON.stringify(read())!==snapshot)throw Error('Workflow history changed. Close and reopen this dialog to review it again.');
    write(plan.patch);remove.disabled=true;status.textContent=`Removed ${plan.count} finished runs.`;
@@ -71,7 +71,7 @@ export function openWorkflowHistory(read:()=>Bag,write:(patch:Bag)=>void,isRunni
  let noticeConfirm=false;
  compact.onclick=async()=>{
   if(!noticePlan)return;
-  if(!noticeConfirm){noticeConfirm=true;compact.textContent='Confirm free notification space';noticeStatus.textContent='Download notification history first to retain its text. Compact receipts will stay in this browser.';return;}
+  if(!noticeConfirm){noticeConfirm=true;compact.textContent='Confirm free notification space';noticeStatus.textContent='Download notification history first to retain its text. Compact receipts will stay in this app.';return;}
   compact.disabled=true;
   try{const count=await compactWorkflowNotices(noticePlan.recovery,noticeAbort.signal);noticeStatus.textContent=`Freed space for ${count} notifications. Replay receipts retained.`;}catch(error){noticeStatus.textContent=error instanceof Error?error.message:'Could not save notification history. Reopen to inspect it.';}
  };

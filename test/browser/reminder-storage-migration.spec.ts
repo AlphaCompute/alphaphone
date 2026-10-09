@@ -40,6 +40,6 @@ test('damaged reminders expose exact backup and explicit reset from Calendar',as
  await page.evaluate(()=>localStorage.setItem('alpha.browser.reminders.v1','{damaged reminder bytes'));await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();await page.getByRole('button',{name:'Recover browser reminders',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Browser reminder recovery',exact:true});await expect(dialog).toBeVisible();
  const downloadPromise=page.waitForEvent('download');await dialog.getByRole('button',{name:'Download reminders backup',exact:true}).click();const download=await downloadPromise;const stream=await download.createReadStream();const chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk));expect(Buffer.concat(chunks).toString()).toBe('{damaged reminder bytes');
- await dialog.getByRole('button',{name:'Reset browser reminders',exact:true}).click();await dialog.getByRole('button',{name:'Confirm reminders reset',exact:true}).click();await expect(dialog).toHaveCount(0);
+ await dialog.getByRole('button',{name:'Reset app reminders',exact:true}).click();await dialog.getByRole('button',{name:'Confirm reminders reset',exact:true}).click();await expect(dialog).toHaveCount(0);
  const result=await page.evaluate(async()=>{const {reminderDocument}=await import('/src/browser/reminder-store.ts');return {raw:await reminderDocument.readRaw(),legacy:localStorage.getItem('alpha.browser.reminders.v1')};});expect(result).toEqual({raw:null,legacy:'{damaged reminder bytes'});
 });

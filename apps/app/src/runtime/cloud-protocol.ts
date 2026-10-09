@@ -1,3 +1,5 @@
+import type {ChatChannel} from './alpha-client';
+import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from './automations-route-policy.ts';
 import { CloudPersonalProtocol, PersonalProtocolError } from './cloud-personal-protocol.ts';
 import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
 /** Narrow Alpha adapter for Eliza Cloud. Contracts inspected in v3's
@@ -19,12 +21,15 @@ export function cloudEnvironmentAvailable(environment: CloudEnvironment): boolea
 export interface CloudCredential {
   /** Local generation identifier, never an authentication credential. */
   credentialId?: string;
-  token: string;
+  token?: string;
+  /** Development host reference; it is never a Cloud bearer credential. */
+  credentialReference?: string;
   expiresAt?: number;
   userId?: string;
   organizationId?: string;
 }
 export interface CloudCredentialStore {
+  acceptsReferences?: boolean;
   read(environment: CloudEnvironment): Promise<CloudCredential | null>;
   /** Must atomically reject an aborted signal before committing to native secure storage. */
   write(environment: CloudEnvironment, credential: CloudCredential, signal: AbortSignal): Promise<void>;
@@ -33,8 +38,8 @@ export interface CloudCredentialStore {
 /** The native adapter must enforce the timeout and AbortSignal, reject redirects,
  * and return decoded JSON. It must never log headers, bodies, or auth URLs. */
 export interface CloudNativeRequest {
-  (input: { url: string; method: "GET" | "POST"; headers: Record<string, string>;
-    body?: unknown; signal: AbortSignal; timeoutMs: number; redirect: "error"; expiresAt?: number;
+  (input: { url: string; method: AutomationsMethod; headers: Record<string, string>;
+    body?: unknown; credentialReference?: string; signal: AbortSignal; timeoutMs: number; redirect: "error"; expiresAt?: number;
   }): Promise<{ status: number; data: unknown }>;
 }
 export interface CloudLoginAttempt { sessionId: string; expiresAt: number; browserUrl: string }
@@ -105,15 +110,18 @@ export interface CloudPhoneTarget {
 export class CloudProtocol {
   private phoneTarget: CloudPhoneTarget | null = null;
   setPhoneTarget(target: CloudPhoneTarget | null) { this.phoneTarget = target; }
-  async phoneRequest(target: CloudPhoneTarget, path: string, signal: AbortSignal, body?: unknown): Promise<Record<string,unknown>> {
-    if (!/^\/api\/(?:client-devices|workflow|conversations)(?:\/|\?|$)/.test(path) || path.includes('..') || /[\\#\s]/.test(path)) throw new Error('Invalid phone route');
+  async phoneRequest(target: CloudPhoneTarget, path: string, signal: AbortSignal, body?: unknown, method: AutomationsMethod = body === undefined ? 'GET' : 'POST'): Promise<Record<string,unknown>> {
+    signal.throwIfAborted();
+    const automation = isAutomationsPath(path);
+    if (automation ? !automationsRouteAllowed(path, method) : !['GET','POST'].includes(method) || !(/^\/api\/(?:client-devices|workflow|conversations)(?:\/|\?|$)/.test(path)||/^\/api\/views\/interact-(claim|result)$/.test(path)) || path.includes('..') || /[\\#\s]/.test(path)) throw new Error('Invalid phone route');
+    if ((method === 'GET' || method === 'DELETE') && body !== undefined) throw new Error('Invalid phone request body');
     const credential = await this.credentials.read(this.environment); signal.throwIfAborted();
     if (!credential || credential.credentialId !== target.credentialId) throw new Error('Cloud account changed');
     const identity = await this.identity(signal);
     if (identity.userId !== target.userId || identity.organizationId !== target.organizationId) throw new Error('Cloud owner changed');
     const agent = await this.agentDetail(target.agentId, signal);
     if (agent.runtimeUrl !== target.origin || !['dedicated-lazy','dedicated-always','custom'].includes(agent.executionTier || '')) throw new Error('Verified dedicated runtime unavailable');
-    const result = await this.call(path, signal, {authenticated:true,runtimeBase:target.origin,body,timeoutMs:120000,headers:{...target.headers,'X-Eliza-Phone-Protocol':'1'},credentialId:target.credentialId});
+    const result = await this.call(path, signal, {authenticated:true,runtimeBase:target.origin,body,method,timeoutMs:120000,headers:{...target.headers,'X-Eliza-Phone-Protocol':'1'},credentialId:target.credentialId});
     if ((await this.credentials.read(this.environment))?.credentialId !== target.credentialId) throw new Error('Cloud account changed');
     signal.throwIfAborted(); return result;
   }
@@ -126,8 +134,9 @@ export class CloudProtocol {
     if (!authority) throw new Error("This Eliza Cloud environment is unavailable in this build.");
     return authority;
   }
-  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
+  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
     signal.throwIfAborted();
+    let credentialReference: string | undefined;
     const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
     if (options.authenticated) {
       const credential = await this.credentials.read(this.environment);
@@ -135,18 +144,22 @@ export class CloudProtocol {
       if (!credential) throw new CloudProtocolError("credentials-missing");
       if (options.credentialId && credential.credentialId !== options.credentialId) throw new Error("Cloud account changed");
       if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
-      headers.Authorization = `Bearer ${credential.token}`;
+      if(credential.credentialReference){
+        if(!this.credentials.acceptsReferences || credential.token)throw new CloudProtocolError("invalid-response");
+        credentialReference=credential.credentialReference;
+      }else if(credential.token)headers.Authorization = `Bearer ${credential.token}`;
+      else throw new CloudProtocolError("credentials-missing");
     }
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
     const response = await this.request({ url: (options.runtimeBase ?? this.authority.api) + path,
-      method: options.body === undefined ? "GET" : "POST", headers, body: options.body,
-      signal, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error", ...(options.expiresAt === undefined ? {} : {expiresAt:options.expiresAt}) });
+      method: options.method ?? (options.body === undefined ? "GET" : "POST"), headers, body: options.body,
+      signal, credentialReference, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error", ...(options.expiresAt === undefined ? {} : {expiresAt:options.expiresAt}) });
     signal.throwIfAborted();
     if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status, response.data);
     options.onStatus?.(response.status);
     return response.data;
   }
-  private async call(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
+  private async call(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
     return object(await this.requestData(path, signal, options));
   }
   /** Account billing only: this never selects, creates or starts a hosted agent.
@@ -248,8 +261,9 @@ export class CloudProtocol {
         if (data.status === "authenticated") {
           const token = ["token", "accessToken", "stewardToken", "sessionToken", "apiKey"]
             .flatMap(key => [response[key], data[key]]).find(value => typeof value === "string" && value.trim());
-          if (!token) throw new CloudProtocolError("credential-consumed");
-          const credential: CloudCredential = { token: string(token) };
+          const reference=data.credentialReference ?? response.credentialReference;
+          if(!token && !(this.credentials.acceptsReferences && typeof reference==="string" && /^browser-cloud-reference:[0-9a-f-]{36}$/.test(reference)))throw new CloudProtocolError("credential-consumed");
+          const credential: CloudCredential = token ? {token:string(token)} : {credentialReference:string(reference)};
           if (data.expiresAt != null) credential.expiresAt = timestamp(data.expiresAt);
           if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
           if (data.userId != null) credential.userId = string(data.userId);
@@ -301,9 +315,9 @@ export class CloudProtocol {
     return agent;
   }
   /** Authenticated identity is server-derived, never inferred from entered email. */
-  async identity(signal: AbortSignal): Promise<{ userId: string; organizationId?: string }> {
+  async identity(signal: AbortSignal): Promise<{ userId: string; organizationId?: string;email?:string }> {
     const data = object(this.success(await this.call("/api/v1/user", signal, { authenticated: true })));
-    return { userId: uuid(data.id), ...(data.organization_id == null ? {} : { organizationId: uuid(data.organization_id) }) };
+    return { userId: uuid(data.id), ...(typeof data.email==='string'&&data.email.trim()&&data.email.length<=320?{email:data.email.trim()}:{}), ...(data.organization_id == null ? {} : { organizationId: uuid(data.organization_id) }) };
   }
   private async runtimeCall(agentId: string, path: string, signal: AbortSignal, body?: unknown) {
     if (this.phoneTarget?.agentId === agentId) return this.phoneRequest(this.phoneTarget, path, signal, body);
@@ -334,16 +348,20 @@ export class CloudProtocol {
   /** Never replay a send automatically. Shared Cloud currently ignores metadata;
    * the dedicated host accepts it. Caller must not treat shared context as delivered. */
   async send(agentId: string, conversationId: string, text: string,
-    options: { metadata?: Record<string, unknown>; clientMessageId?: string; signal: AbortSignal },
-  ): Promise<{ text: string; agentName: string; interrupted?: boolean; noResponseReason?: "ignored"; failureKind?: unknown; terminalFailure?: unknown }> {
+    options: { metadata?: Record<string, unknown>; clientMessageId?: string; channelType?:ChatChannel; signal: AbortSignal },
+  ): Promise<{ text: string; agentName: string; messageId?:string;userMessageId?:string;actionResults?:readonly unknown[];interrupted?: boolean; noResponseReason?: "ignored"; failureKind?: unknown; terminalFailure?: unknown }> {
     if (!text.trim()) throw new TypeError("Message must not be empty");
     const response = await this.runtimeCall(agentId,
       `/api/conversations/${encodeURIComponent(string(conversationId))}/messages`, options.signal,
-      { text, channelType: "DM", ...(options.metadata ? { metadata: options.metadata } : {}),
+      { text, channelType: options.channelType ?? "DM", ...(options.metadata ? { metadata: options.metadata } : {}),
         ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}) });
     if (typeof response.text !== "string" || typeof response.agentName !== "string") throw new CloudProtocolError("invalid-response");
     if (response.terminalFailure || response.failureKind) throw new CloudProtocolError("invalid-response");
+    for(const key of ['messageId','userMessageId'])if(response[key]!==undefined&&typeof response[key]!=='string')throw new CloudProtocolError('invalid-response');
     return { text: response.text, agentName: response.agentName,
+      ...(typeof response.messageId==='string'?{messageId:response.messageId}:{}),
+      ...(typeof response.userMessageId==='string'?{userMessageId:response.userMessageId}:{}),
+      ...(Array.isArray(response.actionResults)?{actionResults:response.actionResults}:{}),
       ...(response.interrupted === true ? { interrupted: true } : {}),
       ...(response.noResponseReason === "ignored" ? { noResponseReason: "ignored" as const } : {}) };
   }

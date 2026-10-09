@@ -1,5 +1,7 @@
+import {guardCalendarFixture as guardNoMedia} from './calendar-draft-readiness';
 import { returnToApps } from './app-navigation';
 import {test,expect,type Page} from '@playwright/test';
+test.beforeEach(async({context})=>guardNoMedia(context));
 const key='alpha.browser.execution.local.v1';
 async function open(page:Page){await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();}
 async function setup(page:Page){await page.goto('/?mode=dev');await open(page);await page.getByRole('button',{name:'Connect development profile'}).click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();await page.getByText('Development device actions',{exact:true}).click();}
@@ -12,6 +14,15 @@ test('queued development action executes once only after review and preserves it
 test('rejecting a proposal persists without executing or reserving an effect',async({page})=>{
  await setup(page);await queue(page);await page.getByRole('button',{name:'Refresh actions'}).click();await page.getByRole('button',{name:'Reject proposal'}).click();await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('rejected');expect((await state(page)).journal).toHaveLength(0);
 });
+test('rejected chat review becomes unavailable after refresh and cannot dispatch',async({page})=>{
+ await setup(page);await queue(page);await chat(page);
+ const before=(await state(page)).proposals[0];
+ await page.evaluate(async()=>{const {connectionController}=await import('/src/runtime/connection-ui.tsx');connectionController.open();});
+ await page.getByText('Development device actions',{exact:true}).click();await page.getByRole('button',{name:'Refresh actions'}).click();await page.getByRole('button',{name:'Reject proposal'}).click();
+ await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('rejected');await page.getByRole('button',{name:'Close connection settings'}).click();
+ const unavailable=page.getByRole('button',{name:/Review unavailable/});await expect(unavailable).toBeVisible();await expect(unavailable).toBeDisabled();await expect(page.getByText('Approve: Create note',{exact:true})).toHaveCount(0);
+ expect((await state(page)).proposals[0].id).toBe(before.id);expect((await state(page)).journal).toHaveLength(0);
+});
 test('invalid operations and failed queue persistence cannot publish proposals',async({page})=>{
  await setup(page);await page.getByRole('textbox',{name:'Action JSON'}).fill('{"type":"send_money","amount":100}');await page.getByRole('button',{name:'Queue action for review'}).click();await expect(page.getByRole('alert')).toBeVisible();expect(await page.evaluate(async key=>(await (await import('/src/browser/documents.ts')).browserDocuments.read(key))??null,key)).toBeNull();await page.getByRole('textbox',{name:'Action JSON'}).fill('{"type":"open_view","view":"notes"}');await page.evaluate(key=>{const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(v,k){if(k===key)throw Error('Full');return put.call(this,v,k);};},key);await page.getByRole('button',{name:'Queue action for review'}).click();await expect(page.getByRole('alert')).toBeVisible();expect(await page.evaluate(async key=>(await (await import('/src/browser/documents.ts')).browserDocuments.read(key))??null,key)).toBeNull();
 });
@@ -22,7 +33,33 @@ test('journal write failure never dispatches the reviewed effect',async({page})=
  await setup(page);await queue(page);await chat(page);await page.evaluate(key=>{const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(v,k){if(k===key&&JSON.parse(JSON.parse(JSON.parse(v.raw).value).actions).journal.length)throw Error('Full');return put.call(this,v,k);};},key);await page.getByText('Approve: Create note',{exact:true}).click();await expect(page.getByText(/Action did not reach a confirmed result/).first()).toBeVisible();expect((await state(page)).journal).toHaveLength(0);expect((await state(page)).proposals[0].state).toBe('pending');expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())||'{"records":[]}').records.some((n:any)=>n.title==='Development note'))).toBe(false);
 });
 test('two tabs cannot execute the same development proposal twice',async({page,context})=>{
- await setup(page);await queue(page);await chat(page);const other=await context.newPage();await other.goto('/?mode=dev');await expect.poll(()=>other.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');return !!c.getSnapshot().session;})).toBe(true);await other.getByRole('textbox',{name:'Ask Alpha',exact:true}).fill('Review this proposal');await other.getByRole('textbox',{name:'Ask Alpha',exact:true}).press('Enter');await expect(other.getByText('Approve: Create note',{exact:true})).toBeVisible();await Promise.all([page.getByText('Approve: Create note',{exact:true}).click(),other.getByText('Approve: Create note',{exact:true}).click()]);await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('completed');expect((await state(page)).journal).toHaveLength(1);expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())!).records.filter((n:any)=>n.title==='Development note').length)).toBe(1);
+ await setup(page);await queue(page);await chat(page);
+ const other=await context.newPage();await other.goto('/?mode=dev');
+ await expect.poll(()=>other.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');return !!c.getSnapshot().session;})).toBe(true);
+ await other.getByRole('textbox',{name:'Ask Alpha',exact:true}).fill('Review this proposal');
+ await other.getByRole('textbox',{name:'Ask Alpha',exact:true}).press('Enter');
+ await expect(other.getByText('Approve: Create note',{exact:true})).toBeVisible();
+ // Queue both real UI intents before either storage claim can complete. Without
+ // this barrier the winning tab can disable the other button before its click,
+ // testing Playwright timing rather than the document's one-execution claim.
+ await page.evaluate(async key=>{
+  await new Promise<void>(ready=>{
+   void navigator.locks.request(JSON.stringify(['browser-document','alpha.browser.documents.v1',key]),async()=>{
+    ready();await new Promise<void>(resolve=>(window as any).releaseProposalClaim=resolve);
+   });
+  });
+ },key);
+ try{
+  await Promise.all([
+   page.getByText('Approve: Create note',{exact:true}).click(),
+   other.getByText('Approve: Create note',{exact:true}).click(),
+  ]);
+ }finally{
+  await page.evaluate(()=>(window as any).releaseProposalClaim());
+ }
+ await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('completed');
+ expect((await state(page)).journal).toHaveLength(1);
+ expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())!).records.filter((n:any)=>n.title==='Development note').length)).toBe(1);
 });
 test('Home cancels proposal authoring queued behind storage without publishing it',async({page})=>{
  await setup(page);await page.evaluate(async key=>{await new Promise<void>(ready=>{void navigator.locks.request(JSON.stringify(['browser-document','alpha.browser.documents.v1',key]),async()=>{ready();await new Promise<void>(resolve=>(window as any).releaseActionStore=resolve);});});},key);await page.getByRole('button',{name:'Queue action for review'}).click();await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));await expect(page.getByRole('dialog',{name:'Development connections'})).toHaveCount(0);await page.evaluate(()=>(window as any).releaseActionStore());await page.evaluate(key=>navigator.locks.request(JSON.stringify(['browser-document','alpha.browser.documents.v1',key]),()=>{}),key);expect(await page.evaluate(async key=>(await (await import('/src/browser/documents.ts')).browserDocuments.read(key))??null,key)).toBeNull();
@@ -36,7 +73,7 @@ for(const action of ['set','show','dismiss','snooze'] as const)test(`approved de
  // Closing Clock silences its UI without dismissing or snoozing the alarm.
  if(action==='dismiss'||action==='snooze'){
   await page.evaluate(async()=>{const {DailyApps}=await import('/src/daily.ts');await DailyApps.scheduleReminder({id:'alarm_reviewed',title:'Ringing alarm',at:Date.now()+60000});await (await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].status='posted';data.reminders[0].at=Date.now()-1000;});});
-  const clock=page.getByRole('dialog',{name:'Clock alarms',exact:true});await expect(clock).toBeVisible();await clock.getByRole('button',{name:'Close Clock',exact:true}).click();await expect(clock).toHaveCount(0);
+  const clock=page.getByRole('dialog',{name:'Clock alarms',exact:true});await expect(clock).toBeVisible();await clock.getByRole('button',{name:'Cancel',exact:true}).click();await expect(clock).toHaveCount(0);
   expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0].status)).toBe('posted');
  }
  expect((await state(page)).journal).toHaveLength(0);await page.getByText('Approve: clock handoff',{exact:true}).click();await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('completed');expect((await state(page)).journal[0].result.clockResult).toEqual({kind:'clock-handoff',action,status:'opened'});

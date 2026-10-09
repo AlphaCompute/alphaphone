@@ -14,23 +14,31 @@ test('resident Cloud binding validates credentials and keeps provider environmen
  assert.ok(jsonJar&&fs.existsSync(jsonJar),'Set ALPHA_JSON_JAR or install the pinned Gradle JSON test dependency');
  const constants=['CLOUD_PROVIDER_MODEL','CLOUD_PROVIDER_BASE','PROVIDER_MODEL_PATTERN'].map(name=>source.match(new RegExp(' static final String '+name+'=[^;]+;'))[0]).join('\n');
  try{
- fs.writeFileSync(path.join(dir,'CloudProviderTest.java'),`import java.util.*;import org.json.JSONObject;
+ fs.writeFileSync(path.join(dir,'CloudProviderTest.java'),`import java.util.*;import java.io.*;import java.nio.file.*;import org.json.JSONObject;
 public class CloudProviderTest {
 ${constants}
 ${method(' static boolean validProviderToken(')}
 ${method(' static String cloudProviderToken(')}
 ${method(' static void bindCloudProvider(')}
 ${method(' static void applyProviderEnvironment(')}
+${method(' static void configureLocalEmbeddings(')}
  static class AlphaCredentialStore {
   String provider,cloud; int cloudReads=0,exchanges=0; boolean initialConflict=false;
   java.util.function.IntConsumer beforeRead=n->{};
   AlphaCredentialStore(String provider,String cloud){this.provider=provider;this.cloud=cloud;}
+  void assertCurrent(){}
   String readCredentialSlot(String slot){if(slot.equals("cloud:production")){beforeRead.accept(++cloudReads);return cloud;}return provider;}
+  void rollbackProviderAdmission(String admitted,String previous){compareExchangeCredentialSlot("local-agent-provider:v1",admitted,previous);}
+  String compareExchangeProviderAdmission(String expected,String value,String slot,String credential,JSONObject identity){
+   if(!Objects.equals(cloud,credential))return null;
+   return compareExchangeCredentialSlot("local-agent-provider:v1",expected,value)?value:null;
+  }
   boolean compareExchangeCredentialSlot(String slot,String expected,String value){
    exchanges++;if(initialConflict&&exchanges==1){provider="concurrent-selection";return false;}
    if(!Objects.equals(provider,expected))return false;provider=value;return true;
   }
  }
+ static class AlphaConnectionPlugin {static JSONObject readCloudIdentity(String token){return new JSONObject();}}
  static final String ID="d32f7f34-962b-47b7-8f0d-f2fe7f12610a";
  static final long NOW=10000;
  interface Checked {void run()throws Exception;}
@@ -51,12 +59,23 @@ ${method(' static void applyProviderEnvironment(')}
   applyProviderEnvironment(binding(),credential().toString(),env,NOW);
   if(!"true".equals(env.get("ELIZAOS_CLOUD_USE_INFERENCE"))||!CLOUD_PROVIDER_BASE.equals(env.get("ELIZAOS_CLOUD_BASE_URL"))||!CLOUD_PROVIDER_MODEL.equals(env.get("ELIZAOS_CLOUD_SMALL_MODEL"))||!CLOUD_PROVIDER_MODEL.equals(env.get("ELIZAOS_CLOUD_LARGE_MODEL"))||!"synthetic-cloud-token".equals(env.get("ELIZAOS_CLOUD_API_KEY"))||!"preserved".equals(env.get("UNRELATED")))throw new AssertionError("Wrong cloud configuration");
   if(env.containsValue("stale-direct-provider"))throw new AssertionError("Direct provider retained");
+  if(!"true".equals(env.get("ELIZAOS_CLOUD_USE_EMBEDDINGS"))||!"bge-small-en-v1.5".equals(env.get("ELIZAOS_CLOUD_EMBEDDING_MODEL"))||!"384".equals(env.get("ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS"))||!"true".equals(env.get("ELIZA_DISABLE_LOCAL_EMBEDDINGS"))||!"0".equals(env.get("ELIZA_LOCAL_EMBEDDING_ENABLED")))throw new AssertionError("Cloud BGE policy missing");
+  File nativeDir=new File("${dir}/native"),filesDir=new File("${dir}/files");nativeDir.mkdirs();
+  File engine=new File(nativeDir,"libelizainference.so"),jni=new File(nativeDir,"libelizavoicejni.so"),embedding=new File(filesDir,".eliza/local-inference/models/bge-small-en-v1.5-f16.gguf");embedding.getParentFile().mkdirs();
+  for(boolean packaged:new boolean[]{false,true}){
+   if(packaged){Files.writeString(engine.toPath(),"fixture");Files.writeString(jni.toPath(),"fixture");Files.writeString(embedding.toPath(),"fixture");}
+   JSONObject provider=binding();Map<String,String> selected=new HashMap<>(env);
+   ${source.split('\n').find(line=>line.includes('if(!"elizacloud".equals')&&line.includes('configureLocalEmbeddings(')).replace('new File(context.getApplicationInfo().nativeLibraryDir)','nativeDir').replace('context.getFilesDir()','filesDir').replace(',env);',',selected);')}
+   if(!selected.equals(env))throw new AssertionError("Packaged local assets overrode verified Cloud selection");
+  }
   Map<String,String> before=new HashMap<>(env);
   refuses(()->applyProviderEnvironment(binding(),null,env,NOW));
   refuses(()->applyProviderEnvironment(binding().put("model","unsupported"),credential().toString(),env,NOW));
   if(!before.equals(env))throw new AssertionError("Rejected configuration mutated environment");
   applyProviderEnvironment(new JSONObject().put("key","synthetic-cerebras").put("model","direct-model"),null,env,NOW);
   if(env.containsKey("ELIZAOS_CLOUD_API_KEY")||env.containsKey("ELIZAOS_CLOUD_BASE_URL")||!"false".equals(env.get("ELIZAOS_CLOUD_USE_INFERENCE"))||!"synthetic-cerebras".equals(env.get("CEREBRAS_API_KEY")))throw new AssertionError("Direct path lost exclusivity");
+  if(env.containsKey("ELIZAOS_CLOUD_EMBEDDING_MODEL")||env.containsKey("ELIZAOS_CLOUD_USE_EMBEDDINGS")||env.containsKey("ELIZA_DISABLE_LOCAL_EMBEDDINGS")||env.containsKey("ELIZA_LOCAL_EMBEDDING_ENABLED"))throw new AssertionError("Cloud embedding policy leaked into direct selection");
+  configureLocalEmbeddings(nativeDir,filesDir,env);if(!"1".equals(env.get("ELIZA_LOCAL_EMBEDDING_ENABLED"))||!"false".equals(env.get("ELIZAOS_CLOUD_USE_EMBEDDINGS")))throw new AssertionError("Direct packaged local policy changed");
   refuses(()->applyProviderEnvironment(new JSONObject().put("provider","unknown").put("model","direct-model"),null,env,NOW));
   String original=new JSONObject().put("key","synthetic-cerebras").put("model","direct-model").toString();
   String current=credential().put("expiresAt",System.currentTimeMillis()+60000).toString();
@@ -64,6 +83,25 @@ ${method(' static void applyProviderEnvironment(')}
   bindCloudProvider(success,ID,CLOUD_PROVIDER_MODEL);
   JSONObject admitted=new JSONObject(success.provider);
   if(!"elizacloud".equals(admitted.getString("provider"))||!ID.equals(admitted.getString("credentialId"))||!admitted.has("revision")||admitted.has("token")||admitted.has("key"))throw new AssertionError("Invalid binding contents");
+  Map<String,String> scoped=new HashMap<>();
+  applyProviderEnvironment(admitted,current,scoped,NOW);
+  String revision=scoped.get("ELIZA_HOST_CONTEXT_REVISION");
+  if(!("provider:elizacloud:"+admitted.getString("revision")).equals(revision))throw new AssertionError("Protected provider revision not emitted");
+  applyProviderEnvironment(admitted,current,scoped,NOW);
+  if(!revision.equals(scoped.get("ELIZA_HOST_CONTEXT_REVISION")))throw new AssertionError("Same protected selection changed across launch");
+  JSONObject changed=new JSONObject(admitted.toString()).put("revision",UUID.randomUUID().toString());
+  applyProviderEnvironment(changed,current,scoped,NOW);
+  if(revision.equals(scoped.get("ELIZA_HOST_CONTEXT_REVISION")))throw new AssertionError("New selection did not retire prior completion");
+  JSONObject legacy=binding();String legacyBytes=legacy.toString();
+  applyProviderEnvironment(legacy,current,scoped,NOW);String boot=scoped.get("ELIZA_HOST_CONTEXT_REVISION");
+  if(boot==null||!boot.startsWith("boot:"))throw new AssertionError("Legacy selection lacks launch retirement nonce");
+  applyProviderEnvironment(legacy,current,scoped,NOW);
+  if(boot.equals(scoped.get("ELIZA_HOST_CONTEXT_REVISION"))||!legacyBytes.equals(legacy.toString()))throw new AssertionError("Legacy restart retained stale completion or rewrote provider");
+  for(Object bad:new Object[]{"", "not-a-uuid", "1-1-1-1-1", 123, JSONObject.NULL}){
+   Map<String,String> snapshot=new HashMap<>(scoped);
+   refuses(()->applyProviderEnvironment(new JSONObject(admitted.toString()).put("revision",bad),current,scoped,NOW));
+   if(!snapshot.equals(scoped))throw new AssertionError("Invalid revision mutated environment");
+  }
   for(String previous:new String[]{null,original}){
    AlphaCredentialStore logout=new AlphaCredentialStore(previous,current);
    logout.beforeRead=n->{if(n==2)logout.cloud=null;};
@@ -107,7 +145,7 @@ test('Cloud configuration takes a credential reference and stores no copied toke
  assert.doesNotMatch(configure,/call.getString\("(?:apiKey|token)"/);
  assert.doesNotMatch(configure,/\.put\("(?:apiKey|token|key)"/);
  assert.equal((binding.match(/cloudProviderToken\(/g)||[]).length,2);
- assert.match(binding,/compareExchangeCredentialSlot\("local-agent-provider:v1",binding,previous\)/);
+ assert.match(binding,/rollbackProviderAdmission\(binding,previous\)/);
  const environment=method(' static void configureEnvironment(');
  assert.match(environment,/readCredentialSlot\("cloud:production"\)/);
  assert.match(environment,/applyProviderEnvironment\(/);

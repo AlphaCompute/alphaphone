@@ -3,8 +3,10 @@
 Independent Android UI on Eliza, using the Alpha Phone prototype as its design
 reference. The current renderer includes native browser, camera,
 calendar, reminders, selected files and local notes. Phone, SMS, Contacts and Wallet
-entry points are disabled by the documented MVP profile. The connection chooser supports
-the on-device agent, Cloud sign-in, remote pairing and offline use. Mock mode, prototype
+entry points are disabled by the documented MVP profile. Production Android onboarding signs into an Eliza Cloud account, checks account
+credits, then offers microphone and notification setup. The agent runs on the phone;
+Cloud supplies the configured inference and voice services. Remote pairing and local
+provider setup remain explicit development or advanced paths. Mock mode, prototype
 fixture data, developer device controls and the local development endpoint are
 development surfaces that exist only when the build-time switch
 `ELIZA_DEV_ALLOW_TEST_MOCKS=1` is set (see [build-time switch](#build-time-test-mock-switch)).

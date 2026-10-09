@@ -15,7 +15,6 @@ const tree=registerPlugin<{
  shareMany(input:{items:{id:string;expectedRevision:string}[]}):Promise<Listing>;
  select(input:{id:string}):Promise<NativeResult>;forget():Promise<Listing>;
 }>('AlphaFiles');
-const FOLDER='M3 7h7l2 2h9v11H3zM3 7V4h7l2 3';
 const FILE='M6 3h8l4 4v14H6zM14 3v5h4';
 /** Exact existing Files rows/menu/preview; tree mutations require explicit UI. */
 export function installFilesTreeAdapter(views:Bag,accept:(module:string,result:NativeResult,api:Bag)=>Promise<void>,clearSelected:()=>void){
@@ -55,9 +54,10 @@ export function installFilesTreeAdapter(views:Bag,accept:(module:string,result:N
  }
  async function moveFolder(id?:string){if(!dialog||dialog.kind!=='move'||busy)return;busy=true;dialog={...dialog,folder:undefined,rows:[],error:undefined};repaint();try{const value=await tree.list({id});if(value.status==='ready'&&dialog?.kind==='move'){dialog={...dialog,folder:value.folder,rows:value.entries?.filter(e=>e.directory)};}else api?.toast(value.message);}catch{api?.toast('Destination folder unavailable.');}finally{busy=false;repaint();}}
  module.render=(state:Bag,currentApi:Bag)=>{
+  const FOLDER=currentApi.ic.folder;
   api=currentApi;const out=render(state,currentApi);
-  out.locs=[...(out.locs||[]),{nativeTree:true,name:Capacitor.isNativePlatform()?'Choose folder':'Browser files',d:FOLDER,sub:Capacitor.isNativePlatform()?'Android folder access':'Browser files',go:()=>choose()}];
-  if(!Capacitor.isNativePlatform())out.locs.push({nativeTree:true,name:'Import folder',d:FOLDER,sub:'Copy files into browser storage',go:()=>choose(true)});
+  out.locs=[...(out.locs||[]),{nativeTree:true,name:Capacitor.isNativePlatform()?'Choose folder':'App files',d:FOLDER,sub:Capacitor.isNativePlatform()?'Android folder access':'App files',go:()=>choose()}];
+  if(!Capacitor.isNativePlatform())out.locs.push({nativeTree:true,name:'Import folder',d:FOLDER,sub:'Import copies into app files',go:()=>choose(true)});
   if(!listing)out.locs.push({nativeTree:true,name:'Saved folder',d:FOLDER,sub:'Restore selected access',go:()=>{currentApi.set({folder:'__native_tree'});void load();}});
   else out.locs.push({nativeTree:true,name:listing.folder?.name||'Selected folder',d:FOLDER,sub:'Browse selected folder',go:()=>{currentApi.set({folder:'__native_tree'});void load(listing?.folder?.id);}});
   if(state.folder==='__native_tree'){
