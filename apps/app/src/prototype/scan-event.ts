@@ -1,6 +1,6 @@
 export type ScanEventRepeat='none'|'daily'|'weekdays'|'weekly';
 export type ScanEventFields={title:string;date:string;time:string;minutes:number;location:string};
-export type ScanEventDraft={id:null;title:string;off:number;t:number;d:number;where:string;notes:string;cal:'native:local';who:never[];repeat:ScanEventRepeat;alert:null;video:false};
+export type ScanEventDraft={id:null;title:string;off:number;t:number;d:number;where:string;notes:string;cal:'native:local';who:never[];repeat:ScanEventRepeat;alert:null;video:false;allDay?:true};
 /** Reference instant and device zone for inference. Without it, suggestions stay strictly explicit. */
 export type ScanEventContext={now:Date;timeZone?:string};
 /** Suggestions plus what was inferred. Every inference is disclosed; nothing here authorizes saving. */
@@ -186,6 +186,19 @@ function analyze(text:string,context?:ScanEventContext):ScanEventSuggestion{
  return {fields:{title:(lines[0]||'').slice(0,200),date,time,minutes:timeClear&&durations.length?durations[0]:60,location:new Set(locations).size===1&&locations[0].length<=500?locations[0]:''},allDay,recurrence,sourceZone,disclosures};
 }
 
+/**
+ * All-day Calendar draft from a reviewed date: one civil day, no time. It never saves; Calendar's
+ * own Save writes it as an all-day provider event (patch 0041) after review.
+ */
+export function scanAllDayEventDraft(fields:Pick<ScanEventFields,'title'|'date'|'location'>&{repeat?:ScanEventRepeat},text:string,now=new Date()):ScanEventDraft{
+ if(text.length>16000)throw Error('Event notes support up to 16,000 characters. Shorten the scanned text before creating an event draft.');
+ if(!fields.title.trim()||fields.title.length>200||fields.location.length>500)throw Error('Enter a title up to 200 characters and a location up to 500 characters.');
+ const repeat=fields.repeat??'none';if(!['none','daily','weekdays','weekly'].includes(repeat))throw Error('Choose a supported repeat.');
+ const date=/^(\d{4})-(\d{2})-(\d{2})$/.exec(fields.date);if(!date)throw Error('Choose the event date.');
+ const [year,month,day]=date.slice(1).map(Number);if(year<1970||year>2100)throw Error('Choose a year from 1970 through 2100.');
+ const civil=new Date(Date.UTC(year,month-1,day));if(civil.getUTCFullYear()!==year||civil.getUTCMonth()!==month-1||civil.getUTCDate()!==day)throw Error('Choose a valid date.');
+ return {id:null,title:fields.title.trim(),off:(civil.getTime()-Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()))/86400000,t:0,d:24,where:fields.location.trim(),notes:text,cal:'native:local',who:[],repeat,alert:null,video:false,allDay:true};
+}
 /** Builds a Calendar draft from reviewed fields. It never saves: Calendar's own Save remains the only write. */
 export function scanEventDraft(fields:ScanEventFields&{allDay?:boolean;repeat?:ScanEventRepeat},text:string,now=new Date()):ScanEventDraft{
  if(text.length>16000)throw Error('Event notes support up to 16,000 characters. Shorten the scanned text before creating an event draft.');

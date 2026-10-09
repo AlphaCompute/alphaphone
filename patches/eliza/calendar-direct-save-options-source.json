@@ -1,0 +1,22 @@
+{
+  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "patch": "0041-calendar-direct-save-options.patch",
+  "sha256": "264db05c227f64f729378a68ea45b616c5c5fd709fb4a09641e0cd7f56dcefe3",
+  "status": "Candidate for elizaOS develop; additive write package (all-day, explicit IANA zone and simple RRULE direct save with provider readback and its own creation journal, plus an ACTION_INSERT handoff); additive so it stacks on 0039; not yet submitted upstream",
+  "basePaths": [],
+  "addedPaths": [
+    "plugins/plugin-native-calendar"
+  ],
+  "changed": [
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/write/CalendarDestinations.java",
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/write/CalendarEventOptions.java",
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/write/CalendarInsertHandoff.java",
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/write/CalendarOptionCreationStore.java"
+  ],
+  "files": {
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/write/CalendarDestinations.java": "572c27e49b142beef32c0abb96823e53c3e5f6d6345aa50515f458922a22ee93",
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/write/CalendarEventOptions.java": "bca32aa036007dcf1a4d2215daafe6d95fc6adf504edcacdd3b7883c4d92da7c",
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/write/CalendarInsertHandoff.java": "12a7cee804fdf38ae9af61496c8a3c1297f871f50166be3d7dff97ba6af9c9d1",
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/write/CalendarOptionCreationStore.java": "6f4dc6b155e23ffa2aa01bcd0de14822e35551d481ea5d9b39a072ab159fa215"
+  }
+}
