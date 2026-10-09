@@ -89,13 +89,9 @@ export class ViewNavigationClient {
 		attempt: NavigationAttempt,
 		navigate: (view: string, current: () => void) => Promise<boolean>,
 	): Promise<{ status: "none" | "delivered" | "unknown"; label?: string }> {
-		const views = results?.filter((result) => {
-			const r = object(result);
-			return (
-				typeof r.actionName === "string" &&
-				r.actionName.toUpperCase() === "VIEWS"
-			);
-		});
+		const views = results?.filter(
+			(result) => findViewActionHandoff([result])?.navigationPrepared === true,
+		);
 		const handoff = findViewActionHandoff(views);
 		if (!handoff?.navigationPrepared || !handoff.navigationBinding)
 			return { status: "none" };
