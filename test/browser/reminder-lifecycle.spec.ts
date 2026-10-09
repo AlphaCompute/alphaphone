@@ -29,14 +29,14 @@ test.describe('reminder lifecycle',()=>{
   expect(result).toEqual({statuses:['past'],retired:true,pendingAfterRefusals:0,accepted:'scheduled',keptSaved:false,found:'found',notRefusal:false,refusals:['past','permission-denied','storage-full','failed'],listed:0});
  });
  test('each refusal shows a specific reason',async({page})=>{
-  const messages=await page.evaluate(async()=>{const {reminderRefusalMessage}=await import('/src/prototype/reminder-adapter.ts');return (['past','permission-denied','storage-full','failed'] as const).map(status=>reminderRefusalMessage(status,true));});
+  const messages=await page.evaluate(async()=>{const {reminderRefusalMessage}=await import('/src/runtime/reminder-creations.ts');return (['past','permission-denied','storage-full','failed'] as const).map(status=>reminderRefusalMessage(status,true));});
   expect(new Set(messages).size).toBe(4);
   expect(messages[0]).toContain('passed');expect(messages[1]).toContain('Android settings');expect(messages[2]).toContain('storage is full');
   for(const message of messages)expect(message).toContain('Nothing was saved');
  });
  test('overdue lists posted and late scheduled reminders only, oldest first',async({page})=>{
   const ids=await page.evaluate(async()=>{
-   const {overdueReminders}=await import('/src/prototype/reminder-adapter.ts');const now=Date.UTC(2026,9,8,12);
+   const {overdueReminders}=await import('/src/runtime/reminder-creations.ts');const now=Date.UTC(2026,9,8,12);
    const row=(id:string,status:string,dueAt:number,extra={})=>({id,title:id,body:'',at:dueAt,dueAt,status,mode:'inexact',createdAt:0,occurrenceId:id,...extra}) as any;
    return overdueReminders([row('late-scheduled','scheduled',now-60000),row('posted','posted',now-3600000),row('future','scheduled',now+60000),row('completed','completed',now-7200000),row('pending-no-alert','pending',now-7200000),row('denied','permission-denied',now-7200000),row('snoozed','scheduled',now-120000,{at:now+480000,snoozedAt:now-120000}),row('todo','todo',NaN,{undated:true,at:undefined,dueAt:undefined})],now).map(r=>r.id);
   });
@@ -44,7 +44,7 @@ test.describe('reminder lifecycle',()=>{
  });
  test('undated to-dos never become calendar events and list open first',async({page})=>{
   const result=await page.evaluate(async()=>{
-   const {undatedTodos,reminderEvents}=await import('/src/prototype/reminder-adapter.ts');
+   const {undatedTodos,reminderEvents}=await import('/src/runtime/reminder-creations.ts');
    const rows=[{id:'a',title:'Done to-do',body:'',status:'completed',mode:'none',createdAt:1,undated:true},{id:'b',title:'Open to-do',body:'',status:'todo',mode:'none',createdAt:2,undated:true},{id:'c',title:'Dated',body:'',at:Date.now()+60000,dueAt:Date.now()+60000,status:'scheduled',mode:'inexact',createdAt:3,occurrenceId:'c'}] as any[];
    return {todos:undatedTodos(rows).map(r=>r.id),events:reminderEvents(rows).map(e=>e.alphaReminderId)};
   });
@@ -52,7 +52,7 @@ test.describe('reminder lifecycle',()=>{
  });
  test('reopen runs a reviewed reminder_update to an open no-alert occurrence with readback',async({page})=>{
   const result=await page.evaluate(async()=>{
-   const {DailyApps}=await import('/src/daily.ts'),{reopenSchedule}=await import('/src/prototype/reminder-adapter.ts');
+   const {DailyApps}=await import('/src/daily.ts'),{reopenSchedule}=await import('/src/runtime/reminder-creations.ts');
    const hash=async(value:unknown)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value))))).map(v=>v.toString(16).padStart(2,'0')).join('');
    const operate=async(operation:any)=>DailyApps.operateReminder({operationId:crypto.randomUUID(),bindingHash:await hash(operation),operation});
    const id=`reopen-${crypto.randomUUID()}`,dueAt=Date.now()+3600000;
@@ -88,7 +88,7 @@ for(const [zone,hour] of [['America/New_York',9],['America/Los_Angeles',6]] as c
  test.beforeEach(offline);
  test('keeps its instant and re-renders the wall time',async({page})=>{
   const instant=Date.UTC(2026,10,20,14,0);// 09:00 in New York (EST), 06:00 in Los Angeles (PST)
-  const event=await page.evaluate(async instant=>{const {reminderEvents}=await import('/src/prototype/reminder-adapter.ts');const [row]=reminderEvents([{id:'zone',title:'Zone fixture',body:'',at:instant,dueAt:instant,alertMinutes:0,status:'scheduled',mode:'inexact',createdAt:0,occurrenceId:'zone'} as any],new Date(instant));return {t:row.t,due:row.reminderDueAt,at:row.reminderAt,off:row.off};},instant);
+  const event=await page.evaluate(async instant=>{const {reminderEvents}=await import('/src/runtime/reminder-creations.ts');const [row]=reminderEvents([{id:'zone',title:'Zone fixture',body:'',at:instant,dueAt:instant,alertMinutes:0,status:'scheduled',mode:'inexact',createdAt:0,occurrenceId:'zone'} as any],new Date(instant));return {t:row.t,due:row.reminderDueAt,at:row.reminderAt,off:row.off};},instant);
   expect(event).toEqual({t:hour,due:instant,at:instant,off:0});
  });
 });

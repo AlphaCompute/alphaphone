@@ -5,9 +5,9 @@ import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {createInlineModal} from '../apps/app/src/runtime/inline-modal.ts';
-import {currentClockTimeZone} from '../apps/app/src/runtime/clock-contract.ts';
+import {currentClockTimeZone,clockDays,describeClockDays,CLOCK_DAY_NAMES} from '../apps/app/src/runtime/clock-contract.ts';
 import {createClockHandoffHistory,clockHandoffLegacyKey,clockHandoffSlot} from '../apps/app/src/runtime/clock-handoff-history.ts';
-const source=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/prototype/clock-adapter.ts',import.meta.url),'utf8').replace(/^import .*?;\n/gm,'').replace('export function installClockAdapter','function installClockAdapter'));
+const source=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/prototype/clock-adapter.ts',import.meta.url),'utf8').replace(/^import .*?;\n/gm,'').replace(/^export /gm,''));
 let writes=[],store=new Map(),secure=new Map(),failStorage=false,response={status:'opened',message:'Clock request sent. Check Clock.'},hold,hidden=false;
 const document={addEventListener(){},removeEventListener(){},querySelector(){return null;},documentElement:{dataset:{connectionMode:'live'}},get hidden(){return hidden;}};
 const localStorage={getItem:k=>store.get(k)||null,setItem:(k,v)=>{if(failStorage)throw Error('full');store.set(k,v);}};
@@ -18,7 +18,7 @@ let flags={testMocksEnabled:true,devSurfacesEnabled:true};
 async function fixture(simulated=false){
  class Shell{componentDidMount(){}componentWillUnmount(){}vset(){}}
  const views={calendar:{render:()=>({})}};
- vm.runInNewContext(source+'\ninstallClockAdapter(Shell,views,{simulated});',{...flags,createClockHandoffHistory,clockHandoffLegacyKey,secureConnectionStore,createInlineModal,currentClockTimeZone,DailyApps,Shell,views,simulated,document,window:{addEventListener(){},removeEventListener(){}},queueMicrotask,localStorage,crypto:{randomUUID},Date,Intl,console});
+ vm.runInNewContext(source+'\ninstallClockAdapter(Shell,views,{simulated});',{...flags,createClockHandoffHistory,clockHandoffLegacyKey,secureConnectionStore,createInlineModal,currentClockTimeZone,clockDays,describeClockDays,CLOCK_DAY_NAMES,DailyApps,Shell,views,simulated,document,window:{addEventListener(){},removeEventListener(){}},queueMicrotask,localStorage,crypto:{randomUUID},Date,Intl,console});
  const shell=new Shell();shell.componentDidMount();const render=()=>views.calendar.render({},{});render().openClock();await settle();return {shell,render,leave:()=>views.calendar.onLeave()};
 }
 for(const testMocksEnabled of [true,false]){

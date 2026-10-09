@@ -1,62 +1,11 @@
 import { alphaClient } from '../runtime/alpha-client';
 import { connectionController } from '../runtime/connection-ui';
-import {reminderCreations,retainReminderCreation,discardUndispatchedCreation,checkReminderCreation,reconcileReminderCreations,retireRefusedCreation,isReminderRefusal,type ReminderCreation,type ReminderRefusal} from '../runtime/reminder-creations';
+import {reminderCreations,retainReminderCreation,discardUndispatchedCreation,checkReminderCreation,reconcileReminderCreations,retireRefusedCreation,isReminderRefusal,reminderWallTime,reminderEvents,overdueReminders,undatedTodos,reminderRefusalMessage,reopenSchedule,isUndatedReminder,reminderDueAt as dueOf,type ReminderCreation,type ReminderRefusal} from '../runtime/reminder-creations';
+// Pure reminder helpers (events, overdue, to-dos, refusal reasons, reopen) live in reminder-creations.
 import { DailyApps, type Reminder } from '../daily';
 import { pendingReminderDeletions,retainReminderDeletion,acknowledgeReminderDeletion,reconcileReminderDeletions,discardUndispatchedReminderDeletion } from '../runtime/reminder-deletions';
 import { Capacitor } from '@capacitor/core';
 type Bag = any;
-// Construct the requested civil fields independently of local DST normalization.
-function reminderWallTime(off:number,hours:number):Date|null {
-  if(!Number.isSafeInteger(off)||!Number.isFinite(hours))return null;
-  const minutes=Math.round(hours*60),today=new Date();
-  const target=new Date(Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()+off,0,minutes));
-  const date=new Date(target.getUTCFullYear(),target.getUTCMonth(),target.getUTCDate(),target.getUTCHours(),target.getUTCMinutes());
-  return date.getFullYear()===target.getUTCFullYear()&&date.getMonth()===target.getUTCMonth()&&date.getDate()===target.getUTCDate()&&date.getHours()===target.getUTCHours()&&date.getMinutes()===target.getUTCMinutes()?date:null;
-}
-/** Undated to-dos (reminderTodoVersion 1) have no instant, alarm or calendar day. */
-export const isUndatedReminder=(r:Reminder)=>(r as Reminder&{undated?:boolean}).undated===true;
-const dueOf=(r:Reminder)=>r.dueAt??r.at;
-/**
- * One-off reminders are absolute instants (dueAt). Only the rendered wall time follows the
- * phone's current time zone, so a zone change moves the displayed hour, never the instant.
- * Repeats keep their civil time in recurrence.zone (see docs/calendar-reminder-contract.md).
- */
-export function reminderEvents(rows:Reminder[],now=new Date()):Bag[]{
-  return rows.filter(r=>!isUndatedReminder(r)&&(r.status === 'pending' || r.status === 'completed' || r.status === 'scheduled' || r.status === 'posted' || r.status === 'permission-denied' || r.status === 'scheduling-failed')).map(r => {
-    const date = new Date(dueOf(r)), today = new Date(now); today.setHours(0,0,0,0);
-    const day = new Date(date); day.setHours(0,0,0,0);
-    return { id: 'reminder:' + r.id, alphaReminderId: r.id, reminderBody:r.body, reminderAt:r.at, reminderDueAt:dueOf(r), reminderOccurrence:r.occurrenceId, reminderRecurrence:r.recurrence, reminderHistory:r.history, reminderStatus:r.status, reminderTarget:r.target, off: Math.round((day.getTime()-today.getTime())/86400000), t: date.getHours()+date.getMinutes()/60, d: .25, title:r.title, cal:'personal', who:[], repeat:'none', alert:r.alertMinutes!==undefined?r.alertMinutes:r.recurrence?.leadMinutes || 0, notes:[r.body, r.snoozedAt && r.status==='scheduled' ? `Snoozed until ${new Date(r.at).toLocaleString()} · approximate delivery` : '', r.recurrence ? `${r.recurrence.rule} · ${r.recurrence.zone}. ${r.alertMinutes===null?'Next occurrence is saved with no alert after Done.':'Next occurrence is scheduled after Done.'} Future missing clock times use the first valid time after the gap; repeated clock times use the earlier offset.` : '', r.status === 'scheduling-failed' ? 'Saved, scheduling failed. Tap Snooze 10 minutes to retry.' : '', r.status === 'pending' ? 'No alert · saved on this device' : r.status === 'completed' ? 'Completed · no further alarm scheduled' : r.status === 'posted' ? 'Notification posted' : r.status === 'permission-denied' ? `Not delivered · notifications were disabled. Enable notifications in ${Capacitor.isNativePlatform()?'Android settings':'Settings'}, then edit this reminder to choose a new time and save.` : 'Scheduled · approximate delivery'].filter(Boolean).join('\n') };
-  });
-}
-/** Due and not done: posted, or still scheduled (delayed or snoozed) after its due instant. Oldest first. */
-export function overdueReminders(rows:Reminder[],now=Date.now()):Reminder[]{
-  return rows.filter(r=>!isUndatedReminder(r)&&Number.isFinite(dueOf(r))&&dueOf(r)<now&&(r.status==='posted'||r.status==='scheduled')).sort((a,b)=>dueOf(a)-dueOf(b));
-}
-/** Open and completed undated to-dos, open first, in creation order. */
-export function undatedTodos(rows:Reminder[]):Reminder[]{
-  return rows.filter(r=>isUndatedReminder(r)&&((r.status as string)==='todo'||r.status==='completed')).sort((a,b)=>Number(a.status==='completed')-Number(b.status==='completed')||a.createdAt-b.createdAt);
-}
-/** Specific, stable reason for a definite native refusal. Nothing was saved in every case. */
-export function reminderRefusalMessage(status:ReminderRefusal,native=Capacitor.isNativePlatform()):string{
-  switch(status){
-    case 'past':return 'This reminder time has passed. Choose a future time. Nothing was saved.';
-    case 'permission-denied':return `Notifications are off for Alpha. Enable them in ${native?'Android settings':'Settings'}, then save again. Nothing was saved.`;
-    case 'storage-full':return 'Reminder storage is full. Complete or delete a reminder, then save again. Nothing was saved.';
-    default:return 'This reminder could not be saved. Check its title and time, then save again. Nothing was saved.';
-  }
-}
-/**
- * Reviewed reopen schedule for a completed one-off reminder. 'open' keeps it open with no
- * alert (its original due instant, or the next minute if that has passed); 'tomorrow'
- * alerts at the original local clock time tomorrow. Returns null for a missing local time.
- */
-export function reopenSchedule(reminder:{dueAt:number;alertMinutes:number|null},mode:'open'|'tomorrow',now=Date.now()):{at:number;recurrence:null;dueAt:number;alertMinutes:number|null}|null{
-  if(mode==='open'){const dueAt=Math.max(reminder.dueAt,Math.ceil((now+60000)/60000)*60000);return {at:dueAt,recurrence:null,dueAt,alertMinutes:null};}
-  // Tomorrow relative to the phone's current day (reminderWallTime reads the current clock).
-  const original=new Date(reminder.dueAt),date=reminderWallTime(1,original.getHours()+original.getMinutes()/60);if(!date)return null;
-  const lead=reminder.alertMinutes??0,dueAt=date.getTime();if(dueAt-lead*60000<=now)return null;
-  return {at:dueAt-lead*60000,recurrence:null,dueAt,alertMinutes:lead};
-}
 type TodoBridge={saveTodo(options:{id:string;title:string;body?:string}):Promise<{status:string;id:string;message?:string}>;todoDecision(options:{target:NonNullable<Reminder['target']>;action:'done'|'reopen'|'cancel'}):Promise<{status:string;id:string}>};
 const todoBridge=()=>DailyApps as unknown as TodoBridge;
 /** Native reminders use the reference calendar form, timeline and detail sheet. */

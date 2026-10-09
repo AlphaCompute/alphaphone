@@ -9,7 +9,7 @@ for(const status of ['storage-full','past','permission-denied','failed'] as cons
  await page.getByRole('button',{name:'New event',exact:true}).click();
  await page.getByRole('textbox',{name:'Title',exact:true}).fill('Refused reminder');await page.getByRole('button',{name:'Reminders',exact:true}).click();
  const message=await page.evaluate(async status=>{
-  const {BrowserDaily}=await import('/src/browser/daily.ts'),{reminderRefusalMessage}=await import('/src/prototype/reminder-adapter.ts');(window as any).creates=0;
+  const {BrowserDaily}=await import('/src/browser/daily.ts'),{reminderRefusalMessage}=await import('/src/runtime/reminder-creations.ts');(window as any).creates=0;
   BrowserDaily.prototype.scheduleReminder=async function(input:{id:string}){(window as any).creates++;return {status,id:input.id,mode:'inexact',message:'refused'} as any;};
   return reminderRefusalMessage(status,false);
  },status);
