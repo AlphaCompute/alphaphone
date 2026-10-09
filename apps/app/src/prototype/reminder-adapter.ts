@@ -1,6 +1,6 @@
 import { alphaClient } from '../runtime/alpha-client';
 import { connectionController } from '../runtime/connection-ui';
-import {reminderCreations,retainReminderCreation,discardUndispatchedCreation,checkReminderCreation,reconcileReminderCreations,type ReminderCreation} from '../runtime/reminder-creations';
+import {reminderCreations,retainReminderCreation,discardUndispatchedCreation,checkReminderCreation,reconcileReminderCreations,retireRefusedCreation,isReminderRefusal,type ReminderCreation,type ReminderRefusal} from '../runtime/reminder-creations';
 import { DailyApps, type Reminder } from '../daily';
 import { pendingReminderDeletions,retainReminderDeletion,acknowledgeReminderDeletion,reconcileReminderDeletions,discardUndispatchedReminderDeletion } from '../runtime/reminder-deletions';
 import { Capacitor } from '@capacitor/core';
@@ -13,17 +13,59 @@ function reminderWallTime(off:number,hours:number):Date|null {
   const date=new Date(target.getUTCFullYear(),target.getUTCMonth(),target.getUTCDate(),target.getUTCHours(),target.getUTCMinutes());
   return date.getFullYear()===target.getUTCFullYear()&&date.getMonth()===target.getUTCMonth()&&date.getDate()===target.getUTCDate()&&date.getHours()===target.getUTCHours()&&date.getMinutes()===target.getUTCMinutes()?date:null;
 }
+/** Undated to-dos (reminderTodoVersion 1) have no instant, alarm or calendar day. */
+export const isUndatedReminder=(r:Reminder)=>(r as Reminder&{undated?:boolean}).undated===true;
+const dueOf=(r:Reminder)=>r.dueAt??r.at;
+/**
+ * One-off reminders are absolute instants (dueAt). Only the rendered wall time follows the
+ * phone's current time zone, so a zone change moves the displayed hour, never the instant.
+ * Repeats keep their civil time in recurrence.zone (see docs/calendar-reminder-contract.md).
+ */
+export function reminderEvents(rows:Reminder[],now=new Date()):Bag[]{
+  return rows.filter(r=>!isUndatedReminder(r)&&(r.status === 'pending' || r.status === 'completed' || r.status === 'scheduled' || r.status === 'posted' || r.status === 'permission-denied' || r.status === 'scheduling-failed')).map(r => {
+    const date = new Date(dueOf(r)), today = new Date(now); today.setHours(0,0,0,0);
+    const day = new Date(date); day.setHours(0,0,0,0);
+    return { id: 'reminder:' + r.id, alphaReminderId: r.id, reminderBody:r.body, reminderAt:r.at, reminderDueAt:dueOf(r), reminderOccurrence:r.occurrenceId, reminderRecurrence:r.recurrence, reminderHistory:r.history, reminderStatus:r.status, reminderTarget:r.target, off: Math.round((day.getTime()-today.getTime())/86400000), t: date.getHours()+date.getMinutes()/60, d: .25, title:r.title, cal:'personal', who:[], repeat:'none', alert:r.alertMinutes!==undefined?r.alertMinutes:r.recurrence?.leadMinutes || 0, notes:[r.body, r.snoozedAt && r.status==='scheduled' ? `Snoozed until ${new Date(r.at).toLocaleString()} · approximate delivery` : '', r.recurrence ? `${r.recurrence.rule} · ${r.recurrence.zone}. ${r.alertMinutes===null?'Next occurrence is saved with no alert after Done.':'Next occurrence is scheduled after Done.'} Future missing clock times use the first valid time after the gap; repeated clock times use the earlier offset.` : '', r.status === 'scheduling-failed' ? 'Saved, scheduling failed. Tap Snooze 10 minutes to retry.' : '', r.status === 'pending' ? 'No alert · saved on this device' : r.status === 'completed' ? 'Completed · no further alarm scheduled' : r.status === 'posted' ? 'Notification posted' : r.status === 'permission-denied' ? `Not delivered · notifications were disabled. Enable notifications in ${Capacitor.isNativePlatform()?'Android settings':'Settings'}, then edit this reminder to choose a new time and save.` : 'Scheduled · approximate delivery'].filter(Boolean).join('\n') };
+  });
+}
+/** Due and not done: posted, or still scheduled (delayed or snoozed) after its due instant. Oldest first. */
+export function overdueReminders(rows:Reminder[],now=Date.now()):Reminder[]{
+  return rows.filter(r=>!isUndatedReminder(r)&&Number.isFinite(dueOf(r))&&dueOf(r)<now&&(r.status==='posted'||r.status==='scheduled')).sort((a,b)=>dueOf(a)-dueOf(b));
+}
+/** Open and completed undated to-dos, open first, in creation order. */
+export function undatedTodos(rows:Reminder[]):Reminder[]{
+  return rows.filter(r=>isUndatedReminder(r)&&((r.status as string)==='todo'||r.status==='completed')).sort((a,b)=>Number(a.status==='completed')-Number(b.status==='completed')||a.createdAt-b.createdAt);
+}
+/** Specific, stable reason for a definite native refusal. Nothing was saved in every case. */
+export function reminderRefusalMessage(status:ReminderRefusal,native=Capacitor.isNativePlatform()):string{
+  switch(status){
+    case 'past':return 'This reminder time has passed. Choose a future time. Nothing was saved.';
+    case 'permission-denied':return `Notifications are off for Alpha. Enable them in ${native?'Android settings':'Settings'}, then save again. Nothing was saved.`;
+    case 'storage-full':return 'Reminder storage is full. Complete or delete a reminder, then save again. Nothing was saved.';
+    default:return 'This reminder could not be saved. Check its title and time, then save again. Nothing was saved.';
+  }
+}
+/**
+ * Reviewed reopen schedule for a completed one-off reminder. 'open' keeps it open with no
+ * alert (its original due instant, or the next minute if that has passed); 'tomorrow'
+ * alerts at the original local clock time tomorrow. Returns null for a missing local time.
+ */
+export function reopenSchedule(reminder:{dueAt:number;alertMinutes:number|null},mode:'open'|'tomorrow',now=Date.now()):{at:number;recurrence:null;dueAt:number;alertMinutes:number|null}|null{
+  if(mode==='open'){const dueAt=Math.max(reminder.dueAt,Math.ceil((now+60000)/60000)*60000);return {at:dueAt,recurrence:null,dueAt,alertMinutes:null};}
+  // Tomorrow relative to the phone's current day (reminderWallTime reads the current clock).
+  const original=new Date(reminder.dueAt),date=reminderWallTime(1,original.getHours()+original.getMinutes()/60);if(!date)return null;
+  const lead=reminder.alertMinutes??0,dueAt=date.getTime();if(dueAt-lead*60000<=now)return null;
+  return {at:dueAt-lead*60000,recurrence:null,dueAt,alertMinutes:lead};
+}
+type TodoBridge={saveTodo(options:{id:string;title:string;body?:string}):Promise<{status:string;id:string;message?:string}>;todoDecision(options:{target:NonNullable<Reminder['target']>;action:'done'|'reopen'|'cancel'}):Promise<{status:string;id:string}>};
+const todoBridge=()=>DailyApps as unknown as TodoBridge;
 /** Native reminders use the reference calendar form, timeline and detail sheet. */
 export function installReminderAdapter(Component: Bag, views: Bag) {
   const p = Component.prototype, mount = p.componentDidMount, unmount = p.componentWillUnmount;
   const render = views.calendar.render;
   views.calendar.state = { ...views.calendar.state, events: [] };
   let owner: Bag;
-  const events = (rows: Reminder[]) => rows.filter(r => r.status === 'pending' || r.status === 'completed' || r.status === 'scheduled' || r.status === 'posted' || r.status === 'permission-denied' || r.status === 'scheduling-failed').map(r => {
-    const date = new Date(r.dueAt || r.at), today = new Date(); today.setHours(0,0,0,0);
-    const day = new Date(date); day.setHours(0,0,0,0);
-    return { id: 'reminder:' + r.id, alphaReminderId: r.id, reminderBody:r.body, reminderAt:r.at, reminderOccurrence:r.occurrenceId, reminderRecurrence:r.recurrence, reminderHistory:r.history, reminderStatus:r.status, reminderTarget:r.target, off: Math.round((day.getTime()-today.getTime())/86400000), t: date.getHours()+date.getMinutes()/60, d: .25, title:r.title, cal:'personal', who:[], repeat:'none', alert:r.alertMinutes!==undefined?r.alertMinutes:r.recurrence?.leadMinutes || 0, notes:[r.body, r.snoozedAt && r.status==='scheduled' ? `Snoozed until ${new Date(r.at).toLocaleString()} · approximate delivery` : '', r.recurrence ? `${r.recurrence.rule} · ${r.recurrence.zone}. ${r.alertMinutes===null?'Next occurrence is saved with no alert after Done.':'Next occurrence is scheduled after Done.'} Future missing clock times use the first valid time after the gap; repeated clock times use the earlier offset.` : '', r.status === 'scheduling-failed' ? 'Saved, scheduling failed. Tap Snooze 10 minutes to retry.' : '', r.status === 'pending' ? 'No alert · saved on this device' : r.status === 'completed' ? 'Completed · no further alarm scheduled' : r.status === 'posted' ? 'Notification posted' : r.status === 'permission-denied' ? `Not delivered · notifications were disabled. Enable notifications in ${Capacitor.isNativePlatform()?'Android settings':'Settings'}, then edit this reminder to choose a new time and save.` : 'Scheduled · approximate delivery'].filter(Boolean).join('\n') };
-  });
+  const events = (rows: Reminder[]) => reminderEvents(rows);
   let tapBusy=false, tapRequested=false, tapInteraction=0;
   const interaction=()=>{tapInteraction++;};
   for(const name of ['openView','goHome','back']){const original=p[name];p[name]=function(...args:Bag[]){tapInteraction++;return original.apply(this,args);};}
@@ -78,9 +120,11 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
       this.reminderDeleteUnknown=reminderDeleteUnknown;
       this.vset('calendar',{reminderDeleteUnknown});
       if (Capacitor.getPlatform() === 'web' && !Capacitor.isPluginAvailable('DailyApps')) {this.vset('calendar',{reminderStale:false});return;}
+      if(this.reminderTodoVersion===undefined)try{this.reminderTodoVersion=(await DailyApps.surfaceInfo() as {reminderTodoVersion?:number}).reminderTodoVersion??0;}catch{/* Unknown native support hides to-dos. */}
       const result = await DailyApps.listReminders();
       if (!this.live || generation !== this.reminderRefreshGeneration) return;
       this.reminderTargets=new Map(result.reminders.map(r=>[r.id,r.target]));
+      this.reminderRows=result.reminders;
       const rows = [...(this.nativeCalendarRows || []), ...events(result.reminders)];
       this.reminderRefreshFailed = false;
       this.vset('calendar', { events: rows, reminderStale:false, reminderDeleteUnknown });
@@ -138,6 +182,44 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
     };
     out.reminderDeleteUnknown=Number(owner?.reminderDeleteUnknown??state.reminderDeleteUnknown??0);
     out.checkReminderDeletions=()=>void owner?.refreshReminders();
+    const rows:Reminder[]=owner?.reminderRows||[];
+    out.overdueReminders=overdueReminders(rows,api.now??Date.now()).map(r=>({title:r.title,label:'Overdue',due:new Date(dueOf(r)).toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}),open:()=>{const row=reminderEvents([r])[0];api.set({open:row.id,day:row.off,openDay:row.off});}}));
+    out.hasOverdueReminders=out.overdueReminders.length>0;
+    // Undated to-dos: listed without a calendar day; native support only (reminderTodoVersion 1).
+    out.todoAvailable=owner?.reminderTodoVersion===1;
+    const todoBusy=()=>!!owner?.reminderSaving;
+    const todoDecision=async(r:Reminder,action:'done'|'reopen'|'cancel')=>{
+      const todoOwner=owner;if(!todoOwner||todoBusy()||!r.target)return;
+      if(action==='cancel'&&!window.confirm(`Delete the to-do “${r.title}”?`))return;
+      todoOwner.reminderSaving=true;
+      try{
+        const result=await todoBridge().todoDecision({target:r.target,action});
+        const saved=(await DailyApps.listReminders()).reminders.find(row=>row.id===r.id);
+        const expected=action==='done'?'completed':action==='reopen'?'todo':'cancelled';
+        if(result.status!==expected||(expected!=='cancelled'&&(saved?.status as string)!==expected)||(expected==='cancelled'&&saved))throw Error('To-do readback mismatch');
+        if(owner===todoOwner&&todoOwner.live){await todoOwner.refreshReminders();api.toast(action==='done'?'To-do completed.':action==='reopen'?'To-do reopened.':'To-do deleted.');}
+      }catch{if(owner===todoOwner&&todoOwner.live){await todoOwner.refreshReminders();api.toast('This to-do changed or could not be saved. Check it and try again.');}}
+      finally{todoOwner.reminderSaving=false;}
+    };
+    out.todos=undatedTodos(rows).map(r=>({id:r.id,title:r.title,body:r.body,done:r.status==='completed',complete:()=>void todoDecision(r,'done'),reopen:()=>void todoDecision(r,'reopen'),remove:()=>void todoDecision(r,'cancel')}));
+    out.hasTodos=out.todos.length>0;
+    out.addTodo=async(title:string,body='')=>{
+      const todoOwner=owner,text=String(title||'').trim();if(!todoOwner||!text||todoBusy())return;
+      if(todoOwner.reminderTodoVersion!==1){api.toast('Update Alpha to save undated to-dos. Nothing was saved.');return;}
+      // A retried save reuses the same ID; native treats an identical retry as idempotent.
+      const attempt=todoOwner.todoAttempt?.title===text&&todoOwner.todoAttempt?.body===body?todoOwner.todoAttempt:{id:crypto.randomUUID(),title:text,body};
+      todoOwner.todoAttempt=attempt;todoOwner.reminderSaving=true;
+      try{
+        let response:{status:string}|undefined;
+        try{response=await todoBridge().saveTodo({id:attempt.id,title:text,body});}catch{/* Readback decides. */}
+        const saved=(await DailyApps.listReminders()).reminders.find(r=>r.id===attempt.id);
+        if(!saved&&isReminderRefusal(response?.status)){todoOwner.todoAttempt=undefined;if(owner===todoOwner)api.toast(reminderRefusalMessage(response.status as ReminderRefusal).replace('This reminder','This to-do'));return;}
+        if(!saved||!isUndatedReminder(saved))throw Error('To-do save unconfirmed');
+        todoOwner.todoAttempt=undefined;
+        if(owner===todoOwner&&todoOwner.live){await todoOwner.refreshReminders();api.toast('To-do saved on this device. No date or alert.');}
+      }catch{if(owner===todoOwner&&todoOwner.live)api.toast('To-do save is unconfirmed. Try again; the same to-do will not be duplicated.');}
+      finally{todoOwner.reminderSaving=false;}
+    };
     out.reminderCreateUnknown=Number(owner?.reminderCreateUnknown??state.reminderCreateUnknown??0);
     out.checkReminderCreations=()=>void owner?.refreshReminders();
     if(out.f) {
@@ -232,7 +314,14 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
               await retainReminderCreation(created);
               if(!active())return;
               dispatched=true;
-              try{const response=await DailyApps.scheduleReminder(request);scheduled=(response.status==='scheduled'||response.status==='pending')&&response.id===id;notificationsBlocked=response.status==='permission-denied'&&response.id===id;}catch{/* Recovery reads only; never reschedule an unknown attempt. */}
+              let refusal:ReminderRefusal|undefined;
+              try{const response=await DailyApps.scheduleReminder(request);scheduled=(response.status==='scheduled'||response.status==='pending')&&response.id===id;notificationsBlocked=response.status==='permission-denied'&&response.id===id;if(response.id===id&&isReminderRefusal(response.status))refusal=response.status;}catch{/* Recovery reads only; never reschedule an unknown attempt. */}
+              // A definite refusal whose ID is confirmed absent is retired, so refused attempts
+              // never accumulate as unknown creations. The draft stays open for another time.
+              if(refusal&&await retireRefusedCreation(id,refusal)){
+                if(owner===createOwner&&createOwner.live){api.toast(reminderRefusalMessage(refusal));if(api.get('calendar').form?.reminderCreationId===id)api.set({form:{...api.get('calendar').form,reminderCreationId:undefined}});}
+                return;
+              }
             }
             const retained=(await reminderCreations())[id];
             matchesAttempt=!!retained&&JSON.stringify(retained.request)===JSON.stringify(request);
@@ -308,6 +397,57 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         }
       };
       out.ev.reminderCanSnooze=event.alert!==null;out.ev.reminderDone=()=>decide('done');out.ev.reminderSnooze=()=>decide('snooze');
+      // Reopen a completed one-off through a reviewed reminder_update, then read it back.
+      const reopen=async(mode:'open'|'tomorrow')=>{
+        if(!requireFresh()||owner?.reminderSaving)return;
+        if(!renderedDecisionTarget||event.reminderStatus!=='completed'||event.reminderRecurrence){api.toast('Refresh and reopen this reminder before changing it.');return;}
+        const schedule=reopenSchedule({dueAt:Number(event.reminderDueAt),alertMinutes:event.alert===null?null:Number(event.alert||0)},mode);
+        if(!schedule){api.toast('That local time does not exist tomorrow because the clocks change. Edit the reminder to choose a time. Nothing was saved.');return;}
+        const reopenOwner=owner;
+        const stillSelected=()=>owner===reopenOwner&&reopenOwner?.live&&!document.hidden&&api.isActive()&&api.get('calendar').open===event.id&&!api.get('calendar').form;
+        if(!stillSelected())return;
+        const when=new Date(schedule.dueAt).toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+        if(!window.confirm(mode==='open'?`Reopen “${event.title}” with no alert? It stays open, due ${when}.`:`Reopen “${event.title}” and alert ${when}? Delivery is approximate.`))return;
+        if(!stillSelected())return;
+        reopenOwner.reminderSaving=true;
+        let createdInput:Bag=null,dispatched=false;
+        try{
+          const operation={type:'reminder_update' as const,target:renderedDecisionTarget,fields:{title:event.title,body:event.reminderBody||'',schedule}};
+          const pending=Object.values(await pendingReminderDeletions()).find(input=>Object.keys(renderedDecisionTarget).every(key=>input.operation.target[key as keyof typeof input.operation.target]===renderedDecisionTarget[key]));
+          if(pending&&JSON.stringify(pending.operation)!==JSON.stringify(operation))throw Error('Another action on this revision is unconfirmed');
+          let input=pending;
+          if(!input){
+            const current=await DailyApps.selectedReminder({id:event.alphaReminderId});
+            if(Object.keys(renderedDecisionTarget).some(key=>current[key as keyof typeof current]!==renderedDecisionTarget[key])){await reopenOwner.refreshReminders();api.toast('This reminder changed. Review it again before reopening it.');return;}
+            if(!stillSelected())return;
+            const bindingHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');
+            if(!stillSelected())return;
+            input={operationId:crypto.randomUUID(),bindingHash,operation};createdInput=input;
+            await retainReminderDeletion(input);
+            if(!stillSelected())return;
+          }
+          let response;
+          if(pending)response=await DailyApps.reminderOperationReceipt(input);
+          else try{dispatched=true;response=await DailyApps.operateReminder(input);}catch{response=await DailyApps.reminderOperationReceipt(input);}
+          if(response.status!=='succeeded'||!response.result)throw Error('Unconfirmed reminder reopen');
+          await acknowledgeReminderDeletion(input,response.result);
+          // Readback: the same reminder ID now holds a new open occurrence at the reviewed due time.
+          const saved=(await DailyApps.listReminders()).reminders.find(r=>r.id===event.alphaReminderId);
+          if(!saved||saved.status==='completed'||saved.occurrenceId===event.reminderOccurrence||saved.dueAt!==schedule.dueAt)throw Error('Reopen readback mismatch');
+          if(owner===reopenOwner&&reopenOwner.live){
+            await reopenOwner.refreshReminders();
+            api.toast(saved.status==='pending'?'Reopened with no alert.':saved.status==='permission-denied'?'Reopened, notifications disabled. Enable notifications then review this reminder again.':saved.status==='scheduling-failed'?'Reopened, scheduling failed. Review this reminder before retrying.':'Reopened · approximate delivery');
+          }
+        }catch{
+          if(owner===reopenOwner&&reopenOwner.live)api.toast('Reopen is unconfirmed. Check action status in Calendar; it will not be repeated.');
+        }finally{
+          if(createdInput&&!dispatched)try{await discardUndispatchedReminderDeletion(createdInput);}catch{/* Preserve uncertain storage; never clear another operation. */}
+          if(owner===reopenOwner&&reopenOwner.live)try{reopenOwner.reminderDeleteUnknown=Object.keys(await pendingReminderDeletions()).length;api.set({reminderDeleteUnknown:reopenOwner.reminderDeleteUnknown});}catch{}
+          reopenOwner.reminderSaving=false;
+        }
+      };
+      out.ev.reminderReopenable=event.reminderStatus==='completed'&&!event.reminderRecurrence&&!!renderedDecisionTarget;
+      out.ev.reminderReopen=()=>reopen('open');out.ev.reminderReopenTomorrow=()=>reopen('tomorrow');
       out.ev.edit=()=>{if(!requireFresh())return;const repeat=event.reminderRecurrence?.rule||'none',target=event.reminderTarget;api.set({form:{...event,repeat,id:event.id,cal:'alpha-reminders',where:'',video:false,who:[],notes:event.reminderBody||'',alphaReminderId:event.alphaReminderId,reminderEditSession:{uncertain:false},reminderEditTarget:target?structuredClone(target):undefined,reminderEditSchedule:[event.off,event.t,repeat,event.alert]}});};
       const renderedTarget=event.reminderTarget?structuredClone(event.reminderTarget):undefined;
       out.ev.del=async()=>{

@@ -46,6 +46,22 @@ export async function discardUndispatchedCreation(row:ReminderCreation){await ch
 function matches(row:ReminderCreation,saved:Reminder){
  return saved.id===row.id&&saved.title===row.request.title&&saved.body===row.request.body&&saved.at===row.request.at&&(row.request.alertMinutes===undefined||(row.request.alertMinutes===null?saved.mode==='none'&&['pending','completed','cancelled'].includes(saved.status):saved.mode==='inexact'&&saved.status!=='pending'))&&JSON.stringify(reminderTiming(saved))===JSON.stringify(reminderTiming(row.request))&&(saved.recurrence&&row.request.recurrence?['rule','zone','date','time','leadMinutes'].every(k=>(saved.recurrence as any)[k]===(row.request.recurrence as any)[k]):!saved.recurrence&&!row.request.recurrence)&&!!saved.occurrenceId&&['pending','scheduled','posted','completed','cancelled','permission-denied','scheduling-failed'].includes(saved.status);
 }
+/** Native refusal codes (reminderStatusVersion 1, browser 'past'): nothing was scheduled for the request. */
+export const reminderRefusals=['past','permission-denied','storage-full','failed'] as const;
+export type ReminderRefusal=typeof reminderRefusals[number];
+export const isReminderRefusal=(status:unknown):status is ReminderRefusal=>reminderRefusals.includes(status as ReminderRefusal);
+/**
+ * Retire a pending creation only after a definite native refusal AND a readback that
+ * confirms the ID is absent. A saved row (for example permission-denied but stored) is
+ * never retired here; checkReminderCreation finds it instead. Never schedules.
+ */
+export async function retireRefusedCreation(id:string,status:unknown,rows?:Reminder[]):Promise<boolean>{
+ if(!isReminderRefusal(status))return false;
+ const row=(await reminderCreations())[id];if(!row||row.state!=='pending')return false;
+ const saved=(rows||(await DailyApps.listReminders()).reminders).some(r=>r.id===id);
+ if(saved)return false;
+ await change(id,row,null);return true;
+}
 export async function checkReminderCreation(id:string,rows?:Reminder[]){
  const row=(await reminderCreations())[id];if(!row)return 'unknown' as const;if(row.state==='found')return 'found' as const;
  const saved=(rows||(await DailyApps.listReminders()).reminders).find(r=>r.id===id);
