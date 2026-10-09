@@ -8,6 +8,8 @@ export type ClockOperation =
       minute: number;
       label: string;
       timeZone: string;
+      /** Repeat days for AlarmClock.EXTRA_DAYS: java.util.Calendar values, Sunday=1 … Saturday=7. */
+      days?: ClockDay[];
     }
   | { type: "clock_handoff"; action: "snooze"; snoozeMinutes: number }
   | { type: "clock_handoff"; action: "show" | "dismiss" };
@@ -38,6 +40,26 @@ function integer(value: unknown, min: number, max: number): number {
     throw Error("Invalid Clock number");
   return value;
 }
+export type ClockDay = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export const CLOCK_DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+/** One to seven unique days, ascending; Clock receives exactly this list in EXTRA_DAYS. */
+export function clockDays(value: unknown): ClockDay[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 7)
+    throw Error("Invalid Clock repeat days");
+  let previous = 0;
+  for (const day of value) {
+    if (typeof day !== "number" || !Number.isInteger(day) || day < 1 || day > 7 || day <= previous)
+      throw Error("Invalid Clock repeat days");
+    previous = day;
+  }
+  return [...value] as ClockDay[];
+}
+export function describeClockDays(days: readonly ClockDay[]): string {
+  if (days.length === 7) return "every day";
+  if (days.join() === "2,3,4,5,6") return "weekdays";
+  if (days.join() === "1,7") return "weekends";
+  return days.map((day) => CLOCK_DAY_NAMES[day - 1]).join(", ");
+}
 export function clockTimeZone(value: unknown): string {
   if (
     typeof value !== "string" ||
@@ -63,7 +85,7 @@ export function validateClockOperation(value: unknown): ClockOperation {
   const v = object(value);
   if (v.type !== "clock_handoff") throw Error("Invalid Clock operation");
   if (v.action === "set") {
-    keys(v, ["type", "action", "hour", "minute", "label", "timeZone"]);
+    keys(v, Object.hasOwn(v, "days") ? ["type", "action", "hour", "minute", "label", "timeZone", "days"] : ["type", "action", "hour", "minute", "label", "timeZone"]);
     if (
       typeof v.label !== "string" ||
       v.label.length > 200 ||
@@ -77,6 +99,7 @@ export function validateClockOperation(value: unknown): ClockOperation {
       minute: integer(v.minute, 0, 59),
       label: v.label,
       timeZone: clockTimeZone(v.timeZone),
+      ...(Object.hasOwn(v, "days") ? { days: clockDays(v.days) } : {}),
     };
   }
   if (v.action === "snooze") {
@@ -140,7 +163,7 @@ export function currentClockTimeZone(): string {
 }
 export function assertClockTimeZone(operation:ClockOperation,observed:string|undefined){if(operation.action==='set'&&(operation.timeZone!==observed||operation.timeZone!==currentClockTimeZone()))throw Error('Phone time zone changed. Review the Clock request again.');}
 export function describeClockHandoff(op:ClockOperation):string{
- return op.action==='set'?`Ask Clock to set ${String(op.hour).padStart(2,'0')}:${String(op.minute).padStart(2,'0')} in ${op.timeZone}${op.label?` named “${op.label}”`:''}. Review the alarm in Clock; Alpha cannot confirm creation or ringing.`:op.action==='show'?'Open Clock’s alarms page.':op.action==='snooze'?`Open Clock so you can choose the intended alarm and snooze it yourself. Select the duration there; ${op.snoozeMinutes} minutes will not be applied automatically. Completion stays unverified.`:'Open Clock so you can choose the intended alarm and dismiss it yourself. Alpha will not dismiss or disable an alarm automatically. Completion stays unverified.';
+ return op.action==='set'?`Ask Clock to set ${String(op.hour).padStart(2,'0')}:${String(op.minute).padStart(2,'0')} in ${op.timeZone}${op.days?`, repeating ${describeClockDays(op.days)}`:''}${op.label?` named “${op.label}”`:''}. Review the alarm in Clock; Alpha cannot confirm creation or ringing.`:op.action==='show'?'Open Clock’s alarms page.':op.action==='snooze'?`Open Clock so you can choose the intended alarm and snooze it yourself. Select the duration there; ${op.snoozeMinutes} minutes will not be applied automatically. Completion stays unverified.`:'Open Clock so you can choose the intended alarm and dismiss it yourself. Alpha will not dismiss or disable an alarm automatically. Completion stays unverified.';
 }
 
 export function validateClockResult(operation:ClockOperation,value:unknown):ClockResult{const status=(value as any)?.status;return validateClockOutcome(operation,value,status==='opened'?'applied':status==='unknown'?'unknown':'failed');}
