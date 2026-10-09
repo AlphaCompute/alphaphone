@@ -121,3 +121,21 @@ test('expired pending login references cannot be committed to the private store'
   assert.equal(JSON.parse((await f.rpc({operation:'secureRead',slot:'cloud:production'})).data.value).credentialReference,reference);
  }finally{Date.now=clock;await f.close();}
 });
+
+test('empty-store logout invalidates an already issued login claim',async()=>{
+ const f=await fixture();try{
+  await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:reference});
+  const result=await claim(f),ref=result.data.data.credentialReference;
+  assert.equal((await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:null})).status,200);
+  const write=await f.rpc({operation:'secureWrite',slot:'cloud:production',previousReference:null,value:JSON.stringify({credentialReference:ref,credentialId:randomUUID(),userId:owner,organizationId:org})});assert.equal(write.status,409);
+  assert.equal((await f.rpc({operation:'secureRead',slot:'cloud:production'})).data.value,null);
+ }finally{await f.close();}
+});
+test('empty-store logout retires an in-flight login poll without NULL-state resurrection',async()=>{
+ const f=await fixture();try{
+  await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:reference});
+  const entered=Promise.withResolvers(),release=Promise.withResolvers();f.setPollResponse(async()=>{entered.resolve();await release.promise;return Response.json({status:'authenticated',apiKey:secret});});
+  const pending=claim(f);await entered.promise;await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:null});release.resolve();const result=await pending;assert.equal(result.status,409);assert.equal(result.data.credentialReference,undefined);
+  assert.equal((await f.rpc({operation:'secureRead',slot:'cloud:production'})).data.value,null);
+ }finally{await f.close();}
+});
