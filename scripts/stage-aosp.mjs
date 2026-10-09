@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { androidEnv, tool } from "./toolchain.mjs";
 import { clockProductRequirement } from "./aosp-clock-contract.mjs";
+import { provisioningComponents, writeProvisioningOverlay } from "./aosp-provisioning-overlay.mjs";
 
 /**
  * Refuse inputs that must never reach an image: anything from the separate
@@ -42,18 +43,23 @@ const get = (key) => {
   return i < 0 ? null : args[i + 1];
 };
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === "--development") continue;
+  if (args[i] === "--development" || args[i] === "--production") continue;
   if (
     !["--apk", "--output", "--descriptor", "--apk-manifest"].includes(args[i]) ||
     !args[i + 1] ||
     args[i + 1].startsWith("--")
   )
     throw new Error(
-      "Use --apk FILE --output NEW_DIR [--descriptor FILE | --development] [--apk-manifest FILE]",
+      "Use --apk FILE --output NEW_DIR [--descriptor FILE [--production] | --development] [--apk-manifest FILE]",
     );
   i++;
 }
 const development = args.includes("--development");
+// --production adds the provisioning overlay (default HOME, assistant role, Autofill
+// offer). It needs a reviewed descriptor and a distributable release, so it is
+// refused until a signed, PACKAGED, qualified release APK exists.
+const production = args.includes("--production");
+if (production && development) throw new Error("--production and --development are exclusive");
 const apk = get("--apk");
 if (!apk) throw new Error("Supply --apk PATH to a signed launcher APK.");
 const identity = JSON.parse(fs.readFileSync("app.config.json"));
@@ -125,6 +131,12 @@ execFileSync(
   { stdio: "inherit", env },
 );
 fs.appendFileSync(path.join(output, "product.mk"), clockProductRequirement);
+if (production) {
+  const tree = execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 });
+  const components = provisioningComponents(tree, identity.appId);
+  writeProvisioningOverlay(output, identity.appId, components);
+  console.log(`Provisioning overlay: HOME ${components.home}, assistant ${identity.appId}, Autofill ${components.autofill}.`);
+}
 console.log(
   `Add under vendor/${identity.slug.replaceAll("-", "_")} and inherit product.mk from the selected AOSP product. This is staging evidence, not an image boot.`,
 );

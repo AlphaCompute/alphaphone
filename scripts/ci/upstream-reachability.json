@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "repository": "elizaOS/eliza",
+  "base": "develop",
+  "baseCommit": "a110894d77e4d22080b9b47d45e16f1cb41c2d7a",
+  "head": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "recordedAt": "2026-10-09",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...45242af234e7f3d55c433f327798e7cb2130e06e",
+  "status": "diverged",
+  "aheadBy": 14,
+  "behindBy": 188,
+  "mergeBase": "881586d19e03e5df76159bed4df0cbaf26f38eee",
+  "pinOnlyCommits": [
+    {
+      "sha": "4527ca1989876a9c68822ea6283ec7bad8736613",
+      "subject": "fix(notes): identify the source of model-facing saved notes"
+    },
+    {
+      "sha": "49fd37f1c766a3510a47db5f5db702c475ecf2b1",
+      "subject": "fix(chat): preserve explicit original-prose history format"
+    },
+    {
+      "sha": "9007c3f7962b9cd44d6bc8e0a430bac168fe2e7c",
+      "subject": "fix(calendar): reject invalid zones before native event review"
+    },
+    {
+      "sha": "cf88ed1dbf075ec50b01283e0e2afa313629e2cc",
+      "subject": "feat(workflow): reuse reviewed native sources for briefs and dossiers"
+    },
+    {
+      "sha": "8062b562ab0cba79b391360fa1ca00ee688d19d4",
+      "subject": "fix(workflow): anchor native briefs to the local observation time"
+    },
+    {
+      "sha": "8a38b466fdb49bca25f6e7bc4488f8933692f3d7",
+      "subject": "feat(calendar): review Home creation and native next-event discovery"
+    },
+    {
+      "sha": "17ae2893284875ba46739ea7febbf4f268aa7702",
+      "subject": "feat(notes): negotiate owner-confirmed native note discovery"
+    },
+    {
+      "sha": "29470659dfcb8a794661da16a14c6af278d69e6f",
+      "subject": "fix(notes): report no match for empty local queries"
+    },
+    {
+      "sha": "60c431a5095b8018ff1f8641b83715a841fe0456",
+      "subject": "fix(calendar): validate native day boundaries across clock changes"
+    },
+    {
+      "sha": "45242af234e7f3d55c433f327798e7cb2130e06e",
+      "subject": "test(calendar): use the upstream read-package identity source"
+    }
+  ],
+  "pullRequests": [
+    {
+      "number": 34453,
+      "state": "merged",
+      "mergedAt": "2026-10-08T23:24:20Z",
+      "mergeCommit": "903a1bc4effaa36558a1b933c8098186c1620a5f",
+      "head": "codex/native-record-discovery-upstream",
+      "note": "Notes and Calendar discovery from Home, squash-merged; the pin commits remain non-ancestors of develop"
+    }
+  ],
+  "pendingPullRequest": {
+    "head": "codex/alpha-shaw-shared-next-20261008",
+    "base": "develop",
+    "state": "not opened",
+    "note": "Rebase the ten pin-only commits on develop and open against develop; opening it publishes to elizaOS/eliza and needs the owner’s go-ahead"
+  }
+}

@@ -12,8 +12,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: browser-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded PR runs are cancelled; each main push keeps its own run (see android.yml).
+  group: browser-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 jobs:
   changes:
     uses: ./.github/workflows/changes.yml
@@ -55,6 +56,9 @@ jobs:
           echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum --check --strict
           echo "ALPHA_JSON_JAR=$jar" >> "$GITHUB_ENV"
       - run: npm run verify
+      # Recorded develop compare; warns (never networks) when develop cannot reach the pin.
+      - name: Report upstream develop reachability
+        run: node scripts/verify-upstream.mjs --reachability-only
   browser:
     needs: changes
     if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.browser_development == 'true' && github.event_name != 'push'
@@ -109,6 +113,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.browser_production == 'true' && github.event_name != 'push'
     name: Browser production surface (flag off)
+    # Runs production-surface.spec.ts and every *.production.spec.ts (playwright.config.ts).
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -143,6 +148,28 @@ jobs:
             test-results/browser/
             test-results/browser-report/
           retention-days: 3
+  # Stable required check for the dynamically named shard matrix. The ruleset in
+  # docs/ci-cost-policy.md requires this job and Repository verification. Pushes
+  # to main deliberately skip the browser lanes (they already ran on the PR).
+  result:
+    name: Browser MVP result
+    needs: [changes, verify, browser, production]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/ci
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          VERIFY: ${{ needs.verify.result }}
+          VERIFY_SELECTED: ${{ needs.changes.outputs.verify }}
+          BROWSER: ${{ needs.browser.result }}
+          BROWSER_SELECTED: ${{ github.event_name != 'push' && needs.changes.outputs.browser == 'true' && needs.changes.outputs.browser_development }}
+          PRODUCTION: ${{ needs.production.result }}
+          PRODUCTION_SELECTED: ${{ github.event_name != 'push' && needs.changes.outputs.browser == 'true' && needs.changes.outputs.browser_production }}
+        run: node scripts/ci/required-result.mjs "changes=$CHANGES" "verify=$VERIFY:$VERIFY_SELECTED" "browser=$BROWSER:$BROWSER_SELECTED" "production=$PRODUCTION:$PRODUCTION_SELECTED"
   storage:
     if: github.event_name == 'workflow_dispatch' && inputs.cross_browser
     name: Browser storage (${{ matrix.browser }}, shard ${{ matrix.shard }}/2)

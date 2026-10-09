@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "description": "Committed release-signer descriptor. scripts/verify-apks.mjs marks a release distributable only when it is signed by this certificate (apksigner SHA-256 digest) and its versionCode is greater than lastRelease.versionCode. 'unset' until the release keys exist; no key material or password belongs here.",
+  "signerSha256": "unset",
+  "lastRelease": {
+    "versionCode": null,
+    "versionName": null,
+    "recordedAt": null
+  }
+}

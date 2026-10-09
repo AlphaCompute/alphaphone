@@ -95,3 +95,93 @@ test('numbered series: reference-only patches are ignored, unnumbered or duplica
  fs.writeFileSync(manifestFile,JSON.stringify({...manifest,patch:'password-manager.patch'}));
  assert.throws(()=>readPatchManifests(directory),/Invalid Eliza patch manifest/);
 }));
+
+// Server-side patch overlay used while the agent bundle and workflow worker build.
+async function overlayFixture(run){
+ const directory=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-eliza-overlay-')));
+ try{
+  const pin='a'.repeat(40);
+  const write=(file,text)=>{fs.mkdirSync(path.dirname(path.join(directory,file)),{recursive:true});fs.writeFileSync(path.join(directory,file),text);};
+  write('upstream.lock.json',JSON.stringify({commit:pin}));
+  write('patches/eliza/0045-assistant-ranges.patch','synthetic');
+  write('patches/eliza/0038-password-manager.patch','synthetic');
+  const files={'plugins/plugin-assistant/src/a.ts':hash('patched a'),'plugins/plugin-assistant/src/new/b.ts':hash('added b')};
+  write('patches/eliza/assistant-ranges-source.json',JSON.stringify({baseCommit:pin,patch:'0045-assistant-ranges.patch',sha256:'b'.repeat(64),basePaths:['plugins/plugin-assistant'],addedPaths:[],changed:Object.keys(files),files}));
+  write('patches/eliza/password-manager-source.json',JSON.stringify({baseCommit:pin,patch:'0038-password-manager.patch',sha256:'c'.repeat(64),basePaths:['plugins/plugin-native-secure-store'],addedPaths:[],changed:['plugins/plugin-native-secure-store/x.java'],files:{'plugins/plugin-native-secure-store/x.java':hash('native')}}));
+  write('.eliza/patched/plugins/plugin-assistant/src/a.ts','patched a');
+  write('.eliza/patched/plugins/plugin-assistant/src/new/b.ts','added b');
+  write('.eliza/patched/plugins/plugin-native-secure-store/x.java','native');
+  write('.eliza/patched/.source.json',JSON.stringify({baseCommit:pin,files:{...files,'plugins/plugin-native-secure-store/x.java':hash('native')}}));
+  const source=path.join(directory,'artifacts/local-agent-resident-'+pin);
+  write(path.relative(directory,path.join(source,'plugins/plugin-assistant/src/a.ts')),'original a');
+  write(path.relative(directory,path.join(source,'plugins/plugin-assistant/src/deleted.ts')),'deleted by patch');
+  write(path.relative(directory,path.join(source,'plugins/plugin-assistant/dist/out.js')),'build output');
+  write(path.relative(directory,path.join(source,'plugins/plugin-native-secure-store/x.java')),'unpatched native');
+  return await run({directory,source,read:file=>fs.existsSync(path.join(source,file))?fs.readFileSync(path.join(source,file),'utf8'):null});
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+}
+
+test('server-side patches overlay the prepared source only during the build and restore it exactly',async()=>{
+ const {serverSideOverlay,withPatchOverlay,overlayIdentity,writeOverlayRecord,readOverlayRecord,sameOverlay,journalPath}=await import('../scripts/eliza-patch-overlay.mjs');
+ await overlayFixture(async({directory,source,read})=>{
+  const overlay=serverSideOverlay(directory);
+  assert.deepEqual(overlay.patches.map(row=>row.patch),['0045-assistant-ranges.patch'],'native-only patches are not server-side');
+  assert.deepEqual(overlay.roots,['plugins/plugin-assistant']);
+  const seen={};
+  const result=await withPatchOverlay(directory,source,()=>{
+   for(const file of ['plugins/plugin-assistant/src/a.ts','plugins/plugin-assistant/src/new/b.ts','plugins/plugin-assistant/src/deleted.ts','plugins/plugin-assistant/dist/out.js','plugins/plugin-native-secure-store/x.java'])seen[file]=read(file);
+   assert.ok(fs.existsSync(journalPath(directory,source)),'journalled before any change');
+   return 'built';
+  });
+  assert.equal(result.result,'built');
+  assert.deepEqual(seen,{'plugins/plugin-assistant/src/a.ts':'patched a','plugins/plugin-assistant/src/new/b.ts':'added b','plugins/plugin-assistant/src/deleted.ts':null,
+   'plugins/plugin-assistant/dist/out.js':'build output','plugins/plugin-native-secure-store/x.java':'unpatched native'});
+  assert.equal(read('plugins/plugin-assistant/src/a.ts'),'original a');
+  assert.equal(read('plugins/plugin-assistant/src/deleted.ts'),'deleted by patch');
+  assert.equal(read('plugins/plugin-assistant/src/new/b.ts'),null);
+  assert.equal(fs.existsSync(path.join(source,'plugins/plugin-assistant/src/new')),false,'created directories are removed');
+  assert.equal(fs.existsSync(journalPath(directory,source)),false);
+  // A failing build still restores the source.
+  await assert.rejects(withPatchOverlay(directory,source,()=>{throw Error('build failed');}),/build failed/);
+  assert.equal(read('plugins/plugin-assistant/src/a.ts'),'original a');
+  // Output records bind reuse to the same overlay.
+  const output=path.join(directory,'artifacts/worker');
+  writeOverlayRecord(output,overlay);
+  assert.ok(sameOverlay(readOverlayRecord(output),overlayIdentity(overlay)));
+  assert.ok(!sameOverlay(readOverlayRecord(output),null));
+  assert.equal(readOverlayRecord(path.join(directory,'artifacts/none')),null);
+ });
+});
+
+test('the overlay refuses tampered patched bytes, a stale pin and an interrupted journal, and recovers',async()=>{
+ const {withPatchOverlay,restoreOverlay,journalPath}=await import('../scripts/eliza-patch-overlay.mjs');
+ await overlayFixture(async({directory,source,read})=>{
+  fs.writeFileSync(path.join(directory,'.eliza/patched/plugins/plugin-assistant/src/a.ts'),'tampered');
+  await assert.rejects(withPatchOverlay(directory,source,()=>assert.fail('must not build')),/changed after preparation/);
+  assert.equal(read('plugins/plugin-assistant/src/a.ts'),'original a');
+  fs.writeFileSync(path.join(directory,'.eliza/patched/plugins/plugin-assistant/src/a.ts'),'patched a');
+  // Simulate a crash mid-build: the journal remains and blocks the next build until restored.
+  await assert.rejects(withPatchOverlay(directory,source,()=>{
+   const journal=journalPath(directory,source);fs.copyFileSync(journal,journal+'.keep');fs.cpSync(journal+'.d',journal+'.d.keep',{recursive:true});
+   throw Error('crash');
+  }),/crash/);
+  const journal=journalPath(directory,source);
+  fs.renameSync(journal+'.keep',journal);fs.renameSync(journal+'.d.keep',journal+'.d');
+  fs.writeFileSync(path.join(source,'plugins/plugin-assistant/src/a.ts'),'patched a');fs.rmSync(path.join(source,'plugins/plugin-assistant/src/deleted.ts'));
+  await assert.rejects(withPatchOverlay(directory,source,()=>assert.fail('must not build')),/interrupted patch overlay/);
+  assert.equal(restoreOverlay(directory,source),true);
+  assert.equal(read('plugins/plugin-assistant/src/a.ts'),'original a');
+  assert.equal(read('plugins/plugin-assistant/src/deleted.ts'),'deleted by patch');
+  fs.writeFileSync(path.join(directory,'upstream.lock.json'),JSON.stringify({commit:'d'.repeat(40)}));
+  await assert.rejects(withPatchOverlay(directory,source,()=>assert.fail('must not build')),/Requalify/);
+ });
+});
+
+test('agent staging and the worker build run inside the overlay and bind worker reuse to it',()=>{
+ const stage=fs.readFileSync(path.join(root,'scripts/stage-local-agent-runtime.mjs'),'utf8');
+ assert.match(stage,/withPatchOverlay\(root,source,\(\)=>execFileSync\(process\.env\.ALPHA_BUN\|\|'bun',\['run','--cwd','packages\/agent','build:mobile'/);
+ assert.match(stage,/sameOverlay\(readOverlayRecord\(workerArtifactDirectory\(root\)\),expectedOverlay\)/);
+ const worker=fs.readFileSync(path.join(root,'scripts/build-workflow-worker.ts'),'utf8');
+ assert.match(worker,/withPatchOverlay\(root,source,\(\)=>ensurePreparedWorkflowWorker\(root,source,output\)\)/);
+ assert.match(worker,/different set of server-side Eliza patches/);
+});

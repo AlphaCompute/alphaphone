@@ -15,10 +15,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   auditBundle, distributionProblems, extractWebPayload, readBuildFlags, signerDigest, validateApk,
 } from "./apk.mjs";
 import { androidEnv, tool } from "./toolchain.mjs";
+import { readReleaseSigner, releaseAdmission, RELEASE_SIGNER_FILE } from "./build-android.mjs";
+import { BUN_ENTRY } from "./generate-licenses.mjs";
 
 const USAGE = "Usage: node scripts/verify-apks.mjs [--test-mocks] [--allow-unpackaged-runtime]";
 const args = process.argv.slice(2);
@@ -61,6 +64,13 @@ for (const variant of ["standalone", "launcher"])
     // Shared web bundle audit on the exact packaged payload.
     const payload = extractWebPayload(file);
     let flags;
+    // A PACKAGED distribution must ship notices regenerated with --packaged-runtime (Bun and
+    // the bundled agent/worker packages); the committed notices carry only the umbrella entry.
+    let runtimeNotices = false;
+    try {
+      const notices = path.join(payload.public, "licenses", "third-party-notices.json");
+      runtimeNotices = fs.existsSync(notices) && JSON.parse(fs.readFileSync(notices, "utf8")).some(entry => entry?.name === BUN_ENTRY);
+    } catch { runtimeNotices = false; }
     try {
       flags = readBuildFlags(payload.public);
       if (flags.testMocks !== testMocks)
@@ -89,6 +99,7 @@ for (const variant of ["standalone", "launcher"])
       exportedComponents: facts.exported.map(component => component.name).sort(),
       testMocks: flags?.testMocks ?? null,
       bundleAudit: problems.length ? "failed" : "passed",
+      runtimeNotices,
     });
   }
 if (failures.length)
@@ -113,6 +124,15 @@ const release = results.filter(row => row.mode === "release");
 if (release.some(row => row.signed) && !release.every(row => row.signed))
   throw new Error("Only one release APK is signed");
 
+// A release is distributable only when signed by the committed release signer with
+// a versionCode above the last recorded release. A mismatch fails verification.
+const releaseSigner = readReleaseSigner();
+for (const row of release) {
+  row.releaseAdmission = releaseAdmission(row, releaseSigner);
+  if (!testMocks && row.releaseAdmission.failures.length)
+    throw new Error(`Release signing admission failed for ${row.file}: ${row.releaseAdmission.failures.join("; ")}`);
+}
+
 // Debug keeps the original report-only semantics; releases need the runtime.
 const runtimeArgs = [
   ...(allowUnpackaged || testMocks ? ["--allow-unpackaged-runtime"] : []),
@@ -136,7 +156,9 @@ for (const row of release) {
   row.speechQualification = JSON.parse(execFileSync("python3", [
     "scripts/local-speech/verify-apk-qualification.py", row.file,
   ], { encoding: "utf8" }));
-  row.distributable = !testMocks && runtime.distributable === true && row.speechQualification.byteMatch === true && row.speechQualification.functionalPassed === true && row.speechQualification.qualified === true;
+  row.distributable = !testMocks && row.signed === true && row.releaseAdmission.signerMatches === true &&
+    row.releaseAdmission.blockers.length === 0 && row.releaseAdmission.failures.length === 0 &&
+    runtime.distributable === true && row.runtimeNotices === true && row.speechQualification.byteMatch === true && row.speechQualification.functionalPassed === true && row.speechQualification.qualified === true;
 }
 for (const row of results.filter(row => row.mode === "debug"))
   row.runtime = runtimePackaging.find(entry => entry.apk === row.file).runtime;
@@ -145,6 +167,12 @@ const mappings = {};
 for (const variant of ["standalone", "launcher"]) {
   const mapping = path.join(directory, "mapping", `${variant}-release-mapping.txt`);
   mappings[variant] = fs.existsSync(mapping) ? mapping : null;
+}
+// Instrumentation APKs built with these APKs (scripts/android-instrumentation.mjs binds to them).
+const instrumentation = {};
+for (const variant of ["standalone", "launcher"]) {
+  const file = testMocks ? path.join(directory, `${variant}-androidTest.apk`) : path.join(directory, "instrumentation", `${variant}-androidTest.apk`);
+  if (fs.existsSync(file)) instrumentation[variant] = { file, sha256: createHash("sha256").update(fs.readFileSync(file)).digest("hex") };
 }
 let apksignerVersion = null;
 try { apksignerVersion = execFileSync(tool("apksigner"), ["--version"], { encoding: "utf8", env: androidEnv() }).trim(); }
@@ -165,8 +193,10 @@ fs.writeFileSync(
         release: release.every(row => row.signed) ? { signed: true, signerSha256: release[0].signerSha256 } : { signed: false },
         debugSignerSha256: results.find(row => row.mode === "debug").signerSha256,
         apksigner: apksignerVersion,
+        descriptor: { file: RELEASE_SIGNER_FILE, signerSha256: releaseSigner.signerSha256, lastReleaseVersionCode: releaseSigner.lastRelease.versionCode },
       },
       mappings,
+      instrumentation,
       upstream: JSON.parse(fs.readFileSync("upstream.lock.json")),
       results,
       runtimePackaging,
@@ -178,7 +208,7 @@ fs.writeFileSync(
 console.log(JSON.stringify(results, null, 2));
 const undistributable = release.filter(row => !row.distributable);
 if (undistributable.length)
-  console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build", !row.speechQualification.byteMatch && "speech native bytes not admitted", !row.speechQualification.functionalPassed && "speech functional acceptance pending or failed"].filter(Boolean).join(", ")})`).join("; ")}`);
+  console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build", !row.speechQualification.byteMatch && "speech native bytes not admitted", !row.speechQualification.functionalPassed && "speech functional acceptance pending or failed", !row.runtimeNotices && "notices lack the packaged runtime (run node scripts/generate-licenses.mjs --packaged-runtime after staging)", ...row.releaseAdmission.blockers].filter(Boolean).join(", ")})`).join("; ")}`);
 const unsigned = release.filter(row => !row.signed);
 if (unsigned.length)
   console.warn(`Unsigned releases (set ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS and ELIZAOS_KEY_PASSWORD to sign): ${unsigned.map(row => row.file).join(", ")}`);

@@ -23,6 +23,30 @@ Create one private record for each of four units, using aliases `unit-a` through
 
 Each run record includes UTC start/end, operator, exact source/artifact identities, network/provider route, engine/model versions, relevant permission/channel state, expected result, observed result, and evidence paths. Use stable synthetic object/run IDs to relate UI, native storage and agent receipts. Record failures and skipped cases explicitly; a missing artifact is unverified. Capture reviewed screens and redacted status/receipt data, not passwords, tokens, OTPs, vault content or unrelated private notifications.
 
+### Provisioning tool
+
+`node scripts/provision-unit.mjs --serial <adb serial> --alias unit-a --apk-manifest <release build>/apk-manifest.json`
+installs the launcher release on one unit and writes `test-results/pilot-units/unit-a.json`.
+It admits only a release that `verify-apks` verified flag-off, signed by the certificate in
+`android/release-signer.json`, with a versionCode above the last recorded release; it
+refuses a unit that already has Alpha installed (use the update tool), checks the
+installed bytes and versionCode, opens Android's default-Home chooser for the operator
+(`--home-wait-ms` waits for the choice; the tool never makes it), reads the HOME role
+holder and the packaged runtime identity (pinned base, patches, agent bundle hash), and
+records the device model, SDK and ABI. The record contains no secrets and only the
+SHA-256 of the serial and build fingerprint. `--build debug` is an emulator rehearsal of
+the same steps, refused on a phone and labelled class E. A provisioning record is not
+acceptance of any journey below.
+
+`node scripts/pilot-update.mjs --serial <serial> --alias unit-a --apk-manifest <new build>/apk-manifest.json`
+updates that unit in place: the pulled installed APK and the new APK must have the same
+apksigner certificate and the new versionCode must be greater; the app is stopped, its
+data domains are read back as per-file SHA-256 inventories, `adb install -r` runs, and the
+uid, first-install time and every domain must be unchanged (the app is not started in
+between). A readback walk that fails, or that finds no app data to compare, fails the update. Android allows that data readback only for debuggable builds, so on a release
+unit the update record states that only package identity was read back. The result is
+appended to the unit record. Rollback is not offered; the rollback design remains blocked.
+
 ## Execute on every unit
 
 Perform the following with the release launcher selected as HOME. Qualify the standalone distribution separately on a designated compatible device with its own APK/source identities; it is an alternate installation of the same package, not a second simultaneous app. Preserve user data when switching only if the signed update path explicitly supports it.
