@@ -10,8 +10,8 @@ import { speechError } from './speech-protocol';
 import { silentRecording } from './whisper-engine';
 import { BrowserAudioCapture } from './audio-capture';
 import { WebPlugin } from '@capacitor/core';
-// Recordings stay local. Transcription runs Whisper in this browser, or (development only)
-// on the explicitly selected host agent, which keeps its credentials on the host.
+// Recordings stay local until transcription is requested. The selected Cloud or
+// explicit local/development route owns processing; provider credentials stay off-page.
 export class BrowserVoice extends WebPlugin {
  private connection=Promise.resolve(connectionController).then(connectionController=>{
   const selected=()=>JSON.stringify([connectionController.getSnapshot().session?.sessionId,connectionController.getCloudEnvironment(),connectionController.getCloudClient()?.sessionId,connectionController.getCloudClient()?.credentialId]);
