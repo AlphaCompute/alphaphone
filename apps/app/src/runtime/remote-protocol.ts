@@ -249,6 +249,20 @@ export class RemoteProtocol {
     await this.disconnect();
     return result;
   }
+  /** Explicit Stop through upstream's turn-abort route. The conversation's room comes from the
+   * agent's own conversation list. Never retried; any refusal reports `unsupported`. */
+  async abortTurn(conversationId: string, signal?: AbortSignal): Promise<TurnAbortOutcome> {
+    try {
+      const room = conversationRoomId(await this.listConversations(signal), conversationId);
+      if (!room) return "unsupported";
+      // Not `authorized`: a refusal of this optional route must never sign the phone out.
+      const credential = this.credential, generation = this.generation;
+      if (!credential || credential.expiresAt <= this.now()) return "unsupported";
+      const outcome = turnAbortOutcome(await this.json(turnAbortPath(room), "POST", { reason: "client-stop" }, credential.token, signal));
+      if (generation !== this.generation) throw new RemoteProtocolError("connection_changed");
+      return outcome;
+    } catch (error) { signal?.throwIfAborted(); if (error instanceof RemoteProtocolError && error.code === "connection_changed") throw error; return "unsupported"; }
+  }
   /** A dropped response (transport failure or gateway timeout) is reconciled once by repeating the
    * identical request with the same clientMessageId; the agent returns its durable outcome for that
    * key instead of running a second turn. Cancellation is never retried. */
@@ -266,6 +280,24 @@ export class RemoteProtocol {
     // Preserve terminal failures and ignored/interrupted turns for the UI; never synthesize success.
     return value as RemoteChatReply;
   }
+}
+/** Outcome of an explicit Stop. `aborted`: the agent cancelled an active turn. `idle`: the agent
+ * reports no active turn (it may already have finished). `unsupported`: the agent does not expose
+ * upstream's `POST /api/turns/:roomId/abort` to this client or the conversation has no room. */
+export type TurnAbortOutcome = "aborted" | "idle" | "unsupported";
+export function conversationRoomId(conversations: RemoteConversation[], conversationId: string): string | null {
+  const row = conversations.find(item => item.id === conversationId);
+  const room = row && (row as Record<string, unknown>).roomId;
+  return typeof room === "string" && uuidPattern.test(room) ? room : null;
+}
+export function turnAbortPath(roomId: string): string {
+  if (!uuidPattern.test(roomId)) throw new RemoteProtocolError("invalid_room");
+  return `/api/turns/${roomId}/abort`;
+}
+export function turnAbortOutcome(value: unknown): TurnAbortOutcome {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "unsupported";
+  const aborted = (value as Record<string, unknown>).aborted;
+  return aborted === true ? "aborted" : aborted === false ? "idle" : "unsupported";
 }
 export interface MessagePage { before: number; beforeId?: string; limit?: number }
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

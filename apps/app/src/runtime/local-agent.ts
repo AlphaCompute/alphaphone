@@ -1,7 +1,7 @@
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import type { VerifiedSession } from './alpha-client';
-import { messagePageQuery, type MessagePage, type RemoteChatReply, type RemoteConversation } from './remote-protocol';
+import { conversationRoomId, messagePageQuery, turnAbortOutcome, turnAbortPath, type MessagePage, type RemoteChatReply, type RemoteConversation, type TurnAbortOutcome } from './remote-protocol';
 import { readLocalAgentStream } from './local-agent-stream';
 import { streamNativeAgent, type NativeStreamPort } from './local-agent-native-stream';
 
@@ -208,6 +208,19 @@ export class LocalAgentProtocol {
     const value=await this.json(path,body,options.signal);
     if(typeof value.text!=='string'||typeof value.agentName!=='string')throw new Error('Invalid local agent reply.');
     return value as RemoteChatReply;
+  }
+  /** Explicit Stop through upstream's `POST /api/turns/:roomId/abort`. The room comes from the
+   * agent's conversation list. Any refusal reports `unsupported`; it is never retried. */
+  async abortTurn(conversationId:string,signal:AbortSignal=new AbortController().signal):Promise<TurnAbortOutcome>{
+    if(!this.session)return 'unsupported';
+    const generation=this.generation;
+    try{
+      const room=conversationRoomId(await this.listConversations(signal),conversationId);
+      if(!room)return 'unsupported';
+      const outcome=turnAbortOutcome(await this.request(turnAbortPath(room),{reason:'client-stop'},signal));
+      if(generation!==this.generation)throw Error('Local agent connection changed.');
+      return outcome;
+    }catch(error){signal.throwIfAborted();if(generation!==this.generation)throw error;return 'unsupported';}
   }
   /** Persisted-reply reads after dropped streams; exposed for contract tests and diagnostics. */
   recoveries=0;

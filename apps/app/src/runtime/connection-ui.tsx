@@ -462,10 +462,13 @@ function restoredMessages(items:Record<string,unknown>[]):RestoredMessage[] {
     return {id:item.id,from:item.role==='user'?'user':'agent',text:item.role==='user'?restoredText(item.text,item.userTextFormat):item.text};
   });
 }
-/** No upstream route cancels an accepted turn for this client, so Stop closes only the transport.
- * One later read of the conversation shows the reply if the agent finished it. */
+/** Stop closes the transport and asks the agent to cancel through upstream's
+ * `POST /api/turns/:roomId/abort` (resident, remote and local agents). Cloud agents and agents that
+ * refuse that route keep the honest "may still finish" state. Either way one later read of the
+ * conversation shows the reply if the agent finished it before or despite the cancel. */
 const STOPPED_REPLY_CHECK_MS = 15_000;
 export const STOPPED_REPLY_NOTICE = 'The agent may still finish this reply. Alpha Phone will check once and show it here if it does.';
+export const STOPPED_CANCELLED_NOTICE = 'The agent cancelled this reply. Alpha Phone will check once in case it had already finished.';
 let stoppedReply: { timer: ReturnType<typeof setTimeout>; controller: AbortController } | null = null;
 function cancelStoppedReply() { if (!stoppedReply) return; clearTimeout(stoppedReply.timer); stoppedReply.controller.abort(); stoppedReply = null; }
 function scheduleStoppedReply(selected: Active, session: VerifiedSession, conversationId: string, text: string, sentAt: number, delay = STOPPED_REPLY_CHECK_MS) {
@@ -473,8 +476,15 @@ function scheduleStoppedReply(selected: Active, session: VerifiedSession, conver
   const generation = epoch, controller = new AbortController();
   const current = () => !controller.signal.aborted && generation === epoch && selected === active && state.session?.sessionId === session.sessionId;
   update({ replyNotice: STOPPED_REPLY_NOTICE });
+  let cancelled = false;
+  // The single reconciliation read waits for the cancel attempt, so it reports the settled outcome.
+  const cancelAttempt = selected.kind === 'cloud' ? Promise.resolve() : selected.remote.abortTurn(conversationId, controller.signal).then(outcome => {
+    if (outcome !== 'aborted' || !current() || stoppedReply?.controller !== controller) return;
+    cancelled = true; update({ replyNotice: STOPPED_CANCELLED_NOTICE });
+  }, () => {});
   const timer = setTimeout(() => { void (async () => {
     try {
+      await cancelAttempt;
       // Never replace the visible chat while the user has started another request.
       if (!current()) return;
       if (sending || operation) { update({ replyNotice: 'Load this conversation from Agent connection to see whether the stopped reply finished.' }); return; }
@@ -484,7 +494,7 @@ function scheduleStoppedReply(selected: Active, session: VerifiedSession, conver
       const index = user ? result.messages.indexOf(user) : -1;
       const reply = user && (result.messages.find(item => item.role === 'assistant' && item.replyToMessageId === user.id) ?? result.messages.slice(index + 1).find(item => item.role === 'assistant' && item.replyToMessageId === undefined));
       if (!user) { update({ replyNotice: 'The agent did not record the stopped message.' }); return; }
-      if (!reply || typeof reply.text !== 'string' || !reply.text.trim()) { update({ replyNotice: 'The agent had not finished the stopped reply when Alpha Phone checked. Load conversations later to see it.' }); return; }
+      if (!reply || typeof reply.text !== 'string' || !reply.text.trim()) { update(cancelled ? { replyNotice: '', message: 'The agent stopped this reply.' } : { replyNotice: 'The agent had not finished the stopped reply when Alpha Phone checked. Load conversations later to see it.' }); return; }
       update({ history: { sessionId: session.sessionId, conversationId, revision: (state.history?.revision || 0) + 1, messages: restoredMessages(result.messages), automatic: true }, historyPartial: result.partial, replyNotice: '', message: 'The agent finished the stopped reply.' });
     } catch { if (current()) update({ replyNotice: 'The stopped reply could not be checked. Load conversations from Agent connection to see it.' }); }
     finally { if (stoppedReply?.controller === controller) stoppedReply = null; }
@@ -904,8 +914,8 @@ export const connectionController = {
     if (operation || !cloudEnvironmentAllowed(environment)) return;
     clearPersonalSetup(); cloud = makeCloud(environment); update({ agents: [], message: '', error: '' });
   },
-  async cloudChoose(id: string) { await work('Verifying your Cloud agent…', signal => { retire(); return connectCloud(id, signal); }); },
-  // Generic create/provision onboarding is deferred: personal Dedicated setup requires a current quote.
+  // Cloud connects only to the account's personal agent: a running Dedicated agent connects via
+  // cloudPersonalConnect; otherwise the reviewed Dedicated setup or Manage Cloud account applies.
   cloudPersonalDecline(){if(operation)return;clearPersonalSetup();update({cloudPersonal:{view:null,blocked:false,declined:true},message:'Cloud account connected. Dedicated setup was not started.',error:''});},
   async cloudPersonalAccept(){await personalWork('Submitting the reviewed setup…',async(binding,view,signal)=>{
    if(view.kind!=='review'||state.cloudPersonal?.blocked)throw Error('Refresh setup status before continuing.');
