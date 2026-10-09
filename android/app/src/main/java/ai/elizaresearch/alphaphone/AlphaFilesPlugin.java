@@ -119,8 +119,8 @@ public class AlphaFilesPlugin extends Plugin {
   if(action.equals("delete")&&!Boolean.TRUE.equals(call.getBoolean("confirmPermanent")))return result("confirmation-required","Permanently delete the selected items? This provider has no integrated trash or undo.");
   Entry destination=action.equals("move")?entry(call.getString("destinationId")):null;
   if(action.equals("move")){if(destination==null)return result("revoked","Reload the destination folder first.");if(!describe(destination).optBoolean("canCreate"))return result("unsupported","This provider does not allow moving files into that folder.");}
-  JSArray outcomes=new JSArray();int done=0;Set<String> seen=new HashSet<>();
-  for(int i=0;i<items.length();i++){
+  JSArray outcomes=new JSArray();int done=0;boolean expired=false;Set<String> seen=new HashSet<>();
+  for(int i=0;i<items.length()&&!expired;i++){
    org.json.JSONObject request=items.optJSONObject(i);String id=request==null?"":request.optString("id","");String expected=request==null?"":request.optString("expectedRevision","");
    if(!seen.add(id)){outcomes.put(outcome(id,"unsupported","Duplicate selection."));continue;}
    Entry item=entry(id);if(item==null){outcomes.put(outcome(id,"revoked","Reload this folder first."));continue;}
@@ -135,14 +135,23 @@ public class AlphaFilesPlugin extends Plugin {
     }else{
      if(!info.optBoolean("canMove")){outcomes.put(outcome(id,"unsupported","This provider does not support moving it."));continue;}
      if(destination.id.equals(item.parent)){outcomes.put(outcome(id,"unsupported","Already in that folder."));continue;}
-     Entry parent=entry(item.parent);if(parent==null)throw new SecurityException();
+     // The listed parent can leave the bounded session map; the item then needs a reload, not a revoked session.
+     Entry parent=entry(item.parent);if(parent==null){outcomes.put(outcome(id,"revoked","Reload this folder first."));continue;}
      Uri moved=DocumentsContract.moveDocument(resolver(),item.uri,parent.uri,destination.uri);
      if(moved==null){outcomes.put(outcome(id,"failed","Move was not confirmed."));continue;}
      entries.remove(item.id);authorize(moved,destination.id);outcomes.put(outcome(id,"moved","Moved."));done++;
     }
-   }catch(SecurityException e){throw e;}catch(Exception e){outcomes.put(outcome(id,"failed","The provider could not confirm this item. Refresh before retrying."));}
+   }catch(SecurityException e){
+    // Access ended mid-batch: earlier items already changed, so their outcomes are still reported.
+    expired=true;outcomes.put(outcome(id,"revoked","Folder access expired before this item."));
+   }catch(Exception e){outcomes.put(outcome(id,"failed","The provider could not confirm this item. Refresh before retrying."));}
   }
   String verb=action.equals("move")?"moved":"deleted";
+  if(expired){
+   entries.clear();rootId=null;
+   JSObject out=result(done>0?"partial":"revoked",done>0?done+" of "+items.length()+" items "+verb+" before folder access expired. Choose the folder again and review the items that remain.":"Folder access expired. Nothing was "+verb+". Choose the folder again.");
+   out.put("outcomes",outcomes);out.put("count",done);return out;
+  }
   JSObject out=result(done==items.length()?verb:done>0?"partial":"failed",done==items.length()?(done==1?"1 item ":done+" items ")+(action.equals("move")?"moved.":"permanently deleted."):done>0?done+" of "+items.length()+" items "+verb+". Review the items that remain.":"No items were "+verb+". Refresh the folder and review each item.");
   out.put("outcomes",outcomes);out.put("count",done);return out;
  });}
@@ -190,7 +199,7 @@ public class AlphaFilesPlugin extends Plugin {
  });}
  @PluginMethod public void move(PluginCall call){run(call,()->{
   Entry item=entry(call.getString("id")),destination=entry(call.getString("destinationId"));if(item==null||destination==null)return result("revoked","Reload source and destination folders first.");JSObject info=describe(item),target=describe(destination);
-  if(!info.optBoolean("canMove")||!target.optBoolean("canCreate"))return result("unsupported","This provider does not support moving this file to that folder.");if(!current(info,call))return result("conflict","This file changed. Refresh before moving.");if(destination.id.equals(item.parent))return result("unsupported","This file is already in that folder.");Entry parent=entry(item.parent);if(parent==null)throw new SecurityException();
+  if(!info.optBoolean("canMove")||!target.optBoolean("canCreate"))return result("unsupported","This provider does not support moving this file to that folder.");if(!current(info,call))return result("conflict","This file changed. Refresh before moving.");if(destination.id.equals(item.parent))return result("unsupported","This file is already in that folder.");Entry parent=entry(item.parent);if(parent==null)return result("revoked","Reload source and destination folders first.");
   Uri moved=DocumentsContract.moveDocument(resolver(),item.uri,parent.uri,destination.uri);if(moved==null)return result("failed","Move was not confirmed. Refresh both folders before retrying.");entries.remove(item.id);JSObject out=result("moved","File moved.");out.put("entry",describe(authorize(moved,destination.id)));return out;
  });}
  @PluginMethod public void select(PluginCall call){run(call,()->{
