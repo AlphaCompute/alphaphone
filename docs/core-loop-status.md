@@ -309,6 +309,9 @@ Spec: `journey-j05-web-research-note.spec.ts` (two serial tests)
 | A | A spoken turn with the development profile always stopped after the reply: the development agent returned no message identities | development fixture | Fixed in `development-connection.ts`; journey A now has a spoken request |
 | D | The development profile's Home never showed a brief | development profile | It now reads the retained brief; journey D asserts the rendered card |
 | E | Read aloud on a page whose address is no longer known was refused behind the open menu | product bug | Fixed in `browser-adapter.ts`; journey E navigates during the review |
+| F | A saved review could still be sent after a reload with the edit only in the retained copy, or after the email was moved to another From account and sent there | product bug | Fixed in `runtime/inbox-operation.ts` and `inbox-provider-controls.ts`: a review is bound to its local draft and to the exact content in the composer when Send is confirmed (`journey-f-reviewed-send.spec.ts`, `scripts/test-inbox-sent-cleanup.mjs`) |
+| F | A message listed twice in one provider page was shown twice | product bug | Fixed in `inbox-cloud-adapter.ts` (`journey-f-reviewed-send.spec.ts`) |
+| B | An agent update to an all-day event was saved with instants that are not whole dates | product bug | Refused before review in `browser/calendar.ts` (`calendar-agent-all-day-review.spec.ts`) |
 
 ## What no browser journey can establish
 
