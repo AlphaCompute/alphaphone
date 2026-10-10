@@ -182,3 +182,32 @@ through `requalify-runtime.py run` against an independent rebuild of the runtime
 Silicon host cannot run an x86_64 image). The reviewed record's own `functionalAcceptance` stays
 failed and no APK is distributable. Still open: the x86_64 run, and an arm64 physical-device
 run of the canonical test with the engine fix.
+
+**Rebuild on the current pin (2026-10-10).** `candidate-20261009.json` records upstream
+`45242af2…` and the tooling/wrapper trees of that day; the pin is now `352d7a08…` and both tree
+hashes differ, so its arm64 pass describes an older engine and tooling state. The runtime was
+rebuilt from the current pin with the commands above (macOS arm64, NDK r28c, CMake 4.0.3; source
+verification 6,329 files, model manifest `57786add…` unchanged). Both JNI libraries again match
+the recorded sizes exactly (4,042,512 and 4,394,840 bytes) and differ from every earlier build
+only by hash (arm64-v8a `29f5d80b…`, x86_64 `20bc5912…`; assembled AAR `0ce9e976…`), and
+`libonnxruntime.so` is byte-identical for both ABIs. This is source/build evidence only:
+`install-generated.py` refused the runtime without `--allow-unqualified-runtime`,
+`requalify-runtime.py record` wrote a candidate with both ABIs `not-executed`, and `admit`
+refused it. No APK was built and nothing ran on Android from this rebuild, so no manifest
+changed. No AAR on the build machine matches the reviewed record (`4f7b23a6…`) or
+`runtime-manifest.json` (`d08bbbd9…`).
+
+**Where the x86_64 run can come from.** No workflow runs the canonical test.
+`.github/workflows/android.yml` only builds. `resident-android.yml` (`workflow_dispatch`) boots an
+x86_64 API 35 emulator in its `native` job, but `scripts/ci/resident-native.py` runs four resident
+classes only, and its speech runtime is a separate Linux build installed with
+`--allow-unqualified-runtime` and never recorded. A debug APK packages both ABIs, so one
+candidate's debug and androidTest APKs can be carried to an x86_64 host unchanged: run
+`requalify-runtime.py run --serial <device> --apk … --test-apk … --candidate …` there with
+networking off, or run `am instrument -w -r -e localSpeech 1 -e class
+ai.elizaresearch.alphaphone.LocalSpeechInstrumentedTest
+ai.elizaresearch.alphaphone.test/androidx.test.runner.AndroidJUnitRunner`, pull
+`/sdcard/Android/data/ai.elizaresearch.alphaphone/files/local-speech-evidence` and `ingest` it
+with `--abi x86_64 --device-abi x86_64`. Release APKs package arm64-v8a only, yet `admit` and
+`verify-apk-qualification.py` need a pass for every ABI in the rebuild, so the x86_64 run gates
+release admission too.

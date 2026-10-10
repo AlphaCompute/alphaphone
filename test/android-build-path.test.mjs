@@ -115,3 +115,25 @@ export async function buildWorkflowArtifact({sourceRoot,outputDir,sourceIdentity
   await assert.rejects(ensurePreparedWorkflowWorker(root, source, output), /does not match the prepared runtime source .*ALPHA_WORKFLOW_WORKER_OUTPUT/);
   assert.equal(read(path.join(source, 'builds')), 'x');
 });
+
+test('android:build:local builds the workflow worker before staging and stages before the strict build', () => {
+  // The chain once stopped in agent:stage-android because nothing had built the worker artifact
+  // that staging verifies first. Each step consumes the previous step's output, so order matters.
+  const scripts = JSON.parse(read('package.json')).scripts;
+  const chain = scripts['android:build:local'].split('&&').map(step => step.trim());
+  assert.deepEqual(chain, [
+    'node scripts/android-build-preflight.mjs --before-prepare',
+    'npm run agent:prepare',
+    'npm run agent:build-workflow-worker',
+    'npm run agent:stage-android',
+    'npm run android:build',
+  ]);
+  for (const step of chain.slice(1)) assert.ok(scripts[step.replace('npm run ', '')], step);
+  // The chain ends in the strict build: no developer override may be baked into it.
+  assert.doesNotMatch(scripts['android:build:local'], /--allow-unpackaged-runtime|--allow-unqualified-runtime|--test-mocks|--skip-instrumentation/);
+  assert.equal(scripts['android:build'], 'node scripts/build-android.mjs');
+  // Staging itself refuses a missing or foreign worker artifact before the long mobile bundle build.
+  const stage = read('scripts/stage-local-agent-runtime.mjs');
+  assert.ok(stage.indexOf('verifyWorkerArtifact(workerArtifactDirectory(root)') > 0);
+  assert.ok(stage.indexOf('verifyWorkerArtifact(workerArtifactDirectory(root)') < stage.indexOf("'build:mobile'"));
+});
