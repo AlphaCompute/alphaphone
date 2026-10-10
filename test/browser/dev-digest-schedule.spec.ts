@@ -15,10 +15,10 @@ test('digest mutation replay, lost acknowledgements, revocation and account reti
  localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'development',profile:'remote'}));let retired=false;try{await call('sources');}catch{retired=true;}
  return {replayed:JSON.stringify(saved)===JSON.stringify(again),changed,same:JSON.stringify(a)===JSON.stringify(b),one:a.entries.length,empty:empty.entries.length,retained:JSON.stringify(a)===JSON.stringify(after),stale,retired};});expect(result).toEqual({replayed:true,changed:true,same:true,one:1,empty:0,retained:true,stale:true,retired:true});
 });
-for(const scenario of [{name:'repeated clock time runs once at the earlier offset',start:'2026-11-01T05:29:00Z',time:'01:30',ticks:['2026-11-01T05:30:00Z','2026-11-01T06:30:00Z'],statuses:['completed']},{name:'skipped clock time and missed days do not replay',start:'2026-03-08T06:59:00Z',time:'02:30',ticks:['2026-03-08T07:30:00Z','2026-03-09T06:32:00Z'],statuses:['missed']}])test(scenario.name,async({page})=>{
+for(const scenario of [{name:'repeated clock time runs once at the earlier offset',start:'2026-11-01T05:29:00Z',time:'01:30',ticks:['2026-11-01T05:30:00Z','2026-11-01T06:30:00Z'],statuses:['completed']},{name:'skipped clock time and missed days do not replay',start:'2026-03-08T06:59:00Z',time:'02:30',ticks:['2026-03-08T07:30:00Z','2026-03-09T06:32:01Z'],statuses:['missed']}])test(scenario.name,async({page})=>{
  await page.clock.install({time:new Date(scenario.start)});await page.goto('/?mode=dev');await page.evaluate(async time=>{const {developmentDigestRequest:request}=await import('/src/browser/development-digests.ts'),{developmentIdentity}=await import('/src/browser/development-identity.ts');localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'development',profile:'local'}));const i=developmentIdentity('local'),s:any=await request(i,'/api/workflow/hosted/sources',{id:crypto.randomUUID(),kind:'notes',label:'Clock source',text:'Clock text',observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+3*86400000).toISOString(),confirmed:true});await request(i,'/api/workflow/hosted/loops',{mutationId:crypto.randomUUID(),confirmed:true,spec:{version:1,template:'morning',sourceId:s.source.id,sourceRevision:s.source.revision,enabled:true,timeZone:'America/New_York',localTime:time}});},scenario.time);
- for(const time of scenario.ticks){await page.clock.setFixedTime(new Date(time));await page.evaluate(async()=>{const {developmentDigestRequest:request}=await import('/src/browser/development-digests.ts'),{developmentIdentity}=await import('/src/browser/development-identity.ts');await request(developmentIdentity('local'),'/api/workflow/hosted/tick',undefined);});}// The skipped 02:30 on March 8 has no occurrence at all. The March 9 occurrence passed two minutes before
- // the next tick: it is recorded once as missed and is never executed late.
+ for(const time of scenario.ticks){await page.clock.setFixedTime(new Date(time));await page.evaluate(async()=>{const {developmentDigestRequest:request}=await import('/src/browser/development-digests.ts'),{developmentIdentity}=await import('/src/browser/development-identity.ts');await request(developmentIdentity('local'),'/api/workflow/hosted/tick',undefined);});}// The skipped 02:30 on March 8 has no occurrence at all. The March 9 occurrence passed more than 120 seconds
+ // before the next tick (the agent's window): it is recorded once as missed and is never executed late.
  expect(await page.evaluate(async()=>(await (await import('/src/browser/development-digest-document.ts')).readDevelopmentDigests((await import('/src/browser/development-identity.ts')).developmentIdentity('local'))).results.map(row=>row.status))).toEqual(scenario.statuses);
 });
 
@@ -62,9 +62,66 @@ test('a clock set back, a paused schedule and a revoked source never settle an o
  await page.clock.setFixedTime(new Date('2026-10-04T08:00:10Z'));await digestCall(page,'tick');await page.clock.setFixedTime(new Date('2026-10-04T12:00:00Z'));await digestCall(page,'tick');
  const enabled=(await digestCall(page,'loops',{mutationId:crypto.randomUUID(),confirmed:true,id:loop.id,expectedVersionId:paused.versionId,spec:{...loop.spec,enabled:true}})).loop;await digestCall(page,'tick');
  expect((await digestState(page)).results.map(row=>row.status)).toEqual(['completed']);expect(enabled.versionId).not.toBe(loop.versionId);
- // Revoked before the next occurrence: no run, no failure brief, no later catch-up.
- await digestCall(page,'sources/revoke',{id:source.id,confirmed:true});await page.clock.setFixedTime(new Date('2026-10-05T08:00:10Z'));await digestCall(page,'tick');await page.clock.setFixedTime(new Date('2026-10-05T10:00:00Z'));await digestCall(page,'tick');
- expect((await digestState(page)).results.map(row=>row.status)).toEqual(['completed']);
+ // Revoked before the next occurrence: no run and no failure brief. Like the agent, one explicit
+ // "unavailable" record is written for that occurrence and the schedule is then paused: no later catch-up.
+ await digestCall(page,'sources/revoke',{id:source.id,confirmed:true});await page.clock.setFixedTime(new Date('2026-10-05T08:00:10Z'));await digestCall(page,'tick');await digestCall(page,'tick');await page.clock.setFixedTime(new Date('2026-10-05T10:00:00Z'));await digestCall(page,'tick');
+ await page.clock.setFixedTime(new Date('2026-10-06T08:00:10Z'));await digestCall(page,'tick');
+ const state=await digestState(page);expect(state.results.map(row=>[row.status,row.scheduledAt,row.workflowVersionId])).toEqual([['completed','2026-10-03T08:00:00.000Z',loop.versionId],['unavailable','2026-10-05T08:00:00.000Z',enabled.versionId]]);
+ expect(state.results[1].output).toEqual({status:'unavailable',sourceState:'revoked',paused:true,text:'Source revoked. This schedule is paused until you review a new source. No fresh phone data was read.'});
+ expect(state.results[1].error).toBeNull();expect(state.results[1].source).toMatchObject({id:source.id,revision:source.revision});
+});
+
+// Parity with the pinned agent's digestAdmission (vendor/eliza plugin-workflow hosted-digest.ts): the
+// source state is decided before lateness, the run window is 120 seconds, and an occurrence settles once.
+test('an expired source yields one unavailable record, even when late, and a renewed schedule runs again',async({page})=>{
+ await page.clock.install({time:new Date('2026-10-03T07:55:00Z')});await page.goto('/?mode=dev');
+ const made=await digestCall(page,'sources',{id:crypto.randomUUID(),kind:'notes',label:'Short source',text:'Short text',observedAt:'2026-10-03T07:55:00.000Z',expiresAt:'2026-10-04T07:00:00.000Z',confirmed:true});
+ const loop=(await digestCall(page,'loops',{mutationId:crypto.randomUUID(),confirmed:true,spec:{version:1,template:'morning',sourceId:made.source.id,sourceRevision:made.source.revision,enabled:true,timeZone:'UTC',localTime:'08:00'}})).loop;
+ await page.clock.setFixedTime(new Date('2026-10-03T08:00:10Z'));await digestCall(page,'tick');
+ // The source expired an hour before the next occurrence, and the app was closed until well after it.
+ await page.clock.setFixedTime(new Date('2026-10-04T11:00:00Z'));await Promise.all([digestCall(page,'tick'),digestCall(page,'tick'),digestCall(page,'results?clientId=reader-a')]);await page.reload();await digestCall(page,'tick');
+ await page.clock.setFixedTime(new Date('2026-10-05T08:00:10Z'));await digestCall(page,'tick');
+ const lapsed=await digestState(page);expect(lapsed.results.map(row=>[row.status,row.scheduledAt])).toEqual([['completed','2026-10-03T08:00:00.000Z'],['unavailable','2026-10-04T08:00:00.000Z']]);
+ expect(lapsed.results[1].output).toEqual({status:'unavailable',sourceState:'expired',paused:true,text:'Source expired. This schedule is paused until you renew the source. No fresh phone data was read.'});
+ expect(new Set(lapsed.results.map(row=>row.runId)).size).toBe(2);
+ // Reviewing a new source for the same schedule resumes it from the next occurrence; nothing is caught up.
+ const renewed=await digestCall(page,'sources',{id:crypto.randomUUID(),kind:'notes',label:'Renewed source',text:'Renewed text',observedAt:'2026-10-05T08:00:10.000Z',expiresAt:'2026-10-09T08:00:00.000Z',confirmed:true});
+ await digestCall(page,'loops',{mutationId:crypto.randomUUID(),confirmed:true,id:loop.id,expectedVersionId:loop.versionId,spec:{...loop.spec,sourceId:renewed.source.id,sourceRevision:renewed.source.revision}});
+ await digestCall(page,'tick');await page.clock.setFixedTime(new Date('2026-10-06T08:00:10Z'));await digestCall(page,'tick');await digestCall(page,'tick');
+ expect((await digestState(page)).results.map(row=>[row.status,row.scheduledAt])).toEqual([['completed','2026-10-03T08:00:00.000Z'],['unavailable','2026-10-04T08:00:00.000Z'],['completed','2026-10-06T08:00:00.000Z']]);
+});
+
+test('an occurrence runs up to 120 seconds late and is missed after that',async({page})=>{
+ await page.clock.install({time:new Date('2026-10-03T07:55:00Z')});await page.goto('/?mode=dev');
+ await seedLoops(page,[{template:'morning',localTime:'08:00',text:'Morning text'}]);
+ // Exactly 120 seconds late still runs, recorded against its scheduled time.
+ await page.clock.setFixedTime(new Date('2026-10-03T08:02:00Z'));await digestCall(page,'tick');await digestCall(page,'tick');
+ expect((await digestState(page)).results.map(row=>[row.status,row.scheduledAt])).toEqual([['completed','2026-10-03T08:00:00.000Z']]);
+ // One second more is missed, once.
+ await page.clock.setFixedTime(new Date('2026-10-04T08:02:01Z'));await digestCall(page,'tick');await digestCall(page,'tick');await page.clock.setFixedTime(new Date('2026-10-04T08:03:00Z'));await digestCall(page,'tick');
+ const state=await digestState(page);expect(state.results.map(row=>[row.status,row.scheduledAt])).toEqual([['completed','2026-10-03T08:00:00.000Z'],['missed','2026-10-04T08:00:00.000Z']]);
+ expect(state.results[1].output).toEqual({status:'missed',text:'The scheduled time was missed. No backlog was executed.'});
+});
+
+test('a clock jump forward then back still runs the real occurrence once and never repeats the jumped one',async({page})=>{
+ await page.clock.install({time:new Date('2026-10-03T07:55:00Z')});await page.goto('/?mode=dev');
+ await seedLoops(page,[{template:'morning',localTime:'08:00',text:'Morning text'}]);
+ const statuses=async()=>(await digestState(page)).results.map(row=>[row.status,row.scheduledAt]);
+ await page.clock.setFixedTime(new Date('2026-10-03T08:00:05Z'));await digestCall(page,'tick');
+ // The clock jumps two days ahead onto a scheduled time, which runs; then it is corrected.
+ await page.clock.setFixedTime(new Date('2026-10-05T08:00:10Z'));await digestCall(page,'tick');
+ await page.clock.setFixedTime(new Date('2026-10-04T07:59:00Z'));await digestCall(page,'tick');
+ expect(await statuses()).toEqual([['completed','2026-10-03T08:00:00.000Z'],['completed','2026-10-05T08:00:00.000Z']]);
+ // The real October 4 occurrence is due and runs exactly once, across repeated, concurrent and reloaded ticks.
+ await page.clock.setFixedTime(new Date('2026-10-04T08:00:05Z'));await Promise.all([digestCall(page,'tick'),digestCall(page,'tick'),digestCall(page,'results?clientId=reader-a')]);await page.reload();await digestCall(page,'tick');
+ const ran=[['completed','2026-10-03T08:00:00.000Z'],['completed','2026-10-05T08:00:00.000Z'],['completed','2026-10-04T08:00:00.000Z']];
+ expect(await statuses()).toEqual(ran);
+ // Time reaches the jumped record again: it already ran and does not run twice. The next day is new.
+ await page.clock.setFixedTime(new Date('2026-10-05T08:00:10Z'));await digestCall(page,'tick');await page.clock.setFixedTime(new Date('2026-10-05T12:00:00Z'));await digestCall(page,'tick');
+ expect(await statuses()).toEqual(ran);
+ await page.clock.setFixedTime(new Date('2026-10-06T08:00:10Z'));await digestCall(page,'tick');await digestCall(page,'tick');
+ expect(await statuses()).toEqual([...ran,['completed','2026-10-06T08:00:00.000Z']]);
+ expect(new Set((await digestState(page)).results.map(row=>row.runId)).size).toBe(4);
 });
 
 test('morning and evening at the same minute produce distinct source-backed results, and an edited time runs once at its new time',async({page})=>{
