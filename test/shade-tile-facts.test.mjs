@@ -69,3 +69,19 @@ test('every tile with a switch opens its own Android page, and the native allowl
  const first=Object.values(pages).map(actions=>actions[0]);assert.equal(new Set(first).size,first.length);
  assert.deepEqual([pages.airplane[0],pages.location[0],pages.mobile[0]],['Settings.ACTION_AIRPLANE_MODE_SETTINGS','Settings.ACTION_LOCATION_SOURCE_SETTINGS','Settings.ACTION_DATA_ROAMING_SETTINGS']);
 });
+test('a broader Android page is named for what it is, and a specific page says nothing',()=>{
+ for(const opened of [{status:'opened',specific:true},{status:'opened'},null,undefined,'opened'])for(const page of ['wifi','dnd','airplane'])assert.equal(m.broaderPageNotice(page,opened),null);
+ const broad={status:'opened',specific:false};
+ assert.match(m.broaderPageNotice('airplane',broad),/^Opened Android network settings\./);
+ assert.match(m.broaderPageNotice('mobile',broad),/^Opened Android network settings\./);
+ // Do Not Disturb falls back to the priority page, which is not a network page.
+ assert.match(m.broaderPageNotice('dnd',broad),/^Opened Android priority settings\./);
+ assert.doesNotMatch(m.broaderPageNotice('dnd',broad),/network/);
+ assert.doesNotMatch(m.broaderPageNotice('battery',broad),/network|priority/);
+});
+test('the Bluetooth fact is the radio state on Android 12 and later, not the stored switch',()=>{
+ const java=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaDevicePlugin.java','utf8');
+ const read=java.slice(java.indexOf('fact(out,"bluetoothEnabled"'),java.indexOf('fact(out,"airplaneMode"'));
+ assert.match(read,/SDK_INT<Build\.VERSION_CODES\.S\)return binarySwitch\(Settings\.Global\.getInt\(resolver,Settings\.Global\.BLUETOOTH_ON\)\)/);
+ assert.match(read,/adapter==null\?null:adapterSwitch\(adapter\.getState\(\)\)/);
+});

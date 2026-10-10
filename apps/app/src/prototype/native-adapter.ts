@@ -102,13 +102,21 @@ export function handoffGate(windowMs = 2000, now: () => number = () => Date.now(
     end() { inFlight = false; last = now(); },
   };
 }
+/** What to say when Android opened a broader page than the one asked for; null when the specific page opened. */
+export function broaderPageNotice(page: string, opened: unknown): string | null {
+  if (!opened || typeof opened !== 'object' || (opened as { specific?: unknown }).specific !== false) return null;
+  if (page === 'airplane' || page === 'mobile') return 'Opened Android network settings. This phone has no separate page for that switch.';
+  if (page === 'dnd') return 'Opened Android priority settings. This phone has no separate Do Not Disturb page.';
+  return 'Opened a related Android settings page. This phone has no separate page for that setting.';
+}
 // tile-facts:end
-/** Run once when the owner comes back from an Android page, so a changed switch is read again. */
-export function onReturnToApp(run: () => void): void {
-  let done = false, handle: Promise<{ remove(): unknown } | null> | null = null;
-  const finish = () => { if (done || document.hidden) return; done = true; document.removeEventListener('visibilitychange', finish); void handle?.then(listener => listener?.remove()); run(); };
-  document.addEventListener('visibilitychange', finish);
-  handle = DailyApps.addListener('appResumed', finish).catch(() => null);
+/** Run each time the owner comes back to the app or its window regains focus (returning from an
+ * Android page, or closing Android's own quick settings), so a changed switch is read again. */
+export function watchReturnToApp(run: () => void): () => void {
+  const check = () => { if (!document.hidden) run(); };
+  document.addEventListener('visibilitychange', check); window.addEventListener('focus', check);
+  const handle = DailyApps.addListener('appResumed', check).catch(() => null);
+  return () => { document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check); void handle.then(listener => listener?.remove()); };
 }
 /** MIME filter for a Files location tile. Unknown locations accept any document. */
 function locationMime(name: string): string {

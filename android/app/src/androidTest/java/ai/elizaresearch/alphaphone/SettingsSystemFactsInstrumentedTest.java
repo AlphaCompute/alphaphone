@@ -31,6 +31,8 @@ public final class SettingsSystemFactsInstrumentedTest {
   assertNull(AlphaDevicePlugin.wifiSwitch(4));assertNull(AlphaDevicePlugin.wifiSwitch(-1));
   assertEquals(Boolean.FALSE,AlphaDevicePlugin.binarySwitch(0));assertEquals(Boolean.TRUE,AlphaDevicePlugin.binarySwitch(1));
   assertNull(AlphaDevicePlugin.binarySwitch(2));assertNull(AlphaDevicePlugin.binarySwitch(-1));
+  assertEquals(Boolean.TRUE,AlphaDevicePlugin.adapterSwitch(android.bluetooth.BluetoothAdapter.STATE_ON));assertEquals(Boolean.FALSE,AlphaDevicePlugin.adapterSwitch(android.bluetooth.BluetoothAdapter.STATE_OFF));
+  assertNull(AlphaDevicePlugin.adapterSwitch(android.bluetooth.BluetoothAdapter.STATE_TURNING_ON));assertNull(AlphaDevicePlugin.adapterSwitch(android.bluetooth.BluetoothAdapter.STATE_TURNING_OFF));assertNull(AlphaDevicePlugin.adapterSwitch(-1));
   assertEquals("all",AlphaDevicePlugin.interruptionName(NotificationManager.INTERRUPTION_FILTER_ALL));
   assertEquals("priority",AlphaDevicePlugin.interruptionName(NotificationManager.INTERRUPTION_FILTER_PRIORITY));
   assertEquals("alarms",AlphaDevicePlugin.interruptionName(NotificationManager.INTERRUPTION_FILTER_ALARMS));
@@ -41,12 +43,18 @@ public final class SettingsSystemFactsInstrumentedTest {
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
   JSObject facts=new JSObject();AlphaDevicePlugin.systemFacts(context,facts);
   // A fact may be absent (unknown). When present it must equal Android's own answer.
-  String[][] globals={{"wifiEnabled","wifi_on"},{"bluetoothEnabled","bluetooth_on"},{"airplaneMode","airplane_mode_on"}};
+  // Bluetooth is checked below: its stored switch is the owner's choice, not the radio state.
+  String[][] globals={{"wifiEnabled","wifi_on"},{"airplaneMode","airplane_mode_on"}};
   for(String[] row:globals){
    if(!facts.has(row[0]))continue;
    String raw=shell("settings get global "+row[1]);
    boolean expected="wifi_on".equals(row[1])?("1".equals(raw)||"2".equals(raw)):"1".equals(raw);
    assertEquals(row[0]+" matches settings global "+row[1]+"="+raw,expected,facts.getBoolean(row[0]));
+  }
+  if(facts.has("bluetoothEnabled")){
+   // The Bluetooth service's own dump, when this image prints a settled state line.
+   java.util.regex.Matcher state=java.util.regex.Pattern.compile("(?m)^\\s*state: (ON|OFF)\\s*$").matcher(shell("dumpsys bluetooth_manager"));
+   if(state.find())assertEquals("bluetoothEnabled matches the Bluetooth service state "+state.group(1),"ON".equals(state.group(1)),facts.getBoolean("bluetoothEnabled"));
   }
   if(facts.has("locationEnabled"))assertEquals(context.getSystemService(LocationManager.class).isLocationEnabled(),facts.getBoolean("locationEnabled"));
   if(facts.has("interruptionFilter"))assertEquals(AlphaDevicePlugin.interruptionName(context.getSystemService(NotificationManager.class).getCurrentInterruptionFilter()),facts.getString("interruptionFilter"));

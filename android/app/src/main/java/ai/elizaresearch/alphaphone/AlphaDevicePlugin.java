@@ -70,6 +70,8 @@ public final class AlphaDevicePlugin extends Plugin {
  static Boolean wifiSwitch(int value){return value==1||value==2?Boolean.TRUE:value==0||value==3?Boolean.FALSE:null;}
  /** Maps a 0/1 system switch; any other stored value is unknown rather than guessed. */
  static Boolean binarySwitch(int value){return value==1?Boolean.TRUE:value==0?Boolean.FALSE:null;}
+ /** Maps BluetoothAdapter.getState(): only settled on and off are facts; turning on or off is unknown. */
+ static Boolean adapterSwitch(int state){return state==android.bluetooth.BluetoothAdapter.STATE_ON?Boolean.TRUE:state==android.bluetooth.BluetoothAdapter.STATE_OFF?Boolean.FALSE:null;}
  static String interruptionName(int filter){return filter==NotificationManager.INTERRUPTION_FILTER_ALL?"all":filter==NotificationManager.INTERRUPTION_FILTER_PRIORITY?"priority":filter==NotificationManager.INTERRUPTION_FILTER_ALARMS?"alarms":filter==NotificationManager.INTERRUPTION_FILTER_NONE?"none":null;}
  private interface Fact {Object read()throws Exception;}
  private static void fact(JSObject out,String key,Fact source){try{Object value=source.read();if(value!=null)out.put(key,value);}catch(Exception unreadable){/* Omitted: the renderer shows this setting as unknown. */}}
@@ -81,7 +83,15 @@ public final class AlphaDevicePlugin extends Plugin {
  static void systemFacts(Context context,JSObject out){
   android.content.ContentResolver resolver=context.getContentResolver();
   fact(out,"wifiEnabled",()->wifiSwitch(Settings.Global.getInt(resolver,Settings.Global.WIFI_ON)));
-  fact(out,"bluetoothEnabled",()->binarySwitch(Settings.Global.getInt(resolver,Settings.Global.BLUETOOTH_ON)));
+  // The adapter state is what the radio is doing now and needs no permission from Android 12. The
+  // stored switch is the owner's last choice, which airplane mode can override, and is used only
+  // on older releases, where the adapter read needs a permission Alpha does not hold.
+  fact(out,"bluetoothEnabled",()->{
+   if(Build.VERSION.SDK_INT<Build.VERSION_CODES.S)return binarySwitch(Settings.Global.getInt(resolver,Settings.Global.BLUETOOTH_ON));
+   android.bluetooth.BluetoothManager manager=context.getSystemService(android.bluetooth.BluetoothManager.class);
+   android.bluetooth.BluetoothAdapter adapter=manager==null?null:manager.getAdapter();
+   return adapter==null?null:adapterSwitch(adapter.getState());
+  });
   fact(out,"airplaneMode",()->binarySwitch(Settings.Global.getInt(resolver,Settings.Global.AIRPLANE_MODE_ON)));
   fact(out,"locationEnabled",()->{android.location.LocationManager location=context.getSystemService(android.location.LocationManager.class);return location==null?null:location.isLocationEnabled();});
   fact(out,"mobileDataEnabled",()->{

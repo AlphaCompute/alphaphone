@@ -142,6 +142,23 @@ test('shade tiles show the switch states Android reported and only open the matc
  await expect(tile(page,'Wi-Fi')).toHaveAttribute('aria-pressed','false');
  await expect(tileState(page,'Do not disturb')).toHaveText('On');
 
+ // Android's own quick settings changed a switch while this shade stayed open: no tile was tapped
+ // and the app never paused, so only the window regaining focus says to read again.
+ await set(page,{snapshot:{bluetoothEnabled:false,airplaneMode:true}});
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect(tileState(page,'Bluetooth')).toHaveText('Off');
+ await expect(tileState(page,'Airplane mode')).toHaveText('On');
+ // Android stops answering: every switch loses its state instead of keeping the last one.
+ await page.evaluate(()=>{const original=(window as any).Capacitor.nativePromise;(window as any).truth.restore=()=>{(window as any).Capacitor.nativePromise=original;};(window as any).Capacitor.nativePromise=async(plugin:string,method:string,input:unknown)=>{if(plugin==='AlphaDevice'&&method==='snapshot')throw Error('Device facts could not be read');return original(plugin,method,input);};});
+ await resume(page);
+ for(const name of ['Wi-Fi','Bluetooth','Do not disturb','Location','Airplane mode']){
+  await expect(tileState(page,name)).toHaveText('Open settings');
+  await expect(tile(page,name)).not.toHaveAttribute('aria-pressed',/.*/);
+ }
+ await page.evaluate(()=>(window as any).truth.restore());
+ await resume(page);
+ await expect(tileState(page,'Airplane mode')).toHaveText('On');
+
  // The flashlight is the one direct control: it shows only what Android confirmed.
  await tile(page,'Flashlight').click();
  await expect(tileState(page,'Flashlight')).toHaveText('On');
@@ -168,6 +185,10 @@ test('switches Android does not report are shown as a handoff, never as off, and
  await set(page,{unspecific:['airplane']});
  await tile(page,'Airplane mode').click();
  await expect(page.getByText('Opened Android network settings. This phone has no separate page for that switch.',{exact:true})).toBeVisible();
+ // Do Not Disturb falls back to the priority page, and is not called a network page.
+ await set(page,{unspecific:['dnd']});
+ await tile(page,'Do not disturb').click();
+ await expect(page.getByText('Opened Android priority settings. This phone has no separate Do Not Disturb page.',{exact:true})).toBeVisible();
  // No flashlight Alpha can control: the tile goes away instead of staying as a dead switch.
  await set(page,{torch:false});
  await tile(page,'Flashlight').click();
@@ -180,6 +201,10 @@ test('switches Android does not report are shown as a handoff, never as off, and
  const mobile=await current(page).innerText();
  expect(mobile).toMatch(/Mobile data\s*Not reported by Android/);
  expect(mobile).toMatch(/Airplane mode\s*Not reported by Android/);
+ // A Settings row that only reached the broader page says so too.
+ await set(page,{unspecific:['airplane']});
+ await current(page).getByRole('button',{name:'Airplane mode in Android',exact:true}).click();
+ await expect(page.getByText('Opened Android network settings. This phone has no separate page for that switch.',{exact:true}).last()).toBeVisible();
  await page.getByRole('button',{name:'Back to Settings',exact:true}).click();
  await current(page).getByRole('button',{name:'About',exact:true}).click();
  const about=await current(page).innerText();
