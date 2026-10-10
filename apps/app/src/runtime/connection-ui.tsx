@@ -38,7 +38,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isAndroid } from '../native';
 import type { ActionProposal, OperationReceipt, ContextEnvelope, VerifiedSession } from './alpha-client';
 import { CloudProtocol, CloudProtocolError, type CloudAgent, type CloudEnvironment, type CloudPhoneTarget } from './cloud-protocol';
-import { RemoteProtocol } from './remote-protocol';
+import { RemoteProtocol, RemoteProtocolError } from './remote-protocol';
 import { phoneContextMessage } from './phone-context';
 import { cloudCredentialStore, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, secureConnectionStore } from './native-connection';
 import './connection-ui.css';
@@ -77,6 +77,10 @@ const SELECTION = 'alpha.connection.selection.v1';
 const browserDevProfile = devSurfacesEnabled && devProfileQuery;
 /** Production builds offer only the production Cloud environment. */
 const cloudEnvironmentAllowed = (environment: unknown): environment is CloudEnvironment => environment === 'production' || (testMocksEnabled && environment === 'staging');
+/** Production phones run the resident agent; remote pairing and remote restore are retired there. */
+const remotePairingRetired = isAndroid && !testMocksEnabled;
+/** Eliza Cloud admits no request from the production web origin, so no Cloud route is started there. */
+const webCloudUnavailable = () => !testMocksEnabled && !isAndroid && !browserLocalAgentEnabled;
 const CLOUD_SERVICE = 'alpha.connection.cloud-service.v1';
 const listeners = new Set<() => void>();
 let developmentPageSuspended = false;
@@ -163,7 +167,8 @@ async function personalWork(message:string,action:(binding:NonNullable<typeof pe
  });
 }
 function detachCloudTarget() { if (active?.kind === 'cloud') retire(); }
-function makeCloud(environment: CloudEnvironment) { return new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser); }
+// Only the Android transport admits Cloud's self-revocation DELETE; elsewhere sign-out reports a local removal.
+function makeCloud(environment: CloudEnvironment) { return new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: isAndroid }); }
 function update(patch: Partial<ConnectionSnapshot>) { state = { ...state, ...patch }; if (!developmentPageSuspended) listeners.forEach(listener => listener()); }
 function save(selection: Selection) { localStorage.setItem(SELECTION, JSON.stringify(selection)); }
 function retire(name = 'Offline') {
@@ -261,6 +266,8 @@ async function remoteIdentity(remote: RemoteProtocol, signal: AbortSignal) {
   return { id: agent.id, name: typeof agent.name === 'string' ? agent.name : 'Remote agent' };
 }
 async function connectRemote(kind: 'remote' | 'local', origin: string, code: string, signal: AbortSignal) {
+  // Fences every caller, including restore: no request is made and the saved credential is kept.
+  if (remotePairingRetired) throw new Error(PAIRING_RETIRED);
   let deviceHeaders: Record<string, string> = {};
   const remote = new RemoteProtocol(origin.trim(), input => nativeRemoteRequest({ ...input, headers: { ...input.headers, ...deviceHeaders } }), remoteCredentialStore, { developmentOrigins: kind === 'local' ? [new URL(origin).origin] : [] });
   if (code.trim()) await remote.pair(code.trim(), signal);
@@ -338,7 +345,7 @@ async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
 
 async function connectResident(signal: AbortSignal) {
   if(isAndroid && !testMocksEnabled && !await admitCloudResident(signal))return;
-  if (!await localAgentPackaged()) throw new Error('The local agent is unavailable here. Connect a remote agent, sign in with Eliza Cloud, or continue offline.');
+  if (!await localAgentPackaged()) throw new Error(remotePairingRetired ? 'The on-device agent is not included in this build. You can use local apps without AI.' : webCloudUnavailable() ? 'The local agent is unavailable here. Connect a remote agent or continue offline.' : 'The local agent is unavailable here. Connect a remote agent, sign in with Eliza Cloud, or continue offline.');
   signal.throwIfAborted();
   const client = new LocalAgentProtocol();
   const { session, name } = await client.connect(signal);
@@ -503,6 +510,18 @@ function restoredMessages(items:Record<string,unknown>[]):RestoredMessage[] {
 /** Eliza Cloud's API answers credentialed browser requests only from Eliza's own origins
  * (pinned upstream `cloud-api-hono-cors.ts`), so the flag-off web build cannot sign in or read the
  * account. It offers the account page instead of a sign-in that would always fail. */
+/** Says what a refused pairing means. Nothing was connected; 401 and 503 keep their shared wording. */
+function pairingError(error: unknown, withCode: boolean): unknown {
+  if (!(error instanceof RemoteProtocolError) || error.status === 401 || error.status === 503) return error;
+  const text = ['invalid_origin', 'origin_required', 'https_required'].includes(error.code) ? 'Enter the agent’s HTTPS address without a path, for example https://your-agent.example. Nothing was sent.'
+    : error.code === 'pairing_unavailable' ? 'This agent is not accepting pairing. Enable pairing on the agent, then try again.'
+    : error.code === 'session_expired' ? 'The saved session for this agent has expired. Enter a new pairing code.'
+    : ['owner_session_required', 'machine_session_required', 'identity_changed', 'pairing_identity_mismatch'].includes(error.code) ? 'The agent did not confirm an owner session for this phone. Nothing was connected.'
+    : error.code === 'remote_request_failed' && withCode && error.status !== undefined && error.status >= 400 && error.status < 500 ? 'The agent refused this pairing code. Codes expire and work once; ask your agent for a new one.'
+    : 'The agent did not answer as expected. Nothing was connected.';
+  return new Error(text, { cause: error });
+}
+const PAIRING_RETIRED = 'Pairing is unavailable. Your agent runs on this phone; sign in to Eliza Cloud for inference.';
 export const WEB_CLOUD_UNAVAILABLE = 'Eliza Cloud sign-in is available in the Alpha Phone Android app. Eliza Cloud does not accept sign-in requests from this web page.';
 /** Stop closes the transport and asks the agent to cancel through upstream's
  * `POST /api/turns/:roomId/abort` (resident, remote and local agents). Cloud agents and agents that
@@ -933,6 +952,11 @@ export const connectionController = {
       if (saved?.kind === 'offline') return;
       if (saved?.kind === 'mock') { const url = new URL(location.href); url.searchParams.set('mode', 'mock'); location.replace(url.href); return; }
       await work('Restoring your connection…', async signal => {
+        if (webCloudUnavailable()) {
+          // A saved Cloud service or Cloud agent is signed out here without a request or a stored-token read.
+          try { localStorage.removeItem(CLOUD_SERVICE); } catch { /* Nothing is restored either way. */ }
+          if (saved?.kind === 'cloud') { try { save({ kind: 'none' }); } catch { /* The chooser still requires a choice. */ } update({ open: true, message: '', error: WEB_CLOUD_UNAVAILABLE }); return; }
+        }
         const environment = localStorage.getItem(CLOUD_SERVICE);
         if (environment === 'staging' && !testMocksEnabled) { localStorage.removeItem(CLOUD_SERVICE); update({ message: 'Sign in with Eliza Cloud to continue.' }); }
         else if (cloudEnvironmentAllowed(environment)) {
@@ -1004,11 +1028,8 @@ export const connectionController = {
   async saveDevelopment(profile:DevelopmentProfile,reply:string){if(!devSurfacesEnabled)return;await work('Saving development reply…',async signal=>{await saveDevelopmentReply(profile,reply,signal);update({message:'Development reply saved.'});});},
   async startLocal() { await work('Starting the local agent…', signal => { retire(); return connectResident(signal); }); },
   async pair(kind: 'remote' | 'local', origin: string, code: string) {
-    if (isAndroid && !testMocksEnabled) {
-      update({ error: 'Pairing is unavailable. Your agent runs on this phone; sign in to Eliza Cloud for inference.' });
-      return;
-    }
-    await work('Verifying your agent…', signal => { retire(); return connectRemote(kind, origin, code, signal); });
+    if (remotePairingRetired) { update({ error: PAIRING_RETIRED }); return; }
+    await work('Verifying your agent…', async signal => { retire(); try { await connectRemote(kind, origin, code, signal); } catch (error) { throw pairingError(error, !!code.trim()); } });
   },
   async residentCloudLogin() {
     await work('Opening Eliza Cloud sign-in…',async signal=>{
@@ -1039,6 +1060,7 @@ export const connectionController = {
     });
   },
   async cloudList(environment: CloudEnvironment) {
+    if (webCloudUnavailable()) { update({ open: true, error: WEB_CLOUD_UNAVAILABLE, message: '' }); return; }
     await work('Loading your agents…', async signal => { cloud = makeCloud(environment);
       if (service && service.identity.environment !== environment) { detachCloudTarget(); detachService(); }
       const previous = service?.identity.sessionId;
