@@ -172,7 +172,7 @@
         "AP-11"
       ],
       "title": "Upstream the pin-only commit series",
-      "current": "The integration pin is merged upstream commit 4148a1660921a354ece2badf25a79a2398a51058, including the password manager and password transfer. The submodule and lock agree and the pin is reachable from develop. Consumer verification and both APK builds at this replacement pin are pending. Earlier source, browser and native results remain scoped to their recorded commits.",
+      "current": "The integration pin is merged upstream commit 4148a1660921a354ece2badf25a79a2398a51058, including the password manager and password transfer. The submodule and lock agree and the pin is reachable from develop. Consumer verification passes 443 tests with four TODOs, all eight password-manager browser cases pass, and both variants build with all four APK audits passing. These developer APKs omit the resident payload and use unqualified speech bytes; they are not distributable. Integrated native transfer and device acceptance remain pending. Earlier source, browser and native results remain scoped to their recorded commits.",
       "remaining": "Complete the remaining retired-pin semantic audit and product-wide browser/native regressions. Release runtime, speech, signing and device acceptance remain separate.",
       "acceptance": "Reviewed upstream disposition per commit, clean source preparation and full product regression at the replacement pin.",
       "depends_on": [],

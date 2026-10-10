@@ -119,7 +119,7 @@ Evidence/source: [docs/mvp-current-status.md](../docs/mvp-current-status.md), [d
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: The integration pin is merged upstream commit 4148a1660921a354ece2badf25a79a2398a51058, including the password manager and password transfer. The submodule and lock agree and the pin is reachable from develop. Consumer verification and both APK builds at this replacement pin are pending. Earlier source, browser and native results remain scoped to their recorded commits.
+Current: The integration pin is merged upstream commit 4148a1660921a354ece2badf25a79a2398a51058, including the password manager and password transfer. The submodule and lock agree and the pin is reachable from develop. Consumer verification passes 443 tests with four TODOs, all eight password-manager browser cases pass, and both variants build with all four APK audits passing. These developer APKs omit the resident payload and use unqualified speech bytes; they are not distributable. Integrated native transfer and device acceptance remain pending. Earlier source, browser and native results remain scoped to their recorded commits.
 
 Remaining: Complete the remaining retired-pin semantic audit and product-wide browser/native regressions. Release runtime, speech, signing and device acceptance remain separate.
 
