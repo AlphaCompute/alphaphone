@@ -50,7 +50,13 @@ built fresh. No unverified generated runtime cache replaces qualification.
 
 The host suite exercises complete adapters, HTTP protocols, real filesystem and
 subprocess boundaries, native component interactions, and packaging commands.
-Browser tests exercise the rendered application and its persistent stores. Unit
+Browser tests exercise the rendered application and its persistent stores. Root-view
+empty-state, landmark and keyboard checks share one fresh page per view/theme,
+removing 48 repeated loads and fixed waits. Configured Maps recovery supplies its
+own worker-scoped fixture server; it no longer depends on an unset global build
+variable. Retired local-agent Notes UI journeys and their PCM helper table are
+removed; current Cloud-bound capture/save/playback E2E and explicit real-host
+playback qualification remain. Unit
 helper tables, source-text/regex assertions, extracted-method harnesses, and
 upstream unit-suite forwarding are removed from the consumer suite. Shared
 behavior is tested through its product integration; upstream owns its unit tests.

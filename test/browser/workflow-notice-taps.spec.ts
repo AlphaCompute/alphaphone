@@ -1,3 +1,4 @@
+import {newWorkflow,installWorkflowListFixture} from './workflow-navigation';
 import {test,expect} from '@playwright/test';
 // Production renderer and authenticated connection; controlled transport/native queue, no real notification.
 for(const scenario of ['two','other-owner','wrong-version','unconfirmed','navigation-race','owner-race','reconnect','queue-changed','builder-race','new-tap-during-read'] as const){
@@ -76,7 +77,7 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
    }};
   },'ready');
 
- await page.goto('/');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+ await page.goto('/');if(scenario==='builder-race')await installWorkflowListFixture(page);await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
  if(scenario==='builder-race'){await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));await page.getByRole('button',{name:'Workflows',exact:true}).click();}
  await page.evaluate(async(scenario)=>{
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');const s=c.getSnapshot().session!,b=c.getWorkflowClient()!,f=(window as any).deliveryFixture;
@@ -99,7 +100,7 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
   await expect(page.getByText('Verified retained result run1',{exact:true})).toHaveCount(0);
  }else if(scenario==='builder-race'){
   await expect.poll(()=>page.evaluate(()=>Boolean((window as any).deliveryFixture.release))).toBe(true);
-  await page.getByRole('button',{name:'New workflow',exact:true}).click();
+  await newWorkflow(page);
   await page.evaluate(()=>(window as any).deliveryFixture.release());
   await expect(page.getByText('Verified retained result run1',{exact:true})).toHaveCount(0);
   expect(await page.evaluate(()=>(window as any).deliveryFixture.consumed?.length||0)).toBe(0);
