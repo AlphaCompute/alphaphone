@@ -37,6 +37,13 @@ Do not import another product's UI or turn Alpha-specific restrictions into
 universal platform defaults. Use existing upstream schedulers, credential
 providers and stores rather than introducing competing implementations.
 
+`base/` is retired; the original app baseline remains recorded in
+[its provenance file](eliza-app-baseline-provenance.json). There is one product renderer
+in `apps/app`. The remaining `backend` files compose a development host from shared
+runtime packages; the product character, allowed views and proposal-only behavior
+stay here. Product build admission and acceptance campaigns also stay in `scripts`.
+Moving those directories intact would move product policy into the shared platform.
+
 ## Build surfaces
 
 The web build (`npm run build` → `web-dist/`) is a development and preview surface and
