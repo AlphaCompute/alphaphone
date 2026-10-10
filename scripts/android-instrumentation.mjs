@@ -7,12 +7,18 @@
  *     [--serial emulator-5554] [--classes NoMockProduct,Shell,StartupReadiness | --all] \
  *     [--variants standalone,launcher] [--test-mocks] [--apk-dir artifacts] \
  *     [--output test-results/android-instrumentation/<run>] [--timeout-ms 900000] \
- *     [--clock-exclusive]
+ *     [--clock-exclusive] [--home-role]
  *
  * Variants share one package id and replace each other, so they run one after the
  * other: install app + test APK, check the installed bytes, run every class in its
  * own `am instrument` process, uninstall. Only packages this run installed are
  * removed; an existing Alpha installation is refused, never replaced.
+ *
+ * --home-role (launcher variant only) is the one phase that changes a device role: it records
+ * the emulator's HOME holder, runs the classes that request the role themselves, selects the
+ * launcher APK as HOME, cold-starts it with the HOME key, runs the classes that need Alpha to be
+ * HOME, and always puts the original HOME back. If that cannot be proven the run fails, the
+ * installed packages are left in place and the emulator must not be reused until it is recovered.
  *
  * Results: <output>/results.json via scripts/instrumentation-result.mjs, bound to
  * the source commit and every installed APK's SHA-256, with raw output per class.
@@ -33,8 +39,14 @@ const RUNNER = "androidx.test.runner.AndroidJUnitRunner";
  * Known classes and how to run them. `args` are the class's explicit opt-in gates.
  * `phases` run methods in order, each in a new instrumentation process.
  * `campaign` classes need orchestration this runner does not perform (process
- * kills mid-test, permission restoration, provider credential fixtures); they are
+ * kills mid-test, permission changes, provider credential fixtures); they are
  * refused here and named with the campaign that runs them.
+ * `testMocks` classes are compiled only into the test-mocks instrumentation APK;
+ * `requiresTestMocksBuild` classes are in every instrumentation APK but assume a
+ * test-mocks app build, so they are refused without --test-mocks instead of skipping.
+ * `homeRole` classes run only on the launcher variant inside the --home-role phase:
+ * "requests" before Alpha is selected (the class asks for the role in Android's own
+ * dialog and restores what it found), "held" while Alpha is the selected HOME app.
  */
 export const CLASS_REGISTRY = {
   NoMockProduct: {},
@@ -58,14 +70,15 @@ export const CLASS_REGISTRY = {
   // Core-loop classes (docs/core-loop-audit.md). Registered so their opt-in gates are passed; none
   // has a recorded run through this runner yet. An unmet device assumption reports "skipped".
   LocalAgentOfflineApps: {},
-  LauncherHome: { note: "skips unless Alpha is already the selected HOME app on the launcher variant" },
+  LauncherHome: { homeRole: "held", note: "launcher variant with Alpha selected as HOME by --home-role; not boot-time HOME or device acceptance" },
+  SettingsRoles: { homeRole: "requests", note: "removes, declines and accepts the HOME role in Android's dialog and restores the previous holder; --home-role proves the restoration" },
   NotesTrashBackstop: {},
   NotesStorageDurability: { args: { notesStorage: "1" } },
   DailyApps: {},
   ReminderLifecycle: { note: "the re-post method skips unless notifications are enabled for the app" },
   ClockHandoff: { args: { clockHandoff: "1" }, note: "Clock intents are intercepted; not ringing evidence" },
   ClockRepeatDays: {},
-  HostedResultNotice: { args: { hostedNotice: "1" }, note: "deniedNotificationRetainsEncryptedHistory needs hostedNoticeDenied=1 with notifications denied and is skipped here" },
+  HostedResultNotice: { note: "builders only here; the posted and denied notices need the notification permission set first: node scripts/test-native-permissions.mjs notice|notice-denied APP.apk TEST.apk OUTPUT" },
   HostedBackgroundWorker: { args: { alphaHostedBackgroundFixture: "true" } },
   WorkflowApprovalNotice: { args: { workflowApprovalNotice: "1" } },
   BrowserReading: { args: { browserReading: "1" } },
@@ -78,10 +91,102 @@ export const CLASS_REGISTRY = {
   Notifications: {},
   CameraScan: {},
   FilesTree: {},
+  // J05-2: native page excerpt -> reviewed question -> composer; a note's web source across recreation.
+  BrowserPageQuestion: { args: { browserPageQuestion: "1" }, note: "needs network for the first tab (example.com) and a WebView provider with isolated-world injection; the agent's answer and the summary-note save that follows it need a connected agent and are not covered" },
+  // Mock mode and loopback fixtures exist only in a test-mocks app build.
+  ConnectionChooser: { requiresTestMocksBuild: true },
+  BrowserDialogLifecycle: { requiresTestMocksBuild: true },
+  BrowserWebFeatures: { requiresTestMocksBuild: true },
+  CloudVoice: { requiresTestMocksBuild: true },
+  DevelopmentAgent: { requiresTestMocksBuild: true },
+  PairedAsr: { requiresTestMocksBuild: true },
+  PairedVoice: { requiresTestMocksBuild: true },
+  ScopedVoicePlayback: { requiresTestMocksBuild: true },
+  IsolatedPdf: { args: { isolatedPdfNative: "1" }, requiresTestMocksBuild: true },
+  // Self-contained classes with an explicit gate. Registered so the gate is passed.
+  BrowserShare: { args: { browserShareLive: "1" }, note: "opens a public HTTPS page and Android's chooser; the emulator needs network" },
+  BrowserUnsupportedReading: { args: { browserUnsupportedReading: "1" } },
+  LargeInboxAttachment: { args: { largeInboxAttachmentNative: "1" } },
+  NoteAudioMetadataEncrypted: { args: { notesAudioEncryption: "1" } },
+  NotesSecureStorage: { args: { notesSecureStorage: "1" }, note: "the fresh-install migration method (notesSecureMigration=1) has no campaign and is skipped" },
+  PdfViewer: { args: { isolatedPdfNative: "1" } },
+  PhotosBatch: { args: { photosBatch: "1" } },
+  UiDispatch: { args: { uiDispatch: "1" } },
+  LocalSpeech: { args: { localSpeech: "1" }, note: "needs the packaged on-device speech models; recorded as failing functional acceptance on arm64-v8a" },
+  LocalSpeechBridge: { args: { localSpeechBridge: "1" }, note: "needs the packaged on-device speech models" },
+  VoiceNoteReadAloud: { args: { localSpeech: "1" }, note: "needs the packaged on-device speech models; not audible-speaker evidence" },
+  SpeechSentenceCancellation: { args: { speechSentenceCancellation: "1" }, note: "needs the packaged on-device speech models" },
+  // Classes with no opt-in gate and no host, account or permission precondition.
+  ActionJournal: {},
+  ActivityInstanceSelection: {},
+  Assistant: {},
+  FilesTreeBatch: {},
+  Flow: {},
+  HostedResultsLifecycle: {},
+  LocalAgentProvider: {},
+  PhotoEdit: {},
+  PhotoFilter: {},
+  PhotosMultiShare: {},
+  PhotosTrash: {},
+  ReminderCapacity: {},
+  ReminderHeadsUp: { note: "skips unless notifications are enabled for the app and Do Not Disturb is off" },
+  ReminderStale: {},
+  SettingsFlow: {},
+  Video: {},
+  VoiceWorkerSettlement: {},
   ResidentEgressRedaction: { campaign: "ALPHA_RESIDENT_DISPOSABLE_EMULATOR=1 node scripts/android-resident-instrumentation.mjs <app.apk> <androidTest.apk> (owner-only provider key fixture, ARM64)" },
   ReminderTapProcessDeath: { campaign: "python3 scripts/ci/pending-recovery-ui.py (external process death)" },
   WorkflowNoticeProcessDeath: { campaign: "python3 scripts/ci/pending-recovery-ui.py (external process death)" },
   NotificationChannels: { campaign: "node scripts/test-native-permissions.mjs channels APP.apk TEST.apk OUTPUT (permission-restoring runner)" },
+  VoicePermissionDenied: { campaign: "node scripts/test-native-permissions.mjs voice APP.apk TEST.apk OUTPUT (RECORD_AUDIO revoked before the app starts)" },
+  VoicePermissionRevoke: { campaign: "node scripts/test-native-permissions.mjs voice-revoke APP.apk TEST.apk OUTPUT (RECORD_AUDIO revoked while recording; the process is killed)" },
+  LocalVoiceRecordingLimit: { campaign: "node scripts/test-native-permissions.mjs voice-limit APP.apk TEST.apk OUTPUT (RECORD_AUDIO granted before the app starts)" },
+};
+
+/**
+ * Other scripts that run instrumentation classes by name. A class named in one of
+ * them counts as reachable; test/android-instrumentation-runner.test.mjs checks it.
+ */
+export const CAMPAIGN_RUNNERS = [
+  "scripts/test-native-permissions.mjs", "scripts/test-native-restart.mjs", "scripts/test-calendar-regression.mjs",
+  "scripts/test-installed-upgrade.mjs", "scripts/test-reminder-one-off.mjs", "scripts/test-reminder-recurrence.mjs",
+  "scripts/reminder-recovery-fixture.mjs", "scripts/test-cross-app-notifications.mjs", "scripts/test-cross-app-notifications-restart.mjs",
+  "scripts/android-workflow-native.mjs", "scripts/android-resident-instrumentation.mjs", "scripts/android-browser-reading-live.mjs",
+  "scripts/android-paired-asr-live.mjs", "scripts/android-paired-voice-live.mjs", "scripts/maps/test-native-navigation.mjs",
+  "scripts/maps/test-native-recovery.mjs", "scripts/ci/pending-recovery-ui.py", "scripts/ci/resident-native.py",
+];
+
+/**
+ * @Test classes that no runner in this repository can run, each with the reason. A class
+ * stays here only while that reason is true: the runner test fails for an entry that has
+ * gained a registry entry or a campaign, and for any new class that has neither.
+ */
+export const NOT_RUN_BY_A_RUNNER = {
+  AllViewAgentContext: "needs a real local agent with inference and a forwarding observer on the host (agentContext=true); its runner was removed with the smoke suites in 49b1bf4c",
+  CombinedAgent: "needs the combined host runtime with a provider key at 10.0.2.2:47859 (scripts/start-combined-agent.mjs); no Android runner starts or pairs it",
+  CombinedAgentRestart: "same combined host runtime, in prepare/verify/cleanup phases around a host restart; recorded as never compiled into a run",
+  ContactsFlow: "@Ignore: Contacts is deferred from the MVP and the campaign mutates the ContactsProvider",
+  DeviceAction: "needs the device-action backend host and adb reverse (deviceActions=true); its runner was removed in 49b1bf4c",
+  LiveAgent: "needs a running loopback host with a real provider key, adb reverse and a provisioned bearer (liveAgent=true)",
+  Maps: "needs continuing emulator GPS injection coordinated from the host and mapsLatitude/mapsLongitude; the scripts/maps runners cover MapsRegional and MapsBackgroundNavigation only",
+  PairedMaps: "needs a real paired host and an external Maps fixture (pairedMaps=1); no runner pairs one",
+  PairedReminder: "needs a real paired host (pairedReminder=1); no runner pairs one",
+  PhotosFixtureRecovery: "operator tool that inventories or deletes stranded test-owned media (alphaPhotoRecovery=inventory|delete); never part of a campaign",
+  PrototypeFlow: "needs the same live provider host as LiveAgent (liveAgent=true)",
+  PublicCloudTransportProbe: "probes the public Eliza Cloud endpoint with an owned account (publicCloudProbe=1, ownedCloudRead=1); a human sign-in step",
+  RemoteAgent: "needs the real local Eliza app host at 10.0.2.2:47839 and a pairing-code file (localRemote=true); its runner was removed in 49b1bf4c",
+  ResidentAgent: "needs the packaged ARM64 resident runtime and a run id; scripts/android-resident-instrumentation.mjs runs ResidentService and ResidentEgressRedaction, not this class",
+  ResidentModelResponseContractTest: "plain contract test without the InstrumentedTest suffix; it runs under --all or by its full dotted name and needs no registry entry",
+  SettingsCrashLog: "needs a two-phase runner (crashLogPhase=crash kills the process, readback runs in a new one); none exists",
+  SpeechPipelineTrace: "diagnostic acquisition for the on-device speech failure, explicitly not acceptance evidence",
+  VoiceFloatPathDiagnostic: "root-cause diagnostic for the on-device speech round trip, explicitly not acceptance evidence",
+  Workflow: "needs the reviewed-workflow host (workflows=true); its runner was removed in 49b1bf4c",
+  WorkflowApproval: "needs the reviewed-workflow host and a response-dropping proxy (workflowApproval=true); its runner was removed in 49b1bf4c",
+  WorkflowCancellation: "needs the reviewed-workflow host (workflowCancellation=true); its runner was removed in 49b1bf4c",
+  WorkflowLegacyReminderUpgrade: "runs only in the installed-upgrade verify phase after an old APK seeded a reminder; scripts/test-installed-upgrade.mjs does not name it",
+  WorkflowLifecycle: "needs the reviewed-workflow host (workflowLifecycle=true); its runner was removed in 49b1bf4c",
+  WorkflowMetadata: "needs the reviewed-workflow host (workflowMetadata=true); its runner was removed in 49b1bf4c",
+  WorkflowSubmission: "needs the reviewed-workflow host and a response-dropping proxy (workflowSubmission=true); its runner was removed in 49b1bf4c",
 };
 
 export const DEFAULT_CLASSES = [
@@ -98,7 +203,7 @@ export const qualifiedClass = name => {
 
 export function parseInstrumentationArgs(argv) {
   const options = { classes: null, all: false, variants: ["standalone", "launcher"], testMocks: false, apkDir: null, output: null,
-    serial: null, avd: null, ownedEmulator: false, timeoutMs: 900_000, clockExclusive: false };
+    serial: null, avd: null, ownedEmulator: false, timeoutMs: 900_000, clockExclusive: false, homeRole: false };
   const value = (arg, index) => {
     if (arg.includes("=")) return [arg.slice(arg.indexOf("=") + 1), index];
     if (argv[index + 1] === undefined) throw new Error(`${arg} needs a value`);
@@ -113,6 +218,7 @@ export function parseInstrumentationArgs(argv) {
       case "--test-mocks": options.testMocks = true; break;
       case "--owned-emulator": options.ownedEmulator = true; break;
       case "--clock-exclusive": options.clockExclusive = true; break;
+      case "--home-role": options.homeRole = true; break;
       case "--classes": [v, index] = value(arg, index); options.classes = v.split(",").map(s => s.trim()).filter(Boolean); break;
       case "--variants": [v, index] = value(arg, index); options.variants = v.split(",").map(s => s.trim()).filter(Boolean); break;
       case "--apk-dir": [v, index] = value(arg, index); options.apkDir = v; break;
@@ -137,8 +243,18 @@ export function parseInstrumentationArgs(argv) {
       if (spec.requires === "--clock-exclusive" && !options.clockExclusive)
         throw new Error(`${short(cls)} changes real alarms; pass --clock-exclusive only on an exclusive, unlocked emulator with no other timers`);
       if (spec.testMocks && !options.testMocks) throw new Error(`${short(cls)} runs only on the --test-mocks variant`);
+      if (spec.requiresTestMocksBuild && !options.testMocks) throw new Error(`${short(cls)} needs a test-mocks app build; pass --test-mocks (artifacts/test-mocks)`);
+      if (spec.homeRole && !options.homeRole)
+        throw new Error(`${short(cls)} needs the HOME role phase; pass --home-role on an owned emulator (the runner selects the launcher APK as HOME and restores the original)`);
+      if (spec.homeRole && !options.variants.includes("launcher")) throw new Error(`${short(cls)} runs only on the launcher variant`);
     }
     options.classes = requested;
+  }
+  if (options.homeRole) {
+    if (options.all) throw new Error("--home-role runs named classes; it cannot be combined with --all");
+    if (!options.ownedEmulator) throw new Error("--home-role changes the HOME role; it requires --owned-emulator");
+    if (!options.variants.includes("launcher")) throw new Error("--home-role needs the launcher variant");
+    if (!options.classes.some(cls => CLASS_REGISTRY[short(cls)]?.homeRole)) throw new Error("--home-role was given but no requested class uses the HOME role (LauncherHome, SettingsRoles)");
   }
   return options;
 }
@@ -173,6 +289,72 @@ export function admitApks(apkDir, variant, { testMocks }) {
   ];
 }
 
+const HOME_ROLE = "android.app.role.HOME";
+const HOME_COMPONENT = `${PACKAGE}/.MainActivity`;
+
+/** The user's HOME role holder(s) and the activity Android resolves for the HOME key. */
+export function readHome(adb, user) {
+  const holders = adb(["shell", "cmd", "role", "get-role-holders", "--user", user, HOME_ROLE]).trim().split(/[;\s]+/).filter(Boolean).sort();
+  const activity = adb(["shell", "cmd", "package", "resolve-activity", "--user", user, "--brief", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME"])
+    .trim().split(/\r?\n/).at(-1)?.trim() ?? "";
+  return { holders, activity };
+}
+const sameHome = (a, b) => a.activity === b.activity && JSON.stringify(a.holders) === JSON.stringify(b.holders);
+
+/** Admission for --home-role: one stock HOME app holds the role and Alpha is not installed yet. */
+export function admitHome(adb) {
+  const user = adb(["shell", "am", "get-current-user"]).trim();
+  if (user !== "0") throw new Error(`--home-role needs the primary user in the foreground (current user ${JSON.stringify(user)})`);
+  const original = readHome(adb, user);
+  if (original.holders.length !== 1 || original.holders[0] === PACKAGE || !original.activity.startsWith(`${original.holders[0]}/`))
+    throw new Error(`--home-role needs one stock HOME app holding the role before the run (holders ${JSON.stringify(original.holders)}, HOME activity ${JSON.stringify(original.activity)}); finish the emulator's setup first`);
+  return { user, original, selected: false, coldHome: null, restoration: null };
+}
+
+/** Select the installed launcher APK as HOME and prove a cold start through the HOME key lands in it. */
+export function selectAlphaHome(adb, home, { sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms), attempts = 60 } = {}) {
+  // A class that requests the role itself must have put back what it found.
+  const before = readHome(adb, home.user);
+  if (!sameHome(before, home.original)) throw new Error(`HOME changed before selection (holders ${JSON.stringify(before.holders)}); a role-requesting class did not restore it`);
+  home.selected = true; // From here the original must be restored, even if selection only partly applied.
+  adb(["shell", "cmd", "package", "set-home-activity", "--user", home.user, HOME_COMPONENT]);
+  const held = readHome(adb, home.user);
+  if (held.holders.length !== 1 || held.holders[0] !== PACKAGE || held.activity !== HOME_COMPONENT)
+    throw new Error(`Alpha was not selected as HOME (holders ${JSON.stringify(held.holders)}, HOME activity ${JSON.stringify(held.activity)})`);
+  // Cold launch: no Alpha process, then the HOME key.
+  adb(["shell", "am", "force-stop", PACKAGE]);
+  adb(["shell", "input", "keyevent", "KEYCODE_HOME"]);
+  let resumed = false;
+  for (let attempt = 0; attempt < attempts && !resumed; attempt++) {
+    resumed = adb(["shell", "dumpsys", "activity", "activities"]).split("\n").some(line => /mResumedActivity|topResumedActivity/.test(line) && line.includes(`${PACKAGE}/`));
+    if (!resumed) sleep(500);
+  }
+  home.coldHome = { resumed };
+  if (!resumed) throw new Error("The HOME key did not bring Alpha to the foreground after a cold start");
+}
+
+/** Put the original HOME back and read it back. Never throws: an unproven restoration is reported. */
+export function restoreHome(adb, home, { sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms), attempts = 20 } = {}) {
+  const errors = [];
+  const attempt = args => { try { adb(args); } catch (error) { errors.push(error.message); } };
+  let changed = home.selected;
+  // Also when this run never selected Alpha: a class that requested the role may have left it changed.
+  if (!changed) try { changed = !sameHome(readHome(adb, home.user), home.original); } catch (error) { errors.push(error.message); changed = true; }
+  if (changed) {
+    // HOME is exclusive: adding the original holder replaces Alpha.
+    attempt(["shell", "cmd", "role", "add-role-holder", "--user", home.user, HOME_ROLE, home.original.holders[0]]);
+    attempt(["shell", "cmd", "package", "set-home-activity", "--user", home.user, home.original.activity]);
+  }
+  let after = null;
+  for (let index = 0; index < attempts; index++) {
+    try { after = readHome(adb, home.user); } catch (error) { errors.push(error.message); after = null; }
+    if (after && sameHome(after, home.original)) break;
+    sleep(500);
+  }
+  home.restoration = { restored: Boolean(after && sameHome(after, home.original)), after, ...(errors.length ? { errors } : {}) };
+  return home.restoration;
+}
+
 function sourceCommit() {
   const commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" }).trim() !== "";
@@ -199,10 +381,11 @@ async function main() {
   // runner cannot install between the admission checks and this run's installs.
   const { acquireDeviceLease, deviceLeaseStateDir } = await import("../vendor/eliza/packages/app/scripts/lib/device-lease.ts");
   const lease = await acquireDeviceLease(`android:${serial}`, { waitMs: 0, ttlMs: Number.MAX_SAFE_INTEGER, stateDir: deviceLeaseStateDir(process.env) });
-  try { await runLeased({ options, serial, adb }); } finally { lease.release(); }
+  try { process.exitCode = (await runLeased({ options, serial, adb })).passed ? 0 : 1; } finally { lease.release(); }
 }
 
-async function runLeased({ options, serial, adb }) {
+/** One leased run. `timing` only shortens the HOME role polling in tests. */
+export async function runLeased({ options, serial, adb, timing = {} }) {
   // Admission before any installation.
   const avd = adb(["emu", "avd", "name"]).split(/\r?\n/)[0].trim();
   if (avd !== options.avd) throw new Error(`Serial ${serial} runs AVD ${JSON.stringify(avd)}, not ${options.avd}`);
@@ -213,6 +396,7 @@ async function runLeased({ options, serial, adb }) {
   if (packages.some(row => row === `package:${PACKAGE}` || row === `package:${PACKAGE}.test`))
     throw new Error("Alpha Phone or its test package is already installed; use a fresh emulator (never replaced)");
   const apks = options.variants.flatMap(variant => admitApks(options.apkDir, variant, options));
+  const home = options.homeRole ? admitHome(adb) : null;
   const { commit, dirty } = sourceCommit();
   const runId = randomUUID();
   const output = path.resolve(options.output ?? path.join("test-results/android-instrumentation", `${new Date().toISOString().replace(/[:.]/g, "-")}-${runId.slice(0, 8)}`));
@@ -242,10 +426,10 @@ async function runLeased({ options, serial, adb }) {
         fs.writeFileSync(path.join(dir, "all.txt"), raw);
         for (const row of instrumentationClassResults(raw).results) record(row.class, row);
       } else {
-        for (const cls of options.classes) {
+        const runClass = cls => {
           const spec = CLASS_REGISTRY[short(cls)] ?? {};
           const listed = listedInstrumentationTests(adb(instrumentArgs(cls, { log: true }), { allowFailure: true }));
-          if (!listed.length) { record(cls, { started: 0, passed: 0, failed: [], ignored: [], status: "missing" }); continue; }
+          if (!listed.length) { record(cls, { started: 0, passed: 0, failed: [], ignored: [], status: "missing" }); return; }
           const runs = spec.phases ? spec.phases : [null];
           let merged = { started: 0, passed: 0, failed: [], ignored: [], status: "passed" };
           for (const method of runs) {
@@ -259,24 +443,54 @@ async function runLeased({ options, serial, adb }) {
             if (row.status !== "passed") break; // Later phases depend on earlier ones.
           }
           record(cls, merged, { listed: listed.length, ...(spec.note ? { note: spec.note } : {}) });
+        };
+        const phase = cls => CLASS_REGISTRY[short(cls)]?.homeRole;
+        // HOME-role classes exist for the launcher variant only; elsewhere they are not run at all.
+        for (const cls of options.classes.filter(cls => !phase(cls))) runClass(cls);
+        if (home && variant === "launcher") {
+          for (const cls of options.classes.filter(cls => phase(cls) === "requests")) runClass(cls);
+          const held = options.classes.filter(cls => phase(cls) === "held");
+          try {
+            selectAlphaHome(adb, home, timing);
+            for (const cls of held) runClass(cls);
+          } catch (error) {
+            // Selection or the cold HOME start failed: the classes that need HOME did not run.
+            home.error = error.message;
+            for (const cls of held.filter(cls => !classes.some(row => row.variant === variant && row.class === cls)))
+              record(cls, { started: 0, passed: 0, failed: [], ignored: [], status: "missing" }, { note: `HOME role phase failed: ${error.message}` });
+          }
+          // Restore while Alpha is still installed, so the role is given back and not merely lost with the package.
+          if (!restoreHome(adb, home, timing).restored) break;
         }
       }
       adb(["uninstall", `${PACKAGE}.test`], { allowFailure: true }); installed.splice(installed.indexOf(`${PACKAGE}.test`), 1);
       adb(["uninstall", PACKAGE], { allowFailure: true }); installed.splice(installed.indexOf(PACKAGE), 1);
     }
   } finally {
-    // Remove only what this run installed.
-    for (const pkg of [...new Set(installed)].reverse()) adb(["uninstall", pkg], { allowFailure: true });
+    // Always prove the original HOME, also after a failure part-way through the phase.
+    if (home && !home.restoration) restoreHome(adb, home, timing);
+    if (home && !home.restoration.restored) {
+      // Unproven restoration: keep the installation for recovery and say exactly what to do.
+      const recovery = { serial, user: home.user, original: home.original, observed: home.restoration.after, retainedPackages: [...new Set(installed)],
+        recover: `adb -s ${serial} shell cmd role add-role-holder --user ${home.user} ${HOME_ROLE} ${home.original.holders[0]}` };
+      fs.writeFileSync(path.join(output, "home-role-recovery.json"), `${JSON.stringify(recovery, null, 2)}\n`);
+      console.error(`HOME role restoration is NOT proven on ${serial}. Installed packages were left in place; do not reuse or delete this emulator until it is recovered:\n  ${recovery.recover}\n  see ${path.relative(process.cwd(), path.join(output, "home-role-recovery.json"))}`);
+    } else {
+      // Remove only what this run installed.
+      for (const pkg of [...new Set(installed)].reverse()) adb(["uninstall", pkg], { allowFailure: true });
+    }
   }
   const result = writeInstrumentationRecord(path.join(output, "results.json"), {
     runId, createdAt: new Date().toISOString(), commit, dirty, testMocks: options.testMocks, emulator,
     apks: apks.map(({ file, ...apk }) => ({ ...apk, file: path.relative(process.cwd(), path.resolve(file)) })),
     mode: options.all ? "all" : "classes",
+    ...(home ? { homeRole: { user: home.user, original: home.original, selected: home.selected, coldHome: home.coldHome, restored: home.restoration.restored, after: home.restoration.after,
+      ...(home.error ? { error: home.error } : {}), ...(home.restoration.errors ? { errors: home.restoration.errors } : {}) } } : {}),
     classes,
   });
   for (const row of classes) console.log(`${row.status.padEnd(8)} ${row.variant.padEnd(10)} ${short(row.class)}${row.ignored.length ? ` (skipped by assumption: ${row.ignored.join(", ")})` : ""}`);
   console.log(`${result.passed ? "PASSED" : "FAILED"}: ${path.relative(process.cwd(), path.join(output, "results.json"))} (emulator class E evidence only; not device acceptance)`);
-  process.exitCode = result.passed ? 0 : 1;
+  return result;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
