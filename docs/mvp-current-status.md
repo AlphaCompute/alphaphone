@@ -153,9 +153,10 @@ never stands in for another.
 Recorded for the ledger refresh of 2026-10-10 on branch `claude/r6-ledger`, based on
 `4ec513b1` (open PR #389, which contains main at `d9a081e3`), upstream pin `40dbe96bd1`.
 
-- Class S: `npm run verify` was last recorded on the base of this refresh by PR #389: 539 tests,
-  535 passed, 0 failed, 4 TODO, with the production bundle audit passing (395 files,
-  `testMocks=false`) and printing the Denton licence release blocker. Ten journey specs, the flag-off journey spec and
+- Class S: `npm run verify` exited 0 at `fdac4ea1` on this branch on 2026-10-10: 548 tests,
+  544 passed, 0 failed, 0 skipped, 4 TODO; typecheck, the flag-off build and the production
+  bundle audit passed (395 files, `testMocks=false`), and the audit printed the Denton
+  licence release blocker. That commit differs from this record only by this paragraph. Ten journey specs, the flag-off journey spec and
   the per-step classification are in [core loop audit](core-loop-audit.md): of 140 steps
   that this repository, an emulator or CI can close, 105 have a test (75%), 30 need an
   emulator run and 5 a hosted CI run; 23 further steps need a person and 13 a phone. That
