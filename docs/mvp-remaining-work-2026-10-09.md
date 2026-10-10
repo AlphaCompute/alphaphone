@@ -301,9 +301,9 @@ Evidence/source: [docs/local-agent-development.md](../docs/local-agent-developme
 
 **P0 · acceptance · AP-05, AP-15**
 
-Current: Merge retains main navigation/read-reply/voice ownership alongside PR draft-dispatch/history/cancel work.
+Current: Source and browser tests cover pre-dispatch retention (no agent, expired session, offline setup, Stop before the post), unknown post-dispatch outcome, Stop with one cancel and one reconciliation shown in the chat, double submit, owner change mid-reply, history paging and restore on connect, reply/edit/truncate, and draft retention across Home, Back and a viewport resize.
 
-Remaining: Exercise pre-dispatch error, unknown post-dispatch outcome, stop/reconcile, history paging, reply/edit/truncate, drawer/assistant overlays, keyboard resize, Back/Home and concurrent owner changes.
+Remaining: Exercise the same paths on the emulator HOME role and a target device: real soft-keyboard resize, system Back/Home, drawer/assistant overlays, resident restart mid-reply and concurrent owner changes.
 
 Done when: Text survives every pre-dispatch failure; no implicit resend; selection/history/scroll remain bound to the intended conversation.
 
