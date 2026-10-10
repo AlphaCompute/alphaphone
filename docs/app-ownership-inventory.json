@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "9c1fce0036ef20125c634b47137db432cb0c76294a4d65977a629eb7e5c2cc9a",
+  "sourceDigest": "e8b4ab9be457e8d7c0c16b702c72fcd8be97fc472bea37c250fade6799d6d6c0",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -20804,9 +20804,9 @@
     {
       "file": "src/runtime/connection-ui.tsx",
       "upstreamCandidate": [],
-      "bytes": 148100,
-      "sha256": "0ba05731f0c470701468b67ba5eb01e82789e49e03db56b0cc7e71eb445b28be",
-      "lines": 1462,
+      "bytes": 148283,
+      "sha256": "80049d098c447eaea2d38fb6f2783f2863ad8bf0c9d9f4b81c0acc764333a01c",
+      "lines": 1466,
       "owner": "packages/ui client integration + existing agent/cloud transports",
       "disposition": "extract-or-split",
       "reason": "Authentication, protocol and approval machinery is generic; remove product view enums, bridge names, endpoints and singleton UI cycles first.",
@@ -21034,95 +21034,82 @@
           ]
         },
         {
-          "line": 1023,
+          "line": 1027,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1042,
+          "line": 1046,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1110,
+          "line": 1114,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 1225,
+          "line": 1229,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 1247,
+          "line": 1251,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 1265,
+          "line": 1269,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1271,
+          "line": 1275,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 1273,
+          "line": 1277,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1274,
+          "line": 1278,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1283,
+          "line": 1287,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1301,
+          "line": 1305,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 1310,
+          "line": 1314,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 1326,
+          "line": 1330,
           "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 1334,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 1335,
-          "tags": [
-            "identity-or-compatibility",
             "host-coupling"
           ]
         },
@@ -21133,27 +21120,27 @@
           ]
         },
         {
-          "line": 1347,
+          "line": 1339,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 1353,
+          "line": 1342,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 1351,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 1354,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 1355,
+          "line": 1357,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -21162,7 +21149,6 @@
         {
           "line": 1358,
           "tags": [
-            "identity-or-compatibility",
             "host-coupling"
           ]
         },
@@ -21174,13 +21160,14 @@
           ]
         },
         {
-          "line": 1360,
+          "line": 1362,
           "tags": [
-            "identity-or-compatibility"
+            "identity-or-compatibility",
+            "host-coupling"
           ]
         },
         {
-          "line": 1361,
+          "line": 1363,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -21200,45 +21187,40 @@
           ]
         },
         {
-          "line": 1373,
+          "line": 1368,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 1374,
+          "line": 1369,
           "tags": [
+            "identity-or-compatibility",
             "host-coupling"
+          ]
+        },
+        {
+          "line": 1377,
+          "tags": [
+            "identity-or-compatibility"
           ]
         },
         {
           "line": 1378,
           "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 1382,
+          "tags": [
             "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 1379,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 1380,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 1381,
-          "tags": [
-            "host-coupling"
           ]
         },
         {
           "line": 1383,
           "tags": [
-            "identity-or-compatibility"
+            "host-coupling"
           ]
         },
         {
@@ -21256,19 +21238,24 @@
         {
           "line": 1387,
           "tags": [
-            "host-coupling"
+            "identity-or-compatibility"
           ]
         },
         {
-          "line": 1393,
+          "line": 1388,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1394,
+          "line": 1389,
           "tags": [
-            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 1391,
+          "tags": [
             "host-coupling"
           ]
         },
@@ -21279,50 +21266,51 @@
           ]
         },
         {
-          "line": 1401,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 1406,
-          "tags": [
-            "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 1407,
+          "line": 1398,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
+          "line": 1401,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 1405,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 1410,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
           "line": 1411,
           "tags": [
+            "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 1412,
+          "line": 1415,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1417,
+          "line": 1416,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1418,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 1420,
+          "line": 1421,
           "tags": [
             "host-coupling"
           ]
@@ -21334,13 +21322,13 @@
           ]
         },
         {
-          "line": 1423,
+          "line": 1424,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1424,
+          "line": 1426,
           "tags": [
             "host-coupling"
           ]
@@ -21348,13 +21336,12 @@
         {
           "line": 1427,
           "tags": [
-            "identity-or-compatibility"
+            "host-coupling"
           ]
         },
         {
           "line": 1428,
           "tags": [
-            "identity-or-compatibility",
             "host-coupling"
           ]
         },
@@ -21367,23 +21354,30 @@
         {
           "line": 1432,
           "tags": [
-            "identity-or-compatibility"
+            "identity-or-compatibility",
+            "host-coupling"
           ]
         },
         {
           "line": 1435,
           "tags": [
-            "host-coupling"
+            "identity-or-compatibility"
           ]
         },
         {
           "line": 1436,
           "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 1439,
+          "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1437,
+          "line": 1440,
           "tags": [
             "host-coupling"
           ]
@@ -21391,18 +21385,11 @@
         {
           "line": 1441,
           "tags": [
-            "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 1448,
-          "tags": [
-            "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 1449,
+          "line": 1445,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -21411,23 +21398,24 @@
         {
           "line": 1452,
           "tags": [
-            "host-coupling"
+            "identity-or-compatibility"
           ]
         },
         {
           "line": 1453,
           "tags": [
+            "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 1454,
+          "line": 1456,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1455,
+          "line": 1457,
           "tags": [
             "host-coupling"
           ]
@@ -21440,6 +21428,18 @@
         },
         {
           "line": 1459,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 1462,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 1463,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
