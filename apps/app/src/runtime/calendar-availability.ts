@@ -26,6 +26,17 @@ export interface AvailabilityReview {
 }
 export type AvailabilityOutcome={status:'succeeded'|'failed';summary:string;foregroundResult?:CalendarAvailabilityResult};
 
+/** Attempts to list calendars, and the wait between them, while focus returns after a permission prompt. */
+export const SOURCE_LIST_ATTEMPTS=4,SOURCE_LIST_RETRY_MS=300;
+/** Resolves after the wait, or rejects as soon as the review is aborted. */
+export function abortablePause(milliseconds:number,signal:AbortSignal):Promise<void>{
+ return new Promise((resolve,reject)=>{
+  if(signal.aborted){reject(Error('Aborted'));return;}
+  const done=()=>{signal.removeEventListener('abort',stop);resolve();},timer=setTimeout(done,milliseconds);
+  const stop=()=>{clearTimeout(timer);reject(Error('Aborted'));};
+  signal.addEventListener('abort',stop,{once:true});
+ });
+}
 const NOTHING=' Nothing was shared.';
 const failed=(summary:string):AvailabilityOutcome=>({status:'failed',summary:summary+NOTHING});
 const ZONE_CHANGED='This availability check used a different time zone. Ask again from this phone.';
@@ -76,7 +87,7 @@ export function describeAvailabilityResult(result:CalendarAvailabilityResult):st
  * a calendar that changed during review is never reported. Every failure shares nothing.
  * `current` throws when the session, screen or phone context is no longer the reviewed one.
  */
-export async function executeCalendarAvailability(provider:AvailabilityProvider,value:CalendarAvailabilityOperation,contextTimeZone:string|undefined,signal:AbortSignal,current:()=>void,review:AvailabilityReview,deviceTimeZone:()=>string=()=>Intl.DateTimeFormat().resolvedOptions().timeZone):Promise<AvailabilityOutcome>{
+export async function executeCalendarAvailability(provider:AvailabilityProvider,value:CalendarAvailabilityOperation,contextTimeZone:string|undefined,signal:AbortSignal,current:()=>void,review:AvailabilityReview,deviceTimeZone:()=>string=()=>Intl.DateTimeFormat().resolvedOptions().timeZone,pause:(milliseconds:number,signal:AbortSignal)=>Promise<void>=abortablePause):Promise<AvailabilityOutcome>{
  try{
   const operation=validateCalendarAvailabilityOperation(value);
   const stable=()=>{signal.throwIfAborted();current();};
@@ -85,7 +96,14 @@ export async function executeCalendarAvailability(provider:AvailabilityProvider,
   stable();if(!sameZone())return failed(ZONE_CHANGED);
   const permission=await provider.requestWorkflowReadAccess();stable();
   if(permission.status!=='granted')return failed(DENIED);
-  const listed=await provider.availabilitySources({timeZone:operation.timeZone});stable();
+  // The system permission prompt takes window focus, and the native read requires it. Focus
+  // may return a moment after the prompt resolves, so an unavailable list is asked for again
+  // a bounded number of times. Each attempt re-checks the reviewed context; nothing is read.
+  let listed=await provider.availabilitySources({timeZone:operation.timeZone});stable();
+  for(let attempt=1;listed.status==='unavailable'&&attempt<SOURCE_LIST_ATTEMPTS;attempt++){
+   await pause(SOURCE_LIST_RETRY_MS,signal);stable();
+   listed=await provider.availabilitySources({timeZone:operation.timeZone});stable();
+  }
   if(listed.status==='permission-required')return failed(DENIED);
   if(listed.status==='timezone-changed')return failed(ZONE_CHANGED);
   if(listed.status!=='ready')return failed('Calendars are unavailable right now.');

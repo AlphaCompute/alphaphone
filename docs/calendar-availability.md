@@ -43,6 +43,12 @@ the renderer rejects any provider row that has a field other than `start`, `end`
   common free/busy practice and is an engineering default, not an owner decision.
 - More than 200 events in the window, or more than 64 readable calendars, fails the
   check instead of returning a partial answer.
+- The Android journal keeps a succeeded check only with its exact answer (window, counts
+  and busy times, at most 200 intervals and 32768 bytes) and refuses any other field. A
+  failed or cancelled check keeps no answer. The journal's default bound for other
+  results is 8000 bytes, which about 80 busy intervals would exceed.
+- If the calendar list is unavailable, the phone asks again up to three more times,
+  300 ms apart, re-checking the reviewed screen each time. Nothing is read while it waits.
 - In the browser the only source is the in-app calendar. Its events have no "show as
   free" setting, so each one is busy.
 
@@ -54,6 +60,7 @@ the renderer rejects any provider row that has a field other than `start`, `end`
 | Review dialogs | `apps/app/src/prototype/calendar-availability-review.ts` |
 | Android provider read | `android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarAvailabilityReader.java` |
 | Android bridge methods | `availabilitySources` and `readAvailability` in `AlphaCalendarPlugin.java` |
+| Android journal policy | `CalendarAvailabilityJournalResult.java`, called from `AlphaActionJournal.java` |
 | Browser provider read | `apps/app/src/browser/calendar.ts` |
 | Contract and result computation | `vendor/eliza/packages/contracts/src/device-reviews.ts` (pinned, unchanged) |
 
@@ -69,7 +76,10 @@ the renderer rejects any provider row that has a field other than `start`, `end`
   CalendarProvider's column names, in five time zones from UTC-11 to UTC+14. The rows
   then go through the renderer parser and the shared contract computation
   (`scripts/test-calendar-availability-provider-rows.ts`). This checks the reader's SQL
-  and row handling. It is not CalendarProvider and not a device run.
+  and row handling. It is not CalendarProvider and not a device run. The same run checks
+  the journal policy on the JVM: the largest answer is accepted and extra fields, a
+  changed window and an answer on a failed check are refused. The Keystore-backed journal
+  itself is not exercised.
 - `CalendarAvailabilityInstrumentedTest`: the Android reader against the device
   CalendarProvider with calendars the test creates. It needs calendar permission from
   the runner. It has been compiled but never run.
@@ -81,8 +91,17 @@ the renderer rejects any provider row that has a field other than `start`, `end`
   invitation and a mid-review time-zone change are unverified.
 - The bridge methods ask for window focus, as the shared calendar reads do. Whether focus
   has returned by the time the calendars are listed, straight after the owner answers the
-  first permission prompt, is unverified. If it has not, that first check fails with
-  nothing read and the owner has to ask again.
+  first permission prompt, is unverified. The phone asks for the list again for about a
+  second (see Rules); whether that is long enough on a device is also unverified. If it
+  is not, that first check fails with nothing read and the owner has to ask again.
+- Whether the Android WebView reports the page as hidden while the system permission
+  prompt is shown is unverified. If it does, the first check ends as a stale screen with
+  nothing read.
+- A pending action that cannot be reviewed from the current screen is named again after
+  each reply until it expires. The notices are not de-duplicated.
+- The other foreground reviews (`notes_search`, `notes_named`, `calendar_named`,
+  `reminder_named`) are not negotiated by the phone. Their results would also need a
+  journal bound of their own before they are.
 - No real agent has produced or consumed an availability receipt against this build.
 - The provider read lives in the Alpha app because the pinned shared calendar readers do
   not return availability. Moving it into the shared calendar plugin needs an upstream

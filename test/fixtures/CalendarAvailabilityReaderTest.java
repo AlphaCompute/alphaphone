@@ -296,6 +296,47 @@ public final class CalendarAvailabilityReaderTest {
    require(!CalendarAvailabilityReader.sameZone("Not/AZone",ZoneId.of("UTC")),"Unknown zone");
    require(!CalendarAvailabilityReader.sameZone(null,ZoneId.of("UTC")),"Missing zone");
 
+   // Journal policy: the exact free/busy answer is retained at the contract's largest size (200
+   // intervals, far over the journal's 8000-byte default), and nothing else is.
+   JSONObject operation=new JSONObject().put("type","calendar_availability").put("start",start).put("end",end).put("timeZone","America/New_York");
+   JSONArray intervals=new JSONArray();
+   for(int i=0;i<CalendarAvailabilityReader.MAX_EVENTS;i++)intervals.put(busy(dayStart+i*60000L,dayStart+i*60000L+60000L,i%2==0,i%3==0));
+   JSONObject answer=new JSONObject().put("version",1).put("kind","calendar_availability").put("window",new JSONObject().put("start",start).put("end",end).put("timeZone","America/New_York"))
+    .put("calendarCount",16).put("status","busy").put("busy",intervals).put("transparentIgnored",200);
+   JSONObject retained=new JSONObject().put("operationId","operation-1").put("foregroundResult",answer);
+   require(retained.toString().getBytes(StandardCharsets.UTF_8).length>8000,"The largest answer exceeds the default journal bound");
+   require(retained.toString().getBytes(StandardCharsets.UTF_8).length<=CalendarAvailabilityJournalResult.MAX_BYTES,"The largest answer fits the availability bound");
+   CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",retained);
+   JSONObject free=new JSONObject(answer.toString()).put("status","free").put("busy",new JSONArray()).put("transparentIgnored",0).put("calendarCount",1);
+   CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",free));
+   // A failed, unknown or cancelled check retains its operation id and never an answer.
+   for(String status:new String[]{"failed","unknown","cancelled"}){
+    CalendarAvailabilityJournalResult.check(operation,"operation-1",status,new JSONObject().put("operationId","operation-1"));
+    CalendarAvailabilityJournalResult.check(operation,"operation-1",status,null);
+    rejects(IllegalArgumentException.class,()->CalendarAvailabilityJournalResult.check(operation,"operation-1",status,retained));
+   }
+   rejects(IllegalArgumentException.class,()->CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",null));
+   rejects(IllegalArgumentException.class,()->CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1")));
+   rejects(IllegalArgumentException.class,()->CalendarAvailabilityJournalResult.check(operation,"operation-2","succeeded",retained));
+   rejects(IllegalArgumentException.class,()->CalendarAvailabilityJournalResult.check(new JSONObject(operation.toString()).put("type","notes_search"),"operation-1","succeeded",retained));
+   // Event or calendar content cannot ride along at any level, and the window is the reviewed one.
+   Work[] refusedShapes={
+    ()->CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject(retained.toString()).put("title","SECRET")),
+    ()->CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",new JSONObject(answer.toString()).put("calendars",new JSONArray().put("WORK_CALENDAR_NAME")))),
+    ()->{JSONObject titled=new JSONObject(answer.toString());titled.getJSONArray("busy").getJSONObject(0).put("title","SECRET");CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",titled));},
+    ()->{JSONObject named=new JSONObject(answer.toString());named.getJSONObject("window").put("name","SECRET");CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",named));},
+    ()->{JSONObject moved=new JSONObject(answer.toString());moved.getJSONObject("window").put("timeZone","Asia/Tokyo");CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",moved));},
+    ()->{JSONObject outside=new JSONObject(free.toString()).put("status","busy").put("busy",new JSONArray().put(busy(dayEnd-HOUR,dayEnd+1,false,false)));CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",outside));},
+    ()->{JSONObject text=new JSONObject(free.toString()).put("status","busy").put("busy",new JSONArray().put(new JSONObject().put("start","SECRET_TITLE").put("end",end).put("allDay",false).put("tentative",false)));CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",text));},
+    ()->CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",new JSONObject(answer.toString()).put("status","free"))),
+    ()->CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",new JSONObject(answer.toString()).put("calendarCount",17))),
+    ()->CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",new JSONObject(answer.toString()).put("calendarCount","SECRET"))),
+    ()->CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",new JSONObject(answer.toString()).put("transparentIgnored",201))),
+    ()->CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",new JSONObject(answer.toString()).put("version",2))),
+    ()->{JSONObject over=new JSONObject(answer.toString());over.getJSONArray("busy").put(busy(dayStart+10*HOUR,dayStart+11*HOUR,false,false));CalendarAvailabilityJournalResult.check(operation,"operation-1","succeeded",new JSONObject().put("operationId","operation-1").put("foregroundResult",over));},
+   };
+   for(Work refusedShape:refusedShapes)rejects(IllegalArgumentException.class,refusedShape);
+
    System.out.println("PASS calendar availability reader");
    System.out.println(cases);
   }finally{

@@ -2,7 +2,7 @@
 // holds titles and unrelated calendars. Synthetic provider and reviews: no CalendarProvider,
 // Android permission dialog, WebView or agent is exercised here.
 import assert from 'node:assert/strict';
-import {executeCalendarAvailability,parseAvailabilityEvents,parseAvailabilitySources,type AvailabilityProvider,type AvailabilityReview} from '../apps/app/src/runtime/calendar-availability.ts';
+import {abortablePause,executeCalendarAvailability,parseAvailabilityEvents,parseAvailabilitySources,SOURCE_LIST_ATTEMPTS,SOURCE_LIST_RETRY_MS,type AvailabilityProvider,type AvailabilityReview} from '../apps/app/src/runtime/calendar-availability.ts';
 import {DeviceActions} from '../apps/app/src/runtime/device-actions.ts';
 import {readFileSync} from 'node:fs';
 import {CALENDAR_AVAILABILITY_CAPABILITY} from '../.eliza/client-features/packages/contracts/src/device-reviews.ts';
@@ -165,7 +165,26 @@ const refused=(outcome:Awaited<ReturnType<typeof run>>,pattern:RegExp)=>{assert.
  for(const choice of [['99'],['1','1'],[] as string[],Array.from({length:17},(_,index)=>String(index+1))]){const forged=fixture();forged.state.calendars=Array.from({length:20},(_,index)=>({id:String(index+1),name:'N',account:'A',sourceRevision:rev('a')}));refused(await run(forged.provider,day,reviews(choice).review),/changed before/);assert.deepEqual(forged.state.reads,[]);}
  const none=fixture();none.state.calendars=[];refused(await run(none.provider,day,reviews(['1']).review),/No readable calendars/);
  const many=fixture();many.provider.readAvailability=async()=>({status:'too-many'});refused(await run(many.provider,day,reviews(['1']).review),/more than 200 events/);
- const down=fixture();down.provider.availabilitySources=async()=>({status:'unavailable'});refused(await run(down.provider,day,reviews(['1']).review),/unavailable right now/);
+ // An unavailable calendar list is asked for a bounded number of times, then fails with nothing read.
+ const down=fixture();let downLists=0;const downPauses:number[]=[];down.provider.availabilitySources=async()=>{downLists++;return {status:'unavailable'};};
+ refused(await executeCalendarAvailability(down.provider,day,ZONE,signal(),()=>{},reviews(['1']).review,()=>ZONE,async milliseconds=>{downPauses.push(milliseconds);}),/unavailable right now/);
+ assert.equal(downLists,SOURCE_LIST_ATTEMPTS);assert.deepEqual(downPauses,Array(SOURCE_LIST_ATTEMPTS-1).fill(SOURCE_LIST_RETRY_MS));assert.deepEqual(down.state.reads,[]);
+ // Focus returning just after the permission prompt: the list succeeds on a later attempt and the check completes.
+ const refocus=fixture(),listSources=refocus.provider.availabilitySources;let refocusLists=0;
+ refocus.provider.availabilitySources=async input=>++refocusLists<3?{status:'unavailable'}:listSources(input);
+ const refocused=await executeCalendarAvailability(refocus.provider,day,ZONE,signal(),()=>{},reviews(['1']).review,()=>ZONE,async()=>{});
+ assert.equal(refocused.status,'succeeded');assert.equal(refocusLists,3);assert.deepEqual(refocus.state.reads,[['1'],['1']]);
+ // Only an unavailable list is retried: a denial, a zone change or a stale screen ends the check at once.
+ for(const status of ['permission-required','timezone-changed']){const once=fixture();let lists=0;once.provider.availabilitySources=async()=>{lists++;return {status};};refused(await executeCalendarAvailability(once.provider,day,ZONE,signal(),()=>{},reviews(['1']).review,()=>ZONE,async()=>{throw Error('must not wait');}),status==='permission-required'?/not allowed/:/different time zone/);assert.equal(lists,1);}
+ const left=fixture();let leftLists=0,leftLive=true;left.provider.availabilitySources=async()=>{leftLists++;return {status:'unavailable'};};
+ refused(await executeCalendarAvailability(left.provider,day,ZONE,signal(),()=>{if(!leftLive)throw Error('Availability review context changed');},reviews(['1']).review,()=>ZONE,async()=>{leftLive=false;}),/changed before this availability check finished/);
+ assert.equal(leftLists,1,'a screen that changed while waiting is never asked again');
+ // The wait itself ends as soon as the review is aborted: a ten-minute wait would otherwise time this test out.
+ const stop=new AbortController(),waiting=abortablePause(600000,stop.signal);setTimeout(()=>stop.abort(),5);
+ await assert.rejects(waiting);await assert.rejects(abortablePause(600000,stop.signal));
+ const stopping=fixture(),stopped=new AbortController();let stoppingLists=0;stopping.provider.availabilitySources=async()=>{stoppingLists++;return {status:'unavailable'};};
+ refused(await executeCalendarAvailability(stopping.provider,day,ZONE,stopped.signal,()=>{},reviews(['1']).review,()=>ZONE,(milliseconds,abort)=>{setTimeout(()=>stopped.abort(),5);return abortablePause(milliseconds*2000,abort);}),/cancelled/);
+ assert.equal(stoppingLists,1);
  assert.throws(()=>parseAvailabilityEvents([{start:day.start,end:day.end,allDay:false,availability:'busy',title:'x'}]),/Unexpected/);
  assert.throws(()=>parseAvailabilityEvents([{start:day.start,end:day.end,allDay:false,availability:'out-of-office'}]),/Invalid/);
  assert.throws(()=>parseAvailabilityEvents(Array.from({length:201},()=>({start:day.start,end:day.end,allDay:false,availability:'busy'}))),/bound/);

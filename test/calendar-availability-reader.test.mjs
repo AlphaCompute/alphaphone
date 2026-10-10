@@ -6,7 +6,8 @@ import {join,resolve} from 'node:path';
 import {execFileSync} from 'node:child_process';
 // The Android free/busy reader, run on the JVM. Its provider queries are executed by the
 // sqlite3 shell over tables with CalendarProvider's column names; the rows then go through
-// the renderer parser and the shared contract. No Android, CalendarProvider or device.
+// the renderer parser and the shared contract. The journal policy for the shared answer is
+// checked in the same run. No Android, CalendarProvider, Keystore journal or device.
 const cache=join(homedir(),'.gradle/caches/modules-2/files-2.1/org.json/json/20250517');
 const cached=existsSync(cache)?readdirSync(cache).flatMap(hash=>readdirSync(join(cache,hash)).filter(name=>name==='json-20250517.jar').map(name=>join(cache,hash,name)))[0]:undefined;
 const jsonJar=process.env.ALPHA_JSON_JAR||cached;
@@ -17,7 +18,7 @@ test('Android free/busy reader: chosen calendars only, provider availability, ci
  const shared=name=>join(root,'vendor/eliza/plugins/plugin-native-calendar',name);
  try{
   execFileSync(binary('javac'),['--release','11','-cp',jsonJar,'-d',temporary,
-   join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarAvailabilityReader.java'),
+   join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarAvailabilityReader.java'),join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarAvailabilityJournalResult.java'),
    shared('android/src/main/java/ai/eliza/plugins/calendar/read/CalendarSourceIdentity.java'),shared('android/src/main/java/ai/eliza/plugins/calendar/read/SelectedCalendarReader.java'),
    ...['content/ContentResolver.java','content/ContentUris.java','content/ContentValues.java','database/Cursor.java','net/Uri.java'].map(name=>shared('test/jvm/android/'+name)),
    join(root,'test/fixtures/calendar-provider-jvm/android/provider/CalendarContract.java'),join(root,'test/fixtures/CalendarAvailabilityReaderTest.java')],{timeout:180000,stdio:'pipe'});
