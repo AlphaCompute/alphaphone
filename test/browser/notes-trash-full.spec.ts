@@ -63,12 +63,13 @@ test('a deletion that would overfill Trash is refused: the note stays saved, Tra
  const refusal=dialog.or(page.getByText('Could not move this note to Trash. Nothing was deleted.',{exact:true})).or(page.getByText('Trash is full. Empty Trash in Notes, then delete again. Nothing was deleted.',{exact:true}));
  await expect(refusal.first()).toBeVisible();
  await expect(page.getByText('Charlie moved to Trash',{exact:true})).toHaveCount(0);
- // The note is still the open, saved note, byte for byte; Trash holds exactly what it held.
- await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Charlie');
+ // The note is still saved, byte for byte, and Trash holds exactly what it held.
  expect(await savedRecords(page)).toEqual(saved);
  expect(await trashEntries(page)).toEqual(full);
- // Pressing Delete again is refused again; a second press never forces the deletion through.
+ // Declining the dialog (where there is one) leaves the same note open in the editor.
  if(await dialog.count())await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Charlie');
+ // Pressing Delete again is refused again; a second press never forces the deletion through.
  await page.getByRole('button',{name:'Delete note',exact:true}).click();
  await expect(refusal.first()).toBeVisible();
  expect(await savedRecords(page)).toEqual(saved);
