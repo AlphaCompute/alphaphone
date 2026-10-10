@@ -54,6 +54,10 @@ jobs:
             --output "$jar"
           echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum --check --strict
           echo "ALPHA_JSON_JAR=$jar" >> "$GITHUB_ENV"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36
+          log-accepted-android-sdk-licenses: false
       - run: npm run verify
   browser:
     needs: changes

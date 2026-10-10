@@ -4,12 +4,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {androidEnv} from '../scripts/toolchain.mjs';
 const native=path.resolve('android/app/src/main/java/ai/elizaresearch/alphaphone');
 const plugin=fs.readFileSync(path.join(native,'AlphaLocalAgentPlugin.java'),'utf8');
 function method(start){const at=plugin.indexOf(start);assert.ok(at>=0,start);let depth=0;for(let i=plugin.indexOf('{',at);i<plugin.length;i++){if(plugin[i]==='{')depth++;else if(plugin[i]==='}'&&--depth===0)return plugin.slice(at,i+1);}throw Error('Unclosed method');}
 test('actual native provider/store keeps durable admission separate from CAS and invalidates credential replacement',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-provider-admission-'));
- const java=process.env.JAVA_HOME||'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home';
+ const env=androidEnv();
+ const java=env.JAVA_HOME;
  const jar=process.env.ALPHA_JSON_JAR||fs.globSync(path.join(os.homedir(),'.gradle/caches/modules-2/files-2.1/org.json/json/20250517/*/json-20250517.jar'))[0];
  assert.ok(jar,'Pinned org.json jar required');
  const write=(file,text)=>{const p=path.join(dir,file);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,text);return p;};
@@ -81,8 +83,8 @@ public class AdmissionTest {
  }
 }`));
  execFileSync(path.join(java,'bin/javac'),['--release','17','-cp',jar,'-d',dir,...sourceFiles],{timeout:20000});
- const androidJar=process.env.ALPHA_ANDROID_JAR||path.join(os.homedir(),'Library/Android/sdk/platforms/android-36/android.jar');
- assert.ok(fs.existsSync(androidJar),'Cached Android API jar required');
+ const androidJar=process.env.ALPHA_ANDROID_JAR||path.join(env.ANDROID_HOME,'platforms/android-36/android.jar');
+ assert.ok(fs.existsSync(androidJar),'Install Android SDK platform 36 or set ALPHA_ANDROID_JAR');
  execFileSync(path.join(java,'bin/javac'),['--release','17','-cp',androidJar,'-d',path.join(dir,'android-api'),...sourceFiles.filter(p=>!p.endsWith('/AdmissionTest.java'))],{timeout:20000});
  const result=execFileSync(path.join(java,'bin/java'),['-cp',dir+path.delimiter+jar,'ai.elizaresearch.alphaphone.AdmissionTest'],{encoding:'utf8',timeout:20000});
  assert.match(result,/PASS 27 native admission ownership cases/);
