@@ -24,7 +24,7 @@ import {test, expect, type Page} from '@playwright/test';
 
 const button = (page: Page, name: string) => page.getByRole('button', {name, exact: true});
 const KEY = 'journey-f-review-provider';
-type Options = {inbox?: string[]; pageSize?: number; strictCursors?: boolean; forward?: boolean};
+type Options = {inbox?: string[]; pageSize?: number; strictCursors?: boolean; forward?: boolean; accounts?: number};
 
 /** Synthetic managed provider. Re-installed after every load; its state lives in localStorage. */
 async function installProvider(page: Page, options: Options = {}) {
@@ -49,7 +49,8 @@ async function installProvider(page: Page, options: Options = {}) {
     const digest = async (text: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('');
     const size = options.pageSize || 25;
     const client = {
-      gmailAccounts: async () => [{connectionId: 'fixture-grant', label: 'Fixture mailbox', configured: true, connected: true, reason: 'connected', grantedCapabilities: ['google.gmail.triage']}],
+      gmailAccounts: async () => [{connectionId: 'fixture-grant', label: 'Fixture mailbox', configured: true, connected: true, reason: 'connected', grantedCapabilities: ['google.gmail.triage']},
+        ...(options.accounts === 2 ? [{connectionId: 'second-grant', label: 'Second mailbox', configured: true, connected: true, reason: 'connected', grantedCapabilities: ['google.gmail.triage']}] : [])],
       gmailInboxCapabilities: async () => ({version: 1, from: 'owner@example.invalid', threads: true, send: true, providerDrafts: false, mailboxMutations: true, attachments: true, providerExactlyOnce: false, atomicDraftReplacement: false, readState: false, draftsList: false, forwardAttachments: !!options.forward, opaqueAttachments: false, searchTrash: true, attachmentPolicy: {maximumOutgoing: 1, maximumBytes: 5242880, maximumTotalBytes: 5242880}}),
       // Cursors are "revision:offset". A lenient provider keeps serving an old cursor against the
       // current mailbox (rows shift); a strict one refuses a cursor cut from an older revision.
@@ -66,7 +67,7 @@ async function installProvider(page: Page, options: Options = {}) {
         return {messages: [{message: mail(id), bodyText: 'Body of ' + id, historyId: value.history[id] || 'h-' + id, attachments: options.forward ? [{partId: 'part-1', name: 'original-plan.pdf', mimeType: 'application/pdf', size: 4321, supported: true}] : []}], total: 1, offset: 0, historyId: 'thread-history', nextOffset: null};
       },
       // Prepare is idempotent per request ID and records the exact proposal text it was given.
-      gmailPrepareOperation: async (_grant: string, requestId: string, proposal: any) => {
+      gmailPrepareOperation: async (grant: string, requestId: string, proposal: any) => {
         const slow = load().slowPrepare; if (slow) await new Promise(resolve => setTimeout(resolve, slow));
         const attachments = await Promise.all((proposal.attachments || []).map(async (file: any) => { const {text: _text, ...metadata} = await reviewMailAttachment(file) as any; return metadata; }));
         const review = proposal.kind === 'send'
@@ -74,13 +75,13 @@ async function installProvider(page: Page, options: Options = {}) {
             ...(proposal.forwardAttachments ? {forwardSource: {messageId: proposal.forwardAttachments.messageId, historyId: proposal.forwardAttachments.historyId}, forwardedAttachments: proposal.forwardAttachments.partIds.map((partId: string) => ({partId, name: 'original-plan.pdf', mimeType: 'application/pdf', size: 4321, sha256: 'ab'.repeat(32)}))} : {})}
           : {kind: proposal.kind, messageId: proposal.messageId, expectedHistoryId: proposal.expectedHistoryId, from: 'owner@example.invalid'};
         const receipt = {requestId, kind: proposal.kind, state: 'prepared', reviewDigest: await digest(JSON.stringify(review)), providerResult: null, rejectionCode: null};
-        const value = load(); value.prepared.push({requestId, digest: receipt.reviewDigest, proposal: JSON.stringify(proposal)});
+        const value = load(); value.prepared.push({grant, requestId, digest: receipt.reviewDigest, proposal: JSON.stringify(proposal)});
         value.receipts[requestId] = receipt; save(value); return {receipt, review};
       },
       // Each request ID takes effect once. With loseNextReply the change IS made and recorded but
       // the reply is lost in transit (the client sees a network failure).
-      gmailDispatchOperation: async (_grant: string, requestId: string, reviewDigest: string, proposal: any) => {
-        const value = load(); value.dispatched.push({requestId, digest: reviewDigest, proposal: JSON.stringify(proposal)});
+      gmailDispatchOperation: async (grant: string, requestId: string, reviewDigest: string, proposal: any) => {
+        const value = load(); value.dispatched.push({grant, requestId, digest: reviewDigest, proposal: JSON.stringify(proposal)});
         if (value.receipts[requestId]?.reviewDigest !== reviewDigest) { save(value); throw new CloudProtocolError('http', 409, {error: 'Review digest changed'}); }
         if (!value.effects[requestId]) {
           value.effects[requestId] = true; value.revision++;
@@ -105,7 +106,7 @@ async function installProvider(page: Page, options: Options = {}) {
     c.getSnapshot = () => snapshot;
   }, [KEY, options] as const);
 }
-type Recorded = {requestId: string; digest: string; proposal: string};
+type Recorded = {grant: string; requestId: string; digest: string; proposal: string};
 const provider = (page: Page) => page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)!), KEY) as Promise<{prepared: Recorded[]; dispatched: Recorded[]; sent: string[]; trashed: string[]; inbox: string[]; searches: [string, string | null][]; receipts: Record<string, {state: string; kind: string}>}>;
 const setProvider = (page: Page, patch: Record<string, unknown>) => page.evaluate(([KEY, patch]) => { const v = JSON.parse(localStorage.getItem(KEY as string)!); localStorage.setItem(KEY as string, JSON.stringify({...v, ...(patch as object)})); }, [KEY, patch] as const);
 async function openInbox(page: Page, options: Options = {}, reload = false) {
@@ -124,6 +125,7 @@ async function compose(page: Page, subject: string, body: string) {
   await page.getByRole('textbox', {name: 'Message', exact: true}).fill(body);
 }
 const rows = (page: Page) => page.getByRole('button', {name: /^Sender m\d+, Subject m\d+$/}).evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')!.replace(/^Sender (m\d+),.*/, '$1')));
+const notOpenStatus = 'This review is for an email that is not open in the composer, so it cannot be confirmed. Nothing was sent. Open that email and choose Send to review it again, or cancel this review.';
 const editedStatus = 'This email was edited after this review, so the review was discarded. Nothing was sent. Review the current email before sending.';
 
 test.beforeEach(async ({page}) => {
@@ -166,8 +168,15 @@ test('F-5: the send review shows From, To, Cc, Bcc, subject, body and the attach
   expect(await provider(page)).toMatchObject({dispatched: [], sent: []});
   expect((await provider(page)).prepared).toHaveLength(1);
 
-  // Reload in the middle of the review: the same saved review is shown again and nothing new is prepared.
+  // Reload in the middle of the review: the same saved review is shown again and nothing new is
+  // prepared. It cannot be sent until the email it was made for is back in the composer.
   await openInbox(page, {}, true);
+  await expect(review.getByRole('status')).toHaveText(notOpenStatus);
+  await reviewed();
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
+  await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
+  await button(page, 'Resume unsaved email').click();
+  await button(page, 'Send email').click();
   await expect(review.getByRole('status')).toHaveText('Saved mail operation. Check its exact review and receipt before continuing.');
   await reviewed();
   expect((await provider(page)).prepared).toHaveLength(1);
@@ -270,9 +279,18 @@ test('F-10: an email edited after its review is reviewed again under a new reque
   expect(state.prepared[1].digest).not.toBe(state.prepared[0].digest);
   expect(JSON.parse(state.prepared[1].proposal).bodyText).toBe('Second body');
 
-  // Reload with the second review pending, then send: only the second request is ever dispatched.
+  // Reload with the second review pending. The saved review reopens, but it cannot be sent while
+  // its email is not open in the composer; with the unchanged email resumed it can, and only the
+  // second request is ever dispatched.
   await openInbox(page, {}, true);
   await expect(review.getByText('Second body', {exact: true})).toBeVisible();
+  await expect(review.getByRole('status')).toHaveText(notOpenStatus);
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
+  await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
+  await button(page, 'Resume unsaved email').click();
+  await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveValue('Second body');
+  await button(page, 'Send email').click();
+  expect((await provider(page)).prepared).toHaveLength(2);
   await review.getByRole('button', {name: 'Send this email', exact: true}).click();
   await expect(review.getByRole('status')).toHaveText('Provider confirmed this operation.');
   state = await provider(page);
@@ -301,6 +319,89 @@ test('F-10: an edit made while the review is still being prepared cannot be sent
   const state = await provider(page);
   expect(state.prepared.map(p => JSON.parse(p.proposal).bodyText)).toEqual(['Body sent for review', 'Body changed while the review was loading']);
   expect(state.dispatched).toEqual([state.prepared[1]]);
+});
+
+test('F-10: a reload between an edit and the discard of its review never lets the earlier text be sent', async ({page}) => {
+  test.setTimeout(180_000);
+  await openInbox(page);
+  await compose(page, 'Edited then reloaded', 'First body');
+  await button(page, 'Send email').click();
+  const review = page.getByRole('dialog', {name: 'Review mail operation'});
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toBeVisible();
+  await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
+  // The provider stops answering the store, so the discard that follows the edit cannot complete:
+  // the first review is still saved when the page reloads, and the edit is in the retained copy.
+  await page.evaluate(async () => {
+    const {secureConnectionStore: s} = await import('/src/runtime/native-connection.ts');
+    s.compareExchange = () => new Promise(() => {});
+  });
+  await page.getByRole('textbox', {name: 'Message', exact: true}).fill('Second body');
+  // Time for the retained copy of the edit to be written. If it were not, the resumed email below
+  // would not hold the second text and this test would fail there.
+  await page.waitForTimeout(1500);
+  expect(Object.values((await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)!).slots, KEY)) as Record<string, {phase?: string}>).map(slot => slot.phase)).toEqual(['review']);
+
+  await openInbox(page, {}, true);
+  // The saved review of the first text reopens. It says why it cannot be sent and offers no Send.
+  await expect(review.getByText('First body', {exact: true})).toBeVisible();
+  await expect(review.getByRole('status')).toHaveText(notOpenStatus);
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
+  await expect(review.getByRole('button', {name: 'Cancel unsent review', exact: true})).toBeVisible();
+  await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
+  // Resuming the edited email discards that review; the edited text gets its own.
+  await button(page, 'Resume unsaved email').click();
+  await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveValue('Second body');
+  await expect(page.getByText(editedStatus, {exact: true})).toBeVisible();
+  await button(page, 'Send email').click();
+  await expect(review.getByText('Second body', {exact: true})).toBeVisible();
+  await expect(review.getByText('First body', {exact: true})).toHaveCount(0);
+  await review.getByRole('button', {name: 'Send this email', exact: true}).click();
+  await expect(review.getByRole('status')).toHaveText('Provider confirmed this operation.');
+  const state = await provider(page);
+  expect(state.prepared.map(p => JSON.parse(p.proposal).bodyText)).toEqual(['First body', 'Second body']);
+  expect(state.dispatched).toEqual([state.prepared[1]]);
+  expect(state.sent).toEqual(['Edited then reloaded']);
+});
+
+test('F-10: a review made under one From account cannot be sent after the email moved to another account', async ({page}) => {
+  test.setTimeout(180_000);
+  await openInbox(page, {accounts: 2});
+  await compose(page, 'Moved between accounts', 'One body');
+  await button(page, 'Send email').click();
+  const review = page.getByRole('dialog', {name: 'Review mail operation'});
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toBeVisible();
+  await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
+  // The From switcher moves the email to the second account, where it is reviewed and sent once.
+  await expect(button(page, 'From account')).toHaveText('From Fixture mailbox');
+  await button(page, 'From account').click();
+  await expect(button(page, 'From account')).toHaveText('From Second mailbox');
+  await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveValue('One body');
+  await button(page, 'Send email').click();
+  await expect(review.getByText('One body', {exact: true})).toBeVisible();
+  await expect(review.getByRole('status')).toHaveText('Review every field before confirming. No mail has been sent.');
+  await review.getByRole('button', {name: 'Send this email', exact: true}).click();
+  await expect(review.getByRole('status')).toHaveText('Provider confirmed this operation.');
+  let state = await provider(page);
+  expect(state.prepared.map(p => p.grant)).toEqual(['fixture-grant', 'second-grant']);
+  expect(state.dispatched).toEqual([state.prepared[1]]);
+  await review.getByRole('button', {name: 'Close receipt', exact: true}).click();
+
+  // Back on the first account its saved review of the same email reappears. It offers no Send.
+  await button(page, 'Fixture mailbox').click();
+  await expect(review.getByText('One body', {exact: true})).toBeVisible();
+  await expect(review.getByRole('status')).toHaveText(notOpenStatus);
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
+  // The same holds after a reload on that account.
+  await openInbox(page, {accounts: 2}, true);
+  await expect(review.getByText('One body', {exact: true})).toBeVisible();
+  await expect(review.getByRole('status')).toHaveText(notOpenStatus);
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
+  await review.getByRole('button', {name: 'Cancel unsent review', exact: true}).click();
+  await expect(review).toHaveCount(0);
+  await expect(button(page, 'Mail review / receipt')).toHaveCount(0);
+  state = await provider(page);
+  expect(state.dispatched).toHaveLength(1);
+  expect(state.sent).toEqual(['Moved between accounts']);
 });
 
 test('F-13: Trash and its undo are reviewed operations and the restored message returns to the list', async ({page}) => {

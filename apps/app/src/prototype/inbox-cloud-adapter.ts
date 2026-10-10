@@ -100,7 +100,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const provider = inboxProviderControls(() => publish(), text => api?.toast(text));
   const drafts = inboxDrafts(() => publish(), text => api?.toast(text), provider);
   provider.setEditor((proposal,reference)=>drafts.editProvider(proposal,reference));
-  provider.setComposer(()=>drafts.proposal());
+  provider.setComposer(()=>drafts.email());
   const readable = () => accounts.filter(gmailReadable);
   const currentQuery = () => String(api?.get('inbox')?.q || '').trim() || folderQuery[folder];
   const accountLabel = (id = selected) => accounts.find(a => a.connectionId === id)?.label || null;

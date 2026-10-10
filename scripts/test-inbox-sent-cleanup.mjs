@@ -6,7 +6,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {stripTypeScriptTypes} from 'node:module';
-import {InboxOperation, checkOutgoingAttachments, outgoingAttachmentLimits} from '../apps/app/src/runtime/inbox-operation.ts';
+import {InboxOperation, checkOutgoingAttachments, outgoingAttachmentLimits, composerKind, composerContent, reviewBinding, reviewBindingRefusal} from '../apps/app/src/runtime/inbox-operation.ts';
 import {reviewMailAttachment} from '../apps/app/src/runtime/inbox-attachment.ts';
 import {classifyGmailFailure} from '../apps/app/src/runtime/gmail-mailbox.ts';
 import {encodeInboxUnsaved, readInboxUnsaved} from '../apps/app/src/runtime/inbox-unsaved-record.ts';
@@ -18,6 +18,8 @@ const strip = async (file, name) => {
 };
 const sources = [await strip('inbox-provider-controls.ts', 'inboxProviderControls'), await strip('inbox-drafts.ts', 'inboxDrafts')];
 const digest = async text => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('');
+/** Holds every dispatch in flight until `release()`. */
+const hold = remote => { let open; remote.hold = new Promise(resolve => { open = resolve; }); return async () => { remote.hold = null; open(); await tick(); }; };
 const tick = async () => { for (let i = 0; i < 12; i++) await new Promise(resolve => setTimeout(resolve, 0)); };
 
 /** One "device": slots and the retained copy persist across `boot()` (a reload); the provider is remote. */
@@ -33,6 +35,8 @@ function device() {
     },
     gmailDispatchOperation: async (...args) => { const [_grant, requestId, reviewDigest] = args; remote.requests.push(JSON.stringify(args.slice(0, 4)));
       remote.dispatches++;
+      // `hold` keeps the request in flight: the provider has it, the phone has no answer yet.
+      if (remote.hold) await remote.hold;
       if (remote.outcome === 'lost') { remote.receipts.set(requestId, {requestId, kind: 'send', state: 'succeeded', reviewDigest, providerResult: {messageId: 'sent-1'}, rejectionCode: null}); throw new TypeError('Failed to fetch'); }
       const receipt = {requestId, kind: remote.receipts.get(requestId).kind, state: remote.outcome, reviewDigest, providerResult: remote.outcome === 'succeeded' ? {messageId: 'sent-1'} : null, rejectionCode: remote.outcome === 'rejected' ? 'policy' : null};
       remote.receipts.set(requestId, receipt); return receipt;
@@ -58,12 +62,14 @@ function device() {
         retire() {}, replace() {}, retry: async () => {}, recover() {}};
     };
     const controller = {getCloudClient: () => ({client, sessionId: 'session-1'}), getSnapshot: () => ({cloudAccount: {environment: 'production', userId: 'owner-1', sessionId: 'session-1'}})};
-    const sandbox = {inboxUnsaved, InboxOperation, checkOutgoingAttachments, outgoingAttachmentLimits, reviewMailAttachment, classifyGmailFailure, crypto: globalThis.crypto, TextEncoder, structuredClone,
+    const sandbox = {inboxUnsaved, InboxOperation, composerKind, composerContent, reviewBinding, reviewBindingRefusal, performance, queueMicrotask, checkOutgoingAttachments, outgoingAttachmentLimits, reviewMailAttachment, classifyGmailFailure, crypto: globalThis.crypto, TextEncoder, structuredClone,
       secureConnectionStore: store, connectionController: controller, registerPlugin: () => ({}), DailyApps: {}, AbortController, DOMException, console, JSON, Promise, Set, Map, Error, Math, String, Array, Object,
       window: {confirm: () => true}, document: {documentElement: {dataset: {connectionMode: 'live'}}}};
     vm.createContext(sandbox); for (const source of sources) vm.runInContext(source, sandbox);
     const provider = sandbox.inboxProviderControls(() => {}, text => toasts.push(text));
     const drafts = sandbox.inboxDrafts(() => {}, text => toasts.push(text), provider);
+    // Wired exactly as inbox-cloud-adapter.ts wires them.
+    provider.setComposer(() => drafts.email());
     provider.setObservers({sent: (source, proposal, grant) => void drafts.settleSent(source.draftId, proposal, grant), sentNote: source => drafts.sentNote(source.draftId)});
     const chips = () => [...drafts.chips((label, pick) => ({label, pick})), ...provider.chips((label, pick) => ({label, pick}))];
     const app = {provider, drafts, labels: () => chips().map(c => c.label), pick: label => chips().find(c => c.label === label).pick(),
@@ -153,31 +159,62 @@ test('reload between the provider confirmation and local cleanup finishes the cl
 test('a different draft is never cleared, even with identical content', async () => {
   const d = device(), app = d.boot(); await app.bind();
   await app.compose('Same words'); await app.save(); await app.send();
-  // The user discards the sent draft's local copy while the review is open and writes it again.
+  // Send is confirmed; while the request is in flight the user discards that draft and writes it again.
+  const release = hold(d.remote); await app.confirm();
+  assert.equal(d.operationSlot().phase, 'dispatching');
   app.composer().discard(); app.drafts.render().c.confirmDiscard(); await tick();
   assert.equal(d.draftSlot(), null);
   await app.compose('Same words'); await app.save();
   const other = d.draftSlot(); assert.notEqual(other.id, d.operationSlot().source.draftId);
-  await app.confirm();
+  await release();
   assert.equal(app.receipt().status, 'Provider confirmed this operation.');
   assert.deepEqual(d.draftSlot(), other, 'the second draft is untouched');
   assert.ok(app.composer(), 'its composer stays open');
   assert.equal(app.receipt().draftNote, 'The local draft and unsaved copy of this sent email were removed from this device.');
+  assert.equal(d.remote.dispatches, 1);
+});
+
+test('a review is never confirmed for another draft, even one with identical content', async () => {
+  const d = device(), app = d.boot(); await app.bind();
+  await app.compose('Same words'); await app.save(); await app.send();
+  const first = d.operationSlot();
+  // The reviewed draft is discarded before Confirm and the same words are written as a new draft.
+  app.composer().discard(); app.drafts.render().c.confirmDiscard(); await tick();
+  assert.equal(app.receipt().canConfirm, false, 'no email in the composer: the review cannot be confirmed');
+  assert.match(app.receipt().status, /not open in the composer/);
+  await app.confirm(); assert.equal(d.remote.dispatches, 0);
+  assert.deepEqual(d.operationSlot(), first, 'it stays saved until it is cancelled or replaced');
+  await app.compose('Same words'); await app.save();
+  assert.equal(app.receipt().canConfirm, false);
+  await app.confirm();
+  assert.equal(d.operationSlot(), null, 'the review of the discarded draft is discarded, not sent');
+  assert.ok(d.toasts.some(text => /made for a different email/.test(text)));
+  assert.equal(d.remote.dispatches, 0); assert.ok(d.draftSlot(), 'the new draft is untouched');
+  // Its own Send is a new review under a new request, and that one is sent and cleaned up.
+  await app.send(); assert.notEqual(d.operationSlot().requestId, first.requestId);
+  assert.deepEqual(d.operationSlot().source, {draftId: d.draftSlot().id});
+  await app.confirm();
+  assert.equal(app.receipt().status, 'Provider confirmed this operation.');
+  assert.equal(d.remote.dispatches, 1); assert.equal(d.draftSlot(), null);
 });
 
 test('a copy edited after Send is kept and the receipt says so', async () => {
   // Edited in the open composer and saved: neither the composer nor the saved draft is removed.
   let d = device(), app = d.boot(); await app.bind();
   await app.compose('Edited later', 'First'); await app.save(); await app.send();
+  let release = hold(d.remote); await app.confirm();
   app.composer().onBody({target: {value: 'First, then changed'}}); await app.save();
-  await app.confirm();
+  await release();
+  assert.equal(app.receipt().status, 'Provider confirmed this operation.'); assert.equal(d.remote.dispatches, 1);
   assert.equal(d.draftSlot().body, 'First, then changed'); assert.ok(app.composer());
   assert.match(app.receipt().draftNote, /still on this device because it was edited after sending or could not be removed/);
   // Edited but not saved: the saved copy still equals what was sent, but the draft is in use.
   d = device(); app = d.boot(); await app.bind();
   await app.compose('Edited unsaved', 'First'); await app.save(); await app.send();
+  release = hold(d.remote); await app.confirm();
   app.composer().onBody({target: {value: 'Typing more'}});
-  await app.confirm();
+  await release();
+  assert.equal(app.receipt().status, 'Provider confirmed this operation.');
   assert.equal(app.composer().body, 'Typing more'); assert.equal(d.draftSlot().body, 'First'); assert.equal(d.unsavedText.size, 1);
   assert.match(app.receipt().draftNote, /still on this device/);
   // A half-typed recipient counts as an edit.
@@ -225,7 +262,10 @@ test('non-send operations and operations saved before this change clear nothing'
   assert.equal(d.operationSlot().source, undefined); assert.ok(d.draftSlot(), 'saving a Gmail draft keeps the local draft');
   await app.closeReceipt();
   await app.send(); const key = [...d.slots.keys()].find(k => k.startsWith('inbox-operation:')), {source: _source, ...legacy} = d.slots.get(key); d.slots.set(key, legacy);
-  const again = d.boot(); await again.bind(); await again.confirm();
+  const again = d.boot(); await again.bind();
+  // After a reload the review is confirmable only once its email is back in the composer.
+  assert.equal(again.receipt().canConfirm, false); again.pick('Restore local draft'); assert.equal(again.receipt().canConfirm, true);
+  await again.confirm();
   assert.equal(again.receipt().status, 'Provider confirmed this operation.'); assert.ok(d.draftSlot(), 'no recorded source, nothing cleared');
   assert.match(again.receipt().draftNote, /local draft stays on this device/);
   d.slots.set(key, {...d.slots.get(key), source: {draftId: ''}});
@@ -341,4 +381,144 @@ test('the source draft id stays out of every provider request', async () => {
   assert.equal(seen.some(text => text.includes(id)), false, 'no receipt echoes the local draft id');
   assert.equal(d.remote.requests.some(text => text.includes(id)), false, 'no provider request carries the local draft id');
   assert.ok(d.remote.requests.length >= 3);
+});
+
+// A review is bound to the email it was made from: the same local draft (which belongs to one From
+// account) holding exactly the reviewed content at the moment Send is confirmed.
+const dispatched = d => d.remote.requests.map(text => JSON.parse(text)).filter(request => request.length === 4);
+const operationSlots = d => [...d.slots.keys()].filter(key => key.startsWith('inbox-operation:v1:')).length;
+
+test('an email edited after its review is sent once, under its second review, and that draft is cleaned up', async () => {
+  const d = device(), app = d.boot(); await app.bind();
+  await app.compose('Edited', 'First'); await app.save(); await app.send();
+  const first = d.operationSlot();
+  app.composer().onBody({target: {value: 'Second'}});
+  assert.equal(app.receipt().canConfirm, false, 'not confirmable from the first render after the edit');
+  await tick();
+  assert.equal(d.operationSlot(), null, 'the unsent review is discarded');
+  assert.ok(d.toasts.some(text => /edited after this review/.test(text)));
+  assert.ok(d.draftSlot(), 'discarding a review never touches the local draft'); assert.equal(app.composer().body, 'Second');
+  await app.save(); await app.send();
+  const second = d.operationSlot(); assert.notEqual(second.requestId, first.requestId);
+  assert.deepEqual(second.source, {draftId: d.draftSlot().id});
+  await app.confirm();
+  assert.equal(app.receipt().status, 'Provider confirmed this operation.');
+  assert.deepEqual(dispatched(d).map(request => [request[1], request[2]]), [[second.requestId, second.receipt.reviewDigest]]);
+  assert.equal(d.draftSlot(), null, 'the sent draft is removed'); assert.equal(app.composer(), null);
+});
+
+test('an edit that returns to the reviewed text before the review is discarded leaves it confirmable', async () => {
+  const d = device(), app = d.boot(); await app.bind();
+  await app.compose('Round trip', 'Same'); await app.send();
+  app.composer().onBody({target: {value: 'Other'}}); app.composer().onBody({target: {value: 'Same'}});
+  assert.equal(app.receipt().canConfirm, true); await tick();
+  await app.confirm();
+  assert.equal(JSON.parse(d.remote.requests.at(-1))[0], 'grant-a'); assert.equal(d.remote.dispatches, 1);
+  assert.equal(d.operationSlot().proposal.bodyText, 'Same');
+});
+
+test('after a reload a saved review cannot be confirmed until its email is back, and the edited email discards it', async () => {
+  const d = device(), app = d.boot(); await app.bind();
+  await app.compose('Reloaded', 'First'); await app.send();
+  const first = d.operationSlot();
+  // The page dies after the first edited keystroke was retained and before the review was discarded.
+  app.composer().onBody({target: {value: 'Second'}});
+  const again = d.boot(); await again.bind();
+  assert.deepEqual(d.operationSlot(), first, 'the saved review is still there');
+  assert.equal(again.composer(), null); assert.equal(again.receipt().canConfirm, false);
+  assert.match(again.receipt().status, /not open in the composer, so it cannot be confirmed/);
+  await again.confirm(); assert.equal(d.remote.dispatches, 0, 'Confirm does nothing while the email is not open');
+  again.pick('Resume unsaved email');
+  assert.equal(again.composer().body, 'Second'); assert.equal(again.receipt().canConfirm, false);
+  await tick();
+  assert.equal(d.operationSlot(), null, 'the resumed email no longer matches: the review is discarded');
+  await again.send(); await again.confirm();
+  assert.equal(dispatched(d).length, 1); assert.equal(dispatched(d)[0][3].bodyText, 'Second');
+  assert.notEqual(dispatched(d)[0][1], first.requestId);
+});
+
+test('after a reload an unchanged email makes its saved review confirmable again', async () => {
+  const d = device(), app = d.boot(); await app.bind();
+  await app.compose('Unchanged', 'Body'); await app.send();
+  const first = d.operationSlot(), again = d.boot(); await again.bind();
+  assert.equal(again.receipt().canConfirm, false);
+  again.pick('Resume unsaved email');
+  assert.equal(again.receipt().canConfirm, true);
+  await again.confirm();
+  assert.deepEqual(dispatched(d).map(request => request[1]), [first.requestId]);
+});
+
+test('a review saved under one From account cannot be sent after the email moved to another account', async () => {
+  const d = device(), app = d.boot(); await app.bind('grant-a');
+  await app.compose('Moved', 'Body'); await app.send();
+  const first = d.operationSlot(); assert.equal(first.grantId, 'grant-a');
+  // The From switcher moves the email: it leaves grant-a and becomes a new draft under grant-b.
+  const moved = await app.drafts.transfer(); assert.ok(moved);
+  assert.equal(app.receipt().canConfirm, false, 'the email left this account');
+  await app.bind('grant-b');
+  assert.equal(app.drafts.begin(undefined, 'reply', '', {...moved, moved: true}), true);
+  assert.equal(app.receipt().requestId, '', 'no review exists under the other account');
+  await app.send(); await app.confirm();
+  assert.equal(app.receipt().status, 'Provider confirmed this operation.');
+  assert.deepEqual(dispatched(d).map(request => request[0]), ['grant-b']);
+  // Back on the first account its saved review reappears. It must not send the email a second time.
+  await app.bind('grant-a');
+  assert.equal(app.receipt().requestId, first.requestId); assert.equal(app.receipt().canConfirm, false);
+  await app.confirm(); assert.equal(d.remote.dispatches, 1);
+  // Not even when the same words are written again under the first account.
+  await app.compose('Moved', 'Body'); assert.equal(app.receipt().canConfirm, false); await app.confirm();
+  assert.equal(d.remote.dispatches, 1); assert.equal(operationSlots(d), 1, 'only the receipt under grant-b remains');
+  assert.ok(d.toasts.some(text => /made for a different email/.test(text)));
+  // Also across a reload on the first account, with no composer open.
+  const e = device(), one = e.boot(); await one.bind('grant-a');
+  await one.compose('Moved', 'Body'); await one.send(); await one.drafts.transfer();
+  const two = e.boot(); await two.bind('grant-a');
+  assert.equal(two.receipt().canConfirm, false); await two.confirm(); assert.equal(e.remote.dispatches, 0);
+  await two.closeReceipt(); assert.equal(operationSlots(e), 0, 'the unsent review can be cancelled');
+});
+
+test('a review saved without its email identity is discarded, never confirmed', async () => {
+  const d = device(), app = d.boot(); await app.bind();
+  await app.compose('Legacy', 'Body'); await app.save(); await app.send();
+  const key = [...d.slots.keys()].find(k => k.startsWith('inbox-operation:')), {composer: _composer, ...legacy} = d.slots.get(key); d.slots.set(key, legacy);
+  const again = d.boot(); await again.bind(); again.pick('Restore local draft');
+  assert.equal(again.receipt().canConfirm, false); await again.confirm();
+  assert.equal(d.operationSlot(), null); assert.equal(d.remote.dispatches, 0); assert.ok(d.draftSlot());
+  d.slots.set(key, {...legacy, composer: {draftId: ''}});
+  const bad = d.boot(); await bad.bind(); assert.equal(bad.receipt().requestId, '', 'a malformed binding is rejected on load');
+});
+
+test('InboxOperation.confirm refuses before any write when the composer does not hold the reviewed email', async () => {
+  const d = device(), slots = d.slots;
+  const store = {read: async key => structuredClone(slots.get(key) ?? null), compareExchange: async (key, prior, next) => { if (JSON.stringify(slots.get(key) ?? null) !== JSON.stringify(prior)) return {status: 'conflict'}; if (next === null) slots.delete(key); else slots.set(key, structuredClone(next)); return {status: 'saved'}; }};
+  const app = d.boot(); await app.bind();
+  const client = {gmailPrepareOperation: async (_g, requestId, proposal) => { const review = {...proposal, from: 'owner@example.invalid', attachments: []}; return {review, receipt: {requestId, kind: proposal.kind, state: 'prepared', reviewDigest: await digest(JSON.stringify(review)), providerResult: null, rejectionCode: null}}; },
+    gmailDispatchOperation: async (_g, requestId, reviewDigest, proposal) => { d.remote.dispatches++; return {requestId, kind: proposal.kind, state: 'succeeded', reviewDigest, providerResult: {messageId: 'sent-1'}, rejectionCode: null}; }, gmailOperation: async () => { throw Error('unused'); }};
+  for (const kind of ['send', 'draft-create']) {
+    slots.clear();
+    const operation = new InboxOperation({owner: 'owner', grantId: 'grant-a', active: () => true, store, client});
+    const proposal = {kind, mode: 'compose', to: ['friend@example.invalid'], cc: [], bcc: ['hidden@example.invalid'], subject: 'S', bodyText: 'B', attachments: []};
+    await operation.prepare(proposal, {draftId: 'draft-1'});
+    const saved = structuredClone(d.operationSlot()); assert.deepEqual(saved.composer, {draftId: 'draft-1'});
+    assert.equal('source' in saved, kind === 'send');
+    const {kind: _kind, ...email} = proposal;
+    for (const [current, message] of [
+      [null, /not open in the composer/],
+      [{draftId: 'draft-2', proposal: email}, /different email/],
+      [{draftId: '', proposal: email}, /different email/],
+      [{draftId: 'draft-1', proposal: {...email, bodyText: 'B '}}, /edited after this review/],
+      [{draftId: 'draft-1', proposal: {...email, bcc: []}}, /edited after this review/],
+      [{draftId: 'draft-1', proposal: {...email, cc: ['copy@example.invalid']}}, /edited after this review/],
+      [{draftId: 'draft-1', proposal: {...email, to: ['other@example.invalid']}}, /edited after this review/],
+      [{draftId: 'draft-1', proposal: {...email, attachments: [{name: 'a.txt', mimeType: 'text/plain', dataBase64: 'YQ=='}]}}, /edited after this review/],
+      [{draftId: 'draft-1', proposal: {...email, replyMessageId: 'm1'}}, /edited after this review/],
+      [{draftId: 'draft-1', proposal: {...email, forwardAttachments: {messageId: 'm', historyId: 'h', partIds: ['p']}}}, /edited after this review/],
+    ]) {
+      await assert.rejects(operation.confirm(current), message);
+      assert.deepEqual(d.operationSlot(), saved, 'nothing was written');
+    }
+    assert.equal(d.remote.dispatches, 0);
+    await operation.confirm({draftId: 'draft-1', proposal: structuredClone(email)});
+    assert.equal(d.operationSlot().phase, 'observed'); assert.equal(d.remote.dispatches, 1); d.remote.dispatches = 0;
+  }
 });
