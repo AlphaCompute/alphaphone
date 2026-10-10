@@ -580,7 +580,7 @@ never EVIDENCED. The one exception is D-8, a host test that was run here.
 | J04-7, J04-10 | `maps-adapter.ts`, `template.html` | Not this package. Still SOFTWARE. |
 
 None of the eleven remaining SOFTWARE rows has a fix in `android/app/src/androidTest`,
-`android/app/src/testMocks` or the `scripts/test-*`/`android-*` runners.
+`android/app/src/testMocks` or the runner scripts (the `test-*` and `android-*` files under `scripts`).
 
 EMULATOR rows whose text named a runner gap, and what happened to it:
 
