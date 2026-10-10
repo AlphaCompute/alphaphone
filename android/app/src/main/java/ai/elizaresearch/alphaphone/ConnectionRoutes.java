@@ -18,21 +18,23 @@ final class ConnectionRoutes {
  static boolean retiredPairing(String decodedPath,boolean testMocks){
   return !testMocks&&"/api/auth/pair".equals(canonical(decodedPath));
  }
- /** A dedicated Cloud agent runtime: the agent's lowercase UUID under the fixed agents domain. */
- private static final java.util.regex.Pattern CLOUD_AGENT_HOST=java.util.regex.Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.cloud\\.eliza\\.app");
  /**
   * Origins this transport may contact. A production phone talks to its resident agent over the
-  * separate in-process Agent bridge, never through this transport, so in a flag-off build the only
-  * admitted origins are the fixed Eliza Cloud authority: https://api.eliza.app and a dedicated
-  * Cloud agent runtime at https://&lt;agent-uuid&gt;.cloud.eliza.app, on the default port, spelled
-  * exactly. A paired remote agent's origin is refused even when the renderer presents a saved
-  * credential for it; the refusal is decided from the URL alone and touches no credential slot.
-  * Test-mocks builds keep every origin the URL validation admits (remote and development agents).
+  * separate in-process Agent bridge, never through this transport, and does not pair with, restore
+  * or connect a remote or Cloud agent (the controller returns before any saved selection is used and
+  * the production dialog offers only Cloud sign-in for inference credits). Every request a flag-off
+  * build legitimately sends here (sign-in, identity, balance, key self-revocation, the connected
+  * services under /api/v1/eliza/) goes to the Cloud API, so the only admitted origin is exactly
+  * https://api.eliza.app on the default port. A dedicated Cloud agent runtime
+  * (https://&lt;agent-uuid&gt;.cloud.eliza.app) is refused with every other host; admit it here only
+  * if owner decision A-16 brings Cloud agents to production Android. A paired remote agent's origin
+  * is refused even when the renderer presents a saved credential for it; the refusal is decided from
+  * the URL alone and touches no credential slot.
+  * Test-mocks builds keep every origin the URL validation admits (remote, Cloud and development agents).
   */
  static boolean admittedOrigin(String scheme,String host,int port,boolean testMocks){
   if(testMocks)return true;
-  if(!"https".equals(scheme)||host==null||(port!=-1&&port!=443))return false;
-  return "api.eliza.app".equals(host)||CLOUD_AGENT_HOST.matcher(host).matches();
+  return "https".equals(scheme)&&"api.eliza.app".equals(host)&&(port==-1||port==443);
  }
  /**
   * Cloud self-revocation: the presented sign-in key revokes only itself. Exactly
