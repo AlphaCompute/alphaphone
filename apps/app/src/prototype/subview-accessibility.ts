@@ -43,7 +43,7 @@ export function installSubviewAccessibility(views:Bag){
   ['calendar',['detail','form'],(out:Bag)=>({listCovered:!!(out.detail||out.form),detailCovered:!!out.form})],
   ['browser',['tabs','library'],(out:Bag)=>({listCovered:!!(out.tabsOpen||out.lib),tabsCovered:!!out.lib})],
   ['photos',['album','viewer','edit','empty'],(out:Bag)=>({listCovered:!!(out.album||out.viewing||out.editing||out.viewEmpty),albumCovered:!!(out.viewing||out.editing||out.viewEmpty),viewerCovered:!!out.editing})],
-  ['notes',['editor','voice','link','recording','trash'],(out:Bag)=>({listCovered:!!(out.isEdit||out.isVoice||out.isLink||out.recording||out.trashOpen),detailCovered:!!out.recording,trashCovered:!!out.trashConfirmOpen})],
+  ['notes',['editor','voice','link','recording','trash'],(out:Bag)=>({listCovered:!!(out.isEdit||out.isVoice||out.isLink||out.recording||out.trashOpen),detailCovered:!!(out.recording||out.trashFullOpen),trashCovered:!!out.trashConfirmOpen})],
   ['files',['folder','preview'],(out:Bag)=>({listCovered:!!(out.inFolder||out.isPreview),detailCovered:!!out.isPreview})],
  ] as Array<[string,string[],(out:Bag)=>Bag]>){
   const render=views[name].render,focus=focusHistory(),refs=Object.fromEntries(keys.map(key=>[key+'Focus',subviewFocus(focus.read)]));
