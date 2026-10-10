@@ -13,6 +13,7 @@ import {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {verifyEmbeddingHost} from './stage-embedding-host.mjs';
 
 export const SPEECH_AAR = 'android/local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar';
 export const SPEECH_MANIFEST = 'android/local-speech/runtime-manifest.json';
@@ -50,18 +51,37 @@ export function checkoutProblems(root) {
  * Prepared runtime inputs. `preparedSource` is the resolved prepared runtime
  * directory (sourceDirectory()). Distribution builds also need the staged runtime.
  */
-export function preparedRuntimeProblems(root, preparedSource, {allowUnpackagedRuntime = false, testMocks = false} = {}) {
+export function preparedRuntimeProblems(root, preparedSource, {allowUnpackagedRuntime = false, testMocks = false, embeddingHost = verifyEmbeddingHost} = {}) {
   const stamp = path.join(preparedSource, '.alpha-runtime-source.json');
   if (!fs.existsSync(stamp))
     return [`Prepared runtime source ${path.relative(root, preparedSource)} is missing (Gradle :app:stageLocalAgentSources reads it). Run: ${FULL_CHAIN} for distributable APKs, or npm run agent:prepare before npm run android:build -- --allow-unpackaged-runtime for developer APKs.`];
-  if (allowUnpackagedRuntime || testMocks) return [];
+  // Gradle's :app:verifyEmbeddingHost runs for every build. Only the explicit unpackaged
+  // developer build may omit the host, and only when no resident payload is staged at all.
+  const embedding = embeddingHostProblems(root, {allowUnpackagedRuntime, embeddingHost});
+  if (allowUnpackagedRuntime || testMocks) return embedding;
   const staged = path.join(root, 'android/app/src/main/assets/agent/alpha-source.json');
   const worker = path.join(root, 'android/app/src/main/assets/agent/workflow-worker/manifest.json');
   if (!fs.existsSync(staged) || !fs.existsSync(worker))
-    return [`The resident runtime is not staged, so release APKs would not be distributable. Run: npm run agent:build-workflow-worker && npm run agent:stage-android (or ${FULL_CHAIN}), or pass -- --allow-unpackaged-runtime for non-distributable developer APKs.`];
+    return [`The resident runtime is not staged, so release APKs would not be distributable. Run: npm run agent:build-workflow-worker && npm run agent:stage-android (or ${FULL_CHAIN}), or pass -- --allow-unpackaged-runtime for non-distributable developer APKs.`, ...embedding];
   if (fs.readFileSync(staged, 'utf8') !== fs.readFileSync(stamp, 'utf8'))
-    return [`The staged resident runtime was built from a different prepared source than ${path.relative(root, preparedSource)}. Run: npm run agent:build-workflow-worker && npm run agent:stage-android (or ${FULL_CHAIN}).`];
-  return [];
+    return [`The staged resident runtime was built from a different prepared source than ${path.relative(root, preparedSource)}. Run: npm run agent:build-workflow-worker && npm run agent:stage-android (or ${FULL_CHAIN}).`, ...embedding];
+  return embedding;
+}
+
+/**
+ * The reviewed ARM64 embedding host (android/embedding-host/qualified-host.json). No build
+ * step produces it: its libraries are staged from a qualification receipt, byte for byte.
+ */
+export function embeddingHostProblems(root, {allowUnpackagedRuntime = false, embeddingHost = verifyEmbeddingHost} = {}) {
+  try {
+    embeddingHost(root, {allowAbsentRuntime: allowUnpackagedRuntime});
+    return [];
+  } catch (error) {
+    const partial = allowUnpackagedRuntime
+      ? ' An unpackaged developer build must have no resident payload at all: remove android/app/src/main/assets/agent and android/app/src/main/jniLibs, or stage the host.'
+      : '';
+    return [`The qualified embedding host is not staged (${error.message}; Gradle :app:verifyEmbeddingHost rejects the build). ${FULL_CHAIN} does not produce it: stage the reviewed libraries with node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json> (see scripts/prepare-embedding-host.mjs).${partial}`];
+  }
 }
 
 export function formatProblems(problems) {
