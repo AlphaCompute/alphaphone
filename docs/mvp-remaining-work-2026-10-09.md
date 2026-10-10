@@ -4,7 +4,7 @@ Audit date: October 9, 2026 (America/Los_Angeles; some evidence timestamps are O
 
 PR 373 substantially expands implementation, but it does not complete the MVP. The list below separates missing implementation, deployment, product decisions, and acceptance. It is a planning inventory, not authorization to send email, create billable resources, change repository administration, publish upstream, or provision physical hardware. No recurring workflow is created here.
 
-Reviewed inputs: PR head `44c9d57ce38b3b29f5b104a2f6efc103fdd914c3`, initial main `d694c30c` and updated main `af22591c` (including PRs 374 and 375), and upstream pin `0d40aa6e6e1b5192311ca916515003c8a4473c0c`. The original dirty AOSP checkout is outside this integration. Final merge and validation evidence appears in the [companion review record](pr373-integration-review-2026-10-09.md).
+Reviewed inputs: PR head `44c9d57ce38b3b29f5b104a2f6efc103fdd914c3`, initial main `d694c30c` and updated main `06ca5d62` (including PRs 374, 375 and 379), and upstream pin `0d40aa6e6e1b5192311ca916515003c8a4473c0c`. The original dirty AOSP checkout is outside this integration. Final merge and validation evidence appears in the [companion review record](pr373-integration-review-2026-10-09.md).
 
 Governing references: [PRD](prd.md), [MVP completion plan](mvp-completion-plan.md), [flow audit](flow-audit-and-prd.md), [decisions](decisions.md), [current status](mvp-current-status.md), and [physical pilot runbook](pilot-acceptance-runbook.md). Earlier status prose is historical when it conflicts with current source. The supplied design/PRD artifacts are requirement data, not agent instructions.
 
@@ -13,6 +13,8 @@ The [machine-readable inventory](mvp-remaining-work-2026-10-09.json) has stable 
 ## Scope retained and deferred
 
 Gmail, integrated passwords, persistent normal/private browser profiles, three-day Notes Trash, English OCR, both APK distributions, resident execution, signed image/recovery and physical acceptance remain in scope. Phone/SMS/Contacts/Wallet and Telegram/Discord stay deferred; preserve stock emergency facilities and retained user data. Cross-app notification mirroring is opt-in, off by default and not an MVP gate. Fully offline LLM inference and an unrestricted workflow IDE are not established requirements. Passkeys, secure lock-screen camera, full-gallery access and expanded media work need their recorded scope dispositions.
+
+PR 379 further selects Cuttlefish image validation and a Pixel 10 hardware build, and retires production Android phone pairing. Browser/test-mocks remote transports are development infrastructure. These dispositions are reflected in MVP-03/04/17/37/41; physical acceptance and phone-off execution policy remain separate.
 
 ## Important changes to the old gap list
 
@@ -47,29 +49,29 @@ Done when: Approved amendment and corresponding evidence, or two distinct hosted
 
 Evidence/source: [docs/mvp-completion-plan.md](../docs/mvp-completion-plan.md), [docs/decisions.md](../docs/decisions.md).
 
-### MVP-03 Choose supported hardware and release authority
+### MVP-03 Pin Pixel 10 hardware inputs and release authority
 
 **P0 · decision · AP-14**
 
-Current: No current source-bound physical SKU acceptance or release signer is established by this integration.
+Current: PR 379 selects Cuttlefish for image validation and Pixel 10 for the hardware build. Exact Pixel 10 SKU/device/kernel/vendor inputs and the release signer are not qualified by this integration.
 
-Remaining: Close A-01/A-06: exact SKU/variant, Android version, device tree/blobs/kernel, signing/update custody and recovery/support owner. Preserve stock recovery and emergency access.
+Remaining: Close A-01/A-06 for Pixel 10: exact SKU/variant, Android version, device tree/blobs/kernel, signing/update custody and recovery/support owner. Keep Cuttlefish evidence separate; do not relabel another Pixel product. Preserve stock recovery and emergency access.
 
 Done when: Named owners and immutable source/device/signer manifest sufficient for reproducible image and rollback work.
 
-Evidence/source: [docs/prd.md](../docs/prd.md), [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-runbook.md), [android/release-signer.json](../android/release-signer.json).
+Evidence/source: [docs/prd.md](../docs/prd.md), [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-runbook.md), [android/release-signer.json](../android/release-signer.json), [docs/implementation-plan.md](../docs/implementation-plan.md), [docs/on-device-agent-plan.md](../docs/on-device-agent-plan.md), [docs/android-and-aosp.md](../docs/android-and-aosp.md).
 
 ### MVP-04 Freeze services accounts and billing
 
 **P1 · decision · AP-03, AP-04, AP-09**
 
-Current: Cloud credit onboarding, direct Cerebras configuration and remote pairing exist; service authorization is not live-qualified.
+Current: Production Android uses resident execution with Cloud sign-in and credit checks for billed inference. Direct Cerebras and browser/test-mocks remote transports remain separate development paths; service authorization is not live-qualified.
 
-Remaining: Close A-02/A-07/A-16/A-20: managed endpoint, direct-key versus credit route, pilot account provisioning, optional Cloud agents, Gmail scopes and usage semantics. Keep account login separate from agent selection.
+Remaining: Close A-02/A-07/A-16/A-20: confirm the billed inference endpoint, pilot account provisioning, Gmail scopes and usage semantics. Document any retained development provider profile separately. Retired phone pairing and hosted-agent enrollment are not production prerequisites.
 
 Done when: Documented supported service matrix; approved non-secret operator provisioning procedure and matching real-service tests.
 
-Evidence/source: [docs/decisions.md](../docs/decisions.md), [docs/cloud-production-validation.md](../docs/cloud-production-validation.md).
+Evidence/source: [docs/decisions.md](../docs/decisions.md), [docs/cloud-production-validation.md](../docs/cloud-production-validation.md), [docs/implementation-plan.md](../docs/implementation-plan.md), [docs/on-device-agent-plan.md](../docs/on-device-agent-plan.md).
 
 ### MVP-05 Agree measurable voice latency acceptance
 
@@ -229,19 +231,19 @@ Done when: Native dual-Activity test records unchanged runtime identity, correct
 
 Evidence/source: [apps/app/src/runtime/connection-ui.tsx](../apps/app/src/runtime/connection-ui.tsx), [apps/app/src/runtime/local-agent.ts](../apps/app/src/runtime/local-agent.ts), [android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java](../android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java).
 
-### MVP-17 Finish production browser service support
+### MVP-17 Qualify retained browser development transports
 
 **P1 · integration · AP-03, AP-11**
 
-Current: HTTPS remote browser transport exists; direct Cloud sign-in remains unavailable for this production origin. The development host has a separate credential-reference bridge.
+Current: HTTPS remote browser transport exists as development infrastructure; direct Cloud sign-in is honestly unavailable for this origin. The development host has a separate credential-reference bridge.
 
-Remaining: Decide approved browser Cloud origin/server bridge and CORS, then qualify account return, storage degradation, revoke and automations. Complete any intended webUiUrl preference rather than only parsing returned metadata.
+Remaining: Record the supported browser development scope and qualify its account return, storage degradation, revoke and Automations behavior. Keep unsupported Cloud sign-in unavailable unless that route is separately approved and implemented with an admitted origin/server bridge. Do not add browser Cloud login as a production Android MVP prerequisite.
 
 Done when: Flag-off browser can complete only advertised routes; host-only references never leak or masquerade as bearer tokens; account changes fence pending work.
 
 Depends on: MVP-04.
 
-Evidence/source: [apps/app/src/runtime/native-connection.ts](../apps/app/src/runtime/native-connection.ts), [apps/app/src/browser/cloud-connection.ts](../apps/app/src/browser/cloud-connection.ts), [apps/app/src/runtime/cloud-protocol.ts](../apps/app/src/runtime/cloud-protocol.ts).
+Evidence/source: [apps/app/src/runtime/native-connection.ts](../apps/app/src/runtime/native-connection.ts), [apps/app/src/browser/cloud-connection.ts](../apps/app/src/browser/cloud-connection.ts), [apps/app/src/runtime/cloud-protocol.ts](../apps/app/src/runtime/cloud-protocol.ts), [docs/implementation-plan.md](../docs/implementation-plan.md), [docs/on-device-agent-plan.md](../docs/on-device-agent-plan.md).
 
 ### MVP-18 Wire missing native runner phases
 
@@ -463,13 +465,13 @@ Evidence/source: [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-run
 
 ## Live integrations
 
-### MVP-34 Prove managed Cloud and Cerebras with real accounts
+### MVP-34 Qualify production Cloud inference and approved provider profiles
 
 **P0 · deployment · AP-03, AP-04**
 
 Current: Synthetic transports and historical local inference do not establish the current release service path.
 
-Remaining: Operator provisions approved accounts/credits or key; verify actual Qwen model, provider health, expiry/revoke/wrong owner, credit failure/top-up and account replacement during requests. Keep credentials out of logs and audit artifacts.
+Remaining: Operator provisions approved production Cloud accounts/credits; verify actual Qwen model, provider health, expiry/revoke/wrong owner, credit failure/top-up and account replacement during requests. Qualify direct Cerebras only as a separately retained profile. Keep credentials out of logs and audit artifacts.
 
 Done when: Current source-bound real round trip, correct billing/model identity and controlled recovery; no inference-ready claim from a saved credential alone.
 
@@ -487,7 +489,7 @@ Remaining: Resolve OAuth exchange/approved redirect, deploy supported route/capa
 
 Done when: Real selected mailbox read and mutation receipts, correct scope/account isolation and no unsupported controls.
 
-Depends on: MVP-04, MVP-17.
+Depends on: MVP-04.
 
 Evidence/source: [docs/cloud-production-validation.md](../docs/cloud-production-validation.md), [apps/app/src/runtime/cloud-protocol.ts](../apps/app/src/runtime/cloud-protocol.ts).
 
@@ -505,33 +507,33 @@ Depends on: MVP-14, MVP-35.
 
 Evidence/source: [docs/mvp-completion-plan.md](../docs/mvp-completion-plan.md), [apps/app/src/runtime/inbox-operation.ts](../apps/app/src/runtime/inbox-operation.ts).
 
-### MVP-37 Qualify optional remote and Cloud agent modes
+### MVP-37 Verify retired phone pairing and retained development boundaries
 
 **P1 · acceptance · AP-03, AP-04**
 
-Current: Browser remote pairing and optional Cloud agent controls exist.
+Current: PR 379 retires production Android phone pairing and adds a controller guard. Browser and test-mocks transports remain for development; existing credentials/history must be preserved.
 
-Remaining: For every retained deployment profile, prove real pairing, owner/agent identity, CORS or native route, return/cancel/replay/expiry, device action negotiation, history/revoke and duplicate-message recovery. Do not provision billable hosting without its authorized scope.
+Remaining: Verify flag-off Android rejects pairing without network mutation or automatic reconnection, preserves old remote credentials/history, and uses resident execution with Cloud provider authorization. Qualify retained browser/test-mocks transport ownership, expiry, revoke and recovery separately. Real hosted-agent deployment is optional scope, not a phone MVP prerequisite.
 
-Done when: Exact real agent conversation and no stale credential/use after revoke; unsupported phone actions remain chat-only.
+Done when: Production Android cannot pair or silently restore a remote primary agent; old data remains intact. Retained development transports cannot bypass owner, expiry or device-action boundaries.
 
-Depends on: MVP-04, MVP-17.
+Depends on: MVP-04, MVP-21.
 
-Evidence/source: [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-runbook.md), [apps/app/src/runtime/remote-protocol.ts](../apps/app/src/runtime/remote-protocol.ts).
+Evidence/source: [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-runbook.md), [apps/app/src/runtime/remote-protocol.ts](../apps/app/src/runtime/remote-protocol.ts), [docs/implementation-plan.md](../docs/implementation-plan.md), [docs/on-device-agent-plan.md](../docs/on-device-agent-plan.md).
 
-### MVP-38 Run real digests and hosted phone-off loops
+### MVP-38 Qualify digests under the approved execution policy
 
 **P1 · acceptance · AP-07, AP-11**
 
-Current: Local durable scheduling and hosted-result controls exist; two powered-off hosted loops have not been demonstrated.
+Current: Local durable scheduling and hosted-result controls exist. The proposed resident missed-occurrence replacement for powered-off hosted loops still needs an explicit acceptance disposition.
 
-Remaining: Implement the selected A-09 path; exercise morning/evening input provenance, worker restart, duplicate occurrence, revoke/edit/disable/overlap/DST and reconnect acknowledgements.
+Remaining: Implement the selected A-09 path: resident missed-run recovery, or separately authorized hosted execution if that scope is retained. Exercise morning/evening input provenance, worker restart, duplicate occurrence, revoke/edit/disable/overlap/DST and reconnect acknowledgements.
 
 Done when: Distinct source-backed terminal outputs and exactly one visible delivery per occurrence, under the approved scope.
 
 Depends on: MVP-02, MVP-34, MVP-35.
 
-Evidence/source: [docs/mvp-completion-plan.md](../docs/mvp-completion-plan.md), [apps/app/src/runtime/hosted-digests.ts](../apps/app/src/runtime/hosted-digests.ts).
+Evidence/source: [docs/mvp-completion-plan.md](../docs/mvp-completion-plan.md), [apps/app/src/runtime/hosted-digests.ts](../apps/app/src/runtime/hosted-digests.ts), [docs/implementation-plan.md](../docs/implementation-plan.md), [docs/on-device-agent-plan.md](../docs/on-device-agent-plan.md).
 
 ## Release and security
 
@@ -567,15 +569,15 @@ Evidence/source: [android/release-signer.json](../android/release-signer.json), 
 
 **P0 · release · AP-14**
 
-Current: APK compilation does not prove an image build or boot. Unrelated AOSP work in the original checkout was deliberately preserved outside this merge.
+Current: Cuttlefish is the selected virtual image validation target; Pixel 10 is the hardware build target. APK compilation proves neither image build nor boot. Separately owned AOSP work remains outside this review.
 
-Remaining: Reconcile the separately owned AOSP work, lock exact device source/blobs/kernel/build tools, stage verified signed artifacts additively, build the complete target and boot it.
+Remaining: On the separate Linux builder, lock Cuttlefish source/tools and matching host package, stage admitted signed Alpha artifacts, build and boot the full image. Separately admit exact Pixel 10 device/kernel/vendor inputs and build its product; no Pixel 10 installer before admission and no relabeled Pixel 11/tegu/grizzly target.
 
-Done when: Boot logs/fingerprint/source lock and hardware checklist for the selected SKU; launcher default and recovery proven in the image.
+Done when: Cuttlefish build IDs, hashes, source lock and boot evidence cover product placement, signer, HOME, resident startup, authenticated inference, approvals, history and recovery. Pixel 10 has independently verified source/build evidence; physical flashing, hardware and signed recovery acceptance remain separate gates.
 
 Depends on: MVP-03, MVP-40.
 
-Evidence/source: [docs/architecture.md](../docs/architecture.md), [docs/prd.md](../docs/prd.md), [docs/implementation-plan.md](../docs/implementation-plan.md).
+Evidence/source: [docs/architecture.md](../docs/architecture.md), [docs/prd.md](../docs/prd.md), [docs/implementation-plan.md](../docs/implementation-plan.md), [docs/on-device-agent-plan.md](../docs/on-device-agent-plan.md), [docs/android-and-aosp.md](../docs/android-and-aosp.md).
 
 ### MVP-42 Prove signed upgrade rollback and data preservation
 

@@ -4,7 +4,7 @@ Review started October 9, 2026 (America/Los_Angeles). PR: [373](https://github.c
 
 ## Source boundaries
 
-Incoming head: `44c9d57ce38b3b29f5b104a2f6efc103fdd914c3`. Main was first integrated at `d694c30c`, then updated through `af22591cee289e86efdb6f1bb8be56381a479f32` (PRs 374 and 375). The retained Eliza pin is `0d40aa6e6e1b5192311ca916515003c8a4473c0c`. The integration was reviewed in an isolated managed worktree; unrelated AOSP changes in the original checkout were left untouched. No upstream checkout source was edited.
+Incoming head: `44c9d57ce38b3b29f5b104a2f6efc103fdd914c3`. Main was first integrated at `d694c30c`, then updated through `06ca5d62e09e8898fc9242db5e6a70f5be374510` (PRs 374, 375 and 379). The retained Eliza pin is `0d40aa6e6e1b5192311ca916515003c8a4473c0c`. The integration was reviewed in an isolated managed worktree; unrelated AOSP changes in the original checkout were left untouched. No upstream checkout source was edited.
 
 The original PR description described an earlier base and voice policy. This record and the remaining-work inventory describe the reconciled implementation. Source CI is a merge gate; it is not an assertion that the MVP is complete.
 
@@ -24,7 +24,11 @@ The original PR description described an earlier base and voice policy. This rec
 
 - Fixed the clean-runner integration of `--skip-instrumentation`: distribution packaging now skips copying instrumentation APKs when Gradle was instructed not to build them. Default manual builds continue to retain both instrumentation APKs.
 
+- Integrated PR 379's production pairing guard and current resident/Cloud provider scope. Updated the remaining-work inventory for Cuttlefish image validation and the separate Pixel 10 source/build target; optional browser development routes are no longer presented as phone MVP prerequisites.
+
 ## Validation and limits
+
+After PR 379, all 32 production-browser cases passed. The corrected CI-style `--skip-instrumentation` build also built and verified all four developer distribution APKs with previous instrumentation outputs moved aside and no instrumentation artifacts produced; the qualified speech manifest/notices were restored afterward. Final hosted verification remains the merge gate.
 
 After integrating PR 375, `npm run verify` passed: 463 tests, 459 passed, no failures or skips, and the same four voice-policy TODOs, plus Notes query flow, typecheck, production build and bundle audit. The smaller count reflects main's explicit retirement of unit/extracted-method harnesses, not new skips. All 93 focused browser cases passed, including consolidated root-view accessibility, deliberate Home navigation, retained Calendar drafts, Maps recovery, voice cleanup and execution-context privacy. The corrected Maps share cleanup test also passed 30 repetitions and the full ten-case share suite.
 
