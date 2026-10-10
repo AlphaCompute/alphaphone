@@ -4,7 +4,7 @@
   "date": "2026-10-09",
   "pull_request": "https://github.com/AlphaCompute/alphaphone/pull/373",
   "reviewed_pr_head": "44c9d57ce38b3b29f5b104a2f6efc103fdd914c3",
-  "integrated_main": "af22591cee289e86efdb6f1bb8be56381a479f32",
+  "integrated_main": "06ca5d62e09e8898fc9242db5e6a70f5be374510",
   "upstream_pin": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
   "status": "53-item source audit complete; candidate validation recorded in companion review",
   "priorities": {
@@ -59,15 +59,18 @@
       "requirements": [
         "AP-14"
       ],
-      "title": "Choose supported hardware and release authority",
-      "current": "No current source-bound physical SKU acceptance or release signer is established by this integration.",
-      "remaining": "Close A-01/A-06: exact SKU/variant, Android version, device tree/blobs/kernel, signing/update custody and recovery/support owner. Preserve stock recovery and emergency access.",
+      "title": "Pin Pixel 10 hardware inputs and release authority",
+      "current": "PR 379 selects Cuttlefish for image validation and Pixel 10 for the hardware build. Exact Pixel 10 SKU/device/kernel/vendor inputs and the release signer are not qualified by this integration.",
+      "remaining": "Close A-01/A-06 for Pixel 10: exact SKU/variant, Android version, device tree/blobs/kernel, signing/update custody and recovery/support owner. Keep Cuttlefish evidence separate; do not relabel another Pixel product. Preserve stock recovery and emergency access.",
       "acceptance": "Named owners and immutable source/device/signer manifest sufficient for reproducible image and rollback work.",
       "depends_on": [],
       "sources": [
         "docs/prd.md",
         "docs/pilot-acceptance-runbook.md",
-        "android/release-signer.json"
+        "android/release-signer.json",
+        "docs/implementation-plan.md",
+        "docs/on-device-agent-plan.md",
+        "docs/android-and-aosp.md"
       ]
     },
     {
@@ -81,13 +84,15 @@
         "AP-09"
       ],
       "title": "Freeze services accounts and billing",
-      "current": "Cloud credit onboarding, direct Cerebras configuration and remote pairing exist; service authorization is not live-qualified.",
-      "remaining": "Close A-02/A-07/A-16/A-20: managed endpoint, direct-key versus credit route, pilot account provisioning, optional Cloud agents, Gmail scopes and usage semantics. Keep account login separate from agent selection.",
+      "current": "Production Android uses resident execution with Cloud sign-in and credit checks for billed inference. Direct Cerebras and browser/test-mocks remote transports remain separate development paths; service authorization is not live-qualified.",
+      "remaining": "Close A-02/A-07/A-16/A-20: confirm the billed inference endpoint, pilot account provisioning, Gmail scopes and usage semantics. Document any retained development provider profile separately. Retired phone pairing and hosted-agent enrollment are not production prerequisites.",
       "acceptance": "Documented supported service matrix; approved non-secret operator provisioning procedure and matching real-service tests.",
       "depends_on": [],
       "sources": [
         "docs/decisions.md",
-        "docs/cloud-production-validation.md"
+        "docs/cloud-production-validation.md",
+        "docs/implementation-plan.md",
+        "docs/on-device-agent-plan.md"
       ]
     },
     {
@@ -350,9 +355,9 @@
         "AP-03",
         "AP-11"
       ],
-      "title": "Finish production browser service support",
-      "current": "HTTPS remote browser transport exists; direct Cloud sign-in remains unavailable for this production origin. The development host has a separate credential-reference bridge.",
-      "remaining": "Decide approved browser Cloud origin/server bridge and CORS, then qualify account return, storage degradation, revoke and automations. Complete any intended webUiUrl preference rather than only parsing returned metadata.",
+      "title": "Qualify retained browser development transports",
+      "current": "HTTPS remote browser transport exists as development infrastructure; direct Cloud sign-in is honestly unavailable for this origin. The development host has a separate credential-reference bridge.",
+      "remaining": "Record the supported browser development scope and qualify its account return, storage degradation, revoke and Automations behavior. Keep unsupported Cloud sign-in unavailable unless that route is separately approved and implemented with an admitted origin/server bridge. Do not add browser Cloud login as a production Android MVP prerequisite.",
       "acceptance": "Flag-off browser can complete only advertised routes; host-only references never leak or masquerade as bearer tokens; account changes fence pending work.",
       "depends_on": [
         "MVP-04"
@@ -360,7 +365,9 @@
       "sources": [
         "apps/app/src/runtime/native-connection.ts",
         "apps/app/src/browser/cloud-connection.ts",
-        "apps/app/src/runtime/cloud-protocol.ts"
+        "apps/app/src/runtime/cloud-protocol.ts",
+        "docs/implementation-plan.md",
+        "docs/on-device-agent-plan.md"
       ]
     },
     {
@@ -771,17 +778,19 @@
         "AP-03",
         "AP-04"
       ],
-      "title": "Qualify optional remote and Cloud agent modes",
-      "current": "Browser remote pairing and optional Cloud agent controls exist.",
-      "remaining": "For every retained deployment profile, prove real pairing, owner/agent identity, CORS or native route, return/cancel/replay/expiry, device action negotiation, history/revoke and duplicate-message recovery. Do not provision billable hosting without its authorized scope.",
-      "acceptance": "Exact real agent conversation and no stale credential/use after revoke; unsupported phone actions remain chat-only.",
+      "title": "Verify retired phone pairing and retained development boundaries",
+      "current": "PR 379 retires production Android phone pairing and adds a controller guard. Browser and test-mocks transports remain for development; existing credentials/history must be preserved.",
+      "remaining": "Verify flag-off Android rejects pairing without network mutation or automatic reconnection, preserves old remote credentials/history, and uses resident execution with Cloud provider authorization. Qualify retained browser/test-mocks transport ownership, expiry, revoke and recovery separately. Real hosted-agent deployment is optional scope, not a phone MVP prerequisite.",
+      "acceptance": "Production Android cannot pair or silently restore a remote primary agent; old data remains intact. Retained development transports cannot bypass owner, expiry or device-action boundaries.",
       "depends_on": [
         "MVP-04",
-        "MVP-17"
+        "MVP-21"
       ],
       "sources": [
         "docs/pilot-acceptance-runbook.md",
-        "apps/app/src/runtime/remote-protocol.ts"
+        "apps/app/src/runtime/remote-protocol.ts",
+        "docs/implementation-plan.md",
+        "docs/on-device-agent-plan.md"
       ]
     },
     {
@@ -793,9 +802,9 @@
         "AP-07",
         "AP-11"
       ],
-      "title": "Run real digests and hosted phone-off loops",
-      "current": "Local durable scheduling and hosted-result controls exist; two powered-off hosted loops have not been demonstrated.",
-      "remaining": "Implement the selected A-09 path; exercise morning/evening input provenance, worker restart, duplicate occurrence, revoke/edit/disable/overlap/DST and reconnect acknowledgements.",
+      "title": "Qualify digests under the approved execution policy",
+      "current": "Local durable scheduling and hosted-result controls exist. The proposed resident missed-occurrence replacement for powered-off hosted loops still needs an explicit acceptance disposition.",
+      "remaining": "Implement the selected A-09 path: resident missed-run recovery, or separately authorized hosted execution if that scope is retained. Exercise morning/evening input provenance, worker restart, duplicate occurrence, revoke/edit/disable/overlap/DST and reconnect acknowledgements.",
       "acceptance": "Distinct source-backed terminal outputs and exactly one visible delivery per occurrence, under the approved scope.",
       "depends_on": [
         "MVP-02",
@@ -804,7 +813,9 @@
       ],
       "sources": [
         "docs/mvp-completion-plan.md",
-        "apps/app/src/runtime/hosted-digests.ts"
+        "apps/app/src/runtime/hosted-digests.ts",
+        "docs/implementation-plan.md",
+        "docs/on-device-agent-plan.md"
       ]
     },
     {
@@ -860,9 +871,9 @@
         "AP-14"
       ],
       "title": "Build and boot the full AOSP product",
-      "current": "APK compilation does not prove an image build or boot. Unrelated AOSP work in the original checkout was deliberately preserved outside this merge.",
-      "remaining": "Reconcile the separately owned AOSP work, lock exact device source/blobs/kernel/build tools, stage verified signed artifacts additively, build the complete target and boot it.",
-      "acceptance": "Boot logs/fingerprint/source lock and hardware checklist for the selected SKU; launcher default and recovery proven in the image.",
+      "current": "Cuttlefish is the selected virtual image validation target; Pixel 10 is the hardware build target. APK compilation proves neither image build nor boot. Separately owned AOSP work remains outside this review.",
+      "remaining": "On the separate Linux builder, lock Cuttlefish source/tools and matching host package, stage admitted signed Alpha artifacts, build and boot the full image. Separately admit exact Pixel 10 device/kernel/vendor inputs and build its product; no Pixel 10 installer before admission and no relabeled Pixel 11/tegu/grizzly target.",
+      "acceptance": "Cuttlefish build IDs, hashes, source lock and boot evidence cover product placement, signer, HOME, resident startup, authenticated inference, approvals, history and recovery. Pixel 10 has independently verified source/build evidence; physical flashing, hardware and signed recovery acceptance remain separate gates.",
       "depends_on": [
         "MVP-03",
         "MVP-40"
@@ -870,7 +881,9 @@
       "sources": [
         "docs/architecture.md",
         "docs/prd.md",
-        "docs/implementation-plan.md"
+        "docs/implementation-plan.md",
+        "docs/on-device-agent-plan.md",
+        "docs/android-and-aosp.md"
       ]
     },
     {

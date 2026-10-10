@@ -2,9 +2,9 @@
 
 ## Accepted direction
 
-The user has replaced the Nitro/TEE agent-hosting direction with an agent running on the Android device. This supersedes the earlier requirement that the agent run only in hosted Cloud infrastructure. Nitro provisioning, enclave measurement and KMS admission are no longer prerequisites for the primary agent path. Existing remote services and evidence are retained; this decision does not authorize shutting them down or migrating accounts destructively.
+The user has replaced the Nitro/TEE agent-hosting direction with an agent running on the Android device. This supersedes the earlier requirement that the agent run only in hosted Cloud infrastructure. Nitro provisioning, enclave measurement, KMS admission and phone pairing are no longer prerequisites for the primary agent path. Production Android admits only the resident agent, with Cloud sign-in for billed inference. Existing remote credentials and history remain preserved; development transports are separate. Existing remote services and evidence are retained; this decision does not authorize shutting them down or migrating accounts destructively.
 
-The target puts orchestration, conversation state, tool policy, approvals, receipts and scheduling on the phone. The Alpha renderer remains separate from the runtime and keeps its existing native selected-content boundaries. Cloud login must not be required merely to start the local agent. External accounts still require their own consent, and external inference still requires an explicitly configured provider.
+The target puts orchestration, conversation state, tool policy, approvals, receipts and scheduling on the phone. The Alpha renderer remains separate from the runtime and keeps its existing native selected-content boundaries. Production onboarding verifies Cloud sign-in and credits before starting the billed-inference profile. This is provider authorization, not enrollment with a remotely hosted agent. External accounts still require their own consent.
 
 **Execution and inference remain separate.** The implemented first slice runs the agent locally with an explicitly configured hosted Cerebras model, reusing the existing provider integration. This describes the current implementation, not acceptance of a fully offline model. It must disclose that selected prompt/context leaves the device. A fully local language model needs a separately qualified engine/model, memory and thermal measurements, and offline task-quality evidence. On-device speech remains required either way. This document does not choose or download a model.
 
@@ -35,7 +35,7 @@ Alpha now has a native local-agent bridge, generated product-namespaced lifecycl
 | Previous gate | New disposition |
 | --- | --- |
 | Nitro deployment, PCR/KMS identity and enclave rollback | Superseded for the primary on-device agent; preserve historical records. Replace with signed runtime artifacts, process identity, native IPC isolation and app/runtime update recovery. |
-| Cloud owner enrollment before primary chat | Optional remote path; local setup needs device-local owner/agent initialization and provider setup if hosted inference is used. |
+| Cloud owner enrollment before primary chat | Remote agent enrollment is retired. Production Android uses device-local owner/agent initialization and Cloud sign-in for billed inference. |
 | Two remote loops executing while the phone is powered off | Incompatible with a device-only executor. Proposed replacement: durable local schedules with explicit missed-occurrence policy and deduplicated catch-up after startup. This is an acceptance change requiring explicit agreement, not an equivalent pass. An optional remote executor would be a separate feature. |
 | No local-runtime payloads | Superseded for the agent runtime. Local language-model payloads remain undecided. |
 | Native tools, provider consent, speech, signed device images and user acceptance | Still required; moving orchestration does not itself complete them. |
