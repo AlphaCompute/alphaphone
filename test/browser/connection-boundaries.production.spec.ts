@@ -267,6 +267,8 @@ for (const saved of [
   { name: 'a saved Cloud service', selection: { kind: 'none' }, service: 'production' as string | null },
   // Round 3 already removed the marker and selection here; the key it left behind is removed on the next start.
   { name: 'a Cloud key left by an earlier sign-out', selection: { kind: 'none' }, service: null as string | null },
+  // Round 4: an offline choice returned before the sign-out, so its Cloud marker and key stayed for good.
+  { name: 'a saved Cloud service behind an offline choice', selection: { kind: 'offline' }, service: 'production' as string | null, offline: true },
 ]) {
   test(`the web build's forced sign-out removes the stored Cloud key and nothing else: ${saved.name}`, async ({ page }) => {
     const foreign = await fenceNetwork(page);
@@ -290,7 +292,9 @@ for (const saved of [
     expect(Object.keys(before).sort()).toEqual(['cloud:production', ...KEPT_SLOTS].sort());
     await page.goto('/');
     const chooser = page.locator('.alpha-connection');
-    await expect(chooser.getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
+    const offline = 'offline' in saved;
+    // The offline choice is kept and opens no chooser; every other case requires a choice.
+    if (!offline) await expect(chooser.getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
     await expect.poll(async () => Object.keys((await slotRecords(page))!).sort()).toEqual([...KEPT_SLOTS].sort());
     // Remote-agent, device and other slots keep their exact bytes; notes and drafts are untouched.
     const { 'cloud:production': removed, ...kept } = before;
@@ -298,11 +302,12 @@ for (const saved of [
     expect(await slotRecords(page)).toEqual(kept);
     expect(await page.evaluate(keys => Object.fromEntries(keys.map(key => [key, localStorage.getItem(key)])), Object.keys(LOCAL_DATA))).toEqual(LOCAL_DATA);
     expect(await page.evaluate(key => localStorage.getItem(key), CLOUD_SERVICE)).toBeNull();
-    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual({ kind: 'none' });
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual(offline ? { kind: 'offline' } : { kind: 'none' });
     await expect(chooser.getByText(/Connected ·/)).toHaveCount(0);
     // A later start changes nothing further, and no request left the page at any point.
     await page.reload();
-    await expect(chooser.getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
+    if (offline) await expect(chooser).toHaveCount(0);
+    else await expect(chooser.getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
     expect(await slotRecords(page)).toEqual(kept);
     expect(foreign).toEqual([]);
   });

@@ -935,6 +935,10 @@ export const connectionController = {
           }
         }catch(error){if(canRestore())await work('Checking your Cloud account…',async()=>{throw error;});return;}
       }
+      // A build that cannot use Eliza Cloud signs a saved Cloud service out on every start, whatever is selected
+      // (an offline choice included): the marker and, best effort and unawaited, the stored Cloud key. Only that
+      // slot; it is not read. No request is made.
+      if (webCloudUnavailable()) { try { localStorage.removeItem(CLOUD_SERVICE); } catch { /* Nothing is restored either way. */ } void removeStoredCloudCredential('production').catch(() => {}); }
       if (!testMocksEnabled && migrateLegacyMock()) return;
       if (testMocksEnabled && ((!isAndroid && !browserLocalAgentEnabled) || new URLSearchParams(location.search).get('mode') === 'mock')) return;
       if (!testMocksEnabled && !isAndroid && !browserLocalAgentEnabled) {
@@ -960,10 +964,7 @@ export const connectionController = {
       if (saved?.kind === 'mock') { const url = new URL(location.href); url.searchParams.set('mode', 'mock'); location.replace(url.href); return; }
       await work('Restoring your connection…', async signal => {
         if (webCloudUnavailable()) {
-          // A saved Cloud service or Cloud agent is signed out here without a request or a stored-token read.
-          try { localStorage.removeItem(CLOUD_SERVICE); } catch { /* Nothing is restored either way. */ }
-          // Best effort, not awaited: the stored Cloud key goes too. Only that slot; it is not read.
-          void removeStoredCloudCredential('production').catch(() => {});
+          // A saved Cloud agent is not restored: the service was signed out above without a request or a stored-token read.
           if (saved?.kind === 'cloud') { try { save({ kind: 'none' }); } catch { /* The chooser still requires a choice. */ } update({ open: true, message: '', error: WEB_CLOUD_UNAVAILABLE }); return; }
         }
         const environment = localStorage.getItem(CLOUD_SERVICE);
