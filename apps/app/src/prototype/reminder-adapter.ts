@@ -5,6 +5,7 @@ import {reminderCreations,retainReminderCreation,discardUndispatchedCreation,che
 import { DailyApps, type Reminder } from '../daily';
 import { pendingReminderDeletions,retainReminderDeletion,acknowledgeReminderDeletion,reconcileReminderDeletions,discardUndispatchedReminderDeletion } from '../runtime/reminder-deletions';
 import { Capacitor } from '@capacitor/core';
+import {rememberNoteOrigin,forgetNoteOrigin} from './note-origin-adapter';
 type Bag = any;
 type TodoBridge={saveTodo(options:{id:string;title:string;body?:string}):Promise<{status:string;id:string;message?:string}>;todoDecision(options:{target:NonNullable<Reminder['target']>;action:'done'|'reopen'|'cancel'}):Promise<{status:string;id:string}>};
 const todoBridge=()=>DailyApps as unknown as TodoBridge;
@@ -287,6 +288,8 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
             matchesAttempt=!!retained&&JSON.stringify(retained.request)===JSON.stringify(request);
             const found=await checkReminderCreation(id);
             if(found!=='found')throw Error('Creation outcome unknown');
+            // Only the reminder this exact reviewed draft created is linked to the note it came from.
+            if(current.origin&&matchesAttempt&&!await rememberNoteOrigin('reminder',id,current.origin)&&owner===createOwner&&createOwner.live)api.toast('Reminder saved. The link to its note could not be saved.');
             if(active()){createOwner.calendarFormCommitted?.(api.get('calendar').form);api.set({form:null});}
             if(owner===createOwner&&createOwner.live){await createOwner.refreshReminders();api.toast(!matchesAttempt?'The previous reminder was found. This edited draft was not saved. Close it to start a separate reminder.':notificationsBlocked?'Reminder saved; notifications are disabled. Enable notifications, then review its time.':scheduled?(alertMinutes===null?'Reminder saved with no alert.':'Reminder scheduled · approximate delivery'):alertMinutes===null?'The saved reminder was found. No alert is enabled.':'The saved reminder was found. Delivery is not verified.');}
           }catch{
@@ -442,6 +445,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
           else try{dispatched=true;result=await DailyApps.operateReminder(input);}catch{result=await DailyApps.reminderOperationReceipt(input);}
           if(result.status!=='succeeded'||!result.result)throw Error('Unconfirmed reminder cancellation');
           await acknowledgeReminderDeletion(input,result.result);
+          void forgetNoteOrigin('reminder',event.alphaReminderId);
           if(stillSelected())api.set({open:null});
           if(owner===deleteOwner&&deleteOwner.live){await deleteOwner.refreshReminders();api.toast('Reminder cancelled');}
         }catch{

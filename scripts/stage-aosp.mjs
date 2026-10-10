@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { androidEnv, tool } from "./toolchain.mjs";
 import { clockProductRequirement } from "./aosp-clock-contract.mjs";
 import { provisioningComponents, writeProvisioningOverlay } from "./aosp-provisioning-overlay.mjs";
+import { releaseBlockers } from "./release-blockers.mjs";
 
 /**
  * Refuse inputs that must never reach an image: anything from the separate
@@ -32,10 +33,27 @@ function admitApk({ apk, hash, development, manifestFile }) {
   const entry = manifest?.results?.find(row => row.sha256 === hash) ?? null;
   if (entry && (manifest.testMocks === true || entry.testMocks === true))
     throw new Error(`Refusing ${apk}: ${manifestFile} records it as a test-mocks build.`);
-  if (entry?.distributable === false)
-    throw new Error(`Refusing ${apk}: ${manifestFile} records this release as not distributable (runtime ${entry.runtime ?? "unknown"}, ${entry.signed ? "signed" : "unsigned"}).`);
-  if (!development && !(entry && entry.mode === "release" && entry.distributable === true))
+  // Every unresolved blocker verify-apks recorded for a release (signing, runtime, speech,
+  // font licence, test mocks) is named; a release is never staged while one remains.
+  const blockers = entry?.mode === "release" || entry?.distributable !== undefined
+    ? releaseBlockers(entry, { manifestTestMocks: manifest.testMocks }) : [];
+  if (entry && (entry.distributable === false || (entry.mode === "release" && blockers.length)))
+    throw new Error(`Refusing ${apk}: ${manifestFile} records this release as not distributable (runtime ${entry.runtime ?? "unknown"}, ${entry.signed ? "signed" : "unsigned"}). Unresolved blockers:\n${blockers.map(item => `  - ${item}`).join("\n")}`);
+  if (!development && !(entry && entry.mode === "release" && entry.distributable === true && blockers.length === 0))
     throw new Error(`Production staging requires a release APK that verify-apks recorded as distributable in ${manifestFile}.`);
+  // --development is for debug builds. A release reaches an image only through its distributable
+  // manifest row (checked above), so an APK without that row must itself be a debuggable build:
+  // a missing manifest, a row for other bytes or a row relabelled "debug" admits no release.
+  if (development && entry?.mode !== "release") {
+    let debuggable;
+    try {
+      debuggable = /android:debuggable[^\n]*0xffffffff/.test(execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env: androidEnv(), maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "ignore"] }));
+    } catch {
+      throw new Error(`Refusing ${apk}: --development stages debug builds only, and this APK's build type could not be read.`);
+    }
+    if (!debuggable)
+      throw new Error(`Refusing ${apk}: --development stages debug builds only. This is a release build that ${manifestFile} does not record as distributable.`);
+  }
 }
 const args = process.argv.slice(2);
 const get = (key) => {

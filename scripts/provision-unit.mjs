@@ -6,9 +6,11 @@
  *     --apk-manifest artifacts/apk-manifest.json [--variant launcher|standalone] \
  *     [--build release|debug] [--output test-results/pilot-units] [--home-wait-ms 0]
  *
- * Steps: admit the APK from the verify-apks manifest (a release must be signed by
- * android/release-signer.json's certificate and advance its versionCode; --build
- * debug is for emulator rehearsal only and is recorded as such), refuse a unit that
+ * Steps: admit the APK from the verify-apks manifest (a release must be distributable:
+ * signed by android/release-signer.json's certificate with an advancing versionCode,
+ * flag-off, with the packaged resident runtime, qualified speech and no unresolved
+ * licence blocker; anything else is refused with each blocker named. --build debug is
+ * for emulator rehearsal only, is refused on a phone and is recorded as such), refuse a unit that
  * already has the package (use scripts/pilot-update.mjs), install, check the
  * installed bytes and versionCode, open the default-HOME chooser for the operator
  * (the choice is the operator's; it is never automated), read the HOME role holder
@@ -23,7 +25,10 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { signerDigest } from "./apk.mjs";
 import { readReleaseSigner, releaseAdmission } from "./build-android.mjs";
+import { releaseBlockers } from "./release-blockers.mjs";
+import { androidEnv, tool } from "./toolchain.mjs";
 
 export const PACKAGE = "ai.elizaresearch.alphaphone";
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -52,9 +57,9 @@ export function parseUnitArgs(argv, { requireAlias = true } = {}) {
 }
 
 /**
- * Pick and admit the APK row from a verify-apks manifest. A release must be
- * distributable-signed (signed:true, signer matches the committed descriptor, versionCode
- * advances); a debug row is accepted only for --build debug and is labelled rehearsal.
+ * Pick and admit the APK row from a verify-apks manifest. A release must be distributable
+ * with no named blocker (scripts/release-blockers.mjs) against the committed signer
+ * descriptor; a debug row is accepted only for --build debug and is labelled rehearsal.
  */
 export function admitUnitApk(manifestFile, { variant, build }, { descriptor = readReleaseSigner() } = {}) {
   const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
@@ -65,16 +70,55 @@ export function admitUnitApk(manifestFile, { variant, build }, { descriptor = re
   if (!fs.existsSync(file)) throw new Error(`Missing ${file}`);
   const actual = sha256(fs.readFileSync(file));
   if (actual !== row.sha256) throw new Error(`${file} does not match its verified manifest row`);
-  const problems = [];
+  // The manifest-level flag is checked above; a row that disagrees with it is refused for either build.
+  if (row.testMocks !== false) throw new Error(`${file} is recorded as a test-mocks build; pilot units get distribution builds only`);
   if (build === "release") {
-    if (row.signed !== true) problems.push("release is unsigned");
-    const admission = releaseAdmission(row, descriptor);
-    problems.push(...admission.failures, ...admission.blockers.filter(item => item !== "unsigned release"));
-    if (row.testMocks !== false || row.bundleAudit !== "passed") problems.push("release did not pass the flag-off bundle audit");
+    // Judged against the current signer descriptor and against what verify-apks recorded:
+    // signing, versionCode, flag-off audit, packaged runtime, speech qualification, font licences.
+    const recorded = row.releaseAdmission ? [...(row.releaseAdmission.failures ?? []), ...(row.releaseAdmission.blockers ?? [])] : [];
+    const blockers = [...new Set([...releaseBlockers(row, { manifestTestMocks: manifest.testMocks, admission: releaseAdmission(row, descriptor) }), ...recorded])];
+    if (blockers.length) throw new Error(`${file} cannot be provisioned: it is not distributable. Unresolved blockers:\n${blockers.map(item => `  - ${item}`).join("\n")}\n` +
+      "Pilot and acceptance units get distributable releases only; --build debug rehearses the same steps on a disposable emulator.");
   }
-  if (problems.length) throw new Error(`${file} cannot be provisioned: ${problems.join("; ")}`);
   return { file, sha256: actual, variant, build, versionCode: row.versionCode, versionName: row.versionName, signed: row.signed === true,
     signerSha256: row.signerSha256 ?? null, distributable: row.distributable === true, runtime: row.runtime ?? null, rehearsal: build === "debug" };
+}
+
+/** Facts read from the APK file itself. A fact that cannot be read is null, which no check accepts. */
+export function apkFacts(file) {
+  const attempt = read => { try { return read(); } catch { return null; } };
+  return {
+    testMocks: attempt(() => JSON.parse(execFileSync("unzip", ["-p", file, "assets/public/build-flags.json"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })).testMocks ?? null),
+    debuggable: attempt(() => /android:debuggable[^\n]*0xffffffff/.test(execFileSync(tool("aapt"), ["dump", "xmltree", file, "AndroidManifest.xml"], { encoding: "utf8", env: androidEnv(), maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "ignore"] }))),
+    signerSha256: attempt(() => signerDigest(file)),
+    runtime: attempt(() => apkRuntimeIdentity(file).runtime),
+  };
+}
+
+/**
+ * Ways the admitted file contradicts the manifest row that admitted it. apk-manifest.json is an
+ * unsigned record, so a row edited by hand (and re-hashed) could describe a release the file is
+ * not. What the file itself proves is checked before anything is installed: flag-off web bundle,
+ * build type, the packaged resident runtime and the signing certificate against
+ * android/release-signer.json. Speech qualification and licence blockers cannot be re-derived
+ * from the file; for those the manifest written by verify-apks remains the record.
+ */
+export function apkContradictions(apk, { descriptor = readReleaseSigner(), facts = apkFacts(apk.file) } = {}) {
+  const problems = [];
+  if (facts.testMocks !== false) problems.push("its web bundle is not a verified flag-off build");
+  if (apk.build === "release") {
+    if (facts.debuggable !== false) problems.push("it is debuggable or its build type could not be read, so it is not a release build");
+    if (facts.runtime !== "PACKAGED") problems.push("it does not package the resident runtime");
+    if (!facts.signerSha256 || facts.signerSha256 !== descriptor.signerSha256)
+      problems.push(`it is signed by ${facts.signerSha256 ?? "no verified signer"}, not the certificate in android/release-signer.json`);
+  } else if (facts.debuggable !== true) problems.push("it is not a debuggable build, so it is not the debug rehearsal APK");
+  return problems;
+}
+
+/** Refuse, before any device is touched, an APK whose own contents contradict its admitted row. */
+export function requireConsistentApk(apk, options) {
+  const problems = apkContradictions(apk, options);
+  if (problems.length) throw new Error(`${apk.file} contradicts the manifest row that admitted it:\n${problems.map(item => `  - ${item}`).join("\n")}`);
 }
 
 /** Parse `dumpsys package <pkg>` for the facts a unit record needs. */
@@ -127,6 +171,7 @@ function sourceCommit() {
 async function main() {
   const options = parseUnitArgs(process.argv.slice(2));
   const apk = admitUnitApk(options.apkManifest, options);
+  requireConsistentApk(apk);
   const adb = adbFor(options.serial);
   if (adb(["get-state"]) !== "device") throw new Error("Unit is not online");
   const device = deviceFacts(adb, options.serial);

@@ -28,6 +28,20 @@ release distributable. `--check` lists the staged runtime's
 entries when one is present. Record the product commit,
 `upstream.lock.json` revision, generated input provenance and APK hashes.
 Unsigned release APKs require controlled signing before distribution.
+The gates downstream of `verify-apks` read that record back through
+`scripts/release-blockers.mjs` and name every unresolved blocker: pilot provisioning and
+update (`scripts/provision-unit.mjs`, `scripts/pilot-update.mjs`) and AOSP staging
+(`scripts/stage-aosp.mjs`) refuse a release that is not distributable, and
+`scripts/qualify-head.mjs` records the blockers and reports `releasesDistributable: false`
+while one remains. Only the debug emulator rehearsal (`--build debug`) and `--development`
+staging of a debug APK proceed without a distributable release, and both are decided from
+the APK file, not only its manifest row: `--development` refuses a non-debuggable APK that has
+no distributable release row (a missing manifest, a row for other bytes or a row relabelled
+`debug` admits nothing), and provisioning and update refuse an APK whose own web-bundle flag,
+build type, packaged runtime or signing certificate contradicts the row that admitted it.
+`apk-manifest.json` is an unsigned record: speech qualification and licence blockers cannot be
+re-derived from the APK, so for those the manifest written by `verify-apks` is the evidence and
+must come from the build being installed.
 
 ## Browser behavior
 
@@ -60,7 +74,7 @@ hashed in `apk-manifest.json`), checks the installed bytes, runs each class in i
 installed. `--classes NoMockProduct,Shell,StartupReadiness` names classes (short names
 are expanded); the default list covers the product-surface classes; `--all` runs the
 whole androidTest suite in one process; `--test-mocks` uses the separate
-`artifacts/test-mocks/` pair for fixture-dependent classes such as PasswordAutofillOffer
+`artifacts/test-mocks/` pair for fixture-dependent classes such as BrowserAutofill
 and the browser loopback cases. `<output>/results.json` (via
 `scripts/instrumentation-result.mjs`) records per-class `passed`, `failed`, `skipped`
 (every method skipped by its own assumption gate) or `missing`, bound to the commit, a
@@ -68,7 +82,7 @@ dirty flag and every installed APK's SHA-256, with raw output per class. It is l
 emulator class E evidence and is never device or user acceptance. Process-death,
 permission-restoring and provider-credential campaigns (ReminderTapProcessDeath,
 WorkflowNoticeProcessDeath, NotificationChannels, ResidentEgressRedaction) are refused
-there with the command of the campaign that owns them; text-scale and bookmark restart
+there with the command of the campaign that owns them; text-scale, bookmark and sign-in restart
 phases run through `scripts/test-native-restart.mjs`. AccessibilityInstrumentedTest
 (ATF plus TalkBack-order checks at 200% font) and RotationInstrumentedTest (which needs
 the landscape layout and fails, not skips, without it) run through the same runner. See the [Android/AOSP guide](android-and-aosp.md)
@@ -116,7 +130,7 @@ cleanup, and `result.json` the product scenario. Deferred cleanup is a failure
 requiring explicit recovery of the owned fixture.
 
 Process-restart campaigns use `node scripts/test-native-restart.mjs` with `inbox`,
-`notes`, `document`, `text-scale`, `tree`, or `bookmark`, a matching archived APK pair and a new output directory.
+`notes`, `document`, `text-scale`, `tree`, `bookmark`, or `signin`, a matching archived APK pair and a new output directory.
 Use the owned-emulator configuration in the README. Require successful prepare,
 restore/verify and cleanup phases; Notes and Inbox reports also require distinct
 process IDs. Selected-file, text-scale, folder and bookmark native tests assert process boundaries themselves.
