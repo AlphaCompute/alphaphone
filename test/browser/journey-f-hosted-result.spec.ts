@@ -50,7 +50,6 @@ test('Journey F (hosted): result notices tapped after a restart each reach exact
   const saved=await ledger(page);
   expect(saved.pending).toBeUndefined();
   for(const text of Object.values(outputs))expect(saved.raw).not.toContain(text);
-  const syncs=f.syncs;
 
   // Restart, then tap one notice: the panel marks exactly that run's result and no other.
   const first=await tapAfterRestart(page,0,1);
@@ -76,15 +75,14 @@ test('Journey F (hosted): result notices tapped after a restart each reach exact
   expect(await phases(page)).toEqual({[first]:'opened',[other]:'opened'});
   await panel(page).getByRole('button',{name:'Close scheduled digests',exact:true}).click();
 
-  // Final restart: no notice remains, nothing reopens by itself, and the service was never asked to
-  // deliver either result again (acknowledgement stayed at the last cursor).
+  // Final restart: no notice remains, nothing reopens by itself, and the acknowledgement stayed at
+  // the last cursor, so the service offers neither result again.
   await page.reload();
   await expect(panel(page)).toHaveCount(0);
   await device(page,'Notifications');
   await expect(notices(page)).toHaveCount(0);
   expect(await phases(page)).toEqual({[first]:'opened',[other]:'opened'});
   expect(f.acked).toBe(2);
-  expect(f.syncs).toBeGreaterThanOrEqual(syncs);
   // Both results are still retained for review from the panel.
   await page.reload();
   await expect(panel(page)).toHaveCount(0);

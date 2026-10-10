@@ -1,6 +1,6 @@
 import {Capacitor} from '@capacitor/core';
 import {secureConnectionStore} from '../runtime/native-connection';
-import {addNoteOrigin,removeNoteOrigin,findNoteOrigin,noteOriginIndex,noteOriginOf,resolveNoteOrigin,type NoteOrigin,type NoteOriginKind,type NoteOriginIndex} from '../runtime/note-origin';
+import {addNoteOrigin,removeNoteOrigin,findNoteOrigin,noteOriginIndex,noteOriginOf,noteOriginTitle,resolveNoteOrigin,type NoteOrigin,type NoteOriginKind,type NoteOriginIndex} from '../runtime/note-origin';
 import {recordingRevision} from './summary-source';
 type Bag=Record<string,any>;
 const slot='note-origins:v1:device';
@@ -42,7 +42,9 @@ export function installNoteOriginAdapter(Component:Bag,views:Bag){
   const origin=selected?.alphaReminderId?savedNoteOrigin('reminder',selected.alphaReminderId):selected?.alphaCalendarId?savedNoteOrigin('event',String(selected.nativeEvent?.seriesId||selected.alphaCalendarId)):undefined;
   if(!origin||!out.ev)return out;
   const openId=state.open;
-  out.ev.hasOrigin=true;out.ev.originLabel=`From note: ${origin.title}`;out.ev.originOpenLabel=`Open note ${origin.title}`;
+  // The title is the note's current one. A link whose note is gone names no note at all.
+  const live=resolveNoteOrigin(origin,api.get('notes')?.list),name=live.status==='found'?noteOriginTitle(live.note):'';
+  out.ev.hasOrigin=true;out.ev.originLabel=name?`From note: ${name}`:'From a note that is no longer in Notes';out.ev.originOpenLabel=name?`Open note ${name}`:'Open note';
   out.ev.openOrigin=async()=>{
    if(opening)return;opening=true;
    try{

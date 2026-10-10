@@ -1,6 +1,8 @@
 /** Back-reference from a saved reminder or calendar event to the voice note its draft came from.
- * It is a display link only: it grants no access to the note and carries none of its content. */
-export type NoteOrigin = { version: 1; noteId: string; audioId: string; revision: string; title: string };
+ * It is identity only: it grants no access to the note and carries none of its content, not even its
+ * title. The title shown beside a link is read from the note as it is now, so a renamed note is never
+ * shown under an old name and a deleted note's title is not kept. */
+export type NoteOrigin = { version: 1; noteId: string; audioId: string; revision: string };
 export type NoteOriginKind = 'event' | 'reminder';
 export type NoteOriginIndex = { version: 1; links: Record<string, NoteOrigin & { savedAt: number }> };
 type Bag = Record<string, any>;
@@ -10,14 +12,16 @@ const text = (value: unknown, max: number) => typeof value === 'string' && value
 
 export function noteOriginOf(value: unknown): NoteOrigin | undefined {
   const o = value as NoteOrigin | undefined;
-  if (!o || typeof o !== 'object' || o.version !== 1 || !text(o.noteId, 128) || !text(o.audioId, 128) || typeof o.revision !== 'string' || !/^[a-f0-9]{64}$/.test(o.revision) || !text(o.title, 120)) return;
-  return { version: 1, noteId: o.noteId, audioId: o.audioId, revision: o.revision, title: o.title };
+  if (!o || typeof o !== 'object' || o.version !== 1 || !text(o.noteId, 128) || !text(o.audioId, 128) || typeof o.revision !== 'string' || !/^[a-f0-9]{64}$/.test(o.revision)) return;
+  return { version: 1, noteId: o.noteId, audioId: o.audioId, revision: o.revision };
 }
 /** The origin for a saved recording as reviewed now. `revision` is the hash of the whole note record. */
 export function noteOriginFor(note: unknown, revision: string): NoteOrigin | undefined {
   const n = note as Bag | undefined;
-  return noteOriginOf({ version: 1, noteId: n?.id, audioId: n?.audio?.audioId, revision, title: String(n?.title || '').replace(/[\x00-\x1f\x7f]+/g, ' ').trim().slice(0, 120) || 'Voice note' });
+  return noteOriginOf({ version: 1, noteId: n?.id, audioId: n?.audio?.audioId, revision });
 }
+/** The current title of a resolved note, for display only. It is never stored with a link. */
+export const noteOriginTitle = (note: unknown): string => String((note as Bag | undefined)?.title || '').replace(/[\x00-\x1f\x7f]+/g, ' ').trim().slice(0, 120) || 'Voice note';
 /** Events repeat as `<id>:occ:<begin>`; one link covers the series. */
 export const noteOriginKey = (kind: NoteOriginKind, id: string) => `${kind}:${kind === 'event' ? id.replace(/:occ:-?\d+$/, '') : id}`;
 

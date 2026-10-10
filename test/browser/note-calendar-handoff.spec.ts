@@ -13,7 +13,8 @@ const notes=(page:Page)=>page.evaluate(async()=>JSON.parse((await (await import(
 const reminders=(page:Page)=>page.evaluate(async()=>(JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())||'{"reminders":[]}').reminders as any[]).filter(r=>r.status!=='cancelled'));
 const events=(page:Page)=>page.evaluate(async()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())||'{"events":[]}').events as any[]);
 const stored=(page:Page)=>page.evaluate(async()=>(await (await import('/src/prototype/note-origin-adapter.ts')).readNoteOrigins()).links as Record<string,any>);
-const links=async(page:Page)=>Object.fromEntries(Object.entries(await stored(page)).map(([key,row])=>[key,row.title]));
+/** Each stored link, named by the current title of the exact note (id and recording) it points at. */
+const links=async(page:Page)=>{const all=await notes(page);return Object.fromEntries(Object.entries(await stored(page)).map(([key,row])=>[key,all.find(n=>n.id===row.noteId&&n.audio?.audioId===row.audioId)?.title??'no such note']));};
 const title=(page:Page)=>page.getByRole('textbox',{name:'Title',exact:true});
 
 /** Two saved recordings with reviewed action items, written through the real Notes port. */
@@ -80,9 +81,9 @@ test('an event draft writes nothing until Save, then links to exactly the note i
  await expect(page.getByText('From note: Garden meeting',{exact:true})).toBeVisible();
  await expect(page.getByText(/From note: Venue meeting/)).toHaveCount(0);
  await expect.poll(()=>links(page)).toEqual({[`event:${saved[0].id}`]:'Garden meeting'});
- // The stored link holds identity only: no transcript, summary or action text.
- expect(Object.keys(Object.values(await stored(page))[0]).sort()).toEqual(['audioId','noteId','revision','savedAt','title','version']);
- expect(JSON.stringify(await stored(page))).not.toMatch(/Transcript|Reviewed summary|Water the plants/);
+ // The stored link holds identity only: no title, transcript, summary or action text.
+ expect(Object.keys(Object.values(await stored(page))[0]).sort()).toEqual(['audioId','noteId','revision','savedAt','version']);
+ expect(JSON.stringify(await stored(page))).not.toMatch(/Garden meeting|Transcript|Reviewed summary|Water the plants/);
 
  await button(page,'Open note Garden meeting').click();
  await expect(button(page,'Play recording')).toBeVisible();
@@ -142,7 +143,24 @@ test('the open-note action fails closed when the note was deleted or replaced, a
  await expect(page.getByText('This note was edited after this was created from it.',{exact:true})).toBeVisible();
  await expect(page.locator('input[aria-label="Title"]:visible').last()).toHaveValue('Venue meeting');
 
- // Same id, different recording: not the note this came from. Nothing opens.
+ // Renamed after the hand-off: the link shows the note's current title, never the old one, and no
+ // title is kept with the link.
+ const beforeRename=await page.evaluate(async()=>{
+  const port=await import('/src/runtime/browser-notes-document.ts'),raw=(await port.readBrowserNotesRaw())!,store=JSON.parse(raw);
+  store.records.find((n:any)=>n.title==='Venue meeting').title='Private debrief';
+  await port.browserNotesPort.compareExchange((await port.browserNotesPort.read())!,JSON.stringify(store));return raw;
+ });
+ await page.reload({waitUntil:'domcontentloaded'});
+ await openEvent();
+ await expect(page.getByText('From note: Private debrief',{exact:true})).toBeVisible();
+ await expect(page.getByText(/Venue meeting/)).toHaveCount(0);
+ expect(JSON.stringify(await stored(page))).not.toMatch(/Private debrief|Venue meeting/);
+ await button(page,'Open note Private debrief').click();
+ await expect(page.locator('input[aria-label="Title"]:visible').last()).toHaveValue('Private debrief');
+ await page.evaluate(async raw=>{const port=await import('/src/runtime/browser-notes-document.ts');await port.browserNotesPort.compareExchange((await port.browserNotesPort.read())!,raw);},beforeRename);
+ await page.reload({waitUntil:'domcontentloaded'});
+
+ // Same id, different recording: not the note this came from. Nothing opens and no title is shown.
  const original=await page.evaluate(async()=>{
   const port=await import('/src/runtime/browser-notes-document.ts'),raw=(await port.readBrowserNotesRaw())!,store=JSON.parse(raw);
   const note=store.records.find((n:any)=>n.title==='Venue meeting');note.audio={...note.audio,audioId:'another-recording'};
@@ -150,7 +168,9 @@ test('the open-note action fails closed when the note was deleted or replaced, a
  });
  await page.reload({waitUntil:'domcontentloaded'});
  await openEvent();
- await button(page,'Open note Venue meeting').click();
+ await expect(page.getByText('From a note that is no longer in Notes',{exact:true})).toBeVisible();
+ await expect(page.getByText(/From note:/)).toHaveCount(0);
+ await button(page,'Open note').click();
  await expect(page.getByText('The note this came from was deleted or replaced. Nothing was opened.',{exact:true})).toBeVisible();
  await expect(page.getByRole('heading',{name:'Venue walkthrough',level:1})).toBeVisible();
  await expect(page.locator('html')).toHaveAttribute('data-active-view','calendar');
@@ -162,8 +182,11 @@ test('the open-note action fails closed when the note was deleted or replaced, a
  await button(page,'Delete note').click();
  await expect.poll(async()=>(await notes(page)).map(n=>n.title)).toEqual(['Garden meeting']);
  await openEvent();
- await expect(page.getByText('From note: Venue meeting',{exact:true})).toBeVisible();
- await button(page,'Open note Venue meeting').click();
+ // A note in Trash is not shown as live: its title is not displayed and is stored nowhere with the link.
+ await expect(page.getByText('From a note that is no longer in Notes',{exact:true})).toBeVisible();
+ await expect(page.getByText(/Venue meeting/)).toHaveCount(0);
+ expect(JSON.stringify(await stored(page))).not.toMatch(/Venue meeting/);
+ await button(page,'Open note').click();
  await expect(page.getByText('The note this came from was deleted or replaced. Nothing was opened.',{exact:true})).toBeVisible();
  await expect(page.locator('html')).toHaveAttribute('data-active-view','calendar');
  expect((await events(page))[0]).toEqual(event);
@@ -177,8 +200,9 @@ test('double activation makes one draft; a reload mid hand-off keeps the draft a
  await button(page,'Review calendar event draft').evaluate((el:HTMLElement)=>{el.click();el.click();});
  await expect(title(page)).toHaveCount(1);
  await title(page).fill('Booked once');
- // The retained draft holds the title and the note it came from.
- await expect.poll(()=>page.evaluate(async()=>{const {assistantDraftStore}=await import('/src/runtime/assistant-draft-store.ts');const text=(await(await assistantDraftStore(JSON.stringify(['calendar-creation-form','development']))).read())?.text;return text?JSON.parse(text).form:null;})).toMatchObject({title:'Booked once',cal:'native:local',origin:{title:'Venue meeting'}});
+ const venue=(await notes(page)).find(n=>n.title==='Venue meeting');
+ // The retained draft holds the event title and the identity of the note it came from, not the note's title.
+ await expect.poll(()=>page.evaluate(async()=>{const {assistantDraftStore}=await import('/src/runtime/assistant-draft-store.ts');const text=(await(await assistantDraftStore(JSON.stringify(['calendar-creation-form','development']))).read())?.text;return text?JSON.parse(text).form:null;})).toEqual(expect.objectContaining({title:'Booked once',cal:'native:local',origin:{version:1,noteId:venue.id,audioId:venue.audio.audioId,revision:expect.stringMatching(/^[a-f0-9]{64}$/)}}));
  expect(await events(page)).toEqual([]);
  // Reload with the unsaved draft open: nothing was saved; New event restores it.
  await page.reload({waitUntil:'domcontentloaded'});

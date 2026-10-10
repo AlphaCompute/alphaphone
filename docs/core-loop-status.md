@@ -56,7 +56,7 @@ Spec: `journey-b-voice-note-actions.spec.ts`
 | Review transcript with the agent, save reviewed summary note | yes | — | Real agent answer quality |
 | Reminder from the note ("Review reminder draft" → Calendar form → Save) | yes | Native reminder scheduling | OS notification delivery, snooze from the notification, reboot |
 | Calendar event from the note ("Review calendar event draft" → Calendar form → Save; nothing is written before Save) | yes | Android CalendarProvider accounts | Provider read-back, attendees |
-| Saved reminder and event show "From note: <title>" and "Open note" opens that exact recording, after reload and after an edit | yes (`note-calendar-handoff.spec.ts` covers a deleted, replaced or edited note) | The link for a device-calendar event (see open items) | — |
+| Saved reminder and event show "From note: <current title>" and "Open note" opens that exact recording, after reload and after an edit | yes (`note-calendar-handoff.spec.ts` covers a deleted, replaced, renamed or edited note) | The link for a device-calendar event (see open items) | — |
 | Agent-proposed reminder and event, each reviewed and approved, with receipts | yes | Native action journal | A real agent choosing to propose them |
 | Reload: every record exists exactly once | yes | — | — |
 | Edit and delete the event and the reminder; the event deletion has one review step and Cancel deletes nothing | yes | The Android "Delete calendar event?" dialog | — |
@@ -67,9 +67,12 @@ Closed in the browser build:
   beside "Review reminder draft". Both open a Calendar draft only; nothing is written
   until Save in Calendar.
 - Back-reference: a reminder or event saved from a note draft is linked to that note
-  (note id, recording id and the reviewed revision; no note content). Calendar shows
-  "From note: <title>" with "Open note". The action opens that note only if exactly one
-  note still has that id and recording; otherwise it opens nothing and says so. A note
+  (note id, recording id and the reviewed revision; no note content and no title).
+  Calendar shows "From note: <title>" with "Open note", where the title is read from
+  the note as it is now, so a renamed note is shown under its current name. The action
+  opens that note only if exactly one note still has that id and recording; otherwise
+  it opens nothing and says so. A note that is in Trash, deleted or replaced is shown
+  as "From a note that is no longer in Notes" with no title. A note
   edited since is opened with a notice. The link is created once at Save, is never
   changed by a later hand-off, and is removed when the record is deleted.
 - Browser "Delete event" now shows one review step that names the event, like the
@@ -180,10 +183,19 @@ Open items:
   kept only on the device and never sent to the provider). When the provider confirms
   that send, each local copy of that draft that still holds exactly the sent content is
   removed and the receipt says so. A copy edited after Send, a different draft with the
-  same text, a draft changed in another window, and every unknown, rejected or unsent
-  outcome are left alone; the receipt then says a copy remains. A reload between the
+  same text, a draft changed in another window, another account's draft, and every
+  unknown, rejected or unsent outcome are left alone; the receipt then says a copy
+  remains. A succeeded receipt that names no provider message clears nothing. When the
+  open or retained copy was edited after Send, or the retained copy cannot be cleared,
+  the saved draft those edits are based on is kept too. Comparison is exact (recipients,
+  subject, body, attachments, reply target, forwarded originals); a copy restored to
+  exactly the sent content counts as the sent email and is removed. A reload between the
   confirmation and the cleanup finishes the cleanup from the saved receipt. Cases:
-  `scripts/test-inbox-sent-cleanup.mjs`.
+  `scripts/test-inbox-sent-cleanup.mjs`. Both that script and the journey supply their
+  own slot store; the removal of the saved draft relies on the platform store's
+  compare-exchange (Android Keystore slots), which no run here exercises. The saved
+  receipt is trusted to the same degree as the drafts stored beside it: it is not
+  re-confirmed with the provider before a cleanup that resumes after a reload.
 - Still open: a saved local draft that is an older version of the sent email (the user
   edited after saving, then sent) is kept and still offered, because it does not hold
   the sent content. Operations saved before this change carry no source draft and

@@ -2,7 +2,7 @@
 // Maps "Back to event" identity. Pure rules; the rendered flows are in test/browser.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {addNoteOrigin, findNoteOrigin, noteOriginFor, noteOriginIndex, noteOriginKey, noteOriginLimit, noteOriginOf, removeNoteOrigin, resolveNoteOrigin} from '../apps/app/src/runtime/note-origin.ts';
+import {addNoteOrigin, findNoteOrigin, noteOriginFor, noteOriginTitle, noteOriginIndex, noteOriginKey, noteOriginLimit, noteOriginOf, removeNoteOrigin, resolveNoteOrigin} from '../apps/app/src/runtime/note-origin.ts';
 import {mapsEventOriginFor, mapsEventOriginOf, mapsEventReturnOffered, mapsEventStillThere} from '../apps/app/src/runtime/maps-event-return.ts';
 import {encodeCalendarForm, decodeCalendarForm, calendarEditFields, snapshotCalendarForm} from '../apps/app/src/runtime/calendar-form-draft.ts';
 
@@ -11,14 +11,21 @@ const note = {id: 'n1', kind: 'voice', title: 'Venue meeting', body: 'Transcript
 const origin = noteOriginFor(note, revision);
 const empty = () => noteOriginIndex(null);
 
-test('an origin is the note id, its recording, the reviewed revision and a display title only', () => {
-  assert.deepEqual(origin, {version: 1, noteId: 'n1', audioId: 'audio-1', revision, title: 'Venue meeting'});
-  assert.equal(noteOriginFor({...note, title: ''}, revision).title, 'Voice note');
-  assert.equal(noteOriginFor({...note, title: 'Line\nbreak'}, revision).title, 'Line break');
+test('an origin is the note id, its recording and the reviewed revision only; the title is never stored', () => {
+  assert.deepEqual(origin, {version: 1, noteId: 'n1', audioId: 'audio-1', revision});
+  assert.equal(JSON.stringify(origin).includes('Venue meeting'), false, 'the note title is note content and is not carried');
+  assert.equal(noteOriginTitle(note), 'Venue meeting');
+  assert.equal(noteOriginTitle({...note, title: 'Renamed later'}), 'Renamed later', 'the shown title is the current one');
+  assert.equal(noteOriginTitle({...note, title: ''}), 'Voice note');
+  assert.equal(noteOriginTitle({...note, title: 'Line\nbreak'}), 'Line break');
+  assert.equal(noteOriginTitle({...note, title: 'x'.repeat(300)}).length, 120);
   assert.equal(noteOriginFor({id: 'n1', title: 'Text note'}, revision), undefined, 'a note without a recording has no origin');
   assert.equal(noteOriginFor(note, 'not-a-hash'), undefined);
-  for (const bad of [null, {}, {...origin, version: 2}, {...origin, noteId: ''}, {...origin, audioId: 7}, {...origin, revision: 'A'.repeat(64)}, {...origin, title: 'x'.repeat(121)}, {...origin, noteId: 'a\u0000b'}]) assert.equal(noteOriginOf(bad), undefined);
-  assert.deepEqual(noteOriginOf({...origin, body: 'leaked content', extra: 1}), origin, 'unknown fields are dropped, never stored');
+  for (const bad of [null, {}, {...origin, version: 2}, {...origin, noteId: ''}, {...origin, audioId: 7}, {...origin, revision: 'A'.repeat(64)}, {...origin, noteId: 'a\u0000b'}]) assert.equal(noteOriginOf(bad), undefined);
+  assert.deepEqual(noteOriginOf({...origin, title: 'Private title', body: 'leaked content', extra: 1}), origin, 'a title and unknown fields are dropped, never stored');
+  const withTitle = addNoteOrigin(noteOriginIndex(null), 'event', 'e9', {...origin, title: 'Private title'}, 1);
+  assert.equal(JSON.stringify(withTitle).includes('Private title'), false, 'the stored index holds no title');
+  assert.equal(JSON.stringify(noteOriginIndex({version: 1, links: {'event:e9': {...origin, title: 'Private title', savedAt: 1}}})).includes('Private title'), false, 'a title in an older stored link is dropped on read');
 });
 
 test('links are keyed by the saved record; a record keeps the note it was created from', () => {
@@ -78,6 +85,7 @@ test('a retained Calendar draft keeps a valid origin and refuses a malformed one
   assert.deepEqual(snapshotCalendarForm(form).origin, origin);
   assert.equal(decodeCalendarForm(encodeCalendarForm({...form, origin: undefined})).form.origin, undefined);
   assert.throws(() => encodeCalendarForm({...form, origin: {...origin, extra: 'authority'}}), /needs recovery/);
+  assert.throws(() => encodeCalendarForm({...form, origin: {...origin, title: 'Private title'}}), /needs recovery/, 'a draft link carries no note title');
   assert.throws(() => encodeCalendarForm({...form, origin: {...origin, revision: 'x'}}), /needs recovery/);
   assert.equal('origin' in calendarEditFields(form).form, false, 'an edit of a saved record never carries or changes a link');
 });
