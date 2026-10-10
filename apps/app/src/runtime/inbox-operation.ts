@@ -6,6 +6,9 @@ export interface InboxOperationRecord {
   version: 1; owner: string; grantId: string; requestId: string; proposal: Bag;
   phase: 'preparing' | 'review' | 'dispatching' | 'observed';
   review: Bag | null; receipt: GmailInboxReceipt | null;
+  /** The local draft a send was started from. Local only: it is never part of the proposal the
+   * provider sees. A confirmed send clears only copies of this exact draft with the sent content. */
+  source?: { draftId: string };
 }
 export interface InboxOperationDependencies {
   owner: string; grantId: string; active(): boolean;
@@ -64,13 +67,13 @@ export class InboxOperation {
   }
   async load() { return this.exclusive(async()=>{
     const value=await this.deps.store.read<InboxOperationRecord>(await this.key());this.check();
-    if(value && (value.version!==1||value.owner!==this.deps.owner||value.grantId!==this.deps.grantId||!value.requestId||!value.proposal||!['preparing','review','dispatching','observed'].includes(value.phase)))throw new Error('Invalid saved Inbox operation');
+    if(value && (value.version!==1||value.owner!==this.deps.owner||value.grantId!==this.deps.grantId||!value.requestId||!value.proposal||!['preparing','review','dispatching','observed'].includes(value.phase)||(value.source!==undefined&&(!value.source||typeof value.source.draftId!=='string'||!value.source.draftId))))throw new Error('Invalid saved Inbox operation');
     this.record=value;return this.snapshot();
   }); }
-  async prepare(proposal: Bag) { return this.exclusive(async()=>{
+  async prepare(proposal: Bag, source?: { draftId: string }) { return this.exclusive(async()=>{
     if(this.record)throw new Error('Review the saved operation before starting another.');
     const clean=copy(proposal);if(new TextEncoder().encode(JSON.stringify(clean)).length>7.5*1024*1024)throw new Error('Message exceeds the supported review size');
-    await this.save({version:1,owner:this.deps.owner,grantId:this.deps.grantId,requestId:crypto.randomUUID(),proposal:clean,phase:'preparing',review:null,receipt:null});
+    await this.save({version:1,owner:this.deps.owner,grantId:this.deps.grantId,requestId:crypto.randomUUID(),proposal:clean,phase:'preparing',review:null,receipt:null,...(source&&proposal.kind==='send'&&typeof source.draftId==='string'&&source.draftId?{source:{draftId:source.draftId}}:{})});
     await this.reviewCurrent();return this.snapshot();
   }); }
   /** Explicit review recovery is an idempotent prepare, never provider dispatch. */

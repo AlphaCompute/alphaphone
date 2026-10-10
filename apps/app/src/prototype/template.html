@@ -781,7 +781,7 @@
       <sc-if value="{{inbox.provider.canRetry}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.retry}}" style="padding:14px">{{inbox.provider.retryLabel}}</button></sc-if>
       <button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.check}}" style="padding:14px">Check saved receipt</button>
       <sc-if value="{{inbox.provider.canReload}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.reload}}" style="padding:14px">Reload exact review</button></sc-if>
-      <sc-if value="{{inbox.provider.canClear}}"><p style="font-size:12px;color:var(--mut)">The local draft stays on this device. If this operation succeeded, sending that draft again creates another message.</p><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.clear}}" style="padding:14px">{{inbox.provider.clearLabel}}</button></sc-if>
+      <sc-if value="{{inbox.provider.canClear}}"><p style="font-size:12px;color:var(--mut)">{{inbox.provider.draftNote}}</p><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.clear}}" style="padding:14px">{{inbox.provider.clearLabel}}</button></sc-if>
     </div>
   </sc-if>
 
