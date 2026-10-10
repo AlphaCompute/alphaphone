@@ -610,6 +610,15 @@ EMULATOR rows whose text named a runner gap, and what happened to it:
   reasons listed there; most lost their runners when the smoke suites were removed in
   `49b1bf4c` and need a host agent or a provider key.
 
+### Commands run in round 5
+
+| Command | Result |
+| --- | --- |
+| `ALPHA_RUNTIME_GIT_CACHE=$PWD/vendor/eliza npm run agent:prepare` | exit 0: `artifacts/local-agent-resident-352d7a08…` with dependencies, 5.8 GB (removed afterwards) |
+| `ALPHA_ELIZA_SOURCE=$PWD/artifacts/local-agent-resident-352d7a08… npm run agent:test-digest-restart`, then `npm run agent:test-digest-restart` with the default directory | exit 0 both times (D-8; host-runtime evidence, not Android) |
+| `node --test test/native-permission-runner.test.mjs test/android-instrumentation-runner.test.mjs test/digest-restart-input.test.mjs test/native-restart-runner.test.mjs test/native-campaign-evidence.test.mjs` | 77 passed |
+| `./gradlew :app:compileStandaloneDebugJavaWithJavac :app:compileLauncherDebugJavaWithJavac :app:compileStandaloneDebugAndroidTestJavaWithJavac :app:compileLauncherDebugAndroidTestJavaWithJavac -x :local-speech:preBuild -x :app:stageLocalAgentSources -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1 --offline` with `-PELIZA_DEV_ALLOW_TEST_MOCKS=0`, then `=1` (JDK 21, staged sources, compile-only speech AAR) | BUILD SUCCESSFUL both times. Compilation only: no APK was assembled and nothing ran on an emulator |
+
 ## Stale ledger statements
 
 For the package that refreshes the ledgers. Each was checked against this branch.
