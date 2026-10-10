@@ -24,7 +24,7 @@ test('connected browser host discloses inference egress and does not claim disco
  await page.screenshot({path:info.outputPath('browser-host-privacy.png')});
  await page.getByRole('button',{name:'Back to Settings',exact:true}).click();
  await page.getByRole('button',{name:'About',exact:true}).click();
- await expect(page.getByText('Browser development',{exact:true})).toBeVisible();
+ await expect(page.getByText('Browser development device',{exact:true})).toBeVisible();
  await expect(page.getByText('On this computer · development',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Back to Settings',exact:true}).click();
  await page.getByRole('button',{name:'Developer',exact:true}).click();

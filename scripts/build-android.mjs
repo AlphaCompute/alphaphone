@@ -30,15 +30,17 @@ import { copyFilesClone } from "./copy-file-clone.mjs";
 const FLAG = "ELIZA_DEV_ALLOW_TEST_MOCKS";
 const FLAG_ENV_NAMES = [FLAG, `VITE_${FLAG}`, `ORG_GRADLE_PROJECT_${FLAG}`];
 const SIGNING_ENV = ["ELIZAOS_KEYSTORE_PATH", "ELIZAOS_KEYSTORE_PASSWORD", "ELIZAOS_KEY_ALIAS", "ELIZAOS_KEY_PASSWORD"];
-const USAGE = "Usage: npm run android:build [-- --test-mocks] [-- --allow-unpackaged-runtime]";
+const USAGE = "Usage: npm run android:build -- [--test-mocks] [--allow-unpackaged-runtime] [--skip-instrumentation]";
 
 export function parseBuildArgs(argv) {
-  const options = { testMocks: false, allowUnpackagedRuntime: false };
+  const options = { testMocks: false, allowUnpackagedRuntime: false, skipInstrumentation: false };
   for (const arg of argv) {
     if (arg === "--test-mocks") options.testMocks = true;
+    else if (arg === "--skip-instrumentation") options.skipInstrumentation = true;
     else if (arg === "--allow-unpackaged-runtime") options.allowUnpackagedRuntime = true;
     else throw new Error(`Unknown option ${arg}. ${USAGE}`);
   }
+  if (options.testMocks && options.skipInstrumentation) throw new Error("Test-mocks builds require instrumentation APKs");
   return options;
 }
 
@@ -92,7 +94,7 @@ async function main() {
   const options = parseBuildArgs(process.argv.slice(2));
   // Report missing inputs (pinned checkout, speech AAR, prepared/staged runtime)
   // with the exact command to run, before web sync and a long Gradle build.
-  const preflight = spawnSync(process.execPath, [path.join(import.meta.dirname, "android-build-preflight.mjs"), ...process.argv.slice(2)], { stdio: "inherit" });
+  const preflight = spawnSync(process.execPath, [path.join(import.meta.dirname, "android-build-preflight.mjs"), ...process.argv.slice(2).filter(arg => arg !== "--skip-instrumentation")], { stdio: "inherit" });
   if (preflight.status !== 0) process.exit(preflight.status ?? 1);
   // The toolchain resolver lives in the pinned checkout, which the preflight verified.
   const { androidEnv } = await import("./toolchain.mjs");
@@ -194,7 +196,7 @@ function build(options, baseEnv, run) {
         const modeName = mode[0].toUpperCase() + mode.slice(1);
         try {
           run("./gradlew", ["--no-daemon", ...gradleFlags, `:app:assemble${taskName}${modeName}`,
-            ...(mode === "debug" ? [`:app:assemble${taskName}DebugAndroidTest`] : [])], { cwd: "android" });
+            ...(mode === "debug" && !options.skipInstrumentation ? [`:app:assemble${taskName}DebugAndroidTest`] : [])], { cwd: "android" });
           copyVariant(variant, [mode]);
         } finally {
           cleanPackagingIntermediates();
@@ -212,8 +214,10 @@ function build(options, baseEnv, run) {
         ":app:assembleLauncherDebug",
         ":app:assembleStandaloneRelease",
         ":app:assembleLauncherRelease",
-        ":app:assembleStandaloneDebugAndroidTest",
-        ":app:assembleLauncherDebugAndroidTest",
+        ...(options.skipInstrumentation ? [] : [
+          ":app:assembleStandaloneDebugAndroidTest",
+          ":app:assembleLauncherDebugAndroidTest",
+        ]),
         ...(options.testMocks ? [] : [":app:lint"]),
       ],
       { cwd: "android" },
