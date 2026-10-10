@@ -1,8 +1,9 @@
+import {newWorkflow,installWorkflowListFixture} from './workflow-navigation';
 import { returnToApps } from './app-navigation';
 import {test,expect,type Page} from '@playwright/test';
 // Synthetic agent: generation requests are recorded and answered locally; nothing leaves the browser.
 async function setup(page:Page){
- await page.goto('/?mode=dev&workflows=agent');
+ await page.goto('/?mode=dev&workflows=agent');await installWorkflowListFixture(page);
  await page.evaluate(async()=>{
   const {WorkflowProtocol,WorkflowHttpError}=await import('/src/runtime/workflow-protocol.ts');const {workflowSha}=await import('/src/runtime/workflow-device-contract.ts');const {normalizePhoneSpec}=await import('/src/runtime/phone-workflow-authoring.ts');
   const f=(window as any).scopeFixture={mode:'normal',calls:[] as any[]};const catalog=WorkflowProtocol.prototype.phoneCatalog,generate=WorkflowProtocol.prototype.generatePhone;

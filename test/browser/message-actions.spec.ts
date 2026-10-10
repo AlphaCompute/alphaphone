@@ -112,7 +112,10 @@ test('Home shows clean Calendar and Workflows tiles with Inbox last',async({page
 });
 
 test('chat brand Home preserves the existing conversation and unsent draft',async({page})=>{
- await conversation(page);await page.getByRole('button',{name:'Minimize chat',exact:true}).click();await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+ await conversation(page);await page.getByRole('button',{name:'Minimize chat',exact:true}).click();await page.getByRole('button',{name:'Notes',exact:true}).click();
+ // Keep the next deliberate click inside the gesture's 350ms suppression window,
+ // independent of runner speed; timers and browser actionability still run.
+ await page.clock.setFixedTime(new Date());await page.getByRole('button',{name:'Open conversation',exact:true}).click();
  await page.getByRole('textbox',{name:'Message Alpha',exact:true}).fill('Unsent after the original response');await page.getByRole('button',{name:'Go Home',exact:true}).click();
  await expect(page.locator('html')).toHaveAttribute('data-active-view','home');await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toHaveValue('Unsent after the original response');await page.getByRole('button',{name:'Open conversation',exact:true}).click();
  await expect(agent(page)).toHaveText(answer);await expect(page.locator('[data-alpha-message-text]').filter({hasText:'My original request'})).toHaveText('My original request');await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('Unsent after the original response');

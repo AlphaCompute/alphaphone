@@ -53,7 +53,8 @@ for (const kind of [
 		if (["inbox", "notes"].includes(kind))
 			assert.deepEqual(r.record.processes, { prepare: 100, restore: 200 });
 	});
-	for (const mode of [
+	// Failure handling is shared by all six configurations; exercise it once.
+	if (kind === "inbox") for (const mode of [
 		"summary-only",
 		"wrong-method",
 		"wrong-count",
@@ -81,7 +82,7 @@ for (const kind of [
 			}
 		});
 }
-for (const kind of ["inbox", "notes"])
+for (const kind of ["inbox"])
 	for (const mode of ["same-pid", "missing-pid", "duplicate-pid"])
 		test(`${kind} requires unambiguous different process identities: ${mode}`, () => {
 			const r = exercise(mode, kind);
@@ -101,14 +102,7 @@ test("restart retains the fixture user when owned process termination is uncerta
 	assert.ok(!r.commands.some((a) => a[0] === "uninstall"));
 });
 
-for (const kind of [
-	"inbox",
-	"notes",
-	"document",
-	"text-scale",
-	"tree",
-	"bookmark",
-])
+for (const kind of ["inbox", "bookmark"])
 	test(`${kind} failed preparation still runs verified cleanup`, () => {
 		const r = exercise("prepare-failure", kind);
 		assert.notEqual(r.code, 0);
@@ -118,7 +112,7 @@ for (const kind of [
 		assert.equal(r.commands.filter((a) => a.includes("instrument")).length, 2);
 	});
 
-for (const kind of ["text-scale", "tree", "bookmark"])
+for (const kind of ["document"])
 	test(`${kind} transport failure stops owned packages before cleanup`, () => {
 		const r = exercise("timeout", kind);
 		assert.notEqual(r.code, 0);

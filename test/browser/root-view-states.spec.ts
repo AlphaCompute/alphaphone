@@ -5,7 +5,6 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
 // role=alert when persistent storage is unavailable, a named landmark for the active view, and
 // keyboard focus that lands on a named control inside it. No new dependency: plain Playwright.
 //
-type Check = 'empty' | 'alert' | 'landmark' | 'focus';
 const ROOT = ['Inbox', 'Calendar', 'Browser', 'Camera', 'Photos', 'Maps', 'Notes', 'Files', 'Workflows', 'Settings'] as const;
 type View = typeof ROOT[number] | 'Reminders' | 'Notifications';
 const VIEWS: View[] = [...ROOT, 'Reminders', 'Notifications'];
@@ -60,44 +59,29 @@ async function themeIsApplied(surface: Locator, theme: 'light' | 'dark') {
   // Dark theme draws light foreground text; light theme draws dark text.
   if (theme === 'dark') expect(luminance).toBeGreaterThan(0.5); else expect(luminance).toBeLessThan(0.5);
 }
-/** Every case enforces its requirement; missing behavior is a failure. */
-async function requirement(_check: Check, _view: View, target: Locator, timeout = 2_000) {
-  await expect(target.first()).toBeVisible({ timeout });
-}
-
 for (const theme of ['light', 'dark'] as const) for (const view of VIEWS) {
-  test(`${view} ${theme}: fresh profile shows a labelled empty state`, async ({ page }) => {
+  test(`${view} ${theme}: fresh profile is empty, labelled and keyboard accessible`, async ({ page }) => {
     const surface = await open(page, view, theme);
-    // The camera viewfinder is always drawn dark; every other surface follows the theme.
+    // One fresh profile covers the same root's content, landmark and focus.
     if (view !== 'Camera') await themeIsApplied(surface, theme);
-    await page.waitForTimeout(500);
+    await expect(surface.getByText(EMPTY[view]).first()).toBeVisible();
     const text = await surface.innerText();
     for (const fixture of FIXTURE) expect(text, `${view} renders fixture ${fixture}`).not.toMatch(fixture);
-    await requirement('empty', view, surface.getByText(EMPTY[view]), 5_000);
+    const name = view === 'Reminders' ? /Reminders|Calendar/ : new RegExp(view);
+    await expect(page.getByRole('main', { name }).or(page.getByRole('region', { name })).or(page.getByRole('dialog', { name })).first()).toBeVisible();
+    await page.keyboard.press('Tab');
+    const focused = page.locator(':focus');
+    await expect(focused).toHaveCount(1);
+    expect(await focused.evaluate((element, root) => root!.contains(element), await surface.elementHandle())).toBe(true);
+    const label = await focused.evaluate(element => (element.getAttribute('aria-label') || (element as HTMLElement).innerText || element.getAttribute('title') || '').trim());
+    expect(label.length, 'focused control has an accessible name').toBeGreaterThan(0);
   });
 
   test(`${view} ${theme}: blocked storage raises a role=alert`, async ({ page }) => {
     await blockStorage(page);
     const surface=await open(page, view, theme);
-    // Whatever the alert role, the failure must be visible and must not be hidden behind fixtures.
-    await expect(page.locator('[role=status],[role=alert]').filter({ hasText: /could not|unavailable|recovery|retry/i, visible: true }).first()).toBeVisible({ timeout: 5_000 });
-    await requirement('alert', view, surface.getByRole('alert').filter({ hasText: /storage|could not|unavailable|recovery|retry/i }), 3_000);
-  });
-
-  test(`${view} ${theme}: active view is a named landmark`, async ({ page }) => {
-    await open(page, view, theme);
-    const name = view === 'Reminders' ? /Reminders|Calendar/ : new RegExp(view);
-    await requirement('landmark', view, page.getByRole('main', { name }).or(page.getByRole('region', { name })).or(page.getByRole('dialog', { name })));
-  });
-
-  test(`${view} ${theme}: keyboard focus enters a named control in the view`, async ({ page }) => {
-    const surface = await open(page, view, theme);
-    await page.keyboard.press('Tab');
-    const focused = page.locator(':focus');
-    await expect(focused).toHaveCount(1);
-    expect(await focused.evaluate((element, root) => root!.contains(element), await surface.elementHandle())).toBe(true);
-    const name = await focused.evaluate(element => (element.getAttribute('aria-label') || (element as HTMLElement).innerText || element.getAttribute('title') || '').trim());
-    expect(name.length, 'focused control has an accessible name').toBeGreaterThan(0);
+    await expect(page.locator('[role=status],[role=alert]').filter({ hasText: /could not|unavailable|recovery|retry/i, visible: true }).first()).toBeVisible();
+    await expect(surface.getByRole('alert').filter({ hasText: /storage|could not|unavailable|recovery|retry/i }).first()).toBeVisible({timeout:3_000});
   });
 }
 

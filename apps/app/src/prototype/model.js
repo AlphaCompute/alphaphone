@@ -5533,6 +5533,8 @@ class Component extends DCLogic {
       viewBg: imm.dark ? "#000000" : "var(--bg)", viewFg: imm.dark ? "#ffffff" : "var(--fg)", sbColor: sbColor, homeIndicatorColor: out.photos && out.photos.albumManager ? "var(--fg)" : sbColor,
       systemShell: P.systemShell !== false,
       showAppBack: P.systemShell === false && isOn && isView && !S.shade,
+      // A new Home press is intentional even immediately after opening the chat.
+      chatHomePointer: function (event) { if (event.isPrimary !== false && event.button === 0) self.swallow = 0; },
       backToApps: function (event) { if (event && event.detail > 0 && event.currentTarget && event.currentTarget.hasAttribute("data-alpha-chat-home") && self.swallowed()) return; self.goHome(); },
       showStatus: !P.nativeSystemChrome && S.screen !== "boot" && S.screen !== "off" && !imm.noStatus, micLive: S.voice === "listening",
       showIndicator: !P.nativeSystemChrome && (isOn || S.screen === "lock"),

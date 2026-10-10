@@ -1,3 +1,4 @@
+import {installWorkflowListFixture,workflowCard} from './workflow-navigation';
 import { returnToApps } from './app-navigation';
 import {test,expect,type Page} from '@playwright/test';
 // A synthetic agent in the page answers workflow routes. Interrupted runs carry upstream
@@ -40,7 +41,7 @@ async function setup(page:Page){
   c.getWorkflowClient=()=>{const binding=original();return binding?{...binding,client}:binding;};
   const automations=c.getAutomationsClient.bind(c);c.getAutomationsClient=()=>{const binding=automations();return binding?{...binding,request:async(path,method)=>{if(method!=='GET')throw Error('Unexpected automation mutation');return request(path,undefined);}}:binding;};
  });
- await returnToApps(page);await page.getByRole('button',{name:'Workflows',exact:true}).click();
+ await installWorkflowListFixture(page);await returnToApps(page);await page.getByRole('button',{name:'Workflows',exact:true}).click();
 }
 const posts=(page:Page,suffix:string)=>page.evaluate(suffix=>(window as any).agentRequests.filter((r:any)=>r.method==='POST'&&r.path.endsWith(suffix)).length,suffix);
 const status=(page:Page)=>page.getByRole('status',{name:'Workflow run status',exact:true});

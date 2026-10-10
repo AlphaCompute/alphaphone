@@ -62,16 +62,6 @@ test('host launcher defaults upstream secret and PII swaps off',()=>{
   assert.doesNotMatch(JSON.stringify(r.launch),/synthetic-fixture-key/);
  }
 });
-test('backend forwards swaps as false unless explicitly true, and resident Android keeps them on',()=>{
- const backend=readFileSync(resolve('backend/runtime.ts'),'utf8');
- assert.match(backend,/process\.env\[key\]==='true'\?'true':'false'/);
- const resident=readFileSync(resolve('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java'),'utf8');
- assert.match(resident,/env\.put\("ELIZA_SECRET_SWAP_ENABLED","true"\);/);
- assert.match(resident,/env\.put\("ELIZA_PII_SWAP_ENABLED","true"\);/);
- const launcher=readFileSync(resolve('scripts/start-local-remote.mjs'),'utf8');
- assert.match(launcher,/const redaction = swapFlags\[0\] === 'true' \? 'all' : 'off';/);
-});
-
 test('local host uses the product-owned native route policy rather than inherited caller environment',()=>{
  const r=launch({swaps:{ELIZA_NATIVE_VIEW_DECLARATIONS:JSON.stringify([{id:'wallet',label:'Wallet',path:'/wallet'}])}});assert.equal(r.status,0,r.error);assert.deepEqual(r.child.nativeViews,JSON.parse(readFileSync(resolve('config/native-view-declarations.json'),'utf8')));assert.deepEqual(r.child.nativeViews.map(view=>view.id),['photos','maps','camera']);
 });

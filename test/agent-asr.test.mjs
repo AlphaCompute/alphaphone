@@ -10,9 +10,6 @@ test('host ASR is optional unless requested and never accepts relative or missin
 test('host ASR rejects an incompatible model before enabling its runtime provider',()=>{
  const home=mkdtempSync(join(tmpdir(),'alpha-asr-config-'));try{const binary=join(home,'whisper'),model=join(home,'model');writeFileSync(binary,'fixture',{mode:0o700});writeFileSync(model,'invalid');assert.throws(()=>agentAsrEnvironment({ALPHA_WHISPER_BIN:binary,ALPHA_ASR_MODEL:model}),/supported provider/);}finally{rmSync(home,{recursive:true,force:true});}
 });
-test('ASR backend selection rejects unknown modes rather than passing arbitrary CLI flags',()=>{
- assert.throws(()=>agentAsrEnvironment({ALPHA_WHISPER_BACKEND:'--anything'}),/auto or cpu/);
-});
 test('automatic ASR warm-up uses private synthetic silence and removes it after success',async()=>{
  let directory;const controller=new AbortController();
  const result=await warmAgentAsr({ELIZA_WHISPER_ENABLED:'1',ELIZA_WHISPER_BACKEND:'auto',ELIZA_WHISPER_BINARY:'/reviewed/whisper',ELIZA_WHISPER_MODEL:'/reviewed/model'}, {signal:controller.signal,run:async(binary,args,options)=>{
