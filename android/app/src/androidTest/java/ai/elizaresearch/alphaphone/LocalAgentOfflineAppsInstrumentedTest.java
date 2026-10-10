@@ -45,6 +45,8 @@ public class LocalAgentOfflineAppsInstrumentedTest {
    until("performance.timeOrigin!==" + previous + "&&[...document.querySelectorAll('.alpha-connection button')].some(b=>b.textContent==='Use local apps without AI')");
    WebViewTestDriver.evaluate("[...document.querySelectorAll('.alpha-connection button')].find(b=>b.textContent==='Use local apps without AI').click()");
    until("!document.querySelector('.alpha-connection-scrim')");
+   // Back closes the access panel a fresh install opens before it leaves an app; settle it first.
+   AppNavigation.declineStartupAccess();
    assertEquals("Local apps choice is saved", "true", WebViewTestDriver.evaluate("localStorage.getItem('" + SELECTION + "')===JSON.stringify({kind:'offline',localApps:true})"));
    for (String view : new String[]{"Notes", "Calendar"}) {
     WebViewTestDriver.evaluate(AppNavigation.request(view));
