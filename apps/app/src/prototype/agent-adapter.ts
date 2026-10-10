@@ -997,6 +997,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       }catch(error){throw error instanceof NotDispatched?error:new NotDispatched(error instanceof Error?error.message:'The agent connection is unavailable. Nothing was sent.');}
       const sourceSession=connectionController.getSnapshot().session;
       navigation=connectionController.captureViewNavigation(alphaClient.getState().context);
+      // The request becomes pending after the render above; render again so Stop is offered before any streamed text.
+      queueMicrotask(()=>{if(this.live&&alphaClient.getState().pending)this.setState({});});
       const reply = await alphaClient.send(text,value=>{
         attempt.streamed=true;
         if(!this.live)return;
