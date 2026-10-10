@@ -35,6 +35,11 @@ function workflowOutput(value:unknown,runId:string):string {
  if(Array.isArray(value)&&value.length===1){const item=value[0];if(item&&typeof item==='object'&&item.nodeId==='typed-steps'&&item.runId===runId&&typeof item.text==='string')return item.text.slice(0,4000);}
  return JSON.stringify(value).slice(0,4000);
 }
+/** A stored typed specification that is not a JSON object is treated as absent. One unreadable migrated definition then stays listed as an untyped workflow (steps, history and removal remain available) instead of failing the whole list. Its typed editor stays unavailable. */
+function storedPhoneSpec(value:unknown):{phoneSpec?:unknown}{
+ if(typeof value!=='string'||value.length>65536)return {};
+ try{const spec:unknown=JSON.parse(value);return spec&&typeof spec==='object'&&!Array.isArray(spec)?{phoneSpec:spec}:{};}catch{return {};}
+}
 export class WorkflowProtocol {
  hosted(){return new HostedDigestProtocol(this.request);}
 
@@ -60,7 +65,7 @@ export class WorkflowProtocol {
   if(expected.workflowId&&error instanceof WorkflowHttpError&&error.status===409&&error.code==='WORKFLOW_TYPED_NOT_APPLIED'&&error.workflowId===expected.workflowId&&error.mutationId===expected.mutationId&&error.expectedVersionId===expected.versionId)throw new WorkflowTypedRejected();throw error;}return parsePhoneReceipt(response.receipt,expected);}
  async phoneSaveReceipt(expected:{mutationId:string;specDigest:string;compilerRevision:string;workflowId?:string;versionId?:string},signal:AbortSignal){if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(expected.mutationId))throw new Error('Invalid save identity');const result=obj(await this.request(`/api/workflow/phone/mutations/${expected.mutationId}`,undefined,signal));if(result.mutationId!==expected.mutationId)throw new Error('Save identity changed');return result.receipt===null?null:parsePhoneReceipt(result.receipt,expected);}
  constructor(private request:(path:string,body:unknown|undefined,signal:AbortSignal)=>Promise<unknown>){}
- private workflow(value:unknown):RemoteWorkflow {const p=obj(value);if(typeof p.active!=='boolean'||(p.removed!==undefined&&typeof p.removed!=='boolean')||(p.removed===true&&!['pending','complete'].includes(p.triggerCleanup))||!Array.isArray(p.steps??[]))throw new Error('Invalid workflow');return {id:str(p.id),name:str(p.name),description:typeof p.description==='string'?p.description:'',active:p.active,removed:p.removed===true,triggerCleanup:p.triggerCleanup==='pending'?'pending':'complete',versionId:str(p.versionId),...(typeof p.metadata?.elizaPhoneWorkflowSpec==='string'&&p.metadata.elizaPhoneWorkflowSpec.length<=65536?{phoneSpec:JSON.parse(p.metadata.elizaPhoneWorkflowSpec)}:{}),...(typeof p.metadata?.elizaHostedDigestV1==='string'?{hostedDigest:true}:{}),steps:(p.steps??[]).map((x:unknown)=>({label:str(obj(x).label),...(typeof obj(x).description==='string'?{description:obj(x).description}:{})}))};}
+ private workflow(value:unknown):RemoteWorkflow {const p=obj(value);if(typeof p.active!=='boolean'||(p.removed!==undefined&&typeof p.removed!=='boolean')||(p.removed===true&&!['pending','complete'].includes(p.triggerCleanup))||!Array.isArray(p.steps??[]))throw new Error('Invalid workflow');return {id:str(p.id),name:str(p.name),description:typeof p.description==='string'?p.description:'',active:p.active,removed:p.removed===true,triggerCleanup:p.triggerCleanup==='pending'?'pending':'complete',versionId:str(p.versionId),...storedPhoneSpec(p.metadata?.elizaPhoneWorkflowSpec),...(typeof p.metadata?.elizaHostedDigestV1==='string'?{hostedDigest:true}:{}),steps:(p.steps??[]).map((x:unknown)=>({label:str(obj(x).label),...(typeof obj(x).description==='string'?{description:obj(x).description}:{})}))};}
  private runResult(value:unknown):WorkflowRun {
   const p=obj(value);if(typeof p.finished!=='boolean')throw new Error('Invalid execution');
   const id=str(p.id),workflowId=str(p.workflowId);
