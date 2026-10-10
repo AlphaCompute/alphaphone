@@ -519,7 +519,8 @@ function scheduleStoppedReply(selected: Active, session: VerifiedSession, conver
   const generation = epoch, controller = new AbortController();
   // The check belongs to the stopped conversation: selecting another one retires it.
   const current = () => !controller.signal.aborted && generation === epoch && selected === active && state.session?.sessionId === session.sessionId && conversationMemory.get(conversationKey(session)) === conversationId;
-  update({ replyNotice: STOPPED_REPLY_NOTICE });
+  // An earlier turn's confirmed stop is not this turn's outcome.
+  update({ replyNotice: STOPPED_REPLY_NOTICE, ...(state.message === STOPPED_CONFIRMED_NOTICE ? { message: '' } : {}) });
   let cancelled = false;
   // The single reconciliation read waits for the cancel attempt, so it reports the settled outcome.
   const cancelAttempt = selected.kind === 'cloud' ? Promise.resolve() : selected.remote.abortTurn(conversationId, controller.signal).then(outcome => {
@@ -533,7 +534,9 @@ function scheduleStoppedReply(selected: Active, session: VerifiedSession, conver
       if (!current()) return;
       if (sending || operation) { update({ replyNotice: 'Load this conversation from Agent connection to see whether the stopped reply finished.' }); return; }
       const result = await readConversation(selected, conversationId, controller.signal, () => { if (!current()) throw Error('The agent changed.'); });
-      if (!current() || sending || operation) return;
+      if (!current()) return;
+      // Another operation began during the read: say so instead of leaving "will check once" standing.
+      if (sending || operation) { update({ replyNotice: 'Load this conversation from Agent connection to see whether the stopped reply finished.' }); return; }
       const user = [...result.messages].reverse().find(item => item.role === 'user' && typeof item.text === 'string' && restoredText(item.text, item.userTextFormat) === text && (typeof item.timestamp !== 'number' || item.timestamp >= sentAt - 120_000));
       const index = user ? result.messages.indexOf(user) : -1;
       const reply = user && (result.messages.find(item => item.role === 'assistant' && item.replyToMessageId === user.id) ?? result.messages.slice(index + 1).find(item => item.role === 'assistant' && item.replyToMessageId === undefined));
@@ -1251,11 +1254,15 @@ export const connectionController = {
     } catch (error) {
       // Nothing carrying the message left this phone (no conversation, offline, changed owner, or a
       // Stop before the post): the composer keeps the text instead of reporting an unknown outcome.
-      if (!dispatched && error && typeof error === 'object') try { Object.defineProperty(error, 'notDispatched', { value: true, configurable: true }); } catch { /* An unmarkable error stays an unknown outcome. */ }
+      // The marker is set per failure: an error object seen after the post never keeps an earlier mark.
+      const mark = (target: unknown) => { if (target && typeof target === 'object' && (!dispatched || 'notDispatched' in target)) try { Object.defineProperty(target, 'notDispatched', { value: !dispatched, configurable: true }); } catch { /* An unmarkable error stays an unknown outcome. */ } };
+      mark(error);
       // Stop (or leaving the chat) after dispatch: the turn may still complete on the agent.
       if (signal.aborted && dispatched && generation === epoch && selected === active && state.session?.sessionId === session.sessionId) scheduleStoppedReply(selected, session, dispatched.conversationId, text, dispatched.at);
       if (error && typeof error === 'object' && 'status' in error && error.status === 429) {
-        throw new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.');
+        const limited = new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.');
+        // Rate-limited before the post (creating or reading the conversation): still provably unsent.
+        mark(limited); throw limited;
       }
       if (expired(error) && generation === epoch) {
         retire('Sign-in required');
