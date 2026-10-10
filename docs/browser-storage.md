@@ -234,7 +234,9 @@ other Trash entry are unchanged. The editor then shows a "Trash is full" dialog 
 choices: Cancel, Open Trash to make room, or "Delete forever without Trash". The last is
 the only way a note skips Trash and is confirmed separately from the ordinary delete. For
 a text, checklist or link note it is one saved-list commit of the exact refused record; a
-note that changed since the refusal is left alone. For a voice note the reviewed deletion
+note that changed since the refusal is left alone. This path and the voice path below first drop any
+Trash row still present for that saved note (the maintenance rule for a live note), so
+the erased note is not offered for restore afterwards. For a voice note the reviewed deletion
 protocol runs without a Trash row: the recovery row (marked `permanent`) holds the only
 copy until the tombstone commit, the move of this recording to the audio trash under the
 same operation id and its erase are all confirmed. An interruption leaves that row under
