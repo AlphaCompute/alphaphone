@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { auditPage, auditTabOrder, auditTree, format } from './accessibility-audit';
-import { FAILURE_STATES, LIVE_STATES, MOCK_STATES, setTextScale } from './accessibility-states';
+import { DEVELOPMENT_STATES, FAILURE_STATES, LIVE_STATES, MOCK_STATES, setTextScale } from './accessibility-states';
 
 // MVP-48, renderer part. Every retained primary view, subview and failure screen is checked for
 // accessible names and roles, keyboard reachability, focus order and traps, contrast, pointer
@@ -8,7 +8,7 @@ import { FAILURE_STATES, LIVE_STATES, MOCK_STATES, setTextScale } from './access
 // TalkBack, Switch Access, physical large-font, rotation or device pass; those remain open.
 test.describe.configure({ mode: 'parallel' });
 
-const STATES = [...LIVE_STATES, ...MOCK_STATES, ...FAILURE_STATES];
+const STATES = [...LIVE_STATES, ...DEVELOPMENT_STATES, ...MOCK_STATES, ...FAILURE_STATES];
 // Deliberate single-line ellipsis and line clamps on previews of user content are allowed: the
 // full text is one tap away and is exposed whole to assistive technology. Hard clipping is not.
 const blocking = (lines: string[]) => lines.filter(line => !line.startsWith('text-truncated:'));
@@ -29,7 +29,6 @@ for (const theme of ['light', 'dark'] as const) {
 
 for (const state of STATES) {
   test(`200% text is not clipped: ${state.name}`, async ({ page }, info) => {
-    test.fixme(!!state.largeTextOpen, state.largeTextOpen);
     await state.open(page, 'light');
     await setTextScale(page, 2);
     const found = format(await auditPage(page, { clipping: true }));
@@ -47,6 +46,8 @@ test.describe('landscape', () => {
   for (const state of STATES) {
     test(`landscape keeps every control on screen: ${state.name}`, async ({ page }) => {
       await state.open(page, 'light');
+      // The landscape layout is what is being checked, not a scaled-down portrait canvas.
+      await expect(page.locator('html')).toHaveClass(/alpha-landscape/);
       const found = blocking(format([...await auditPage(page, { clipping: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
       expect(blocking(found), blocking(found).join('\n')).toEqual([]);
     });

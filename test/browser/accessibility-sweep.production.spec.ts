@@ -26,6 +26,7 @@ test.describe('landscape', () => {
   for (const state of LIVE_STATES) {
     test(`production landscape keeps every control on screen: ${state.name}`, async ({ page }) => {
       await state.open(page);
+      await expect(page.locator('html')).toHaveClass(/alpha-landscape/);
       const found = blocking(format([...await auditPage(page, { clipping: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
       expect(found, found.join('\n')).toEqual([]);
     });

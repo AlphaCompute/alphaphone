@@ -10,8 +10,8 @@ import { expect, type Page } from '@playwright/test';
  */
 export type State = {
   name: string; open: (page: Page, theme?: 'light' | 'dark') => Promise<void>;
-  /** A known large-text defect owned by another work package; the 200% check is marked fixme with this reason. */
-  largeTextOpen?: string;
+  /** The subview this state must put on screen; opening fails if it is not the exposed one. */
+  shows?: string;
 };
 
 const offline = () => localStorage.setItem('alpha.connection.selection.v1', JSON.stringify({ kind: 'offline' }));
@@ -22,20 +22,36 @@ const settle = async (page: Page) => {
   await page.waitForTimeout(450);
 };
 
-const live = (name: string, steps: string[] = [], after?: (page: Page) => Promise<void>): State => ({
-  name: `live ${name}`,
+const press = async (page: Page, steps: string[]) => { for (const step of steps) await page.getByRole('button', { name: step, exact: true }).first().click(); };
+/** The named subview is on screen and exposed (not retired behind another subview). */
+const showing = async (page: Page, subview?: string) => {
+  if (subview) await expect(page.locator(`[data-alpha-subview="${subview}"]:not([inert])`)).toBeVisible();
+};
+const live = (name: string, steps: string[] = [], shows?: string): State => ({
+  name: `live ${name}`, shows,
   open: async (page, theme) => {
     await page.addInitScript(offline);
     await page.goto(theme ? `/?theme=${theme}` : '/');
     await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
-    for (const step of steps) await page.getByRole('button', { name: step, exact: true }).first().click();
-    await after?.(page);
+    await press(page, steps);
     await settle(page);
+    await showing(page, shows);
   },
 });
-const mock = (start: string): State => ({
-  name: `mock ${start}`,
-  open: async (page, theme) => { await page.goto(`/?mode=mock&theme=${theme || 'light'}&start=${start}`); await settle(page); },
+/** Fixture screens that finish arriving on a timer: the control that marks them complete. */
+const ARRIVES: Record<string, string> = {
+  // The scan fixture finds its page after about a second; the result actions are the state.
+  'camera:scan': 'Add event',
+};
+const mock = (start: string, steps: string[] = [], shows?: string): State => ({
+  name: `mock ${[start, ...steps].join(' > ')}`, shows,
+  open: async (page, theme) => {
+    await page.goto(`/?mode=mock&theme=${theme || 'light'}&start=${start}`);
+    await settle(page);
+    if (ARRIVES[start]) { await expect(page.getByRole('button', { name: ARRIVES[start], exact: true })).toBeVisible(); await settle(page); }
+    if (steps.length) { await press(page, steps); await settle(page); }
+    await showing(page, shows);
+  },
 });
 
 /** Primary views and the subviews, dialogs and failure states reachable without a provider. */
@@ -54,7 +70,7 @@ export const LIVE_STATES: State[] = [
   live('Maps (no location)', ['Maps']),
   live('Notes (empty)', ['Notes']),
   live('Notes new note', ['Notes', 'New note']),
-  { ...live('Notes trash', ['Notes', 'Open Trash']), largeTextOpen: 'Notes Trash (MVP-15, trash-recovery): the "Trash" heading is cut vertically by its fixed-height header at 200% text' },
+  live('Notes trash', ['Notes', 'Open Trash'], 'notes-trash'),
   live('Files', ['Files']),
   live('Workflows', ['Workflows']),
   live('Settings', ['Settings']),
@@ -64,7 +80,34 @@ export const LIVE_STATES: State[] = [
   live('Settings about', ['Settings', 'About']),
   live('Settings scheduled digests', ['Settings', 'Scheduled digests']),
   live('Settings agent connection', ['Settings', 'Agent connection']),
+  // The remaining Settings pages, and each app's open menu, search field and editor.
+  live('Settings character', ['Settings', 'Character']),
+  live('Settings accounts', ['Settings', 'Accounts']),
+  live('Settings connections', ['Settings', 'Connections']),
+  live('Settings notifications', ['Settings', 'Notifications']),
+  live('Settings calendar', ['Settings', 'Calendar']),
+  live('Settings password manager', ['Settings', 'Password manager']),
+  live('Browser menu', ['Browser', 'Menu']),
+  live('Browser address', ['Browser', 'Edit address']),
+  live('Calendar alarms', ['Calendar', 'Clock alarms']),
+  live('Photos search', ['Photos', 'Search photos']),
+  live('Notes search', ['Notes', 'Search notes']),
+  live('Notes source document', ['Notes', 'New note', 'Link source document']),
+  live('Notes recording', ['Notes', 'Record and transcribe'], 'notes-recording'),
+  live('Files search', ['Files', 'Search files']),
+  live('Workflows new automation', ['Workflows', 'New automation'], 'automations-detail'),
 ];
+
+/** The subview each fixture deep link must put on screen. */
+const SUBVIEW: Record<string, string> = {
+  'inbox:mail': 'inbox-detail', 'inbox:compose': 'inbox-composing',
+  'calendar:event': 'calendar-detail', 'calendar:invite': 'calendar-detail', 'calendar:add': 'calendar-detail', 'calendar:new': 'calendar-form',
+  'browser:tabs': 'browser-tabs',
+  'photos:viewer': 'photos-viewer',
+  'notes:editor': 'notes-editor', 'notes:rec': 'notes-recording', 'notes:voice': 'notes-voice',
+  'files:folder': 'files-folder', 'files:preview': 'files-preview',
+  'workflows:flow': 'workflows-detail', 'workflows:run': 'workflows-runOpen', 'workflows:failed': 'workflows-runOpen', 'workflows:new': 'workflows-builder',
+};
 
 /** Populated lists and open subviews of every retained view (fixture data, development only). */
 export const MOCK_STATES: State[] = [
@@ -79,7 +122,47 @@ export const MOCK_STATES: State[] = [
   'files', 'files:folder', 'files:preview',
   'workflows', 'workflows:flow', 'workflows:run', 'workflows:failed', 'workflows:new',
   'settings', 'settings:accounts', 'settings:adding', 'settings:privacy',
-].map(mock);
+].map(start => mock(start, [], SUBVIEW[start])).concat([
+  // Subviews, menus, sheets and search fields one or two taps inside a view.
+  mock('inbox', ['Search email']),
+  mock('inbox:mail', ['Reply'], 'inbox-composing'),
+  mock('calendar:event', ['Edit event'], 'calendar-form'),
+  mock('calendar', ['Clock alarms']),
+  mock('browser', ['Menu']),
+  mock('browser', ['Menu', 'Bookmarks and history'], 'browser-library'),
+  mock('browser', ['Menu', 'Share']),
+  mock('browser', ['Edit address']),
+  mock('photos:albums', ['Favorites'], 'photos-album'),
+  mock('photos:viewer', ['Edit photo'], 'photos-edit'),
+  mock('photos:viewer', ['Photo info']),
+  mock('photos:viewer', ['Share photo']),
+  mock('photos', ['Select photos']),
+  mock('notes', ['Search notes']),
+  mock('notes', ['Open The case for on-device agents'], 'notes-link'),
+  mock('notes:editor', ['Share note']),
+  mock('files', ['Search files']),
+  mock('files:folder', ['View and sort']),
+  mock('files:folder', ['Select files']),
+  mock('files:preview', ['Rename']),
+  mock('files:preview', ['Move file']),
+  mock('files:preview', ['Share file']),
+  // Deleting a fixture file shows the toast with Undo over the folder.
+  mock('files:preview', ['Delete file']),
+  mock('workflows:flow', ['Change'], 'workflows-builder'),
+  // The builder's trigger and step sheets, and the Settings connection sheet.
+  mock('workflows', ['New automation', 'Edit When step'], 'workflows-builder'),
+  mock('workflows:new', ['Add Read step'], 'workflows-builder'),
+  mock('settings', ['Connections', 'Slack']),
+  mock('settings', ['Character']),
+  mock('settings', ['Connections']),
+  mock('settings', ['Notifications']),
+  mock('settings:accounts', ['you@gmail.example']),
+]);
+
+/** Live states that exist only on the development server (developer surfaces). */
+export const DEVELOPMENT_STATES: State[] = [
+  live('Settings developer', ['Settings', 'Developer']),
+];
 
 /** The renderer's own failure screens. */
 export const FAILURE_STATES: State[] = [

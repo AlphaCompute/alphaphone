@@ -103,6 +103,125 @@ test('the note editor keeps Delete on screen beside the other header actions', a
   for (const width of sizes) expect(width).toBeGreaterThanOrEqual(44);
 });
 
+test.describe('200% text keeps the way out on screen', () => {
+  for (const [start, open, field] of [['inbox', 'Search email', 'Search mail'], ['photos', 'Search photos', 'Search photos'], ['notes', 'Search notes', 'Search notes'], ['files', 'Search files', 'Search files']] as const) {
+    test(`${start} search: the field shrinks and Close search stays reachable`, async ({ page }) => {
+      await page.goto(`/?mode=mock&start=${start}`);
+      await page.getByRole('button', { name: open, exact: true }).click();
+      await setTextScale(page, 2);
+      await reachable(page, page.getByRole('textbox', { name: field, exact: true }).or(page.getByRole('searchbox', { name: field, exact: true })));
+      const close = page.getByRole('button', { name: 'Close search', exact: true });
+      await reachable(page, close);
+      await close.click();
+      await expect(close).toHaveCount(0);
+    });
+  }
+
+  test('the Undo toast wraps a long file name and keeps Undo usable', async ({ page }) => {
+    await page.goto('/?mode=mock&start=files:preview');
+    await page.getByRole('button', { name: 'Delete file', exact: true }).click();
+    const undo = page.getByRole('button', { name: 'Undo', exact: true });
+    await expect(undo).toBeVisible();
+    await setTextScale(page, 2);
+    await reachable(page, undo);
+    await undo.click();
+    await expect(page.getByRole('button', { name: /^Open Northpoint_TermSheet_v3\.pdf/ })).toBeVisible();
+  });
+
+  test('browser menu rows grow with their labels instead of printing over each other', async ({ page }) => {
+    await page.goto('/?mode=mock&start=browser');
+    await page.getByRole('button', { name: 'Menu', exact: true }).click();
+    await setTextScale(page, 2);
+    const rows = await page.locator('[data-alpha-browser-menu] > button').evaluateAll(list => list.map(el => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, fits: el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1 }; }));
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+    for (const row of rows) expect(row.fits).toBe(true);
+    for (let index = 1; index < rows.length; index++) expect(rows[index].top).toBeGreaterThanOrEqual(rows[index - 1].bottom - 1);
+    await reachable(page, page.getByRole('button', { name: 'Read aloud', exact: true }));
+  });
+});
+
+test.describe('menus and sheets over a scrim own focus', () => {
+  // [state, steps, dialog name, scrim name, the opener focus returns to (when it survives)]
+  const POPUPS = [
+    ['live', ['Browser', 'Menu'], 'Browser menu', 'Close menu', 'Menu'],
+    ['browser', ['Menu', 'Share'], 'Share page', 'Close share', null],
+    ['photos:viewer', ['Photo info'], 'Photo info', 'Close info', 'Photo info'],
+    ['photos:viewer', ['Share photo'], 'Share photo', 'Close share', 'Share photo'],
+    ['notes:editor', ['Share note'], 'Share note', 'Close share', 'Share note'],
+    ['files:folder', ['View and sort'], 'View and sort', 'Close menu', 'View and sort'],
+    ['files:preview', ['Move file'], 'Move to', 'Close move', 'Move file'],
+    ['files:preview', ['Share file'], 'Share file', 'Close share', 'Share file'],
+    ['workflows:new', ['Add Read step'], 'Step editor', 'Close', null],
+    ['settings', ['Connections', 'Slack'], 'Slack', 'Close sheet', 'Slack'],
+  ] as const;
+  for (const [start, steps, name, scrim, opener] of POPUPS) {
+    test(`${start} > ${steps.join(' > ')}: focus enters, stays, and returns on Escape`, async ({ page }) => {
+      if (start === 'live') { await page.addInitScript(offline); await page.goto('/'); }
+      else await page.goto(`/?mode=mock&start=${start}`);
+      for (const step of steps.slice(0, -1)) await page.getByRole('button', { name: step, exact: true }).first().click();
+      const last = page.getByRole('button', { name: steps.at(-1)!, exact: true }).first();
+      await expect(last).toBeVisible();
+      // Everything the user could operate before the popup opened must be operable again after it.
+      await page.evaluate(() => { for (const el of document.querySelectorAll('.os button, .os input, .os textarea, .os a[href]')) if (el.getClientRects().length && !el.closest('[inert]')) (el as any).__alphaBefore = true; });
+      await last.click();
+      const dialog = page.getByRole('dialog', { name, exact: true });
+      await expect(dialog).toBeVisible();
+      const inside = () => page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'));
+      await expect.poll(inside).toBe(true);
+      // The page under the popup is out of the tab order and the accessibility tree; the
+      // popup's own scrim still closes it for a pointer or an assistive-technology tap.
+      const exposed = await page.evaluate(() => Array.from(document.querySelectorAll('.os button, .os input, .os textarea, .os a[href]'))
+        .filter(el => el.getClientRects().length && !el.closest('[inert]') && !el.closest('[data-alpha-popup]')).map(el => el.getAttribute('aria-label') || el.textContent));
+      expect(exposed).toEqual([]);
+      await expect(page.getByRole('button', { name: scrim, exact: true })).toHaveCount(1);
+      const stops = await dialog.locator('button:not(:disabled), input, textarea, select').count();
+      for (let step = 0; step < stops + 2; step++) { await page.keyboard.press('Tab'); expect(await inside()).toBe(true); }
+      for (let step = 0; step < 2; step++) { await page.keyboard.press('Shift+Tab'); expect(await inside()).toBe(true); }
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      if (opener) await expect(page.getByRole('button', { name: opener, exact: true }).first()).toBeFocused();
+      const stranded = await page.evaluate(() => Array.from(document.querySelectorAll('.os button, .os input, .os textarea, .os a[href]'))
+        .filter(el => (el as any).__alphaBefore && el.isConnected && !!el.closest('[inert],[aria-hidden="true"]')).map(el => el.getAttribute('aria-label') || el.textContent));
+      expect(stranded).toEqual([]);
+    });
+  }
+
+  test('a tap on the scrim still closes the popup, and Delete is not operable under the share sheet', async ({ page }) => {
+    await page.goto('/?mode=mock&start=photos:viewer');
+    await page.getByRole('button', { name: 'Share photo', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Share photo', exact: true });
+    await expect(dialog).toBeVisible();
+    // Delete photo sits under the sheet: before, Tab reached it there and Enter deleted unseen.
+    expect(await page.locator('button[aria-label="Delete photo"]').evaluate(el => !!el.closest('[inert]'))).toBe(true);
+    await page.getByRole('button', { name: 'Close share', exact: true }).click({ position: { x: 8, y: 60 } });
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Delete photo', exact: true })).toBeVisible();
+    // The Android Back gesture reaches the renderer as alpha-back: it closes the sheet, not the viewer.
+    await page.getByRole('button', { name: 'Share photo', exact: true }).click();
+    await expect(dialog).toBeVisible();
+    expect(await page.evaluate(() => !window.dispatchEvent(new Event('alpha-back', { cancelable: true })))).toBe(true);
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('[data-alpha-subview="photos-viewer"]:not([inert])')).toBeVisible();
+  });
+});
+
+test.describe('photo editor in landscape', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 915, height: 412 } });
+  test('scrolls to Rotate, Crop and the filters, which sit below the preview', async ({ page }) => {
+    await page.goto('/?mode=mock&start=photos:viewer');
+    await page.getByRole('button', { name: 'Edit photo', exact: true }).click();
+    const editor = page.locator('[data-alpha-subview="photos-edit"]');
+    await expect(editor).toBeVisible();
+    expect(await editor.evaluate(el => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === 'auto')).toBe(true);
+    for (const name of ['Rotate', 'Crop', 'Mono filter']) await reachable(page, page.getByRole('button', { name, exact: true }));
+    // Keyboard: a filter is operable without a pointer, and Save is still reachable afterwards.
+    const mono = page.getByRole('button', { name: 'Mono filter', exact: true });
+    await mono.focus(); await page.keyboard.press('Enter');
+    await expect(mono).toHaveAttribute('aria-pressed', 'true');
+    await reachable(page, page.getByRole('button', { name: 'Save edit', exact: true }));
+  });
+});
+
 test.describe('recovery screen', () => {
   const startupFailure = async (page: Page) => {
     await page.addInitScript(offline);
@@ -122,6 +241,28 @@ test.describe('recovery screen', () => {
       expect(await page.evaluate(() => { const active = document.activeElement; return !active || active === document.body || !!active.closest('.alpha-recovery'); })).toBe(true);
     }
     await expect(recovery.locator('pre')).not.toContainText('Private note text');
+  });
+
+  test('a render failure under an open modal dialog dismisses the dialog and hands focus to Reload', async ({ page }) => {
+    await page.addInitScript(offline);
+    await page.goto('/');
+    for (const name of ['Notes', 'New note', 'Link source document']) await page.getByRole('button', { name, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Note source document' });
+    await expect(dialog).toBeVisible();
+    // A modal <dialog> is in the top layer: left open, it covers recovery and makes it inert.
+    expect(await page.evaluate(() => document.querySelector('dialog[open]')?.matches(':modal'))).toBe(true);
+    await page.evaluate(() => window.dispatchEvent(new Event('alpha:force-render-error')));
+    const recovery = page.getByRole('alertdialog', { name: 'Alpha Phone needs to reload' });
+    await expect(recovery).toBeVisible();
+    await expect(page.locator('dialog[open]')).toHaveCount(0);
+    const reload = recovery.getByRole('button', { name: 'Reload', exact: true });
+    await expect(reload).toBeFocused();
+    await reachable(page, reload);
+    // The dismissed dialog linked nothing and focus stays in recovery.
+    for (let step = 0; step < 4; step++) {
+      await page.keyboard.press('Tab');
+      expect(await page.evaluate(() => { const active = document.activeElement; return !active || active === document.body || !!active.closest('.alpha-recovery'); })).toBe(true);
+    }
   });
 
   for (const kind of ['startup', 'render'] as const) {

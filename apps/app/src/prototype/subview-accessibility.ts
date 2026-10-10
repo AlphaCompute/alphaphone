@@ -1,5 +1,23 @@
 import {createInlineModal} from '../runtime/inline-modal';
 type Bag=Record<string,any>;
+type Popup=[key:string,open:(out:Bag)=>boolean,close:(out:Bag)=>void];
+/**
+ * Menus and sheets drawn over a view behind a scrim. Each one owns focus while it is open:
+ * the page under it leaves the tab and accessibility order, Escape and Back close it, and
+ * focus returns to the control that opened it.
+ */
+const POPUPS:Record<string,Popup[]>={
+ browser:[['menuModal',out=>!!out.menu,out=>out.closeMenu?.()],['shareModal',out=>!!out.share,out=>out.closeShare?.()]],
+ photos:[['infoModal',out=>!!out.infoOpen,out=>out.closeSheet?.()],['shareModal',out=>!!out.shareOpen,out=>out.closeSheet?.()]],
+ notes:[['shareModal',out=>!!out.shareSheet,out=>out.closeSheet?.()]],
+ files:[['menuModal',out=>!!out.menuOpen,out=>out.closeMenu?.()],['moveModal',out=>!!out.moveSheet,out=>out.closeSheet?.()],['shareModal',out=>!!out.shareSheet,out=>out.closeSheet?.()]],
+ workflows:[['stepModal',out=>!!out.b?.sheetOn,out=>out.b?.closeSheet?.()]],
+ settings:[['sheetModal',out=>!!out.hasSheet,out=>out.sheet?.close?.()]],
+};
+function popupFocus(name:string,current:()=>Bag){
+ const popups=(POPUPS[name]||[]).map(([key,open,close])=>({key,open,modal:reviewFocus(()=>close(current()))}));
+ return (out:Bag)=>{const refs:Bag={};for(const popup of popups){popup.modal.render(popup.open(out));refs[popup.key]=popup.modal.ref;}return refs;};
+}
 /** Full-screen subviews replace their covered content in accessibility navigation. */
 export function installSubviewAccessibility(views:Bag){
  for(const name of ['inbox','workflows']){
@@ -10,6 +28,7 @@ export function installSubviewAccessibility(views:Bag){
   const providerModal=reviewFocus(()=>output.provider?.close());
   const focus=focusHistory();
   const detailFocus=subviewFocus(focus.read),composeFocus=subviewFocus(focus.read),runFocus=subviewFocus(focus.read),builderFocus=subviewFocus(focus.read);
+  const popups=popupFocus(name,()=>output);
   views[name].render=(state:Bag,api:Bag)=>{
    const out=output=render(state,api);
    if(name==='inbox'){
@@ -17,7 +36,7 @@ export function installSubviewAccessibility(views:Bag){
     const review=!!(out.contextReviewOpen||out.attachmentOpen||out.providerReview);
     return {...out,captureSubviewFocus:focus.capture,contextModal:contextModal.ref,attachmentModal:attachmentModal.ref,providerModal:providerModal.ref,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!!(out.detail||out.composing||review),detailCovered:!!(out.composing||review),composeCovered:review};
    }
-   return {...out,captureSubviewFocus:focus.capture,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!!(out.detail||out.automation?.detail||out.runOpen||out.builder),detailCovered:!!(out.runOpen||out.builder),runCovered:!!out.builder};
+   return {...out,...popups(out),captureSubviewFocus:focus.capture,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!!(out.detail||out.automation?.detail||out.runOpen||out.builder),detailCovered:!!(out.runOpen||out.builder),runCovered:!!out.builder};
   };
  }
  for(const [name,keys,coverage] of [
@@ -30,10 +49,18 @@ export function installSubviewAccessibility(views:Bag){
   const render=views[name].render,focus=focusHistory(),refs=Object.fromEntries(keys.map(key=>[key+'Focus',subviewFocus(focus.read)]));
   let output:Bag={};
   const deleteModal=name==='photos'?reviewFocus(()=>output.closeSheet?.()):name==='notes'?reviewFocus(()=>output.trashCancel?.()):null;
+  const popups=popupFocus(name,()=>output);
   views[name].render=(state:Bag,api:Bag)=>{
    const out=output=render(state,api);deleteModal?.render(!!(out.emptyOpen||out.trashConfirmOpen));
-   return {...out,...refs,emptyModal:deleteModal?.ref,captureSubviewFocus:focus.capture,...coverage(out)};
+   return {...out,...refs,...popups(out),emptyModal:deleteModal?.ref,captureSubviewFocus:focus.capture,...coverage(out)};
   };
+ }
+ {
+  // Settings has no layered subviews of its own, only the account sheet.
+  const render=views.settings.render;
+  let output:Bag={};
+  const popups=popupFocus('settings',()=>output);
+  views.settings.render=(state:Bag,api:Bag)=>{const out=output=render(state,api);return {...out,...popups(out)};};
  }
 
 }

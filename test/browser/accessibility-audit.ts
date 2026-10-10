@@ -235,6 +235,11 @@ export async function auditPage(page: Page, options: PageAuditOptions = {}): Pro
             break;
           }
         }
+        // Wrapped lines must not print over each other: a line box shorter than the text it holds
+        // (a pixel line height under scaled text) overlaps the line above.
+        const lineHeight = parseFloat(style.lineHeight), fontSize = parseFloat(style.fontSize);
+        if (!hidden && lineHeight && lineHeight < fontSize * .95 && new Set(rects.map(item => Math.round(item.top))).size > 1)
+          out.push({ rule: 'text-lines-overlap', target: describe(el), detail: `"${text.slice(0, 40)}" ${Math.round(fontSize)}px text on ${Math.round(lineHeight)}px lines` });
         // Text must not run off the side of the phone where no scroller can bring it back.
         if (!hidden && !scroller(el, 'x') && rects.some(item => item.right > right + 1.5 || item.left < left - 1.5))
           out.push({ rule: 'text-off-screen', target: describe(el), detail: `"${text.slice(0, 40)}"` });
@@ -269,35 +274,75 @@ export async function auditPage(page: Page, options: PageAuditOptions = {}): Pro
  * Walk the tab order. Focus must move on every press, must never land in content hidden from
  * assistive technology, and must return to where it began (no trap, no dead end). A modal
  * dialog with a single control keeps focus on it by design; its dismissal is covered by the
- * dialog specs.
+ * dialog specs. Outside a modal, the walk must also reach every exposed tab stop: an order
+ * that cycles through part of the page leaves the rest unreachable by keyboard. While a menu
+ * or sheet is open over a scrim, no stop may sit under the scrim or the panel.
  */
 export async function auditTabOrder(page: Page, limit = 120): Promise<Violation[]> {
   const read = () => page.evaluate(() => {
     const el = document.activeElement;
-    if (!el || el === document.body || el === document.documentElement) return { key: 'body', hidden: false, visible: true, modal: false, text: 'body' };
+    if (!el || el === document.body || el === document.documentElement) return { key: 'body', hidden: false, visible: true, behind: false, modal: false, stops: 0, segmented: false, text: 'body' };
     const anyEl = el as any; anyEl.__alphaTabId ||= Math.random().toString(36).slice(2);
     const rect = el.getBoundingClientRect();
+    const dialog = el.closest('dialog,[role=dialog],[role=alertdialog]');
+    const stops = dialog ? Array.from(dialog.querySelectorAll('button,a[href],input:not([type=hidden]),select,textarea,summary,[tabindex]'))
+      .filter(item => !item.matches(':disabled,[tabindex="-1"]') && !item.closest('[inert]') && item.getClientRects().length > 0).length : 0;
+    // A scrim is an empty button laid over (nearly) the whole phone to close a menu or sheet.
+    // Focus on a control under it, or under the panel that follows it, is focus the user cannot
+    // see on a control a pointer cannot reach: the popup must take the page out of the tab order.
+    const phone = (document.querySelector('.os') || document.documentElement).getBoundingClientRect();
+    const scrim = Array.from(document.querySelectorAll('button')).find(item => {
+      if (item === el || item.contains(el) || (item.textContent || '').trim() || item.closest('[inert]') || !item.getClientRects().length) return false;
+      const box = item.getBoundingClientRect();
+      return box.width * box.height >= phone.width * phone.height * .8;
+    });
+    const hit = scrim ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
+    const behind = !!scrim && !!hit && hit !== el && !el.contains(hit) && !hit.contains(el) && (hit === scrim || !!(scrim.compareDocumentPosition(hit) & Node.DOCUMENT_POSITION_FOLLOWING));
     return {
       key: anyEl.__alphaTabId as string, hidden: !!el.closest('[inert],[aria-hidden="true"]'),
-      visible: rect.width > 0 && rect.height > 0, modal: !!el.closest('dialog,[role=dialog],[role=alertdialog]'), text: el.outerHTML.replace(/\s+/g, ' ').replace(/ style="[^"]*"/g, '').slice(0, 140),
+      visible: rect.width > 0 && rect.height > 0, behind, modal: !!dialog, stops,
+      // Tab steps through the hour, minute and period fields of a native date or time input before leaving it.
+      segmented: el.matches('input[type=time],input[type=date],input[type=datetime-local],input[type=month],input[type=week]'), text: el.outerHTML.replace(/\s+/g, ' ').replace(/ style="[^"]*"/g, '').slice(0, 140),
     };
   });
   const out: Violation[] = [];
-  await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur?.(); });
-  const order: string[] = []; let previous = 'start', stuck = 0, wrapped = false;
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    for (const el of document.querySelectorAll('button,a[href],input:not([type=hidden]),select,textarea,summary,[tabindex]')) (el as any).__alphaTabCandidate = true;
+  });
+  const order: string[] = []; let previous = 'start', stuck = 0, wrapped = false, contained = false, edges = 0, idle = 0;
   for (let step = 0; step < limit; step++) {
     await page.keyboard.press('Tab');
     const current = await read();
     if (current.hidden) out.push({ rule: 'focus-in-hidden-content', target: current.text });
     if (!current.visible && current.key !== 'body') out.push({ rule: 'focus-not-visible', target: current.text });
-    if (current.key === previous && current.key !== 'body') { if (++stuck >= 2) { if (!current.modal) out.push({ rule: 'focus-trap', target: current.text }); break; } } else stuck = 0;
+    if (current.behind) out.push({ rule: 'focus-behind-scrim', target: current.text });
+    if (current.key === previous && current.key !== 'body') { if (++stuck >= (current.segmented ? 8 : 2)) { if (!current.modal || current.stops > 1) out.push({ rule: 'focus-trap', target: current.text }); break; } } else stuck = 0;
     previous = current.key;
     if (stuck) continue;
     if (current.key !== 'body' && order.includes(current.key)) { wrapped = true; break; }
-    if (current.key !== 'body') order.push(current.key);
-    else if (order.length) { wrapped = true; break; }
+    if (current.key !== 'body') { order.push(current.key); contained ||= current.modal; }
+    // Leaving the last stop passes through the browser's own controls. The walk starts wherever
+    // focus was (a newly opened subview takes it), so it carries on past the edge until a stop
+    // repeats: the stops before the starting point are part of the order too.
+    else if (order.length ? ++edges > 1 : ++idle > 3) { wrapped = true; break; }
   }
   if (!wrapped && order.length >= limit - 1) out.push({ rule: 'focus-order-unbounded', target: `more than ${limit} tab stops` });
+  // A dialog legitimately keeps focus to itself. Anywhere else, a completed cycle must have
+  // visited every exposed tab stop. Radio groups share one stop, so radios are not counted.
+  // A walk that never leaves the page body is a completed cycle of no stops: if Tab is swallowed,
+  // every control on the page is unreachable by keyboard and is reported here.
+  // Only controls that were on screen before the walk and are still there count: content that
+  // arrives on a timer while the walk is under way is not a stop the walk skipped.
+  if (wrapped && !contained) {
+    const missed = await page.evaluate(() => Array.from(document.querySelectorAll('button,a[href],input:not([type=hidden]):not([type=radio]),select,textarea,summary,[tabindex]'))
+      .filter(el => {
+        if ((el as any).__alphaTabId || !(el as any).__alphaTabCandidate || el.matches(':disabled,[tabindex="-1"]') || el.closest('[inert],[aria-hidden="true"]') || !el.getClientRects().length) return false;
+        const closed = el.closest('details:not([open])'); if (closed && !(el.matches('summary') && el.parentElement === closed)) return false;
+        return getComputedStyle(el).visibility === 'visible';
+      }).map(el => el.outerHTML.replace(/\s+/g, ' ').replace(/ style="[^"]*"/g, '').slice(0, 140)));
+    for (const target of missed) out.push({ rule: 'focus-order-incomplete', target });
+  }
   return out;
 }
 

@@ -10,15 +10,15 @@ navigation, process death and full storage on hardware remain device acceptance 
 
 | Spec | Lane | Scope |
 | --- | --- | --- |
-| `test/browser/accessibility-sweep.spec.ts` | `npm run test:browser` | Every state in `test/browser/accessibility-states.ts`: live (no connection, no data), fixture (populated lists and open subviews) and the two recovery screens |
+| `test/browser/accessibility-sweep.spec.ts` | `npm run test:browser` | Every state in `test/browser/accessibility-states.ts`: live (no connection, no data), fixture (populated lists, open subviews, menus, search fields, sheets and the Undo toast) and the two recovery screens |
 | `test/browser/accessibility-sweep.production.spec.ts` | `npm run test:browser:production` | The live states against the flag-off production bundle |
 | `test/browser/accessibility-audit.spec.ts` | `npm run test:browser` | Each rule fires on a seeded defect and stays quiet on corrected markup |
 | `test/browser/accessibility-resilience.spec.ts` | `npm run test:browser` | Behaviour behind the defects the sweep found |
 
 The checks live in `test/browser/accessibility-audit.ts` and need no added dependency.
-Names, roles and focusability are read from Chromium's accessibility tree, which is the
-tree Android WebView hands to TalkBack. Geometry, contrast and clipping are measured in
-the page.
+Names, roles and focusability are read from desktop Chromium's accessibility tree. Android
+WebView computes its tree with the same engine, but the Android mapping and what TalkBack
+announces are not exercised here. Geometry, contrast and clipping are measured in the page.
 
 | Rule | Meaning |
 | --- | --- |
@@ -28,11 +28,23 @@ the page.
 | `click-without-control` | A click handler sits on an element that is not a control |
 | `aria-reference` | A label or description reference does not resolve to exactly one element |
 | `focus-trap`, `focus-not-visible`, `focus-order-unbounded` | Tab stops moving, lands on an invisible element, or never returns |
+| `focus-order-incomplete` | Outside a dialog, a full Tab cycle skipped an exposed tab stop |
+| `focus-behind-scrim` | With a menu or sheet open, Tab reached a control under its scrim or panel |
 | `target-size` | A pointer target is smaller than 24 by 24 CSS pixels (WCAG 2.5.8) |
 | `contrast` | Text is below 4.5:1, or 3:1 for large text, against what is painted behind it |
 | `text-clipped`, `text-off-screen`, `label-overflows-control` | Text is cut through, leaves the phone sideways, or spills out of its control |
+| `text-lines-overlap` | Wrapped text sits on line boxes shorter than the text, so lines print over each other |
 | `control-off-screen`, `control-unreachable` | A control leaves the phone, or sits outside the screen with no scroller |
 | `text-truncated` | Reported, not failed: a deliberate ellipsis or line clamp |
+
+Menus and sheets drawn over a scrim (browser menu and share, photo info and share, note
+share, file sort, move and share, the workflow step editor and the Settings sheet) own
+focus while open: the page under them leaves the tab order and the accessibility tree,
+Escape and Back close them, and focus returns to the control that opened them when that
+control still exists. Their scrim stays exposed as a named close control for touch.
+
+The recovery screen dismisses any open modal dialog when it appears. A modal dialog is
+drawn above everything else and would otherwise leave Reload covered and unfocusable.
 
 ## Supported sizes
 
@@ -63,9 +75,21 @@ open item, not a pass.
 - The map canvas is a pannable surface: labels and pins outside the frame are not
   failures. Places are also listed in the results sheet.
 - Landscape is checked in a mobile-emulated Chromium viewport. Android rotation, insets
-  and state restoration are covered by `RotationInstrumentedTest` on an emulator and
-  still need a device.
-- The 200% check of Notes Trash is marked `fixme`: its heading is cut by a fixed-height
-  header. That screen belongs to the trash-recovery work (MVP-15).
+  and state restoration have an instrumentation source (`RotationInstrumentedTest`); it
+  was not run as part of this work, and a device pass is still required.
+- The sweep runs the standalone presentation that a browser shows. The Android HOME
+  (launcher) presentation uses different header sizing and is not swept.
+- The composer field keeps a pixel line height, and text typed into inputs is not judged
+  for clipping; only rendered text nodes are.
+- Landscape combined with 200% text is not swept. Neither is any zoom above 200%: the
+  largest in-app size with the largest system font multiplies to 300%.
 - The sweep visits states reachable without a provider, permission or account. Dialogs
-  and flows that need one are covered by their own accessibility specs.
+  and flows that need one are covered by their own accessibility specs. The fixture lock
+  screen and the `photos-empty` viewer state are not visited.
+- A focused control that is partly under the floating composer (the last rows of a long
+  Settings page, for example) is not reported; only a control under a scrim or its panel is.
+- A state is a screen as it opens. Flows inside a state (typing, multi-step dialogs,
+  drag gestures) are not walked beyond the tab order. The scan fixture is checked once its
+  result has arrived; the "Looking for a page" status shown for a second before it is not.
+- Tab-order completeness counts the controls on screen when the walk starts. A control that
+  arrives while the walk is under way is not reported as skipped.

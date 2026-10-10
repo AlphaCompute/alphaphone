@@ -47,9 +47,11 @@ test('clipped text, spilling labels and unreachable controls are reported; ellip
     <button id="spill" style="width:40px;height:24px;padding:0;white-space:nowrap">A label that spills over</button>
     <button id="below" style="position:absolute;top:400px;left:0">Below the fold</button>
     <button id="side" style="position:absolute;top:100px;left:380px;width:80px">Off the side</button>
+    <p id="overlap" style="position:absolute;top:150px;left:0;width:120px;margin:0;font-size:28px;line-height:20px">Two lines that print over each other</p>
   </div>`);
   const found = format(await auditPage(page, { clipping: true }));
-  expect(rules(found)).toEqual(['control-off-screen', 'control-unreachable', 'label-overflows-control', 'text-clipped', 'text-truncated']);
+  expect(rules(found)).toEqual(['control-off-screen', 'control-unreachable', 'label-overflows-control', 'text-clipped', 'text-lines-overlap', 'text-truncated']);
+  expect(found.find(line => line.startsWith('text-lines-overlap'))).toContain('Two lines');
   expect(found.find(line => line.startsWith('text-truncated'))).toContain('Deliberately shortened');
   expect(found.find(line => line.startsWith('text-clipped'))).toContain('Cut through');
 
@@ -59,6 +61,7 @@ test('clipped text, spilling labels and unreachable controls are reported; ellip
 
   await load(page, `<div class="os" style="position:relative;width:400px;height:300px;overflow:hidden">
     <div style="height:300px;overflow-y:auto"><p style="font-size:20px">Wraps instead of being cut through the middle of a line</p>
+    <p style="width:120px;font-size:28px;line-height:1.2">Two lines with room between them</p><p style="font-size:28px;line-height:20px">One line</p>
     <button style="min-height:24px">A label that fits</button><div style="height:400px"></div><button>Below the fold, but scrollable</button></div>
     <div style="width:80px;height:20px;overflow:hidden"><span style="display:block;height:20px">Fits</span><span style="display:block">Hidden whole</span></div>
   </div>`);
@@ -78,6 +81,57 @@ test('a focus trap and focus inside hidden content are reported; a bounded order
     <script>document.getElementById('only').addEventListener('keydown',event=>{if(event.key==='Tab')event.preventDefault();});</script>`);
   expect(format(await auditTabOrder(page))).toEqual([]);
 
+  // A modal with a second control that Tab can never reach is a trap, not containment.
+  await load(page, `<div role="dialog" aria-label="Notice"><button id="first">Cancel</button><button>Confirm</button></div>
+    <script>document.getElementById('first').addEventListener('keydown',event=>{if(event.key==='Tab')event.preventDefault();});</script>`);
+  expect(rules(format(await auditTabOrder(page)))).toEqual(['focus-trap']);
+
+  // A cycle through part of the page leaves the rest unreachable by keyboard.
+  await load(page, `<button id="a">One</button><button id="b">Two</button><button>Never reached</button>
+    <script>document.getElementById('b').addEventListener('keydown',event=>{if(event.key==='Tab'&&!event.shiftKey){event.preventDefault();document.getElementById('a').focus();}});</script>`);
+  const partial = format(await auditTabOrder(page));
+  expect(rules(partial)).toEqual(['focus-order-incomplete']);
+  expect(partial.join()).toContain('Never reached');
+
+  // Tab swallowed for the whole page: nothing is ever focused, so every control is unreachable.
+  await load(page, `<button>One</button><button>Two</button>
+    <script>document.addEventListener('keydown',event=>{if(event.key==='Tab')event.preventDefault();},true);</script>`);
+  const swallowed = format(await auditTabOrder(page));
+  expect(rules(swallowed)).toEqual(['focus-order-incomplete']);
+  expect(swallowed).toHaveLength(2);
+
+  // A control that arrives on a timer during the walk was not skipped by it.
+  await load(page, `<button id="a">One</button><button id="b">Two</button>
+    <script>document.getElementById('b').addEventListener('focus',()=>{const late=document.createElement('button');late.textContent='Late';document.getElementById('b').before(late);},{once:true});</script>`);
+  expect(format(await auditTabOrder(page))).toEqual([]);
+
+  // The same cycle inside a dialog is containment: the page behind it is meant to be skipped.
+  await load(page, `<button>Behind</button><div role="dialog" aria-label="Choose"><button id="a">One</button><button id="b">Two</button></div>
+    <script>document.getElementById('a').focus();document.getElementById('b').addEventListener('keydown',event=>{if(event.key==='Tab'&&!event.shiftKey){event.preventDefault();document.getElementById('a').focus();}});</script>`);
+  expect(format(await auditTabOrder(page))).toEqual([]);
+
   await load(page, `<button>One</button><a href="#two">Two</a><input aria-label="Three">`);
+  expect(format(await auditTabOrder(page))).toEqual([]);
+
+  // A sheet over a scrim that leaves the page under it in the tab order: focus goes where it
+  // cannot be seen, onto controls (here a destructive one) a pointer could not reach.
+  const sheet = (page_: string, popup: string) => `<div class="os" style="position:relative;width:400px;height:300px">${page_}${popup}</div>`;
+  const popup = `<button aria-label="Close share" tabindex="-1" style="position:absolute;inset:0;z-index:7;border:0;background:rgba(0,0,0,.2)"></button>
+    <div role="dialog" aria-label="Share" style="position:absolute;left:0;right:0;bottom:0;height:160px;z-index:8;background:#fff"><button>Copy link</button></div>`;
+  await page.setViewportSize({ width: 400, height: 300 });
+  await load(page, sheet(`<div><button>Share</button><button style="position:absolute;left:10px;bottom:10px">Delete</button></div>`, popup));
+  const under = format(await auditTabOrder(page));
+  expect(rules(under)).toEqual(['focus-behind-scrim']);
+  expect(under).toHaveLength(2);
+  expect(under.join()).toContain('Delete');
+  // The same sheet with the page under it retired holds focus to itself.
+  await load(page, sheet(`<div inert><button>Share</button><button style="position:absolute;left:10px;bottom:10px">Delete</button></div>`, popup));
+  expect(format(await auditTabOrder(page))).toEqual([]);
+  // A full-screen control under its own chrome is not a scrim over that chrome.
+  await load(page, sheet(`<button aria-label="Photo" style="position:absolute;inset:0;border:0"></button><button style="position:absolute;left:10px;top:10px">Back</button>`, ''));
+  expect(format(await auditTabOrder(page))).toEqual([]);
+
+  // Tab walks the fields inside a native time input before it leaves; that is not a trap.
+  await load(page, `<div role="dialog" aria-label="Alarm"><input type="time" aria-label="Alarm time" value="07:00"><button>Save</button></div>`);
   expect(format(await auditTabOrder(page))).toEqual([]);
 });

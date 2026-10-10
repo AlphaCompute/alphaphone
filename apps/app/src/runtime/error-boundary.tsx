@@ -25,6 +25,20 @@ const recoveryStyle = {
   pre: 'white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;background:#ececec;padding:12px;border-radius:12px',
 };
 
+/**
+ * A modal <dialog> lives in the top layer: it paints over the recovery screen and makes it inert,
+ * so Reload could be neither seen, focused nor announced until the orphaned dialog was dismissed.
+ * Closing is each dialog's cancel path; nothing is confirmed on the user's behalf.
+ */
+function takeOverFromOpenDialogs(): void {
+  for (const dialog of Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]'))) {
+    try { dialog.close(); } catch { /* A dialog that cannot close is removed with its tree on reload. */ }
+    // A dialog whose close handler failed with the app would still cover recovery.
+    if (dialog.open) dialog.remove();
+  }
+  document.querySelector<HTMLElement>('.alpha-recovery button')?.focus();
+}
+
 let shown = false;
 /** Plain DOM so recovery still works when React itself failed to mount. */
 export function showRecoveryScreen(kind: FailureKind, error: unknown): void {
@@ -50,7 +64,7 @@ export function showRecoveryScreen(kind: FailureKind, error: unknown): void {
   // Whatever was on screen is no longer usable: keep focus and assistive technology in the dialog.
   for (const sibling of Array.from(document.body.children)) if (sibling instanceof HTMLElement && !sibling.matches('script,style,link')) sibling.inert = true;
   document.body.append(screen);
-  reload.focus();
+  takeOverFromOpenDialogs();
 }
 
 function appMounted(): boolean {
@@ -92,7 +106,7 @@ export class RootErrorBoundary extends Component<{ children: ReactNode }, { fail
   static getDerivedStateFromError(error: unknown) { return { failed: true, diagnostics: recoveryDiagnostics('render', error) }; }
   componentDidMount() { if (testMocksEnabled) window.addEventListener('alpha:render-error-check', this.check); }
   componentWillUnmount() { if (testMocksEnabled) window.removeEventListener('alpha:render-error-check', this.check); }
-  componentDidCatch(error: unknown, _info: ErrorInfo) { forced = false; void recordRendererFailure('render', error); /* Diagnostics exclude component stacks and messages. */ }
+  componentDidCatch(error: unknown, _info: ErrorInfo) { forced = false; void recordRendererFailure('render', error); /* Diagnostics exclude component stacks and messages. */ takeOverFromOpenDialogs(); }
   render() {
     if (!this.state.failed) return testMocksEnabled ? <ForcedFailure>{this.props.children}</ForcedFailure> : this.props.children;
     return <div className="alpha-recovery" role="alertdialog" aria-labelledby="alpha-recovery-title" style={{ position: 'fixed', inset: 0, zIndex: 2147483000, display: 'flex', overflow: 'auto', padding: 24, boxSizing: 'border-box', background: '#f7f7f7', color: '#171717', font: '16px/1.5 system-ui,sans-serif' }}>

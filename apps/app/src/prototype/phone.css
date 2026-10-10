@@ -232,3 +232,13 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 /* The note editor header can hold eight actions: at 52px each the last one (Delete) leaves the
  * 412px canvas. 44px targets keep all of them on screen. */
 .standalone-app .note-editor [data-alpha-app-header] .ib{width:44px!important;min-width:44px}
+/* Browser menu rows grow with their label and wrap it; a fixed 50px row let large text spill
+ * over the next row. The menu itself already scrolls. */
+[data-alpha-browser-menu]>button{height:auto!important;min-height:50px;flex-shrink:0;text-align:left}
+/* The photo editor is a fixed portrait stack (preview, tools, filters). Where the screen is
+ * shorter than the stack (landscape) it scrolls, so Rotate, Crop and the filters stay reachable. */
+[data-alpha-subview="photos-edit"]{overflow-y:auto;overscroll-behavior:contain}
+/* Headers whose title is larger than the standard 20px app title grow with it instead of letting
+ * it leave the top of the screen: the Files selection count and the Notes Trash heading. */
+.standalone-app [data-alpha-app-header][data-alpha-header-grow]{height:auto!important}
+[data-alpha-subview="notes-trash"]>div:first-child{height:auto!important;min-height:56px}

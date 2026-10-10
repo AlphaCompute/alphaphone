@@ -4553,8 +4553,11 @@ function stPageAccess(root) {
   if (previous && previous.key !== key && previous.page.contains(active)) saved.set(previous.depth, active);
   // Release the destination before restoring focus. Hide the former page only
   // after focus moves so browsers do not reject aria-hidden on its active child.
-  current.inert = false;
-  current.removeAttribute("aria-hidden");
+  // An open sheet owns focus and has retired this page; it releases the page when it closes.
+  if (!root.querySelector("[data-alpha-popup]")) {
+    current.inert = false;
+    current.removeAttribute("aria-hidden");
+  }
   if (previous && previous.key !== key) {
     var target = depth < previous.depth ? saved.get(depth) : null;
     if (!target || !target.isConnected || !current.contains(target)) target = current.querySelector("button, input, select, textarea, [tabindex='0']");
