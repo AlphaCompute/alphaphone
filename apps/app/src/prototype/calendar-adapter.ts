@@ -283,7 +283,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           await saveOptions(current,currentOwner);return;
         }
         const date=wallTime(Number(current.off||0),Number(current.t)),end=wallTime(Number(current.off||0),Number(current.t)+Number(current.d));
-        const timeProblem=calendarFormTimeProblem(date,end,Number(current.d));if(timeProblem){api.toast(timeProblem);return;}
+        const timeProblem=calendarFormTimeProblem(date,end,Number(current.d));if(timeProblem||!date||!end){api.toast(timeProblem);return;}
         const epoch=creationDraftEpoch;let submittedForm=current;
         const ownsForm=()=>owner===currentOwner&&!document.hidden&&api.isActive()&&creationDraftEpoch===epoch&&api.get('calendar').form===submittedForm;
         currentOwner.calendarSaving=true;
