@@ -119,13 +119,15 @@ public final class PasswordBrowserFillInstrumentedTest {
  }
  private void tapPage(double cssX,double cssY)throws Exception{
   double width=Double.parseDouble(browser.child("innerWidth"));WebView child=visibleChild();float[] point=new float[2];
-  BoundedActivityScenario.main(()->{int[] position=new int[2];child.getLocationOnScreen(position);float scale=(float)(child.getWidth()/width);point[0]=position[0]+(float)cssX*scale;point[1]=position[1]+(float)cssY*scale;});
+  BoundedActivityScenario.main(()->{int[] position=new int[2];child.getLocationOnScreen(position);float scale=(float)(child.getWidth()/width);point[0]=position[0]+(float)cssX*scale;point[1]=position[1]+(float)cssY*scale;android.graphics.Rect visible=new android.graphics.Rect();assertTrue("Synthetic form tap stays inside the visible browser",child.getGlobalVisibleRect(visible)&&visible.contains((int)point[0],(int)point[1]));});
   long down=SystemClock.uptimeMillis();
   for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}){MotionEvent event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,point[0],point[1],0);event.setSource(InputDevice.SOURCE_TOUCHSCREEN);InstrumentationRegistry.getInstrumentation().sendPointerSync(event);event.recycle();}
  }
  private void tapField(String id)throws Exception{
-  browser.child("window.__alphaLayout=false;requestAnimationFrame(()=>requestAnimationFrame(()=>window.__alphaLayout=true))");
-  childReady("window.__alphaLayout===true && document.getElementById("+JSONObject.quote(id)+").getBoundingClientRect().height>0");
+  // The IME shrinks the page after typing the username. Scroll the next field
+  // into view before a real tap so it cannot hit the host's dock below the page.
+  browser.child("window.__alphaLayout=false;document.getElementById("+JSONObject.quote(id)+").scrollIntoView({block:'center'});requestAnimationFrame(()=>requestAnimationFrame(()=>window.__alphaLayout=true))");
+  childReady("window.__alphaLayout===true && (()=>{const r=document.getElementById("+JSONObject.quote(id)+").getBoundingClientRect();return r.height>0&&r.top>=0&&r.bottom<=innerHeight})()");
   JSONArray rect=new JSONArray(browser.child("(()=>{const r=document.getElementById("+JSONObject.quote(id)+").getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()"));
   tapPage(rect.getDouble(0),rect.getDouble(1));
   childReady("document.activeElement?.id==="+JSONObject.quote(id));

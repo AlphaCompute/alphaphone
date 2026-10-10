@@ -2,14 +2,14 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "11a36ddc9dd42d4c344a19965a8552d1d0c2c9d8",
-  "head": "11a36ddc9dd42d4c344a19965a8552d1d0c2c9d8",
+  "baseCommit": "ec0cf83057678af0c2be86c119a2bdf20688e4be",
+  "head": "945209d3e75053cc834ddf6352fc8c2feefc42f7",
   "recordedAt": "2026-10-10",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...11a36ddc9dd42d4c344a19965a8552d1d0c2c9d8",
-  "status": "identical",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...945209d3e75053cc834ddf6352fc8c2feefc42f7",
+  "status": "behind",
   "aheadBy": 0,
-  "behindBy": 0,
-  "mergeBase": "11a36ddc9dd42d4c344a19965a8552d1d0c2c9d8",
+  "behindBy": 4,
+  "mergeBase": "945209d3e75053cc834ddf6352fc8c2feefc42f7",
   "pinOnlyCommits": [],
   "pullRequests": [
     {
@@ -151,6 +151,20 @@
       "mergedAt": "2026-10-10T04:19:41Z",
       "mergeCommit": "11a36ddc9dd42d4c344a19965a8552d1d0c2c9d8",
       "head": "fix/endtest-action-journal-nocheck-20261009"
+    },
+    {
+      "number": 34751,
+      "state": "merged",
+      "mergedAt": "2026-10-10T04:25:04Z",
+      "mergeCommit": "5b50baa3dc5ceb84badad92eb56151f42d19b3a0",
+      "head": "fix/endtest-lint-format-20261009"
+    },
+    {
+      "number": 34761,
+      "state": "merged",
+      "mergedAt": "2026-10-10T04:33:16Z",
+      "mergeCommit": "945209d3e75053cc834ddf6352fc8c2feefc42f7",
+      "head": "fix/endtest-app-tests-20261009"
     }
   ]
 }
