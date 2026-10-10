@@ -12,11 +12,10 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
   host. Cloud and remote pairing are optional by design, but the production Android
   Welcome dialog currently offers only Cloud sign-in for the on-device agent, with no
   offline or remote-pairing choice (see Connection choices below).
-- The upstream pin in `upstream.lock.json` (`45242af`) is not reachable from elizaOS
-  `develop`; GitHub compare reported it 14 commits ahead and 74 behind on 2026-10-08,
-  and 14 ahead and 649 behind on 2026-10-09; the behind count grows as `develop` moves.
-  Its pin-only commits still need review and merge upstream, and the pin breaks the
-  Android build (see Release below).
+- The upstream pin in `upstream.lock.json` is reviewed merge `fa7c722e`, reachable
+  from elizaOS `develop`. It includes the native compatibility APIs and touch fixes
+  that were missing from the first replacement candidate. Full product qualification
+  at this pin is in progress (see Release below).
 - Local orchestration does not imply local inference. The configured text model
   uses hosted Cerebras; Whisper/Kokoro speech has separate host and Android paths.
 - A powered-off phone cannot run its resident agent. Acceptance of missed-occurrence

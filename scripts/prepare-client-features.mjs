@@ -39,6 +39,8 @@ export const CLIENT_FEATURE_PATHS = [
   'packages/ui/src/voice/voice-chat-playback.ts',
   'packages/ui/src/voice/speech-segments.ts',
   'packages/voice/src/turn.ts',
+  'packages/voice/src/browser-capture',
+  'packages/voice/src/browser-speech',
   'packages/voice/src/respond-gate.ts',
   'packages/voice/src/voice-eot.ts',
   'packages/core/src/speech.ts',

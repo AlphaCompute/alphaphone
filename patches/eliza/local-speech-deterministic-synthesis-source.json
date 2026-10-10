@@ -1,8 +1,8 @@
 {
-  "baseCommit": "a8ad88dbedaf8a6d0f15f77d7a9a06f8e4b89603",
+  "baseCommit": "fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
   "patch": "0066-local-speech-deterministic-synthesis.patch",
   "sha256": "b2df8756de00d44f7e86c3bb2e34b8194304a755d12d46b4ff98a9d5b151d282",
-  "status": "Rebased to reviewed upstream a8ad88db; consumer verification pending.",
+  "status": "Requalified against reviewed upstream fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b; downstream verification pending.",
   "basePaths": [
     "packages/app/platforms/android/local-speech/src/main/java/ai/eliza/speech/LocalSpeechEngine.java"
   ],

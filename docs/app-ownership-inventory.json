@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "4aba402a164a77a696ff45b47c122631cd42dde5d6f4c160dab87f83fb9310de",
+  "sourceDigest": "9c1fce0036ef20125c634b47137db432cb0c76294a4d65977a629eb7e5c2cc9a",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -6849,15 +6849,17 @@
     },
     {
       "file": "src/browser/speech-protocol.ts",
-      "upstreamCandidate": [],
-      "bytes": 178,
-      "sha256": "45f8985e525a32b6476aa85c69224446297f6d12935b74b654e62fd35502a5bf",
+      "upstreamCandidate": [
+        "packages/voice/src/browser-speech/speech-protocol.ts"
+      ],
+      "bytes": 186,
+      "sha256": "f6fbfe8e660298d84b8685b8b56c1c8fcc3184ef79d9b657fedfb4b55d50a10f",
       "lines": 3,
       "owner": "plugins/plugin-native-talkmode",
       "disposition": "extract-or-split",
       "reason": "Owned audio capture/playback and speech transport; inject review surfaces, account binding and product language/recording policy.",
       "imports": [
-        "../../../../.eliza/patched/packages/voice/src/browser-speech/speech-protocol.ts"
+        "../../../../.eliza/client-features/packages/voice/src/browser-speech/speech-protocol.ts"
       ],
       "exports": [],
       "seams": [],
@@ -6865,15 +6867,17 @@
     },
     {
       "file": "src/browser/speech-recognizer.ts",
-      "upstreamCandidate": [],
-      "bytes": 670,
-      "sha256": "7bcdbf52b273872264876836c6d03d89afb5cdb7ef77873b03614f9297263411",
+      "upstreamCandidate": [
+        "packages/voice/src/browser-speech/speech-recognizer.ts"
+      ],
+      "bytes": 678,
+      "sha256": "139388cb3508152ea924403ec85493a6f79884829410085c31fdce566018b647",
       "lines": 12,
       "owner": "plugins/plugin-native-talkmode",
       "disposition": "extract-or-split",
       "reason": "Owned audio capture/playback and speech transport; inject review surfaces, account binding and product language/recording policy.",
       "imports": [
-        "../../../../.eliza/patched/packages/voice/src/browser-speech/speech-recognizer.ts"
+        "../../../../.eliza/client-features/packages/voice/src/browser-speech/speech-recognizer.ts"
       ],
       "exports": [
         "BrowserSpeechRecognizer"
@@ -6890,15 +6894,17 @@
     },
     {
       "file": "src/browser/speech-worker.ts",
-      "upstreamCandidate": [],
-      "bytes": 519,
-      "sha256": "810ef47889eba819300c880de55f9259ad3ea6a29d1b3cc72709301c6811d155",
+      "upstreamCandidate": [
+        "packages/voice/src/browser-speech/speech-worker.ts"
+      ],
+      "bytes": 527,
+      "sha256": "c8a5d6185ab04bc1efa99c7b27b2201a60e7e883b7302e2ed833463b468055a3",
       "lines": 8,
       "owner": "plugins/plugin-native-talkmode",
       "disposition": "extract-or-split",
       "reason": "Owned audio capture/playback and speech transport; inject review surfaces, account binding and product language/recording policy.",
       "imports": [
-        "../../../../.eliza/patched/packages/voice/src/browser-speech/speech-worker.ts",
+        "../../../../.eliza/client-features/packages/voice/src/browser-speech/speech-worker.ts",
         "onnxruntime-web/wasm"
       ],
       "exports": [],
@@ -7159,15 +7165,17 @@
     },
     {
       "file": "src/browser/whisper-engine.ts",
-      "upstreamCandidate": [],
-      "bytes": 192,
-      "sha256": "db7c265a69d1a29feba35fc9471707358af05cac55b18e1dea49a4121bbc4d93",
+      "upstreamCandidate": [
+        "packages/voice/src/browser-speech/whisper-engine.ts"
+      ],
+      "bytes": 200,
+      "sha256": "58541a95a1ac6133b2b854c1ac902b906569260be55255331fab910008b76093",
       "lines": 3,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
       "imports": [
-        "../../../../.eliza/patched/packages/voice/src/browser-speech/whisper-engine.ts"
+        "../../../../.eliza/client-features/packages/voice/src/browser-speech/whisper-engine.ts"
       ],
       "exports": [],
       "seams": [],

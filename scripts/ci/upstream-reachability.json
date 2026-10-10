@@ -2,14 +2,14 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "a8ad88dbedaf8a6d0f15f77d7a9a06f8e4b89603",
-  "head": "a8ad88dbedaf8a6d0f15f77d7a9a06f8e4b89603",
+  "baseCommit": "fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
+  "head": "fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
   "recordedAt": "2026-10-10",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...a8ad88dbedaf8a6d0f15f77d7a9a06f8e4b89603",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
   "status": "identical",
   "aheadBy": 0,
   "behindBy": 0,
-  "mergeBase": "a8ad88dbedaf8a6d0f15f77d7a9a06f8e4b89603",
+  "mergeBase": "fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
   "pinOnlyCommits": [],
   "pullRequests": [
     {
@@ -17,14 +17,112 @@
       "state": "merged",
       "mergedAt": "2026-10-08T23:24:20Z",
       "mergeCommit": "903a1bc4effaa36558a1b933c8098186c1620a5f",
-      "head": "codex/native-record-discovery-upstream",
-      "note": "Notes and Calendar discovery from Home, squash-merged; the pin commits remain non-ancestors of develop"
+      "head": "codex/native-record-discovery-upstream"
+    },
+    {
+      "number": 34649,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:04:25Z",
+      "mergeCommit": "aa11eb735fb8beccd8a87909d45d9b4efffec87f",
+      "head": "codex/notes-trash-shared-client-20261009"
+    },
+    {
+      "number": 34650,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:04:34Z",
+      "mergeCommit": "2fa46af7a94e1045178598b1b56be847edcc870b",
+      "head": "codex/maps-navigation-shared-20261009"
+    },
+    {
+      "number": 34653,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:14:10Z",
+      "mergeCommit": "db204ce76e47c1988d1fca84f68543ba094f428f",
+      "head": "codex/reminders-lifecycle-shared-20261009"
+    },
+    {
+      "number": 34658,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:14:06Z",
+      "mergeCommit": "0cbd9d64e50f1f5c47feb7717272aa1092bfa84a",
+      "head": "codex/calendar-direct-options-shared-20261009"
+    },
+    {
+      "number": 34662,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:16:24Z",
+      "mergeCommit": "ea9df94a8bdf2edd4e2c7abb6c35516a10d12e80",
+      "head": "codex/gmail-message-workflows-20261009"
+    },
+    {
+      "number": 34667,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:21:49Z",
+      "mergeCommit": "43676428c6cbf8452365cb03faaada54b97f7218",
+      "head": "codex/system-launcher-shared-20261009"
+    },
+    {
+      "number": 34676,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:38:07Z",
+      "mergeCommit": "4e76a10060f4588cb8010a76732e8a734efaf47c",
+      "head": "codex/notification-mirror-shared-20261009"
+    },
+    {
+      "number": 34683,
+      "state": "merged",
+      "mergedAt": "2026-10-10T02:04:35Z",
+      "mergeCommit": "38fcc53e85f53f20dca3aaa942d926fb68196519",
+      "head": "codex/workflow-native-digests-shared-20261009"
+    },
+    {
+      "number": 34691,
+      "state": "merged",
+      "mergedAt": "2026-10-10T02:10:50Z",
+      "mergeCommit": "e0def8b28d148ff8eb62ad8e837bf4ce32c83019",
+      "head": "codex/media-shared-20261009"
+    },
+    {
+      "number": 34699,
+      "state": "merged",
+      "mergedAt": "2026-10-10T02:25:21Z",
+      "mergeCommit": "99bcbbadd6624d565a0d0d0051d6a4e4a6e92649",
+      "head": "codex/device-review-contracts-shared-20261009"
+    },
+    {
+      "number": 34708,
+      "state": "merged",
+      "mergedAt": "2026-10-10T02:38:04Z",
+      "mergeCommit": "a8ad88dbedaf8a6d0f15f77d7a9a06f8e4b89603",
+      "head": "codex/browser-policies-shared-20261009"
+    },
+    {
+      "number": 34723,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:00:47Z",
+      "mergeCommit": "bd40c58b4b7810f2142a704f1ae2b718e6ec00be",
+      "head": "codex/browser-speech-shared-20261009"
+    },
+    {
+      "number": 34727,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:06:15Z",
+      "mergeCommit": "ec207214b99679fb041d240f75cb5d10d4629bd3",
+      "head": "codex/action-journal-shared-20261009"
+    },
+    {
+      "number": 34729,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:09:18Z",
+      "mergeCommit": "2f29c28b150ec388480bda88e13ebb1350786eeb",
+      "head": "codex/alpha-native-compatibility-20261009"
+    },
+    {
+      "number": 34734,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:15:26Z",
+      "mergeCommit": "fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
+      "head": "codex/pull-gesture-touch-compatibility-20261009"
     }
-  ],
-  "pendingPullRequest": {
-    "head": "codex/alpha-shaw-shared-next-20261008",
-    "base": "develop",
-    "state": "not opened",
-    "note": "Rebase the ten pin-only commits on develop and open against develop; opening it publishes to elizaOS/eliza and needs the owner’s go-ahead"
-  }
+  ]
 }

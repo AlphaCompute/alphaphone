@@ -117,7 +117,7 @@ Evidence/source: [docs/mvp-current-status.md](../docs/mvp-current-status.md), [d
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: The integration branch pins reviewed upstream merge a8ad88db. The recorded develop comparison reaches this exact commit; source preparation passes.
+Current: The integration branch pins reviewed upstream merge fa7c722e, including native owner context, confirmed credential shutdown and touch lifecycle fixes. Product qualification at this pin is in progress.
 
 Remaining: Complete product regressions and both Android distributions at the replacement pin.
 
@@ -129,7 +129,7 @@ Evidence/source: [scripts/ci/upstream-reachability.json](../scripts/ci/upstream-
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: Twenty-four patch files and their manifests were retired after their replacements merged upstream. The unused runtime-capability proposal was deleted. Passwords and browser/local speech remain applied candidates; password transfer and action journal remain reference candidates.
+Current: Twenty-seven patch files and their manifests were retired after their replacements merged upstream. The unused runtime-capability proposal was deleted. Passwords and deterministic local speech remain applied candidates; password transfer remains a reference candidate.
 
 Remaining: Finish the remaining upstream reviews and remove each patch only when its reviewed replacement is consumed.
 
@@ -157,7 +157,7 @@ Evidence/source: [android/settings.gradle](../android/settings.gradle), [upstrea
 
 **P1 · integration · AP-11, AP-12**
 
-Current: The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser origins, data downloads, session normalization, intent policy and autofill eligibility use pinned helpers; action journal remains a reference candidate.
+Current: The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser origins, data downloads, session normalization, intent policy and autofill eligibility use pinned helpers; the action journal is merged upstream and its product adapter still needs consolidation.
 
 Remaining: Qualify installed notification policy/history and browser sessions; finish site-permission and journal adapter consolidation without weakening receipt or owner semantics.
 
@@ -165,7 +165,7 @@ Done when: No duplicate effect or stale approval after migration; browser bridge
 
 Depends on: MVP-09.
 
-Evidence/source: [android/settings.gradle](../android/settings.gradle), [patches/eliza/action-journal-android-source-base.json](../patches/eliza/action-journal-android-source-base.json), [patches/eliza/action-journal-client-source-base.json](../patches/eliza/action-journal-client-source-base.json).
+Evidence/source: [android/settings.gradle](../android/settings.gradle), [shared action journal](https://github.com/elizaOS/eliza/pull/34727).
 
 ### MVP-12 Finish foreground Calendar availability
 
