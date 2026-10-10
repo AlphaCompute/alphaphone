@@ -40,7 +40,7 @@ public final class RotationInstrumentedTest {
  @Test public void homeAndComposerDraftSurviveRotation()throws Exception{
   UiDevice device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();
+   AppNavigation.liveMode();AppNavigation.declineStartupAccess();
    js(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));
    rotateAndCheck(device,"Home",null);
    js(AppNavigation.type());until(AppNavigation.composer());

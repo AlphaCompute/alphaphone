@@ -25,6 +25,17 @@ final class AppNavigation {
    + "if(nav.lastView==='home'){const b=[...document.querySelectorAll('[data-screen] button')].find(e=>e.getAttribute('aria-label')===label&&e.getClientRects().length);if(b&&!b.disabled)b.click();again();return;}"
    + "window.dispatchEvent(new Event('alpha-back'));again();};step();})()";
  }
+ /**
+  * A fresh install without notification and microphone access opens the modal "Set up Alpha
+  * access" panel, which takes every real touch and swipe. Tests that drive real gestures first
+  * choose its own "Not now" (nothing is granted); JavaScript-driven tests are unaffected by it.
+  */
+ static void declineStartupAccess() throws Exception {
+  for(int i=0;i<30;i++){
+   if("true".equals(WebViewTestDriver.evaluate("(()=>{const b=[...document.querySelectorAll('dialog.alpha-startup-permissions[open] button')].find(b=>b.textContent.trim()==='Not now');if(!b)return false;b.click();return true})()")))return;
+   android.os.SystemClock.sleep(100);
+  }
+ }
  static String selected(String view) { return "document.documentElement.dataset.activeView==="+JSONObject.quote(view.toLowerCase()); }
  static String composer() { return "[...document.querySelectorAll('textarea[data-alpha-composer]')].find(e=>!e.disabled&&e.getClientRects().length&&!e.closest('[inert], [aria-hidden=\"true\"]'))"; }
  static String type() { return "document.querySelector('button[aria-label=\"Type\"]')?.click()"; }

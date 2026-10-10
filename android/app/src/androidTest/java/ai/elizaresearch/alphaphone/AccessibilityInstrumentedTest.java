@@ -75,7 +75,7 @@ public final class AccessibilityInstrumentedTest {
   try{
    shell("settings put system font_scale 2.0");
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-    AppNavigation.liveMode();
+    AppNavigation.liveMode();AppNavigation.declineStartupAccess();
     // Throws on any ATF error-level result for the native hierarchy (WebView host, system bars).
     AccessibilityChecks.enable().setRunChecksFromRootView(true);
     open("Home");onView(isRoot()).check(AccessibilityChecks.accessibilityAssertion());talkBackOrder(device,"Home");
