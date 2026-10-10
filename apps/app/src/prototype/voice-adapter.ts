@@ -627,6 +627,10 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
             return;
           }
           if(permanent){
+            // The reviewed record must be the one in authoritative storage, not only in this view's copy:
+            // if another view changed it or moved it to Trash, that Trash row is the only restorable copy.
+            const saved=(await savedNotes()).find(n=>n.id===reviewed.id);
+            if(!saved||JSON.stringify(saved)!==JSON.stringify(reviewed)){row=undefined;current.toast('This note changed. Nothing was deleted.');return;}
             // The note is saved and its recording is live, so any Trash row for it is stale (maintenance
             // would drop it). Left in place it would offer the permanently deleted note for restore again.
             const stale=(await readNotesTrash()).entries.filter(entry=>entry.note.id===reviewed.id).map(entry=>entry.id);

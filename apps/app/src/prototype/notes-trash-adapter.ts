@@ -1,6 +1,6 @@
 import {
  addNotesTrashEntry,editNotesTrash,isNotesTrashFull,notesTrashDaysLabel,notesTrashExpired,readNotesTrash,removeNotesTrashEntries,
- restoreNotesTrashEntry,savedNoteIds,sortedNotesTrash,withNotesDeletionLock,type NotesTrashEntry,
+ restoreNotesTrashEntry,savedNoteIds,savedNotes,sortedNotesTrash,withNotesDeletionLock,type NotesTrashEntry,
 } from '../runtime/notes-trash';
 import {notesTrashPolicy} from '../runtime/notes-trash-policy';
 import {maintainNotesTrash} from '../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-maintenance.ts';
@@ -142,12 +142,18 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
   const candidate=refused;
   if(busy||!candidate||candidate.note.id!==id)return;
   busy=true;shell.vset('notes',{trashBusy:true});
-  let outcome:'deleted'|'changed'|'unconfirmed'='unconfirmed';
+  let outcome:'deleted'|'changed'|'unconfirmed'|'unavailable'='unconfirmed';
   try{
    outcome=await withNotesDeletionLock(async()=>{
-    if(!ready(shell))return 'unconfirmed';
+    // Nothing is attempted while a save is pending or storage needs recovery.
+    if(!ready(shell))return 'unavailable';
     const stored=shell.notesStore.list.find((n:Bag)=>n.id===id);
     if(!stored||stored.audio||JSON.stringify(stored)!==candidate.snapshot)return 'changed';
+    // The refused record must also be the one in authoritative storage, not only in this view's
+    // copy: another view may have changed it or already moved it (or a newer revision) to Trash,
+    // and then its Trash row is the only restorable copy and must not be touched.
+    const saved=(await savedNotes()).find(n=>n.id===id);
+    if(!saved||JSON.stringify(saved)!==candidate.snapshot)return 'changed';
     // Any row for this saved note is stale (maintenance would drop it); left in place it would
     // offer the permanently deleted note for restore again.
     const stale=(await readNotesTrash()).entries.filter(entry=>entry.note.id===id).map(entry=>entry.id);
@@ -159,11 +165,14 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
   }catch{outcome='unconfirmed';}
   finally{
    busy=false;
-   if(outcome!=='unconfirmed')refused=null;
-   if(shell.live)shell.vset('notes',{trashBusy:false,...(outcome!=='unconfirmed'?{trashFull:null}:{})});
+   const settled=outcome==='deleted'||outcome==='changed';
+   if(settled)refused=null;
+   if(shell.live)shell.vset('notes',{trashBusy:false,...(settled?{trashFull:null}:{})});
    await load(shell);
   }
-  shell.toast(outcome==='deleted'?`${noteTitle(candidate.note)} deleted forever`:outcome==='changed'?'This note changed. Nothing was deleted.':'Permanent deletion is unconfirmed. Reopen Notes to check. Nothing else was deleted.');
+  shell.toast(outcome==='deleted'?`${noteTitle(candidate.note)} deleted forever`:outcome==='changed'?'This note changed. Nothing was deleted.'
+   :outcome==='unavailable'?(shell.notesPending&&!shell.notesStorageFailed?'Still saving. Try again in a moment. Nothing was deleted.':'Notes storage needs recovery. Nothing was deleted.')
+   :'Permanent deletion is unconfirmed. Reopen Notes to check. Nothing else was deleted.');
  }
 
  p.api=function(key:string){

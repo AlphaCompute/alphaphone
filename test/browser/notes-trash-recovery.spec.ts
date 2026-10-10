@@ -143,10 +143,44 @@ test('a note edited after a full Trash refused it is not deleted by the earlier 
  // Another view saves a newer revision of the same note while the dialog is open.
  await page.evaluate(async()=>{const store=await (await import('/src/runtime/browser-notes-document.ts')).openBrowserNotes();await store.replace(store.list.map((n:any)=>n.title==='Changing'?{...n,body:'Newer text'}:n));});
  await full.getByRole('button',{name:'Delete forever without Trash',exact:true}).click();
- await expect(page.getByText(/This note changed\. Nothing was deleted\.|Permanent deletion is unconfirmed/)).toBeVisible();
+ // Decided from authoritative storage before any write, so it is a definite "changed", not an unknown outcome.
+ await expect(page.getByText('This note changed. Nothing was deleted.',{exact:true})).toBeVisible();
+ await expect(full).toHaveCount(0);
  const saved=await savedRecords(page);
  expect(saved.map((n:any)=>[n.title,n.body])).toEqual([['Changing','Newer text']]);
  expect((await trashEntries(page)).map((e:any)=>e.note.title)).toEqual(['Filler']);
+});
+
+test('a permanent-delete confirmation in a stale view never drops the Trash copy another view wrote for that note',async({page})=>{
+ await lowerEntryLimit(page,1);
+ await page.goto('/');await openNotes(page);
+ await createNote(page,'Filler','Occupies Trash');await createNote(page,'Moved','First text');
+ await deleteNote(page,'Filler');
+ await page.getByRole('button',{name:'Open Moved',exact:true}).click();
+ await page.getByRole('button',{name:'Delete note',exact:true}).click();
+ const full=page.getByRole('dialog',{name:'Trash is full'});
+ await expect(full).toBeVisible();
+ // While the dialog is open another view edits the note and moves that newer revision to Trash
+ // (write-ahead row, then the saved-list commit). Its row is now the only restorable copy.
+ const row=await page.evaluate(async()=>{
+  const trash=await import('/src/runtime/notes-trash.ts');const store=await (await import('/src/runtime/browser-notes-document.ts')).openBrowserNotes();
+  await store.replace(store.list.map((n:any)=>n.title==='Moved'?{...n,body:'Newer text, only in Trash'}:n));
+  const index=store.list.findIndex((n:any)=>n.title==='Moved'),note=store.list[index];
+  const entry={id:crypto.randomUUID(),note,target:await store.target(note.id),index,deletedAt:Date.now()};
+  await trash.withNotesDeletionLock(async()=>{
+   await trash.editNotesTrash(doc=>({version:1,entries:[entry,...doc.entries]} as any));
+   await store.replace(store.list.filter((n:any)=>n.id!==note.id));
+  });
+  return entry;
+ });
+ expect((await savedRecords(page)).map((n:any)=>n.title)).toEqual([]);
+ await full.getByRole('button',{name:'Delete forever without Trash',exact:true}).click();
+ await expect(page.getByText('This note changed. Nothing was deleted.',{exact:true})).toBeVisible();
+ // The other view's Trash row, with the newer text, is exactly as it was written.
+ const entries=await trashEntries(page);
+ expect(entries.map((e:any)=>e.note.title).sort()).toEqual(['Filler','Moved']);
+ expect(entries.find((e:any)=>e.id===row.id)).toEqual(row);
+ expect(entries.find((e:any)=>e.id===row.id).note.body).toBe('Newer text, only in Trash');
 });
 
 test('a voice note refused by a full Trash is erased with its own recording only after separate confirmation',async({page})=>{
