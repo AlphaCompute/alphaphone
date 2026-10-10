@@ -151,17 +151,19 @@ export async function revokeWhileRecording(
 		const recorded = await until(async () => {
 			assert.ok(!settled, "Recording phase ended before the permission was revoked");
 			try {
-				return JSON.parse(
-					await run(
-						"exec-out",
-						"run-as",
-						packageName,
-						"--user",
-						user,
-						"cat",
-						marker,
-					),
+				// `exec-out run-as … cat` exits 0 and prints cat's own error when the marker is not
+				// written yet, so that text is "not yet", not a marker to parse.
+				const text = await run(
+					"exec-out",
+					"run-as",
+					packageName,
+					"--user",
+					user,
+					"cat",
+					marker,
 				);
+				if (/No such file or directory/.test(text)) return null;
+				return JSON.parse(text);
 			} catch (error) {
 				// Only a not-yet-written marker is retryable.
 				if (

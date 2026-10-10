@@ -91,7 +91,7 @@ public final class InboxDraftInstrumentedTest {
    js("localStorage.setItem("+JSONObject.quote(SELECTION)+",JSON.stringify({kind:'none'}));localStorage.removeItem("+JSONObject.quote(SERVICE)+")");reload();
    // Exercise the production sign-in control with a closed test-APK transport;
    // a developer-only environment selector is not part of this UI contract.
-   nav("Settings");click("Agent connection");click("Sign in with Eliza Cloud");until("document.querySelector('.alpha-connection-current')?.textContent.includes('Cloud services connected')");click("Close connection settings");
+   nav("Settings");click("Agent connection");click("Sign in with Eliza Cloud");until("document.querySelector('.alpha-connection-current.alpha-cloud-account-summary button')?.textContent.includes('Sign out of Eliza Cloud')");click("Close connection settings");
    nav("Inbox");until(button("Load Inbox"));click("Compose");input("To","literal@example.invalid");click("literal@example.invalid");input("Subject","Synthetic saved draft");input("Message","Exact native draft\nSecond line");click("Save draft locally");until("[...document.querySelectorAll('[role=status]')].some(e=>e.textContent==='Saved locally on this device')");
    JSONObject draft=new JSONObject(read(slot()).getString("value"));assertEquals("Exact native draft\nSecond line",draft.getString("body"));
    StringBuilder hash=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(slot().getBytes(StandardCharsets.UTF_8)))hash.append(String.format(java.util.Locale.ROOT,"%02x",b&255));

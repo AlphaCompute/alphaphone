@@ -28,8 +28,9 @@ public final class RotationInstrumentedTest {
  /** Visible enabled buttons of the active view that cannot be brought inside the viewport. Home
   * scrolls (its card row sideways in portrait, its app grid down in landscape), so each control is
   * scrolled to first: only one whose centre still lies outside the viewport is clipped (a card
-  * wider than the screen is reachable). */
- private static final String CLIPPED="JSON.stringify([...document.querySelectorAll('button,[role=button]')].filter(e=>!e.disabled&&e.getClientRects().length&&!e.closest('[inert],[aria-hidden=\"true\"]')).map(e=>{e.scrollIntoView({block:'center',inline:'center',behavior:'instant'});return {l:e.getAttribute('aria-label')||e.textContent.trim(),r:e.getBoundingClientRect()};}).filter(x=>{const cx=x.r.left+x.r.width/2,cy=x.r.top+x.r.height/2;return x.r.width>0&&(cx<0||cy<0||cx>innerWidth||cy>innerHeight);}).map(x=>x.l))";
+  * wider than the screen is reachable). The WebView answers in JSON, so the array itself is
+  * returned: a stringified one came back quoted and could never equal "[]". */
+ private static final String CLIPPED="[...document.querySelectorAll('button,[role=button]')].filter(e=>!e.disabled&&e.getClientRects().length&&!e.closest('[inert],[aria-hidden=\"true\"]')).map(e=>{e.scrollIntoView({block:'center',inline:'center',behavior:'instant'});return {l:e.getAttribute('aria-label')||e.textContent.trim(),r:e.getBoundingClientRect()};}).filter(x=>{const cx=x.r.left+x.r.width/2,cy=x.r.top+x.r.height/2;return x.r.width>0&&(cx<0||cy<0||cx>innerWidth||cy>innerHeight);}).map(x=>x.l)";
 
  private static void rotateAndCheck(UiDevice device,String view,String extra)throws Exception{
   device.setOrientationLeft();awaitOrientation(Configuration.ORIENTATION_LANDSCAPE);
@@ -43,8 +44,8 @@ public final class RotationInstrumentedTest {
  @Test public void homeAndComposerDraftSurviveRotation()throws Exception{
   UiDevice device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();AppNavigation.declineStartupAccess();
-   js(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));
+   AppNavigation.liveMode();
+   js(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));AppNavigation.declineStartupAccess();
    rotateAndCheck(device,"Home",null);
    js(AppNavigation.type());until(AppNavigation.composer());
    js("(()=>{const e="+AppNavigation.composer()+";Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,"+JSONObject.quote(DRAFT)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");

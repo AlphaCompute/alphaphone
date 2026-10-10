@@ -29,6 +29,8 @@ final class AppNavigation {
   * A fresh install without notification and microphone access opens the modal "Set up Alpha
   * access" panel, which takes every real touch and swipe. Tests that drive real gestures first
   * choose its own "Not now" (nothing is granted); JavaScript-driven tests are unaffected by it.
+  * On the emulator the panel took touches only after the sign-in panel was answered, so call this once the
+  * requested view is selected (AppNavigation.request answers the sign-in panel).
   */
  static void declineStartupAccess() throws Exception {
   // The panel opens only once both permission reads return, which took more than three seconds

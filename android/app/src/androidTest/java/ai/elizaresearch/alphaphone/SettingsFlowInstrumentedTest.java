@@ -60,8 +60,8 @@ public class SettingsFlowInstrumentedTest {
   try{
    shell("dumpsys battery set level 37");
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-    until("document.documentElement.dataset.activeView");AppNavigation.declineStartupAccess();
-    WebViewTestDriver.evaluate(AppNavigation.request("Settings"));until(AppNavigation.selected("Settings"));
+    until("document.documentElement.dataset.activeView");
+    WebViewTestDriver.evaluate(AppNavigation.request("Settings"));until(AppNavigation.selected("Settings"));AppNavigation.declineStartupAccess();
     click("Battery");until("document.querySelector('[data-screen]').textContent.includes('37%')");
     assertEquals("No invented lifetime estimate", "false",WebViewTestDriver.evaluate("document.querySelector('[data-screen]').textContent.includes('About 1 day 6 hr')"));
     instrumentation.addMonitor(monitor);monitored=true;

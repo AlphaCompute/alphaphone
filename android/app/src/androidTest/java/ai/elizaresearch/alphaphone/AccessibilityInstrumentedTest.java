@@ -75,10 +75,10 @@ public final class AccessibilityInstrumentedTest {
   try{
    shell("settings put system font_scale 2.0");
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-    AppNavigation.liveMode();AppNavigation.declineStartupAccess();
+    AppNavigation.liveMode();
     // Throws on any ATF error-level result for the native hierarchy (WebView host, system bars).
     AccessibilityChecks.enable().setRunChecksFromRootView(true);
-    open("Home");onView(isRoot()).check(AccessibilityChecks.accessibilityAssertion());talkBackOrder(device,"Home");
+    open("Home");AppNavigation.declineStartupAccess();onView(isRoot()).check(AccessibilityChecks.accessibilityAssertion());talkBackOrder(device,"Home");
     // The notification shade opens with a downward swipe from the top of the phone screen.
     Rect web=device.findObject(By.clazz("android.webkit.WebView")).getVisibleBounds();
     device.swipe(web.centerX(),web.top+web.height()/40,web.centerX(),web.top+web.height()/2,20);
