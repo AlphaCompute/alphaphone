@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "df48022f146964f9982db3232e7a75e745131b4108372bd9de3e3b3b2bdbfc66",
+  "sourceDigest": "4aba402a164a77a696ff45b47c122631cd42dde5d6f4c160dab87f83fb9310de",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -2011,7 +2011,7 @@
       "file": "public/licenses/THIRD_PARTY_NOTICES.txt",
       "upstreamCandidate": [],
       "bytes": 807423,
-      "sha256": "b4a6012ca76f6e78d8dac99ba17e71beef31ee1e2aa8d49d7ec14acb23926fcc",
+      "sha256": "599018a003b55b702985d4522c978d0229d325d1e549a53b1b7694602051601d",
       "lines": null,
       "owner": "alphaphone",
       "disposition": "retain",
@@ -2024,7 +2024,7 @@
       "file": "public/licenses/third-party-notices.json",
       "upstreamCandidate": [],
       "bytes": 821461,
-      "sha256": "bc44c82d5d43e219360c8e555b4c4d01838f5ef3ce107db4850f35eb4807331b",
+      "sha256": "e7cb43792b19b6ed577a0407d43f0e184dc522f294b5052169b3a6a054d22813",
       "lines": 766,
       "owner": "alphaphone",
       "disposition": "retain",
@@ -12760,9 +12760,9 @@
     {
       "file": "src/prototype/model.js",
       "upstreamCandidate": [],
-      "bytes": 422119,
-      "sha256": "28d1c3c9916dc3d7a88af5d88320144b54c5bada069bc12b85348ed1def5efbd",
-      "lines": 5608,
+      "bytes": 422317,
+      "sha256": "6929ec2a225d80c34c4dcbf4c3961153e790a23792683a74cb6be79b02f7b8c1",
+      "lines": 5610,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -13569,13 +13569,13 @@
           ]
         },
         {
-          "line": 5536,
+          "line": 5538,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 5598,
+          "line": 5600,
           "tags": [
             "presentation"
           ]
@@ -14085,9 +14085,9 @@
     {
       "file": "src/prototype/phone.css",
       "upstreamCandidate": [],
-      "bytes": 18265,
-      "sha256": "32d9898228362f0cc1c16d5354a1743badb8c9abb54784e9b508763068c01452",
-      "lines": 203,
+      "bytes": 18177,
+      "sha256": "fa87bb78c25cc527cdcd525750eee435144a8321d3d06770a23654513da1a0df",
+      "lines": 202,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -14544,7 +14544,7 @@
           ]
         },
         {
-          "line": 171,
+          "line": 175,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -14562,7 +14562,7 @@
           ]
         },
         {
-          "line": 178,
+          "line": 182,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -14580,19 +14580,19 @@
           ]
         },
         {
-          "line": 185,
+          "line": 187,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 188,
+          "line": 190,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 191,
+          "line": 195,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -14629,12 +14629,6 @@
         },
         {
           "line": 201,
-          "tags": [
-            "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 202,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -15954,8 +15948,8 @@
     {
       "file": "src/prototype/template.html",
       "upstreamCandidate": [],
-      "bytes": 481814,
-      "sha256": "72d0fa30b68266110d2f721a0fb2a5a04d91ddd0e0baccf946a2e5425fdbc37d",
+      "bytes": 481850,
+      "sha256": "554d76223aa7502bfde1dc0719468e120babf40783de97cc9f620c60d766dc34",
       "lines": 4243,
       "owner": "alphaphone",
       "disposition": "retain-or-split",

@@ -10,7 +10,6 @@ source.
 | Patch | Shared scope |
 | --- | --- |
 | `0038-password-manager.patch` | Password vault, native Autofill provider and renderer client |
-| `0048-contracts-runtime-capabilities.patch` | Runtime capability contracts |
 | `0065-browser-speech.patch` | Browser speech worker, recognizer and microphone admission |
 | `0066-local-speech-deterministic-synthesis.patch` | Deterministic local Piper synthesis |
 

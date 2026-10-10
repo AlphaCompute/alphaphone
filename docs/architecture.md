@@ -22,8 +22,11 @@ source into a generated cache outside the submodule. A shared change not yet in 
 reviewed upstream commit is an explicit, hash-bound patch in `patches/eliza`
 (see the current patch inventory), materialized into `.eliza/patched`; Gradle
 includes the patched `plugin-native-secure-store` and `plugin-native-passwords`
-modules from there. See [patches/eliza/README.md](../patches/eliza/README.md). Product wrappers inject
-presentation, device configuration and installed storage identities. Resident
+modules from there. See [patches/eliza/README.md](../patches/eliza/README.md). Photo edits, capture publication and the opt-in notification mirror also use shared native
+modules. Alpha wrappers retain installed storage names, media paths and Android components.
+Browser policy helpers are staged from the same authenticated pin. Gradle writes shared
+library outputs under the host build directory, outside the immutable vendor checkout.
+Product wrappers inject presentation, device configuration and installed storage identities. Resident
 runtime preparation also uses the locked upstream source without patch replay.
 Native staging verifies source and generated hashes and applies only explicit
 host identity/resource/environment configuration.

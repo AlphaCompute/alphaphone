@@ -1,4 +1,5 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.browsersurface.BrowserAutofillEligibility;
 
 import android.graphics.Bitmap;
 import android.net.Uri;
@@ -161,11 +162,13 @@ public class AlphaBrowserPlugin extends Plugin {
   * is the committed top-level origin, which the password provider requires to equal the
   * field origin so cross-origin frames are never filled. */
  private boolean canAutofill(Tab t) {
-  return !paused && !t.dead && t.committed && !t.loading && t.error.isEmpty()
-    && Objects.equals(presentedId,t.id) && t.web.isShown()
-    && "https".equalsIgnoreCase(Uri.parse(t.url).getScheme())
-    && Objects.equals(t.url,t.web.getUrl());
+  BrowserAutofillEligibility.TabState state=new BrowserAutofillEligibility.TabState();
+  state.paused=paused;state.closed=t.dead;state.committed=t.committed;state.loading=t.loading;state.loadError=t.error;
+  state.selected=Objects.equals(presentedId,t.id);state.shown=t.web.isShown();
+  state.documentUrl=t.url;state.engineUrl=t.web.getUrl();
+  return BrowserAutofillEligibility.eligible(state);
  }
+
  private void cancelAutofill(Tab t) {
   t.autofillEnabled=false;
   AutofillManager manager=getActivity().getSystemService(AutofillManager.class);
