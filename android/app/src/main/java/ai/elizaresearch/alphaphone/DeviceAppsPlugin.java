@@ -1,11 +1,18 @@
 package ai.elizaresearch.alphaphone;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.LauncherApps;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.UserHandle;
 import android.util.Base64;
 import ai.eliza.plugins.system.SystemLauncherApps;
 import com.getcapacitor.*;
@@ -37,25 +44,87 @@ public class DeviceAppsPlugin extends Plugin {
   value.put("hour24", android.text.format.DateFormat.is24HourFormat(getContext()));
   call.resolve(value);
  }
+ /** One entry per launcher activity, across the current user and its profiles. Legacy callers that
+  * launch by package only still work; the drawer launches the exact listed component. */
  @PluginMethod public void list(PluginCall call) {
   boolean icons = Boolean.TRUE.equals(call.getBoolean("icons", false));
   PackageManager packages = getContext().getPackageManager();
   JSArray apps = new JSArray();
-  for (SystemLauncherApps.App item : SystemLauncherApps.list(getContext())) {
-   JSObject app = new JSObject(); app.put("packageName", item.packageName); app.put("label", item.label);
-   if (icons) { String icon = iconFor(packages, item.packageName); if (icon != null) app.put("icon", icon); }
+  for (LauncherLibrary.Entry item : LauncherLibrary.list(getContext())) {
+   JSObject app = new JSObject(); app.put("packageName", item.packageName); app.put("activityName", item.activityName); app.put("label", item.label);
+   if (item.user != null) { app.put("user", item.user); app.put("profile", item.profile); app.put("locked", item.locked); }
+   if (icons) { String icon = iconFor(item.icon(packages)); if (icon == null && item.user == null) icon = iconFor(packages, item.packageName); if (icon != null) app.put("icon", icon); }
    apps.put(app);
   }
   JSObject result = new JSObject(); result.put("apps", apps); call.resolve(result);
  }
  @PluginMethod public void launch(PluginCall call) {
-  String name = call.getString("packageName");
+  String name = call.getString("packageName"), activityName = call.getString("activityName"), user = call.getString("user");
+  if (activityName != null || user != null) { launchComponent(call, name, activityName, user); return; }
   Intent intent;
   try { intent = SystemLauncherApps.launchIntent(getContext(), name); }
   catch (IllegalArgumentException error) { call.reject("Choose an installed app"); return; }
-  if (intent == null) { call.reject("App is unavailable"); return; }
+  if (intent == null) { LauncherLibrary.Refusal why = LauncherLibrary.explain(getContext().getPackageManager(), name); call.reject(why.getMessage(), why.code); return; }
   try { getActivity().startActivity(intent); call.resolve(); }
-  catch (android.content.ActivityNotFoundException | SecurityException error) { call.reject("App could not be opened", error); }
+  catch (android.content.ActivityNotFoundException | SecurityException error) { call.reject("App could not be opened", LauncherLibrary.FAILED, error); }
+ }
+ /** Opens exactly the listed component in its profile, re-resolved now; a stale entry is refused. */
+ private void launchComponent(PluginCall call, String packageName, String activityName, String user) {
+  LauncherLibrary.Target target;
+  try { target = LauncherLibrary.resolve(getContext(), packageName, activityName, user); }
+  catch (IllegalArgumentException error) { call.reject("Choose an installed app"); return; }
+  catch (LauncherLibrary.Refusal refusal) { call.reject(refusal.getMessage(), refusal.code); return; }
+  catch (RuntimeException error) { call.reject("App could not be opened", LauncherLibrary.FAILED, error); return; }
+  try {
+   if (target.user == null) getActivity().startActivity(LauncherLibrary.launchIntent(target.component));
+   else getContext().getSystemService(LauncherApps.class).startMainActivity(target.component, target.user, null, null);
+   call.resolve();
+  } catch (android.content.ActivityNotFoundException | SecurityException | IllegalStateException | NullPointerException error) {
+   call.reject("App could not be opened", LauncherLibrary.FAILED, error);
+  }
+ }
+
+ // Installs, removals, enable/disable and profile pause/unlock happen outside Alpha. The renderer
+ // is told that something changed and re-reads the list itself; no inventory is pushed.
+ private LauncherApps.Callback packageCallback;
+ private BroadcastReceiver profileReceiver;
+ @Override public void load() {
+  Context context = getContext();
+  LauncherApps launcher = context.getSystemService(LauncherApps.class);
+  if (launcher != null) {
+   packageCallback = new LauncherApps.Callback() {
+    @Override public void onPackageRemoved(String packageName, UserHandle user) { appsChanged(packageName, "removed"); }
+    @Override public void onPackageAdded(String packageName, UserHandle user) { appsChanged(packageName, "added"); }
+    @Override public void onPackageChanged(String packageName, UserHandle user) { appsChanged(packageName, "changed"); }
+    @Override public void onPackagesAvailable(String[] packageNames, UserHandle user, boolean replacing) { appsChanged(null, "available"); }
+    @Override public void onPackagesUnavailable(String[] packageNames, UserHandle user, boolean replacing) { appsChanged(null, "unavailable"); }
+    @Override public void onPackagesSuspended(String[] packageNames, UserHandle user) { appsChanged(null, "suspended"); }
+    @Override public void onPackagesUnsuspended(String[] packageNames, UserHandle user) { appsChanged(null, "unsuspended"); }
+   };
+   try { launcher.registerCallback(packageCallback, new Handler(Looper.getMainLooper())); }
+   catch (RuntimeException error) { packageCallback = null; }
+  }
+  IntentFilter profiles = new IntentFilter();
+  profiles.addAction(Intent.ACTION_MANAGED_PROFILE_AVAILABLE); profiles.addAction(Intent.ACTION_MANAGED_PROFILE_UNAVAILABLE);
+  profiles.addAction(Intent.ACTION_MANAGED_PROFILE_UNLOCKED); profiles.addAction(Intent.ACTION_MANAGED_PROFILE_ADDED); profiles.addAction(Intent.ACTION_MANAGED_PROFILE_REMOVED);
+  profileReceiver = new BroadcastReceiver() { @Override public void onReceive(Context context, Intent intent) { appsChanged(null, "profile"); } };
+  try {
+   // System profile broadcasts only; no other app can send to this receiver.
+   androidx.core.content.ContextCompat.registerReceiver(context, profileReceiver, profiles, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
+  } catch (RuntimeException error) { profileReceiver = null; }
+ }
+ @Override protected void handleOnDestroy() {
+  Context context = getContext();
+  LauncherApps launcher = context.getSystemService(LauncherApps.class);
+  if (launcher != null && packageCallback != null) try { launcher.unregisterCallback(packageCallback); } catch (RuntimeException ignored) {}
+  if (profileReceiver != null) try { context.unregisterReceiver(profileReceiver); } catch (RuntimeException ignored) {}
+  packageCallback = null; profileReceiver = null;
+ }
+ private void appsChanged(String packageName, String reason) {
+  JSObject change = new JSObject(); change.put("reason", reason);
+  // Alpha's own updates never change the list it shows.
+  if (packageName != null) { if (packageName.equals(getContext().getPackageName())) return; change.put("packageName", packageName); }
+  notifyListeners("appsChanged", change);
  }
  @PluginMethod public void resolveDefault(PluginCall call) {
   String role = call.getString("role");
@@ -108,10 +177,16 @@ public class DeviceAppsPlugin extends Plugin {
  }
 
  static String iconFor(PackageManager packages, String packageName) {
+  try { return iconFor(packages.getApplicationIcon(packageName)); }
+  catch (PackageManager.NameNotFoundException | RuntimeException error) { return null; }
+ }
+ /** The drawable as a small PNG data URL, or null when it is missing or cannot be rendered. */
+ static String iconFor(Drawable source) {
+  if (source == null) return null;
   Bitmap bitmap = null;
   try {
    // A copy: the package manager may share one Drawable, and its bounds must not change for others.
-   Drawable drawable = packages.getApplicationIcon(packageName).mutate();
+   Drawable drawable = source.mutate();
    bitmap = Bitmap.createBitmap(ICON_PX, ICON_PX, Bitmap.Config.ARGB_8888);
    Canvas canvas = new Canvas(bitmap);
    drawable.setBounds(0, 0, ICON_PX, ICON_PX);
@@ -119,7 +194,7 @@ public class DeviceAppsPlugin extends Plugin {
    ByteArrayOutputStream out = new ByteArrayOutputStream();
    if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) return null;
    return "data:image/png;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
-  } catch (PackageManager.NameNotFoundException | RuntimeException error) {
+  } catch (RuntimeException error) {
    // A removed package or an unrenderable drawable keeps its label-only entry.
    return null;
   } finally {
