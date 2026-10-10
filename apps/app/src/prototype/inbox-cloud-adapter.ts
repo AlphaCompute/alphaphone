@@ -454,7 +454,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     if (contextReview || attachmentView || provider.render().providerReview) return { ready: false, reason: 'Finish or close the review that is open in Inbox first. Nothing was added.', token: '', accountId: selected, account: accountLabel() || undefined };
     const current = openReply(), target = drafts.suggestionTarget(current?.message);
     return { ...target, accountId: selected, account: accountLabel() || 'Selected Gmail account',
-      token: JSON.stringify([binding.sessionId, selected, target.token, current ? [current.message.id, current.historyId ?? null] : null]) };
+      token: JSON.stringify([binding.sessionId, selected, accountLabel(), target.token, current ? [current.message.id, current.historyId ?? null] : null]) };
   };
   /** "Use in email" for an agent reply while Inbox is open: a local draft bound to the selected account,
    * replying to the open message when there is one. It opens the normal composer; nothing is sent. */

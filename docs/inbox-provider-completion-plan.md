@@ -106,10 +106,13 @@ A saved local draft that is not open, retained edits, a message without a litera
 an open draft without room for the whole reply block the review with the reason; text is never cut short. A changed agent
 session or an edited/removed reply closes the review without inserting. The review names the recipients the draft really gets,
 literal address first: a reply to a message from the account's own address (for example one opened from Sent) has none.
+One draft exists per account, so a draft whose composer was closed is still the destination: the review names it as an
+unfinished draft that is not on screen and, when another message is open, says it is not a reply to that message. A reviewed
+suggestion is inserted whole or not at all, and the review does not survive locking the phone.
 
 Attachment policy (unchanged, now stated in the review): only the text is inserted. Files and Photos selected elsewhere are not
 attached by a suggestion or by sharing; the composer's Attach picker remains the only way to add a file.
 
 Nothing in this path prepares or dispatches a provider operation; sending still requires the composer and the provider review.
-Evidence is fixture-only: `test/use-in-email-review.test.mjs`, sections 7 to 7d of `scripts/test-inbox-attention-flow.mjs` and
+Evidence is fixture-only: `test/use-in-email-review.test.mjs`, sections 7 to 7e of `scripts/test-inbox-attention-flow.mjs` and
 `test/browser/use-in-email.spec.ts`. Real Gmail and device acceptance for this control remain open.

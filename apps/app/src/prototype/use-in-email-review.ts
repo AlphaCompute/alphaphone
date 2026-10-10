@@ -15,10 +15,12 @@ export function describeEmailTarget(target: EmailTarget): { account: string; des
   const subject = target.subject.trim() || '(no subject)';
   // The literal address comes first; the sender's display name is their own text and only follows it.
   const destination = target.kind === 'reply' ? (target.to.length ? `New reply to ${to}${target.from ? ` (${target.from})` : ''} · ${subject}` : `New reply · ${subject} · no recipients yet`)
-    : target.kind === 'draft' ? `Your open ${target.reply ? 'reply' : 'email'} draft · ${subject} · to ${to}`
+    : target.kind === 'draft' ? `Your ${target.aside ? 'unfinished' : 'open'} ${target.reply ? 'reply' : 'email'} draft${target.aside ? ' (not on screen)' : ''} · ${subject} · to ${to}`
     : 'A new email. You add the recipients and subject.';
+  const effect = target.append ? 'This draft already has text. The suggestion is added below it; nothing is replaced.' : target.kind === 'draft' ? 'The draft has no message text yet. The suggestion becomes its text.' : 'A local draft opens with this text for you to edit.';
   return { account: `From ${target.account || 'the selected Gmail account'}`, destination,
-    effect: target.append ? 'This draft already has text. The suggestion is added below it; nothing is replaced.' : target.kind === 'draft' ? 'The draft has no message text yet. The suggestion becomes its text.' : 'A local draft opens with this text for you to edit.',
+    // One draft exists per account: a set-aside draft takes the suggestion, not the message on screen.
+    effect: target.kind === 'draft' && target.elsewhere ? `This is not a reply to the message on screen. ${effect}` : effect,
     confirmLabel: target.append ? 'Add below existing text' : 'Insert into draft', blocked: false };
 }
 
@@ -37,12 +39,14 @@ export function installUseInEmailReview(Component: Shell, views: Record<string, 
   const target = (): EmailTarget => typeof views.inbox?.emailTarget === 'function' ? views.inbox.emailTarget() : { ready: false, reason: 'Inbox is unavailable. Nothing was added.', token: '' };
   const eligible = (entry: Shell) => !!entry && entry.from === 'agent' && !entry.card && !entry.streaming && !entry.interrupted && typeof entry.id === 'string' && typeof entry.text === 'string' && !!entry.text.trim();
   const close = (shell: Shell) => { if (reviews.delete(shell)) refresh(shell); };
+  /** The review names an account, recipients and a subject: it does not outlive a locked or sleeping phone. */
+  const unlocked = (state: Shell) => (state.screen ?? 'home') === 'home';
   /** A destination that cannot hold the whole reply is blocked in the review; text is never cut short. */
   const fit = (found: EmailTarget, text: string): EmailTarget => !found.ready ? found
     : text.length > MAXIMUM ? { ...found, ready: false, reason: 'This reply is longer than an email draft can hold. Copy the part you need instead.' }
     : text.length > found.room ? { ...found, ready: false, reason: 'The open draft does not have room for this whole reply. Copy the part you need instead. Nothing was added.' } : found;
   function open(shell: Shell, entry: Shell) {
-    if (shell.S().view !== 'inbox' || !eligible(entry)) return;
+    if (shell.S().view !== 'inbox' || !unlocked(shell.S()) || !eligible(entry)) return;
     // Focus returns to the reply itself: its actions menu may close while the review is open.
     reviews.set(shell, { id: entry.id, text: entry.text, session: agentSession(), cloud: cloudSession(), opener: document.querySelector<HTMLElement>(`[data-alpha-message-id="${CSS.escape(entry.id)}"] [data-alpha-message-text]`),
       target: fit(target(), entry.text), notice: '' });
@@ -54,7 +58,7 @@ export function installUseInEmailReview(Component: Shell, views: Record<string, 
     // The reply must still be the one on screen, from the same agent conversation, over the same Inbox.
     const message = (shell.S().msgs || []).find((row: Shell) => row.id === review.id);
     if (!eligible(message) || message.text !== review.text || review.session !== agentSession()) { reviews.delete(shell); shell.toast?.('The conversation changed. Nothing was added to an email.'); refresh(shell); return; }
-    if (shell.S().view !== 'inbox' || document.hidden || connectionController.getSnapshot().open) { fail('Inbox is no longer in front. Nothing was added.'); return; }
+    if (shell.S().view !== 'inbox' || !unlocked(shell.S()) || document.hidden || connectionController.getSnapshot().open) { fail('Inbox is no longer in front. Nothing was added.'); return; }
     if (review.cloud !== cloudSession()) { fail('The Eliza Cloud account changed. Check the destination and confirm again. Nothing was added.'); return; }
     const inserted = views.inbox.useInEmail?.(review.text, { token: review.target.token, append: review.target.append }) === true;
     if (!inserted) { fail('The email or account changed since you opened this review. Check the destination and confirm again. Nothing was added.'); return; }
@@ -66,8 +70,8 @@ export function installUseInEmailReview(Component: Shell, views: Record<string, 
     const out = original.call(this), state = this.S(), source = state.msgs || [];
     const inInbox = state.view === 'inbox' && typeof views.inbox?.useInEmail === 'function';
     let review = reviews.get(this);
-    // Leaving Inbox or the conversation, or losing the reply, ends the review without inserting.
-    if (review && (!inInbox || !['sheet', 'full'].includes(state.chat) || !source.some((row: Shell) => row.id === review!.id && row.text === review!.text))) { reviews.delete(this); review = undefined; }
+    // Leaving Inbox or the conversation, locking the phone, or losing the reply ends the review without inserting.
+    if (review && (!inInbox || !unlocked(state) || !['sheet', 'full'].includes(state.chat) || !source.some((row: Shell) => row.id === review!.id && row.text === review!.text))) { reviews.delete(this); review = undefined; }
     out.msgs = (out.msgs || []).map((message: Shell, index: number) => {
       const entry = source[index];
       if (!inInbox || !message.messageActionsRole || !eligible(entry) || entry.text !== message.text) return message;

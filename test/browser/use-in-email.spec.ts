@@ -7,8 +7,9 @@ const menu=(page:Page)=>page.getByRole('menu',{name:'Message actions'});
 const review=(page:Page)=>page.getByRole('dialog',{name:'Review email suggestion',exact:true});
 const reply=(page:Page,text:string)=>page.locator('[data-alpha-message-text]').filter({hasText:text});
 const body=(page:Page)=>page.getByRole('textbox',{name:'Message',exact:true});
-async function setup(page:Page,theme='light',own=false){
- await page.goto('/?theme='+theme);
+async function setup(page:Page,theme='light',own=false,launcher=false){
+ // The launcher shell reserves the status bar above a full-height conversation, as the phone does.
+ await page.goto('/?theme='+theme+(launcher?'&shell=launcher':''));
  await page.evaluate(async own=>{
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
   const {secureConnectionStore:s}=await import('/src/runtime/native-connection.ts');
@@ -111,5 +112,27 @@ test('system Back cancels the review, and a message from the account itself name
  await expect(body(page)).toHaveValue(first);
  await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveValue('Re: Planning session');
  await expect(page.getByRole('textbox',{name:'To',exact:true})).toBeVisible();await expect(page.locator('.inbox-recipient-chip')).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).useInEmail.writes)).toBe(0);
+});
+
+test('a full-height conversation keeps the review below the status bar, and a set-aside draft is named as off screen',async({page})=>{
+ await setup(page,'light',false,true);await say(page,first);await expect(reply(page,first)).toBeVisible();
+ await page.getByRole('button',{name:'Expand chat',exact:true}).click();await expect(page.getByRole('button',{name:'Shrink chat',exact:true})).toBeVisible();
+ const tops=()=>page.evaluate(()=>{const top=(selector:string)=>Math.round(document.querySelector(selector)!.getBoundingClientRect().top);return {panel:top('[data-alpha-layer="conversation"]'),header:top('[data-alpha-chat-header]'),cancel:document.querySelector('[aria-label="Review email suggestion"] button')?Math.round(document.querySelector('[aria-label="Review email suggestion"] button')!.getBoundingClientRect().top):-1};});
+ // The full-height conversation reserves the status bar above its header.
+ await expect.poll(async()=>{const now=await tops();return now.header-now.panel;}).toBeGreaterThanOrEqual(40);
+ await openReview(page,first);
+ const dialog=review(page),measured=await tops();
+ expect(measured.cancel).toBeGreaterThanOrEqual(measured.header);
+ expect(await dialog.evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
+ await dialog.getByRole('button',{name:'Insert into draft',exact:true}).click();await expect(body(page)).toHaveValue(first);
+ // System Back closes the composer; the one draft for this account stays, off screen.
+ await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));
+ await expect(body(page)).toHaveCount(0);await expect(page.getByText('Can you do Tuesday at 10?',{exact:true})).toBeVisible();
+ await say(page,second);await expect(reply(page,second)).toBeVisible();await openReview(page,second);
+ await expect(dialog.locator('[data-alpha-email-use-destination]')).toHaveText('Your unfinished reply draft (not on screen) · Re: Planning session · to sender@example.invalid');
+ await expect(dialog.locator('[data-alpha-email-use-effect]')).toHaveText('This draft already has text. The suggestion is added below it; nothing is replaced.');
+ await dialog.getByRole('button',{name:'Add below existing text',exact:true}).click();await expect(dialog).toHaveCount(0);
+ await expect(body(page)).toHaveValue(first+'\n\n'+second);
  expect(await page.evaluate(()=>(window as any).useInEmail.writes)).toBe(0);
 });

@@ -126,6 +126,22 @@ test('leaving Inbox or closing the conversation ends the review without insertin
   }
 });
 
+test('locking the phone ends the review, and a locked phone inserts nothing', async () => {
+  for (const screen of ['lock', 'off']) {
+    const t = await boot();
+    t.row('reply-1').useInEmail(); const review = t.render().emailUse;
+    // Confirm reached before the next render still refuses.
+    t.shell.state.screen = screen; review.confirm();
+    assert.equal(t.inserted.length, 0, 'nothing inserted while ' + screen);
+    assert.equal(t.render().emailUseOpen, false, 'the review is gone after ' + screen);
+    t.shell.state.screen = 'home';
+    assert.equal(t.render().emailUseOpen, false, 'unlocking does not bring the review back');
+    // A locked phone does not open a review either.
+    t.shell.state.screen = screen; t.row('reply-1').useInEmail?.();
+    t.shell.state.screen = 'home'; assert.equal(t.render().emailUseOpen, false);
+  }
+});
+
 test('a reply longer than a draft can hold is refused in the review', async () => {
   const t = await boot();
   t.shell.state.msgs = t.shell.state.msgs.map(m => m.id === 'reply-1' ? { ...m, text: 'x'.repeat(64001) } : m);
@@ -163,6 +179,13 @@ test('destination wording covers a new email and an open draft', async () => {
   assert.equal(describe({ ready: true, kind: 'draft', append: false, reply: false, subject: '', to: [], account: 'me@example.invalid', token: 't' }).destination, 'Your open email draft · (no subject) · to no recipients yet');
   assert.equal(describe({ ready: true, kind: 'draft', append: true, reply: true, subject: 'Re: Plan', to: ['a@example.invalid', 'b@example.invalid'], account: 'me@example.invalid', token: 't' }).destination, 'Your open reply draft · Re: Plan · to a@example.invalid, b@example.invalid');
   assert.equal(describe({ ready: false, reason: 'Connect a Gmail account in Inbox first. Nothing was added.', token: '' }).blocked, true);
+  // A draft that was set aside is named as off screen; over another message the review says it is not a reply to it.
+  const aside = { ready: true, kind: 'draft', append: true, aside: true, elsewhere: false, reply: true, subject: 'Re: Plan', to: ['a@example.invalid'], account: 'me@example.invalid', token: 't' };
+  assert.equal(describe(aside).destination, 'Your unfinished reply draft (not on screen) · Re: Plan · to a@example.invalid');
+  assert.equal(describe(aside).effect, 'This draft already has text. The suggestion is added below it; nothing is replaced.');
+  assert.equal(describe({ ...aside, elsewhere: true }).effect, 'This is not a reply to the message on screen. This draft already has text. The suggestion is added below it; nothing is replaced.');
+  assert.equal(describe({ ...aside, elsewhere: true, append: false, reply: false }).destination, 'Your unfinished email draft (not on screen) · Re: Plan · to a@example.invalid');
+  assert.equal(describe({ ...aside, elsewhere: true, append: false }).effect, 'This is not a reply to the message on screen. The draft has no message text yet. The suggestion becomes its text.');
   // The literal address leads; a display name chosen by the sender cannot stand in for it.
   assert.equal(describe({ ready: true, kind: 'reply', append: false, reply: true, subject: 'Re: Invoice', to: ['billing@other.invalid'], from: 'Bank <help@bank.invalid>', account: 'me@example.invalid', token: 't' }).destination,
     'New reply to billing@other.invalid (Bank <help@bank.invalid>) · Re: Invoice');

@@ -17,6 +17,10 @@ export type ForwardSource = {messageId:string;historyId:string;parts:{partId:str
 type Draft = {version:1;id:string;revision:string;owner:string;to:string[];cc?:string[];bcc?:string[];attachments?:MailAttachment[];forward?:ForwardSource;provider?:{draftId:string;providerDigest:string};subject:string;body:string;mode?:'compose'|'reply'|'reply-all'|'forward';reply?:{messageId:string;threadId:string}};
 /** The destination of a reviewed assistant suggestion, as shown to the user before inserting it. */
 export type SuggestionTarget={ready:false;reason:string;token:string}|{ready:true;kind:'draft'|'reply'|'new';append:boolean;reply:boolean;subject:string;to:string[];from?:string;
+ /** A draft that was set aside: it exists but its composer is not on screen. */
+ aside?:boolean;
+ /** A set-aside draft that is not a reply to the message on screen. */
+ elsewhere?:boolean;
  /** Characters of suggestion text this destination can still take. */
  room:number;token:string};
 type Policy={maximumOutgoing:number;maximumTotalBytes:number};
@@ -114,8 +118,11 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   if(draft){
    const recipients=[...draft.to,...(draft.cc||[]),...(draft.bcc||[])];
    const append=!!draft.body.trim();
-   return {ready:true,kind:'draft',append,reply:!!draft.reply||draft.mode==='reply'||draft.mode==='reply-all',subject:draft.subject,to:recipients,room:append?Math.max(0,64000-draft.body.replace(/\s+$/,'').length-2):64000,
-    token:JSON.stringify([owner,'draft',draft.id,draft.mode||'',draft.reply?.messageId||'',draft.provider?.draftId||'',draft.subject,draft.to,draft.cc||[],draft.bcc||[],draft.body,toQ])};
+   // One draft exists per account. When its composer is closed the user may be looking at another
+   // message, so the review says that this draft is not on screen and is not a reply to that message.
+   const aside=!open,elsewhere=aside&&!!reply&&draft.reply?.messageId!==reply.id;
+   return {ready:true,kind:'draft',append,aside,elsewhere,reply:!!draft.reply||draft.mode==='reply'||draft.mode==='reply-all',subject:draft.subject,to:recipients,room:append?Math.max(0,64000-draft.body.replace(/\s+$/,'').length-2):64000,
+    token:JSON.stringify([owner,'draft',draft.id,draft.mode||'',draft.reply?.messageId||'',draft.provider?.draftId||'',draft.subject,draft.to,draft.cc||[],draft.bcc||[],draft.body,toQ,aside,elsewhere])};
   }
   if(retained?.available)return blocked('Resume the retained email edits in Inbox first. The suggestion was not added.');
   if(saved)return blocked('Restore or discard the saved local draft in Inbox first. The suggestion was not added.');
@@ -137,7 +144,8 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   useSuggestion(text:string,reply?:GmailMessage,expected?:{token:string;append?:boolean}):boolean{
    const body=String(text||'').slice(0,64000);if(!body.trim()){toast('The suggestion is empty.');return false;}
    if(!ready||busy){toast(status||'Connect a Gmail account first.');return false;}
-   if(expected&&suggestionTarget(reply).token!==expected.token)return false;
+   // A reviewed suggestion is inserted whole or not at all; only the legacy call shortens it.
+   if(expected&&(String(text).length>64000||suggestionTarget(reply).token!==expected.token))return false;
    if(draft){
     if(draft.body.trim()){
      if(!expected?.append){toast('Finish, save or discard the open email draft first. The suggestion was not added.');return false;}

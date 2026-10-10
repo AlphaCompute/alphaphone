@@ -3864,7 +3864,7 @@
     </div>
   </div>
   <sc-if value="{{emailUseOpen}}">
-    <div ref="{{emailUseModal}}" class="scr inbox-review-modal" role="dialog" aria-modal="true" aria-label="Review email suggestion" style="position:absolute;inset:0;z-index:6;background:var(--s1);padding:20px 20px 28px;overflow:auto;box-sizing:border-box;display:flex;flex-direction:column;gap:12px">
+    <div ref="{{emailUseModal}}" class="scr inbox-review-modal" role="dialog" aria-modal="true" aria-label="Review email suggestion" style="position:absolute;inset:0;z-index:6;background:var(--s1);padding:calc({{panelTop}}px + 16px) 20px 28px;overflow:auto;box-sizing:border-box;display:flex;flex-direction:column;gap:12px">
       <button class="tap" onClick="{{emailUse.close}}" style="align-self:flex-start;min-height:44px;padding:0 14px;border-radius:22px;background:var(--s2);color:var(--fg);font:inherit;font-weight:600">Cancel</button>
       <h2 class="serif" style="margin:0;font-size:26px;font-weight:400">Use this reply in an email?</h2>
       <p data-alpha-email-use-account style="margin:0;font-size:15px;font-weight:600;overflow-wrap:anywhere">{{emailUse.account}}</p>
