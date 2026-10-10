@@ -21,9 +21,12 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private static long expiresAt;
  private static final Object lifecycleLock=new Object(), enrollmentLock=new Object();
  private static long lifecycleEpoch;
+ private static volatile long credentialMutationEpoch=-1;
+ private static long credentialShutdownRequest=-1;
  private static String startRequestId;
  private static long startRequestEpoch;
  private static boolean startOwnsLaunch;
+ private static long credentialIntentEpoch;
  private final java.util.Set<String> cancelledStarts=new java.util.HashSet<>();
  private static boolean accepting=true,stopping;
  private volatile boolean disposed;
@@ -43,8 +46,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   pending.clear();
  }
  /** Runtime lifecycle changes (start, stop, cancelled start) supersede every surface's work. Caller holds lifecycleLock. */
- private void invalidateCalls(){
-  if(!disposed)instances.add(this);
+ private static void invalidateCalls(){
   for(AlphaLocalAgentPlugin instance:new java.util.ArrayList<>(instances))instance.invalidateOwnCalls();
  }
  /** Package-private observation for instrumentation; never a Capacitor method. */
@@ -57,6 +59,44 @@ public final class AlphaLocalAgentPlugin extends Plugin {
 
  private static final class Superseded extends Exception {}
  private static void clearEnrollment(){rootToken=null;ownerToken=null;ownerIdentity=null;expiresAt=0;}
+ static long reserveCredentialIntent(){synchronized(lifecycleLock){return ++credentialIntentEpoch;}}
+ static void requireCredentialIntent(long intent){synchronized(lifecycleLock){if(intent!=credentialIntentEpoch)throw new IllegalStateException("Credential intent changed");}}
+ interface CredentialMutation<T> {
+  boolean requiresShutdown()throws Exception;
+  T commit()throws Exception;
+ }
+ /** Slot classification/commit are atomic; observing shutdown must never hold the vault lock. */
+ static <T> T mutateCredentials(Context context,Runnable assertOwner,CredentialMutation<T> mutation)throws Exception {
+  final long epoch;
+  synchronized(lifecycleLock){
+   assertOwner.run();
+   synchronized(ai.eliza.plugins.securestore.nativeonly.JsonCredentialSlots.LOCK){
+    if(!mutation.requiresShutdown())return mutation.commit();
+   }
+   startRequestId=null;startOwnsLaunch=false;
+   invalidateCalls();epoch=++lifecycleEpoch;credentialMutationEpoch=epoch;accepting=false;stopping=true;clearEnrollment();
+  }
+  try{
+   final long stopRequest;
+   synchronized(lifecycleLock){assertOwner.run();if(epoch!=lifecycleEpoch||credentialMutationEpoch!=epoch)throw new Superseded();credentialShutdownRequest=-2;stopRequest=ElizaAgentService.stopForCredentialChange(context);credentialShutdownRequest=stopRequest;}
+   long deadline=android.os.SystemClock.elapsedRealtime()+15000;
+   while(true){
+    synchronized(lifecycleLock){assertOwner.run();if(epoch!=lifecycleEpoch||credentialMutationEpoch!=epoch)throw new Superseded();}
+    JSONObject status=ElizaAgentService.getLocalAgentBootState(context);
+    synchronized(lifecycleLock){
+     assertOwner.run();if(epoch!=lifecycleEpoch||credentialMutationEpoch!=epoch)throw new Superseded();
+     if(shutdownConfirmed(status)&&ElizaAgentService.isCredentialShutdownConfirmed(stopRequest)){
+      synchronized(ai.eliza.plugins.securestore.nativeonly.JsonCredentialSlots.LOCK){return mutation.commit();}
+     }
+    }
+    if(android.os.SystemClock.elapsedRealtime()>=deadline)throw new IllegalStateException("Native shutdown unconfirmed");
+    Thread.sleep(50);
+   }
+  }finally{
+   synchronized(lifecycleLock){if(credentialMutationEpoch==epoch)credentialMutationEpoch=-1;}
+  }
+ }
+ static boolean providerAdmissionReadable(){return credentialMutationEpoch<0;}
  private void requireCurrent(long epoch) throws Superseded {
   synchronized(lifecycleLock){if(disposed||!accepting||epoch!=lifecycleEpoch)throw new Superseded();}
  }
@@ -113,9 +153,9 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(!CEREBRAS_PROVIDER_MODEL.equals(model))return "Alpha Phone uses "+CEREBRAS_PROVIDER_MODEL+" on Cerebras.";
   String failure=check.check(key,model);
   if(failure!=null)return failure;
-  String value=new JSONObject().put("key",key).put("model",model).toString();
-  store.writeCredentialSlot("local-agent-provider:v1",value);
-  if(!value.equals(store.readCredentialSlot("local-agent-provider:v1")))throw new IllegalStateException();
+  store.assertCurrent();bindDirectProvider(store,key,model);store.assertCurrent();
+  JSONObject saved=new JSONObject(store.readCredentialSlot("local-agent-provider:v1"));
+  if(!key.equals(saved.optString("key"))||!model.equals(saved.optString("model")))throw new IllegalStateException();
   return null;
  }
  /** Deletes the provider slot and confirms by reading it back. */
@@ -136,17 +176,20 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   String key=call.getString("apiKey",""),model=call.getString("model",CEREBRAS_PROVIDER_MODEL);
   if(!validProviderToken(key,1024)||!model.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,127}")){call.reject("Enter a valid Cerebras key.");return;}
   if(!CEREBRAS_PROVIDER_MODEL.equals(model)){call.reject("Alpha Phone uses "+CEREBRAS_PROVIDER_MODEL+" on Cerebras.");return;}
+  final long configuration=reserveCredentialIntent();
   try{workers.execute(()->{try{
-   String failure=saveVerifiedProvider(new AlphaCredentialStore(getContext()),key,model,AlphaLocalAgentPlugin::checkCerebrasKey);
+   AlphaCredentialStore store=new AlphaCredentialStore(getContext(),()->{if(disposed)throw new IllegalStateException("Local agent bridge closed");requireCredentialIntent(configuration);});
+   String failure=saveVerifiedProvider(store,key,model,AlphaLocalAgentPlugin::checkCerebrasKey);
    if(failure!=null){call.reject(failure);return;}
-   call.resolve(providerIdentity(new AlphaCredentialStore(getContext()).readCredentialSlot("local-agent-provider:v1")));
+   store.assertCurrent();call.resolve(providerIdentity(store.readCredentialSlot("local-agent-provider:v1")));
   }catch(Exception error){call.reject("Provider could not be saved securely.");}});}
   catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
  }
  /** Deletes the provider slot and reads it back; resolves only when the slot is gone. */
  @PluginMethod public void clearProvider(PluginCall call) {
+  final long configuration=reserveCredentialIntent();
   try{workers.execute(()->{try{
-   call.resolve(clearProviderSlot(new AlphaCredentialStore(getContext())));
+   call.resolve(clearProviderSlot(new AlphaCredentialStore(getContext(),()->{if(disposed)throw new IllegalStateException("Local agent bridge closed");requireCredentialIntent(configuration);})));
   }catch(Exception error){call.reject("The provider key could not be removed.");}});}
   catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
  }
@@ -157,8 +200,10 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version.");return;}
   String credentialId=call.getString("credentialId",""),model=call.getString("model","");
   if(!CLOUD_PROVIDER_MODEL.equals(model)){call.reject("Choose a supported Cloud model.");return;}
+  final long configuration=reserveCredentialIntent();
   try{workers.execute(()->{try{
-   bindCloudProvider(new AlphaCredentialStore(getContext()),credentialId,model);
+   AlphaCredentialStore store=new AlphaCredentialStore(getContext(),()->{if(disposed)throw new IllegalStateException("Local agent bridge closed");requireCredentialIntent(configuration);});
+   bindCloudProvider(store,credentialId,model);store.assertCurrent();
    call.resolve(new JSObject().put("configured",true));
   }catch(Exception unavailable){call.reject("Cloud account changed or is unavailable. Sign in again before starting the local agent.");}});}
   catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
@@ -167,18 +212,31 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  static void bindCloudProvider(AlphaCredentialStore store,String credentialId,String model) throws Exception {
   if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
   String previous=store.readCredentialSlot("local-agent-provider:v1");
-  cloudProviderToken(store.readCredentialSlot("cloud:production"),credentialId,System.currentTimeMillis());
+  String cloud=store.readCredentialSlot("cloud:production");
+  store.assertCurrent();
+  String token=cloudProviderToken(cloud,credentialId,System.currentTimeMillis());
+  JSONObject identity=AlphaConnectionPlugin.readCloudIdentity(token);
+  store.assertCurrent();
   // A unique revision distinguishes two concurrent admissions for the same account/model.
-  String binding=new JSONObject().put("provider","elizacloud").put("credentialId",credentialId).put("model",model)
+  String selection=new JSONObject().put("provider","elizacloud").put("credentialId",credentialId).put("model",model)
    .put("revision",java.util.UUID.randomUUID().toString()).toString();
-  if(!store.compareExchangeCredentialSlot("local-agent-provider:v1",previous,binding))throw new IllegalStateException();
+  String binding=store.compareExchangeProviderAdmission(previous,selection,"cloud:production",cloud,identity);
+  if(binding==null)throw new IllegalStateException();
   try{
    cloudProviderToken(store.readCredentialSlot("cloud:production"),credentialId,System.currentTimeMillis());
    if(!binding.equals(store.readCredentialSlot("local-agent-provider:v1")))throw new IllegalStateException();
   }catch(Exception unavailable){
-   store.compareExchangeCredentialSlot("local-agent-provider:v1",binding,previous);
+   store.rollbackProviderAdmission(binding,previous);
    throw unavailable;
   }
+ }
+ /** Direct configuration is also an explicit native admission; renderer metadata is never accepted. */
+ static void bindDirectProvider(AlphaCredentialStore store,String key,String model)throws Exception {
+  if(!validProviderToken(key,1024)||!model.matches(PROVIDER_MODEL_PATTERN))throw new IllegalArgumentException();
+  String previous=store.readCredentialSlot("local-agent-provider:v1");
+  String selection=new JSONObject().put("provider","cerebras").put("key",key).put("model",model)
+   .put("revision",java.util.UUID.randomUUID().toString()).toString();
+  if(store.compareExchangeProviderAdmission(previous,selection,null,null,null)==null)throw new IllegalStateException();
  }
  static boolean validProviderToken(String token,int maximumLength) {
   if(token==null||token.length()<8||token.length()>maximumLength)return false;
@@ -201,6 +259,18 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  /** Select exactly one billing authority at process launch; never accept UI balance as authorization. */
  static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {
   String kind=provider.optString("provider","cerebras"),model=provider.getString("model");
+  // Retirement context only: reuse protected selection identity, never a credential or renderer value.
+  Object selectedRevision=provider.opt("revision");
+  String hostRevision;
+  if(provider.has("revision")){
+   if(!(selectedRevision instanceof String))throw new IllegalArgumentException();
+   String revision=java.util.UUID.fromString((String)selectedRevision).toString();
+   if(!revision.equalsIgnoreCase((String)selectedRevision))throw new IllegalArgumentException();
+   hostRevision="provider:"+kind+":"+revision;
+  }else{
+   // Legacy selections cannot carry an unfinished read across a process restart.
+   hostRevision="boot:"+java.util.UUID.randomUUID().toString();
+  }
   if("elizacloud".equals(kind)){
    if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
    String token=cloudProviderToken(cloudSaved,provider.getString("credentialId"),now);
@@ -208,6 +278,12 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    env.put("ELIZAOS_CLOUD_API_KEY",token);
    env.put("ELIZAOS_CLOUD_BASE_URL",CLOUD_PROVIDER_BASE);
    env.put("ELIZAOS_CLOUD_USE_INFERENCE","true");
+   env.put("ELIZAOS_CLOUD_USE_EMBEDDINGS","true");
+   env.put("ELIZAOS_CLOUD_EMBEDDING_MODEL","bge-small-en-v1.5");
+   env.put("ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS","384");
+   env.put("ELIZA_DISABLE_LOCAL_EMBEDDINGS","true");
+   env.put("ELIZA_LOCAL_EMBEDDING_ENABLED","0");
+   env.remove("ELIZA_LOCAL_EMBEDDING_MODEL_PATH");env.remove("ELIZA_LOCAL_EMBEDDING_DIMENSIONS");
    env.put("ELIZAOS_CLOUD_SMALL_MODEL",model);
    env.put("ELIZAOS_CLOUD_LARGE_MODEL",model);
   }else if("cerebras".equals(kind)){
@@ -215,13 +291,14 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    if(!model.matches(PROVIDER_MODEL_PATTERN)||!validProviderToken(key,1024))throw new IllegalArgumentException();
    // Earlier builds accepted any model name; launch always uses the pinned model.
    model="qwen-3.8-27b"; // == CEREBRAS_PROVIDER_MODEL; literal so this method stays self-contained.
-   for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL"})env.remove(name);
+   for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL","ELIZAOS_CLOUD_USE_EMBEDDINGS","ELIZAOS_CLOUD_EMBEDDING_MODEL","ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS","ELIZA_DISABLE_LOCAL_EMBEDDINGS","ELIZA_LOCAL_EMBEDDING_ENABLED"})env.remove(name);
    env.put("CEREBRAS_API_KEY",key);
    env.put("CEREBRAS_MODEL",model);
    env.put("CEREBRAS_SMALL_MODEL",model);
    env.put("CEREBRAS_LARGE_MODEL",model);
    env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
   }else throw new IllegalArgumentException();
+  env.put("ELIZA_HOST_CONTEXT_REVISION",hostRevision);
  }
  static final String PROVIDER_MODEL_PATTERN="[A-Za-z0-9][A-Za-z0-9._/-]{0,127}";
  /** Settings may show which hosted provider and model are configured; the key never leaves native storage. */
@@ -264,7 +341,21 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   env.put("ELIZA_LOCAL_EMBEDDING_MODEL_PATH",model.getAbsolutePath());
   env.put("ELIZA_LOCAL_EMBEDDING_DIMENSIONS","384");
  }
+ static void configureNativeViews(java.io.InputStream policy,java.util.Map<String,String> env) throws java.io.IOException {
+  try(policy){
+   java.io.ByteArrayOutputStream output=new java.io.ByteArrayOutputStream();
+   byte[] buffer=new byte[4096];int count;
+   while((count=policy.read(buffer))!=-1){
+    if(output.size()+count>16384)throw new java.io.IOException("Native view launch policy is too large");
+    output.write(buffer,0,count);
+   }
+   env.put("ELIZA_NATIVE_VIEW_DECLARATIONS",output.toString(java.nio.charset.StandardCharsets.UTF_8.name()));
+  }
+ }
  static void configureEnvironment(Context context,java.util.Map<String,String> env) throws java.io.IOException {
+  final long epoch;
+  synchronized(lifecycleLock){if(!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider is retiring");epoch=lifecycleEpoch;}
+  configureNativeViews(context.getAssets().open("agent/native-view-declarations.json"),env);
   env.remove("ELIZA_MOBILE_WORKFLOWS");
   java.io.InputStream workerIndex=null;
   try {workerIndex=context.getAssets().open("agent/workflow-worker/files.sha256");}
@@ -279,7 +370,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(saved==null)throw new IllegalStateException("Configure a model provider before starting the local agent");
   JSONObject provider=new JSONObject(saved);
   applyProviderEnvironment(provider,"elizacloud".equals(provider.optString("provider"))?new AlphaCredentialStore(context).readCredentialSlot("cloud:production"):null,env,System.currentTimeMillis());
-  configureLocalEmbeddings(new File(context.getApplicationInfo().nativeLibraryDir),context.getFilesDir(),env);
+  if(!"elizacloud".equals(provider.optString("provider","cerebras")))configureLocalEmbeddings(new File(context.getApplicationInfo().nativeLibraryDir),context.getFilesDir(),env);
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
   // A packaged app has no repository character file to discover above its workspace.
@@ -297,6 +388,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    env.put("CEREBRAS_BASE_URL",endpoint);env.put("OPENAI_BASE_URL",endpoint);
    env.put("OPENAI_API_KEY","synthetic-resident-recovery-only");env.put("ELIZA_PROVIDER","cerebras");
   }
+  synchronized(lifecycleLock){if(epoch!=lifecycleEpoch||!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider changed");}
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
  @PluginMethod public void start(PluginCall call) {
@@ -321,9 +413,11 @@ public final class AlphaLocalAgentPlugin extends Plugin {
      if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
      if(observedEpoch!=lifecycleEpoch)continue;
      if(disposed){call.reject("Local agent bridge is closed.");return;}
+     if(credentialMutationEpoch>=0){call.reject("Local provider is changing; wait before starting.");return;}
+     if(credentialShutdownRequest!=-1&&(credentialShutdownRequest<0||!ElizaAgentService.isCredentialShutdownConfirmed(credentialShutdownRequest))){call.reject("Provider shutdown is unconfirmed; check the local agent before starting.");return;}
      if(stopping&&shutdownConfirmed(nativeState))stopping=false;
      if(stopping){call.reject("Local agent is stopping; wait for stopped status before starting.");return;}
-     invalidateCalls();admitted=++lifecycleEpoch;accepting=true;clearEnrollment();pending.add(call);
+     invalidateCalls();admitted=++lifecycleEpoch;credentialShutdownRequest=-1;accepting=true;clearEnrollment();pending.add(call);
      startRequestId=requestId;startRequestEpoch=admitted;startOwnsLaunch=shutdownConfirmed(nativeState);
      ElizaAgentService.start(getContext());break;
     }
@@ -393,7 +487,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     synchronized(lifecycleLock){
      if(observedEpoch!=lifecycleEpoch)continue;
      if(stopping||!accepting){
-      boolean stopped=shutdownConfirmed(status);
+      boolean stopped=shutdownConfirmed(status)&&(credentialShutdownRequest==-1||credentialShutdownRequest>=0&&ElizaAgentService.isCredentialShutdownConfirmed(credentialShutdownRequest));
       if(stopped)stopping=false;
       status.put("state",stopped?"stopped":"stopping");
      }
@@ -422,18 +516,30 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    return ResidentResultSession.snapshot(ownerIdentity,ownerToken,expiresAt,currentRoot);
   }
  }
- private static JSONObject raw(String path,String method,String body,String token,JSONObject supplied) throws Exception {
+ /** Native-only read of the already enrolled machine session. Never calls enroll or setup. */
+ static JSONObject captureReminderOwnerSession()throws Exception{
+  synchronized(lifecycleLock){return captureResultSession(ownerIdentity);}
+ }
+ static JSONObject readReminderOwnerRoute(JSONObject expected,String path,JSONObject deviceHeaders)throws Exception{
+  if(!java.util.Arrays.asList("/api/auth/me","/api/agents","/api/client-devices/context").contains(path))throw new SecurityException("Native owner route unavailable");
+  JSONObject before=captureReminderOwnerSession();
+  if(!before.toString().equals(expected.toString()))throw new SecurityException("Native owner session changed");
+  JSONObject result=raw(path,"GET",null,expected.getString("token"),deviceHeaders,3000);
+  if(!captureReminderOwnerSession().toString().equals(expected.toString()))throw new SecurityException("Native owner session changed");
+  return result;
+ }
+ private static JSONObject raw(String path,String method,String body,String token,JSONObject supplied,int timeoutMs) throws Exception {
   JSONObject headers=new JSONObject();headers.put("Accept","application/json");headers.put("Content-Type","application/json");
   if(token!=null)headers.put("Authorization","Bearer "+token);
   if(supplied!=null)for(String key:new String[]{"X-Eliza-Device-Id","X-Eliza-Device-Key","X-Eliza-Device-Capabilities"}){
    if(supplied.has(key)){String value=supplied.getString(key);if(value.length()>2048||value.contains("\r")||value.contains("\n"))throw new IllegalArgumentException();headers.put(key,value);}
   }
-  JSONObject input=new JSONObject().put("path",path).put("method",method).put("headers",headers).put("timeoutMs",120000);
+  JSONObject input=new JSONObject().put("path",path).put("method",method).put("headers",headers).put("timeoutMs",timeoutMs);
   if(body!=null)input.put("body",body);
   return new JSONObject(ElizaAgentService.requestLocalAgent(input.toString()));
  }
  private static JSONObject json(String path,String method,JSONObject body,String token) throws Exception {
-  JSONObject response=raw(path,method,body==null?null:body.toString(),token,null);
+  JSONObject response=raw(path,method,body==null?null:body.toString(),token,null,120000);
   if(response.getInt("status")!=200)throw new IllegalStateException("Local enrollment unavailable");
   return new JSONObject(response.getString("body"));
  }
@@ -469,8 +575,9 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }
  }
  @PluginMethod public void request(PluginCall call) {
-  String path=call.getString("path",""),method=call.getString("method","GET"),body=call.getString("body");
-  if(path.contains("..")||path.contains("%")||path.contains("\\")||!path.matches("^/api/(auth/me|agents|status|conversations(/[A-Za-z0-9_-]+(/messages(\\?before=[0-9]{1,16}(&beforeId=[0-9a-fA-F-]{36})?(&limit=[0-9]{1,3})?)?)?)?|client-devices/[A-Za-z0-9_/-]+|turns/[0-9a-fA-F-]{36}/abort|workflow(/[A-Za-z0-9_/?=&-]+)?)$")||(path.contains("?before=")&&!method.equals("GET"))||(path.startsWith("/api/turns/")&&!method.equals("POST"))||!(method.equals("GET")||method.equals("POST"))||(method.equals("GET")&&body!=null)||(body!=null&&body.length()>2*1024*1024)){
+  String path=call.getString("path",""),method=call.getString("method","GET"),body=call.getString("body"),expectedOwner=call.getString("ownerId");
+  boolean automation=AutomationsRoutes.owns(path);
+  if((automation? !AutomationsRoutes.allowed(path,method)||expectedOwner==null||expectedOwner.trim().isEmpty(): ((path.startsWith("/api/views/")||path.endsWith("/messages/truncate"))&&(!method.equals("POST")||expectedOwner==null||expectedOwner.trim().isEmpty()))||(path.contains("?before=")&&!method.equals("GET"))||(path.startsWith("/api/turns/")&&!method.equals("POST"))||path.contains("..")||path.contains("%")||path.contains("\\")||!path.matches("^/api/(auth/me|agents|status|conversations(/[A-Za-z0-9_-]+(/messages(/truncate|\\?before=[0-9]{1,16}(&beforeId=[0-9a-fA-F-]{36})?(&limit=[0-9]{1,3})?)?)?)?|turns/[0-9a-fA-F-]{36}/abort|views/interact-(claim|result)|client-devices/[A-Za-z0-9_/-]+|workflow(/[A-Za-z0-9_/?=&-]+)?)$")||!(method.equals("GET")||method.equals("POST")))||((method.equals("GET")||method.equals("DELETE"))&&body!=null)||(body!=null&&body.length()>2*1024*1024)){
    call.reject("Unsupported local agent request.");return;
   }
   JSONObject headers=call.getObject("headers");
@@ -478,10 +585,9 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   try{synchronized(lifecycleLock){epoch=admittedEpoch();pending.add(call);}}catch(Superseded stale){call.reject("Local agent is stopped or unavailable.","LOCAL_AGENT_EPOCH_CHANGED");return;}
   try{workers.execute(()->{try{
    String token=enroll(epoch);
-   String expectedOwner=call.getString("ownerId");
    synchronized(lifecycleLock){requireCurrent(epoch);if(expectedOwner!=null&&!expectedOwner.equals(ownerIdentity)){resolveCurrent(call,epoch,new JSObject().put("status",409).put("body","{\"error\":\"Local owner changed; reconnect before continuing\"}"));return;}}
    requireCurrent(epoch);
-   JSONObject result=raw(path,method,body,token,headers);
+   JSONObject result=raw(path,method,body,token,headers,120000);
    requireCurrent(epoch);
    if(result.getInt("status")==401)synchronized(lifecycleLock){requireCurrent(epoch);clearEnrollment();}
    if(path.equals("/api/auth/me")&&result.getInt("status")==200){JSONObject who=new JSONObject(result.getString("body"));who.getJSONObject("session").put("id","native-owned-session");result.put("body",who.toString());result.remove("bodyBase64");}

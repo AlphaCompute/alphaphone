@@ -9,7 +9,7 @@ import {LocalAgentProtocol} from '../apps/app/src/runtime/local-agent.ts';
 const directory=mkdtempSync(join(tmpdir(),'alpha-local-contract-'));
 const root='a'.repeat(64),token='synthetic-machine-secret';
 const tokenFile=join(directory,'token');writeFileSync(tokenFile,root,{mode:0o600});
-let pairs=0,sends=0,mode='ok';
+let pairs=0,sends=0,truncates=0,mode='ok';
 const host=http.createServer(async(req,res)=>{
  let raw='';for await(const chunk of req)raw+=chunk;
  const auth=req.headers.authorization;
@@ -26,6 +26,7 @@ const host=http.createServer(async(req,res)=>{
   else if(url==='/api/agents')value={agents:[{id:'agent',name:'Fixture',status:'running'}]};
   else if(url==='/api/conversations'&&req.method==='POST')value={conversation:{id:'thread',title:'Contract'}};
   else if(url==='/api/conversations')value={conversations:[{id:'thread',title:'Contract'}]};
+  else if(url==='/api/conversations/thread/messages/truncate'){truncates++;assert.equal(req.method,'POST');assert.deepEqual(JSON.parse(raw),{messageId:'11111111-1111-4111-8111-111111111111',inclusive:true});value={ok:mode!=='unconfirmed',deletedCount:2};}
   else if(req.method==='POST'){sends++;assert.equal(req.headers['x-eliza-device-id'],'device');value={text:'Fixture reply',agentName:'Fixture'};}
   else value={messages:[{text:'Fixture reply'}]};
  }
@@ -58,6 +59,10 @@ try{
  client.deviceHeaders={'X-Eliza-Device-Id':'device'};
  assert.equal((await client.send('thread','Hello')).text,'Fixture reply');
  assert.equal((await client.messages('thread')).messages.length,1);
+ assert.equal(localAgentPathAllowed('/api/conversations/thread/messages/truncate'),true);
+ assert.equal((await invoke({path:'/api/conversations/thread/messages/truncate',method:'GET',ownerId:'owner'})).status,400);
+ await client.truncateMessages('thread','11111111-1111-4111-8111-111111111111',signal);assert.equal(truncates,1);
+ mode='unconfirmed';await assert.rejects(client.truncateMessages('thread','11111111-1111-4111-8111-111111111111',signal),/not confirmed/);assert.equal(truncates,2);mode='ok';
  mode='unauthorized';await assert.rejects(client.send('thread','Do not replay'),error=>error.status===401);assert.equal(sends,2);
  mode='ok';await client.connect(signal);assert.equal(pairs,2);
  chmodSync(tokenFile,0o644);assert.equal((await invoke({path:'/api/agents',method:'GET'})).status,503);chmodSync(tokenFile,0o600);

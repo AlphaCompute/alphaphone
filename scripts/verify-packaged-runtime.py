@@ -61,6 +61,7 @@ def verify(apk, release=False):
 
         for name in ['alpha-source.json', 'agent-bundle.js', 'workflow-worker/files.sha256', 'workflow-worker/manifest.json']:
             check('assets/agent/' + name, staged / name)
+        check('assets/agent/native-view-declarations.json', staged / 'native-view-declarations.json', file_hash(ROOT / 'config/native-view-declarations.json'))
         worker_manifest = json.loads((staged / 'workflow-worker/manifest.json').read_text())
         worker_files = worker_manifest.get('files')
         if worker_manifest.get('version') != 1 or not isinstance(worker_files, dict) or not worker_files:
@@ -85,9 +86,9 @@ def verify(apk, release=False):
         if packaged_worker != inventory | {'files.sha256', 'manifest.json'}:
             raise ValueError('Unexpected packaged worker inventory')
         # Debug/test APKs carry both ABIs. Releases may filter to the shipping
-        # arm64-v8a ABI; every ABI a release packages must carry the runtime.
+        # arm64-v8a ABI; every packaged ABI must carry the runtime.
         packaged_abis = {name.split('/')[1] for name in names if name.startswith('lib/') and name.count('/') >= 2}
-        abis = sorted(packaged_abis | {'arm64-v8a'}) if release else ['arm64-v8a', 'x86_64']
+        abis = sorted(packaged_abis | ({'arm64-v8a'} if release else {'arm64-v8a', 'x86_64'}))
         for abi in abis:
             if abi not in ('arm64-v8a', 'x86_64'):
                 raise ValueError(f'Unexpected packaged ABI: {abi}')

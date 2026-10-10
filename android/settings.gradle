@@ -23,7 +23,8 @@ project(':eliza-network-policy').projectDir = new File('../vendor/eliza/plugins/
 // npm run upstream:prepare-client (run by npm run build / android:build) materializes it.
 if (!new File(settingsDir, '../.eliza/patched/.source.json').isFile())
  throw new GradleException('Patched Eliza source is not prepared. Run: npm run upstream:prepare-client')
-// Calendar carries patches/eliza/0039-calendar-source-identity.patch (read-package source identity).
+// The pin includes the read-package source identity fix (historical patch 0039).
+// Calendar also consumes the reviewed source selection candidate 0041.
 include ':eliza-calendar'
 project(':eliza-calendar').projectDir = new File('../.eliza/patched/plugins/plugin-native-calendar/android')
 // Reminders carry patches/eliza/0040-reminders-lifecycle.patch (refusal codes, re-post, due channel, to-dos).

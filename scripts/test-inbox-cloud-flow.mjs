@@ -24,7 +24,7 @@ const client={
 };
 const listeners=new Set();
 const controller={getCloudClient:()=>session?{client,sessionId:session}:null,getSnapshot:()=>({session:{sessionId:agent},cloudAccount:session?{environment:'production',userId:'fixture-owner',sessionId:session}:null}),subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},rejectCloudSession:()=>false,open:()=>{}};
-class Shell{constructor(){this.st={q:null,compose:null};}componentDidMount(){}componentWillUnmount(){}vset(_,p){Object.assign(this.st,p);}}
+class Shell{renderVals(){return {};}constructor(){this.st={q:null,compose:null};}componentDidMount(){}componentWillUnmount(){}vset(_,p){Object.assign(this.st,p);}}
 const views={inbox:{state:{}}};
 const strip=async(file,name)=>{let source=await readFile(new URL(`../apps/app/src/prototype/${file}`,import.meta.url),'utf8');source=source.replace(/^import .*;\n/gm,'').replace(/^export (?=(?:async )?function |const |let |interface |type )/gm,'')+`\n${[].concat(name).map(n=>`globalThis.${n}=${n};`).join('')}`;return '{'+stripTypeScriptTypes(source,{mode:'transform'})+'}';};
 const windowFixture={addEventListener:(name,fn)=>events.push({name,fn}),removeEventListener:()=>{},dispatchEvent:event=>{events.push({dispatched:event.type,detail:event.detail});return true;},confirm:()=>confirmAnswer};
@@ -40,7 +40,9 @@ const render=()=>views.inbox.render(shell.st,api);const tick=async()=>{for(let i
 const local=value=>JSON.parse(JSON.stringify(value));// vm-realm arrays compare by value
 const chip=label=>{const found=render().chips.find(c=>c.label===label);assert.ok(found,`chip ${label} in ${render().chips.map(c=>c.label)}`);return found;};
 
+assert.equal(shell.renderVals().homeInboxTitle,'Inbox');assert.equal(searches.length,0,'Home does not discover accounts or read mail');
 render();await tick();
+assert.equal(shell.renderVals().homeInboxCount,'1+ unread');assert.deepEqual(local(shell.renderVals().homeInboxRows),[{subject:'Fixture mail-1',from:'Sender'}]);
 assert.deepEqual(searches.map(s=>s.query),['in:inbox'],'opening Inbox loads the connected account without another tap');
 assert.equal(render().rows.length,2);assert.equal(views.inbox.badge(),true,'badge reflects a real unread provider message');
 assert.equal(render().hasMore,true,'provider page token offers Load more');
@@ -48,6 +50,7 @@ render().loadMore();await tick();
 assert.deepEqual(searches.at(-1),{query:'in:inbox',size:25,pageToken:'page-1'},'Load more sends the opaque provider page token');
 assert.deepEqual(local(render().rows.map(r=>r.subj)),['Fixture mail-1','Fixture mail-2','Fixture mail-3'],'pages append without duplicates');
 assert.equal(render().hasMore,false,'last page has no Load more');
+assert.equal(shell.renderVals().homeInboxCount,'1 unread','complete paging removes the lower-bound qualifier');const homeSearches=searches.length;for(let i=0;i<5;i++)shell.renderVals();assert.equal(searches.length,homeSearches,'Home rerenders never fetch mail');
 render();[...swipes.values()].at(-1)(-120,4);await tick();assert.match(toasts.at(-1),/Authorize mailbox changes/,'swipe without the grant changes nothing');
 chip('Refresh').pick();await tick();assert.deepEqual(searches.at(-1),{query:'in:inbox',size:25,pageToken:null},'Refresh restarts from the first page');
 assert.equal(render().rows.length,2);
@@ -55,18 +58,18 @@ render().rows[0].open();await tick();assert.equal(render().d.body,'Fixture body'
 agent='remote-b';for(const fn of listeners)fn();assert.equal(shell.st.nativeMailSelection,null,'target change clears observation authority');assert.equal(render().d.body,'Fixture body','Cloud mailbox remains independent');
 views.inbox.back(shell.st,api);
 chip('Sent').pick();await tick();assert.equal(searches.at(-1).query,'in:sent','Sent folder uses an in:sent query');
-assert.equal(render().rows[0].name,'To: friend@example.invalid','Sent rows show recipients');assert.equal(views.inbox.badge(),true,'Sent results do not clear the Inbox badge');
+assert.equal(render().rows[0].name,'To: friend@example.invalid','Sent rows show recipients');assert.equal(views.inbox.badge(),true,'Sent results do not clear the Inbox badge');assert.deepEqual(local(shell.renderVals().homeInboxRows),[{subject:'Fixture mail-1',from:'Sender'}],'Sent does not replace cached Inbox metadata');
 chip('Inbox').pick();await tick();assert.equal(searches.at(-1).query,'in:inbox');
 render().openSearch();assert.equal(render().rows.length,0,'entering search clears prior-query results');render().onQ({target:{value:'from:fixture'}});
-delay=true;chip('Search Gmail').pick();await tick();session='account-b';for(const fn of listeners)fn();releaseSearch();await tick();assert.equal(render().rows.length,0,'late previous-account results discarded');
-assert.equal(views.inbox.badge(),false,'account change clears the badge');
+delay=true;chip('Search Gmail').pick();await tick();assert.match(shell.renderVals().homeInboxStatus,/Updating email/);session='account-b';for(const fn of listeners)fn();releaseSearch();await tick();assert.equal(render().rows.length,0,'late previous-account results discarded');
+assert.equal(views.inbox.badge(),false,'account change clears the badge');assert.equal(shell.renderVals().homeInboxHasRows,false,'account change retires cached subjects');
 delay=false;session='account-a';for(const fn of listeners)fn();render().closeSearch();await tick();assert.equal(shell.st.q,null);
 render();await tick();assert.equal(render().rows.length,2,'re-bound account loads again');
 
 // Classified failures each offer an explicit Retry; nothing retries on its own.
 for(const [error,kind,text] of [[new TypeError('Failed to fetch'),'offline',/offline/],[new CloudProtocolError('http',409),'revoked',/revoked or needs authorization/],[new CloudProtocolError('http',503),'unavailable',/unavailable/]]){
  failNext=error;const before=searches.length;chip('Refresh').pick();await tick();
- assert.equal(searches.length,before+1,'one attempt only');assert.match(render().emptyText,text,kind);
+ assert.equal(searches.length,before+1,'one attempt only');assert.match(render().emptyText,text,kind);assert.match(shell.renderVals().homeInboxStatus,/retry/,'Home keeps failure distinct from an empty Inbox');if(kind==='revoked')assert.equal(shell.renderVals().homeInboxHasRows,false,'revoked access drops cached subjects');
  if(kind==='revoked')chip('Reconnect Gmail');
  chip('Retry').pick();await tick();assert.equal(searches.length,before+2,'Retry is the explicit second attempt');assert.equal(render().rows.length,2);
 }
@@ -90,10 +93,14 @@ const discardsBefore=toasts.length;shell.st.compose={subject:'Second share',body
 shell.st.compose={subject:'Third share',body:''};render();await tick();render();await tick();assert.equal(render().c.subject,'Second share','an open draft is never overwritten');assert.match(toasts.slice(discardsBefore).join(' '),/shared content was not added/);
 views.inbox.back(shell.st,api);render().c.discard();render().c.confirmDiscard();await tick();
 
+// Only a complete successful empty page can claim no unread mail.
+pages['in:inbox']=[[]];chip('Refresh').pick();await tick();assert.equal(shell.renderVals().homeInboxTitle,'No unread email');assert.equal(shell.renderVals().homeInboxHasRows,false);
+views.inbox.onLeave();const leftSearches=searches.length;assert.equal(shell.renderVals().homeInboxTitle,'No unread email','Home retains metadata after full messages are retired');assert.equal(searches.length,leftSearches,'returning Home never fetches mail');render();await tick();
+
 // Disconnect requires confirmation and reports the read-back state.
 confirmAnswer=false;chip('Disconnect Gmail').pick();await tick();assert.deepEqual(disconnects,[],'cancelled confirmation sends nothing');
 confirmAnswer=true;chip('Disconnect Gmail').pick();await tick();
 assert.deepEqual(disconnects,['grant-a']);assert.match(render().emptyText,/is disconnected/);assert.equal(render().rows.length,0);
-assert.equal(render().chips.some(c=>c.label==='Disconnect Gmail'),false);assert.ok(events.some(e=>e.dispatched==='alpha:gmail-accounts-changed'&&e.detail.source==='inbox'));
+assert.equal(shell.renderVals().homeInboxTitle,'Connect email');assert.equal(render().chips.some(c=>c.label==='Disconnect Gmail'),false);assert.ok(events.some(e=>e.dispatched==='alpha:gmail-accounts-changed'&&e.detail.source==='inbox'));
 shell.componentWillUnmount();
 console.log('PASS: Inbox auto-load, Refresh, provider paging, Sent folder, unread badge, account/query fences, classified errors with explicit Retry, shared compose prefill, honest chips and confirmed disconnect. Provider fixture only.');

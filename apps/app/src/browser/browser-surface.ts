@@ -1,3 +1,4 @@
+import {iconStyle} from '../icon-style';
 import { WebPlugin } from '@capacitor/core';
 import {bookmarkDocument,browsingSessionDocument} from './preference-documents';
 import {normalizeBrowsing as normalize,type SavedBrowsing as Saved} from './browsing-session';
@@ -19,7 +20,7 @@ export class BrowserSurface extends WebPlugin {
     // Opaque origin also isolates a same-origin development page from local state.
     frame.setAttribute('sandbox','allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads');
     frame.style.cssText='width:100%;flex:1;min-height:0;border:0;background:white';
-    link.textContent='Open in browser ↗';link.target='_blank';link.rel='noopener noreferrer';link.style.cssText='padding:8px 12px;color:var(--fg,#111);font:12px system-ui;text-align:right';
+    link.textContent='Open in browser';const external=document.createElement('span');external.setAttribute('aria-hidden','true');external.dataset.alphaIcon='/icons/lucide/external-link.svg';Object.assign(external.style,iconStyle('external-link'),{width:'14px',height:'14px'});link.append(external);link.target='_blank';link.rel='noopener noreferrer';link.style.cssText='padding:8px 12px;color:var(--fg,#111);font:12px system-ui;text-align:right;display:flex;justify-content:flex-end;align-items:center;gap:6px';
     status.setAttribute('role','status');status.style.cssText='margin:0;padding:12px;font:14px/1.4 system-ui';status.hidden=true;
     container.append(link,status,frame);document.body.append(container);
     const tab:Tab={session:input.session,id:input.id,private:!!input.private,frame,container,link,status,history:[],position:-1,sequence:0,navigation:0,loading:false,committed:false,error:''};

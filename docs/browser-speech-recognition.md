@@ -1,20 +1,26 @@
-# In-browser speech recognition (web build)
+# Optional local browser speech engine
 
 The browser build recognizes speech locally with **Whisper tiny.en** running on **ONNX Runtime
 Web (WebAssembly)** in a dedicated worker. Recorded audio never leaves the device; the only
 network traffic is the one-time download of the model files from this app's own origin. This
 matches Android, which runs Whisper tiny.en on the device through sherpa-onnx.
 
-This implements decision **P-07** in [decisions.md](decisions.md) (local, in-browser recognition;
-no cloud speech route is added).
+This documents the earlier local engine retained under decision **P-07** in
+[decisions.md](decisions.md). The current product default is Eliza Cloud. Chat **Talk**
+opens voice inside the chat sheet, preserving the current app and draft; Notes uses the
+same recorder with a Notes destination. Cloud recording stays in the app until the user
+chooses transcription, and a reviewed transcript is not sent until Send is pressed.
+Native Cloud credentials use the encrypted native store; the Mac development bridge is
+development-only and does not establish Android acceptance. Local Whisper is an optional
+explicit route, never an automatic fallback from a failed Cloud request.
 
 **English only.** Like OCR (decision **P-08**), recognition is English-only for now; the recorder states this before
 recording. Other languages are a separate model and product decision.
 
 ## Flow (no auto-send)
 
-Notes **Record and transcribe**, Notes **Dictate**, chat **Talk** and every other entry that opens
-the Notes recorder use the same states:
+When the optional local browser route is explicitly selected, recorder destinations use
+the same recording and review states:
 
 Ready → Start recording → Stop recording (nothing loaded or uploaded) → **Transcribe in this
 browser** → model download/start-up progress → **Review transcript** (editable) → Save note /

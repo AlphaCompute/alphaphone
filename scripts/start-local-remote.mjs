@@ -10,6 +10,7 @@ import {preparePrivateRuntimeProfile,runtimeEnvironment,startPrivateRuntimeProce
 import {AGENT_MODEL,agentModelEnvironment} from './agent-model.mjs';
 import {agentTtsEnvironment} from './agent-tts.mjs';
 import {agentAsrEnvironment,warmAgentAsr} from './agent-asr.mjs';
+import {nativeViewDeclarationsJson} from './native-view-policy.mjs';
 const source = process.env.ALPHA_ELIZA_SOURCE ? path.resolve(process.env.ALPHA_ELIZA_SOURCE) : sourceDirectory(path.resolve(import.meta.dirname,'..'));
 // Upstream's own swap switches. Only both together are qualified, and only on verified pinned source.
 const swapFlags = ['ELIZA_SECRET_SWAP_ENABLED', 'ELIZA_PII_SWAP_ENABLED'].map(key => process.env[key]);
@@ -59,7 +60,7 @@ try {
 const env=runtimeEnvironment({
  inherited:process.env,allow:['PATH','TMPDIR','LANG','SHELL','USER','LOGNAME','HOME'],
  settings:{CEREBRAS_API_KEY:providerKey,...modelEnvironment,...asrEnvironment,...ttsEnvironment,...(redaction==='all'?{ELIZA_SECRET_SWAP_ENABLED:'true',ELIZA_PII_SWAP_ENABLED:'true'}:{})},
- owned:{ELIZA_HEADLESS:'1',ELIZA_DISTRIBUTION_PROFILE:'store',ELIZA_PLUGIN_SET:'lean-chat',ELIZA_REQUIRE_LOCAL_AUTH:'1',ELIZA_API_BIND:'127.0.0.1',ELIZA_ALLOWED_HOSTS:'10.0.2.2',ELIZA_API_PORT:String(port),ELIZA_API_EXPOSE_PORT:'1',ELIZA_STATE_DIR:profile,ELIZA_CONFIG_PATH:config,ELIZA_API_TOKEN:privateProfile.token,ELIZAOS_CLOUD_USE_INFERENCE:'false',ELIZA_LEAN_CHAT_WORKFLOWS:'1'},
+ owned:{ELIZA_HEADLESS:'1',ELIZA_DISTRIBUTION_PROFILE:'store',ELIZA_PLUGIN_SET:'lean-chat',ELIZA_REQUIRE_LOCAL_AUTH:'1',ELIZA_API_BIND:'127.0.0.1',ELIZA_ALLOWED_HOSTS:'10.0.2.2',ELIZA_API_PORT:String(port),ELIZA_API_EXPOSE_PORT:'1',ELIZA_STATE_DIR:profile,ELIZA_HOST_CONTEXT_REVISION:'boot:'+crypto.randomUUID(),ELIZA_CONFIG_PATH:config,ELIZA_API_TOKEN:privateProfile.token,ELIZAOS_CLOUD_USE_INFERENCE:'false',ELIZA_LEAN_CHAT_WORKFLOWS:'1',ELIZA_NATIVE_VIEW_DECLARATIONS:nativeViewDeclarationsJson},
  remove:['ELIZAOS_CLOUD_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY'],
 });
 const log=fs.openSync(path.join(profile,'server.log'),'a',0o600);

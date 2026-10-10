@@ -38,15 +38,15 @@ final class WorkflowNoticePoster implements WorkflowNoticeDelivery.Poster {
   launch.setAction(WorkflowNoticeTaps.ACTION).setData(android.net.Uri.parse(WorkflowNoticeTaps.PREFIX+token));
   return PendingIntent.getActivity(context,0,launch,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
  }
- private Notification redacted(String channel,String title){return new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText("Unlock to review this notification.").build();}
+ private Notification redacted(String channel,String title){return new Notification.Builder(context,channel).setSmallIcon(R.drawable.notification_icon).setContentTitle(title).setContentText("Unlock to review this notification.").build();}
  /** Visible for builder tests. An unopened step notice times out after a day; opening it cancels it. */
  Notification.Builder step(String title,String body,PendingIntent tap){
-  return new Notification.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText(body).setStyle(new Notification.BigTextStyle().bigText(body)).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted(CHANNEL,"Alpha Phone workflow")).setOnlyAlertOnce(true).setAutoCancel(false).setTimeoutAfter(WorkflowNoticeDelivery.STEP_NOTICE_TIMEOUT_MS).setCategory(Notification.CATEGORY_STATUS).setContentIntent(tap);
+  return new Notification.Builder(context,CHANNEL).setSmallIcon(R.drawable.notification_icon).setContentTitle(title).setContentText(body).setStyle(new Notification.BigTextStyle().bigText(body)).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted(CHANNEL,"Alpha Phone workflow")).setOnlyAlertOnce(true).setAutoCancel(false).setTimeoutAfter(WorkflowNoticeDelivery.STEP_NOTICE_TIMEOUT_MS).setCategory(Notification.CATEGORY_STATUS).setContentIntent(tap);
  }
  /** Visible for builder tests. Redacted approval request that disappears when the approval expires; tapping only opens the run. */
  Notification.Builder approval(String title,String body,long timeoutMs,PendingIntent tap){
   if(timeoutMs<=0)throw new IllegalArgumentException("Approval already expired");
-  return new Notification.Builder(context,APPROVAL_CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText(body).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted(APPROVAL_CHANNEL,"Alpha Phone")).setOnlyAlertOnce(true).setAutoCancel(false).setTimeoutAfter(timeoutMs).setCategory(Notification.CATEGORY_REMINDER).setContentIntent(tap);
+  return new Notification.Builder(context,APPROVAL_CHANNEL).setSmallIcon(R.drawable.notification_icon).setContentTitle(title).setContentText(body).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted(APPROVAL_CHANNEL,"Alpha Phone")).setOnlyAlertOnce(true).setAutoCancel(false).setTimeoutAfter(timeoutMs).setCategory(Notification.CATEGORY_REMINDER).setContentIntent(tap);
  }
  public void post(String id,String title,String body)throws Exception{
   if(!allowed())throw new SecurityException("Notification delivery is disabled");

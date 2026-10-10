@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {stripTypeScriptTypes} from 'node:module';
+function port(){const source=fs.readFileSync('apps/app/src/browser/voice.ts','utf8'),stop=source.slice(source.indexOf(' async stopPlayback('),source.indexOf(' stop(){')),cancel=source.slice(source.indexOf(' async cancel(input?'),source.indexOf(' async releaseLocalSpeech(')),box={};vm.runInNewContext(stripTypeScriptTypes('globalThis.port=new (class{'+stop+cancel+'})();',{mode:'transform'}),box);const p=box.port;p.agentAudio=new Map();p.speech=new Map();p.capture={cancel(){throw Error('Request cancellation touched microphone');}};p.recognizer={stop(){throw Error('Request cancellation touched recognizer');}};p.notifyListeners=async()=>{};return p;}
+test('browser request cancellation aborts pending owned Cloud synthesis without touching capture',async()=>{const p=port(),pending=new AbortController();p.speechRequest=pending;p.speechRequestId='own-synth';await p.cancel({requestId:'own-synth'});assert.equal(pending.signal.aborted,true);assert.equal(p.speechRequest,undefined);});
+test('late old Cloud cleanup cannot cancel new capture, synthesis or playback',async()=>{const p=port(),current=new AbortController();p.speechRequest=current;p.speechRequestId='new-synth';p.activeSpeechId='new-playback';p.agentAudio.set('new-playback',{requestId:'new-synth'});p.agentAudio.set('old-prepared',{requestId:'old-synth'});await p.cancel({requestId:'old-synth'});assert.equal(current.signal.aborted,false);assert.equal(p.activeSpeechId,'new-playback');assert.equal(p.agentAudio.has('new-playback'),true);assert.equal(p.agentAudio.has('old-prepared'),false);});

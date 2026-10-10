@@ -85,7 +85,7 @@ test('the chooser and Settings offer only production connections', async ({ page
   await page.goto('/?tools=1');
   const chooser = page.locator('.alpha-connection');
   // The browser build explains its real options on first run.
-  await expect(chooser.getByText('This browser has no on-device agent', { exact: true })).toBeVisible();
+  await expect(chooser.getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
   for (const summary of await chooser.locator('summary').all()) await summary.click();
   const text = await chooser.innerText();
   expect(text).not.toMatch(/mock mode/i);
@@ -108,8 +108,8 @@ test('the chooser and Settings offer only production connections', async ({ page
   expect(settingsText).not.toMatch(/staging/i);
   await page.getByText('About', { exact: true }).click();
   // The About header and the Runtime row both name the web runtime.
-  await expect(settings.getByText('Web browser', { exact: true }).first()).toBeVisible();
-  await expect(settings.getByText('Browser development', { exact: true })).toHaveCount(0);
+  await expect(settings.getByText('Web app', { exact: true }).first()).toBeVisible();
+  await expect(settings.getByText('Development preview', { exact: true })).toHaveCount(0);
   await expect(settings.getByText(/^\d+\.\d+\.\d+/).first()).toBeVisible();
   await settings.getByText('Open source licenses', { exact: true }).click();
   await expect(settings.getByText('Open source licenses', { exact: true }).first()).toBeVisible();
@@ -122,8 +122,8 @@ test('deferred apps are absent and root views show honest unconnected states', a
   await page.goto('/?tools=1');
   for (const deferred of ['Phone', 'Messages', 'Contacts', 'Wallet']) await expect(page.getByRole('button', { name: deferred, exact: true })).toHaveCount(0);
   const states: Record<string, RegExp> = {
-    Inbox: /Connect Eliza Cloud/, Workflows: /Agent connection required/, Notes: /No notes yet/,
-    Photos: /No photos/, Maps: /Maps provider not connected|Search/, Calendar: /\d/, Files: /Choose a document/, Settings: /Agent connection/,
+    Inbox: /Connect Eliza Cloud/, Workflows: /Connect an agent for its automations\. Reminders on this phone stay available\./, Notes: /No notes yet/,
+    Photos: /No photos/, Maps: /Map tiles are not connected/, Calendar: /\d/, Files: /Choose a document/, Settings: /Agent connection/,
   };
   for (const [view, expected] of Object.entries(states)) {
     await page.goto('/?tools=1');
@@ -206,31 +206,48 @@ test('production ignores the development render-failure hook', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Agent connection', exact: true })).toBeVisible();
 });
 
-test('production browser speech: self-hosted Whisper transcribes under the shipped CSP without third-party requests', async ({ page }) => {
-  test.setTimeout(120000);
-  const { readFileSync } = await import('node:fs');
-  const encoded = readFileSync(new URL('../../design-assets/video/narration/voice.wav', import.meta.url)).toString('base64');
+test('production signed-out voice requires Cloud without capture, upload or local fallback under the shipped CSP', async ({ page }) => {
   const violations = await trackCsp(page);
-  const foreign: string[] = [];
-  page.on('request', request => { const url = new URL(request.url()); if (!['127.0.0.1', 'localhost'].includes(url.hostname) && !['data:', 'blob:'].includes(url.protocol)) foreign.push(request.url()); });
+  const foreign: string[] = [], uploads: string[] = [], engines: string[] = [];
+  // Stop a regression before it can contact a provider or upload anything.
+  await page.route('**/*', async route => {
+    const request=route.request(),url=new URL(request.url());
+    if (!['127.0.0.1','localhost'].includes(url.hostname) && !['data:','blob:'].includes(url.protocol)) { foreign.push(request.url()); await route.abort(); return; }
+    if (['POST','PUT','PATCH'].includes(request.method())) { uploads.push(request.url()); await route.abort(); return; }
+    if (url.pathname.startsWith('/browser-speech/') || /\.(onnx|wasm)$/.test(url.pathname)) engines.push(url.pathname);
+    await route.continue();
+  });
   await page.addInitScript(offline);
+  await page.addInitScript(() => {
+    const counts=(window as any).voiceGate={microphone:0,recorders:0,audio:0,workers:0,playback:0};
+    Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>{counts.microphone++;throw Error('Unsigned voice must not capture');}}});
+    for(const [name,key] of [['MediaRecorder','recorders'],['OfflineAudioContext','audio'],['Worker','workers']] as const){
+      const Original=(window as any)[name];
+      if(Original)Object.defineProperty(window,name,{configurable:true,value:new Proxy(Original,{construct(){counts[key]++;throw Error('Unsigned voice must not start a local engine');}})});
+    }
+    // Clock primes an alert context on user gestures independently of voice.
+    // Keep that inert while counting any capture, decode or synthesis processing.
+    const processing=()=>{counts.audio++;throw Error('Unsigned voice must not process audio');};
+    Object.defineProperty(window,'AudioContext',{configurable:true,value:class {
+      state='suspended';resume=async()=>{};close=async()=>{};
+      createMediaStreamSource=processing;createMediaStreamDestination=processing;
+      createBufferSource=processing;decodeAudioData=processing;createOscillator=processing;
+    }});
+    if(window.speechSynthesis)window.speechSynthesis.speak=()=>{counts.playback++;throw Error('Unsigned voice must not synthesize speech');};
+    HTMLMediaElement.prototype.play=async function(){counts.playback++;throw Error('Unsigned voice must not play audio');};
+  });
   await page.goto('/');
-  await page.evaluate(async encoded => {
-    const ctx = new AudioContext(), buffer = await ctx.decodeAudioData(Uint8Array.from(atob(encoded), c => c.charCodeAt(0)).buffer);
-    document.addEventListener('click', () => { void ctx.resume(); }, { capture: true });
-    (window as any).spoken = buffer.duration;
-    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => { const sink = ctx.createMediaStreamDestination(), source = ctx.createBufferSource(); source.buffer = buffer; source.connect(sink); await ctx.resume(); setTimeout(() => source.start(), 150); return sink.stream; } } });
-  }, encoded);
   await page.getByRole('button', { name: 'Notes', exact: true }).click();
   await page.getByRole('button', { name: 'Record and transcribe', exact: true }).click();
-  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Stop recording', exact: true })).toBeVisible();
-  await page.waitForTimeout(await page.evaluate(() => (window as any).spoken as number) * 1000 + 500);
-  await page.getByRole('button', { name: 'Stop recording', exact: true }).click();
-  await page.getByRole('button', { name: 'Transcribe in this browser', exact: true }).click();
-  const review = page.getByRole('textbox', { name: 'Review transcript', exact: true });
-  await expect(review).toHaveValue(/hold the side key to talk/i, { timeout: 90000 });
-  expect(foreign).toEqual([]);
+  await expect(page.getByText('Sign in to Eliza Cloud to use voice.',{exact:true})).toBeVisible();
+  const connect=page.getByRole('button',{name:'Connect Eliza Cloud',exact:true});await expect(connect).toBeEnabled();
+  for(const name of ['Start recording','Record without transcription','Use development voice','Use browser voice','Use on-device voice','Transcribe on this device','Type transcript instead'])await expect(page.getByRole('button',{name,exact:true})).toHaveCount(0);
+  await connect.click();
+  const account=page.getByRole('dialog',{name:'Eliza Cloud',exact:true});await expect(account).toBeVisible();
+  await expect(account.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toHaveCount(0);
+  await expect(account.getByText(/Eliza Cloud sign-in is available in the Alpha Phone Android app/)).toBeVisible();
+  expect(await page.evaluate(()=>(window as any).voiceGate)).toEqual({microphone:0,recorders:0,audio:0,workers:0,playback:0});
+  expect(uploads).toEqual([]);expect(engines).toEqual([]);expect(foreign).toEqual([]);
   expect(await violations()).toEqual([]);
 });
 for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpackaged','legacy-offline'] as const) {
@@ -287,7 +304,7 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
   if(mode==='unpackaged'||mode==='legacy-offline'){await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'Welcome to Alpha'})).toBeVisible();}
   // Every unconnected state offers the honest offline path; a connected agent closes Welcome.
   await expect(page.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(mode==='funded'?0:1);
-  if(mode==='unavailable')await expect(page.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
+  if(mode==='unavailable')await expect(page.getByRole('button',{name:'Check credits again',exact:true})).toBeVisible();
   if(mode!=='funded'){
    await page.getByRole('button',{name:'Use local apps without AI',exact:true}).click();
    await expect(page.getByRole('dialog',{name:'Welcome to Alpha'})).toHaveCount(0);
@@ -373,7 +390,7 @@ test('resident local apps keep a saved Cloud sign-in available without contactin
   }};
  });
  await page.goto('/');
- const welcome=page.getByRole('dialog',{name:'Welcome to Alpha'});
+ const welcome=page.getByRole('dialog',{name:'Reconnect Eliza Cloud'});
  await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
  await expect(welcome).toHaveCount(0);
  await page.getByRole('button',{name:'Settings',exact:true}).click();

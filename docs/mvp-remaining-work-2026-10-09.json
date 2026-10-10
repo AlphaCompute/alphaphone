@@ -1,0 +1,1102 @@
+{
+  "schema": 1,
+  "title": "Alpha Phone remaining MVP work after PR 373 integration review",
+  "date": "2026-10-09",
+  "pull_request": "https://github.com/AlphaCompute/alphaphone/pull/373",
+  "reviewed_pr_head": "44c9d57ce38b3b29f5b104a2f6efc103fdd914c3",
+  "integrated_main": "d694c30c",
+  "upstream_pin": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
+  "status": "Audit in progress; final validation and merge evidence added before delivery",
+  "priorities": {
+    "P0": "blocks the affected required MVP or release acceptance",
+    "P1": "required integration/acceptance unless explicitly scoped out"
+  },
+  "items": [
+    {
+      "id": "MVP-01",
+      "group": "Product decisions",
+      "priority": "P0",
+      "kind": "decision",
+      "requirements": [
+        "AP-06"
+      ],
+      "title": "Reconcile voice send and route policy",
+      "current": "Main uses ongoing Cloud voice; decisions P-07 now names Cloud, while P-01 and AP-06 still require manual send and the PRD still says local-first. Incoming manual-entry acceptance is retained as explicit TODO, not a passing product test.",
+      "remaining": "Choose the authoritative policy for chat, Notes, read-aloud and browser; reconcile PRD, decisions, completion plan, Settings, implementation and tests. Do not silently equate optional local code with a production local route.",
+      "acceptance": "One dated approved policy; all entrypoints and cancellation/consent tests match it; no unsupported latency claim.",
+      "depends_on": [],
+      "sources": [
+        "docs/prd.md",
+        "docs/decisions.md",
+        "apps/app/src/runtime/voice-selection.ts",
+        "apps/app/src/prototype/voice-adapter.ts",
+        "test/voice-entry-timing.test.mjs"
+      ]
+    },
+    {
+      "id": "MVP-02",
+      "group": "Product decisions",
+      "priority": "P0",
+      "kind": "decision",
+      "requirements": [
+        "AP-11"
+      ],
+      "title": "Resolve powered-off execution A-09",
+      "current": "Resident schedules and recovery cannot execute on a powered-off phone.",
+      "remaining": "Either formally amend the DoD to resident missed-occurrence recovery or deliver two genuinely hosted loops. Define owner, source freshness, zone, DST, overlap, retry and missed-run policy.",
+      "acceptance": "Approved amendment and corresponding evidence, or two distinct hosted terminal results while the phone remains powered off and one delivery each on reconnect.",
+      "depends_on": [],
+      "sources": [
+        "docs/mvp-completion-plan.md",
+        "docs/decisions.md"
+      ]
+    },
+    {
+      "id": "MVP-03",
+      "group": "Product decisions",
+      "priority": "P0",
+      "kind": "decision",
+      "requirements": [
+        "AP-14"
+      ],
+      "title": "Choose supported hardware and release authority",
+      "current": "No current source-bound physical SKU acceptance or release signer is established by this integration.",
+      "remaining": "Close A-01/A-06: exact SKU/variant, Android version, device tree/blobs/kernel, signing/update custody and recovery/support owner. Preserve stock recovery and emergency access.",
+      "acceptance": "Named owners and immutable source/device/signer manifest sufficient for reproducible image and rollback work.",
+      "depends_on": [],
+      "sources": [
+        "docs/prd.md",
+        "docs/pilot-acceptance-runbook.md",
+        "android/release-signer.json"
+      ]
+    },
+    {
+      "id": "MVP-04",
+      "group": "Product decisions",
+      "priority": "P1",
+      "kind": "decision",
+      "requirements": [
+        "AP-03",
+        "AP-04",
+        "AP-09"
+      ],
+      "title": "Freeze services accounts and billing",
+      "current": "Cloud credit onboarding, direct Cerebras configuration and remote pairing exist; service authorization is not live-qualified.",
+      "remaining": "Close A-02/A-07/A-16/A-20: managed endpoint, direct-key versus credit route, pilot account provisioning, optional Cloud agents, Gmail scopes and usage semantics. Keep account login separate from agent selection.",
+      "acceptance": "Documented supported service matrix; approved non-secret operator provisioning procedure and matching real-service tests.",
+      "depends_on": [],
+      "sources": [
+        "docs/decisions.md",
+        "docs/cloud-production-validation.md"
+      ]
+    },
+    {
+      "id": "MVP-05",
+      "group": "Product decisions",
+      "priority": "P1",
+      "kind": "decision",
+      "requirements": [
+        "AP-06",
+        "AP-15"
+      ],
+      "title": "Agree measurable voice latency acceptance",
+      "current": "The six-second target and manual review requirement are inconsistent; this merge supplies no physical latency samples.",
+      "remaining": "Close A-10 with start/end boundaries, inclusion of review time, cold/warm definitions, percentile, task set and failure accounting. Wire real entrypoint marks rather than only helper-level records.",
+      "acceptance": "At least the agreed sample set per route/device, raw timings and failures retained; no fabricated first-audio mark.",
+      "depends_on": [
+        "MVP-01"
+      ],
+      "sources": [
+        "docs/mvp-completion-plan.md",
+        "apps/app/src/runtime/voice-timing.ts",
+        "scripts/aggregate-voice-latency.mjs"
+      ]
+    },
+    {
+      "id": "MVP-06",
+      "group": "Product decisions",
+      "priority": "P1",
+      "kind": "decision",
+      "requirements": [
+        "AP-10",
+        "AP-12"
+      ],
+      "title": "Set remaining optional feature boundaries",
+      "current": "Several design surfaces exceed the frozen MVP.",
+      "remaining": "Disposition A-11 through A-19 and A-22: alarm ownership, passkeys, third-party cookies, trusted browsers, attachments/labels, secure camera, gallery scope, backup/erase and landscape. Keep optional features separate from mandatory release gates.",
+      "acceptance": "Each item has a chosen scope or explicit deferral, user-visible unavailable behavior and restoration gate.",
+      "depends_on": [],
+      "sources": [
+        "docs/decisions.md",
+        "docs/flow-audit-and-prd.md"
+      ]
+    },
+    {
+      "id": "MVP-07",
+      "group": "Product decisions",
+      "priority": "P1",
+      "kind": "documentation",
+      "requirements": [
+        "AP-01",
+        "AP-02",
+        "AP-04",
+        "AP-05",
+        "AP-07"
+      ],
+      "title": "Refresh the requirement and evidence ledger",
+      "current": "Current-status rows still describe no drawer, no offline entry, no browser transport and early draft consumption although this PR adds those paths; it also cites the previous pin and obsolete patch 0039.",
+      "remaining": "Reconcile requirements.json, current status, browser review and completion plan against the merged commit. Retain historical results as historical. Update the misleading pending A-04 and A-10 wording after voice policy is settled.",
+      "acceptance": "Every AP and retained F/J journey has current implementation, test class, exact source/artifact, remaining gate and owner; no old failure is called current without reproduction.",
+      "depends_on": [
+        "MVP-01"
+      ],
+      "sources": [
+        "docs/mvp-current-status.md",
+        "docs/requirements.json",
+        "docs/mvp-browser-review.md"
+      ]
+    },
+    {
+      "id": "MVP-08",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "integration",
+      "requirements": [
+        "AP-04",
+        "AP-10",
+        "AP-11"
+      ],
+      "title": "Upstream the pin-only commit series",
+      "current": "The refreshed GitHub compare records pin 0d40aa6 as diverged: 59 ahead, 764 behind develop, with 55 non-merge pin-only commits at audit time. Squash-equivalent changes must be considered individually.",
+      "remaining": "Review equivalence, rebase the needed commits onto develop, open the agreed upstream PRs, and replace the downstream pin only with reviewed tested commits. Do not edit vendor/eliza.",
+      "acceptance": "Reviewed upstream disposition per commit, clean source preparation and full product regression at the replacement pin.",
+      "depends_on": [],
+      "sources": [
+        "scripts/ci/upstream-reachability.json",
+        "upstream.lock.json",
+        "patches/eliza/README.md"
+      ]
+    },
+    {
+      "id": "MVP-09",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "integration",
+      "requirements": [
+        "AP-04",
+        "AP-10",
+        "AP-11"
+      ],
+      "title": "Submit and retire explicit shared patches",
+      "current": "Applied and reference-only patches coexist. Applied manifests were requalified for the new pin; 0046 and 0065 needed rebasing, while 0039 is already in the pin.",
+      "remaining": "Create an upstream disposition for each patch family; distinguish applied client closures, Android-consumed modules, reference candidates and deployed server routes. Merge and retire downstream patches one reviewed family at a time.",
+      "acceptance": "Patch-to-upstream-PR ledger with exact output hashes, external-consumer tests and no duplicate or silently unapplied implementation.",
+      "depends_on": [
+        "MVP-08"
+      ],
+      "sources": [
+        "patches/eliza/README.md",
+        "scripts/prepare-eliza-patches.mjs"
+      ]
+    },
+    {
+      "id": "MVP-10",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "integration",
+      "requirements": [
+        "AP-10"
+      ],
+      "title": "Consume shared media implementation",
+      "current": "0073/0074 are prepared but Android settings does not include eliza-media; Alpha still owns media edit/filter implementations.",
+      "remaining": "Wire the reviewed shared module, preserve existing storage/URI identities and native behavior, then remove duplicated product implementations only after parity checks.",
+      "acceptance": "Both APK variants compile; selected capture/edit/save-copy and process-death instrumentation pass with exact output bytes.",
+      "depends_on": [
+        "MVP-09"
+      ],
+      "sources": [
+        "android/settings.gradle",
+        "patches/eliza/owned-media-edits-source.json",
+        "patches/eliza/owned-media-captures-source.json"
+      ]
+    },
+    {
+      "id": "MVP-11",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "integration",
+      "requirements": [
+        "AP-11",
+        "AP-12"
+      ],
+      "title": "Consume shared notification journal and browser candidates",
+      "current": "Notification mirror 0049 is prepared but not in Gradle; browser-surface and action-journal series remain reference candidates.",
+      "remaining": "Wire notification implementation only within the retained opt-in scope; separately qualify shared action journal and browser surface with storage migrations and exact receipt/owner semantics.",
+      "acceptance": "No duplicate effect or stale approval after migration; browser bridge isolation and notification privacy remain intact.",
+      "depends_on": [
+        "MVP-09"
+      ],
+      "sources": [
+        "android/settings.gradle",
+        "patches/eliza/action-journal-android-source-base.json",
+        "patches/eliza/action-journal-client-source-base.json"
+      ]
+    },
+    {
+      "id": "MVP-12",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "implementation",
+      "requirements": [
+        "AP-09"
+      ],
+      "title": "Finish foreground Calendar availability",
+      "current": "Contracts and review presentation recognize calendar_availability. The native guard includes availability in its snapshot, but the product execution path is not complete.",
+      "remaining": "Carry free/busy availability through provider reads, implement bounded foreground selection/execution, filter only authorized calendars, and return no event titles. Handle all-day, timezone, permission and stale-context cases.",
+      "acceptance": "Actual selected-provider result and exact receipt; free events excluded, all-day busy, no unrelated calendars or titles disclosed.",
+      "depends_on": [],
+      "sources": [
+        "apps/app/src/runtime/device-actions.ts",
+        "patches/eliza/contracts-device-reviews-source.json"
+      ]
+    },
+    {
+      "id": "MVP-13",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "implementation",
+      "requirements": [
+        "AP-04",
+        "AP-10"
+      ],
+      "title": "Finish folder notification and capture context selection",
+      "current": "Selection contracts exist, but folder/notification selections are not fully wired. native-adapter passes a generic wrapper to askAboutCapture while its public function expects an item identity.",
+      "remaining": "Audit every retained source adapter, preserve exact selected identity/revision, implement folder and notification review scope, and correct native capture/category routing. Keep unsupported operations visibly unavailable.",
+      "acceptance": "Switch/delete/revoke during review cannot send a neighboring item; native Camera/Photos and folder selection complete their intended journey.",
+      "depends_on": [],
+      "sources": [
+        "apps/app/src/prototype/native-adapter.ts",
+        "apps/app/src/prototype/camera-adapter.ts",
+        "docs/flow-audit-and-prd.md"
+      ]
+    },
+    {
+      "id": "MVP-14",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "implementation",
+      "requirements": [
+        "AP-09"
+      ],
+      "title": "Expose Use in email through the actual assistant UI",
+      "current": "Inbox defines useInEmail, but no other product caller is present in the audited tree. A helper test is not a visible control.",
+      "remaining": "Connect the reviewed assistant result to the exact selected email/local draft, with conflict protection and account identity. Clarify whether selected Files/Photos become attachments or require the picker.",
+      "acceptance": "A user can review and insert a suggestion into the intended draft; edited drafts are not overwritten and no message sends automatically.",
+      "depends_on": [],
+      "sources": [
+        "apps/app/src/prototype/inbox-cloud-adapter.ts",
+        "apps/app/src/prototype/agent-adapter.ts"
+      ]
+    },
+    {
+      "id": "MVP-15",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "implementation",
+      "requirements": [
+        "AP-10",
+        "AP-15"
+      ],
+      "title": "Complete full Trash recovery",
+      "current": "Trash preserves notes and voice recordings for three days. Full storage currently refuses deletion and directs the user to empty Trash.",
+      "remaining": "Add the separately confirmed permanent-delete escape where required, preserving exact note/audio ownership and failure recovery. Qualify expiry across process death and clock changes.",
+      "acceptance": "Full-storage recovery does not silently lose another note; deletion/restore/expiry converge for the exact text and audio under interruption.",
+      "depends_on": [],
+      "sources": [
+        "apps/app/src/prototype/notes-trash-adapter.ts",
+        "apps/app/src/prototype/agent-adapter.ts",
+        "docs/browser-storage.md"
+      ]
+    },
+    {
+      "id": "MVP-16",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "implementation",
+      "requirements": [
+        "AP-04",
+        "AP-05"
+      ],
+      "title": "Reuse the resident agent from the assistant surface",
+      "current": "ACTION_ASSIST has its own renderer/bridge; startup still follows resident connection admission. Per-Activity cancellation was preserved in this merge.",
+      "remaining": "Separate attaching to an admitted running resident from restarting it. Opening/closing assistant must not retire Home work, enroll another owner or restart active inference.",
+      "acceptance": "Native dual-Activity test records unchanged runtime identity, correct owned-work cancellation and preserved conversation across repeated assistant invocations.",
+      "depends_on": [],
+      "sources": [
+        "apps/app/src/runtime/connection-ui.tsx",
+        "apps/app/src/runtime/local-agent.ts",
+        "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java"
+      ]
+    },
+    {
+      "id": "MVP-17",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "integration",
+      "requirements": [
+        "AP-03",
+        "AP-11"
+      ],
+      "title": "Finish production browser service support",
+      "current": "HTTPS remote browser transport exists; direct Cloud sign-in remains unavailable for this production origin. The development host has a separate credential-reference bridge.",
+      "remaining": "Decide approved browser Cloud origin/server bridge and CORS, then qualify account return, storage degradation, revoke and automations. Complete any intended webUiUrl preference rather than only parsing returned metadata.",
+      "acceptance": "Flag-off browser can complete only advertised routes; host-only references never leak or masquerade as bearer tokens; account changes fence pending work.",
+      "depends_on": [
+        "MVP-04"
+      ],
+      "sources": [
+        "apps/app/src/runtime/native-connection.ts",
+        "apps/app/src/browser/cloud-connection.ts",
+        "apps/app/src/runtime/cloud-protocol.ts"
+      ]
+    },
+    {
+      "id": "MVP-18",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "integration",
+      "requirements": [
+        "AP-11"
+      ],
+      "title": "Wire missing native runner phases",
+      "current": "WorkflowLegacyReminderUpgradeInstrumentedTest and WorkflowApprovalNoticeInstrumentedTest exist without the required runner coverage.",
+      "remaining": "Add installed-upgrade coverage and an approval-notice phase, including immutable APK/test pairing and explicit failure propagation.",
+      "acceptance": "Runner executes both classes on both flavors; verifies exact scheduled item/approval across upgrade, process death, account change and notification tap.",
+      "depends_on": [],
+      "sources": [
+        "scripts/test-installed-upgrade.mjs",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone"
+      ]
+    },
+    {
+      "id": "MVP-19",
+      "group": "Upstream and runtime integration",
+      "priority": "P1",
+      "kind": "implementation",
+      "requirements": [
+        "AP-07"
+      ],
+      "title": "Complete the daily overview contract",
+      "current": "Main Home cards use current Calendar, workflow/automation and loaded Inbox metadata. The PR Home summary helper does not by itself prove every source/timestamp/brief reaches this newer layout.",
+      "remaining": "Map the requirement to actual cards: source attribution, freshness, loading/empty/error/retry, overdue reminders and latest retained brief. Preserve the no-background-mail-read boundary unless policy explicitly changes.",
+      "acceptance": "Real provider transitions render correctly; counts and times correspond to fetched data; no fixture avatar, fake brief or hidden mail fetch.",
+      "depends_on": [],
+      "sources": [
+        "apps/app/src/prototype/data-adapter.ts",
+        "apps/app/src/prototype/template.html",
+        "apps/app/src/prototype/inbox-cloud-adapter.ts"
+      ]
+    },
+    {
+      "id": "MVP-20",
+      "group": "Native and user journeys",
+      "priority": "P0",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-02",
+        "AP-15"
+      ],
+      "title": "Qualify both installed variants and HOME",
+      "current": "Four developer APK builds pass inspection; this is not installation or HOME-role evidence.",
+      "remaining": "Install source-matched standalone/HOME and paired instrumentation; test cold launch, role accept/deny/revoke, opening three installed apps, repeated HOME, stock settings/recovery, upgrade and default-role changes.",
+      "acceptance": "Current emulator reports for both flavors and separate physical run; no role trap or system emergency/recovery regression.",
+      "depends_on": [],
+      "sources": [
+        "docs/pilot-acceptance-runbook.md",
+        "scripts/android-instrumentation.mjs"
+      ]
+    },
+    {
+      "id": "MVP-21",
+      "group": "Native and user journeys",
+      "priority": "P0",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-03",
+        "AP-04"
+      ],
+      "title": "Qualify resident lifecycle and account isolation",
+      "current": "Host/JVM fixtures exercise admission, owner context and credential retirement. They do not prove packaged native execution.",
+      "remaining": "Run resident start/restart, socket/auth/IPC, overlapping Activity teardown, credential replacement, logout, network loss, reboot, killed worker and pending native receipt recovery.",
+      "acceptance": "No old-owner output/action, duplicate effect or leaked process; current native runtime/process evidence and conversation IDs retained.",
+      "depends_on": [
+        "MVP-20"
+      ],
+      "sources": [
+        "docs/local-agent-development.md",
+        "docs/pilot-acceptance-runbook.md"
+      ]
+    },
+    {
+      "id": "MVP-22",
+      "group": "Native and user journeys",
+      "priority": "P0",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-05",
+        "AP-15"
+      ],
+      "title": "Qualify chat draft history and navigation continuity",
+      "current": "Merge retains main navigation/read-reply/voice ownership alongside PR draft-dispatch/history/cancel work.",
+      "remaining": "Exercise pre-dispatch error, unknown post-dispatch outcome, stop/reconcile, history paging, reply/edit/truncate, drawer/assistant overlays, keyboard resize, Back/Home and concurrent owner changes.",
+      "acceptance": "Text survives every pre-dispatch failure; no implicit resend; selection/history/scroll remain bound to the intended conversation.",
+      "depends_on": [
+        "MVP-20"
+      ],
+      "sources": [
+        "apps/app/src/prototype/agent-adapter.ts",
+        "apps/app/src/runtime/local-agent.ts",
+        "apps/app/src/runtime/remote-protocol.ts"
+      ]
+    },
+    {
+      "id": "MVP-23",
+      "group": "Native and user journeys",
+      "priority": "P0",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-06"
+      ],
+      "title": "Admit a functionally passing speech runtime",
+      "current": "Committed qualification has failed/pending functional acceptance. A later ARM64 candidate is evidence, not admitted bytes; x86_64 remains unqualified. Local available AAR hash differs from the committed runtime manifest.",
+      "remaining": "Rebuild with reviewed deterministic synthesis patch, execute unchanged functional suite on both ABIs, investigate failures and admit exact candidate/models/notices through the qualification process.",
+      "acceptance": "Both ABI reports match the artifact hash/source; manifests updated only from passing evidence; strict build accepts the same bytes.",
+      "depends_on": [],
+      "sources": [
+        "android/local-speech/qualified-runtime-manifest.json",
+        "android/local-speech/runtime-manifest.json",
+        "scripts/local-speech/README.md"
+      ]
+    },
+    {
+      "id": "MVP-24",
+      "group": "Native and user journeys",
+      "priority": "P0",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-06",
+        "AP-15"
+      ],
+      "title": "Run physical speech and interruption acceptance",
+      "current": "No current human microphone/speaker/Bluetooth campaign was produced here.",
+      "remaining": "Qualify microphone permission/revoke, silence/long speech, corrections, audio focus, wired/Bluetooth routing, lock/background, cancel during ASR/TTS and stale playback. Test offline local speech if retained by policy.",
+      "acceptance": "Unedited physical audio evidence, no unintended upload or overlapping capture/playback, transcript/output quality and agreed latency samples.",
+      "depends_on": [
+        "MVP-01",
+        "MVP-05",
+        "MVP-23"
+      ],
+      "sources": [
+        "docs/pilot-acceptance-runbook.md",
+        "docs/combined-voice-roundtrip.md"
+      ]
+    },
+    {
+      "id": "MVP-25",
+      "group": "Native and user journeys",
+      "priority": "P1",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-10"
+      ],
+      "title": "Finish Notes and voice-recording lifecycle",
+      "current": "Text/checklist/link/voice notes and transactional recovery exist.",
+      "remaining": "Test creation/edit/search/import/export, native encryption, dictation selection, audio/save failure, summary revision, Trash/restore/expiry and installed-data upgrades on the release candidate.",
+      "acceptance": "Exact note/audio bytes survive promised transitions; failed writes remain unsaved; no duplicate note after retries or unrelated source disclosure.",
+      "depends_on": [
+        "MVP-20",
+        "MVP-23"
+      ],
+      "sources": [
+        "docs/pilot-acceptance-runbook.md",
+        "docs/flow-audit-and-prd.md"
+      ]
+    },
+    {
+      "id": "MVP-26",
+      "group": "Native and user journeys",
+      "priority": "P1",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-09"
+      ],
+      "title": "Qualify Calendar CRUD and recurrence",
+      "current": "Native Calendar consumes the new pin plus direct-save options; browser fixtures do not prove Android provider state.",
+      "remaining": "Create/read-back/edit/delete in a real selected writable calendar; all-day, cross-midnight, DST, travel zone, recurrence scope, invitations/RSVP, read-only, revoke and lost response. Decide any unsupported required subflow explicitly.",
+      "acceptance": "Exact provider IDs/revisions and read-back, scoped invitations separately reviewed, no duplicate create after timeout.",
+      "depends_on": [
+        "MVP-12",
+        "MVP-20"
+      ],
+      "sources": [
+        "docs/flow-audit-and-prd.md",
+        "apps/app/src/prototype/calendar-adapter.ts"
+      ]
+    },
+    {
+      "id": "MVP-27",
+      "group": "Native and user journeys",
+      "priority": "P1",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-09",
+        "AP-11"
+      ],
+      "title": "Qualify Reminders and Clock separately",
+      "current": "Reminders have local schedules; Clock is a reviewed Android handoff, not confirmed ringing.",
+      "remaining": "Exercise lead None/numeric, snooze/complete/reopen/cancel, recurrence, reboot/timezone, permission/DND/Doze and force-stop. Separately observe Clock set/show/snooze/dismiss and actual ring/vibration.",
+      "acceptance": "Delivery receipts and exact deep links; no reminder-as-alarm guarantee; actual audible alarm evidence or approved scope change.",
+      "depends_on": [
+        "MVP-06",
+        "MVP-20"
+      ],
+      "sources": [
+        "docs/pilot-acceptance-runbook.md",
+        "docs/mvp-completion-plan.md"
+      ]
+    },
+    {
+      "id": "MVP-28",
+      "group": "Native and user journeys",
+      "priority": "P1",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-10"
+      ],
+      "title": "Qualify native Browser and downloads",
+      "current": "Persistent isolated normal tabs, ephemeral private tabs and reviewed downloads exist.",
+      "remaining": "Run sign-in/restart/private cleanup, pop-ups/app links, upload/download exact bytes, cookies across same/cross-origin redirects, closed private tab cancellation, provider errors and hostile content/bridge isolation.",
+      "acceptance": "Current installed WebView evidence; no credential forwarding to redirect origins; private history absent after close; exact authorized file only.",
+      "depends_on": [
+        "MVP-20"
+      ],
+      "sources": [
+        "android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserDownloads.java",
+        "docs/browser-download-integration.md"
+      ]
+    },
+    {
+      "id": "MVP-29",
+      "group": "Native and user journeys",
+      "priority": "P0",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-10"
+      ],
+      "title": "Qualify integrated password manager and optional provider",
+      "current": "0038 provides shared password management; source tests and setup UI are not proof of filling.",
+      "remaining": "On release-signed devices test enablement, synthetic credential save/update/fill, biometric unavailable/lock/cancel, exact top-level origin, iframe, app certificate, tab/process switch, disable/re-enable and optional Proton Pass.",
+      "acceptance": "No secret in model context/logs; correct-origin fill and wrong-origin refusal recorded. Passkeys remain separate until explicitly scoped and implemented.",
+      "depends_on": [
+        "MVP-03",
+        "MVP-06",
+        "MVP-28"
+      ],
+      "sources": [
+        "docs/password-provider-setup.md",
+        "docs/browser-autofill-integration.md"
+      ]
+    },
+    {
+      "id": "MVP-30",
+      "group": "Native and user journeys",
+      "priority": "P1",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-10"
+      ],
+      "title": "Qualify Files Camera Photos Scan and OCR",
+      "current": "Source implements selected media, browser/native paths, recent/search and scan/PDF handling.",
+      "remaining": "Run provider URI retention/revoke, native capture/cancel/retake, volume/low-storage, gallery refresh, non-destructive edits, exact share/export, video interruption and English OCR on real documents. Resolve category/capture selection gaps first.",
+      "acceptance": "Correct MIME/bytes/identity and recoverable failures; no privileged HTML execution or neighboring-image upload. Real OCR task quality documented.",
+      "depends_on": [
+        "MVP-10",
+        "MVP-13",
+        "MVP-20"
+      ],
+      "sources": [
+        "docs/flow-audit-and-prd.md",
+        "docs/photos-owned-media.md"
+      ]
+    },
+    {
+      "id": "MVP-31",
+      "group": "Native and user journeys",
+      "priority": "P1",
+      "kind": "integration",
+      "requirements": [
+        "AP-10"
+      ],
+      "title": "Finish regional Maps deployment and travel acceptance",
+      "current": "Route selection and guidance integration exists; source tests do not qualify production map data or physical navigation.",
+      "remaining": "Provision approved TLS endpoint and licensed data coverage, verify build configuration, location permission/accuracy, reroute/stale result, offline/no route, background navigation and stop behavior.",
+      "acceptance": "J04 event-to-route on selected hardware with explicit origin/route, correct live guidance and truthful regional/offline limits.",
+      "depends_on": [
+        "MVP-04",
+        "MVP-20"
+      ],
+      "sources": [
+        "docs/maps-regional-validation.md",
+        "apps/app/src/prototype/maps-adapter.ts"
+      ]
+    },
+    {
+      "id": "MVP-32",
+      "group": "Native and user journeys",
+      "priority": "P1",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-11",
+        "AP-12"
+      ],
+      "title": "Qualify workflows approvals and result delivery",
+      "current": "Typed phone workflows are manual-triggered; digest scheduling and newer Automations have distinct contracts. Unknown outcomes are retained.",
+      "remaining": "Exercise generated candidate quality, Use/Save/Run separation, capability denial, approvals, cancellation, worker death, run history, pending effect/receipt gaps and migrated definitions. Do not advertise scheduled arbitrary workflows from digest support.",
+      "acceptance": "No duplicate external effect or invented receipt; every interrupted run has an explicit disposition and exact history on reconnect.",
+      "depends_on": [
+        "MVP-18",
+        "MVP-21"
+      ],
+      "sources": [
+        "apps/app/src/runtime/phone-workflow-authoring.ts",
+        "docs/mvp-current-status.md"
+      ]
+    },
+    {
+      "id": "MVP-33",
+      "group": "Native and user journeys",
+      "priority": "P1",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-12"
+      ],
+      "title": "Qualify settings and notification truthfulness",
+      "current": "Quick setting state, diagnostics and handoffs have implementation coverage; physical state/OS delivery is not established here.",
+      "remaining": "Check each settings destination/readback, channel denial/re-enable, lock/Doze, exact result/reminder tap after death, revoke during work, redacted export, version and update availability. Keep mirroring off by default and outside MVP gate.",
+      "acceptance": "No simulated toggle or success; channel-disabled history still available; wrong-owner/deleted notification target fails safely.",
+      "depends_on": [
+        "MVP-20",
+        "MVP-32"
+      ],
+      "sources": [
+        "docs/pilot-acceptance-runbook.md",
+        "apps/app/src/prototype/settings-adapter.ts"
+      ]
+    },
+    {
+      "id": "MVP-34",
+      "group": "Live integrations",
+      "priority": "P0",
+      "kind": "deployment",
+      "requirements": [
+        "AP-03",
+        "AP-04"
+      ],
+      "title": "Prove managed Cloud and Cerebras with real accounts",
+      "current": "Synthetic transports and historical local inference do not establish the current release service path.",
+      "remaining": "Operator provisions approved accounts/credits or key; verify actual Qwen model, provider health, expiry/revoke/wrong owner, credit failure/top-up and account replacement during requests. Keep credentials out of logs and audit artifacts.",
+      "acceptance": "Current source-bound real round trip, correct billing/model identity and controlled recovery; no inference-ready claim from a saved credential alone.",
+      "depends_on": [
+        "MVP-04",
+        "MVP-21"
+      ],
+      "sources": [
+        "docs/cloud-production-validation.md",
+        "docs/pilot-acceptance-runbook.md"
+      ]
+    },
+    {
+      "id": "MVP-35",
+      "group": "Live integrations",
+      "priority": "P0",
+      "kind": "deployment",
+      "requirements": [
+        "AP-09"
+      ],
+      "title": "Deploy and authorize Gmail end to end",
+      "current": "Historical code exchange returned 401. Client and synthetic Gmail routes cover many operations, but deployed managed endpoints and real mailbox behavior remain open.",
+      "remaining": "Resolve OAuth exchange/approved redirect, deploy supported route/capability versions, consent least scopes, load threads/attachments, account-switch/revoke, provider drafts and archive/trash/read-state.",
+      "acceptance": "Real selected mailbox read and mutation receipts, correct scope/account isolation and no unsupported controls.",
+      "depends_on": [
+        "MVP-04",
+        "MVP-17"
+      ],
+      "sources": [
+        "docs/cloud-production-validation.md",
+        "apps/app/src/runtime/cloud-protocol.ts"
+      ]
+    },
+    {
+      "id": "MVP-36",
+      "group": "Live integrations",
+      "priority": "P0",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-09"
+      ],
+      "title": "Qualify email send and ambiguous outcomes",
+      "current": "Client supports reviewed provider-bound sends; fixture sends do not establish external delivery.",
+      "remaining": "After explicit authorization for the exact test recipient/message, verify To/Cc/Bcc/From, attachments, reply/forward, sent receipt and lost-response reconciliation. Cover changed draft and incorrect returned provider ID.",
+      "acceptance": "Exactly one authorized delivery; uncertain result never auto-resends; local draft remains distinct from provider draft.",
+      "depends_on": [
+        "MVP-14",
+        "MVP-35"
+      ],
+      "sources": [
+        "docs/mvp-completion-plan.md",
+        "apps/app/src/runtime/inbox-operation.ts"
+      ]
+    },
+    {
+      "id": "MVP-37",
+      "group": "Live integrations",
+      "priority": "P1",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-03",
+        "AP-04"
+      ],
+      "title": "Qualify optional remote and Cloud agent modes",
+      "current": "Browser remote pairing and optional Cloud agent controls exist.",
+      "remaining": "For every retained deployment profile, prove real pairing, owner/agent identity, CORS or native route, return/cancel/replay/expiry, device action negotiation, history/revoke and duplicate-message recovery. Do not provision billable hosting without its authorized scope.",
+      "acceptance": "Exact real agent conversation and no stale credential/use after revoke; unsupported phone actions remain chat-only.",
+      "depends_on": [
+        "MVP-04",
+        "MVP-17"
+      ],
+      "sources": [
+        "docs/pilot-acceptance-runbook.md",
+        "apps/app/src/runtime/remote-protocol.ts"
+      ]
+    },
+    {
+      "id": "MVP-38",
+      "group": "Live integrations",
+      "priority": "P1",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-07",
+        "AP-11"
+      ],
+      "title": "Run real digests and hosted phone-off loops",
+      "current": "Local durable scheduling and hosted-result controls exist; two powered-off hosted loops have not been demonstrated.",
+      "remaining": "Implement the selected A-09 path; exercise morning/evening input provenance, worker restart, duplicate occurrence, revoke/edit/disable/overlap/DST and reconnect acknowledgements.",
+      "acceptance": "Distinct source-backed terminal outputs and exactly one visible delivery per occurrence, under the approved scope.",
+      "depends_on": [
+        "MVP-02",
+        "MVP-34",
+        "MVP-35"
+      ],
+      "sources": [
+        "docs/mvp-completion-plan.md",
+        "apps/app/src/runtime/hosted-digests.ts"
+      ]
+    },
+    {
+      "id": "MVP-39",
+      "group": "Release and security",
+      "priority": "P0",
+      "kind": "release",
+      "requirements": [
+        "AP-02",
+        "AP-04"
+      ],
+      "title": "Stage the complete admitted resident runtime",
+      "current": "Source-only runtime preparation and developer builds are not packaged-runtime qualification.",
+      "remaining": "Build/bundle the pinned resident runtime and workflow worker, stage native executable/assets/policy, generate packaged notices and source stamps, then run strict android:build and verify-apks for both flavors.",
+      "acceptance": "All four intended distribution artifacts pass strict checks with no unpackaged/unqualified overrides; installed resident uses those exact bytes.",
+      "depends_on": [
+        "MVP-23"
+      ],
+      "sources": [
+        "scripts/prepare-local-agent.mjs",
+        "scripts/stage-local-agent-runtime.mjs",
+        "scripts/build-android.mjs"
+      ]
+    },
+    {
+      "id": "MVP-40",
+      "group": "Release and security",
+      "priority": "P0",
+      "kind": "release",
+      "requirements": [
+        "AP-14"
+      ],
+      "title": "Produce controlled signed artifacts and verified links",
+      "current": "This review built unsigned releases; release-signer.json is not qualified. Custom scheme callback is not verified HTTPS App Links.",
+      "remaining": "Operator sets release signer/version, protects key custody, publishes approved assetlinks for the real host, enables reviewed manifest filter and verifies installed link association.",
+      "acceptance": "Signed exact APK hashes/certificate/version and working domain verification on both variants; no secrets in the evidence bundle.",
+      "depends_on": [
+        "MVP-03",
+        "MVP-39"
+      ],
+      "sources": [
+        "android/release-signer.json",
+        "android/app/src/main/assetlinks.template.json",
+        "docs/pilot-acceptance-runbook.md"
+      ]
+    },
+    {
+      "id": "MVP-41",
+      "group": "Release and security",
+      "priority": "P0",
+      "kind": "release",
+      "requirements": [
+        "AP-14"
+      ],
+      "title": "Build and boot the full AOSP product",
+      "current": "APK compilation does not prove an image build or boot. Unrelated AOSP work in the original checkout was deliberately preserved outside this merge.",
+      "remaining": "Reconcile the separately owned AOSP work, lock exact device source/blobs/kernel/build tools, stage verified signed artifacts additively, build the complete target and boot it.",
+      "acceptance": "Boot logs/fingerprint/source lock and hardware checklist for the selected SKU; launcher default and recovery proven in the image.",
+      "depends_on": [
+        "MVP-03",
+        "MVP-40"
+      ],
+      "sources": [
+        "docs/architecture.md",
+        "docs/prd.md",
+        "docs/implementation-plan.md"
+      ]
+    },
+    {
+      "id": "MVP-42",
+      "group": "Release and security",
+      "priority": "P0",
+      "kind": "release",
+      "requirements": [
+        "AP-14",
+        "AP-15"
+      ],
+      "title": "Prove signed upgrade rollback and data preservation",
+      "current": "No current signed OTA/recovery drill is supplied by this review.",
+      "remaining": "Upgrade from agreed installed baselines including old mock selection; verify namespaces/Keystore/data migrations, interrupted update, rollback authorization, recovery and support runbook.",
+      "acceptance": "Observed recovery on selected device with preserved promised data and no reopened mock surface or replayed side effect.",
+      "depends_on": [
+        "MVP-40",
+        "MVP-41"
+      ],
+      "sources": [
+        "docs/pilot-acceptance-runbook.md"
+      ]
+    },
+    {
+      "id": "MVP-43",
+      "group": "Release and security",
+      "priority": "P0",
+      "kind": "release",
+      "requirements": [
+        "AP-01",
+        "AP-14"
+      ],
+      "title": "Resolve Denton distribution rights",
+      "current": "Denton is still listed in the unverified license allowlist despite the PRD naming Fraunces.",
+      "remaining": "Obtain valid app/web embedding rights and record evidence, or replace bundled Denton usage with the approved open fallback and recheck layout. Verify all shipped fonts/models/native dependencies.",
+      "acceptance": "No unresolved commercial font rights in a distributable artifact; notice inventory matches final packaged bytes.",
+      "depends_on": [],
+      "sources": [
+        "licenses/unverified-allowlist.json",
+        "scripts/generate-licenses.mjs",
+        "docs/decisions.md"
+      ]
+    },
+    {
+      "id": "MVP-44",
+      "group": "Release and security",
+      "priority": "P0",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-03",
+        "AP-04",
+        "AP-10"
+      ],
+      "title": "Requalify privacy and outbound redaction",
+      "current": "Native launches enable upstream secret/PII swapping; host defaults differ. Synthetic filters are not a universal secret detector.",
+      "remaining": "Run source-matched resident redaction on emulator then device; probe browser vault/OTP/recovery content including plain text, selected notes/mail/files, diagnostics and connection changes. Audit actual launch config and outbound boundaries.",
+      "acceptance": "No test secret exits its allowed boundary; approved-context provenance and per-route processing/retention disclosures match execution.",
+      "depends_on": [
+        "MVP-21",
+        "MVP-29",
+        "MVP-34"
+      ],
+      "sources": [
+        "docs/pilot-acceptance-runbook.md",
+        "docs/market-research/13-redaction-integration.md"
+      ]
+    },
+    {
+      "id": "MVP-45",
+      "group": "Release and security",
+      "priority": "P1",
+      "kind": "security",
+      "requirements": [
+        "AP-03",
+        "AP-14"
+      ],
+      "title": "Triage dependency and artifact supply chain findings",
+      "current": "npm install reported 3 moderate and 1 high audit findings; counts are advisory and not an exploitability disposition.",
+      "remaining": "Identify exact affected dependency paths/reachability, apply compatible fixes or reviewed time-bounded exceptions, check native/model provenance and release SBOM. Do not blindly upgrade the pinned platform.",
+      "acceptance": "Recorded vulnerability dispositions and reproducible locked dependencies, with relevant regressions passing.",
+      "depends_on": [],
+      "sources": [
+        "package-lock.json",
+        "upstream.lock.json",
+        "scripts/generate-licenses.mjs"
+      ]
+    },
+    {
+      "id": "MVP-46",
+      "group": "Release and security",
+      "priority": "P1",
+      "kind": "administration",
+      "requirements": [
+        "AP-14"
+      ],
+      "title": "Install the agreed required-check ruleset",
+      "current": "Ruleset preparation exists; repository enforcement is a separate administrative state.",
+      "remaining": "Have repository owner review/install the intended required contexts and protection rules; ensure renamed/sharded checks cannot be omitted or bypassed silently.",
+      "acceptance": "Read-back of enforced rules and a controlled PR demonstrating missing/failing checks prevent merge.",
+      "depends_on": [],
+      "sources": [
+        "scripts/ci",
+        "test/ci-required-checks.test.mjs"
+      ]
+    },
+    {
+      "id": "MVP-47",
+      "group": "Release and security",
+      "priority": "P0",
+      "kind": "qualification",
+      "requirements": [
+        "AP-01",
+        "AP-02",
+        "AP-03",
+        "AP-04",
+        "AP-05",
+        "AP-06",
+        "AP-07",
+        "AP-09",
+        "AP-10",
+        "AP-11",
+        "AP-12",
+        "AP-14",
+        "AP-15"
+      ],
+      "title": "Run final exact-head qualification",
+      "current": "Current review results qualify only their named source and evidence classes. release-05/release-15 and final merged-main qualification remain separate from branch CI.",
+      "remaining": "After all relevant fixes, run full repository/browser/storage-engine/native/runtime/build/release gates on the exact selected merge/release commit and archive immutable APK/test pairs and logs. Resolve every failure rather than inheriting past green totals.",
+      "acceptance": "All required gates pass for one recorded candidate; exceptions are explicit approved scope changes, not unexplained skips.",
+      "depends_on": [
+        "MVP-39",
+        "MVP-40",
+        "MVP-44",
+        "MVP-45"
+      ],
+      "sources": [
+        "docs/mvp-current-status.md",
+        "docs/pilot-acceptance-runbook.md"
+      ]
+    },
+    {
+      "id": "MVP-48",
+      "group": "Pilot and handoff",
+      "priority": "P0",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-15"
+      ],
+      "title": "Complete accessibility and resilience acceptance",
+      "current": "Browser checks cover selected geometry and interaction; no current physical TalkBack/large-text campaign is recorded here.",
+      "remaining": "Test every retained primary/subview and error state with TalkBack, large font, keyboard/touch, contrast, rotation/landscape, gesture navigation, offline, process death and full storage. Define supported sizes and fix clipping/focus traps.",
+      "acceptance": "Independent task completion without inaccessible primary controls or persistent crash/ANR on selected hardware.",
+      "depends_on": [
+        "MVP-06",
+        "MVP-20"
+      ],
+      "sources": [
+        "docs/flow-audit-and-prd.md",
+        "docs/pilot-acceptance-runbook.md"
+      ]
+    },
+    {
+      "id": "MVP-49",
+      "group": "Pilot and handoff",
+      "priority": "P1",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-07",
+        "AP-09",
+        "AP-10",
+        "AP-11"
+      ],
+      "title": "Execute all five cross-app journeys",
+      "current": "J01 poster-to-calendar, J02 voice-to-note/reminder, J03 document analysis, J04 schedule-to-travel and J05 web-research-to-note have source-level pieces.",
+      "remaining": "Run each end to end with real selected data, explicit source review, separate save/effect approval, changed-source rejection and recovery on the final device image. Record unsupported subflows rather than substituting a mock.",
+      "acceptance": "Unedited demonstrations and exact receipts/source identities; no automatic send/save or silently changed source.",
+      "depends_on": [
+        "MVP-24",
+        "MVP-25",
+        "MVP-26",
+        "MVP-30",
+        "MVP-31",
+        "MVP-35"
+      ],
+      "sources": [
+        "docs/flow-audit-and-prd.md"
+      ]
+    },
+    {
+      "id": "MVP-50",
+      "group": "Pilot and handoff",
+      "priority": "P0",
+      "kind": "acceptance",
+      "requirements": [
+        "AP-14",
+        "AP-15"
+      ],
+      "title": "Provision four units and obtain user acceptance",
+      "current": "The pilot runbook still has four pending unit rows.",
+      "remaining": "Provision four independently identified units, record image/APK/runtime/model/signer versions, execute mandatory journeys/performance/stability per unit, agree P0/P1 definitions and resolve the issue list with stakeholders.",
+      "acceptance": "Four complete evidence manifests, no open blocking defect, explicit target-user acceptance and named support/recovery owner.",
+      "depends_on": [
+        "MVP-41",
+        "MVP-42",
+        "MVP-47",
+        "MVP-48",
+        "MVP-49"
+      ],
+      "sources": [
+        "docs/pilot-acceptance-runbook.md"
+      ]
+    },
+    {
+      "id": "MVP-51",
+      "group": "Pilot and handoff",
+      "priority": "P1",
+      "kind": "delivery",
+      "requirements": [
+        "AP-14"
+      ],
+      "title": "Deliver reproducible operational handoff",
+      "current": "Source and runbooks are available but do not constitute a completed pilot handoff.",
+      "remaining": "Deliver reviewed upstream references, app/OS build and provisioning instructions, dependency/license inventory, service/backend guide, privacy/retention statements, release manifests, backup/export policy, rollback instructions, demos and final issue dispositions.",
+      "acceptance": "An independent operator can rebuild/provision/recover and execute acceptance without undocumented credentials or steps.",
+      "depends_on": [
+        "MVP-50"
+      ],
+      "sources": [
+        "docs/mvp-completion-plan.md",
+        "docs/pilot-acceptance-runbook.md"
+      ]
+    }
+  ]
+}

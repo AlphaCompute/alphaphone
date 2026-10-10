@@ -6,6 +6,7 @@ import {overlayIdentity,readOverlayRecord,sameOverlay,serverSideOverlay,withPatc
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {nativeViewPolicyPath} from './native-view-policy.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const source=sourceDirectory(root);
 if(!fs.existsSync(path.join(source,'.alpha-runtime-source.json')))throw Error('Run npm run agent:prepare first.');
@@ -31,5 +32,7 @@ try{execFileSync(process.env.ALPHA_BUN||'bun',[runner],{cwd:source,env,stdio:'in
 fs.copyFileSync(path.join(source,'.alpha-runtime-source.json'),path.join(root,'android/app/src/main/assets/agent/alpha-source.json'));
 // Patch provenance of this staging, beside the product artifacts (not inside the APK).
 writeOverlayRecord(path.join(root,'artifacts/staged-agent-runtime'),overlay);
+// Host configuration is separate from the authenticated, unmodified producer source.
+fs.copyFileSync(nativeViewPolicyPath,path.join(root,'android/app/src/main/assets/agent/native-view-declarations.json'));
 execFileSync(process.execPath,[path.join(root,'scripts/stage-workflow-worker.mjs')],{cwd:root,env:process.env,stdio:'inherit'});
 console.log('Android runtime payload staged for ARM64 and x86_64. This is not device execution evidence.');

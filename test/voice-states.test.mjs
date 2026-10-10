@@ -27,8 +27,8 @@ test('model progress is reported in whole megabytes and phases never claim an up
   assert.equal(speechProgressMessage({phase: 'download', loaded: 12_400_000, total: 56_117_349}), 'Loading the speech model from this app: 12 of 56 MB. Nothing is uploaded.');
   assert.equal(speechProgressMessage({phase: 'download', loaded: 0, total: 0}), 'Loading the speech model from this app. Nothing is uploaded.');
   assert.match(speechProgressMessage({phase: 'initialize'}), /Starting the speech model/);
-  assert.match(speechProgressMessage({phase: 'transcribe'}), /Transcribing in this browser/);
-  assert.match(speechProgressMessage(undefined), /Transcribing in this browser/);
+  assert.match(speechProgressMessage({phase: 'transcribe'}), /Transcribing on this device/);
+  assert.match(speechProgressMessage(undefined), /Transcribing on this device/);
 });
 
 test('transcript provenance records only reported engine facts and the route actually used', () => {

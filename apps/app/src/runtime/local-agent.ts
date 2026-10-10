@@ -1,6 +1,7 @@
+import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from './automations-route-policy.ts';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
-import type { VerifiedSession } from './alpha-client';
+import type { VerifiedSession, ChatChannel } from './alpha-client';
 import { conversationRoomId, messagePageQuery, turnAbortOutcome, turnAbortPath, type MessagePage, type RemoteChatReply, type RemoteConversation, type TurnAbortOutcome } from './remote-protocol';
 import { readLocalAgentStream } from './local-agent-stream';
 import { streamNativeAgent, type NativeStreamPort } from './local-agent-native-stream';
@@ -15,13 +16,13 @@ export interface LocalAgentBridge {
   clearProvider?():Promise<{configured?:unknown}>;
   launchSurface?():Promise<{assistant?:unknown}>;
   configureCloudProvider?(input:{credentialId:string;model:string}):Promise<unknown>;
-  request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
-  stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void):Promise<RemoteChatReply>;
+  request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: AutomationsMethod; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
+  stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void,onReplyReady?:(results:readonly unknown[]|undefined)=>void):Promise<RemoteChatReply>;
 }
 const native = registerPlugin<LocalAgentBridge & NativeStreamPort>('Agent');
 // Capacitor proxies synthesize functions for unknown methods. Do not use that
 // proxy to feature-detect streaming before the native IPC adapter implements it.
-const nativeBridge:LocalAgentBridge={start:()=>native.start(),request:input=>native.request(input),stream:(input,signal,onText)=>streamNativeAgent(native,input,signal,onText)};
+const nativeBridge:LocalAgentBridge={start:()=>native.start(),request:input=>native.request(input),stream:(input,signal,onText,onReplyReady)=>streamNativeAgent(native,input,signal,onText,onReplyReady)};
 // The host bridge at /__alpha-local-agent exists only on the development server
 // with ELIZA_DEV_ALLOW_TEST_MOCKS=1 (devSurfacesEnabled in build-flags.ts). This
 // module is also imported by Node contract tests, where import.meta.env is absent.
@@ -36,16 +37,16 @@ export async function localAgentPackaged():Promise<boolean> {
   try{return (await native.getStatus?.())?.packaged===true;}catch{return false;}
 }
 const unavailableBridge: LocalAgentBridge = {
-  async start() { throw new Error('On-device agent is unavailable in this browser. Connect a remote agent or use Eliza Cloud.'); },
-  async request() { throw new Error('On-device agent is unavailable in this browser. Connect a remote agent or use Eliza Cloud.'); },
+  async start() { throw new Error('On-device agent is unavailable here. Connect to an agent or use Eliza Cloud.'); },
+  async request() { throw new Error('On-device agent is unavailable here. Connect to an agent or use Eliza Cloud.'); },
 };
 const browserBridge: LocalAgentBridge | null = developmentBridgeAllowed ? {
   async start() { return { state: 'host-managed' }; },
-  async stream(input,signal,onText){
+  async stream(input,signal,onText,onReplyReady){
     const bounded=AbortSignal.any([signal,AbortSignal.timeout(120000)]);
     const response=await fetch('/__alpha-local-agent',{method:'POST',headers:{'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},
       body:JSON.stringify({...input,method:'POST',stream:true}),signal:bounded,redirect:'error'});
-    return readLocalAgentStream(response,bounded,onText);
+    return readLocalAgentStream(response,bounded,onText,onReplyReady);
   },
   async request(input, signal) {
     const response = await fetch('/__alpha-local-agent', {
@@ -74,14 +75,16 @@ export class LocalAgentProtocol {
   private streams = new Set<AbortController>();
   deviceHeaders:Record<string,string>={};
   constructor(private bridge:LocalAgentBridge = Capacitor.isNativePlatform() ? nativeBridge : browserBridge ?? unavailableBridge) {}
-  async request(path:string, body:unknown|undefined, signal:AbortSignal, headers:Record<string,string> = {}):Promise<any> {
+  async request(path:string, body:unknown|undefined, signal:AbortSignal, headers:Record<string,string> = {}, method:AutomationsMethod = body===undefined?'GET':'POST'):Promise<any> {
     signal.throwIfAborted();
+    if (isAutomationsPath(path) ? !automationsRouteAllowed(path,method) || !this.session : !['GET','POST'].includes(method)) throw Error('Invalid local automation request');
+    if ((method==='GET'||method==='DELETE') && body!==undefined) throw Error('Invalid local request body');
     const generation=this.generation;
     let cancel:()=>void=()=>{};
     const cancelled=new Promise<never>((_,reject)=>{cancel=()=>reject(signal.reason||new DOMException('Cancelled','AbortError'));});
     signal.addEventListener('abort',cancel,{once:true});
     let response:{status:number;body?:string};
-    try { response=await Promise.race([this.bridge.request({path,...(this.session?{ownerId:this.session.ownerId}:{}),method:body===undefined?'GET':'POST',headers:{Accept:'application/json',...this.deviceHeaders,...headers},
+    try { response=await Promise.race([this.bridge.request({path,...(this.session?{ownerId:this.session.ownerId}:{}),method,headers:{Accept:'application/json',...this.deviceHeaders,...headers},
       ...(body===undefined?{}:{body:JSON.stringify(body)}),timeoutMs:120000},signal),cancelled]); } finally { signal.removeEventListener('abort',cancel); }
     signal.throwIfAborted();
     if(generation!==this.generation)throw new Error('Local agent connection changed.');
@@ -175,6 +178,10 @@ export class LocalAgentProtocol {
     const value=record((await this.json('/api/conversations',{title},signal)).conversation);
     return {...value,id:identifier(value.id)};
   }
+  async truncateMessages(id:string,messageId:string,signal:AbortSignal):Promise<void> {
+    const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages/truncate`,{messageId,inclusive:true},signal);
+    if(value.ok!==true||!Number.isSafeInteger(value.deletedCount)||Number(value.deletedCount)<1)throw Error('Message replacement was not confirmed. Reload conversation history before trying again.');
+  }
   async messages(id:string,signal?:AbortSignal,page?:MessagePage):Promise<{messages:Record<string,unknown>[];hasMore?:boolean}> {
     const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages${messagePageQuery(page)}`,undefined,signal);
     if(!Array.isArray(value.messages))throw new Error('Invalid local conversation history.');
@@ -184,9 +191,9 @@ export class LocalAgentProtocol {
    * repeated once without streaming under the same clientMessageId: the agent returns the durable
    * outcome recorded for that key (or waits for the in-flight turn) and never runs a second turn.
    * Stop and connection changes are never retried. */
-  async send(id:string,text:string,options:{metadata?:Record<string,unknown>;clientMessageId?:string;signal?:AbortSignal;onText?:(text:string)=>void}={}):Promise<RemoteChatReply> {
+  async send(id:string,text:string,options:{metadata?:Record<string,unknown>;clientMessageId?:string;channelType?:ChatChannel;onReplyReady?:(results:readonly unknown[]|undefined)=>void;signal?:AbortSignal;onText?:(text:string)=>void}={}):Promise<RemoteChatReply> {
     const path=`/api/conversations/${encodeURIComponent(identifier(id))}/messages`;
-    const body={text,channelType:'DM',metadata:options.metadata,clientMessageId:options.clientMessageId};
+    const body={text,channelType:options.channelType??'DM',metadata:options.metadata,clientMessageId:options.clientMessageId};
     if(this.bridge.stream&&options.onText){
       if(!this.session)throw Error('Start the local agent first.');
       const controller=new AbortController();this.streams.add(controller);
@@ -195,7 +202,7 @@ export class LocalAgentProtocol {
       try{
         valid();
         const result=await this.bridge.stream({path:`${path}/stream`,ownerId:session.ownerId,headers:this.deviceHeaders,
-          body:JSON.stringify({...body,streamProtocol:'delta-v2'})},signal,value=>{valid();options.onText!(value);});
+          body:JSON.stringify({...body,streamProtocol:'delta-v2'})},signal,value=>{valid();options.onText!(value);},results=>{valid();options.onReplyReady?.(results);});
         valid();return result;
       }catch(error){
         valid();

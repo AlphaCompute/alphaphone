@@ -16,12 +16,11 @@ function fixture(t){
  const cache=path.join(directory,'cache'),consumer=path.join(directory,'consumer'),destination=path.join(consumer,'artifacts/source');
  const write=(file,bytes)=>{fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes);};
  write(path.join(cache,'package.json'),JSON.stringify({workspaces:['packages/*']}));write(path.join(cache,'turbo.json'),'{"tasks":{}}');
- write(path.join(cache,'.gitignore'),'ignored/\n');write(path.join(cache,'packages/example/package.json'),'{"name":"fixture"}');
+ write(path.join(cache,'.gitignore'),'ignored/\nnode_modules/\n');write(path.join(cache,'packages/example/package.json'),'{"name":"fixture"}');
  write(path.join(cache,'packages/example/data.bin'),randomBytes(1024*1024));write(path.join(cache,'packages/example/tool.sh'),'#!/bin/sh\nexit 0\n');fs.chmodSync(path.join(cache,'packages/example/tool.sh'),0o755);
  for(let index=0;index<40;index++)write(path.join(cache,'packages/example',`extra-${index}.txt`),'small fixture file\n');
  fs.symlinkSync('data.bin',path.join(cache,'packages/example/linked-data'));
- const common=execFileSync('git',['rev-parse','--git-common-dir'],{cwd:root,encoding:'utf8'}).trim();
- const upstreamGit=path.join(path.resolve(root,common),'modules/vendor/eliza');
+ const upstreamGit=execFileSync('git',['rev-parse','--absolute-git-dir'],{cwd:path.join(root,'vendor/eliza'),encoding:'utf8'}).trim();
  const upstreamPin=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'))).commit;
  for(const name of ['immutable-workspace-source.mjs','committed-source.mjs']){
   const relative='packages/app/scripts/lib/'+name;
@@ -38,7 +37,7 @@ function fixture(t){
  write(path.join(consumer,'upstream.lock.json'),JSON.stringify({commit,url:cache}));
  fs.mkdirSync(path.join(consumer,'vendor'),{recursive:true});fs.symlinkSync(cache,path.join(consumer,'vendor/eliza'));
  const snapshot=()=>({head:git('rev-parse','HEAD'),index:hash(path.join(cache,'.git/index')),data:hash(path.join(cache,'packages/example/data.bin')),tool:fs.statSync(path.join(cache,'packages/example/tool.sh')).mode,ignored:hash(path.join(cache,'ignored/native-build.bin')),submoduleHead:subgit('rev-parse','HEAD'),submoduleFile:hash(path.join(external,'submodule-only.txt')),files:Object.fromEntries(git('ls-files','-z').split('\0').filter(Boolean).map(name=>{const file=path.join(cache,name),stat=fs.lstatSync(file);return [name,{mode:stat.mode,value:stat.isSymbolicLink()?fs.readlinkSync(file):stat.isFile()?hash(file):null}];}))});
- const run=(options={})=>spawnSync(process.execPath,[...(options.preload?['--import',options.preload]:[]),path.join(consumer,'scripts/prepare-local-agent.mjs'),'--source-only'],{cwd:consumer,env:{...process.env,ALPHA_LOCAL_AGENT_SOURCE_DIR:destination,ALPHA_RUNTIME_GIT_CACHE:options.cache??cache},encoding:'utf8',timeout:20000});
+ const run=(options={})=>spawnSync(process.execPath,[...(options.preload?['--import',options.preload]:[]),path.join(consumer,'scripts/prepare-local-agent.mjs'),...(options.full?[]:['--source-only'])],{cwd:consumer,env:{...process.env,ALPHA_LOCAL_AGENT_SOURCE_DIR:destination,ALPHA_RUNTIME_GIT_CACHE:options.cache??cache,...options.env},encoding:'utf8',timeout:20000});
  return {directory,cache,consumer,destination,commit,git,write,snapshot,run};
 }
 test('verified cache seeds independent committed files and metadata, excluding ignored output',t=>{
@@ -149,4 +148,13 @@ test('directory batches reduce real clone processes and preserve renamed files a
   if(process.platform==='darwin'){assert.ok(calls.length-previous>=2);for(const args of calls.slice(previous))assert.ok(args.reduce((sum,arg)=>sum+Buffer.byteLength(arg)+16,0)<=64*1024);}
  }finally{child.execFileSync=original;syncBuiltinESMExports();}
  assert.deepEqual(f.snapshot(),before);
+});
+
+test('full source preparation uses the calling Bun frozen install and preserves the vendor on installer failure',t=>{
+ const f=fixture(t),before=f.snapshot(),bun=path.join(f.directory,'bin/bun'),receipt=path.join(f.directory,'installer.json');
+ f.write(bun,`#!/usr/bin/env node\nconst fs=require('node:fs');fs.writeFileSync(process.env.ALPHA_INSTALL_RECEIPT,JSON.stringify({args:process.argv.slice(2),cwd:process.cwd()}));if(process.env.ALPHA_INSTALL_FAIL)process.exit(9);fs.mkdirSync('node_modules',{recursive:true});`);fs.chmodSync(bun,0o700);
+ const env={ALPHA_BUN:'',npm_execpath:bun,ALPHA_INSTALL_RECEIPT:receipt};
+ const first=f.run({full:true,env});assert.equal(first.status,0,first.stderr);
+ assert.deepEqual(JSON.parse(fs.readFileSync(receipt)),{args:['install','--frozen-lockfile'],cwd:f.destination});assert.ok(fs.existsSync(path.join(f.destination,'node_modules')));assert.deepEqual(f.snapshot(),before);
+ const failed=f.run({full:true,env:{...env,ALPHA_INSTALL_FAIL:'1'}});assert.notEqual(failed.status,0);assert.deepEqual(f.snapshot(),before);assert.doesNotMatch(failed.stdout,/Prepared local runtime:/);
 });

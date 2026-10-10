@@ -1,8 +1,8 @@
-diff --git a/plugins/plugin-assistant/src/services/device-actions/action.ts b/plugins/plugin-assistant/src/services/device-actions/action.ts
-index 1d7ed0e3ce1f1e47fd38cdb3b210818a4b8a1c0f..152d5f97ee0aee374bef87819605d60c2b0cc5b3 100644
---- a/plugins/plugin-assistant/src/services/device-actions/action.ts
-+++ b/plugins/plugin-assistant/src/services/device-actions/action.ts
-@@ -23,6 +23,11 @@ import {
+diff --git i/plugins/plugin-assistant/src/services/device-actions/action.ts w/plugins/plugin-assistant/src/services/device-actions/action.ts
+index 68c9fea..d93c561 100644
+--- i/plugins/plugin-assistant/src/services/device-actions/action.ts
++++ w/plugins/plugin-assistant/src/services/device-actions/action.ts
+@@ -24,6 +24,11 @@ import {
    deviceActionEffectReceipts,
    deviceApprovalPersistenceReceipt,
  } from "./effect-receipts.ts";
@@ -14,7 +14,7 @@ index 1d7ed0e3ce1f1e47fd38cdb3b210818a4b8a1c0f..152d5f97ee0aee374bef87819605d60c
  import { isMapsOperation, validateMapsResult } from "./maps-contract.ts";
  import { isNotesOperation, validateNotesResult } from "./notes-contract.ts";
  import { validateNotesQueryResult } from "./notes-query-result.ts";
-@@ -469,6 +474,76 @@ const reminderCreateAfterSchema: ActionParameterSchema = {
+@@ -470,6 +475,76 @@ const reminderCreateAfterSchema: ActionParameterSchema = {
      },
    },
  };
@@ -91,7 +91,7 @@ index 1d7ed0e3ce1f1e47fd38cdb3b210818a4b8a1c0f..152d5f97ee0aee374bef87819605d60c
  const CLOCK_PROPOSAL_GUIDANCE =
    "Clock handoff requires clock.handoff.v1 or clock.handoff.v2. Set requires the current phone clientDevice.context.timeZone, integer hour/minute, and label. Explicit days requires clock.handoff.v2: [] is one-off, [1,2,3,4,5,6,7] daily, [2,3,4,5,6] weekdays; other weekly patterns use exact unique integers Sunday=1 through Saturday=7. Preserve requested repeat days exactly. A v1 phone supports only a one-off set without days; never silently drop recurrence or replace an unsupported alarm pattern with a reminder. Never invent the phone timezone or substitute an approximate reminder for an alarm. Only show is navigation-only. After explicit owner approval, set/dismiss/snooze may change alarms immediately: dismiss can disable the active one-shot alarm or suppress a repeating occurrence, and targetless snooze can affect all ringing alarms. Clock may use its default snooze duration or show a chooser. Never promise a second confirmation in Clock, target one selected alarm using this targetless contract, or claim an opened receipt proves creation, dismissal, snoozing or ringing. The owner must see and approve the actual scope before any native request. This tool does not perform the operation. Do not report the proposal as completed.";
  export const CLOCK_ALARM_GUIDANCE =
-@@ -480,6 +555,8 @@ export const proposeDeviceAction: Action = {
+@@ -481,6 +556,8 @@ export const proposeDeviceAction: Action = {
      "Native Notes discovery from Home uses notes_query with query {kind: title, text: requested title} or {kind: latest, by: created|updated}, only with notes.query.v1. Candidates remain on the phone; the owner confirms exactly one note to share. Unknown chronology or ties require local owner choice; a returned owner-choice-uncertain basis does not prove latest. Never substitute backend Notes. " +
      "For a one-shot relative reminder use reminder_create_after with fields title, body and schedule {after: elapsed duration with units such as 2m, alertMinutes: 0 for one alert or null for no alert}. The server resolves exact instants from the authenticated turn start; do not calculate epoch timestamps. Requires reminders.create.v1. Use returned reminderTiming dueAtDisplay and alertAtDisplay verbatim when available; they already use the phone timezone. Otherwise keep the returned UTC instants explicit, without inventing a local timezone. Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. For creation from Home use calendar_create_local with exact fields and calendar.create.v1; the phone resolves its default On this phone calendar and requires native confirmation. For next-event discovery use calendar_read_next with no guessed timestamps and calendar.next-read.v1; the native clock fixes a window from now through the next 30 owner-local days; the foreground native review discovers readable Calendar sources and shares only the approved next event, or an explicit no-events-in-window result. Never infer a source from arbitrary UI selection; no background access is granted. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve." +
      " " +
@@ -100,7 +100,7 @@ index 1d7ed0e3ce1f1e47fd38cdb3b210818a4b8a1c0f..152d5f97ee0aee374bef87819605d60c
      CLOCK_ALARM_GUIDANCE +
      " " +
      CLOCK_PROPOSAL_GUIDANCE,
-@@ -514,8 +591,11 @@ export const proposeDeviceAction: Action = {
+@@ -515,8 +592,11 @@ export const proposeDeviceAction: Action = {
              },
            },
            ...calendarSchemas,
@@ -112,7 +112,7 @@ index 1d7ed0e3ce1f1e47fd38cdb3b210818a4b8a1c0f..152d5f97ee0aee374bef87819605d60c
            ...reminderSchemas,
            reminderCreateSchema,
            reminderCreateAfterSchema,
-@@ -681,29 +761,32 @@ export const proposeDeviceAction: Action = {
+@@ -687,29 +767,32 @@ export const proposeDeviceAction: Action = {
          isReminderCreate(payload.operation) ||
          isCalendarOperation(payload.operation) ||
          isNotesOperation(payload.operation) ||
@@ -163,7 +163,7 @@ index 1d7ed0e3ce1f1e47fd38cdb3b210818a4b8a1c0f..152d5f97ee0aee374bef87819605d60c
        return {
          success: true,
          transcriptVisibility: "internal",
-@@ -825,7 +908,9 @@ export function deviceActionForCapabilities(
+@@ -834,7 +917,9 @@ export function deviceActionForCapabilities(
            (type) =>
              typeof type === "string" &&
              (capabilities === undefined
@@ -174,10 +174,10 @@ index 1d7ed0e3ce1f1e47fd38cdb3b210818a4b8a1c0f..152d5f97ee0aee374bef87819605d60c
                : deviceOperationSupportedByCapabilities(
                    type === "reminder_create_after" ? "reminder_create" : type,
                    capabilities,
-diff --git a/plugins/plugin-assistant/src/services/device-actions/contract.ts b/plugins/plugin-assistant/src/services/device-actions/contract.ts
-index 984872ab163a71f11b55e3ac8f4f55198e84af01..bbdfbd15bb9b552cb6dc0b049c5e3ba052132d69 100644
---- a/plugins/plugin-assistant/src/services/device-actions/contract.ts
-+++ b/plugins/plugin-assistant/src/services/device-actions/contract.ts
+diff --git i/plugins/plugin-assistant/src/services/device-actions/contract.ts w/plugins/plugin-assistant/src/services/device-actions/contract.ts
+index 984872a..bbdfbd1 100644
+--- i/plugins/plugin-assistant/src/services/device-actions/contract.ts
++++ w/plugins/plugin-assistant/src/services/device-actions/contract.ts
 @@ -17,6 +17,12 @@ import {
    type ClockOperation,
    validateClockOperation,
@@ -229,11 +229,11 @@ index 984872ab163a71f11b55e3ac8f4f55198e84af01..bbdfbd15bb9b552cb6dc0b049c5e3ba0
      case "post_notification":
        exactKeys(p, ["type", "title", "body"]);
        return {
-diff --git a/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.test.ts b/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.test.ts
+diff --git i/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.test.ts w/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..db46f1b0743b6d0998a85dae571f66758efe59d8
+index 0000000..db46f1b
 --- /dev/null
-+++ b/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.test.ts
++++ w/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.test.ts
 @@ -0,0 +1,208 @@
 +import {
 +  CALENDAR_AVAILABILITY_CAPABILITY,
@@ -443,11 +443,11 @@ index 0000000000000000000000000000000000000000..db46f1b0743b6d0998a85dae571f6675
 +    ),
 +  ).toMatchObject({ status: "free", busy: [] });
 +});
-diff --git a/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts b/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts
+diff --git i/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts w/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..cbb63e9a2c65b4285c9889d65de38c68812ffc8a
+index 0000000..cbb63e9
 --- /dev/null
-+++ b/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts
++++ w/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts
 @@ -0,0 +1,136 @@
 +/**
 + * Binds the shared @elizaos/contracts device-review contracts (free/busy reads, Notes
@@ -585,22 +585,16 @@ index 0000000000000000000000000000000000000000..cbb63e9a2c65b4285c9889d65de38c68
 +    return validateNotesSearchResult(operation, value, selectedNotesRead);
 +  return validateNamedTargetResult(operation, value, namedTargetValidators);
 +}
-diff --git a/plugins/plugin-assistant/src/services/device-actions/service.ts b/plugins/plugin-assistant/src/services/device-actions/service.ts
-index becb58e3f69fd222c6fe4af63a957c0e1f22e8c0..813ef0387e21f636b366325df3781ea61213ab89 100644
---- a/plugins/plugin-assistant/src/services/device-actions/service.ts
-+++ b/plugins/plugin-assistant/src/services/device-actions/service.ts
-@@ -1,5 +1,10 @@
+diff --git i/plugins/plugin-assistant/src/services/device-actions/service.ts w/plugins/plugin-assistant/src/services/device-actions/service.ts
+index 64c05be..47d6f2e 100644
+--- i/plugins/plugin-assistant/src/services/device-actions/service.ts
++++ w/plugins/plugin-assistant/src/services/device-actions/service.ts
+@@ -1,3 +1,4 @@
++import { CALENDAR_AVAILABILITY_CAPABILITY, NAMED_TARGET_CAPABILITY, NOTES_SEARCH_CAPABILITY } from "@elizaos/contracts";
  import { AsyncLocalStorage } from "node:async_hooks";
  import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
-+import {
-+  CALENDAR_AVAILABILITY_CAPABILITY,
-+  NAMED_TARGET_CAPABILITY,
-+  NOTES_SEARCH_CAPABILITY,
-+} from "@elizaos/contracts";
  import {
-   isNativeNotesQuery,
-   NOTES_QUERY_CAPABILITY,
-@@ -44,6 +49,11 @@ import {
+@@ -46,6 +47,11 @@ import {
    validateDeviceOperation,
    validateDevicePayload,
  } from "./contract.ts";
@@ -612,7 +606,7 @@ index becb58e3f69fd222c6fe4af63a957c0e1f22e8c0..813ef0387e21f636b366325df3781ea6
  import {
    assertMapsObservation,
    isMapsOperation,
-@@ -126,6 +136,7 @@ export async function withDeviceActionTurn<T>(
+@@ -174,6 +180,7 @@ export async function withDeviceActionTurn<T>(
                    CALENDAR_CAPABILITY,
                    CALENDAR_CREATE_CAPABILITY,
                    CALENDAR_NEXT_CAPABILITY,
@@ -620,7 +614,7 @@ index becb58e3f69fd222c6fe4af63a957c0e1f22e8c0..813ef0387e21f636b366325df3781ea6
                  ].some((capability) => capabilities.includes(capability)) &&
                  tags.includes("resource:calendar-records")
                ? "Calendar"
-@@ -230,6 +241,9 @@ export class DeviceActionService {
+@@ -780,6 +787,9 @@ export class DeviceActionService {
            CALENDAR_NEXT_CAPABILITY,
            "notes.local-record.v1",
            NOTES_QUERY_CAPABILITY,
@@ -630,7 +624,7 @@ index becb58e3f69fd222c6fe4af63a957c0e1f22e8c0..813ef0387e21f636b366325df3781ea6
            REMINDER_CAPABILITY,
            REMINDER_TIMING_CAPABILITY,
            REMINDER_CREATE_CAPABILITY,
-@@ -447,6 +461,7 @@ export class DeviceActionService {
+@@ -1019,6 +1029,7 @@ export class DeviceActionService {
          "calendar_read_selected",
          "calendar_update",
          "calendar_delete",
@@ -638,7 +632,7 @@ index becb58e3f69fd222c6fe4af63a957c0e1f22e8c0..813ef0387e21f636b366325df3781ea6
        ].includes(validated.type)
      )
        throw new DeviceActionError("Workflow read requires bound dispatcher");
-@@ -747,6 +762,7 @@ export class DeviceActionService {
+@@ -1324,6 +1335,7 @@ export class DeviceActionService {
          );
          if (
            (isNativeNotesQuery(operation) ||
@@ -646,7 +640,7 @@ index becb58e3f69fd222c6fe4af63a957c0e1f22e8c0..813ef0387e21f636b366325df3781ea6
              operation.type === "calendar_create_local" ||
              operation.type === "calendar_read_next") &&
            !supported
-@@ -1041,6 +1057,21 @@ export class DeviceActionService {
+@@ -1618,6 +1630,21 @@ export class DeviceActionService {
          } catch {
            throw new DeviceActionError("Invalid Calendar receipt");
          }
@@ -668,7 +662,7 @@ index becb58e3f69fd222c6fe4af63a957c0e1f22e8c0..813ef0387e21f636b366325df3781ea6
        } else if (read && receipt.outcome === "applied") {
          receipt = {
            ...receipt,
-@@ -1226,6 +1257,21 @@ export class DeviceActionService {
+@@ -1803,6 +1830,21 @@ export class DeviceActionService {
          } catch {
            throw new DeviceActionError("Invalid Calendar receipt");
          }
@@ -690,10 +684,10 @@ index becb58e3f69fd222c6fe4af63a957c0e1f22e8c0..813ef0387e21f636b366325df3781ea6
        } else if (
          (payload.operation.type === "read_selected_notes" ||
            payload.operation.type === "read_calendar_range") &&
-diff --git a/plugins/plugin-assistant/test/device-actions.e2e.test.ts b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
-index 2e3378c2d98384153d591fb04cbe049af0b42e57..638a2b741cb8f8c1320f6c9c34a86cd5790d2167 100644
---- a/plugins/plugin-assistant/test/device-actions.e2e.test.ts
-+++ b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+diff --git i/plugins/plugin-assistant/test/device-actions.e2e.test.ts w/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+index f070cc6..ed2bad1 100644
+--- i/plugins/plugin-assistant/test/device-actions.e2e.test.ts
++++ w/plugins/plugin-assistant/test/device-actions.e2e.test.ts
 @@ -1044,6 +1044,12 @@ test("device approval REST lifecycle survives restart and never duplicates claim
            "reminders.create.v1",
            "clock.handoff.v2",

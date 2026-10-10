@@ -1,0 +1,33 @@
+import {expect,type Page} from '@playwright/test';
+// Closed media/Cloud ports. No microphone, speech model, audio playback or provider HTTP.
+export async function cloudNotesVoiceFixture(page:Page,signed=true,development=false){
+ const foreign:string[]=[];
+ await page.route(/^https?:\/\/(?!127\.0\.0\.1:|localhost:)/,async route=>{foreign.push(route.request().url());await route.abort();});
+ await page.addInitScript(()=>{
+  localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
+  const f=(window as any).cloudNotesVoice={owner:'a',mic:0,plays:0,starts:0,stops:0,uploads:0,local:0,paired:0,syntheses:0,cancels:0,active:null,clip:null,hold:false,billing:false,denied:false,empty:false,transcript:'Closed Cloud transcript',requests:[]};
+  Object.defineProperty(window,'AudioContext',{configurable:true,value:class{state='suspended';resume=async()=>{};close=async()=>{};}});
+  Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>{f.mic++;throw Error('Physical media forbidden');}}});
+  HTMLMediaElement.prototype.play=async()=>{f.plays++;throw Error('Physical playback forbidden');};if(window.speechSynthesis)window.speechSynthesis.speak=()=>{f.plays++;throw Error('Local speech forbidden');};
+ });
+ await page.goto(development?'/?mode=dev':'/');
+ await page.evaluate(async signed=>{
+  const {BrowserVoice}=await import('/src/browser/voice.ts'),{connectionController:c}=await import('/src/runtime/connection-ui.tsx');const f=(window as any).cloudNotesVoice;
+  c.getCloudEnvironment=()=>signed?'production':null;c.getCloudClient=()=>signed?{sessionId:'fixture-account-'+f.owner,credentialId:'fixture-credential-'+f.owner,client:{}} as any:null;
+  BrowserVoice.prototype.localSpeechStatus=async()=>{f.local++;throw Error('Local preparation forbidden');};
+  BrowserVoice.prototype.synthesizeLocal=async()=>{f.local++;throw Error('Local synthesis forbidden');};
+  BrowserVoice.prototype.startRecording=async function(){f.starts++;if(f.denied)throw new DOMException('Denied','NotAllowedError');const recordingId=crypto.randomUUID();f.clip=recordingId;f.active=recordingId;(this as any).capture.clips.set(recordingId,{blob:new Blob(['closed-fixture'],{type:'audio/webm'}),durationMs:1000});return {recordingId,maxDurationMs:59000};};
+  BrowserVoice.prototype.stopRecording=async()=>{f.stops++;f.active=null;return {recordingId:f.clip,durationMs:1000};};
+  BrowserVoice.prototype.cancelRecording=async()=>{f.active=null;f.cancels++;};
+  BrowserVoice.prototype.transcribeRecording=async(input:any)=>{f.uploads++;f.requests.push(input);if(f.hold)await new Promise<void>(resolve=>{f.release=resolve;});if(f.billing)throw Object.assign(Error('Synthetic billing refusal'),{code:'voice-http-402'});return {text:f.empty?'':f.transcript,local:false};};
+  BrowserVoice.prototype.transcribePairedRecording=async()=>{f.paired++;throw Error('Paired transcription forbidden');};
+  BrowserVoice.prototype.synthesize=async()=>{f.syntheses++;return {playbackId:crypto.randomUUID()};};
+  BrowserVoice.prototype.play=async function(input:any){queueMicrotask(()=>void (this as any).notifyListeners('playbackEnded',{playbackId:input.playbackId}));};
+  BrowserVoice.prototype.stopPlayback=async()=>{};BrowserVoice.prototype.cancel=async()=>{f.cancels++;};
+ },signed);
+ return {foreign};
+}
+export const notesRecorder=(page:Page)=>page.locator('[data-alpha-subview="notes-recording"]');
+export async function openNotesRecorder(page:Page){await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'Record and transcribe',exact:true}).click();}
+export async function recordClosedClip(page:Page){const panel=notesRecorder(page);await panel.getByRole('button',{name:'Start recording',exact:true}).click();await expect(panel.getByRole('button',{name:'Stop recording',exact:true})).toBeVisible();await panel.getByRole('button',{name:'Stop recording',exact:true}).click();await expect(panel.getByRole('button',{name:'Transcribe with Eliza Cloud',exact:true})).toBeVisible();}
+export async function noPhysicalOrLocalVoice(page:Page){expect(await page.evaluate(()=>{const f=(window as any).cloudNotesVoice;return {mic:f.mic,plays:f.plays,local:f.local,paired:f.paired};})).toEqual({mic:0,plays:0,local:0,paired:0});}

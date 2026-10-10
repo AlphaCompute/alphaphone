@@ -1,10 +1,11 @@
+import type {ChatChannel} from './alpha-client';
 /** Eliza app-host REST protocol. Native composition owns network and secure storage.
  * Reference: packages/app/src/api/auth-{pairing,session}-routes.ts and
  * packages/agent/src/api/conversation-routes.ts in elizaOS.
  */
 export interface RemoteRequest {
   url: string;
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PUT" | "DELETE";
   headers: Record<string, string>;
   body?: string;
   signal?: AbortSignal;
@@ -44,6 +45,7 @@ export interface RemoteAuthStatus {
 export interface RemoteConversation { id: string; [key: string]: unknown }
 export interface RemoteChatReply {
   text: string;
+  actionResults?: readonly unknown[];
   agentName: string;
   interrupted?: boolean;
   noResponseReason?: "ignored";
@@ -221,6 +223,10 @@ export class RemoteProtocol {
     const conversation = object(value.conversation);
     return { ...conversation, id: string(conversation.id) };
   }
+  async truncateMessages(id:string,messageId:string,signal:AbortSignal):Promise<void> {
+    const value=object(await this.authorized(`/api/conversations/${encodeURIComponent(string(id))}/messages/truncate`,'POST',{messageId,inclusive:true},signal));
+    if(value.ok!==true||!Number.isSafeInteger(value.deletedCount)||Number(value.deletedCount)<1)throw new RemoteProtocolError('message_replacement_unconfirmed');
+  }
   /** One page. Without `page`, the agent's recent window; with it, messages strictly older than
    * the cursor (`?before=<createdAt>&beforeId=<id>`). Only the older-page read reports hasMore. */
   async messages(id: string, signal?: AbortSignal, page?: MessagePage): Promise<{ messages: Record<string, unknown>[]; hasMore?: boolean }> {
@@ -266,9 +272,9 @@ export class RemoteProtocol {
   /** A dropped response (transport failure or gateway timeout) is reconciled once by repeating the
    * identical request with the same clientMessageId; the agent returns its durable outcome for that
    * key instead of running a second turn. Cancellation is never retried. */
-  async send(id: string, text: string, options: { metadata?: Record<string, unknown>; clientMessageId?: string; signal?: AbortSignal } = {}): Promise<RemoteChatReply> {
+  async send(id: string, text: string, options: { metadata?: Record<string, unknown>; clientMessageId?: string; channelType?:ChatChannel; signal?: AbortSignal } = {}): Promise<RemoteChatReply> {
     const path = `/api/conversations/${encodeURIComponent(string(id))}/messages`;
-    const body = { text: string(text), channelType: "DM", ...(options.metadata ? { metadata: options.metadata } : {}), ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}) };
+    const body = { text: string(text), channelType: options.channelType ?? "DM", ...(options.metadata ? { metadata: options.metadata } : {}), ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}) };
     let raw: unknown;
     try { raw = await this.authorized(path, "POST", body, options.signal); }
     catch (error) {

@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect,type Page} from '@playwright/test';
 const DAY=24*60*60*1000;
 const savedRecords=(page:Page)=>page.evaluate(async()=>JSON.parse(await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw()).records);
@@ -104,7 +105,7 @@ test('Trash purges exactly three days after deletion, at startup and when Notes 
 
  // Past the boundary, opening Notes purges without a restart.
  await page.clock.setSystemTime(deletedAt+3*DAY+60_000);
- await page.getByRole('button',{name:'Back to apps',exact:true}).click();
+ await returnToApps(page);
  await openNotes(page);
  await expect.poll(()=>trashEntries(page).then(e=>e.map((x:any)=>x.note.title))).toEqual(['Later']);
  await page.getByRole('button',{name:'Open Trash',exact:true}).click();
@@ -159,7 +160,7 @@ test('voice notes share the Trash: the recording restores with its note and is e
  await remove();
  const deletedAt=(await trashEntries(page))[0].deletedAt;
  await page.clock.setSystemTime(deletedAt+3*DAY+60_000);
- await page.getByRole('button',{name:'Back to apps',exact:true}).click();await openNotes(page);
+ await returnToApps(page);await openNotes(page);
  await expect.poll(()=>trashEntries(page)).toEqual([]);
  const erased=await describe();
  expect(erased.transcript).toBe('');expect(erased.expired).toBe(true);

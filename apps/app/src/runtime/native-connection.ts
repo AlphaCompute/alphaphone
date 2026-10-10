@@ -1,9 +1,16 @@
+import {automationsRouteAllowed} from './automations-route-policy';
+import {BrowserCloudConnection} from '../browser/cloud-connection';
+import {Capacitor} from '@capacitor/core';
+import {devSurfacesEnabled} from '../build-flags';
 import { registerPlugin } from '../platform-plugins';
 import type { CloudNativeRequest, CloudCredentialStore, CloudCredential } from './cloud-protocol';
 import type { RemoteRequester, RemoteCredentialStore } from './remote-protocol';
 
+const nativeConnectionHeader=(Capacitor as typeof Capacitor&{PluginHeaders?:{name:string}[]}).PluginHeaders?.some(header=>header.name==='AlphaConnection')??false;
+const browserCloudHost=devSurfacesEnabled&&!Capacitor.isNativePlatform()&&!nativeConnectionHeader;
+
 export interface ConnectionPort {
-  request(input: { requestId: string; url: string; method: string; headers: Record<string,string>; body?: string; expiresAt?: number }): Promise<{status:number;data:unknown}>;
+  request(input: { requestId: string; url: string; method: string; headers: Record<string,string>; body?: string; credentialReference?:string; expiresAt?: number }): Promise<{status:number;data:unknown}>;
   cancel(input:{requestId:string}):Promise<void>;
   secureRead(input:{slot:string}):Promise<{value:string|null}>;
   secureWrite(input:{slot:string;value:string}):Promise<void>;
@@ -64,13 +71,26 @@ export function indexedDbSecretBackend(factory:IDBFactory=indexedDB,subtle:Subtl
     async read(slot){const {db,key}=await open();return decrypt(key,await idb(db.transaction('slots','readonly').objectStore('slots').get(slot)),slot);},
     compareExchange(slot,expected,value){return locked(slot,async()=>{
       const {db,key}=await open();
-      if(expected!==undefined&&await decrypt(key,await idb(db.transaction('slots','readonly').objectStore('slots').get(slot)),slot)!==expected)return false;
-      let record:{iv:Uint8Array;data:ArrayBuffer}|null=null;
-      if(value!==null){const iv=crypto.getRandomValues(new Uint8Array(12));record={iv,data:await subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode(slot)},key,new TextEncoder().encode(value))};}
-      const tx=db.transaction('slots','readwrite'),store=tx.objectStore('slots');
-      if(record)store.put(record,slot);else store.delete(slot);
-      await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
-      return true;
+      // Crypto awaits cannot run inside an IndexedDB write transaction. Capture ciphertext,
+      // prepare outside the transaction, then compare the exact stored ciphertext again in
+      // that transaction before writing. This also fences other tabs without Web Locks.
+      for (;;) {
+        const observed=await idb(db.transaction('slots','readonly').objectStore('slots').get(slot));
+        if(expected!==undefined&&await decrypt(key,observed,slot)!==expected)return false;
+        let record:{iv:Uint8Array;data:ArrayBuffer}|null=null;
+        if(value!==null){const iv=crypto.getRandomValues(new Uint8Array(12));record={iv,data:await subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode(slot)},key,new TextEncoder().encode(value))};}
+        const bytesEqual=(a:Uint8Array,b:Uint8Array)=>a.length===b.length&&a.every((byte,index)=>byte===b[index]);
+        let matched=false;
+        const tx=db.transaction('slots','readwrite'),store=tx.objectStore('slots'),request=store.get(slot);
+        request.onsuccess=()=>{
+          const live=request.result;
+          matched=observed===undefined?live===undefined:!!live&&bytesEqual(new Uint8Array(observed.iv),new Uint8Array(live.iv))&&bytesEqual(new Uint8Array(observed.data),new Uint8Array(live.data));
+          if(matched){if(record)store.put(record,slot);else store.delete(slot);}
+        };
+        await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
+        if(matched)return true;
+        if(expected!==undefined)return false;
+      }
     });},
   };
 }
@@ -101,7 +121,8 @@ export function createBrowserConnection(options:{fetch?:typeof fetch;secrets?:Br
       let url:URL;try{url=new URL(input.url);}catch{throw new Error('Connection request failed');}
       const loopback=['localhost','127.0.0.1','[::1]'].includes(url.hostname);
       if(url.username||url.password||!(url.protocol==='https:'||(allowHttp&&loopback&&url.protocol==='http:')))throw new Error('Connection request failed');
-      if(input.method!=='GET'&&input.method!=='POST')throw new Error('Connection request failed');
+      if(input.method!=='GET'&&input.method!=='POST'&&!automationsRouteAllowed(url.pathname+url.search,input.method))throw new Error('Connection request failed');
+      if(input.credentialReference)throw new Error('This credential requires its native or development host.');
       if(input.method==='GET'&&input.body!==undefined)throw new Error('Connection request failed');
       const headers=new Headers();
       for(const [name,value] of Object.entries(input.headers||{})){if(!allowedHeaders.has(name.toLowerCase())||typeof value!=='string'||value.length>16384||/[\r\n]/.test(value))throw new Error('Connection request failed');headers.set(name,value);}
@@ -135,7 +156,7 @@ export function createBrowserConnection(options:{fetch?:typeof fetch;secrets?:Br
 let browserConnection:ConnectionPort|undefined;
 // Capacitor keeps the first registration. browser/register.ts imports this module first, so the
 // web build gets this implementation while Android keeps the native plugin.
-const native = registerPlugin<ConnectionPort>('AlphaConnection',{web:()=>browserConnection??=createBrowserConnection()});
+const native = registerPlugin<ConnectionPort>('AlphaConnection',!nativeConnectionHeader&&!Capacitor.isNativePlatform()?{web:()=>browserCloudHost?new BrowserCloudConnection():browserConnection??=createBrowserConnection()}:undefined);
 
 export const secureConnectionStore = {
   async readRaw(slot:string):Promise<string|null> { return (await native.secureRead({slot})).value; },
@@ -154,6 +175,7 @@ function serial<T>(operation:()=>Promise<T>):Promise<T> {
   const result=storageQueue.then(operation,operation);storageQueue=result.catch(()=>{});return result;
 }
 export const cloudCredentialStore:CloudCredentialStore={
+  acceptsReferences:browserCloudHost,
   read:environment=>serial(async()=>{
     const value=await secureConnectionStore.read<CloudCredential>(`cloud:${environment}`);
     if(value&&!value.credentialId){value.credentialId=crypto.randomUUID();await secureConnectionStore.write(`cloud:${environment}`,value);}
@@ -182,7 +204,7 @@ export const nativeCloudRequest:CloudNativeRequest=async input=>{
   const timer=setTimeout(()=>{void native.cancel({requestId}).catch(()=>{});rejectAbort(new Error('Connection timed out'));},timerMs);
   try {
     // Issue first, then check again: native cancel targets an already-dispatched ID.
-    const response=native.request({requestId,url:input.url,method:input.method,headers:input.headers,...(input.expiresAt===undefined?{}:{expiresAt:input.expiresAt}),...(input.body===undefined?{}:{body:JSON.stringify(input.body)})});
+    const response=native.request({requestId,url:input.url,method:input.method,headers:input.headers,...(input.credentialReference?{credentialReference:input.credentialReference}:{}),...(input.expiresAt===undefined?{}:{expiresAt:input.expiresAt}),...(input.body===undefined?{}:{body:JSON.stringify(input.body)})});
     if(input.signal.aborted)cancel();
     return await Promise.race([response,interrupted]);
   }finally{clearTimeout(timer);input.signal.removeEventListener('abort',cancel);}

@@ -2,6 +2,8 @@ import type {LocalAgentProtocol} from '../runtime/local-agent';
 /** Browser plugin registration must not import runtime modules that claim native plugin identities. */
 type SpeechConnection={
  getBrowserSpeechAgent():LocalAgentProtocol|null;
+ getCloudEnvironment?():string|null;
+ getCloudClient?():{sessionId:string;credentialId:string}|null;
  getSnapshot():{session?:{sessionId:string}|null};
  subscribe(listener:()=>void):()=>void;
 };
@@ -10,6 +12,8 @@ const listeners=new Set<()=>void>();
 const notify=()=>{for(const listener of listeners)listener();};
 export const browserSpeechConnection={
  getBrowserSpeechAgent:()=>connection?.getBrowserSpeechAgent()??null,
+ getCloudEnvironment:()=>connection?.getCloudEnvironment?.()??null,
+ getCloudClient:()=>connection?.getCloudClient?.()??null,
  getSnapshot:()=>connection?.getSnapshot()??{session:null},
  subscribe(listener:()=>void){listeners.add(listener);return()=>{listeners.delete(listener);};},
 };

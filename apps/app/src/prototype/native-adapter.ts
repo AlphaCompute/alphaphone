@@ -41,7 +41,8 @@ export function residentModelLabel(connection: ConnectionSnapshot, refresh: () =
     void residentProvider.providerStatus().then(status => {
       const provider = status?.provider, model = status?.model;
       // Copy only the two identity fields; ignore anything else a bridge might return.
-      const label = status?.configured === true && provider === 'cerebras' && typeof model === 'string' && providerModelPattern.test(model) ? 'Cerebras · ' + model : null;
+      const providerLabel = provider === 'elizacloud' ? 'Eliza Cloud' : provider === 'cerebras' ? 'Cerebras' : null;
+      const label = status?.configured === true && providerLabel && typeof model === 'string' && providerModelPattern.test(model) ? providerLabel + ' · ' + model : null;
       if (providerReading === sessionId) providerStatus = { sessionId, label };
     }).catch(() => { if (providerReading === sessionId) providerStatus = { sessionId, label: null }; })
       .finally(() => { if (providerReading === sessionId) { providerReading = null; refresh(); } });

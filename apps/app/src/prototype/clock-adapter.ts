@@ -96,7 +96,7 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
   out.openClock=()=>{if(busy)return;if(options.browser&&!simulated()&&!blocked()){void DailyApps.clockHandoff({action:'show',reviewed:true}).catch(()=>api.toast('Clock could not be opened. Try again.'));return;}open=true;review=null;void restore();publish();};
   const currentReview=review;
   out.clock=open?{
-   modalRef:modal.ref,title:'Clock',topPadding:simulated()?'76px':'44px',message,busy:busy||loading,isSet:action==='set',isSnooze:action==='snooze',time,label,snooze,
+   modalRef:modal.ref,title:'Clock',topPadding:simulated()?'76px':'var(--native-top-inset,0px)',message,busy:busy||loading,isSet:action==='set',isSnooze:action==='snooze',time,label,snooze,
    zone:Intl.DateTimeFormat().resolvedOptions().timeZone,
    close,
    actions:actions.map(kind=>({label:kind==='set'?'Set alarm':kind==='show'?'Show alarms':kind==='snooze'?'Snooze':'Dismiss',pick:()=>change(()=>{action=kind;}),css:action===kind?'background:var(--fg);color:var(--bg)':'background:var(--s2);color:var(--fg)'})),

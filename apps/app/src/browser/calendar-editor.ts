@@ -1,3 +1,4 @@
+import {iconStyle} from '../icon-style';
 import {calendarEditorDraft,type CalendarEditorFields} from './calendar-editor-draft';
 import './calendar-editor.css';
 export interface EditableCalendarEvent {title:string;body:string;location:string;begin:number;end:number;allDay?:boolean;timeZone?:string;repeat?:'none'|'daily'|'weekdays'|'weekly';alert?:number|null;who?:string[];video?:boolean}
@@ -11,7 +12,7 @@ export function editCalendarEvent(row:EditableCalendarEvent,commit:(next:Editabl
  const zone=row.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone;
  const dialog=document.createElement('dialog');dialog.className='alpha-calendar-editor';dialog.setAttribute('aria-label','Edit calendar event');
  const theme=document.querySelector('.os');if(theme){const style=getComputedStyle(theme);for(const token of ['bg','fg','s2','line','mut'])dialog.style.setProperty('--editor-'+token,style.getPropertyValue('--'+token));dialog.style.colorScheme=style.getPropertyValue('--bg').trim().toUpperCase()==='#000000'?'dark':'light';}
- const header=document.createElement('header'),heading=document.createElement('h2'),dismiss=document.createElement('button');heading.textContent='Edit calendar event';dismiss.type='button';dismiss.className='alpha-calendar-dismiss';dismiss.setAttribute('aria-label','Close calendar editor');dismiss.textContent='×';header.append(heading,dismiss);dialog.append(header);
+ const header=document.createElement('header'),heading=document.createElement('h2'),dismiss=document.createElement('button');heading.textContent='Edit calendar event';dismiss.type='button';dismiss.className='alpha-calendar-dismiss';dismiss.setAttribute('aria-label','Close calendar editor');const closeIcon=document.createElement('span');closeIcon.setAttribute('aria-hidden','true');closeIcon.dataset.alphaIcon='/icons/lucide/x.svg';Object.assign(closeIcon.style,iconStyle('x'),{width:'20px',height:'20px'});dismiss.style.display='inline-flex';dismiss.style.alignItems='center';dismiss.style.justifyContent='center';dismiss.append(closeIcon);header.append(heading,dismiss);dialog.append(header);
  const form=document.createElement('div');form.className='alpha-calendar-fields';dialog.append(form);
  function field(label:string,type:'textarea',value:string):HTMLTextAreaElement;
  function field(label:string,type:string,value:string):HTMLInputElement;

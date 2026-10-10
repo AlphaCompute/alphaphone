@@ -17,7 +17,7 @@ export function installSubviewAccessibility(views:Bag){
     const review=!!(out.contextReviewOpen||out.attachmentOpen||out.providerReview);
     return {...out,captureSubviewFocus:focus.capture,contextModal:contextModal.ref,attachmentModal:attachmentModal.ref,providerModal:providerModal.ref,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!!(out.detail||out.composing||review),detailCovered:!!(out.composing||review),composeCovered:review};
    }
-   return {...out,captureSubviewFocus:focus.capture,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!!(out.detail||out.runOpen||out.builder),detailCovered:!!(out.runOpen||out.builder),runCovered:!!out.builder};
+   return {...out,captureSubviewFocus:focus.capture,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!!(out.detail||out.automation?.detail||out.runOpen||out.builder),detailCovered:!!(out.runOpen||out.builder),runCovered:!!out.builder};
   };
  }
  for(const [name,keys,coverage] of [

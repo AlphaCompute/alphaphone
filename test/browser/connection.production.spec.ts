@@ -50,7 +50,7 @@ test('the web build pairs a synthetic HTTPS remote agent, sends one message and 
   });
   await page.goto('/');
   const chooser = page.locator('.alpha-connection');
-  await expect(chooser.getByText('This browser has no on-device agent', { exact: true })).toBeVisible();
+  await expect(chooser.getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
   await chooser.getByText('Remote agent', { exact: true }).click();
   await chooser.getByLabel('Agent HTTPS address').fill(origin);
   await chooser.getByLabel('Pairing code').fill('SYNTH-CODE');

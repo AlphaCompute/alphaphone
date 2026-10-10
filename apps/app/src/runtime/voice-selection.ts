@@ -1,12 +1,10 @@
+import { testMocksEnabled } from '../build-flags';
 import { browserDevProfile } from '../browser/dev-profile';
 import { connectionController } from './connection-ui';
 
-/**
- * Speech route policy. On-device speech is the default everywhere. Eliza Cloud speech
- * (billed to the signed-in account) is used only after the user explicitly chose it with
- * the credit disclosure, and that choice is the persisted `voice-route:v1` preference.
- * A signed-in Cloud session alone never selects Cloud.
- */
+/** Production currently preserves main's Cloud speech policy. Local/manual requests are
+ * test-only. Legacy preference storage remains readable for migration, but does not
+ * select the production route. This differs from PRD P-01/P-07 and requires a decision. */
 // Plain constants and function exports only: Node contract tests evaluate this source directly.
 const voiceRouteKey = 'alphaphone:voice-route:v1';
 const speakRepliesKey = 'alphaphone:speak-replies:v1';
@@ -29,6 +27,7 @@ const record = (value: unknown): Record<string, unknown> | null => value && type
 
 /** The persisted route. Anything but a complete, disclosed Cloud record reads as on-device. */
 export function voiceRoutePreference(): VoiceRouteChoice {
+  if (!testMocksEnabled) return 'cloud';
   const value = record(read(voiceRouteKey));
   return value && value.version === 1 && value.route === 'cloud' && value.disclosed === 'cloud-speech-uses-credits' && Number.isFinite(value.chosenAt) ? 'cloud' : 'device';
 }
@@ -53,14 +52,8 @@ export function cloudVoiceAvailable(): boolean {
   return !browserDevProfile && connectionController.getCloudEnvironment() !== null && connectionController.getCloudClient() !== null;
 }
 
-/**
- * Explicit device/manual choices win. `agent` is an explicit in-session request for the
- * selected agent's voice (Cloud when a Cloud account is signed in). `default` is
- * on-device unless the persisted preference chose Cloud and Cloud is signed in.
- */
-export function selectVoiceRoute(preference: VoicePreference = 'default'): 'device' | 'cloud' | 'agent' | 'manual' {
-  if (preference === 'device' || preference === 'manual') return preference;
-  const cloud = cloudVoiceAvailable();
-  if (preference === 'agent') return cloud ? 'cloud' : 'agent';
-  return cloud && voiceRoutePreference() === 'cloud' ? 'cloud' : 'device';
+/** Explicit local/manual routes are available only in test-mocks builds. */
+export function selectVoiceRoute(preference: 'default' | 'device' | 'agent' | 'manual' = 'default'): 'device' | 'cloud' | 'agent' | 'manual' {
+  if (testMocksEnabled && (preference === 'device' || preference === 'manual')) return preference;
+  return 'cloud';
 }

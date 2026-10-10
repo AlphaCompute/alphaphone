@@ -25,7 +25,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private final Handler main=new Handler(Looper.getMainLooper());
  private boolean draining; // Guarded by pending; remains closed after a drain timeout until the barrier completes.
  private final Map<PluginCall,Runnable> drainWaiters=new LinkedHashMap<>();
- private File playbackFile;
+ private volatile File playbackFile;
  private String playbackId;
  private String playbackRequestId;
  private MediaPlayer player;
@@ -63,6 +63,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  }
  @PermissionCallback private void microphonePermission(PluginCall call){Long e=permissionEpochs.remove(call.getCallbackId());if(e==null||e!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}start(call,e);}
  private void start(PluginCall call,long e){main.post(()->{if(destroyed||isDraining()||e!=epoch.get()){call.reject("Recording cancelled");return;}try{int limit=call.getInt("maxDurationMs",59000);if(limit!=29000&&limit!=59000)throw new IllegalArgumentException("Unsupported capture duration");call.resolve(capture.start(limit));}catch(Exception error){call.reject("Microphone could not start");}});}
+ @PluginMethod public void getRecordingMetrics(PluginCall call){main.post(()->{try{call.resolve(capture.metrics(call.getString("recordingId")));}catch(RuntimeException error){call.reject("Recording metrics are no longer available");}});}
  @PluginMethod public void stopRecording(PluginCall call){main.post(()->{try{call.resolve(capture.stop());}catch(Exception error){call.reject("Recording could not be saved");}});}
  @PluginMethod public void saveRecording(PluginCall call){getActivity().runOnUiThread(()->{try{String key=call.getString("recordingId");AlphaNoteAudioPlugin store=(AlphaNoteAudioPlugin)getBridge().getPlugin("AlphaNoteAudio").getInstance();call.resolve(capture.retain(store,key,call.getString("noteId"),call.getString("transcript")));}catch(Exception error){call.reject("The recording could not be saved. Keep this draft and retry.");}});}
  private boolean isDraining(){synchronized(pending){return draining;}}
@@ -189,13 +190,13 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   File file=File.createTempFile("alpha-cloud-tts-",".wav",getContext().getCacheDir());CountDownLatch completed=new CountDownLatch(1);
   try{try(OutputStream out=new FileOutputStream(file)){out.write(audio);}main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackFile!=null){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject out=new JSObject();out.put("playbackId",playbackId);out.put("execution","device");request.result=out;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});if(!completed.await(10,TimeUnit.SECONDS)){request.cancel();file.delete();throw new IOException("Playback preparation timed out");}}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
  });}
- @PluginMethod public void synthesize(PluginCall call){synthesizeAudio(call,false);}
+ @PluginMethod public void synthesize(PluginCall call){if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&(playbackFile!=null||!pending.isEmpty())){call.reject("Speaker is in use","playback-busy");return;}synthesizeAudio(call,false);}
  private void synthesizeAudio(PluginCall call,boolean paired){synthesizeAudio(call,paired,null);}
  private void synthesizeAudio(PluginCall call,boolean paired,String reviewed){submit(call,request->{
   String text=required(reviewed==null?call.getString("text"):reviewed,5000);HttpURLConnection c=paired?connectPaired(call,false,request):connect(call,"tts",request);byte[] body=new JSONObject().put("text",text).put("format",paired?"wav":"mp3").toString().getBytes(StandardCharsets.UTF_8);c.setRequestProperty("Content-Type","application/json");c.setFixedLengthStreamingMode(body.length);try(OutputStream out=c.getOutputStream()){if(request.cancelled)throw new IOException();out.write(body);}successful(c);
   String mime=c.getContentType();if(mime==null||!Set.of("audio/mpeg","audio/mp3","audio/wav").contains(mime.split(";")[0].trim().toLowerCase(Locale.ROOT)))throw new IOException();byte[] audio;try(InputStream in=c.getInputStream()){audio=read(in,AUDIO_LIMIT,request);}if(audio.length==0)throw new IOException();
   CountDownLatch completed=new CountDownLatch(1);
-  File file=File.createTempFile("alpha-cloud-tts-",".audio",getContext().getCacheDir());try{try(FileOutputStream out=new FileOutputStream(file)){out.write(audio);}if(request.cancelled||destroyed)throw new IOException();main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject value=new JSObject();value.put("playbackId",playbackId);request.result=value;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});completed.await();}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
+  File file=File.createTempFile("alpha-cloud-tts-",".audio",getContext().getCacheDir());try{try(FileOutputStream out=new FileOutputStream(file)){out.write(audio);}if(request.cancelled||destroyed)throw new IOException();main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackFile!=null){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject value=new JSObject();value.put("playbackId",playbackId);request.result=value;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});completed.await();}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
  });}
  @PluginMethod public void play(PluginCall call){main.post(()->{try{if(playbackFile==null||!Objects.equals(playbackId,call.getString("playbackId"))){call.reject("Playback unavailable");return;}if(player!=null){player.release();player=null;}if(preparingPlayback!=null)preparingPlayback.reject("Playback replaced");preparingPlayback=call;MediaPlayer next=new MediaPlayer();player=next;next.setDataSource(playbackFile.getAbsolutePath());final String activePlaybackId=playbackId;next.setOnCompletionListener(p->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackEnded",event);}});next.setOnErrorListener((p,w,e)->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackFailed",event);}return true;});next.setOnPreparedListener(p->{if(player==p&&!destroyed){try{p.start();preparingPlayback=null;call.resolve();}catch(RuntimeException error){clearPlayback();}}else call.reject("Playback cancelled");});next.prepareAsync();}catch(Exception error){clearPlayback();call.reject("Playback unavailable");}});}
  private void clearPlayback(){clearPlayback(true);}
@@ -236,13 +237,18 @@ final class AlphaCloudVoiceCapture {
    recorder.setAudioChannels(1); recorder.setAudioSamplingRate(16000); recorder.setAudioEncodingBitRate(64000);
    recorder.setOutputFile(file.getAbsolutePath()); recorder.setMaxDuration(maxDurationMs); recorder.setMaxFileSize(4 * 1024 * 1024);
    recorder.setOnInfoListener((source, what, extra) -> {
-    if (what == android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED || what == android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED) stopAutomatically();
+    synchronized(this){if(recorder!=source)return;if (what == android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED || what == android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED) stopAutomatically();}
    });
-   recorder.setOnErrorListener((source, what, extra) -> { synchronized(this) { cancel(); } JSObject result=new JSObject();result.put("status","failed");result.put("message","Recording stopped because Android reported a microphone error");events.accept(result); });
+   recorder.setOnErrorListener((source, what, extra) -> { JSObject result=new JSObject();synchronized(this) {if(recorder!=source)return;result.put("recordingId",id);cancel();}result.put("status","failed");result.put("message","Recording stopped because Android reported a microphone error");events.accept(result); });
    recorder.prepare(); recorder.start(); startedAt = android.os.SystemClock.elapsedRealtime();
-   deadline = this::stopAutomatically; handler.postDelayed(deadline,maxDurationMs);
+   final String ownedId=id;deadline=()->{synchronized(this){if(!ownedId.equals(id))return;stopAutomatically();}}; handler.postDelayed(deadline,maxDurationMs);
    JSObject result = new JSObject(); result.put("status","recording"); result.put("recordingId",id); result.put("maxDurationMs",maxDurationMs); return result;
   } catch (IOException | RuntimeException error) { cancel(); throw error; }
+ }
+ /** Genuine peak from the already-owned microphone capture; no second stream or inferred RMS. */
+ synchronized JSObject metrics(String recordingId) {
+  if(recorder==null||id==null||!id.equals(recordingId))throw new IllegalStateException("Recording changed");
+  JSObject result=new JSObject();result.put("recordingId",id);result.put("peak",Math.max(0,Math.min(1,recorder.getMaxAmplitude()/32767.0)));return result;
  }
  synchronized JSObject stop() {
   if (recorder == null) throw new IllegalStateException("No recording is active");
@@ -255,8 +261,9 @@ final class AlphaCloudVoiceCapture {
  }
  synchronized void stopAutomatically() {
   if (recorder == null) return;
+  final String ownedId=id;
   try { events.accept(stop()); }
-  catch (RuntimeException error) { JSObject result=new JSObject();result.put("status","failed");result.put("message","Recording could not be saved");events.accept(result); }
+  catch (RuntimeException error) { JSObject result=new JSObject();result.put("recordingId",ownedId);result.put("status","failed");result.put("message","Recording could not be saved");events.accept(result); }
  }
  synchronized JSObject retain(AlphaNoteAudioPlugin store,String recordingId,String noteId,String transcript)throws Exception {File chosen=selected(recordingId);if(chosen==null)throw new IllegalStateException();return store.retain(chosen,recordingId,noteId,durationMs,transcript);}
  synchronized File selected(String recordingId) {

@@ -30,7 +30,9 @@ export function createInlineModal(close:()=>void,returnFocus?:()=>HTMLElement|nu
    else if(event.shiftKey&&(active===first||!dialog.contains(active))){event.preventDefault();last!.focus();}
    else if(!event.shiftKey&&(active===last||!dialog.contains(active))){event.preventDefault();first.focus();}
   };
+  const back=(event:Event)=>{if(!ownsFocus())return;event.preventDefault();event.stopImmediatePropagation();close();};
   const contain=()=>{if(ownsFocus()&&!dialog.contains(document.activeElement))focus();};
+  window.addEventListener('alpha-back',back,true);
   document.addEventListener('keydown',key,true);
   document.addEventListener('focusin',contain);
   const observer=new MutationObserver(contain);
@@ -42,7 +44,7 @@ export function createInlineModal(close:()=>void,returnFocus?:()=>HTMLElement|nu
    releases.push(()=>{release();if(sibling.getAttribute('aria-hidden')==='true'){if(hidden===null)sibling.removeAttribute('aria-hidden');else sibling.setAttribute('aria-hidden',hidden);}});
   }
   dispose=()=>{
-   observer.disconnect();document.removeEventListener('keydown',key,true);document.removeEventListener('focusin',contain);
+   observer.disconnect();window.removeEventListener('alpha-back',back,true);document.removeEventListener('keydown',key,true);document.removeEventListener('focusin',contain);
    releases.reverse().forEach(release=>release());
    // Renderer-owned inert flags are removed later in the same DOM commit.
    // Restore only after that commit, and never steal focus from a replacement.

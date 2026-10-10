@@ -1,3 +1,4 @@
+import iconCatalog from '../icon-catalog.json';
 /* Seeds, scripted replies and fixture images. Production builds resolve this
    specifier to ./fixtures.empty.js (same names, empty values). */
 import {
@@ -59,6 +60,7 @@ var IC = {
   info: "M21 12a9 9 0 1 1-18 0a9 9 0 1 1 18 0zM12 11v5M12 8h.01",
   grid: "M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h5v5h-5z",
   reply: "M9 14L4 9l5-5M4 9h10a6 6 0 0 1 6 6v4",
+  copy: "M9 9h11v11H9zM5 15H4V4h11v1",
   archive: "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
   clock: "M21 12a9 9 0 1 1-18 0a9 9 0 1 1 18 0zM12 7v5l3 2",
   bubble: "M4 5h16v11H9l-5 4z",
@@ -5046,8 +5048,47 @@ class Component extends DCLogic {
     this.clock = setInterval(function () { self.setState({ now: Date.now() }); }, 15000);
     this.preset(this.props.initial || "boot");
   }
-  componentDidUpdate(prev) { if (prev && prev.initial !== this.props.initial) this.preset(this.props.initial || "boot"); }
+  getSnapshotBeforeUpdate(_props, previous) {
+    var list = document.querySelector("[data-alpha-transcript]");
+    if (!list) { this.chatScrollSnapshot = null; return null; }
+    var state = this.S(), rows = Array.from(list.querySelectorAll("[data-alpha-message-id]"));
+    var bounds = list.getBoundingClientRect(), scale = bounds.height / list.clientHeight || 1;
+    var anchor = rows.find(function (row) { return row.getBoundingClientRect().bottom >= bounds.top; });
+    var oldUser = (previous.msgs || []).filter(function (m) { return m.from === "user"; }).at(-1);
+    var newUser = state.msgs.filter(function (m) { return m.from === "user"; }).at(-1);
+    var opened = !["sheet", "full"].includes(previous.chat) && ["sheet", "full"].includes(state.chat);
+    var newTurn = state.typing && newUser && newUser.id !== oldUser?.id;
+    this.chatScrollSnapshot = { list: list, top: list.scrollTop,
+      follow: opened || newTurn || (list.scrollHeight - list.scrollTop - list.clientHeight < 80 && window.getSelection()?.isCollapsed !== false),
+      anchor: anchor?.getAttribute("data-alpha-message-id"), offset: anchor ? (anchor.getBoundingClientRect().top - bounds.top) / scale : 0 };
+    return null;
+  }
+  componentDidUpdate(prev) {
+    if (prev && prev.initial !== this.props.initial) this.preset(this.props.initial || "boot");
+    var list = document.querySelector("[data-alpha-transcript]"), saved = this.chatScrollSnapshot;
+    if (!list || !["sheet", "full"].includes(this.S().chat)) return;
+    if (this.chatScrollElement !== list && typeof ResizeObserver !== "undefined") {
+      this.chatScrollObserver?.disconnect(); this.chatScrollElement = list;
+      this.chatScrollObserver = new ResizeObserver(() => {
+        var size = this.chatScrollSize;
+        if (size && size.height - list.scrollTop - size.client < 80 && window.getSelection()?.isCollapsed !== false) list.scrollTop = list.scrollHeight;
+        this.chatScrollSize = { height: list.scrollHeight, client: list.clientHeight };
+      });
+      this.chatScrollObserver.observe(list);
+    }
+    if (!saved || saved.list !== list || saved.follow) list.scrollTop = list.scrollHeight;
+    else {
+      var anchor = Array.from(list.querySelectorAll("[data-alpha-message-id]")).find(function (row) { return row.getAttribute("data-alpha-message-id") === saved.anchor; });
+      if (!anchor) list.scrollTop = saved.top;
+      else {
+        var bounds = list.getBoundingClientRect(), scale = bounds.height / list.clientHeight || 1;
+        list.scrollTop += (anchor.getBoundingClientRect().top - bounds.top) / scale - saved.offset;
+      }
+    }
+    this.chatScrollSize = { height: list.scrollHeight, client: list.clientHeight };
+  }
   componentWillUnmount() {
+    this.chatScrollObserver?.disconnect();
     clearInterval(this.clock); clearInterval(this.vI);
     var G = this.G || {}; Object.keys(G).forEach(function (k) { G[k].forEach(clearTimeout); });
     var I = this.I || {}; Object.keys(I).forEach(function (k) { I[k].forEach(clearInterval); });
@@ -5176,10 +5217,10 @@ class Component extends DCLogic {
     this.later(function () { self.setState({ hint: true }); }, 700, "hint");
     this.later(function () { self.setState({ hint: false }); }, 3600, "hint");
   }
-  goHome() {
+  goHome(chat) {
     this.clear("hint"); this.leave();
     if (this.S().secure) return this.setState({ secure: false, screen: "lock", view: null, shade: false, chat: "input", hint: false, heads: false, stack: [] });
-    this.setState({ view: null, shade: false, chat: "input", hint: false, heads: false, stack: [], drawer: false, drawerQ: "" });
+    this.setState({ view: null, shade: false, chat: chat === "sheet" || chat === "full" ? chat : "input", hint: false, heads: false, stack: [], drawer: false, drawerQ: "" });
   }
   openView(k, patch, chat, opts) {
     if (!isMvpView(k)) return this.toast("This app is deferred from the MVP");
@@ -5224,8 +5265,8 @@ class Component extends DCLogic {
 
   /* ---- gestures ---- */
   scale(el) { var sc = el && el.closest ? el.closest("[data-screen]") : null; var r = (sc || el).getBoundingClientRect(); return { r: r, s: r.width / 412 || 1 }; }
-  gDown(e) { var o = this.scale(e.currentTarget); this.g = { x: (e.clientX - o.r.left) / o.s, y: (e.clientY - o.r.top) / o.s, cx: e.clientX, cy: e.clientY, s: o.s }; }
-  gUp(e) { var g = this.g; this.g = null; if (!g) return; this.swipe(g, (e.clientX - g.cx) / g.s, (e.clientY - g.cy) / g.s); }
+  gDown(e) { if (e.target.closest?.("[data-alpha-transcript]")) { this.g = null; return; } var o = this.scale(e.currentTarget); this.g = { x: (e.clientX - o.r.left) / o.s, y: (e.clientY - o.r.top) / o.s, cx: e.clientX, cy: e.clientY, s: o.s }; }
+  gUp(e) { var g = this.g; this.g = null; if (!g || window.getSelection()?.isCollapsed === false) return; this.swipe(g, (e.clientX - g.cx) / g.s, (e.clientY - g.cy) / g.s); }
   swipe(g, dx, dy) {
     var S = this.S(); var T = 46; var ax = Math.abs(dx), ay = Math.abs(dy);
     if (ax < T && ay < T) return;
@@ -5429,10 +5470,10 @@ class Component extends DCLogic {
       } };
     });
 
-    var msgs = S.msgs.slice().reverse().map(function (m) {
+    var msgs = S.msgs.map(function (m) {
       var c = m.card || {}; var t = c.type;
       return {
-        text: m.text, isUser: m.from === "user", isAgent: m.from === "agent", c: c,
+        id: m.id, text: m.text, isUser: m.from === "user", isAgent: m.from === "agent", c: c,
         cAgenda: t === "agenda", cEvent: t === "event", cDigest: t === "digest", cNote: t === "note", cFlow: t === "flow", cSummary: t === "summary", cDraft: t === "draft", cCall: t === "call", cGeneric: t === "generic",
         gIcon: IC[c.icon] || IC.spark, evIcon: c.act && !c.done ? IC.plus : IC.check, callIni: c.ini || ((c.who || "").split(" ").map(function (w) { return w.charAt(0); }).join("").slice(0, 2)),
         sumSave: t === "summary" && !c.done && !!c.act, sumOpen: t === "summary" && !c.act && !!c.go,
@@ -5487,12 +5528,12 @@ class Component extends DCLogic {
     return Object.assign(out, {
       assistantSurface: assistantOnly, notAssistantSurface: !assistantOnly, closeAssistant: closeAssistant,
       mvpMessages: isMvpView("messages"),
-      ic: IC, vars: vars, rootRef: rootRef, frame: th.frame, clock: clock, dateStr: dateStr, name: name,
+      ic: IC, iconAssets: ICON_ASSETS, vars: vars, rootRef: rootRef, frame: th.frame, clock: clock, dateStr: dateStr, name: name,
       isBoot: S.screen === "boot", isOff: S.screen === "off", isLock: S.screen === "lock", isOn: isOn, isView: isView,
       viewBg: imm.dark ? "#000000" : "var(--bg)", viewFg: imm.dark ? "#ffffff" : "var(--fg)", sbColor: sbColor, homeIndicatorColor: out.photos && out.photos.albumManager ? "var(--fg)" : sbColor,
       systemShell: P.systemShell !== false,
-      showAppBack: P.systemShell === false && isOn && isView && !S.shade && !panelOpen,
-      backToApps: function () { self.goHome(); },
+      showAppBack: P.systemShell === false && isOn && isView && !S.shade,
+      backToApps: function (event) { if (event && event.detail > 0 && event.currentTarget && event.currentTarget.hasAttribute("data-alpha-chat-home") && self.swallowed()) return; self.goHome(); },
       showStatus: !P.nativeSystemChrome && S.screen !== "boot" && S.screen !== "off" && !imm.noStatus, micLive: S.voice === "listening",
       showIndicator: !P.nativeSystemChrome && (isOn || S.screen === "lock"),
       toast: S.toast, toastOn: !!S.toast, toastUndo: !!S.toastUndo, toastPadR: S.toastUndo ? 5 : 18, doUndo: function () { var f = self.undoFn; self.undoFn = null; self.clear("t"); self.setState({ toast: "", toastUndo: false }); if (f) f(); },
@@ -5507,8 +5548,8 @@ class Component extends DCLogic {
       msgs: msgs, typing: S.typing, sugg: sugg, showSugg: panelOpen && !S.draft && !S.typing && !voiceOn,
       panelComposer: panelOpen && !voiceOn,
       panelH: !isOn ? 0 : (S.chat === "full" ? 915 : (S.chat === "sheet" ? 560 : 0)), panelR: S.chat === "full" ? "0px" : "30px 30px 0 0",
-      panelOp: panelOpen ? 1 : 0, panelPE: panelOpen ? "auto" : "none", panelTop: S.chat === "full" ? 40 : 4,
-      scrimOp: isOn && S.chat === "sheet" ? 1 : 0, scrimPE: isOn && S.chat === "sheet" ? "auto" : "none",
+      panelOp: panelOpen ? 1 : 0, panelPE: panelOpen ? "auto" : "none", panelTop: S.chat === "full" && this.props.systemShell !== false ? 40 : 4,
+      scrimOp: 0, scrimPE: "none",
       sizeIcon: S.chat === "full" ? IC.shrink : IC.expand, sizeLabel: S.chat === "full" ? "Shrink chat" : "Expand chat",
       showComposer: showComposer, showPill: showPill, cmpBottom: 28,
       cmpPlaceholder: (mod && mod.placeholder) ? mod.placeholder : "Ask " + name,
@@ -5561,4 +5602,6 @@ class Component extends DCLogic {
 
 
 
+// Preserve canonical path contracts; resolve display after every IC extension exists.
+var ICON_ASSETS = Object.fromEntries(Object.entries(iconCatalog.ic).map(function (entry) { return [IC[entry[0]], '/icons/lucide/' + entry[1] + '.svg']; }));
 export { Component, VIEWS, ORDER, mockAttentionRows, HOME_DEFAULTS };

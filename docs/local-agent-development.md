@@ -1,8 +1,10 @@
 # Local agent setup
 
-Alpha uses a local Eliza runtime in both environments. Android runs the process in `ElizaAgentService` inside the app's sandbox and communicates over authenticated native socket IPC. Browser development runs the same composed Eliza source on the development computer, with a private Vite bridge. Neither path requires Nitro, enclave admission, or Cloud sign-in.
+Alpha runs the real Eliza runtime locally in both environments. Android runs a resident process in the app sandbox over authenticated native socket IPC. Browser development runs the pinned source on the Mac through a private Vite bridge. The two environments keep separate profiles, history, credentials and acceptance evidence.
 
-This first implementation uses **hosted Cerebras inference**. The agent, conversation database, approvals and receipts are local; prompts and selected context go to Cerebras. This is not an offline language model. Existing on-device speech is a separate integration.
+The standalone Android app signs in to an existing Eliza Cloud account, checks account-bound credits, and binds the resident runtime to the supported billed Cloud model (`cerebras/qwen-3.8-27b`). It does not provision a hosted agent. Microphone, notifications and local app access follow account readiness. The agent and local stores remain on the phone; model requests and explicitly shared context use Cloud inference.
+
+Mac development uses direct Cerebras (`qwen-3.8-27b`) with an existing host credential. This route does not qualify Android billing or permission behavior. Generic product voice uses the selected Eliza Cloud account. Explicitly labelled **Read locally** stays local when offered; the local Whisper/Kokoro setup below is optional development qualification.
 
 ## Browser development
 
@@ -12,16 +14,16 @@ Use Node 24.15.0 and Bun 1.4.2, then:
 npm ci
 npm run agent:prepare
 npm run agent:test
-npm run dev
+bun run dev
 ```
 
-For browser-only source preparation without mobile setup, `npm run agent:prepare -- --source-only` creates the directory reported by the command. In that prepared directory, `bun install --frozen-lockfile --ignore-scripts --filter @elizaos/app --backend=copyfile` installs the locked host dependencies. Set `ALPHA_ELIZA_SOURCE` to that absolute directory when running `npm run dev`. This path was exercised against upstream `eba10c3eaad0923e777062b1b946911bc31d7fbd` at consumer `7edcbad1a672f11799119af3dfe83a3a818a4760`; it does not build or qualify Android. Keep the source guard enabled and do not reuse dependencies through a symlink to another runtime checkout.
+`npm run agent:prepare` reproduces the immutable `upstream.lock.json` source and runs its normal `bun install --frozen-lockfile`. It does not build an APK. `--source-only` deliberately skips dependency installation; `bun run dev` requires installed dependencies in that prepared checkout. Keep the source guard enabled and use independent metadata/dependencies rather than a symlink to another runtime checkout.
 
 Before starting, configure `CEREBRAS_API_KEY` in the host environment or the owner-only file `~/.config/alphaphone/cerebras-key`. Do not put it in a `VITE_` variable, checked-in file, browser field, URL or command-line argument. The existing private key file is supported. The current model defaults to `qwen-3.8-27b`.
 
-`npm run dev` starts the agent on this computer in the background together with the development server (`npm run dev:local` is the same command). Open `http://127.0.0.1:5317`: on first launch the app connects to that local agent automatically; afterwards your saved choice (including **Continue offline**) is kept, and **Start local agent** reconnects. Extra arguments go to Vite, for example `npm run dev -- --port 5400`. Conversation history comes from the agent's local database. Use `npm run dev:ui` for a renderer-only development server with no agent.
+`bun run dev` starts the agent on this computer in the background together with the development server (`npm run dev:local` is the same command). Open `http://127.0.0.1:5317`: on first launch the app connects to that local agent automatically; afterwards your saved choice (including **Continue offline**) is kept, and **Start local agent** reconnects. Extra arguments go to Vite, for example `bun run dev --port 5199` for the Alpha comparison preview. The default port is 5317. Conversation history comes from the agent's local database. Use `npm run dev:ui` for a renderer-only development server with no agent.
 
-`npm run dev` owns the host and Vite child processes and stops them on Ctrl-C. It refuses an occupied agent port or a live process already using its profile. Its default profile is `~/.local/share/alphaphone/browser-agent`, with owner-only credentials, logs and browser action journal. `ALPHA_REMOTE_PROFILE` and `ALPHA_REMOTE_PORT` permit a separate profile/port. `ALPHA_ELIZA_SOURCE` is an explicit development override; evidence for one source snapshot does not qualify another.
+`bun run dev` owns the host and Vite child processes and stops them on Ctrl-C. It refuses an occupied agent port or a live process already using its profile. Its default profile is `~/.local/share/alphaphone/browser-agent`, with owner-only credentials, logs and browser action journal. `ALPHA_REMOTE_PROFILE` and `ALPHA_REMOTE_PORT` permit a separate profile/port. `ALPHA_ELIZA_SOURCE` is an explicit development override; evidence for one source snapshot does not qualify another.
 
 The bridge accepts same-origin requests from the loopback development page only. It allows the conversation, device-action and workflow APIs, injects a host-owned machine session, and removes the upstream session ID because that ID is itself a bearer token. Credentials are not embedded in the web bundle. Device enrollment keys and durable action receipts are kept in the private development profile. Browser development uses the available browser-backed Notes, Calendar and Reminders adapters. These are local browser stores and development capabilities, not access to Android providers or native permissions; proposals still require the selected object/source and explicit review.
 
@@ -29,9 +31,11 @@ The development host launches Bun with `--conditions=eliza-source` and `--no-ins
 
 Workflow drafts in local browser development persist in the private host profile, separately scoped to the selected owner/agent. Atomic compare-and-exchange rejects stale-tab changes. These development drafts are not encrypted; the editor says so. Android continues to use its encrypted native draft store. Draft storage does not save or execute a workflow on the agent until the separate reviewed submission.
 
-## Browser agent speech
+## Speech routes and optional local development
 
-With the real local agent selected, Notes recording transcription uses the host's standalone Whisper provider and transcript playback uses its standalone Kokoro provider. Captured bytes and text pass through the authenticated development bridge; credentials stay on the host. Playback stops on cancellation or connection changes. Failed agent synthesis is shown as an error without silently selecting another speech provider. Offline browser development retains explicit transcript review and installed local browser speech.
+Chat voice, Notes dictation and generic Maps/workflow speech select Eliza Cloud in the product. A valid saved Cloud account is required; opening voice must reuse that account rather than request a new sign-in unnecessarily. Notes recordings remain local until the user explicitly requests transcription. Chat voice has a separate conversation controller and does not open Notes. Actual microphone, playback, backend STT selection and Android permission acceptance require their own qualification; text inference readiness does not prove them.
+
+The following local Whisper/Kokoro instructions describe optional development asset qualification, not the default product route. The active Mac comparison profile keeps local ASR and TTS off. A private `local-speech.json` may save supported nonsecret asset settings; explicit environment choices take precedence. Never store credentials in that file or run its audio qualification without authorization.
 
 Whisper uses the installed assets described in the review ledger. On macOS, browser development selects the installed CLI's automatic compute backend and runs a private synthetic-silence warm-up before starting the agent. This moves first-use kernel compilation into startup. `ALPHA_WHISPER_BACKEND=cpu` explicitly retains CPU execution; other platforms default to CPU. Automatic selection requires the current reproduced runtime source, and a failed warm-up stops startup rather than reporting readiness. This is host acceleration, not Android speech qualification or a guarantee of the device latency target.
 
@@ -132,18 +136,21 @@ gates separate from a working browser host.
 
 ## Android setup
 
-Prepare the runtime and stage its mobile payload:
+Use the normal resident build pipeline when native or runtime changes need device qualification:
 
 ```sh
-npm run agent:prepare
-npm run agent:stage-android
+npm run android:build:local
 ```
+
+Iterate on UI at `http://127.0.0.1:5199/` with `bun run dev --port 5199`. This does not need a connected phone. Use an owned emulator for repeatable Android scenarios and Seeker for native providers, service lifecycle and actual screen-off delivery. Browser evidence does not establish these device behaviors.
 
 The staging command builds the Android mobile agent bundle, runs upstream's host-Bun module initialization check, and stages pinned ARM64 and x86_64 Bun/musl/runtime artifacts. Executables are packaged as extracted JNI libraries for an ordinary APK; it does not require root, writable-directory execution or disabling SELinux. The upstream staging step includes its small embedding artifact, not an offline text-generation model. Generated assets and binaries are ignored by Git and reproducible from the checked-in scripts and manifests.
 
-When an APK build is wanted, `npm run android:build:local` checks the pinned checkout and speech AAR, then runs preparation, `agent:build-workflow-worker`, staging and the existing build/verification of both standalone and launcher variants. Rerunning it reuses the prepared source and worker artifact only when they verify against the current source stamp; a stale worker artifact is reported, never rebuilt over. The ordinary `android:build` uses whatever payload has already been staged and stops before Gradle, naming the command to run, when the prepared source or (for distribution builds) the staged payload is missing or was staged from a different preparation. Release APKs without the staged payload are never recorded distributable; `npm run android:build -- --allow-unpackaged-runtime` builds them as developer APKs recorded `distributable: false`. Preparation, worker build and staging start their children in the prepared checkout without the AI-agent variables Turborepo detects (`AI_AGENT`, `CLAUDECODE` and others, see `TURBO_AGENT_DETECTION_ENV` in `scripts/local-agent-source.mjs`), so Turborepo does not append agent guidance to that checkout's `AGENTS.md`.
+When an APK build is wanted, `npm run android:build:local` checks the pinned checkout and speech AAR, then runs preparation, `agent:build-workflow-worker`, staging and the existing build/verification of both standalone and launcher variants. Rerunning it reuses the prepared source and worker artifact only when they verify against the current source stamp; a stale worker artifact is reported, never rebuilt over. The ordinary `android:build` uses whatever payload has already been staged and stops before Gradle, naming the command to run, when the prepared source or (for distribution builds) the staged payload is missing or was staged from a different preparation. Unpackaged developer artifacts never qualify resident acceptance. Signing, speech functionality and overall release acceptance remain separate from a successful packaging check. Preparation, worker build and staging start their children in the prepared checkout without the AI-agent variables Turborepo detects (`AI_AGENT`, `CLAUDECODE` and others, see `TURBO_AGENT_DETECTION_ENV` in `scripts/local-agent-source.mjs`), so Turborepo does not append agent guidance to that checkout's `AGENTS.md`.
 
-In the Android connection chooser, expand **Model provider**, enter a Cerebras key and model, and save. The native bridge stores the configuration encrypted with Android Keystore and injects it into the child process environment at startup. It never returns the provider key to the renderer. Then select **Start local agent**. **Stop local agent** requests native shutdown and waits for stopped process/service/socket status before reporting success; disconnecting the UI alone does not imply background execution has stopped. Changed provider settings take effect after a stop/start.
+In the standalone Android app, use the existing Eliza Cloud account flow. The app checks real account-bound credits before local access setup; top-up opens that account's Cloud page. It binds a credential reference to the supported Cloud model in native encrypted storage and reuses the saved account on restart. No provider key belongs in the renderer or source, and no hosted agent is provisioned. Account/logout changes retire the old binding and runtime; changed provider selections require a new admitted runtime launch.
+
+**Stop local agent** requests native shutdown and waits for process/service/socket status before reporting success. Disconnecting the UI alone does not prove the background runtime stopped. Existing direct-provider records are legacy development compatibility, not the product onboarding path.
 
 The native bridge enrolls and verifies its own local owner session. Conversation, workflow and device-action calls retain the existing review, selected-context, journal, receipt and reconciliation boundaries. Both environments select the upstream store capability policy, independently of build-channel selection. Browser development uses the lean plugin profile; Android uses the mobile allow-list. Desktop coding/PTY surfaces are excluded. Runtime location does not waive action approvals or provider consent.
 

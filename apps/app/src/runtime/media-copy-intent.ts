@@ -10,7 +10,7 @@ function decode(value:Archive):MediaCopyIntent|null{
 }
 let document:Promise<BrowserDomainDocument>|undefined;
 export async function mediaCopyIntentDocument(){
- if(Capacitor.getPlatform()==='android')throw Error('Browser saved-copy recovery is unavailable on this device');
+ if(Capacitor.getPlatform()==='android')throw Error('Saved-copy recovery is unavailable on this device');
  return document??=Promise.all([import('../browser/domain-document'),import('../browser/documents')]).then(([{BrowserDomainDocument},{browserDocuments}])=>new BrowserDomainDocument(browserDocuments,mediaCopyIntentKey,()=>{const raw=localStorage.getItem(mediaCopyIntentKey);return raw===null?null:JSON.stringify({raw});}));
 }
 export async function readMediaCopyIntent(signal?:AbortSignal){

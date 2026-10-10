@@ -26,6 +26,7 @@ if(fs.existsSync(directory)){
  fs.writeFileSync(stampFile,JSON.stringify(stamp,null,2)+'\n');
 }
 verifySource(directory,lock.commit);
-if(!process.argv.includes('--source-only'))run(process.env.ALPHA_BUN||'bun',['install','--frozen-lockfile']);
+const scriptRunner=process.env.npm_execpath;
+if(!process.argv.includes('--source-only'))run(process.env.ALPHA_BUN||(scriptRunner&&/^bun(?:\.exe)?$/.test(path.basename(scriptRunner))?scriptRunner:'bun'),['install','--frozen-lockfile']);
 verifySource(directory,lock.commit);
 console.log(`Prepared local runtime: ${directory}`);

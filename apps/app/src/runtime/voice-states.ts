@@ -33,8 +33,8 @@ export function speechProgressMessage(progress?: { phase: string; loaded?: numbe
   if (progress?.phase === 'download' && Number.isFinite(progress.loaded) && Number.isFinite(progress.total) && progress.total! > 0)
     return `Loading the speech model from this app: ${megabytes(progress.loaded!)} of ${megabytes(progress.total!)} MB. Nothing is uploaded.`;
   if (progress?.phase === 'download') return 'Loading the speech model from this app. Nothing is uploaded.';
-  if (progress?.phase === 'initialize') return 'Starting the speech model in this browser. Nothing is uploaded.';
-  return 'Transcribing in this browser. Nothing has been saved or uploaded.';
+  if (progress?.phase === 'initialize') return 'Starting the speech model on this device. Nothing is uploaded.';
+  return 'Transcribing on this device. Nothing has been saved or uploaded.';
 }
 
 const field = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 128 ? value : undefined;

@@ -1,5 +1,6 @@
 import {browserDevProfile as devProfileQuery} from '../browser/dev-profile';
 import {testMocksEnabled,devSurfacesEnabled} from '../build-flags';
+import {openCalendarRecovery} from '../browser/calendar-recovery';
 import {openNotificationRecovery} from '../browser/notification-recovery';
 import {openAlertSoundRecovery,openDevicePreferencesRecovery,openDeviceRolesRecovery} from '../browser/preference-recovery';
 import {notificationDocument} from '../browser/notification-store';
@@ -9,7 +10,6 @@ import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import { connectionController } from '../runtime/connection-ui';
-import { chooseVoiceRoute, cloudSpeechDisclosure, speakRepliesEnabled, setSpeakReplies, voicePreferenceKeys, voiceRoutePreference } from '../runtime/voice-selection';
 import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, gmailReadable, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
@@ -143,7 +143,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   async function disconnectGmail(account: GmailAccount) {
     const cloud = connectionController.getCloudClient(), instance = owner;
     if (!cloud || !account.connectionId || gmailBusy) return;
-    if (!window.confirm(`Disconnect ${account.label} from Alpha Phone?\n\nEliza Cloud deletes its stored Gmail access for this account and this phone stops reading it. No mail is deleted. Local drafts stay on this phone until you discard them.`)) return;
+    if (!window.confirm(`Disconnect ${account.label} from Alpha Phone?\n\nEliza Cloud deletes its stored Gmail access for this account and this app stops reading it. No mail is deleted. Local drafts stay in this app until you discard them.`)) return;
     gmailBusy = account.connectionId; gmailNotice = ''; changed();
     try {
       const result = await disconnectGmailAccount(cloud.client, account.connectionId, new AbortController().signal);
@@ -259,8 +259,6 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       if (next !== lastBinding) { lastBinding = next; void refreshCapabilities(); }
     });
     this.deviceResume = DailyApps.addListener('appResumed', () => { void refresh(); void refreshCapabilities(); }).catch(() => null);
-    this.voicePreferencesListener = () => changed();
-    window.addEventListener(voicePreferenceKeys().event, this.voicePreferencesListener);
   };
   p.componentDidUpdate = function (previousProps: Bag, previousState: Bag) {
     update?.call(this, previousProps, previousState);
@@ -280,7 +278,6 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     window.removeEventListener('storage',this.appearanceStorageListener);
     window.removeEventListener('pageshow',this.appearanceResumeListener);
     this.settingsConnectionUnsubscribe?.();
-    window.removeEventListener(voicePreferenceKeys().event, this.voicePreferencesListener);
     this.passwordLifecycle?.();
     void this.deviceResume?.then((listener: any) => listener?.remove()); unmount.call(this);
   };
@@ -298,23 +295,12 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const account = connection.cloudAccount;
     const target = connection.session ? connection.name : 'Not connected';
     const runtimeLocation=!connection.session?'Not connected':connection.kind==='resident'?(Capacitor.isNativePlatform()?'On this device':'On this computer · development'):'Remote agent';
-    const cloudLabel = account ? `${account.environment} · ${account.userId.slice(0, 8)}` : 'Not signed in';
+    const cloudLabel = account ? account.email||`Account ${account.userId.slice(0, 8)}` : 'Not signed in';
     const manage = (page: string) => () => void device.openSettings({ page }).catch(() => api.toast('This Android settings page is unavailable.'));
     const info = (label: string, val: string): Bag => ({ kInfo: true, label, val, hasVal: true, noAB: true });
     const nav = (label: string, page: string): Bag => ({ kNav: true, label, lbl: label, chev: true, noAB: true, go: manage(page) });
     const group = (rows: Bag[]) => ({ css: 'background:var(--s2);padding:4px 0', rows });
-    // Speech route and Speak replies. On this device is the default; Cloud needs a signed-in account
-    // and an explicit choice after the credit disclosure. Speak replies is off unless turned on.
-    const speechRows = (): Bag[] => {
-      const route = voiceRoutePreference(), saved = (ok: boolean) => { if (!ok) api.toast('This speech setting could not be saved. Nothing changed.'); changed(); };
-      const rows: Bag[] = [info('Speech', route === 'cloud' ? 'Eliza Cloud (uses credits)' : 'On this device')];
-      if (route === 'cloud') rows.push({ kNav:true, label:'Use on-device speech', lbl:'Use on-device speech', chev:true, noAB:true, go:()=>saved(chooseVoiceRoute('device')) });
-      else if (account) rows.push({ kNav:true, label:'Use Eliza Cloud speech (uses credits)', lbl:'Use Eliza Cloud speech (uses credits)', chev:true, noAB:true, go:()=>{ if (window.confirm(`${cloudSpeechDisclosure()} Use Eliza Cloud speech?`)) saved(chooseVoiceRoute('cloud', { disclosed: 'cloud-speech-uses-credits' })); } });
-      else rows.push(info('Eliza Cloud speech', 'Cloud sign-in required'));
-      const speak = speakRepliesEnabled();
-      rows.push({ kNav:true, label:'Speak replies', lbl:'Speak replies', val:speak ? 'On' : 'Off', hasVal:true, chev:true, noAB:true, go:()=>saved(setSpeakReplies(!speak)) });
-      return rows;
-    };
+    const speechRows = (): Bag[] => [info('Speech', 'Eliza Cloud (uses credits)')];
     const problemCount = crashLog ? crashLog.entries.length : null;
     const problemsRow = (): Bag => ({ kNav:true, label:'Problem log', lbl:'Problem log', val: problemCount === null ? 'Unavailable' : problemCount ? `${problemCount} recorded` : 'None recorded', hasVal:true, chev:true, noAB:true, go:()=>{ api.set({ page:'problems' }); void refresh(); } });
     const diagnosticsRow = (): Bag => ({ kNav:true, label:'Export diagnostics', lbl: diagnosticsBusy ? 'Preparing diagnostics…' : 'Export diagnostics', chev:true, noAB:true, go:()=>void exportDiagnostics(api) });
@@ -326,7 +312,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       'Accounts': account ? 'Eliza Cloud connected' : 'Not signed in', 'Connections': gmail,
       'Battery': percent, 'Models': target, 'About': facts.appVersion || 'Unavailable',
       'Notifications': typeof delivery.appEnabled !== 'boolean' ? 'Unavailable' : !delivery.appEnabled || !delivery.permissionGranted ? 'App notifications off' : delivery.channels?.some((c:Bag)=>c.blocked||c.groupBlocked) ? 'Some channels blocked' : 'App notifications allowed',
-      'Sound & vibration': Capacitor.isNativePlatform()?'Android settings':'Browser device settings',
+      'Sound & vibration': Capacitor.isNativePlatform()?'Android settings':'App sound settings',
     };
     for (const page of out.stack) {
       if (page.isTop) {
@@ -353,6 +339,18 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           info('Compatibility','Proton may show a browser warning. Check the website address before filling.'),
           ...(native?[action('Choose password provider in Android','settings'),...(provider.installation==='installed'?[action('Open Proton Pass','open')]:provider.installation==='absent'?[action('Get Proton Pass from Proton','install')]:[]),{kNav:true,label:'Refresh password provider status',lbl:'Refresh password provider status',chev:true,noAB:true,go:()=>void refresh()}]:[]),
         ]);
+        page.groups.push(group([{kNav:true,label:'Calendar',lbl:'Calendar',chev:true,noAB:true,go:()=>api.set({page:'calendar'})}]));
+        if(state.page==='calendar'){
+          const display=views.calendar.displaySources?.(),rows:Bag[]=[info('Display only','Agent access is reviewed separately')];
+          if(display){rows.push(info(display.native?'Device calendars':'In this app',display.loading?'Loading calendars…':display.status));
+            rows.push({kNav:true,label:display.native?'Connect or refresh device calendars':'Refresh calendar',lbl:display.native?'Connect or refresh device calendars':'Refresh calendar',busy:display.loading,chev:true,noAB:true,go:display.connect});
+            for(const source of display.sources||[])if(display.native)rows.push(info(source.name,source.account));else rows.push({kCalendarDisplay:true,label:source.name,sub:source.account,on:source.on,busy:display.loading,aria:`Show ${source.name} calendar`,track:api.track(source.on),kx:api.kx(source.on),toggle:()=>void source.change('visibility'),color:()=>void source.change('color'),colorLabel:`Change ${source.name} calendar color`,sw:({acc:'var(--acct)',fg:'var(--fg)',mut:'var(--mut)'} as Bag)[source.color]||'var(--acct)'});
+            if(display.native)rows.push(info('Calendar visibility','Managed in Android Calendar'));
+          }else rows.push(info('Calendar access','Not available in this version'));
+          const groups=[{...group(rows),cap:'Calendars shown in Alpha',hasCap:true}];
+          if(!Capacitor.isNativePlatform())groups.push({...group([{kNav:true,label:'Calendar backups',lbl:'Calendar backups',sub:'Events saved in this app',hasSub:true,chev:true,noAB:true,go:()=>openCalendarRecovery()}]),cap:'Saved data',hasCap:true});
+          out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Calendar',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups});
+        }
         page.groups.push(group([{kNav:true,label:'Password manager',lbl:'Password manager',chev:true,noAB:true,go:()=>api.set({page:'password-provider'})}]));
         if(PASSWORD_PAGES.includes(state.page)){
           const helpers={info,group,toast:(message:string)=>api.toast(message),set:(patch:Bag)=>api.set(patch),ic:api.ic||{}};
@@ -391,7 +389,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         continue;
       }
       if (page.title === 'Accounts') {
-        page.groups = [group([info('Eliza Cloud', cloudLabel), { kNav:true, label:'Manage Cloud account', lbl:'Manage Cloud account', chev:true, noAB:true, go:()=>connectionController.open() }, nav('Device accounts in Android', 'accounts')])];
+        page.groups = [group([info('Eliza Cloud', cloudLabel), { kNav:true, label:'Manage Cloud account', lbl:'Manage Cloud account', chev:true, noAB:true, go:()=>connectionController.openCloudAccount() }, nav('Device accounts in Android', 'accounts')])];
       } else if (page.title === 'Connections') {
         const connected = gmailAccounts.filter(a => a.connected && a.connectionId);
         page.groups = [group([info('Gmail', gmail),
@@ -404,7 +402,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (state.page === 'character' && page.hero?.kChar === true) {
         // The reference character page deliberately has no visible title.
         page.groups = browserDevProfile?[group([
-          info('Speech','Record and review in this browser'),
+          info('Speech','Record and review in this app'),
           {kNav:true,label:'Wake assistant',lbl:'Wake assistant',chev:true,noAB:true,go:()=>void owner?.startVoice()},
           {kNav:true,label:'Open conversation',lbl:'Open conversation',chev:true,noAB:true,go:()=>api.composeContentQuestion('')},
           {kNav:true,label:'Agent connection',lbl:'Agent connection',chev:true,noAB:true,go:()=>connectionController.open()},
@@ -430,8 +428,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Mobile data') {
         page.groups = [group([info('Mobile connection', active('cellularActive')), nav('Manage mobile networks', 'mobile')])];
       } else if (page.title === 'Models') {
-        page.hero = { ...page.hero, big: target, sub: Capacitor.isNativePlatform()?'Conversation uses the selected agent; speech can run on this phone':'Conversation uses the selected agent; local speech runs on the development computer when configured' };
-        page.groups = [group([info('Connection', connection.kind), info('Inference model', 'Not reported by agent'), info('On-device speech', localSpeech), { kNav:true, label:'Check on-device speech', lbl:speechChecking?'Checking speech…':'Check on-device speech', chev:true, noAB:true, go:()=>void checkSpeech() }])];
+        page.hero = { ...page.hero, big: target, sub: 'Conversation uses the selected agent. Voice uses Eliza Cloud.' };
+        page.groups = [group([info('Connection', connection.kind), info('Inference model', 'Not reported by agent'), info('Voice', account ? 'Eliza Cloud' : 'Sign-in required'), { kNav:true, label:'Eliza Cloud account', lbl:'Eliza Cloud account', chev:true, noAB:true, go:()=>connectionController.openCloudAccount() }])];
       } else if (page.title === 'Developer') {
         page.groups = [group([info('App version', facts.appVersion || buildVersion), info('Agent memory', connection.session?'Usage not reported by agent':'Not connected')]), group([problemsRow(), diagnosticsRow()]), group([nav('Android developer settings', 'developer')])];
       } else if (page.title === 'Notifications') {
@@ -439,7 +437,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         const run = async (task:()=>Promise<void>)=>{if(notificationBusy)return;notificationBusy=true;changed();const current=owner;try{await task();if(owner===current)await refresh();}catch{if(owner===current)api.toast('Notification settings changed or are unavailable. Refresh and try again.');}finally{notificationBusy=false;if(owner===current)changed();}};
         const policy = (changes:Bag)=>void run(async()=>{await notifications.setNotificationPolicy({expectedRevision:cross.revision,...changes});if(changes.history===false)history=[];});
         const selected:Bag[]=cross.apps||[];
-        const crossRows:Bag[]=[info('Other apps',typeof cross.accessGranted!=='boolean'?'Unavailable':!cross.enabled?'Collection off':cross.paused?(testMocksEnabled?'Paused after mock mode':'Paused · resume to collect'):!cross.accessGranted?'Android access not granted':!cross.connected?'Waiting for Android listener':'Selected apps connected'),info('Notification privacy',Capacitor.isNativePlatform()?'Android grants broad access. Alpha reads only selected apps; previews and history are separate choices.':(devSurfacesEnabled?'Development events are stored in this browser. ':'Notification events are stored in this browser. ')+'Previews and metadata history are separate choices.'),info('Agent access','Notification content is not sent to your agent')];
+        const crossRows:Bag[]=[info('Other apps',typeof cross.accessGranted!=='boolean'?'Unavailable':!cross.enabled?'Collection off':cross.paused?(testMocksEnabled?'Paused after mock mode':'Paused · resume to collect'):!cross.accessGranted?'Android access not granted':!cross.connected?'Waiting for Android listener':'Selected apps connected'),info('Notification privacy',Capacitor.isNativePlatform()?'Android grants broad access. Alpha reads only selected apps; previews and history are separate choices.':(devSurfacesEnabled?'Preview events are stored in this app. ':'Notification events are stored in this app. ')+'Previews and metadata history are separate choices.'),info('Agent access','Notification content is not sent to your agent')];
         if(cross.revision){
           crossRows.push(custom(cross.enabled?'Turn off other-app collection':'Enable selected-app collection',()=>{
             if(Capacitor.isNativePlatform()&&!cross.enabled&&!window.confirm('Enable collection for your selected apps? Android grants broad notification access. Alpha filters to your selection before reading text. Previews and local metadata history remain separate choices.'))return;
@@ -467,7 +465,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         // Alpha declares no Contacts permission; Calendar is the fourth runtime grant it uses.
         const permissionLabels=new Set(['Microphone','Location','Camera','Calendar']);
         const permissionValue=(label:string)=>{
-          if(!Capacitor.isNativePlatform())return ({granted:'Granted in browser',prompt:'Ask when used',denied:'Blocked in browser',unknown:'Managed by browser'} as Bag)[facts.permissionStates?.[label]]??'Managed by browser';
+          if(!Capacitor.isNativePlatform())return ({granted:'Granted for this app',prompt:'Ask when used',denied:'Blocked by your system',unknown:'Managed by your system'} as Bag)[facts.permissionStates?.[label]]??'Managed by your system';
           if(typeof facts.permissions?.[label]!=='boolean')return 'Unavailable';
           if(label==='Location')return facts.locationAccess==='precise'?'Precise location allowed':facts.locationAccess==='approximate'?'Approximate location allowed':'Not allowed';
           return facts.permissions[label]?'Allowed for Alpha':'Not allowed';
@@ -502,9 +500,9 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     }
     if(!Capacitor.isNativePlatform()) {
       for(const page of out.stack){
-        if(page.title==='About')page.groups=[group([info('Alpha Phone',buildVersion),info('Runtime',devSurfacesEnabled?'Browser development':'Web browser'),info('Agent execution',runtimeLocation),info('Agent',target),info('Inference model','Not reported by agent'),info('Storage','This browser profile')]),group([problemsRow(),diagnosticsRow()]),group([licensesRow()])];
+        if(page.title==='About')page.groups=[group([info('Alpha Phone',buildVersion),info('Runtime',devSurfacesEnabled?'Development preview':'Web app'),info('Agent execution',runtimeLocation),info('Agent',target),info('Inference model','Not reported by agent'),info('Storage','App storage')]),group([problemsRow(),diagnosticsRow()]),group([licensesRow()])];
       }
-      const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Manage brightness in Android','Brightness').replaceAll('Manage sound in Android','Sound settings').replaceAll('Unavailable','Browser managed').replaceAll('Manage in Android','Browser device').replaceAll('in Android','in browser').replaceAll('Android settings','Browser device settings').replaceAll('Android Calendar','Browser calendar').replaceAll('Android device information','Browser device information').replaceAll('Android developer settings','Browser developer settings').replaceAll('Device accounts in Android','Browser accounts').replaceAll('On this phone','In this browser').replaceAll('on this phone','in this browser').replaceAll('Android access not granted','Development event access off').replaceAll('Waiting for Android listener','Waiting for local events').replaceAll('Selected apps connected','Selected development apps connected').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Browser setting').replaceAll('Wi-Fi transport · network names stay in Android settings','Development network');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
+      const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Manage brightness in Android','Brightness').replaceAll('Manage sound in Android','Sound settings').replace(/^Unavailable$/,'Managed by your system').replaceAll('Manage in Android','App settings').replaceAll('Device accounts in Android','System accounts').replaceAll('Wi-Fi transport · network names stay in Android settings','Network names stay in system settings').replaceAll('in Android','in system settings').replaceAll('Android settings','System settings').replaceAll('Android Calendar','App calendar').replaceAll('Android device information','System information').replaceAll('Android developer settings','App development settings').replaceAll('On this phone','In this app').replaceAll('on this phone','in this app').replaceAll('Android access not granted','Development event access off').replaceAll('Waiting for Android listener','Waiting for local events').replaceAll('Selected apps connected','Selected development apps connected').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Managed by your system');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
       return browserLabels(out);
     }
     return out;

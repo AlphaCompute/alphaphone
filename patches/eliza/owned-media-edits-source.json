@@ -1,5 +1,5 @@
 {
-  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "baseCommit": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
   "patch": "0073-owned-media-edits.patch",
   "sha256": "240df35def5e573ab640dcba4a1c94af24ee38bd4e15156e39ff9426f3fd37e7",
   "status": "Candidate for elizaOS develop; adds plugins/plugin-native-media (owned photo edits, filters, readback behind OwnedMediaConfig); JVM tests pass at 45242af; not yet consumed by Alpha's Gradle build; not submitted upstream",
@@ -21,16 +21,22 @@
     "plugins/plugin-native-media/test/native-host/owned-media.node.mjs"
   ],
   "files": {
+    "plugins/plugin-native-media/README.md": "c83fa80be9e41419baf3082deaf6ea64eece1d770221b218c59d2f4c62bd261b",
     "plugins/plugin-native-media/android/build.gradle": "81455a7129c51063553508d309f0a5612229b0243bd46ddc5beb5a630add3fce",
     "plugins/plugin-native-media/android/src/main/AndroidManifest.xml": "1e570e702bee2e36567e435018fdcfef63d57b889b80d9cc01fb221d615ef2f3",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/CaptureAdmission.java": "f3e5f390dfb490b28d3c50d1357199cbd988c6ce65049bba6e948eb4b458d68a",
     "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/MediaBytes.java": "c98e9ced9f5a5dd736eead4714f6ad1840bec3ffabb73c76e9ff141051dd2739",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedCaptures.java": "8ea8f9c1a5ea1bc6acefeca0766a44763a0232a14e4c33e0737ed6c60445dc57",
     "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedMediaConfig.java": "c92628aa07773fb3b99035e621dc6a378161c3dae72c76c9787222a5fd7d6ea7",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedMediaSelection.java": "36d165986a413b9e6ce0ae6e095689c5be258da348ae60deffcf3fe7c2ee9085",
     "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedPhotoEdits.java": "ae28a56d2b4bec8d98820cc8b279365a33105bc305b04d0eaee4320020a44b58",
     "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotoFilter.java": "25f5e0f8534f83bbfe5a02719c496bf5dd2c58b56fa929e183c025602958eb91",
     "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotoFilterMath.java": "9c5abae2c0896089faf941d68d62e54b7741eec5fb97d91d353a275ec1a411e9",
+    "plugins/plugin-native-media/docs/captures.md": "a81c14305aa5b69e80db19e76d3bec07a028e370abb486abad139abbeb067c29",
     "plugins/plugin-native-media/package.json": "59046bd885446e3124275de97fe6ccb16b20511cd1105df958b19ee9012753c0",
-    "plugins/plugin-native-media/README.md": "c83fa80be9e41419baf3082deaf6ea64eece1d770221b218c59d2f4c62bd261b",
-    "plugins/plugin-native-media/test/native-host/owned-media.node.mjs": "3f40fa571145ac85df0e9a7eb91d78cbdcadb0b82cd304c85520219d4395e2b6",
-    "plugins/plugin-native-media/test/native-host/OwnedMediaTest.java": "1c7f7c96902870667d992f56c21f1948448b1e7da56bf1dc3576d8566942dae3"
+    "plugins/plugin-native-media/test/native-host/OwnedCapturesTest.java": "a8d69127f9925c3dbbf29899bbf459d6edb2d5aaab716375498101a7c23f9ead",
+    "plugins/plugin-native-media/test/native-host/OwnedMediaTest.java": "1c7f7c96902870667d992f56c21f1948448b1e7da56bf1dc3576d8566942dae3",
+    "plugins/plugin-native-media/test/native-host/owned-captures.node.mjs": "f004bbcef431662405992807de0f16c6f99f3ce1310037c1bef35e21ba9bd5bc",
+    "plugins/plugin-native-media/test/native-host/owned-media.node.mjs": "3f40fa571145ac85df0e9a7eb91d78cbdcadb0b82cd304c85520219d4395e2b6"
   }
 }

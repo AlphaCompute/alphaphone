@@ -1,3 +1,4 @@
+import {iconStyle} from '../icon-style';
 import {registerPlugin} from '../platform-plugins';
 import {openDomainRecovery} from '../browser/domain-recovery';
 import {browserDevProfile} from '../browser/dev-profile';
@@ -443,25 +444,25 @@ export function HostedDigestPanel() {
 				aria-labelledby="digest-title"
 			>
 				<header>
-					<span className="alpha-connection-logo serif">a</span>
+					<span className="alpha-connection-logo alpha-compute-mark" aria-label="Alpha Compute"/>
 					<button
 						aria-label="Close scheduled digests"
 						onClick={() => setOpen(false)}
 					>
-						×
+						<span aria-hidden="true" data-alpha-icon="/icons/lucide/x.svg" style={iconStyle("x")}/>
 					</button>
 				</header>
 				<h1 id="digest-title">Scheduled digests</h1>
                 {liveBinding?.recover&&<button onClick={()=>{setOpen(false);liveBinding.recover?.();}}>Digest inbox recovery</button>}
 				<p>
-					{interactiveDevelopment ? 'Schedules run while this browser is open.' : connection.kind==='resident'
+					{interactiveDevelopment ? 'Schedules run while this app is open.' : connection.kind==='resident'
                         ? (isAndroid?'Your agent runs schedules on this phone. It cannot run while the phone is off.':'Schedules run on this computer while the local agent process is running.')
                         : connection.session ? 'Schedules run on your connected agent’s host, which must remain available.' : 'Choose where your agent runs to set up scheduled digests.'}
                 </p>
                 <p>Choose an expiring snapshot or review a read-only source from an account already connected to this agent.
 				</p>
 				<p role="status">{message}</p>
-                {!isAndroid&&<p>Result checks are {backgroundEnabled?'on':'off'} while this browser is open. <button onClick={()=>void hostedResultNative.setBackgroundPolling({enabled:!backgroundEnabled}).then(value=>setBackgroundEnabled(value.backgroundEnabled===true)).catch(()=>setMessage('Check preference could not be saved.'))}>{backgroundEnabled?'Pause result checks':'Enable result checks'}</button></p>}
+                {!isAndroid&&<p>Result checks are {backgroundEnabled?'on':'off'} while this app is open. <button onClick={()=>void hostedResultNative.setBackgroundPolling({enabled:!backgroundEnabled}).then(value=>setBackgroundEnabled(value.backgroundEnabled===true)).catch(()=>setMessage('Check preference could not be saved.'))}>{backgroundEnabled?'Pause result checks':'Enable result checks'}</button></p>}
                 {isAndroid&&nativeReady&&<p>Background checks are {backgroundEnabled?'on':'off'}. Android may delay checks beyond 15 minutes. Results remain available when you reopen the app. <button onClick={()=>void hostedResultNative.setBackgroundPolling({enabled:!backgroundEnabled}).then(value=>setBackgroundEnabled(value.backgroundEnabled===true)).catch(()=>setMessage('Background preference could not be saved.'))}>{backgroundEnabled?'Pause background checks':'Enable background checks'}</button></p>}
                 {isAndroid&&!nativeReady?<p>Results sync while this app is open and are saved in encrypted device storage. Background delivery could not be verified for this connection. Reconnect to try again.</p>:<p>{noticeEnabled?'Result notifications are enabled.':isAndroid?'Result notifications are off or unavailable. Saved results remain here.':'Result notifications are off. Saved results remain here.'}</p>}
                 {isAndroid&&nativeReady&&<button onClick={()=>void hostedResultNative.enable().then(()=>hostedResultNative.status()).then(value=>setNoticeEnabled(value.enabled)).catch(()=>setMessage('Enable result notifications in Android settings; history remains available.'))}>Notification settings</button>}

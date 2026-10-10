@@ -37,10 +37,10 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     ...out,
     empty: !out.libraryLoading && !out.libraryError && !(out.groups || []).some((group: Bag) => (group.items || []).length > 0),
   }));
-  let storageUsage={storageW:'0%',storageText:'Browser storage',storageBarStyle:'display:none'},storageActive=false,storagePending=false,storageEpoch=0;
+  let storageUsage={storageW:'0%',storageText:'App storage',storageBarStyle:'display:none'},storageActive=false,storagePending=false,storageEpoch=0;
   const filesLeave=views.files?.onLeave;
   if(browserDevProfile&&views.files)views.files.onLeave=(...args:any[])=>{storageActive=false;storagePending=false;storageEpoch++;return filesLeave?.(...args);};
-  const refreshStorage=async(api:Bag)=>{if(storagePending||!api.isActive()||document.hidden)return;storagePending=true;const epoch=storageEpoch;try{const usage=await browserStorageUsage();if(epoch===storageEpoch&&api.isActive()){storageUsage=usage;api.set({browserStorageRevision:Date.now()});}}catch{if(epoch===storageEpoch&&api.isActive()){storageUsage={storageW:'0%',storageText:'Open Browser files to refresh storage',storageBarStyle:'display:none'};api.set({browserStorageRevision:Date.now()});}}finally{if(epoch===storageEpoch)storagePending=false;}};
+  const refreshStorage=async(api:Bag)=>{if(storagePending||!api.isActive()||document.hidden)return;storagePending=true;const epoch=storageEpoch;try{const usage=await browserStorageUsage();if(epoch===storageEpoch&&api.isActive()){storageUsage=usage;api.set({browserStorageRevision:Date.now()});}}catch{if(epoch===storageEpoch&&api.isActive()){storageUsage={storageW:'0%',storageText:'Open App files to refresh storage',storageBarStyle:'display:none'};api.set({browserStorageRevision:Date.now()});}}finally{if(epoch===storageEpoch)storagePending=false;}};
   wrap('files', (out,_state,api) => {
     if(browserDevProfile&&api.isActive()&&!storageActive){storageActive=true;void refreshStorage(api);api.every(()=>void refreshStorage(api),2000);}
     return ({
@@ -70,9 +70,11 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       : view === 'phone' || view === 'messages' ? 'Open Contacts' : 'Open Calendar';
     const suggestions = ['Create a note', 'Set a reminder', first];
     const now = Date.now();
+    const calendarSource = views.calendar.displaySources?.();
     const calendarState = this.vget('calendar');
     const agenda = (calendarState.events || [])
       .filter((event: Bag) => event.reminderStatus !== 'completed')
+      .filter((event: Bag) => !event.alphaCalendarId || calendarSource?.ready)
       .map((event: Bag) => {
         const instant=(value:number)=>{const date=new Date(value);return event.nativeEvent?.allDay?new Date(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()).getTime():Number(value);};
         return {event,begin:instant(event.nativeEvent?.begin??event.reminderAt),end:instant(event.nativeEvent?.end??event.reminderAt)};
@@ -83,7 +85,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
         .map((row: Bag) => ({event: {id: row.id, title: row.title, off: row.off, overdue: true}, begin: Number(row.at), end: Infinity})))
       .filter((item: Bag) => Number.isFinite(item.begin) && (Number.isFinite(item.end) || item.event.overdue) && (item.event.nativeEvent?.allDay?item.end>now:item.end>=now))
       .sort((a: Bag, b: Bag) => a.begin - b.begin)[0];
-    const cardState = calendarCardState(calendarState.nativeCalendarStatus);
+    const cardState = calendarSource?.loading ? 'loading' : calendarSource?.ready ? 'ready' : 'error';
     // The calendar adapter may report its read time; otherwise the first render that sees the
     // loaded rows stands in for it (both are reads from this device, never a sync claim).
     const rows = this.nativeCalendarRows;
@@ -100,10 +102,18 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     const attentionSummary: HomeAttentionSummary|null = browserDevProfile ? {state:'ready',unread,source:'Development inbox',updatedAt:now} : homeSources.attention();
     const attention = presentHomeAttention(attentionSummary, now);
     const brief = presentHomeBrief(homeSources.brief(), now);
+    const day = agenda ? new Date(agenda.begin) : null;
+    const dateLabel = (day || new Date(now)).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    const eventTitle=agenda?String(agenda.event.title||'Untitled event'):'';
+    const timeLabel=(instant:number)=>new Date(instant).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+    const endDay=agenda?new Date(agenda.end):null;
+    const endLabel=agenda&&endDay&&day&&endDay.toDateString()!==day.toDateString()?`${endDay.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}, ${timeLabel(agenda.end)}`:agenda?timeLabel(agenda.end):'';
+    const eventTime=agenda?agenda.event.nativeEvent?.allDay?'All day':timeLabel(agenda.begin)+(Number.isFinite(agenda.end)&&agenda.end>agenda.begin?` – ${endLabel}`:''):'';
     return {
       ...out, shadeN: [],
       sugg: suggestions.map(label => ({ label, go: () => this.send(label) })),
-      homeCalendarLabel: calendar.label, homeCalendarTime: calendar.time, homeCalendarTitle: calendar.title,
+      homeCalendarHasEvent:!!agenda,homeCalendarFooter:eventTime,
+      homeCalendarLabel: agenda ? `Open calendar event: ${eventTitle}, ${dateLabel}, ${eventTime}` : 'Open your calendar', homeCalendarTime: dateLabel, homeCalendarTitle: eventTitle || (calendarSource?.loading ? 'Loading events…' : calendarSource?.ready ? calendarSource.truncated ? 'Calendar results limited' : 'No upcoming events' : calendarSource ? 'Calendar unavailable' : 'Loading events…'),
       homeCalendarSource: calendar.source, homeCalendarVideo: calendar.video, homeCalendarPeople: calendar.people.map(ini => ({ini})),
       homePeopleVisibility: calendar.people.length ? 'visible' : 'hidden',
       homeAttentionLabel: attention.label, homeAttentionCount: attention.count, homeAttentionText: attention.text,
@@ -141,7 +151,7 @@ export function setHomeSources(next: Partial<typeof homeSources>) {
 
 /** Neutral Home card values used when no fixture defaults are bundled. */
 const NEUTRAL_HOME = {
-  homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'Your calendar',
+  homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'Loading events…',homeCalendarHasEvent:false,homeCalendarFooter:'',
   homeCalendarSource: '', homeCalendarVideo: false, homeCalendarPeople: [] as Bag[],
   homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'No brief yet', homeWorkflowTime: 'Workflows', homeWorkflowSource: '',
   homeAttentionText: '',
@@ -156,8 +166,9 @@ export function installPrototypeHomeBindings(Component: any) {
   p.renderVals = function () {
     const out = render.call(this);
     let storageAccessWarning='';
-    if(!Capacitor.isNativePlatform())try{if(!window.indexedDB)throw Error();window.localStorage.getItem('alpha.appearance.v1');}catch{storageAccessWarning='Local storage is unavailable. Changes may not be saved. Check browser storage settings and reload.';}
+    if(!Capacitor.isNativePlatform())try{if(!window.indexedDB)throw Error();window.localStorage.getItem('alpha.appearance.v1');}catch{storageAccessWarning='Saving is unavailable. Changes may not be saved. Check your browser’s storage settings and reload.';}
     const activeView=this.S().view||'home';
+    const chatModal=out.panelPE==='auto'&&this.S().chat==='full';
     const attention = mockAttentionRows();
     return {
       ...NEUTRAL_HOME,
@@ -166,10 +177,11 @@ export function installPrototypeHomeBindings(Component: any) {
       homeAttentionPeopleVisibility: attention.length ? 'visible' : 'hidden',
       ...out,
       activeViewLabel: activeView[0].toUpperCase()+activeView.slice(1), storageAccessWarning,
-      // Keep translated/collapsed layers painted for the reference animations,
-      // but prevent their controls receiving focus or accessibility navigation.
-      homeHidden: !!(out.isView || out.shadeY === '0' || out.panelPE === 'auto' || out.voiceOn || this.S().drawer),
-      appHidden: !!(out.shadeY === '0' || out.panelPE === 'auto' || out.voiceOn),
+      nonblockingChat:out.panelPE==='auto'&&this.S().chat==='sheet',
+      // OG's resting half sheet leaves the app interactive. Full chat, shade
+      // and voice still retire the covered layer's focus/accessibility controls.
+      homeHidden: !!(out.isView || out.shadeY === '0' || chatModal || out.voiceOn || this.S().drawer),
+      appHidden: !!(out.shadeY === '0' || chatModal || out.voiceOn),
       conversationHidden: out.panelPE !== 'auto' || out.shadeY === '0' || !!out.voiceOn,
       shadeHidden: out.shadeY !== '0' || !!out.voiceOn,
       dockHidden: out.shadeY === '0' || !!out.voiceOn,

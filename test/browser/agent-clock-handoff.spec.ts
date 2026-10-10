@@ -9,13 +9,13 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
     await page.addInitScript((mode) => {
       const w = window as any, store = new Map(JSON.parse(localStorage.getItem('fixture-secure')||'[]'));w.calendarEntry=JSON.parse(localStorage.getItem('fixture-journal')||'null');
       const agentId = '12345678-1234-4234-8234-123456789abc';
-      const fixture = w.recoveryFixture = { posts: 0, lists: 0, decisions: 0, claims: 0, receipts: 0, reviews:0,cancellations:0,effects: Number(localStorage.getItem('fixture-effects')||0), journal: [] as string[], proposal: null as any };
+      const fixture = w.recoveryFixture = { voicePeak:0,cloudUploads:0,localProbes:0,posts: 0, lists: 0, decisions: 0, claims: 0, receipts: 0, reviews:0,cancellations:0,effects: Number(localStorage.getItem('fixture-effects')||0), journal: [] as string[], proposal: null as any };
       const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
       if(mode!=='browser')w.androidBridge={};
       w.Capacitor = {
         PluginHeaders: [
           {name:'AlphaNotifications',methods:methods(['status','addListener','removeListener'])},
-          {name:'AlphaVoiceCloud',methods:methods(['checkPermissions','localSpeechStatus','transcribeLocalRecording','startRecording','stopRecording','releaseLocalSpeech','cancel','cancelRecording','stopPlayback','addListener','removeListener'])},
+          {name:'AlphaVoiceCloud',methods:methods(['checkPermissions','localSpeechStatus','transcribeLocalRecording','transcribeRecording','getRecordingMetrics','startRecording','stopRecording','releaseLocalSpeech','cancel','cancelRecording','stopPlayback','addListener','removeListener'])},
           {name:'DailyApps',methods:methods(['clockHandoff','perform','surfaceInfo','addListener','removeListener'])},
           { name: 'AlphaConnection', methods: methods(['request', 'cancel', 'secureRead', 'secureWrite','secureCompareExchange', 'secureRemove','addListener','removeListener']) },
           { name: 'AlphaActionJournal', methods: methods(['reserve', 'markApplying', 'finish', 'get', 'list','reviewClock','confirmClock','cancelClock']) },
@@ -24,7 +24,7 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
         nativePromise: async (plugin: string, method: string, input: any) => {
           if(method==='addListener')return {callbackId:'fixture-listener'};if(method==='removeListener')return {};
           if(plugin==='AlphaNotifications'&&method==='status')return {permissionGranted:true,appEnabled:true};
-          if(plugin==='AlphaVoiceCloud'){if(method==='checkPermissions')return {microphone:'granted'};if(method==='localSpeechStatus')return {ready:true,execution:'device'};if(method==='startRecording')return {recordingId:'clock-voice-fixture',maxDurationMs:29000};if(method==='stopRecording')return {recordingId:'clock-voice-fixture',durationMs:1000};if(method==='transcribeLocalRecording')return {text:'Set an alarm for 07:00; await my review.',local:true,execution:'device'};return {};}
+          if(plugin==='AlphaVoiceCloud'){if(method==='checkPermissions')return {microphone:'granted'};if(method==='localSpeechStatus'){fixture.localProbes++;throw Error('Local speech forbidden in Cloud fixture');}if(method==='getRecordingMetrics')return {recordingId:input.recordingId,peak:fixture.voicePeak};if(method==='transcribeRecording'){if(input.environment!=='production'||input.credentialId!=='synthetic-cloud-credential')throw Error('Wrong Cloud binding');fixture.cloudUploads++;return {text:'Set an alarm for 07:00; await my review.',local:false};}if(method==='startRecording')return {recordingId:'clock-voice-fixture',maxDurationMs:29000};if(method==='stopRecording')return {recordingId:'clock-voice-fixture',durationMs:1000};if(method==='transcribeLocalRecording')throw Error('Local transcript forbidden');return {};}
           if(plugin==='DailyApps'){if(method==='surfaceInfo')return {developmentBuild:true,assistant:false};if(method==='perform')return {status:'selected',transcript:'Set an alarm for 07:00; await my review.'};if(method==='clockHandoff'){fixture.effects++;localStorage.setItem('fixture-effects',String(fixture.effects));if(mode==='unknown')throw Error('Lost native bridge response');return {action:input.action,status:mode==='unavailable'?'unavailable':mode==='denied'?'denied':mode==='failed'?'failed':'opened',message:'Clock request sent'};}throw Error('Unexpected DailyApps method');}
           if (plugin === 'AlphaActionJournal') {
             fixture.journal.push(method);
@@ -93,6 +93,8 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
         },
       };
     }, mode);
+    await page.route('https://**/*',route=>route.abort());
+    await page.addInitScript(()=>{Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>{throw Error('Physical capture forbidden');}}});HTMLMediaElement.prototype.play=async()=>{throw Error('Physical playback forbidden');};});
     await page.goto('/?mode=dev');
     const connect=async()=>{
       if(mode==='browser'){await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();}
@@ -105,10 +107,23 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
     };await connect();
     if(mode==='browser')await returnToApps(page);
     const input=page.getByRole('textbox',{name:'Ask Alpha',exact:true});
-    if(mode==='transcribed'){await page.getByRole('button',{name:'Talk',exact:true}).first().click();await page.getByRole('button',{name:'Start recording',exact:true}).click();await page.getByRole('button',{name:'Stop recording',exact:true}).click();await page.getByRole('button',{name:'Transcribe on this phone',exact:true}).click();await page.getByRole('button',{name:'Use in conversation',exact:true}).click();await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('Set an alarm for 07:00; await my review.');await page.getByRole('textbox',{name:'Message Alpha',exact:true}).press('Enter');}
+    if(mode==='transcribed'){
+      // Cloud identity is a closed selected-account port; real pairing, EOT,
+      // VOICE_DM send, proposal parsing and human approval remain exercised.
+      await page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');c.getCloudEnvironment=()=> 'production';c.getCloudClient=()=>({sessionId:'synthetic-cloud-session',credentialId:'synthetic-cloud-credential',client:{}} as any);c.close();});
+      await page.getByRole('button',{name:'Talk',exact:true}).first().press('Enter');
+      const voice=page.getByRole('region',{name:'Voice conversation',exact:true});await expect(voice).toHaveAttribute('data-voice-state','listening');
+      await page.evaluate(()=>(window as any).recoveryFixture.voicePeak=.25);await page.waitForTimeout(950);await page.evaluate(()=>(window as any).recoveryFixture.voicePeak=0);
+      await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.posts)).toBe(1);
+      await expect(voice).toHaveAttribute('data-voice-state','error');
+      expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);
+      await voice.getByRole('button',{name:'Close voice conversation',exact:true}).click();
+      await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+      expect(await page.evaluate(()=>({uploads:(window as any).recoveryFixture.cloudUploads,local:(window as any).recoveryFixture.localProbes,channel:(window as any).calendarSent.channelType}))).toEqual({uploads:1,local:0,channel:'VOICE_DM'});
+    }
     else {await input.fill(mode==='show'?'Show my alarms':mode==='snooze'?'Snooze ringing alarms for ten minutes':mode==='dismiss'?'Dismiss the ringing alarm':'Set an alarm for 07:00; await my review.');await input.press('Enter');}
     if(mode==='old-host'||mode==='browser'){await expect(page.getByText('Clock handoff is unavailable on this host. Open Clock from Calendar.',{exact:true})).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);await expect(page.getByText('Approve: clock handoff',{exact:true})).toHaveCount(0);return;}
-    await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
+    if(mode!=='transcribed')await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
     await expect(page.getByText('Approve: clock handoff',{exact:true})).toBeVisible();
     expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);
     if(mode==='zone')await page.evaluate(()=>{const original=Intl.DateTimeFormat.prototype.resolvedOptions;Intl.DateTimeFormat.prototype.resolvedOptions=function(){return {...original.call(this),timeZone:'Pacific/Honolulu'};};});

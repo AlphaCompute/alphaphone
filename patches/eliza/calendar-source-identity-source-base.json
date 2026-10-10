@@ -2,7 +2,7 @@
   "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
   "patch": "0039-calendar-source-identity.patch",
   "sha256": "496ef678add879fd0d5560397fbba559d1cb674882a419f5a0ee205f6fca167c",
-  "status": "Candidate for elizaOS develop; restores the read-package CalendarSourceIdentity call in CalendarPlugin executeNext so the pinned module compiles at 45242af; not yet submitted upstream",
+  "status": "Already present in the current reviewed upstream pin; historical reference only.",
   "basePaths": [
     "plugins/plugin-native-calendar"
   ],

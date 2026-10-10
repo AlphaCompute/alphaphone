@@ -1,4 +1,4 @@
-// Inbox attention summary, bounded unread probe, links, folders, provider drafts, multi/forwarded
+// Inbox attention summary, explicit Inbox reads, links, folders, provider drafts, multi/forwarded
 // attachments, opaque save and "Use in email" against the real adapter with a closed provider
 // fixture. No network, real account or mail; nothing is dispatched.
 import assert from 'node:assert/strict';
@@ -68,7 +68,7 @@ function scenario({caps={},accounts=null}={}){
 }
 async function boot(options){
  const s=scenario(options);vm.createContext(s.sandbox);
- for(const [file,names] of [['inbox-provider-controls.ts','inboxProviderControls'],['inbox-drafts.ts','inboxDrafts'],['inbox-cloud-adapter.ts',['installInboxCloudAdapter','inboxAttention','openInbox','linkifyMailText','linkTextMismatch','INBOX_PROBE_FLOOR_MS']]])vm.runInContext(await strip(file,names),s.sandbox);
+ for(const [file,names] of [['inbox-provider-controls.ts','inboxProviderControls'],['inbox-drafts.ts','inboxDrafts'],['inbox-cloud-adapter.ts',['installInboxCloudAdapter','inboxAttention','openInbox','linkifyMailText','linkTextMismatch']]])vm.runInContext(await strip(file,names),s.sandbox);
  const attentionBefore=JSON.parse(JSON.stringify(s.sandbox.inboxAttention()));
  s.sandbox.installInboxCloudAdapter(s.Shell,s.views);const shell=new s.Shell();
  let active=false;const api={sw:()=>({down(){},up(){}}),swallowed:()=>false,get:()=>shell.st,isActive:()=>active,set:p=>shell.vset('inbox',p),toast:t=>s.toasts.push(t)};
@@ -79,51 +79,25 @@ async function boot(options){
 }
 const searches=t=>t.calls.filter(c=>Array.isArray(c)&&c[0]==='search');
 
-// 1. Attention summary and the bounded unread probe.
+// Home must not query mail at mount, resume, or when leaving Inbox.
 {
  const t=await boot();
- deq(t.attentionBefore,{state:'not-connected',unread:0,unreadMore:false,source:null,updatedAt:null},'not connected before install');
  t.mount();await t.tick();
- deq(searches(t),[['search','in:inbox is:unread',10,null]],'cold start: one bounded unread metadata query');
- deq(t.attention(),{state:'ready',unread:2,unreadMore:false,source:'Fixture account',updatedAt:'2026-10-08T12:00:00Z'});
- assert.equal(t.views.inbox.badge(),true,'badge from the probe');
- assert.equal(t.calls.some(c=>Array.isArray(c)&&c[0]==='read'),false,'the probe reads no message body');
+ deq(searches(t),[],'Home does not fetch Gmail metadata');
+ assert.equal(t.views.inbox.badge(),false);
  for(const fn of t.resume)fn();await t.tick();
- assert.equal(searches(t).length,1,'resume inside the 5 minute floor sends nothing');
- t.advance(5*60*1000);t.failProbe(Object.assign(new Error('Service unavailable'),{name:'CloudProtocolError',code:'http',status:503}));
- for(const fn of t.resume)fn();for(const fn of t.resume)fn();await t.tick();
- assert.equal(searches(t).length,2,'one probe per resume after the floor, never two in flight');
- assert.equal(t.calls.filter(c=>c==='accounts').length,1,'a later resume reuses the resolved account: only the unread query is sent');
- assert.equal(t.attention().state,'error');assert.equal(t.views.inbox.badge(),false,'a failed probe never shows an old badge');
- t.failProbe(null);t.advance(5*60*1000);
- // Opening Inbox loads in:inbox; its unread rows set the summary.
+ deq(searches(t),[],'resume outside Inbox does not fetch mail');
  t.setActive(true);t.render();await t.tick();
- assert.equal(searches(t).at(-1)[1],'in:inbox');
- deq(t.attention(),{state:'ready',unread:2,unreadMore:false,source:'Fixture account',updatedAt:'2026-10-08T12:01:00Z'});
- const rows=t.render().rows;assert.equal(rows[0].clip,true,'search hasAttachments shows the clip');assert.match(rows[0].label,/has attachments/);assert.equal(rows[1].clip,false);
- assert.match(rows[0].time,/9:41|09:41/,'today shows a time');assert.doesNotMatch(rows[1].time,/:/,'older mail shows a date');
- // Leaving marks the summary stale; the leave probe is subject to the same floor.
- t.setActive(false);t.views.inbox.onLeave();
- assert.equal(t.attention().state,'stale');assert.equal(t.views.inbox.badge(),true,'a just-loaded value stays visible while younger than the floor');
- await t.tick();assert.equal(t.views.inbox.badge(),true,'the leave probe confirms the current unread state');
- assert.equal(searches(t).filter(c=>c[1]==='in:inbox is:unread').length,3,'leaving after the floor probes once');
- assert.equal(t.attention().state,'ready');
- t.views.inbox.onLeave();await t.tick();
- assert.equal(t.attention().state,'stale','a second leave inside the floor stays stale');
- assert.equal(searches(t).filter(c=>c[1]==='in:inbox is:unread').length,3);
- assert.equal(t.views.inbox.badge(),true);t.advance(5*60*1000);assert.equal(t.views.inbox.badge(),false,'a stale value older than the floor is never shown');
- t.sandbox.openInbox();deq(JSON.parse(JSON.stringify(t.shell.opened)),[['inbox',{open:null,q:null}]],'openInbox opens the Inbox list for goTriage');
- t.setSession(null);await t.tick();assert.equal(t.attention().state,'not-connected','signing out clears the summary');
- t.shell.componentWillUnmount();
-}
-// 1b. A probe answer that arrives after an open Inbox loaded in:inbox never replaces the loaded summary.
-{
- const t=await boot();const release=t.gate();
- t.mount();await t.tick();assert.equal(t.attention().state,'loading');
- t.setActive(true);t.render();await t.tick();
- deq(t.attention(),{state:'ready',unread:2,unreadMore:false,source:'Fixture account',updatedAt:'2026-10-08T12:01:00Z'},'the loaded list sets the summary');
- release();await t.tick();
- assert.equal(t.attention().updatedAt,'2026-10-08T12:01:00Z','the late probe answer is dropped');
+ deq(searches(t),[['search','in:inbox',25,null]],'explicit Inbox open loads mail');
+ assert.equal(t.attention().state,'ready');assert.equal(t.attention().unread,2);
+ assert.equal(t.views.inbox.badge(),true);
+ const rows=t.render().rows;assert.equal(rows[0].clip,true);assert.match(rows[0].label,/has attachments/);assert.equal(rows[1].clip,false);
+ assert.match(rows[0].time,/9:41|09:41/);assert.doesNotMatch(rows[1].time,/:/);
+ t.setActive(false);t.views.inbox.onLeave();await t.tick();
+ assert.equal(t.attention().state,'stale');assert.equal(searches(t).length,1);
+ assert.equal(t.views.inbox.badge(),true,'cached unread metadata stays visible');
+ t.sandbox.openInbox();deq(t.shell.opened,[['inbox',{open:null,q:null}]]);
+ t.setSession(null);await t.tick();assert.equal(t.attention().state,'not-connected');assert.equal(t.views.inbox.badge(),false);
  t.shell.componentWillUnmount();
 }
 // 2. No readable account: not-connected without a mail query.
@@ -215,4 +189,4 @@ deq(t.prepared.at(-1).attachments.map(a=>a.name),['c.txt','a.txt']);assert.equal
  deq(JSON.parse(JSON.stringify(t.views.inbox.suggestions(t.shell.st))),['Help me write this email']);
  t.shell.componentWillUnmount();
 }
-console.log('PASS: Inbox attention (not-connected/ready/error/stale), bounded unread probe with 5-minute floor, openInbox, reviewed HTTPS links in Browser, clip/time rows, Archive/Trash/Drafts folders, provider draft editing, three-attachment add/remove, forwarded source attachments, opaque Save to Files and Use in email. Fixture only; zero dispatches.');
+console.log('PASS: Inbox attention (not-connected/ready/error/stale), no background mail fetch, openInbox, reviewed HTTPS links in Browser, clip/time rows, Archive/Trash/Drafts folders, provider draft editing, three-attachment add/remove, forwarded source attachments, opaque Save to Files and Use in email. Fixture only; zero dispatches.');

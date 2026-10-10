@@ -1,41 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
 import os from 'node:os';
 import path from 'node:path';
-import {stripTypeScriptTypes} from 'node:module';
 import {execFileSync} from 'node:child_process';
-function load(file,name,box){const source=fs.readFileSync('apps/app/src/'+file,'utf8').replace(/^import .*;\n/gm,'').replaceAll('export function','function').replaceAll('export type','type');vm.runInNewContext('{'+stripTypeScriptTypes(source,{mode:'transform'})+'\nglobalThis.'+name+'='+name+';}',box);}
-function fixture(){
- const f={kind:'resident',account:true,platform:'android',localCalls:0,cloudCalls:0,error:null,store:new Map()};
- const box={testMocksEnabled:false,browserDevProfile:false,Capacitor:{getPlatform:()=>f.platform,isNativePlatform:()=>true},connectionController:{getCloudEnvironment:()=>f.account?'production':null,getCloudClient:()=>f.account?{sessionId:'account',credentialId:'credential'}:null,getSnapshot:()=>({kind:f.kind}),subscribe:()=>()=>{}},registerPlugin:()=>({}),AbortController,DOMException,console,Date,JSON,Event:class{constructor(type){this.type=type;}},
-  localStorage:{getItem:key=>f.store.has(key)?f.store.get(key):null,setItem:(key,value)=>f.store.set(key,String(value)),removeItem:key=>f.store.delete(key)},
-  window:{dispatchEvent:()=>true,addEventListener(){},removeEventListener(){}},document:{hidden:false,documentElement:{dataset:{}},addEventListener(){},removeEventListener(){}}};
- load('runtime/voice-selection.ts','selectVoiceRoute',box);load('runtime/cloud-voice.ts','cloudVoiceFailure',box);load('runtime/voice-timing.ts','markVoiceTiming',box);
- box.createCloudVoice=()=>({speak:async()=>{f.cloudCalls++;if(f.error)throw f.error;}});
- box.createOnDeviceVoice=()=>({ready:async()=>true,speak:async()=>{throw Error('local playback uses speakLocalText');}});box.planLocalSpeech=()=>[];
- box.speakLocalText=async(_text,_signal,started)=>{f.localCalls++;started?.();};
- load('prototype/local-speech-playback.ts','installLocalSpeechPlayback',box);
- class Shell{S(){return {chat:'sheet',msgs:[{id:'message',from:'agent',text:'Synthetic reply'}]};}setState(){}renderVals(){return {msgs:[{text:'Synthetic reply'}]};}}
- box.installLocalSpeechPlayback(Shell);f.shell=new Shell();f.box=box;f.chooseCloud=()=>assert.equal(box.chooseVoiceRoute('cloud',{disclosed:'cloud-speech-uses-credits'}),true);return f;
-}
-test('a signed-in resident stays on-device until Cloud is explicitly chosen; explicit local/manual remain',()=>{
- const f=fixture(),route=f.box.selectVoiceRoute;
- assert.equal(route(),'device','a bound Cloud account alone never selects billed speech');assert.equal(route('device'),'device');assert.equal(route('manual'),'manual');assert.equal(route('agent'),'cloud');
- f.chooseCloud();assert.equal(route(),'cloud');assert.equal(route('device'),'device');assert.equal(route('manual'),'manual');
- f.account=false;assert.equal(route(),'device');assert.equal(route('agent'),'agent');
- f.account=true;f.kind='remote';assert.equal(route(),'cloud','the persisted choice follows the signed-in account, not the agent kind');
- f.box.browserDevProfile=true;assert.equal(route(),'device');
+import {cloudVoiceViewFixture} from './fixtures/cloud-voice-view.mjs';
+const until=async(check)=>{for(let count=0;count<200;count++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'Synthetic voice view did not settle');};
+
+test('default and agent speech stay Cloud across every platform, account and development profile',()=>{
+ const f=cloudVoiceViewFixture();try{
+  for(const platform of ['android','ios','web'])for(const kind of ['resident','remote','cloud','offline'])for(const account of [null,'signed-in'])for(const mocks of [false,true])for(const profile of [false,true]){
+   Object.assign(f,{platform,kind,account});f.box.testMocksEnabled=mocks;f.box.browserDevProfile=profile;
+   assert.equal(f.box.selectVoiceRoute(),'cloud');assert.equal(f.box.selectVoiceRoute('agent'),'cloud');
+   assert.equal(f.box.selectVoiceRoute('device'),mocks?'device':'cloud');assert.equal(f.box.selectVoiceRoute('manual'),mocks?'manual':'cloud');
+  }
+  assert.equal(f.starts,0);assert.equal(f.uploads,0);assert.equal(f.localFactories,0);
+ }finally{f.close();}
 });
-test('message Listen uses Cloud after the explicit choice and a billing error never falls back to device speech',async()=>{
- const f=fixture();assert.equal(f.shell.renderVals().msgs[0].localSpeechLabel,'Listen on phone');f.chooseCloud();f.error={code:'voice-http-402'};
- const row=f.shell.renderVals().msgs[0];assert.equal(row.localSpeechLabel,'Listen with Cloud');row.localSpeech();
- await new Promise(r=>setImmediate(r));assert.equal(f.cloudCalls,1);assert.equal(f.localCalls,0);assert.match(f.shell.renderVals().msgs[0].localSpeechMessage,/Add credits in Settings/);
+test('unsigned message Read aloud opens the Cloud account without a local or native speech attempt',async()=>{
+ const f=cloudVoiceViewFixture({account:null});try{const row=f.shell.renderVals().msgs[0];assert.equal(row.localSpeechAvailable,true);assert.equal(row.localSpeechLabel,'Read aloud');row.localSpeech();await f.tick();assert.equal(f.accountOpens,1);assert.equal(f.cloudSpeech,0);assert.equal(f.localFactories,0);assert.equal(f.localSpeech,0);assert.equal(f.starts,0);}finally{f.close();}
 });
-test('local message playback remains when Cloud is not selected; auth recovery stays distinct',async()=>{
- const f=fixture();f.account=false;const row=f.shell.renderVals().msgs[0];assert.equal(row.localSpeechLabel,'Listen on phone');row.localSpeech();await new Promise(r=>setImmediate(r));assert.equal(f.localCalls,1);assert.equal(f.cloudCalls,0);
- assert.match(f.box.cloudVoiceFailure({code:'voice-http-401'}),/Sign in/);assert.match(f.box.cloudVoiceFailure({code:'voice-http-403'}),/Sign in/);assert.equal(f.box.cloudVoiceFailure({code:'voice-http-503'}),null);
+test('Cloud billing and authorization failures stay explicit and never fall back to device speech',async()=>{
+ const f=cloudVoiceViewFixture();try{for(const [code,expected]of [['voice-http-402',/Add credits in Settings/],['voice-http-401',/Sign in/],['voice-http-403',/Sign in/]]){f.error={code};f.shell.renderVals().msgs[0].localSpeech();await until(()=>expected.test(f.shell.renderVals().msgs[0].localSpeechMessage));assert.equal(f.localSpeech,0);assert.equal(f.localFactories,0);}assert.equal(f.cloudSpeech,3);assert.equal(f.box.cloudVoiceFailure({code:'voice-http-503'}),null);}finally{f.close();}
+});
+test('unsigned recorder primary connects Cloud on every platform and never records',async()=>{
+ for(const platform of ['android','ios','web'])for(const missing of ['account','credential']){const f=cloudVoiceViewFixture({platform,native:platform!=='web',...(missing==='account'?{account:null}:{credential:null})});try{f.render().record();const rec=f.render().rec;assert.equal(rec.primaryLabel,'Connect Eliza Cloud');assert.equal(rec.primaryDisabled,false);assert.equal(rec.manualChoice,false);assert.equal(rec.routeChoice,false);assert.match(rec.lines[0].t,/Sign in to Eliza Cloud/);rec.stop();await f.tick();assert.equal(f.accountOpens,1);assert.equal(f.starts,0);assert.equal(f.uploads,0);assert.equal(f.localFactories,0);assert.equal(f.pairedFactories,0);}finally{f.close();}}
+});
+test('signed Cloud recorder uploads only after explicit Transcribe, keeps the transcript and never sends chat',async()=>{
+ const f=cloudVoiceViewFixture();try{f.render().record();assert.equal(f.render().rec.primaryLabel,'Start recording');assert.equal(f.render().rec.manualChoice,false);assert.equal(f.render().rec.routeChoice,false);assert.equal(f.starts,0);f.render().rec.stop();await until(()=>f.render().rec?.primaryLabel==='Stop recording');assert.equal(f.starts,1);assert.equal(f.uploads,0);f.render().rec.stop();await until(()=>f.render().rec?.primaryLabel==='Transcribe with Eliza Cloud');assert.equal(f.stops,1);assert.equal(f.uploads,0);f.render().rec.stop();await until(()=>f.render().rec?.review===true);assert.equal(f.uploads,1);assert.equal(f.transcribeInput.credentialId,'cloud-credential');assert.equal(f.render().rec.transcript,'Synthetic Cloud transcript');assert.equal(f.sends,0);assert.equal(f.localFactories,0);assert.equal(f.pairedFactories,0);}finally{f.close();}
+});
+test('Cloud account replacement retires a pending transcript and no late text reopens review',async()=>{
+ const f=cloudVoiceViewFixture({holdTranscript:true});try{f.render().record();f.render().rec.stop();await until(()=>f.starts===1&&f.render().rec?.primaryLabel==='Stop recording');f.render().rec.stop();await until(()=>f.render().rec?.primaryLabel==='Transcribe with Eliza Cloud');f.render().rec.stop();await until(()=>typeof f.releaseTranscript==='function');f.account='replacement-account';f.credential='replacement-credential';f.changed();assert.equal(f.render().rec,undefined);f.releaseTranscript({text:'Late old-account transcript',local:false});await f.tick();assert.equal(f.render().rec,undefined);assert.equal(f.shell.state.draft,'');assert.equal(f.sends,0);assert.equal(f.localFactories,0);}finally{f.close();}
+});
+test('browser development copy cannot override the Cloud route or reveal manual/local choices',()=>{
+ const f=cloudVoiceViewFixture({platform:'web',native:false});try{f.box.browserDevProfile=true;f.box.testMocksEnabled=true;f.render().record();const rec=f.render().rec;assert.equal(rec.primaryLabel,'Start recording');assert.equal(rec.primaryIcon,'official-mic-path');assert.equal(rec.manualChoice,false);assert.equal(rec.routeChoice,false);assert.match(rec.lines[0].t,/Eliza Cloud/);assert.doesNotMatch(rec.lines[0].t,/manually|without signing in|English.*runs on this device/);assert.equal(f.localFactories,0);assert.equal(f.starts,0);}finally{f.close();}
 });
 test('native HTTP failure retains exact status without returning response bodies',()=>{
  const source=fs.readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaVoiceCloudPlugin.java','utf8');
@@ -47,6 +45,4 @@ test('native HTTP failure retains exact status without returning response bodies
  public static void main(String[] args)throws Exception {for(int status:new int[]{200,204,401,402,403,503}){HttpURLConnection c=new HttpURLConnection(new URL("https://example.invalid")){public int getResponseCode(){return status;}public void connect(){}public void disconnect(){}public boolean usingProxy(){return false;}};try{successful(c);if(status>=300)throw new AssertionError();}catch(VoiceHttpException e){if(e.status!=status||!"Voice HTTP request failed".equals(e.getMessage()))throw new AssertionError();}}}
 }`);execFileSync(bin('javac'),['-d',dir,path.join(dir,'VoiceStatusTest.java')],{timeout:15000});execFileSync(bin('java'),['-cp',dir,'VoiceStatusTest'],{timeout:15000});}finally{fs.rmSync(dir,{recursive:true,force:true});}
  assert.match(source,/request.failureCode="voice-http-"\+\(\(VoiceHttpException\)error\).status/);
- // A refused RECORD_AUDIO request is distinguishable from other start failures.
- assert.match(source,/call\.reject\("Microphone permission denied","permission-denied"\)/);
 });

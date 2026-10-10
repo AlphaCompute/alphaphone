@@ -1,97 +1,18 @@
-// Real renderer voice adapter with deterministic native/audio boundary fixture.
-// No microphone, provider or Android acceptance is claimed.
+// Real renderer/Cloud-driver code with in-memory ports. No microphone, provider or playback.
 import assert from 'node:assert/strict';
-import vm from 'node:vm';
-import { readFile } from 'node:fs/promises';
-import { stripTypeScriptTypes } from 'node:module';
-let selectionKind = 'remote', snapshotKind = 'remote';
-let pairedEnabled=false, pairedAsr=false, pairedUploads=0, speeches=0, speechSignal, pairedDelay=false, pairedRelease, pairedSignal;const paired={ready:async()=>true,transcriptionReady:async()=>pairedAsr,transcribe:async(_,signal)=>{pairedUploads++;pairedSignal=signal;if(pairedDelay)return new Promise(resolve=>{pairedRelease=resolve;});return{text:'Actual selected-provider transcript fixture',local:true,provider:'standalone-whisper.cpp'};},speak:async(_,signal)=>{speeches++;speechSignal=signal;return new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(new Error('cancelled')),{once:true}));}};
-let account = 'cloud-session', agent = 'remote-session', starts=0, uploads=0, sends=0;
-const listeners=new Set();
-let releaseTranscript; let delayTranscript=false; let audioSaves=0;
-const driver={stop:async()=>{},saveRecording:async value=>{audioSaves++;return {audioId:value.recordingId,noteId:value.noteId,durationMs:1000,transcript:value.transcript};},startRecording:async()=>{starts++;return {recordingId:'clip',maxDurationMs:59000};},stopRecording:async()=>({recordingId:'clip',durationMs:1000}),transcribeRecording:async()=>{uploads++;if(delayTranscript)return new Promise(resolve=>{releaseTranscript=resolve;});return {text:'Fixture transcript',local:false};},cancelRecording:async()=>{},cancel:async()=>{},addListener:async()=>({remove:async()=>{}}),speak:async()=>{}};
-const controller={getPairedVoiceBinding:()=>pairedEnabled?{sessionId:agent}:null,getCloudEnvironment:()=>account?'production':null,getCloudClient:()=>account?{sessionId:account}:null,getSnapshot:()=>({kind:snapshotKind,session:{sessionId:agent}}),subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);}};
-class Shell {constructor(){this.state={view:'home',draft:''};this.notes={list:[]};this.messages=[];}S(){return this.state;}setState(p){Object.assign(this.state,p);}openView(view){this.state.view=view;}goHome(){this.state.view=null;}toast(t){this.messages.push(t);}vset(_,patch){if(this.failPersistence)return false;Object.assign(this.notes,patch);return true;}api(){return {get:()=>this.notes,setView:(_,patch)=>Object.assign(this.notes,patch)};}startVoice(){throw new Error('Should not use legacy voice');}send(){sends++;}componentWillUnmount(){} }
-const views={notes:{render:()=>({ed:{}}),back:()=>false,onLeave:()=>{}}};
-let noteEditor=null;
-let source=await readFile(new URL('../apps/app/src/prototype/voice-adapter.ts',import.meta.url),'utf8');
-source=source.replace(/^import .*;\n/gm,'').replace('export function','function')+'\nglobalThis.install=installPrototypeVoiceAdapter;';
-const sandbox={browserDevProfile:false,createOnDeviceVoice:()=>null,createPairedVoice:()=>pairedEnabled?paired:null,connectionController:controller,createCloudVoice:()=>driver,registerPlugin:()=>driver,Capacitor:{isNativePlatform:()=>true,isPluginAvailable:()=>true},localStorage:{getItem:()=>JSON.stringify({kind:selectionKind})},document:{documentElement:{dataset:{}},querySelector:()=>noteEditor,addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},setInterval,clearInterval,Date,crypto,AbortController,console};
-const playback=(await readFile(new URL('../apps/app/src/prototype/local-speech-playback.ts',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export function','function');
-sandbox.testMocksEnabled=true;
-for(const [file,name] of [['voice-selection.ts','selectVoiceRoute'],['cloud-voice.ts','cloudVoiceFailure'],['voice-timing.ts','markVoiceTiming']]) {
- const policy=(await readFile(new URL('../apps/app/src/runtime/'+file,import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export function','function').replaceAll('export type','type');
- vm.runInNewContext('{'+stripTypeScriptTypes(policy,{mode:'transform'})+'\nglobalThis.'+name+'='+name+';}',sandbox);
-}
-sandbox.createCloudVoice=()=>driver; // Preserve this scenario's native-boundary fixture.
-vm.runInNewContext('{'+stripTypeScriptTypes(playback,{mode:'transform'})+'\nglobalThis.installLocalSpeechPlayback=installLocalSpeechPlayback;globalThis.stopLocalSpeechPlayback=stopLocalSpeechPlayback;}',sandbox);
-// The adapter's pure state helpers run as real source, not a stub.
-const voiceStates=(await readFile(new URL('../apps/app/src/runtime/voice-states.ts',import.meta.url),'utf8')).replaceAll('export function','function');
-vm.runInNewContext('{'+stripTypeScriptTypes(voiceStates,{mode:'transform'})+'\nglobalThis.voiceFailure=voiceFailure;globalThis.transcriptProvenance=transcriptProvenance;globalThis.speechProgressMessage=speechProgressMessage;}',sandbox);
-vm.runInNewContext(stripTypeScriptTypes(source,{mode:'transform'}),sandbox);
-sandbox.install(Shell,views);
-const shell=new Shell(), api=()=>({...shell.api('notes'),ic:{check:'',mic:'',stop:'',play:'',x:''},set:patch=>Object.assign(shell.notes,patch)});
-const render=()=>views.notes.render(shell.notes,api());
-const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
-render();shell.startVoice();assert.equal(shell.state.view,'notes');assert.equal(shell.messages.length,0,'remote agent with Cloud account can dictate');
-assert.equal(render().rec.primaryDisabled,true,'No implicit remote fallback');render().rec.changeRoute();render().rec.stop();await tick();assert.equal(starts,1);assert.equal(uploads,0,'recording never uploads implicitly');
-render().rec.stop();await tick();assert.equal(uploads,0,'stopping never uploads implicitly');
-render().rec.stop();await tick();assert.equal(uploads,1);assert.equal(sends,0);
-assert.equal(render().rec.transcript,'Fixture transcript');
-render().rec.stop();await tick();assert.equal(shell.state.draft,'Fixture transcript');assert.equal(sends,0,'transcript is draft, not automatic remote send');
-delayTranscript=true;shell.startVoice();render().rec.changeRoute();render().rec.stop();await tick();render().rec.stop();await tick();render().rec.stop();await tick();
-assert.equal(typeof releaseTranscript,'function');
-account='replacement-account';for(const fn of listeners)fn();
-releaseTranscript({text:'Expired account transcript',local:false});await tick();
-assert.equal(render().rec,undefined,'late old-account transcript cannot reopen review');assert.equal(shell.state.draft,'Fixture transcript');assert.equal(sends,0);
-delayTranscript=false;render().record();render().rec.changeRoute();render().rec.stop();await tick();render().rec.stop();await tick();render().rec.stop();await tick();
-render().rec.onTranscript({target:{value:'Edited saved transcript'}});shell.failPersistence=true;render().rec.stop();await tick();assert.equal(shell.notes.list.length,0);assert.equal(render().rec.transcript,'Edited saved transcript');
-shell.failPersistence=false;render().rec.stop();await tick();assert.equal(shell.notes.list.length,1);assert.equal(shell.notes.list[0].kind,'voice');assert.equal(shell.notes.list[0].audio.transcript,'Edited saved transcript');assert.equal(shell.notes.list[0].body,'Edited saved transcript');assert.equal(audioSaves,2);assert.equal(sends,0);
-account=null;for(const fn of listeners)fn();shell.startVoice();assert.match(shell.messages.at(-1),/Sign in to Eliza Cloud/);assert.equal(starts,3);
-const uploadsBeforeOffline=uploads;
-for(const kind of ['offline','local','remote']) {
- selectionKind=kind;render().record();render().rec.recordOnly();assert.match(render().rec.lines[0].t,/without signing in/);
- render().rec.stop();await tick();render().rec.stop();await tick();
- assert.equal(render().rec.primaryLabel,'Review recording');render().rec.stop();await tick();
- assert.equal(render().rec.review,true);assert.equal(render().rec.transcript,'');assert.equal(uploads,uploadsBeforeOffline,'device-only recording must not call any transcription provider');
- render().rec.onTranscript({target:{value:'Manual '+kind+' transcript'}});render().rec.stop();await tick();
- assert.equal(shell.notes.list[0].body,'Manual '+kind+' transcript');assert.equal(shell.notes.list[0].audio.transcript,'Manual '+kind+' transcript');assert.equal(shell.notes.list[0].kind,'voice');assert.equal(sends,0);
- shell.startVoice();assert.match(shell.messages.at(-1),/Sign in to Eliza Cloud/,'composer stays provider-gated');
-}
-assert.equal(audioSaves,5);assert.equal(uploads,uploadsBeforeOffline);
-const textNote={id:'dictation-selection-fixture',kind:'text',title:'Existing text',body:'Before OLD after',pinned:true,when:'Earlier'};
-shell.notes.list.unshift(textNote);shell.notes.open=textNote.id;
-noteEditor={value:textNote.body,selectionStart:7,selectionEnd:10};
-const dictateReview=async()=>{render().ed.dictate();render().rec.recordOnly();render().rec.stop();await tick();render().rec.stop();await tick();render().rec.stop();await tick();render().rec.onTranscript({target:{value:'inserted'}});};
-await dictateReview();shell.failPersistence=true;render().rec.stop();await tick();
-assert.equal(shell.notes.list.find(n=>n.id===textNote.id).body,'Before OLD after');assert.equal(render().rec.transcript,'inserted');
-shell.failPersistence=false;render().rec.stop();await tick();
-let applied=shell.notes.list.find(n=>n.id===textNote.id);
-assert.equal(applied.body,'Before inserted after');assert.equal(applied.kind,'text');assert.equal(applied.title,'Existing text');assert.equal(applied.pinned,true);assert.equal(applied.audio,undefined);assert.equal(audioSaves,5,'Dictate does not retain a voice-note recording');
-noteEditor={value:applied.body,selectionStart:7,selectionEnd:7};await dictateReview();
-shell.notes.list=shell.notes.list.map(n=>n.id===textNote.id?{...n,title:'Concurrent edit'}:n);
-render().rec.stop();await tick();assert.match(render().rec.lines[0].t,/original note changed/);assert.equal(shell.notes.list.find(n=>n.id===textNote.id).body,'Before inserted after');
-render().rec.discard();assert.equal(audioSaves,5);assert.equal(uploads,uploadsBeforeOffline);assert.equal(sends,0);
-pairedEnabled=true;render().record();render().rec.changeRoute();await tick();render().rec.stop();await tick();render().rec.stop();await tick();render().rec.stop();await tick();
-assert.equal(render().rec.pauseLabel,'Listen to transcript');assert.equal(speeches,0,'readiness and recording never synthesize implicitly');
-render().rec.onTranscript({target:{value:'Explicit paired playback'}});render().rec.toggle();await tick();assert.equal(speeches,1);assert.match(render().rec.lines[0].t,/selected-agent audio/);assert.equal(uploads,uploadsBeforeOffline,'paired playback never uploads recording');
-agent='replacement-agent';for(const fn of listeners)fn();await tick();assert.equal(speechSignal.aborted,true);assert.equal(render().rec,undefined,'switching agent cancels playback and closes old draft');
-pairedAsr=true;await shell.startVoice();render().rec.changeRoute();await tick();render().rec.stop();await tick();render().rec.stop();await tick();assert.equal(pairedUploads,0,'microphone start/stop never uploads to agent');assert.equal(render().rec.primaryLabel,'Transcribe with agent Whisper');render().rec.stop();await tick();assert.equal(pairedUploads,1);assert.equal(render().rec.transcript,'Actual selected-provider transcript fixture');render().rec.stop();await tick();assert.equal(shell.state.draft,'Actual selected-provider transcript fixture');assert.equal(sends,0,'transcription never sends chat implicitly');
-pairedDelay=true;render().record();render().rec.changeRoute();await tick();render().rec.stop();await tick();render().rec.stop();await tick();render().rec.stop();await tick();assert.equal(typeof pairedRelease,'function');agent='third-agent';for(const fn of listeners)fn();assert.equal(pairedSignal.aborted,true);pairedRelease({text:'Late wrong-account text',local:true});await tick();assert.equal(render().rec,undefined);assert.equal(shell.state.draft,'Actual selected-provider transcript fixture');
-// A signed-in production resident stays on-device by default, for Notes and composer.
-// Cloud speech needs the explicit, disclosed recorder choice, which persists as voice-route:v1.
-selectionKind='resident';snapshotKind='resident';account='resident-cloud-account';pairedEnabled=false;
-sandbox.testMocksEnabled=false;sandbox.Capacitor.getPlatform=()=> 'android';
-const stored=new Map(),selectionStorage=sandbox.localStorage.getItem;
-sandbox.localStorage.getItem=key=>stored.has(key)?stored.get(key):selectionStorage(key);sandbox.localStorage.setItem=(key,value)=>stored.set(key,String(value));
-const startsBeforeResident=starts,uploadsBeforeResident=uploads;
-render().record();assert.equal(render().rec.primaryDisabled,true,'unavailable on-device speech never falls back to Cloud');assert.equal(render().rec.routeLabel,'Use Eliza Cloud voice (uses credits)');render().rec.discard();
-await shell.startVoice();assert.equal(shell.state.view,'notes');assert.equal(render().rec.primaryDisabled,true,'composer voice is on-device by default with a Cloud account');assert.equal(render().rec.routeLabel,'Use Eliza Cloud voice (uses credits)');
-render().rec.changeRoute();assert.equal(render().rec.primaryDisabled,false);assert.equal(render().rec.routeLabel,'Use on-device voice');assert.match(render().rec.lines[0].t,/uses its credits/,'the Cloud choice is disclosed');
-assert.equal(JSON.parse(stored.get('alphaphone:voice-route:v1')).route,'cloud');render().rec.discard();
-render().record();assert.equal(render().rec.primaryDisabled,false,'the persisted Cloud choice is the default after it was made');assert.equal(render().rec.routeLabel,'Use on-device voice');
-assert.equal(starts,startsBeforeResident,'choosing resident Cloud voice must not start recording');assert.equal(uploads,uploadsBeforeResident,'choosing resident Cloud voice must not upload audio');
-render().rec.changeRoute();assert.equal(render().rec.primaryDisabled,true,'explicit unavailable local choice must not fall back to Cloud');assert.equal(JSON.parse(stored.get('alphaphone:voice-route:v1')).route,'device');render().rec.discard();
-render().record();assert.equal(render().rec.primaryDisabled,true,'choosing on-device again persists');render().rec.discard();
-shell.componentWillUnmount();
-console.log('PASS: remote+Cloud composer mic, explicit record/stop/upload stages, editable draft without remote send, durable audio+edited transcript save with persistence retry, Notes records/saves manual transcripts offline/local/remote with zero uploads; paired Whisper composer requires capability and explicit upload, produces a draft without auto-send, and cancels stale transcription; offline composer stays provider-gated; dictation replaces the saved selection without changing text-note type or retaining audio, preserves transcript after save failure, and rejects concurrent note changes. Native/provider fixture only.');
+import {cloudVoiceViewFixture} from '../test/fixtures/cloud-voice-view.mjs';
+const until=async check=>{for(let count=0;count<200;count++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'Synthetic recorder did not settle');};
+async function review(f){f.render().record();f.render().rec.stop();await until(()=>f.render().rec?.primaryLabel==='Stop recording');assert.equal(f.uploads,0);f.render().rec.stop();await until(()=>f.render().rec?.primaryLabel==='Transcribe with Eliza Cloud');assert.equal(f.uploads,0);f.render().rec.stop();await until(()=>f.render().rec?.review===true);}
+const cloud=cloudVoiceViewFixture();
+try{
+ cloud.shell.openView('notes');await review(cloud);assert.equal(cloud.uploads,1);assert.equal(cloud.render().rec.transcript,'Synthetic Cloud transcript');cloud.render().rec.onTranscript({target:{value:'Edited owned transcript'}});cloud.shell.failPersistence=true;cloud.render().rec.stop();await until(()=>!cloud.render().rec?.transcriptDisabled);assert.equal(cloud.shell.notes.list.length,0);assert.equal(cloud.render().rec.transcript,'Edited owned transcript');cloud.shell.failPersistence=false;cloud.render().rec.stop();await until(()=>cloud.shell.notes.list.length===1);assert.equal(cloud.shell.notes.list[0].body,'Edited owned transcript');assert.equal(cloud.shell.notes.list[0].audio.transcript,'Edited owned transcript');assert.equal(cloud.sends,0);
+}finally{cloud.close();}
+const manual=cloudVoiceViewFixture({account:null});
+try{
+ manual.box.testMocksEnabled=true;manual.shell.openView('notes');manual.render().record();assert.equal(manual.render().rec.primaryLabel,'Connect Eliza Cloud');assert.equal(manual.render().rec.manualChoice,false);manual.render().rec.recordOnly();manual.render().rec.stop();await until(()=>manual.render().rec?.primaryLabel==='Stop recording');manual.render().rec.stop();await until(()=>manual.render().rec?.primaryLabel==='Review recording');manual.render().rec.stop();await until(()=>manual.render().rec?.review===true);manual.render().rec.onTranscript({target:{value:'Explicit debug-only manual transcript'}});manual.render().rec.stop();await until(()=>manual.shell.notes.list.length===1);assert.equal(manual.uploads,0);assert.equal(manual.sends,0);assert.equal(manual.shell.notes.list[0].body,'Explicit debug-only manual transcript');
+}finally{manual.close();}
+const dictation=cloudVoiceViewFixture();
+try{
+ dictation.shell.openView('notes');const note={id:'selected-text',kind:'text',title:'Existing note',body:'Before OLD after',pinned:true};dictation.shell.notes.list=[note];dictation.shell.notes.open=note.id;dictation.noteEditor={value:note.body,selectionStart:7,selectionEnd:10};dictation.render().ed.dictate();dictation.render().rec.stop();await until(()=>dictation.render().rec?.primaryLabel==='Stop recording');dictation.render().rec.stop();await until(()=>dictation.render().rec?.primaryLabel==='Transcribe with Eliza Cloud');dictation.render().rec.stop();await until(()=>dictation.render().rec?.review===true);dictation.render().rec.onTranscript({target:{value:'inserted'}});dictation.shell.failPersistence=true;dictation.render().rec.stop();await until(()=>!dictation.render().rec?.transcriptDisabled);assert.equal(dictation.shell.notes.list[0].body,note.body);dictation.shell.failPersistence=false;dictation.render().rec.stop();await until(()=>dictation.shell.notes.list[0].body==='Before inserted after');assert.equal(dictation.shell.notes.list[0].kind,'text');assert.equal(dictation.shell.notes.list[0].pinned,true);assert.equal(dictation.audioSaves,0);assert.equal(dictation.sends,0);
+}finally{dictation.close();}
+console.log('PASS real recorder/Cloud protocol: explicit-only upload, unconfirmed-save retention, Notes selection preservation, debug-only manual path, and no automatic chat send. In-memory ports only.');

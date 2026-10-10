@@ -3,7 +3,7 @@ for(const theme of ['light','dark'])test(`${theme} Files folder dialog owns keyb
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
  await page.goto(`/?mode=dev&theme=${theme}`);
  await page.getByRole('button',{name:'Files',exact:true}).click();
- await page.getByText('Browser files',{exact:true}).first().click();
+ await page.getByText('App files',{exact:true}).first().click();
  const menu=page.getByRole('button',{name:'View and sort',exact:true});
  await menu.click();await page.getByText('New folder',{exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'New folder',exact:true}),input=dialog.getByRole('textbox',{name:'Folder or file name'});

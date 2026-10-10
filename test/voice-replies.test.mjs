@@ -13,17 +13,17 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 function fixture({native = true} = {}) {
   const f = {spoken: [], signals: [], hold: false, releases: [], store: new Map(), session: 'agent-session', conversation: 'conversation-1', open: false, events: []};
   const box = {
-    browserDevProfile: false, Date, JSON, Number, Set, console, AbortController, DOMException, setTimeout, clearTimeout,
+    testMocksEnabled: false, browserDevProfile: false, Date, JSON, Number, Set, console, AbortController, DOMException, setTimeout, clearTimeout,
     crypto, performance,
     Event: class { constructor(type) { this.type = type; } },
     Capacitor: {isNativePlatform: () => native, getPlatform: () => native ? 'android' : 'web'},
-    connectionController: {getCloudEnvironment: () => null, getCloudClient: () => null, getSnapshot: () => ({open: f.open, session: {sessionId: f.session}, history: {conversationId: f.conversation}}), subscribe: () => () => {}},
+    connectionController: {getCloudEnvironment: () => 'production', getCloudClient: () => ({sessionId: 'cloud-session', credentialId: 'cloud-credential'}), getSnapshot: () => ({open: f.open, session: {sessionId: f.session}, history: {conversationId: f.conversation}}), subscribe: () => () => {}},
     registerPlugin: () => ({}),
     localStorage: {getItem: k => f.store.has(k) ? f.store.get(k) : null, setItem: (k, v) => f.store.set(k, String(v)), removeItem: k => f.store.delete(k)},
     window: {dispatchEvent: event => { f.events.push(event.type); return true; }, addEventListener() {}, removeEventListener() {}},
     document: {hidden: false, documentElement: {dataset: {}}, addEventListener() {}, removeEventListener() {}},
     createOnDeviceVoice: () => ({ready: async () => true}),
-    createCloudVoice: () => ({speak: async () => { throw Error('Cloud must not be used'); }}),
+    createCloudVoice: () => ({speak: async (text,signal,started) => box.speakLocalText(text,signal,started,false,{execution:'cloud'})}),
     planLocalSpeech: text => { if (/🙂/.test(text)) throw Error('Unsupported'); return [text]; },
     speakLocalText: async (text, signal, started, _queue, requirements) => {
       f.spoken.push({text, execution: requirements?.execution}); f.signals.push(signal);
@@ -36,7 +36,7 @@ function fixture({native = true} = {}) {
     constructor() { this.state = {chat: 'sheet', msgs: []}; this.live = true; }
     S() { return this.state; }
     setState(patch) { Object.assign(this.state, typeof patch === 'function' ? patch(this.state) : patch); this.componentDidUpdate(); }
-    renderVals() { return {msgs: [...this.state.msgs].reverse().map(m => ({text: m.text}))}; }
+    renderVals() { return {msgs: this.state.msgs.map(m => ({text: m.text}))}; }
     componentDidUpdate() {}
     componentWillUnmount() {}
   }
@@ -59,7 +59,7 @@ test('Speak replies is off by default: a voice-originated reply is timed but not
   assert.deepEqual(Object.keys(f.row().marks), ['recording-end', 'transcript-ready', 'send', 'first-token', 'final-reply']);
 });
 
-test('with Speak replies on, the final reply plays once on the local route and records first audio', async () => {
+test('with Speak replies on, the final reply plays once on the selected Cloud route and records first audio', async () => {
   const f = fixture();
   assert.equal(f.box.setSpeakReplies(true), true);
   const text = f.voiceTurn();
@@ -68,7 +68,7 @@ test('with Speak replies on, the final reply plays once on the local route and r
   await tick(); assert.equal(f.spoken.length, 0, 'a streaming reply is not spoken');
   f.replace('a1', {text: 'You have two events today.', streaming: false});
   await tick(); await tick();
-  assert.deepEqual(f.spoken, [{text: 'You have two events today.', execution: 'device'}]);
+  assert.deepEqual(f.spoken, [{text: 'You have two events today.', execution: 'cloud'}]);
   assert.ok(f.row().marks['first-audio'] >= f.row().marks['final-reply']);
   // Later updates never replay it.
   f.say({id: 'a2', from: 'agent', text: 'Approve: something', card: {}});
@@ -81,7 +81,7 @@ test('a spoken reply can be cancelled from its Stop reading control and by the n
   f.say({id: 'u1', from: 'user', text}); f.say({id: 'a1', from: 'agent', text: 'Long reply.'});
   await tick(); await tick();
   assert.equal(f.spoken.length, 1);
-  const row = f.shell.renderVals().msgs[0];
+  const row = f.shell.renderVals().msgs[1];
   assert.equal(row.localSpeechLabel, 'Stop reading');
   row.localSpeech(); await tick();
   assert.equal(f.signals[0].aborted, true);
@@ -98,12 +98,12 @@ test('Listen on an earlier reply is not stopped by user messages that were alrea
   const f = fixture(); f.hold = true;
   f.say({id: 'u1', from: 'user', text: 'First'}); f.say({id: 'a1', from: 'agent', text: 'Earlier reply.'});
   f.say({id: 'u2', from: 'user', text: 'Second'}); f.say({id: 'a2', from: 'agent', text: 'Latest reply.'});
-  // renderVals lists newest first: index 2 is the earlier reply.
-  f.shell.renderVals().msgs[2].localSpeech(); await tick(); await tick();
+  // The renderer preserves message order: index 1 is the earlier reply.
+  f.shell.renderVals().msgs[1].localSpeech(); await tick(); await tick();
   assert.deepEqual(f.spoken.map(item => item.text), ['Earlier reply.']);
   f.shell.setState({}); await tick();
   assert.equal(f.signals[0].aborted, false, 'an older user message does not stop Listen');
-  assert.equal(f.shell.renderVals().msgs[2].localSpeechLabel, 'Stop reading');
+  assert.equal(f.shell.renderVals().msgs[1].localSpeechLabel, 'Stop reading');
   f.say({id: 'u3', from: 'user', text: 'Third'}); await tick();
   assert.equal(f.signals[0].aborted, true, 'a user message sent after Listen began stops it');
 });

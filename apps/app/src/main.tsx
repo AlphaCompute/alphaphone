@@ -1,3 +1,6 @@
+import {DEFAULT_PULL_DISTANCE,DEFAULT_PULL_VELOCITY} from "../../../.eliza/client-features/packages/ui/src/gestures/constants";
+import {usePullGesture} from "../../../.eliza/client-features/packages/ui/src/components/shell/use-pull-gesture";
+import {installChatOverlayMotion} from './prototype/chat-overlay-motion-adapter';
 import {installSubviewAccessibility} from './prototype/subview-accessibility';
 import {installCalendarMonthFocus} from './prototype/calendar-month-focus';
 import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-adapter';
@@ -21,7 +24,8 @@ import { installNotesDocumentAdapter } from './prototype/notes-document-adapter'
 import { installPrototypeMapsAdapter } from './prototype/maps-adapter';
 import { installNotificationsAdapter } from './prototype/notifications-adapter';
 import { installWorkflowAdapter } from './prototype/workflow-adapter';
-import { useEffect, useSyncExternalStore } from 'react';
+import { installAutomationsAdapter } from './prototype/automations-adapter';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { StartupPermissions } from './startup-permissions';
 import { reopenStartupPermissions } from './startup-permission-flow';
 import { createRoot } from 'react-dom/client';
@@ -104,12 +108,13 @@ if (!fixture) {
       brief:latestRetainedDigest,
     });
   }
-  if(!browserDevProfile) installWorkflowAdapter(Component, VIEWS);
+  if(!browserDevProfile) {installWorkflowAdapter(Component, VIEWS);installAutomationsAdapter(Component,VIEWS);}
 }
 if(devSurfacesEnabled&&simulatedApps)installSimulatedApps(Component,VIEWS,simulatedApps);
-if(developmentAgentWorkflows)installWorkflowAdapter(Component,VIEWS);
+if(developmentAgentWorkflows){installWorkflowAdapter(Component,VIEWS);installAutomationsAdapter(Component,VIEWS);}
 installSubviewAccessibility(VIEWS);
 installCalendarMonthFocus(Component, VIEWS);
+installChatOverlayMotion(Component);
 installClockAdapter(Component, VIEWS, { simulated: testMocksEnabled && fixture, browser: !isAndroid });
 // Installed apps come from Android (or the browser device's app list); outermost so its drawer
 // state composes with every Home binding above.
@@ -130,38 +135,45 @@ let launcherPresentation = false;
 let assistantSurface = false;
 const closeAssistant = () => { void DailyApps.closeAssistant().catch(() => {}); };
 function Phone() {
+  const [pullSurface,setPullSurface]=useState({input:true,scale:1});
+  const chatPullBinding=usePullGesture({
+    swipeEnabled:false,
+    preventTouchCompatibilityEvents:true,
+    distanceThreshold:(pullSurface.input?24:DEFAULT_PULL_DISTANCE)*pullSurface.scale,
+    velocityThreshold:DEFAULT_PULL_VELOCITY*pullSurface.scale,
+    onDrag:offset=>shell?.paintChatMotion(offset),
+    onPullUp:()=>shell?.settleChatMotion('up'),
+    onPullDown:()=>shell?.settleChatMotion('down'),
+    onDragReset:()=>{if(shell?.chatMotion?.moved)shell.cancelChatMotion();},
+    onTap:()=>shell?.tapChatMotion(),
+    onCancel:()=>shell?.cancelChatMotion(),
+  });
   const connection = useSyncExternalStore(connectionController.subscribe, connectionController.getSnapshot);
   useEffect(() => {
     if (isAndroid) void DailyApps.surfaceInfo().then(info => {
       if (Number.isFinite(info.topInset)) document.documentElement.style.setProperty('--native-top-inset', `${info.topInset}px`);
       if (Number.isFinite(info.bottomInset)) document.documentElement.style.setProperty('--native-bottom-inset', `${info.bottomInset}px`);
+      size();
     }).catch(() => {});
     const size = () => {
       const height = window.visualViewport?.height || window.innerHeight;
-      // A wide browser window shows the fitted phone preview; touch devices and Android fill the screen.
-      const coarse = !isAndroid && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+      const coarse = !isAndroid && window.matchMedia('(pointer: coarse)').matches;
       const desktop = !isAndroid && window.innerWidth > 600 && !coarse;
-      const banner = testMocksEnabled && mock ? document.querySelector('.mock-mode-banner')?.getBoundingClientRect().height || 36 : 0;
+      const banner = testMocksEnabled && mock ? document.querySelector('.mock-mode-banner')?.getBoundingClientRect().bottom || 36 : 0;
       const tools = devSurfacesEnabled && !isAndroid && !mock ? document.querySelector<HTMLElement>('.alpha-dev-tools') : null;
       const toolsInset = tools ? Math.max(56, Math.ceil(tools.getBoundingClientRect().height + (parseFloat(getComputedStyle(tools).bottom) || 0) + 2)) : 0;
       const available = Math.max(1, height - banner - (desktop ? 48 : 0) - toolsInset);
-      // Orientation comes from the screen, so a soft keyboard (adjustResize) shrinking the
-      // viewport never flips a portrait layout. The window must be landscape too: a narrow browser
-      // window on a landscape monitor, or a portrait split-screen pane, keeps the phone layout.
-      // Landscape scales by the screen's shorter side so rotating keeps the same type size; the
-      // longer side becomes extra canvas (Home and the composer side by side).
-      const landscape = !desktop && window.screen.width > window.screen.height && window.innerWidth > window.innerHeight;
-      const scale = desktop ? Math.min(1, available / 915) : landscape ? Math.max(0.1, Math.min(window.innerWidth, window.screen.height) / 412) : window.innerWidth / 412;
-      // Width follows the viewport in CSS, so a rotation never leaves the canvas wider than the
-      // screen before this handler runs (a wider canvas would widen the mobile layout viewport).
-      const width = desktop ? '412px' : `calc(100vw / ${scale})`;
+      // Standalone Android uses the available width without magnifying the
+      // portrait canvas in landscape. Keep the launcher presentation unchanged.
+      const fluidNative = isAndroid && !launcherPresentation;
+      const scale = desktop ? Math.min(1, available / 915) : fluidNative ? Math.min(1, window.innerWidth / 412) : window.innerWidth / 412;
       document.documentElement.style.setProperty('--phone-scale', String(scale));
-      document.documentElement.style.setProperty('--phone-width', width);
+      document.documentElement.style.setProperty('--phone-width', `${fluidNative ? window.innerWidth / scale : 412}px`);
       document.documentElement.style.setProperty('--phone-height', `${desktop ? 915 : available / scale}px`);
       document.documentElement.style.setProperty('--phone-left', `${desktop ? (window.innerWidth - 412 * scale) / 2 : 0}px`);
       document.documentElement.style.setProperty('--phone-top', `${banner + (desktop ? 24 : 0)}px`);
       document.documentElement.classList.toggle('browser-desktop', desktop);
-      document.documentElement.classList.toggle('alpha-landscape', landscape);
+
     };
     const bannerObserver=new ResizeObserver(size);const bannerElement=testMocksEnabled&&mock?document.querySelector('.mock-mode-banner'):null;if(bannerElement)bannerObserver.observe(bannerElement);
     size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size);
@@ -179,7 +191,7 @@ function Phone() {
     else if(action==='background'){shell.leave();shell.setState({screen:'off',voice:'off',chat:'input',shade:false});document.documentElement.dataset.devBackground='true';window.dispatchEvent(new Event('blur'));}
     else if(action==='resume'){delete document.documentElement.dataset.devBackground;shell.unlock();window.dispatchEvent(new Event('focus'));}
     if(['power','unlock','boot','background','resume'].includes(action))window.dispatchEvent(new Event('alpha:device-state'));
-  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface assistantSurface={assistantSurface} onCloseAssistant={closeAssistant} onReopenStartupAccess={isAndroid && !fixture && !assistantSurface ? reopenStartupPermissions : undefined} systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
+  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component configureChatPull={(surface:{input:boolean;scale:number})=>setPullSurface(current=>current.input===surface.input&&current.scale===surface.scale?current:surface)} chatPullBinding={chatPullBinding} phoneSurface assistantSurface={assistantSurface} onCloseAssistant={closeAssistant} onReopenStartupAccess={isAndroid && !fixture && !assistantSurface ? reopenStartupPermissions : undefined} systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
 {!fixture && <><ConnectionChooser />{!assistantSurface && <><HostedDigestPanel />{!connection.open && <StartupPermissions />}</>}</>}</>;
 }
 /** Android's locale and 24-hour setting; WebView Intl alone does not follow the latter. */

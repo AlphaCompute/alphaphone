@@ -5,7 +5,7 @@ for(const theme of ['light','dark'])test(`${theme} long file deletion review fit
  await page.goto(`/?mode=dev&theme=${theme}`);
  const filename='File-'+ 'abcdef'.repeat(30)+'.txt';
  await page.evaluate(async name=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('AlphaFiles').importFile(new File(['Retained'],name,{type:'text/plain'}));const {BrowserDevice}=await import('/src/browser/device.ts');await BrowserDevice.prototype.setTextScale({percent:150});},filename);
- await page.getByRole('button',{name:'Files',exact:true}).click();await page.getByText('Browser files',{exact:true}).first().click();await page.getByRole('button',{name:'Open '+filename,exact:true}).click();await page.getByRole('button',{name:'Delete file',exact:true}).click();
+ await page.getByRole('button',{name:'Files',exact:true}).click();await page.getByText('App files',{exact:true}).first().click();await page.getByRole('button',{name:'Open '+filename,exact:true}).click();await page.getByRole('button',{name:'Delete file',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Permanently delete?',exact:true});
  await dialog.getByRole('button',{name:'Delete permanently',exact:true}).scrollIntoViewIfNeeded();
  expect(await dialog.locator(':scope > div').evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);

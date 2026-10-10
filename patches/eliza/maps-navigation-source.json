@@ -1,5 +1,5 @@
 {
-  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "baseCommit": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
   "patch": "0067-maps-navigation.patch",
   "sha256": "42d4774d313d84f15ff8d92a8896acd48005b153e43bf741b05251504c51e157",
   "status": "Candidate for elizaOS develop; qualified against reviewed runtime 45242af; not submitted upstream",
@@ -19,9 +19,9 @@
     "plugins/plugin-maps/test/navigation-client.test.mjs"
   ],
   "files": {
+    "plugins/plugin-maps/README.md": "6f7811c3c6a9608b4c2e53010ee5a163dadff7c7b8718de9f61f63d5910ae2a6",
     "plugins/plugin-maps/assets/hero.svg": "dcea65a421f5129d6566f42519872b3782a4f6733ce5c4ab2626a58a0fdcee21",
     "plugins/plugin-maps/package.json": "1bc575eea9d8ca6338f9e60b0bfa5a3008f061385bb7902aac1129dbf6051a68",
-    "plugins/plugin-maps/README.md": "6f7811c3c6a9608b4c2e53010ee5a163dadff7c7b8718de9f61f63d5910ae2a6",
     "plugins/plugin-maps/src/action.ts": "521cf675ddafe972bd23a62e1a75d8023c77a8fd9769132f62048fe75436352f",
     "plugins/plugin-maps/src/adapter.ts": "ded92207b5ba5ede58b54c8e12b3024d293fcf03df3779595eaab78549462410",
     "plugins/plugin-maps/src/capabilities.ts": "68adbd91731d3df557a4b8e847759bf1294623ce4ab0afcb3c497014757dcf81",
@@ -42,12 +42,12 @@
     "plugins/plugin-maps/src/client/share.ts": "b5bcc7c20501c5a445cf69989c803d77e7db850af93b8ecf1102b2695c5c97e6",
     "plugins/plugin-maps/src/client/state.ts": "50c27dc3a13060ca401c2ad285addb920551d464494fc1b8103cab00a41c6e21",
     "plugins/plugin-maps/src/client/tsconfig.json": "725ed4eb34b998b5b70582f20ed1399a4b2d7f33d4decde3103737b2c37e21b3",
-    "plugins/plugin-maps/src/components/maps-view-bundle.ts": "c83791829d473e5459b3fa1c26411c4b7fdd6975a8dbb361cc76884c1cb35ee0",
-    "plugins/plugin-maps/src/components/maps-view-data.test.ts": "0934e88554d9184373004710880b9263ff3cb625cc5649c96e6ffb7ff6fcf69b",
-    "plugins/plugin-maps/src/components/maps-view-data.ts": "f24387b69f08e1a8cd8536365a53c6b6889807fbe9df1a9f7c3c34bc3fd4f635",
     "plugins/plugin-maps/src/components/MapsPage.tsx": "dcfbad8cde7d2146a6d31b4a22d9056495d6a1b2b1e20bee1ddf52690343bf1c",
     "plugins/plugin-maps/src/components/MapsView.test.tsx": "4c38e45a7ebee417db5f3ac4a20192deae1d7fb3cd4280d86fdc8f2514340c92",
     "plugins/plugin-maps/src/components/MapsView.tsx": "fa14a018ee2ae1724a7dd7e300e7a345ebc30ec794ea710e81f176d930a8b614",
+    "plugins/plugin-maps/src/components/maps-view-bundle.ts": "c83791829d473e5459b3fa1c26411c4b7fdd6975a8dbb361cc76884c1cb35ee0",
+    "plugins/plugin-maps/src/components/maps-view-data.test.ts": "0934e88554d9184373004710880b9263ff3cb625cc5649c96e6ffb7ff6fcf69b",
+    "plugins/plugin-maps/src/components/maps-view-data.ts": "f24387b69f08e1a8cd8536365a53c6b6889807fbe9df1a9f7c3c34bc3fd4f635",
     "plugins/plugin-maps/src/errors.ts": "c4420b16879873796f0a06330bb757d82b9904f737dd78ab770632e53f5a17f4",
     "plugins/plugin-maps/src/google.ts": "657cdb92e8f529e59a9f0122c47d062026b84c32fb8d0bafda209bd97c61436e",
     "plugins/plugin-maps/src/index.ts": "8c5e44c96e14ef124f26617e498b3fbb013220224cd447e1af981563b7660e42",

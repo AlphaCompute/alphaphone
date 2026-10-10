@@ -68,3 +68,44 @@ public class NativeAuthFlow {
   assert.match(execFileSync(binary('java'),['-cp',fixture,'NativeAuthFlow'],{encoding:'utf8',timeout:20000}),/^PASS actual native startup\/enrollment/);
  }finally{fs.rmSync(fixture,{recursive:true,force:true});}
 });
+
+
+test('actual native navigation and edit admission require a nonblank owner before lifecycle enqueue',()=>{
+ const source=fs.readFileSync(path.join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java'),'utf8');
+ const start=source.indexOf('public void request(PluginCall call) {');
+ const admission=source.slice(start,source.indexOf('  JSONObject headers=call.getObject("headers");',start));
+ assert.ok(admission.startsWith('public void request(')&&admission.includes('call.reject('));
+ const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-navigation-admission-'));
+ try{
+  fs.writeFileSync(path.join(fixture,'NavigationAdmission.java'),String.raw`package ai.elizaresearch.alphaphone;
+import java.util.*;
+public class NavigationAdmission {
+ int admitted;
+ static class PluginCall {
+  final Map<String,Object> data=new HashMap<>();int rejected;
+  PluginCall(String path,String method,Object owner){data.put("path",path);data.put("method",method);if(owner!=null)data.put("ownerId",owner);}
+  String getString(String key){Object value=data.get(key);return value instanceof String?(String)value:null;}
+  String getString(String key,String fallback){String value=getString(key);return value==null?fallback:value;}
+  void reject(String message){rejected++;}
+ }
+ ${admission}
+ admitted++;}
+ static void check(boolean value){if(!value)throw new AssertionError();}
+ public static void main(String[] args){
+  NavigationAdmission host=new NavigationAdmission();
+  for(String route:new String[]{"/api/views/interact-claim","/api/views/interact-result","/api/conversations/owned-room/messages/truncate"}){
+   for(Object owner:new Object[]{null,"","  ",42}){PluginCall call=new PluginCall(route,"POST",owner);int before=host.admitted;host.request(call);check(call.rejected==1&&host.admitted==before);}
+   for(String method:new String[]{"GET","DELETE"}){PluginCall call=new PluginCall(route,method,"owner");int before=host.admitted;host.request(call);check(call.rejected==1&&host.admitted==before);}
+   PluginCall call=new PluginCall(route,"POST","owner");int before=host.admitted;host.request(call);check(call.rejected==0&&host.admitted==before+1);
+  }
+  for(String route:new String[]{"/api/views/interact","/api/views/interact-claim?x=1","/api/views/interact-result/extra"}){PluginCall call=new PluginCall(route,"POST","owner");int before=host.admitted;host.request(call);check(call.rejected==1&&host.admitted==before);}
+  PluginCall bootstrap=new PluginCall("/api/auth/me","GET",null);int before=host.admitted;host.request(bootstrap);check(bootstrap.rejected==0&&host.admitted==before+1);
+  System.out.println("PASS actual native navigation and edit admission owner, method, closed routes and legacy bootstrap");
+ }
+}`);
+  const java=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');const binary=name=>java?path.join(java,'bin',name):name;
+  const routes=path.join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/AutomationsRoutes.java');
+  execFileSync(binary('javac'),['--release','8','-d',fixture,routes,path.join(fixture,'NavigationAdmission.java')],{timeout:20000});
+  assert.match(execFileSync(binary('java'),['-cp',fixture,'ai.elizaresearch.alphaphone.NavigationAdmission'],{encoding:'utf8',timeout:20000}),/^PASS actual native navigation and edit admission/);
+ }finally{fs.rmSync(fixture,{recursive:true,force:true});}
+});

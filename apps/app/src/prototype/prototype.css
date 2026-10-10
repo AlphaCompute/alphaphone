@@ -2,7 +2,7 @@
 body{margin:0;background:#050505}
 .os{--shc:rgba(0,0,0,.12);--bg:#FFFFFF;--s1:#FAFAFA;--s2:#F3F3F3;--s3:#E9E9E9;--line:#E3E3E3;--fg:#000000;--mut:#6B6B6B;--acc:#0000FF;--acct:#0000FF;--scrim:rgba(0,0,0,.18)}
 .al{display:inline-block;line-height:1;transform:translate(-.02em,-.115em)}
-.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;display:block}
+.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;display:block}
 .mono{font-family:'Public Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;text-transform:uppercase;letter-spacing:.14em;font-size:10.5px;font-weight:400}
 @font-face{font-family:'Denton';src:url(/denton-300.woff2) format('woff2');font-weight:100 900;font-style:normal;font-display:swap}
 .serif{font-family:'Denton','Fraunces',Georgia,serif;font-weight:300;font-variation-settings:'opsz' 144}

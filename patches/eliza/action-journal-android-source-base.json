@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "date": "2026-10-09",
   "upstream": "elizaOS/eliza",
-  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "baseCommit": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
   "patch": "0077-action-journal-android.patch",
   "patchSha256": "0a1fdc534992bb11c0235e922eaacb3ec7fb9d4be61cb0d00ce9f8e6cee260ff",
   "summary": "Adds plugins/plugin-native-action-journal/android: a host-configured durable reserve -> applying -> terminal journal (ActionJournal, ActionJournalConfiguration) and an abstract Capacitor bridge (ActionJournalPlugin) that hosts subclass with their own plugin name, encrypted Storage and ResultPolicy, plus synthetic JVM tests. Generalizes Alpha's AlphaActionJournalPlugin without its Clock, reminder and notification recoveries.",

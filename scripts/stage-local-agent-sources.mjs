@@ -22,7 +22,7 @@ const manifest={pin,identity,runtimeSource:{commit:pin},patches:[],files:[]};
 for(const name of classes){
   const relative=`packages/app/platforms/android/app/src/main/java/ai/elizaos/app/${name}.java`;
   const input=fs.readFileSync(path.join(runtimeSource,relative),'utf8');
-  let value=input.replaceAll('ai.elizaos.app',identity).replaceAll('R.mipmap.ic_launcher','R.drawable.app_icon');
+  let value=input.replaceAll('ai.elizaos.app',identity).replaceAll('R.mipmap.ic_launcher','R.drawable.notification_icon');
   // Abstract sockets are device-global. Give the consumer its own namespace.
   value=value.replaceAll('"eliza_local_agent_v1"',`"${identity}.agent.v1"`).replaceAll('"eliza_bionic_infer_v1"',`"${identity}.inference.v1"`);
   if(name==='ElizaAgentService'){

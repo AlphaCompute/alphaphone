@@ -35,10 +35,10 @@ export class AssistantDraftController {
  edit(text:string){
   const b=this.active;if(!b||text===b.last)return;b.last=text;
   if(!b.ready||b.failed||this.state.consuming||this.held?.binding===b)return;
-  this.publish({message:'Saving draft locally…'});
+  this.publish({message:''});
   b.queue=b.queue.then(async()=>{
    if(b.failed)return;
-   try{b.record=await b.store!.save(b.record,text);if(this.active===b&&b.last===text)this.publish({message:text?'Draft saved locally.':''});}
+   try{b.record=await b.store!.save(b.record,text);if(this.active===b&&b.last===text)this.publish({message:''});}
    catch{b.failed=true;if(this.active===b)await this.reviewConflict(b);}
   });
  }
@@ -47,7 +47,7 @@ export class AssistantDraftController {
   catch{if(this.active===b)this.publish({opening:false,conflict:false,error:true,message:'Draft was not saved. Your current text is retained.'});}
  }
  restoreSaved(){const b=this.active;if(!b?.ready||!this.state.conflict)return;b.failed=false;b.last=b.record?.text??'';this.restore(b.last);this.publish({conflict:false,message:b.last?'Saved draft restored. Review before sending.':''});}
- keepCurrent(){const b=this.active;if(!b?.ready||!this.state.conflict)return;b.failed=false;const text=this.text();b.last=b.record?.text??'';this.publish({conflict:false,error:false,message:text===b.last?(text?'Draft saved locally.':''):'Saving draft locally…'});this.edit(text);}
+ keepCurrent(){const b=this.active;if(!b?.ready||!this.state.conflict)return;b.failed=false;const text=this.text();b.last=b.record?.text??'';this.publish({conflict:false,error:false,message:''});this.edit(text);}
  async retry(){const key=this.active?.key;if(!key)return;this.retire();await this.open(key);}
  /** Before dispatch: verify the saved draft matches the composer, then keep it durable while the
   * composer is cleared for the in-flight message. Follow with commit() or release(). */

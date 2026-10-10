@@ -5,7 +5,7 @@ export interface NativeStreamPort {
  cancelStream(input:{streamId:string}):Promise<unknown>;
 }
 /** Closing IPC does not cancel committed effects. Interrupted sends require history reconciliation. */
-export async function streamNativeAgent(port:NativeStreamPort,input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void){
+export async function streamNativeAgent(port:NativeStreamPort,input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void,onReplyReady?:(results:readonly unknown[]|undefined)=>void){
  const bounded=AbortSignal.any([signal,AbortSignal.timeout(120000)]),streamId=crypto.randomUUID();
  bounded.throwIfAborted();
  let active=true,started=false,responded=false,terminal=false,bytes=0;
@@ -17,12 +17,13 @@ export async function streamNativeAgent(port:NativeStreamPort,input:{path:string
  // Handler can reject before dispatch awaits finish; attach a rejection observer immediately.
  void response.catch(()=>{});
  const body=new ReadableStream<Uint8Array>({start(value){controller=value;}});
- const fail=(error:Error)=>{if(terminal)return;terminal=true;rejectTerminal(error);rejectResponse(error);controller.error(error);};
+ const fail=(error:Error,revokeReady=false)=>{if(terminal)return;if(revokeReady)onReplyReady?.(undefined);terminal=true;rejectTerminal(error);rejectResponse(error);controller.error(error);};
  const cleanup=(work:Promise<unknown>)=>{void work.catch(()=>{});};
  let remove:(()=>Promise<void>)|undefined;
  let rejectAddition:(()=>void)|undefined;
  const addition=port.addListener('alphaAgentStream',envelope=>{
   if(!active||envelope?.streamId!==streamId)return;
+  let interrupted=false;
   try{
    const event=envelope.event;
    if(!event||typeof event!=='object')throw Error('Invalid native stream frame');
@@ -38,10 +39,11 @@ export async function streamNativeAgent(port:NativeStreamPort,input:{path:string
     if(bytes>2*1024*1024)throw Error('Native stream exceeds limit');
     controller.enqueue(Uint8Array.from(binary,c=>c.charCodeAt(0)));
    }else if(event.type==='complete'){
-    if(event.error||!responded)throw Error('Response interrupted. Outcome unknown; check history before retrying.');
+    if(event.error!==undefined&&typeof event.error!=='string')throw Error('Invalid native stream completion');
+    if(typeof event.error==='string'||!responded){interrupted=typeof event.error==='string'&&responded;throw Error('Response interrupted. Outcome unknown; check history before retrying.');}
     terminal=true;resolveTerminal();controller.close();
    }else throw Error('Invalid native stream event');
-  }catch(error){fail(error instanceof Error?error:Error('Invalid native stream'));}
+  }catch(error){fail(error instanceof Error?error:Error('Invalid native stream'),!interrupted);}
  });
  void addition.then(listener=>{remove=()=>listener.remove();if(bounded.aborted||!active)cleanup(listener.remove());},()=>{});
  const abort=()=>{fail(Error('Response interrupted. Outcome unknown; check history before retrying.'));if(started)void port.cancelStream({streamId}).catch(()=>{});};
@@ -53,7 +55,7 @@ export async function streamNativeAgent(port:NativeStreamPort,input:{path:string
   // Do not wait for dispatch acknowledgement to consume events or honour abort.
   const dispatch=port.requestStream({...input,streamId});
   void dispatch.then(result=>{if(result.streamId!==streamId)fail(Error('Native stream identity changed'));if(!active||bounded.aborted)void port.cancelStream({streamId}).catch(()=>{});},()=>fail(Error('Response interrupted. Outcome unknown; check history before retrying.')));
-  const result=await readLocalAgentStream(await response,bounded,onText);
+  const result=await readLocalAgentStream(await response,bounded,onText,onReplyReady);
   await completed;bounded.throwIfAborted();return result;
  }finally{
   active=false;bounded.removeEventListener('abort',abort);
