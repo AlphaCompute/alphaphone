@@ -91,7 +91,7 @@ test('decisions.md lists the pending owner decisions with options and records no
   assert.match(pending, /Nothing in this section is decided\./);
   const rows = pending.split('\n').filter(line => /^\| A-\d\d \|/.test(line)).map(cells);
   const ids = rows.map(row => row[0]);
-  for (const id of ['A-09', 'A-10', 'A-02', 'A-04', 'A-05', 'A-01', 'A-06', ...Array.from({ length: 12 }, (_, index) => `A-${index + 11}`)]) assert.ok(ids.includes(id), `${id} missing from pending owner decisions`);
+  for (const id of ['A-09', 'A-10', 'A-02', 'A-04', 'A-05', 'A-01', 'A-06', ...Array.from({ length: 16 }, (_, index) => `A-${index + 11}`)]) assert.ok(ids.includes(id), `${id} missing from pending owner decisions`);
   assert.equal(new Set(ids).size, ids.length, 'duplicate pending decision');
   for (const row of rows) {
     assert.equal(row.length, 4, `${row[0]}: expected ID, decision, options and evidence`);
@@ -102,4 +102,25 @@ test('decisions.md lists the pending owner decisions with options and records no
   // A pending item must not also appear as an October 7 owner decision.
   const owner = section(decisions, 'October 7 owner product decisions');
   for (const id of ids.filter(id => Number(id.slice(2)) > 10)) assert.ok(!owner.includes(id), `${id} appears among owner decisions`);
+});
+
+// The contradictions the October 10 refresh found had three shapes: a ledger naming a retired
+// upstream pin, a gate whose first step was a source check the same entry already listed as
+// met, and a reference to a decision that has no row. Each is checked here.
+test('the status index names the pinned upstream commit and no gate starts with a source check', () => {
+  const pin = JSON.parse(read('upstream.lock.json')).commit;
+  assert.ok(section(status, 'Product boundaries').includes(`\`${pin.slice(0, 10)}\``), `Product boundaries must name the pin ${pin.slice(0, 10)} from upstream.lock.json`);
+  assert.ok(requirements.note.includes(pin.slice(0, 10)), 'requirements.json note must name the pin it was refreshed against');
+  for (const requirement of requirements.requirements) {
+    if (requirement.status !== 'partial') continue;
+    // A gate that opens with "S:" says software is the next step; then "remaining" must name where that software is.
+    if (/^S:/.test(requirement.gate)) assert.match(requirement.remaining, /not on main|not implemented|MVP-\d\d/, `${requirement.id}: an S gate needs the missing software named in "remaining"`);
+  }
+});
+
+test('every decision ID named in the requirement ledgers is a row in decisions.md', () => {
+  const decisions = read('docs/decisions.md');
+  const named = new Set([...status.matchAll(/\bA-\d\d\b/g), ...JSON.stringify(requirements).matchAll(/\bA-\d\d\b/g)].map(match => match[0]));
+  for (const id of named) assert.ok(decisions.includes(`| ${id} |`), `${id} is named in the ledgers but has no row in docs/decisions.md`);
+  for (const [policy] of status.matchAll(/\bP-\d\d\b/g)) assert.ok(decisions.includes(`**${policy}**`), `${policy} is named in docs/mvp-current-status.md but is not an owner decision`);
 });
