@@ -17,7 +17,7 @@ def gateway(root, before_answer=None):
             return original(self, *args, **kwargs)
         module.Handler.answer = answer
     server = module.http.server.ThreadingHTTPServer(('127.0.0.1', 0), module.Handler)
-    worker = threading.Thread(target=server.serve_forever)
+    worker = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.05))
     worker.start()
     try:
         yield 'http://127.0.0.1:' + str(server.server_port)

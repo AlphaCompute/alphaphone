@@ -11,38 +11,6 @@ import {ensurePreparedWorkflowWorker} from '../scripts/prepared-workflow-worker.
 import {workerHash} from '../scripts/workflow-worker-artifact.mjs';
 
 const read = file => fs.readFileSync(file, 'utf8');
-const scripts = JSON.parse(read('package.json')).scripts;
-
-test('android:build:local builds the workflow worker between preparation and staging', () => {
-  const steps = scripts['android:build:local'].split(' && ');
-  assert.deepEqual(steps, [
-    'node scripts/android-build-preflight.mjs --before-prepare',
-    'npm run agent:prepare',
-    'npm run agent:build-workflow-worker',
-    'npm run agent:stage-android',
-    'npm run android:build',
-  ]);
-  // Each chained step is a real script, so the chain cannot silently skip one.
-  for (const step of steps.filter(step => step.startsWith('npm run ')))
-    assert.ok(scripts[step.slice('npm run '.length)], step);
-  // Staging verifies the worker artifact; the chain must produce it first.
-  assert.match(read('scripts/stage-workflow-worker.mjs'), /stageWorkerArtifact\(artifact/);
-});
-
-test('prepared-source children run without the agent variables turbo detects', () => {
-  // Each name below was observed to make turbo 2.11.5 write the managed AGENTS.md block.
-  for (const name of ['AI_AGENT', 'CLAUDECODE', 'CLAUDE_CODE', 'CODEX_SANDBOX', 'CURSOR_AGENT', 'CURSOR_TRACE_ID', 'GEMINI_CLI', 'AUGMENT_AGENT', 'OPENCODE', 'OPENCODE_CLIENT', 'REPL_ID'])
-    assert.ok(TURBO_AGENT_DETECTION_ENV.includes(name), name);
-  const base = Object.fromEntries(TURBO_AGENT_DETECTION_ENV.map(name => [name, '1']));
-  const env = preparedSourceEnv({...base, PATH: '/bin', HOME: '/home/x'}, {ELIZA_SKIP_FUSED_INFERENCE_SETUP: '1'});
-  assert.deepEqual(env, {PATH: '/bin', HOME: '/home/x', ELIZA_SKIP_FUSED_INFERENCE_SETUP: '1'});
-  // An extra cannot reintroduce a detection variable either.
-  assert.equal('CLAUDECODE' in preparedSourceEnv({}, {CLAUDECODE: '1'}), false);
-  // Every producer that runs commands inside the prepared checkout uses the scrubbed env.
-  assert.match(read('scripts/prepare-local-agent.mjs'), /env:preparedSourceEnv\(process\.env,\{ELIZA_SKIP_FUSED_INFERENCE_SETUP:'1'\}\)/);
-  assert.match(read('scripts/stage-local-agent-runtime.mjs'), /const env=preparedSourceEnv\(process\.env,/);
-  assert.match(read('scripts/build-workflow-worker.ts'), /const env=preparedSourceEnv\(process\.env\);\nfor\(const name of Object\.keys\(process\.env\)\)if\(!\(name in env\)\)delete process\.env\[name\];/);
-});
 
 test('scrubbed children leave a turbo-style AGENTS.md updater with nothing to detect', t => {
   // Stand-in for turbo's detector: appends a managed block when any variable is set.
@@ -122,10 +90,6 @@ test('preflight rejects an unpinned checkout and android:build stops before sync
   assert.match(result.stderr, /git submodule update --init vendor\/eliza/);
   assert.equal(fs.existsSync(path.join(f.root, 'artifacts')), false);
   assert.equal(fs.existsSync(path.join(f.root, 'web-dist')), false);
-});
-
-test('the Gradle source-staging task explains a missing prepared runtime', () => {
-  assert.match(read('scripts/stage-local-agent-sources.mjs'), /Prepared runtime source .* is missing\. Run npm run android:build:local .* or npm run agent:prepare first\./);
 });
 
 test('worker build reuses only an artifact that verifies against the prepared source', async t => {

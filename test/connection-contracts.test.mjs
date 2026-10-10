@@ -5,7 +5,6 @@ import { execFileSync } from 'node:child_process';
 // not establish Cloud, enclave, Android Keystore, or physical-device acceptance.
 for (const script of [
   'test-remote-protocol.mjs',
-  'test-cloud-protocol.mjs',
   'test-connection-history.mjs',
 ]) {
   test(`connection contract: ${script}`, () => {

@@ -6,7 +6,7 @@ export async function returnToApps(page: Page) {
   // Read-only nested detail pages hide the app header. Unwind their visible
   // back controls first, rather than opening and dragging the chat over them.
   for (let depth = 0; depth < 4 && !await settings.isVisible(); depth++) {
-    const nested = page.getByRole('button', {name: /^(Back to calendar|Back from photo|Back to albums)$/}).filter({visible:true});
+    const nested = page.getByRole('button', {name: /^(Back to calendar|Back to notes|Back from photo|Back to albums)$/}).filter({visible:true});
     if (!await nested.count()) break;
     await nested.click();
     await expect(nested).toBeHidden();
