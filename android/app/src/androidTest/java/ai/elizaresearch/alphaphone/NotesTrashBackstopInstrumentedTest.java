@@ -92,4 +92,55 @@ public final class NotesTrashBackstopInstrumentedTest {
   assertNull(AlphaNoteAudioPlugin.trashEntrySpans("{\"version\":1,\"entries\":[{\"a\":\"]}\"},]}"));
   assertEquals(2,AlphaNoteAudioPlugin.trashEntrySpans("{\"version\":1,\"entries\":[{\"a\":\"},{\\\"\"},{\"b\":[1,{}]}]}").size());
  }
+ /** MVP-15: the sweep takes its clock as an argument, so wrong and corrected clocks are exact. */
+ @Test public void wrongClocksNeverPurgeEarlyAndTheDeadlineIsExact()throws Exception{
+  long deletedAt=System.currentTimeMillis()-DAY;String opText="77777777-7777-4777-8777-777777777777",opVoice="88888888-8888-4888-8888-888888888888";
+  recording("backstop-expired","backstop-voice",opVoice,deletedAt);
+  notes();
+  store.removeCredentialSlot(AlphaNoteAudioPlugin.PENDING_AUDIO_SLOT);
+  String trash="{\"version\":1,\"entries\":["+entry(opText,"backstop-text","text","Clock",deletedAt,null)+","+entry(opVoice,"backstop-voice","voice","Voice",deletedAt,"backstop-expired")+"]}";
+  store.writeCredentialSlot(AlphaNoteAudioPlugin.NOTES_TRASH_SLOT,trash);
+  // A clock moved backwards (even before the deletion) and one millisecond before the deadline.
+  for(long now:new long[]{deletedAt-10*DAY,1L,deletedAt,deletedAt+3*DAY-1}){
+   assertEquals(0,AlphaNoteAudioPlugin.sweepExpiredTrash(context,now));
+   assertEquals("deletedAt is never rewritten",trash,store.readCredentialSlot(AlphaNoteAudioPlugin.NOTES_TRASH_SLOT));
+   assertTrue(new File(audioDir(),"backstop-expired.audio").exists());
+  }
+  // Exactly three days after deletion both entries go, the recording with its own operation.
+  assertEquals(2,AlphaNoteAudioPlugin.sweepExpiredTrash(context,deletedAt+3*DAY));
+  assertEquals("{\"version\":1,\"entries\":[]}",store.readCredentialSlot(AlphaNoteAudioPlugin.NOTES_TRASH_SLOT));
+  assertFalse(new File(audioDir(),"backstop-expired.audio").exists());
+  assertEquals("purged",new JSONObject(store.readCredentialSlot("note-audio-metadata:v1:backstop-expired")).getJSONObject("deletionOperations").getString(opVoice));
+ }
+
+ /** MVP-15: process death after the recording erase but before the Trash row was removed converges. */
+ @Test public void anEraseInterruptedBeforeItsRowWasRemovedIsCompletedOnce()throws Exception{
+  long now=System.currentTimeMillis(),expired=now-3*DAY-60_000;String op="99999999-9999-4999-8999-999999999999";
+  // The state a killed process leaves: bytes gone, receipt purged, row still present.
+  JSONObject record=new JSONObject().put("audioId","backstop-expired").put("noteId","backstop-voice").put("durationMs",1000).put("createdAt",expired-1000).put("mimeType","audio/mp4")
+   .put("transcript","").put("deletedAt",expired).put("activeDeletionOperation",op).put("deletionOperations",new JSONObject().put(op,"purged"));
+  store.writeCredentialSlot("note-audio-metadata:v1:backstop-expired",record.toString());
+  notes();
+  store.removeCredentialSlot(AlphaNoteAudioPlugin.PENDING_AUDIO_SLOT);
+  store.writeCredentialSlot(AlphaNoteAudioPlugin.NOTES_TRASH_SLOT,"{\"version\":1,\"entries\":["+entry(op,"backstop-voice","voice","Voice",expired,"backstop-expired")+"]}");
+  assertEquals(1,AlphaNoteAudioPlugin.sweepExpiredTrash(context,now));
+  assertEquals("{\"version\":1,\"entries\":[]}",store.readCredentialSlot(AlphaNoteAudioPlugin.NOTES_TRASH_SLOT));
+  assertEquals("The receipt is unchanged",record.toString(),new JSONObject(store.readCredentialSlot("note-audio-metadata:v1:backstop-expired")).toString());
+  assertEquals("Idempotent",0,AlphaNoteAudioPlugin.sweepExpiredTrash(context,now));
+ }
+
+ /** MVP-15: a permanent deletion under review (no Trash entry) leaves the sweep with nothing to erase. */
+ @Test public void aPermanentDeletionUnderReviewIsNeverSweptThroughAnotherEntry()throws Exception{
+  long now=System.currentTimeMillis(),expired=now-3*DAY-60_000;String stale="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",permanent="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  // The recording is in the audio trash under the permanent operation; an older Trash row names another operation.
+  recording("backstop-expired","backstop-voice",permanent,expired);
+  notes();
+  store.writeCredentialSlot(AlphaNoteAudioPlugin.PENDING_AUDIO_SLOT,new JSONObject().put(permanent,new JSONObject().put("id",permanent).put("permanent",true)).toString());
+  String trash="{\"version\":1,\"entries\":["+entry(stale,"backstop-voice","voice","Voice",expired,"backstop-expired")+"]}";
+  store.writeCredentialSlot(AlphaNoteAudioPlugin.NOTES_TRASH_SLOT,trash);
+  assertEquals("Only the operation that owns the audio trash may erase it",0,AlphaNoteAudioPlugin.sweepExpiredTrash(context,now));
+  assertEquals(trash,store.readCredentialSlot(AlphaNoteAudioPlugin.NOTES_TRASH_SLOT));
+  assertTrue(new File(audioDir(),"backstop-expired.audio").exists());
+  assertEquals("Synthetic spoken words",new JSONObject(store.readCredentialSlot("note-audio-metadata:v1:backstop-expired")).getString("transcript"));
+ }
 }
