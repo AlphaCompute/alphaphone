@@ -66,10 +66,37 @@ and the browser loopback cases. `<output>/results.json` (via
 (every method skipped by its own assumption gate) or `missing`, bound to the commit, a
 dirty flag and every installed APK's SHA-256, with raw output per class. It is labelled
 emulator class E evidence and is never device or user acceptance. Process-death,
-permission-restoring and provider-credential campaigns (ReminderTapProcessDeath,
-WorkflowNoticeProcessDeath, NotificationChannels, ResidentEgressRedaction) are refused
+permission-changing and provider-credential campaigns (ReminderTapProcessDeath,
+WorkflowNoticeProcessDeath, NotificationChannels, VoicePermissionDenied,
+VoicePermissionRevoke, LocalVoiceRecordingLimit, ResidentEgressRedaction) are refused
 there with the command of the campaign that owns them; text-scale, bookmark and sign-in restart
-phases run through `scripts/test-native-restart.mjs`. AccessibilityInstrumentedTest
+phases run through `scripts/test-native-restart.mjs`. Classes that assume a test-mocks app
+build (ConnectionChooser, BrowserWebFeatures, CloudVoice and the other loopback-fixture
+classes) are refused without `--test-mocks` instead of reporting `skipped`.
+
+`--home-role` is the runner's one phase that changes a device role, and it runs only with
+`--owned-emulator` on the launcher variant:
+`npm run test:android:instrumentation -- --owned-emulator --avd <name> --serial emulator-NNNN --variants launcher --home-role --classes SettingsRoles,LauncherHome`.
+It requires one stock HOME app to hold the role before the run, runs SettingsRoles (which
+removes the role, declines and accepts Android's own dialog and restores what it found),
+selects the launcher APK with `cmd package set-home-activity`, force-stops it and requires
+the HOME key to bring it to the foreground, runs LauncherHome (All-apps drawer, Settings,
+the stock dialer, three installed apps with HOME returning each time, Android Settings and
+the default-Home chooser still reachable), then puts the original holder back and reads it
+back before uninstalling. LauncherHome and SettingsRoles are refused without `--home-role`,
+so they cannot be reported as skipped. `results.json` records the original holder, the cold
+HOME start and the restoration under `homeRole`; a run is not a pass without both. If the
+original holder cannot be proven restored the run fails, nothing is uninstalled,
+`home-role-recovery.json` gives the exact recovery command, and the emulator must not be
+reused or deleted until it is recovered. This is emulator HOME-role evidence only: not
+boot-time HOME, a custom image, or the recovery and emergency routes of a phone.
+
+`test/android-instrumentation-runner.test.mjs` keeps the instrumentation sources reachable:
+every class with an `@Test` method under `android/app/src/androidTest` or
+`android/app/src/testMocks/androidTest` must have a `CLASS_REGISTRY` entry, be named by one
+of the `CAMPAIGN_RUNNERS` scripts, or be listed in `NOT_RUN_BY_A_RUNNER` with the reason
+(all three are in `scripts/android-instrumentation.mjs`). A new class with none of these
+fails `npm test`, and so does a listed class that has since gained a runner. AccessibilityInstrumentedTest
 (ATF plus TalkBack-order checks at 200% font) and RotationInstrumentedTest (which needs
 the landscape layout and fails, not skips, without it) run through the same runner. See the [Android/AOSP guide](android-and-aosp.md)
 and README for isolated Calendar and reminder regression/upgrade campaigns.
@@ -114,6 +141,27 @@ cleanup removes that user and restores owner 0. `user-verification.json` records
 the shared lifecycle, `verification.json` the instrumentation and package
 cleanup, and `result.json` the product scenario. Deferred cleanup is a failure
 requiring explicit recovery of the owned fixture.
+
+`node scripts/test-native-permissions.mjs <scenario> APP.apk TEST.apk NEW_OUTPUT` sets the
+permission before the app process starts and runs one exact method:
+
+| Scenario | Permission state | What runs |
+| --- | --- | --- |
+| `camera` | CAMERA revoked | denial and explicit retry without a fake preview |
+| `settings` | fine location revoked, coarse granted | Accounts handoff and location accuracy readback |
+| `channels` | POST_NOTIFICATIONS granted | a blocked channel read back, user recovery and a real notification |
+| `voice` | RECORD_AUDIO revoked | the denied recorder state, Open app settings and back, no capture file, typing in the composer still works |
+| `voice-revoke` | RECORD_AUDIO granted, revoked while recording, granted again | four phases in separate processes: a baseline capture; a capture during which the runner runs `pm revoke` and requires Android to end that process mid-test; a new process that finds no capture file, no active recording and no note audio; and a capture after the grant is restored |
+| `voice-limit` | RECORD_AUDIO granted | the recorder stops at its limit with the full duration decodable |
+| `notice` | POST_NOTIFICATIONS granted | a redacted result notice is posted, tapped and consumed once across recreation |
+| `notice-denied` | POST_NOTIFICATIONS revoked | the result stays in encrypted history, no notice is posted and none is pending |
+
+Revoking a runtime permission kills the app process, and instrumentation runs in it, so
+`voice-revoke` never asks one process to observe both sides and never force-stops the app to
+imitate the kill: a recording process that survives `pm revoke` fails the campaign.
+`result.json` records the revocation under `revocation`. The temporary user is removed with
+its grants, so nothing is restored afterwards. None of this is microphone, speaker or
+notification behaviour on a phone.
 
 Process-restart campaigns use `node scripts/test-native-restart.mjs` with `inbox`,
 `notes`, `document`, `text-scale`, `tree`, `bookmark`, or `signin`, a matching archived APK pair and a new output directory.

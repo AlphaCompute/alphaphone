@@ -49,17 +49,22 @@ the product on a phone.
 
 | Loop | Steps | Evidenced | SOFTWARE | EMULATOR | CI | Closable total | Percentage | HUMAN | DEVICE | UPSTREAM |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| A | 31 | 15 | 1 | 3 | 2 | 21 | 71% | 6 | 4 | 0 |
+| A | 31 | 15 | 0 | 4 | 2 | 21 | 71% | 6 | 4 | 0 |
 | B | 28 | 14 | 3 | 6 | 0 | 23 | 61% | 3 | 2 | 0 |
 | C | 15 | 7 | 0 | 2 | 1 | 10 | 70% | 2 | 3 | 0 |
-| D | 20 | 13 | 1 | 1 | 1 | 16 | 81% | 3 | 1 | 0 |
+| D | 20 | 14 | 0 | 1 | 1 | 16 | 88% | 3 | 1 | 0 |
 | E | 21 | 8 | 0 | 9 | 0 | 17 | 47% | 3 | 1 | 0 |
 | F | 22 | 10 | 5 | 3 | 1 | 19 | 53% | 3 | 0 | 0 |
 | J01 | 10 | 6 | 0 | 3 | 0 | 9 | 67% | 0 | 1 | 0 |
 | J03 | 10 | 7 | 1 | 1 | 0 | 9 | 78% | 1 | 0 | 0 |
 | J04 | 10 | 6 | 2 | 0 | 0 | 8 | 75% | 1 | 1 | 0 |
 | J05 | 9 | 7 | 0 | 1 | 0 | 8 | 88% | 1 | 0 | 0 |
-| All | 176 | 93 | 13 | 29 | 5 | 140 | 66% | 23 | 13 | 0 |
+| All | 176 | 94 | 11 | 30 | 5 | 140 | 67% | 23 | 13 | 0 |
+
+The A, D and All rows include the round-5 runner package (see "Round 5: native-runner
+gaps"): A-6 moved from SOFTWARE to EMULATOR, and D-8 from SOFTWARE to EVIDENCED on a
+recorded host-runtime run. No other count changed; in particular nothing moved to
+EVIDENCED on the strength of instrumentation, because none of it has been run.
 
 UPSTREAM is zero because this audit established no step that certainly needs an elizaOS
 change. Two failures could turn out to be upstream once someone runs them: the on-device
@@ -84,7 +89,7 @@ by reading the adapters. The stub is not the native plugins.
 | J01 | None. The development profile is incidental. | Real path. The whole loop passes on the flag-off web bundle with a synthetic camera. On Android the camera and CalendarProvider are native. |
 | J03 | Development incoming-email simulator and development agent. | The attachment half is blocked with F. Files, the reviewed question and the source-linked note are real; with no agent the question is not sent and nothing is saved. |
 | J04 | Synthetic Maps provider; development "Device controls → Back". | Honest unavailable state. No Maps provider is configured in a flag-off build, so the address reaches Maps and the user reads "Connect a Maps provider to search places and plan routes." No route can be produced. |
-| J05 | Development agent. | Real path up to Send. The page review works flag-off; without an agent the draft is kept and the connection choices open. On Android the excerpt comes from the native WebView, which no test exercises. |
+| J05 | Development agent. | Real path up to Send. The page review works flag-off; without an agent the draft is kept and the connection choices open. On Android the excerpt comes from the native WebView; `BrowserPageQuestionInstrumentedTest` (round 5) covers that path up to Send and has not been run. |
 
 ## Per-loop step tables
 
@@ -96,12 +101,12 @@ Journey spec: `test/browser/journey-a-conversation.spec.ts` (passed in this audi
 
 | # | Required step or negative case | Evidence on this branch | Class |
 | --- | --- | --- | --- |
-| A-1 | Alpha is the HOME app and HOME returns to it (launcher variant) | `LauncherHomeInstrumentedTest`, `ShellInstrumentedTest`. No run is recorded at this source. LauncherHome skips unless Alpha is already the selected HOME app, and the runner does not select it. | EMULATOR |
+| A-1 | Alpha is the HOME app and HOME returns to it (launcher variant) | `LauncherHomeInstrumentedTest` (drawer, Settings, stock dialer, three installed apps with HOME returning each time, Settings and the default-Home chooser still reachable), `SettingsRolesInstrumentedTest` (role removed, declined and accepted in Android's dialog), `ShellInstrumentedTest`. Round 5 added the runner's `--home-role` phase, which selects the launcher APK as HOME, requires a cold start through the HOME key and restores the original holder; without it both classes are refused, so they can no longer skip. `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --variants launcher --home-role --classes SettingsRoles,LauncherHome`. No run recorded. | EMULATOR |
 | A-2 | Cold boot of the target phone image into Alpha HOME | None. No SKU is chosen (A-01) and no image has been booted. | DEVICE |
 | A-3 | First usable screen has an accessible Talk control and typed entry | Journey A step 1. Flag-off Android: `journey-core-loops.production.spec.ts` loop A. | EVIDENCED |
 | A-4 | A configured returning user can speak without passing setup (record, review, user sends; P-01) | `chat-voice-mode.spec.ts` ("ongoing Cloud conversation … sends only new speech"). Transcription is a closed fixture. Journey A has no spoken request. | EVIDENCED |
 | A-5 | Signed-out and unavailable-voice states offer recovery and typing and capture nothing | `production-surface.spec.ts` ("signed-out voice requires Cloud without capture, upload or local fallback"), `voice-entry-context.spec.ts`. | EVIDENCED |
-| A-6 | Denied microphone permission offers Settings recovery and typing | `VoicePermissionDeniedInstrumentedTest` exists but needs RECORD_AUDIO revoked before it starts; no runner does that, so it has never been runnable as a campaign. | SOFTWARE |
+| A-6 | Denied microphone permission offers Settings recovery and typing | `VoicePermissionDeniedInstrumentedTest` (denied state, Open app settings and back, no capture file, typing in the composer) through `node scripts/test-native-permissions.mjs voice APP.apk TEST.apk NEW_OUTPUT`, which revokes RECORD_AUDIO in a temporary user before the app starts. Revoked while recording and granted again: `VoicePermissionRevokeInstrumentedTest` through `… voice-revoke …`. Both added in round 5; runner wiring is tested against a scripted adb. No run recorded. | EMULATOR |
 | A-7 | Stock recovery and emergency routes stay reachable | None. | DEVICE |
 | A-8 | Sign in to Eliza Cloud with the intended account | Renderer only, against a stubbed bridge: `production-surface.spec.ts` resident billing onboarding (7 modes). No real sign-in has been exercised. | HUMAN |
 | A-9 | Select an existing Cloud agent | `dev-cloud-*.spec.ts` against the development Cloud fixture. Flag-off Android offers no Cloud agent (A-16); the flag-off web build cannot sign in at all. | HUMAN |
@@ -125,10 +130,10 @@ Journey spec: `test/browser/journey-a-conversation.spec.ts` (passed in this audi
 | A-27 | Native credential slots are isolated per owner | `ConnectionInstrumentedTest` through `scripts/ci/pending-recovery-ui.py` (hosted runner only). No passing run recorded. | CI |
 | A-28 | The distribution bundle has no mock choice or entry point | `production-surface.spec.ts`; `scripts/audit-production-bundle.mjs` (passed on the bundle built for this audit). | EVIDENCED |
 | A-29 | The installed distribution APK has no mock surface | `NoMockProductInstrumentedTest` (runner default); `scripts/verify-apks.mjs`. No APK was built at this source. | EMULATOR |
-| A-30 | Test-mocks APK: enter mock mode, cause no native or provider effect, exit to a deliberate state | `mock-background-admission.spec.ts` (browser). `ConnectionChooserInstrumentedTest` needs a test-mocks APK and has no runner entry. | EMULATOR |
+| A-30 | Test-mocks APK: enter mock mode, cause no native or provider effect, exit to a deliberate state | `mock-background-admission.spec.ts` (browser). `ConnectionChooserInstrumentedTest` needs a test-mocks APK; registered in round 5 and refused without `--test-mocks`: `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --test-mocks --classes ConnectionChooser`. No run recorded. | EMULATOR |
 | A-31 | Lock/unlock, reboot and explicit runtime stop | `local-agent-stop.spec.ts` covers the stop read-back in the renderer. Lock and reboot: none. | DEVICE |
 
-Count: 15 evidenced, 1 SOFTWARE, 3 EMULATOR, 2 CI; separately 6 HUMAN, 4 DEVICE, 0 UPSTREAM. **15 of 21 = 71%.**
+Count: 15 evidenced, 0 SOFTWARE, 4 EMULATOR, 2 CI; separately 6 HUMAN, 4 DEVICE, 0 UPSTREAM. **15 of 21 = 71%.**
 
 ### B. Voice to note to calendar event or reminder (also J02)
 
@@ -149,7 +154,7 @@ Journey spec: `test/browser/journey-b-voice-note-actions.spec.ts` (passed in thi
 | B-9 | Trash empties automatically after 3 days | `notes-trash.spec.ts` ("purges exactly three days after deletion"). Native backstop `NotesTrashBackstopInstrumentedTest` has no recorded run. | EVIDENCED |
 | B-10 | Full storage is refused without losing data | `notes-save-failure.spec.ts` covers failed writes. The "Trash is full. Empty Trash in Notes…" refusal (`notes-trash-adapter.ts`) has no test. Native `NotesStorageDurabilityInstrumentedTest` has no recorded run. | SOFTWARE |
 | B-11 | Interrupted save keeps the unsaved text | `notes-save-failure.spec.ts`, `voice-save-ownership.spec.ts`. | EVIDENCED |
-| B-12 | Native encrypted Notes storage survives a process restart | `NotesSecureStorageInstrumentedTest` (no runner); `node scripts/test-native-restart.mjs notes`. No run at this source. | EMULATOR |
+| B-12 | Native encrypted Notes storage survives a process restart | `NotesSecureStorageInstrumentedTest` (registered in round 5 with its `notesSecureStorage=1` gate: `--classes NotesSecureStorage`; its fresh-install migration method still has no campaign); `node scripts/test-native-restart.mjs notes`. No run at this source. | EMULATOR |
 | B-13 | The agent proposes a calendar event; the review shows account, time zone and attendees before confirming | Journey B authors the proposal through the "Action JSON" development control, reads the calendar source ID and revision through `page.evaluate`, and asserts only that the review contains the title. Account, zone and attendees are not asserted anywhere in the journey. | SOFTWARE |
 | B-14 | A real agent decides to propose the event or reminder | `LiveAgentInstrumentedTest` (gate `liveAgent=true`, real provider). No runner. | HUMAN |
 | B-15 | Read the actual provider state after create, edit and delete (Android CalendarProvider) | `CalendarCrudInstrumentedTest`, `CalendarAgentCrudInstrumentedTest` through `scripts/test-calendar-regression.mjs`. No run at this source. | EMULATOR |
@@ -210,7 +215,7 @@ Journey spec: `test/browser/journey-d-digests.spec.ts` (passed in this audit).
 | D-5 | The phone is powered off before admission and two server runs complete while it is off | Not coverable. The resident agent cannot run on a powered-off phone; A-09 is open. | HUMAN |
 | D-6 | Each occurrence runs once with a distinct run ID, scheduled instant and retained output | Journey D (development scheduler; the output is the scripted reply). | EVIDENCED |
 | D-7 | A restart inside the scheduled minute does not admit the occurrence twice (renderer) | Journey D (page reload inside the minute). | EVIDENCED |
-| D-8 | A resident worker killed at an admission or execution boundary creates no duplicate result | `scripts/test-local-digest-restart.mjs` (`npm run agent:test-digest-restart`): a host process-kill test that needs `ALPHA_ELIZA_SOURCE` with dependencies installed. It is not part of `npm test` or any workflow and has no recorded run. | SOFTWARE |
+| D-8 | A resident worker killed at an admission or execution boundary creates no duplicate result | `npm run agent:test-digest-restart`, run in round 5 at upstream `352d7a08`: exit 0. The interrupted run stays `outcome-unknown` with no result and no second inference, duplicate admissions return the same run ID, and a never-admitted overdue occurrence yields one explicit `missed` result. This is host-runtime evidence with a synthetic model (class S), not Android, and it is one recorded manual run: the check needs a 6 GB prepared source and is in no automated lane. Preparation and the recorded result: `docs/local-agent-development.md`, "Isolated digest process-recovery check". | EVIDENCED |
 | D-9 | Revoke a source | `dev-digest-schedule.spec.ts` ("a clock set back, a paused schedule and a revoked source never settle an occurrence twice or late"). | EVIDENCED |
 | D-10 | Edit and disable a schedule | `dev-digest-schedule.spec.ts` ("an edited time runs once at its new time"; paused schedule). | EVIDENCED |
 | D-11 | Overlap and missed time leave explicit records and no backlog replay | Journey D; `dev-digest-schedule.spec.ts`; `test/digest-occurrence-delivery.test.mjs`. | EVIDENCED |
@@ -224,7 +229,7 @@ Journey spec: `test/browser/journey-d-digests.spec.ts` (passed in this audit).
 | D-19 | Morning and evening flows run on the resident runtime with real model output on a phone | None. | HUMAN |
 | D-20 | Delivery under battery saver, Doze and lock | None. | DEVICE |
 
-Count: 13 evidenced, 1 SOFTWARE, 1 EMULATOR, 1 CI; separately 3 HUMAN, 1 DEVICE, 0 UPSTREAM. **13 of 16 = 81%.**
+Count: 14 evidenced, 0 SOFTWARE, 1 EMULATOR, 1 CI; separately 3 HUMAN, 1 DEVICE, 0 UPSTREAM. **14 of 16 = 88%.**
 
 ### E. Browser and credentials
 
@@ -282,7 +287,7 @@ Journey spec: `test/browser/journey-f-email-notifications.spec.ts` (passed in th
 | F-14 | A real external send to an authorized recipient | None. | HUMAN |
 | F-15 | A result or reminder is delivered while the app is in the background | `HostedBackgroundWorkerInstrumentedTest` (no runner entry before this audit), `ReminderOneOffInstrumentedTest`. No run at this source. | EMULATOR |
 | F-16 | A notice tapped after a process restart reaches exactly its own result or task | Journey F test 5 uses the development "Device controls → Notifications" shade and a page reload. Native: `ReminderTapProcessDeath`, `WorkflowNoticeProcessDeath` through `scripts/ci/pending-recovery-ui.py` (hosted runner only). No passing run recorded. | CI |
-| F-17 | With the channel disabled, in-app history still receives the result | `settings-truth.production.spec.ts` (stub). Native: `HostedResultNoticeInstrumentedTest.deniedNotificationRetainsEncryptedHistory` (gate `hostedNoticeDenied=1`, which no runner supplies) and `node scripts/test-native-permissions.mjs channels`. | EMULATOR |
+| F-17 | With the channel disabled, in-app history still receives the result | `settings-truth.production.spec.ts` (stub). Native: `HostedResultNoticeInstrumentedTest.deniedNotificationRetainsEncryptedHistory` through `node scripts/test-native-permissions.mjs notice-denied APP.apk TEST.apk NEW_OUTPUT` (round 5: POST_NOTIFICATIONS revoked before start, gate `hostedNoticeDenied=1`; the result is read back from encrypted history, no notice is posted or pending), and `… channels …`. The test reads the stored result through the bridge; it does not open the in-app history screen. No run recorded. | EMULATOR |
 | F-18 | A notification seen or dismissed is distinct from a completed task | `dev-hosted-results.spec.ts`, `notification-action-lifecycle.spec.ts`. | EVIDENCED |
 | F-19 | Source-account isolation | `inbox-owner-fence.spec.ts`. | EVIDENCED |
 | F-20 | After a confirmed send the retained local copy is not offered for sending again | It is offered ("Resume unsaved email"), and the receipt says a second send creates another message. Journey F asserts this as current behaviour. | SOFTWARE |
@@ -363,7 +368,7 @@ Journey spec: `test/browser/journey-j05-web-research-note.spec.ts` (passed in th
 | # | Required step or negative case | Evidence on this branch | Class |
 | --- | --- | --- | --- |
 | J05-1 | Bounded review of a page excerpt | Journey J05 (page fulfilled by the test); flag-off web: `journey-core-loops.production.spec.ts` (E, J05). | EVIDENCED |
-| J05-2 | Native WebView excerpt extraction bound to the page revision | No instrumentation class takes a page excerpt to a question or a note; the BrowserReading classes cover read-aloud only. | EMULATOR |
+| J05-2 | Native WebView excerpt extraction bound to the page revision | `BrowserPageQuestionInstrumentedTest` (round 5): `AlphaBrowser.reviewQuestion` refuses another address, origin, session or navigation number; frame, form and hidden content is not extracted; a navigation between extraction and approval retires the excerpt and the old request cannot be replayed; sensitive addresses and content yield no excerpt; Menu → Ask about page → native review → question editor → composer shares nothing before Send, and Send with no agent dispatches nothing; a note with a web source keeps it across recreation and reopens that address. The agent's answer and the summary-note save after it are not covered (no agent on a distribution emulator build); the note in the last method is stored in the shape that save writes. `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --classes BrowserPageQuestion`. No run recorded. | EMULATOR |
 | J05-3 | The agent answers from the excerpt | Journey J05 (scripted reply). | EVIDENCED |
 | J05-4 | Explicit save creates exactly one source-linked note that reopens after reload | Journey J05. | EVIDENCED |
 | J05-5 | Observation unavailable (cross-origin denied): pasted text is reviewed instead | Journey J05 second test. | EVIDENCED |
@@ -439,18 +444,21 @@ journey assertions.
 6. **Return from Maps to the event (J04-7).** An in-app "Back to event" control when Maps
    was opened from Calendar (`maps-adapter.ts`, `template.html`). Acceptance: journey J04
    returns without the development Back control and without a new provider request.
-7. **Denied-microphone campaign (A-6).** Add a `voice` scenario to
+7. **Denied-microphone campaign (A-6). Done in round 5** (`voice` and `voice-revoke`
+   scenarios; see "Round 5: native-runner gaps"). Original order: add a `voice` scenario to
    `scripts/test-native-permissions.mjs` that revokes RECORD_AUDIO for the temporary user,
    runs `VoicePermissionDeniedInstrumentedTest` with `-e voicePermissionDenied 1` and
    restores the permission. Acceptance: runner-wiring test in
    `test/android-instrumentation-runner.test.mjs`; then an emulator run.
-8. **Runner gaps for existing classes.** (a) Select and restore the HOME role on the owned
+8. **Runner gaps for existing classes. Done in round 5**, except that (d) stops at Send:
+   the summary-note save needs an agent reply. Original order: (a) Select and restore the HOME role on the owned
    emulator so `LauncherHomeInstrumentedTest` does not skip (A-1). (b) A denied-notification
    scenario that passes `hostedNoticeDenied=1` (F-17). (c) A registry entry for
    `ConnectionChooserInstrumentedTest` on the test-mocks pair (A-30). (d) Write a native
    test that takes a page excerpt through `AlphaBrowser.reviewQuestion` to a saved note
    and retires the token on navigation (J05-2); none exists.
-9. **Resident digest restart test has no lane (D-8).** `npm run agent:test-digest-restart`
+9. **Resident digest restart test has no lane (D-8). Documented and run in round 5** (passed);
+   it is still in no workflow, which is the CI owner's decision. Original order: `npm run agent:test-digest-restart`
    needs `ALPHA_ELIZA_SOURCE` with dependencies and is run by nothing. Document the exact
    preparation in `docs/verification.md`, run it once at this source and record the
    result; add it to a workflow only through the CI owner.
@@ -471,7 +479,11 @@ journey assertions.
     assert snooze and dismiss requests on the stubbed Android path. D: assert the rendered
     Home card. E: navigation during approval. None of these changes product code.
 15. **`scripts/test-clock-handoff-flow.mjs` is referenced by no npm script, workflow or
-    document.** Wire it into `npm test` or remove it.
+    document.** Wire it into `npm test` or remove it. **Not an orphan (round 5):** it is one
+    of the scripts `test/adapter-contracts.test.mjs` runs, so `npm test` already runs it as
+    "adapter contract: test-clock-handoff-flow.mjs". It tests the current
+    `clock-adapter.ts` against a controlled native boundary and passes. Nothing to wire or
+    remove.
 
 ## EMULATOR and CI campaigns
 
@@ -483,15 +495,19 @@ emulator; this host can run arm64 images only.
 | # | Closes | Command |
 | --- | --- | --- |
 | 1 | A-29, D-14, E-3, E-5 | `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN` (default classes: NoMockProduct, Shell, StartupReadiness, TextScale, BrowserSignins, BrowserFlow, BrowserContinuity, HostedProcessRestart, BrowserDownload) |
-| 2 | A-1 (skips until work order 8a), B-9 backstop, B-10 native, C-3, E-8, E-9, E-16, F-7, F-15, J01-10 | `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --classes LocalAgentOfflineApps,LauncherHome,NotesTrashBackstop,NotesStorageDurability,DailyApps,ReminderLifecycle,ClockHandoff,ClockRepeatDays,HostedResultNotice,HostedBackgroundWorker,WorkflowApprovalNotice,BrowserReading,BrowserSensitiveReading,BrowserIsolatedReading,BrowserReadingNavigation,PasswordBrowserFill,InboxOperationJournal,MailAttachment,Notifications,CameraScan,FilesTree` (entries added in this audit; first run) |
+| 2 | B-9 backstop, B-10 native, C-3, E-8, E-9, E-16, F-7, F-15, J01-10 | `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --classes LocalAgentOfflineApps,NotesTrashBackstop,NotesStorageDurability,DailyApps,ReminderLifecycle,ClockHandoff,ClockRepeatDays,HostedResultNotice,HostedBackgroundWorker,WorkflowApprovalNotice,BrowserReading,BrowserSensitiveReading,BrowserIsolatedReading,BrowserReadingNavigation,PasswordBrowserFill,InboxOperationJournal,MailAttachment,Notifications,CameraScan,FilesTree` (entries added in this audit; first run. LauncherHome moved to campaign 11; HostedResultNotice runs only its builder method here, its notices are campaigns 9 and 13) |
 | 3 | C-4 | `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --classes RealClock --clock-exclusive` (the image must have a Clock app) |
-| 4 | E-4, E-14, A-30 after work order 8c | `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --test-mocks --classes BrowserAutofill,BrowserDownload,BrowserFlow` |
+| 4 | E-4, E-14, A-30 | `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --test-mocks --classes BrowserAutofill,BrowserDownload,BrowserFlow,ConnectionChooser` |
 | 5 | E-10, E-11 | `ANDROID_SERIAL=emulator-NNNN ALPHA_NATIVE_TEST_AVD=<avd> ALPHA_NATIVE_TEST_ABI=arm64-v8a ALPHA_TEST_HOME_PACKAGE=<stock launcher> node scripts/test-native-restart.mjs signin APP.apk TEST.apk NEW_OUTPUT` (case added in this audit; the page is `https://example.com`, so the emulator needs network) |
 | 6 | B-12, F-7, J03-7 | same environment: `node scripts/test-native-restart.mjs notes APP.apk TEST.apk NEW_OUTPUT`, then `inbox`, then `document` |
 | 7 | B-15, B-25, J01-6, J01-7 | `ALPHA_CALENDAR_TEST_SERIAL=emulator-NNNN ALPHA_CALENDAR_TEST_AVD=<avd> ALPHA_CALENDAR_TEST_ABI=arm64-v8a node scripts/test-calendar-regression.mjs --case=CalendarCrudInstrumentedTest`, then `--case=CalendarAgentCrudInstrumentedTest` |
 | 8 | B-20, B-22, F-15 | `node scripts/test-reminder-one-off.mjs APP.apk TEST.apk NEW_OUTPUT`; `node scripts/test-reminder-recovery.mjs APP.apk TEST.apk NEW_OUTPUT` (reboots the emulator) |
-| 9 | B-26, F-17 | `node scripts/test-native-permissions.mjs channels APP.apk TEST.apk NEW_OUTPUT` |
-| 10 | J05-2 | No test exists; write it first (work order 8d). |
+| 9 | B-26, F-17 | `node scripts/test-native-permissions.mjs channels APP.apk TEST.apk NEW_OUTPUT`, then `notice-denied` (round 5) with a new output directory |
+| 10 | J05-2 | `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --classes BrowserPageQuestion` (round 5; the emulator needs network for the first tab and a WebView provider with isolated-world injection, as the BrowserReading classes do) |
+| 11 | A-1 | `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --variants launcher --home-role --classes SettingsRoles,LauncherHome` (round 5; changes and restores the emulator's HOME role, primary user only; a failed restoration leaves the packages installed and writes `home-role-recovery.json`) |
+| 12 | A-6 | `node scripts/test-native-permissions.mjs voice APP.apk TEST.apk NEW_OUTPUT`, then `voice-revoke` with a new output directory (round 5; same environment as campaign 5; `voice-revoke` records a few seconds from the emulator microphone and discards them) |
+| 13 | F-15 (posted notice) | `node scripts/test-native-permissions.mjs notice APP.apk TEST.apk NEW_OUTPUT` (round 5; the posted, redacted and tapped result notice needs POST_NOTIFICATIONS granted first, which the plain runner cannot do) |
+| 14 | B-12 | `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --classes NotesSecureStorage` (round 5 registry entry) |
 | CI-1 | A-23, A-27, C-7, D-15, F-16 | `.github/workflows/resident-android.yml` by `workflow_dispatch` on the candidate commit: job `native` (`scripts/ci/resident-native.py`: PrivateResidentSocket, ResidentStreamTransport, ResidentWorkflowCrash) and job `recovery-ui` (`scripts/ci/pending-recovery-ui.py`, 16 phases including Connection, ClockAgentReview, ReminderTapProcessDeath, WorkflowNoticeProcessDeath). No passing run of either job is recorded. Subject to [CI cost policy](ci-cost-policy.md); not triggered by this audit. |
 
 ## HUMAN, DEVICE and UPSTREAM blockers
@@ -532,6 +548,77 @@ runtime or `plugin-native-passwords`, report the exact change then; do not patch
 | Stale lines in the round-3 status: the "development Clock" is the browser build's Clock; the digest wording item was already fixed; automatic restore on Android | `docs/core-loop-status.md` | — |
 
 None of the runner changes has been executed on an emulator.
+
+## Round 5: native-runner gaps
+
+Package `claude/r5-runner-gaps`, on top of this audit branch. It closes the runner-side
+SOFTWARE work orders (7, 8, 9, 15): the gaps that stopped existing or needed Android
+instrumentation from being runnable at all. It wrote and compiled; it ran no emulator and
+built no APK, so every Android row it touched is EMULATOR with the command that now runs it,
+never EVIDENCED. The one exception is D-8, a host test that was run here.
+
+| Change | Files | Check |
+| --- | --- | --- |
+| `voice`, `voice-revoke`, `voice-limit`, `notice` and `notice-denied` permission scenarios. `voice-revoke` starts a real capture, revokes RECORD_AUDIO from outside and requires Android to end that process mid-test, then verifies in a new process and after a re-grant | `scripts/test-native-permissions.mjs`, `VoicePermissionRevokeInstrumentedTest.java` (new), `VoicePermissionDeniedInstrumentedTest.java`, `HostedResultNoticeInstrumentedTest.java` | `test/native-permission-runner.test.mjs` runs the real script against a scripted adb: order of grant, phases and revoke; one run id; no force-stop standing in for the kill; a surviving process, a stale marker, an early exit and a completed test all refused |
+| `--home-role` phase: admit one stock HOME holder, run role-requesting classes, select the launcher APK, cold-start it with the HOME key, run HOME classes, restore and read back the original before uninstalling; keep the installation and write a recovery file if that cannot be proven | `scripts/android-instrumentation.mjs`, `scripts/instrumentation-result.mjs`, `LauncherHomeInstrumentedTest.java` (two new methods) | `test/android-instrumentation-runner.test.mjs`: exact command order, unproven restoration, failed selection, failed cold start, a class that leaves HOME changed, admission refusals |
+| `BrowserPageQuestionInstrumentedTest`: native page excerpt to reviewed question (J05-2) | new class, registry entry | compiled for both flavors and with test mocks; registry-vs-source test |
+| Registry entries for 39 more classes (ConnectionChooser and eight other test-mocks-build classes, twelve gated self-contained classes, seventeen ungated ones, SettingsRoles), three campaign refusals, and HostedResultNotice no longer passes a gate the plain runner cannot satisfy | `scripts/android-instrumentation.mjs` | same test |
+| Reachability check: every `@Test` class is in the registry, named by a campaign runner, or listed in `NOT_RUN_BY_A_RUNNER` (25 classes) with its reason; stale allowlist entries fail too | `scripts/android-instrumentation.mjs`, `test/android-instrumentation-runner.test.mjs` | itself |
+| Digest restart check: default prepared directory, exit 2 with the exact preparation when the input is missing, host-runtime labels in its result; preparation documented; run | `scripts/test-local-digest-restart.mjs`, `docs/local-agent-development.md`, `test/digest-restart-input.test.mjs` | the run itself (below) |
+
+### Every SOFTWARE row, accounted for
+
+| Row | Where its fix lives | Status after round 5 |
+| --- | --- | --- |
+| A-6 | permission runner and androidTest | Done: EMULATOR, campaign 12. |
+| D-8 | `scripts/test-local-digest-restart.mjs` and docs | Done and run: EVIDENCED as host-runtime evidence. Still in no workflow (CI owner). |
+| B-10 | `test/browser/notes-trash.spec.ts` (renderer); the native half, NotesStorageDurability, was registered in round 4 | Not this package (Notes Trash owner). Still SOFTWARE. |
+| B-13 | `journey-b-voice-note-actions.spec.ts`, `calendar-adapter.ts` | Not this package. Still SOFTWARE. |
+| B-28 | `voice-adapter.ts`, `template.html` (product change) | Not this package. Still SOFTWARE. |
+| F-5, F-10, F-12, F-13, F-20 | Inbox renderer and its Playwright specs | Not this package. Still SOFTWARE. |
+| J03-8 | `inbox-save-attachment.spec.ts` | Not this package. Still SOFTWARE. |
+| J04-7, J04-10 | `maps-adapter.ts`, `template.html` | Not this package. Still SOFTWARE. |
+
+None of the eleven remaining SOFTWARE rows has a fix in `android/app/src/androidTest`,
+`android/app/src/testMocks` or the runner scripts (the `test-*` and `android-*` files under `scripts`).
+
+EMULATOR rows whose text named a runner gap, and what happened to it:
+
+| Row | Gap named by the audit | Now |
+| --- | --- | --- |
+| A-1 | LauncherHome skips; the runner does not select HOME | `--home-role` phase, campaign 11. |
+| A-30 | ConnectionChooser has no runner entry | Registered; campaign 4. |
+| B-12 | NotesSecureStorage has no runner | Registered with its gate; campaign 14. Its fresh-install migration method still has none. |
+| F-17 | No runner supplies `hostedNoticeDenied=1` | `notice-denied`, campaign 9. |
+| F-15 | (found here) the registry passed `hostedNotice=1`, but the posted-notice method asserts notifications are enabled, which a plain install never has; it would have failed | `notice`, campaign 13; the plain runner now runs only the builder method. |
+| J05-2 | No test exists | Written; campaign 10. Stops at Send. |
+| A-16 | AllViewAgentContext has no runner | None added: it needs a real agent with inference on the host. Listed in `NOT_RUN_BY_A_RUNNER`. |
+| B-14 | LiveAgent has no runner | None added: real provider key. Listed. |
+| A-23 | CombinedAgentRestart never compiled into a run | None added: combined host runtime with a provider key. Listed. |
+| MVP-18 | WorkflowLegacyReminderUpgrade lacks runner coverage | None added: it belongs to the installed-upgrade campaign, which does not name it. Listed. |
+
+### What is still not covered
+
+- J05-2 after Send: the agent's answer and the "Review summary note" save. A distribution
+  build on an emulator has no agent, the test-mocks emulator transport produces no summary
+  card (it has no connection session), and the remaining routes need the real app host or
+  resident runtime with a provider key (HUMAN). A synthetic app-host fixture on the host
+  machine, checked against the browser build, would close it and was not built.
+- `SettingsCrashLog` needs a two-phase crash runner, and `NotesSecureStorage`'s migration
+  method a fresh-install campaign. Neither is a core-loop step.
+- Twenty-five classes in `NOT_RUN_BY_A_RUNNER` are unreachable from this repository for the
+  reasons listed there; most lost their runners when the smoke suites were removed in
+  `49b1bf4c` and need a host agent or a provider key.
+
+### Commands run in round 5
+
+| Command | Result |
+| --- | --- |
+| `ALPHA_RUNTIME_GIT_CACHE=$PWD/vendor/eliza npm run agent:prepare` | exit 0: `artifacts/local-agent-resident-352d7a08…` with dependencies, 5.8 GB (removed afterwards) |
+| `ALPHA_ELIZA_SOURCE=$PWD/artifacts/local-agent-resident-352d7a08… npm run agent:test-digest-restart`, then `npm run agent:test-digest-restart` with the default directory | exit 0 both times (D-8; host-runtime evidence, not Android) |
+| `node --test test/native-permission-runner.test.mjs test/android-instrumentation-runner.test.mjs test/digest-restart-input.test.mjs test/native-restart-runner.test.mjs test/native-campaign-evidence.test.mjs` | 77 passed |
+| `./gradlew :app:compileStandaloneDebugJavaWithJavac :app:compileLauncherDebugJavaWithJavac :app:compileStandaloneDebugAndroidTestJavaWithJavac :app:compileLauncherDebugAndroidTestJavaWithJavac -x :local-speech:preBuild -x :app:stageLocalAgentSources -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1 --offline` with `-PELIZA_DEV_ALLOW_TEST_MOCKS=0`, then `=1` (JDK 21, staged sources, compile-only speech AAR) | BUILD SUCCESSFUL both times. Compilation only: no APK was assembled and nothing ran on an emulator |
+| `npm run verify` | exit 0: 515 tests, 511 passed, 0 failed, 4 TODO; bundle audit passed (395 files, testMocks=false), with the standing Denton licence release blocker (A-21) printed |
 
 ## Stale ledger statements
 
