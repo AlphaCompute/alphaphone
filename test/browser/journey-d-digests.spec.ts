@@ -58,7 +58,7 @@ async function openDigests(page:Page){
 }
 async function createSchedules(page:Page){
  const panel=await openDigests(page);
- await expect(panel.getByText('Schedules run while this app is open. If scheduled times pass while it is not running, the first is recorded below as missed and none is run later.',{exact:true})).toBeVisible();
+ await expect(panel.getByText('Schedules run while this app is open. If scheduled times pass while it is not running, one is recorded below as missed and none is run later.',{exact:true})).toBeVisible();
  await panel.getByText('Share a snapshot',{exact:true}).click();
  await panel.getByLabel('Label',{exact:true}).fill('Journey source');
  await panel.getByLabel('Snapshot text',{exact:true}).fill('Reviewed snapshot content');

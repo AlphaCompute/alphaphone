@@ -463,7 +463,7 @@ export function HostedDigestPanel() {
 					{interactiveDevelopment ? 'Schedules run while this app is open.' : connection.kind==='resident'
                         ? (isAndroid?'Your agent runs schedules on this phone. It cannot run while the phone is off.':'Schedules run on this computer while the local agent process is running.')
                         : connection.session ? 'Schedules run on your connected agent’s host, which must remain available.' : 'Choose where your agent runs to set up scheduled digests.'}
-                    {connection.session&&(interactiveDevelopment||connection.kind==='resident') ? ' If scheduled times pass while it is not running, the first is recorded below as missed and none is run later.' : ''}
+                    {connection.session&&(interactiveDevelopment||connection.kind==='resident') ? ' If scheduled times pass while it is not running, one is recorded below as missed and none is run later.' : ''}
                 </p>
                 <p>Choose an expiring snapshot or review a read-only source from an account already connected to this agent.
 				</p>
