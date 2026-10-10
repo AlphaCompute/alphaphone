@@ -864,7 +864,7 @@ Leaks are measured on **captured wire bytes** from a mock server, not on the gat
 | Transcript redaction recipe | `transcriptPiiRecognizer` pattern (plugin-local-inference) | — | Port the recipe to the renderer gate |
 | Test debt | — | **P7**: unit suites for `pii-detectors`, `pii-pseudonymizer`, `secret-swap`, `entity-recognizer` and `audio-redaction-service` (missing in the pin; possibly present upstream after `ab8f9a`; check before writing) | — |
 
-Every patch follows the series convention (`patches/eliza/README.md`): numbered `00NN-*.patch`, verified with `git apply --check` against the recorded base, with an `*-source-base.json` digest and evidence, applied to an isolated upstream worktree, and **never** applied to the `vendor/eliza` checkout. The next numbers after 0036 are 0037 and up.
+Shared changes now go through upstream review and are consumed through `upstream.lock.json`; see [ownership architecture](../architecture.md).
 
 ## 14. Work packages
 

@@ -1,5 +1,7 @@
+import {noteOriginOf} from './note-origin.ts';
 type Form=Record<string,any>;
-const fields=['title','notes','where','t','d','video','who','cal','repeat','alert','creationId','reminderCreationId'] as const;
+// `origin` is a display back-reference to the note a draft came from. It grants no access.
+const fields=['title','notes','where','t','d','video','who','cal','repeat','alert','creationId','reminderCreationId','origin'] as const;
 /** Backup may retain invalid edits, but never adds proposal/source authority. */
 export function snapshotCalendarForm(form:Form){return Object.fromEntries([...fields,'off'].filter(key=>form[key]!==undefined).map(key=>[key,form[key]]));}
 const day=(date:Date)=>Date.UTC(date.getFullYear(),date.getMonth(),date.getDate());
@@ -12,6 +14,7 @@ function validate(value:any,requireCreation=true){
  if(!Number.isFinite(f.t)||f.t<0||f.t>=24||!Number.isFinite(f.d)||f.d<=0||f.d>168||typeof f.video!=='boolean'||!Array.isArray(f.who)||f.who.length>100||f.who.some((id:any)=>typeof id!=='string'||id.length>256))fail();
  if(typeof f.cal!=='string'||f.cal.length>256||!(f.cal==='alpha-reminders'||f.cal.startsWith('native:'))||!['none','daily','weekdays','weekly'].includes(f.repeat)||f.alert!==null&&(!Number.isFinite(f.alert)||f.alert<0||f.alert>10080))fail();
  for(const key of ['creationId','reminderCreationId'])if(f[key]!==undefined&&(typeof f[key]!=='string'||!/^[-a-zA-Z0-9_]{1,100}$/.test(f[key])))fail();
+ if(f.origin!==undefined&&JSON.stringify(noteOriginOf(f.origin))!==JSON.stringify(f.origin))fail();
  if(requireCreation&&!f.creationId)fail();
  if(new TextEncoder().encode(JSON.stringify(value)).length>64000)fail();
  return value as {version:1;date:string;zone:string;form:Form};
@@ -24,7 +27,7 @@ export function encodeCalendarForm(form:Form,anchor=new Date()){
 }
 export function calendarEditFields(form:Form,anchor=new Date()){
  if(!Number.isSafeInteger(form.off))fail();
- const payload={version:1,date:new Date(day(anchor)+form.off*86400000).toISOString().slice(0,10),zone:Intl.DateTimeFormat().resolvedOptions().timeZone,form:Object.fromEntries(fields.filter(key=>!['creationId','reminderCreationId'].includes(key)&&form[key]!==undefined).map(key=>[key,form[key]]))};
+ const payload={version:1,date:new Date(day(anchor)+form.off*86400000).toISOString().slice(0,10),zone:Intl.DateTimeFormat().resolvedOptions().timeZone,form:Object.fromEntries(fields.filter(key=>!['creationId','reminderCreationId','origin'].includes(key)&&form[key]!==undefined).map(key=>[key,form[key]]))};
  return validate(payload,false);
 }
 export function decodeCalendarForm(raw:string,now=new Date(),requireCreation=true){

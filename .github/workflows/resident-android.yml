@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: true
       # Fresh hosted image provisioning only. Never prune source, dependency
@@ -105,7 +105,7 @@ jobs:
           grep -Eq '^Pkg.Revision *= *28\.2\.13676358[[:space:]]*$' "$ANDROID_NDK_HOME/source.properties"
           python3 -c 'import shutil; free=shutil.disk_usage(".").free; print("freshCapacityAfterBytes="+str(free)); assert free >= 32*1024**3, "Fresh runner needs at least 32GiB for resident archive headroom"'
           df -h "$GITHUB_WORKSPACE"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -120,7 +120,7 @@ jobs:
           python3 -c 'import shutil; assert shutil.disk_usage(".").free >= 10*1024**3'
           echo "ALPHA_LOCAL_AGENT_SOURCE_DIR=$GITHUB_WORKSPACE/artifacts/resident-ci-92fc" >> "$GITHUB_ENV"
           echo "ALPHA_WORKFLOW_WORKER_OUTPUT=$GITHUB_WORKSPACE/artifacts/worker-ci-92fc" >> "$GITHUB_ENV"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "21"
@@ -128,7 +128,7 @@ jobs:
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - name: Qualify supervisor on real Linux processes
@@ -145,7 +145,7 @@ jobs:
           test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: python3 scripts/ci/resident-phase.py --name product-install --seconds 600 npm ci
       # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .eliza/browser-speech
           key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
@@ -155,7 +155,7 @@ jobs:
       - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
       # Cache only acquisition inputs. Every hit is size/hash verified; generated
       # AARs, extracted sources and models are rebuilt in this clean job.
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .eliza/local-speech/downloads
           key: speech-downloads-${{ runner.os }}-${{ hashFiles('vendor/eliza/packages/app/scripts/local-speech/download-manifest.json') }}
@@ -215,14 +215,14 @@ jobs:
         run: echo "sha256=$(sha256sum test-results/resident-ci-archive/apk-manifest.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       # build-archive.mjs retains each release R8 mapping (<variant>-release-mapping.txt,
       # hashed in release-mappings.json) beside the APKs, so both archives carry them.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: apks
         with:
           name: resident-archive-${{ github.sha }}-${{ github.run_id }}
           path: test-results/resident-ci-archive/
           retention-days: 3
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           retention-days: 3
@@ -239,7 +239,7 @@ jobs:
     env:
       ALPHA_RESIDENT_MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.build.outputs.source_sha }}
           submodules: true
@@ -267,10 +267,10 @@ jobs:
           done
           python3 -c 'import shutil; free=shutil.disk_usage(".").free; print("nativeFreshCapacityAfterBytes="+str(free)); assert free >= 24*1024**3, "Fresh native runner needs 24GiB before SDK, archive and AVD provisioning"'
           # Existing 10GiB admission and 4GiB runtime floor remain unchanged.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "21"
@@ -280,7 +280,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install exact APK inspection tools
         run: sdkmanager "build-tools;36.0.0"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           path: test-results/resident-ci-archive
@@ -304,7 +304,7 @@ jobs:
           script: |
             ANDROID_SERIAL=emulator-5554 python3 scripts/ci/resident-phase.py --name prepare-phone --seconds 300 node scripts/prepare-ci-emulator.mjs
             ANDROID_SERIAL=emulator-5554 ALPHA_RESIDENT_DISPOSABLE_CI=1 python3 scripts/ci/resident-phase.py --name native --seconds 5400 python3 scripts/ci/resident-native.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           retention-days: 3
@@ -322,7 +322,7 @@ jobs:
       ALPHA_RESIDENT_MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
       ALPHA_RECOVERY_SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.build.outputs.source_sha }}
           submodules: true
@@ -354,10 +354,10 @@ jobs:
         run: |
           python3 scripts/ci/test-recovery-ui-guard.py
           python3 scripts/ci/test-pending-recovery-phases.py
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "21"
@@ -367,7 +367,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install exact APK inspection tools
         run: sdkmanager "build-tools;36.0.0"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           path: test-results/resident-ci-archive
@@ -390,7 +390,7 @@ jobs:
           script: |
             ANDROID_SERIAL=emulator-5554 python3 scripts/ci/resident-phase.py --name prepare-phone --seconds 300 node scripts/prepare-ci-emulator.mjs
             ANDROID_SERIAL=emulator-5554 ALPHA_RESIDENT_DISPOSABLE_CI=1 python3 scripts/ci/resident-phase.py --name pending-recovery-ui --seconds 2400 python3 scripts/ci/pending-recovery-ui.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           retention-days: 3

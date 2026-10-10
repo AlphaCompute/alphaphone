@@ -29,9 +29,8 @@ the required evidence rather than treating a successful APK build as acceptance.
 - [Detailed flow PRD](docs/flow-audit-and-prd.md)
 - [Current implementation plan](docs/flow-implementation-plan.md)
 - [current product status](docs/mvp-current-status.md)
-- [Production readiness record, 2026-10-04](docs/production-readiness-2026-10-04.md)
+- [Production readiness record, 2026-10-04](https://github.com/AlphaCompute/alphaphone/blob/51c8157533353a805afd2811f4e3f41b66b7b9fa/docs/production-readiness-2026-10-04.md)
 - [Cloud deployment and authentication findings](docs/cloud-production-validation.md)
-- [Enclave candidate and signing gates](docs/enclave-candidate-validation.md)
 - [Browser autofill and Proton integration](docs/browser-autofill-integration.md)
 - [Calendar and reminder contracts](docs/calendar-reminder-contract.md)
 
@@ -317,6 +316,13 @@ Reports go to `test-results/calendar-upgrade-*` or `test-results/reminder-upgrad
 Secondary-user setup and teardown use the upstream lifecycle helper under the same
 emulator lease. Missing package-cleanup proof retains the test user for recovery.
 These campaigns require an owned disposable emulator and do not prove device acceptance.
+
+The browser storage-format campaign uses the same archived APK and owned-emulator
+inputs: `node scripts/test-browser-storage-format.mjs APP.apk TEST.apk NEW_OUTPUT`.
+It runs in a fresh disposable user and checks the real product stores against the
+deployed Keystore ciphertext format in both directions, including bookmarks,
+tabs/history and site permissions. It does not open a website or establish browser
+UI, process-death or physical-device acceptance.
 
 ## AOSP integration
 

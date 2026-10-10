@@ -31,6 +31,7 @@ import { reopenStartupPermissions } from './startup-permission-flow';
 import { createRoot } from 'react-dom/client';
 import { Component, VIEWS } from './prototype/model.js';
 import { installReminderAdapter } from './prototype/reminder-adapter';
+import { installNoteOriginAdapter } from './prototype/note-origin-adapter';
 import { installAgentAdapter } from './prototype/agent-adapter';
 import { installPrototypeNativeAdapters } from './prototype/native-adapter';
 import { installSelectedDocumentAdapter } from './prototype/selection-adapter';
@@ -87,6 +88,7 @@ if (!fixture) {
   installCalendarAdapter(Component, VIEWS);
   installCalendarFormDraftAdapter(Component, VIEWS);
   installCalendarEditDraftAdapter(Component, VIEWS);
+  installNoteOriginAdapter(Component, VIEWS);
   installPrototypeDataAdapter(Component, VIEWS);
   installNotificationsAdapter(Component);
   installPrototypeVoiceAdapter(Component, VIEWS);
@@ -128,7 +130,7 @@ function installBrowserCapabilityTiles(Component:any){
   const managed=new Set(['Wi-Fi','Bluetooth','Airplane mode','Agent can listen','Location','Do not disturb']);
   p.renderVals=function(){
     const out=render.call(this);
-    const tiles=(out.tiles||[]).map((tile:any)=>managed.has(tile.label)?{...tile,on:false,disabled:true,css:'background:var(--s2);color:var(--fg);opacity:.55',toggle:()=>{}}:tile);
+    const tiles=(out.tiles||[]).map((tile:any)=>managed.has(tile.label)?{...tile,on:false,pressed:undefined,disabled:true,css:'background:var(--s2);color:var(--fg);opacity:.55',toggle:()=>{}}:tile);
     return {...out,tiles,deviceSettingsPending:true,deviceSettingsMessage:'Network, radio and sensor settings are managed by your browser and operating system.',sbWifi:navigator.onLine,sbPlane:false};
   };
 }

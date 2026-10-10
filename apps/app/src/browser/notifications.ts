@@ -10,7 +10,7 @@ import { browserApps } from './apps';
 import { WebPlugin } from '@capacitor/core';
 import type { BrowserDaily } from './daily';
 import { revision } from './revision';
-import {notificationDocument,notificationState,type NotificationState as State} from './notification-store';
+import {notificationDocument,notificationState,NotificationPolicyChanged,type NotificationState as State} from './notification-store';
 
 const apps=browserApps;
 type Notice = {id:string;revision:string;source:'own'|'external'|'hosted';appLabel:string;title:string;text:string;at:number;clearable:boolean;canOpen:boolean;packageName?:string;epoch?:string};
@@ -75,7 +75,7 @@ export class BrowserNotifications extends WebPlugin {
   const external=state.deviceEvents!.filter(row=>this.allowed(state,row)).map(row=>({...this.observe(state,row),...(!applyFocus?{revision:row.revision}:{})}));
   const workflow=state.appEnabled?await listWorkflowNotices():[],hosted=await browserHostedResults.list();
   // All sources are asynchronous. Apply the current lock state after the last read.
-  if(noticePolicy((await notificationState()))!==noticePolicy(state))throw Error('Notification settings changed. Refresh notifications.');
+  if(noticePolicy((await notificationState()))!==noticePolicy(state))throw new NotificationPolicyChanged();
   const nowHidden=locked();
   const items=[...[...own,...calendar,...external,...workflow,...hosted].filter(row=>!applyFocus||!focusHoldsNotice(row.at)),...(applyFocus&&state.appEnabled?focusAllowedNotices().filter(row=>!state.dismissed.includes(row.id)).map(row=>({...row,title:hidden?'Messages':row.title,text:hidden?'':row.text,canOpen:!hidden})):[])].sort((a,b)=>b.at-a.at).slice(0,100);
   return {scope:'browser',calendarStatus,items:nowHidden?items.map(row=>({...row,title:row.appLabel,text:'',canOpen:false})):items};

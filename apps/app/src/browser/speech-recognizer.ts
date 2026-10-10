@@ -1,7 +1,7 @@
 import {BrowserSpeechRecognizer as SharedSpeechRecognizer} from '../../../../.eliza/client-features/packages/voice/src/browser-speech/speech-recognizer.ts';
 
 /**
- * Alpha's host inputs for the shared in-browser recognizer (elizaOS patch 0065): the model
+ * Alpha's host inputs for the shared @elizaos/voice in-browser recognizer: the model
  * manifest this build serves under browser-speech/, and Alpha's speech worker.
  */
 export class BrowserSpeechRecognizer extends SharedSpeechRecognizer {

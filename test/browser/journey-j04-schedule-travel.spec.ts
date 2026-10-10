@@ -17,8 +17,8 @@
 // - Map rendering, GPS, background navigation and voice guidance.
 // - Android system Back itself; hand-off to another installed maps application.
 //
-// Observation recorded for the report: Maps has no in-app control that returns to the event that
-// opened it ("Back to apps" goes Home); the return path is system Back.
+// Maps offers an explicit "Back to event" control when it was opened from an event's location; it
+// returns to that exact event and never replays the hand-off. System Back still works as before.
 import {test, expect, type Page} from '@playwright/test';
 
 const address = '12 Market Street, Test Town';
@@ -114,7 +114,12 @@ test('calendar event location is handed to Maps once, routed by explicit choices
     await button(page, 'Bike').click();
     await expect(status).toHaveText('Bike directions are not available from this Maps provider.');
     expect((await requests(page)).routes).toEqual([{from, to, mode: 'drive'}]);
+    // The selected mode is exposed as state, not by color only; a refused mode is not selected.
+    await expect(button(page, 'Drive')).toHaveAttribute('aria-pressed', 'true');
+    for (const mode of ['Walk', 'Bike', 'Transit']) await expect(button(page, mode)).toHaveAttribute('aria-pressed', 'false');
     await button(page, 'Walk').click();
+    await expect(button(page, 'Walk')).toHaveAttribute('aria-pressed', 'true');
+    await expect(button(page, 'Drive')).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByRole('region', {name: 'Maps'})).toContainText(/9 min\s*0\.4 km · no live traffic/);
     expect((await requests(page)).routes).toEqual([{from, to, mode: 'drive'}, {from, to, mode: 'walk'}]);
     // Native-only: live navigation needs device location; the browser build says so.
@@ -123,10 +128,28 @@ test('calendar event location is handed to Maps once, routed by explicit choices
     expect((await requests(page)).queries).toEqual([address]);
   });
 
-  await test.step('system Back returns to the same event without another hand-off', async () => {
+  await test.step('"Back to event" returns to the same event without another hand-off', async () => {
     const routesBefore = (await requests(page)).routes.length;
-    await button(page, 'Back to place').click();
+    // Offered in directions, on the place and in results; used here from directions.
+    await expect(button(page, 'Back to event')).toHaveCount(1);
+    await button(page, 'Back to event').click();
+    await expect(heading).toBeVisible();
+    await expect(button(page, address)).toBeVisible();
+    await expect(button(page, 'Back to calendar')).toBeVisible();
+    const after = await requests(page);
+    expect(after.queries).toEqual([address]);
+    expect(after.routes).toHaveLength(routesBefore);
+    expect(await events(page)).toHaveLength(1);
+  });
+
+  await test.step('system Back also returns to the same event without another hand-off', async () => {
+    // A second, explicit hand-off from the event (one new search), then the system Back path.
+    await button(page, address).click();
+    await expect(search).toHaveValue(address);
+    await page.getByRole('button', {name: /^West entrance/}).first().click();
     await expect(button(page, 'Directions')).toBeVisible();
+    await expect(button(page, 'Back to event')).toHaveCount(1);
+    const routesBefore = (await requests(page)).routes.length;
     let presses = 0;
     while (!await heading.isVisible()) {
       expect(++presses).toBeLessThanOrEqual(5);
@@ -136,7 +159,7 @@ test('calendar event location is handed to Maps once, routed by explicit choices
     await expect(button(page, address)).toBeVisible();
     await expect(button(page, 'Back to calendar')).toBeVisible();
     const after = await requests(page);
-    expect(after.queries).toEqual([address]);
+    expect(after.queries).toEqual([address, address]);
     expect(after.routes).toHaveLength(routesBefore);
   });
 
@@ -147,17 +170,19 @@ test('calendar event location is handed to Maps once, routed by explicit choices
     await button(page, 'Maps').click();
     await expect(search).toHaveValue('');
     await expect(page.getByRole('button', {name: /entrance/})).toHaveCount(0);
+    // Maps opened from the launcher has no event to return to.
+    await expect(button(page, 'Back to event')).toHaveCount(0);
     await systemBack(page);
     await button(page, 'Calendar').click();
     await page.getByRole('button', {name: /^Harbour meeting,/}).click();
     await expect(heading).toBeVisible();
     expect(await events(page)).toHaveLength(1);
-    expect((await requests(page)).queries).toEqual([address]);
+    expect((await requests(page)).queries).toEqual([address, address]);
     await button(page, address).click();
     await expect(search).toHaveValue(address);
     await expect(page.getByRole('button', {name: /^West entrance/}).first()).toBeVisible();
     const final = await requests(page);
-    expect(final.queries).toEqual([address, address]);
+    expect(final.queries).toEqual([address, address, address]);
     expect(final.routes).toHaveLength(routesBefore);
   });
 });

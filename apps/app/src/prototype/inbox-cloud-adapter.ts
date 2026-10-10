@@ -70,7 +70,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let newerMail = false;
   const folderQuery: Record<Folder, string> = { inbox: 'in:inbox', sent: 'in:sent', drafts: 'in:drafts', archive: 'in:archive', trash: 'in:trash' };
   let loadedQuery = '', nextPageToken: string | null = null, folder: Folder = 'inbox';
-  // Provider drafts (patches/eliza/0058) are listed separately from messages.
+  // Provider drafts are listed separately from messages.
   let providerDrafts: GmailDraftSummary[] = [];
   // Only a boolean leaves this closure: the Home badge reflects the last loaded Inbox page(s).
   // Home retains only metadata from Inbox pages the user already loaded, never message bodies.
@@ -111,6 +111,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   };
   drafts.setFromSwitch({ count: () => readable().length, cycle: () => void switchFrom() });
   provider.setObservers({
+    // A provider-confirmed send removes the local copies of exactly the draft it was sent from.
+    sent: (source, proposal, grant) => void drafts.settleSent(source.draftId, proposal, grant), sentNote: source => drafts.sentNote(source.draftId),
     // A stale review was discarded without dispatch; reload the open message so the user sees its current state.
     stale: () => { if (body) void open(body.message); else void load(); },
     receipt: receipt => {
@@ -244,7 +246,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     });
   }
   const draftsView = () => folder === 'drafts' && !String(api?.get('inbox')?.q || '').trim();
-  /** Provider drafts list (patches/eliza/0058): metadata only until one is opened for editing. */
+  /** Provider drafts list: metadata only until one is opened for editing. */
   async function loadDrafts(more = false) {
     const accountId = selected, pageToken = more && loadedQuery === 'in:drafts' ? nextPageToken : null;
     if (more && !pageToken) return;
@@ -390,7 +392,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     }};attachmentView=review;publish();},()=>void openAttachment(source,attachment),true);
   }
   /** Unsupported types (for example .docx or .zip) can only be saved as an exact byte copy: no preview,
-   * no viewer handoff and no agent access. Requires the server's opaque download (patches/eliza/0059). */
+   * no viewer handoff and no agent access. Requires the server's opaque download. */
   async function saveOpaque(source:NonNullable<typeof body>,attachment:NonNullable<NonNullable<typeof body>['attachments']>[number]){
     if(!provider.capabilities()?.opaqueAttachments||attachment.size>5*1024*1024){api?.toast('This attachment type cannot be previewed here, and this account cannot save it to Files. Open it in Gmail.');return;}
     const accountId=selected;

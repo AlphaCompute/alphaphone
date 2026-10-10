@@ -25,6 +25,8 @@ export function inboxUnsaved(owner:string,publish:()=>void,restore:(value:InboxU
  return {
   ready:controller.open(binding),
   get available(){return !!text;},
+  /** The retained copy as stored, or null when there is none or it cannot be read. */
+  peek():InboxUnsaved|null{try{return text?readInboxUnsaved(text,owner):null;}catch{return null;}},
   get conflict(){return controller.state.conflict;},
   get error(){return controller.state.error;},
   get status(){return invalid?'Current email edits are too large to retain. Shorten them before closing.':controller.state.message.replaceAll('sending','provider review').replace('Preparing draft to send','Clearing retained edits');},

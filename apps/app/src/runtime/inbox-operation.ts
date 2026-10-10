@@ -6,6 +6,9 @@ export interface InboxOperationRecord {
   version: 1; owner: string; grantId: string; requestId: string; proposal: Bag;
   phase: 'preparing' | 'review' | 'dispatching' | 'observed';
   review: Bag | null; receipt: GmailInboxReceipt | null;
+  /** The local draft a send was started from. Local only: it is never part of the proposal the
+   * provider sees. A confirmed send clears only copies of this exact draft with the sent content. */
+  source?: { draftId: string };
 }
 export interface InboxOperationDependencies {
   owner: string; grantId: string; active(): boolean;
@@ -17,7 +20,7 @@ export interface InboxOperationDependencies {
   };
 }
 /** Outgoing attachment limits shared by the composer and the operation check. Servers without the
- * multi-attachment policy (patches/eliza/0059) publish maximumOutgoing 1. */
+ * multi-attachment policy publish maximumOutgoing 1. */
 export const outgoingAttachmentLimits = { maximumFiles: 10, maximumTotalBytes: 5 * 1024 * 1024 } as const;
 export function attachmentBytes(file: { dataBase64: string }): number {
   const padding = file.dataBase64.endsWith('==') ? 2 : file.dataBase64.endsWith('=') ? 1 : 0;
@@ -64,13 +67,13 @@ export class InboxOperation {
   }
   async load() { return this.exclusive(async()=>{
     const value=await this.deps.store.read<InboxOperationRecord>(await this.key());this.check();
-    if(value && (value.version!==1||value.owner!==this.deps.owner||value.grantId!==this.deps.grantId||!value.requestId||!value.proposal||!['preparing','review','dispatching','observed'].includes(value.phase)))throw new Error('Invalid saved Inbox operation');
+    if(value && (value.version!==1||value.owner!==this.deps.owner||value.grantId!==this.deps.grantId||!value.requestId||!value.proposal||!['preparing','review','dispatching','observed'].includes(value.phase)||(value.source!==undefined&&(!value.source||typeof value.source.draftId!=='string'||!value.source.draftId))))throw new Error('Invalid saved Inbox operation');
     this.record=value;return this.snapshot();
   }); }
-  async prepare(proposal: Bag) { return this.exclusive(async()=>{
+  async prepare(proposal: Bag, source?: { draftId: string }) { return this.exclusive(async()=>{
     if(this.record)throw new Error('Review the saved operation before starting another.');
     const clean=copy(proposal);if(new TextEncoder().encode(JSON.stringify(clean)).length>7.5*1024*1024)throw new Error('Message exceeds the supported review size');
-    await this.save({version:1,owner:this.deps.owner,grantId:this.deps.grantId,requestId:crypto.randomUUID(),proposal:clean,phase:'preparing',review:null,receipt:null});
+    await this.save({version:1,owner:this.deps.owner,grantId:this.deps.grantId,requestId:crypto.randomUUID(),proposal:clean,phase:'preparing',review:null,receipt:null,...(source&&proposal.kind==='send'&&typeof source.draftId==='string'&&source.draftId?{source:{draftId:source.draftId}}:{})});
     await this.reviewCurrent();return this.snapshot();
   }); }
   /** Explicit review recovery is an idempotent prepare, never provider dispatch. */
@@ -88,7 +91,7 @@ export class InboxOperation {
     if(attachments.length>1&&!Array.isArray(review.attachments))throw new Error('This server cannot review more than one attachment');
     const checked=await Promise.all(attachments.map(async file=>{const {text,...metadata}=await reviewMailAttachment(file as MailAttachment);return metadata;}));
     if(JSON.stringify(checked)!==JSON.stringify(review.attachments||[]))throw new Error('Server changed the reviewed attachments');
-    // Forwarded source attachments (patches/eliza/0059) stay bound to the selected message and its historyId.
+    // Forwarded source attachments stay bound to the selected message and its historyId.
     const forward=record.proposal.forwardAttachments as {messageId?:unknown;historyId?:unknown;partIds?:unknown}|undefined;
     if(forward!==undefined){
      if(record.proposal.mode!=='forward'||!forward||typeof forward.messageId!=='string'||typeof forward.historyId!=='string'||!Array.isArray(forward.partIds)||!forward.partIds.length||forward.partIds.length>outgoingAttachmentLimits.maximumFiles||forward.partIds.some(id=>typeof id!=='string'))throw new Error('Unsupported forwarded attachments');

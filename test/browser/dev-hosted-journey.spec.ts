@@ -1,40 +1,11 @@
 import {test,expect} from '@playwright/test';
-import {createServer,type ViteDevServer} from 'vite';
-import {mkdtemp,rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
-import path from 'node:path';
-import {localAgentStorage} from '../../scripts/local-agent-dev-storage';
+import {startHostedServer,hostedFixture,hostedDevice as device,hostedPanel as panel,type HostedServer} from './hosted-harness';
 
 test.describe.configure({mode:'serial'});
-let server:ViteDevServer,origin:string,cache:string;
-test.beforeAll(async()=>{cache=await mkdtemp(path.join(tmpdir(),'alpha-hosted-vite-'));server=await createServer({cacheDir:cache,define:{'import.meta.env.VITE_LOCAL_AGENT':JSON.stringify('1')},server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();origin=`http://127.0.0.1:${(server.httpServer!.address() as any).port}`;});
-test.afterAll(async()=>{await server?.close();if(cache)await rm(cache,{recursive:true,force:true});});
-async function fixture(page:any){
- const storage=await mkdtemp(path.join(tmpdir(),'alpha-hosted-store-')),now=new Date().toISOString();
- const f={acked:0,syncs:0,verifies:0,hold:false,release:null as null|(()=>void),result:{cursor:1,runId:'run-one',workflowId:'workflow',workflowVersionId:'version',templateVersion:'template',scheduledAt:now,source:{observedAt:now,expiresAt:now},status:'completed',startedAt:now,completedAt:now,output:'Retained morning briefing',error:null}};
- await page.route('**/__alpha-local-agent',async(route:any)=>{const input=route.request().postDataJSON();let body:any;
-  if(input.storage){await route.fulfill({json:localAgentStorage(storage,input.storage)});return;}
-  const p=input.path;
-  if(p==='/api/auth/me')body={identity:{kind:'owner',id:'fixture-owner'},access:{role:'OWNER',mode:'session'}};
-  else if(p==='/api/agents')body={agents:[{id:'fixture-agent',name:'Browser fixture',status:'running'}]};
-  else if(p==='/api/client-devices/register')body={installationId:input.headers['X-Eliza-Device-Id'],enrollmentId:'fixture-enrollment',capabilities:[]};
-  else if(p==='/api/conversations')body={conversations:[]};
-  else if(p==='/api/workflow/status'){f.verifies++;if(f.hold)await new Promise<void>(resolve=>{f.release=resolve;});body={hostedDigestProtocol:1};}
-  else if(p==='/api/workflow/hosted/sources')body={sources:[]};
-  else if(p==='/api/workflow/hosted/loops')body={loops:[]};
-  else if(p==='/api/workflow/hosted/live-accounts')body={accounts:[],truncated:false};
-  else if(p.startsWith('/api/workflow/hosted/results?')){f.syncs++;body={entries:f.acked>=f.result.cursor?[]:[f.result]};}
-  else if(p==='/api/workflow/hosted/results/ack'){f.acked=JSON.parse(input.body).cursor;body={};}
-  else {await route.fulfill({json:{status:404,body:'{}'}});return;}
-  await route.fulfill({json:{status:200,body:JSON.stringify(body)}});
- });
- await page.addInitScript(()=>{if(!localStorage.getItem('alpha.connection.selection.v1'))localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));});
- await page.goto(origin+'/?mode=dev&tools=1');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);// The first sync and its acknowledgement follow the connection; allow for a loaded host.
- await expect.poll(()=>f.acked,{timeout:30000}).toBe(1);
- return {f,cleanup:async()=>{f.hold=false;f.release?.();try{if(!page.isClosed())await page.unrouteAll({behavior:'ignoreErrors'});}finally{await page.close().catch(()=>{});await rm(storage,{recursive:true,force:true});}}};
-}
-const device=async(page:any,name:string)=>{await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('dialog',{name:'Development device controls',exact:true}).getByRole('button',{name,exact:true}).click();};
-const panel=(page:any)=>page.getByRole('dialog',{name:'Scheduled digests',exact:true});
+let server:HostedServer;
+test.beforeAll(async()=>{server=await startHostedServer();});
+test.afterAll(async()=>{await server?.close();});
+const fixture=(page:any)=>hostedFixture(page,server.origin);
 test('connected browser saves before notification, opens retained output, toggles preferences and restores after reload',async({page},info)=>{
  const {f,cleanup}=await fixture(page);try{
   await device(page,'Notifications');await page.getByText('Scheduled digest',{exact:true}).click();await expect(panel(page)).toContainText('Retained morning briefing');await expect(panel(page)).toContainText('Opened from notification');await page.screenshot({path:info.outputPath('hosted-browser-panel.png')});

@@ -7,7 +7,7 @@ export const NOTES_TRASH_RETENTION_MS=3*24*60*60*1000;
 export const NOTES_TRASH_MAX_ENTRIES=10000;
 export const NOTES_TRASH_MAX_BYTES=30*1024*1024;
 /**
- * The generic retention policy is the elizaOS Notes Trash module (patches/eliza 0070); Alpha
+ * The generic retention policy is the elizaOS Notes Trash module; Alpha
  * supplies the product inputs: three days, its limits, its note kinds and voice recordings.
  */
 const policy=createNotesTrashPolicy<NoteRecord,NotesTarget>({retentionMs:NOTES_TRASH_RETENTION_MS,maxEntries:NOTES_TRASH_MAX_ENTRIES,maxBytes:NOTES_TRASH_MAX_BYTES,kinds:['text','list','voice','link'],recordingKind:'voice'});
