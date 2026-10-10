@@ -66,4 +66,27 @@ for(const value of [{state:'ready',attached:'true'},{state:'ready',attached:1},n
 const failing=host({state:'ready',attached:true});failing.bridge.request=async()=>({status:500,body:'{}'});
 await assert.rejects(new LocalAgentProtocol(failing.bridge).connect(new AbortController().signal));
 assert.equal(failing.log.filter(row=>row[0]==='cancelStart').length,1);
+// ...and this surface stops asking to attach: its retry takes the ordinary stop → bind → start
+// path, so a listening runtime that cannot serve an owner session is still restarted by a retry.
+const willing=id=>residentAttachable(id,bridge({attachable:true}),true);
+assert.equal(await willing(credential),false,'an attach that failed owner verification is not trusted again');
+order.length=0;
+assert.equal(await bindResidentCloudProvider(credential,{attachable:willing,configure:async id=>{order.push(['configure',id]);}}),'configured');
+assert.deepEqual(order,[['configure',credential]]);
+// The next verified connection (here the restarted runtime) restores attach.
+await new LocalAgentProtocol(host({state:'ready'}).bridge).connect(new AbortController().signal);
+assert.equal(await willing(credential),true);
+// A cancelled or superseded attach says nothing about the runtime and keeps attach available.
+const aborting=host({state:'ready',attached:true}),abort=new AbortController();
+aborting.bridge.request=async()=>{abort.abort();return {status:500,body:'{}'};};
+await assert.rejects(new LocalAgentProtocol(aborting.bridge).connect(abort.signal));
+assert.equal(await willing(credential),true,'cancelling an attach does not force a restart');
+const superseded=host({state:'ready',attached:true}),supersededClient=new LocalAgentProtocol(superseded.bridge);
+superseded.bridge.request=async()=>{await supersededClient.disconnect();return {status:500,body:'{}'};};
+await assert.rejects(supersededClient.connect(new AbortController().signal),/connection changed/);
+assert.equal(await willing(credential),true,'a superseded attach does not force a restart');
+// A failed ordinary start is not an attach failure.
+const cold=host({state:'ready'});cold.bridge.request=async()=>({status:500,body:'{}'});
+await assert.rejects(new LocalAgentProtocol(cold.bridge).connect(new AbortController().signal));
+assert.equal(await willing(credential),true);
 console.log('PASS resident reuse: attach query, provider binding order and repeated assistant connects');

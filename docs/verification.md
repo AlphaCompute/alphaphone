@@ -172,7 +172,10 @@ pairs, and cancelling it retires nothing. Any doubt (runtime not listening, rest
 expiring or missing enrollment, changed or unadmitted provider, retirement in progress, an
 unverified earlier attach) takes the ordinary start path. `Agent.residentAttachment` is the
 read-only query the renderer uses to skip the stop-and-rebind of an unchanged Cloud provider;
-the credit gate still runs first. Source checks: `test/resident-attachment.test.mjs` (JVM
+the credit gate still runs first. A surface whose attach did not yield a verified owner session
+stops asking to attach, so its retry stops, rebinds and restarts as before. Not covered: two
+surfaces starting before any enrollment exists still supersede each other, and a lone surface
+recreated after the last one was destroyed pairs again. Source checks: `test/resident-attachment.test.mjs` (JVM
 contract of `ResidentAttachment`, renderer contract, start-path guards). The dual-Activity
 case is `AssistantResidentReuseInstrumentedTest`; it uses a synthetic runtime observation,
 enrollment and streams, so a passing run is emulator-class evidence of surface ownership only,

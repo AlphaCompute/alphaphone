@@ -331,7 +331,7 @@ async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
   update({residentBalance:credits.balance});
   if(credits.balance<=0){await stopLocalAgent();await retire();update({open:true,message:'Add credits to use your agent. Your saved data stays on this device.'});return false;}
   // An admitted running resident under this same Cloud admission is reused, not stopped and rebound:
-  // opening the assistant (or recreating Home) must not retire the other surface's work.
+  // opening the assistant, or reconnecting one surface, must not retire the other surface's work.
   await bindResidentCloudProvider(credits.credentialId);
   signal.throwIfAborted();
   if(service!==account || (await cloudCredentialStore.read('production'))?.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
