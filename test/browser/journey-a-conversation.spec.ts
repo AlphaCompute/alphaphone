@@ -14,9 +14,11 @@
  *  - Cold boot into Alpha HOME on a device, recovery/emergency routes, HOME role.
  *  - Cloud sign-in, agent selection/provisioning, remote pairing (real accounts).
  *  - Spoken requests on a physical microphone; network switch; process kill; token expiry/revocation.
- *  - A real agent that keeps working after Stop. Cancellation is transport-only (docs/mvp-current-status.md,
- *    "Chat and retained context"): here the development agent had not committed, so the cancelled request has no
- *    result. A real agent may still finish; that is not exercised.
+ *  - A real agent that keeps working after Stop. Stop closes the stream, asks the agent to cancel (the development
+ *    agent has no cancel route, so nothing is confirmed), says in the chat that the agent may still finish, and
+ *    checks the agent's history exactly once about 15 s later. Here the development agent had not committed, so
+ *    the check reports that the agent did not record the message. A real agent finishing after Stop, or
+ *    confirming the cancel, is covered with a controlled transport in chat-continuity.spec.ts, not here.
  */
 import {test,expect,type Page} from '@playwright/test';
 import {returnToApps} from './app-navigation';
@@ -24,6 +26,12 @@ import {returnToApps} from './app-navigation';
 const AGENT_KEY='alpha.browser.agent.local.v1';
 const AGENT_LOCK=JSON.stringify(['browser-document','alpha.browser.documents.v1',AGENT_KEY]);
 const REPLY='Journey A scripted reply';
+// Wording owned by apps/app/src/runtime/connection-ui.tsx (STOPPED_REPLY_NOTICE and the check's outcome).
+const MAY_FINISH='The agent may still finish this reply. Alpha Phone will check once and show it here if it does.';
+const NOT_RECORDED='The agent did not record the stopped message.';
+/** Pass-through counter of reads of the development agent document; it changes no result. */
+const countAgentReads=(page:Page)=>page.addInitScript(key=>{const w=window as any;w.agentReads=0;const get=IDBObjectStore.prototype.get;IDBObjectStore.prototype.get=function(query:any){if(query===key)w.agentReads++;return get.call(this,query);};},AGENT_KEY);
+const agentReads=(page:Page)=>page.evaluate(()=>(window as any).agentReads as number);
 const bubble=(page:Page,text:string)=>page.getByRole('button',{name:'Message actions: '+text,exact:true});
 /** Read-only view of the development agent's persisted conversations. */
 const agentDocument=(page:Page)=>page.evaluate(async key=>{
@@ -43,6 +51,7 @@ test('journey A: boot, connect, converse across apps, stop a reply, reload and r
  const external:string[]=[];page.on('request',r=>{if(/^https?:/.test(r.url())&&!r.url().includes('127.0.0.1')&&!r.url().includes('localhost'))external.push(r.url());});
 
  // 1. Boot: fresh storage lands on Home with a typed and a talk entry point, and no agent.
+ await countAgentReads(page);
  await page.goto('/?mode=dev');
  await expect(page.getByRole('region',{name:'Home'})).toBeVisible();
  const ask=page.getByRole('textbox',{name:'Ask Alpha',exact:true}),message=page.getByRole('textbox',{name:'Message Alpha',exact:true});
@@ -102,12 +111,19 @@ test('journey A: boot, connect, converse across apps, stop a reply, reload and r
    await stop.click();
    await expect(stop).toHaveCount(0);
    const conversation=page.locator('[data-alpha-layer="conversation"]');
-   // Honest wording: no claim that the agent stopped or that nothing happened.
-   await expect(conversation.getByText('Request cancelled. A dispatched action may still need status reconciliation.',{exact:true})).toHaveCount(1);
-   await expect(bubble(page,'Your message may have reached the agent. Check before sending it again.')).toHaveCount(1);
+   // Honest in-chat state, shown exactly once: no claim that the agent stopped or that nothing happened,
+   // and no second "may have reached the agent" bubble beside it.
+   await expect(conversation.getByText(MAY_FINISH,{exact:true})).toHaveCount(1);
+   await expect(conversation.getByText('Request cancelled. A dispatched action may still need status reconciliation.',{exact:true})).toHaveCount(0);
+   await expect(bubble(page,'Your message may have reached the agent. Check before sending it again.')).toHaveCount(0);
+   await expect(conversation.getByText('The agent stopped this reply.',{exact:true})).toHaveCount(0);
+   // While the single check is pending there is nothing to press: the check is automatic.
+   await expect(page.getByRole('button',{name:/^Check for reply/})).toHaveCount(0);
+   await expect(bubble(page,'Journey A cancelled request')).toHaveCount(1);
    await expect(bubble(page,REPLY)).toHaveCount(2);
-   // The cancelled text is not returned to the composer (it may have been dispatched; never a blind resend).
+   // The cancelled text is not returned to the composer (it was dispatched; never a blind resend).
    await expect(message).toHaveValue('');
+   const readsAtStop=await agentReads(page);
    await page.evaluate(()=>(window as any).releaseAgent());
    await page.evaluate(name=>navigator.locks.request(name,()=>{}),AGENT_LOCK);
    // The development agent never committed the cancelled request, and it does not arrive late.
@@ -115,12 +131,31 @@ test('journey A: boot, connect, converse across apps, stop a reply, reload and r
    expect(afterStop).toHaveLength(1);
    expect(afterStop![0].roles).toEqual(['user','assistant','user','assistant']);
    expect(afterStop![0].texts.some((t:string)=>t.includes('Journey A cancelled request'))).toBe(false);
-   // One reconciliation from the agent's own history: the unconfirmed bubble is replaced by what the agent holds.
+   // The one automatic check (about 15 s after Stop) reads the agent's own history and reports what it holds:
+   // the agent has no record of the stopped message. The pending notice is replaced, not added to.
+   await expect(conversation.getByText(NOT_RECORDED,{exact:true})).toHaveCount(1,{timeout:60_000});
+   await expect(conversation.getByText(MAY_FINISH,{exact:true})).toHaveCount(0);
+   await expect(page.getByRole('button',{name:/^Check for reply/})).toHaveCount(1);
+   await expect(bubble(page,'Journey A cancelled request')).toHaveCount(1);
+   await expect(bubble(page,REPLY)).toHaveCount(2);
+   await expect(message).toHaveValue('');
+   const readsAfterCheck=await agentReads(page);
+   expect(readsAfterCheck).toBeGreaterThan(readsAtStop);
+   // Exactly once: for longer than another check interval nothing reads the agent again, the outcome stands,
+   // and the check wrote and sent nothing.
+   await page.waitForTimeout(20_000);
+   expect(await agentReads(page)).toBe(readsAfterCheck);
+   await expect(conversation.getByText(NOT_RECORDED,{exact:true})).toHaveCount(1);
+   await expect(conversation.getByText(MAY_FINISH,{exact:true})).toHaveCount(0);
+   expect(await agentDocument(page)).toEqual(afterStop);
+   // The Check card is the user's explicit re-read of the agent's history. It never posts: the unconfirmed
+   // bubble is replaced by what the agent holds.
    await page.getByRole('button',{name:/^Check for reply/}).click();
    await expect(bubble(page,'Journey A cancelled request')).toHaveCount(0);
    await expect(bubble(page,'Journey A first request')).toHaveCount(1);
    await expect(bubble(page,'Journey A second request')).toHaveCount(1);
    await expect(bubble(page,REPLY)).toHaveCount(2);
+   expect(await agentDocument(page)).toEqual(afterStop);
    await expect(page.getByRole('button',{name:/^Check for reply/})).toHaveCount(0);
   }
  }

@@ -30,15 +30,18 @@ Spec: `journey-a-conversation.spec.ts`
 | Connection choice (Settings → Agent connection → development profile) | yes (development profile only) | Android Welcome dialog, native `AlphaConnection` bridge | Cloud sign-in, agent selection/provisioning, remote pairing with a real account (A-02) |
 | Typed conversation | yes | — | Real model quality |
 | Switch Notes / Calendar / Browser and keep the same conversation | yes | — | — |
-| Cancel a pending reply (Stop) | yes | — | A real agent that keeps working after Stop: cancellation is transport-only and is not exercised against a real agent |
+| Cancel a pending reply (Stop): the chat says once that the agent may still finish, the composer stays empty and nothing is resent | yes | — | — |
+| One automatic check about 15 s after Stop reads the agent's history exactly once and reports the outcome (here: the agent did not record the message); the Check for reply card re-reads history and never posts | yes | Explicit cancel on the resident runtime | A real agent that finishes or confirms the cancel after Stop (controlled-transport cases are in `chat-continuity.spec.ts`; no real agent is exercised) |
 | Send again after cancelling | yes | — | — |
 | Reload and recover exactly one result per accepted request, none for the cancelled one | yes, after an explicit history restore | Process kill/restart, resident runtime restart | Network switch, token expiry/revocation, account change |
 
 Open items:
 
-- After reload the visible chat is not restored by itself; the user restores it with
-  Load conversations → Restore conversation. Remote and Cloud history restore on connect
-  is listed as remaining in current status.
+- With the development profile, the visible chat is not restored by itself after reload;
+  the user restores it with Load conversations → Restore conversation (asserted in the
+  journey). Restoring a saved remote conversation on reconnect is covered with a
+  controlled transport by `chat-continuity.spec.ts`, not by this journey, and no real
+  remote or Cloud agent is exercised.
 - Spoken requests are not part of this journey (see B for recording).
 
 ## B. Voice → note → calendar event and reminder (J02)
@@ -93,16 +96,17 @@ Spec: `journey-d-digests.spec.ts`
 | Morning occurrence runs once; result retained, shown once, acknowledged | yes (development scheduler; output is the scripted reply) | Resident and hosted workers | Real model output |
 | Restart inside the scheduled minute does not admit the occurrence twice | yes | Resident restart at an admission boundary (`scripts/test-local-digest-restart.mjs`) | Worker crash on a device |
 | Evening occurrence runs once for the evening schedule only | yes | — | — |
-| App closed across a scheduled time: no backlog replay, no fabricated result | yes | — | Power loss, Doze, battery |
-| The missed time leaves one explicit `missed` record | no on this branch (`test.fixme`) | — | — |
+| App closed across a scheduled time: no backlog replay, never run late | yes | — | Power loss, Doze, battery |
+| The missed time leaves exactly one explicit `missed` record, labelled "Missed — not run", acknowledged once, unchanged by later ticks and restart | yes | — | — |
+| A missed record does not replace the last real brief that Home reads; a schedule with only a missed record has no brief | yes (asserted on the retained value Home reads; with an agent connected the Home card lists workflows) | — | — |
 | Final restart: history and acknowledgement retained; nothing runs again | yes | — | — |
 | Two hosted loops complete while the phone is powered off and deliver once on reconnect | not coverable | — | Owner decision A-09, then a hosted service and a powered-off phone |
 
 Open items:
 
-- The explicit missed record for the browser development scheduler is implemented on
-  branch `claude/r3-workflows-digests`, not here. After that branch merges, un-fixme the
-  last test in the spec and confirm its expected row and label against the merged code.
+- After a long absence the development scheduler records the most recent missed
+  occurrence only, while the panel text says "the first is recorded below as missed".
+  The wording and the development scheduler should be reconciled by the digest owner.
 - The development scheduler runs only while the page is open ("Schedules run while this
   app is open"). This is not evidence for resident or hosted scheduling.
 
@@ -213,7 +217,7 @@ Spec: `journey-j05-web-research-note.spec.ts` (two serial tests)
 | J03 | A development Inbox attachment could be reviewed but not saved to Files | missing hand-off | Fixed in `mail-attachments.ts` and `simulated-inbox.ts` |
 | E | A refused page question left the Browser menu open over the error | product bug | Fixed in `browser-adapter.ts` |
 | J04 | An unavailable Bike mode reported that transit schedules were unavailable | product bug | Fixed in `maps-adapter.ts` |
-| D | No explicit missed record in the browser development scheduler | gap versus proposed policy | Implemented on `claude/r3-workflows-digests`; `test.fixme` here |
+| D | No explicit missed record in the browser development scheduler | gap versus proposed policy | Implemented by the workflows and digests package; journey D now asserts it |
 | B, F, J04 | Hand-off gaps listed under each loop's open items | missing hand-off | Recorded, not changed |
 
 ## What no browser journey can establish
