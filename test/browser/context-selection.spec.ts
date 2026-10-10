@@ -25,7 +25,7 @@ test.describe('folder',()=>{
   const ids=await seedFolder(page);await openFolder(page,'Review scope');
   await expect.poll(()=>selectedObject(page)).toMatchObject({kind:'folder',id:ids.scope});
   const first=await selectedObject(page);
-  expect(Object.keys(first!).sort()).toEqual(['id','kind','revision']);expect(first!.revision).toMatch(/^listing-\d+$/);expect(JSON.stringify(first)).not.toMatch(/Review scope|alpha\.txt/);
+  expect(Object.keys(first!).sort()).toEqual(['id','kind','revision']);expect(first!.revision).toMatch(/^listing-[0-9a-f]{12}-\d+$/);expect(JSON.stringify(first)).not.toMatch(/Review scope|alpha\.txt/);
   // The same listing keeps its revision; a changed listing gets a new one.
   await page.getByRole('button',{name:'View and sort',exact:true}).click();await page.getByText('Refresh folder',{exact:true}).click();await expect(page.getByRole('button',{name:'Open alpha.txt',exact:true})).toBeVisible();
   expect(await selectedObject(page)).toEqual(first);
@@ -103,6 +103,30 @@ test.describe('notification',()=>{
   // The selection does not outlive the shade.
   expect((await selectedObject(page))?.kind).not.toBe('notification');
  });
+ test('a notification review ends with the shade it was opened from',async({page})=>{
+  await post(page,rows);await page.locator('.alpha-shade-list > div',{hasText:'Call the clinic'}).getByRole('button',{name:/^Ask Alpha/}).click();
+  const dialog=review(page);await expect(dialog.getByRole('textbox',{name:'Content excerpt'})).toHaveValue(/Call the clinic/);
+  // Home closes the shade underneath the review; the notification text must not stay on screen.
+  await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));
+  await expect(dialog).toHaveCount(0);await expect(page.getByText('Ask about Tuesday',{exact:true})).not.toBeInViewport();
+  await expect.poll(()=>selectedObject(page)).toBeNull();
+ });
+ test('a row whose content Android withheld offers no question',async({page})=>{
+  // The browser build redacts with an empty row. Stand in for Android's answer at the plugin
+  // boundary: fixed wording in place of a locked or secret notification's title and text.
+  await page.evaluate(async()=>{
+   const {BrowserNotifications}=await import('/src/browser/notifications.ts');const at=Date.now();
+   const own={source:'own',appLabel:'Alpha Phone',clearable:true};
+   (BrowserNotifications.prototype as any).list=async()=>({scope:'alpha-phone',items:[
+    {...own,id:'hidden-secret',revision:'hidden-secret',title:'Alpha Phone notification',text:'Content hidden',at,canOpen:false},
+    {...own,id:'hidden-locked',revision:'hidden-locked',title:'Alpha Phone notification',text:'Unlock to view',at:at-1,canOpen:false},
+    {...own,id:'shown',revision:'shown',title:'Stand up',text:'In five minutes',at:at-2,canOpen:true}]});
+  });
+  await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('dialog',{name:'Development device controls'}).getByRole('button',{name:'Notifications',exact:true}).click();
+  await expect(page.getByText('Content hidden',{exact:true})).toBeVisible();await expect(page.getByText('Unlock to view',{exact:true})).toBeVisible();
+  await expect(ask(page)).toHaveCount(1);
+  await expect(page.locator('.alpha-shade-list > div',{hasText:'Stand up'}).getByRole('button',{name:/^Ask Alpha/})).toHaveCount(1);
+ });
  test('dismissing the reviewed notification never sends its neighbor',async({page})=>{
   await post(page,rows);await page.locator('.alpha-shade-list > div',{hasText:'Call the clinic'}).getByRole('button',{name:/^Ask Alpha/}).click();
   const dialog=review(page);await expect(dialog.getByRole('textbox',{name:'Content excerpt'})).toHaveValue(/Call the clinic/);
@@ -135,6 +159,23 @@ test.describe('capture',()=>{
   await expect(composer(page)).toHaveValue('Help me understand this image text or description.\n\nSource: Selected photo\n\nA reviewed description');
   // The envelope still names the same item at the same revision; no content is in it.
   expect(await selectedObject(page)).toEqual(selected);expect(Object.keys(selected!).sort()).toEqual(['id','kind','revision']);
+ });
+ test('a photo trashed during its review adds nothing, and the other photo is never sent',async({page})=>{
+  await photo(page,'FIRST');await photo(page,'SECOND');
+  await page.getByRole('button',{name:'Photos',exact:true}).click();await page.getByRole('button',{name:/Captured photo/}).first().click();
+  await expect.poll(async()=>(await selectedObject(page))?.kind).toBe('photo');const selected=await selectedObject(page);
+  await page.getByRole('button',{name:'Ask Alpha about this photo',exact:true}).click();
+  const dialog=review(page);await expect(dialog.getByRole('img')).toBeVisible();
+  await dialog.getByRole('textbox',{name:'Content excerpt'}).fill('A reviewed description');
+  // Another surface trashes the open item while the review is showing. The view has not refreshed.
+  await page.evaluate(async id=>{const {browserPhotoLibrary}=await import('/src/prototype/browser-camera.ts');const row=await browserPhotoLibrary.read({id});await browserPhotoLibrary.setTrashed({id,revision:row.mutationRevision,trashed:true});},selected!.id.replace(/^native-camera-/,''));
+  await dialog.getByRole('button',{name:'Use in conversation',exact:true}).click();
+  await expect(page.getByText('This photo changed or is no longer available. Nothing was added to your conversation.',{exact:true})).toBeVisible();
+  await expect(dialog).toHaveCount(0);await expect(composer(page)).toHaveCount(0);
+  // The stale viewer closes. The remaining photo was not opened or sent in its place.
+  await expect.poll(()=>selectedObject(page)).toBeNull();
+  await expect(page.getByRole('button',{name:'Ask Alpha about this photo',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:/Captured photo/})).toHaveCount(1);
  });
  test('a typed library search is not treated as a capture and stays visibly unavailable',async({page})=>{
   await photo(page,'ONLY');await page.getByRole('button',{name:'Photos',exact:true}).click();await expect(page.getByRole('button',{name:/Captured photo/}).first()).toBeVisible();

@@ -18,7 +18,7 @@ export function installNotificationsAdapter(Component: any) {
  p.componentDidMount=function(){mount?.call(this);this.alphaNotices=[];this.alphaNoticesLive=true;this.alphaNoticeEpoch=0;
   this.alphaNoticeVisibility=()=>{this.alphaNoticeEpoch++;if(document.hidden){this.alphaNotices=[];this.alphaNoticeSelection=undefined;}else{this.setState({nativeNoticeRevision:Date.now()});if(this.S().shade)void this.refreshAlphaNotices();}};
   document.addEventListener('visibilitychange',this.alphaNoticeVisibility);
-  this.alphaNoticeDeviceState=()=>{this.alphaNoticeEpoch++;this.alphaNotices=[];this.alphaNoticeSelection=undefined;this.setState({nativeNoticeRevision:Date.now()});};
+  this.alphaNoticeDeviceState=()=>{this.alphaNoticeEpoch++;this.alphaNoticeQuestion?.();this.alphaNotices=[];this.alphaNoticeSelection=undefined;this.setState({nativeNoticeRevision:Date.now()});};
   if(!Capacitor.isNativePlatform())window.addEventListener('alpha:device-state',this.alphaNoticeDeviceState);
   this.alphaNoticeTimer=window.setInterval(()=>{if(this.alphaNoticesLive&&this.S().shade&&!document.hidden){this.publishAlphaNoticeSelection();void this.refreshAlphaNotices();}},1000);
  };
@@ -39,6 +39,9 @@ export function installNotificationsAdapter(Component: any) {
   const out=render.call(this),self=this;
   // A press from an earlier shade session never becomes context for a later one.
   if(!this.S().shade)this.alphaNoticeSelection=undefined;
+  // A notification review never outlives the shade it was opened from (Home, lock, another view).
+  const reviewEnded=()=>{const now=self.S();return !now.shade||now.screen==='lock'||now.screen==='off';};
+  if(this.alphaNoticeQuestion&&reviewEnded())queueMicrotask(()=>{if(reviewEnded())self.alphaNoticeQuestion?.();});
   this.alphaNoticeSelectionRendered=JSON.stringify(this.alphaNoticeSelection??null);
   const action=async(task:()=>Promise<void>)=>{try{await task();await self.refreshAlphaNotices();}catch{if(self.alphaNoticesLive&&!document.hidden){self.toast('The notification changed or could not be updated.');await self.refreshAlphaNotices();}}};
   const shadeN=(this.alphaNotices||[]).map((n:Notice)=>{

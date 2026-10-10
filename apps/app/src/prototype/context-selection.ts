@@ -46,36 +46,44 @@ export function folderSignature(scope: FolderScope): string {
 }
 
 export type FolderSelection = { kind: 'folder'; id: string; revision: string };
-/** Maps each distinct listing of a folder to a session-local counter. The counter is the
- * only revision that leaves the phone: it changes whenever the folder or a loaded entry
- * changes, and reveals nothing about names, sizes or times. */
+const FOLDER_REVISIONS_KEPT = 64;
+/** Maps each distinct listing of a folder to a counter that is local to this app session.
+ * The counter (with a random session marker, so a later session can never repeat it for
+ * other content) is the only revision that leaves the phone: it changes whenever the folder
+ * or a loaded entry changes, and reveals nothing about names, sizes or times. */
 export function createFolderRevisions() {
   const seen = new Map<string, { signature: string; revision: number }>();
+  const session = Array.from(crypto.getRandomValues(new Uint8Array(6)), byte => byte.toString(16).padStart(2, '0')).join('');
   let counter = 0;
   return (scope: FolderScope | undefined): FolderSelection | undefined => {
     if (!scope) return undefined;
     const signature = folderSignature(scope), previous = seen.get(scope.folder.id);
     const revision = previous?.signature === signature ? previous.revision : ++counter;
-    seen.set(scope.folder.id, { signature, revision });
-    return { kind: 'folder', id: scope.folder.id, revision: 'listing-' + revision };
+    // Most recently used last. A forgotten folder simply gets a new revision when revisited.
+    seen.delete(scope.folder.id); seen.set(scope.folder.id, { signature, revision });
+    if (seen.size > FOLDER_REVISIONS_KEPT) seen.delete(seen.keys().next().value as string);
+    return { kind: 'folder', id: scope.folder.id, revision: 'listing-' + session + '-' + revision };
   };
 }
 
+export const FOLDER_EXCERPT_LIMIT = 200;
 /** Whether a fresh read of the folder still matches what was reviewed. A removed, renamed,
- * replaced or added entry, a changed folder, or lost access all fail. With several loaded
- * pages only the first page is re-read; it must agree and the reported total must match. */
+ * replaced or added entry, a changed folder, or lost access all fail. The fresh read is the
+ * folder's first page. It must be exactly the entries the review loaded first, it must cover
+ * every entry the excerpt names, and the reported total must be unchanged: an entry that left
+ * the first page is noticed even when another loaded entry slides into its place. */
 export function folderScopeCurrent(reviewed: FolderScope, fresh: Listed & { status?: string }): boolean {
   if (fresh.status !== undefined && fresh.status !== 'ready') return false;
   const now = folderScope(fresh);
   if (!now || now.folder.id !== reviewed.folder.id || now.folder.revision !== reviewed.folder.revision) return false;
   if (now.total !== reviewed.total) return false;
-  const known = new Map(reviewed.entries.map(entry => [entry.id, entry.revision]));
-  if (!now.entries.every(entry => known.get(entry.id) === entry.revision)) return false;
-  // The fresh read is the first page: it can be shorter than several loaded pages, never longer.
-  return now.more ? now.entries.length <= reviewed.entries.length : now.entries.length === reviewed.entries.length;
+  const count = now.entries.length;
+  if (count > reviewed.entries.length || (!now.more && count !== reviewed.entries.length)) return false;
+  if (count < Math.min(reviewed.entries.length, FOLDER_EXCERPT_LIMIT)) return false;
+  const first = new Map(reviewed.entries.slice(0, count).map(entry => [entry.id, entry.revision]));
+  return first.size === count && now.entries.every(entry => first.get(entry.id) === entry.revision);
 }
 
-export const FOLDER_EXCERPT_LIMIT = 200;
 /** The excerpt offered for review: names and types of the loaded entries of this one folder.
  * Nothing inside a file or a subfolder is read. */
 export function folderExcerpt(scope: FolderScope, typeLabel: (mimeType: string, directory: boolean) => string): string {
@@ -100,11 +108,22 @@ export function settingsSelection(state: Bag | undefined): { kind: 'settings'; i
 }
 
 export type Notice = { id: string; revision: string; source: string; title?: string; text?: string; appLabel?: string };
-/** Only Alpha Phone's own, unredacted notifications can be reviewed for a question. A row
- * hidden by the lock screen shows its app label and no text, which is nothing to review. */
-export function noticeReviewable(notice: Notice): boolean {
+/** What Android's AlphaNotificationsPlugin.list returns in place of a row's title and text
+ * while the device is locked or the notification is secret (test/context-selection.test.mjs
+ * keeps these in step with the Java source). */
+export const HIDDEN_NOTICE_TITLE = 'Alpha Phone notification';
+export const HIDDEN_NOTICE_TEXTS: readonly string[] = ['Unlock to view', 'Content hidden'];
+/** A row whose content the platform withheld. The browser build shows the app label and no
+ * text; Android shows fixed placeholder wording. Neither is the notification's content. */
+export function noticeHidden(notice: Notice): boolean {
   const title = (notice.title || '').trim(), text = (notice.text || '').trim();
-  return notice.source === 'own' && OPAQUE.test(notice.id) && OPAQUE.test(notice.revision) && (!!text || (!!title && title !== (notice.appLabel || '').trim()));
+  if (!text) return !title || title === (notice.appLabel || '').trim() || title === HIDDEN_NOTICE_TITLE;
+  return title === HIDDEN_NOTICE_TITLE && HIDDEN_NOTICE_TEXTS.includes(text);
+}
+/** Only Alpha Phone's own, unredacted notifications can be reviewed for a question. A row
+ * hidden by the lock screen or marked secret carries no content, which is nothing to review. */
+export function noticeReviewable(notice: Notice): boolean {
+  return notice.source === 'own' && OPAQUE.test(notice.id) && OPAQUE.test(notice.revision) && !noticeHidden(notice);
 }
 /** The exact notification is still listed with the revision that was reviewed. */
 export function noticeCurrent(reviewed: Pick<Notice, 'id' | 'revision' | 'source'>, items: readonly Notice[] | undefined): boolean {
@@ -113,6 +132,18 @@ export function noticeCurrent(reviewed: Pick<Notice, 'id' | 'revision' | 'source
 }
 export function noticeExcerpt(notice: Notice): string {
   return [notice.title, notice.text].map(value => (value || '').trim()).filter(Boolean).join('\n');
+}
+
+export type CaptureSelection = { kind: 'photo' | 'video'; id: string; revision: string };
+/** A saved photo or video as an identity. Android's library revision gains a '|generation'
+ * suffix once an item was favorited, trashed or restored, and the wire contract refuses '|'
+ * (the whole message would then fail to send while that item is open). The separator is
+ * rewritten one-to-one: library revisions never contain '.'. An identity that still is not
+ * opaque is not shared at all. */
+export function captureSelection(row: { kind?: string; id?: unknown; revision?: unknown } | undefined): CaptureSelection | null {
+  if (!row || typeof row.id !== 'string' || typeof row.revision !== 'string' || row.revision.includes('.') && row.revision.includes('|')) return null;
+  const revision = row.revision.replace(/\|/g, '.');
+  return OPAQUE.test(row.id) && OPAQUE.test(revision) ? { kind: row.kind === 'video' ? 'video' : 'photo', id: row.id, revision } : null;
 }
 
 export type CaptureQuestion =

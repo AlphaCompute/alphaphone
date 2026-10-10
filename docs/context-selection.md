@@ -16,29 +16,40 @@ those gates stay open (see [current status](mvp-current-status.md)).
 
 | Source | Identity | Review scope | Ends when |
 | --- | --- | --- | --- |
-| Files folder (`files-tree-adapter.ts`) | `folder`, opaque tree id, session-local `listing-N` counter | Names and types of the loaded entries of that one folder. No file or subfolder contents | The folder is left, a file is opened, or access ends |
+| Files folder (`files-tree-adapter.ts`) | `folder`, opaque tree id, session-local `listing-<session>-N` counter | Names and types of the loaded entries of that one folder. No file or subfolder contents | The folder is left, a file is opened, or access ends |
 | Selected document (`selection-adapter.ts`) | `document`, picker capability, accept epoch plus rename count | The shown text or PDF page | Closed, forgotten, reselected or renamed |
 | Alpha Phone notification (`notifications-adapter.ts`) | `notification`, id, revision, `accountId: own` | That notification's shown title and text | The shade closes, or the row is dismissed, updated or hidden |
-| Saved photo or video (`camera-adapter.ts`) | `photo` or `video`, library id and revision | The open item, described or read locally (English OCR) | Another item opens, or it is edited, trashed or removed |
-| Camera frame | none | One unsaved frame | The camera closes or a capture starts |
+| Saved photo or video (`camera-adapter.ts`) | `photo` or `video`, library id and revision (`captureSelection`) | The open item, described or read locally (English OCR) | Another item opens, or it is edited, trashed or removed |
+| Camera frame | none | One unsaved frame | The camera closes or restarts |
 | Settings page (`context-selection.ts`) | `settings`, section slug only | none | The page changes. Credential pages have no identity |
 
 The provider's own folder revision embeds the display name, so it is used only for local
-comparison and never sent.
+comparison and never sent. Android's photo library revision gains a `|generation` suffix once
+an item was favorited, trashed or restored; the wire contract refuses `|`, so `captureSelection`
+rewrites that separator one-to-one and shares no identity it cannot make opaque.
 
 ## Change during review
 
 A folder is read again when the owner chooses "Use in conversation". A deleted, added,
 renamed or replaced entry, a changed folder or ended access adds nothing to the conversation;
-the folder is shown as it now is and must be reviewed again. A notification is listed again
-the same way and must still be present with the reviewed revision and text. A neighbor never
-stands in for the reviewed item. A draft that was already placed is still subject to the
+the folder is shown as it now is and must be reviewed again. Only the folder's first page is
+read again: it must be exactly the entries that were loaded first, cover every entry the excerpt
+names, and report the same total. A notification is listed again the same way and must still be
+present with the reviewed revision and text; its review also closes when the shade closes. A
+saved photo or video is read again from the library: one trashed, edited or removed since the
+review started adds nothing and its viewer closes. A neighbor never stands in for the reviewed
+item. A draft that was already placed is still subject to the
 existing dispatch check: a changed context revision returns the message to the composer.
 
 ## Visibly unavailable
 
-- Other apps' mirrored notifications and hosted results offer no question (P-03).
-- A notification hidden by the lock screen offers no question.
+- Other apps' mirrored notifications (P-03) and rows listed with the `hosted` source offer no
+  question. On Android every notification Alpha Phone itself posted is listed as an own row,
+  including workflow and hosted-result notices; the review scope is still only the title and
+  text that row shows.
+- A notification whose content is withheld (device locked, or marked secret) offers no question.
+  The browser build shows an empty row; Android shows fixed placeholder wording, which is matched
+  by its exact text (`HIDDEN_NOTICE_TITLE`, `HIDDEN_NOTICE_TEXTS`).
 - Excerpts that look like credentials or verification codes are refused in the notification review.
 - A typed Photos or Files search question is not a capture. Outside the browser development
   profile it reports that content analysis is not connected.
@@ -49,5 +60,7 @@ existing dispatch check: a changed context revision returns the message to the c
 
 `test/context-selection.test.mjs` (rules) and `test/browser/context-selection.spec.ts`
 (rendered flows in the browser build). The browser app-files store cannot lose a grant, so the
-revoke case stubs the listing answer at the plugin boundary. Android folder grants, MediaStore
-and the notification listener are not exercised by these tests.
+revoke case stubs the listing answer at the plugin boundary, as does the case for Android's
+withheld-notification wording. Android folder grants, MediaStore revisions and the notification
+listener are not exercised by these tests: the Android photo revision format and placeholder
+wording are checked only against the Java source text.
