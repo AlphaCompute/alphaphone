@@ -214,3 +214,55 @@ test('sharing the email with the agent is reviewed first and never includes an a
  await expect(sharing).toHaveCount(0);
  await expectInert(page,seen);
 });
+
+// A file that is a valid image for its first bytes and a web page after them, and names that look
+// like URLs. The type check passes the polyglot, so its preview is what has to be inert.
+test('a PNG-and-HTML polyglot is previewed only as a sandboxed image, and URL-like names are refused or shown as plain text',async({page})=>{
+ test.setTimeout(120_000);
+ const seen=await watch(page);
+ const polyglot='\x89PNG\r\n\x1a\n'+html+svg;
+ const scheme='javascript:top.hostile=1;.txt',dataName='data:text/html,<script>top.hostile=1</script>.txt';
+ await setup(page,[
+  part('polyglot','photo.png','image/png',true,polyglot),
+  part('data-name',dataName,'text/plain',true,'plain'),
+  part('scheme-name',scheme,'text/plain',true,html),
+ ]);
+ await page.getByText('photo.png',{exact:true}).click();
+ await expect(review(page).getByRole('heading',{name:'photo.png',exact:true})).toBeVisible();
+ await expect(review(page)).toContainText(`SHA-256 ${sha(polyglot)}`);
+ await expect(review(page)).not.toContainText('Invoice');
+ await review(page).getByRole('button',{name:'Open reviewed file',exact:true}).click();
+ const opened=page.getByRole('dialog',{name:'Reviewed attachment'});
+ await expect(opened.getByRole('heading',{name:'photo.png',exact:true})).toBeVisible();
+ // One frame, with every sandbox restriction, showing a blob typed as the image it was checked as.
+ const frames=await opened.locator('iframe').evaluateAll(nodes=>nodes.map(node=>({sandbox:node.getAttribute('sandbox'),blob:(node as HTMLIFrameElement).src.startsWith('blob:'),attributes:node.getAttributeNames().sort()})));
+ expect(frames).toEqual([{sandbox:'',blob:true,attributes:['sandbox','src','title']}]);
+ expect(await opened.locator('iframe').evaluate(async node=>(await (await fetch((node as HTMLIFrameElement).src)).blob()).type)).toBe('image/png');
+ expect(await opened.locator('script, object, embed, a[href]:not([download]), form').count()).toBe(0);
+ // The Download control saves the blob under the checked name; it is not a link that navigates.
+ expect(await opened.locator('a[download]').evaluateAll(nodes=>nodes.map(node=>[node.getAttribute('download'),(node as HTMLAnchorElement).protocol,node.getAttribute('target')]))).toEqual([['photo.png','blob:',null]]);
+ await page.waitForTimeout(600);
+ expect(seen).toEqual({requests:[],navigations:[],dialogs:[],popups:0});
+ expect(await page.evaluate(()=>(window as any).hostile)).toBeUndefined();
+ expect(page.frames().map(frame=>new URL(frame.url()).protocol).filter(protocol=>protocol!=='http:'&&protocol!=='blob:'&&protocol!=='about:')).toEqual([]);
+ expect(new URL(page.url()).hostname).toBe('127.0.0.1');
+ await opened.getByRole('button',{name:'Done',exact:true}).click();
+ await expect(opened).toHaveCount(0);
+ expect(page.frames().filter(frame=>frame.url().startsWith('blob:'))).toEqual([]);
+ await review(page).getByRole('button',{name:'Back to message',exact:true}).click();
+
+ // A data: URL as a file name contains a path separator: the response is refused, nothing opens.
+ await page.getByRole('region',{name:'Email message'}).getByText(dataName,{exact:true}).click();
+ await expect(page.getByText('Gmail is unavailable right now. Retry, or check the connection.',{exact:true}).first()).toBeVisible();
+ await expect(review(page)).toHaveCount(0);
+ await page.getByText('Invoices attached',{exact:true}).first().click();
+ await expect(page.getByRole('region',{name:'Email message'})).toContainText('Please open the attached invoice.');
+
+ // A name that reads as a script URL is only ever text: in the list, the review and Files.
+ await page.getByRole('region',{name:'Email message'}).getByText(scheme,{exact:true}).click();
+ await expect(review(page).getByRole('heading',{name:scheme,exact:true})).toBeVisible();
+ await expect(review(page).getByText(html,{exact:true})).toBeVisible();
+ expect(await page.locator('a[href^="javascript:"], [src^="javascript:"], a[href^="data:"], [src^="data:text/html"]').count()).toBe(0);
+ await expectInert(page,seen);
+ expect((await fixture(page)).mutations).toBe(0);
+});
