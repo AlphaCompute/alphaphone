@@ -119,19 +119,19 @@ Evidence/source: [docs/mvp-current-status.md](../docs/mvp-current-status.md), [d
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: The integration pin is reviewed upstream password-manager head 352d7a0855, merged through PR #34835 and reachable from develop. Source preparation and consumer verification pass (454 tests, four TODOs); both variants build and all four APK audits pass. These developer APKs use an unqualified speech candidate and omit the resident runtime payload, so they are not distributable. Both variants pass the real-framework browser rejection campaign on API 35. Historical 945209d3 journal/photo evidence remains separate.
+Current: The integration pin is merged upstream commit 4148a1660921a354ece2badf25a79a2398a51058, including the password manager and password transfer. The submodule and lock agree and the pin is reachable from develop. Consumer verification and both APK builds at this replacement pin are pending. Earlier source, browser and native results remain scoped to their recorded commits.
 
 Remaining: Complete the remaining retired-pin semantic audit and product-wide browser/native regressions. Release runtime, speech, signing and device acceptance remain separate.
 
 Done when: Reviewed upstream disposition per commit, clean source preparation and full product regression at the replacement pin.
 
-Evidence/source: [scripts/ci/upstream-reachability.json](../scripts/ci/upstream-reachability.json), [upstream.lock.json](../upstream.lock.json), [patches/eliza/README.md](../patches/eliza/README.md).
+Evidence/source: [scripts/ci/upstream-reachability.json](../scripts/ci/upstream-reachability.json), [upstream.lock.json](../upstream.lock.json).
 
 ### MVP-09 Submit and retire explicit shared patches
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: The last applied password-manager patch is replaced by the pinned upstream module from PR #34835. Twenty-eight earlier patch files and their manifests were retired after upstream merges. No applied patch remains. Password transfer remains an unshipped reference candidate under upstream native validation.
+Current: Alpha consumes the merged password-manager and password-transfer modules directly. The final reference patch and its manifest are removed; no applied or reference patch remains. The host registers password transfer and uses the shared count-only client. Integrated product qualification at the replacement pin remains pending.
 
 Remaining: Finish the remaining upstream reviews and remove each patch only when its reviewed replacement is consumed.
 
@@ -139,7 +139,7 @@ Done when: Patch-to-upstream-PR ledger with exact output hashes, external-consum
 
 Depends on: MVP-08.
 
-Evidence/source: [patches/eliza/README.md](../patches/eliza/README.md).
+Evidence/source: [password-provider-setup.md](password-provider-setup.md).
 
 ### MVP-10 Consume shared media implementation
 

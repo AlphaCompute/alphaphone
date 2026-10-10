@@ -80,6 +80,7 @@ public class MainActivity extends BridgeActivity {
   registerPlugin(AlphaNotificationsPlugin.class);
   registerPlugin(AlphaHostedResultsPlugin.class);
   registerPlugin(ai.eliza.plugins.passwords.PasswordsPlugin.class);
+  registerPlugin(ai.eliza.plugins.passwords.PasswordTransferPlugin.class);
   if (BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS) {
    // Present only in debug builds made with -PELIZA_DEV_ALLOW_TEST_MOCKS=1 (src/testMocks).
    try { registerPlugin(Class.forName("ai.elizaresearch.alphaphone.DevelopmentAgentPlugin").asSubclass(com.getcapacitor.Plugin.class)); }

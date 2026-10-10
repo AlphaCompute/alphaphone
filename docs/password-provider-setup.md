@@ -57,18 +57,25 @@ Fill rules (implemented in the shared `PasswordFormPolicy`, tested on a JVM):
 | Reveal / clipboard | FLAG_SECURE, timed hide, sensitive clip flag (Android 13+ hides previews), timed clearing. | Expiry is best effort: other apps may have clipboard access on older Android versions, and Android may defer ownership checks until Alpha resumes. Alpha never clears a replaced or unidentifiable clip. |
 | Renderer compromise | Cannot read secrets; cannot mint app bindings; can trigger unlock prompts and native reveal/copy only after a real unlock. | A compromised renderer could rename/delete entries while unlocked. |
 
-### Export and import (upstream candidate 0060)
+### Export and import
 
-`patches/eliza/0060-password-transfer.patch` (reference manifest
-`password-transfer-source-base.json`) adds a separate native plugin, `ElizaPasswordTransfer`, on
-the pinned manager. Export locks the vault, asks for a fresh screen-lock/biometric authentication, states
-that the CSV file is not encrypted, and writes only to a document the user picks. Import reads a
-user-picked CSV (Chrome, Firefox, Bitwarden and Proton layouts), binds each row to exactly one
-HTTPS origin, lists those origins for review and only adds entries; `http`, app (`android://`) and
-invalid rows, in-file duplicates and already-saved website/username pairs are skipped. The bridge
-resolves with counts only. JVM tests (`PasswordCsvTest`) and a compile of the module pass; nothing
-has run on a device. Queued-operation ticket binding and picker lifecycle remain under review. It is not yet materialized into Alpha's build: Settings shows Import and
-Export only when the host registers the plugin, which it does not yet.
+Alpha registers the shared `ElizaPasswordTransfer` plugin from the reviewed upstream
+pin. Export uses Android's document picker, requires fresh authentication after the
+picker returns, and asks for confirmation before writing an unencrypted CSV. The
+native implementation streams bounded rows rather than building a second full vault
+copy. A failed export warns that the selected file may still contain passwords.
+
+Import reads a user-picked CSV, reviews every admitted HTTPS origin, and adds entries
+atomically without replacing saved website/username pairs. Invalid origins, app bindings,
+duplicate entries and unsupported rows are skipped. Input is bounded to 2 MiB and
+1,000 rows. Backgrounding cancels the operation; the native worker keeps exclusive
+ownership until it exits. Only counts cross the bridge, checked by the shared client.
+Alpha refreshes vault state after an interrupted import or export.
+
+[Upstream PR #34879](https://github.com/elizaOS/eliza/pull/34879) contains the exact-head
+CSV, streaming, atomic-store and native consumer evidence. Four consumer cases and
+the separate native store case passed on API 35. These establish the shared module's
+fixture behavior, not integrated Alpha, biometric or physical-device acceptance.
 
 ### Passkeys
 
