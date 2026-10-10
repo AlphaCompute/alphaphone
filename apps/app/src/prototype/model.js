@@ -5463,7 +5463,8 @@ class Component extends DCLogic {
       // Native tile facts (S.q.tileFacts, from AlphaDevice.snapshot()) replace the reference values when present.
       var facts = S.q.tileFacts && typeof S.q.tileFacts === "object" ? S.q.tileFacts : null;
       var known = facts ? typeof facts[t[0]] === "boolean" : typeof S.q[t[0]] === "boolean"; var on = known ? (facts ? facts[t[0]] : S.q[t[0]]) : undefined;
-      return { d: t[1], label: t[2], on: on, css: on ? "background:var(--acc);color:#fff" : "background:var(--s2);color:var(--fg)", toggle: function () {
+      // Reference tiles switch in place, so each is a toggle: its name is the label and aria-pressed its state.
+      return { d: t[1], label: t[2], aria: t[2], pressed: on, on: on, css: on ? "background:var(--acc);color:#fff" : "background:var(--s2);color:var(--fg)", toggle: function () {
         var q = Object.assign({}, self.S().q); q[t[0]] = !q[t[0]];
         if (t[0] === "plane") { if (q.plane) { self.prePlane = { wifi: q.wifi, bt: q.bt }; q.wifi = false; q.bt = false; } else if (self.prePlane) { q.wifi = self.prePlane.wifi; q.bt = self.prePlane.bt; } }
         self.setState({ q: q });

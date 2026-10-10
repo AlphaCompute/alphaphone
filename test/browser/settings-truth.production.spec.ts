@@ -104,7 +104,14 @@ async function openShade(page:Page){
  await expect(shade).toHaveAttribute('aria-hidden','false');
  return shade;
 }
-const tile=(page:Page,name:string)=>page.locator('[data-alpha-layer="shade"]').getByRole('button',{name,exact:true});
+// A handoff tile's accessible name starts with its label and carries the reported state; the flashlight's is its label.
+const tile=(page:Page,name:string)=>page.locator('[data-alpha-layer="shade"]').getByRole('button',{name:new RegExp('^'+name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(, |$)')});
+/** A tile that opens an Android page is a plain button named with the state Android reported; it is never announced as a toggle. */
+async function expectHandoffTile(page:Page,name:string,state:'on'|'off'|null,opens='opens Android settings'){
+ await expect(tile(page,name)).toHaveAccessibleName(name+(state?', '+state:'')+', '+opens);
+ await expect(tile(page,name)).not.toHaveAttribute('aria-pressed',/.*/);
+ await expect(tile(page,name)).not.toHaveAttribute('role',/.*/);
+}
 const tileState=(page:Page,name:string)=>tile(page,name).locator('[data-tile-state]');
 /** Values that exist only in the reference fixtures or as prototype simulations. */
 const fixtureValues=['you@gmail.example','you@alpha.example','Alpha Home','Studio 5G','Ritual Coffee','Neighbors_2.4','Pixel Buds Pro 2','Keyboard K3','Kitchen Speaker','Vision 2B','Core 7B','elizaOS 2.1','AC1.260915','Alpha Compute phone','Powered by elizaOS','Alpha Mobile','3.2 of 20 GB','2,418 items','About 1 day','Redaction on','Redaction receipt','Enclave lock','Memory wiped','Wipe memory','Up to date','Check for updates','Cloud fallback','Charge to 80%','Verbose logs','Agent summaries','Last sync','Export logs','Logs saved','Pair new device','Tap to pair','Hey Alpha','Speak replies','Proactive briefings','Roaming','This month','Device uptime','NPU'];
@@ -113,11 +120,17 @@ const noFixtures=(text:string,where:string)=>{for(const value of fixtureValues)e
 test('shade tiles show the switch states Android reported and only open the matching Android page',async({page})=>{
  await nativeStub(page);
  const shade=await openShade(page);
- const expected:Array<[string,'true'|'false'|null,string]>=[['Wi-Fi','true','On'],['Bluetooth','false','Off'],['Do not disturb','false','Off'],['Agent can listen',null,'Permissions'],['Location','true','On'],['Airplane mode','false','Off'],['Flashlight',null,'Tap to switch']];
- for(const [name,pressed,text] of expected){
+ const expected:Array<[string,'on'|'off'|null,string]>=[['Wi-Fi','on','On'],['Bluetooth','off','Off'],['Do not disturb','off','Off'],['Agent can listen',null,'Permissions'],['Location','on','On'],['Airplane mode','off','Off']];
+ for(const [name,state,text] of expected){
   await expect(tileState(page,name)).toHaveText(text);
-  if(pressed)await expect(tile(page,name)).toHaveAttribute('aria-pressed',pressed);else await expect(tile(page,name)).not.toHaveAttribute('aria-pressed',/.*/);
+  await expectHandoffTile(page,name,state,name==='Agent can listen'?'opens Android permission settings':undefined);
  }
+ // The flashlight is the only toggle. Until Android confirms a state it claims none.
+ await expect(tileState(page,'Flashlight')).toHaveText('Tap to switch');
+ await expect(tile(page,'Flashlight')).toHaveAccessibleName('Flashlight');
+ await expect(tile(page,'Flashlight')).not.toHaveAttribute('aria-pressed',/.*/);
+ // No shade tile other than the flashlight is exposed as a toggle or switch.
+ expect(await shade.locator('[aria-pressed],[role="switch"],[aria-checked]').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')))).toEqual([]);
  await expect(shade.getByRole('button',{name:'Enclave lock',exact:true})).toHaveCount(0);
  noFixtures(await shade.innerText(),'Shade');
  await shade.screenshot({path:test.info().outputPath('shade-tiles.png')});
@@ -129,18 +142,19 @@ test('shade tiles show the switch states Android reported and only open the matc
   await tile(page,name).click();
   await expect.poll(async()=>(await opened(page)).slice(before)).toEqual([target]);
  }
- for(const [name,pressed,text] of expected.slice(0,6)){
+ for(const [name,state,text] of expected){
   await expect(tileState(page,name)).toHaveText(text);
-  if(pressed)await expect(tile(page,name)).toHaveAttribute('aria-pressed',pressed);
+  await expectHandoffTile(page,name,state,name==='Agent can listen'?'opens Android permission settings':undefined);
  }
  // Coming back re-reads Android. The owner turned Bluetooth on and Wi-Fi off there.
  await set(page,{snapshot:{bluetoothEnabled:true,wifiEnabled:false,wifiActive:false,interruptionFilter:'priority'}});
  await resume(page);
  await expect(tileState(page,'Bluetooth')).toHaveText('On');
- await expect(tile(page,'Bluetooth')).toHaveAttribute('aria-pressed','true');
+ await expectHandoffTile(page,'Bluetooth','on');
  await expect(tileState(page,'Wi-Fi')).toHaveText('Off');
- await expect(tile(page,'Wi-Fi')).toHaveAttribute('aria-pressed','false');
+ await expectHandoffTile(page,'Wi-Fi','off');
  await expect(tileState(page,'Do not disturb')).toHaveText('On');
+ await expectHandoffTile(page,'Do not disturb','on');
 
  // Android's own quick settings changed a switch while this shade stayed open: no tile was tapped
  // and the app never paused, so only the window regaining focus says to read again.
@@ -153,7 +167,7 @@ test('shade tiles show the switch states Android reported and only open the matc
  await resume(page);
  for(const name of ['Wi-Fi','Bluetooth','Do not disturb','Location','Airplane mode']){
   await expect(tileState(page,name)).toHaveText('Open settings');
-  await expect(tile(page,name)).not.toHaveAttribute('aria-pressed',/.*/);
+  await expectHandoffTile(page,name,null);
  }
  await page.evaluate(()=>(window as any).truth.restore());
  await resume(page);
@@ -163,8 +177,11 @@ test('shade tiles show the switch states Android reported and only open the matc
  await tile(page,'Flashlight').click();
  await expect(tileState(page,'Flashlight')).toHaveText('On');
  await expect(tile(page,'Flashlight')).toHaveAttribute('aria-pressed','true');
+ await expect(tile(page,'Flashlight')).toHaveAccessibleName('Flashlight');
  await tile(page,'Flashlight').click();
  await expect(tileState(page,'Flashlight')).toHaveText('Off');
+ await expect(tile(page,'Flashlight')).toHaveAttribute('aria-pressed','false');
+ expect(await shade.locator('[aria-pressed]').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')))).toEqual(['Flashlight']);
  // Brightness is a handoff too; there is no slider that pretends to set it.
  await expect(shade.getByRole('slider')).toHaveCount(0);
  await shade.getByRole('button',{name:'Display settings',exact:true}).click();
@@ -179,7 +196,7 @@ test('switches Android does not report are shown as a handoff, never as off, and
  await openShade(page);
  for(const name of ['Wi-Fi','Bluetooth','Do not disturb','Location','Airplane mode']){
   await expect(tileState(page,name)).toHaveText('Open settings');
-  await expect(tile(page,name)).not.toHaveAttribute('aria-pressed',/.*/);
+  await expectHandoffTile(page,name,null);
  }
  // The phone has no separate airplane page: the broader page opens and the app says so.
  await set(page,{unspecific:['airplane']});

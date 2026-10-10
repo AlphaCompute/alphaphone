@@ -4077,7 +4077,7 @@
   <sc-if value="{{systemShell}}">
   <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
     <sc-for list="{{tiles}}" as="t">
-      <button aria-label="{{t.label}}" aria-pressed="{{t.on}}" disabled="{{t.disabled}}" onClick="{{t.toggle}}" style="height: 62px; border-radius: 22px; display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24"><path d="{{t.d}}"></path></svg><sc-if value="{{t.stateText}}"><span data-tile-state style="font-size: 11px; line-height: 1; white-space: nowrap">{{t.stateText}}</span></sc-if></button>
+      <button aria-label="{{t.aria}}" aria-pressed="{{t.pressed}}" disabled="{{t.disabled}}" onClick="{{t.toggle}}" style="height: 62px; border-radius: 22px; display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24"><path d="{{t.d}}"></path></svg><sc-if value="{{t.stateText}}"><span data-tile-state style="font-size: 11px; line-height: 1; white-space: nowrap">{{t.stateText}}</span></sc-if></button>
     </sc-for>
   </div>
   <div style="display: flex; align-items: center; gap: 12px; padding: 14px 10px 6px; color: var(--mut)">
