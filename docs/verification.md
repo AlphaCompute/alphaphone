@@ -28,6 +28,13 @@ release distributable. `--check` lists the staged runtime's
 entries when one is present. Record the product commit,
 `upstream.lock.json` revision, generated input provenance and APK hashes.
 Unsigned release APKs require controlled signing before distribution.
+The gates downstream of `verify-apks` read that record back through
+`scripts/release-blockers.mjs` and name every unresolved blocker: pilot provisioning and
+update (`scripts/provision-unit.mjs`, `scripts/pilot-update.mjs`) and AOSP staging
+(`scripts/stage-aosp.mjs`) refuse a release that is not distributable, and
+`scripts/qualify-head.mjs` records the blockers and reports `releasesDistributable: false`
+while one remains. Only the debug emulator rehearsal (`--build debug`) and `--development`
+staging of a debug APK proceed without a distributable release.
 
 ## Browser behavior
 

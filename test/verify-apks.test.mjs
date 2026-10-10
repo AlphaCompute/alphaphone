@@ -63,6 +63,24 @@ test("AOSP staging refuses test-mocks and non-distributable inputs before any st
     fs.writeFileSync(path.join(dir, "artifacts/apk-manifest.json"), JSON.stringify({ testMocks: false, results: [{ file: "artifacts/launcher-release-unsigned.apk", mode: "release", sha256, runtime: "NOT_PACKAGED", distributable: false, signed: false }] }));
     assert.match(stage(["--apk", release, "--development"]).stderr, /not distributable/);
     assert.match(stage(["--apk", release, "--descriptor", "reviewed.json"]).stderr, /not distributable/);
+    // Each recorded blocker is named, in development and production staging alike.
+    const full = { file: "artifacts/launcher-release-unsigned.apk", mode: "release", sha256, testMocks: false, bundleAudit: "passed", signed: true, runtime: "PACKAGED", runtimeNotices: true,
+      releaseAdmission: { failures: [], blockers: [], signerMatches: true }, speechQualification: { byteMatch: true, functionalPassed: true, qualified: true }, licenceBlockers: [] };
+    const record = row => fs.writeFileSync(path.join(dir, "artifacts/apk-manifest.json"), JSON.stringify({ testMocks: false, results: [{ ...full, ...row }] }));
+    const font = "unresolved-font-licence: Denton typeface (assets/denton.woff2) has no recorded embedding licence";
+    record({ distributable: false, licenceBlockers: [font], speechQualification: { byteMatch: true, functionalPassed: false, qualified: false } });
+    for (const mode of [["--development"], ["--descriptor", "reviewed.json", "--production"]]) {
+      out = stage(["--apk", release, ...mode]);
+      assert.notEqual(out.status, 0);
+      assert.match(out.stderr, /not distributable[\s\S]*- unqualified speech \(functional acceptance pending or failed\)[\s\S]*- unresolved-font-licence: Denton typeface/);
+    }
+    // A release flagged distributable whose recorded facts still hold a blocker is not staged either.
+    record({ distributable: true, licenceBlockers: [font] });
+    assert.match(stage(["--apk", release, "--descriptor", "reviewed.json", "--production"]).stderr, /not distributable[\s\S]*unresolved-font-licence/);
+    assert.match(stage(["--apk", release, "--development"]).stderr, /unresolved-font-licence/);
+    // Production staging still needs a manifest row: an APK verify-apks never recorded is refused.
+    fs.rmSync(path.join(dir, "artifacts/apk-manifest.json"));
+    assert.match(stage(["--apk", release, "--descriptor", "reviewed.json", "--production"]).stderr, /Production staging requires a release APK that verify-apks recorded as distributable/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
