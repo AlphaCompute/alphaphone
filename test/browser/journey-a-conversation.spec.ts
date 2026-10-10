@@ -22,6 +22,7 @@
  */
 import {test,expect,type Page} from '@playwright/test';
 import {returnToApps} from './app-navigation';
+import {installCloudVoiceFixture} from './cloud-voice-fixture';
 
 const AGENT_KEY='alpha.browser.agent.local.v1';
 const AGENT_LOCK=JSON.stringify(['browser-document','alpha.browser.documents.v1',AGENT_KEY]);
@@ -195,4 +196,140 @@ test('journey A: boot, connect, converse across apps, stop a reply, reload and r
  expect(stored![0].texts.filter((t:string)=>t===REPLY)).toHaveLength(3);
  expect(stored![0].texts.some((t:string)=>t.includes('Journey A cancelled request')||t.includes('Journey A unsent draft'))).toBe(false);
  expect(external).toEqual([]);
+});
+
+// Journey hardening (docs/core-loop-audit.md, work order 14): journey A had no declined action.
+// The proposal is authored through the development "Action JSON" control (no model decides it);
+// the card, Decline and the read-back are the real rendered path.
+test('journey A: a proposed phone action is declined from the conversation and nothing runs, before or after a reload',async({page})=>{
+ test.setTimeout(120_000);
+ const notes=()=>page.evaluate(async()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())||'{"records":[]}').records as any[]);
+ const actions=()=>page.evaluate(async()=>(await (await import('/src/browser/development-execution-document.ts')).readExecutionPart({namespace:'local'} as any,'actions',()=>({proposals:[],journal:[]}))) as any);
+ await page.goto('/?mode=dev');
+ await expect(page.getByRole('region',{name:'Home'})).toBeVisible();
+ const ask=page.getByRole('textbox',{name:'Ask Alpha',exact:true}),conversation=page.locator('[data-alpha-layer="conversation"]');
+ await openConnection(page);
+ const dialog=page.getByRole('dialog',{name:'Development connections'});
+ await dialog.getByRole('textbox',{name:'Scripted reply'}).fill(REPLY);
+ await dialog.getByRole('button',{name:'Save development reply'}).click();
+ await dialog.getByRole('button',{name:'Connect development profile'}).click();
+ await expect(dialog).toHaveCount(0);
+ await page.getByRole('button',{name:'Agent connection',exact:true}).click();
+ await dialog.getByText('Development device actions',{exact:true}).click();
+ await dialog.getByRole('textbox',{name:'Action JSON'}).fill(JSON.stringify({type:'create_note',title:'Journey A declined note',body:'Must never be saved'}));
+ await dialog.getByRole('button',{name:'Queue action for review'}).click();
+ await expect(dialog.getByText('Action queued. Send a chat message to review it on the current screen.',{exact:true})).toBeVisible();
+ await dialog.getByRole('button',{name:'Close connection settings'}).click();
+ await returnToApps(page);
+
+ await ask.fill('Journey A request with a proposal');await ask.press('Enter');
+ await expect(bubble(page,'Journey A request with a proposal')).toHaveCount(1);
+ await expect(bubble(page,REPLY)).toHaveCount(1);
+ const approve=page.getByRole('button',{name:/^Approve: Create note/}),decline=page.getByRole('button',{name:/^Decline Reject this proposal/});
+ await expect(approve).toHaveCount(1);
+ // The exact content is shown for review and nothing has run.
+ await expect(conversation).toContainText('“Journey A declined note”');
+ await expect(conversation).toContainText('Must never be saved');
+ expect(await notes()).toEqual([]);
+ await decline.dblclick();
+ await expect(conversation.getByText('Declined. No phone action was performed.',{exact:true})).toHaveCount(1);
+ await expect(approve).toHaveCount(0);
+ await expect(decline).toHaveCount(0);
+ expect(await notes()).toEqual([]);
+ let state=await actions();
+ expect(state.proposals.map((p:any)=>[p.payload.operation.type,p.state,p.receipt??null])).toEqual([['create_note','rejected',null]]);
+ expect(state.journal).toEqual([]);
+ // The conversation continues: one reply per accepted request, and the declined action stays declined.
+ await conversation.getByRole('textbox',{name:'Message Alpha',exact:true}).fill('Journey A request after declining');
+ await conversation.getByRole('textbox',{name:'Message Alpha',exact:true}).press('Enter');
+ await expect(bubble(page,REPLY)).toHaveCount(2);
+ await expect(approve).toHaveCount(0);
+
+ await page.reload();
+ await expect(page.getByRole('region',{name:'Home'})).toBeVisible();
+ await page.getByRole('button',{name:'Notes',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Open Journey A declined note',exact:true})).toHaveCount(0);
+ expect(await notes()).toEqual([]);
+ state=await actions();
+ expect(state.proposals.map((p:any)=>p.state)).toEqual(['rejected']);
+ expect(state.journal).toEqual([]);
+});
+
+// Journey hardening (docs/core-loop-audit.md, work order 14): journey A had no spoken request.
+// Synthetic boundaries only: the microphone is a Web Audio oscillator (the browser's real recorder
+// and the product's own voice-activity detection hear it), Cloud transcription is the closed
+// fixture returning a fixed string, and speech output is recorded instead of played. The turn is
+// sent to, stored by and answered by the development agent through the real voice-turn path.
+// Not provable here: a person's voice, recognition quality, audible playback, barge-in.
+test('journey A: a spoken request is transcribed, sent once, answered once and read back, and silence sends nothing',async({page})=>{
+ test.setTimeout(180_000);
+ const SPOKEN='Journey A spoken request';
+ const cloud=()=>page.evaluate(()=>{const f=(window as any).cloudVoiceFixture;return {transcriptions:f.transcriptions.length as number,speech:f.speech.map((s:any)=>s.text) as string[]};});
+ await page.goto('/?mode=dev');
+ await expect(page.getByRole('region',{name:'Home'})).toBeVisible();
+ await openConnection(page);
+ const dialog=page.getByRole('dialog',{name:'Development connections'});
+ await dialog.getByRole('textbox',{name:'Scripted reply'}).fill(REPLY);
+ await dialog.getByRole('button',{name:'Save development reply'}).click();
+ await dialog.getByRole('button',{name:'Connect development profile'}).click();
+ await expect(dialog).toHaveCount(0);
+ await returnToApps(page);
+ await installCloudVoiceFixture(page,SPOKEN,true);
+ await page.bringToFront();
+ await page.evaluate(()=>{
+  const w=window as any;w.speechFixture={spoken:[],current:null};
+  const ctx=new AudioContext(),osc=ctx.createOscillator(),gain=ctx.createGain();gain.gain.value=0;osc.connect(gain);osc.start();
+  document.addEventListener('click',()=>{void ctx.resume();},{once:true,capture:true});
+  // Each capture gets its own stream, as a real microphone does: the recorder stops the tracks it was given.
+  Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:async()=>{const sink=ctx.createMediaStreamDestination();gain.connect(sink);w.mic.opened++;return sink.stream;}},configurable:true});w.mic={ctx,osc,gain,opened:0};
+ });
+
+ // Talk opens the conversation from Home; Talk there starts listening. Nothing is sent by opening it.
+ const voice=page.getByRole('region',{name:'Voice conversation',exact:true}),talk=page.getByRole('button',{name:'Talk',exact:true});
+ await expect(async()=>{if(!await voice.isVisible())await talk.first().click();await expect(voice).toBeVisible({timeout:3000});}).toPass({timeout:30_000});
+ await expect(voice).toHaveAttribute('data-voice-state','listening');
+ await expect(voice).toContainText('Speech is transcribed with Eliza Cloud and sent to this conversation');
+ // Silence: the microphone is open and nothing is transcribed or sent.
+ await page.waitForTimeout(2500);
+ expect(await cloud()).toEqual({transcriptions:0,speech:[]});
+ // Starting voice binds one conversation; it holds no message.
+ expect(await agentDocument(page)).toEqual([{roles:[],texts:[],receipts:[]}]);
+
+ // "Speak" for about a second, then pause.
+ await page.evaluate(()=>{(window as any).mic.gain.gain.value=.6;});
+ await page.waitForTimeout(1300);
+ await page.evaluate(()=>{(window as any).mic.gain.gain.value=0;});
+ await expect(voice).toHaveAttribute('data-voice-state','speaking',{timeout:30_000});
+ // The transcript and the matching reply are shown; the reply, and only the reply, is spoken.
+ await expect(voice).toContainText(SPOKEN);
+ await expect(voice).toContainText(REPLY);
+ expect(await cloud()).toEqual({transcriptions:1,speech:[REPLY]});
+ let stored=await agentDocument(page);
+ expect(stored).toHaveLength(1);
+ expect(stored![0].roles).toEqual(['user','assistant']);
+ expect(stored![0].texts[0].endsWith('[USER MESSAGE]\n'+SPOKEN)).toBe(true);
+ expect(stored![0].receipts).toHaveLength(1);
+
+ // Playback ends: the microphone opens again, and a silent pause sends nothing more.
+ await page.evaluate(()=>(window as any).speechFixture.current.onend());
+ await expect(voice).toHaveAttribute('data-voice-state','listening',{timeout:30_000});
+ await page.waitForTimeout(2500);
+ expect(await cloud()).toEqual({transcriptions:1,speech:[REPLY]});
+ expect(await agentDocument(page)).toEqual(stored);
+
+ // Stop: the same turn is in the typed conversation, once.
+ await voice.getByRole('button',{name:'Stop voice conversation',exact:true}).click();
+ await expect(voice).toHaveCount(0);
+ await expect(bubble(page,SPOKEN)).toHaveCount(1);
+ await expect(bubble(page,REPLY)).toHaveCount(1);
+ // A typed request continues the same conversation.
+ const message=page.getByRole('textbox',{name:'Message Alpha',exact:true});
+ await message.fill('Journey A typed after speaking');await message.press('Enter');
+ await expect(bubble(page,REPLY)).toHaveCount(2);
+ stored=await agentDocument(page);
+ expect(stored).toHaveLength(1);
+ expect(stored![0].roles).toEqual(['user','assistant','user','assistant']);
+ expect(stored![0].texts.filter((t:string)=>t.endsWith('[USER MESSAGE]\n'+SPOKEN))).toHaveLength(1);
+ expect(await cloud()).toEqual({transcriptions:1,speech:[REPLY]});
+ await page.evaluate(async()=>{const {osc,ctx}=(window as any).mic;osc.stop();await ctx.close();});
 });
