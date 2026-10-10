@@ -56,7 +56,6 @@ import templateHtml from "./template.html?raw";
     var p = { key: key };
     for (var i = 0; i < el.attributes.length; i++) {
       var a = el.attributes[i]; var n = a.name; var raw = a.value;
-      if (n.indexOf("hint-") === 0) continue;
       var m = raw.match(WHOLE);
       var val = m ? lookup(m[1], scope) : (raw.indexOf("{{") >= 0 ? interp(raw, scope) : raw);
       if (n === "aria-label" && raw === "{{name}}: summarize this file" && scope.files?.pv?.askLabel) val = scope.files.pv.askLabel;
