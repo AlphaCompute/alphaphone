@@ -381,6 +381,6 @@ test("each named class starts from cleared app data with Android's shade closed"
   // Only the app under test is cleared; the instrumentation package and other apps keep their data.
   assert.equal(commands.filter(command => command.includes("clear")).length, 1);
   const runner = fs.readFileSync("scripts/android-instrumentation.mjs", "utf8");
-  const loop = runner.slice(runner.indexOf("for (const cls of options.classes)"));
+  const loop = runner.slice(runner.indexOf("const runClass = cls =>"));
   assert.ok(loop.indexOf("classIsolationCommands()") > 0 && loop.indexOf("classIsolationCommands()") < loop.indexOf("spec.phases"), "isolation runs once per class, before its phases");
 });

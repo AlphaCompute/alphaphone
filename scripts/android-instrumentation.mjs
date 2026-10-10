@@ -270,13 +270,12 @@ export function instrumentArgs(cls, { method, log = false } = {}) {
 /**
  * adb commands run before each named class, so it starts as a fresh install does. Classes share
  * one install per variant; without this an earlier class's app data (a dismissed sign-in panel,
- * granted permissions, a saved draft), a left-open Android shade or another app left in front
+ * granted permissions, a saved draft) or a left-open Android shade
  * decided whether a later class passed. Phases of one class keep their data.
  */
 export function classIsolationCommands() {
   return [
     ["shell", "cmd", "statusbar", "collapse"],
-    ["shell", "am", "force-stop", "com.android.settings"],
     ["shell", "pm", "clear", PACKAGE],
   ];
 }
