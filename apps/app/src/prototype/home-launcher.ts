@@ -1,22 +1,39 @@
 import type {DefaultApp, InstalledApp} from '../native';
 type Bag = Record<string, any>;
 
+type LaunchTarget = {packageName: string; activityName?: string; user?: string};
 /** The installed-app bridge the drawer needs; DeviceApps on Android, BrowserDevice on the web. */
 export interface LauncherBridge {
   list(options?: {icons?: boolean}): Promise<{apps: InstalledApp[]}>;
-  launch(options: {packageName: string}): Promise<void>;
+  launch(options: LaunchTarget): Promise<void>;
   resolveDefault?(options: {role: 'dial'}): Promise<DefaultApp>;
   openDefault?(options: {role: 'dial'}): Promise<void>;
+  /** `appsChanged`: a package was added, removed or changed, or a profile was paused/unlocked. */
+  addListener?(event: 'appsChanged', listener: (change: Bag) => void): unknown;
 }
+/** Ordered favorite keys, kept on this device only. `write` throws when storage refuses. */
+export interface FavoritesStore { read(): string[]; write(keys: string[]): void }
 export type LauncherStatus = 'idle' | 'loading' | 'ready' | 'failed';
 export interface LauncherSnapshot {
   status: LauncherStatus;
   apps: InstalledApp[];
   dial: DefaultApp | null;
-  /** Package currently being opened; repeated taps are ignored until it settles. */
+  /** Entry currently being opened; repeated taps are ignored until it settles. */
   launching: string | null;
   /** Last open failure, shown inline until the next search, load or launch. */
   launchError: string | null;
+  /** Saved favorite keys in the user's order. May name entries that are not installed now. */
+  favorites: string[];
+}
+
+export const FAVORITES_KEY = 'alpha.launcher.favorites.v1';
+export const MAX_FAVORITES = 24;
+const PROFILES = ['work', 'private', 'clone', 'other'];
+const PROFILE_LABEL: Record<string, string> = {work: 'Work', private: 'Private', clone: 'Clone', other: 'Other profile'};
+
+/** Identity of one launcher entry: package, then exact activity, then profile. Labels never identify. */
+export function appKey(app: LaunchTarget): string {
+  return app.packageName + (app.activityName ? `/${app.activityName}` : '') + (app.user ? `#${app.user}` : '');
 }
 
 const fold = (value: string) => value.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
@@ -24,45 +41,108 @@ const fold = (value: string) => value.normalize('NFD').replace(/\p{M}/gu, '').to
 export function filterLauncherApps(apps: InstalledApp[], query: string): InstalledApp[] {
   const needle = fold(query.trim());
   const collator = new Intl.Collator(undefined, {sensitivity: 'base', numeric: true});
-  const sorted = [...apps].sort((a, b) => collator.compare(a.label, b.label) || a.packageName.localeCompare(b.packageName));
+  const sorted = [...apps].sort((a, b) => collator.compare(a.label, b.label) || a.packageName.localeCompare(b.packageName) || appKey(a).localeCompare(appKey(b)));
   if (!needle) return sorted;
   const score = (app: InstalledApp) => { const label = fold(app.label); return label.startsWith(needle) ? 0 : label.includes(needle) ? 1 : fold(app.packageName).includes(needle) ? 2 : -1; };
   return sorted.map(app => [app, score(app)] as const).filter(([, rank]) => rank >= 0).sort((a, b) => a[1] - b[1]).map(([app]) => app);
 }
 
+/** Secondary text per entry key. Entries that share a label in the same profile are told apart by
+ * package (or by activity inside one package); another profile's entries always name the profile. */
+export function describeLauncherApps(apps: InstalledApp[]): Map<string, string[]> {
+  const groups = new Map<string, InstalledApp[]>();
+  for (const app of apps) { const id = `${fold(app.label)}\n${app.profile || ''}`; groups.set(id, [...(groups.get(id) || []), app]); }
+  const details = new Map<string, string[]>();
+  for (const group of groups.values()) {
+    const samePackage = new Set(group.map(app => app.packageName)).size === 1;
+    for (const app of group) {
+      const parts: string[] = [];
+      if (app.profile) parts.push(PROFILE_LABEL[app.profile] + (app.locked ? ' · locked' : ''));
+      if (group.length > 1) parts.push(samePackage && app.activityName ? app.activityName.slice(app.activityName.lastIndexOf('.') + 1) || app.packageName : app.packageName);
+      details.set(appKey(app), parts);
+    }
+  }
+  return details;
+}
+
 const valid = (value: unknown): value is InstalledApp => !!value && typeof value === 'object'
   && typeof (value as Bag).packageName === 'string' && !!(value as Bag).packageName
   && typeof (value as Bag).label === 'string'
-  && ((value as Bag).icon === undefined || (typeof (value as Bag).icon === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test((value as Bag).icon)));
+  && ((value as Bag).icon === undefined || (typeof (value as Bag).icon === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test((value as Bag).icon)))
+  && ((value as Bag).activityName === undefined || (typeof (value as Bag).activityName === 'string' && !!(value as Bag).activityName))
+  && ((value as Bag).user === undefined || (typeof (value as Bag).user === 'string' && /^\d{1,19}$/.test((value as Bag).user)))
+  && ((value as Bag).profile === undefined || PROFILES.includes((value as Bag).profile))
+  && ((value as Bag).locked === undefined || typeof (value as Bag).locked === 'boolean');
 
-/** Reads installed apps on each open (installs and removals happen outside Alpha) and launches
- * only from an explicit tap. Failures stay visible; nothing is retried automatically. */
-export function createLauncher(bridge: LauncherBridge, changed: () => void, options: {icons?: boolean} = {}) {
-  let state: LauncherSnapshot = {status: 'idle', apps: [], dial: null, launching: null, launchError: null};
+const cleanKeys = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.filter((key): key is string => typeof key === 'string' && !!key && key.length <= 512 && !seen.has(key) && !!seen.add(key)).slice(0, MAX_FAVORITES);
+};
+/** Favorites in this origin's localStorage. Unreadable or malformed data reads as no favorites. */
+export function localFavorites(storage: () => Storage = () => globalThis.localStorage): FavoritesStore {
+  return {
+    read() { try { const saved = JSON.parse(storage().getItem(FAVORITES_KEY) || 'null'); return saved?.version === 1 ? cleanKeys(saved.keys) : []; } catch { return []; } },
+    write(keys) { storage().setItem(FAVORITES_KEY, JSON.stringify({version: 1, keys})); },
+  };
+}
+
+/** Reads installed apps on each open and whenever Android reports a change (installs and removals
+ * happen outside Alpha), and launches only from an explicit tap. Failures stay visible; nothing is
+ * retried automatically. */
+export function createLauncher(bridge: LauncherBridge, changed: () => void, options: {icons?: boolean; favorites?: FavoritesStore} = {}) {
+  const store = options.favorites;
+  let state: LauncherSnapshot = {status: 'idle', apps: [], dial: null, launching: null, launchError: null, favorites: store ? store.read() : []};
   let generation = 0;
   const update = (patch: Partial<LauncherSnapshot>) => { state = {...state, ...patch}; changed(); };
   const message = (error: unknown) => error instanceof Error && error.message ? error.message : String(error || 'Unavailable');
+  const saveFavorites = (favorites: string[]) => {
+    if (!store) { update({launchError: 'Favorites cannot be saved on this device.'}); return; }
+    try { store.write(favorites); update({favorites, launchError: null}); }
+    catch { update({launchError: 'Favorites could not be saved. Nothing changed.'}); }
+  };
+  const installed = (key: string) => state.apps.some(app => appKey(app) === key);
+  async function load(mode: {quiet?: boolean} = {}) {
+    const current = ++generation;
+    // A quiet refresh keeps the visible list and any launch error until the new read lands.
+    update(mode.quiet && state.status !== 'idle' ? {} : {status: 'loading', launchError: null});
+    const [listed, dial] = await Promise.allSettled([
+      bridge.list(options.icons ? {icons: true} : undefined),
+      bridge.resolveDefault ? bridge.resolveDefault({role: 'dial'}) : Promise.reject(Error('Unsupported')),
+    ]);
+    if (current !== generation) return;
+    const dialApp = dial.status === 'fulfilled' && dial.value && dial.value.available === true ? dial.value : null;
+    // A failed read never leaves an older inventory on screen as if it were current.
+    if (listed.status === 'rejected' || !Array.isArray(listed.value?.apps)) { update({status: 'failed', apps: [], dial: dialApp}); return; }
+    const seen = new Set<string>();
+    const apps = listed.value.apps.filter(valid).filter(app => !seen.has(appKey(app)) && !!seen.add(appKey(app)));
+    update({status: 'ready', apps, dial: dialApp});
+  }
   return {
     snapshot: () => state,
-    async load() {
-      const current = ++generation;
-      update({status: 'loading', launchError: null});
-      const [listed, dial] = await Promise.allSettled([
-        bridge.list(options.icons ? {icons: true} : undefined),
-        bridge.resolveDefault ? bridge.resolveDefault({role: 'dial'}) : Promise.reject(Error('Unsupported')),
-      ]);
-      if (current !== generation) return;
-      const dialApp = dial.status === 'fulfilled' && dial.value && dial.value.available === true ? dial.value : null;
-      if (listed.status === 'rejected' || !Array.isArray(listed.value?.apps)) { update({status: 'failed', apps: [], dial: dialApp}); return; }
-      const seen = new Set<string>();
-      const apps = listed.value.apps.filter(valid).filter(app => !seen.has(app.packageName) && !!seen.add(app.packageName));
-      update({status: 'ready', apps, dial: dialApp});
-    },
+    load,
+    /** Re-reads after an outside change. Does nothing before the first open; never shows the loading state over a list. */
+    async refresh() { if (state.status !== 'idle') await load({quiet: true}); },
     async launch(app: InstalledApp) {
       if (state.launching) return;
-      update({launching: app.packageName, launchError: null});
-      try { await bridge.launch({packageName: app.packageName}); update({launching: null}); }
-      catch (error) { update({launching: null, launchError: `${app.label} could not be opened. ${message(error)}`}); }
+      const key = appKey(app);
+      // Only an entry from the current read can be opened; a removed one is never sent to Android.
+      if (!installed(key)) { update({launchError: `${app.label} is no longer installed.`}); return; }
+      update({launching: key, launchError: null});
+      const target: LaunchTarget = {packageName: app.packageName};
+      if (app.activityName) target.activityName = app.activityName;
+      if (app.user) target.user = app.user;
+      try { await bridge.launch(target); update({launching: null}); }
+      catch (error) {
+        update({launching: null, launchError: `${app.label} could not be opened. ${message(error)}`});
+        // The entry may be gone, disabled or locked now: show the device's current list.
+        const current = ++generation;
+        const listed = await bridge.list(options.icons ? {icons: true} : undefined).catch(() => null);
+        if (current !== generation) return;
+        if (!listed || !Array.isArray(listed.apps)) { update({status: 'failed', apps: []}); return; }
+        const seen = new Set<string>();
+        update({apps: listed.apps.filter(valid).filter(item => !seen.has(appKey(item)) && !!seen.add(appKey(item)))});
+      }
     },
     async openDial() {
       if (state.launching || !state.dial || !bridge.openDefault) return;
@@ -70,6 +150,30 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
       update({launching: 'dial', launchError: null});
       try { await bridge.openDefault({role: 'dial'}); update({launching: null}); }
       catch (error) { update({launching: null, launchError: `${label} could not be opened. ${message(error)}`}); }
+    },
+    isFavorite: (app: InstalledApp) => state.favorites.includes(appKey(app)),
+    /** Installed favorites in the saved order. A saved favorite that is not installed is not shown. */
+    favoriteApps(): InstalledApp[] {
+      const byKey = new Map(state.apps.map(app => [appKey(app), app] as const));
+      return state.favorites.map(key => byKey.get(key)).filter((app): app is InstalledApp => !!app);
+    },
+    toggleFavorite(app: InstalledApp) {
+      const key = appKey(app);
+      if (state.favorites.includes(key)) { saveFavorites(state.favorites.filter(item => item !== key)); return; }
+      if (!installed(key)) return;
+      // Room is made from favorites that are no longer installed before refusing a new one.
+      let kept = state.favorites;
+      if (kept.length >= MAX_FAVORITES) kept = kept.filter(installed);
+      if (kept.length >= MAX_FAVORITES) { update({launchError: `You can keep ${MAX_FAVORITES} favorites. Remove one to add ${app.label}.`}); return; }
+      saveFavorites([...kept, key]);
+    },
+    /** Moves a favorite one place among the installed favorites; uninstalled ones keep their slots. */
+    moveFavorite(app: InstalledApp, direction: -1 | 1) {
+      const key = appKey(app), visible = state.favorites.filter(installed), at = visible.indexOf(key), other = visible[at + direction];
+      if (at < 0 || !other) return;
+      const next = [...state.favorites], a = next.indexOf(key), b = next.indexOf(other);
+      next[a] = other; next[b] = key;
+      saveFavorites(next);
     },
     /** Drops a stale launch error (new search or reopened drawer). An in-flight read keeps its
      * generation, so typing while apps load never strands the drawer in its loading state. */
@@ -80,20 +184,48 @@ export type Launcher = ReturnType<typeof createLauncher>;
 
 /** Home's All-apps drawer. Shell state (open, query) lives in the model so Back and Home close
  * it; the installed list lives here. */
-export function installHomeLauncher(Component: any, bridge: LauncherBridge, options: {icons?: boolean} = {}) {
-  const p = Component.prototype, mount = p.componentDidMount, render = p.renderVals;
+export function installHomeLauncher(Component: any, bridge: LauncherBridge, options: {icons?: boolean; favorites?: FavoritesStore} = {}) {
+  const p = Component.prototype, mount = p.componentDidMount, unmount = p.componentWillUnmount, render = p.renderVals;
   let owner: any = null;
-  const launcher = createLauncher(bridge, () => owner?.setState({launcherRevision: Date.now()}), options);
-  p.componentDidMount = function (...args: any[]) { owner = this; return mount?.apply(this, args); };
+  const launcher = createLauncher(bridge, () => owner?.setState({launcherRevision: Date.now()}), {...options, favorites: options.favorites || localFavorites()});
+  // An open drawer follows the device: package changes, and anything that happened while Alpha was away.
+  const refresh = () => { if (owner?.S().drawer) void launcher.refresh(); };
+  const visible = () => { if (!document.hidden) refresh(); };
+  let subscription: unknown = null;
+  p.componentDidMount = function (...args: any[]) {
+    owner = this;
+    document.addEventListener('visibilitychange', visible); document.addEventListener('resume', refresh);
+    try { subscription = bridge.addListener ? Promise.resolve(bridge.addListener('appsChanged', refresh)).catch(() => null) : null; } catch { subscription = null; }
+    return mount?.apply(this, args);
+  };
+  p.componentWillUnmount = function (...args: any[]) {
+    document.removeEventListener('visibilitychange', visible); document.removeEventListener('resume', refresh);
+    void Promise.resolve(subscription).then((handle: any) => handle?.remove?.()).catch(() => {});
+    subscription = null; if (owner === this) owner = null;
+    return unmount?.apply(this, args);
+  };
   p.openAllApps = function () { this.setState({drawer: true, drawerQ: ''}); void launcher.load(); };
   p.renderVals = function () {
     const out = render.call(this), S = this.S(), self = this;
     const snap = launcher.snapshot(), query = String(S.drawerQ || '');
-    const rows = filterLauncherApps(snap.apps, query).map(app => ({
-      label: app.label, aria: `Open ${app.label}`, hasIcon: !!app.icon, noIcon: !app.icon, icon: app.icon || '',
-      busy: snap.launching === app.packageName, disabled: !!snap.launching,
-      open: () => void launcher.launch(app),
-    }));
+    const details = describeLauncherApps(snap.apps);
+    const row = (app: InstalledApp) => {
+      const key = appKey(app), parts = details.get(key) || [], name = parts.length ? `${app.label} (${parts.join(', ')})` : app.label, favorite = snap.favorites.includes(key);
+      return {
+        key, label: app.label, sub: parts.join(' · '), hasSub: parts.length > 0, aria: `Open ${name}`, hasIcon: !!app.icon, noIcon: !app.icon, icon: app.icon || '',
+        busy: snap.launching === key, disabled: !!snap.launching,
+        open: () => void launcher.launch(app),
+        favorite, favoriteAria: favorite ? `Remove ${name} from favorites` : `Add ${name} to favorites`, favoriteFill: favorite ? 'currentColor' : 'none', favoriteColor: favorite ? 'var(--fg)' : 'var(--mut)',
+        toggleFavorite: () => launcher.toggleFavorite(app),
+      };
+    };
+    const rows = filterLauncherApps(snap.apps, query).map(row);
+    const pinned = query.trim() ? [] : launcher.favoriteApps();
+    const favorites = pinned.map((app, index) => {
+      const base = row(app), name = base.aria.slice('Open '.length);
+      return {...base, earlierAria: `Move ${name} earlier`, laterAria: `Move ${name} later`, first: index === 0, last: index === pinned.length - 1,
+        earlier: () => launcher.moveFavorite(app, -1), later: () => launcher.moveFavorite(app, 1)};
+    });
     const dial = snap.dial && !query.trim() ? {
       label: 'Phone', aria: snap.dial.label ? `Open Phone (${snap.dial.label})` : 'Open Phone', sub: snap.dial.label || 'Choose a phone app',
       hasIcon: !!snap.dial.icon, noIcon: !snap.dial.icon, icon: snap.dial.icon || '', disabled: !!snap.launching,
@@ -106,7 +238,8 @@ export function installHomeLauncher(Component: any, bridge: LauncherBridge, opti
     return {...out, drawerOpen: !!S.drawer && !!out.isOn && !out.isView, launcher: {
       open: () => self.openAllApps(), close: () => self.setState({drawer: false, drawerQ: ''}),
       query, onQuery: (event: any) => { launcher.clearError(); self.setState({drawerQ: event.target.value}); },
-      rows, hasRows: rows.length > 0, dial, hasDial: !!dial, status, hasStatus: !!status, failed: snap.status === 'failed',
+      rows, hasRows: rows.length > 0, favorites, hasFavorites: favorites.length > 0,
+      dial, hasDial: !!dial, status, hasStatus: !!status, failed: snap.status === 'failed',
       retry: () => void launcher.load(), launchError: snap.launchError || '', hasLaunchError: !!snap.launchError,
       count: snap.status === 'ready' ? `${rows.length} ${rows.length === 1 ? 'app' : 'apps'}` : '',
     }};
