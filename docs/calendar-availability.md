@@ -63,15 +63,26 @@ the renderer rejects any provider row that has a field other than `start`, `end`
   the executor and the real `DeviceActions` client over a synthetic provider.
 - `test/browser/calendar-availability.spec.ts`: the renderer, review dialogs, journal
   orchestration and the browser in-app calendar, with synthetic agent routes.
+- `test/calendar-availability-reader.test.mjs` compiles the Android reader for the JVM and
+  runs `test/fixtures/CalendarAvailabilityReaderTest.java`. The reader's exact projection,
+  selection and sort order are executed by the `sqlite3` shell over tables that use
+  CalendarProvider's column names, in five time zones from UTC-11 to UTC+14. The rows
+  then go through the renderer parser and the shared contract computation
+  (`scripts/test-calendar-availability-provider-rows.ts`). This checks the reader's SQL
+  and row handling. It is not CalendarProvider and not a device run.
 - `CalendarAvailabilityInstrumentedTest`: the Android reader against the device
   CalendarProvider with calendars the test creates. It needs calendar permission from
-  the runner.
+  the runner. It has been compiled but never run.
 
 ## Still open
 
 - The Android path has not been run on an emulator or device in this change: the
   permission dialog, the review inside the Android WebView, synced accounts, a declined
   invitation and a mid-review time-zone change are unverified.
+- The bridge methods ask for window focus, as the shared calendar reads do. Whether focus
+  has returned by the time the calendars are listed, straight after the owner answers the
+  first permission prompt, is unverified. If it has not, that first check fails with
+  nothing read and the owner has to ask again.
 - No real agent has produced or consumed an availability receipt against this build.
 - The provider read lives in the Alpha app because the pinned shared calendar readers do
   not return availability. Moving it into the shared calendar plugin needs an upstream
