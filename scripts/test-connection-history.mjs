@@ -63,6 +63,7 @@ const remoteServer=http.createServer(async(req,res)=>{
     return reply(200,{messages:older.slice(0,limit).reverse(),hasMore:older.length>limit});
   }
   if(url.pathname===`/api/conversations/${remoteConversation}/messages`&&req.method==='POST'){
+    if(remote.failPost){remote.failPost=false;remote.failedPosts=(remote.failedPosts||0)+1;return reply(500,{});}
     // Held: the phone stops waiting; the agent still finishes and persists the reply.
     remote.sends=(remote.sends||0)+1;const user={id:`88888888-8888-4888-8888-${String(remote.sends*2-1).padStart(12,'0')}`,role:'user',text:body.text,timestamp:Date.now()};
     remoteMessages.push(user);
@@ -230,6 +231,17 @@ try {
   assert.equal(controller.getSnapshot().replyNotice,'');
   assert.equal(remote.aborts.length,1,'Stop cancels exactly once and never repeats the turn');
   assert.equal(remoteMessages.filter(item=>item.text==='Finished after Stop').length,1,'no second turn ran');
+  // A Stop before the message is posted is marked as never dispatched: no post, no cancel, no check.
+  const sendsBefore=remote.sends,early=new AbortController();early.abort();
+  const notSent=await controller.send('Never posted',{view:'home',revision:11,sensitive:false},'stop-request-3',early.signal).then(()=>null,error=>error);
+  assert.equal(notSent?.notDispatched,true,'a failure before the post is marked so the composer keeps the text');
+  assert.equal(remote.sends,sendsBefore,'nothing was posted');assert.equal(remote.aborts.length,1,'no cancel is sent for an unsent message');
+  assert.equal(controller.getSnapshot().replyNotice,'','an unsent message schedules no reconciliation');
+  // A refusal of the post itself is an unknown outcome: never marked as unsent, never repeated.
+  remote.failPost=true;
+  const unknown=await controller.send('Outcome unknown',{view:'home',revision:12,sensitive:false},'unknown-request',new AbortController().signal).then(()=>null,error=>error);
+  assert.ok(unknown,'the refused post rejects');assert.equal(unknown.notDispatched,undefined,'a failure after dispatch is never reported as unsent');
+  assert.equal(remote.failedPosts,1,'the refused post is not repeated');assert.equal(remote.sends,sendsBefore);
   await controller.disconnect();
   console.log('PASS: real Cloud protocol/controller HTTP history membership, context stripping, action exclusion, next-send binding, current device timezone metadata and omission, separate service disconnect and scoped rejection; remote pairing, keyset history paging over 260 messages, restore on reconnect, device/session revocation with old-bearer 401, plain action presentation, reject/reconcile controller API, single Stop reconciliation and explicit turn abort. Synthetic only.');
 } finally { server.closeAllConnections(); remoteServer.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await new Promise(resolve => remoteServer.close(resolve)); }

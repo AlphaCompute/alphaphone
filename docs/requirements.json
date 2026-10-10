@@ -87,7 +87,7 @@
         "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java",
         "docs/on-device-agent-plan.md"
       ],
-      "remaining": "Cancellation is transport-only, and remote and Cloud history is not restored on connect."
+      "remaining": "Emulator and device acceptance of restart, reconnect, Stop and history restoration. Cloud agents have no cancel route or older-page history cursor, and the read after Stop matches by text and time because upstream history rows do not expose the client message ID."
     },
     {
       "id": "AP-05",
@@ -103,9 +103,11 @@
         "apps/app/src/prototype/agent-adapter.ts",
         "apps/app/src/prototype/assistant-draft-controller.ts",
         "test/browser/assistant-draft-recovery.spec.ts",
+        "test/browser/assistant-draft-dispatch.spec.ts",
+        "test/browser/chat-continuity.spec.ts",
         "test/browser/compact-viewport.spec.ts"
       ],
-      "remaining": "The composer consumes the draft before dispatch, so a pre-dispatch failure loses the text from the composer."
+      "remaining": "Emulator and device acceptance of resize, Back and HOME without keyboard obstruction; draft retention through pre-dispatch failures has browser source evidence only."
     },
     {
       "id": "AP-06",

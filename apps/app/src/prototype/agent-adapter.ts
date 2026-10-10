@@ -38,7 +38,7 @@ import { DailyApps } from '../daily';
 import { isAndroid } from '../native';
 import { registerPlugin } from '../platform-plugins';
 import { SystemBars, SystemBarsStyle } from '@capacitor/core';
-import { connectionController } from '../runtime/connection-ui';
+import { connectionController, STOPPED_REPLY_NOTICE, STOPPED_CANCELLED_NOTICE, STOPPED_CONFIRMED_NOTICE } from '../runtime/connection-ui';
 import { broaderPageNotice, honestTiles, handoffGate, watchReturnToApp, tileFactsFromSnapshot, tileSettingsPages, type TileFacts, type TileKey } from './native-adapter';
 const alphaDevice = registerPlugin<{ snapshot(): Promise<Record<string, unknown>>; openSettings(input: { page: string }): Promise<{ status: string; specific?: boolean }> }>('AlphaDevice');
 const elizaSystem = registerPlugin<{ setFlashlight(input: { enabled: boolean }): Promise<{ available: boolean; enabled: boolean }> }>('ElizaSystem');
@@ -52,7 +52,8 @@ type SendAttempt={transportCalled:boolean;preDispatch:boolean;streamed:boolean;s
 class NotDispatched extends Error {}
 // connectionController.send refuses these before creating a conversation or posting the message.
 const preDispatchRefusals=new Set(['Finish the connection or history operation before sending.','Wait for the current reply before sending another message.','Connect an agent in Settings to send a message.']);
-function isPreDispatchError(error:unknown){return error instanceof Error&&(preDispatchRefusals.has(error.message)||(error as {code?:unknown}).code==='session_expired');}
+// It also marks every failure that happened before it posted the message (`notDispatched`).
+function isPreDispatchError(error:unknown){return !!error&&typeof error==='object'&&((error as {notDispatched?:unknown}).notDispatched===true||error instanceof Error&&(preDispatchRefusals.has(error.message)||(error as {code?:unknown}).code==='session_expired'));}
 function dispatched(attempt:SendAttempt,error:unknown){return !(error instanceof NotDispatched)&&(attempt.streamed||attempt.transportCalled&&!attempt.preDispatch);}
 /** Mark the in-flight composer send as handed to the transport, and classify early refusals. */
 async function trackDispatch<T>(shell:Shell,run:()=>Promise<T>):Promise<T>{
@@ -291,6 +292,30 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       scheduleExpiry();
     });
   }
+  /** The stopped-reply state is shown in the chat it describes, not only in Agent connection. One
+   * bubble follows the controller's notice; it never sends, and a finished reply replaces it. */
+  function syncStoppedReplyNotice(shell:Shell,history:unknown){
+    const snapshot=connectionController.getSnapshot(),notice=snapshot.replyNotice||'',before=shell.stoppedReplyNotice||'';
+    const replaced=shell.stoppedReplyHistory!==history||shell.stoppedReplySession!==snapshot.session?.sessionId;
+    shell.stoppedReplyHistory=history;shell.stoppedReplySession=snapshot.session?.sessionId;
+    if(notice===before)return;
+    shell.stoppedReplyNotice=notice;
+    if(!shell.live)return;
+    const pending=notice===STOPPED_REPLY_NOTICE||notice===STOPPED_CANCELLED_NOTICE,sessionId=snapshot.session?.sessionId;
+    // Without a notice: a restored conversation already shows the outcome; otherwise say why the check ended.
+    const text=notice||(replaced?'':snapshot.message===STOPPED_CONFIRMED_NOTICE?STOPPED_CONFIRMED_NOTICE:'The stopped reply was not checked because another message was sent. Load this conversation from Agent connection to see whether it finished.');
+    // A check that already reported its result keeps that statement (and its offer) when a later send clears the notice.
+    const reported=!notice&&!replaced&&!!before&&before!==STOPPED_REPLY_NOTICE&&before!==STOPPED_CANCELLED_NOTICE;
+    shell.setState((previous:Shell)=>{
+      const msgs=previous.msgs||[],at=msgs.findIndex((message:Shell)=>message.stoppedReplyNotice);
+      if(reported)return at<0?null:{msgs:msgs.map((message:Shell,index:number)=>index===at?{...message,id:crypto.randomUUID(),stoppedReplyNotice:undefined}:message)};
+      if(!text)return at<0?null:{msgs:msgs.filter((message:Shell)=>!message.stoppedReplyNotice)};
+      const bubble={id:notice?'stopped-reply-notice':crypto.randomUUID(),from:'agent',text,interrupted:true,...(notice?{stoppedReplyNotice:true}:{}),
+        card:notice&&!pending?{type:'generic',icon:'info',title:'Check for reply',sub:'Reload this conversation from the agent. Nothing is sent again.',checkReply:{sessionId}}:null};
+      // The bubble keeps its place in the transcript, directly after the stopped turn.
+      return {msgs:at<0?[...msgs,bubble]:msgs.map((message:Shell,index:number)=>index===at?bubble:message)};
+    });
+  }
   function openInternalView(shell:Shell,target:string,chat?:string):boolean {
     if(!['home','reminders','notifications'].includes(target)&&!isMvpView(target))return false;
     const view=target==='reminders'?'calendar':target;
@@ -400,6 +425,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         alphaClient.disconnect();
         if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, messageBinding:{conversationId:history.conversationId,session:connectionController.getSnapshot().session}, card: null })), typing: false, ...(history.automatic?{}:{draft:'',chat:'full'}) });
       }
+      syncStoppedReplyNotice(this,session!==undefined&&history?.sessionId===session?history:null);
       if (this.live) {context(this);this.refreshDraftBinding();}
     });
     this.notesStorageFailed = true;
@@ -967,7 +993,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     const binding=this.stopVoiceConversation?sendBinding():undefined,draft=String(before.draft||''),view=before.view;
     const retiring=this.stopVoiceConversation?.();if(retiring){await retiring;context(this);const now=this.S();if(JSON.stringify(alphaClient.getState().context)!==expectedContext||!this.live||document.hidden||connectionController.getSnapshot().open||sendBinding()!==binding||now.view!==view||String(now.draft||'')!==draft||this.messageReplyTarget!==reply||this.messageEditTarget!==edit)return;}
     let s = this.S(); const text = String(argument ?? s.draft).trim();
-    if (!text || s.typing || this.draftSendPending) return;
+    if (!text || s.typing || this.draftSendPending || this.composerDraft?.holding) return;
     const editTarget:ConversationMessageTarget|undefined=this.messageEditTarget,replyTarget:ConversationMessageTarget|undefined=this.messageReplyTarget,editView=s.view;
     if(editTarget){
       if(argument!==undefined||!connectionController.messageTargetCurrent(editTarget))return;
@@ -988,6 +1014,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     // The durable draft keeps this text until the message is known to have been dispatched.
     try{await this.draftBindingTask;await this.composerDraft.hold(String(s.draft||'').trim(),current);}catch(error){this.toast(error instanceof Error?error.message:'Draft could not be prepared. Nothing was sent.');return;}finally{this.draftSendPending=false;}
     const reviewedSource=this.reviewedSourceDraft;this.reviewedSourceDraft=null;
+    // Everything this send later shows belongs to the agent connection it was sent on.
+    const sameChat=()=>connectionController.getSnapshot().session?.sessionId===sessionId;
     const attempt:SendAttempt=this.sendAttempt={transportCalled:false,preDispatch:false,streamed:false};
     const userId=crypto.randomUUID(),streamedId=crypto.randomUUID();let streamed=false;
     const replaceStream=(value:string,streaming=true)=>this.setState((previous:Shell)=>({msgs:previous.msgs.map((message:Shell)=>message.id===streamedId?{...message,text:value,streaming}:message)}));
@@ -1002,6 +1030,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       }catch(error){throw error instanceof NotDispatched?error:new NotDispatched(error instanceof Error?error.message:'The agent connection is unavailable. Nothing was sent.');}
       const sourceSession=connectionController.getSnapshot().session;
       navigation=connectionController.captureViewNavigation(alphaClient.getState().context);
+      // The request becomes pending after the render above; render again so Stop is offered before any streamed text.
+      queueMicrotask(()=>{if(this.live&&alphaClient.getState().pending)this.setState({});});
       const reply = await alphaClient.send(text,value=>{
         attempt.streamed=true;
         if(!this.live)return;
@@ -1009,7 +1039,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         else{streamed=true;this.setState((previous:Shell)=>({msgs:[...previous.msgs,{id:streamedId,from:'agent',text:value,card:null,streaming:true}]}));}
       },replyTarget,results=>{readyNavigation=results;});
       await this.composerDraft?.commit();
-      if (!this.live) return;
+      if (!this.live||!sameChat()) return;
       const identity=reply.messageBinding;
       if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===streamedId?{...m,id:reply.messageId||m.id,messageBinding:reply.messageId?identity:undefined,text:reply.text,streaming:false}:m)}));else this.agentSay(reply.text,undefined,reply.messageId&&identity?{id:reply.messageId,messageBinding:identity}:undefined);
       if(reply.userMessageId&&identity)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===userId?{...m,id:reply.userMessageId,messageBinding:identity}:m)}));
@@ -1029,7 +1059,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         else this.composerDraft?.release();
       }else{
         await this.composerDraft?.commit();
-        if (this.live) {
+        // After Stop the controller cancels, announces and reconciles once; its notice is the one shown.
+        const reconciling=!!connectionController.getSnapshot().replyNotice&&e instanceof AlphaClientError&&e.code==='cancelled';
+        // The owner changed mid-turn: say it was interrupted, but never show the previous agent's partial
+        // reply or offer a history check that could only read a different agent.
+        if(this.live&&!sameChat())this.setState((previous:Shell)=>({...(!opened?{chat:previous.chat==='full'?'full':'sheet'}:{}),msgs:[...(previous.msgs||[]),{id:crypto.randomUUID(),from:'agent',text:message+' Your message may have reached the previous agent connection. Check its saved conversations before sending it again.',card:null,interrupted:true}]}));
+        else if(this.live&&reconciling){if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nStopped.`}:item)}));}
+        else if (this.live) {
           // The agent may have received this message. Offer a history check, never a blind resend.
           const check={type:'generic',icon:'info',title:'Check for reply',sub:'Reload this conversation from the agent. Nothing is sent again.',checkReply:{sessionId}};
           if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));
