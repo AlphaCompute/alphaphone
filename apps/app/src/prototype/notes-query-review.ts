@@ -1,5 +1,5 @@
 import type {NoteRecord} from '../runtime/notes-store';
-import type {NamedTargetOperation} from '../../../../.eliza/patched/packages/contracts/src/device-reviews.ts';
+import type {NamedTargetOperation} from '../../../../.eliza/client-features/packages/contracts/src/device-reviews.ts';
 import {holdPhoneInert} from '../runtime/modal-inert';
 type Dialog={dialog:HTMLDialogElement;content:HTMLElement;footer:HTMLElement;close:(value:unknown,error?:unknown)=>void};
 /** One modal review on the phone surface: inert background, focus return, and closing

@@ -2,250 +2,169 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "a2fa5f18876b9e85120c9b651b04381bbd45b769",
-  "head": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
+  "baseCommit": "ec0cf83057678af0c2be86c119a2bdf20688e4be",
+  "head": "945209d3e75053cc834ddf6352fc8c2feefc42f7",
   "recordedAt": "2026-10-10",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...0d40aa6e6e1b5192311ca916515003c8a4473c0c",
-  "status": "diverged",
-  "aheadBy": 59,
-  "behindBy": 764,
-  "mergeBase": "881586d19e03e5df76159bed4df0cbaf26f38eee",
-  "pinOnlyCommits": [
-    {
-      "sha": "4527ca1989876a9c68822ea6283ec7bad8736613",
-      "subject": "fix(notes): identify the source of model-facing saved notes"
-    },
-    {
-      "sha": "49fd37f1c766a3510a47db5f5db702c475ecf2b1",
-      "subject": "fix(chat): preserve explicit original-prose history format"
-    },
-    {
-      "sha": "9007c3f7962b9cd44d6bc8e0a430bac168fe2e7c",
-      "subject": "fix(calendar): reject invalid zones before native event review"
-    },
-    {
-      "sha": "cf88ed1dbf075ec50b01283e0e2afa313629e2cc",
-      "subject": "feat(workflow): reuse reviewed native sources for briefs and dossiers"
-    },
-    {
-      "sha": "8062b562ab0cba79b391360fa1ca00ee688d19d4",
-      "subject": "fix(workflow): anchor native briefs to the local observation time"
-    },
-    {
-      "sha": "8a38b466fdb49bca25f6e7bc4488f8933692f3d7",
-      "subject": "feat(calendar): review Home creation and native next-event discovery"
-    },
-    {
-      "sha": "17ae2893284875ba46739ea7febbf4f268aa7702",
-      "subject": "feat(notes): negotiate owner-confirmed native note discovery"
-    },
-    {
-      "sha": "29470659dfcb8a794661da16a14c6af278d69e6f",
-      "subject": "fix(notes): report no match for empty local queries"
-    },
-    {
-      "sha": "60c431a5095b8018ff1f8641b83715a841fe0456",
-      "subject": "fix(calendar): validate native day boundaries across clock changes"
-    },
-    {
-      "sha": "45242af234e7f3d55c433f327798e7cb2130e06e",
-      "subject": "test(calendar): use the upstream read-package identity source"
-    },
-    {
-      "sha": "78f9f5438833220ae879be97f13d1289dbe5235c",
-      "subject": "style(calendar): format native SDK discovery result"
-    },
-    {
-      "sha": "86b86b701dba8a352d92f799ba5339cd0b8a8bd8",
-      "subject": "test(calendar): use typed receipts and checked fixture values"
-    },
-    {
-      "sha": "8570ef5af4af67da63a3e4b3f1b81ccab791b9fc",
-      "subject": "fix(calendar): use current source identity API for Home discovery"
-    },
-    {
-      "sha": "776df431f946aa07c45dd91adaf18a52b97aa12e",
-      "subject": "fix(cloud): retain rejected output usage and wire evidence"
-    },
-    {
-      "sha": "ff7bc5bee15daffe2f8455b791bff9f0e28fa6eb",
-      "subject": "fix(cloud): preserve canonical tool history on native wire"
-    },
-    {
-      "sha": "2e661b658875b5b5b8878e7bdcdb659347e614f5",
-      "subject": "fix(views): prepare scoped native navigation before renderer settlement"
-    },
-    {
-      "sha": "c2a0904653aaf94e9f5ff957c945679068009adf",
-      "subject": "fix(views): keep native delivery copy and settlement navigation-only"
-    },
-    {
-      "sha": "92f67de98feeb8843008346a12aa65e7f19affda",
-      "subject": "fix(views): consume classifier decisions once across delivery modes"
-    },
-    {
-      "sha": "64f1527bd2ce35157ee8bf877c1e5deecbd6a84e",
-      "subject": "fix(views): allow authorized planned native navigation"
-    },
-    {
-      "sha": "e276e4c6764d3d19c5f3617ba2084c591ad18ec4",
-      "subject": "fix(views): preserve promoted show handoffs for renderers"
-    },
-    {
-      "sha": "6c4bda13113f9b16f4b6edb83b11514e0144950e",
-      "subject": "fix(views): preserve claimed renderer navigation until settlement"
-    },
-    {
-      "sha": "f1d432e35d229044a5c6563bbbe4ffc1d1a7be27",
-      "subject": "fix(views): reject pending renderer request ID collisions"
-    },
-    {
-      "sha": "a882c0d427b95b9bc771bb1a057c5f54d5d8841a",
-      "subject": "fix(agent): send complete web search evidence once to model"
-    },
-    {
-      "sha": "66e4f5088552a1dbfaaea3582cbd26b81b125453",
-      "subject": "Honor host-disabled native embeddings before registration and dispatch"
-    },
-    {
-      "sha": "d62601b99a7b243029ea1bf2802d7f1a8bf1a2c3",
-      "subject": "fix(views): preserve paired caller through owning host dispatch"
-    },
-    {
-      "sha": "7279c5476d92c43495b251759a11afdb9ed1fa34",
-      "subject": "fix(views): reject scoped dispatch after runtime replacement"
-    },
-    {
-      "sha": "2d58798088ee586bd5a9f03e1799e7f6d44f1371",
-      "subject": "fix(agent): preserve standalone authority in scoped navigation"
-    },
-    {
-      "sha": "247e67018c0068081f82746b727738ccf78b4f5d",
-      "subject": "Keep native connected Calendar availability within its selected grant"
-    },
-    {
-      "sha": "1126471ee18ee53edacf6722dccda824213ed906",
-      "subject": "Revert \"Keep native connected Calendar availability within its selected grant\""
-    },
-    {
-      "sha": "85fb4a867d727187e89a3d3fb7ae644474715a77",
-      "subject": "fix(calendar): fence native turns to explicit connected sources"
-    },
-    {
-      "sha": "2a9a5b9c0df845c9b0bc3900d9bf0eb2c5d0ed81",
-      "subject": "fix(calendar): reject native backend IDs before lookup"
-    },
-    {
-      "sha": "6e30d4b4126475c9a55c4f955b5c26a8d6703858",
-      "subject": "Keep native connected Calendar availability within its selected grant"
-    },
-    {
-      "sha": "dd517d8b7f9f7eba4f7cae52797040121da58880",
-      "subject": "Use connected-source Calendar policy at the action boundary"
-    },
-    {
-      "sha": "818d35083d9a7f23971776b8e224a3a74e6eacfe",
-      "subject": "fix(views): admit registered native counterparts without hosted bundles"
-    },
-    {
-      "sha": "d3fc329ddda70eb314ba235d4598363f7cee6b2c",
-      "subject": "feat(views): register trusted navigation-only native counterparts"
-    },
-    {
-      "sha": "b16edafe61e377edaff2e5644725e8cf241f649b",
-      "subject": "fix(views): register navigation catalog before runtime publication"
-    },
-    {
-      "sha": "f58d71afee49a1831c660adc2f7a6091ae74021c",
-      "subject": "Share injected batch voice conversations and capture activity policy"
-    },
-    {
-      "sha": "b953d2bd6c933cacfb77adb005a94c7a7a27f5d4",
-      "subject": "Publish renderer-safe batch voice package contracts"
-    },
-    {
-      "sha": "f83e47118f43632a3d361e7e183b7a345a8a5c82",
-      "subject": "Format f58 public voice consumer tests"
-    },
-    {
-      "sha": "9d25d3dded7d07a836f7afb34bf049eeb4e92799",
-      "subject": "Make native planner scope instructions self-contained"
-    },
-    {
-      "sha": "ed985d32946f8cdb75103cbbd02315461563fb9e",
-      "subject": "fix(agent): include trigger route API in mobile bundles"
-    },
-    {
-      "sha": "f3572ea70b34cbf3476f45e7190a2776d25fbf9d",
-      "subject": "fix(agent): bundle the native browser receipt decoder"
-    },
-    {
-      "sha": "2fc0c5fa1c6afe369da4010619714ac116eccfd4",
-      "subject": "feat: finish approved native Notes reads in the original conversation"
-    },
-    {
-      "sha": "6fc93e38ca7ac4788cf53194d73d057ee9991af2",
-      "subject": "fix: fence approved read admission after authority and storage waits"
-    },
-    {
-      "sha": "e17b81c304437799d798fe023d4cae155c317aa1",
-      "subject": "fix: retire approved read leases on device enrollment changes"
-    },
-    {
-      "sha": "324c2716cecdd3c7251f7cc14b724b8614d013a9",
-      "subject": "feat: pause batch voice for bound owner input and resume its exact reply"
-    },
-    {
-      "sha": "e53888e5ff415e73abd47ed542c719b65fe97391",
-      "subject": "test: retain approved read completion checks in the device lifecycle runner"
-    },
-    {
-      "sha": "e6d12ce0172af73b257ae67780de0718c18f7d9a",
-      "subject": "fix(ui): cancel touch compatibility clicks on pull controls"
-    },
-    {
-      "sha": "a1e7582fbc53becc7d3d5d297b7670e6b9d3b988",
-      "subject": "fix(ui): retire native touch cancellation with the gesture"
-    },
-    {
-      "sha": "a0e7d8dc42056805397c456a4940f70df6e4e56a",
-      "subject": "Render approved Notes quotes from protected immutable source parts"
-    },
-    {
-      "sha": "483b2223c953342210b66952ea95d036a8fc67d8",
-      "subject": "Expose a private native owner context through the existing app host bridge"
-    },
-    {
-      "sha": "a1a14be4baca690be193ce6aeaea058e43964842",
-      "subject": "fix(contracts): lint only existing source paths"
-    },
-    {
-      "sha": "375d3c27c703f544e78f8ac58001a09f4aab585d",
-      "subject": "docs(agent): describe approved Notes completion host contract"
-    },
-    {
-      "sha": "1091a5d1e207e5ee80382b1e0e7238f662e18bb7",
-      "subject": "fix(android): confirm resident shutdown before credential changes"
-    },
-    {
-      "sha": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
-      "subject": "fix(android): refuse credential shutdown while sibling consumers survive"
-    }
-  ],
+  "command": "gh api repos/elizaOS/eliza/compare/develop...945209d3e75053cc834ddf6352fc8c2feefc42f7",
+  "status": "behind",
+  "aheadBy": 0,
+  "behindBy": 4,
+  "mergeBase": "945209d3e75053cc834ddf6352fc8c2feefc42f7",
+  "pinOnlyCommits": [],
   "pullRequests": [
     {
       "number": 34453,
       "state": "merged",
       "mergedAt": "2026-10-08T23:24:20Z",
       "mergeCommit": "903a1bc4effaa36558a1b933c8098186c1620a5f",
-      "head": "codex/native-record-discovery-upstream",
-      "note": "Notes and Calendar discovery from Home, squash-merged; the pin commits remain non-ancestors of develop"
+      "head": "codex/native-record-discovery-upstream"
+    },
+    {
+      "number": 34649,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:04:25Z",
+      "mergeCommit": "aa11eb735fb8beccd8a87909d45d9b4efffec87f",
+      "head": "codex/notes-trash-shared-client-20261009"
+    },
+    {
+      "number": 34650,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:04:34Z",
+      "mergeCommit": "2fa46af7a94e1045178598b1b56be847edcc870b",
+      "head": "codex/maps-navigation-shared-20261009"
+    },
+    {
+      "number": 34653,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:14:10Z",
+      "mergeCommit": "db204ce76e47c1988d1fca84f68543ba094f428f",
+      "head": "codex/reminders-lifecycle-shared-20261009"
+    },
+    {
+      "number": 34658,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:14:06Z",
+      "mergeCommit": "0cbd9d64e50f1f5c47feb7717272aa1092bfa84a",
+      "head": "codex/calendar-direct-options-shared-20261009"
+    },
+    {
+      "number": 34662,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:16:24Z",
+      "mergeCommit": "ea9df94a8bdf2edd4e2c7abb6c35516a10d12e80",
+      "head": "codex/gmail-message-workflows-20261009"
+    },
+    {
+      "number": 34667,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:21:49Z",
+      "mergeCommit": "43676428c6cbf8452365cb03faaada54b97f7218",
+      "head": "codex/system-launcher-shared-20261009"
+    },
+    {
+      "number": 34676,
+      "state": "merged",
+      "mergedAt": "2026-10-10T01:38:07Z",
+      "mergeCommit": "4e76a10060f4588cb8010a76732e8a734efaf47c",
+      "head": "codex/notification-mirror-shared-20261009"
+    },
+    {
+      "number": 34683,
+      "state": "merged",
+      "mergedAt": "2026-10-10T02:04:35Z",
+      "mergeCommit": "38fcc53e85f53f20dca3aaa942d926fb68196519",
+      "head": "codex/workflow-native-digests-shared-20261009"
+    },
+    {
+      "number": 34691,
+      "state": "merged",
+      "mergedAt": "2026-10-10T02:10:50Z",
+      "mergeCommit": "e0def8b28d148ff8eb62ad8e837bf4ce32c83019",
+      "head": "codex/media-shared-20261009"
+    },
+    {
+      "number": 34699,
+      "state": "merged",
+      "mergedAt": "2026-10-10T02:25:21Z",
+      "mergeCommit": "99bcbbadd6624d565a0d0d0051d6a4e4a6e92649",
+      "head": "codex/device-review-contracts-shared-20261009"
+    },
+    {
+      "number": 34708,
+      "state": "merged",
+      "mergedAt": "2026-10-10T02:38:04Z",
+      "mergeCommit": "a8ad88dbedaf8a6d0f15f77d7a9a06f8e4b89603",
+      "head": "codex/browser-policies-shared-20261009"
+    },
+    {
+      "number": 34723,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:00:47Z",
+      "mergeCommit": "bd40c58b4b7810f2142a704f1ae2b718e6ec00be",
+      "head": "codex/browser-speech-shared-20261009"
+    },
+    {
+      "number": 34727,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:06:15Z",
+      "mergeCommit": "ec207214b99679fb041d240f75cb5d10d4629bd3",
+      "head": "codex/action-journal-shared-20261009"
+    },
+    {
+      "number": 34729,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:09:18Z",
+      "mergeCommit": "2f29c28b150ec388480bda88e13ebb1350786eeb",
+      "head": "codex/alpha-native-compatibility-20261009"
+    },
+    {
+      "number": 34734,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:15:26Z",
+      "mergeCommit": "fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
+      "head": "codex/pull-gesture-touch-compatibility-20261009"
+    },
+    {
+      "number": 34743,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:26:13Z",
+      "mergeCommit": "c9ff1a8110335cfde3768299a3299c214626eae3",
+      "head": "codex/local-speech-determinism-20261009"
+    },
+    {
+      "number": 34755,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:43:50Z",
+      "mergeCommit": "a9c5b99496c9122d308744feb0bed2d3e33c955a",
+      "head": "codex/shared-password-custody-20261009"
+    },
+    {
+      "number": 34754,
+      "state": "merged",
+      "mergedAt": "2026-10-10T04:03:50Z",
+      "mergeCommit": "41c5c20aac1e999823bf6fedd812c1732dd5a226",
+      "head": "codex/journal-native-fixture-registration-20261009"
+    },
+    {
+      "number": 34773,
+      "state": "merged",
+      "mergedAt": "2026-10-10T04:19:41Z",
+      "mergeCommit": "11a36ddc9dd42d4c344a19965a8552d1d0c2c9d8",
+      "head": "fix/endtest-action-journal-nocheck-20261009"
+    },
+    {
+      "number": 34751,
+      "state": "merged",
+      "mergedAt": "2026-10-10T04:25:04Z",
+      "mergeCommit": "5b50baa3dc5ceb84badad92eb56151f42d19b3a0",
+      "head": "fix/endtest-lint-format-20261009"
+    },
+    {
+      "number": 34761,
+      "state": "merged",
+      "mergedAt": "2026-10-10T04:33:16Z",
+      "mergeCommit": "945209d3e75053cc834ddf6352fc8c2feefc42f7",
+      "head": "fix/endtest-app-tests-20261009"
     }
-  ],
-  "pendingPullRequest": {
-    "head": "codex/alpha-shaw-shared-next-20261008",
-    "base": "develop",
-    "state": "not opened",
-    "note": "Rebase the ten pin-only commits on develop and open against develop; opening it publishes to elizaOS/eliza and needs the owner’s go-ahead"
-  }
+  ]
 }

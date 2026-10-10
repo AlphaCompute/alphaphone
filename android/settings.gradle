@@ -23,14 +23,21 @@ project(':eliza-network-policy').projectDir = new File('../vendor/eliza/plugins/
 // npm run upstream:prepare-client (run by npm run build / android:build) materializes it.
 if (!new File(settingsDir, '../.eliza/patched/.source.json').isFile())
  throw new GradleException('Patched Eliza source is not prepared. Run: npm run upstream:prepare-client')
-// The pin includes the read-package source identity fix (historical patch 0039).
-// Calendar also consumes the reviewed source selection candidate 0041.
+// Calendar and reminder engines come from the reviewed upstream pin.
 include ':eliza-calendar'
-project(':eliza-calendar').projectDir = new File('../.eliza/patched/plugins/plugin-native-calendar/android')
-// Reminders carry patches/eliza/0040-reminders-lifecycle.patch (refusal codes, re-post, due channel, to-dos).
+project(':eliza-calendar').projectDir = new File('../vendor/eliza/plugins/plugin-native-calendar/android')
 include ':eliza-reminders'
-project(':eliza-reminders').projectDir = new File('../.eliza/patched/plugins/plugin-native-reminders/android')
+project(':eliza-reminders').projectDir = new File('../vendor/eliza/plugins/plugin-native-reminders/android')
 include ':elizaos-capacitor-secure-store'
-project(':elizaos-capacitor-secure-store').projectDir = new File('../.eliza/patched/plugins/plugin-native-secure-store/android')
+project(':elizaos-capacitor-secure-store').projectDir = new File('../vendor/eliza/plugins/plugin-native-secure-store/android')
 include ':eliza-passwords'
 project(':eliza-passwords').projectDir = new File('../.eliza/patched/plugins/plugin-native-passwords/android')
+
+include ':eliza-notifications'
+project(':eliza-notifications').projectDir = new File('../vendor/eliza/plugins/plugin-native-notifications/android')
+
+include ':eliza-owned-media'
+project(':eliza-owned-media').projectDir = new File('../vendor/eliza/plugins/plugin-native-media/android')
+
+include ':eliza-action-journal'
+project(':eliza-action-journal').projectDir = new File('../vendor/eliza/plugins/plugin-native-action-journal/android')

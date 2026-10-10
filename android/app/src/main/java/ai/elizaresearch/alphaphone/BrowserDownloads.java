@@ -1,4 +1,6 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.browsersurface.BrowserWebOrigin;
+import ai.eliza.plugins.browsersurface.BrowserDownloadPolicy;
 
 import android.app.AlertDialog;
 import android.app.DownloadManager;
@@ -77,19 +79,15 @@ final class BrowserDownloads {
  BrowserDownloads(Context context){
   this.context=context;manager=context.getSystemService(DownloadManager.class);
   preferences=context.getSharedPreferences("alpha-browser-downloads",Context.MODE_PRIVATE);
-  try{JSONArray saved=new JSONArray(preferences.getString("owned","[]"));for(int i=0;i<saved.length()&&i<MAX_ENTRIES;i++){JSONObject item=saved.getJSONObject(i);long id=item.getLong("id");
+  try{JSONArray saved=new JSONArray(preferences.getString("owned","[]"));for(int i=0;i<saved.length();i++){JSONObject item=saved.getJSONObject(i);long id=item.getLong("id");
    // A private entry can only exist in a store written by an older build; never restore it.
    if(id!=0&&!item.optBoolean("private",false)&&!item.optBoolean("running",false))owned.put(id,item);if(id<localSequence)localSequence=id;}}catch(Exception ignored){/* No outside IDs are queried. */}
  }
  /** Persist only normal-tab entries. Private-tab entries live in memory until their tab closes. */
  private void persist(){JSONArray records=new JSONArray();for(JSONObject item:owned.values())if(!item.optBoolean("private",false)&&!item.optBoolean("running",false))records.put(item);preferences.edit().putString("owned",records.toString()).apply();}
- static String safeName(String raw,String disposition,String mime){
-  String name=URLUtil.guessFileName(raw,disposition,mime).replaceAll("[^A-Za-z0-9._ -]","_").replaceAll("^[. ]+","").trim();
-  if(name.isEmpty())name="download";
-  return name.length()>100?name.substring(0,100):name;
- }
+ static String safeName(String raw,String disposition,String mime){return BrowserDownloadPolicy.sanitizeName(URLUtil.guessFileName(raw,disposition,mime));}
  private static String size(long bytes){return bytes<0?"Size unknown":bytes+" bytes";}
- static boolean validMime(String mime){return mime!=null&&mime.length()<=200&&mime.matches("[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+");}
+ static boolean validMime(String mime){return BrowserDownloadPolicy.validMime(mime);}
  private static boolean loopbackAllowed(Uri uri){
   // Only test-mocks debug builds (ELIZA_DEV_ALLOW_TEST_MOCKS=1) may use the loopback policy.
   return BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS && "http".equals(uri.getScheme()) && ("127.0.0.1".equals(uri.getHost())||"localhost".equals(uri.getHost()));
@@ -99,12 +97,7 @@ final class BrowserDownloads {
   return "https".equalsIgnoreCase(uri.getScheme())||loopbackAllowed(uri);
  }
  /** scheme://host[:port], lower case with the default port elided; null when not a web origin. */
- static String origin(String raw){
-  try{Uri uri=Uri.parse(raw);String scheme=uri.getScheme(),host=uri.getHost();if(scheme==null||host==null||uri.getUserInfo()!=null)return null;
-   scheme=scheme.toLowerCase(Locale.ROOT);if(!"https".equals(scheme)&&!"http".equals(scheme))return null;
-   int port=uri.getPort();boolean standard=port<0||("https".equals(scheme)&&port==443)||("http".equals(scheme)&&port==80);
-   return scheme+"://"+host.toLowerCase(Locale.ROOT)+(standard?"":":"+port);}catch(Exception invalid){return null;}
- }
+ static String origin(String raw){return BrowserWebOrigin.of(raw);}
  /** Cookies go only to the exact origin of the requesting tab's committed page. */
  static boolean cookieAllowed(String download,String pageOrigin){String target=origin(download);return target!=null&&pageOrigin!=null&&target.equals(pageOrigin);}
  /** blob:https://host/uuid belongs to its embedded origin. */
@@ -142,7 +135,7 @@ final class BrowserDownloads {
     if(validMime(mime))request.setMimeType(mime);
     if(source.userAgent!=null&&!source.userAgent.isEmpty()&&source.userAgent.length()<1024)request.addRequestHeader("User-Agent",source.userAgent);
     // Read now, from the still-open requesting tab's own profile. A closed tab supplies nothing.
-    if(signedIn){String cookie=source.cookies==null?null:source.cookies.get();if(cookie!=null&&!cookie.isEmpty()&&cookie.length()<8192&&!cookie.matches("(?s).*[\\r\\n].*")){fetchSignedIn(raw,name,mime,origin,source,cookie);show();return;}}
+    if(signedIn){String cookie=source.cookies==null?null:source.cookies.get();if(cookie!=null&&!cookie.isEmpty()&&BrowserDownloadPolicy.cookieHeaderAcceptable(cookie)){fetchSignedIn(raw,name,mime,origin,source,cookie);show();return;}}
     // No sign-in: DownloadManager never receives a Cookie header.
     long id=manager.enqueue(request);
     owned.put(id,entry(id,name,origin,source));persist();
@@ -156,15 +149,8 @@ final class BrowserDownloads {
   return item;
  }
  /** data: URLs carry their bytes inline; decode natively, never through page script. */
- static byte[] decodeData(String raw){
-  int comma=raw.indexOf(',');if(comma<5||raw.length()>MAX_CAPTURE*4/3+1024)throw new IllegalArgumentException();
-  String meta=raw.substring(5,comma),body=raw.substring(comma+1);boolean base64=false;
-  for(String part:meta.split(";"))if("base64".equalsIgnoreCase(part.trim()))base64=true;
-  byte[] bytes=base64?Base64.decode(Uri.decode(body),Base64.DEFAULT):Uri.decode(body).getBytes(java.nio.charset.StandardCharsets.UTF_8);
-  if(bytes.length>MAX_CAPTURE)throw new IllegalArgumentException();
-  return bytes;
- }
- static String dataMime(String raw){int comma=raw.indexOf(',');if(comma<5)return null;String type=raw.substring(5,comma).split(";")[0].trim();return validMime(type)?type.toLowerCase(Locale.ROOT):null;}
+ static byte[] decodeData(String raw){return BrowserDownloadPolicy.decodeData(raw);}
+ static String dataMime(String raw){return BrowserDownloadPolicy.dataMime(raw);}
  private void requestData(Source source,String raw,String disposition,String mime,BooleanSupplier current){
   byte[] bytes;try{bytes=decodeData(raw);}catch(Exception invalid){message("This embedded file is invalid or larger than "+(MAX_CAPTURE/1048576)+" MB.");return;}
   String type=validMime(mime)?mime:dataMime(raw);

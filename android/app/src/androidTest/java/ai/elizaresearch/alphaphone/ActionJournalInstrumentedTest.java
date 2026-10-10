@@ -23,7 +23,10 @@ public class ActionJournalInstrumentedTest {
   StringBuilder out=new StringBuilder();for(byte b:bytes)out.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return out.toString();
  }
  private JSONObject call(String expression)throws Exception{
-  for(int i=0;i<100&&!"true".equals(WebViewTestDriver.evaluate("Boolean(window.Capacitor?.Plugins?.AlphaActionJournal)"));i++)SystemClock.sleep(100);
+  // The bridge can appear in a document that cold-start navigation will replace.
+  // Wait for the live document before dispatching; never retry an effect call.
+  try(StartupDocumentProbe startup=new StartupDocumentProbe()){startup.awaitReady(true);}
+  assertEquals("Journal bridge is registered in the ready document","true",WebViewTestDriver.evaluate("Boolean(window.Capacitor?.Plugins?.AlphaActionJournal)"));
   WebViewTestDriver.evaluate("window.__journalResult=null;Promise.resolve().then(()=>"+expression+").then(v=>window.__journalResult=JSON.stringify(v),()=>window.__journalResult=JSON.stringify({error:true}))");
   for(int i=0;i<200;i++){
    String raw=WebViewTestDriver.evaluate("window.__journalResult");
@@ -40,10 +43,11 @@ public class ActionJournalInstrumentedTest {
   File folder=new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getNoBackupFilesDir(),"connection-credentials");
   String entrySlot="action-journal:v1:"+scope+":entry:"+id,indexSlot="action-journal:v1:"+scope+":index";
   try(BoundedActivityScenario<MainActivity> activity=BoundedActivityScenario.launch(MainActivity.class)){
-   for(int i=0;i<100&&!"true".equals(WebViewTestDriver.evaluate("Boolean(window.Capacitor?.Plugins?.AlphaActionJournal)"));i++)SystemClock.sleep(100);
    JSONObject reserved=call("Promise.all([Capacitor.Plugins.AlphaActionJournal.reserve("+params+"),Capacitor.Plugins.AlphaActionJournal.reserve("+params+")]).then(entries=>({entries}))");
    JSONArray rows=reserved.getJSONArray("entries");assertNotEquals(rows.getJSONObject(0).getBoolean("created"),rows.getJSONObject(1).getBoolean("created"));
    assertEquals("reserved",rows.getJSONObject(0).getJSONObject("entry").getString("phase"));
+   JSONObject changedOperation=new JSONObject(params).put("operationId",UUID.randomUUID().toString());
+   assertTrue("Replay must retain the original operation identity",call("Capacitor.Plugins.AlphaActionJournal.reserve("+changedOperation+")").has("error"));
    String encrypted=new String(Files.readAllBytes(new File(folder,hash(entrySlot)).toPath()),StandardCharsets.ISO_8859_1);
    assertFalse("Journal contents must be encrypted",encrypted.contains("Synthetic journal plaintext sentinel"));
    activity.recreate();

@@ -3,6 +3,7 @@ package ai.elizaresearch.alphaphone;
 import android.content.Intent;
 import android.net.Uri;
 import java.util.Locale;
+import ai.eliza.plugins.browsersurface.BrowserExternalLinkPolicy;
 import java.util.Set;
 
 /** Website links that belong to another Android app. Every handoff is an
@@ -10,12 +11,11 @@ import java.util.Set;
  * permission-granting flags, so a page cannot address a specific private
  * Activity or grant URI access. Alpha's own package and app routes are refused. */
 final class BrowserExternalLinks {
- static final Set<String> SCHEMES=Set.of("mailto","tel","intent","market");
  /** Schemes an intent: URI may never carry as data, including Alpha's own routes. */
- private static final Set<String> FORBIDDEN_DATA=Set.of("file","content","javascript","data","blob","about","intent","android-app","alphaphone");
+ private static final Set<String> HOST_SCHEMES=Set.of("alphaphone");
  private BrowserExternalLinks(){}
  static boolean external(String raw){
-  try{String scheme=Uri.parse(raw).getScheme();return scheme!=null&&SCHEMES.contains(scheme.toLowerCase(Locale.ROOT));}catch(Exception invalid){return false;}
+  return BrowserExternalLinkPolicy.external(raw);
  }
  /** Returns a sanitized implicit Intent, or null when the link must be refused. */
  static Intent intentFor(String raw,String ownPackage){
@@ -32,10 +32,8 @@ final class BrowserExternalLinks {
     Intent parsed;
     try{parsed=Intent.parseUri(raw,Intent.URI_INTENT_SCHEME);}catch(Exception invalid){return null;}
     String action=parsed.getAction();
-    if(action!=null&&!Intent.ACTION_VIEW.equals(action))return null;
     Uri data=parsed.getData();
-    if(data!=null){String target=data.getScheme();if(target==null||FORBIDDEN_DATA.contains(target.toLowerCase(Locale.ROOT)))return null;}
-    if(ownPackage.equals(parsed.getPackage()))return null;
+    if(BrowserExternalLinkPolicy.decide(raw,true,action,data==null?null:(data.getScheme()==null?"":data.getScheme()),parsed.getPackage(),ownPackage,HOST_SCHEMES)==BrowserExternalLinkPolicy.Handoff.REFUSE)return null;
     intent=new Intent(Intent.ACTION_VIEW);
     if(data!=null)intent.setDataAndType(data,parsed.getType());else if(parsed.getType()!=null)intent.setType(parsed.getType());
     if(parsed.getPackage()!=null)intent.setPackage(parsed.getPackage());
@@ -55,7 +53,7 @@ final class BrowserExternalLinks {
  /** Safe HTTPS fallback named by an intent: URI, or null. */
  static String fallback(String raw){
   if(raw==null||!raw.regionMatches(true,0,"intent:",0,7))return null;
-  try{String value=Intent.parseUri(raw,Intent.URI_INTENT_SCHEME).getStringExtra("browser_fallback_url");return value!=null&&value.regionMatches(true,0,"https://",0,8)&&BrowserSessionStore.validUrl(value)?value:null;}
+  try{String value=Intent.parseUri(raw,Intent.URI_INTENT_SCHEME).getStringExtra("browser_fallback_url");return BrowserExternalLinkPolicy.fallback(value);}
   catch(Exception invalid){return null;}
  }
 }

@@ -20,10 +20,13 @@ revision in `upstream.lock.json` and `vendor/eliza`.
 Maps, Files and Notes implementations are copied from authenticated upstream
 source into a generated cache outside the submodule. A shared change not yet in a
 reviewed upstream commit is an explicit, hash-bound patch in `patches/eliza`
-(currently the password manager), materialized into `.eliza/patched`; Gradle
-includes the patched `plugin-native-secure-store` and `plugin-native-passwords`
-modules from there. See [patches/eliza/README.md](../patches/eliza/README.md). Product wrappers inject
-presentation, device configuration and installed storage identities. Resident
+(see the current patch inventory), materialized into `.eliza/patched`; Gradle
+includes the candidate `plugin-native-passwords` module from there. The shared
+secure store comes directly from the pin. See [patches/eliza/README.md](../patches/eliza/README.md). Photo edits, capture publication and the opt-in notification mirror also use shared native
+modules. Alpha wrappers retain installed storage names, media paths and Android components.
+Browser policy helpers are staged from the same authenticated pin. Gradle writes shared
+library outputs under the host build directory, outside the immutable vendor checkout.
+Product wrappers inject presentation, device configuration and installed storage identities. Resident
 runtime preparation also uses the locked upstream source without patch replay.
 Native staging verifies source and generated hashes and applies only explicit
 host identity/resource/environment configuration.
@@ -33,6 +36,13 @@ package IDs, storage namespaces, view allowlists and approval policy stay here.
 Do not import another product's UI or turn Alpha-specific restrictions into
 universal platform defaults. Use existing upstream schedulers, credential
 providers and stores rather than introducing competing implementations.
+
+`base/` is retired; the original app baseline remains recorded in
+[its provenance file](eliza-app-baseline-provenance.json). There is one product renderer
+in `apps/app`. The remaining `backend` files compose a development host from shared
+runtime packages; the product character, allowed views and proposal-only behavior
+stay here. Product build admission and acceptance campaigns also stay in `scripts`.
+Moving those directories intact would move product policy into the shared platform.
 
 ## Build surfaces
 

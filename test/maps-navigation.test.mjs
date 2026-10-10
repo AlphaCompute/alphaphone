@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { prepareElizaPatches } from '../scripts/prepare-eliza-patches.mjs';
+import { prepareClientFeatures } from '../scripts/prepare-client-features.mjs';
 
-test('patched plugin-maps device-client and navigation tests pass on the patched source', () => {
-  const root = prepareElizaPatches();
+test('upstream plugin-maps navigation tests pass on the pinned source', () => {
+  const root = prepareClientFeatures();
   const directory = path.join(root, 'plugins/plugin-maps/test');
-  const tests = ['device-client.test.mjs', 'navigation-client.test.mjs'].map(name => path.join(directory, name));
+  const tests = ['navigation-client.test.mjs'].map(name => path.join(directory, name));
   for (const file of tests) assert.ok(fs.existsSync(file), file);
   execFileSync(process.execPath, ['--experimental-transform-types', '--test', ...tests], { stdio: 'pipe', timeout: 60_000 });
 });

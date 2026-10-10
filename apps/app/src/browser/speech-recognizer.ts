@@ -1,4 +1,4 @@
-import {BrowserSpeechRecognizer as SharedSpeechRecognizer} from '../../../../.eliza/patched/packages/voice/src/browser-speech/speech-recognizer.ts';
+import {BrowserSpeechRecognizer as SharedSpeechRecognizer} from '../../../../.eliza/client-features/packages/voice/src/browser-speech/speech-recognizer.ts';
 
 /**
  * Alpha's host inputs for the shared in-browser recognizer (elizaOS patch 0065): the model

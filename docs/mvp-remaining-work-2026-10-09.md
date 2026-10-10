@@ -119,9 +119,9 @@ Evidence/source: [docs/mvp-current-status.md](../docs/mvp-current-status.md), [d
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: The refreshed GitHub compare records pin 0d40aa6 as diverged: 59 ahead, 764 behind develop, with 55 non-merge pin-only commits at audit time. Squash-equivalent changes must be considered individually.
+Current: The integration branch pins reviewed upstream merge 945209d3, including native compatibility, touch lifecycle, deterministic synthesis, shared password custody and workflow repairs. Source preparation, repository verification, four developer APKs and journal/photo tests in both variants passed. These are not distributable release or device-acceptance results.
 
-Remaining: Review equivalence, rebase the needed commits onto develop, open the agreed upstream PRs, and replace the downstream pin only with reviewed tested commits. Do not edit vendor/eliza.
+Remaining: Complete the remaining retired-pin semantic audit and product-wide browser/native regressions. Release runtime, speech, signing and device acceptance remain separate.
 
 Done when: Reviewed upstream disposition per commit, clean source preparation and full product regression at the replacement pin.
 
@@ -131,9 +131,9 @@ Evidence/source: [scripts/ci/upstream-reachability.json](../scripts/ci/upstream-
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: Applied and reference-only patches coexist. Applied manifests were requalified for the new pin; 0046 and 0065 needed rebasing, while 0039 is already in the pin.
+Current: Twenty-eight patch files and their manifests were retired after their replacements merged upstream. The unused runtime-capability proposal was deleted. The remaining applied password patch contains the manager and Autofill provider; encrypted custody comes from the pin. Password transfer remains a reference candidate.
 
-Remaining: Create an upstream disposition for each patch family; distinguish applied client closures, Android-consumed modules, reference candidates and deployed server routes. Merge and retire downstream patches one reviewed family at a time.
+Remaining: Finish the remaining upstream reviews and remove each patch only when its reviewed replacement is consumed.
 
 Done when: Patch-to-upstream-PR ledger with exact output hashes, external-consumer tests and no duplicate or silently unapplied implementation.
 
@@ -145,29 +145,29 @@ Evidence/source: [patches/eliza/README.md](../patches/eliza/README.md), [scripts
 
 **P1 · integration · AP-10**
 
-Current: 0073/0074 are prepared but Android settings does not include eliza-media; Alpha still owns media edit/filter implementations.
+Current: Alpha uses the shared owned-media module for photo edits, filters and capture publication, preserving alpha storage names and media paths. Both library variants and targeted host adapter compilation pass.
 
-Remaining: Wire the reviewed shared module, preserve existing storage/URI identities and native behavior, then remove duplicated product implementations only after parity checks.
+Remaining: Complete both APK builds and selected capture/edit/save-copy and installed-data instrumentation at this composition.
 
 Done when: Both APK variants compile; selected capture/edit/save-copy and process-death instrumentation pass with exact output bytes.
 
 Depends on: MVP-09.
 
-Evidence/source: [android/settings.gradle](../android/settings.gradle), [patches/eliza/owned-media-edits-source.json](../patches/eliza/owned-media-edits-source.json), [patches/eliza/owned-media-captures-source.json](../patches/eliza/owned-media-captures-source.json).
+Evidence/source: [android/settings.gradle](../android/settings.gradle), [upstream owned-media library](https://github.com/elizaOS/eliza/pull/34691).
 
 ### MVP-11 Consume shared notification journal and browser candidates
 
 **P1 · integration · AP-11, AP-12**
 
-Current: Notification mirror 0049 is prepared but not in Gradle; browser-surface and action-journal series remain reference candidates.
+Current: The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser policies use pinned helpers. Alpha delegates journal transitions to the shared engine and retains product result policy and Clock approval. Journal persistence, replay refusal and history redaction passed native tests in both variants.
 
-Remaining: Wire notification implementation only within the retained opt-in scope; separately qualify shared action journal and browser surface with storage migrations and exact receipt/owner semantics.
+Remaining: Qualify installed notification policy/history and browser sessions; finish site-permission consolidation without weakening receipt or owner semantics.
 
 Done when: No duplicate effect or stale approval after migration; browser bridge isolation and notification privacy remain intact.
 
 Depends on: MVP-09.
 
-Evidence/source: [android/settings.gradle](../android/settings.gradle), [patches/eliza/action-journal-android-source-base.json](../patches/eliza/action-journal-android-source-base.json), [patches/eliza/action-journal-client-source-base.json](../patches/eliza/action-journal-client-source-base.json).
+Evidence/source: [android/settings.gradle](../android/settings.gradle), [shared action journal](https://github.com/elizaOS/eliza/pull/34727).
 
 ### MVP-12 Finish foreground Calendar availability
 
@@ -179,7 +179,7 @@ Remaining: Carry free/busy availability through provider reads, implement bounde
 
 Done when: Actual selected-provider result and exact receipt; free events excluded, all-day busy, no unrelated calendars or titles disclosed.
 
-Evidence/source: [apps/app/src/runtime/device-actions.ts](../apps/app/src/runtime/device-actions.ts), [patches/eliza/contracts-device-reviews-source.json](../patches/eliza/contracts-device-reviews-source.json).
+Evidence/source: [apps/app/src/runtime/device-actions.ts](../apps/app/src/runtime/device-actions.ts), [upstream device-review contracts](https://github.com/elizaOS/eliza/pull/34699).
 
 ### MVP-13 Finish folder notification and capture context selection
 

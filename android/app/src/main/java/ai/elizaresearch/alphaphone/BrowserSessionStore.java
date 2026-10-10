@@ -1,4 +1,5 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.browsersurface.BrowserSessionPolicy;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -9,7 +10,6 @@ import android.util.Base64;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.security.KeyStore;
-import java.util.LinkedHashSet;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -20,7 +20,6 @@ import javax.crypto.spec.GCMParameterSpec;
  * device-local record is AES-GCM encrypted with an Android Keystore key, like
  * bookmarks. It holds no page content, form data, cookies or credentials. */
 final class BrowserSessionStore {
- static final int MAX_HISTORY=100, MAX_TABS=8, MAX_TITLE=200;
  private static final String ALIAS="alpha-browser-session-v1";
  private final SharedPreferences preferences;
  BrowserSessionStore(Context context){preferences=context.getSharedPreferences("alpha-browser-session",Context.MODE_PRIVATE);}
@@ -30,34 +29,22 @@ final class BrowserSessionStore {
   KeyGenerator generator=KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");
   generator.init(new KeyGenParameterSpec.Builder(ALIAS,KeyProperties.PURPOSE_ENCRYPT|KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());return generator.generateKey();
  }
- static boolean validUrl(String value){
-  if(value==null||value.isEmpty()||value.length()>4096||value.matches("(?s).*[\\x00-\\x20\\x7f].*"))return false;
-  try{Uri uri=Uri.parse(value);String scheme=uri.getScheme();return ("https".equalsIgnoreCase(scheme)||"http".equalsIgnoreCase(scheme))&&uri.getHost()!=null&&uri.getUserInfo()==null;}catch(Exception invalid){return false;}
- }
- static boolean validId(String value){return value!=null&&value.matches("[A-Za-z0-9_-]{1,80}");}
- static String title(String value){
-  if(value==null)return "";
-  StringBuilder out=new StringBuilder();
-  for(int i=0;i<value.length()&&out.length()<MAX_TITLE;i++){char c=value.charAt(i);out.append(c<32||c==127?' ':c);}
-  return out.toString().trim();
- }
- /** Canonical bounded form. Invalid rows are dropped rather than stored. */
+ static boolean validUrl(String value){return BrowserSessionPolicy.validUrl(value);}
+ static boolean validId(String value){return BrowserSessionPolicy.validTabId(value);}
+ static String title(String value){return BrowserSessionPolicy.title(value);}
+ /** Canonical restorable form. Invalid rows are dropped rather than stored. */
  static JSONObject normalize(JSONObject input)throws Exception{
-  JSONObject result=new JSONObject();JSONArray history=new JSONArray(),tabs=new JSONArray();
-  LinkedHashSet<String> seen=new LinkedHashSet<>();
-  JSONArray rawHistory=input.optJSONArray("history");
-  if(rawHistory!=null)for(int i=0;i<rawHistory.length()&&seen.size()<MAX_HISTORY;i++){String url=rawHistory.optString(i,null);if(validUrl(url)&&seen.add(url))history.put(url);}
-  LinkedHashSet<String> ids=new LinkedHashSet<>();
-  JSONArray rawTabs=input.optJSONArray("tabs");
-  if(rawTabs!=null)for(int i=0;i<rawTabs.length()&&ids.size()<MAX_TABS;i++){
+  java.util.List<String> history=new java.util.ArrayList<>();
+  java.util.List<BrowserSessionPolicy.Tab> tabs=new java.util.ArrayList<>();
+  JSONArray rawHistory=input.optJSONArray("history"),rawTabs=input.optJSONArray("tabs");
+  if(rawHistory!=null)for(int i=0;i<rawHistory.length();i++)history.add(rawHistory.optString(i,null));
+  if(rawTabs!=null)for(int i=0;i<rawTabs.length();i++){
    JSONObject tab=rawTabs.optJSONObject(i);if(tab==null)continue;
-   String id=tab.optString("id",null),url=tab.optString("url",null);
-   if(!validId(id)||!validUrl(url)||!ids.add(id))continue;
-   tabs.put(new JSONObject().put("id",id).put("url",url).put("title",title(tab.optString("title",""))));
+   tabs.add(new BrowserSessionPolicy.Tab(tab.optString("id",null),tab.optString("url",null),tab.optString("title",""),tab.optBoolean("private",false)));
   }
-  String cur=input.optString("cur","");
-  result.put("history",history).put("tabs",tabs).put("cur",ids.contains(cur)?cur:"");
-  return result;
+  BrowserSessionPolicy.Snapshot saved=BrowserSessionPolicy.restore(tabs,history,input.optString("cur",""));
+  JSONArray rows=new JSONArray();for(BrowserSessionPolicy.Tab tab:saved.tabs)rows.put(new JSONObject().put("id",tab.id).put("url",tab.url).put("title",tab.title));
+  return new JSONObject().put("history",new JSONArray(saved.history)).put("tabs",rows).put("cur",saved.current);
  }
  private String seal(JSONObject value)throws Exception{
   Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,key());

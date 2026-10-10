@@ -39,6 +39,8 @@ export const CLIENT_FEATURE_PATHS = [
   'packages/ui/src/voice/voice-chat-playback.ts',
   'packages/ui/src/voice/speech-segments.ts',
   'packages/voice/src/turn.ts',
+  'packages/voice/src/browser-capture',
+  'packages/voice/src/browser-speech',
   'packages/voice/src/respond-gate.ts',
   'packages/voice/src/voice-eot.ts',
   'packages/core/src/speech.ts',
@@ -63,6 +65,7 @@ export const CLIENT_FEATURE_PATHS = [
   'packages/core/src/views/completed-action-navigation.ts',
   'packages/ui/src/platform/browser-document-store.ts',
   'packages/contracts/src/native-notes-query.ts',
+  'packages/contracts/src/device-reviews.ts',
   'plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts',
   'plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts',
   'plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts',
@@ -71,9 +74,12 @@ export const CLIENT_FEATURE_PATHS = [
   'plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts',
   'plugins/plugin-files',
   'plugins/plugin-maps/src/client',
-  'plugins/plugin-maps/test/device-client.test.mjs',
+  'plugins/plugin-maps/test/navigation-client.test.mjs',
   'plugins/plugin-notes/src/client',
-  'plugins/plugin-notes/test/device-client.test.mjs',
+  'plugins/plugin-notes/test/device-query.test.mjs',
+  'plugins/plugin-notes/test/notes-trash-policy.test.mjs',
+  'plugins/plugin-notes/test/notes-trash-maintenance.test.mjs',
+  'plugins/plugin-notes/test/notes-trash-schedule.test.mjs',
 ];
 /** Copy authenticated upstream source outside the immutable vendor checkout. */
 export function prepareClientFeatures({ root = projectRoot } = {}) {

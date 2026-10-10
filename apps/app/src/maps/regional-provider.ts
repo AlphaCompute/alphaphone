@@ -1,10 +1,10 @@
-import { createRegionalMaps, type RegionalOptions } from '../../../../.eliza/patched/plugins/plugin-maps/src/client/regional-provider.ts';
+import { createRegionalMaps, type RegionalOptions } from '../../../../.eliza/client-features/plugins/plugin-maps/src/client/regional-provider.ts';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import { configureMapsProvider } from './runtime';
 import { testMocksEnabled, devSurfacesEnabled } from '../build-flags';
-export type { RegionalMap } from '../../../../.eliza/patched/plugins/plugin-maps/src/client/regional-provider.ts';
+export type { RegionalMap } from '../../../../.eliza/client-features/plugins/plugin-maps/src/client/regional-provider.ts';
 
 /** Descriptor of the development dataset built by scripts/maps (the Monaco extract).
  * It is documentation and tooling data only: the configured gateway's /capabilities

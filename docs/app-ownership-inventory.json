@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "0ab3d3e72a845d6667aa25ff62f64ad8fa7d493a0a093b868c94b7b5009225a7",
+  "sourceDigest": "e0d850e6b34e9d8c4a39c27bc310a6b97133be8c277dfce2b5a681e1b58f2a3f",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -2011,7 +2011,7 @@
       "file": "public/licenses/THIRD_PARTY_NOTICES.txt",
       "upstreamCandidate": [],
       "bytes": 807423,
-      "sha256": "b4a6012ca76f6e78d8dac99ba17e71beef31ee1e2aa8d49d7ec14acb23926fcc",
+      "sha256": "697a8399e4439722ebd7d3aebbc7da1e695091577e4fa9390a14a0b68d100005",
       "lines": null,
       "owner": "alphaphone",
       "disposition": "retain",
@@ -2024,7 +2024,7 @@
       "file": "public/licenses/third-party-notices.json",
       "upstreamCandidate": [],
       "bytes": 821461,
-      "sha256": "bc44c82d5d43e219360c8e555b4c4d01838f5ef3ce107db4850f35eb4807331b",
+      "sha256": "04e97ea2f0e7b1c6bd77d309d901236049a3037d76bd8f6cfdea2a748365cfb1",
       "lines": 766,
       "owner": "alphaphone",
       "disposition": "retain",
@@ -6849,15 +6849,17 @@
     },
     {
       "file": "src/browser/speech-protocol.ts",
-      "upstreamCandidate": [],
-      "bytes": 178,
-      "sha256": "45f8985e525a32b6476aa85c69224446297f6d12935b74b654e62fd35502a5bf",
+      "upstreamCandidate": [
+        "packages/voice/src/browser-speech/speech-protocol.ts"
+      ],
+      "bytes": 186,
+      "sha256": "f6fbfe8e660298d84b8685b8b56c1c8fcc3184ef79d9b657fedfb4b55d50a10f",
       "lines": 3,
       "owner": "plugins/plugin-native-talkmode",
       "disposition": "extract-or-split",
       "reason": "Owned audio capture/playback and speech transport; inject review surfaces, account binding and product language/recording policy.",
       "imports": [
-        "../../../../.eliza/patched/packages/voice/src/browser-speech/speech-protocol.ts"
+        "../../../../.eliza/client-features/packages/voice/src/browser-speech/speech-protocol.ts"
       ],
       "exports": [],
       "seams": [],
@@ -6865,15 +6867,17 @@
     },
     {
       "file": "src/browser/speech-recognizer.ts",
-      "upstreamCandidate": [],
-      "bytes": 670,
-      "sha256": "7bcdbf52b273872264876836c6d03d89afb5cdb7ef77873b03614f9297263411",
+      "upstreamCandidate": [
+        "packages/voice/src/browser-speech/speech-recognizer.ts"
+      ],
+      "bytes": 678,
+      "sha256": "139388cb3508152ea924403ec85493a6f79884829410085c31fdce566018b647",
       "lines": 12,
       "owner": "plugins/plugin-native-talkmode",
       "disposition": "extract-or-split",
       "reason": "Owned audio capture/playback and speech transport; inject review surfaces, account binding and product language/recording policy.",
       "imports": [
-        "../../../../.eliza/patched/packages/voice/src/browser-speech/speech-recognizer.ts"
+        "../../../../.eliza/client-features/packages/voice/src/browser-speech/speech-recognizer.ts"
       ],
       "exports": [
         "BrowserSpeechRecognizer"
@@ -6890,15 +6894,17 @@
     },
     {
       "file": "src/browser/speech-worker.ts",
-      "upstreamCandidate": [],
-      "bytes": 519,
-      "sha256": "810ef47889eba819300c880de55f9259ad3ea6a29d1b3cc72709301c6811d155",
+      "upstreamCandidate": [
+        "packages/voice/src/browser-speech/speech-worker.ts"
+      ],
+      "bytes": 527,
+      "sha256": "c8a5d6185ab04bc1efa99c7b27b2201a60e7e883b7302e2ed833463b468055a3",
       "lines": 8,
       "owner": "plugins/plugin-native-talkmode",
       "disposition": "extract-or-split",
       "reason": "Owned audio capture/playback and speech transport; inject review surfaces, account binding and product language/recording policy.",
       "imports": [
-        "../../../../.eliza/patched/packages/voice/src/browser-speech/speech-worker.ts",
+        "../../../../.eliza/client-features/packages/voice/src/browser-speech/speech-worker.ts",
         "onnxruntime-web/wasm"
       ],
       "exports": [],
@@ -7159,15 +7165,17 @@
     },
     {
       "file": "src/browser/whisper-engine.ts",
-      "upstreamCandidate": [],
-      "bytes": 192,
-      "sha256": "db7c265a69d1a29feba35fc9471707358af05cac55b18e1dea49a4121bbc4d93",
+      "upstreamCandidate": [
+        "packages/voice/src/browser-speech/whisper-engine.ts"
+      ],
+      "bytes": 200,
+      "sha256": "58541a95a1ac6133b2b854c1ac902b906569260be55255331fab910008b76093",
       "lines": 3,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
       "imports": [
-        "../../../../.eliza/patched/packages/voice/src/browser-speech/whisper-engine.ts"
+        "../../../../.eliza/client-features/packages/voice/src/browser-speech/whisper-engine.ts"
       ],
       "exports": [],
       "seams": [],
@@ -8299,15 +8307,17 @@
     },
     {
       "file": "src/maps/agent-context.ts",
-      "upstreamCandidate": [],
-      "bytes": 92,
-      "sha256": "a0089ece2090250891798c511ebcd87830f544d8b6560f50db4d4d1891e8bb66",
+      "upstreamCandidate": [
+        "plugins/plugin-maps/src/client/agent-context.ts"
+      ],
+      "bytes": 100,
+      "sha256": "9e393463d8534985e29bf4cef039fca26c113a49737261592eb55ba5b7e1c0b0",
       "lines": 2,
       "owner": "plugins/plugin-maps",
       "disposition": "extract-or-configure",
       "reason": "Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-maps/src/client/agent-context.ts"
+        "../../../../.eliza/client-features/plugins/plugin-maps/src/client/agent-context.ts"
       ],
       "exports": [],
       "seams": [],
@@ -8334,15 +8344,17 @@
     },
     {
       "file": "src/maps/contracts.ts",
-      "upstreamCandidate": [],
-      "bytes": 88,
-      "sha256": "71980e6ef7d6948ce8cbc9c688e58db705c87bb9ea9f0a1cc4bb4475060bea7e",
+      "upstreamCandidate": [
+        "plugins/plugin-maps/src/client/contracts.ts"
+      ],
+      "bytes": 96,
+      "sha256": "7692732a384c2312c3c3ca091de2eb3aef64caa7d0f6de937a1d511ce76a5b00",
       "lines": 2,
       "owner": "plugins/plugin-maps",
       "disposition": "extract-or-configure",
       "reason": "Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-maps/src/client/contracts.ts"
+        "../../../../.eliza/client-features/plugins/plugin-maps/src/client/contracts.ts"
       ],
       "exports": [],
       "seams": [],
@@ -8374,15 +8386,17 @@
     },
     {
       "file": "src/maps/map-plane.ts",
-      "upstreamCandidate": [],
-      "bytes": 1015,
-      "sha256": "3947c38447b17b9058b2c2deec196b89d3ffd70e2c57e9d66a75fefd278b5be0",
+      "upstreamCandidate": [
+        "plugins/plugin-maps/src/client/map-plane.ts"
+      ],
+      "bytes": 1031,
+      "sha256": "a36d87d909dc7dc2ea452c288edf4f3dcd866f5761ea051032c9ab40485d5cf3",
       "lines": 13,
       "owner": "plugins/plugin-maps",
       "disposition": "extract-or-configure",
       "reason": "Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-maps/src/client/map-plane.ts",
+        "../../../../.eliza/client-features/plugins/plugin-maps/src/client/map-plane.ts",
         "./regional-provider",
         "@fontsource/public-sans/files/public-sans-latin-400-normal.woff2?url",
         "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url",
@@ -8407,16 +8421,19 @@
     },
     {
       "file": "src/maps/native-location.ts",
-      "upstreamCandidate": [],
-      "bytes": 630,
-      "sha256": "4d13bce3fb116b24c8cf7a74a43cc332e307fdb397515b00c4fe91b84599cfa7",
+      "upstreamCandidate": [
+        "plugins/plugin-maps/src/client/native-location.ts",
+        "plugins/plugin-maps/src/client/location.ts"
+      ],
+      "bytes": 646,
+      "sha256": "a4c4c380007ba23ee679206063d0069637f59a5e1f143cdfcc1aa4f7f51e301f",
       "lines": 9,
       "owner": "plugins/plugin-maps",
       "disposition": "extract-or-configure",
       "reason": "Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-maps/src/client/location.ts",
-        "../../../../.eliza/patched/plugins/plugin-maps/src/client/native-location.ts",
+        "../../../../.eliza/client-features/plugins/plugin-maps/src/client/location.ts",
+        "../../../../.eliza/client-features/plugins/plugin-maps/src/client/native-location.ts",
         "../platform-plugins",
         "@capacitor/core"
       ],
@@ -8463,15 +8480,17 @@
     },
     {
       "file": "src/maps/regional-provider.ts",
-      "upstreamCandidate": [],
-      "bytes": 1970,
-      "sha256": "6ade7675117e30b6ac9a873438f0be48439ea14b911f1d3c3d859baeebd6e6cc",
+      "upstreamCandidate": [
+        "plugins/plugin-maps/src/client/regional-provider.ts"
+      ],
+      "bytes": 1986,
+      "sha256": "308ea0348c7b1c3c705e0cc7252812dd5290dc81047326739cd5b6c118ff699c",
       "lines": 34,
       "owner": "plugins/plugin-maps",
       "disposition": "extract-or-configure",
       "reason": "Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-maps/src/client/regional-provider.ts",
+        "../../../../.eliza/client-features/plugins/plugin-maps/src/client/regional-provider.ts",
         "../build-flags",
         "../daily",
         "../platform-plugins",
@@ -8507,15 +8526,17 @@
     },
     {
       "file": "src/maps/route-distance.ts",
-      "upstreamCandidate": [],
-      "bytes": 93,
-      "sha256": "947ae151f0669145cc4f79c09d1b8d1bf0a7ec8639c70d23087647cd407479e9",
+      "upstreamCandidate": [
+        "plugins/plugin-maps/src/client/route-distance.ts"
+      ],
+      "bytes": 101,
+      "sha256": "ee1ed25847372d99b3b63c47bd0fd90220210c5e70a5d4fca0a10cbbb0735674",
       "lines": 2,
       "owner": "plugins/plugin-maps",
       "disposition": "extract-or-configure",
       "reason": "Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-maps/src/client/route-distance.ts"
+        "../../../../.eliza/client-features/plugins/plugin-maps/src/client/route-distance.ts"
       ],
       "exports": [],
       "seams": [],
@@ -8523,15 +8544,17 @@
     },
     {
       "file": "src/maps/runtime.ts",
-      "upstreamCandidate": [],
-      "bytes": 86,
-      "sha256": "4cf00ec7b087850bd9119a46b20eddfc7f2472e60992a6dcf1faf3f82dcd3adc",
+      "upstreamCandidate": [
+        "plugins/plugin-maps/src/client/runtime.ts"
+      ],
+      "bytes": 94,
+      "sha256": "6895fb4ae7da5cda2b41af53a0e69bda77565be7ecba612ed567e209e37a3e52",
       "lines": 2,
       "owner": "plugins/plugin-maps",
       "disposition": "extract-or-configure",
       "reason": "Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-maps/src/client/runtime.ts"
+        "../../../../.eliza/client-features/plugins/plugin-maps/src/client/runtime.ts"
       ],
       "exports": [],
       "seams": [],
@@ -8539,15 +8562,17 @@
     },
     {
       "file": "src/maps/saved-places.ts",
-      "upstreamCandidate": [],
-      "bytes": 459,
-      "sha256": "ce54696e7aeb428653b125d8c1e9ff7c437dab1898765a988bd1937386a49173",
+      "upstreamCandidate": [
+        "plugins/plugin-maps/src/client/saved-places.ts"
+      ],
+      "bytes": 475,
+      "sha256": "8299649a576cd6d65364dc8a53cac9bbc488fcb9df0fc6f5da0e552ac7186c9d",
       "lines": 7,
       "owner": "plugins/plugin-maps",
       "disposition": "extract-or-configure",
       "reason": "Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-maps/src/client/saved-places.ts"
+        "../../../../.eliza/client-features/plugins/plugin-maps/src/client/saved-places.ts"
       ],
       "exports": [
         "SavedPlace",
@@ -8571,15 +8596,17 @@
     },
     {
       "file": "src/maps/share.ts",
-      "upstreamCandidate": [],
-      "bytes": 2830,
-      "sha256": "d5912aea697ace7eb210f9751ae49a00c899335d3dba14c24f0f37a212b252db",
+      "upstreamCandidate": [
+        "plugins/plugin-maps/src/client/share.ts"
+      ],
+      "bytes": 2846,
+      "sha256": "a8bd3dba5ec3eaedab4454c2279de7f2c7de9efd1788698cf3b3d726de747d61",
       "lines": 25,
       "owner": "plugins/plugin-maps",
       "disposition": "extract-or-configure",
       "reason": "Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-maps/src/client/share.ts"
+        "../../../../.eliza/client-features/plugins/plugin-maps/src/client/share.ts"
       ],
       "exports": [
         "MapShare",
@@ -8632,15 +8659,17 @@
     },
     {
       "file": "src/maps/state.ts",
-      "upstreamCandidate": [],
-      "bytes": 759,
-      "sha256": "56c20730cb71b003812cc3ae98e203a53d2a04986cb5ffe2f9b76a33f0cb3936",
+      "upstreamCandidate": [
+        "plugins/plugin-maps/src/client/state.ts"
+      ],
+      "bytes": 775,
+      "sha256": "4e83fc8aa70ea95c4f6831a9789fce9520106f6ce19fe04a5a6baac104d07e96",
       "lines": 12,
       "owner": "plugins/plugin-maps",
       "disposition": "extract-or-configure",
       "reason": "Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-maps/src/client/state.ts",
+        "../../../../.eliza/client-features/plugins/plugin-maps/src/client/state.ts",
         "./contracts",
         "./native-location",
         "./saved-places"
@@ -13856,19 +13885,20 @@
       "upstreamCandidate": [
         "packages/contracts/src/native-notes-query.ts",
         "plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts",
-        "plugins/plugin-notes/src/client/notes-query.ts"
+        "plugins/plugin-notes/src/client/notes-query.ts",
+        "packages/contracts/src/device-reviews.ts"
       ],
-      "bytes": 8822,
-      "sha256": "1bf6bb907d27b7fe177e7221bef0e23721aa18677e5b764dcd89447fa9eb154d",
+      "bytes": 8830,
+      "sha256": "56d920b810200bd2d217c57865093dfd5c0284b296d7befe58d083867cd25e31",
       "lines": 82,
       "owner": "plugins/plugin-notes",
       "disposition": "extract-or-split",
       "reason": "Notes and audio metadata persistence; inject legacy keys, secure store, clock and approval contracts.",
       "imports": [
+        "../../../../.eliza/client-features/packages/contracts/src/device-reviews.ts",
         "../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts",
         "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts",
         "../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-query.ts",
-        "../../../../.eliza/patched/packages/contracts/src/device-reviews.ts",
         "../runtime/device-actions",
         "../runtime/notes-contract",
         "../runtime/notes-secure-store",
@@ -13888,15 +13918,17 @@
     },
     {
       "file": "src/prototype/notes-query-review.ts",
-      "upstreamCandidate": [],
-      "bytes": 7513,
-      "sha256": "4e3b93b6fe07ea127647e5f8b668a4c3de8d4318482aed2421a8aa8988f4edfe",
+      "upstreamCandidate": [
+        "packages/contracts/src/device-reviews.ts"
+      ],
+      "bytes": 7521,
+      "sha256": "b1a4d4fe3743dfd5f721f03dc4229b39558c83ae388aba89323ad30d7ff6cb02",
       "lines": 67,
       "owner": "plugins/plugin-notes",
       "disposition": "extract-or-split",
       "reason": "Notes and audio metadata persistence; inject legacy keys, secure store, clock and approval contracts.",
       "imports": [
-        "../../../../.eliza/patched/packages/contracts/src/device-reviews.ts",
+        "../../../../.eliza/client-features/packages/contracts/src/device-reviews.ts",
         "../runtime/modal-inert",
         "../runtime/notes-store"
       ],
@@ -13937,16 +13969,19 @@
     },
     {
       "file": "src/prototype/notes-trash-adapter.ts",
-      "upstreamCandidate": [],
-      "bytes": 11785,
-      "sha256": "ba8b7fb3cbdd47ebe3efaea77d3691a0ca83cece1dcfb8a3c12e07996058d7c7",
+      "upstreamCandidate": [
+        "plugins/plugin-notes/src/client/notes-trash-maintenance.ts",
+        "plugins/plugin-notes/src/client/notes-trash-schedule.ts"
+      ],
+      "bytes": 11801,
+      "sha256": "ca0cdf4d52b22fdfb2c0291d11d03462118a092ce2dc53bd63108773c5c2f5da",
       "lines": 192,
       "owner": "plugins/plugin-notes",
       "disposition": "extract-or-split",
       "reason": "Notes and audio metadata persistence; inject legacy keys, secure store, clock and approval contracts.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-notes/src/client/notes-trash-maintenance.ts",
-        "../../../../.eliza/patched/plugins/plugin-notes/src/client/notes-trash-schedule.ts",
+        "../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-maintenance.ts",
+        "../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-schedule.ts",
         "../daily",
         "../runtime/notes-store",
         "../runtime/notes-trash",
@@ -21598,22 +21633,23 @@
         "plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts",
         "plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts",
         "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts",
-        "plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts"
+        "plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts",
+        "packages/contracts/src/device-reviews.ts"
       ],
-      "bytes": 59851,
-      "sha256": "43fa2fa634e4b2e62ad2ab0db0e24e4cf9b57502b6f68727416ddd0ad3cdc845",
+      "bytes": 59859,
+      "sha256": "07149c0d473bebb7a4ecf36dc77cba319f38cbc8583e2dd818b6b1e7208d2fdf",
       "lines": 479,
       "owner": "packages/ui client integration + existing agent/cloud transports",
       "disposition": "extract-or-split",
       "reason": "Authentication, protocol and approval machinery is generic; remove product view enums, bridge names, endpoints and singleton UI cycles first.",
       "imports": [
+        "../../../../.eliza/client-features/packages/contracts/src/device-reviews.ts",
         "../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts",
         "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts",
         "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts",
         "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts",
         "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts",
         "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts",
-        "../../../../.eliza/patched/packages/contracts/src/device-reviews.ts",
         "../maps/agent-context",
         "../prototype/mvp-features",
         "./alpha-client",
@@ -23148,15 +23184,17 @@
     },
     {
       "file": "src/runtime/notes-trash-policy.ts",
-      "upstreamCandidate": [],
-      "bytes": 4086,
-      "sha256": "c9afe634a88bcdf335d16a0e36555d590f7bc0f299501b55f22fffd36fa52228",
+      "upstreamCandidate": [
+        "plugins/plugin-notes/src/client/notes-trash-policy.ts"
+      ],
+      "bytes": 4094,
+      "sha256": "0296c401fa341afc3347b6e077522bc6948d9aead341ae2acbac9cfdef273554",
       "lines": 61,
       "owner": "plugins/plugin-notes",
       "disposition": "extract-or-split",
       "reason": "Notes and audio metadata persistence; inject legacy keys, secure store, clock and approval contracts.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-notes/src/client/notes-trash-policy.ts",
+        "../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-policy.ts",
         "./notes-contract",
         "./notes-store"
       ],

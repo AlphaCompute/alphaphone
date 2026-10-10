@@ -121,7 +121,7 @@ public final class ReminderTapProcessDeathInstrumentedTest {
    assertEquals(original.getPostTime(),notice(manager,id).getPostTime());
    // Complete the real fresh-user recovery journey through the visible chooser.
    // This is one user action, not another notification intent or direct route injection.
-   android.view.accessibility.AccessibilityNodeInfo offline=awaitVisible("Continue offline");
+   android.view.accessibility.AccessibilityNodeInfo offline=awaitVisible(AppNavigation.offlineLabel());
    assertTrue(offline.isEnabled());assertTrue(offline.isClickable());
    assertTrue(offline.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));
    awaitVisible("Retained reminder tap");awaitVisible("Complete reminder occurrence");

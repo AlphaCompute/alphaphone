@@ -169,7 +169,7 @@
         "apps/app/src/prototype/inbox-cloud-adapter.ts",
         "apps/app/src/runtime/gmail-mailbox.ts",
         "apps/app/src/prototype/calendar-adapter.ts",
-        "patches/eliza/0037-gmail-inbox-read-state.patch"
+        "vendor/eliza/plugins/plugin-inbox/src/inbox/google-gmail-seam.ts"
       ],
       "remaining": "Gmail OAuth code exchange returns 401, Calendar shows only on-device calendars, and the native calendar plugin does not compile at the pin."
     },
