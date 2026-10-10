@@ -149,6 +149,10 @@ export function installWorkflowAdapter(Component:any,views:Bag){
     // The agent has no run for this request. It admits a request only for the version it was reviewed against, so a
     // changed workflow can never start it: that is a known non-run. For an unchanged workflow the request stays
     // retained and the owner may explicitly send the same request again.
+    // Soundness depends on order: `current` was read before this receipt. Version IDs never recur, so a request still
+    // in flight at the receipt read is refused once the version it names is no longer current. Never re-read the
+    // workflow after the receipt and compare that; a run admitted in between would then be labelled not run.
+    // The resend needs no such argument: the agent admits one submission ID at most once, atomically.
     else if(!resolved&&valid()){if(current.versionId!==intent.versionId){await intents.acknowledge(key,retained,signal);if(valid())api?.toast('Your earlier run request was never accepted, and this workflow has changed since, so it can no longer start. Nothing ran. Review the current steps before a new run.');}else notAdmitted={workflowId:id,versionId:intent.versionId,submissionId:intent.submissionId,raw:retained};}}}catch{if(valid())api?.toast('Prior submission could not be reconciled. History remains available; another run is blocked.');}}
   if(valid()){unadmitted=notAdmitted;reviewResend=false;editor=null;lifecycleAvailable=available;lifecycleReview=false;unknownReview=false;reviewRerun=false;detail=current;detailSession=sessionId;runs=history;receipt=null;reviewCancel=false;reviewRun=false;reviewActivation=false;}
  });

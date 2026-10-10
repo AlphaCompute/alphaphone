@@ -7,7 +7,7 @@ import {test,expect,type Page} from '@playwright/test';
 // arrives, lose only the response, hold a request, or answer with the agent's identity-bound refusal.
 // Source/browser evidence only: no resident runtime, emulator or device is exercised here.
 test.beforeEach(async({context,page})=>{await guardNoMedia(context);await page.route(/^https?:\/\/(?!127\.0\.0\.1:|localhost:)/,route=>route.abort());});
-type Rule={method:'GET'|'POST';suffix:string;kind:'lost'|'lost-response'|'hold'|'refuse-typed'|'finished-on-cancel';times:number};
+type Rule={method:'GET'|'POST';suffix:string;includes?:string;kind:'lost'|'lost-response'|'hold'|'refuse-typed'|'finished-on-cancel'|'no-record'|'legacy-status';times:number};
 async function setup(page:Page){
  await page.goto('/?mode=dev&workflows=agent');await installWorkflowListFixture(page);
  await page.evaluate(async()=>{
@@ -17,10 +17,13 @@ async function setup(page:Page){
   c.getWorkflowClient=()=>{const binding=original();if(!binding)return binding;let client=wrapped.get(binding.client);
    if(!client){const inner=binding.client as any;client=new WorkflowProtocol(async(path,body,signal)=>{
      const method=body===undefined?'GET':'POST';f.calls.push({path,method,body:body===undefined?undefined:structuredClone(body)});
-     const rule=f.rules.find((r:any)=>r.method===method&&path.endsWith(r.suffix)&&r.times>0);
+     const rule=f.rules.find((r:any)=>r.method===method&&(r.includes?path.includes(r.includes):path.endsWith(r.suffix))&&r.times>0);
      if(rule){rule.times--;
       if(rule.kind==='lost')throw new TypeError('Failed to fetch');
       if(rule.kind==='lost-response'){await inner.request(path,body,signal);throw new TypeError('Failed to fetch');}
+      // A wrong "no record" answer for a request the agent did admit, and an agent without submission identities.
+      if(rule.kind==='no-record')return {submissionId:path.split('/').at(-1),execution:null};
+      if(rule.kind==='legacy-status'){const {manualSubmissionProtocol:_,...legacy}=await inner.request(path,body,signal);return legacy;}
       if(rule.kind==='hold')await new Promise<void>(resolve=>{f.release=resolve;});
       if(rule.kind==='refuse-typed')throw new WorkflowHttpError(409,{error:'Typed workflow changed before editing',code:'WORKFLOW_TYPED_NOT_APPLIED',workflowId:decodeURIComponent(path.split('/').at(-2)!),mutationId:(body as any).mutationId,expectedVersionId:(body as any).expectedVersionId});
       if(rule.kind==='finished-on-cancel'){const id=decodeURIComponent(path.split('/').at(-2)!),current=await inner.request('/api/workflow/executions/'+encodeURIComponent(id),undefined,signal);return {execution:{...current.execution,status:'succeeded',finished:true,stoppedAt:new Date().toISOString(),output:'Finished before the cancellation arrived'}};}
@@ -86,6 +89,43 @@ test('an unaccepted run request for a workflow that has since changed is closed 
  await expect(status(page)).toHaveText('Paused on this agent');expect(await posts(page,'/run')).toHaveLength(1);expect((await stored(page)).runs).toHaveLength(0);
  await runNow(page).click();await runNow(page).click();await expect(page.getByText('Before alpha input after',{exact:true})).toBeVisible();
  const sent=await posts(page,'/run');expect(sent).toHaveLength(2);expect(sent[1].submissionId).not.toBe(sent[0].submissionId);expect(sent[1].expectedVersionId).not.toBe(saved.versionId);expect((await stored(page)).runs).toHaveLength(1);
+});
+
+test('a wrong "no run" answer cannot start a second run: the confirmed resend returns the one execution already admitted',async({page})=>{
+ await setup(page);const saved=await seed(page);await openFixture(page);await rule(page,{method:'POST',suffix:'/run',kind:'lost-response',times:1});
+ await runNow(page).click();await runNow(page).click();await expect(status(page)).toHaveText('Prior run outcome unknown — inspect history; repeat submission blocked');
+ const first=(await stored(page)).runs;expect(first).toHaveLength(1);
+ // The agent admitted the run, yet both receipt reads (on reopen and just before the resend) wrongly report none.
+ await rule(page,{method:'GET',suffix:'',includes:'/submissions/',kind:'no-record',times:2});
+ await reopenFixture(page);await expect(status(page)).toHaveText('The agent has no run for your earlier request. Run now sends that same request again');
+ await runNow(page).click();await runNow(page).click();await expect(page.getByText('Before alpha input after',{exact:true})).toBeVisible();
+ const sent=await posts(page,'/run');expect(sent).toHaveLength(2);expect(sent[1]).toEqual(sent[0]);expect(sent[1].expectedVersionId).toBe(saved.versionId);
+ const after=(await stored(page)).runs;expect(after).toHaveLength(1);expect(after[0].id).toBe(first[0].id);
+ await page.getByRole('button',{name:'Back to Execution fixture',exact:true}).click();await expect(status(page)).toHaveText('Paused on this agent');await expect(page.getByRole('button',{name:/succeeded execution/})).toHaveCount(1);
+});
+
+test('a run admitted before the workflow changed is matched to its execution, never closed as not run',async({page})=>{
+ await setup(page);const saved=await seed(page);await openFixture(page);await rule(page,{method:'POST',suffix:'/run',kind:'lost-response',times:1});
+ await runNow(page).click();await runNow(page).click();await expect(status(page)).toHaveText('Prior run outcome unknown — inspect history; repeat submission blocked');expect((await stored(page)).runs).toHaveLength(1);
+ await page.evaluate(async saved=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');await c.getWorkflowClient()!.client.changeMetadata(saved.workflowId,saved.versionId,'Execution fixture','Changed after admission',new AbortController().signal,()=>{});},saved);
+ await page.evaluate(()=>{(window as any).faults.calls.length=0;});await reopenFixture(page);
+ await expect(page.getByText('Prior submission matched its exact execution receipt.',{exact:true}).first()).toBeVisible();await expect(page.getByText(/Nothing ran/)).toHaveCount(0);
+ await expect(page.getByRole('button',{name:/succeeded execution/})).toHaveCount(1);expect(await posts(page,'/run')).toHaveLength(0);expect((await stored(page)).runs).toHaveLength(1);
+ // The "not run" closure rests on reading the current version before asking for the receipt: a request that
+ // was still in flight at the receipt read can then no longer be admitted for the version it names.
+ const order=await page.evaluate(()=>(window as any).faults.calls.filter((call:any)=>call.method==='GET').map((call:any)=>call.path as string));
+ const receiptRead=order.findIndex((path:string)=>path.includes('/submissions/')),detailRead=order.findIndex((path:string)=>/\/api\/workflow\/workflows\/[a-f0-9-]+$/.test(path));
+ expect(detailRead).toBeGreaterThanOrEqual(0);expect(receiptRead).toBeGreaterThan(detailRead);expect(order.slice(receiptRead+1).some((path:string)=>/\/api\/workflow\/workflows\/[a-f0-9-]+$/.test(path))).toBe(false);
+});
+
+test('an agent without submission identities never offers a resend: the request stays blocked',async({page})=>{
+ await setup(page);await seed(page);await rule(page,{method:'GET',suffix:'/api/workflow/status',kind:'legacy-status',times:10000});await openFixture(page);
+ await rule(page,{method:'POST',suffix:'/run',kind:'lost',times:1});await runNow(page).click();await runNow(page).click();
+ await expect(status(page)).toHaveText('Prior run outcome unknown — inspect history; repeat submission blocked');
+ const sent=await posts(page,'/run');expect(sent).toHaveLength(1);expect(sent[0]).not.toHaveProperty('submissionId');
+ await reopenFixture(page);await expect(status(page)).toHaveText('Prior run outcome unknown — inspect history; repeat submission blocked');
+ await runNow(page).click();await runNow(page).click();await page.waitForTimeout(400);
+ expect(await posts(page,'/run')).toHaveLength(1);expect((await page.evaluate(()=>(window as any).faults.calls.filter((call:any)=>call.path.includes('/submissions/')).length))).toBe(0);expect((await stored(page)).runs).toHaveLength(0);
 });
 
 test('a run request held in one tab blocks a second tab from submitting another',async({page})=>{
