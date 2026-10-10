@@ -15,8 +15,19 @@ versioned view context. Subscriptions return an unsubscribe callback. View and
 selection changes must call `setViewContext`; selected-object metadata contains
 opaque identifiers and revisions, not file bodies, credentials or hidden content.
 
-`send` requires a verified transport and an allowed, nonsensitive context. Preserve
-typed drafts on errors. Present the exact proposal before calling `approve`.
+`send` requires a verified transport and an allowed, nonsensitive context. Present
+the exact proposal before calling `approve`.
+
+Draft preservation is not yet complete. The composer
+(`prototype/agent-adapter.ts`) consumes the conversation-bound draft and clears the
+input before it connects or dispatches. A failure before dispatch, such as no
+selected agent connection, a changed screen or a changed agent, leaves the text only
+in the user bubble, not in the composer. The required behavior, still open, is to
+consume the draft only after dispatch succeeds, to restore the text after any
+pre-dispatch failure, and to offer a history check rather than a blind resend after
+an interrupted stream. Typed drafts survive navigation, resize and restart only while
+they remain unsent; the [current status](mvp-current-status.md) tracks the remaining
+gap.
 Agent prose never authorizes an action. `cancel` retires pending UI work and
 proposals; it cannot roll back an already dispatched effect. `disconnect` retires
 the transport, but credential revocation belongs to its authentication controller.
@@ -136,17 +147,19 @@ Required live checks include authentication/revocation, account and owner isolat
 conversation recovery, unknown-write reconciliation, real approved actions,
 mail grants and receipts, voice interruption, and offline/mock isolation.
 
-For native arithmetic workflow acceptance, first create and inspect the disposable
-fixture with `scripts/test-real-workflow.mjs`, then explicitly select it:
-
-```sh
-ANDROID_SERIAL=emulator-N ALPHA_WORKFLOW_FIXTURE_ID=REVIEWED_UUID ALPHA_DEVICE_SESSION_FILE=/owner-only/session.json ALPHA_DEVICE_RESULTS=test-results/workflows-final node scripts/android-workflows-smoke.mjs
-```
-
-The runner requires an OWNER session, ready workflow capability, list/detail
-agreement and the exact inactive arithmetic-only source. Keep the fixture free
-from concurrent edits. Never pass session credentials as token arguments or reuse
-a historical workflow UUID as proof of current admission.
+Native arithmetic workflow acceptance (`WorkflowInstrumentedTest`, opt-in argument
+`workflows=true`) previously ran through a dedicated wrapper. That wrapper and the
+other aggregate smoke runners were removed on October 8 at the owner's request, so
+there is no current repository runner for this case. A re-run needs an owned
+disposable emulator, a matching archived app/test APK pair, an OWNER session from
+ordinary pairing and the exact inactive arithmetic-only fixture created and inspected
+with `scripts/test-real-workflow.mjs`. Invoke the instrumentation method directly
+with `adb shell am instrument`. A direct run does not repeat the wrapper's host-side
+list/detail and source checks, so record it as a different result from the archived
+runs. Keep the fixture free from concurrent edits. Never pass session credentials as
+arguments, and never reuse a historical workflow UUID as proof of current admission.
+The isolated native workflow campaign that does exist is
+`node scripts/android-workflow-native.mjs` (see [verification](verification.md)).
 
 ## Ownership and recovery invariants
 

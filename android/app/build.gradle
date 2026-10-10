@@ -15,12 +15,12 @@ def appVersionName = (envValue('ELIZAOS_VERSION_NAME') ?: identity.version)?.toS
 if (appVersionName == null || !(appVersionName ==~ /[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}/))
  throw new GradleException('ELIZAOS_VERSION_NAME / app.config.json version must be a plain version label')
 // Release signing is applied only when all four upstream variables are present.
-// Values are never printed; a partial set is reported by name only.
+// A partial set fails the build. Values are never printed; names only.
 def releaseSigningNames = ['ELIZAOS_KEYSTORE_PATH', 'ELIZAOS_KEYSTORE_PASSWORD', 'ELIZAOS_KEY_ALIAS', 'ELIZAOS_KEY_PASSWORD']
 def releaseSigningMissing = releaseSigningNames.findAll { envValue(it) == null }
 def releaseSigningReady = releaseSigningMissing.isEmpty()
 if (!releaseSigningReady && releaseSigningMissing.size() < releaseSigningNames.size())
- logger.warn("[release-signing] incomplete signing environment; producing unsigned release APKs. Missing: ${releaseSigningMissing.join(', ')}")
+ throw new GradleException("[release-signing] incomplete signing environment. Missing: ${releaseSigningMissing.join(', ')}. Set all four ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS and ELIZAOS_KEY_PASSWORD, or none.")
 if (releaseSigningReady && !file(envValue('ELIZAOS_KEYSTORE_PATH')).isFile())
  throw new GradleException('ELIZAOS_KEYSTORE_PATH does not name a readable keystore file')
 android {
@@ -118,6 +118,10 @@ dependencies {
  androidTestCompileOnly files(speechTestApiJar).builtBy(extractSpeechAndroidTestApi)
  androidTestImplementation 'androidx.test:runner:1.6.2'
  androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+ // Accessibility (ATF through Espresso) and TalkBack-order/rotation checks over the real UI.
+ androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
+ androidTestImplementation 'androidx.test.espresso:espresso-accessibility:3.7.0'
+ androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
 }
 def stageLocalAgentSources = tasks.register('stageLocalAgentSources', Exec) {
  workingDir rootProject.projectDir.parentFile

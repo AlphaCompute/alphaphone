@@ -16,6 +16,41 @@ function wallTime(off:number,hours:number):Date|null {
   return date.getFullYear()===target.getUTCFullYear()&&date.getMonth()===target.getUTCMonth()&&date.getDate()===target.getUTCDate()&&date.getHours()===target.getUTCHours()&&date.getMinutes()===target.getUTCMinutes()?date:null;
 }
 
+/** Instant of a civil wall time in an IANA zone; undefined when it does not exist or occurs twice. */
+export function zonedInstant(date:{year:number;month:number;day:number},minutes:number,zone:string):number|undefined{
+  const wall=(instant:number)=>{const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:zone,hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).formatToParts(new Date(instant)).map(p=>[p.type,p.value]));return Date.UTC(Number(parts.year),Number(parts.month)-1,Number(parts.day),Number(parts.hour),Number(parts.minute));};
+  const base=Date.UTC(date.year,date.month-1,date.day,0,minutes),found=new Set<number>();
+  for(const probe of [base-86400000,base,base+86400000]){const offset=wall(probe)-Math.floor(probe/60000)*60000,instant=base-offset;if(wall(instant)===base)found.add(instant);}
+  return found.size===1?[...found][0]:undefined;
+}
+/** IANA zones offered for a timed event: the device zone first, then a short common list. */
+export function calendarZoneChoices(deviceZone:string,selected?:string):string[]{
+  const common=['UTC','America/Los_Angeles','America/Denver','America/Chicago','America/New_York','America/Sao_Paulo','Europe/London','Europe/Paris','Europe/Berlin','Africa/Lagos','Asia/Kolkata','Asia/Singapore','Asia/Tokyo','Australia/Sydney','Pacific/Auckland'];
+  return [...new Set([deviceZone,...(selected?[selected]:[]),...common])];
+}
+const RRULES:Record<string,string>={daily:'FREQ=DAILY',weekdays:'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR',weekly:'FREQ=WEEKLY'};
+/** Guests, video calls and alerts are completed in Android Calendar through the insert handoff. */
+export const calendarNeedsHandoff=(form:Bag)=>!!(form.video||form.who?.length||form.alert!=null);
+/** All-day, a non-device zone or a repeat uses the 0041 direct save (creation only). */
+export const calendarUsesOptions=(form:Bag,deviceZone:string)=>!!form.allDay||(!!form.zone&&form.zone!==deviceZone)||(form.repeat&&form.repeat!=='none');
+/**
+ * Provider fields for the 0041 direct save. All-day events are one UTC date (CalendarContract
+ * all-day rule); timed events take the wall time in the chosen IANA zone. Throws a user message.
+ */
+export function calendarOptionEvent(form:Bag,deviceZone:string,now=new Date()):{title:string;body:string;location:string;begin:number;end:number;allDay:boolean;timeZone:string;rrule:string}{
+  const day=new Date(now.getFullYear(),now.getMonth(),now.getDate()+Number(form.off||0),12);
+  const date={year:day.getFullYear(),month:day.getMonth()+1,day:day.getDate()};
+  const rrule=form.repeat&&form.repeat!=='none'?RRULES[form.repeat]:'';
+  if(rrule===undefined)throw Error('Choose a supported repeat. Nothing was saved.');
+  const base={title:String(form.title||'').trim(),body:form.notes||'',location:form.where||'',rrule};
+  if(form.allDay){const begin=Date.UTC(date.year,date.month-1,date.day);return {...base,begin,end:begin+DAY,allDay:true,timeZone:'UTC'};}
+  const zone=form.zone||deviceZone,start=Math.round(Number(form.t)*60),length=Math.round(Number(form.d)*60);
+  if(!Number.isFinite(start)||!Number.isFinite(length)||length<=0)throw Error('Choose a start and end time. Nothing was saved.');
+  const begin=zonedInstant(date,start,zone),end=zonedInstant(date,start+length,zone);
+  if(begin===undefined||end===undefined||end<=begin)throw Error(`That time does not exist or occurs twice in ${zone} because the clocks change. Choose another time. Nothing was saved.`);
+  return {...base,begin,end,allDay:false,timeZone:zone};
+}
+
 /** Android CalendarProvider data in the original calendar presentation. */
 export function installCalendarAdapter(Component: any, views: Bag) {
   const p=Component.prototype, mount=p.componentDidMount, unmount=p.componentWillUnmount;
@@ -102,7 +137,10 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     if(browserCalendar){state={...state,calPrefs:{...state.calPrefs,personal:{on:browserCalendar.visible!==false,color:browserCalendar.color||'acc'}},events:browserCalendar.visible===false?(state.events||[]).filter((e:Bag)=>!e.alphaCalendarId):state.events};}
     const out=render(state,api);
     if(browserCalendar?.visible===false&&state.open){const detail=render(providerState,api);out.ev=detail.ev;out.detail=detail.detail;}
-    out.emptyText=rangeReady?(truncated?'Calendar results incomplete. Some events may be missing.':reminderStale?'Reminders unavailable. Retry before relying on this schedule.':'No visible events or reminders for this day.'):status;
+    out.emptyText=rangeReady?(truncated?'Calendar results incomplete. Some events may be missing.':reminderStale?'Reminders unavailable. Retry before relying on this schedule.':'No visible events or reminders for this day.'+(Capacitor.isNativePlatform()?' Only calendars stored in Android Calendar on this phone appear here.':'')):status;
+    // Source disclosure: Android CalendarProvider calendars only. Connected Google calendars need OAuth (not yet available).
+    out.calendarSourceLabel=Capacitor.isNativePlatform()?'On-device calendars':'Browser calendar';
+    out.calendarSourceText=Capacitor.isNativePlatform()?'Shows calendars stored in Android Calendar on this phone, including accounts synced by Android. Connected Google calendars are not shown here yet.':'Shows the calendar stored in this browser.';
     out.nativeStatusLabel=[rangeReady&&truncated?'Calendar results incomplete. Some events may be missing.':'',reminderStale?'Reminders may be out of date. Tap to retry.':''].filter(Boolean).join(' ');
     out.nativeStatusRetry=()=>{void refresh(false,true);void owner?.refreshReminders();};
     out.browserRecovery=!Capacitor.isNativePlatform()&&loadFailed&&!loading;out.openBrowserRecovery=openCalendarRecovery;
@@ -184,12 +222,65 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       out.f.nativeReviewDate=reviewedDate?reviewedDate.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'Choose a valid local date';
       const destinations=[{id:'local',name:(Capacitor.isNativePlatform()?'On this phone':'In this app')},...calendars.filter(c=>c.writable&&!c.local).map(c=>({id:c.id,name:c.name}))];
       out.f.cals=f.alphaCalendarId ? [{name:(Capacitor.isNativePlatform()?'On this phone':'In this app'),dot:'var(--acc)',css:'background:var(--fg);color:var(--bg)',pick:()=>{}}] : [...out.f.cals.filter((c:Bag)=>c.name==='Reminders'),...destinations.map(c=>({name:c.name,dot:'var(--acc)',css:f.cal===`native:${c.id}`?'background:var(--fg);color:var(--bg)':'background:var(--bg)',pick:()=>api.set({form:{...api.get('calendar').form,cal:`native:${c.id}`,alert:null}})}))];
+      const deviceZone=Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const nativeOptions=Capacitor.isNativePlatform()&&!f.alphaCalendarId&&!!f.cal?.startsWith('native:');
+      out.f.optionsAvailable=nativeOptions;
+      out.f.allDay=!!f.allDay;out.f.zone=f.zone||deviceZone;
+      out.f.toggleAllDay=()=>{const form=api.get('calendar').form;if(form)api.set({form:{...form,allDay:!form.allDay}});};
+      out.f.zoneChoices=calendarZoneChoices(deviceZone,f.zone).map(zone=>({zone,label:zone===deviceZone?`${zone} (this phone)`:zone,on:(f.zone||deviceZone)===zone,pick:()=>{const form=api.get('calendar').form;if(form)api.set({form:{...form,zone}});}}));
+      out.f.setZone=(event:Bag)=>{const zone=typeof event==='string'?event:event?.target?.value;const form=api.get('calendar').form;if(form&&calendarZoneChoices(deviceZone,form.zone).includes(zone))api.set({form:{...form,zone}});};
+      // One tap to Android Calendar, prefilled; its editor owns the save.
+      out.f.insertHandoff=async()=>{
+        const current=api.get('calendar').form;if(!current?.title?.trim()||!Capacitor.isNativePlatform())return;
+        let event;try{event=calendarOptionEvent({...current,repeat:current.repeat||'none'},deviceZone);}catch(error){api.toast((error as Error).message);return;}
+        const guests=(current.who||[]).filter((who:unknown)=>typeof who==='string'&&/^[^\s@,;<>]+@[^\s@,;<>]+$/.test(who));
+        try{
+          const result=await calendar.insertHandoff({event:{...event,attendees:guests,alerts:current.alert!=null?[Number(current.alert)]:[]}});
+          if(result.status==='opened'){owner&&(owner.calendarHandoffPending=true);api.toast(result.alertsPrefilled===false?'Opened in Android Calendar. Add the alert there, then save. Alpha cannot confirm the event was saved.':'Opened in Android Calendar. Save it there; Alpha cannot confirm the event was saved.');}
+          else api.toast(result.status==='unavailable'?'No Android Calendar editor is installed. Nothing was saved.':'Android Calendar could not open this draft. Nothing was saved.');
+        }catch{api.toast('Android Calendar could not open this draft. Nothing was saved.');}
+      };
+      // 0041 direct save: all-day, chosen zone or repeat, with provider readback of each field.
+      const saveOptions=async(current:Bag,currentOwner:Bag)=>{
+        let event;try{event=calendarOptionEvent(current,deviceZone);}catch(error){api.toast((error as Error).message);return;}
+        const epoch=creationDraftEpoch;let submittedForm=current;
+        const ownsForm=()=>owner===currentOwner&&!document.hidden&&api.isActive()&&creationDraftEpoch===epoch&&api.get('calendar').form===submittedForm;
+        currentOwner.calendarSaving=true;
+        try{
+          const permission=await calendar.requestAccess();if(!ownsForm())return;if(permission.status!=='granted'){api.toast('Calendar access was not granted. Nothing was saved.');return;}
+          const previous=await readCreations();if(!ownsForm())return;
+          if(previous.length&&!current.separateCreation){api.toast('Check previous event creation receipts before saving, or explicitly create a separate event.');api.set({});return;}
+          const creationId=current.creationId||crypto.randomUUID();
+          if(!current.creationId){submittedForm={...current,creationId};api.set({form:submittedForm});}
+          const result=await calendar.saveOptions({creationId,separateCreation:current.separateCreation===true,calendarId:current.cal.slice(7),event});
+          if(!ownsForm())return;
+          if(result.status==='pending-creation'){await readCreations();api.toast('Another creation needs recovery. Nothing was retried.');api.set({});return;}
+          if(result.status==='read-only'){api.toast('This calendar is read-only. Choose another calendar. Nothing was saved.');return;}
+          if(result.status!=='saved'||result.creationId!==creationId)throw Error('Unconfirmed calendar write');
+          const readback=await calendar.readOptions({id:result.id});
+          if(readback.status!=='ready'||readback.allDay!==event.allDay||readback.timeZone!==event.timeZone||readback.rrule!==event.rrule)throw Error('Calendar readback mismatch');
+          const targetDay=Number(current.off||0);
+          currentOwner.calendarFormCommitted?.(api.get('calendar').form);
+          api.set({form:null,open:null,day:targetDay,month:null});
+          const ack=await calendar.acknowledgeCreation({creationId});if(ack.status!=='acknowledged')throw Error('Unconfirmed receipt acknowledgement');
+          desired=rangeFor({...currentOwner.vget('calendar'),day:targetDay,month:null});await refresh(false,true);
+          const saved=currentOwner.nativeCalendarRows?.find((e:Bag)=>e.alphaCalendarId===result.id);
+          if(saved&&owner===currentOwner&&!document.hidden&&api.isActive()&&!api.get('calendar').form)api.set({open:saved.id,day:saved.off,openDay:saved.off});
+          api.toast(event.allDay?'All-day event saved and verified in Android Calendar.':event.rrule?'Repeating event saved and verified in Android Calendar.':`Event saved in ${event.timeZone} and verified in Android Calendar.`);
+        }catch{try{await readCreations();}catch{if(owner===currentOwner&&creationDraftEpoch===epoch){creationPending=null;creationRecoveryFailed=true;}}if(owner===currentOwner&&!document.hidden&&api.isActive()&&creationDraftEpoch===epoch)api.toast('The calendar write was not confirmed. Check creation receipts before creating another event.');}
+        finally{currentOwner.calendarSaving=false;if(owner===currentOwner)api.set({});}
+      };
       if(f.cal?.startsWith('native:'))out.f.save=async()=>{
         if(owner?.calendarSaving)return;
         if(owner?.calendarWriteUncertain&&api.get('calendar').form?.alphaCalendarId){api.toast('Refresh device calendars and check the previous event before saving again.');return;}
         const current=api.get('calendar').form,currentOwner=owner;
         if(!current?.title?.trim()||!currentOwner)return;
-        if((Capacitor.isNativePlatform()&&(current.repeat!=='none'||current.video||current.who?.length||current.alert!=null))){api.toast('Recurring events, invitations, video calls and alerts currently require Android Calendar.');return;}
+        if(!Capacitor.isNativePlatform()&&current.allDay){api.toast('All-day events are saved in the Android app. Turn off All day and enter a start time to save here. Nothing was saved.');return;}
+        if(Capacitor.isNativePlatform()&&calendarNeedsHandoff(current)){if(window.confirm('Guests, video calls and alerts are added in Android Calendar. Open it with this event filled in?'))await out.f.insertHandoff();return;}
+        if(Capacitor.isNativePlatform()&&calendarUsesOptions(current,deviceZone)){
+          if(current.alphaCalendarId){api.toast('Edit all-day, time-zone and repeating events in Android Calendar.');return;}
+          await saveOptions(current,currentOwner);return;
+        }
         const date=wallTime(Number(current.off||0),Number(current.t)),end=wallTime(Number(current.off||0),Number(current.t)+Number(current.d));
         if(!date||!end||end.getTime()<=date.getTime()){api.toast('This local time does not exist because the clocks change. Choose another start or end time. Nothing was saved.');return;}
         const epoch=creationDraftEpoch;let submittedForm=current;

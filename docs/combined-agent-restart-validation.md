@@ -1,8 +1,8 @@
 # Combined agent and phone process restart campaign
 
-Prepared source only; not compiled or executed by this task. This is a separate opt-in campaign, preserving the existing CombinedAgentInstrumentedTest and production sources.
+Historical design record. The restart wrapper described here was removed on October 8 with the other aggregate smoke runners, at the owner's request, and this campaign has no current repository runner. The instrumentation class remains; running it requires a new reviewed host-side runner. Prepared source only; not compiled or executed by this task. This is a separate opt-in campaign, preserving the existing CombinedAgentInstrumentedTest and production sources.
 
-`CombinedAgentRestartInstrumentedTest` has three explicit methods, each gated by `combinedAgentRestart=1` and `restartPhase=prepare|verify|cleanup`. The runner invokes the exact method so skipped phases cannot masquerade as acceptance. `scripts/android-combined-agent-restart-smoke.mjs` passed `node --check`; Android compilation and real execution remain pending.
+`CombinedAgentRestartInstrumentedTest` has three explicit methods, each gated by `combinedAgentRestart=1` and `restartPhase=prepare|verify|cleanup`. The runner invokes the exact method so skipped phases cannot masquerade as acceptance. The removed wrapper had passed `node --check`; Android compilation and real execution remained pending.
 
 ## Preparation
 
@@ -26,17 +26,9 @@ During verification the proxy records authenticated GET evidence and rejects/cou
 
 ## Run and cleanup
 
-Supply the same reviewed launcher environment (`ALPHA_NODE_BIN`, `ALPHA_BUN`, `ALPHA_COMBINED_SOURCE`, `ALPHA_COMBINED_SOURCE_MANIFEST`, `ALPHA_COMBINED_PROFILE`, `ELIZA_INFERENCE_LIBRARY`, `ELIZA_KOKORO_MODEL_DIR`, `ELIZA_WHISPER_BINARY`, `ELIZA_WHISPER_MODEL`, `ELIZA_WHISPER_BINARY_SHA256`) plus:
+The removed wrapper took the reviewed launcher environment (`ALPHA_NODE_BIN`, `ALPHA_BUN`, `ALPHA_COMBINED_SOURCE`, `ALPHA_COMBINED_SOURCE_MANIFEST`, `ALPHA_COMBINED_PROFILE`, `ELIZA_INFERENCE_LIBRARY`, `ELIZA_KOKORO_MODEL_DIR`, `ELIZA_WHISPER_BINARY`, `ELIZA_WHISPER_MODEL`, `ELIZA_WHISPER_BINARY_SHA256`) plus `ANDROID_SERIAL`, `ALPHA_BUILD_ARCHIVE`, `ALPHA_COMBINED_OWNER_SESSION` and `ALPHA_COMBINED_ALLOW_RESTART=1`. Any replacement runner must keep the cleanup rules below.
 
-```sh
-ANDROID_SERIAL=emulator-... \
-ALPHA_BUILD_ARCHIVE=test-results/prototype-build... \
-ALPHA_COMBINED_OWNER_SESSION=/absolute/private/profile/paired-session.json \
-ALPHA_COMBINED_ALLOW_RESTART=1 \
-node scripts/android-combined-agent-restart-smoke.mjs
-```
-
-The wrapper always requests native cleanup, which verifies ownership before removing its paired credential/enrollment and exact synthetic note, then restores the original selection. Host cleanup validates each exact fixture definition, cancels only its own unfinished executions and waits for terminal state before deleting the owned effect directory. Failed cleanup preserves evidence and marks acceptance failed. An interrupted runner may leave the private checkpoint for explicit cleanup; never overwrite it or clear app data to make the test pass.
+The wrapper always requested native cleanup, which verifies ownership before removing its paired credential/enrollment and exact synthetic note, then restores the original selection. Host cleanup validates each exact fixture definition, cancels only its own unfinished executions and waits for terminal state before deleting the owned effect directory. Failed cleanup preserves evidence and marks acceptance failed. An interrupted runner may leave the private checkpoint for explicit cleanup; never overwrite it or clear app data to make the test pass.
 
 Evidence is written under the selected archive's `combined-agent-restart` directory: prepare, verify and cleanup instrumentation outputs, source/APK hashes, process IDs, zero-replay assertions and final host cleanup status. No credentials or pairing codes are written to public artifacts.
 

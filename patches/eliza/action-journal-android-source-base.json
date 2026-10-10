@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-09",
+  "upstream": "elizaOS/eliza",
+  "baseCommit": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
+  "patch": "0077-action-journal-android.patch",
+  "patchSha256": "0a1fdc534992bb11c0235e922eaacb3ec7fb9d4be61cb0d00ce9f8e6cee260ff",
+  "summary": "Adds plugins/plugin-native-action-journal/android: a host-configured durable reserve -> applying -> terminal journal (ActionJournal, ActionJournalConfiguration) and an abstract Capacitor bridge (ActionJournalPlugin) that hosts subclass with their own plugin name, encrypted Storage and ResultPolicy, plus synthetic JVM tests. Generalizes Alpha's AlphaActionJournalPlugin without its Clock, reminder and notification recoveries.",
+  "filesChanged": [
+    "plugins/plugin-native-action-journal/android/README.md",
+    "plugins/plugin-native-action-journal/android/build.gradle",
+    "plugins/plugin-native-action-journal/android/src/main/AndroidManifest.xml",
+    "plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournal.java",
+    "plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournalConfiguration.java",
+    "plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournalPlugin.java",
+    "plugins/plugin-native-action-journal/test/native-host/ActionJournalTest.java",
+    "plugins/plugin-native-action-journal/test/native-host/journal.node.mjs"
+  ],
+  "contract": {
+    "slots": "<namespace>:<scope>:index and <namespace>:<scope>:entry:<proposalId>; Alpha keeps namespace action-journal:v1, so adoption reads every saved entry unchanged",
+    "reserve": "creates once; an identical (operationHash, record) replay returns the stored entry with created:false; a changed replay is refused; the index commits before the entry; a full index (default 2048) refuses new proposals",
+    "markApplying": "only from reserved; records attemptId and applyingAt",
+    "finish": "status in succeeded|failed|unknown|cancelled; host ResultPolicy.check runs first; succeeded requires phase applying; terminal replays must be identical",
+    "update": "host transitions under the journal lock; scope, proposalId, operationId, operationHash and record can never change",
+    "list": "reservation order through ResultPolicy.listView; get returns one exact entry",
+    "bridge": "one serial worker; every bridge in a process must share one ActionJournal instance; destroyed bridges reject queued calls; no device action, approval, logging or plaintext fallback"
+  },
+  "verification": [
+    {
+      "command": "git apply --check -v 0077-action-journal-android.patch",
+      "where": "clean sparse clone of baseCommit",
+      "result": "pass (8 files, all added)"
+    },
+    {
+      "command": "node --test test/native-host/journal.node.mjs (javac + java 21 against org.json 20250517)",
+      "where": "plugins/plugin-native-action-journal after applying 0077 and 0078",
+      "result": "1 pass, 0 fail (ActionJournalTest: transitions, replay, bounds, crash ordering, policy, identity, concurrency)"
+    },
+    {
+      "command": "javac --release 21 -cp android-36/android.jar:@capacitor/android 8.x classes.jar android/src/main/java/ai/eliza/plugins/actionjournal/*.java",
+      "result": "pass (bridge and engine compile); no Gradle module build because Alpha does not yet include the module"
+    },
+    {
+      "command": "node --test test/action-journal-upstream.test.mjs",
+      "where": "Alpha repository (applies 0077 then 0078 to an empty directory and runs both upstream tests)",
+      "result": "pass"
+    }
+  ],
+  "network": "No network, accounts or credentials; in-memory synthetic storage only.",
+  "isolation": "Authored in a sparse --shared clone of vendor/eliza checked out at baseCommit under the session scratchpad and exported with scripts/export-eliza-patch.mjs; applied and tested only in a second clean sparse clone of baseCommit; never applied to vendor/eliza.",
+  "deployment": "Not submitted upstream. Reference-only until Alpha consumes the module: Gradle must include ../.eliza/patched/plugins/plugin-native-action-journal/android as :eliza-action-journal (android/settings.gradle) and the app must depend on it (android/app/build.gradle); test/eliza-patch-preparation.test.mjs must stop pinning the applied set to 0038 only. Then re-export 0077 and 0078 at the pin with scripts/export-eliza-patch.mjs to applied <topic>-source.json manifests and make AlphaActionJournalPlugin extend ActionJournalPlugin with namespace action-journal:v1 and its existing result rules as the ResultPolicy."
+}

@@ -14,6 +14,7 @@ import android.webkit.*;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 import androidx.webkit.ProfileStore;
+import androidx.webkit.WebSettingsCompat;
 import androidx.webkit.WebStorageCompat;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
@@ -22,6 +23,11 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import android.content.Intent;
+import android.app.AlertDialog;
+import androidx.activity.OnBackPressedCallback;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import java.util.*;
 
 /** Public navigation only. Child WebViews deliberately have no app JavaScript interface.
@@ -48,6 +54,7 @@ public class AlphaBrowserPlugin extends Plugin {
  private void resetHostDocument() {
   presentedId=null;cancelFile();if(reading!=null)reading.cancel();
   if(downloads!=null)downloads.dismissDialogs();
+  dismissSiteDialogs();exitFullscreen(true);
   ArrayList<Tab> all=new ArrayList<>(tabs.values());tabs.clear();
   // Private profiles are purged; the persistent profile keeps its sign-ins.
   for(Tab tab:all)dispose(tab);
@@ -90,11 +97,29 @@ public class AlphaBrowserPlugin extends Plugin {
  private Tab fileTab;
  private long fileNavigation;
  private boolean pickerOutstanding;
+ private ActivityResultLauncher<String[]> runtimePermissions;
+ private java.util.function.Consumer<Map<String,Boolean>> runtimeResult;
+ private ActivityResultLauncher<Uri> takePicture;
+ private Uri pictureUri;
+ /** One site prompt at a time: permission, HTTP authentication or camera choice. */
+ private AlertDialog siteDialog;
+ private Tab siteDialogTab;
+ private Runnable siteDialogCancel;
+ private View customView;
+ private FrameLayout fullscreen;
+ private Tab fullscreenTab;
+ private WebChromeClient.CustomViewCallback customCallback;
+ private OnBackPressedCallback fullscreenBack;
  private void cancelFile() { ValueCallback<Uri[]> callback=fileCallback;fileCallback=null;fileTab=null;if(callback!=null)callback.onReceiveValue(null); }
  @Override public void load() {
   reading=new BrowserReading(getActivity(),id->{AlphaVoiceCloudPlugin voice=(AlphaVoiceCloudPlugin)getBridge().getPlugin("AlphaVoiceCloud").getInstance();voice.cancelBrowserSpeech(id);});
   pageShare=getActivity().getActivityResultRegistry().register("alpha-browser-share",new ActivityResultContracts.StartActivityForResult(),result->{shareOutstanding=false;});
   downloads=new BrowserDownloads(getActivity());
+  downloads.purgeStaleCaptures();
+  runtimePermissions=getActivity().getActivityResultRegistry().register("alpha-browser-site-permission",new ActivityResultContracts.RequestMultiplePermissions(),result->{
+   java.util.function.Consumer<Map<String,Boolean>> callback=runtimeResult;runtimeResult=null;if(callback!=null)callback.accept(result);
+  });
+  takePicture=getActivity().getActivityResultRegistry().register("alpha-browser-take-picture",new ActivityResultContracts.TakePicture(),this::pictureTaken);
   bookmarks=new BrowserBookmarks(getActivity());
   sessionStore=new BrowserSessionStore(getActivity());
   profileRetirement=getContext().getSharedPreferences("alpha-browser-retired-profiles",0);
@@ -130,7 +155,7 @@ public class AlphaBrowserPlugin extends Plugin {
   }
  }); }
 
- private static class Tab { BrowserReadingWorld readingWorld; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
+ private static class Tab { BrowserReadingWorld readingWorld; BrowserDownloads.BlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
  /** Credentials stay in the framework/provider and the remote document. No bridge API
   * reads fields or replaces Chromium's frame-specific webDomain metadata. The only addition
   * is the committed top-level origin, which the password provider requires to equal the
@@ -159,6 +184,18 @@ public class AlphaBrowserPlugin extends Plugin {
   t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
   t.web.clearFocus();
   if(manager!=null)manager.cancel();
+  t.autofillVirtualId=View.NO_ID;
+ }
+ /** A page-initiated main-frame navigation (a sign-in form submission usually navigates)
+  * ends the selected tab's framework session with commit() instead of cancel(), so the
+  * selected provider can offer Save for the values the user typed. The provider still asks
+  * the user; nothing is stored here. Overlays, pause, tab switch, close and user-entered
+  * addresses keep cancelling. */
+ private void commitAutofill(Tab t) {
+  t.autofillEnabled=false;
+  AutofillManager manager=getActivity().getSystemService(AutofillManager.class);
+  if(manager!=null)manager.commit();
+  t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
   t.autofillVirtualId=View.NO_ID;
  }
  private void disableAutofill(Tab t) {
@@ -203,8 +240,14 @@ public class AlphaBrowserPlugin extends Plugin {
  private void loading(Tab t) { loading(t,false); }
  private void loading(Tab t,boolean startedCallback) {
   if(reading!=null)reading.cancel();
-  disableAutofill(t);
+  if(startedCallback&&t.autofillEnabled&&!paused&&Objects.equals(presentedId,t.id))commitAutofill(t);
+  else disableAutofill(t);
   if(downloads!=null)downloads.cancelReview(t.id);
+  if(t.capture!=null)t.capture.cancel();
+  clearFind(t);
+  if(siteDialogTab==t)dismissSiteDialogs();
+  if(fullscreenTab==t)exitFullscreen(true);
+  if(!startedCallback)t.authAttempts=0;
   if(t.readingWorld!=null&&!startedCallback)t.readingWorld.invalidate();
   t.navigation++;if(fileTab==t)cancelFile();
   clearTimeout(t); t.loading=true; t.committed=false; t.error=""; t.httpStatus=0; t.finishedUrl="";
@@ -214,9 +257,12 @@ public class AlphaBrowserPlugin extends Plugin {
  }
  private void dispose(Tab t) {
   if(t.readingWorld!=null)t.readingWorld.close();
+  if(t.capture!=null)t.capture.close();
   if(reading!=null)reading.cancel();
   disableAutofill(t);
-  if(downloads!=null)downloads.cancelReview(t.id);
+  if(downloads!=null){downloads.cancelReview(t.id);if(t.priv)downloads.forgetPrivate(t.id);}
+  if(siteDialogTab==t)dismissSiteDialogs();
+  if(fullscreenTab==t)exitFullscreen(true);
   if(fileTab==t)cancelFile();
   clearTimeout(t);
   if(t.frame != null && t.frame.getParent() != null) ((ViewGroup)t.frame.getParent()).removeView(t.frame);
@@ -253,7 +299,7 @@ public class AlphaBrowserPlugin extends Plugin {
   try { Uri u = Uri.parse(value); return ("https".equalsIgnoreCase(u.getScheme()) || "http".equalsIgnoreCase(u.getScheme())) && u.getHost() != null && u.getUserInfo() == null && !value.contains("\n") && !value.contains("\r"); } catch (Exception e) { return false; }
  }
  private void fail(Tab t, String message) { disableAutofill(t); clearTimeout(t); t.error = message; t.loading = false; t.committed = false; t.web.stopLoading(); t.web.setVisibility(View.INVISIBLE); t.message.setText(message); t.message.setVisibility(View.VISIBLE); emit(t); }
- private JSObject state(Tab t) { JSObject s = new JSObject(); s.put("session", session); s.put("id", t.id); s.put("sequence", ++sequence); s.put("navigation", String.valueOf(t.navigation)); s.put("url", t.url); s.put("title", t.dead ? "" : t.web.getTitle()); s.put("loading", t.loading); s.put("committed", t.committed); s.put("httpStatus", t.httpStatus); s.put("progress", t.dead ? 0 : t.web.getProgress()); s.put("canBack", !t.dead && t.web.canGoBack()); s.put("canForward", !t.dead && t.web.canGoForward()); s.put("error", t.error); s.put("private", t.priv); return s; }
+ private JSObject state(Tab t) { JSObject s = new JSObject(); s.put("session", session); s.put("id", t.id); s.put("sequence", ++sequence); s.put("navigation", String.valueOf(t.navigation)); s.put("url", t.url); s.put("title", t.dead ? "" : t.web.getTitle()); s.put("loading", t.loading); s.put("committed", t.committed); s.put("httpStatus", t.httpStatus); s.put("progress", t.dead ? 0 : t.web.getProgress()); s.put("canBack", !t.dead && t.web.canGoBack()); s.put("canForward", !t.dead && t.web.canGoForward()); s.put("error", t.error); s.put("private", t.priv); s.put("passkeys", t.passkeys); return s; }
  private void emit(Tab t) { if (tabs.get(t.id) == t) notifyListeners("stateChanged", state(t)); }
  private void run(PluginCall call, java.util.function.Consumer<Tab> action) { getActivity().runOnUiThread(() -> { if (!Objects.equals(session, call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t = tabs.get(call.getString("id")); if (t == null || t.dead) { call.reject("Browser tab is unavailable"); return; } try { action.accept(t); call.resolve(state(t)); } catch (Exception e) { call.reject("Browser operation failed"); } }); }
  @PluginMethod public void create(PluginCall call) { getActivity().runOnUiThread(() -> {
@@ -269,7 +315,7 @@ public class AlphaBrowserPlugin extends Plugin {
   // Normal tabs keep their data by decision P-04, so only private tabs depend on
   // secure profile-scoped deletion when they close.
   if (priv && !WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) { call.reject("Private tabs need an Android System WebView that can securely delete their data. Update Android System WebView to use private tabs."); return; }
-  try { call.resolve(state(build(id, priv, priv ? namespace + "_" + id : PERSISTENT_PROFILE))); }
+  try { Tab created=build(id, priv, priv ? namespace + "_" + id : PERSISTENT_PROFILE); passkeyNotice(created); call.resolve(state(created)); }
   catch (Exception e) { call.reject("Could not create an isolated browser tab"); }
  }); }
  /** One child WebView in the given browser-only profile. Pop-ups pass their
@@ -286,7 +332,11 @@ public class AlphaBrowserPlugin extends Plugin {
    if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROCESS) || !WebViewCompat.isMultiProcessEnabled()) throw new IllegalStateException();
    WebSettings settings = t.web.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true); settings.setAllowFileAccess(false); settings.setAllowContentAccess(false); settings.setAllowFileAccessFromFileURLs(false); settings.setAllowUniversalAccessFromFileURLs(false); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW); settings.setJavaScriptCanOpenWindowsAutomatically(false); settings.setSupportMultipleWindows(true); settings.setSaveFormData(false); settings.setSafeBrowsingEnabled(true); t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
    CookieManager.getInstance().setAcceptThirdPartyCookies(t.web, false);
+   // Passkeys through Android Credential Manager, where this WebView provider supports browser mode.
+   if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_AUTHENTICATION)){try{WebSettingsCompat.setWebAuthenticationSupport(settings,WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER);t.passkeys=WebSettingsCompat.getWebAuthenticationSupport(settings)==WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER;}catch(RuntimeException unsupported){t.passkeys=false;}}
    t.readingWorld=new BrowserReadingWorld(t.web);
+   t.capture=new BrowserDownloads.BlobCapture(t.web,downloads.captureDirectory());
+   t.web.setFindListener((ordinal,count,done)->findResult(t,ordinal,count,done));
    t.frame = new FrameLayout(getActivity()); t.frame.setClipChildren(true); t.frame.setVisibility(View.GONE); t.frame.addView(t.web, new FrameLayout.LayoutParams(-1,-1));
    t.message = new TextView(getActivity()); t.message.setPadding(24,24,24,24); t.message.setBackgroundColor(0xfffafafa); t.message.setTextColor(0xff222222); t.message.setVisibility(View.GONE); t.frame.addView(t.message, new FrameLayout.LayoutParams(-1,-1));
    t.web.setWebViewClient(new WebViewClient() {
@@ -295,9 +345,10 @@ public class AlphaBrowserPlugin extends Plugin {
      // mailto/tel/intent/market belong to other apps. The current page stays.
      if (BrowserExternalLinks.external(target)) { if (r.isForMainFrame()) handoff(t, target, r.hasGesture()); return true; }
      if (!safe(target)) { if (r.isForMainFrame()) fail(t,"This address type is not supported."); return true; }
+     if (r.isForMainFrame()) t.pendingMain=target;
      return false;
     }
-    @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) { if (r.isForMainFrame() && !safe(r.getUrl().toString())) return new WebResourceResponse("text/plain","UTF-8",new java.io.ByteArrayInputStream(new byte[0])); return null; }
+    @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) { if (r.isForMainFrame()) t.pendingMain=r.getUrl().toString(); if (r.isForMainFrame() && !safe(r.getUrl().toString())) return new WebResourceResponse("text/plain","UTF-8",new java.io.ByteArrayInputStream(new byte[0])); return null; }
     @Override public void onPageStarted(WebView v, String url, Bitmap icon) { if (!safe(url)) { fail(t,"This address type is not supported."); return; } t.url=url; if(t.readingWorld!=null)t.readingWorld.pageStarted(url); loading(t,true); emit(t); }
     @Override public void onPageCommitVisible(WebView v, String url) {
      if (!t.error.isEmpty() || !url.equals(v.getUrl())) return;
@@ -305,7 +356,7 @@ public class AlphaBrowserPlugin extends Plugin {
      clearTimeout(t); t.lastCommittedUrl=url; t.committed=true; t.loading=!(url.equals(t.finishedUrl) || v.getProgress()==100); t.url=url; t.message.setVisibility(View.GONE); t.web.setVisibility(View.VISIBLE); syncAutofill(t); emit(t);
     }
     @Override public void onPageFinished(WebView v, String url) { if (!t.error.isEmpty() || !safe(url) || !url.equals(t.url)) return; t.finishedUrl=url; if(t.committed) { clearTimeout(t); t.loading=false; syncAutofill(t); emit(t); } }
-    @Override public void onReceivedHttpAuthRequest(WebView v, HttpAuthHandler handler, String host, String realm) { handler.cancel(); fail(t,"This site asks for a browser password prompt (HTTP authentication), which is not supported."); }
+    @Override public void onReceivedHttpAuthRequest(WebView v, HttpAuthHandler handler, String host, String realm) { httpAuth(t,handler,host,realm); }
     @Override public void onReceivedSslError(WebView v, SslErrorHandler handler, SslError error) { handler.cancel(); fail(t,"Secure connection failed. The certificate was not accepted."); }
     @Override public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) { if (r.isForMainFrame()) { if (BuildConfig.DEBUG) android.util.Log.w("AlphaBrowser", "Main-frame network failure code=" + e.getErrorCode()); fail(t,"Page could not load. Check the address and connection, then reload."); } }
     @Override public void onReceivedHttpError(WebView v, WebResourceRequest r, WebResourceResponse response) {
@@ -318,18 +369,34 @@ public class AlphaBrowserPlugin extends Plugin {
    t.web.setWebChromeClient(new WebChromeClient() {
     @Override public void onProgressChanged(WebView v,int p) { if(p==100 && t.committed && t.error.isEmpty()) t.loading=false; syncAutofill(t); emit(t); }
     @Override public void onReceivedTitle(WebView v,String title) { emit(t); }
-    @Override public void onPermissionRequest(PermissionRequest request) { request.deny(); }
-    @Override public void onGeolocationPermissionsShowPrompt(String origin,GeolocationPermissions.Callback cb) { cb.invoke(origin,false,false); }
+    @Override public void onPermissionRequest(PermissionRequest request) { mediaPermission(t,request); }
+    @Override public void onPermissionRequestCanceled(PermissionRequest request) { if(siteDialogTab==t)dismissSiteDialogs(); }
+    @Override public void onGeolocationPermissionsShowPrompt(String origin,GeolocationPermissions.Callback cb) { locationPermission(t,origin,cb); }
+    @Override public void onGeolocationPermissionsHidePrompt() { if(siteDialogTab==t)dismissSiteDialogs(); }
+    @Override public void onShowCustomView(View view,CustomViewCallback callback) { enterFullscreen(t,view,callback); }
+    @Override public void onHideCustomView() { if(fullscreenTab==t)exitFullscreen(false); }
     @Override public boolean onShowFileChooser(WebView v,ValueCallback<Uri[]> cb,FileChooserParams params) {
      if(paused||t.dead||tabs.get(t.id)!=t||!Objects.equals(presentedId,t.id)||!v.isShown()||pickerOutstanding||!t.committed||t.loading||!t.error.isEmpty()||!safe(t.url)||params.getMode()==FileChooserParams.MODE_SAVE){cb.onReceiveValue(null);return true;}
      cancelFile();fileCallback=cb;fileTab=t;fileNavigation=t.navigation;pickerOutstanding=true;
+     if(params.isCaptureEnabled()&&captureType(params.getAcceptTypes())){offerCamera(t,params);return true;}
+     openPicker(t,params);
+     return true;
+    }
+    private void openPicker(Tab t,FileChooserParams params) {
      Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
      ArrayList<String> types=new ArrayList<>();for(String type:params.getAcceptTypes())if(type!=null&&type.matches("[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+*\\-]+"))types.add(type);
      if(!types.isEmpty())picker.putExtra(Intent.EXTRA_MIME_TYPES,types.toArray(new String[0]));
      picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,params.getMode()==FileChooserParams.MODE_OPEN_MULTIPLE);
      try{filePicker.launch(Intent.createChooser(picker,"Choose files for "+Uri.parse(t.url).getHost()));}
      catch(Exception unavailable){pickerOutstanding=false;cancelFile();}
-     return true;
+    }
+    /** A capture-enabled image input offers the camera only after an explicit choice. */
+    private void offerCamera(Tab t,FileChooserParams params) {
+     AlertDialog dialog=new AlertDialog.Builder(getActivity()).setTitle("Add a photo?").setMessage(Uri.parse(t.url).getHost()+" asks for a photo. Take one with the camera, or choose an existing file. A camera photo is also saved to Pictures.")
+      .setPositiveButton("Use camera",(d,w)->{siteDialogCancel=null;cameraForFile(t);})
+      .setNeutralButton("Choose file",(d,w)->{siteDialogCancel=null;if(fileTab==t&&t.navigation==fileNavigation)openPicker(t,params);else{pickerOutstanding=false;cancelFile();}})
+      .setNegativeButton("Cancel",null).create();
+     showSiteDialog(t,dialog,()->{pickerOutstanding=false;cancelFile();});
     }
     @Override public boolean onCreateWindow(WebView v,boolean dialog,boolean gesture,android.os.Message message) { return popup(t,gesture,message); }
     @Override public void onCloseWindow(WebView window) {
@@ -345,10 +412,236 @@ public class AlphaBrowserPlugin extends Plugin {
      t.url=t.lastCommittedUrl;t.committed=true;t.web.setVisibility(View.VISIBLE);t.message.setVisibility(View.GONE);
     }else {t.committed=false;t.web.setVisibility(View.INVISIBLE);t.message.setText("Download requested. Enter an address to continue browsing.");t.message.setVisibility(View.VISIBLE);}
     long revision=t.navigation;
-    downloads.request(t.id,url,disposition,mime,length,()->!paused&&!t.dead&&tabs.get(t.id)==t&&t.navigation==revision&&Objects.equals(presentedId,t.id));emit(t);
+    java.util.function.BooleanSupplier current=()->!paused&&!t.dead&&tabs.get(t.id)==t&&t.navigation==revision&&Objects.equals(presentedId,t.id);
+    // The cookie is read at confirmation from this tab's own profile, and only for its exact page origin.
+    BrowserDownloads.Source source=new BrowserDownloads.Source(t.id,t.priv,BrowserDownloads.origin(t.lastCommittedUrl),()->{
+     if(t.dead||tabs.get(t.id)!=t)return null;
+     try{return WebViewCompat.getProfile(t.web).getCookieManager().getCookie(url);}catch(Exception unavailable){return null;}
+    },agent);
+    if(url!=null&&url.regionMatches(true,0,"blob:",0,5))t.capture.capture(url,(file,type)->{
+     if(current.getAsBoolean())downloads.reviewCaptured(source,file,BrowserDownloads.safeName("download",disposition,BrowserDownloads.validMime(mime)?mime:type),BrowserDownloads.validMime(mime)?mime:type,current);else file.delete();
+    },reason->notice(t,reason));
+    else downloads.request(source,url,disposition,mime,length,current);
+    emit(t);
    });
    ((ViewGroup)getActivity().findViewById(android.R.id.content)).addView(t.frame); tabs.put(id,t); return t;
   } catch (Exception e) { dispose(t); throw e; }
+ }
+
+ // ---- Site prompts: permissions, HTTP authentication, camera choice -------------
+ private boolean promptable(Tab t){return !paused&&!destroyed&&!t.dead&&tabs.get(t.id)==t&&Objects.equals(presentedId,t.id)&&t.error.isEmpty();}
+ private void showSiteDialog(Tab t,AlertDialog dialog,Runnable cancel){
+  dismissSiteDialogs();siteDialog=dialog;siteDialogTab=t;siteDialogCancel=cancel;
+  for(Tab tab:tabs.values())disableAutofill(tab);
+  dialog.setOnDismissListener(d->{if(siteDialog!=dialog)return;Runnable pending=siteDialogCancel;siteDialog=null;siteDialogTab=null;siteDialogCancel=null;if(pending!=null)pending.run();});
+  dialog.show();
+ }
+ /** Dismiss the open site prompt; its request is denied or cancelled exactly once. */
+ private void dismissSiteDialogs(){AlertDialog dialog=siteDialog;if(dialog!=null)dialog.dismiss();}
+ static final String[] CAMERA_PERMISSIONS={android.Manifest.permission.CAMERA};
+ static final String[] MICROPHONE_PERMISSIONS={android.Manifest.permission.RECORD_AUDIO};
+ static final String[] LOCATION_PERMISSIONS={android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION};
+ static String[] androidPermissions(String kind){return "camera".equals(kind)?CAMERA_PERMISSIONS:"microphone".equals(kind)?MICROPHONE_PERMISSIONS:LOCATION_PERMISSIONS;}
+ static String kindLabel(String kind){return "camera".equals(kind)?"camera":"microphone".equals(kind)?"microphone":"location";}
+ private boolean declared(String permission){
+  try{String[] requested=getContext().getPackageManager().getPackageInfo(getContext().getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions;
+   if(requested!=null)for(String name:requested)if(permission.equals(name))return true;}catch(Exception unavailable){}
+  return false;
+ }
+ private boolean granted(String permission){return androidx.core.content.ContextCompat.checkSelfPermission(getContext(),permission)==android.content.pm.PackageManager.PERMISSION_GRANTED;}
+ /** A site permission kind the app itself may hold: declared, and (for location) any of fine/coarse. */
+ private boolean grantable(String kind){for(String permission:androidPermissions(kind))if(declared(permission))return true;return false;}
+ private boolean androidGranted(String kind){for(String permission:androidPermissions(kind))if(declared(permission)&&granted(permission))return true;return false;}
+ /** Only a secure top-level page may be asked, and only for its own origin. */
+ private String permissionOrigin(Tab t,String requested){
+  String page=BrowserDownloads.origin(t.lastCommittedUrl),asked=BrowserDownloads.origin(requested);
+  // Same-document changes (pushState, fragments) keep the origin, so compare origins, not URLs.
+  if(page==null||!page.equals(asked)||!page.equals(BrowserDownloads.origin(t.web.getUrl())))return null;
+  Uri uri=Uri.parse(page);
+  boolean secure="https".equals(uri.getScheme())||(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&("127.0.0.1".equals(uri.getHost())||"localhost".equals(uri.getHost())));
+  return secure?page:null;
+ }
+ /** Ask (or reuse a stored per-origin decision for normal tabs), then chain to Android's runtime permission.
+  * Private tabs never read or store decisions. The result lists the kinds actually granted. */
+ private void sitePermission(Tab t,String origin,List<String> kinds,java.util.function.Consumer<Set<String>> result){
+  long revision=t.navigation;
+  java.util.function.BooleanSupplier current=()->!destroyed&&!t.dead&&tabs.get(t.id)==t&&t.navigation==revision&&Objects.equals(origin,BrowserDownloads.origin(t.web.getUrl()));
+  LinkedHashSet<String> wanted=new LinkedHashSet<>(),allowed=new LinkedHashSet<>();
+  // Only the selected, shown page may use a device sensor, even with a stored Allow:
+  // a background tab or a paused app is refused without asking.
+  if(!promptable(t)){result.accept(Collections.emptySet());return;}
+  for(String kind:kinds){
+   if(!grantable(kind)){notice(t,"Websites cannot use your "+kindLabel(kind)+" in this app.");continue;}
+   Boolean stored=null;if(!t.priv)try{stored=sessionStore.permission(origin,kind);}catch(Exception damaged){stored=null;}
+   if(Boolean.TRUE.equals(stored))allowed.add(kind);else if(stored==null)wanted.add(kind);
+  }
+  java.util.function.Consumer<Set<String>> runtime=decided->{
+   if(decided.isEmpty()||!current.getAsBoolean()){result.accept(Collections.emptySet());return;}
+   ArrayList<String> missing=new ArrayList<>();for(String kind:decided)if(!androidGranted(kind))for(String permission:androidPermissions(kind))if(declared(permission))missing.add(permission);
+   if(missing.isEmpty()){result.accept(decided);return;}
+   if(runtimeResult!=null){result.accept(Collections.emptySet());return;}
+   runtimeResult=answers->{
+    LinkedHashSet<String> final_=new LinkedHashSet<>();for(String kind:decided)if(androidGranted(kind))final_.add(kind);else notice(t,"Android has not allowed Alpha Phone to use your "+kindLabel(kind)+". You can allow it in Android Settings.");
+    result.accept(current.getAsBoolean()?final_:Collections.emptySet());
+   };
+   try{runtimePermissions.launch(missing.toArray(new String[0]));}catch(RuntimeException unavailable){runtimeResult=null;result.accept(Collections.emptySet());}
+  };
+  if(wanted.isEmpty()){runtime.accept(allowed);return;}
+  StringBuilder labels=new StringBuilder();int i=0;for(String kind:wanted){if(i>0)labels.append(i==wanted.size()-1?" and ":", ");labels.append(kindLabel(kind));i++;}
+  String message=Uri.parse(origin).getHost()+" wants to use your "+labels+"."+(t.priv?"\n\nPrivate tab: this choice is not remembered.":"\n\nYou can change this later with Clear data for this site.");
+  boolean[] answered={false};
+  AlertDialog dialog=new AlertDialog.Builder(getActivity()).setTitle("Allow "+labels+"?").setMessage(message)
+   .setPositiveButton("Allow",(d,w)->{answered[0]=true;siteDialogCancel=null;
+    if(!t.priv)for(String kind:wanted)try{sessionStore.setPermission(origin,kind,true);}catch(Exception unavailable){}
+    LinkedHashSet<String> all=new LinkedHashSet<>(allowed);all.addAll(wanted);runtime.accept(all);})
+   .setNegativeButton("Don't allow",(d,w)->{answered[0]=true;siteDialogCancel=null;
+    if(!t.priv)for(String kind:wanted)try{sessionStore.setPermission(origin,kind,false);}catch(Exception unavailable){}
+    runtime.accept(allowed);})
+   .create();
+  // Dismissed without an answer (Back, navigation, tab change): deny this request only; nothing is stored.
+  showSiteDialog(t,dialog,()->{if(!answered[0])result.accept(Collections.emptySet());});
+ }
+ private void mediaPermission(Tab t,PermissionRequest request){
+  String origin=permissionOrigin(t,request.getOrigin()==null?null:request.getOrigin().toString());
+  if(origin==null){request.deny();if(request.getOrigin()!=null&&!Objects.equals(BrowserDownloads.origin(request.getOrigin().toString()),BrowserDownloads.origin(t.lastCommittedUrl)))notice(t,"Blocked a camera or microphone request from an embedded site.");return;}
+  ArrayList<String> kinds=new ArrayList<>();
+  for(String resource:request.getResources()){if(PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource))kinds.add("camera");else if(PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource))kinds.add("microphone");}
+  if(kinds.isEmpty()){request.deny();return;}
+  boolean[] done={false};
+  sitePermission(t,origin,kinds,granted->{
+   if(done[0])return;done[0]=true;
+   ArrayList<String> resources=new ArrayList<>();
+   if(granted.contains("camera"))resources.add(PermissionRequest.RESOURCE_VIDEO_CAPTURE);
+   if(granted.contains("microphone"))resources.add(PermissionRequest.RESOURCE_AUDIO_CAPTURE);
+   try{if(resources.isEmpty())request.deny();else request.grant(resources.toArray(new String[0]));}catch(RuntimeException stale){/* Request already cancelled by the page. */}
+  });
+ }
+ private void locationPermission(Tab t,String requested,GeolocationPermissions.Callback callback){
+  String origin=permissionOrigin(t,requested);
+  if(origin==null){callback.invoke(requested,false,false);return;}
+  boolean[] done={false};
+  // Never let WebView retain the grant: decisions live only in Alpha's per-profile store.
+  sitePermission(t,origin,Collections.singletonList("location"),granted->{if(done[0])return;done[0]=true;callback.invoke(requested,granted.contains("location"),false);});
+ }
+ private static boolean secureAuthPage(Uri page){return "https".equalsIgnoreCase(page.getScheme())||(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&"http".equalsIgnoreCase(page.getScheme())&&("127.0.0.1".equals(page.getHost())||"localhost".equals(page.getHost())));}
+ private void httpAuth(Tab t,HttpAuthHandler handler,String host,String realm){
+  // WebView may report host[:port]; the prompt is allowed only for the page's own host.
+  String asked=host==null?null:host.replaceFirst(":\\d+$","");
+  // The challenge carries no URL. While a page-initiated load is pending, t.url can still be the
+  // shown page; pendingMain is the latest main-frame request or redirect. Mixed content is never loaded,
+  // so an insecure challenge can only come from a main-frame load. Any candidate for this
+  // host that is not secure refuses the prompt, so a password is never sent in cleartext.
+  boolean matched=false;
+  for(String candidate:new String[]{t.url,t.pendingMain}){
+   if(candidate==null||asked==null)continue;Uri page=Uri.parse(candidate);
+   if(page.getHost()==null||!asked.equalsIgnoreCase(page.getHost()))continue;
+   matched=true;
+   if(!secureAuthPage(page)){handler.cancel();fail(t,"This site asks for a password over an insecure connection. It was not sent.");return;}
+  }
+  if(!matched){handler.cancel();notice(t,"Blocked a sign-in prompt from a different site.");return;}
+  if(!promptable(t)){handler.cancel();fail(t,"Sign-in was cancelled. Reload to try again.");return;}
+  if(++t.authAttempts>3){handler.cancel();fail(t,"Sign-in failed. Reload to try again.");return;}
+  float density=getContext().getResources().getDisplayMetrics().density;int pad=Math.round(20*density);
+  android.widget.LinearLayout form=new android.widget.LinearLayout(getActivity());form.setOrientation(android.widget.LinearLayout.VERTICAL);form.setPadding(pad,pad/2,pad,0);
+  android.widget.EditText user=new android.widget.EditText(getActivity());user.setHint("Username");user.setSingleLine(true);user.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+  android.widget.EditText pass=new android.widget.EditText(getActivity());pass.setHint("Password");pass.setSingleLine(true);pass.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+  form.addView(user);form.addView(pass);
+  String label=realm==null?"":realm.replaceAll("[\\x00-\\x1f\\x7f]"," ").trim();if(label.length()>100)label=label.substring(0,100);
+  String message=asked+" asks you to sign in."+(label.isEmpty()?"":"\nThe site says: “"+label+"”")+"\nAlpha Phone does not save this password."+(t.authAttempts>1?"\n\nThe previous sign-in was not accepted.":"");
+  boolean[] answered={false};
+  AlertDialog dialog=new AlertDialog.Builder(getActivity()).setTitle("Sign in").setMessage(message).setView(form)
+   .setPositiveButton("Sign in",(d,w)->{answered[0]=true;siteDialogCancel=null;String u=user.getText().toString(),p=pass.getText().toString();user.setText("");pass.setText("");
+    if(tabs.get(t.id)==t&&!t.dead)handler.proceed(u,p);else handler.cancel();})
+   .setNegativeButton("Cancel",null).create();
+  // Cancelling the page's own sign-in stops the load; for a resource of an already shown page it only notes it.
+  showSiteDialog(t,dialog,()->{if(answered[0])return;handler.cancel();if(tabs.get(t.id)!=t||t.dead)return;if(t.committed)notice(t,"Sign-in was cancelled.");else fail(t,"Sign-in was cancelled. Reload to try again.");});
+ }
+ // ---- Camera for capture-enabled file inputs ---------------------------------------
+ static boolean captureType(String[] accept){
+  if(accept==null||accept.length==0)return false;
+  for(String type:accept)if(type!=null){String value=type.trim().toLowerCase(Locale.ROOT);if(value.startsWith("image/")||value.matches("\\.(jpe?g|png|webp|heic)"))return true;}
+  return false;
+ }
+ private void cameraForFile(Tab t){
+  long revision=fileNavigation;
+  java.util.function.Consumer<Boolean> launch=ok->{
+   if(!ok||fileTab!=t||t.dead||t.navigation!=revision){pickerOutstanding=false;cancelFile();if(!ok)notice(t,"Android has not allowed Alpha Phone to use the camera. You can allow it in Android Settings.");return;}
+   try{
+    android.content.ContentValues values=new android.content.ContentValues();
+    values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME,"alpha-browser-"+UUID.randomUUID().toString().substring(0,8)+".jpg");
+    values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE,"image/jpeg");
+    values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH,android.os.Environment.DIRECTORY_PICTURES);
+    pictureUri=getContext().getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);
+    if(pictureUri==null)throw new IllegalStateException();
+    takePicture.launch(pictureUri);
+   }catch(Exception unavailable){if(pictureUri!=null)try{getContext().getContentResolver().delete(pictureUri,null,null);}catch(Exception ignored){}pictureUri=null;pickerOutstanding=false;cancelFile();notice(t,"The camera is unavailable.");}
+  };
+  if(granted(android.Manifest.permission.CAMERA)){launch.accept(true);return;}
+  if(runtimeResult!=null){pickerOutstanding=false;cancelFile();return;}
+  runtimeResult=answers->launch.accept(granted(android.Manifest.permission.CAMERA));
+  try{runtimePermissions.launch(CAMERA_PERMISSIONS);}catch(RuntimeException unavailable){runtimeResult=null;pickerOutstanding=false;cancelFile();}
+ }
+ private void pictureTaken(Boolean saved){
+  pickerOutstanding=false;Uri photo=pictureUri;pictureUri=null;ValueCallback<Uri[]> callback=fileCallback;Tab tab=fileTab;fileCallback=null;fileTab=null;
+  boolean ok=Boolean.TRUE.equals(saved)&&photo!=null&&callback!=null&&tab!=null&&!tab.dead&&tabs.get(tab.id)==tab&&tab.navigation==fileNavigation;
+  if(!ok&&photo!=null)try{getContext().getContentResolver().delete(photo,null,null);}catch(Exception ignored){}
+  if(callback!=null)callback.onReceiveValue(ok?new Uri[]{photo}:null);
+ }
+ // ---- Fullscreen video and other custom views --------------------------------------
+ private void enterFullscreen(Tab t,View view,WebChromeClient.CustomViewCallback callback){
+  if(customView!=null||!promptable(t)){callback.onCustomViewHidden();return;}
+  customView=view;customCallback=callback;fullscreenTab=t;
+  fullscreen=new FrameLayout(getActivity());fullscreen.setBackgroundColor(0xff000000);
+  fullscreen.addView(view,new FrameLayout.LayoutParams(-1,-1));
+  ((ViewGroup)getActivity().findViewById(android.R.id.content)).addView(fullscreen,new FrameLayout.LayoutParams(-1,-1));
+  WindowInsetsControllerCompat bars=WindowCompat.getInsetsController(getActivity().getWindow(),getActivity().getWindow().getDecorView());
+  bars.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);bars.hide(WindowInsetsCompat.Type.systemBars());
+  // Back leaves fullscreen first. Added last, so it runs before Capacitor's own Back handling.
+  fullscreenBack=new OnBackPressedCallback(true){@Override public void handleOnBackPressed(){exitFullscreen(true);}};
+  getActivity().getOnBackPressedDispatcher().addCallback(fullscreenBack);
+  JSObject event=new JSObject();event.put("session",session);event.put("id",t.id);event.put("active",true);notifyListeners("fullscreen",event);
+ }
+ /** Leave fullscreen. tellPage=true when Alpha, not the page, ends it. */
+ private void exitFullscreen(boolean tellPage){
+  if(customView==null)return;
+  View view=customView;WebChromeClient.CustomViewCallback callback=customCallback;Tab t=fullscreenTab;
+  customView=null;customCallback=null;fullscreenTab=null;
+  if(fullscreenBack!=null){fullscreenBack.remove();fullscreenBack=null;}
+  if(fullscreen!=null){fullscreen.removeView(view);if(fullscreen.getParent()!=null)((ViewGroup)fullscreen.getParent()).removeView(fullscreen);fullscreen=null;}
+  WindowCompat.getInsetsController(getActivity().getWindow(),getActivity().getWindow().getDecorView()).show(WindowInsetsCompat.Type.systemBars());
+  if(tellPage&&callback!=null)try{callback.onCustomViewHidden();}catch(RuntimeException ignored){}
+  if(t!=null){JSObject event=new JSObject();event.put("session",session);event.put("id",t.id);event.put("active",false);notifyListeners("fullscreen",event);}
+ }
+ // ---- Find in page -----------------------------------------------------------------
+ private void findResult(Tab t,int ordinal,int count,boolean done){
+  if(t.findQuery==null||tabs.get(t.id)!=t)return;
+  JSObject event=new JSObject();event.put("session",session);event.put("id",t.id);event.put("navigation",String.valueOf(t.navigation));
+  event.put("index",count==0?0:ordinal+1);event.put("count",count);event.put("done",done);notifyListeners("findResult",event);
+ }
+ /** Navigation, tab change and close clear the highlights and tell the renderer. */
+ private void clearFind(Tab t){
+  if(t.findQuery==null)return;t.findQuery=null;
+  if(!t.dead)t.web.clearMatches();
+  if(tabs.get(t.id)!=t)return;
+  JSObject event=new JSObject();event.put("session",session);event.put("id",t.id);event.put("cleared",true);event.put("index",0);event.put("count",0);event.put("done",true);notifyListeners("findResult",event);
+ }
+ @PluginMethod public void find(PluginCall call) { run(call,t->{
+  String query=call.getString("query","");
+  if(query==null||query.length()>200||query.chars().anyMatch(c->c<32&&c!=9))throw new IllegalArgumentException();
+  // An emptied search box removes the highlights but keeps the find bar open.
+  if(query.isEmpty()){if(t.findQuery!=null){t.findQuery=null;t.web.clearMatches();}return;}
+  if(!t.committed||!t.error.isEmpty())throw new IllegalStateException();
+  t.findQuery=query;t.web.findAllAsync(query);
+ }); }
+ @PluginMethod public void findNext(PluginCall call) { run(call,t->{ if(t.findQuery!=null)t.web.findNext(!Boolean.FALSE.equals(call.getBoolean("forward",true))); }); }
+ @PluginMethod public void clearFind(PluginCall call) { run(call,this::clearFind); }
+ /** Once per install: say plainly when this WebView provider cannot offer passkeys. */
+ private void passkeyNotice(Tab t){
+  if(t.passkeys)return;
+  android.content.SharedPreferences notices=getContext().getSharedPreferences("alpha-browser-notices",0);
+  if(notices.getBoolean("passkeys-unavailable",false))return;
+  notices.edit().putBoolean("passkeys-unavailable",true).apply();
+  notice(t,"Passkeys are not available in this browser on this device. Sign in with a password or another method.");
  }
  private void notice(Tab t,String message) { if(tabs.get(t.id)!=t)return; JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("message",message); notifyListeners("notice",event); }
  /** target=_blank links and window.open open a new tab in the opener's profile.
@@ -411,7 +704,7 @@ public class AlphaBrowserPlugin extends Plugin {
   String nextId=call.getString("id");
   // Revoke selected-tab authority before any synchronous framework callback.
   presentedId=nextId;if(reading!=null)reading.check();
-  for(Tab old:tabs.values())if(!Objects.equals(old.id,presentedId)){disableAutofill(old);old.frame.setVisibility(View.GONE);}
+  for(Tab old:tabs.values())if(!Objects.equals(old.id,presentedId)){disableAutofill(old);clearFind(old);if(siteDialogTab==old)dismissSiteDialogs();if(fullscreenTab==old)exitFullscreen(true);old.frame.setVisibility(View.GONE);}
   Tab t=tabs.get(call.getString("id")); if(t!=null) { float d=getContext().getResources().getDisplayMetrics().density; FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(Math.max(0,Math.round(call.getFloat("width",0f)*d)),Math.max(0,Math.round(call.getFloat("height",0f)*d))); p.leftMargin=Math.round(call.getFloat("x",0f)*d); p.topMargin=Math.round(call.getFloat("y",0f)*d); t.frame.setLayoutParams(p); t.frame.setVisibility(paused?View.GONE:View.VISIBLE); syncAutofill(t); } call.resolve();
  }); }
  private boolean bookmarkSession(PluginCall call) {
@@ -453,7 +746,7 @@ public class AlphaBrowserPlugin extends Plugin {
   if(!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)||!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)){call.reject("This Android WebView cannot clear browser data. Update Android System WebView.");return;}
   clearing=true;JSArray closed=new JSArray();
   for(Tab tab:new ArrayList<>(tabs.values()))if(!tab.priv){tabs.remove(tab.id);dispose(tab);closed.put(tab.id);tabClosed(tab.id);}
-  try{sessionStore.clear();}catch(Exception unavailable){clearing=false;call.reject("Browsing history could not be cleared.");return;}
+  try{sessionStore.clear();sessionStore.clearPermissions();downloads.clearHistory();}catch(Exception unavailable){clearing=false;call.reject("Browsing history could not be cleared.");return;}
   // WebView.destroy posts native destruction; clear after those tasks.
   navigationHandler.post(()->{
    try{
@@ -475,6 +768,10 @@ public class AlphaBrowserPlugin extends Plugin {
   try{
    String[] site=new String[1];
    site[0]=WebStorageCompat.deleteBrowsingDataForSite(WebViewCompat.getProfile(t.web).getWebStorage(),Uri.parse(t.url).getHost(),()->{JSObject result=new JSObject();result.put("site",site[0]);call.resolve(result);});
+   // The site's download entries and (normal profile only) its permission decisions go too.
+   String cleared=site[0]==null?Uri.parse(t.url).getHost():site[0];
+   downloads.clearSite(cleared);
+   if(!t.priv)try{sessionStore.clearPermissionsForSite(cleared);}catch(Exception unavailable){notice(t,"Website permissions for this site could not be cleared. Use Clear browsing data.");}
   }catch(Exception unavailable){call.reject("Site data could not be cleared.");}
  }); }
  @PluginMethod public void reviewQuestion(PluginCall call) { reviewPage(call,true); }
@@ -499,13 +796,13 @@ public class AlphaBrowserPlugin extends Plugin {
  }); }
  @PluginMethod public void downloads(PluginCall call) { getActivity().runOnUiThread(()->{String requested=call.getString("session");if(requested==null||(session!=null&&!Objects.equals(session,requested))){call.reject("Expired browser session");return;}session=requested;for(Tab tab:tabs.values())disableAutofill(tab);downloads.show();call.resolve();}); }
  @PluginMethod public void close(PluginCall call) { getActivity().runOnUiThread(() -> { if (!Objects.equals(session,call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t=tabs.remove(call.getString("id")); if(t!=null) dispose(t); call.resolve(); }); }
- @Override protected void handleOnPause() { paused=true;if(reading!=null)reading.cancel();flushCookies(); for(Tab t:tabs.values()) { syncAutofill(t); t.frame.setVisibility(View.GONE); if(!t.dead)t.web.onPause(); } }
+ @Override protected void handleOnPause() { paused=true;if(reading!=null)reading.cancel();flushCookies();exitFullscreen(true); for(Tab t:tabs.values()) { syncAutofill(t); t.frame.setVisibility(View.GONE); if(!t.dead)t.web.onPause(); } }
  /** Persist normal-tab sign-in cookies promptly; the process may be killed in background. */
  private void flushCookies() {
   try{if(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)){androidx.webkit.Profile profile=ProfileStore.getInstance().getProfile(PERSISTENT_PROFILE);if(profile!=null)profile.getCookieManager().flush();}}catch(Exception unavailable){/* Chromium also flushes periodically. */}
  }
  @Override protected void handleOnResume() { paused=false; for(Tab t:tabs.values()) if(!t.dead){t.web.onResume();JSObject event=state(t);event.put("surfaceResumed",true);notifyListeners("stateChanged",event);} }
- @Override protected void handleOnDestroy() { destroyed=true;if(reading!=null)reading.cancel();getBridge().removeWebViewListener(hostNavigation);if(downloads!=null)downloads.destroy();AutofillManager manager=getActivity().getSystemService(AutofillManager.class);if(manager!=null)manager.unregisterCallback(autofillCallback);cancelFile();if(filePicker!=null)filePicker.unregister();if(pageShare!=null)pageShare.unregister();ArrayList<Tab> all=new ArrayList<>(tabs.values());tabs.clear();
+ @Override protected void handleOnDestroy() { destroyed=true;if(reading!=null)reading.cancel();getBridge().removeWebViewListener(hostNavigation);if(downloads!=null)downloads.destroy();dismissSiteDialogs();exitFullscreen(true);if(runtimePermissions!=null)runtimePermissions.unregister();if(takePicture!=null)takePicture.unregister();AutofillManager manager=getActivity().getSystemService(AutofillManager.class);if(manager!=null)manager.unregisterCallback(autofillCallback);cancelFile();if(filePicker!=null)filePicker.unregister();if(pageShare!=null)pageShare.unregister();ArrayList<Tab> all=new ArrayList<>(tabs.values());tabs.clear();
   // Clear first: a private profile shared with a pop-up is purged only when no tab still uses it.
   for(Tab t:all) dispose(t); session=null; }
 }

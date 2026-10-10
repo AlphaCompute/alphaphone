@@ -38,6 +38,11 @@ public class CameraFlowInstrumentedTest {
   String selector="document.querySelector('button[aria-label='+"+JSONObject.quote(JSONObject.quote(label))+"+']')";
   until(s,selector);eval(s,"("+selector+").click()");
  }
+ /** Buttons inside review dialogs and the access panel are named by their text. */
+ private void clickText(BoundedActivityScenario<MainActivity>s,String text)throws Exception{
+  String selector="[...document.querySelectorAll('dialog button,[data-alpha-camera-access] button')].find(b=>b.textContent.trim()==="+JSONObject.quote(text)+"&&!b.disabled)";
+  until(s,selector);eval(s,"("+selector+").click()");
+ }
  private void navigate(BoundedActivityScenario<MainActivity>s,String label)throws Exception{
   until(s,"document.documentElement.dataset.activeView");eval(s,AppNavigation.request(label));until(s,AppNavigation.selected(label));
  }
@@ -59,10 +64,12 @@ public class CameraFlowInstrumentedTest {
   Set<Uri> before=ownedImages(),created=new HashSet<>();
   try(BoundedActivityScenario<MainActivity>s=BoundedActivityScenario.launch(MainActivity.class)){
    navigate(s,"Camera");until(s,"document.querySelector('[data-alpha-camera-screen]')");nativePreview(s,true);
+   // Production Ask Alpha reviews an unsaved frame locally; only reviewed text can reach the draft.
+   Set<Uri> beforeQuestion=ownedImages();
    click(s,"Ask Alpha about this");
-   until(s,"document.querySelector('[data-alpha-layer=conversation]').getAttribute('aria-hidden') === 'false' && document.body.innerText.includes('live camera feed is not shared')");
-   nativePreview(s,false);
-   click(s,"Minimize chat");until(s,"document.querySelector('[data-alpha-camera-screen]')");nativePreview(s,true);
+   until(s,"document.querySelector('dialog[aria-label=\"Ask about selected content\"] img[alt=\"Image for question review\"]')?.naturalWidth>0");
+   assertEquals("Question frame is not published to Photos",beforeQuestion,ownedImages());
+   clickText(s,"Cancel");until(s,"!document.querySelector('dialog[aria-label=\"Ask about selected content\"]')");nativePreview(s,true);
    click(s,"Take photo");until(s,"document.body.innerText.includes('Photo saved to Android Photos.')");
    created.addAll(ownedImages());created.removeAll(before);assertEquals("Exactly one owned image published",1,created.size());
    Uri uri=created.iterator().next();byte[] bytes;
@@ -78,7 +85,10 @@ public class CameraFlowInstrumentedTest {
    ShareFlowAssertions.receivesInSeparateApp(()->click(s,"Share photo"),bytes);
    until(s,"document.body.innerText.includes('saved to Android Photos')");
    click(s,"Ask Alpha about this photo");
-   until(s,"document.querySelector('[data-alpha-layer=conversation]').getAttribute('aria-hidden') === 'false' && document.body.innerText.includes('its pixels are not shared')");
+   until(s,"document.querySelector('dialog[aria-label=\"Ask about selected content\"] img[alt=\"Image for question review\"]')?.naturalWidth>0");
+   eval(s,"(()=>{const e=document.querySelector('dialog[aria-label=\"Ask about selected content\"] textarea[aria-label=\"Content excerpt\"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'A captured test frame');e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+   clickText(s,"Use in conversation");
+   until(s,"document.querySelector('[data-alpha-layer=conversation]').getAttribute('aria-hidden') === 'false' && "+AppNavigation.composer()+"?.value.includes('Source: Selected photo')");
    assertEquals("Production suggestions do not invent a contact", "false", eval(s,"document.querySelector('[data-alpha-layer=conversation]').textContent.includes('Maya')"));
    assertEquals("Photo remains the active agent view", "\"photos\"", eval(s,"document.documentElement.dataset.activeView"));
    click(s,"Minimize chat");
@@ -102,6 +112,28 @@ public class CameraFlowInstrumentedTest {
     for(int i=0;i<n.getChildCount();i++){AccessibilityNodeInfo child=n.getChild(i);if(child!=null)queue.add(child);}
    }SystemClock.sleep(100);
   }fail("Real Android permission button not found: "+suffix);
+ }
+ private String shell(String command)throws Exception{try(java.io.InputStream input=new android.os.ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command))){return new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);}}
+ private String resumed()throws Exception{return shell("dumpsys activity activities").lines().filter(line->line.contains("topResumedActivity")||line.contains("mResumedActivity")).findFirst().orElse("");}
+ /** "Don't ask again": Android returns denial without a dialog. The panel opens the
+  * real application details page; a grant there restarts the preview on return. */
+ @Test public void cameraDeniedForeverRecoversThroughAndroidSettings()throws Exception{
+  Assume.assumeTrue("Separate revoked-permission fixture: -e cameraPermissionTest true", "true".equals(InstrumentationRegistry.getArguments().getString("cameraPermissionTest")));
+  String pkg=context().getPackageName();
+  InstrumentationRegistry.getInstrumentation().getUiAutomation().revokeRuntimePermission(pkg,Manifest.permission.CAMERA);
+  shell("pm set-permission-flags "+pkg+" "+Manifest.permission.CAMERA+" user-set user-fixed");
+  try(BoundedActivityScenario<MainActivity>s=BoundedActivityScenario.launch(MainActivity.class)){
+   navigate(s,"Camera");
+   until(s,"document.querySelector('[role=alert][aria-label=\"Camera access is off\"]')?.textContent.includes('Android settings')");nativePreview(s,false);
+   clickText(s,"Open Android settings");
+   long end=SystemClock.elapsedRealtime()+15000;while(SystemClock.elapsedRealtime()<end&&!resumed().contains("settings"))SystemClock.sleep(100);
+   assertTrue("Application details settings is foreground: "+resumed(),resumed().contains("settings"));
+   shell("pm clear-permission-flags "+pkg+" "+Manifest.permission.CAMERA+" user-set user-fixed");
+   InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(pkg,Manifest.permission.CAMERA);
+   WebViewTestDriver.pressBack();
+   until(s,"document.querySelector('[data-alpha-camera-screen]') && !document.querySelector('[data-alpha-camera-access]')");nativePreview(s,true);
+   navigate(s,"Home");nativePreview(s,false);
+  }finally{shell("pm clear-permission-flags "+pkg+" "+Manifest.permission.CAMERA+" user-set user-fixed");}
  }
  @Test public void denyingCameraAllowsExplicitRetryWithoutFakePreview()throws Exception{
   Assume.assumeTrue("Separate revoked-permission fixture: -e cameraPermissionTest true", "true".equals(InstrumentationRegistry.getArguments().getString("cameraPermissionTest")));

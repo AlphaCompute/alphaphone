@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 import { storageSpecPattern } from './scripts/storage-specs.mjs';
 const port=Number(process.env.ALPHA_BROWSER_TEST_PORT||5317);
 const productionPort=port+1;
-const productionSpec=/production-surface\.spec\.ts$/;
+// The production lane runs production-surface.spec.ts and every <name>.production.spec.ts.
+const productionSpec=/(production-surface|\.production)\.spec\.ts$/;
 
 // The top-level webServer list is not per-project. Start only the servers that the
 // selected projects use, so the default lane never builds and the production lane

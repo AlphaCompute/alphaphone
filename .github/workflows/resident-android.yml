@@ -1,13 +1,27 @@
 name: Resident Android exact source
 on:
   workflow_dispatch:
+  # Optional automatic PACKAGED qualification. Both triggers are inert unless the
+  # repository variable ELIZA_RESIDENT_QUALIFICATION is "push" (every main commit)
+  # or "nightly" (once a day, default branch only). See docs/ci-cost-policy.md.
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 6 * * *"
 permissions:
   contents: read
 concurrency:
-  group: resident-${{ github.ref }}
-  cancel-in-progress: true
+  # Dispatches on one ref supersede each other. Push and nightly runs (mostly skipped
+  # when the opt-in variable is unset) get their own group, so they never cancel a
+  # running dispatched qualification.
+  group: resident-${{ github.event_name == 'workflow_dispatch' && github.ref || format('{0}-{1}', github.event_name, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 jobs:
   build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && vars.ELIZA_RESIDENT_QUALIFICATION == 'push') ||
+      (github.event_name == 'schedule' && vars.ELIZA_RESIDENT_QUALIFICATION == 'nightly')
     # All consumers select the reviewed NDK before unused image SDKs are removed.
     env:
       ANDROID_NDK: /usr/local/lib/android/sdk/ndk/28.2.13676358
@@ -186,7 +200,7 @@ jobs:
           python3 scripts/ci/resident-phase.py --name runtime-stage --seconds 1800 npm run agent:stage-android
           python3 scripts/ci/resident-phase.py --name mobile-bundle --seconds 300 npm run agent:test-mobile-workflow-bundle
           # Fresh native artifacts and the runtime pin are inputs to shipped notices.
-          python3 scripts/ci/resident-phase.py --name license-notices --seconds 120 node scripts/generate-licenses.mjs
+          python3 scripts/ci/resident-phase.py --name license-notices --seconds 120 node scripts/generate-licenses.mjs --packaged-runtime
           # Flag-off distribution: release verification requires the PACKAGED runtime.
           python3 scripts/ci/resident-phase.py --name distribution-archive --seconds 3000 node scripts/build-archive.mjs test-results/resident-ci-distribution
           # The native suites need the private peer fixture, a debug-only test hook
@@ -199,6 +213,8 @@ jobs:
       - name: Anchor exact archive manifest
         id: freeze
         run: echo "sha256=$(sha256sum test-results/resident-ci-archive/apk-manifest.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      # build-archive.mjs retains each release R8 mapping (<variant>-release-mapping.txt,
+      # hashed in release-mappings.json) beside the APKs, so both archives carry them.
       - uses: actions/upload-artifact@v4
         id: apks
         with:

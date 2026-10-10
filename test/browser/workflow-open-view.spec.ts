@@ -50,8 +50,8 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
             return ok({ installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: [] });
           }
           if (pathname === '/api/automations') {fixture.automationLists++;return ok({automations:[]});}
-          if (pathname === '/api/lifeops/scheduled-tasks') return ok({tasks:[]});
           if (pathname === '/api/lifeops/reminders') return ok({reminders:[]});
+          if (pathname === '/api/lifeops/scheduled-tasks') return ok({tasks:[]});
           if (pathname === '/api/workflow/status') return ok({engine:'smthrs',status:'ready'});
           if (pathname === '/api/workflow/workflows') return ok({workflows:[]});
           if (pathname === '/api/conversations' && input.method === 'POST') return ok({ conversation: { id: 'fixture-chat', title: 'Fixture' } });
@@ -108,7 +108,8 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
       const beforeSync=(await counts()).receipts;
       await page.getByRole('button',{name:'Sync recorded receipts',exact:true}).click();
       await expect.poll(async()=> (await counts()).receipts).toBe(beforeSync+1);
-      await expect(page.getByText('done',{exact:true})).toBeVisible();
+      // History shows the agent state, then this phone's journal outcome.
+      await expect(page.getByText('done · this phone: succeeded',{exact:true})).toBeVisible();
       expect(await counts()).toEqual({ posts: 1, decisions: 1, claims: 1, receipts: beforeSync+1, automationLists: 1, journal: ['reserve', 'markApplying', 'finish'] });
       expect(await page.evaluate(()=>new Set((window as any).navigationFixture.receiptBodies).size)).toBe(1);
     } else {

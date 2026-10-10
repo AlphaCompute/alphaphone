@@ -17,7 +17,7 @@ const EMPTY: Record<View, RegExp> = {
   Maps: /Map tiles are not connected/,
   Notes: /No notes yet/,
   Files: /No recent files/,
-  Workflows: /No automations yet/,
+  Workflows: /Connect an agent for its automations/,
   Settings: /Not signed in/,
   Reminders: /No visible events or reminders/,
   Notifications: /No notifications/,

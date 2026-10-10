@@ -4839,9 +4839,9 @@ Version: pinned upstream runtime when present in the APK payload
 License: license unverified
 Source: scripts/stage-local-agent-runtime.mjs
 
-LICENSE UNVERIFIED. The staged runtime can ship in standard Android builds. Its Bun runtime and bundled agent dependency notices must be generated from the pinned upstream lockfile before any APK containing that runtime is distributed.
+LICENSE UNVERIFIED. The staged runtime can ship in standard Android builds. When it is staged, Bun and the bundled agent and workflow-worker npm packages are enumerated from the prepared source; the remaining payload files (musl loader, libstdc++/libgcc_s, PGlite WebAssembly and data, PostgreSQL extensions, models) are not, and need review before any APK containing that runtime is distributed.
 
-The on-device agent payload (Bun runtime and the bundled elizaOS agent with its dependencies) is staged from pinned upstream source and may be included in standard Android builds. The APK runtime provenance identifies the packaged source. Its dependency notices are not generated here.
+The on-device agent payload (Bun runtime and the bundled elizaOS agent with its dependencies) is staged from pinned upstream source and may be included in standard Android builds. These notices were generated without the staged runtime, so its Bun and dependency notices are not listed. A PACKAGED distribution build regenerates them after staging with node scripts/generate-licenses.mjs --packaged-runtime (resident-android.yml); an APK built without that step does not carry them.
 
 ==============================================================================
 ONNX Runtime

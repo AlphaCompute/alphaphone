@@ -24,6 +24,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   const created = new Map<string, Promise<any>>();
   // Cold-start tabs that have not been loaded yet: id -> last committed page.
   const restored = new Map<string, {url: string; title: string}>();
+  const restoreAttempts = new Map<string, number>();
   const reviews = new BrowserReviews();
   let shell: any, lastGeometry = '', disposed = false, sharing = false, confirming = false, clearingData = false;
   // Saving waits for a successful read so a damaged saved record is never overwritten implicitly.
@@ -169,11 +170,48 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       if (!background) shell.vset('browser', { editing: false, tabsOpen: false, menu: false, lib: null, share: false });
       await Browser.navigate({ session, id, url: url.href });
       refresh();
-    } catch (error) { if (approvedSignal) throw error; report(error); }
+      restoreAttempts.delete(id);
+    } catch (error) {
+      if (approvedSignal) throw error;
+      // A restored tab whose native creation failed transiently (for example while the
+      // host document was being replaced) keeps its saved page and retries when shown.
+      const attempts = (restoreAttempts.get(id) || 0) + 1;
+      if (background && saved && attempts < 3 && !disposed && state()?.tabs?.some((tab: Bag) => tab.id === id)) { if (created.has(id)) { void Browser.close({ session, id }).catch(() => {}); created.delete(id); } restoreAttempts.set(id, attempts); restored.set(id, saved); return; }
+      restoreAttempts.delete(id); report(error);
+    }
   }
   async function command(command: string) {
     const id = state()?.cur; if (!id || !created.has(id)) return;
     try { await Browser.command({ session, id, command }); } catch (error) { report(error); }
+  }
+  // Find in page: native findAllAsync/findNext on the selected tab. Navigation,
+  // tab switches and closing clear it natively and the renderer follows.
+  let findTimer = 0;
+  const findIdle = { finding: false, findQuery: '', findCount: 0, findIndex: 0, findDone: true };
+  function openFind() {
+    const id = state()?.cur, info = metadata.get(id);
+    if (!info?.committed || info.error) { report(new Error('Load a page before finding text in it.')); return; }
+    shell.vset('browser', { ...findIdle, finding: true, findTab: id, menu: false });
+  }
+  function closeFind() {
+    window.clearTimeout(findTimer);
+    const s = state(), id = s?.findTab;
+    if (s?.finding) shell.vset('browser', { ...findIdle, findTab: null });
+    if (id && created.has(id)) void Browser.clearFind({ session, id }).catch(() => {});
+  }
+  function findQuery(query: string) {
+    const id = state()?.findTab; if (!id || id !== state()?.cur) { closeFind(); return; }
+    const value = query.replace(/[\u0000-\u0008\u000a-\u001f\u007f]/g, '').slice(0, 200);
+    shell.vset('browser', { findQuery: value, findDone: !value, ...(value ? {} : { findCount: 0, findIndex: 0 }) });
+    window.clearTimeout(findTimer);
+    // Debounced so typing does not issue a native search per keystroke.
+    // A tab switch during the debounce must not search a tab that is no longer shown.
+    findTimer = window.setTimeout(() => { if (created.has(id) && id === state()?.cur && id === state()?.findTab) void Browser.find({ session, id, query: value }).catch(report); }, 150);
+  }
+  function findStep(forward: boolean) {
+    const s = state(), id = s?.findTab;
+    if (!id || id !== s.cur || !s.findQuery || !s.findCount) return;
+    void Browser.findNext({ session, id, forward }).catch(report);
   }
   async function sharePage() {
     const id=state()?.cur, info=metadata.get(id), revision=documentRevisions.get(id);
@@ -261,7 +299,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     } catch (error) { report(error); }
   }
   const definition = views.browser;
-  definition.state = { ...definition.state, tabs: [{ id: 'b0', hist: ['newtab'], pos: 0 }], cur: 'b0', marks: [], visits: [], booked: null, ag: null, confirm: null };
+  definition.state = { ...definition.state, tabs: [{ id: 'b0', hist: ['newtab'], pos: 0 }], cur: 'b0', marks: [], visits: [], booked: null, ag: null, confirm: null, finding: false, findTab: null, findQuery: '', findCount: 0, findIndex: 0, findDone: true };
   // These are in-memory view-reset keys, not disk persistence. Keep the native
   // tab identities while visiting other apps; a cold start begins with b0 until
   // restoreSession replaces it with saved normal tabs.
@@ -269,6 +307,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   definition.onLeave = () => {stopReading();hide();};
   definition.reply = () => null;
   definition.back = (s: Bag, api: Bag) => {
+    if (s.finding) { closeFind(); return true; }
     for (const key of ['editing', 'tabsOpen', 'menu', 'lib', 'share']) if(s[key]) { api.set({ [key]: key === 'lib' ? null : false }); return true; }
     if (metadata.get(s.cur)?.canBack) { void command('back'); return true; }
     return false;
@@ -283,6 +322,12 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     return { ...out, isNews:false,isEnc:false,isBook:false,isSearch:false,isGeneric:false,isNew:!info,
       isPrivate:priv,openPrivate:()=>openNew(true),clearData:()=>void clearBrowsingData(),clearSite:()=>void clearSiteData(),canClearSite:!!info?.committed&&!info?.error&&!!url,
       recents:[],sugg:[],people:[],agOn:false,confirm:false,
+      openFind:()=>openFind(),canFind:!!info?.committed&&!info?.error,finding:!!s.finding&&s.findTab===s.cur,
+      find:{query:s.findQuery||'',count:s.findCount||0,index:s.findIndex||0,
+        label:!s.findQuery?'':s.findCount?`${s.findIndex||1} of ${s.findCount}`:(s.findDone===false?'Searching…':'No matches'),
+        onInput:(e:Event)=>findQuery((e.target as HTMLInputElement).value),
+        onKey:(e:KeyboardEvent)=>{if(e.key==='Enter'){e.preventDefault();findStep(!e.shiftKey);}else if(e.key==='Escape'){e.preventDefault();closeFind();}},
+        next:()=>findStep(true),prev:()=>findStep(false),close:()=>closeFind(),nextOp:s.findCount?1:0.3,prevOp:s.findCount?1:0.3},
       host:url?.host || 'Search or type address',path:url ? url.pathname + url.search : '', hasLock:Capacitor.isNativePlatform() && !!url && url.protocol==='https:' && !!info?.committed && !info?.loading && !info?.error,
       nativeControls:true,openPasswordProvider:()=>{api.set({menu:false});api.open('settings',{page:'password-provider'});},openDownloads:()=>{api.set({menu:false});void Browser.downloads({session}).catch(report);},reload:()=>{api.set({menu:false});void command('reload');},stopLoading:()=>{api.set({menu:false});void command('stop');},loading:!!info?.loading,goBack:()=>void command('back'),goFwd:()=>void command('forward'),backOp:info?.canBack?1:0.3,fwdOp:info?.canForward?1:0.3,
       startEdit:()=>api.set({editing:true,addr:info?.url||'',menu:false}),onAddrKey:(e:KeyboardEvent)=>{ if(e.key==='Enter'){e.preventDefault();void navigate((e.target as HTMLInputElement).value);} else if(e.key==='Escape')api.set({editing:false}); },
@@ -316,7 +361,14 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
         : undefined;
     };
     const S=this.S();const b=this.vget('browser');if(S.view!=='browser'||b.menu||b.editing||b.tabsOpen||b.lib||S.shade||['sheet','full'].includes(S.chat))hide();return oldRender.call(this);};
-  let listener: any, resumeListener: any, openedListener: any, closedListener: any, noticeListener: any;
+  let listener: any, resumeListener: any, openedListener: any, closedListener: any, noticeListener: any, findListener: any, fullscreenListener: any;
+  void Browser.addListener('findResult',(event:Bag)=>{
+    const s=state();if(disposed||event.session!==session||!s||event.id!==s.findTab)return;
+    if(event.cleared){if(s.finding)shell.vset('browser',{...findIdle,findTab:null});return;}
+    if(typeof event.count==='number'&&typeof event.index==='number')shell.vset('browser',{findCount:Math.max(0,Math.min(event.count,100000)),findIndex:Math.max(0,Math.min(event.index,event.count)),findDone:!!event.done});
+  }).then((value:any)=>{findListener=value;}).catch(()=>{});
+  // A page's video fullscreen is a native view above everything; close renderer overlays.
+  void Browser.addListener('fullscreen',(event:Bag)=>{if(!disposed&&event.session===session&&event.active)shell?.vset('browser',{menu:false,tabsOpen:false,share:false});}).then((value:any)=>{fullscreenListener=value;}).catch(()=>{});
   void DailyApps.addListener('appResumed', () => { if (shell?.S().view === 'browser') refreshBookmarks(); }).then(value => { resumeListener=value; }).catch(()=>{});
   void Browser.addListener('stateChanged',(event:Bag)=>{
     if(event.session!==session || !created.has(event.id) || event.sequence <= (metadata.get(event.id)?.sequence||0))return;
@@ -363,5 +415,5 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   const timer=window.setInterval(update,100);
   const visibility = () => { lastGeometry=''; update(); if (!document.hidden && shell?.S().view === 'browser') refreshBookmarks(); };
   window.addEventListener('resize',update);document.addEventListener('visibilitychange',visibility);
-  return ()=>{window.removeEventListener('alpha:bookmarks-document-changed',refreshBookmarks);window.removeEventListener('alpha:browser-open-view',openBrowserView);stopReading();unsubscribeReading();disposed=true;clearInterval(timer);window.removeEventListener('resize',update);document.removeEventListener('visibilitychange',visibility);void resumeListener?.remove();void listener?.remove();void openedListener?.remove();void closedListener?.remove();void noticeListener?.remove();for(const id of created.keys())void Browser.close({session,id}).catch(()=>{});};
+  return ()=>{window.removeEventListener('alpha:bookmarks-document-changed',refreshBookmarks);window.removeEventListener('alpha:browser-open-view',openBrowserView);stopReading();unsubscribeReading();disposed=true;clearInterval(timer);window.removeEventListener('resize',update);document.removeEventListener('visibilitychange',visibility);void resumeListener?.remove();void listener?.remove();void openedListener?.remove();void closedListener?.remove();void noticeListener?.remove();void findListener?.remove();void fullscreenListener?.remove();window.clearTimeout(findTimer);for(const id of created.keys())void Browser.close({session,id}).catch(()=>{});};
 }

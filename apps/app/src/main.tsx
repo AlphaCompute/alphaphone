@@ -27,6 +27,7 @@ import { installWorkflowAdapter } from './prototype/workflow-adapter';
 import { installAutomationsAdapter } from './prototype/automations-adapter';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { StartupPermissions } from './startup-permissions';
+import { reopenStartupPermissions } from './startup-permission-flow';
 import { createRoot } from 'react-dom/client';
 import { Component, VIEWS } from './prototype/model.js';
 import { installReminderAdapter } from './prototype/reminder-adapter';
@@ -34,7 +35,7 @@ import { installAgentAdapter } from './prototype/agent-adapter';
 import { installPrototypeNativeAdapters } from './prototype/native-adapter';
 import { installSelectedDocumentAdapter } from './prototype/selection-adapter';
 import { installPrototypeCameraAdapter } from './prototype/camera-adapter';
-import { installPrototypeHomeBindings, installPrototypeDataAdapter } from './prototype/data-adapter';
+import { installPrototypeHomeBindings, installPrototypeDataAdapter, setHomeSources, HOME_SOURCES_CHANGED } from './prototype/data-adapter';
 import { isAndroid, DeviceApps } from './native';
 import { DailyApps } from './daily';
 import { installPrototypeVoiceAdapter } from './prototype/voice-adapter';
@@ -43,7 +44,10 @@ import { installCalendarAdapter } from './prototype/calendar-adapter';
 import { installSettingsAdapter } from './prototype/settings-adapter';
 import { ConnectionChooser, connectionController } from './runtime/connection-ui';
 import { installNotesTrashAdapter } from './prototype/notes-trash-adapter';
-import { installInboxCloudAdapter } from './prototype/inbox-cloud-adapter';
+import { installInboxCloudAdapter, inboxAttention, subscribeInboxAttention } from './prototype/inbox-cloud-adapter';
+import { latestRetainedDigest, subscribeRetainedDigest } from './runtime/hosted-digests';
+import { installHomeLauncher } from './prototype/home-launcher';
+import { setLocalePreferences } from './prototype/locale-time';
 import './prototype/prototype.css';
 import './prototype/phone.css';
 installGlobalErrorRecovery();
@@ -94,6 +98,16 @@ if (!fixture) {
   installSettingsAdapter(Component, VIEWS);
   if(!isAndroid){if(devSurfacesEnabled)installBrowserDeviceAdapter(Component);else installBrowserCapabilityTiles(Component);}
   if(!browserDevProfile) installInboxCloudAdapter(Component, VIEWS);
+  // Home cards read only the provider summaries: unread count, account label and read time for
+  // mail, and the latest retained brief. Nothing here starts a read or a run.
+  if(!browserDevProfile){
+    const homeSourcesChanged=()=>window.dispatchEvent(new Event(HOME_SOURCES_CHANGED));
+    subscribeInboxAttention(homeSourcesChanged);subscribeRetainedDigest(homeSourcesChanged);
+    setHomeSources({
+      attention:()=>{const value=inboxAttention();return {state:value.state,unread:value.unread,...(value.source?{source:value.source}:{}),...(value.updatedAt?{updatedAt:value.updatedAt}:{})};},
+      brief:latestRetainedDigest,
+    });
+  }
   if(!browserDevProfile) {installWorkflowAdapter(Component, VIEWS);installAutomationsAdapter(Component,VIEWS);}
 }
 if(devSurfacesEnabled&&simulatedApps)installSimulatedApps(Component,VIEWS,simulatedApps);
@@ -102,6 +116,9 @@ installSubviewAccessibility(VIEWS);
 installCalendarMonthFocus(Component, VIEWS);
 installChatOverlayMotion(Component);
 installClockAdapter(Component, VIEWS, { simulated: testMocksEnabled && fixture, browser: !isAndroid });
+// Installed apps come from Android (or the browser device's app list); outermost so its drawer
+// state composes with every Home binding above.
+installHomeLauncher(Component, DeviceApps, { icons: isAndroid });
 /** A browser cannot read or change radios and sensors; show that instead of fixture toggles. */
 function installBrowserCapabilityTiles(Component:any){
   const p=Component.prototype,render=p.renderVals;
@@ -114,6 +131,9 @@ function installBrowserCapabilityTiles(Component:any){
 }
 let shell: any;
 let launcherPresentation = false;
+/** Opened through ACTION_ASSIST (AlphaAssistActivity): chat and close only. */
+let assistantSurface = false;
+const closeAssistant = () => { void DailyApps.closeAssistant().catch(() => {}); };
 function Phone() {
   const [pullSurface,setPullSurface]=useState({input:true,scale:1});
   const chatPullBinding=usePullGesture({
@@ -137,21 +157,25 @@ function Phone() {
     }).catch(() => {});
     const size = () => {
       const height = window.visualViewport?.height || window.innerHeight;
-      const desktop = !isAndroid && window.innerWidth > 600;
+      const coarse = !isAndroid && window.matchMedia('(pointer: coarse)').matches;
+      const desktop = !isAndroid && window.innerWidth > 600 && !coarse;
       const banner = testMocksEnabled && mock ? document.querySelector('.mock-mode-banner')?.getBoundingClientRect().bottom || 36 : 0;
       const tools = devSurfacesEnabled && !isAndroid && !mock ? document.querySelector<HTMLElement>('.alpha-dev-tools') : null;
       const toolsInset = tools ? Math.max(56, Math.ceil(tools.getBoundingClientRect().height + (parseFloat(getComputedStyle(tools).bottom) || 0) + 2)) : 0;
       const available = Math.max(1, height - banner - (desktop ? 48 : 0) - toolsInset);
       // Standalone Android uses the available width without magnifying the
       // portrait canvas in landscape. Keep the launcher presentation unchanged.
+      const landscape = !desktop && window.screen.width > window.screen.height && window.innerWidth > window.innerHeight;
       const fluidNative = isAndroid && !launcherPresentation;
-      const scale = desktop ? Math.min(1, available / 915) : fluidNative ? Math.min(1, window.innerWidth / 412) : window.innerWidth / 412;
+      const scale = desktop ? Math.min(1, available / 915) : landscape ? Math.max(0.1, Math.min(window.innerWidth, window.screen.height) / 412) : fluidNative ? Math.min(1, window.innerWidth / 412) : window.innerWidth / 412;
       document.documentElement.style.setProperty('--phone-scale', String(scale));
-      document.documentElement.style.setProperty('--phone-width', `${fluidNative ? window.innerWidth / scale : 412}px`);
+      document.documentElement.style.setProperty('--phone-width', landscape ? `calc(100vw / ${scale})` : `${fluidNative ? window.innerWidth / scale : 412}px`);
       document.documentElement.style.setProperty('--phone-height', `${desktop ? 915 : available / scale}px`);
       document.documentElement.style.setProperty('--phone-left', `${desktop ? (window.innerWidth - 412 * scale) / 2 : 0}px`);
       document.documentElement.style.setProperty('--phone-top', `${banner + (desktop ? 24 : 0)}px`);
       document.documentElement.classList.toggle('browser-desktop', desktop);
+      document.documentElement.classList.toggle('alpha-landscape', landscape);
+
     };
     const bannerObserver=new ResizeObserver(size);const bannerElement=testMocksEnabled&&mock?document.querySelector('.mock-mode-banner'):null;if(bannerElement)bannerObserver.observe(bannerElement);
     size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size);
@@ -169,14 +193,33 @@ function Phone() {
     else if(action==='background'){shell.leave();shell.setState({screen:'off',voice:'off',chat:'input',shade:false});document.documentElement.dataset.devBackground='true';window.dispatchEvent(new Event('blur'));}
     else if(action==='resume'){delete document.documentElement.dataset.devBackground;shell.unlock();window.dispatchEvent(new Event('focus'));}
     if(['power','unlock','boot','background','resume'].includes(action))window.dispatchEvent(new Event('alpha:device-state'));
-  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component configureChatPull={(surface:{input:boolean;scale:number})=>setPullSurface(current=>current.input===surface.input&&current.scale===surface.scale?current:surface)} chatPullBinding={chatPullBinding} phoneSurface systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
-{!fixture && <><ConnectionChooser /><HostedDigestPanel />{!connection.open && <StartupPermissions />}</>}</>;
+  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component configureChatPull={(surface:{input:boolean;scale:number})=>setPullSurface(current=>current.input===surface.input&&current.scale===surface.scale?current:surface)} chatPullBinding={chatPullBinding} phoneSurface assistantSurface={assistantSurface} onCloseAssistant={closeAssistant} onReopenStartupAccess={isAndroid && !fixture && !assistantSurface ? reopenStartupPermissions : undefined} systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
+{!fixture && <><ConnectionChooser />{!assistantSurface && <><HostedDigestPanel />{!connection.open && <StartupPermissions />}</>}</>}</>;
+}
+/** Android's locale and 24-hour setting; WebView Intl alone does not follow the latter. */
+async function applyDeviceLocale() {
+  try { const info = await DeviceApps.localeInfo(); setLocalePreferences({ locale: info.locale, hourCycle: info.hour24 === true ? 'h23' : info.hour24 === false ? 'h12' : undefined }); }
+  catch { /* Keep the WebView's default locale formatting. */ }
 }
 async function mountPhone() {
   // Android owns its system bars; browser defaults to the standalone app.
   launcherPresentation = isAndroid
     ? await DeviceApps.buildInfo().then(info => info.launcher === true).catch(() => false)
     : devSurfacesEnabled && query.get('shell') === 'launcher';
+  if (isAndroid) {
+    // AlphaAssistActivity (surfaceInfo) or an Activity opened with the 'alpha.assistant' extra.
+    const [surface, launch] = await Promise.all([
+      DailyApps.surfaceInfo().then(info => info.assistant === true).catch(() => false),
+      DeviceApps.launchInfo().then(info => info.assistant === true).catch(() => false),
+    ]);
+    assistantSurface = surface || launch;
+    await applyDeviceLocale();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) void applyDeviceLocale().then(() => shell?.setState({ localeRevision: Date.now() })); });
+  } else if (devSurfacesEnabled && query.get('surface') === 'assistant') {
+    // Development server only: preview the ACTION_ASSIST surface without an Android host.
+    assistantSurface = true;
+  }
+  document.documentElement.classList.toggle('alpha-assistant-surface', assistantSurface);
   document.documentElement.classList.toggle('standalone-app', !launcherPresentation);
   if (testMocksEnabled && mock && isAndroid) {
     const { pauseLiveActivityForMock } = await import('./runtime/mock-admission');

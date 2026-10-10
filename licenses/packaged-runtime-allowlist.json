@@ -1,0 +1,9 @@
+{
+  "description": "Unverified items that exist only when a resident runtime is staged (PACKAGED). Read in addition to unverified-allowlist.json only then. Listing an item only lets generation proceed; it is not legal sign-off.",
+  "entries": [
+    {
+      "name": "Bun JavaScript runtime (libeliza_bun.so)",
+      "reason": "Bun is MIT-licensed but statically links JavaScriptCore/WebKit (LGPL-2.0-or-later and LGPL-2.1-or-later, with BSD portions) and other native libraries listed in its LICENSE.md. LGPL static-link and relink obligations and the written source offer need legal review before an APK with the packaged runtime is distributed."
+    }
+  ]
+}

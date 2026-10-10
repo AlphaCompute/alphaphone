@@ -1,12 +1,8 @@
 import { test, expect } from '@playwright/test';
-import {createServer} from 'vite';
-
-// One configured server per worker, acquired only by the four recovery cases.
-const configured=test.extend<{}, {mapsUrl:string}>({mapsUrl:[async({},use)=>{
- const server=await createServer({define:{'import.meta.env.VITE_MAPS_BASE_URL':JSON.stringify('https://maps-fixture.invalid')},cacheDir:'node_modules/.vite-maps-e2e',server:{host:'127.0.0.1',port:0,watch:null}});
- await server.listen();
- try{await use(`http://127.0.0.1:${(server.httpServer!.address() as {port:number}).port}`);}finally{await server.close();}
-},{scope:'worker'}]});
+import {createServer,type ViteDevServer} from 'vite';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 
 test('shared map renderer loads its real worker and draws host-styled route geometry', async ({ page }) => {
   const errors: string[] = [];
@@ -48,14 +44,22 @@ for(const mode of ['granted','denied','late-fix'] as const)test(`Maps location r
  if(mode==='late-fix'){await page.evaluate(()=>(window as any).mapsLateFix({coords:{latitude:43.73,longitude:7.42,accuracy:5},timestamp:Date.now()}));await expect(page.getByText('Dropped pin',{exact:true})).toBeVisible();await expect(page.getByText('Current location',{exact:true})).toHaveCount(0);}
 });
 
-// Every request to the configured synthetic endpoint is fulfilled here.
-for(const mode of ['granted','outside-coverage','webgl','tiles'] as const)configured(`Maps configured renderer recovery: ${mode}`,async({page,context,mapsUrl})=>{
+// A separate server configures this group with the synthetic Maps provider.
+// Every request to that synthetic endpoint is fulfilled here, never sent out.
+test.describe('configured synthetic Maps provider',()=>{
+ let server:ViteDevServer,origin:string,cache:string;
+ test.beforeAll(async()=>{cache=await mkdtemp(path.join(tmpdir(),'alpha-maps-vite-'));server=await createServer({cacheDir:cache,define:{'import.meta.env.VITE_MAPS_BASE_URL':JSON.stringify('https://maps-fixture.invalid')},server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();origin=`http://127.0.0.1:${(server.httpServer!.address() as any).port}`;});
+ test.afterAll(async()=>{await server?.close();if(cache)await rm(cache,{recursive:true,force:true});});
+for(const mode of ['granted','outside-coverage','webgl','tiles'] as const)test(`Maps configured renderer recovery: ${mode}`,async({page,context})=>{
  let badTiles=mode==='tiles';await page.route('https://maps-fixture.invalid/**',route=>{if(new URL(route.request().url()).pathname==='/capabilities')return route.fulfill({json:{providerId:'alpha-osm-monaco',region:'Synthetic Monaco fixture',bounds:[7.40,43.72,7.45,43.76],attribution:'Synthetic browser test',connectionId:'conn_maps_fixture_connection_123456',revision:'fixture1',capabilities:{map:true,search:true,placeDetails:true,modes:['walk'],traffic:'none',transit:'none',offline:{map:false,search:false,routing:false}}},headers:{'access-control-allow-origin':'*'}});return route.fulfill({status:badTiles?503:204,headers:{'access-control-allow-origin':'*'}});});
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await context.grantPermissions(['geolocation']);await context.setGeolocation(mode==='outside-coverage'?{latitude:10,longitude:10,accuracy:5}:{latitude:43.739,longitude:7.425,accuracy:5});
  if(mode==='webgl')await page.addInitScript(()=>{const get=HTMLCanvasElement.prototype.getContext;(window as any).restoreMapWebGL=()=>HTMLCanvasElement.prototype.getContext=get;HTMLCanvasElement.prototype.getContext=function(type:string,...args:any[]){if(type.startsWith('webgl'))return null;return (get as any).call(this,type,...args);} as any;});
- await page.goto(mapsUrl);await page.getByRole('button',{name:'Maps',exact:true}).click();const status=page.locator('[data-alpha-maps-status]'),map=page.locator('[data-alpha-map-plane]');
+ await page.goto(origin);await page.getByRole('button',{name:'Maps',exact:true}).click();const status=page.locator('[data-alpha-maps-status]'),map=page.locator('[data-alpha-map-plane]');
  if(mode==='webgl'||mode==='tiles'){await expect(status).toHaveAttribute('data-map-state','error');await expect(page.getByRole('button',{name:'Retry map',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Enter coordinates',exact:true})).toBeVisible();if(mode==='webgl')await page.evaluate(()=>(window as any).restoreMapWebGL());else badTiles=false;await page.getByRole('button',{name:'Retry map',exact:true}).click();}
  await expect(map).toHaveAttribute('data-map-ready','true');await expect(map.locator('canvas')).toBeVisible();await page.getByRole('button',{name:'Add location',exact:true}).click();await expect(status).toHaveAttribute('data-location-state','ready');
- if(mode==='outside-coverage'){await expect(status).toHaveAttribute('data-map-state','outside-coverage');await expect(status).toContainText('outside Synthetic Monaco fixture map coverage');await expect(map.locator('.maplibregl-marker')).toHaveCount(0);}else{await expect(status).toHaveAttribute('data-map-state','ready');await expect(map.locator('.maplibregl-marker')).toHaveCount(1);}
+ if(mode==='outside-coverage'){await expect(status).toHaveAttribute('data-map-state','outside-coverage');await expect(status).toContainText('outside Synthetic Monaco fixture map coverage');await expect(map.locator('.maplibregl-marker:not([data-map-position])')).toHaveCount(0);}else{await expect(status).toHaveAttribute('data-map-state','ready');await expect(map.locator('.maplibregl-marker:not([data-map-position])')).toHaveCount(1);}
+ await expect(map.getByRole('img',{name:'Your position',exact:true})).toHaveCount(1);
  await expect(status).toContainText('Location access does not share it with your agent.');
+});
+
 });

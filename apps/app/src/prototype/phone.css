@@ -1,5 +1,5 @@
 html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none;background:#fff}
-.alpha-phone{position:absolute!important;left:var(--phone-left,0px)!important;top:var(--phone-top,0px)!important;width:412px!important;height:var(--phone-height,915px)!important;padding:0!important;display:block!important;transform-origin:top left;transform:scale(var(--phone-scale,1));background:var(--bg)!important}
+.alpha-phone{position:absolute!important;left:var(--phone-left,0px)!important;top:var(--phone-top,0px)!important;width:var(--phone-width,412px)!important;height:var(--phone-height,915px)!important;padding:0!important;display:block!important;transform-origin:top left;transform:scale(var(--phone-scale,1));background:var(--bg)!important}
 .browser-desktop body{background:#e9e9ed}
 .browser-desktop .alpha-phone{box-shadow:0 12px 60px #0002;border-radius:24px;overflow:hidden}
 .alpha-phone>[data-screen]{top:0!important;left:0!important;border-radius:0!important;height:var(--phone-height,915px)!important}
@@ -185,3 +185,17 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 
 /* Existing inline app dialogs own focus above a nonblocking half sheet too. */
 [data-screen][data-alpha-chat-half="true"]:has([data-alpha-layer="app"] [role="dialog"]) [data-alpha-layer="conversation"] { visibility:hidden; }
+
+/* Assistant owns only its conversation surface. */
+.alpha-assistant-surface .alpha-phone :is([data-alpha-layer="home"],[data-alpha-layer="drawer"]){display:none!important}
+
+/* Landscape (main.tsx scales by the shorter side, so the canvas is wider than tall): Home keeps
+ * the left side and the composer, pill and conversation dock on the right, side by side, so every
+ * Home control stays reachable without the composer covering the grid. */
+.alpha-landscape{--alpha-dock-width:min(400px,46%)}
+.alpha-landscape .alpha-phone [data-alpha-layer="home"],.alpha-landscape .alpha-phone [data-alpha-layer="drawer"]{right:calc(var(--alpha-dock-width) + 16px)!important;padding-bottom:16px!important;scroll-padding-bottom:16px!important}
+.alpha-landscape .alpha-phone [data-alpha-layer="composer"]{left:auto!important;right:16px!important;width:calc(var(--alpha-dock-width) - 16px)}
+.alpha-landscape .alpha-phone [data-alpha-layer="pill"]{left:auto!important;width:var(--alpha-dock-width)}
+.alpha-landscape .alpha-phone [data-alpha-layer="conversation"]{left:auto!important;width:var(--alpha-dock-width);height:100%!important;border-radius:0!important;box-shadow:-1px 0 0 var(--line),-20px 0 60px var(--shc)!important}
+.alpha-landscape.native-phone .alpha-phone [data-alpha-layer="composer"],.alpha-landscape.native-phone .alpha-phone [data-alpha-layer="pill"]{bottom:max(16px,calc(var(--native-bottom-inset,0px) + 8px))!important}
+.alpha-landscape .alpha-phone>[data-screen]{width:var(--phone-width,412px)!important}

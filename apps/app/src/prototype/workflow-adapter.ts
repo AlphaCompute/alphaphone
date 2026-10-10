@@ -4,7 +4,8 @@ import {registerPlugin} from '../platform-plugins';
 import {resolveWorkflowTap,type WorkflowTapNative} from '../runtime/workflow-notice-taps';
 import { createWorkflowAuthoring } from './workflow-authoring';
 import { alphaClient, type ActionProposal } from '../runtime/alpha-client';
-import type { WorkflowPhoneReview } from '../runtime/workflow-device-contract';
+import { workflowApprovalNotice, type WorkflowPhoneReview } from '../runtime/workflow-device-contract';
+import type { WorkflowNoticeRoute } from '../runtime/device-actions';
 import { connectionController } from '../runtime/connection-ui';
 import { WorkflowAdmissionRejected, WorkflowMetadataRejected, WorkflowLifecycleRejected, type RemoteWorkflow, type WorkflowRun, type WorkflowApproval, type WorkflowApprovalReceipt } from '../runtime/workflow-protocol';
 type Bag=Record<string,any>;
@@ -143,7 +144,21 @@ export function installWorkflowAdapter(Component:any,views:Bag){
   if(!owner?.live||!api?.isActive()||owner.S().view!=='workflows'||document.hidden||connectionController.getSnapshot().open||context.sensitive||context.view!=='workflows'||context.selectedObject?.kind!=='workflow-run'||context.selectedObject.id!==selected.id||context.selectedObject.revision!==selected.versionId||receipt?.id!==selected.id||receipt.versionId!==selected.versionId)throw new Error('Open this exact execution in the foreground to review its phone steps');
   return structuredClone(context);
  };
- const reviewPhone=()=>{if(!receipt||operation)return;const selected=receipt;phoneSteps=[];phoneConfirm=null;void work(async(client,signal,valid)=>{const context=phoneContext(selected),review=await client.phoneReview(selected,signal);if(!valid())return;phoneContext(selected);const steps=review.finished||review.cancellationRequestedAt?[]:await connectionController.workflowPhoneActions(review,context,signal);if(valid()){phoneContext(selected);phoneReview=review;phoneSteps=steps;phoneStatus=steps.length?'Review the exact destination, sources and operation. Each step needs separate approval.':'No pending phone steps in this execution. Refresh explicitly if its next step becomes ready.';}});};
+ // One redacted OS notice per pending phone-step approval, so a waiting step stays discoverable
+ // after leaving the app. A tap only opens the run read-only; a decision or expiry withdraws it.
+ interface ApprovalNoticeNative {postWorkflowApprovalNotice(input:{id:string;bindingHash:string;expiresAt:number;route:WorkflowNoticeRoute}):Promise<{status:string}>;withdrawWorkflowApprovalNotice(input:{id:string}):Promise<void>}
+ const approvalNative=()=>registerPlugin<ApprovalNoticeNative>('AlphaHostedResults');
+ const noticeRoute=(run:WorkflowRun):WorkflowNoticeRoute|null=>{const selected=connectionController.getWorkflowClient(),session=connectionController.getSnapshot().session;if(!Capacitor.isNativePlatform()||!selected?.scope||!session)return null;return {scope:selected.scope,origin:session.origin,ownerId:session.ownerId,agentId:session.agentId,workflowId:run.workflowId,runId:run.id,versionId:run.versionId};};
+ async function syncApprovalNotices(run:WorkflowRun,pending:ActionProposal[],resolved:string[]){
+  const route=noticeRoute(run);if(!route)return;const native=approvalNative();
+  for(const proposalId of resolved){try{await native.withdrawWorkflowApprovalNotice({id:(await workflowApprovalNotice(route,proposalId)).id});}catch{/* It still expires with the approval. */}}
+  for(const step of pending){if(!(step.expiresAt>Date.now()))continue;try{const {id,bindingHash}=await workflowApprovalNotice(route,step.id);await native.postWorkflowApprovalNotice({id,bindingHash,expiresAt:step.expiresAt,route});}catch{/* The step stays waiting in Workflows. */}}
+ }
+ // Serialized: a decision's withdrawal always reaches the native ledger after any post still in flight
+ // from the preceding review, so a decided approval can never be posted afterwards.
+ let approvalNotices:Promise<void>=Promise.resolve();
+ const queueApprovalNotices=(run:WorkflowRun,pending:ActionProposal[],resolved:string[])=>{approvalNotices=approvalNotices.then(()=>syncApprovalNotices(run,pending,resolved)).catch(()=>{});};
+ const reviewPhone=()=>{if(!receipt||operation)return;const selected=receipt,previous=phoneReview?.runId===selected.id?phoneSteps.map(step=>step.id):[];phoneSteps=[];phoneConfirm=null;void work(async(client,signal,valid)=>{const context=phoneContext(selected),review=await client.phoneReview(selected,signal);if(!valid())return;phoneContext(selected);const steps=review.finished||review.cancellationRequestedAt?[]:await connectionController.workflowPhoneActions(review,context,signal);if(valid()){phoneContext(selected);queueApprovalNotices(selected,steps,previous.filter(id=>!steps.some(step=>step.id===id)));phoneReview=review;phoneSteps=steps;phoneStatus=steps.length?'Review the exact destination, sources and operation. Each step needs separate approval.':'No pending phone steps in this execution. Refresh explicitly if its next step becomes ready.';}});};
  const decidePhone=(proposal:ActionProposal,approved:boolean)=>{
   if(!receipt||!phoneReview||operation)return;
   const key=proposal.id+':'+String(approved);if(phoneConfirm!==key){phoneConfirm=key;publish();return;}
@@ -151,8 +166,8 @@ export function installWorkflowAdapter(Component:any,views:Bag){
   void work(async(client,signal,valid)=>{
    const context=phoneContext(selected),current=await client.phoneReview(selected,signal);signal.throwIfAborted();if(!valid())return;phoneContext(selected);
    if(current.finished||current.cancellationRequestedAt||current.specDigest!==reviewed.specDigest)throw new Error('Workflow execution changed; review again');
-   if(approved){const result=await connectionController.execute(proposal,context,signal);if(valid())phoneStatus=result.summary;}
-   else{await connectionController.rejectWorkflowPhoneAction(proposal.id,current,context,signal);if(valid())phoneStatus='Phone step denied. No device action was performed.';}
+   if(approved){const result=await connectionController.execute(proposal,context,signal);queueApprovalNotices(selected,[],[proposal.id]);if(valid())phoneStatus=result.summary;}
+   else{await connectionController.rejectWorkflowPhoneAction(proposal.id,current,context,signal);queueApprovalNotices(selected,[],[proposal.id]);if(valid())phoneStatus='Phone step denied. No device action was performed.';}
    if(valid()){phoneSteps=[];phoneReview=null;phoneConfirm=null;}
   });
  };

@@ -12,6 +12,22 @@ Cold startup restores bookmarks, saved normal tabs and history. Saved tabs and h
 
 `node scripts/test-native-restart.mjs bookmark APP.apk MATCHING_TEST.apk OUTPUT` with the [owned-emulator configuration](verification.md) runs `bookmarkProcessRestartPhase` in separate instrumentation processes. It saves a UUID-scoped bookmark through the real UI with a sign-in-style cookie and localStorage value and an open private tab, force-stops the app, requires a different PID, verifies that the private profile was deleted, that only the normal tab is restored with its cookie and storage, and a restored library entry, explicitly opens that bookmark, removes it through the UI, then force-stops again and verifies removal in another PID. Cleanup removes only its recorded synthetic bookmark (all other bookmarks are preserved) and clears saved tabs and history. APK hashes and phase outcomes are archived. Require both distributions to pass prepare, verify in a new PID, verifyRemoved in another PID, and scoped cleanup. The shared upstream lifecycle verifies archived/installed APKs and uses a fresh secondary Android user, retaining it if termination or cleanup is uncertain.
 
+### Open failure: bookmark process-restart verify (release-07)
+
+The last qualification run of `bookmarkProcessRestartPhase` failed in the `verify` phase with
+"Actual isolated HTTPS document not restored": after the force-stop, the restored normal tab never
+showed `https://example.com/?alpha_bookmark_restart=<uuid>` in a new PID. The October 8 change
+does not claim a fix. It removes one way this can happen: a restored tab's background load used to
+drop its saved address when native tab creation or the first navigation was rejected (for example
+while the host document was being replaced during `liveMode()`), leaving an empty tab. It now keeps
+the saved address and retries, at most twice, the next time the tab is shown
+(`browser-adapter.ts`, `restoreAttempts`). Whether that was the cause is unproven; the phase must be
+rerun on both distribution variants through `scripts/test-native-restart.mjs bookmark`.
+`BrowserSigninsInstrumentedTest#signinProcessRestartPhase` adds a cold-start check that opens the
+site in a new tab rather than relying on tab restoration, so a restoration failure and a lost
+sign-in cookie are reported separately once a runner case (`signinPhase`: prepare, verify, cleanup)
+exists.
+
 ## Android provider capability
 
 Private tabs, Clear browsing data and Clear data for this site require

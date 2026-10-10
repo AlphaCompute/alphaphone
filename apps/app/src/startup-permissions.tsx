@@ -1,7 +1,7 @@
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { useEffect, useRef, useState } from 'react';
 import { registerPlugin } from './platform-plugins';
-import { createStartupPermissionFlow, type StartupPermissionState } from './startup-permission-flow';
+import { createStartupPermissionFlow, readStartupPermissionMemory, writeStartupPermissionMemory, STARTUP_PERMISSIONS_REOPEN, type StartupPermissionState } from './startup-permission-flow';
 import './startup-permissions.css';
 
 const notifications = registerPlugin<{status(): Promise<{permissionGranted: boolean; appEnabled: boolean}>}>('AlphaNotifications');
@@ -17,7 +17,7 @@ const device = registerPlugin<{openSettings(options: {page: 'notifications' | 'p
 const keys = ['notifications', 'microphone'] as const;
 type PermissionKey = typeof keys[number];
 const details = {
-  notifications: {title: 'Notifications', description: 'Get reminders and completed task alerts when Alpha is in the background.'},
+  notifications: {title: 'Notifications', description: 'Get reminders, scheduled briefs and approval requests when Alpha is in the background.'},
   microphone: {title: 'Microphone', description: 'Talk to Alpha when you choose voice input. Allowing access does not start recording.'},
 };
 
@@ -28,7 +28,7 @@ export function StartupPermissions() {
       status: async () => { const status = await notifications.status(); return {granted: status.permissionGranted, enabled: status.appEnabled}; },
       request: () => permissions.requestPermissions({permissions: ['notifications']}),
       openSettings: () => device.openSettings({page: 'notifications'}),
-    }),
+    }, {key: 'notifications'}),
     microphone: createStartupPermissionFlow({
       status: async () => {
         const status = await microphone.checkPermissions();
@@ -37,16 +37,26 @@ export function StartupPermissions() {
       },
       request: () => microphone.requestPermissions({permissions: ['microphone']}),
       openSettings: () => device.openSettings({page: 'privacy'}),
-    }),
+    }, {key: 'microphone'}),
   }));
   const [states, setStates] = useState<Record<PermissionKey, StartupPermissionState>>({notifications: 'checking', microphone: 'checking'});
-  const [dismissed, setDismissed] = useState(false);
+  // "Not now" survives the chooser unmounting this panel and a cold start, until Settings reopens it.
+  const [dismissed, setDismissedState] = useState(() => readStartupPermissionMemory().dismissed);
+  // Reopened from Settings: show the panel even when every access is already allowed, so the
+  // Settings row always answers with the current state.
+  const [reopened, setReopened] = useState(false);
+  const setDismissed = (value: boolean) => { writeStartupPermissionMemory({dismissed: value}); setDismissedState(value); if (value) setReopened(false); };
+  useEffect(() => {
+    const reopen = () => { setDismissedState(readStartupPermissionMemory().dismissed); setReopened(true); };
+    window.addEventListener(STARTUP_PERMISSIONS_REOPEN, reopen);
+    return () => window.removeEventListener(STARTUP_PERMISSIONS_REOPEN, reopen);
+  }, []);
   const [busy, setBusy] = useState<PermissionKey | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const alive = useRef(false);
   const actionPending = useRef(false);
   const native = Capacitor.getPlatform() === 'android';
-  const visible = native && !dismissed && keys.some(key => states[key] !== 'checking' && states[key] !== 'ready');
+  const visible = native && !dismissed && (reopened ? keys.every(key => states[key] !== 'checking') : keys.some(key => states[key] !== 'checking' && states[key] !== 'ready'));
 
   useEffect(() => {
     alive.current = true;
@@ -101,6 +111,6 @@ export function StartupPermissions() {
         <div className="alpha-startup-permission-actions"><button type="button" disabled={busy !== null} onClick={() => void enable(key)}>{busy === key ? 'Checking…' : states[key] === 'settings' ? `Manage ${key} in Android` : states[key] === 'unavailable' ? `Check ${key} again` : `Enable ${key}`}</button></div>
       </>}
     </section>)}
-    <div className="alpha-startup-permission-actions"><button type="button" onClick={() => setDismissed(true)}>Not now</button></div>
+    <div className="alpha-startup-permission-actions"><button type="button" onClick={() => setDismissed(true)}>{keys.every(key => states[key] === 'ready') ? 'Done' : 'Not now'}</button></div>
   </dialog>;
 }

@@ -1,0 +1,396 @@
+diff --git a/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserSessionPolicy.java b/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserSessionPolicy.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..354594e1d41bfbcdb8ef3f6ed4a47cd6834c5133
+--- /dev/null
++++ b/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserSessionPolicy.java
+@@ -0,0 +1,221 @@
++package ai.eliza.plugins.browsersurface;
++
++import java.net.URI;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Locale;
++import java.util.Objects;
++
++/**
++ * Generic restore policy for a browser surface with one persistent profile and ephemeral (private)
++ * tabs: which tabs, history entries and bookmarks may be written to the host's sealed store, and
++ * how a damaged or hostile record is read back.
++ *
++ * <ul>
++ *   <li>Ephemeral tabs and their navigations are never part of a persisted snapshot or history.
++ *   <li>Tabs and history accept http(s) addresses without user info, control characters or
++ *       whitespace, at most {@link #MAX_URL} characters; bookmarks accept https only.
++ *   <li>Every list is bounded and de-duplicated; invalid snapshot rows are dropped, while a
++ *       bookmark record that does not validate is refused as a whole (the host treats it as
++ *       damaged rather than silently losing entries).
++ *   <li>Clear data for a site removes history and bookmarks for that host and its subdomains.
++ * </ul>
++ *
++ * <p>The host owns encryption, storage, tab views and the UI. Pure JVM; no Android types.
++ */
++public final class BrowserSessionPolicy {
++  public static final int MAX_URL = 4096;
++  public static final int MAX_HISTORY = 100;
++  public static final int MAX_TABS = 8;
++  public static final int MAX_TITLE = 200;
++  public static final int MAX_BOOKMARKS = 100;
++
++  private BrowserSessionPolicy() {}
++
++  /** A tab as the host sees it. {@code ephemeral} is true for a private tab. */
++  public static final class Tab {
++    public final String id;
++    public final String url;
++    public final String title;
++    public final boolean ephemeral;
++
++    public Tab(String id, String url, String title, boolean ephemeral) {
++      this.id = id;
++      this.url = url;
++      this.title = title;
++      this.ephemeral = ephemeral;
++    }
++
++    @Override
++    public boolean equals(Object other) {
++      if (!(other instanceof Tab)) return false;
++      Tab tab = (Tab) other;
++      return ephemeral == tab.ephemeral && Objects.equals(id, tab.id) && Objects.equals(url, tab.url) && Objects.equals(title, tab.title);
++    }
++
++    @Override
++    public int hashCode() {
++      return Objects.hash(id, url, title, ephemeral);
++    }
++  }
++
++  /** A canonical, persistable snapshot: persistent-profile tabs only. */
++  public static final class Snapshot {
++    public final List<Tab> tabs;
++    public final List<String> history;
++    /** Id of the selected tab when it is persisted, otherwise the empty string. */
++    public final String current;
++
++    Snapshot(List<Tab> tabs, List<String> history, String current) {
++      this.tabs = Collections.unmodifiableList(tabs);
++      this.history = Collections.unmodifiableList(history);
++      this.current = current;
++    }
++  }
++
++  private static boolean clean(String value, int max) {
++    if (value == null || value.isEmpty() || value.length() > max) return false;
++    for (int i = 0; i < value.length(); i++) {
++      char c = value.charAt(i);
++      if (c <= 0x20 || c == 0x7f) return false;
++    }
++    return true;
++  }
++
++  private static URI parse(String value) {
++    if (!clean(value, MAX_URL)) return null;
++    try {
++      URI uri = new URI(value);
++      if (uri.getRawUserInfo() != null) return null;
++      String host = uri.getHost();
++      if (host == null || host.isEmpty()) return null;
++      return uri;
++    } catch (Exception invalid) {
++      return null;
++    }
++  }
++
++  /** An address a restored tab or history entry may hold. */
++  public static boolean validUrl(String value) {
++    URI uri = parse(value);
++    if (uri == null) return false;
++    String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
++    return scheme.equals("https") || scheme.equals("http");
++  }
++
++  /** An address a bookmark may hold: https only. */
++  public static boolean validBookmark(String value) {
++    URI uri = parse(value);
++    return uri != null && uri.getScheme().equalsIgnoreCase("https");
++  }
++
++  public static boolean validTabId(String value) {
++    return value != null && value.matches("[A-Za-z0-9_-]{1,80}");
++  }
++
++  /** Control characters become spaces; trimmed; at most {@link #MAX_TITLE} characters. */
++  public static String title(String value) {
++    if (value == null) return "";
++    StringBuilder out = new StringBuilder();
++    for (int i = 0; i < value.length() && out.length() < MAX_TITLE; i++) {
++      char c = value.charAt(i);
++      out.append(c < 32 || c == 127 ? ' ' : c);
++    }
++    return out.toString().trim();
++  }
++
++  /**
++   * The snapshot the host may persist. Ephemeral tabs are dropped first, then invalid or duplicate
++   * rows; at most {@link #MAX_TABS} tabs and {@link #MAX_HISTORY} history entries are kept in their
++   * given order. {@code current} survives only if it names a kept tab.
++   */
++  public static Snapshot persistable(List<Tab> tabs, List<String> history, String current) {
++    List<Tab> keptTabs = new ArrayList<>();
++    LinkedHashSet<String> ids = new LinkedHashSet<>();
++    if (tabs != null) {
++      for (Tab tab : tabs) {
++        if (keptTabs.size() >= MAX_TABS) break;
++        if (tab == null || tab.ephemeral || !validTabId(tab.id) || !validUrl(tab.url) || !ids.add(tab.id)) continue;
++        keptTabs.add(new Tab(tab.id, tab.url, title(tab.title), false));
++      }
++    }
++    List<String> keptHistory = new ArrayList<>();
++    LinkedHashSet<String> seen = new LinkedHashSet<>();
++    if (history != null) {
++      for (String url : history) {
++        if (keptHistory.size() >= MAX_HISTORY) break;
++        if (validUrl(url) && seen.add(url)) keptHistory.add(url);
++      }
++    }
++    return new Snapshot(keptTabs, keptHistory, current != null && ids.contains(current) ? current : "");
++  }
++
++  /** A restored record goes through the same rules: nothing from it is trusted. */
++  public static Snapshot restore(List<Tab> tabs, List<String> history, String current) {
++    return persistable(tabs, history, current);
++  }
++
++  /**
++   * History after a committed navigation. An ephemeral tab's navigation, or an address that is not
++   * valid, returns the history unchanged. The newest entry is first and an address appears once.
++   */
++  public static List<String> recordVisit(List<String> history, String url, boolean ephemeral) {
++    List<String> current = history == null ? new ArrayList<>() : new ArrayList<>(history);
++    if (ephemeral || !validUrl(url)) return current;
++    current.remove(url);
++    current.add(0, url);
++    while (current.size() > MAX_HISTORY) current.remove(current.size() - 1);
++    return current;
++  }
++
++  /** True when {@code url}'s host is {@code site} or one of its subdomains. */
++  public static boolean belongsToSite(String url, String site) {
++    URI uri = parse(url);
++    if (uri == null || site == null || site.isEmpty()) return false;
++    String host = uri.getHost().toLowerCase(Locale.ROOT);
++    String domain = site.toLowerCase(Locale.ROOT);
++    return host.equals(domain) || host.endsWith("." + domain);
++  }
++
++  /** History or bookmarks without the entries for {@code site} (Clear data for this site). */
++  public static List<String> withoutSite(List<String> urls, String site) {
++    List<String> kept = new ArrayList<>();
++    if (urls == null) return kept;
++    for (String url : urls) if (!belongsToSite(url, site)) kept.add(url);
++    return kept;
++  }
++
++  /**
++   * Validates a stored bookmark list. A list that is too long, holds an invalid address or a
++   * duplicate is refused with {@link IllegalStateException}; the host reports a damaged record.
++   */
++  public static List<String> restoreBookmarks(List<String> stored) {
++    List<String> result = new ArrayList<>();
++    if (stored == null) return result;
++    if (stored.size() > MAX_BOOKMARKS) throw new IllegalStateException("too many bookmarks");
++    for (String url : stored) {
++      if (!validBookmark(url) || result.contains(url)) throw new IllegalStateException("damaged bookmark record");
++      result.add(url);
++    }
++    return result;
++  }
++
++  /**
++   * Adds (newest first) or removes a bookmark. An invalid address is refused with {@link
++   * IllegalArgumentException}; adding beyond {@link #MAX_BOOKMARKS} with {@link
++   * IllegalStateException}. Bookmarks are explicit user actions, so an ephemeral tab may add one;
++   * the host decides whether to offer that.
++   */
++  public static List<String> changeBookmark(List<String> stored, String url, boolean saved) {
++    if (!validBookmark(url)) throw new IllegalArgumentException("invalid bookmark");
++    List<String> rows = restoreBookmarks(stored);
++    rows.remove(url);
++    if (saved) {
++      if (rows.size() >= MAX_BOOKMARKS) throw new IllegalStateException("bookmark limit");
++      rows.add(0, url);
++    }
++    return rows;
++  }
++}
+diff --git a/plugins/plugin-native-browser-surface/test/native-host/BrowserSessionPolicyTest.java b/plugins/plugin-native-browser-surface/test/native-host/BrowserSessionPolicyTest.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c92c4bded2114eab5af0d952b1a5de13c689667f
+--- /dev/null
++++ b/plugins/plugin-native-browser-surface/test/native-host/BrowserSessionPolicyTest.java
+@@ -0,0 +1,129 @@
++import ai.eliza.plugins.browsersurface.BrowserSessionPolicy;
++import ai.eliza.plugins.browsersurface.BrowserSessionPolicy.Snapshot;
++import ai.eliza.plugins.browsersurface.BrowserSessionPolicy.Tab;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.List;
++
++/** Plain-JVM checks for BrowserSessionPolicy. Synthetic addresses only. */
++public final class BrowserSessionPolicyTest {
++  private static int assertions;
++
++  private static void check(boolean condition, String message) {
++    assertions++;
++    if (!condition) throw new AssertionError(message);
++  }
++
++  private static void equal(Object actual, Object expected, String message) {
++    check(expected == null ? actual == null : expected.equals(actual), message + ": expected " + expected + " got " + actual);
++  }
++
++  private static void throwsType(Class<? extends Throwable> type, Runnable action, String message) {
++    try {
++      action.run();
++    } catch (Throwable thrown) {
++      check(type.isInstance(thrown), message + ": wrong exception " + thrown);
++      return;
++    }
++    check(false, message + ": no exception");
++  }
++
++  public static void main(String[] args) {
++    // Address rules.
++    check(BrowserSessionPolicy.validUrl("https://example.test/a?b=c"), "https accepted");
++    check(BrowserSessionPolicy.validUrl("http://example.test/"), "http accepted for tabs");
++    check(!BrowserSessionPolicy.validUrl("https://user:pw@example.test/"), "user info refused");
++    check(!BrowserSessionPolicy.validUrl("https://example.test/a b"), "space refused");
++    check(!BrowserSessionPolicy.validUrl("https://example.test/\u0007"), "control refused");
++    check(!BrowserSessionPolicy.validUrl("javascript:alert(1)"), "javascript refused");
++    check(!BrowserSessionPolicy.validUrl("file:///sdcard/x"), "file refused");
++    check(!BrowserSessionPolicy.validUrl("data:text/plain,x"), "data refused");
++    check(!BrowserSessionPolicy.validUrl("https:///nohost"), "no host refused");
++    check(!BrowserSessionPolicy.validUrl(null), "null refused");
++    check(!BrowserSessionPolicy.validUrl(""), "empty refused");
++    char[] longPath = new char[BrowserSessionPolicy.MAX_URL];
++    Arrays.fill(longPath, 'a');
++    check(!BrowserSessionPolicy.validUrl("https://example.test/" + new String(longPath)), "over-long refused");
++    check(BrowserSessionPolicy.validBookmark("https://example.test/"), "https bookmark");
++    check(!BrowserSessionPolicy.validBookmark("http://example.test/"), "http bookmark refused");
++    check(BrowserSessionPolicy.validTabId("tab_1-A"), "tab id");
++    check(!BrowserSessionPolicy.validTabId("tab 1"), "tab id with space refused");
++    check(!BrowserSessionPolicy.validTabId(""), "empty tab id refused");
++    equal(BrowserSessionPolicy.title(" a\nb\u0000c "), "a b c", "title controls become spaces");
++    equal(BrowserSessionPolicy.title(null), "", "null title");
++    char[] longTitle = new char[500];
++    Arrays.fill(longTitle, 't');
++    equal(BrowserSessionPolicy.title(new String(longTitle)).length(), BrowserSessionPolicy.MAX_TITLE, "title bound");
++
++    // Ephemeral tabs never persist.
++    List<Tab> tabs = Arrays.asList(
++        new Tab("a", "https://one.test/", "One", false),
++        new Tab("p", "https://private.test/?session=secret", "Private", true),
++        new Tab("a", "https://dup.test/", "Duplicate id", false),
++        new Tab("b", "javascript:void(0)", "Bad", false),
++        new Tab("c", "https://two.test/", "Two\t", false));
++    Snapshot snapshot = BrowserSessionPolicy.persistable(tabs, Arrays.asList("https://one.test/", "https://one.test/", "ftp://x.test/"), "p");
++    equal(snapshot.tabs.size(), 2, "only valid persistent tabs");
++    equal(snapshot.tabs.get(0).id, "a", "order kept");
++    equal(snapshot.tabs.get(1).title, "Two", "title cleaned");
++    for (Tab tab : snapshot.tabs) check(!tab.ephemeral && !tab.url.contains("private.test"), "no private tab in snapshot");
++    equal(snapshot.current, "", "a private current tab is not persisted");
++    equal(snapshot.history, Arrays.asList("https://one.test/"), "history de-duplicated and filtered");
++    equal(BrowserSessionPolicy.persistable(tabs, null, "c").current, "c", "persistent current kept");
++    equal(BrowserSessionPolicy.persistable(tabs, null, "missing").current, "", "unknown current dropped");
++    equal(BrowserSessionPolicy.persistable(null, null, null).tabs.size(), 0, "empty snapshot");
++    throwsType(UnsupportedOperationException.class, () -> snapshot.tabs.add(new Tab("z", "https://z.test/", "", false)), "snapshot immutable");
++
++    List<Tab> many = new ArrayList<>();
++    for (int i = 0; i < 20; i++) many.add(new Tab("t" + i, "https://t" + i + ".test/", "", false));
++    equal(BrowserSessionPolicy.persistable(many, null, "t19").tabs.size(), BrowserSessionPolicy.MAX_TABS, "tab bound");
++    equal(BrowserSessionPolicy.persistable(many, null, "t19").current, "", "current beyond bound dropped");
++    List<String> longHistory = new ArrayList<>();
++    for (int i = 0; i < 150; i++) longHistory.add("https://h" + i + ".test/");
++    equal(BrowserSessionPolicy.restore(null, longHistory, "").history.size(), BrowserSessionPolicy.MAX_HISTORY, "history bound on restore");
++
++    // Visits.
++    List<String> history = BrowserSessionPolicy.recordVisit(null, "https://a.test/", false);
++    history = BrowserSessionPolicy.recordVisit(history, "https://b.test/", false);
++    history = BrowserSessionPolicy.recordVisit(history, "https://a.test/", false);
++    equal(history, Arrays.asList("https://a.test/", "https://b.test/"), "newest first, once");
++    equal(BrowserSessionPolicy.recordVisit(history, "https://private.test/", true), history, "ephemeral visit not recorded");
++    equal(BrowserSessionPolicy.recordVisit(history, "chrome://settings", false), history, "invalid visit not recorded");
++    List<String> full = new ArrayList<>(longHistory.subList(0, 100));
++    equal(BrowserSessionPolicy.recordVisit(full, "https://new.test/", false).size(), BrowserSessionPolicy.MAX_HISTORY, "visit keeps bound");
++    equal(BrowserSessionPolicy.recordVisit(full, "https://new.test/", false).get(0), "https://new.test/", "visit is newest");
++    equal(full.size(), 100, "input list not mutated");
++
++    // Site clearing.
++    check(BrowserSessionPolicy.belongsToSite("https://example.test/", "example.test"), "site itself");
++    check(BrowserSessionPolicy.belongsToSite("https://mail.EXAMPLE.test/", "example.test"), "subdomain, case-insensitive");
++    check(!BrowserSessionPolicy.belongsToSite("https://notexample.test/", "example.test"), "suffix that is not a subdomain");
++    check(!BrowserSessionPolicy.belongsToSite("https://example.test.evil.test/", "example.test"), "prefix that is not the site");
++    check(!BrowserSessionPolicy.belongsToSite("https://example.test/", ""), "empty site matches nothing");
++    equal(
++        BrowserSessionPolicy.withoutSite(Arrays.asList("https://example.test/", "https://a.example.test/x", "https://other.test/"), "example.test"),
++        Arrays.asList("https://other.test/"),
++        "withoutSite");
++
++    // Bookmarks.
++    List<String> bookmarks = BrowserSessionPolicy.changeBookmark(null, "https://a.test/", true);
++    bookmarks = BrowserSessionPolicy.changeBookmark(bookmarks, "https://b.test/", true);
++    bookmarks = BrowserSessionPolicy.changeBookmark(bookmarks, "https://a.test/", true);
++    equal(bookmarks, Arrays.asList("https://a.test/", "https://b.test/"), "bookmark newest first, once");
++    equal(BrowserSessionPolicy.changeBookmark(bookmarks, "https://a.test/", false), Arrays.asList("https://b.test/"), "bookmark removed");
++    final List<String> fixed = bookmarks;
++    throwsType(IllegalArgumentException.class, () -> BrowserSessionPolicy.changeBookmark(fixed, "http://a.test/", true), "http bookmark refused");
++    throwsType(IllegalStateException.class, () -> BrowserSessionPolicy.restoreBookmarks(Arrays.asList("https://a.test/", "https://a.test/")), "duplicate record damaged");
++    throwsType(IllegalStateException.class, () -> BrowserSessionPolicy.restoreBookmarks(Arrays.asList("https://a.test/", "javascript:x")), "invalid record damaged");
++    List<String> hundred = new ArrayList<>();
++    for (int i = 0; i < BrowserSessionPolicy.MAX_BOOKMARKS; i++) hundred.add("https://b" + i + ".test/");
++    equal(BrowserSessionPolicy.restoreBookmarks(hundred).size(), BrowserSessionPolicy.MAX_BOOKMARKS, "bound accepted");
++    throwsType(IllegalStateException.class, () -> BrowserSessionPolicy.changeBookmark(hundred, "https://new.test/", true), "bookmark limit");
++    equal(BrowserSessionPolicy.changeBookmark(hundred, "https://b5.test/", true).get(0), "https://b5.test/", "re-adding at the limit moves it");
++    List<String> tooMany = new ArrayList<>(hundred);
++    tooMany.add("https://extra.test/");
++    throwsType(IllegalStateException.class, () -> BrowserSessionPolicy.restoreBookmarks(tooMany), "over-long record damaged");
++
++    System.out.println(assertions + " assertions passed");
++  }
++}
+diff --git a/plugins/plugin-native-browser-surface/test/native-host/session-policy.node.mjs b/plugins/plugin-native-browser-surface/test/native-host/session-policy.node.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..5dc993e521d7b71e515b4d999bddad0a04f38bb9
+--- /dev/null
++++ b/plugins/plugin-native-browser-surface/test/native-host/session-policy.node.mjs
+@@ -0,0 +1,28 @@
++import assert from "node:assert/strict";
++import { execFileSync } from "node:child_process";
++import fs from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { test } from "node:test";
++import { fileURLToPath } from "node:url";
++
++const plugin = fileURLToPath(new URL("../..", import.meta.url));
++const sources = path.join(plugin, "android/src/main/java/ai/eliza/plugins/browsersurface");
++const policy = ["BrowserSessionPolicy.java"];
++const bin = (name) => (process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name);
++
++test("persistent-only tabs and history, bounded restore, site clearing and bookmarks", (t) => {
++  const classes = fs.mkdtempSync(path.join(os.tmpdir(), "browser-session-policy-"));
++  t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
++  execFileSync(bin("javac"), ["-d", classes, ...policy.map((file) => path.join(sources, file)), path.join(plugin, "test/native-host/BrowserSessionPolicyTest.java")], { timeout: 60000 });
++  const output = execFileSync(bin("java"), ["-cp", classes, "BrowserSessionPolicyTest"], { timeout: 60000, encoding: "utf8" });
++  assert.match(output, /^\d+ assertions passed/);
++});
++
++test("the session policy has no Android, logging or network dependencies", () => {
++  for (const file of policy) {
++    const source = fs.readFileSync(path.join(sources, file), "utf8");
++    assert.doesNotMatch(source, /^import android\./m, file);
++    assert.doesNotMatch(source, /System\.out|printStackTrace|java\.net\.(URL|HttpURLConnection|Socket)\b/, file);
++  }
++});

@@ -22,7 +22,7 @@ final class ClockAgentReview {
  static void validate(JSONObject operation)throws Exception{
   String action=operation.getString("action");Set<String> keys;
   switch(action){
-   case "set":keys=Set.of("type","action","hour","minute","label","timeZone");break;
+   case "set":keys=operation.has("days")?Set.of("type","action","hour","minute","label","timeZone","days"):Set.of("type","action","hour","minute","label","timeZone");break;
    case "snooze":keys=Set.of("type","action","snoozeMinutes");break;
    case "show":case "dismiss":keys=Set.of("type","action");break;
    default:throw new IllegalArgumentException();
@@ -34,6 +34,7 @@ final class ClockAgentReview {
    if(!(operation.get("label") instanceof String)||operation.getString("label").length()>200)throw new IllegalArgumentException();
    for(char c:operation.getString("label").toCharArray())if(c<32||c==127)throw new IllegalArgumentException();
    if(!(operation.get("timeZone") instanceof String)||operation.getString("timeZone").length()>100)throw new IllegalArgumentException();
+   if(operation.has("days"))ClockHandoff.days(operation.get("days"));
   }
   if("snooze".equals(action))integer(operation,"snoozeMinutes",1,60);
  }
@@ -51,19 +52,20 @@ final class ClockAgentReview {
  }
  static Intent intent(JSONObject operation)throws Exception{
   validate(operation);String action=operation.getString("action");
-  if("set".equals(action))return ClockHandoff.intent("set",operation.getInt("hour"),operation.getInt("minute"),operation.getString("label"),null);
+  if("set".equals(action))return ClockHandoff.intent("set",operation.getInt("hour"),operation.getInt("minute"),operation.getString("label"),null,operation.has("days")?ClockHandoff.days(operation.get("days")):null);
   // Android's unqualified snooze affects all ringing alarms; dismissal can act without selection.
   // Open Clock instead: the owner selects the actual alarm and completes either action there.
   return new Intent(AlarmClock.ACTION_SHOW_ALARMS);
  }
  static void show(Activity activity,String id,JSONObject operation,Decision decision)throws Exception{
   validate(operation);foreground(activity);zone(operation);String action=operation.getString("action");String text;
-  if("set".equals(action))text=String.format(java.util.Locale.ROOT,"Send %02d:%02d (%s), label “%s”, to Clock? Clock may create this alarm immediately. Alpha cannot confirm creation or ringing.",operation.getInt("hour"),operation.getInt("minute"),operation.getString("timeZone"),operation.getString("label"));
+  if("set".equals(action))text=String.format(java.util.Locale.ROOT,"Send %02d:%02d (%s)%s, label “%s”, to Clock? Clock may create this alarm immediately. Alpha cannot confirm creation or ringing.",operation.getInt("hour"),operation.getInt("minute"),operation.getString("timeZone"),operation.has("days")?", repeating "+dayNames(ClockHandoff.days(operation.get("days"))):"",operation.getString("label"));
   else if("show".equals(action))text="Open Clock to review your alarms. No alarm change is requested.";
   else text="Open Clock and choose the intended alarm yourself to "+action+" it. Alpha will not "+action+" any alarm. "+("snooze".equals(action)?"Choose the duration in Clock; the requested "+operation.getInt("snoozeMinutes")+" minutes is not applied automatically. ":"")+"Completion remains manual and unverified.";
   AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Review agent Clock handoff").setMessage(text).setPositiveButton("Continue to Clock",(d,w)->{dialogs.remove(id);pending.remove(id);decision.selected(true);}).setNegativeButton("Cancel",(d,w)->{dialogs.remove(id);pending.remove(id);decision.selected(false);}).setOnCancelListener(d->{dialogs.remove(id);pending.remove(id);decision.selected(false);}).create();
   dialogs.put(id,dialog);pending.put(id,decision);dialog.show();
  }
+ static String dayNames(java.util.List<Integer> days){String[] names={"","Sun","Mon","Tue","Wed","Thu","Fri","Sat"};StringBuilder out=new StringBuilder();for(Integer day:days){if(out.length()>0)out.append(", ");out.append(names[day]);}return out.toString();}
  static void abandon(){for(AlertDialog dialog:dialogs.values())dialog.dismiss();dialogs.clear();pending.clear();}
  static void dismiss(String id){AlertDialog dialog=dialogs.remove(id);Decision decision=pending.remove(id);if(dialog!=null)dialog.dismiss();if(decision!=null)decision.selected(false);}
  static JSObject dispatch(Activity activity,JSONObject operation){String action=operation.optString("action");Intent intent;

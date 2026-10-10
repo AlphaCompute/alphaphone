@@ -9,7 +9,7 @@ async function saved(page:any){
  await expect(status(page)).toHaveCount(0);
 }
 test('an unsent multiline draft survives reload and clearing stays cleared',async({page})=>{
- await composer(page).fill('Remember this\nwithout sending');await saved(page);await page.reload();await expect(composer(page)).toHaveValue('Remember this\nwithout sending');await expect(status(page)).toContainText('Draft restored');await composer(page).fill('');await expect(status(page)).toHaveCount(0);await page.reload();await expect(composer(page)).toHaveValue('');
+ await composer(page).fill('Remember this\nwithout sending');await saved(page);await page.reload();await expect(composer(page)).toHaveValue('Remember this\nwithout sending');await expect(status(page)).toContainText('Draft restored');await composer(page).fill('');await saved(page);await page.reload();await expect(composer(page)).toHaveValue('');
 });
 test('another tab cannot replace a draft silently and recovery retains the current text',async({page,context},info)=>{
  const other=await context.newPage();await other.goto(page.url());await expect(composer(other)).toBeEnabled();await composer(page).fill('First window');await saved(page);await composer(other).fill('Second window');await expect(status(other)).toContainText('Review the saved copy');await expect(composer(other)).toHaveValue('Second window');await expect(other.getByText('Saved copy: First window',{exact:true})).toBeVisible();await other.screenshot({path:info.outputPath('assistant-draft-conflict.png'),animations:'disabled'});
@@ -21,7 +21,8 @@ test('failed autosave keeps editable text and explicit retry can save it',async(
 });
 test('Send clears the retained draft and dispatches only the reviewed text once',async({page})=>{
  await page.goto('/?mode=dev');await page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');await c.initialize();await c.startDevelopment('local');(window as any).sendDraftBinding=await c.assistantDraftBinding(new AbortController().signal);const {LocalAgentProtocol}=await import('/src/runtime/local-agent.ts');(window as any).draftRequests=[];LocalAgentProtocol.prototype.send=async(_id,text)=>{(window as any).draftRequests.push(text);return {text:'Received'};};});
- await composer(page).fill('Reviewed draft');await saved(page);await composer(page).press('Enter');await expect.poll(()=>page.evaluate(()=>(window as any).draftRequests.length)).toBe(1);expect(await page.evaluate(async()=>(await(await(await import('/src/runtime/assistant-draft-store.ts')).assistantDraftStore((window as any).sendDraftBinding)).read())?.text)).toBe('');await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('');
+ await composer(page).fill('Reviewed draft');await saved(page);await composer(page).press('Enter');await expect.poll(()=>page.evaluate(()=>(window as any).draftRequests.length)).toBe(1);// The draft is kept until the dispatch is confirmed, then cleared once.
+ await expect.poll(()=>page.evaluate(async()=>(await(await(await import('/src/runtime/assistant-draft-store.ts')).assistantDraftStore((window as any).sendDraftBinding)).read())?.text)).toBe('');await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('');
 });
 
 test('connection changes restore only that connection draft and retain the offline copy',async({page})=>{

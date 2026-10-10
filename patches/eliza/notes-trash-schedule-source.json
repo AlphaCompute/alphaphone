@@ -1,0 +1,22 @@
+{
+  "baseCommit": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
+  "patch": "0072-notes-trash-schedule.patch",
+  "sha256": "2aa21a55cf22643e51bf9d66c5db3bcc5ded8769b6d23136a0c299f26c27de91",
+  "status": "Candidate for elizaOS develop (foreground, resume and interval triggers for Notes Trash maintenance); not submitted upstream",
+  "basePaths": [],
+  "addedPaths": [
+    "plugins/plugin-notes"
+  ],
+  "changed": [
+    "plugins/plugin-notes/src/client/notes-trash-schedule.ts",
+    "plugins/plugin-notes/test/notes-trash-schedule.test.mjs"
+  ],
+  "files": {
+    "plugins/plugin-notes/src/client/notes-trash-maintenance.ts": "af70597711afe648ca418986fa3fe3efc1303c5e528b8a96f94fca4231470c60",
+    "plugins/plugin-notes/src/client/notes-trash-policy.ts": "3929f0e89ec663e6435abd590cb460fbcdf2b098b6bf6575ccb1db99f7fae020",
+    "plugins/plugin-notes/src/client/notes-trash-schedule.ts": "a3350689f5b48f00ec0abae41acb462bd183650513547aab6c7c3a356f48bc2c",
+    "plugins/plugin-notes/test/notes-trash-maintenance.test.mjs": "940b0a9ddb884437b64ca10c8ca12c4668ff1054b12eb56ab583ba1c80706a5d",
+    "plugins/plugin-notes/test/notes-trash-policy.test.mjs": "7674883d5936ca8a19ea45f1fbf61fbd4300afa71eea81ad17c6a49b3770f277",
+    "plugins/plugin-notes/test/notes-trash-schedule.test.mjs": "20d3c4531684ce487b9d16ad379f7e381ea41fe752767b8c42f3a3b4c223a23e"
+  }
+}

@@ -23,6 +23,7 @@ the required evidence rather than treating a successful APK build as acceptance.
 - [In-browser speech recognition](docs/browser-speech-recognition.md)
 - [MVP scope and gap report](docs/mvp-scope-and-gap-report.md)
 - [MVP completion plan](docs/mvp-completion-plan.md)
+- [Remaining MVP work after PR 373](docs/mvp-remaining-work-2026-10-09.md)
 
 - [Current flow research](docs/research-report.md)
 - [Detailed flow PRD](docs/flow-audit-and-prd.md)

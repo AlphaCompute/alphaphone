@@ -2,7 +2,7 @@
 
 ## Accepted direction
 
-The user has replaced the Nitro/TEE agent-hosting direction with an agent running on the Android device. This supersedes the earlier cloud-only execution constraint. Nitro provisioning, enclave measurement, KMS admission and phone pairing are no longer prerequisites for the primary agent path. Production Android admits only the resident agent, with Cloud sign-in for billed inference. Existing remote credentials and history remain preserved; development transports are separate. Existing remote services and evidence are retained; this decision does not authorize shutting them down or migrating accounts destructively.
+The user has replaced the Nitro/TEE agent-hosting direction with an agent running on the Android device. This supersedes the earlier requirement that the agent run only in hosted Cloud infrastructure. Nitro provisioning, enclave measurement, KMS admission and phone pairing are no longer prerequisites for the primary agent path. Production Android admits only the resident agent, with Cloud sign-in for billed inference. Existing remote credentials and history remain preserved; development transports are separate. Existing remote services and evidence are retained; this decision does not authorize shutting them down or migrating accounts destructively.
 
 The target puts orchestration, conversation state, tool policy, approvals, receipts and scheduling on the phone. The Alpha renderer remains separate from the runtime and keeps its existing native selected-content boundaries. Production onboarding verifies Cloud sign-in and credits before starting the billed-inference profile. This is provider authorization, not enrollment with a remotely hosted agent. External accounts still require their own consent.
 

@@ -89,7 +89,7 @@ test('the local agent host bridge is unavailable without test mocks',async()=>{
 // regional-provider composes the upstream provider at module load; evaluate it
 // with explicit flag bindings and a synthetic transport.
 async function regional({testMocks,devSurfaces,baseUrl,native=false,developmentBuild=true}){
- const {createRegionalMaps}=await servers.off.ssrLoadModule('/.eliza/client-features/plugins/plugin-maps/src/client/regional-provider.ts');
+ const {createRegionalMaps}=await servers.off.ssrLoadModule('/.eliza/patched/plugins/plugin-maps/src/client/regional-provider.ts');
  const source=fs.readFileSync(new URL('apps/app/src/maps/regional-provider.ts',root),'utf8')
   .replace(/^import [\s\S]*?;\n/gm,'').replace(/^export type \{[^}]*\} from .*;\n/gm,'')
   .replaceAll('import.meta.env.VITE_MAPS_BASE_URL','__env.VITE_MAPS_BASE_URL')

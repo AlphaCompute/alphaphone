@@ -64,8 +64,14 @@ test('browser camera permission denial retries explicitly without a saved photo'
  });
  await page.goto('/');await page.getByRole('button',{name:'Camera',exact:true}).click();
  await expect(page.getByText('Camera unavailable or permission denied. Tap the shutter to retry.',{exact:true})).toBeVisible();
+ const recovery=page.getByRole('alert',{name:'Camera access is off'});
+ await expect(recovery).toContainText('Allow camera access for this site in your browser settings');
+ await expect(recovery.getByRole('button',{name:'Open Android settings'})).toHaveCount(0);
  await page.getByRole('button',{name:'Take photo',exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>(window as any).cameraAttempts)).toBe(2);
+ await recovery.getByRole('button',{name:'Try again',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).cameraAttempts)).toBe(3);
+ await expect(recovery).toBeVisible();
  await expect(page.locator('[aria-label^="Viewfinder."] video')).toHaveCount(0);
  await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));
  await page.getByRole('button',{name:'Photos',exact:true}).click();

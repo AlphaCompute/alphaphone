@@ -36,15 +36,85 @@ On October 8 the owner requested removal of all smoke tests and checks. The aggr
 smoke runners, emulator CI jobs, provider diagnostic job and smoke-only APK bundles
 are removed. Distribution APK builds, repository checks and browser regression tests remain.
 Main pushes run affected repository verification, including the production bundle
-audit, but do not repeat PR browser/native builds. The repository ruleset
-requires PRs. An administrative direct push therefore gets only repository
-verification; explicitly dispatch qualification if one is used.
+audit, and the affected Android foundation build of both variants, so a merge that
+breaks packaging is visible on the exact main commit. They do not repeat PR browser
+shards. Each main push runs in its own concurrency group, so a later push neither
+cancels it nor drops it while queued; PR runs still cancel superseded runs. Resident
+push and nightly runs use their own groups too and never cancel a dispatched run. The repository ruleset requires PRs.
+
+The production browser project runs `test/browser/production-surface.spec.ts` and every
+`test/browser/<name>.production.spec.ts` against the flag-off build. A package that
+adds a flag-off assertion adds such a file; no configuration change is needed.
+
+## Required checks
+
+Browser shard names depend on the selected shard count, and skipped matrix jobs
+report unexpanded names, so the shards cannot be required directly. Each workflow
+therefore ends in a stable aggregate job: **Browser MVP result** (needs the change
+gate, Repository verification, every Chromium shard and the production surface)
+and **Android foundation result** (needs the change gate and `build`). An aggregate
+passes when every lane the change gate selected succeeded and unselected lanes were
+skipped; a selected lane that failed, was cancelled or was skipped fails it
+(`scripts/ci/required-result.mjs`). Reference-only changes therefore stay mergeable
+with only the change gate and the two short aggregate jobs.
+
+The ruleset below (`scripts/ci/required-checks-ruleset.json`, integration 15368 is
+GitHub Actions) requires those two aggregates and Repository verification on the
+default branch. It is additive to the existing "Default branch baseline" ruleset
+(PR required, no deletion or force push). Up-to-date branches are not required:
+that would force a rebase and full rerun of every open PR after each merge. A
+semantic conflict between two green PRs is instead caught by the main-push
+verification and Android build. Applying it changes repository settings and needs
+the owner's explicit approval; it had not been applied when this was written.
+
+```json
+{
+  "name": "Main required checks",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": ["~DEFAULT_BRANCH"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          { "context": "Repository verification", "integration_id": 15368 },
+          { "context": "Browser MVP result", "integration_id": 15368 },
+          { "context": "Android foundation result", "integration_id": 15368 }
+        ]
+      }
+    }
+  ]
+}
+```
+
+```sh
+# Owner-approved only. Creates the ruleset; it does not modify the baseline ruleset.
+gh api --method POST repos/AlphaCompute/alphaphone/rulesets --input scripts/ci/required-checks-ruleset.json
+# Confirm:
+gh api repos/AlphaCompute/alphaphone/rules/branches/main
+```
 
 Android still checks both standalone and launcher, debug and release outputs and
 flag-off production isolation. Renderer changes select Android because renderer
 bytes are packaged into APKs. Gradle dependency/build caching reduces repeat setup;
 speech sources/models retain hash verification and generated native speech is still
 built fresh. No unverified generated runtime cache replaces qualification.
+
+`node scripts/verify-upstream.mjs` also reports whether elizaOS `develop` reaches
+the pin, from the recorded compare in `scripts/ci/upstream-reachability.json`; CI
+never networks for it. The default warns; `--upstream-reachability=fail` or
+`ELIZA_UPSTREAM_REACHABILITY=fail` makes an unreachable or stale record fail, and
+`off` skips it. Refresh the record after a pin change with
+`node scripts/verify-upstream.mjs --record-reachability` (uses `gh api`).
 
 ## Integration and end-to-end coverage
 
@@ -95,9 +165,13 @@ resident execution, full AOSP boot, live-provider or device acceptance.
 Alpha Phone ships Android WebView. Chromium remains automatic for affected PRs.
 Firefox and macOS WebKit are additional portability qualification and are now
 opt-in, including the real macOS audio-recording coverage. Full resident builds
-are opt-in; focused native campaigns are separate manual runs. Preparation remains automatic for changes
+are opt-in; focused native campaigns are separate manual runs. The resident workflow
+also has push-to-main and nightly triggers that stay inert unless the repository
+variable `ELIZA_RESIDENT_QUALIFICATION` is `push` or `nightly`; set it only for a
+period that needs PACKAGED release qualification on every main commit or daily. Preparation remains automatic for changes
 to shared/build inputs. The Bun seccomp reproduction is a diagnostic, not a routine
-gate. There are no schedules or hidden branch-specific automatic diagnostic runs.
+gate. The only schedule is that opt-in resident trigger; there are no hidden
+branch-specific automatic diagnostic runs.
 
 ```sh
 # Use the reviewed branch/ref. A dispatch selects all lanes in that workflow.
@@ -115,7 +189,8 @@ integration acceptance. Later dispatches on the same ref cancel older runs;
 use separate reviewed refs for intentionally concurrent qualification.
 
 Temporary Actions evidence expires after three days. APK transfer bundles are
-uploaded once, rather than included again in the generic build-evidence artifact.
+uploaded once, with the R8 `artifacts/mapping/*.txt` files of their release APKs
+(the resident archive retains its mappings and `release-mappings.json` hashes), rather than included again in the generic build-evidence artifact.
 Preserve release evidence separately before expiration. Existing uploaded artifacts
 are not deleted or shortened by this change.
 

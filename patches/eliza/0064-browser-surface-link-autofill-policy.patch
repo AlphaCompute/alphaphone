@@ -1,0 +1,351 @@
+diff --git a/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserAutofillEligibility.java b/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserAutofillEligibility.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..73a9fd2c2fbaec5c4bb26ca1e0be27e104077024
+--- /dev/null
++++ b/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserAutofillEligibility.java
+@@ -0,0 +1,72 @@
++package ai.eliza.plugins.browsersurface;
++
++import java.util.Objects;
++
++/**
++ * When a browser-surface tab may take part in the platform autofill framework, and how its
++ * framework session ends.
++ *
++ * <p>A tab is eligible only while it is the selected, presented tab of a running (not paused)
++ * surface, its HTTPS document is committed and finished without a load error, and the address the
++ * engine reports equals the recorded document address. The host marks an ineligible tab's view as
++ * excluded from autofill, so the framework neither requests its structure nor delivers fill values.
++ * A page-initiated main-frame navigation of an eligible tab (a sign-in form usually navigates)
++ * commits the session so the user's provider can offer to save; every other end cancels it. The
++ * provider still asks the user before saving. The host never reads field values, supplies a web
++ * domain of its own or exposes credentials to its renderer or agent. Pure JVM; no Android types.
++ */
++public final class BrowserAutofillEligibility {
++  private BrowserAutofillEligibility() {}
++
++  /** The facts the host knows about one tab. */
++  public static final class TabState {
++    public boolean paused;
++    public boolean closed;
++    public boolean selected;
++    public boolean shown;
++    public boolean committed;
++    public boolean loading;
++    public boolean overlay;
++    public String loadError = "";
++    /** The address the host recorded for the committed document. */
++    public String documentUrl = "";
++    /** The address the engine reports now. */
++    public String engineUrl = "";
++  }
++
++  public enum SessionEnd {
++    COMMIT,
++    CANCEL
++  }
++
++  /** Why the tab is leaving its current document or eligibility. */
++  public enum Reason {
++    PAGE_MAIN_FRAME_NAVIGATION,
++    USER_ENTERED_ADDRESS,
++    TAB_SWITCH,
++    OVERLAY,
++    LOAD_ERROR,
++    RENDERER_GONE,
++    CLOSE,
++    PAUSE
++  }
++
++  public static boolean eligible(TabState tab) {
++    if (tab == null || tab.paused || tab.closed || tab.overlay) return false;
++    if (!tab.selected || !tab.shown || !tab.committed || tab.loading) return false;
++    if (tab.loadError != null && !tab.loadError.isEmpty()) return false;
++    String url = tab.documentUrl;
++    if (url == null || !url.regionMatches(true, 0, "https://", 0, 8)) return false;
++    return Objects.equals(url, tab.engineUrl);
++  }
++
++  /**
++   * How the framework session of a tab that was eligible ends. Only a page-initiated main-frame
++   * navigation commits. Pause returns null: the session is kept (a provider may open its own
++   * unlock screen), and the tab is ineligible until it is presented again.
++   */
++  public static SessionEnd end(Reason reason, boolean wasEligible) {
++    if (reason == Reason.PAUSE) return null;
++    return wasEligible && reason == Reason.PAGE_MAIN_FRAME_NAVIGATION ? SessionEnd.COMMIT : SessionEnd.CANCEL;
++  }
++}
+diff --git a/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserExternalLinkPolicy.java b/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserExternalLinkPolicy.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..532d8e3b0f7efa9cd947ebc274091ba9e1703980
+--- /dev/null
++++ b/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserExternalLinkPolicy.java
+@@ -0,0 +1,118 @@
++package ai.eliza.plugins.browsersurface;
++
++import java.net.URI;
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Generic policy for website links that belong to another app ({@code mailto:}, {@code tel:},
++ * {@code market:} and {@code intent:}).
++ *
++ * <p>The host parses an {@code intent:} URI with the platform parser and passes its action, data
++ * scheme and package here. When the decision is not {@link Handoff#REFUSE}, the host builds a
++ * <em>fresh</em> implicit Intent of that kind: it never forwards the page's component, selector,
++ * clip data, flags or extras, adds the browsable category for {@link Handoff#VIEW}, and refuses a
++ * resolved target in its own package. {@link Handoff#DIAL} only opens the dialer; it never places a
++ * call. Pure JVM; no Android types.
++ */
++public final class BrowserExternalLinkPolicy {
++  public static final int MAX_LINK = 4096;
++  public static final String ACTION_VIEW = "android.intent.action.VIEW";
++  public static final Set<String> SCHEMES = Set.of("mailto", "tel", "intent", "market");
++  /** Schemes an {@code intent:} link may never carry as data. */
++  public static final Set<String> FORBIDDEN_DATA =
++      Set.of("file", "content", "javascript", "data", "blob", "about", "intent", "android-app");
++
++  public enum Handoff {
++    /** {@code ACTION_SENDTO} with the {@code mailto:} address. */
++    SEND_TO,
++    /** {@code ACTION_DIAL}: the dialer opens with the number; no call is placed. */
++    DIAL,
++    /** {@code ACTION_VIEW} + {@code CATEGORY_BROWSABLE}. */
++    VIEW,
++    REFUSE
++  }
++
++  private BrowserExternalLinkPolicy() {}
++
++  private static String scheme(String raw) {
++    if (raw == null) return "";
++    int colon = raw.indexOf(':');
++    if (colon <= 0) return "";
++    String scheme = raw.substring(0, colon);
++    if (!scheme.matches("[A-Za-z][A-Za-z0-9+.-]*")) return "";
++    return scheme.toLowerCase(Locale.ROOT);
++  }
++
++  /** Whether the browser hands this link to another app instead of loading it. */
++  public static boolean external(String raw) {
++    return SCHEMES.contains(scheme(raw));
++  }
++
++  private static boolean clean(String raw) {
++    if (raw == null || raw.isEmpty() || raw.length() > MAX_LINK) return false;
++    for (int i = 0; i < raw.length(); i++) {
++      char c = raw.charAt(i);
++      if (c < 0x20 || c == 0x7f) return false;
++    }
++    return true;
++  }
++
++  /**
++   * The handoff for {@code raw}.
++   *
++   * @param userGesture true only for a navigation the user started by tapping; script navigations
++   *     to another app are refused
++   * @param intentAction for {@code intent:} links, the parsed action (null when absent)
++   * @param intentDataScheme for {@code intent:} links, the parsed data scheme (null when absent)
++   * @param intentPackage for {@code intent:} links, the parsed package (null when absent)
++   * @param ownPackage the host's own package; links addressed to it are refused
++   * @param hostSchemes the host's own custom URL schemes (lower case); never a handoff target
++   */
++  public static Handoff decide(
++      String raw,
++      boolean userGesture,
++      String intentAction,
++      String intentDataScheme,
++      String intentPackage,
++      String ownPackage,
++      Set<String> hostSchemes) {
++    if (!userGesture || !clean(raw)) return Handoff.REFUSE;
++    switch (scheme(raw)) {
++      case "mailto":
++        return Handoff.SEND_TO;
++      case "tel":
++        return Handoff.DIAL;
++      case "market":
++        return Handoff.VIEW;
++      case "intent":
++        if (intentAction != null && !ACTION_VIEW.equals(intentAction)) return Handoff.REFUSE;
++        if (intentDataScheme != null) {
++          String target = intentDataScheme.toLowerCase(Locale.ROOT);
++          if (target.isEmpty() || FORBIDDEN_DATA.contains(target)) return Handoff.REFUSE;
++          if (hostSchemes != null && hostSchemes.contains(target)) return Handoff.REFUSE;
++        }
++        if (ownPackage != null && ownPackage.equals(intentPackage)) return Handoff.REFUSE;
++        return Handoff.VIEW;
++      default:
++        return Handoff.REFUSE;
++    }
++  }
++
++  /**
++   * The {@code browser_fallback_url} extra of an {@code intent:} link that the browser itself may
++   * load when no app handles the link: https only, with a host, no user info and no control
++   * characters or whitespace. Otherwise null.
++   */
++  public static String fallback(String value) {
++    if (!clean(value) || !value.regionMatches(true, 0, "https://", 0, 8)) return null;
++    for (int i = 0; i < value.length(); i++) if (value.charAt(i) == ' ') return null;
++    try {
++      URI uri = new URI(value);
++      if (uri.getHost() == null || uri.getRawUserInfo() != null) return null;
++      return value;
++    } catch (Exception invalid) {
++      return null;
++    }
++  }
++}
+diff --git a/plugins/plugin-native-browser-surface/test/native-host/BrowserLinkAutofillPolicyTest.java b/plugins/plugin-native-browser-surface/test/native-host/BrowserLinkAutofillPolicyTest.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..87f3a74a0e23444712b8a3741e130dc1f0d5d25c
+--- /dev/null
++++ b/plugins/plugin-native-browser-surface/test/native-host/BrowserLinkAutofillPolicyTest.java
+@@ -0,0 +1,109 @@
++import ai.eliza.plugins.browsersurface.BrowserAutofillEligibility;
++import ai.eliza.plugins.browsersurface.BrowserAutofillEligibility.Reason;
++import ai.eliza.plugins.browsersurface.BrowserAutofillEligibility.SessionEnd;
++import ai.eliza.plugins.browsersurface.BrowserAutofillEligibility.TabState;
++import ai.eliza.plugins.browsersurface.BrowserExternalLinkPolicy;
++import ai.eliza.plugins.browsersurface.BrowserExternalLinkPolicy.Handoff;
++import java.util.Arrays;
++import java.util.Set;
++
++/** Plain-JVM checks for BrowserExternalLinkPolicy and BrowserAutofillEligibility. */
++public final class BrowserLinkAutofillPolicyTest {
++  private static int assertions;
++  private static final String OWN = "com.example.host";
++  private static final Set<String> HOST_SCHEMES = Set.of("examplehost");
++
++  private static void check(boolean condition, String message) {
++    assertions++;
++    if (!condition) throw new AssertionError(message);
++  }
++
++  private static void equal(Object actual, Object expected, String message) {
++    check(expected == null ? actual == null : expected.equals(actual), message + ": expected " + expected + " got " + actual);
++  }
++
++  private static Handoff tap(String raw) {
++    return BrowserExternalLinkPolicy.decide(raw, true, null, null, null, OWN, HOST_SCHEMES);
++  }
++
++  private static Handoff intent(String action, String dataScheme, String pkg) {
++    return BrowserExternalLinkPolicy.decide("intent://x#Intent;end", true, action, dataScheme, pkg, OWN, HOST_SCHEMES);
++  }
++
++  private static TabState eligibleTab() {
++    TabState tab = new TabState();
++    tab.selected = true;
++    tab.shown = true;
++    tab.committed = true;
++    tab.documentUrl = "https://login.example.test/";
++    tab.engineUrl = "https://login.example.test/";
++    return tab;
++  }
++
++  public static void main(String[] args) {
++    // Which links leave the browser.
++    for (String raw : Arrays.asList("mailto:a@example.test", "TEL:+15550100", "market://details?id=x", "intent://x#Intent;end"))
++      check(BrowserExternalLinkPolicy.external(raw), "external " + raw);
++    for (String raw : Arrays.asList("https://example.test/", "javascript:x", "file:///x", "content://x", "sms:1", "", ":x", "1tel:2"))
++      check(!BrowserExternalLinkPolicy.external(raw), "not external " + raw);
++    check(!BrowserExternalLinkPolicy.external(null), "null not external");
++
++    // Handoff kinds.
++    equal(tap("mailto:a@example.test"), Handoff.SEND_TO, "mailto sends to");
++    equal(tap("tel:+15550100"), Handoff.DIAL, "tel only dials");
++    equal(tap("market://details?id=x"), Handoff.VIEW, "market views");
++    equal(tap("https://example.test/"), Handoff.REFUSE, "web link is not a handoff");
++    equal(tap("javascript:alert(1)"), Handoff.REFUSE, "javascript refused");
++    equal(BrowserExternalLinkPolicy.decide("tel:+15550100", false, null, null, null, OWN, HOST_SCHEMES), Handoff.REFUSE, "script navigation refused");
++    equal(tap("mailto:a@example.test\n"), Handoff.REFUSE, "control character refused");
++    char[] longLink = new char[BrowserExternalLinkPolicy.MAX_LINK];
++    Arrays.fill(longLink, 'a');
++    equal(tap("mailto:" + new String(longLink)), Handoff.REFUSE, "over-long refused");
++    equal(tap(null), Handoff.REFUSE, "null refused");
++
++    // intent: links.
++    equal(intent(null, "https", null), Handoff.VIEW, "implicit view of https");
++    equal(intent(BrowserExternalLinkPolicy.ACTION_VIEW, "geo", "com.example.maps"), Handoff.VIEW, "view in another package");
++    equal(intent(null, null, null), Handoff.VIEW, "no data is still only a view");
++    equal(intent("android.intent.action.CALL", "tel", null), Handoff.REFUSE, "CALL refused");
++    equal(intent("android.intent.action.SEND", null, null), Handoff.REFUSE, "SEND refused");
++    for (String data : Arrays.asList("file", "CONTENT", "javascript", "data", "blob", "about", "intent", "android-app", ""))
++      equal(intent(null, data, null), Handoff.REFUSE, "forbidden data " + data);
++    equal(intent(null, "ExampleHost", null), Handoff.REFUSE, "host scheme refused");
++    equal(intent(null, "https", OWN), Handoff.REFUSE, "own package refused");
++    equal(BrowserExternalLinkPolicy.decide("intent://x#Intent;end", true, null, "https", null, OWN, null), Handoff.VIEW, "no host schemes");
++
++    // Fallback addresses.
++    equal(BrowserExternalLinkPolicy.fallback("https://example.test/app"), "https://example.test/app", "https fallback");
++    equal(BrowserExternalLinkPolicy.fallback("HTTPS://example.test/"), "HTTPS://example.test/", "scheme case");
++    for (String bad : Arrays.asList("http://example.test/", "javascript:x", "https://u:p@example.test/", "https:///x", "https://example.test/a b", "https://example.test/\t", ""))
++      equal(BrowserExternalLinkPolicy.fallback(bad), null, "fallback refused " + bad);
++    equal(BrowserExternalLinkPolicy.fallback(null), null, "null fallback");
++
++    // Autofill eligibility.
++    check(BrowserAutofillEligibility.eligible(eligibleTab()), "selected committed https tab");
++    TabState tab;
++    tab = eligibleTab(); tab.paused = true; check(!BrowserAutofillEligibility.eligible(tab), "paused");
++    tab = eligibleTab(); tab.closed = true; check(!BrowserAutofillEligibility.eligible(tab), "closed");
++    tab = eligibleTab(); tab.selected = false; check(!BrowserAutofillEligibility.eligible(tab), "background tab");
++    tab = eligibleTab(); tab.shown = false; check(!BrowserAutofillEligibility.eligible(tab), "hidden");
++    tab = eligibleTab(); tab.overlay = true; check(!BrowserAutofillEligibility.eligible(tab), "overlay");
++    tab = eligibleTab(); tab.committed = false; check(!BrowserAutofillEligibility.eligible(tab), "uncommitted");
++    tab = eligibleTab(); tab.loading = true; check(!BrowserAutofillEligibility.eligible(tab), "loading");
++    tab = eligibleTab(); tab.loadError = "net"; check(!BrowserAutofillEligibility.eligible(tab), "load error");
++    tab = eligibleTab(); tab.loadError = null; check(BrowserAutofillEligibility.eligible(tab), "null error is no error");
++    tab = eligibleTab(); tab.documentUrl = tab.engineUrl = "http://login.example.test/"; check(!BrowserAutofillEligibility.eligible(tab), "cleartext");
++    tab = eligibleTab(); tab.engineUrl = "https://other.example.test/"; check(!BrowserAutofillEligibility.eligible(tab), "engine moved on");
++    tab = eligibleTab(); tab.documentUrl = null; check(!BrowserAutofillEligibility.eligible(tab), "no document");
++    check(!BrowserAutofillEligibility.eligible(null), "no tab");
++
++    // Session end.
++    equal(BrowserAutofillEligibility.end(Reason.PAGE_MAIN_FRAME_NAVIGATION, true), SessionEnd.COMMIT, "page navigation commits");
++    equal(BrowserAutofillEligibility.end(Reason.PAGE_MAIN_FRAME_NAVIGATION, false), SessionEnd.CANCEL, "ineligible navigation cancels");
++    for (Reason reason : Arrays.asList(Reason.USER_ENTERED_ADDRESS, Reason.TAB_SWITCH, Reason.OVERLAY, Reason.LOAD_ERROR, Reason.RENDERER_GONE, Reason.CLOSE))
++      equal(BrowserAutofillEligibility.end(reason, true), SessionEnd.CANCEL, "cancels on " + reason);
++    equal(BrowserAutofillEligibility.end(Reason.PAUSE, true), null, "pause keeps the session");
++
++    System.out.println(assertions + " assertions passed");
++  }
++}
+diff --git a/plugins/plugin-native-browser-surface/test/native-host/link-autofill-policy.node.mjs b/plugins/plugin-native-browser-surface/test/native-host/link-autofill-policy.node.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..7053f807a5e09fed07b63983e70b9b23be85eee8
+--- /dev/null
++++ b/plugins/plugin-native-browser-surface/test/native-host/link-autofill-policy.node.mjs
+@@ -0,0 +1,28 @@
++import assert from "node:assert/strict";
++import { execFileSync } from "node:child_process";
++import fs from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { test } from "node:test";
++import { fileURLToPath } from "node:url";
++
++const plugin = fileURLToPath(new URL("../..", import.meta.url));
++const sources = path.join(plugin, "android/src/main/java/ai/eliza/plugins/browsersurface");
++const policy = ["BrowserExternalLinkPolicy.java", "BrowserAutofillEligibility.java"];
++const bin = (name) => (process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name);
++
++test("external link handoffs, intent: refusal, fallbacks and autofill eligibility", (t) => {
++  const classes = fs.mkdtempSync(path.join(os.tmpdir(), "browser-link-autofill-policy-"));
++  t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
++  execFileSync(bin("javac"), ["-d", classes, ...policy.map((file) => path.join(sources, file)), path.join(plugin, "test/native-host/BrowserLinkAutofillPolicyTest.java")], { timeout: 60000 });
++  const output = execFileSync(bin("java"), ["-cp", classes, "BrowserLinkAutofillPolicyTest"], { timeout: 60000, encoding: "utf8" });
++  assert.match(output, /^\d+ assertions passed/);
++});
++
++test("the link and autofill policy has no Android, logging or network dependencies", () => {
++  for (const file of policy) {
++    const source = fs.readFileSync(path.join(sources, file), "utf8");
++    assert.doesNotMatch(source, /^import android\./m, file);
++    assert.doesNotMatch(source, /System\.out|printStackTrace|java\.net\.(URL|HttpURLConnection|Socket)\b/, file);
++  }
++});

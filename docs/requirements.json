@@ -1,92 +1,282 @@
-[
-  {
-    "id": "AP-01",
-    "source": "docs/prd.md",
-    "status": "foundation only",
-    "evidence": null
+{
+  "schema": 2,
+  "source": "docs/prd.md",
+  "statusIndex": "docs/mvp-current-status.md#prd-requirement-status",
+  "statuses": {
+    "implemented": "Software for the requirement is complete; only acceptance in other evidence classes remains.",
+    "partial": "Some software exists and named software gaps remain.",
+    "deferred": "Out of the MVP by recorded policy.",
+    "blocked": "Cannot progress without an external decision, resource or artifact."
   },
-  {
-    "id": "AP-02",
-    "source": "docs/prd.md",
-    "status": "foundation only",
-    "evidence": null
-  },
-  {
-    "id": "AP-03",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-04",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-05",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-06",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-07",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-08",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-09",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-10",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-11",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-12",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-13",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-14",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  },
-  {
-    "id": "AP-15",
-    "source": "docs/prd.md",
-    "status": "planned",
-    "evidence": null
-  }
-]
+  "note": "Status is software state, not acceptance. Evidence lists source and test paths that implement or check the requirement; they are not passing results. Each gate names the next evidence class required.",
+  "requirements": [
+    {
+      "id": "AP-01",
+      "title": "Distinct branded home, app grid and assistant entry; independent package and storage identity",
+      "priority": "P0",
+      "status": "partial",
+      "statusRows": [
+        "Home and launcher",
+        "Design and accessibility"
+      ],
+      "gate": "E: launcher HOME-role instrumentation on both APKs, then D on the selected phone",
+      "evidence": [
+        "apps/app/src/prototype/template.html",
+        "apps/app/src/prototype/mvp-features.ts",
+        "app.config.json",
+        "android/app/src/launcher/AndroidManifest.xml",
+        "test/browser/design.spec.ts",
+        "test/browser/home-compact-scroll.spec.ts"
+      ],
+      "remaining": "Home has no all-apps drawer or search, so installed third-party apps cannot be opened from it."
+    },
+    {
+      "id": "AP-02",
+      "title": "Standalone and HOME APKs from one source; offline shell; stock settings and recovery accessible",
+      "priority": "P0",
+      "status": "partial",
+      "statusRows": [
+        "Home and launcher",
+        "Local startup and ownership",
+        "Connection choices",
+        "Release"
+      ],
+      "gate": "B: four distribution APKs build and pass scripts/verify-apks.mjs; then E: install both modes, open apps and return HOME repeatedly",
+      "evidence": [
+        "scripts/build-android.mjs",
+        "scripts/verify-apks.mjs",
+        "android/app/build.gradle",
+        "apps/app/src/runtime/connection-ui.tsx"
+      ],
+      "remaining": "The Android build fails at the pinned calendar plugin, and the Android Welcome dialog has no offline choice."
+    },
+    {
+      "id": "AP-03",
+      "title": "Existing Eliza sign-in and pairing with an approved Alpha routing adapter and owner-scoped credentials",
+      "priority": "P0",
+      "status": "partial",
+      "statusRows": [
+        "Connection choices",
+        "Local startup and ownership"
+      ],
+      "gate": "R and D: real-device wrong-owner and wrong-origin, expired and reused token, and callback tests against the managed endpoint (A-02)",
+      "evidence": [
+        "apps/app/src/runtime/connection-ui.tsx",
+        "apps/app/src/runtime/remote-protocol.ts",
+        "apps/app/src/runtime/cloud-protocol.ts",
+        "apps/app/src/runtime/native-connection.ts",
+        "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java"
+      ],
+      "remaining": "No remote pairing on production Android, no web AlphaConnection bridge, and Disconnect does not revoke the server credential."
+    },
+    {
+      "id": "AP-04",
+      "title": "Android-resident agent execution with hosted Qwen inference on Cerebras, honest offline state and reconnect/history restoration",
+      "priority": "P0",
+      "status": "partial",
+      "statusRows": [
+        "Chat and retained context",
+        "Connection choices",
+        "Privacy and outbound context"
+      ],
+      "gate": "E then D: resident process restart and reconnect without duplicate messages or writes; no inference-available claim without provider health evidence",
+      "evidence": [
+        "apps/app/src/runtime/local-agent.ts",
+        "apps/app/src/runtime/local-agent-native-stream.ts",
+        "apps/app/src/runtime/alpha-client.ts",
+        "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java",
+        "docs/on-device-agent-plan.md"
+      ],
+      "remaining": "Cancellation is transport-only, and remote and Cloud history is not restored on connect."
+    },
+    {
+      "id": "AP-05",
+      "title": "Pill, input, overlay and full assistant modes with keyboard and navigation continuity",
+      "priority": "P0",
+      "status": "partial",
+      "statusRows": [
+        "Chat and retained context",
+        "Design and accessibility"
+      ],
+      "gate": "S: composer draft survives every pre-dispatch failure; then E: resize, Back and HOME without keyboard obstruction",
+      "evidence": [
+        "apps/app/src/prototype/agent-adapter.ts",
+        "apps/app/src/prototype/assistant-draft-controller.ts",
+        "test/browser/assistant-draft-recovery.spec.ts",
+        "test/browser/compact-viewport.spec.ts"
+      ],
+      "remaining": "The composer consumes the draft before dispatch, so a pre-dispatch failure loses the text from the composer."
+    },
+    {
+      "id": "AP-06",
+      "title": "Voice entry and cancellation with explicit microphone state and typing fallback",
+      "priority": "P0",
+      "status": "partial",
+      "statusRows": [
+        "Speech and recording (J02)"
+      ],
+      "gate": "E: LocalSpeechInstrumentedTest passes on x86_64 and arm64-v8a; then D: physical audio, interruption and latency (A-10)",
+      "evidence": [
+        "apps/app/src/prototype/voice-adapter.ts",
+        "android/local-speech/qualified-runtime-manifest.json",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LocalSpeechInstrumentedTest.java",
+        "test/browser/browser-speech.spec.ts"
+      ],
+      "remaining": "Speech functional acceptance failed on arm64-v8a and x86_64 execution is unverified."
+    },
+    {
+      "id": "AP-07",
+      "title": "Daily overview with real agenda, attention items and briefs",
+      "priority": "P1",
+      "status": "partial",
+      "statusRows": [
+        "Home and launcher",
+        "Digests and schedules"
+      ],
+      "gate": "R: real provider agenda and digests with loading, empty, stale and error states; then D",
+      "evidence": [
+        "apps/app/src/prototype/data-adapter.ts",
+        "apps/app/src/runtime/hosted-digests.ts",
+        "test/browser/dev-digest-schedule.spec.ts"
+      ],
+      "remaining": "Agenda comes from on-device calendars only, and schedules are digest-only."
+    },
+    {
+      "id": "AP-08",
+      "title": "Phone, messages and contacts",
+      "priority": "deferred",
+      "status": "deferred",
+      "statusRows": [
+        "Phone, SMS, Contacts and Wallet"
+      ],
+      "gate": "A recorded scope change, then native role, permission and return-to-HOME acceptance",
+      "evidence": [
+        "apps/app/src/prototype/mvp-features.ts"
+      ],
+      "remaining": "Deferred by the MVP profile; entries and actions are disabled."
+    },
+    {
+      "id": "AP-09",
+      "title": "Inbox and calendar",
+      "priority": "P1",
+      "status": "partial",
+      "statusRows": [
+        "Email/Gmail",
+        "Notes, Calendar and Reminders"
+      ],
+      "gate": "R: real Google OAuth grant, managed Cloud Gmail routes and a real mailbox; B: the native calendar plugin compiles at the pin",
+      "evidence": [
+        "apps/app/src/prototype/inbox-cloud-adapter.ts",
+        "apps/app/src/runtime/gmail-mailbox.ts",
+        "apps/app/src/prototype/calendar-adapter.ts",
+        "patches/eliza/0037-gmail-inbox-read-state.patch"
+      ],
+      "remaining": "Gmail OAuth code exchange returns 401, Calendar shows only on-device calendars, and the native calendar plugin does not compile at the pin."
+    },
+    {
+      "id": "AP-10",
+      "title": "Browser, camera, photos, maps, notes and files",
+      "priority": "P1",
+      "status": "partial",
+      "statusRows": [
+        "Browser and passwords",
+        "Files, camera, scans and media",
+        "Schedule to travel (J04) and Maps",
+        "Notes, Calendar and Reminders"
+      ],
+      "gate": "E: browser sign-in, private-tab, pop-up and app-link instrumentation (P-04) and password-manager fill (P-05); then R and D",
+      "evidence": [
+        "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaBrowserPlugin.java",
+        "apps/app/src/prototype/camera-adapter.ts",
+        "apps/app/src/runtime/notes-trash-policy.ts",
+        "apps/app/src/maps",
+        "test/browser/browser-signins.spec.ts"
+      ],
+      "remaining": "Native camera lacks image import and the multi-page scan builder, and the regional Maps gateway is not in production."
+    },
+    {
+      "id": "AP-11",
+      "title": "Workflow library and run history",
+      "priority": "P1",
+      "status": "partial",
+      "statusRows": [
+        "Typed workflows",
+        "Digests and schedules"
+      ],
+      "gate": "E then D: interrupted-worker behavior on the resident runtime with real receipts",
+      "evidence": [
+        "apps/app/src/runtime/workflow-protocol.ts",
+        "apps/app/src/runtime/phone-workflow-authoring.ts",
+        "scripts/android-workflow-native.mjs",
+        "docs/workflow-run-cancellation.md"
+      ],
+      "remaining": "Phone workflows have manual triggers only, and the resident interrupted-worker case is unqualified."
+    },
+    {
+      "id": "AP-12",
+      "title": "Settings: accounts, privacy, connection, voice, theme, text and notifications",
+      "priority": "P0 foundations / P1 integrations",
+      "status": "partial",
+      "statusRows": [
+        "Settings",
+        "Privacy and outbound context",
+        "Licenses"
+      ],
+      "gate": "E: each Android settings handoff and readback; no simulated switches",
+      "evidence": [
+        "apps/app/src/prototype/settings-adapter.ts",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/SettingsFlowInstrumentedTest.java",
+        "test/browser/settings-page-accessibility.spec.ts"
+      ],
+      "remaining": "Quick-setting tiles show no native state and open generic Android Settings."
+    },
+    {
+      "id": "AP-13",
+      "title": "Wallet and security/attestation surfaces",
+      "priority": "deferred",
+      "status": "deferred",
+      "statusRows": [
+        "Phone, SMS, Contacts and Wallet"
+      ],
+      "gate": "Provider, key custody, device security and transaction-approval decisions (A-08) before any work",
+      "evidence": [
+        "apps/app/src/prototype/mvp-features.ts",
+        "test/browser/confidentiality-claims.spec.ts"
+      ],
+      "remaining": "Deferred; no attestation claim without verified evidence."
+    },
+    {
+      "id": "AP-14",
+      "title": "Signed AOSP image and update/rollback path for one selected phone SKU",
+      "priority": "release gate",
+      "status": "blocked",
+      "statusRows": [
+        "Release"
+      ],
+      "gate": "I and D: exact source, blob, kernel and signer lock, hardware checklist and recovery test; blocked on hardware (A-01) and signing authority (A-06)",
+      "evidence": [
+        "scripts/stage-aosp.mjs",
+        "docs/android-and-aosp.md",
+        "docs/native-app-distribution.md"
+      ],
+      "remaining": "No selected phone SKU and no controlled release key."
+    },
+    {
+      "id": "AP-15",
+      "title": "Accessibility and resilience",
+      "priority": "P0",
+      "status": "partial",
+      "statusRows": [
+        "Design and accessibility",
+        "Home and launcher"
+      ],
+      "gate": "E then D: TalkBack, large font, touch and keyboard, offline, killed process, rotation and repeated HOME navigation",
+      "evidence": [
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/TextScaleInstrumentedTest.java",
+        "test/browser/compact-viewport.spec.ts",
+        "test/browser/settings-page-accessibility.spec.ts"
+      ],
+      "remaining": "No landscape layout, and physical TalkBack and accessibility acceptance remain."
+    }
+  ]
+}

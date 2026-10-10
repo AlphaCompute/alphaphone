@@ -11,10 +11,11 @@ export function voiceFailure(reason: unknown, context: { transcribing: boolean; 
   const value = (reason && typeof reason === 'object' ? reason : undefined) as Reason;
   const name = typeof value?.name === 'string' ? value.name : '', code = typeof value?.code === 'string' ? value.code : '';
   if (name === 'AbortError') return null;
-  if (!context.transcribing && (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError'))
+  // Android's AlphaVoiceCloud rejects a refused RECORD_AUDIO request with code 'permission-denied'.
+  if (!context.transcribing && (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError' || code === 'permission-denied'))
     return { kind: 'denied', message: context.browser
-      ? 'Microphone access is blocked. Allow the microphone for this site in your browser’s site settings, then choose Start recording again. Nothing was recorded.'
-      : 'Microphone access is off. Allow the microphone for Alpha in Android settings, then choose Start recording again. Nothing was recorded.' };
+      ? 'Microphone access is blocked. Allow the microphone for this site in your browser’s site settings, then choose Start recording again, or use the keyboard instead. Nothing was recorded.'
+      : 'Microphone access is off. Choose Open app settings and allow the microphone for Alpha in Android settings, then choose Start recording again, or use the keyboard instead. Nothing was recorded.' };
   if (!context.transcribing && (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'NotReadableError'))
     return { kind: 'no-microphone', message: 'No usable microphone was found. Connect or enable a microphone, then choose Start recording again.' };
   if (code === 'no-speech')

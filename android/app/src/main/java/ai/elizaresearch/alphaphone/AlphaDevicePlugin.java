@@ -12,7 +12,6 @@ import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.PowerManager;
-import android.os.SystemClock;
 import android.provider.Settings;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -53,14 +52,15 @@ public final class AlphaDevicePlugin extends Plugin {
   out.put("model",Build.MODEL);out.put("manufacturer",Build.MANUFACTURER);
   out.put("androidRelease",Build.VERSION.RELEASE);out.put("securityPatch",Build.VERSION.SECURITY_PATCH);
   out.put("build",Build.DISPLAY);out.put("appVersion",BuildConfig.VERSION_NAME);
-  out.put("uptimeMs",SystemClock.elapsedRealtime());out.put("readAt",System.currentTimeMillis());
+  out.put("readAt",System.currentTimeMillis());
   out.put("textScalePercent",textScalePercent(getContext()));out.put("effectiveTextZoom",effectiveTextZoom(getContext(),textScalePercent(getContext())));
   NotificationManager notifications=(NotificationManager)getContext().getSystemService(Context.NOTIFICATION_SERVICE);
   out.put("notificationsEnabled",notifications!=null&&notifications.areNotificationsEnabled());
   JSObject grants=new JSObject();
   boolean fine=getContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED,coarse=getContext().checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED;
   out.put("locationAccess",fine?"precise":coarse?"approximate":"denied");
-  String[][] permissions={{"Microphone",Manifest.permission.RECORD_AUDIO},{"Location",Manifest.permission.ACCESS_FINE_LOCATION},{"Camera",Manifest.permission.CAMERA},{"Contacts",Manifest.permission.READ_CONTACTS}};
+  // Only permissions Alpha declares. Contacts is removed from the manifest, so it is not reported.
+  String[][] permissions={{"Microphone",Manifest.permission.RECORD_AUDIO},{"Location",Manifest.permission.ACCESS_FINE_LOCATION},{"Camera",Manifest.permission.CAMERA},{"Calendar",Manifest.permission.READ_CALENDAR}};
   for(String[] p:permissions)grants.put(p[0],getContext().checkSelfPermission(p[1])==PackageManager.PERMISSION_GRANTED);
   grants.put("Location",fine||coarse);out.put("permissions",grants);
   out.put("passwordProvider",PasswordProviderSupport.status(getContext()));call.resolve(out);
@@ -95,6 +95,9 @@ public final class AlphaDevicePlugin extends Plugin {
    case "developer":action=Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS;break;
    case "notifications":action=Settings.ACTION_APP_NOTIFICATION_SETTINGS;break;
    case "privacy":action=Settings.ACTION_APPLICATION_DETAILS_SETTINGS;break;
+   case "default-apps":action=Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS;break;
+   // Do not disturb: the platform Zen mode page; an image without it rejects and the tile falls back to Settings.
+   case "dnd":action="android.settings.ZEN_MODE_SETTINGS";break;
    default:call.reject("Unsupported settings page");return;
   }
   Intent intent=new Intent(action);
@@ -105,4 +108,64 @@ public final class AlphaDevicePlugin extends Plugin {
    catch(RuntimeException error){call.reject("This Android settings page is unavailable");}
   });
  }
+
+ private final java.util.concurrent.ExecutorService diagnosticsWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
+ /** Local problem log: failure classes only, never messages, stacks or content. */
+ @PluginMethod public void crashLog(PluginCall call){
+  diagnosticsWorker.execute(()->{
+   try{
+    try{AlphaCrashLog.collectExitReasons(getContext());}catch(Exception unavailable){/* Exit history is best effort. */}
+    JSObject out=new JSObject();out.put("entries",AlphaCrashLog.read(getContext()).getJSONArray("entries"));out.put("exitHistory",Build.VERSION.SDK_INT>=Build.VERSION_CODES.R);call.resolve(out);
+   }catch(Exception error){call.reject("Problem log is unavailable");}
+  });
+ }
+ @PluginMethod public void recordRendererFailure(PluginCall call){
+  diagnosticsWorker.execute(()->{try{AlphaCrashLog.recordRenderer(getContext(),call.getString("kind"),call.getString("errorClass"));call.resolve();}catch(Exception error){call.reject("Problem was not recorded");}});
+ }
+ @PluginMethod public void clearCrashLog(PluginCall call){
+  diagnosticsWorker.execute(()->{try{AlphaCrashLog.clear(getContext());call.resolve();}catch(Exception error){call.reject("Problem log could not be cleared");}});
+ }
+ /** Non-secret build identity for diagnostics: variant, pin and packaged runtime hashes. */
+ @PluginMethod public void diagnosticsFacts(PluginCall call){
+  diagnosticsWorker.execute(()->{
+   try{
+    JSObject out=new JSObject();
+    out.put("appVersion",BuildConfig.VERSION_NAME);out.put("versionCode",BuildConfig.VERSION_CODE);
+    out.put("variant",BuildConfig.IS_LAUNCHER?"launcher":"standalone");out.put("buildType",BuildConfig.BUILD_TYPE);
+    out.put("testMocks",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);out.put("sdkInt",Build.VERSION.SDK_INT);
+    out.put("androidRelease",Build.VERSION.RELEASE);out.put("securityPatch",Build.VERSION.SECURITY_PATCH);
+    JSObject hashes=new JSObject();
+    for(String asset:new String[]{"agent/alpha-source.json","agent/agent-bundle.js","agent/workflow-worker/manifest.json","agent/workflow-worker/files.sha256"}){String hash=assetSha256(asset);if(hash!=null)hashes.put(asset,hash);}
+    out.put("runtimeHashes",hashes);
+    try(java.io.InputStream in=getContext().getAssets().open("agent/alpha-source.json")){
+     java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();byte[] buffer=new byte[8192];int count,total=0;
+     while((count=in.read(buffer))!=-1){total+=count;if(total>64*1024)throw new java.io.IOException();bytes.write(buffer,0,count);}
+     String base=new org.json.JSONObject(new String(bytes.toByteArray(),java.nio.charset.StandardCharsets.UTF_8)).optString("base","");
+     if(base.matches("[0-9a-f]{40}"))out.put("upstreamPin",base);
+    }catch(Exception notPackaged){/* Developer APKs may omit the packaged runtime. */}
+    call.resolve(out);
+   }catch(Exception error){call.reject("Diagnostics are unavailable");}
+  });
+ }
+ private String assetSha256(String asset){
+  try(java.io.InputStream in=getContext().getAssets().open(asset)){
+   java.security.MessageDigest digest=java.security.MessageDigest.getInstance("SHA-256");byte[] buffer=new byte[65536];int count;
+   while((count=in.read(buffer))!=-1)digest.update(buffer,0,count);
+   StringBuilder hex=new StringBuilder();for(byte b:digest.digest())hex.append(String.format(java.util.Locale.ROOT,"%02x",b));return hex.toString();
+  }catch(Exception absent){return null;}
+ }
+ /** User-initiated share of already redacted diagnostics. Android's chooser decides the destination. */
+ @PluginMethod public void shareDiagnostics(PluginCall call){
+  String text=call.getString("text");
+  if(text==null||text.length()>256*1024){call.reject("Diagnostics are too large");return;}
+  try{Object parsed=new org.json.JSONTokener(text).nextValue();if(!(parsed instanceof org.json.JSONObject)||!"alpha-diagnostics/v1".equals(((org.json.JSONObject)parsed).optString("format")))throw new IllegalArgumentException();}
+  catch(Exception invalid){call.reject("Diagnostics are not valid");return;}
+  getActivity().runOnUiThread(()->{
+   try{
+    Intent send=new Intent(Intent.ACTION_SEND);send.setType("text/plain");send.putExtra(Intent.EXTRA_TEXT,text);send.putExtra(Intent.EXTRA_SUBJECT,"Alpha Phone diagnostics");
+    getActivity().startActivity(Intent.createChooser(send,"Share diagnostics"));JSObject out=new JSObject();out.put("status","opened");call.resolve(out);
+   }catch(RuntimeException unavailable){call.reject("Sharing is unavailable");}
+  });
+ }
+ @Override protected void handleOnDestroy(){diagnosticsWorker.shutdown();super.handleOnDestroy();}
 }

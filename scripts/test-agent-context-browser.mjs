@@ -32,10 +32,15 @@ try {
    return method === 'list' ? { items: [media], next: '' } : media;
   }};
  });
- await page.goto(url, { waitUntil: 'load' });
+ await page.goto(url, { waitUntil: 'load', timeout: 180000 });
  await page.getByRole('button', { name: 'Photos', exact: true }).click();
  await page.getByRole('button', { name: /^Captured video / }).click();
  await page.getByRole('button', { name: 'Ask Alpha about this photo', exact: true }).click();
+ // Ask opens the local content review first; only reviewed, synthetic text reaches the composer.
+ const review = page.getByRole('dialog', { name: 'Ask about selected content' });
+ await review.getByRole('textbox', { name: 'Content excerpt' }).fill('Synthetic description of the selected video frame');
+ await review.getByRole('button', { name: 'Use in conversation', exact: true }).click();
+ await review.waitFor({ state: 'detached' });
  await page.evaluate(async () => {
   const { alphaClient } = await import('/src/runtime/alpha-client.ts');
   const { phoneContextMessage } = await import('/src/runtime/phone-context.ts');
@@ -89,6 +94,40 @@ try {
  }
  assert.equal(await page.evaluate(() => window.fixture.requests.length), 7);
 
+ // Folder, own-notification and settings identities stay bounded and opaque; sensitive
+ // screens, other apps' notifications and credential settings never become context.
+ const identities = await page.evaluate(async () => {
+  const { sanitizePhoneContext, phoneContextMessage } = await import('/src/runtime/phone-context.ts');
+  const { ownNotificationSelection } = await import('/src/prototype/notifications-adapter.ts');
+  const attempt = input => { try { return sanitizePhoneContext(input); } catch (error) { return 'rejected: ' + error.message; } };
+  const folder = { kind: 'folder', id: 'tree-7f3a', revision: 'listing-12' };
+  const own = ownNotificationSelection({ id: 'own-reminder-42', revision: 'r3', source: 'own' });
+  return {
+   folder: attempt({ view: 'files', revision: 3, sensitive: false, selectedObject: { ...folder, privateName: 'PRIVATE_FOLDER_NAME_CANARY' } }),
+   folderOutsideFiles: attempt({ view: 'notes', revision: 3, sensitive: false, selectedObject: folder }),
+   folderPath: attempt({ view: 'files', revision: 3, sensitive: false, selectedObject: { kind: 'folder', id: '/storage/emulated/0/Private', revision: '1' } }),
+   folderWithoutRevision: attempt({ view: 'files', revision: 3, sensitive: false, selectedObject: { kind: 'folder', id: 'tree-7f3a' } }),
+   own,
+   ownContext: attempt({ view: 'home', revision: 4, sensitive: false, selectedObject: own }),
+   external: ownNotificationSelection({ id: 'external-9', revision: 'r1', source: 'external' }) ?? null,
+   hosted: ownNotificationSelection({ id: 'hosted-9', revision: 'r1', source: 'hosted' }) ?? null,
+   forgedExternal: attempt({ view: 'home', revision: 4, sensitive: false, selectedObject: { kind: 'notification', id: 'external-9', revision: 'r1', accountId: 'com.example.chat' } }),
+   settings: attempt({ view: 'settings', revision: 5, sensitive: false, selectedObject: { kind: 'settings', id: 'agent-connection' } }),
+   passwordSettings: attempt({ view: 'settings', revision: 5, sensitive: false, selectedObject: { kind: 'settings', id: 'passwords' } }),
+   sensitiveSettings: attempt({ view: 'settings', revision: 5, sensitive: true, selectedObject: { kind: 'settings', id: 'agent-connection' } }),
+   settingsElsewhere: attempt({ view: 'home', revision: 5, sensitive: false, selectedObject: { kind: 'settings', id: 'agent-connection' } }),
+   wire: phoneContextMessage('Which folder is this?', { view: 'files', revision: 3, sensitive: false, selectedObject: folder }).text,
+  };
+ });
+ assert.deepEqual(identities.folder, { view: 'files', revision: 3, sensitive: false, selectedObject: { kind: 'folder', id: 'tree-7f3a', revision: 'listing-12' } });
+ for (const key of ['folderOutsideFiles', 'folderPath', 'folderWithoutRevision', 'forgedExternal', 'passwordSettings', 'sensitiveSettings', 'settingsElsewhere']) assert.match(String(identities[key]), /^rejected: /, key);
+ assert.equal(identities.sensitiveSettings, 'rejected: This screen cannot share agent context.');
+ assert.deepEqual(identities.own, { kind: 'notification', id: 'own-reminder-42', revision: 'r3', accountId: 'own' });
+ assert.deepEqual(identities.ownContext.selectedObject, identities.own);
+ assert.equal(identities.external, null); assert.equal(identities.hosted, null);
+ assert.deepEqual(identities.settings.selectedObject, { kind: 'settings', id: 'agent-connection' });
+ assert.ok(identities.wire.includes('"kind":"folder"') && !identities.wire.includes('PRIVATE_FOLDER_NAME_CANARY'));
+
  // Exercise the production pairing/connection controller, not a replacement
  // AlphaClient transport, for both wire representations of rate limiting.
  for (const mode of ['http429', 'typed200']) {
@@ -120,7 +159,7 @@ try {
     throw Error('Unexpected fixture route');
    }};
   }, mode);
-  await limited.goto(url, { waitUntil: 'load' });
+  await limited.goto(url, { waitUntil: 'load', timeout: 180000 });
   await limited.getByRole('button', { name: 'Settings', exact: true }).click();
   await limited.getByRole('button', { name: 'Agent connection', exact: true }).click();
   await limited.getByText('Local development agent', { exact: true }).click();
@@ -151,6 +190,6 @@ try {
   assert.equal(await limited.getByText(message, { exact: true }).count(), 1);
   await limited.close();
  }
- console.log('PASS rendered video selection -> chat with opaque context; chooser/visibility/pagehide cancel stale turns and proposals; session/history retained, fresh requests succeed. HTTP429 and typed200 rate_limited render safe error, never automatically repeat POST, retain usable input/history/account, and explicit retry succeeds in the same conversation. Synthetic native/agent boundaries only; no model or emulator acceptance.');
+ console.log('PASS rendered video selection -> chat with opaque context; folder, own-notification and settings identities stay bounded with sensitive/external exclusions; chooser/visibility/pagehide cancel stale turns and proposals; session/history retained, fresh requests succeed. HTTP429 and typed200 rate_limited render safe error, never automatically repeat POST, retain usable input/history/account, and explicit retry succeeds in the same conversation. Synthetic native/agent boundaries only; no model or emulator acceptance.');
 
 } finally { await browser.close(); }

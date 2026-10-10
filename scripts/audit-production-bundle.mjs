@@ -20,6 +20,18 @@ export const DENYLIST = Object.freeze([
 ]);
 const TEXT = /\.(?:html?|js|mjs|cjs|css|json|txt|svg|xml|webmanifest)$/i;
 
+// Hard-coded avatar initials: a small round badge span whose whole text is two capital
+// letters or a "+N" overflow count, written into markup instead of rendered from data.
+// Matches the raw markup and its JSON-escaped form inside a bundled ?raw template.
+export const AVATAR_INITIALS = /border-radius:\s*1[0-9]px;[^<>]{0,400}?\\?"\s*>\s*([A-Z]{2}|\+\d{1,2})\s*<\/span>/g;
+// The prototype's next-event card still carries MC, JP and +2 (platform-20). The shell
+// package removes them; delete this allowance in the change after that lands. Any other
+// initials badge fails now.
+export const PENDING_AVATAR_INITIALS = Object.freeze(['MC', 'JP', '+2']);
+export function avatarInitials(text) {
+  return [...text.matchAll(AVATAR_INITIALS)].map(match => match[1]);
+}
+
 function walk(root, directory = root, out = []) {
   for (const entry of readdirSync(directory, {withFileTypes: true})) {
     const file = path.join(directory, entry.name);
@@ -45,7 +57,7 @@ export function readBuildFlags(dir) {
  * @returns {{ok: boolean, testMocks: boolean, files: number, findings: Array<{file: string, rule: string}>, errors: string[]}}
  */
 export function auditWebBundle(dir, options = {}) {
-  const errors = [], findings = [];
+  const errors = [], findings = [], pending = new Set();
   if (!existsSync(dir) || !statSync(dir).isDirectory()) return {ok: false, testMocks: false, files: 0, findings, errors: [`Bundle directory not found: ${dir}`]};
   const flags = readBuildFlags(dir);
   const expected = options.testMocks === true;
@@ -63,9 +75,12 @@ export function auditWebBundle(dir, options = {}) {
       if (!TEXT.test(file)) continue;
       const text = readFileSync(path.join(dir, file), 'utf8');
       for (const entry of DENYLIST) if (text.includes(entry)) findings.push({file, rule: entry});
+      for (const initials of avatarInitials(text))
+        if (!PENDING_AVATAR_INITIALS.includes(initials)) findings.push({file, rule: `hard-coded avatar initials "${initials}"`});
+        else pending.add(initials);
     }
   }
-  return {ok: errors.length === 0 && findings.length === 0, testMocks: flags.testMocks, files: files.length, findings, errors};
+  return {ok: errors.length === 0 && findings.length === 0, testMocks: flags.testMocks, files: files.length, findings, errors, pendingAvatarInitials: [...pending].sort()};
 }
 
 function main(argv) {
@@ -80,6 +95,7 @@ function main(argv) {
   const result = auditWebBundle(dir, {testMocks: flags.includes('--expect-test-mocks')});
   for (const error of result.errors) console.error(`ERROR ${error}`);
   for (const finding of result.findings) console.error(`DENY ${finding.file}: ${finding.rule}`);
+  if (result.pendingAvatarInitials?.length) console.warn(`PENDING hard-coded avatar initials ${result.pendingAvatarInitials.join(', ')} (platform-20; removed by the shell package)`);
   if (result.ok) console.log(`PASS ${path.relative(process.cwd(), dir) || '.'}: ${result.files} files, testMocks=${result.testMocks}${result.testMocks ? ' (denylist skipped for an explicit test-mocks bundle)' : ', no mock, fixture or developer surfaces found'}.`);
   else console.error(`FAIL ${result.findings.length} denylist hit(s), ${result.errors.length} error(s).`);
   return result.ok ? 0 : 1;

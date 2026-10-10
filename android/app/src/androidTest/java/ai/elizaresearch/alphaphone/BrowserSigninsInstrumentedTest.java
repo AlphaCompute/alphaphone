@@ -199,4 +199,81 @@ public final class BrowserSigninsInstrumentedTest {
    app("Browser");tabs(1);page(url);assertEquals(1,liveTabs());
   }
  }
+
+ private java.util.HashSet<String> ephemeralProfiles()throws Exception{
+  java.util.HashSet<String> names=new java.util.HashSet<>();
+  WebViewTestDriver.withActivity(MainActivity.class,activity->{try{
+   Object plugin=activity.getBridge().getPlugin("AlphaBrowser").getInstance();java.lang.reflect.Field tabs=plugin.getClass().getDeclaredField("tabs");tabs.setAccessible(true);
+   for(Object tab:((java.util.Map<?,?>)tabs.get(plugin)).values()){java.lang.reflect.Field profile=tab.getClass().getDeclaredField("profile");profile.setAccessible(true);String name=(String)profile.get(tab);if(AlphaBrowserPlugin.ephemeralProfile(name))names.add(name);}
+  }catch(Exception failure){throw new AssertionError(failure);}});
+  return names;
+ }
+ /** Cold start (decision P-04). An external runner kills the process between
+  * phases (scripts/test-native-restart.mjs, gate signinPhase): prepare signs in
+  * a normal tab and a private tab, verify runs in a new PID and requires the
+  * normal sign-in cookie and storage to survive while the private tab's do not
+  * and its profile is gone; cleanup clears only this fixture's data. */
+ @Test public void signinProcessRestartPhase()throws Exception{
+  String phase=InstrumentationRegistry.getArguments().getString("signinPhase");org.junit.Assume.assumeTrue("Explicit process runner only",phase!=null);
+  android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+  android.content.SharedPreferences fixture=context.getSharedPreferences("browser-signin-restart-fixture",0);
+  if("cleanup".equals(phase)){
+   String token=fixture.getString("token",null);
+   if(token!=null){
+    String url="https://example.com/?alpha_signin_restart="+token;
+    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+     AppNavigation.liveMode();app("Browser");address(url);page(url);
+     browser.child("localStorage.removeItem('alpha_signin_restart');document.cookie='alpha_signin_restart=; Secure; SameSite=Lax; Path=/; Max-Age=0';true");
+    }
+   }
+   new BrowserSessionStore(context).clear();assertTrue(fixture.edit().clear().commit());return;
+  }
+  if("prepare".equals(phase)){
+   assertFalse("Clean previous owned fixture first",fixture.contains("token"));
+   String token=UUID.randomUUID().toString(),url="https://example.com/?alpha_signin_restart="+token;
+   assertTrue(fixture.edit().putString("token",token).putInt("pid",android.os.Process.myPid()).commit());
+   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+    AppNavigation.liveMode();app("Browser");address(url);page(url);
+    browser.child("localStorage.setItem('alpha_signin_restart',"+JSONObject.quote(token)+");document.cookie='alpha_signin_restart="+token+"; Secure; SameSite=Lax; Path=/; Max-Age=3600';true");
+    assertEquals("Normal sign-in cookie set","true",browser.child("document.cookie.includes('alpha_signin_restart="+token+"')"));
+    boolean privateSupported=androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DELETE_BROWSING_DATA);
+    if(privateSupported){
+     click("Menu");click("New private tab");address(url);page(url);ready("document.querySelector('[aria-label=\"Private tab\"]')");
+     assertEquals("Private tab starts without the normal sign-in","false",browser.child("document.cookie.includes('alpha_signin_restart=')"));
+     browser.child("localStorage.setItem('alpha_private_restart',"+JSONObject.quote(token)+");document.cookie='alpha_private_restart="+token+"; Secure; SameSite=Lax; Path=/; Max-Age=3600';true");
+     assertEquals("Private sign-in cookie set","true",browser.child("document.cookie.includes('alpha_private_restart="+token+"')"));
+    }
+    java.util.HashSet<String> ephemeral=ephemeralProfiles();
+    assertEquals("Private tab uses an ephemeral profile exactly when supported",privateSupported,!ephemeral.isEmpty());
+    assertTrue(fixture.edit().putStringSet("profiles",ephemeral).putBoolean("privateSupported",privateSupported).commit());
+    // Closing the scenario pauses the Activity, which flushes the persistent profile's cookies.
+   }
+   return;
+  }
+  assertEquals("verify",phase);
+  assertTrue("Owned fixture prepared",fixture.contains("token"));
+  String token=fixture.getString("token",""),url="https://example.com/?alpha_signin_restart="+token;
+  assertNotEquals("Actual new process required",fixture.getInt("pid",-1),android.os.Process.myPid());
+  java.util.Set<String> retired=fixture.getStringSet("profiles",java.util.Collections.emptySet());
+  if(fixture.getBoolean("privateSupported",true))assertFalse("Exact prior-process private profiles recorded",retired.isEmpty());
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launchRetainingBrowserSession(MainActivity.class)){
+   AppNavigation.liveMode();
+   WebViewTestDriver.withActivity(MainActivity.class,activity->{
+    java.util.List<String> names=androidx.webkit.ProfileStore.getInstance().getAllProfileNames();
+    for(String name:retired)assertFalse("Private profile deleted after a real process restart",names.contains(name));
+   });
+   app("Browser");
+   // Open the site fresh rather than relying on tab restoration (covered by BrowserContinuity).
+   click("Tabs");click("New tab");address(url);page(url);
+   assertEquals("Normal sign-in cookie survives process death","true",browser.child("document.cookie.includes('alpha_signin_restart="+token+"')"));
+   assertEquals("Normal site storage survives process death",JSONObject.quote(token),browser.child("localStorage.getItem('alpha_signin_restart')"));
+   assertEquals("Normal tab never sees the private sign-in","false",browser.child("document.cookie.includes('alpha_private_restart=')"));
+   if(fixture.getBoolean("privateSupported",true)){
+    click("Menu");click("New private tab");address(url);page(url);ready("document.querySelector('[aria-label=\"Private tab\"]')");
+    assertEquals("Private sign-in cookie did not survive","false",browser.child("document.cookie.includes('alpha_private_restart=')"));
+    assertEquals("Private storage did not survive","null",browser.child("localStorage.getItem('alpha_private_restart')"));
+    assertEquals("A new private tab does not see the normal sign-in","false",browser.child("document.cookie.includes('alpha_signin_restart=')"));
+   }
+  }
+ }
 }

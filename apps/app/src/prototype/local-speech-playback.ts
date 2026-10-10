@@ -1,8 +1,11 @@
+import { Capacitor } from '@capacitor/core';
+import { speakLocalText } from '../local-speech-playback';
+import { markVoiceTiming, abandonVoiceTurn, finishVoiceTurn } from '../runtime/voice-timing';
 import { connectionController } from '../runtime/connection-ui';
 import { planLocalSpeech } from '../runtime/local-speech-text';
 import { createOnDeviceVoice } from '../runtime/local-voice';
 import { createCloudVoice, cloudVoiceFailure } from '../runtime/cloud-voice';
-import { selectVoiceRoute } from '../runtime/voice-selection';
+import { selectVoiceRoute, speakRepliesEnabled } from '../runtime/voice-selection';
 
 let cancelCurrent: (() => Promise<void>|void) | undefined;
 let cancelOwner: object | undefined;
@@ -12,9 +15,81 @@ function retainSpeechRetirement(pending:Promise<void>){
  const drain=Promise.all([previous,pending.catch(error=>{if(error?.code==='speech-cleanup-unconfirmed')throw error;})]).then(()=>{});
  speechRetirement=drain;void drain.then(()=>{if(speechRetirement===drain)speechRetirement=undefined;},()=>{});return drain;
 }
-export function stopLocalSpeechPlayback() { const pending=cancelCurrent?.(); cancelCurrent = undefined; cancelOwner = undefined;return pending?retainSpeechRetirement(Promise.resolve(pending)):speechRetirement; }
+export function stopLocalSpeechPlayback() { stopSpeaking(); const pending=cancelCurrent?.(); cancelCurrent = undefined; cancelOwner = undefined;return pending?retainSpeechRetirement(Promise.resolve(pending)):speechRetirement; }
 type Shell = any;
 type Reading = { id: string; text: string; pending?:Promise<void>;current?:()=>boolean;controller?: AbortController; message: string };
+const speechBinding = () => JSON.stringify([connectionController.getSnapshot().session?.sessionId, connectionController.getCloudClient()?.sessionId, document.documentElement.dataset.connectionMode]);
+/**
+ * The qualified local speech route (Android CPU engine, or this browser's local voice),
+ * with an explicit start callback. Leaving the foreground, opening the connection chooser
+ * or changing the selected agent or Cloud account cancels it.
+ */
+async function speakOnDevice(text: string, signal: AbortSignal, onStarted?: () => void) {
+  const selected = speechBinding();
+  const owned = new AbortController(), abort = () => owned.abort(signal.reason ?? new DOMException('Speech cancelled', 'AbortError'));
+  const check = () => { if (document.hidden || connectionController.getSnapshot().open || speechBinding() !== selected) throw new DOMException('Speech cancelled', 'AbortError'); };
+  const visibility = () => { if (document.hidden) owned.abort(new DOMException('Speech cancelled', 'AbortError')); };
+  const unsubscribe = connectionController.subscribe(() => { try { check(); } catch (reason) { owned.abort(reason); } });
+  signal.addEventListener('abort', abort, { once: true }); document.addEventListener('visibilitychange', visibility);
+  try { if (signal.aborted) abort(); check(); await speakLocalText(text, owned.signal, onStarted, false, { execution: Capacitor.isNativePlatform() ? 'device' : 'browser', assertCurrent: check }); check(); }
+  finally { unsubscribe(); signal.removeEventListener('abort', abort); document.removeEventListener('visibilitychange', visibility); }
+}
+
+/* ---- Note read-aloud ---- */
+type NoteReading = { noteId?: string; text: string; controller: AbortController; pending?:Promise<void>; state: 'preparing' | 'reading' };
+let noteReading: NoteReading | undefined;
+const noteReadingChanged = () => { try { window.dispatchEvent(new Event('alpha:note-reading')); } catch { /* No renderer. */ } };
+/** The note being read aloud, if any. Text is the exact passage being read. */
+export function currentNoteReading() { return noteReading ? { noteId: noteReading.noteId, text: noteReading.text, state: noteReading.state } : null; }
+/** Stop note read-aloud. Safe to call at any time. */
+export function stopSpeaking() {
+  const active = noteReading; if (!active) return;
+  noteReading = undefined;if(active.pending)retainSpeechRetirement(active.pending); active.controller.abort(new DOMException('Speech cancelled', 'AbortError')); noteReadingChanged();
+}
+/**
+ * Read note text aloud on the qualified local speech route only: nothing is uploaded and
+ * no Cloud or agent voice is used. Leaving the note or editing it cancels the reading
+ * (the Notes adapter calls stopSpeaking). Resolves with the outcome; never throws.
+ */
+export function speakNote(text: string, owner: { noteId?: string } = {}) { return readNote(text, owner); }
+async function readNote(text: string, owner: { noteId?: string }): Promise<'finished' | 'stopped' | 'unavailable' | 'unsupported' | 'failed'> {
+  const retirement = stopLocalSpeechPlayback();
+  const passage = typeof text === 'string' ? text.trim() : '';
+  if (!passage || passage.length > 16000) return 'unsupported';
+  // The same preflight as message Listen, on every platform: text with credentials, card
+  // numbers, links or unsupported characters is refused before any audio or local-agent
+  // request. The browser still speaks the original passage; the native engine speaks its plan.
+  try { planLocalSpeech(passage); } catch { return 'unsupported'; }
+  const voice = createOnDeviceVoice(); if (!voice) return 'unavailable';
+  const reading: NoteReading = { noteId: owner.noteId, text: passage, controller: new AbortController(), state: 'preparing' };
+  noteReading = reading; noteReadingChanged();
+  const signal = reading.controller.signal;
+  try {
+    await retirement;
+    if ('ready' in voice && !await voice.ready(signal)) { if (noteReading === reading) { noteReading = undefined; noteReadingChanged(); } return 'unavailable'; }
+    if (noteReading !== reading || signal.aborted) return 'stopped';
+    const pending=reading.pending=speakOnDevice(passage, signal, () => { if (noteReading === reading) { reading.state = 'reading'; noteReadingChanged(); } });await pending;
+    return noteReading === reading && !signal.aborted ? 'finished' : 'stopped';
+  } catch { return noteReading !== reading || signal.aborted ? 'stopped' : 'failed'; }
+  finally { if (noteReading === reading) { noteReading = undefined; noteReadingChanged(); } }
+}
+
+/* ---- Spoken replies to voice-originated turns ---- */
+type VoiceTurn = { draft: string; known: Set<string>; binding: string; userId?: string; sentAt?: number; firstToken?: boolean };
+let voiceTurn: VoiceTurn | undefined;
+const conversationBinding = () => JSON.stringify([connectionController.getSnapshot().session?.sessionId, connectionController.getSnapshot().history?.conversationId, connectionController.getCloudClient()?.sessionId]);
+/**
+ * The reviewed transcript was placed in the composer. If the user sends exactly that text,
+ * the turn is voice-originated: its reply can be spoken (opt-in) and its timing recorded.
+ */
+export function noteVoiceDraft(text: string, messages: { id?: unknown }[] = []) {
+  const draft = String(text || '').trim();
+  voiceTurn = draft ? { draft, known: new Set(messages.map(m => String(m.id))), binding: conversationBinding() } : undefined;
+}
+/** A reply older than this, or for an earlier turn, is stale and is never spoken. */
+const replyDeadlineMs = 5 * 60 * 1000;
+
+
 /** Message actions use the existing speech route; playback always requires a user gesture. */
 export function installLocalSpeechPlayback(Component: Shell) {
   const p = Component.prototype, original = p.renderVals, mount = p.componentDidMount, update = p.componentDidUpdate, unmount = p.componentWillUnmount;
@@ -47,16 +122,17 @@ export function installLocalSpeechPlayback(Component: Shell) {
   }
   const refresh = (shell: Shell) => { if (shell.live !== false) shell.setState({ localSpeechRevision: Date.now() }); };
   const stop = (shell: Shell) => { const old = states.get(shell); old?.controller?.abort(); if(old?.pending)retainSpeechRetirement(old.pending);states.delete(shell); if (cancelOwner === shell) { cancelCurrent = undefined; cancelOwner = undefined; } };
-  async function listen(shell: Shell, id: string, text: string) {
+  async function listen(shell: Shell, id: string, text: string, onStarted?:()=>void) {
     const old = states.get(shell);
     if (old?.id === id && old.controller) { stop(shell); refresh(shell); return; }
     const selection=()=>JSON.stringify([connectionController.getSnapshot().session,connectionController.getSnapshot().history?.conversationId,connectionController.getCloudEnvironment(),connectionController.getCloudClient()?.sessionId,connectionController.getCloudClient()?.credentialId]);
     const binding=selection(),view=shell.S().view,entry=(shell.S().msgs||[]).find((row:Shell)=>row.id===id&&row.text===text),messageBinding=JSON.stringify(entry?.messageBinding);
+    const knownUsers=new Set((shell.S().msgs||[]).filter((row:Shell)=>row.from==='user').map((row:Shell)=>row.id));
     const previousSpeech=stopLocalSpeechPlayback();stop(shell);
     const retiring=shell.stopVoiceConversation?.();
     const cloud = selectVoiceRoute() === 'cloud';
     const controller = new AbortController(), state: Reading = { id, text, controller, message: 'Waiting for the previous audio to stop…' };
-    const current=()=>states.get(shell)===state&&!controller.signal.aborted&&shell.live!==false&&!document.hidden&&!connectionController.getSnapshot().open&&selection()===binding&&shell.S().view===view&&['sheet','full'].includes(shell.S().chat)&&(shell.S().msgs||[]).some((row:Shell)=>row.id===id&&row.text===text&&JSON.stringify(row.messageBinding)===messageBinding);
+    const current=()=>!(shell.S().msgs||[]).some((row:Shell)=>row.from==='user'&&!knownUsers.has(row.id))&&states.get(shell)===state&&!controller.signal.aborted&&shell.live!==false&&!document.hidden&&!connectionController.getSnapshot().open&&selection()===binding&&shell.S().view===view&&['sheet','full'].includes(shell.S().chat)&&(shell.S().msgs||[]).some((row:Shell)=>row.id===id&&row.text===text&&JSON.stringify(row.messageBinding)===messageBinding);
     state.current=current;states.set(shell,state);cancelOwner=shell;cancelCurrent=()=>{stop(shell);refresh(shell);return state.pending;};refresh(shell);
     try {
       if(retiring){await retiring;if(!current())return;}
@@ -72,7 +148,7 @@ export function installLocalSpeechPlayback(Component: Shell) {
       if (!current()) return;
       state.message = 'Reading aloud…'; refresh(shell);
       if(!current())return;
-      const pending=state.pending=voice.speak(text, controller.signal);await pending;
+      const pending=state.pending=(cloud ? createCloudVoice().speak(text, controller.signal, onStarted) : speakOnDevice(text, controller.signal, onStarted));await pending;
       if (current()) { state.controller = undefined; state.message = 'Finished reading.'; refresh(shell); }
     } catch (error) {
       if((error as {code?:string})?.code==='speech-cleanup-unconfirmed'&&state.pending)retainSpeechRetirement(state.pending);
@@ -82,6 +158,34 @@ export function installLocalSpeechPlayback(Component: Shell) {
       state.message = controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError') ? 'Reading stopped.' : recovery || (error instanceof Error ? error.message + ' The complete message may not have been read.' : 'Reading stopped before completion. The written message is still available.');
       refresh(shell);
     } finally {if(states.get(shell)===state&&!current()){stop(shell);refresh(shell);}}
+  }
+  /** Observe the conversation for the voice-originated turn: send, first token, final reply. */
+  function followVoiceTurn(shell: Shell) {
+    const turn = voiceTurn; if (!turn) return;
+    const msgs: Shell[] = shell.S().msgs || [];
+    if (turn.binding !== conversationBinding()) { voiceTurn = undefined; abandonVoiceTurn(); return; }
+    if (!turn.userId) {
+      const sent = msgs.filter(m => m.from === 'user' && !turn.known.has(String(m.id)));
+      if (!sent.length) return;
+      // Only an unchanged reviewed transcript makes the turn voice-originated.
+      if (sent.length !== 1 || String(sent[0].text || '').trim() !== turn.draft || typeof sent[0].id !== 'string') { voiceTurn = undefined; abandonVoiceTurn(); return; }
+      turn.userId = sent[0].id; turn.sentAt = Date.now(); markVoiceTiming('send');
+    }
+    const at = msgs.findIndex(m => m.id === turn.userId);
+    if (at < 0) { voiceTurn = undefined; abandonVoiceTurn(); return; }
+    const later = msgs.slice(at + 1);
+    // A newer user message makes any reply to this turn stale.
+    if (later.some(m => m.from === 'user')) { voiceTurn = undefined; abandonVoiceTurn(); return; }
+    const reply = later.find(m => m.from === 'agent');
+    if (!reply) return;
+    if (!turn.firstToken) { turn.firstToken = true; markVoiceTiming('first-token'); }
+    if (reply.streaming) return;
+    voiceTurn = undefined;
+    if (reply.interrupted || typeof reply.id !== 'string' || typeof reply.text !== 'string' || !reply.text.trim()) { abandonVoiceTurn(); return; }
+    markVoiceTiming('final-reply');
+    const fresh = Date.now() - (turn.sentAt || 0) <= replyDeadlineMs && ['sheet', 'full'].includes(shell.S().chat) && !document.hidden && shell.live !== false;
+    if (!speakRepliesEnabled() || !fresh) { finishVoiceTurn(); return; }
+    void listen(shell, reply.id, reply.text, () => { markVoiceTiming('first-audio'); });
   }
   p.renderVals = function () {
     const out = original.call(this), source = this.S().msgs || [], state = states.get(this);
@@ -144,7 +248,8 @@ export function installLocalSpeechPlayback(Component: Shell) {
     if (menu && (menu.binding !== JSON.stringify(connectionController.getSnapshot().session) || !['sheet', 'full'].includes(value.chat) || !(value.msgs || []).some((m: Shell) => m.id === menu.id && m.text === menu.text))) { cancelHold(this); closeMenu(this); }
     else if (menu?.focus) { menu.focus = false; document.querySelector<HTMLElement>('[data-alpha-message-actions] [role="menuitem"]')?.focus(); }
     if (state && (state.current&&!state.current()||!['sheet', 'full'].includes(value.chat) || !(value.msgs || []).some((m: Shell) => m.id === state.id && m.text === state.text))) { stop(this); refresh(this); }
+    followVoiceTurn(this);
     return update?.apply(this, args);
   };
-  p.componentWillUnmount = function (...args: unknown[]) { cancelHold(this); menus.delete(this); listeners.get(this)?.(); listeners.delete(this); stop(this); return unmount?.apply(this, args); };
+  p.componentWillUnmount = function (...args: unknown[]) { cancelHold(this); menus.delete(this); listeners.get(this)?.(); listeners.delete(this); stop(this);stopSpeaking();voiceTurn=undefined; return unmount?.apply(this, args); };
 }

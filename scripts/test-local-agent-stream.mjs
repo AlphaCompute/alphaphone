@@ -6,6 +6,8 @@ import http from 'node:http';
 import {createLocalAgentDevHandler} from './local-agent-dev-bridge.ts';
 import {readLocalAgentStream} from '../apps/app/src/runtime/local-agent-stream.ts';
 import {AlphaClient} from '../apps/app/src/runtime/alpha-client.ts';
+import {LocalAgentProtocol} from '../apps/app/src/runtime/local-agent.ts';
+import {RemoteProtocol} from '../apps/app/src/runtime/remote-protocol.ts';
 import {streamNativeAgent} from '../apps/app/src/runtime/local-agent-native-stream.ts';
 const encoder=new TextEncoder(),signal=new AbortController().signal;
 const event=value=>`data: ${JSON.stringify(value)}\n\n`;
@@ -65,6 +67,70 @@ client.attachVerifiedTransport({session:{ownerId:'owner',agentId:'agent',session
 await client.send('Hello',text=>values.push(text));late('Late');assert.deepEqual(values,['Progress']);
 client.disconnect();client.attachVerifiedTransport({session:{ownerId:'owner',agentId:'agent',sessionId:'new',origin:'https://agent.example'},send:({onText})=>{late=onText;return new Promise(r=>{resolveSend=r;});},execute:async()=>{throw Error('No action');}});
 const stale=client.send('Cancel',text=>values.push(text));client.cancel();late('Stale');resolveSend({text:'Too late'});await assert.rejects(stale);assert.deepEqual(values,['Progress']);
+
+// Dropped stream: exactly one non-streaming read of the persisted reply under the same clientMessageId.
+{
+ const posts=[];let mode='drop';
+ const bridge={start:async()=>({}),request:async input=>{posts.push(JSON.parse(input.body));return {status:200,body:JSON.stringify({text:'Persisted reply',agentName:'Fixture'})};},
+  stream:async(_input,signal,onText)=>{onText('Partial');if(mode==='hold')await new Promise((_,reject)=>{if(signal.aborted)reject(signal.reason);else signal.addEventListener('abort',()=>reject(signal.reason),{once:true});});if(mode==='status')throw Object.assign(Error('Local agent request failed (HTTP 409).'),{status:409});throw Error('Response interrupted. Outcome unknown; check history before retrying.');}};
+ const local=new LocalAgentProtocol(bridge);local.session={ownerId:'owner',agentId:'agent',sessionId:'session',origin:'https://device.alpha.invalid'};
+ const shown=[];
+ const reply=await local.send('thread','Hello',{clientMessageId:'client-1',metadata:{a:1},onText:text=>shown.push(text)});
+ assert.equal(reply.text,'Persisted reply');assert.deepEqual(shown,['Partial']);
+ assert.equal(posts.length,1,'one persisted-reply read after a dropped stream');assert.equal(local.recoveries,1);
+ assert.deepEqual(posts[0],{text:'Hello',channelType:'DM',metadata:{a:1},clientMessageId:'client-1'},'identical idempotent request without the stream protocol');
+ await assert.rejects(local.send('thread','No key',{onText:()=>{}}));assert.equal(posts.length,1,'no recovery without a clientMessageId');
+ mode='status';await assert.rejects(local.send('thread','Refused',{clientMessageId:'client-2',onText:()=>{}}));assert.equal(posts.length,1,'a refused request is not repeated');
+ mode='hold';const stop=new AbortController();const stopped=local.send('thread','Stop me',{clientMessageId:'client-3',signal:stop.signal,onText:()=>stop.abort()});
+ await assert.rejects(stopped,error=>error.name==='AbortError');assert.equal(posts.length,1,'Stop never reads or repeats the turn');
+}
+// Remote: a transport drop repeats the identical request once; HTTP failures and Stop are not repeated.
+{
+ const saved={origin:'https://agent.example',token:'session-token',identityId:'owner',sessionId:'session-token',expiresAt:Date.now()+60000};
+ const posts=[];let failures=1,status=200;
+ const requester=async input=>{
+  const path=new URL(input.url).pathname;
+  if(path==='/api/auth/me')return {status:200,body:{identity:{id:'owner',kind:'owner',displayName:'Owner'},session:{id:'session-token',kind:'machine',expiresAt:Date.now()+60000},access:{role:'OWNER',mode:'session'}}};
+  if(input.method==='POST'){posts.push(input.body);if(failures-->0)throw Error('socket hang up');return {status,body:{text:'Durable reply',agentName:'Fixture'}};}
+  return {status:404,body:{}};
+ };
+ const remote=new RemoteProtocol('https://agent.example',requester,{read:async()=>saved,write:async()=>{},remove:async()=>{}});
+ await remote.restore();
+ assert.equal((await remote.send('thread','Hi',{clientMessageId:'remote-1'})).text,'Durable reply');
+ assert.equal(posts.length,2);assert.equal(posts[0],posts[1],'the replay is byte-identical');
+ failures=1;await assert.rejects(remote.send('thread','No key'));assert.equal(posts.length,3,'no replay without a clientMessageId');
+ failures=0;status=500;await assert.rejects(remote.send('thread','Server error',{clientMessageId:'remote-2'}));assert.equal(posts.length,4,'a server error is not repeated');
+ const stop=new AbortController();stop.abort();await assert.rejects(remote.send('thread','Stopped',{clientMessageId:'remote-3',signal:stop.signal}));assert.equal(posts.length,4);
+}
+// Explicit Stop: upstream's POST /api/turns/:roomId/abort, with the room read from the conversation list.
+{
+ const room='5f0c8a52-6d8e-4c4a-9a51-0b6e6f0d1a22',calls=[];let abortStatus=200,abortBody={aborted:true};
+ const bridge={start:async()=>({}),request:async input=>{calls.push({path:input.path,method:input.method,body:input.body});
+  if(input.path==='/api/conversations')return {status:200,body:JSON.stringify({conversations:[{id:'thread',title:'T',roomId:room},{id:'roomless',title:'R'}]})};
+  if(input.path===`/api/turns/${room}/abort`)return {status:abortStatus,body:JSON.stringify(abortBody)};
+  return {status:404,body:'{}'};}};
+ const local=new LocalAgentProtocol(bridge);local.session={ownerId:'owner',agentId:'agent',sessionId:'session',origin:'https://device.alpha.invalid'};
+ assert.equal(await local.abortTurn('thread'),'aborted');
+ assert.deepEqual(calls.at(-1),{path:`/api/turns/${room}/abort`,method:'POST',body:JSON.stringify({reason:'client-stop'})});
+ abortBody={aborted:false};assert.equal(await local.abortTurn('thread'),'idle','no active turn: the reply may already be durable');
+ abortStatus=404;assert.equal(await local.abortTurn('thread'),'unsupported','an agent without the route keeps the may-still-finish state');
+ const before=calls.length;assert.equal(await local.abortTurn('roomless'),'unsupported');assert.equal(calls.length,before+1,'no abort without a verified room');
+ const saved={origin:'https://agent.example',token:'session-token',identityId:'owner',sessionId:'session-token',expiresAt:Date.now()+60000};
+ let removed=0,remoteStatus=200;const remoteCalls=[];
+ const requester=async input=>{const path=new URL(input.url).pathname;remoteCalls.push({path,method:input.method,body:input.body});
+  if(path==='/api/auth/me')return {status:200,body:{identity:{id:'owner',kind:'owner',displayName:'Owner'},session:{id:'session-token',kind:'machine',expiresAt:Date.now()+60000},access:{role:'OWNER',mode:'session'}}};
+  if(path==='/api/conversations')return {status:200,body:{conversations:[{id:'thread',roomId:room}]}};
+  if(path===`/api/turns/${room}/abort`)return {status:remoteStatus,body:{aborted:true,roomId:room}};
+  return {status:404,body:{}};};
+ const remote=new RemoteProtocol('https://agent.example',requester,{read:async()=>saved,write:async()=>{},remove:async()=>{removed++;}});
+ await remote.restore();
+ assert.equal(await remote.abortTurn('thread'),'aborted');
+ const abortCall=remoteCalls.find(item=>item.path===`/api/turns/${room}/abort`);assert.equal(abortCall.method,'POST');
+ remoteStatus=401;assert.equal(await remote.abortTurn('thread'),'unsupported');assert.equal(removed,0,'a refused optional cancel never signs the phone out');
+ assert.ok(remote.session,'the paired session remains');
+ const stop=new AbortController();stop.abort();await assert.rejects(remote.abortTurn('thread',stop.signal));
+}
+console.log('Streaming framing, progress, terminal validation, interruption, owner binding, no replay, upstream cancellation, stale callback, single persisted-reply recovery after a dropped stream, no Stop replay and explicit turn-abort checks passed.');
 console.log('Streaming framing, progress, terminal validation, interruption, owner binding, no replay, upstream cancellation and stale callback checks passed.');
 
 // Navigation is carried only by the authenticated terminal result; status/tool

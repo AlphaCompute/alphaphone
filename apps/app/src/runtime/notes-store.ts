@@ -7,3 +7,9 @@ export const notesStorageKeys = {current:NOTES_KEY,legacy:LEGACY_NOTES_KEY};
 export class NotesStore extends SharedNotesStore {
  constructor(storage:StoragePort,initial:NoteRecord[]|(()=>NoteRecord[])=[]){super(notesStorageKeys,storage,initial);}
 }
+/** Stable native code (AlphaConnectionPlugin) for a definite refusal above a slot's byte cap. */
+export const STORAGE_FULL_CODE = 'storage-full';
+/** True only for the definite native capacity refusal; nothing was written. */
+export function isStorageFull(error:unknown):boolean{
+ return !!error&&typeof error==='object'&&(error as {code?:unknown}).code===STORAGE_FULL_CODE;
+}

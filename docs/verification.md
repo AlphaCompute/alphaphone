@@ -14,7 +14,18 @@ then run `npm run agent:prepare`, `npm run agent:build-workflow-worker`,
 `npm run android:build` requires an earlier `npm run agent:prepare` and, for release
 verification, `npm run agent:stage-android`.
 Validate standalone and launcher distributions, each as debug and unsigned release,
-including instrumentation builds, lint and APK inspection. Record the product commit,
+including instrumentation builds, lint and APK inspection. A partial `ELIZAOS_KEYSTORE_*`/
+`ELIZAOS_KEY_*` set fails the build. `verify-apks` marks a release distributable only when it
+is signed by the certificate recorded in `android/release-signer.json` (`unset` until the
+release keys exist) and its versionCode exceeds that file's last recorded release; a signed
+release with another certificate or a non-advancing versionCode fails verification.
+The committed notices carry only the umbrella runtime entry, so a staged runtime in a
+development checkout never makes them stale. `node scripts/generate-licenses.mjs --packaged-runtime`
+adds Bun (with its JavaScriptCore LGPL notice and source offer) and every npm package bundled
+into the staged agent and workflow worker; the resident workflow runs it after staging, and an
+APK built without that step does not carry those notices, and `verify-apks` never marks such a
+release distributable. `--check` lists the staged runtime's
+entries when one is present. Record the product commit,
 `upstream.lock.json` revision, generated input provenance and APK hashes.
 Unsigned release APKs require controlled signing before distribution.
 
@@ -37,7 +48,30 @@ Aggregate smoke suites and CI smoke jobs were removed at the owner's request.
 For separate native acceptance, use an owned disposable emulator to exercise both APK
 variants, native bridge behavior and actual launcher HOME selection and restoration.
 Retain terminal instrumentation results and cleanup outcomes. A build or successful
-install cannot substitute for these checks. See the [Android/AOSP guide](android-and-aosp.md)
+install cannot substitute for these checks.
+
+`npm run test:android:instrumentation -- --owned-emulator --avd <name> --serial emulator-NNNN`
+is the one documented instrumentation runner. It refuses physical devices and an
+emulator that already has Alpha installed, takes the shared device lease, and for each
+variant (standalone, then launcher; they share one package) installs the verified
+debug APK with its instrumentation APK (`artifacts/instrumentation/<variant>-androidTest.apk`,
+hashed in `apk-manifest.json`), checks the installed bytes, runs each class in its own
+`am instrument` process with its explicit opt-in arguments, and uninstalls only what it
+installed. `--classes NoMockProduct,Shell,StartupReadiness` names classes (short names
+are expanded); the default list covers the product-surface classes; `--all` runs the
+whole androidTest suite in one process; `--test-mocks` uses the separate
+`artifacts/test-mocks/` pair for fixture-dependent classes such as PasswordAutofillOffer
+and the browser loopback cases. `<output>/results.json` (via
+`scripts/instrumentation-result.mjs`) records per-class `passed`, `failed`, `skipped`
+(every method skipped by its own assumption gate) or `missing`, bound to the commit, a
+dirty flag and every installed APK's SHA-256, with raw output per class. It is labelled
+emulator class E evidence and is never device or user acceptance. Process-death,
+permission-restoring and provider-credential campaigns (ReminderTapProcessDeath,
+WorkflowNoticeProcessDeath, NotificationChannels, ResidentEgressRedaction) are refused
+there with the command of the campaign that owns them; text-scale and bookmark restart
+phases run through `scripts/test-native-restart.mjs`. AccessibilityInstrumentedTest
+(ATF plus TalkBack-order checks at 200% font) and RotationInstrumentedTest (which needs
+the landscape layout and fails, not skips, without it) run through the same runner. See the [Android/AOSP guide](android-and-aosp.md)
 and README for isolated Calendar and reminder regression/upgrade campaigns.
 
 For native browser changes, qualify HTTPS navigation, back/forward/reload,

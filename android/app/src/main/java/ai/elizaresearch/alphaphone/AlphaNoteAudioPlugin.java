@@ -20,10 +20,11 @@ public class AlphaNoteAudioPlugin extends Plugin {
  private volatile String migrationState="pending";
  private volatile int migrationFailures;
  private static String id(String value){if(value==null||!value.matches("[A-Za-z0-9_-]{1,100}"))throw new IllegalArgumentException();return value;}
- private File directory(){File d=new File(getContext().getNoBackupFilesDir(),"note-audio");if(!d.isDirectory()&&!d.mkdirs())throw new IllegalStateException();return d;}
+ private File directory(){return directory(getContext());}
+ private static File directory(android.content.Context context){File d=new File(context.getNoBackupFilesDir(),"note-audio");if(!d.isDirectory()&&!d.mkdirs())throw new IllegalStateException();return d;}
  @Override public void load(){
   // Plugin registration/startup must not synchronously decrypt an entire old collection.
-  main.post(()->{if(destroyed)return;try{migrationWorker.execute(this::migrateLegacyMetadata);}catch(java.util.concurrent.RejectedExecutionException stopped){migrationState="stopped";}});
+  main.post(()->{if(destroyed)return;try{migrationWorker.execute(this::migrateLegacyMetadata);migrationWorker.execute(this::sweepTrashOnStart);}catch(java.util.concurrent.RejectedExecutionException stopped){migrationState="stopped";}});
  }
  private void migrateLegacyMetadata(){
   migrationState="running";
@@ -42,30 +43,132 @@ public class AlphaNoteAudioPlugin extends Plugin {
   }catch(Exception retained){migrationFailures++;}
   finally{migrationState=destroyed?"stopped":migrationFailures>0?"needs-recovery":"complete";}
  }
+ private void sweepTrashOnStart(){if(destroyed)return;try{sweepExpiredTrash(getContext(),System.currentTimeMillis());}catch(Exception retained){/* The renderer and the periodic sweep retry. */}}
+
+ /** Product Trash retention, matching notes-trash-policy.ts: three days after deletion. */
+ static final long NOTES_TRASH_RETENTION_MS=3L*24*60*60*1000;
+ static final String NOTES_TRASH_SLOT="notes-trash:v1:device",NOTES_SLOT="notes-records:v1:device",PENDING_AUDIO_SLOT="notes-audio-deletions:v1:device";
+ private static final String TRASH_PREFIX="{\"version\":1,\"entries\":[",TRASH_SUFFIX="]}";
+ private static final String TRASH_WORK="alpha-notes-trash-backstop";
+ private static final Object SWEEP_LOCK=new Object();
+ private static final String OPERATION="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+ /** Periodic best-effort upkeep while Alpha is closed; the renderer remains the primary purge path. */
+ static void scheduleTrashBackstop(android.content.Context context){
+  androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(TRASH_WORK,androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+   new androidx.work.PeriodicWorkRequest.Builder(NotesTrashBackstopWorker.class,6,java.util.concurrent.TimeUnit.HOURS).build());
+ }
+ public static final class NotesTrashBackstopWorker extends androidx.work.Worker {
+  public NotesTrashBackstopWorker(@androidx.annotation.NonNull android.content.Context context,@androidx.annotation.NonNull androidx.work.WorkerParameters params){super(context,params);}
+  @androidx.annotation.NonNull @Override public Result doWork(){try{sweepExpiredTrash(getApplicationContext(),System.currentTimeMillis());return Result.success();}catch(Exception unavailable){return Result.retry();}}
+ }
+
+ /**
+  * Native backstop for Notes Trash. Erases the recording of each Trash entry whose three days
+  * have elapsed, then removes those entries from the encrypted Trash slot, under the same rules
+  * as the renderer's maintenance: a note that is saved again, a recording that any saved note
+  * still references, and a deletion still under review are never touched. Any unreadable or
+  * unrecognized store makes it a no-op. The Trash slot is edited by compare-and-exchange on the
+  * renderer's own bytes: kept entries are copied verbatim, so the result is exactly the
+  * JSON.stringify form the renderer compares against, and a concurrent renderer edit wins.
+  * Returns the number of entries removed.
+  */
+ static int sweepExpiredTrash(android.content.Context context,long now)throws Exception{
+  // Sweeps serialize among themselves. METADATA_LOCK, which the main-thread plugin methods also
+  // take, is held only while one recording is erased, never while large slots are decrypted.
+  synchronized(SWEEP_LOCK){
+   AlphaCredentialStore store=new AlphaCredentialStore(context);
+   String raw=store.readCredentialSlot(NOTES_TRASH_SLOT);if(raw==null)return 0;
+   java.util.List<String> spans=trashEntrySpans(raw);if(spans==null||spans.isEmpty())return 0;
+   String notesRaw=store.readCredentialSlot(NOTES_SLOT);if(notesRaw==null)return 0;
+   org.json.JSONArray records=new JSONObject(new JSONObject(notesRaw).getString("currentRaw")).getJSONArray("records");
+   Set<String> liveNotes=new HashSet<>(),liveAudio=new HashSet<>();
+   for(int i=0;i<records.length();i++){JSONObject note=records.getJSONObject(i);liveNotes.add(note.getString("id"));JSONObject audio=note.optJSONObject("audio");if(audio!=null&&audio.optString("audioId").length()>0)liveAudio.add(audio.getString("audioId"));}
+   String pendingRaw=store.readCredentialSlot(PENDING_AUDIO_SLOT);JSONObject pending=pendingRaw==null?new JSONObject():new JSONObject(pendingRaw);
+   List<String> kept=new ArrayList<>();int removed=0;
+   for(String span:spans){
+    JSONObject entry=new JSONObject(span),note=entry.getJSONObject("note");
+    String id=entry.getString("id"),noteId=note.getString("id");long deletedAt=entry.getLong("deletedAt");
+    boolean due=deletedAt>0&&now>=deletedAt+NOTES_TRASH_RETENTION_MS&&!liveNotes.contains(noteId);
+    JSONObject audio=entry.optJSONObject("audio");
+    if(due&&audio!=null){
+     String audioId=audio.optString("audioId");
+     due=!pending.has(id)&&!liveAudio.contains(audioId);
+     if(due)synchronized(METADATA_LOCK){due=purgeTrashedLocked(context,store,audioId,noteId,id);}
+    }
+    if(due)removed++;else kept.add(span);
+   }
+   if(removed==0)return 0;
+   StringBuilder next=new StringBuilder(TRASH_PREFIX);
+   for(int i=0;i<kept.size();i++){if(i>0)next.append(',');next.append(kept.get(i));}
+   next.append(TRASH_SUFFIX);
+   return store.compareExchangeCredentialSlot(NOTES_TRASH_SLOT,raw,next.toString())?removed:0;
+  }
+ }
+ /** Same effect and receipt as purge(): only the deletion that owns the audio trash may erase it. */
+ private static boolean purgeTrashedLocked(android.content.Context context,AlphaCredentialStore store,String audioId,String noteId,String operation){
+  try{
+   if(operation==null||!operation.matches(OPERATION))return false;
+   JSONObject record=readLocked(context,store,id(audioId));
+   if(!noteId.equals(record.optString("noteId")))return false;
+   JSONObject receipts=record.optJSONObject("deletionOperations");String prior=receipts==null?"unknown":receipts.optString(operation,"unknown");
+   if(prior.equals("purged"))return true;
+   if(!prior.equals("removed")||record.optLong("deletedAt",0)<=0||!operation.equals(record.optString("activeDeletionOperation")))return false;
+   File bytes=audio(context,audioId);if(bytes.exists()&&!bytes.delete())return false;
+   record.put("transcript","");receipts.put(operation,"purged");record.put("deletionOperations",receipts);
+   writeLocked(context,store,audioId,record);return true;
+  }catch(Exception retained){return false;}
+ }
+ /**
+  * Top-level entry substrings of a Trash document written by JSON.stringify, or null when the
+  * bytes are not exactly {"version":1,"entries":[...]}.
+  */
+ static List<String> trashEntrySpans(String raw){
+  if(raw==null||!raw.startsWith(TRASH_PREFIX)||!raw.endsWith(TRASH_SUFFIX))return null;
+  int end=raw.length()-TRASH_SUFFIX.length();List<String> spans=new ArrayList<>();
+  int depth=0,start=TRASH_PREFIX.length();boolean string=false,escape=false;
+  if(start==end)return spans;
+  for(int i=start;i<end;i++){
+   char c=raw.charAt(i);
+   if(string){if(escape)escape=false;else if(c=='\\')escape=true;else if(c=='"')string=false;continue;}
+   if(c=='"')string=true;
+   else if(c=='{'||c=='[')depth++;
+   else if(c=='}'||c==']'){if(--depth<0)return null;}
+   else if(c==','&&depth==0){if(i==start)return null;spans.add(raw.substring(start,i));start=i+1;}
+  }
+  if(string||depth!=0||start>=end)return null;
+  spans.add(raw.substring(start,end));
+  for(String span:spans)if(!span.startsWith("{")||!span.endsWith("}"))return null;
+  return spans;
+ }
+
  @PluginMethod public void migrationStatus(PluginCall call){JSObject result=new JSObject();result.put("state",migrationState);result.put("failedRecords",migrationFailures);call.resolve(result);}
 
- private File audio(String value){return new File(directory(),id(value)+".audio");}
- private AtomicFile metadata(String value){return new AtomicFile(new File(directory(),id(value)+".json"));}
- private AlphaConnectionPlugin secure(){return (AlphaConnectionPlugin)getBridge().getPlugin("AlphaConnection").getInstance();}
- private String slot(String value){return "note-audio-metadata:v1:"+id(value);}
- private void write(String value,JSONObject record)throws Exception {synchronized(METADATA_LOCK){writeLocked(value,record);}}
- private void writeLocked(String value,JSONObject record)throws Exception {
-  String serialized=record.toString();secure().writeCredentialSlot(slot(value),serialized);
-  if(!serialized.equals(secure().readCredentialSlot(slot(value))))throw new IOException("Recording metadata commit unconfirmed");
+ private File audio(String value){return audio(getContext(),value);}
+ private static File audio(android.content.Context context,String value){return new File(directory(context),id(value)+".audio");}
+ private AtomicFile metadata(String value){return metadata(getContext(),value);}
+ private static AtomicFile metadata(android.content.Context context,String value){return new AtomicFile(new File(directory(context),id(value)+".json"));}
+ /** The same Keystore-backed slot store the AlphaConnection bridge uses, reachable without a bridge. */
+ private AlphaCredentialStore secure(){return new AlphaCredentialStore(getContext());}
+ private static String slot(String value){return "note-audio-metadata:v1:"+id(value);}
+ private void write(String value,JSONObject record)throws Exception {synchronized(METADATA_LOCK){writeLocked(getContext(),secure(),value,record);}}
+ private static void writeLocked(android.content.Context context,AlphaCredentialStore store,String value,JSONObject record)throws Exception {
+  String serialized=record.toString();store.writeCredentialSlot(slot(value),serialized);
+  if(!serialized.equals(store.readCredentialSlot(slot(value))))throw new IOException("Recording metadata commit unconfirmed");
   // Only replace the legacy file after durable encrypted storage has been read back.
-  atomic(metadata(value),"{\"encrypted\":1}".getBytes(StandardCharsets.UTF_8));
+  atomic(metadata(context,value),"{\"encrypted\":1}".getBytes(StandardCharsets.UTF_8));
  }
- private JSONObject read(String value)throws Exception {synchronized(METADATA_LOCK){return readLocked(value);}}
- private JSONObject readLocked(String value)throws Exception {
-  String encrypted=secure().readCredentialSlot(slot(value));
-  JSONObject legacy=null;
-  if(metadata(value).getBaseFile().exists()||new File(metadata(value).getBaseFile()+".bak").exists()){
-   try(InputStream in=metadata(value).openRead()){ByteArrayOutputStream bytes=new ByteArrayOutputStream();copyBounded(in,bytes,512*1024);legacy=new JSONObject(new String(bytes.toByteArray(),StandardCharsets.UTF_8));}
+ private JSONObject read(String value)throws Exception {synchronized(METADATA_LOCK){return readLocked(getContext(),secure(),value);}}
+ private static JSONObject readLocked(android.content.Context context,AlphaCredentialStore store,String value)throws Exception {
+  String encrypted=store.readCredentialSlot(slot(value));
+  JSONObject legacy=null;AtomicFile metadata=metadata(context,value);
+  if(metadata.getBaseFile().exists()||new File(metadata.getBaseFile()+".bak").exists()){
+   try(InputStream in=metadata.openRead()){ByteArrayOutputStream bytes=new ByteArrayOutputStream();copyBounded(in,bytes,512*1024);legacy=new JSONObject(new String(bytes.toByteArray(),StandardCharsets.UTF_8));}
   }
   if(legacy!=null&&!legacy.has("encrypted")){
    String original=legacy.toString();
    if(encrypted!=null&&!encrypted.equals(original))throw new IOException("Recording metadata copies disagree; originals retained");
-   write(value,legacy);return legacy;
+   writeLocked(context,store,value,legacy);return legacy;
   }
   if(encrypted==null)throw new IOException("Recording metadata unavailable");
   return new JSONObject(encrypted);

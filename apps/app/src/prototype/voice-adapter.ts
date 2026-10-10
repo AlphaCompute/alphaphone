@@ -7,7 +7,7 @@ import {pendingAudioDeletions,withAudioDeletionLock,changeAudioDeletion,audioDel
 import {addNotesTrashEntry,editNotesTrash,notesTrashExpired,readNotesTrash,removeNotesTrashEntries,savedNotes,type NotesTrashEntry} from '../runtime/notes-trash';
 import type {NotesTarget} from '../runtime/notes-contract';
 const audioOperation=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-import { installLocalSpeechPlayback, stopLocalSpeechPlayback } from './local-speech-playback';
+import { installLocalSpeechPlayback, stopLocalSpeechPlayback, currentNoteReading, stopSpeaking, speakNote } from './local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { createOnDeviceVoice, type SpeechProgressEvent } from '../runtime/local-voice';
@@ -41,6 +41,12 @@ const noteAudio = registerPlugin<{
   purge(input: { audioId: string; noteId: string; operationId:string }): Promise<{audioId:string;noteId:string;operationId:string;status:string}>;
 }>('AlphaNoteAudio');
 
+/** The passage Read aloud speaks: title, then body or checklist items. */
+function noteSpeechText(note: Bag | undefined): string {
+  if (!note) return '';
+  const body = note.kind === 'list' ? (note.items || []).map((item: Bag) => String(item?.t || '').trim()).filter(Boolean).join('. ') : String(note.body || '');
+  return [String(note.title || '').trim(), body.trim()].filter(Boolean).join('. ').trim();
+}
 /** One owned recorder, shared by Notes dictation and the chat voice mode. */
 export function installPrototypeVoiceAdapter(Component: any, views: Record<string, Bag>) {
   installLocalSpeechPlayback(Component);
@@ -671,6 +677,33 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       const end = editor && editor.value === body ? editor.selectionEnd : body.length;
       enter({ id: n.id, body, revision: JSON.stringify(n), start, end });
     };
+    // Read aloud uses only the qualified local speech route. Closing, leaving or editing the note stops it.
+    const readNote = (current.get('notes').list || []).find((item: Bag) => item.id === state.open);
+    const readText = noteSpeechText(readNote), activeReading = currentNoteReading();
+    // The read note was closed or changed. Stop after this render: stopping updates the view state.
+    if (activeReading?.noteId && (!readNote || activeReading.noteId !== readNote.id || activeReading.text !== readText)) {
+      const stale = activeReading;
+      void Promise.resolve().then(() => { const now = currentNoteReading(); if (now && now.noteId === stale.noteId && now.text === stale.text) stopSpeaking(); });
+    }
+    if (result.ed) {
+      const note = readNote, text = readText, mine = !!note && currentNoteReading()?.noteId === note.id;
+      const ed = result.ed, onBody = ed.onBody, onTitle = ed.onTitle;
+      const editing = (handler: unknown) => typeof handler === 'function' ? (...args: unknown[]) => { if (currentNoteReading()?.noteId === note?.id) stopSpeaking(); return (handler as (...a: unknown[]) => unknown)(...args); } : handler;
+      ed.onBody = editing(onBody); ed.onTitle = editing(onTitle);
+      const live = mine && currentNoteReading()?.noteId === note.id;
+      ed.reading = live; ed.readAvailable = !!note && !!text;
+      ed.readLabel = live ? 'Stop reading' : 'Read aloud';
+      ed.stopReading = () => stopSpeaking();
+      ed.readAloud = () => {
+        if (!note || !text) return;
+        if (currentNoteReading()?.noteId === note.id) { stopSpeaking(); return; }
+        void speakNote(text, { noteId: note.id }).then(outcome => {
+          if (outcome === 'unavailable') current.toast('On-device speech is unavailable. The note is unchanged.');
+          else if (outcome === 'unsupported') current.toast('This note has text that on-device speech cannot read. Nothing was read.');
+          else if (outcome === 'failed') current.toast('Reading stopped before the end. The note is unchanged.');
+        });
+      };
+    }
     if (stage === 'closed'||chatDestination) return result;
     result.recording=true;result.rec=recorderView(current.ic);return result;
   };
@@ -761,7 +794,9 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   const immersive = notes.immersive;
   notes.immersive = (state: Bag, current: Bag) => stage !== 'closed'&&!chatDestination ? { noPill: true } : immersive?.(state, current);
   notes.back = (state: Bag, current: Bag) => { if (stage !== 'closed'&&!chatDestination) { cleanup(); return true; } return back?.(state, current); };
-  notes.onLeave = (current: Bag) => { closeTranscriptQuestion?.();if(!ownedNavigation?.applying)cleanup(); leave?.(current); };
+  const noteReadingChanged=()=>{if(api)api.setView('notes',{noteReadingRevision:Date.now()});};
+  window.addEventListener('alpha:note-reading',noteReadingChanged);
+  notes.onLeave = (current: Bag) => { closeTranscriptQuestion?.();stopSpeaking();if(!ownedNavigation?.applying)cleanup(); leave?.(current); };
   const visibility = () => {
     // Speech preparation is foreground-only; returning prepares the same route again.
     if (!document.hidden) { if (reprepare && stage === 'ready' && !busy) { reprepare = false; reopen(error); } return; }
@@ -781,5 +816,5 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   document.addEventListener('visibilitychange', visibility);
   window.addEventListener('pagehide', pagehide);
   const unmount = Component.prototype.componentWillUnmount;
-  Component.prototype.componentWillUnmount = function () { api = undefined; chatDestination=undefined;cleanup(); unsubscribe(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', pagehide); unmount?.call(this); };
+  Component.prototype.componentWillUnmount = function () { window.removeEventListener('alpha:note-reading',noteReadingChanged);stopSpeaking();api = undefined; chatDestination=undefined;cleanup(); unsubscribe(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', pagehide); unmount?.call(this); };
 }

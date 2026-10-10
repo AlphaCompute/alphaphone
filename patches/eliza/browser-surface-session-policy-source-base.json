@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-09",
+  "upstream": "elizaOS/eliza",
+  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "stackedOn": "0062-browser-surface-web-policy.patch",
+  "patch": "0063-browser-surface-session-policy.patch",
+  "patchSha256": "413e21880bf44f4417f44f7f0d11971d2fbb9035999441ee9fadd5eb4d463d91",
+  "summary": "Second slice of the browser-surface generalization (comms-30 / release-22): the generic restore policy for persistent and ephemeral profile tabs as a pure-JVM class in plugins/plugin-native-browser-surface. BrowserSessionPolicy decides which tabs, history entries and bookmarks a host may persist: ephemeral (private) tabs and their visits are never part of a snapshot or history; tabs/history accept bounded http(s) addresses without user info, whitespace or control characters, bookmarks https only; lists are bounded and de-duplicated; a restored record goes through the same rules; Clear data for a site removes that host and its subdomains.",
+  "filesChanged": [
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserSessionPolicy.java",
+    "plugins/plugin-native-browser-surface/test/native-host/BrowserSessionPolicyTest.java",
+    "plugins/plugin-native-browser-surface/test/native-host/session-policy.node.mjs"
+  ],
+  "contract": {
+    "BrowserSessionPolicy": "validUrl (http/https, host, no user info, <= 4096, no whitespace/control), validBookmark (https), validTabId [A-Za-z0-9_-]{1,80}, title (controls to spaces, trimmed, <= 200). persistable/restore(tabs, history, current) -> Snapshot with ephemeral tabs dropped, invalid/duplicate rows dropped, MAX_TABS 8, MAX_HISTORY 100, current kept only when it names a kept tab; immutable lists. recordVisit(history, url, ephemeral) newest first, once, bounded; ephemeral or invalid visits leave history unchanged. belongsToSite/withoutSite (host is the site or a dot-subdomain). restoreBookmarks refuses a damaged record (too long, invalid, duplicate) with IllegalStateException; changeBookmark adds newest first or removes, MAX_BOOKMARKS 100."
+  },
+  "hostKeeps": "Tab views and profiles (persistent profile separate from the privileged host WebView; ephemeral profiles deleted on close and on cold start), the sealed Keystore storage and its JSON encoding, restore timing and UI. Uses java.net.URI, so a host whose platform parser accepts hosts java.net.URI rejects (for example with underscores) gets those rows dropped, never accepted.",
+  "applicationModel": "Reference only (not materialized into .eliza/patched). Adds new files only; touches no file 0038, 0060 or 0062 changes and applies after them in series (also on a clean base). Alpha's BrowserSessionStore and BrowserBookmarks keep their equivalent logic until this lands upstream, Gradle includes :eliza-browser-surface from the patched tree (android/settings.gradle, owned by P01) and Alpha switches to these classes.",
+  "verification": [
+    {
+      "command": "git apply --check 0063-browser-surface-session-policy.patch (clean checkout of baseCommit), and in series: git apply 0038-password-manager.patch && git apply 0060-password-transfer.patch && git apply 0062-browser-surface-web-policy.patch && git apply --check 0063-browser-surface-session-policy.patch",
+      "where": "--shared clones of baseCommit under the session scratchpad",
+      "result": "pass"
+    },
+    {
+      "command": "JAVA_HOME=<JDK 21> node --test plugins/plugin-native-browser-surface/test/native-host/session-policy.node.mjs",
+      "where": "authoring clone at baseCommit with the patch staged, and again in the series clone with 0038, 0060, 0062, 0063 and 0064 applied (together with web-policy.node.mjs)",
+      "result": "pass: 2 tests (BrowserSessionPolicyTest 55 assertions; no Android, logging or network imports)"
+    }
+  ],
+  "notRun": "No Gradle build of the browser-surface module, no instrumentation, no device or emulator run. Alpha does not consume this class yet. No upstream PR has been opened.",
+  "network": "None. Synthetic values only.",
+  "isolation": "Authored in a separate clone of baseCommit; never applied to vendor/eliza.",
+  "deployment": "Not upstreamed. Candidate for elizaOS develop."
+}

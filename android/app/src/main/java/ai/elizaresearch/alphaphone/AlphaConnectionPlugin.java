@@ -86,6 +86,9 @@ public final class AlphaConnectionPlugin extends Plugin {
   if (parser.nextClean() != 0) throw new IllegalArgumentException();
   return parsed;
  }
+ /** Stable error code for a definite refusal above a slot's byte cap; nothing was written. */
+ static final String STORAGE_FULL="storage-full";
+ static final String STORAGE_FULL_MESSAGE="Secure storage is full. Nothing was written.";
  /** Serialized JSON metadata cannot supply native identity or bypass runtime retirement. */
  @PluginMethod public void secureWrite(PluginCall call) {
   final String name;final long intent;
@@ -95,7 +98,8 @@ public final class AlphaConnectionPlugin extends Plugin {
    try {
     storage(intent).writeCredentialSlot(name,call.getString("value"));
     call.resolve();
-   } catch (Exception error) { call.reject("Secure storage write failed"); }
+   } catch (AlphaCredentialStore.StorageFullException full) { call.reject(STORAGE_FULL_MESSAGE, STORAGE_FULL); }
+   catch (Exception error) { call.reject("Secure storage write failed"); }
   });
  }
  private long credentialIntent(String name){
@@ -123,12 +127,13 @@ public final class AlphaConnectionPlugin extends Plugin {
   submit(call,()->{
    try {
     String name=RendererCredentialSlots.requireAllowed(call.getString("slot"));
-    if(name==null||!(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")||name.matches("workflow-draft:v1:[a-f0-9]{64}")||name.matches("assistant-draft:v1:[a-f0-9]{64}")||name.equals("notes-records:v1:device")||name.equals("reminder-deletions:v1:device")||name.equals("reminder-creations:v1:device")||name.equals("clock-handoff:v1:device")||name.equals("notes-audio-deletions:v1:device")||name.equals("notes-trash:v1:device")||name.matches("cloud-delegation:v1:[a-f0-9]{64}"))||!call.getData().has("expectedValue")||!call.getData().has("value"))throw new IllegalArgumentException();
+    if(name==null||!(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")||name.matches("workflow-draft:v1:[a-f0-9]{64}")||name.matches("assistant-draft:v1:[a-f0-9]{64}")||name.equals("notes-records:v1:device")||name.equals("reminder-deletions:v1:device")||name.equals("reminder-creations:v1:device")||name.equals("clock-handoff:v1:device")||name.equals("notes-audio-deletions:v1:device")||name.equals("notes-trash:v1:device")||name.equals(AlphaCredentialStore.NOTES_DRAFT)||name.matches("cloud-delegation:v1:[a-f0-9]{64}"))||!call.getData().has("expectedValue")||!call.getData().has("value"))throw new IllegalArgumentException();
     for(String field:new String[]{"expectedValue","value"})if(!call.getData().isNull(field)&&!(call.getData().get(field) instanceof String))throw new IllegalArgumentException();
     String expected=call.getString("expectedValue"), value=call.getString("value");
     JSObject result=new JSObject();
     result.put("status",storage().compareExchangeCredentialSlot(name,expected,value)?"saved":"conflict");call.resolve(result);
-   }catch(Exception error){call.reject("Secure draft update failed");}
+   }catch(AlphaCredentialStore.StorageFullException full){call.reject(STORAGE_FULL_MESSAGE,STORAGE_FULL);}
+   catch(Exception error){call.reject("Secure draft update failed");}
   });
  }
  @PluginMethod public void secureRemove(PluginCall call) {

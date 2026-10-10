@@ -3,6 +3,7 @@ import {mockAttentionRows} from './mock-attention';
 import {HOME_DEFAULTS} from './model.js';
 import {browserStorageUsage} from '../browser/storage-usage';
 import {browserDevProfile} from '../browser/dev-profile';
+import {attendeeInitials, calendarCardState, presentHomeAttention, presentHomeBrief, presentHomeCalendar, type HomeAttentionSummary, type HomeBriefSummary} from './home-cards';
 type Bag = Record<string, any>;
 const installed = new WeakSet<object>();
 
@@ -68,50 +69,94 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       : view === 'files' || view === 'browser' || view === 'inbox' ? 'Open Notes'
       : view === 'phone' || view === 'messages' ? 'Open Contacts' : 'Open Calendar';
     const suggestions = ['Create a note', 'Set a reminder', first];
-    const unread=browserDevProfile?(this.vget('inbox').mails||[]).filter((mail:Bag)=>mail.unread&&!mail.arch&&!mail.del).length:0;
     const now = Date.now();
     const calendarSource = views.calendar.displaySources?.();
-    const agenda = (this.vget('calendar').events || [])
+    const calendarState = this.vget('calendar');
+    const agenda = (calendarState.events || [])
       .filter((event: Bag) => event.reminderStatus !== 'completed')
       .filter((event: Bag) => !event.alphaCalendarId || calendarSource?.ready)
       .map((event: Bag) => {
         const instant=(value:number)=>{const date=new Date(value);return event.nativeEvent?.allDay?new Date(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()).getTime():Number(value);};
         return {event,begin:instant(event.nativeEvent?.begin??event.reminderAt),end:instant(event.nativeEvent?.end??event.reminderAt)};
       })
-      .filter((item: Bag) => Number.isFinite(item.begin) && Number.isFinite(item.end) && (item.event.nativeEvent?.allDay?item.end>now:item.end>=now))
+      // Overdue reminders (reminder adapter's overdueReminders()) stay on Home until handled.
+      .concat((typeof this.overdueReminders === 'function' ? (() => { try { return this.overdueReminders(); } catch { return []; } })() : [])
+        .filter((row: Bag) => row && typeof row.title === 'string' && Number.isFinite(row.at))
+        .map((row: Bag) => ({event: {id: row.id, title: row.title, off: row.off, overdue: true}, begin: Number(row.at), end: Infinity})))
+      .filter((item: Bag) => Number.isFinite(item.begin) && (Number.isFinite(item.end) || item.event.overdue) && (item.event.nativeEvent?.allDay?item.end>now:item.end>=now))
       .sort((a: Bag, b: Bag) => a.begin - b.begin)[0];
+    const cardState = calendarSource?.loading ? 'loading' : calendarSource?.ready ? 'ready' : 'error';
+    // The calendar adapter may report its read time; otherwise the first render that sees the
+    // loaded rows stands in for it (both are reads from this device, never a sync claim).
+    const rows = this.nativeCalendarRows;
+    if (cardState === 'ready' && rows !== calendarReadRows) { calendarReadRows = rows; calendarReadAt = now; }
+    if (cardState !== 'ready') calendarReadRows = undefined;
+    const readAt = Number.isFinite(calendarState.nativeCalendarReadAt) ? Number(calendarState.nativeCalendarReadAt) : cardState === 'ready' ? calendarReadAt : null;
+    const meeting = (event: Bag) => [event.nativeEvent?.meetingUrl, event.nativeEvent?.location, event.where].some((value: unknown) => typeof value === 'string' && /\bhttps:\/\/[^\s]+/i.test(value));
+    const calendar = presentHomeCalendar({
+      state: cardState, readAt, now, device: Capacitor.isNativePlatform() ? 'this device' : 'this browser',
+      agenda: agenda ? {title: agenda.event.title || 'Untitled event', begin: agenda.begin, overdue: !!agenda.event.overdue, allDay: !!(agenda.event.nativeEvent?.allDay ?? agenda.event.allDay), video: meeting(agenda.event), people: attendeeInitials(agenda.event.nativeEvent?.attendees ?? agenda.event.who ?? [])} : null,
+    });
+    // Development inbox fixtures report through the same summary as a provider adapter.
+    const unreadRows:Bag[]=browserDevProfile?(this.vget('inbox').mails||[]).filter((mail:Bag)=>mail.unread&&!mail.arch&&!mail.del):[];
+    const unread=unreadRows.length;
+    const attentionSummary: HomeAttentionSummary|null = browserDevProfile ? {state:'ready',unread,source:'Development inbox',updatedAt:now} : homeSources.attention();
+    const attention = presentHomeAttention(attentionSummary, now);
+    const brief = presentHomeBrief(homeSources.brief(), now);
     const day = agenda ? new Date(agenda.begin) : null;
     const dateLabel = (day || new Date(now)).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
     const eventTitle=agenda?String(agenda.event.title||'Untitled event'):'';
     const timeLabel=(instant:number)=>new Date(instant).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
     const endDay=agenda?new Date(agenda.end):null;
     const endLabel=agenda&&endDay&&day&&endDay.toDateString()!==day.toDateString()?`${endDay.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}, ${timeLabel(agenda.end)}`:agenda?timeLabel(agenda.end):'';
-    const eventTime=agenda?agenda.event.nativeEvent?.allDay?'All day':timeLabel(agenda.begin)+(agenda.end>agenda.begin?` – ${endLabel}`:''):'';
+    const eventTime=agenda?agenda.event.nativeEvent?.allDay?'All day':timeLabel(agenda.begin)+(Number.isFinite(agenda.end)&&agenda.end>agenda.begin?` – ${endLabel}`:''):'';
     return {
-      ...out, shadeN: [], lockSum: [], showHeads: false,
+      ...out, shadeN: [],
       sugg: suggestions.map(label => ({ label, go: () => this.send(label) })),
-      homeCalendarLabel: agenda ? `Open calendar event: ${eventTitle}, ${dateLabel}, ${eventTime}` : 'Open your calendar',
       homeCalendarHasEvent:!!agenda,homeCalendarFooter:eventTime,
-      homeCalendarTime: dateLabel, homeCalendarTitle: eventTitle || (calendarSource?.loading ? 'Loading events…' : calendarSource?.ready ? calendarSource.truncated ? 'Calendar results limited' : 'No upcoming events' : calendarSource ? 'Calendar unavailable' : 'Loading events…'),
-      homeAttentionLabel: browserDevProfile?'Open Inbox: '+unread+' unread email'+(unread===1?'':'s'):'Open Inbox', homeAttentionCount: browserDevProfile?String(unread):'—',
-      homeInboxTitle: browserDevProfile ? (unread ? `${unread} unread` : 'No unread messages') : 'Connect email', homeInboxStatus: browserDevProfile ? 'Open your messages' : '',
-      homeAttentionPeople: [],
-      homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Routines and automations', homePeopleVisibility: 'hidden',
+      homeCalendarLabel: agenda ? `Open calendar event: ${eventTitle}, ${dateLabel}, ${eventTime}` : 'Open your calendar', homeCalendarTime: dateLabel, homeCalendarTitle: eventTitle || (calendarSource?.loading ? 'Loading events…' : calendarSource?.ready ? calendarSource.truncated ? 'Calendar results limited' : 'No upcoming events' : calendarSource ? 'Calendar unavailable' : 'Loading events…'),
+      homeCalendarSource: calendar.source, homeCalendarVideo: calendar.video, homeCalendarPeople: calendar.people.map(ini => ({ini})),
+      homePeopleVisibility: calendar.people.length ? 'visible' : 'hidden',
+      homeAttentionLabel: attention.label, homeAttentionCount: attention.count, homeAttentionText: attention.text,
+      homeAttentionPeople: [], homeAttentionPeopleVisibility: 'hidden',
+      ...(browserDevProfile?{homeInboxCount:attention.count,homeInboxRows:unreadRows.slice(0,2).map(mail=>({subject:mail.subj||'(no subject)',from:mail.name||mail.email||''})),homeInboxHasRows:unread>0,homeInboxTitle:unread?'':'No unread email',homeInboxStatus:'Development inbox'}:{}),
+      homeWorkflowLabel: brief.label, homeWorkflowTitle: brief.title, homeWorkflowTime: brief.time, homeWorkflowSource: brief.source,
       goCalendar: () => this.openView('calendar', agenda ? {open:agenda.event.id, day:agenda.event.off, openDay:agenda.event.off} : undefined),
       goFlows: () => this.openView('workflows'),
-      goTriage: () => this.openView('inbox',{acct:'all',open:null,q:null}),
+      goTriage: () => attention.action === 'connections' ? this.openView('settings', {page:'connections'}) : this.openView('inbox',{acct:'all',open:null,q:null}),
       clearAll: () => this.setState({ shade: false }),
     };
   };
-  // Prevent the fixture's delayed incoming-message banner from being scheduled
-  // by unlock or its demo trigger in a production runtime.
-  p.showHeads = function () {};
+  const mount = p.componentDidMount, unmount = p.componentWillUnmount;
+  p.componentDidMount = function (...args: any[]) {
+    this.homeSourcesChanged = () => this.setState({ homeSourcesRevision: Date.now() });
+    window.addEventListener(HOME_SOURCES_CHANGED, this.homeSourcesChanged);
+    return mount?.apply(this, args);
+  };
+  p.componentWillUnmount = function (...args: any[]) {
+    window.removeEventListener(HOME_SOURCES_CHANGED, this.homeSourcesChanged);
+    return unmount?.apply(this, args);
+  };
+}
+let calendarReadRows: unknown, calendarReadAt: number | null = null;
+
+export const HOME_SOURCES_CHANGED = 'alpha:home-sources-changed';
+/** Live Home card sources. Provider adapters register here (P06 inboxAttention(), P05
+ * latestRetainedDigest()); until one does, Home shows the honest not-connected / no-brief state. */
+const homeSources: {attention: () => HomeAttentionSummary | null; brief: () => HomeBriefSummary | null} = {attention: () => null, brief: () => null};
+export function setHomeSources(next: Partial<typeof homeSources>) {
+  const safe = <T,>(read: () => T | null) => () => { try { return read(); } catch { return null; } };
+  if (next.attention) homeSources.attention = safe(next.attention);
+  if (next.brief) homeSources.brief = safe(next.brief);
+  window.dispatchEvent(new Event(HOME_SOURCES_CHANGED));
 }
 
 /** Neutral Home card values used when no fixture defaults are bundled. */
 const NEUTRAL_HOME = {
   homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'Loading events…',homeCalendarHasEvent:false,homeCalendarFooter:'',
-  homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Routines and automations',
+  homeCalendarSource: '', homeCalendarVideo: false, homeCalendarPeople: [] as Bag[],
+  homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'No brief yet', homeWorkflowTime: 'Workflows', homeWorkflowSource: '',
+  homeAttentionText: '',
 };
 
 /** Call in both fixture and production before mounting. Fixture builds keep the
@@ -131,13 +176,13 @@ export function installPrototypeHomeBindings(Component: any) {
       ...NEUTRAL_HOME,
       ...(HOME_DEFAULTS || {}),
       homeAttentionLabel: attention.length ? `${attention.length} ${attention.length === 1 ? 'item needs' : 'items need'} your attention` : 'Nothing needs your attention', homeAttentionCount: String(attention.length), homeAttentionPeople: attention,
-      homePeopleVisibility: attention.length ? 'visible' : 'hidden',
+      homeAttentionPeopleVisibility: attention.length ? 'visible' : 'hidden',
       ...out,
       activeViewLabel: activeView[0].toUpperCase()+activeView.slice(1), storageAccessWarning,
       nonblockingChat:out.panelPE==='auto'&&this.S().chat==='sheet',
       // OG's resting half sheet leaves the app interactive. Full chat, shade
       // and voice still retire the covered layer's focus/accessibility controls.
-      homeHidden: !!(out.isView || out.shadeY === '0' || chatModal || out.voiceOn),
+      homeHidden: !!(out.isView || out.shadeY === '0' || chatModal || out.voiceOn || this.S().drawer),
       appHidden: !!(out.shadeY === '0' || chatModal || out.voiceOn),
       conversationHidden: out.panelPE !== 'auto' || out.shadeY === '0' || !!out.voiceOn,
       shadeHidden: out.shadeY !== '0' || !!out.voiceOn,

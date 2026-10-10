@@ -20,7 +20,7 @@ export function cloudVoiceViewFixture(options={}){
  load('runtime/voice-selection.ts',box,['selectVoiceRoute']);
  load('local-speech-playback.ts',box,['playOwnedSpeech']);
  load('runtime/cloud-voice.ts',box,['cloudVoiceFailure','createCloudVoice']);
- load('prototype/local-speech-playback.ts',box,['installLocalSpeechPlayback','stopLocalSpeechPlayback']);
+ load('prototype/local-speech-playback.ts',box,['installLocalSpeechPlayback','stopLocalSpeechPlayback','currentNoteReading','stopSpeaking','speakNote']);
  load('runtime/voice-states.ts',box,['voiceFailure','transcriptProvenance','speechProgressMessage']);
  load('prototype/voice-adapter.ts',box,['installPrototypeVoiceAdapter']);
  const icons={check:'check',mic:'official-mic-path',stop:'stop',play:'play',x:'close',cloud:'cloud',user:'account'};

@@ -1,0 +1,504 @@
+diff --git a/packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts b/packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts
+index d5ca9830e837a08b2324515f17fc4c9b478894cd..4963158622ba7023f5d52940c84d125bd56244fd 100644
+--- a/packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts
++++ b/packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts
+@@ -66,7 +66,11 @@ app.get("/thread", async (context) =>
+ );
+ app.get("/attachment", async (context) =>
+   context.json(
+-    await managedInboxProvider.attachment(
++    await (context.req.query("opaque") === "1"
++      ? managedInboxProvider.opaqueAttachment
++      : managedInboxProvider.attachment
++    ).call(
++      managedInboxProvider,
+       await selected(context),
+       context.req.query("messageId") || "",
+       context.req.query("partId") || "",
+diff --git a/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts b/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts
+index 3136ffe3fbd5edc187b40fb72283e86234390f53..73475fe5f2b813ba1438f0b17fbc32bbaa1b0073 100644
+--- a/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts
++++ b/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts
+@@ -1,6 +1,6 @@
+ import { expect, test } from "bun:test";
+ import { decodeGmailPartData, extractGmailHtmlLinks } from "../../utils/gmail-mime-text";
+-import { InboxGoogleProvider } from "./inbox-provider";
++import { InboxGoogleProvider, inboxDigest } from "./inbox-provider";
+ 
+ // Closed in-process transport: every request is answered by `route`; nothing reaches Google.
+ const owner = {
+@@ -196,3 +196,258 @@ test("0058: drafts list and exact draft content from one provider snapshot", asy
+   expect(requests.every((request) => request.startsWith("GET "))).toBe(true);
+   expect((await inbox.capabilities(owner)).draftsList).toBe(true);
+ });
++
++const pdf = Buffer.from("%PDF-1.4 synthetic"),
++  png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]),
++  txt = Buffer.from("plain notes"),
++  docx = Buffer.from("PK\u0003\u0004synthetic-docx"),
++  zip = Buffer.from("PK\u0003\u0004synthetic-zip");
++const sha = (bytes: Buffer) => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
++function parseMime(raw: string) {
++  const parser = Bun.spawnSync(
++    [
++      "/usr/bin/python3",
++      "-c",
++      'import sys,json,hashlib,email.policy,email.parser; m=email.parser.BytesParser(policy=email.policy.default).parsebytes(sys.stdin.buffer.read()); print(json.dumps({"type":m.get_content_type(),"defects":[str(x) for x in m.defects],"body":next(m.iter_parts()).get_content() if m.is_multipart() else m.get_content(),"files":[{"name":p.get_filename(),"type":p.get_content_type(),"sha256":hashlib.sha256(p.get_content() if isinstance(p.get_content(),bytes) else p.get_content().encode()).hexdigest()} for p in m.iter_attachments()]}))',
++    ],
++    { stdin: Buffer.from(raw, "base64url") },
++  );
++  if (parser.exitCode !== 0) throw Error(`Standard-library MIME parsing failed: ${parser.stderr}`);
++  return JSON.parse(parser.stdout.toString()) as {
++    type: string;
++    defects: string[];
++    body: string;
++    files: { name: string; type: string; sha256: string }[];
++  };
++}
++function sourceMessageRoute(state: { historyId: string; sends: string[] }): Route {
++  return async (url, init) => {
++    const path = url.pathname.replace("/gmail/v1/users/me", "");
++    if (path === "/messages/source" && url.searchParams.get("format") === "full")
++      return Response.json({
++        id: "source",
++        threadId: "t",
++        historyId: state.historyId,
++        payload: {
++          mimeType: "multipart/mixed",
++          parts: [
++            { partId: "0", mimeType: "text/plain", body: { data: "SGk", size: 2 } },
++            {
++              partId: "1",
++              mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
++              filename: "report.docx",
++              body: { attachmentId: "att-docx", size: docx.length },
++            },
++            {
++              partId: "2",
++              mimeType: "text/plain",
++              filename: "notes.txt",
++              body: { data: txt.toString("base64url"), size: txt.length },
++            },
++            {
++              partId: "3",
++              mimeType: "application/zip",
++              filename: "bundle.zip",
++              body: { attachmentId: "att-zip", size: zip.length },
++            },
++            {
++              partId: "4",
++              mimeType: "application/zip",
++              filename: "huge.zip",
++              body: { attachmentId: "att-huge", size: 6 * 1024 * 1024 },
++            },
++          ],
++        },
++      });
++    if (path === "/messages/source/attachments/att-docx")
++      return Response.json({ size: docx.length, data: docx.toString("base64url") });
++    if (path === "/messages/source/attachments/att-zip")
++      return Response.json({ size: zip.length, data: zip.toString("base64url") });
++    if (path === "/messages/send" && init?.method === "POST") {
++      const body = JSON.parse(String(init.body)) as { raw: string };
++      state.sends.push(body.raw);
++      return Response.json({ id: `sent${state.sends.length}`, threadId: "t2" });
++    }
++    return new Response("unexpected", { status: 404 });
++  };
++}
++const compose = {
++  kind: "send",
++  mode: "compose",
++  to: ["friend@example.invalid"],
++  subject: "Files",
++  bodyText: "Three files",
++};
++const file = (name: string, mimeType: string, bytes: Buffer) => ({
++  name,
++  mimeType,
++  dataBase64: bytes.toString("base64"),
++});
++
++test("0059: three attachments in one reviewed send; MIME parts and digests match the review", async () => {
++  const state = { historyId: "h1", sends: [] as string[] };
++  const { provider: inbox } = provider(sourceMessageRoute(state));
++  const caps = await inbox.capabilities(owner);
++  expect(caps.attachmentPolicy).toMatchObject({
++    maximumOutgoing: 10,
++    maximumTotalBytes: 5 * 1024 * 1024,
++  });
++  expect([caps.forwardAttachments, caps.opaqueAttachments]).toEqual([true, true]);
++  const reviewed = await inbox.review(
++    owner,
++    {
++      ...compose,
++      attachments: [
++        file("a.pdf", "application/pdf", pdf),
++        file("b.png", "image/png", png),
++        file("c.txt", "text/plain", txt),
++      ],
++    },
++    crypto.randomUUID(),
++  );
++  expect(reviewed.review.attachments).toEqual([
++    { name: "a.pdf", mimeType: "application/pdf", size: pdf.length, sha256: sha(pdf) },
++    { name: "b.png", mimeType: "image/png", size: png.length, sha256: sha(png) },
++    { name: "c.txt", mimeType: "text/plain", size: txt.length, sha256: sha(txt) },
++  ]);
++  expect(reviewed.review.forwardedAttachments).toBeUndefined();
++  expect(reviewed.digest).toBe(await inboxDigest(JSON.stringify(reviewed.review)));
++  expect(state.sends).toHaveLength(0);
++  const result = await reviewed.perform();
++  expect(state.sends).toHaveLength(1);
++  expect(result.mimeDigest).toBe(reviewed.review.mimeDigest);
++  expect(await inboxDigest(state.sends[0])).toBe(reviewed.review.mimeDigest as string);
++  const parsed = parseMime(state.sends[0]);
++  expect(parsed.type).toBe("multipart/mixed");
++  expect(parsed.defects).toEqual([]);
++  expect(parsed.body).toBe("Three files");
++  expect(parsed.files).toEqual([
++    { name: "a.pdf", type: "application/pdf", sha256: sha(pdf) },
++    { name: "b.png", type: "image/png", sha256: sha(png) },
++    { name: "c.txt", type: "text/plain", sha256: sha(txt) },
++  ]);
++  const many = Array.from({ length: 11 }, (_, i) => file(`${i}.txt`, "text/plain", txt));
++  await expect(
++    inbox.review(owner, { ...compose, attachments: many }, crypto.randomUUID()),
++  ).rejects.toThrow("At most 10");
++  await expect(
++    inbox.review(
++      owner,
++      {
++        ...compose,
++        attachments: [file("x.txt", "text/plain", txt), file("X.TXT", "text/plain", txt)],
++      },
++      crypto.randomUUID(),
++    ),
++  ).rejects.toThrow("unique");
++  const big = Buffer.alloc(3 * 1024 * 1024, 65);
++  await expect(
++    inbox.review(
++      owner,
++      {
++        ...compose,
++        attachments: [file("a.txt", "text/plain", big), file("b.txt", "text/plain", big)],
++      },
++      crypto.randomUUID(),
++    ),
++  ).rejects.toThrow("5 MiB in total");
++});
++
++test("0059: forward carries source attachments bound to the selected message and historyId", async () => {
++  const state = { historyId: "h1", sends: [] as string[] };
++  const { provider: inbox } = provider(sourceMessageRoute(state));
++  const proposal = {
++    kind: "send",
++    mode: "forward",
++    to: ["friend@example.invalid"],
++    subject: "Fwd: Source",
++    bodyText: "Forwarded",
++    attachments: [file("mine.pdf", "application/pdf", pdf)],
++    forwardAttachments: { messageId: "source", historyId: "h1", partIds: ["1", "2"] },
++  };
++  const reviewed = await inbox.review(owner, proposal, crypto.randomUUID());
++  expect(reviewed.review.forwardSource).toEqual({ messageId: "source", historyId: "h1" });
++  expect(reviewed.review.forwardedAttachments).toEqual([
++    {
++      partId: "1",
++      name: "report.docx",
++      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
++      size: docx.length,
++      sha256: sha(docx),
++    },
++    { partId: "2", name: "notes.txt", mimeType: "text/plain", size: txt.length, sha256: sha(txt) },
++  ]);
++  await reviewed.perform();
++  expect(parseMime(state.sends[0]).files.map((f) => [f.name, f.sha256])).toEqual([
++    ["mine.pdf", sha(pdf)],
++    ["report.docx", sha(docx)],
++    ["notes.txt", sha(txt)],
++  ]);
++  state.historyId = "h2";
++  await expect(inbox.review(owner, proposal, crypto.randomUUID())).rejects.toThrow(
++    "Selected message changed",
++  );
++  state.historyId = "h1";
++  await expect(
++    inbox.review(owner, { ...proposal, mode: "compose", subject: "x" }, crypto.randomUUID()),
++  ).rejects.toThrow("only for a forward");
++  await expect(
++    inbox.review(
++      owner,
++      { ...proposal, forwardAttachments: { ...proposal.forwardAttachments, partIds: ["9"] } },
++      crypto.randomUUID(),
++    ),
++  ).rejects.toThrow("Source attachment not found");
++  await expect(
++    inbox.review(
++      owner,
++      { ...proposal, forwardAttachments: { ...proposal.forwardAttachments, partIds: ["4"] } },
++      crypto.randomUUID(),
++    ),
++  ).rejects.toThrow("at most 5 MiB");
++  const sendOnly = provider(sourceMessageRoute(state), [
++    "https://www.googleapis.com/auth/gmail.send",
++  ]);
++  await expect(sendOnly.provider.review(owner, proposal, crypto.randomUUID())).rejects.toThrow(
++    "lacks this capability",
++  );
++});
++
++test("0059: opaque byte copy of an unsupported docx or zip, bound to message, part and historyId", async () => {
++  const state = { historyId: "h1", sends: [] as string[] };
++  const { provider: inbox } = provider(sourceMessageRoute(state));
++  for (const [partId, bytes, name, mimeType] of [
++    [
++      "1",
++      docx,
++      "report.docx",
++      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
++    ],
++    ["3", zip, "bundle.zip", "application/zip"],
++  ] as const) {
++    const copy = await inbox.opaqueAttachment(owner, "source", partId, "h1");
++    expect(copy).toEqual({
++      version: 1,
++      opaque: true,
++      messageId: "source",
++      partId,
++      historyId: "h1",
++      name,
++      mimeType,
++      dataBase64: bytes.toString("base64"),
++      size: bytes.length,
++      sha256: sha(bytes),
++    });
++  }
++  await expect(inbox.attachment(owner, "source", "3", "h1")).rejects.toThrow(
++    "Supported PDF, image or TXT",
++  );
++  await expect(inbox.opaqueAttachment(owner, "source", "3", "stale")).rejects.toThrow(
++    "Message changed",
++  );
++  await expect(inbox.opaqueAttachment(owner, "source", "4", "h1")).rejects.toThrow("at most 5 MiB");
++  await expect(inbox.opaqueAttachment(owner, "source", "8", "h1")).rejects.toThrow(
++    "Attachment not found",
++  );
++  expect(state.sends).toHaveLength(0);
++});
+diff --git a/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts b/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts
+index 0d91c7f621988a0a4edd6015c379c698ea8fe987..ed69af2dfcfca209a075b5ce9a80bbdbe2760ce5 100644
+--- a/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts
++++ b/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts
+@@ -152,6 +152,31 @@ function findPart(payload: GmailPayloadPart, mimeType: string): GmailPayloadPart
+   return visit(payload);
+ }
+ const attachmentLimit = 5 * 1024 * 1024;
++/** Outgoing attachments per message and their combined decoded size (local plus forwarded). */
++const outgoingAttachmentCount = 10,
++  outgoingTotalLimit = 5 * 1024 * 1024;
++/** Declared MIME type when it is a plain type/subtype token; otherwise application/octet-stream. */
++function opaqueMimeType(value: unknown): string {
++  return typeof value === "string" &&
++    /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i.test(value)
++    ? value.toLowerCase()
++    : "application/octet-stream";
++}
++function opaqueName(value: unknown): string {
++  return typeof value === "string" &&
++    value.trim() &&
++    value.length <= 120 &&
++    value !== "." &&
++    value !== ".." &&
++    !/[\\/\x00-\x1f\x7f]/.test(value)
++    ? value
++    : "attachment";
++}
++async function sha256Hex(base64: string): Promise<string> {
++  return Buffer.from(await crypto.subtle.digest("SHA-256", Buffer.from(base64, "base64"))).toString(
++    "hex",
++  );
++}
+ const attachmentTypes: Record<string, RegExp> = {
+   "text/plain": /\.txt$/i,
+   "application/pdf": /\.pdf$/i,
+@@ -291,10 +316,15 @@ export class InboxGoogleProvider {
+       searchTrash: supported("read"),
+       /** Provider draft listing and exact content reads (GET /drafts, GET /draft?content=1). */
+       draftsList: supported("draft"),
++      /** Forward with the source message's attachments bound to its historyId. */
++      forwardAttachments: supported("read"),
++      /** Exact byte copy of any attachment type under the cap (GET /attachment?opaque=1). */
++      opaqueAttachments: supported("read"),
+       attachmentPolicy: {
+         mimeTypes: Object.keys(attachmentTypes),
+         maximumBytes: attachmentLimit,
+-        maximumOutgoing: 1,
++        maximumOutgoing: outgoingAttachmentCount,
++        maximumTotalBytes: outgoingTotalLimit,
+       },
+       providerExactlyOnce: false,
+       atomicDraftReplacement: false,
+@@ -380,6 +410,57 @@ export class InboxGoogleProvider {
+       messages,
+     };
+   }
++  /** Bytes of one attachment part, checked against its declared size. */
++  private async partBytes(
++    grant: InboxGoogleGrant,
++    messageId: string,
++    part: Record<string, unknown>,
++  ) {
++    const body = object(part.body);
++    if (typeof body.size !== "number" || body.size < 0 || body.size > attachmentLimit)
++      throw new InboxContractError(413, "Attachments must be at most 5 MiB");
++    const raw = body.attachmentId
++      ? await this.request(
++          grant,
++          `/messages/${messageId}/attachments/${providerId(body.attachmentId)}`,
++        )
++      : body;
++    const encoded = text(raw.data, 7 * 1024 * 1024);
++    if (!/^[A-Za-z0-9_-]*={0,2}$/.test(encoded))
++      throw new InboxContractError(502, "Invalid provider attachment");
++    const bytes = Buffer.from(encoded, "base64url");
++    if (bytes.length !== body.size || (raw !== body && raw.size !== body.size))
++      throw new InboxContractError(502, "Attachment byte count changed");
++    return bytes.toString("base64");
++  }
++  /** Exact bytes of one attachment of any type, for a client-side Save to Files only. */
++  async opaqueAttachment(owner: InboxOwner, messageId: string, partId: string, historyId: string) {
++    const grant = await this.dependencies.grant(owner);
++    requireScope(grant, "read");
++    const id = providerId(messageId),
++      message = await this.request(grant, `/messages/${id}?format=full`);
++    if (message.id !== id || message.historyId !== historyId)
++      throw new InboxContractError(409, "Message changed; reopen its attachments");
++    const matching = attachmentParts(object(message.payload)).filter(
++      (part) => part.partId === partId,
++    );
++    if (matching.length !== 1) throw new InboxContractError(404, "Attachment not found");
++    const part = matching[0],
++      dataBase64 = await this.partBytes(grant, id, part),
++      size = Buffer.from(dataBase64, "base64").length;
++    return {
++      version: 1,
++      opaque: true,
++      messageId: id,
++      partId,
++      historyId,
++      name: opaqueName(part.filename),
++      mimeType: opaqueMimeType(part.mimeType),
++      dataBase64,
++      size,
++      sha256: await sha256Hex(dataBase64),
++    };
++  }
+   async attachment(owner: InboxOwner, messageId: string, partId: string, historyId: string) {
+     const grant = await this.dependencies.grant(owner);
+     requireScope(grant, "read");
+@@ -659,6 +740,7 @@ export class InboxGoogleProvider {
+       "expectedDigest",
+       "acceptNonAtomicReplacement",
+       "attachments",
++      "forwardAttachments",
+     ]);
+     requireScope(grant, kind === "send" ? "send" : "draft");
+     const mode = value.mode;
+@@ -702,17 +784,81 @@ export class InboxGoogleProvider {
+     } else if (value.replyMessageId !== undefined)
+       throw new InboxContractError(400, "Reply identity is not valid for this compose mode");
+     const attachments = value.attachments === undefined ? [] : value.attachments;
+-    if (!Array.isArray(attachments) || attachments.length > 1)
+-      throw new InboxContractError(400, "At most one attachment is supported");
+-    const files = attachments.map(checkedAttachment);
++    if (!Array.isArray(attachments) || attachments.length > outgoingAttachmentCount)
++      throw new InboxContractError(
++        400,
++        `At most ${outgoingAttachmentCount} attachments are supported`,
++      );
++    const local = attachments.map(checkedAttachment);
+     const attachmentReview = await Promise.all(
+-      files.map(async (file) => ({
++      local.map(async (file) => ({
++        name: file.name,
++        mimeType: file.mimeType,
++        size: file.size,
++        sha256: await sha256Hex(file.dataBase64),
++      })),
++    );
++    // Forwarded source attachments are read from the selected message at its reviewed historyId.
++    let forwardSource: { messageId: string; historyId: string } | null = null;
++    const forwarded: {
++      partId: string;
++      name: string;
++      mimeType: string;
++      dataBase64: string;
++      size: number;
++    }[] = [];
++    if (value.forwardAttachments !== undefined) {
++      if (mode !== "forward")
++        throw new InboxContractError(400, "Source attachments are valid only for a forward");
++      const source = object(value.forwardAttachments);
++      fields(source, ["messageId", "historyId", "partIds"]);
++      requireScope(grant, "read");
++      const sourceId = providerId(source.messageId),
++        historyId = text(source.historyId, 100, true),
++        partIds = source.partIds;
++      if (
++        !Array.isArray(partIds) ||
++        !partIds.length ||
++        partIds.length > outgoingAttachmentCount ||
++        new Set(partIds).size !== partIds.length ||
++        partIds.some((partId) => typeof partId !== "string" || !/^[0-9.]{1,32}$/.test(partId))
++      )
++        throw new InboxContractError(400, "Explicit source attachment parts required");
++      const message = await this.request(grant, `/messages/${sourceId}?format=full`);
++      if (message.id !== sourceId || message.historyId !== historyId)
++        throw new InboxContractError(409, "Selected message changed; review its attachments again");
++      const parts = attachmentParts(object(message.payload));
++      for (const partId of partIds as string[]) {
++        const matching = parts.filter((part) => part.partId === partId);
++        if (matching.length !== 1) throw new InboxContractError(409, "Source attachment not found");
++        const dataBase64 = await this.partBytes(grant, sourceId, matching[0]);
++        forwarded.push({
++          partId,
++          name: opaqueName(matching[0].filename),
++          mimeType: opaqueMimeType(matching[0].mimeType),
++          dataBase64,
++          size: Buffer.from(dataBase64, "base64").length,
++        });
++      }
++      forwardSource = { messageId: sourceId, historyId };
++    }
++    const files = [...local, ...forwarded];
++    if (files.length > outgoingAttachmentCount)
++      throw new InboxContractError(
++        400,
++        `At most ${outgoingAttachmentCount} attachments are supported`,
++      );
++    if (new Set(files.map((file) => file.name.toLowerCase())).size !== files.length)
++      throw new InboxContractError(400, "Attachment names must be unique");
++    if (files.reduce((sum, file) => sum + file.size, 0) > outgoingTotalLimit)
++      throw new InboxContractError(413, "Attachments exceed 5 MiB in total");
++    const forwardedReview = await Promise.all(
++      forwarded.map(async (file) => ({
++        partId: file.partId,
+         name: file.name,
+         mimeType: file.mimeType,
+         size: file.size,
+-        sha256: Buffer.from(
+-          await crypto.subtle.digest("SHA-256", Buffer.from(file.dataBase64, "base64")),
+-        ).toString("hex"),
++        sha256: await sha256Hex(file.dataBase64),
+       })),
+     );
+     const boundary = `eliza-${requestId}`;
+@@ -799,6 +945,7 @@ export class InboxGoogleProvider {
+         expectedDigest: expectedDigest ?? null,
+         mimeDigest,
+         attachments: attachmentReview,
++        ...(forwardSource ? { forwardSource, forwardedAttachments: forwardedReview } : {}),
+         atomicDraftReplacement: false,
+       },
+       digest = await inboxDigest(JSON.stringify(review));

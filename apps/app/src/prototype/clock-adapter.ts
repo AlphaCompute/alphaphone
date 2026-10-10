@@ -1,5 +1,5 @@
 import {createInlineModal} from '../runtime/inline-modal';
-import {currentClockTimeZone} from '../runtime/clock-contract';
+import {currentClockTimeZone,buildClockRequest,describeClockDays,type ClockDay,type ClockSetRequest} from '../runtime/clock-contract';
 import { DailyApps, type ClockRequest, type ClockResult } from '../daily';
 import { testMocksEnabled } from '../build-flags';
 type Bag=Record<string,any>;
@@ -11,17 +11,23 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
  const p=Component.prototype,render=views.calendar.render,leave=views.calendar.onLeave;
  const draftId=crypto.randomUUID();let draftRevision=0;
  const selection=()=>open?{kind:'clock-draft',id:draftId,revision:String(draftRevision)}:undefined;
- let owner:any,open=false,action:ClockRequest['action']='set',time='07:00',label='',snooze='10',review:ClockRequest|null=null,busy=false,message='',generation=0;
+ let owner:any,open=false,action:ClockRequest['action']='set',time='07:00',label='',snooze='10',days:ClockDay[]=[],review:ClockRequest|null=null,busy=false,message='',generation=0;
+ // Repeat days reach Clock only when the native handoff reports it carries EXTRA_DAYS
+ // (surfaceInfo clockRepeatDaysVersion 1). Otherwise the chips are hidden and a repeat is refused,
+ // so a reviewed repeat is never sent as, or silently reduced to, a one-time alarm.
+ let repeatSupported=false;
  // Mock simulation exists only in test-mocks builds. A flag-off build that is
  // somehow asked to simulate fails closed instead of opening the real Clock.
  const mockRequested=()=>options.simulated||document.documentElement.dataset.connectionMode==='mock';
  const simulated=()=>testMocksEnabled&&mockRequested();
+ const repeatAvailable=()=>simulated()||repeatSupported;
  const blocked=()=>!testMocksEnabled&&mockRequested();
  const publish=()=>{++draftRevision;owner?.vset('calendar',{});};
  const history=createClockHandoffHistory(secureConnectionStore,()=>localStorage.getItem(clockHandoffLegacyKey));
  let snapshot:ClockHandoffSnapshot|null=null,loading=false,historyGeneration=0;
  const restore=async()=>{
   if(simulated()||options.browser)return;
+  if(!repeatSupported)void Promise.resolve().then(()=>DailyApps.surfaceInfo()).then(info=>{if((info as {clockRepeatDaysVersion?:number}).clockRepeatDaysVersion===1&&!repeatSupported){repeatSupported=true;publish();}}).catch(()=>{/* Unknown support keeps repeats off. */});
   const token=++historyGeneration,view=generation;snapshot=null;loading=true;publish();
   try {
    const saved=await history.read();if(token!==historyGeneration||view!==generation)return;
@@ -40,7 +46,10 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
  p.componentDidMount=function(){mount.call(this);owner=this;this.clockSelection=selection;void restore();window.addEventListener('alpha-back',back,true);window.addEventListener('pagehide',retireReview);document.addEventListener('visibilitychange',hidden);};
  p.componentWillUnmount=function(){if(owner===this){window.removeEventListener('alpha-back',back,true);window.removeEventListener('pagehide',retireReview);document.removeEventListener('visibilitychange',hidden);delete this.clockSelection;owner=null;open=false;review=null;++generation;}unmount.call(this);};
  const change=(fn:()=>void)=>{if(busy)return;fn();review=null;publish();};
+ // One-time requests keep the original builder; a repeat uses the contract's validated builder.
  const build=():ClockRequest=>{
+  if(action==='set'&&days.length&&!repeatAvailable())throw Error('Repeating alarms are not available in this version. Clear the repeat days, or set the repeat in Clock.');
+  if(action==='set'&&days.length)return buildClockRequest({action,time,label,snooze,days},currentClockTimeZone()) as ClockRequest;
   if(action==='set'){
    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)||label.length>200||label.includes('\0'))throw Error('Choose a valid time and a label up to 200 characters.');
    const [hour,minute]=time.split(':').map(Number);return {action,hour,minute,label:label.trim(),timeZone:currentClockTimeZone(),reviewed:true};
@@ -51,7 +60,8 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
   }
   return {action,reviewed:true};
  };
- const description=(request:ClockRequest)=>request.action==='set'?`Ask Clock to set an alarm at ${String(request.hour).padStart(2,'0')}:${String(request.minute).padStart(2,'0')}${request.label?` named “${request.label}”`:''}, using the phone’s local time. Review the alarm in Clock.`:request.action==='show'?'Open the installed Clock app’s alarms page.':request.action==='snooze'?`Ask Clock to snooze ringing alarms, requesting ${request.snoozeMinutes} minutes. Clock may use its default duration and snooze all ringing alarms. If nothing is ringing, Clock may do nothing.`:'Ask Clock to dismiss the active alarm. If there is more than one, Clock may ask you to choose. A one-time alarm is disabled; a repeated alarm skips its upcoming occurrence.';
+ const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+ const description=(request:ClockRequest)=>request.action==='set'?`Ask Clock to set ${(request as ClockSetRequest).days?`a repeating alarm (${describeClockDays((request as ClockSetRequest).days!)})`:'an alarm'} at ${String(request.hour).padStart(2,'0')}:${String(request.minute).padStart(2,'0')}${request.label?` named “${request.label}”`:''}, using the phone’s local time. Review the alarm in Clock.`:request.action==='show'?'Open the installed Clock app’s alarms page.':request.action==='snooze'?`Ask Clock to snooze ringing alarms, requesting ${request.snoozeMinutes} minutes. Clock may use its default duration and snooze all ringing alarms. If nothing is ringing, Clock may do nothing.`:'Ask Clock to dismiss the active alarm. If there is more than one, Clock may ask you to choose. A one-time alarm is disabled; a repeated alarm skips its upcoming occurrence.';
  const dispatch=async(request:ClockRequest)=>{
   if(busy||review!==request)return;
   if(document.hidden){message='Return to Alpha Phone and review again.';review=null;publish();return;}
@@ -90,6 +100,10 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
    zone:Intl.DateTimeFormat().resolvedOptions().timeZone,
    close,
    actions:actions.map(kind=>({label:kind==='set'?'Set alarm':kind==='show'?'Show alarms':kind==='snooze'?'Snooze':'Dismiss',pick:()=>change(()=>{action=kind;}),css:action===kind?'background:var(--fg);color:var(--bg)':'background:var(--s2);color:var(--fg)'})),
+   // Repeat-day chips (Sunday=1 … Saturday=7), Monday first; none selected is a one-time alarm.
+   repeatAvailable:repeatAvailable(),
+   days:!repeatAvailable()&&!days.length?[]:[2,3,4,5,6,7,1].map(day=>({label:dayNames[day-1],on:days.includes(day as ClockDay),aria:`Repeat on ${dayNames[day-1]}`,toggle:()=>change(()=>{days=days.includes(day as ClockDay)?days.filter(d=>d!==day):[...days,day as ClockDay].sort((a,b)=>a-b);})})),
+   repeatText:days.length?`Repeats ${describeClockDays(days)}`:'One time',
    onTime:(e:Bag)=>change(()=>{time=e.target.value;}),onLabel:(e:Bag)=>change(()=>{label=e.target.value;}),onSnooze:(e:Bag)=>change(()=>{snooze=e.target.value;}),
    prepare:()=>{if(busy||loading)return;try{review=build();message='';}catch(error){message=(error as Error).message;}publish();},
    review:currentReview?{text:description(currentReview),confirm:()=>dispatch(currentReview),cancel:()=>change(()=>{}),label:testMocksEnabled&&simulated()?'Simulate Clock request':'Continue to Clock'}:null,
