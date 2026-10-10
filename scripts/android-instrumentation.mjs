@@ -11,7 +11,7 @@
  *
  * Variants share one package id and replace each other, so they run one after the
  * other: install app + test APK, check the installed bytes, run every class in its
- * own `am instrument` process, uninstall. Only packages this run installed are
+ * own `am instrument` process after clearing the app's data, uninstall. Only packages this run installed are
  * removed; an existing Alpha installation is refused, never replaced.
  *
  * Results: <output>/results.json via scripts/instrumentation-result.mjs, bound to
@@ -151,6 +151,20 @@ export function instrumentArgs(cls, { method, log = false } = {}) {
     "-e", "class", method ? `${cls}#${method}` : cls, `${PACKAGE}.test/${RUNNER}`];
 }
 
+/**
+ * adb commands run before each named class, so it starts as a fresh install does. Classes share
+ * one install per variant; without this an earlier class's app data (a dismissed sign-in panel,
+ * granted permissions, a saved draft), a left-open Android shade or another app left in front
+ * decided whether a later class passed. Phases of one class keep their data.
+ */
+export function classIsolationCommands() {
+  return [
+    ["shell", "cmd", "statusbar", "collapse"],
+    ["shell", "am", "force-stop", "com.android.settings"],
+    ["shell", "pm", "clear", PACKAGE],
+  ];
+}
+
 /** Locate a variant's app/test APK pair and bind the app to the verify-apks manifest. */
 export function admitApks(apkDir, variant, { testMocks }) {
   const sha = file => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
@@ -244,6 +258,7 @@ async function runLeased({ options, serial, adb }) {
       } else {
         for (const cls of options.classes) {
           const spec = CLASS_REGISTRY[short(cls)] ?? {};
+          for (const command of classIsolationCommands()) adb(command, { allowFailure: true });
           const listed = listedInstrumentationTests(adb(instrumentArgs(cls, { log: true }), { allowFailure: true }));
           if (!listed.length) { record(cls, { started: 0, passed: 0, failed: [], ignored: [], status: "missing" }); continue; }
           const runs = spec.phases ? spec.phases : [null];

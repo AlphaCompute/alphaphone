@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { instrumentationClassResults, listedInstrumentationTests, writeInstrumentationRecord } from "../scripts/instrumentation-result.mjs";
-import { admitApks, CLASS_REGISTRY, DEFAULT_CLASSES, instrumentArgs, parseInstrumentationArgs, PACKAGE } from "../scripts/android-instrumentation.mjs";
+import { admitApks, classIsolationCommands, CLASS_REGISTRY, DEFAULT_CLASSES, instrumentArgs, parseInstrumentationArgs, PACKAGE } from "../scripts/android-instrumentation.mjs";
 
 const C = name => `${PACKAGE}.${name}InstrumentedTest`;
 const block = (cls, method, code, numtests = 1) =>
@@ -129,4 +129,17 @@ test("every registered class exists in the app's instrumentation sources and dec
   }
   // A core-loop class with a gate runs its gated methods instead of reporting them skipped.
   assert.deepEqual(instrumentArgs(C("ClockHandoff")).slice(-6, -1), ["clockHandoff", "1", "-e", "class", C("ClockHandoff")]);
+});
+
+test("each named class starts from cleared app data with Android's shade closed", () => {
+  // First emulator runs: Video, Accessibility and SettingsFlow passed or failed with the order of
+  // the classes before them, and a system shade left open failed every later gesture.
+  const commands = classIsolationCommands();
+  assert.ok(commands.some(command => command.join(" ") === `shell pm clear ${PACKAGE}`));
+  assert.ok(commands.some(command => command.join(" ") === "shell cmd statusbar collapse"));
+  // Only the app under test is cleared; the instrumentation package and other apps keep their data.
+  assert.equal(commands.filter(command => command.includes("clear")).length, 1);
+  const runner = fs.readFileSync("scripts/android-instrumentation.mjs", "utf8");
+  const loop = runner.slice(runner.indexOf("for (const cls of options.classes)"));
+  assert.ok(loop.indexOf("classIsolationCommands()") > 0 && loop.indexOf("classIsolationCommands()") < loop.indexOf("spec.phases"), "isolation runs once per class, before its phases");
 });

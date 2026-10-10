@@ -31,7 +31,9 @@ final class AppNavigation {
   * choose its own "Not now" (nothing is granted); JavaScript-driven tests are unaffected by it.
   */
  static void declineStartupAccess() throws Exception {
-  for(int i=0;i<30;i++){
+  // The panel opens only once both permission reads return, which took more than three seconds
+  // on a loaded emulator; a build that already has both grants waits this out once.
+  for(int i=0;i<150;i++){
    if("true".equals(WebViewTestDriver.evaluate("(()=>{const b=[...document.querySelectorAll('dialog.alpha-startup-permissions[open] button')].find(b=>b.textContent.trim()==='Not now');if(!b)return false;b.click();return true})()")))return;
    android.os.SystemClock.sleep(100);
   }
