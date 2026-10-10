@@ -54,7 +54,7 @@ public class WorkflowInstrumentedTest {
    until("[...document.querySelectorAll('span')].some(e=>e.textContent==='finished')",10000);
    WebViewTestDriver.evaluate("[...document.querySelectorAll('button')].find(e=>e.getAttribute('aria-label')==="+JSONObject.quote("Back to "+title)+").click()");
    String toggle="[...document.querySelectorAll('button')].filter(e=>e.getAttribute('aria-label')==="+JSONObject.quote("Turn "+title+" on or off")+").at(-1)";
-   WebViewTestDriver.evaluate("("+toggle+").click()");until("document.body.textContent.includes('Tap the switch again to enable scheduled runs')",10000);
+   WebViewTestDriver.evaluate("("+toggle+").click()");until("document.body.textContent.includes('Tap the switch again to enable')",10000);
    WebViewTestDriver.evaluate("("+toggle+").click()");until("("+toggle+").getAttribute('aria-pressed')==='true'",30000);
    WebViewTestDriver.evaluate("("+toggle+").click()");until("("+toggle+").getAttribute('aria-pressed')==='false'",30000);
    scenario.recreate();until("document.documentElement.dataset.activeView==='home'&&!document.querySelector('.alpha-connection-scrim')",60000);

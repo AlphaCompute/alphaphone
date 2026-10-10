@@ -235,7 +235,7 @@ Evidence/source: [apps/app/src/runtime/connection-ui.tsx](../apps/app/src/runtim
 
 **P1 · integration · AP-03, AP-11**
 
-Current: HTTPS remote browser transport exists as development infrastructure; direct Cloud sign-in is honestly unavailable for this origin. The development host has a separate credential-reference bridge.
+Current: HTTPS remote browser transport exists as development infrastructure; direct Cloud sign-in is honestly unavailable for this origin. The development host has a separate credential-reference bridge. Synthetic flag-off coverage (test/browser/connection-boundaries.production.spec.ts): saved mock, staging, Cloud, plain-HTTP local, development and on-device selections open the chooser signed out with no request; refused pairings (wrong role, identity or instance mismatch, expired session, used code, pairing disabled, non-HTTPS address) store nothing and connect nothing; unverified device enrollment grants no phone actions; unconfirmed revocation is reported as unconfirmed.
 
 Remaining: Record the supported browser development scope and qualify its account return, storage degradation, revoke and Automations behavior. Keep unsupported Cloud sign-in unavailable unless that route is separately approved and implemented with an admitted origin/server bridge. Do not add browser Cloud login as a production Android MVP prerequisite.
 
@@ -301,9 +301,9 @@ Evidence/source: [docs/local-agent-development.md](../docs/local-agent-developme
 
 **P0 · acceptance · AP-05, AP-15**
 
-Current: Merge retains main navigation/read-reply/voice ownership alongside PR draft-dispatch/history/cancel work.
+Current: Source and browser tests cover pre-dispatch retention (no agent, expired session, offline setup, Stop before the post), unknown post-dispatch outcome, Stop with one cancel and one reconciliation shown in the chat, double submit, owner change mid-reply, history paging and restore on connect, reply/edit/truncate, and draft retention across Home, Back and a viewport resize.
 
-Remaining: Exercise pre-dispatch error, unknown post-dispatch outcome, stop/reconcile, history paging, reply/edit/truncate, drawer/assistant overlays, keyboard resize, Back/Home and concurrent owner changes.
+Remaining: Exercise the same paths on the emulator HOME role and a target device: real soft-keyboard resize, system Back/Home, drawer/assistant overlays, resident restart mid-reply and concurrent owner changes.
 
 Done when: Text survives every pre-dispatch failure; no implicit resend; selection/history/scroll remain bound to the intended conversation.
 
@@ -453,9 +453,9 @@ Evidence/source: [apps/app/src/runtime/phone-workflow-authoring.ts](../apps/app/
 
 **P1 · acceptance · AP-12**
 
-Current: Quick setting state, diagnostics and handoffs have implementation coverage; physical state/OS delivery is not established here.
+Current: Tiles and Settings rows read the Wi-Fi, Bluetooth, airplane mode, location, mobile data and Do Not Disturb states Android reports to an ordinary app, hand off to the matching Android page and re-read on return; unreported states are shown as a handoff. Channel and app-notification denial are read back from Android. About shows the packaged version and states that no update check exists. Diagnostics are redacted by construction. All of this has source and renderer-contract coverage on the flag-off bundle; physical state, each image's Settings pages and OS delivery are not established here.
 
-Remaining: Check each settings destination/readback, channel denial/re-enable, lock/Doze, exact result/reminder tap after death, revoke during work, redacted export, version and update availability. Keep mirroring off by default and outside MVP gate.
+Remaining: On an emulator and then a device, check each settings destination and readback (SettingsSystemFacts, SettingsNative, SettingsFlow, SettingsRoles and NotificationChannels instrumentation, then by hand), channel denial/re-enable, lock/Doze, exact result/reminder tap after death, revoke during work and the redacted export. Update availability needs an update authority (A-06) before anything can be shown. Keep mirroring off by default and outside MVP gate.
 
 Done when: No simulated toggle or success; channel-disabled history still available; wrong-owner/deleted notification target fails safely.
 
@@ -511,7 +511,7 @@ Evidence/source: [docs/mvp-completion-plan.md](../docs/mvp-completion-plan.md), 
 
 **P1 · acceptance · AP-03, AP-04**
 
-Current: PR 379 retires production Android phone pairing and adds a controller guard. Browser and test-mocks transports remain for development; existing credentials/history must be preserved.
+Current: PR 379 retires production Android phone pairing and adds a controller guard. Browser and test-mocks transports remain for development; existing credentials/history must be preserved. connectRemote now refuses every caller on production Android and the native transport rejects the pairing route (ConnectionRoutes.java, JVM-tested and compiled, not run in an APK). A stubbed-bridge production-bundle test shows a saved remote, local or Cloud-agent selection is neither paired nor restored, its credential slot is not written or removed, and a Cloud sign-in starts the resident agent instead.
 
 Remaining: Verify flag-off Android rejects pairing without network mutation or automatic reconnection, preserves old remote credentials/history, and uses resident execution with Cloud provider authorization. Qualify retained browser/test-mocks transport ownership, expiry, revoke and recovery separately. Real hosted-agent deployment is optional scope, not a phone MVP prerequisite.
 
