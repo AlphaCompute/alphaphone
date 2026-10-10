@@ -79,3 +79,22 @@ test('decision IDs and dependencies named by an item exist', () => {
 test('the inventory names the pin in upstream.lock.json', () => {
   assert.equal(inventory.upstream_pin, JSON.parse(read('upstream.lock.json')).commit);
 });
+
+// docs/mvp-owner-actions.md is the list the owner works from. It must name every pending
+// decision and every item that waits on a person, an emulator or CI run, or a device.
+test('owner actions name every pending decision and every item that is not software-only', () => {
+  const actions = read('docs/mvp-owner-actions.md');
+  const named = new Set();
+  for (const [, list] of actions.matchAll(/MVP-(\d\d(?:(?:, | and | to )\d\d)*)/g)) {
+    for (const part of list.split(/, | and /)) {
+      const [from, to = from] = part.split(' to ').map(Number);
+      for (let number = from; number <= to; number += 1) named.add(`MVP-${String(number).padStart(2, '0')}`);
+    }
+  }
+  for (const item of inventory.items) {
+    if (item.blocked_on.every(entry => blockClass(entry) === 'SOFTWARE')) continue;
+    assert.ok(named.has(item.id), `${item.id} is blocked on ${item.blocked_on.map(blockClass).join(', ')} but docs/mvp-owner-actions.md does not name it`);
+  }
+  const pending = read('docs/decisions.md').split('\n## Pending owner decisions\n')[1];
+  for (const [, id] of pending.matchAll(/^\| (A-\d\d) \|/gm)) assert.ok(actions.includes(id), `pending decision ${id} is missing from docs/mvp-owner-actions.md`);
+});
