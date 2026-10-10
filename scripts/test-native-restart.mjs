@@ -31,6 +31,14 @@ const cases = {
 		scope:
 			"Real HTTPS bookmark persistence and removal across two new processes; native profile cleanup",
 	},
+	signin: {
+		testClass: "BrowserSigninsInstrumentedTest",
+		method: "signinProcessRestartPhase",
+		gate: "signinPhase",
+		restore: "verify",
+		scope:
+			"Normal-tab sign-in cookie and storage survive a new process while a private tab's do not (P-04); real HTTPS page, synthetic cookie, no account",
+	},
 	inbox: {
 		testClass: "InboxDraftInstrumentedTest",
 		method: "processPhase",

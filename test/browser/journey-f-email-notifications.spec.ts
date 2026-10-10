@@ -81,6 +81,8 @@ async function installProvider(page: Page) {
         }
         const lost = value.loseNextReply; value.loseNextReply = false; save(value);
         if (lost) throw new TypeError('Failed to fetch');
+        // A provider reply that names another operation (wrong request ID) must never be accepted.
+        if (value.wrongReceipt) return {...value.receipts[requestId], requestId: 'another-request'};
         return value.receipts[requestId];
       },
       // While "unsure" the provider cannot yet tell whether delivery completed.
@@ -247,6 +249,33 @@ test('synthetic provider: a lost send reply is an unknown outcome and is never s
   await button(page, 'Sent').click();
   await expect(page.getByRole('button', {name: /Journey lost reply/})).toHaveCount(1);
   expect(await provider(page)).toEqual({prepares: 1, dispatches: 1, sent: ['Journey lost reply'], receipts: ['succeeded']});
+});
+
+test('synthetic provider: a send reply that names another operation is not shown as confirmed and is never sent again', async ({page}) => {
+  test.setTimeout(180_000);
+  await openProviderInbox(page);
+  await compose(page, 'Journey wrong receipt', 'Body whose reply names another operation');
+  await button(page, 'Send email').click();
+  const review = page.getByRole('dialog', {name: 'Review mail operation'});
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toBeVisible();
+  await setProvider(page, {wrongReceipt: true});
+  await review.getByRole('button', {name: 'Send this email', exact: true}).click();
+  // The reply is refused: no confirmation, no provider message ID from the foreign receipt, no second Send.
+  await expect(review.getByRole('status')).toHaveText('Gmail answered for a different request, so nothing was confirmed. Check the saved receipt before trying again; do not send this message again.');
+  await expect(review).not.toContainText('"messageId"');
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
+  expect(await provider(page)).toMatchObject({prepares: 1, dispatches: 1});
+  // After a reload the saved operation is still unresolved and still cannot be sent again.
+  await openProviderInbox(page, true);
+  await expect(review.getByRole('status')).toHaveText('Saved mail operation. Check its exact review and receipt before continuing.');
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
+  expect(await provider(page)).toMatchObject({prepares: 1, dispatches: 1});
+  // Its own receipt, read back by request ID, reconciles to exactly one message.
+  await setProvider(page, {wrongReceipt: false});
+  await review.getByRole('button', {name: 'Check saved receipt', exact: true}).click();
+  await expect(review.getByRole('status')).toHaveText('Provider confirmed this operation.');
+  await expect(review).toContainText('"messageId":"sent-1"');
+  expect(await provider(page)).toEqual({prepares: 1, dispatches: 1, sent: ['Journey wrong receipt'], receipts: ['succeeded']});
 });
 
 test('a due reminder notice tapped after reload opens exactly its own event, once', async ({page, context}) => {

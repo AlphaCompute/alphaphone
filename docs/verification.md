@@ -60,7 +60,7 @@ hashed in `apk-manifest.json`), checks the installed bytes, runs each class in i
 installed. `--classes NoMockProduct,Shell,StartupReadiness` names classes (short names
 are expanded); the default list covers the product-surface classes; `--all` runs the
 whole androidTest suite in one process; `--test-mocks` uses the separate
-`artifacts/test-mocks/` pair for fixture-dependent classes such as PasswordAutofillOffer
+`artifacts/test-mocks/` pair for fixture-dependent classes such as BrowserAutofill
 and the browser loopback cases. `<output>/results.json` (via
 `scripts/instrumentation-result.mjs`) records per-class `passed`, `failed`, `skipped`
 (every method skipped by its own assumption gate) or `missing`, bound to the commit, a
@@ -68,7 +68,7 @@ dirty flag and every installed APK's SHA-256, with raw output per class. It is l
 emulator class E evidence and is never device or user acceptance. Process-death,
 permission-restoring and provider-credential campaigns (ReminderTapProcessDeath,
 WorkflowNoticeProcessDeath, NotificationChannels, ResidentEgressRedaction) are refused
-there with the command of the campaign that owns them; text-scale and bookmark restart
+there with the command of the campaign that owns them; text-scale, bookmark and sign-in restart
 phases run through `scripts/test-native-restart.mjs`. AccessibilityInstrumentedTest
 (ATF plus TalkBack-order checks at 200% font) and RotationInstrumentedTest (which needs
 the landscape layout and fails, not skips, without it) run through the same runner. See the [Android/AOSP guide](android-and-aosp.md)
@@ -116,7 +116,7 @@ cleanup, and `result.json` the product scenario. Deferred cleanup is a failure
 requiring explicit recovery of the owned fixture.
 
 Process-restart campaigns use `node scripts/test-native-restart.mjs` with `inbox`,
-`notes`, `document`, `text-scale`, `tree`, or `bookmark`, a matching archived APK pair and a new output directory.
+`notes`, `document`, `text-scale`, `tree`, `bookmark`, or `signin`, a matching archived APK pair and a new output directory.
 Use the owned-emulator configuration in the README. Require successful prepare,
 restore/verify and cleanup phases; Notes and Inbox reports also require distinct
 process IDs. Selected-file, text-scale, folder and bookmark native tests assert process boundaries themselves.
