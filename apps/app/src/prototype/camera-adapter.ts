@@ -1,7 +1,7 @@
 import {readMediaCopyIntent,admitMediaCopyIntent,acknowledgeMediaCopyIntent,mediaCopyIntentDocument,type MediaCopyIntent} from '../runtime/media-copy-intent';
 import {createInlineModal} from '../runtime/inline-modal';
 import {reviewContentQuestion} from '../browser/content-question';
-import {captureSelection} from './context-selection';
+import {createCaptureRevisions} from './context-selection';
 import {openScanDocument,pickNativeScanImage} from './scan-document';
 import {openVideoEditReview} from './video-edit-review';
 import {openCameraImageImport} from './browser-image-import';
@@ -112,6 +112,8 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   }:undefined;
   if(scanApi)prototype.api=scanApi;
   let closeQuestion:(()=>void)|undefined;
+  /** Agent-context identity of the open capture: its id and a session-local revision, never the library's own. */
+  const captureSelection=createCaptureRevisions();
   let closeScan:(()=>void)|undefined;
   const cancelScan=()=>{closeScan?.();closeScan=undefined;};
   let api: Bag | undefined;

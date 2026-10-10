@@ -157,8 +157,19 @@ test.describe('capture',()=>{
   const dialog=review(page);await expect(dialog.getByRole('heading')).toHaveText('Ask about Selected photo');await expect(dialog.getByRole('img')).toBeVisible();
   await dialog.getByRole('textbox',{name:'Content excerpt'}).fill('A reviewed description');await dialog.getByRole('button',{name:'Use in conversation',exact:true}).click();
   await expect(composer(page)).toHaveValue('Help me understand this image text or description.\n\nSource: Selected photo\n\nA reviewed description');
-  // The envelope still names the same item at the same revision; no content is in it.
+  // The envelope still names the same item at the same revision; no content is in it, and the
+  // revision is a session-local counter rather than the library's own revision.
   expect(await selectedObject(page)).toEqual(selected);expect(Object.keys(selected!).sort()).toEqual(['id','kind','revision']);
+  expect(selected!.revision).toMatch(/^capture-[0-9a-f]{12}-\d+$/);
+  const library=await page.evaluate(async id=>{const {browserPhotoLibrary}=await import('/src/prototype/browser-camera.ts');const row=await browserPhotoLibrary.read({id});return [row.revision,row.mutationRevision];},selected!.id.replace(/^native-camera-/,''));
+  for(const value of library)expect(JSON.stringify(selected)).not.toContain(value);
+ });
+ test('a changed photo is a new revision of the same identity',async({page})=>{
+  await photo(page,'ONLY');await page.getByRole('button',{name:'Photos',exact:true}).click();await page.getByRole('button',{name:/Captured photo/}).first().click();
+  await expect.poll(async()=>(await selectedObject(page))?.kind).toBe('photo');const selected=await selectedObject(page);
+  await page.getByRole('button',{name:'Favorite',exact:true}).click();await expect(page.getByRole('button',{name:'Remove from favorites',exact:true})).toBeVisible();
+  await expect.poll(async()=>(await selectedObject(page))?.revision).not.toBe(selected!.revision);
+  const changed=await selectedObject(page);expect(changed).toMatchObject({kind:'photo',id:selected!.id});expect(changed!.revision).toMatch(/^capture-[0-9a-f]{12}-\d+$/);
  });
  test('a photo trashed during its review adds nothing, and the other photo is never sent',async({page})=>{
   await photo(page,'FIRST');await photo(page,'SECOND');

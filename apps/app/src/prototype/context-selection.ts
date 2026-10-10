@@ -3,9 +3,10 @@
  * notification and the capture a question is about. Dependency-free so the rules
  * run in node tests (test/context-selection.test.mjs).
  *
- * Identities are opaque. A display name, path, provider URI or native revision
- * string never becomes an identity; content is shared only as an excerpt the owner
- * reviewed. */
+ * Identities are opaque. A display name, path or provider URI never becomes an
+ * identity, and neither does a folder's or a capture's own revision string (those
+ * embed names, sizes and times): their shared revision is a counter local to this
+ * app session. Content is shared only as an excerpt the owner reviewed. */
 type Bag = Record<string, any>;
 const OPAQUE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 export const FOLDER_CONTEXT_EVENT = 'alpha-folder-context';
@@ -45,6 +46,8 @@ export function folderSignature(scope: FolderScope): string {
   return JSON.stringify([scope.folder.id, scope.folder.revision, scope.entries.map(entry => [entry.id, entry.revision]).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)]);
 }
 
+/** Random per app session, so a later session can never repeat a revision for other content. */
+const sessionMarker = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), byte => byte.toString(16).padStart(2, '0')).join('');
 export type FolderSelection = { kind: 'folder'; id: string; revision: string };
 const FOLDER_REVISIONS_KEPT = 64;
 /** Maps each distinct listing of a folder to a counter that is local to this app session.
@@ -53,7 +56,7 @@ const FOLDER_REVISIONS_KEPT = 64;
  * or a loaded entry changes, and reveals nothing about names, sizes or times. */
 export function createFolderRevisions() {
   const seen = new Map<string, { signature: string; revision: number }>();
-  const session = Array.from(crypto.getRandomValues(new Uint8Array(6)), byte => byte.toString(16).padStart(2, '0')).join('');
+  const session = sessionMarker();
   let counter = 0;
   return (scope: FolderScope | undefined): FolderSelection | undefined => {
     if (!scope) return undefined;
@@ -135,15 +138,27 @@ export function noticeExcerpt(notice: Notice): string {
 }
 
 export type CaptureSelection = { kind: 'photo' | 'video'; id: string; revision: string };
-/** A saved photo or video as an identity. Android's library revision gains a '|generation'
- * suffix once an item was favorited, trashed or restored, and the wire contract refuses '|'
- * (the whole message would then fail to send while that item is open). The separator is
- * rewritten one-to-one: library revisions never contain '.'. An identity that still is not
- * opaque is not shared at all. */
-export function captureSelection(row: { kind?: string; id?: unknown; revision?: unknown } | undefined): CaptureSelection | null {
-  if (!row || typeof row.id !== 'string' || typeof row.revision !== 'string' || row.revision.includes('.') && row.revision.includes('|')) return null;
-  const revision = row.revision.replace(/\|/g, '.');
-  return OPAQUE.test(row.id) && OPAQUE.test(revision) ? { kind: row.kind === 'video' ? 'video' : 'photo', id: row.id, revision } : null;
+const CAPTURE_REVISIONS_KEPT = 256;
+/** Maps each saved photo or video to an identity whose revision is a counter local to this
+ * app session. The library's own revision never leaves the phone: on Android it is the item's
+ * added time and byte size (AlphaPhotosPlugin.metadata), with a '|generation' suffix the wire
+ * contract would refuse once the item was favorited, trashed or restored. The counter changes
+ * exactly when that item's library revision or mutation revision changes, so an edited,
+ * trashed, restored or replaced capture is never the identity that was shared before. An item
+ * without an opaque id or a library revision has no identity. */
+export function createCaptureRevisions() {
+  const seen = new Map<string, { signature: string; revision: number }>();
+  const session = sessionMarker();
+  let counter = 0;
+  return (row: { kind?: string; id?: unknown; revision?: unknown; mutationRevision?: unknown } | undefined): CaptureSelection | null => {
+    if (!row || typeof row.id !== 'string' || !OPAQUE.test(row.id) || typeof row.revision !== 'string' || !row.revision) return null;
+    const signature = JSON.stringify([row.revision, typeof row.mutationRevision === 'string' ? row.mutationRevision : null]), previous = seen.get(row.id);
+    const revision = previous?.signature === signature ? previous.revision : ++counter;
+    // Most recently used last. A forgotten item simply gets a new revision when opened again.
+    seen.delete(row.id); seen.set(row.id, { signature, revision });
+    if (seen.size > CAPTURE_REVISIONS_KEPT) seen.delete(seen.keys().next().value as string);
+    return { kind: row.kind === 'video' ? 'video' : 'photo', id: row.id, revision: 'capture-' + session + '-' + revision };
+  };
 }
 
 export type CaptureQuestion =

@@ -19,14 +19,16 @@ those gates stay open (see [current status](mvp-current-status.md)).
 | Files folder (`files-tree-adapter.ts`) | `folder`, opaque tree id, session-local `listing-<session>-N` counter | Names and types of the loaded entries of that one folder. No file or subfolder contents | The folder is left, a file is opened, or access ends |
 | Selected document (`selection-adapter.ts`) | `document`, picker capability, accept epoch plus rename count | The shown text or PDF page | Closed, forgotten, reselected or renamed |
 | Alpha Phone notification (`notifications-adapter.ts`) | `notification`, id, revision, `accountId: own` | That notification's shown title and text | The shade closes, or the row is dismissed, updated or hidden |
-| Saved photo or video (`camera-adapter.ts`) | `photo` or `video`, library id and revision (`captureSelection`) | The open item, described or read locally (English OCR) | Another item opens, or it is edited, trashed or removed |
+| Saved photo or video (`camera-adapter.ts`) | `photo` or `video`, library id, session-local `capture-<session>-N` counter (`createCaptureRevisions`) | The open item, described or read locally (English OCR) | Another item opens, or it is edited, favorited, trashed or removed |
 | Camera frame | none | One unsaved frame | The camera closes or restarts |
 | Settings page (`context-selection.ts`) | `settings`, section slug only | none | The page changes. Credential pages have no identity |
 
 The provider's own folder revision embeds the display name, so it is used only for local
-comparison and never sent. Android's photo library revision gains a `|generation` suffix once
-an item was favorited, trashed or restored; the wire contract refuses `|`, so `captureSelection`
-rewrites that separator one-to-one and shares no identity it cannot make opaque.
+comparison and never sent. The photo library's own revision is not sent either: on Android it
+is the item's added time and byte size, with a `|generation` suffix (which the wire contract
+refuses) once an item was favorited, trashed or restored. The shared counter changes exactly
+when that item's library revision or mutation revision changes. The photo `id` is still the
+library's item id (on Android the MediaStore row number).
 
 ## Change during review
 

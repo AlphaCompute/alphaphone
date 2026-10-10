@@ -116,28 +116,43 @@ test('a capture question carries the exact open item; a library search is never 
  assert.equal(m.captureQuestion('files','ask','pv.ask',{open:'x'}),undefined);
  assert.equal(m.captureQuestion('photos','share','v.share',{open:'x'}),undefined);
 });
-test('a saved capture identity is opaque even when the library revision is not',()=>{
- // Browser library: already opaque, passed through unchanged.
- assert.deepEqual(m.captureSelection({kind:'image',id:'native-camera-3f0c',revision:'9d2e'}),{kind:'photo',id:'native-camera-3f0c',revision:'9d2e'});
- // Android before any favorite or trash change: DATE_ADDED:SIZE.
- assert.deepEqual(m.captureSelection({kind:'video',id:'native-camera-v:41',revision:'1760000000:52344'}),{kind:'video',id:'native-camera-v:41',revision:'1760000000:52344'});
- // Android after one (AlphaPhotosPlugin.metadata appends "|generation"): the wire contract refuses
- // '|', which would fail every message sent while that item is open.
- const flagged={kind:'image',id:'native-camera-42',revision:'1760000000:52344|917'};
- assert.throws(()=>sanitizePhoneContext({view:'photos',revision:1,sensitive:false,selectedObject:{kind:'photo',id:flagged.id,revision:flagged.revision}}));
- const selection=m.captureSelection(flagged);
- assert.deepEqual(selection,{kind:'photo',id:'native-camera-42',revision:'1760000000:52344.917'});
- assert.deepEqual(sanitizePhoneContext({view:'photos',revision:1,sensitive:false,selectedObject:selection}).selectedObject,selection);
- // Distinct library revisions stay distinct, and the generation still changes the identity.
- assert.notEqual(m.captureSelection({...flagged,revision:'1760000000:52344|918'}).revision,selection.revision);
- assert.notEqual(m.captureSelection({...flagged,revision:'1760000000:52344'}).revision,selection.revision);
+test('a saved capture identity is its id and a local counter, never the library revision',()=>{
+ const captures=m.createCaptureRevisions();
+ // Android's library revision is DATE_ADDED:SIZE, with "|generation" appended after a favorite,
+ // trash or restore (AlphaPhotosPlugin.metadata). Neither the time nor the size is an identity,
+ // and the wire contract refuses '|', which would fail every message sent while that item is open.
  const java=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaPhotosPlugin.java','utf8');
  assert.match(java,/item\.put\("revision",base\+\(Build\.VERSION\.SDK_INT>=30&&marker\.startsWith\(base\+"\|"\)\?"\|"\+row\.getLong\(9\):""\)\)/,'Android revision format');
- // Anything that cannot be made opaque one-to-one is not shared.
- for(const bad of [undefined,{},{id:'native-camera-1'},{id:'native-camera-1',revision:'a.b|c'},{id:'native-camera-1',revision:'has space'},{id:'/storage/DCIM/1.jpg',revision:'1'},{id:'native-camera-1',revision:7}])assert.equal(m.captureSelection(bad),null);
+ const plain={kind:'image',id:'native-camera-42',revision:'1760000000:52344',mutationRevision:'1760000000:52344:916:0'};
+ const flagged={...plain,revision:'1760000000:52344|917',mutationRevision:'1760000000:52344:917:0'};
+ assert.throws(()=>sanitizePhoneContext({view:'photos',revision:1,sensitive:false,selectedObject:{kind:'photo',id:flagged.id,revision:flagged.revision}}));
+ const first=captures(plain);
+ assert.deepEqual(Object.keys(first).sort(),['id','kind','revision']);assert.equal(first.kind,'photo');assert.equal(first.id,'native-camera-42');
+ assert.match(first.revision,/^capture-[0-9a-f]{12}-1$/);
+ assert.doesNotMatch(JSON.stringify(first),/1760000000|52344|\|/,'no added time, size or provider separator');
+ assert.deepEqual(captures({...plain}),first,'an unchanged item keeps its identity');
+ // A favorite, trash, restore or edit changes the library revision, so the identity changes too.
+ const second=captures(flagged);
+ assert.equal(second.id,first.id);assert.notEqual(second.revision,first.revision);assert.doesNotMatch(JSON.stringify(second),/1760000000|52344|917|\|/);
+ assert.deepEqual(sanitizePhoneContext({view:'photos',revision:1,sensitive:false,selectedObject:second}).selectedObject,second);
+ // The browser library keeps one revision per item and changes only its mutation revision.
+ const browser={kind:'video',id:'native-camera-3f0c',revision:'9d2e',mutationRevision:'m1'};
+ const video=captures(browser);assert.equal(video.kind,'video');
+ assert.notEqual(captures({...browser,mutationRevision:'m2'}).revision,video.revision,'a changed item');
+ // Going back to an earlier library revision is still a new identity, never a reused one.
+ assert.ok(![first.revision,second.revision].includes(captures(plain).revision));
+ // Two items never share a revision, and another app session never repeats one.
+ assert.notEqual(captures({...plain,id:'native-camera-43'}).revision,captures(plain).revision);
+ assert.notEqual(m.createCaptureRevisions()(plain).revision,first.revision);
+ // Remembered items are bounded; a forgotten item gets a new revision, never an old one.
+ const issued=new Set();for(let index=0;index<300;index++){const next=captures({...plain,id:'native-camera-many-'+index}).revision;assert.ok(!issued.has(next));issued.add(next);}
+ assert.ok(!issued.has(captures({...plain,id:'native-camera-many-0'}).revision));
+ // Anything without an opaque id or a library revision has no identity.
+ for(const bad of [undefined,{},{id:'native-camera-1'},{id:'native-camera-1',revision:''},{id:'/storage/DCIM/1.jpg',revision:'1'},{id:'has space',revision:'1'},{id:'native-camera-1',revision:7}])assert.equal(captures(bad),null);
  const adapter=readFileSync('apps/app/src/prototype/camera-adapter.ts','utf8');
+ assert.match(adapter,/const captureSelection=createCaptureRevisions\(\);/);
  assert.equal((adapter.match(/nativePhotoSelection: ?captureSelection\(/g)||[]).length,2);
- assert.doesNotMatch(adapter,/nativePhotoSelection: ?\{/,'every published photo identity goes through captureSelection');
+ assert.doesNotMatch(adapter,/nativePhotoSelection: ?\{/,'every published photo identity goes through the local mapping');
 });
 test('the native adapter passes an item identity, not a generic wrapper, to the capture question',()=>{
  const source=readFileSync('apps/app/src/prototype/native-adapter.ts','utf8');
