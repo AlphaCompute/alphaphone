@@ -23,8 +23,9 @@ async function fenceNetwork(page: Page, serve?: (route: Route) => Promise<unknow
   return foreign;
 }
 
+type RevokeMode = 'revoked' | 'unsupported' | 'failed' | 'refused-in-body' | 'not-revoked-status' | 'no-content' | 'unauthorized' | 'server-error' | 'cancelled';
 interface NativeCall { plugin: string; method: string; slot?: string; url?: string; http?: string; authorization?: string; path?: string }
-interface AndroidOptions { selection?: unknown; remoteCredential?: boolean; cloudCredential?: boolean; balance?: number; revoke?: 'revoked' | 'unsupported' | 'failed'; packaged?: boolean }
+interface AndroidOptions { selection?: unknown; remoteCredential?: boolean; cloudCredential?: boolean; balance?: number; revoke?: RevokeMode; packaged?: boolean }
 /** Production Android as the renderer sees it: resident Agent plugin plus AlphaConnection storage and transport. */
 async function android(page: Page, options: AndroidOptions) {
   await page.addInitScript(({ options, SELECTION, origin, owner, token }) => {
@@ -52,6 +53,8 @@ async function android(page: Page, options: AndroidOptions) {
       if (plugin === 'AlphaVoiceCloud') return { microphone: 'granted' };
       if (plugin === 'Agent') {
         if (method === 'getStatus') return { packaged: options.packaged !== false, state: 'stopped', serviceActive: false, socketListening: false };
+        // A held stop lets a test cancel sign-out before any revocation request is issued.
+        if (method === 'stop' && w.holdStop) await new Promise<void>(resolve => { w.releaseStop = resolve; });
         if (method === 'request') {
           const body = input.path === '/api/auth/me' ? { identity: { id, kind: 'owner' }, access: { role: 'OWNER', mode: 'local' } }
             : input.path === '/api/agents' ? { agents: [{ id, name: 'Alpha', status: 'running' }] }
@@ -72,7 +75,14 @@ async function android(page: Page, options: AndroidOptions) {
         if (url.pathname === '/api/v1/credits/balance') return { status: 200, data: { balance: options.balance ?? 0 } };
         if (url.pathname === '/api/v1/api-keys/current' && input.method === 'DELETE') {
           if (options.revoke === 'failed') throw Error('Connection request failed');
-          return options.revoke === 'revoked' ? { status: 200, data: { success: true, status: 'revoked', credentialId: id, revokedAt: new Date().toISOString() } } : { status: 405, data: {} };
+          if (options.revoke === 'revoked') return { status: 200, data: { success: true, status: 'revoked', credentialId: id, revokedAt: new Date().toISOString() } };
+          // Success statuses that do not confirm a revocation, and refusals, are never reported as revoked.
+          if (options.revoke === 'refused-in-body') return { status: 200, data: { success: false, error: 'synthetic refusal' } };
+          if (options.revoke === 'not-revoked-status') return { status: 200, data: { success: true, status: 'active', credentialId: id } };
+          if (options.revoke === 'no-content') return { status: 204, data: null };
+          if (options.revoke === 'unauthorized') return { status: 401, data: { success: false } };
+          if (options.revoke === 'server-error') return { status: 500, data: {} };
+          return { status: 405, data: {} };
         }
         throw Error('Unexpected Cloud route: ' + url.pathname);
       }
@@ -86,7 +96,8 @@ const remoteSlot = `remote:${origin}`;
 /** No pairing, restore or credential mutation reached the saved remote agent. */
 function expectRemoteUntouched(calls: NativeCall[]) {
   expect(calls.filter(call => call.url?.startsWith(origin) || call.url?.includes('/api/auth/pair'))).toEqual([]);
-  expect(calls.filter(call => call.slot?.startsWith('remote:') && call.method !== 'secureRead')).toEqual([]);
+  // The saved remote credential is not read, written or removed.
+  expect(calls.filter(call => call.slot?.startsWith('remote:'))).toEqual([]);
 }
 
 for (const legacy of [{ name: 'remote agent', selection: { kind: 'remote', origin } }, { name: 'local development agent', selection: { kind: 'local', origin } }, { name: 'Cloud agent', selection: { kind: 'cloud', environment: 'production', agentId: agent, ownerId: owner } }]) {
@@ -150,14 +161,22 @@ test('production Android without a packaged agent says so and does not advertise
   expect((await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).not.toContain('start');
 });
 
-for (const mode of ['revoked', 'unsupported', 'failed'] as const) {
+for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-revoked-status', 'no-content', 'unauthorized', 'server-error', 'cancelled'] as const) {
   test(`production Android Cloud sign-out states only the revocation that happened: ${mode}`, async ({ page }) => {
     const foreign = await fenceNetwork(page);
     // Zero credits keeps the account panel open with its Sign out control.
     await android(page, { cloudCredential: true, balance: 0, revoke: mode });
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Add credits in Eliza Cloud', exact: true })).toBeVisible();
+    const before = (await nativeCalls(page)).length;
+    if (mode === 'cancelled') await page.evaluate(() => { (window as any).holdStop = true; });
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    if (mode === 'cancelled') {
+      // Cancel while the resident agent is still stopping: sign-out still removes the local key.
+      await page.waitForFunction(() => typeof (window as any).releaseStop === 'function');
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await page.evaluate(() => { (window as any).holdStop = false; (window as any).releaseStop(); });
+    }
     const status = page.getByRole('status');
     if (mode === 'revoked') await expect(status).toContainText('Signed out of Eliza Cloud. This sign-in was revoked.');
     else {
@@ -167,11 +186,13 @@ for (const mode of ['revoked', 'unsupported', 'failed'] as const) {
     const calls = await nativeCalls(page);
     const revocations = calls.filter(call => call.http === 'DELETE');
     // One attempt, to the fixed self-revocation route, presenting only the key being revoked.
-    expect(revocations.map(call => [call.url, call.authorization])).toEqual([['https://api.eliza.app/api/v1/api-keys/current', 'Bearer synthetic-cloud-key']]);
-    // The resident process is stopped before its key is revoked, and the local key is always removed.
-    const stop = calls.findIndex(call => call.plugin === 'Agent' && call.method === 'stop');
+    // A cancelled sign-out sends none. The key is presented to no other host in any outcome.
+    expect(revocations.map(call => [call.url, call.authorization])).toEqual(mode === 'cancelled' ? [] : [['https://api.eliza.app/api/v1/api-keys/current', 'Bearer synthetic-cloud-key']]);
+    expect(calls.filter(call => call.authorization && !call.url?.startsWith('https://api.eliza.app/'))).toEqual([]);
+    // This sign-out stops the resident process before its key is revoked, and the local key is always removed.
+    const stop = calls.findIndex((call, index) => index >= before && call.plugin === 'Agent' && call.method === 'stop');
     expect(stop).toBeGreaterThan(-1);
-    expect(stop).toBeLessThan(calls.indexOf(revocations[0]));
+    if (mode !== 'cancelled') expect(stop).toBeLessThan(calls.indexOf(revocations[0]));
     expect(await secureValues(page)).not.toHaveProperty('cloud:production');
     await expect(page.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
     await page.reload();
