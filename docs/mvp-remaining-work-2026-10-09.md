@@ -465,13 +465,13 @@ Evidence/source: [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-run
 
 ## Live integrations
 
-### MVP-34 Prove managed Cloud and Cerebras with real accounts
+### MVP-34 Qualify production Cloud inference and approved provider profiles
 
 **P0 · deployment · AP-03, AP-04**
 
 Current: Synthetic transports and historical local inference do not establish the current release service path.
 
-Remaining: Operator provisions approved accounts/credits or key; verify actual Qwen model, provider health, expiry/revoke/wrong owner, credit failure/top-up and account replacement during requests. Keep credentials out of logs and audit artifacts.
+Remaining: Operator provisions approved production Cloud accounts/credits; verify actual Qwen model, provider health, expiry/revoke/wrong owner, credit failure/top-up and account replacement during requests. Qualify direct Cerebras only as a separately retained profile. Keep credentials out of logs and audit artifacts.
 
 Done when: Current source-bound real round trip, correct billing/model identity and controlled recovery; no inference-ready claim from a saved credential alone.
 
@@ -489,7 +489,7 @@ Remaining: Resolve OAuth exchange/approved redirect, deploy supported route/capa
 
 Done when: Real selected mailbox read and mutation receipts, correct scope/account isolation and no unsupported controls.
 
-Depends on: MVP-04, MVP-17.
+Depends on: MVP-04.
 
 Evidence/source: [docs/cloud-production-validation.md](../docs/cloud-production-validation.md), [apps/app/src/runtime/cloud-protocol.ts](../apps/app/src/runtime/cloud-protocol.ts).
 

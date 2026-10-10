@@ -714,9 +714,9 @@
         "AP-03",
         "AP-04"
       ],
-      "title": "Prove managed Cloud and Cerebras with real accounts",
+      "title": "Qualify production Cloud inference and approved provider profiles",
       "current": "Synthetic transports and historical local inference do not establish the current release service path.",
-      "remaining": "Operator provisions approved accounts/credits or key; verify actual Qwen model, provider health, expiry/revoke/wrong owner, credit failure/top-up and account replacement during requests. Keep credentials out of logs and audit artifacts.",
+      "remaining": "Operator provisions approved production Cloud accounts/credits; verify actual Qwen model, provider health, expiry/revoke/wrong owner, credit failure/top-up and account replacement during requests. Qualify direct Cerebras only as a separately retained profile. Keep credentials out of logs and audit artifacts.",
       "acceptance": "Current source-bound real round trip, correct billing/model identity and controlled recovery; no inference-ready claim from a saved credential alone.",
       "depends_on": [
         "MVP-04",
@@ -740,8 +740,7 @@
       "remaining": "Resolve OAuth exchange/approved redirect, deploy supported route/capability versions, consent least scopes, load threads/attachments, account-switch/revoke, provider drafts and archive/trash/read-state.",
       "acceptance": "Real selected mailbox read and mutation receipts, correct scope/account isolation and no unsupported controls.",
       "depends_on": [
-        "MVP-04",
-        "MVP-17"
+        "MVP-04"
       ],
       "sources": [
         "docs/cloud-production-validation.md",
