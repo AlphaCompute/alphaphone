@@ -85,3 +85,18 @@ test('the Bluetooth fact is the radio state on Android 12 and later, not the sto
  assert.match(read,/SDK_INT<Build\.VERSION_CODES\.S\)return binarySwitch\(Settings\.Global\.getInt\(resolver,Settings\.Global\.BLUETOOTH_ON\)\)/);
  assert.match(read,/adapter==null\?null:adapterSwitch\(adapter\.getState\(\)\)/);
 });
+test('closing Android\'s own shade reaches the tile watch through a native window-focus notice',()=>{
+ // Measured on an API 36 emulator: while Android's shade holds window focus and after it returns,
+ // the page gets no focus, blur, visibilitychange or appResumed, so only the activity can tell it.
+ const activity=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/MainActivity.java','utf8');
+ const hook=activity.slice(activity.indexOf('public void onWindowFocusChanged(boolean hasFocus)'));
+ assert.ok(hook.length<activity.length&&hook.length>0,'MainActivity observes window focus');
+ const body=hook.slice(0,hook.indexOf('\n }\n'));
+ assert.match(body,/super\.onWindowFocusChanged\(hasFocus\)/);
+ assert.match(body,/if\(hasFocus&&/,'only a regained focus is announced');
+ assert.match(body,/window\.dispatchEvent\(new Event\('focus'\)\)/);
+ // The renderer side: the watch listens for that event and the shell re-reads only an open shade.
+ assert.match(source,/export function watchReturnToApp[\s\S]{0,400}window\.addEventListener\('focus', check\)/);
+ const shell=readFileSync('apps/app/src/prototype/agent-adapter.ts','utf8');
+ assert.match(shell,/watchReturnToApp\(\(\) => \{ if \(this\.live && this\.S\(\)\.shade\) this\.refreshTileFacts\(\); \}\)/);
+});

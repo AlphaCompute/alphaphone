@@ -140,6 +140,16 @@ public class MainActivity extends BridgeActivity {
   if (getBridge() != null && !isAssistantSurface() && Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_HOME))
    getBridge().getWebView().evaluateJavascript("window.dispatchEvent(new Event('launcher-home'))", null);
  }
+ /**
+  * Android's own shade, quick settings or a system dialog take this window's focus without pausing
+  * the activity, and the page sees nothing: no focus, visibilitychange or appResumed (measured on
+  * API 36). Tell the page when focus returns, so a system switch changed meanwhile is read again.
+  */
+ @Override public void onWindowFocusChanged(boolean hasFocus){
+  super.onWindowFocusChanged(hasFocus);
+  if(hasFocus&&getBridge()!=null&&getBridge().getWebView()!=null)
+   getBridge().getWebView().evaluateJavascript("window.dispatchEvent(new Event('focus'))",null);
+ }
  @Override public void onResume(){super.onResume();if(getBridge()!=null&&getBridge().getWebView()!=null)AlphaDevicePlugin.applyTextScale(this);}
  @Override public void onConfigurationChanged(android.content.res.Configuration configuration){super.onConfigurationChanged(configuration);if(getBridge()!=null&&getBridge().getWebView()!=null)AlphaDevicePlugin.applyTextScale(this);}
 }
