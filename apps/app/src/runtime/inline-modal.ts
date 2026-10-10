@@ -14,7 +14,8 @@ export function createInlineModal(close:()=>void,returnFocus?:()=>HTMLElement|nu
   let branch:HTMLElement=container;
   const phone=container.closest<HTMLElement>('.os');
   while(branch!==phone&&branch.parentElement){
-   for(const sibling of branch.parentElement.children)if(sibling!==branch&&sibling instanceof HTMLElement&&!sibling.inert)backgrounds.push(sibling);
+   // The toast region stays live: a status message raised from inside the modal must still be announced.
+   for(const sibling of branch.parentElement.children)if(sibling!==branch&&sibling instanceof HTMLElement&&!sibling.inert&&!sibling.matches('[data-alpha-toast]'))backgrounds.push(sibling);
    branch=branch.parentElement;
   }
   const ownsFocus=()=>container.isConnected&&!container.closest('[inert]')&&!document.querySelector('dialog[open]');

@@ -205,6 +205,36 @@ test.describe('menus and sheets over a scrim own focus', () => {
   });
 });
 
+test.describe('toast status messages', () => {
+  test('a toast lands in a polite live region that exists before it appears', async ({ page }) => {
+    await page.goto('/?mode=mock&start=files:preview');
+    const region = page.locator('[data-alpha-toast]');
+    await expect(region).toHaveCount(1);
+    await expect(region).toHaveAttribute('aria-live', 'polite');
+    // Present and empty beforehand: a live region inserted together with its text is not announced reliably.
+    await expect(region).toBeEmpty();
+    expect(await region.evaluate(el => !!el.closest('[inert],[aria-hidden="true"]'))).toBe(false);
+    await page.getByRole('button', { name: 'Delete file', exact: true }).click();
+    await expect(region).toContainText('Northpoint_TermSheet_v3.pdf');
+    await expect(region.getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
+  });
+
+  test('a refusal raised from an open menu is still announced', async ({ page }) => {
+    await page.addInitScript(offline);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Browser', exact: true }).click();
+    await page.getByRole('button', { name: 'Menu', exact: true }).click();
+    const menu = page.getByRole('dialog', { name: 'Browser menu', exact: true });
+    await menu.getByRole('button', { name: 'Find in page', exact: true }).click();
+    const region = page.locator('[data-alpha-toast]');
+    await expect(region).toContainText('Load a page before finding text in it.');
+    // The menu is still open and holds the page inert; the status region is not part of what it retired.
+    await expect(menu).toBeVisible();
+    expect(await region.evaluate(el => !!el.closest('[inert],[aria-hidden="true"]'))).toBe(false);
+    expect(await page.getByRole('button', { name: 'Tabs', exact: true }).count()).toBe(0);
+  });
+});
+
 test.describe('photo editor in landscape', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 915, height: 412 } });
   test('scrolls to Rotate, Crop and the filters, which sit below the preview', async ({ page }) => {

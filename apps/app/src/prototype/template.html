@@ -3539,7 +3539,7 @@
       <sc-if value="{{workflows.b.sheetOn}}">
         <div ref="{{workflows.stepModal}}" data-alpha-popup style="display: contents">
         <button tabindex="-1" aria-label="Close" onClick="{{workflows.b.closeSheet}}" style="position: absolute; inset: 0; background: var(--scrim); z-index: 8"></button>
-        <div class="enter" role="dialog" aria-label="Step editor" style="position: absolute; left: 0; right: 0; bottom: 0; z-index: 9; background: var(--bg); border-radius: 28px 28px 0 0; padding: 10px 20px 32px; box-shadow: 0 -12px 30px var(--shc); max-height: 720px; overflow-y: auto; box-sizing: border-box">
+        <div class="enter" role="dialog" aria-label="Step editor" style="position: absolute; left: 0; right: 0; bottom: 0; z-index: 9; background: var(--bg); border-radius: 28px 28px 0 0; padding: 10px 20px 32px; box-shadow: 0 -12px 30px var(--shc); max-height: min(720px, 100%); overflow-y: auto; box-sizing: border-box">
           <div style="display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding-bottom: 6px">
             <span style="width: 44px" aria-hidden="true"></span>
             <span style="width: 36px; height: 4px; border-radius: 2px; background: var(--line)" aria-hidden="true"></span>
@@ -4180,14 +4180,14 @@
 </sc-if>
 
 
+<div data-alpha-toast aria-live="polite" aria-atomic="true" style="position: absolute; bottom: {{toastBottom}}px; left: 16px; right: 16px; display: flex; justify-content: center; z-index: 97; pointer-events: none">
 <sc-if value="{{toastOn}}">
-<div style="position: absolute; bottom: {{toastBottom}}px; left: 16px; right: 16px; display: flex; justify-content: center; z-index: 97; pointer-events: none">
   <div class="drop" style="pointer-events: auto; min-height: 48px; max-width: 100%; box-sizing: border-box; padding: 0 {{toastPadR}}px 0 18px; border-radius: 24px; background: var(--fg); color: var(--bg); font-size: 14px; font-weight: 600; display: flex; gap: 14px; align-items: center; box-shadow: 0 8px 24px var(--shc)">
     <span style="flex-grow: 1; min-width: 0; padding: 8px 0; overflow-wrap: anywhere">{{toast}}</span>
     <sc-if value="{{toastUndo}}"><button onClick="{{doUndo}}" style="flex-shrink: 0; min-height: 40px; padding: 0 14px; border-radius: 20px; color: var(--bg); background: rgba(127,127,127,.28); font-weight: 700; font-size: 14px">Undo</button></sc-if>
   </div>
-</div>
 </sc-if>
+</div>
 
 <sc-if value="{{showHint}}">
 <div style="position: absolute; left: 0; right: 0; bottom: 100px; z-index: 99; display: flex; justify-content: center; pointer-events: none">

@@ -43,6 +43,12 @@ focus while open: the page under them leaves the tab order and the accessibility
 Escape and Back close them, and focus returns to the control that opened them when that
 control still exists. Their scrim stays exposed as a named close control for touch.
 
+Toasts ("Saved", refusals, "Deleted … Undo") are written into a polite live region that
+is always present, and an open menu or inline dialog does not take that region out of
+the accessibility tree. Whether TalkBack speaks them is a device check. A top-layer
+`<dialog>` still makes the region inert while it is open; those dialogs show their own
+status text.
+
 The recovery screen dismisses any open modal dialog when it appears. A modal dialog is
 drawn above everything else and would otherwise leave Reload covered and unfocusable.
 
