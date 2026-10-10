@@ -12,6 +12,11 @@
  * same SHA, otherwise the script refuses to overwrite it). A dirty tree is
  * recorded and can never qualify.
  *
+ * Qualification is not a distribution decision, but it never hides one: a test-mocks
+ * build cannot qualify, and the result names every release blocker verify-apks recorded
+ * (releaseBlockers; unsigned, unpackaged runtime, unqualified speech, unresolved font
+ * licence) and reports releasesDistributable:false while any remains.
+ *
  * Evidence scope: source tests, browser engines on a development server and APK
  * builds. It is not an emulator, AOSP image, real-integration or device result.
  */
@@ -22,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import { checkRequiredPlaywrightResults } from "../vendor/eliza/packages/scripts/check-required-playwright-results.ts";
 
 import { STORAGE_SPECS } from "./storage-specs.mjs";
+import { releaseBlockers } from "./release-blockers.mjs";
 export { STORAGE_SPECS };
 export const ENGINES = Object.freeze(["chromium", "firefox", "webkit"]);
 
@@ -57,8 +63,18 @@ export function verdict(result) {
     && step.unexpected === 0 && step.flaky === 0 && step.skipped === 0
     && Array.isArray(step.failures) && step.failures.length === 0;
   return Boolean(result.clean && result.upstream?.matches
-    && passed(result.verify) && passed(result.androidBuild) && passed(result.bundleAudit)
+    && passed(result.verify) && passed(result.androidBuild) && result.androidBuild.testMocks === false && passed(result.bundleAudit)
     && ENGINES.every(engine => browserPassed(result.storageSpecs?.[engine])));
+}
+
+/**
+ * Distribution summary of a qualify run: distributable only when every release row is
+ * recorded distributable with no named blocker; otherwise each blocker is listed once.
+ */
+export function releaseDistribution(apks) {
+  const releases = (apks ?? []).filter(row => row.mode === "release");
+  const releaseBlockers = [...new Set(releases.flatMap(row => row.distributionBlockers ?? ["release blockers were not recorded"]))];
+  return { releasesDistributable: releases.length > 0 && releases.every(row => row.distributable === true) && releaseBlockers.length === 0, releaseBlockers };
 }
 
 function git(args) {
@@ -131,6 +147,7 @@ function main() {
       result.androidBuild.apks = manifest.results.map(row => ({
         variant: row.variant, mode: row.mode, file: row.file, sha256: row.sha256, signed: row.signed,
         runtime: row.runtime, distributable: row.distributable, bundleAudit: row.bundleAudit,
+        ...(row.mode === "release" ? { distributionBlockers: releaseBlockers(row, { manifestTestMocks: manifest.testMocks }) } : {}),
       }));
       const expected = ["standalone/debug", "standalone/release", "launcher/debug", "launcher/release"];
       const built = manifest.results.map(row => `${row.variant}/${row.mode}`).sort();
@@ -178,9 +195,9 @@ function main() {
   result.qualified = verdict(result);
   // Qualification of the head is not a distribution decision: releases without
   // the packaged resident runtime (--allow-unpackaged-runtime) stay non-distributable.
-  const releases = (result.androidBuild?.apks ?? []).filter(row => row.mode === "release");
-  result.releasesDistributable = releases.length > 0 && releases.every(row => row.distributable === true);
+  Object.assign(result, releaseDistribution(result.androidBuild?.apks));
   write();
+  for (const blocker of result.releaseBlockers) console.warn(`RELEASE BLOCKER ${blocker}`);
   console.log(`${path.join(directory, "result.json")}: ${result.qualified ? "QUALIFIED" : "NOT QUALIFIED"}; releases ${result.releasesDistributable ? "distributable" : "NOT distributable"} (${result.evidenceScope})`);
   if (!result.qualified) process.exitCode = 1;
 }

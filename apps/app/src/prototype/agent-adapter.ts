@@ -912,7 +912,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       out.tiles = honestTiles(out.tiles || [], facts, { flashlight: this.flashlightAvailable !== false, act: key => void this.tileAction(key) });
       out.onBright = () => void this.displayHandoff();
     } else {
-      out.tiles = (out.tiles || []).map((tile: Shell) => ({ ...tile, toggle: () => void DailyApps.perform({ action: 'settings' }).catch(() => this.toast('Android settings is unavailable.')) }));
+      out.tiles = (out.tiles || []).map((tile: Shell) => ({ ...tile, pressed: undefined, toggle: () => void DailyApps.perform({ action: 'settings' }).catch(() => this.toast('Android settings is unavailable.')) }));
       out.onBright = () => void DailyApps.perform({ action: 'settings' }).catch(() => this.toast('Android settings is unavailable.'));
     }
     return out;

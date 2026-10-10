@@ -76,11 +76,20 @@ export function tileFactsFromSnapshot(snapshot: unknown, torch?: boolean): TileF
   if (typeof torch === 'boolean') facts.torch = torch;
   return facts;
 }
-export type ShadeTile = { label: string; on?: boolean; css?: string; toggle?: () => void; stateText?: string; [key: string]: unknown };
+/** `on` colours the tile; `aria` is its accessible name and `pressed` its toggle state (toggles only). */
+export type ShadeTile = { label: string; on?: boolean; aria?: string; pressed?: boolean; css?: string; toggle?: () => void; stateText?: string; [key: string]: unknown };
 /** Visible state under each tile. An unread switch says what the tile does instead of looking off. */
 export function tileStateText(key: TileKey | null, on: boolean | undefined): string {
   if (typeof on === 'boolean') return on ? 'On' : 'Off';
   return key === 'torch' ? 'Tap to switch' : key === 'mic' ? 'Permissions' : 'Open settings';
+}
+/** Accessible name of a tile. A handoff tile opens an Android page and cannot be switched here, so it is
+ * announced as a button whose name carries the reported state ("Wi-Fi, on, opens Android settings")
+ * and never as a toggle. The flashlight is the one real toggle and keeps its plain name. */
+export function tileAccessibleName(label: string, key: TileKey | null, on: boolean | undefined): string {
+  if (key === 'torch') return label;
+  const state = typeof on === 'boolean' ? (on ? ', on' : ', off') : '';
+  return label + state + (key === 'mic' ? ', opens Android permission settings' : ', opens Android settings');
 }
 /** Present tiles with state only from native facts. Hide the flashlight without a native control.
  * Every tile except the flashlight only opens its Android page: Alpha cannot change these switches. */
@@ -88,7 +97,7 @@ export function honestTiles(tiles: ShadeTile[], facts: TileFacts, options: { fla
   return tiles.filter(tile => tileKeys[tile.label] !== 'torch' || options.flashlight).map(tile => {
     const key = tileKeys[tile.label] ?? null, fact = key ? facts[key] : undefined;
     const on = typeof fact === 'boolean' ? fact : undefined;
-    return { ...tile, on, stateText: tileStateText(key, on), css: (on ? 'background:var(--acc);color:#fff' : 'background:var(--s2);color:var(--fg)') + ';flex-direction:column;gap:3px', toggle: () => options.act(key, tile) };
+    return { ...tile, on, aria: tileAccessibleName(tile.label, key, on), pressed: key === 'torch' ? on : undefined, stateText: tileStateText(key, on), css: (on ? 'background:var(--acc);color:#fff' : 'background:var(--s2);color:var(--fg)') + ';flex-direction:column;gap:3px', toggle: () => options.act(key, tile) };
   });
 }
 /** Settings row wording for a system switch: the switch state when Android reported it, else the fallback. */

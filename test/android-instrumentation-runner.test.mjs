@@ -71,7 +71,7 @@ test("argument policy: short names, campaigns refused with their runner, clock a
     assert.throws(() => parseInstrumentationArgs(["--classes", name]), /own campaign/);
   assert.throws(() => parseInstrumentationArgs(["--classes", "RealClock"]), /clock-exclusive/);
   assert.equal(parseInstrumentationArgs(["--classes", "RealClock", "--clock-exclusive"]).classes[0], C("RealClock"));
-  assert.throws(() => parseInstrumentationArgs(["--classes", "PasswordAutofillOffer"]), /test-mocks/);
+  assert.throws(() => parseInstrumentationArgs(["--classes", "BrowserAutofill"]), /test-mocks/);
   assert.throws(() => parseInstrumentationArgs(["--all", "--classes", "Shell"]));
   assert.throws(() => parseInstrumentationArgs(["--variants", "standalone,standalone"]));
   assert.throws(() => parseInstrumentationArgs(["--classes", "Shell;id"]));
@@ -106,6 +106,27 @@ test("APK admission binds the app to the verify-apks manifest and the test APK t
 
 test("restart runner keeps the bookmark phase wired", () => {
   const source = fs.readFileSync("scripts/test-native-restart.mjs", "utf8");
+  // P-04 sign-in persistence: the phase the test class documents must have a runner case with its gate.
+  assert.match(source, /signin: \{\n\t\ttestClass: "BrowserSigninsInstrumentedTest",\n\t\tmethod: "signinProcessRestartPhase",\n\t\tgate: "signinPhase"/);
+  const signins = fs.readFileSync("android/app/src/androidTest/java/ai/elizaresearch/alphaphone/BrowserSigninsInstrumentedTest.java", "utf8");
+  assert.match(signins, /void signinProcessRestartPhase\(\)/);
+  for (const phase of ["prepare", "verify", "cleanup"]) assert.ok(signins.includes(`"${phase}"`), `sign-in restart phase ${phase}`);
+  assert.ok(signins.includes('getString("signinPhase")'));
   assert.match(source, /bookmark: \{\n\t\ttestClass: "BrowserContinuityInstrumentedTest",\n\t\tmethod: "bookmarkProcessRestartPhase",\n\t\tgate: "bookmarkPhase"/);
   assert.equal(JSON.parse(fs.readFileSync("package.json", "utf8")).scripts["test:android:instrumentation"], "node scripts/android-instrumentation.mjs");
+});
+
+test("every registered class exists in the app's instrumentation sources and declares the gates the runner passes", () => {
+  const roots = ["android/app/src/androidTest/java/ai/elizaresearch/alphaphone", "android/app/src/testMocks/androidTest/java/ai/elizaresearch/alphaphone"];
+  for (const [name, spec] of Object.entries(CLASS_REGISTRY)) {
+    const found = roots.map(root => path.join(root, `${name}InstrumentedTest.java`)).filter(file => fs.existsSync(file));
+    assert.equal(found.length, 1, `${name} must be exactly one class in the app instrumentation sources`);
+    assert.equal(found[0].includes("testMocks"), spec.testMocks === true, `${name} test-mocks flag must match its source set`);
+    const source = fs.readFileSync(found[0], "utf8");
+    for (const [gate, value] of Object.entries(spec.args ?? {}))
+      assert.ok(source.includes(`"${value}".equals(InstrumentationRegistry.getArguments().getString("${gate}")`), `${name} does not read gate ${gate}=${value}`);
+    for (const method of spec.phases ?? []) assert.match(source, new RegExp(`void ${method}\\(`), `${name} has no phase ${method}`);
+  }
+  // A core-loop class with a gate runs its gated methods instead of reporting them skipped.
+  assert.deepEqual(instrumentArgs(C("ClockHandoff")).slice(-6, -1), ["clockHandoff", "1", "-e", "class", C("ClockHandoff")]);
 });

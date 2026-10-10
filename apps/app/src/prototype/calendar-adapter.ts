@@ -4,6 +4,8 @@ import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import {calendarFormTimeProblem} from '../runtime/calendar-form-draft';
+import {mapsEventOriginFor} from '../runtime/maps-event-return';
+import {rememberNoteOrigin,forgetNoteOrigin,noteOriginSupported} from './note-origin-adapter';
 type Bag = Record<string, any>;
 const calendar = registerPlugin<any>('AlphaCalendar');
 const DAY=86400000;
@@ -305,6 +307,8 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           if(result.status==='conflict'){api.toast('This event changed. Reload it before editing. Nothing was overwritten.');return;}
           if(result.status!=='saved')throw Error('Unconfirmed calendar write');
           if(creationId&&result.creationId!==creationId)throw Error('Mismatched creation receipt');
+          // A new event from a note draft keeps a link to that note. The event is already saved either way.
+          if(creationId&&current.origin&&noteOriginSupported('event'))void rememberNoteOrigin('event',String(result.id),current.origin).then(linked=>{if(!linked&&owner===currentOwner&&currentOwner.live)api.toast('Event saved. The link to its note could not be saved.');});
           const targetDay=Number(current.off||0);
           // Retire only this exact submitted draft before an acknowledgement can be lost.
           currentOwner.calendarFormCommitted?.(api.get('calendar').form);
@@ -345,6 +349,8 @@ export function installCalendarAdapter(Component: any, views: Bag) {
         if(crossDate)out.ev.day=`${date(begin)} – ${date(end)}`;
       }
       out.ev.calName=calendars.find(c=>c.id===selected.nativeEvent.calendarId)?.name||'Android Calendar';
+      // The location hand-off names this event so Maps can offer an explicit way back to it.
+      if(selected.where&&selected.where!=='Phone'){const fromEvent=mapsEventOriginFor(selected,state.openDay??state.day??selected.off);out.ev.goWhere=()=>api.open('maps',{query:selected.where,...(fromEvent?{fromEvent}:{})});}
       const external=()=>void calendar.open({id:selected.alphaCalendarId,begin:selected.nativeEvent.begin,end:selected.nativeEvent.end}).catch(()=>api.toast('Android Calendar could not open this event.'));
       // Complex edits keep their native recurrence and account semantics.
       out.ev.edit=async()=>{
@@ -389,6 +395,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           const result=await calendar.remove({id:event.id,calendarId:event.calendarId,expected,revision:inspected.revision});
           if(owner!==currentOwner)return;
           if(result.status==='deleted'){
+            if(!event.seriesId&&!/:occ:-?\d+$/.test(String(event.id)))void forgetNoteOrigin('event',String(event.id));
             // The receipt belongs to the deleted event, not a newer detail or draft.
             const current=api.get('calendar');
             if(!document.hidden&&api.isActive()&&current.open===selected.id&&!current.form){

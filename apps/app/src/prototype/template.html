@@ -808,7 +808,7 @@
       <sc-if value="{{inbox.provider.canRetry}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.retry}}" style="padding:14px">{{inbox.provider.retryLabel}}</button></sc-if>
       <button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.check}}" style="padding:14px">Check saved receipt</button>
       <sc-if value="{{inbox.provider.canReload}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.reload}}" style="padding:14px">Reload exact review</button></sc-if>
-      <sc-if value="{{inbox.provider.canClear}}"><p style="font-size:12px;color:var(--mut)">The local draft stays on this device. If this operation succeeded, sending that draft again creates another message.</p><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.clear}}" style="padding:14px">{{inbox.provider.clearLabel}}</button></sc-if>
+      <sc-if value="{{inbox.provider.canClear}}"><p style="font-size:12px;color:var(--mut)">{{inbox.provider.draftNote}}</p><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.clear}}" style="padding:14px">{{inbox.provider.clearLabel}}</button></sc-if>
     </div>
   </sc-if>
 
@@ -951,6 +951,7 @@
         <h1 class="serif" style="margin: 0; font-size: 38px; line-height: 1.05; letter-spacing: -.01em">{{calendar.ev.title}}</h1>
         <div style="font-size: 17px; margin-top: 14px">{{calendar.ev.when}}</div>
         <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--mut); margin-top: 4px"><span style="width: 8px; height: 8px; border-radius: 4px; background: {{calendar.ev.dot}}"></span>{{calendar.ev.day}} · {{calendar.ev.calName}}</div>
+        <sc-if value="{{calendar.ev.hasOrigin}}"><div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 14px; color: var(--mut); margin-top: 8px"><span>{{calendar.ev.originLabel}}</span><button class="tap" aria-label="{{calendar.ev.originOpenLabel}}" onClick="{{calendar.ev.openOrigin}}" style="min-height: 44px; padding: 0 14px; border-radius: 18px; background: var(--s2); color: var(--fg); font-weight: 600">Open note</button></div></sc-if>
 
         <sc-if value="{{calendar.ev.recurringReminder}}">
           <div style="margin-top: 20px; font-size: 14px; color: var(--mut)">{{calendar.ev.reminderPolicy}}</div>
@@ -2010,6 +2011,7 @@
       </div></sc-if>
     </div>
   </sc-if>
+  <sc-if value="{{maps.eventReturnFloating}}"><button data-alpha-maps-event-return aria-label="Back to event" title="{{maps.backToEventTitle}}" onClick="{{maps.backToEvent}}" style="position: absolute; left: 12px; top: 114px; z-index: 5; background: var(--bg); color: var(--fg); box-shadow: 0 6px 22px var(--shc), 0 0 0 1px var(--line); height: 40px; padding: 0 14px 0 8px; border-radius: 20px; display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; flex-shrink: 0"><path d="{{ic.back}}"></path></svg>Back to event</button></sc-if>
   <sc-if value="{{maps.showSearch}}">
     <div data-alpha-app-header="main" data-alpha-app-header-overlay style="position: absolute; left: 12px; right: 12px; top: 52px; height: 54px; border-radius: 27px; background: var(--bg); box-shadow: 0 6px 22px var(--shc), 0 0 0 1px var(--line); display: flex; align-items: center; padding: 0 5px; z-index: 3">
     <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
@@ -2125,9 +2127,10 @@
       </div>
       <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 8px">
         <sc-for list="{{maps.dr.modes}}" as="md">
-          <button aria-label="{{md.label}}" onClick="{{md.go}}" style="flex: 1 1 0; min-width: max-content; padding: 0 8px; box-sizing: border-box; min-height: 40px; border-radius: 20px; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 13px; font-weight: 600; white-space: nowrap; {{md.css}}"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{md.d}}"></path></svg>{{md.t}}</button>
+          <button aria-label="{{md.label}}" aria-pressed="{{md.on}}" onClick="{{md.go}}" style="flex: 1 1 0; min-width: max-content; padding: 0 8px; box-sizing: border-box; min-height: 40px; border-radius: 20px; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 13px; font-weight: 600; white-space: nowrap; {{md.css}}"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{md.d}}"></path></svg>{{md.t}}</button>
         </sc-for>
       </div>
+      <sc-if value="{{maps.eventReturnInline}}"><button data-alpha-maps-event-return aria-label="Back to event" title="{{maps.backToEventTitle}}" onClick="{{maps.backToEvent}}" style="margin: 8px 0 0 8px; background: var(--s2); color: var(--fg); height: 40px; padding: 0 14px 0 8px; border-radius: 20px; display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; flex-shrink: 0"><path d="{{ic.back}}"></path></svg>Back to event</button></sc-if>
     </div>
     <div class="enter" data-alpha-maps-sheet="directions" style="position: absolute; left: 0; right: 0; bottom: 0; --alpha-sheet-height: {{maps.sheetH}}px; border-radius: 28px 28px 0 0; background: var(--bg); box-shadow: 0 -10px 40px var(--shc), 0 -1px 0 var(--line); z-index: 4; padding: 22px 20px 0; box-sizing: border-box">
       <div style="display: flex; align-items: baseline; gap: 12px"><span class="serif" style="font-size: 44px; line-height: 1">{{maps.dr.min}}</span><span style="font-size: 15px; color: var(--mut)">{{maps.dr.meta}}</span></div>
@@ -2368,6 +2371,7 @@
                 </div>
               </sc-for>
               <button onClick="{{notes.vo.toCal}}" aria-label="{{notes.vo.calLabel}}" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; margin: 6px 0 4px 10px; border-radius: 18px; background: var(--bg); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--acct)"><path d="{{notes.vo.calIcon}}"></path></svg>{{notes.vo.calText}}</button>
+              <sc-if value="{{notes.vo.toEvent}}"><button onClick="{{notes.vo.toEvent}}" aria-label="{{notes.vo.eventLabel}}" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; margin: 6px 0 4px 10px; border-radius: 18px; background: var(--bg); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--acct)"><path d="{{notes.vo.calIcon}}"></path></svg>{{notes.vo.eventText}}</button></sc-if>
             </div>
           </sc-if>
         </sc-if>
@@ -4139,7 +4143,7 @@
   <sc-if value="{{systemShell}}">
   <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
     <sc-for list="{{tiles}}" as="t">
-      <button aria-label="{{t.label}}" aria-pressed="{{t.on}}" disabled="{{t.disabled}}" onClick="{{t.toggle}}" style="height: 62px; border-radius: 22px; display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24"><path d="{{t.d}}"></path></svg><sc-if value="{{t.stateText}}"><span data-tile-state style="font-size: 11px; line-height: 1; white-space: nowrap">{{t.stateText}}</span></sc-if></button>
+      <button aria-label="{{t.aria}}" aria-pressed="{{t.pressed}}" disabled="{{t.disabled}}" onClick="{{t.toggle}}" style="height: 62px; border-radius: 22px; display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24"><path d="{{t.d}}"></path></svg><sc-if value="{{t.stateText}}"><span data-tile-state style="font-size: 11px; line-height: 1; white-space: nowrap">{{t.stateText}}</span></sc-if></button>
     </sc-for>
   </div>
   <div style="display: flex; align-items: center; gap: 12px; padding: 14px 10px 6px; color: var(--mut)">

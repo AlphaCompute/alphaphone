@@ -26,9 +26,9 @@
 // - Hosted scheduled-digest results need a local-agent build (VITE_LOCAL_AGENT) and are covered
 //   by dev-hosted-journey.spec.ts on its own server; they are not repeated here.
 //
-// Recorded gap (current honest behaviour is asserted, not a wrong one): after a provider-confirmed
-// send the composer's retained local copy is still offered ("Resume unsaved email"), and the
-// receipt says so. Nothing is re-sent automatically, but a user can explicitly send it again.
+// After a provider-confirmed send the local copies of exactly that draft (open composer, retained
+// unsaved copy, saved local draft) are removed, so the sent email is not offered again. Unknown and
+// failed outcomes keep every copy. Identity and edit cases: scripts/test-inbox-sent-cleanup.mjs.
 import {test, expect, type Page} from '@playwright/test';
 import {guardCalendarFixture} from './calendar-draft-readiness';
 import {returnToApps} from './app-navigation';
@@ -81,6 +81,8 @@ async function installProvider(page: Page) {
         }
         const lost = value.loseNextReply; value.loseNextReply = false; save(value);
         if (lost) throw new TypeError('Failed to fetch');
+        // A provider reply that names another operation (wrong request ID) must never be accepted.
+        if (value.wrongReceipt) return {...value.receipts[requestId], requestId: 'another-request'};
         return value.receipts[requestId];
       },
       // While "unsure" the provider cannot yet tell whether delivery completed.
@@ -181,6 +183,9 @@ test('synthetic provider: reviewed send leaves exactly one receipt and one messa
   await expect(review.getByRole('status')).toHaveText('Provider confirmed this operation.');
   await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
   await expect(review).toContainText('"messageId":"sent-1"');
+  // The confirmed send removes the saved local draft and the composer copy it came from.
+  await expect(review).toContainText('The local draft and unsaved copy of this sent email were removed from this device.');
+  await expect.poll(() => page.evaluate(KEY => Object.keys(JSON.parse(localStorage.getItem(KEY)!).slots).filter(key => key.startsWith('inbox-drafts:')), PROVIDER)).toEqual([]);
 
   // Reload: the saved receipt is shown again; nothing is prepared or dispatched a second time.
   await openProviderInbox(page, true);
@@ -189,14 +194,19 @@ test('synthetic provider: reviewed send leaves exactly one receipt and one messa
   await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
   await review.getByRole('button', {name: 'Check saved receipt', exact: true}).click();
   await expect(review.getByRole('status')).toHaveText('Provider confirmed this operation.');
-  // Recorded gap: the local copy is kept after a confirmed send and the receipt says so.
-  await expect(review).toContainText('The local draft stays on this device. If this operation succeeded, sending that draft again creates another message.');
+  await expect(review).toContainText('The local draft and unsaved copy of this sent email were removed from this device.');
   await review.getByRole('button', {name: 'Close receipt', exact: true}).click();
   await expect(review).toHaveCount(0);
   await expect(button(page, 'Mail review / receipt')).toHaveCount(0);
+  // The sent email is not offered again in any form.
+  for (const name of ['Restore local draft', 'Resume unsaved email', 'Continue draft']) await expect(button(page, name)).toHaveCount(0);
   await button(page, 'Sent').click();
   await expect(page.getByRole('button', {name: /Journey reviewed send/})).toHaveCount(1);
   expect(await provider(page)).toEqual({prepares: 1, dispatches: 1, sent: ['Journey reviewed send'], receipts: ['succeeded']});
+  await button(page, 'Compose').click();
+  await expect(page.getByRole('textbox', {name: 'Subject', exact: true})).toHaveValue('');
+  await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveValue('');
+  await expect(button(page, 'Remove friend@example.invalid')).toHaveCount(0);
 });
 
 test('synthetic provider: a lost send reply is an unknown outcome and is never sent again', async ({page}) => {
@@ -228,7 +238,7 @@ test('synthetic provider: a lost send reply is an unknown outcome and is never s
   await expect(review.getByRole('button', {name: 'Close receipt', exact: true})).toHaveCount(0);
   await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
   await expect(button(page, 'Mail review / receipt')).toBeVisible();
-  // A second operation cannot start while this outcome is unresolved.
+  // An unknown outcome keeps the local copy. A second operation cannot start while it is unresolved.
   await button(page, 'Resume unsaved email').click();
   await expect(page.getByRole('textbox', {name: 'Subject', exact: true})).toHaveValue('Journey lost reply');
   await button(page, 'Send email').click();
@@ -241,12 +251,42 @@ test('synthetic provider: a lost send reply is an unknown outcome and is never s
   await review.getByRole('button', {name: 'Check saved receipt', exact: true}).click();
   await expect(review.getByRole('status')).toHaveText('Provider confirmed this operation.');
   await expect(review).toContainText('"messageId":"sent-1"');
+  // Only now, with the provider's confirmation, is the retained copy of that email removed.
+  await expect(review).toContainText('The local draft and unsaved copy of this sent email were removed from this device.');
   await openProviderInbox(page, true);
   await expect(review).toContainText('"messageId":"sent-1"');
   await review.getByRole('button', {name: 'Close receipt', exact: true}).click();
+  for (const name of ['Restore local draft', 'Resume unsaved email', 'Continue draft']) await expect(button(page, name)).toHaveCount(0);
   await button(page, 'Sent').click();
   await expect(page.getByRole('button', {name: /Journey lost reply/})).toHaveCount(1);
   expect(await provider(page)).toEqual({prepares: 1, dispatches: 1, sent: ['Journey lost reply'], receipts: ['succeeded']});
+});
+
+test('synthetic provider: a send reply that names another operation is not shown as confirmed and is never sent again', async ({page}) => {
+  test.setTimeout(180_000);
+  await openProviderInbox(page);
+  await compose(page, 'Journey wrong receipt', 'Body whose reply names another operation');
+  await button(page, 'Send email').click();
+  const review = page.getByRole('dialog', {name: 'Review mail operation'});
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toBeVisible();
+  await setProvider(page, {wrongReceipt: true});
+  await review.getByRole('button', {name: 'Send this email', exact: true}).click();
+  // The reply is refused: no confirmation, no provider message ID from the foreign receipt, no second Send.
+  await expect(review.getByRole('status')).toHaveText('Gmail answered for a different request, so nothing was confirmed. Check the saved receipt before trying again; do not send this message again.');
+  await expect(review).not.toContainText('"messageId"');
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
+  expect(await provider(page)).toMatchObject({prepares: 1, dispatches: 1});
+  // After a reload the saved operation is still unresolved and still cannot be sent again.
+  await openProviderInbox(page, true);
+  await expect(review.getByRole('status')).toHaveText('Saved mail operation. Check its exact review and receipt before continuing.');
+  await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
+  expect(await provider(page)).toMatchObject({prepares: 1, dispatches: 1});
+  // Its own receipt, read back by request ID, reconciles to exactly one message.
+  await setProvider(page, {wrongReceipt: false});
+  await review.getByRole('button', {name: 'Check saved receipt', exact: true}).click();
+  await expect(review.getByRole('status')).toHaveText('Provider confirmed this operation.');
+  await expect(review).toContainText('"messageId":"sent-1"');
+  expect(await provider(page)).toEqual({prepares: 1, dispatches: 1, sent: ['Journey wrong receipt'], receipts: ['succeeded']});
 });
 
 test('a due reminder notice tapped after reload opens exactly its own event, once', async ({page, context}) => {

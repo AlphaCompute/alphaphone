@@ -15,12 +15,15 @@ test('a bound source shows its renewal window, pauses at expiry and renews with 
  await expect(schedules).toContainText('Morning at 12:30 (UTC) · Daily source · On');
  // Inside the final 24 hours the in-app notice offers renewal.
  await expect(renewal).toContainText('Daily source expires');await expect(renewal).toContainText('Renew it to keep its schedule running.');
- // At expiry the loop is paused with a clear state, and no failure brief is produced.
+ // At expiry the loop is paused with a clear state, and no failure brief is produced. Like the agent, the
+ // schedule's next settlement is one explicit "unavailable" record (not a run), and nothing after it.
  await page.clock.setFixedTime(new Date('2026-10-04T08:30:00Z'));await panel.getByRole('button',{name:'Refresh',exact:true}).click();
  await expect(renewal).toContainText('Daily source: Source expired. Its schedule is paused until you renew it. No failure briefs are created.');
  await expect(schedules).toContainText('Source expired — paused');
  await page.clock.setFixedTime(new Date('2026-10-04T12:30:05Z'));await page.evaluate(async()=>{const {developmentDigestRequest:request}=await import('/src/browser/development-digests.ts'),{developmentIdentity}=await import('/src/browser/development-identity.ts');await request(developmentIdentity('local'),'/api/workflow/hosted/tick',undefined);});
- expect((await digests(page)).results).toHaveLength(0);
+ const lapsed=(await digests(page)).results;expect(lapsed.map((r:any)=>[r.status,r.output,r.error])).toEqual([['unavailable',{status:'unavailable',sourceState:'expired',paused:true,text:'Source expired. This schedule is paused until you renew the source. No fresh phone data was read.'},null]]);
+ await page.clock.setFixedTime(new Date('2026-10-05T12:30:05Z'));await page.evaluate(async()=>{const {developmentDigestRequest:request}=await import('/src/browser/development-digests.ts'),{developmentIdentity}=await import('/src/browser/development-identity.ts');await request(developmentIdentity('local'),'/api/workflow/hosted/tick',undefined);});
+ expect((await digests(page)).results).toEqual(lapsed);await page.clock.setFixedTime(new Date('2026-10-04T12:30:05Z'));
  const before=await digests(page),loop=before.loops[0],old=before.sources[0];
  await renewal.getByRole('button',{name:'Renew Daily source',exact:true}).click();
  await expect(panel.getByLabel('Label',{exact:true})).toHaveValue('Daily source');await panel.getByLabel('Snapshot text',{exact:true}).fill('Renewed snapshot content');

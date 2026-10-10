@@ -19,6 +19,24 @@ final class ConnectionRoutes {
   return !testMocks&&"/api/auth/pair".equals(canonical(decodedPath));
  }
  /**
+  * Origins this transport may contact. A production phone talks to its resident agent over the
+  * separate in-process Agent bridge, never through this transport, and does not pair with, restore
+  * or connect a remote or Cloud agent (the controller returns before any saved selection is used and
+  * the production dialog offers only Cloud sign-in for inference credits). Every request a flag-off
+  * build legitimately sends here (sign-in, identity, balance, key self-revocation, the connected
+  * services under /api/v1/eliza/) goes to the Cloud API, so the only admitted origin is exactly
+  * https://api.eliza.app on the default port. A dedicated Cloud agent runtime
+  * (https://&lt;agent-uuid&gt;.cloud.eliza.app) is refused with every other host; admit it here only
+  * if owner decision A-16 brings Cloud agents to production Android. A paired remote agent's origin
+  * is refused even when the renderer presents a saved credential for it; the refusal is decided from
+  * the URL alone and touches no credential slot.
+  * Test-mocks builds keep every origin the URL validation admits (remote, Cloud and development agents).
+  */
+ static boolean admittedOrigin(String scheme,String host,int port,boolean testMocks){
+  if(testMocks)return true;
+  return "https".equals(scheme)&&"api.eliza.app".equals(host)&&(port==-1||port==443);
+ }
+ /**
   * Cloud self-revocation: the presented sign-in key revokes only itself. Exactly
   * DELETE https://api.eliza.app/api/v1/api-keys/current on the default port, without a query
   * or body. The staging authority exists only in test-mocks builds.

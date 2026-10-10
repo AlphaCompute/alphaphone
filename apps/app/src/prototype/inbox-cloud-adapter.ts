@@ -113,6 +113,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   };
   drafts.setFromSwitch({ count: () => readable().length, cycle: () => void switchFrom() });
   provider.setObservers({
+    // A provider-confirmed send removes the local copies of exactly the draft it was sent from.
+    sent: (source, proposal, grant) => void drafts.settleSent(source.draftId, proposal, grant), sentNote: source => drafts.sentNote(source.draftId),
     // A stale review was discarded without dispatch; reload the open message so the user sees its current state.
     stale: () => { if (body) void open(body.message); else void load(); },
     receipt: receipt => {

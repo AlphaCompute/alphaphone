@@ -16,6 +16,7 @@ for(const next of ['event','home','new-draft'] as const)test(`late Calendar dele
   BrowserCalendar.prototype.remove=async function(input){f.calls++;const result=await remove.call(this,input);await new Promise<void>(resolve=>f.release=resolve);f.done=true;return result;};
  });
  await page.getByRole('button',{name:'Delete event',exact:true}).click();
+ await page.getByRole('dialog',{name:'Delete calendar event?'}).getByRole('button',{name:'Delete event',exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>typeof(window as any).deleteCompletion.release)).toBe('function');
  await page.getByRole('button',{name:'Back to calendar',exact:true}).click();
  if(next==='event')await page.getByRole('button',{name:/^Keep event B,/}).click();

@@ -28,7 +28,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { signerDigest } from "./apk.mjs";
-import { adbFor, admitUnitApk, deviceFacts, installedApkSha256, PACKAGE, packageFacts, parseUnitArgs } from "./provision-unit.mjs";
+import { adbFor, admitUnitApk, deviceFacts, installedApkSha256, PACKAGE, packageFacts, parseUnitArgs, requireConsistentApk } from "./provision-unit.mjs";
 
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 
@@ -99,6 +99,7 @@ async function main() {
   if (!fs.existsSync(recordFile)) throw new Error(`${recordFile} is missing; provision the unit with scripts/provision-unit.mjs first`);
   const unit = JSON.parse(fs.readFileSync(recordFile, "utf8"));
   const apk = admitUnitApk(options.apkManifest, options);
+  requireConsistentApk(apk);
   const mismatch = unitApkMismatch(unit, apk);
   if (mismatch) throw new Error(`Unit ${options.alias}: ${mismatch}`);
   const adb = adbFor(options.serial);

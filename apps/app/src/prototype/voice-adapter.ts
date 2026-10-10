@@ -1,5 +1,6 @@
 import {BatchVoiceConversation,type BatchVoiceState} from '@elizaos/ui/voice/batch-conversation';
 import {recordingRevision} from './summary-source';
+import {noteOriginFor} from '../runtime/note-origin';
 import {reviewContentQuestion} from '../browser/content-question';
 import {recordingLevels} from '../browser/audio-levels';
 import {browserDevProfile} from '../browser/dev-profile';
@@ -79,7 +80,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     }
     return value;
   };
-  let deletionBusy=false,deletionRefresh=false;
+  let deletionBusy=false,deletionRefresh=false,noteHandoffBusy=false;
   /** The reviewed voice note a full Trash refused. Memory only; a restart simply asks again. */
   let refusedVoice:Bag|null=null;
   let api: Bag | undefined, stage = 'closed', generation = 0, busy = false;
@@ -702,15 +703,28 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
         if(!active())return;
         closeTranscriptQuestion=reviewContentQuestion({name:selected.title||'Recording transcript',text:String(selected.body||selected.audio.transcript||''),question:'Summarize this meeting and list its action items. Do not change or schedule anything. Return JSON with exactly two fields: summary (a string) and actions (an array of short strings). Include only actions supported by this excerpt.',sourceLabel:'Offer to save the reviewed answer to this recording',sourceDescription:'You can then edit the summary and action items before saving them to this recording.',current:active,source:async()=>({kind:'recording',version:1,name:String(selected.title||'Recording transcript').slice(0,120),noteId:selected.id,revision:await recordingRevision(selected)}),compose:(text,source)=>current.composeContentQuestion(text,source),closed:()=>{closeTranscriptQuestion=undefined;}});
       };
-      vo.toCal=()=>{
-        const note=current.get('notes').list.find((n:Bag)=>n.id===selected.id);if(!current.isActive()||document.hidden||current.get('notes').open!==selected.id||JSON.stringify(note)!==JSON.stringify(selected))return;
+      // Both hand-offs open a Calendar draft only. Nothing is written until the user saves there.
+      // The draft carries a back-reference to this exact note (id, recording and reviewed revision).
+      const draftFromNote=async(kind:'reminder'|'event')=>{
+        if(noteHandoffBusy)return;
+        const reviewed=()=>{const note=current.get('notes').list.find((n:Bag)=>n.id===selected.id);return current.isActive()&&!document.hidden&&current.get('notes').open===selected.id&&JSON.stringify(note)===JSON.stringify(selected)?note:null;};
+        const note=reviewed();if(!note)return;
         const actionText=(note.actions||[]).filter((a:Bag)=>!a.done).map((a:Bag)=>String(a.t||'')).join('\n');
         if(!actionText.trim()){current.toast('No open action items. Review the transcript with Alpha first.');return;}
-        if(actionText.length>4000){current.toast('Shorten the action items before creating a reminder. Nothing scheduled.');return;}
-        current.open('calendar',{form:{id:null,title:'',off:1,t:9,d:1,where:'',video:false,who:[],cal:'alpha-reminders',repeat:'none',alert:0,notes:actionText},open:null,month:null,day:1},'hidden');
-        current.toast('Choose one action and review its time, then Save. Nothing scheduled yet.');
+        if(actionText.length>4000){current.toast(kind==='event'?'Shorten the action items before creating an event. Nothing was added to your calendar.':'Shorten the action items before creating a reminder. Nothing scheduled.');return;}
+        noteHandoffBusy=true;
+        try{
+          const origin=noteOriginFor(note,await recordingRevision(note));
+          if(!reviewed())return;
+          const shared={id:null,title:'',off:1,t:9,d:1,where:'',video:false,who:[],repeat:'none',notes:actionText,...(origin?{origin}:{})};
+          current.open('calendar',{form:kind==='event'?{...shared,creationId:crypto.randomUUID(),separateCreation:false,cal:'native:local',alert:null}:{...shared,cal:'alpha-reminders',alert:0},open:null,month:null,day:1},'hidden');
+          current.toast(kind==='event'?'Choose one action and review its time, then Save. Nothing is on your calendar yet.':'Choose one action and review its time, then Save. Nothing scheduled yet.');
+        }finally{noteHandoffBusy=false;}
       };
+      vo.toCal=()=>void draftFromNote('reminder');
       vo.calLabel='Review reminder draft';vo.calText='Review reminder';vo.calIcon=current.ic.cal;
+      vo.toEvent=()=>void draftFromNote('event');
+      vo.eventLabel='Review calendar event draft';vo.eventText='Review event';
 
       // A saved recording's reviewed transcript is read by the same qualified local speech route as text notes.
       const voText = noteSpeechText(selected), voReading = currentNoteReading()?.noteId === selected.id;

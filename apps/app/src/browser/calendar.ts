@@ -197,7 +197,15 @@ ${reviewed.description}`);
     });
   }
   async inspect(input:{id:string;calendarId:string;expected?:Partial<EventRow>}) {const data=(await calendarDocument.read(initial)),row=calendarRecord(data.events,input.id);return row&&row.calendarId===input.calendarId&&matches(row,input.expected)?{status:'ready',revision:row.revision,sourceRevision:data.sourceRevision}:{status:'conflict'};}
-  async remove(input:{id:string;calendarId:string;expected:Partial<EventRow>;revision:string}) {return calendarDocument.edit(initial,data=>{const row=calendarRecord(data.events,input.id);if(!row||row.calendarId!==input.calendarId||row.revision!==input.revision||!matches(row,input.expected))return {status:'conflict'};data.events=deleteCalendarRecord(data.events,row,revision());return {status:'deleted'};});}
+  /** One review step, as on Android: the reviewed event is named and nothing is deleted on Cancel,
+   * Back, hiding or locking. The removal below still requires the reviewed revision. */
+  async remove(input:{id:string;calendarId:string;expected:Partial<EventRow>;revision:string}) {
+    const state=await this.presentationState();if(!state)return {status:'cancelled'};
+    const reviewed=calendarRecord(state.events,input.id);
+    if(!reviewed||reviewed.calendarId!==input.calendarId||reviewed.revision!==input.revision||!matches(reviewed,input.expected))return {status:'conflict'};
+    const when=reviewed.allDay?new Date(reviewed.begin).toLocaleDateString(undefined,{timeZone:'UTC',weekday:'short',year:'numeric',month:'short',day:'numeric'})+' · All day':`${new Date(reviewed.begin).toLocaleString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})} – ${new Date(reviewed.end).toLocaleString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`;
+    if(!await this.reviews.confirm('delete-event','Delete calendar event?',`${reviewed.title||'Untitled event'}\n${source.name}\n${when}\n\n${reviewed.seriesId?'Delete this one occurrence? Other dates in the series stay.':'Delete this one event?'} This cannot be undone.`,'Delete event'))return {status:'cancelled'};
+    return calendarDocument.edit(initial,data=>{const row=calendarRecord(data.events,input.id);if(!row||row.calendarId!==input.calendarId||row.revision!==input.revision||!matches(row,input.expected))return {status:'conflict'};data.events=deleteCalendarRecord(data.events,row,revision());return {status:'deleted'};});}
   async readWorkflowRange(input:{calendarIds:string[];start:string;end:string;maximumEvents:number}) {const {events}=await this.list({begin:Date.parse(input.start),end:Date.parse(input.end)});return {status:'ready',events:events.filter(e=>input.calendarIds.includes(e.calendarId)).slice(0,input.maximumEvents).map(e=>({...e,start:new Date(e.begin).toISOString(),end:new Date(e.end).toISOString(),allDay:!!e.allDay}))};}
   async open(input?:{id?:string}){
     const state=input?.id?await this.presentationState():undefined;if(state===null)return {status:'cancelled'};
