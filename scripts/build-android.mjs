@@ -225,7 +225,7 @@ function build(options, baseEnv, run) {
         // matching instrumentation APK beside a test-mocks build.
         const androidTest = path.join(outputs, "apk/androidTest", variant, "debug", `app-${variant}-debug-androidTest.apk`);
         if (options.testMocks) copy(androidTest, path.join(outDir, `${variant}-androidTest.apk`));
-        else {
+        else if (!options.skipInstrumentation) {
           // Distribution instrumentation APKs live in a subdirectory so artifacts/*.apk
           // stays the four distribution APKs (scripts/android-instrumentation.mjs).
           fs.mkdirSync(path.join(outDir, "instrumentation"), { recursive: true });

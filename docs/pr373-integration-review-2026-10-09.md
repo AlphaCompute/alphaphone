@@ -22,6 +22,8 @@ The original PR description described an earlier base and voice policy. This rec
 
 - Integrated PR 375 after main advanced during final CI. Retained its deliberate Home-pointer fix, shared 52px Browser Back sizing, consolidated root-view journeys, one-time verification preparation, conditional instrumentation build option and reduced artifact work. Accepted its retirement of extracted-method/unit forwarding harnesses; retained this integration's current canonical Automations fixtures, stronger receipt labels and all-day assertions. Reviewed reused conflict resolutions explicitly and removed a duplicate fixture import.
 
+- Fixed the clean-runner integration of `--skip-instrumentation`: distribution packaging now skips copying instrumentation APKs when Gradle was instructed not to build them. Default manual builds continue to retain both instrumentation APKs.
+
 ## Validation and limits
 
 After integrating PR 375, `npm run verify` passed: 463 tests, 459 passed, no failures or skips, and the same four voice-policy TODOs, plus Notes query flow, typecheck, production build and bundle audit. The smaller count reflects main's explicit retirement of unit/extracted-method harnesses, not new skips. All 93 focused browser cases passed, including consolidated root-view accessibility, deliberate Home navigation, retained Calendar drafts, Maps recovery, voice cleanup and execution-context privacy. The corrected Maps share cleanup test also passed 30 repetitions and the full ten-case share suite.
