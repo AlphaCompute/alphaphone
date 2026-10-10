@@ -172,7 +172,7 @@
         "AP-11"
       ],
       "title": "Upstream the pin-only commit series",
-      "current": "The integration branch pins reviewed upstream merge 41c5c20a, including native compatibility, touch lifecycle, deterministic synthesis and shared password custody. Product qualification at this pin is in progress.",
+      "current": "The integration branch pins reviewed upstream merge 11a36ddc, including native compatibility, touch lifecycle, deterministic synthesis and shared password custody. Product qualification at this pin is in progress.",
       "remaining": "Complete product regressions and both Android distributions at the replacement pin.",
       "acceptance": "Reviewed upstream disposition per commit, clean source preparation and full product regression at the replacement pin.",
       "depends_on": [],
