@@ -3471,6 +3471,7 @@
           </sc-if>
           <sc-if value="{{workflows.b.hasTypedReview}}"><pre aria-label="Workflow save review" style="white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;border-radius:18px;background:var(--s2);font-size:12px">{{workflows.b.typedReview}}</pre></sc-if>
           <sc-if value="{{workflows.b.unknown}}"><button onClick="{{workflows.b.refresh}}" style="min-height:44px;padding:12px;border-radius:22px;background:var(--s2)">Refresh save receipt</button></sc-if>
+          <sc-if value="{{workflows.b.canResend}}"><button onClick="{{workflows.b.resend}}" style="min-height:44px;padding:12px;border-radius:22px;background:var(--s2)">{{workflows.b.resendLabel}}</button></sc-if>
           <sc-if value="{{workflows.b.canDiscard}}"><button onClick="{{workflows.b.discard}}" style="min-height:44px;padding:12px;border-radius:22px;background:var(--s2)">Discard local draft</button></sc-if>
         </sc-if>
         <sc-if value="{{workflows.b.fullEditor}}">

@@ -46,3 +46,19 @@ for(const mode of ['reset','leave'])test(`workflow request recovery uses the cap
  await expect.poll(()=>page.evaluate(async()=>{const session=(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().session;return session?{origin:session.origin,ownerId:session.ownerId,agentId:session.agentId}:null;})).toEqual(capturedOwner);
  expect(await page.evaluate(async owner=>{const {WorkflowIntentStore}=await import('/src/runtime/workflow-intents.ts');return await new WorkflowIntentStore(owner).load();},capturedOwner)).toEqual({});
 });
+
+test('a store keeps the snapshot its own write committed, so one retained request never makes unrelated requests read as locked',async({page})=>{
+ const result=await page.evaluate(async owner=>{
+  const {WorkflowIntentStore,workflowIntentKey}=await import('/src/runtime/workflow-intents.ts');const store=new WorkflowIntentStore(owner),run=workflowIntentKey(owner,'flow'),lifecycle=run+':lifecycle',other=workflowIntentKey(owner,'other');
+  const out:Record<string,unknown>={unloaded:[store.stale,store.locked(run),store.locked(other)]};await store.load();
+  // A change notice arriving while a reload is in flight discards that reload. The write's own snapshot must survive it.
+  const raw=await store.admit(run,{workflowId:'flow',versionId:'v1'});out.admitted=[store.stale,store.locked(run),store.locked(lifecycle),store.locked(other),store.pendingLifecycle()];
+  const racing=store.load();store.invalidate();await racing;out.raced=[store.stale,store.locked(other)];await store.load();
+  await store.acknowledge(run,raw);out.acknowledged=[store.stale,store.locked(run),store.locked(lifecycle),store.locked(other)];
+  // A refused write (the request changed elsewhere) drops the snapshot: everything reads as locked until the next load.
+  const second=new WorkflowIntentStore(owner);await second.load();const held=await second.admit(lifecycle,{mutationId:'m',versionId:'v1',operation:'remove'});
+  let refused=false;try{await store.admit(lifecycle,{mutationId:'n',versionId:'v1',operation:'remove'});}catch{refused=true;}out.refused=[refused,store.stale,store.locked(other)];
+  await store.load();out.reloaded=[store.stale,store.locked(run),store.locked(lifecycle),store.locked(other),store.pendingLifecycle()];await second.acknowledge(lifecycle,held);return out;
+ },owner);
+ expect(result).toEqual({unloaded:[true,true,true],admitted:[false,true,false,false,[]],raced:[true,true],acknowledged:[false,false,false,false],refused:[true,true,true],reloaded:[false,false,true,false,['flow']]});
+});
