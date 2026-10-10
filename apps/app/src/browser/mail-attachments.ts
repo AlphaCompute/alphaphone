@@ -1,6 +1,7 @@
 import './mail-attachments.css';
 import { WebPlugin } from '@capacitor/core';
 import { reviewMailAttachment, type MailAttachment } from '../runtime/inbox-attachment';
+import { reviewOpaqueAttachment } from '../runtime/inbox-operation';
 import { BrowserFiles } from './files';
 /** Same byte/type/hash validation as the provider review; no uploads. */
 export class BrowserMailAttachments extends WebPlugin {
@@ -19,14 +20,20 @@ export class BrowserMailAttachments extends WebPlugin {
  }
  private clear(){++this.generation;this.saveController?.abort();const cleanup=this.cleanup;this.cleanup=undefined;cleanup?.();this.dialog?.close();this.dialog?.remove();this.dialog=undefined;if(this.url)URL.revokeObjectURL(this.url);this.url=undefined;}
  async cancel(){this.clear();}
- async saveReviewed(input:MailAttachment&{reviewed:boolean;sha256:string}){
+ /**
+  * Exact-copy save. A previewable type passes the same type check as the review. An opaque save
+  * (any other type, offered as "No preview · Save to Files") checks only the name, size and
+  * SHA-256: the bytes are stored as they are and are never decoded, rendered or opened here.
+  */
+ async saveReviewed(input:MailAttachment&{reviewed:boolean;sha256:string;opaque?:boolean}){
   if(this.saveController)throw Error('An attachment save is already pending.');
   input={...input};const controller=new AbortController(),generation=this.generation;this.saveController=controller;let selectionId:string|undefined,started=false;
   try{
-   const review=await reviewMailAttachment(input);if(!input.reviewed||review.sha256!==input.sha256||generation!==this.generation)throw Error('Review this attachment again.');controller.signal.throwIfAborted();
+   const check=input.opaque===true?reviewOpaqueAttachment:reviewMailAttachment;
+   const review=await check(input);if(!input.reviewed||review.sha256!==input.sha256||generation!==this.generation)throw Error('Review this attachment again.');controller.signal.throwIfAborted();
    const bytes=Uint8Array.from(atob(input.dataBase64),c=>c.charCodeAt(0));started=true;
    const selected=await this.files.importFile(new File([bytes],input.name,{type:input.mimeType}),'root',controller.signal);selectionId=selected.selectionId;
-   const retained=await this.files.attachment({selectionId}),checked=await reviewMailAttachment(retained);controller.signal.throwIfAborted();if(checked.sha256!==review.sha256||checked.size!==review.size)throw Error('Saved bytes did not match.');
+   const retained=await this.files.attachment({selectionId}),checked=await check(retained);controller.signal.throwIfAborted();if(checked.sha256!==review.sha256||checked.size!==review.size)throw Error('Saved bytes did not match.');
    return {status:'saved',message:'Saved in Files. Exact bytes verified.'};
   }catch(error){if(!started)throw error;return {status:'unverified',message:'Save not confirmed. Inspect Files before trying again; a copy may already exist.'};}
   finally{if(selectionId)await this.files.forgetSelected({selectionId}).catch(()=>{});if(this.saveController===controller)this.saveController=undefined;}
