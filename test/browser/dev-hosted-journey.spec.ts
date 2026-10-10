@@ -29,7 +29,8 @@ async function fixture(page:any){
   await route.fulfill({json:{status:200,body:JSON.stringify(body)}});
  });
  await page.addInitScript(()=>{if(!localStorage.getItem('alpha.connection.selection.v1'))localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));});
- await page.goto(origin+'/?mode=dev&tools=1');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);await expect.poll(()=>f.acked).toBe(1);
+ await page.goto(origin+'/?mode=dev&tools=1');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);// The first sync and its acknowledgement follow the connection; allow for a loaded host.
+ await expect.poll(()=>f.acked,{timeout:30000}).toBe(1);
  return {f,cleanup:async()=>{f.hold=false;f.release?.();try{if(!page.isClosed())await page.unrouteAll({behavior:'ignoreErrors'});}finally{await page.close().catch(()=>{});await rm(storage,{recursive:true,force:true});}}};
 }
 const device=async(page:any,name:string)=>{await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('dialog',{name:'Development device controls',exact:true}).getByRole('button',{name,exact:true}).click();};

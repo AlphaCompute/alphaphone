@@ -52,6 +52,7 @@ export const CLASS_REGISTRY = {
   },
   RealClock: { args: { realClock: "1", clockExclusive: "1" }, requires: "--clock-exclusive" },
   Accessibility: {},
+  SettingsSystemFacts: { note: "read-only comparison with this image's settings; not device acceptance of the Settings handoffs" },
   Rotation: {},
   ResidentEgressRedaction: { campaign: "ALPHA_RESIDENT_DISPOSABLE_EMULATOR=1 node scripts/android-resident-instrumentation.mjs <app.apk> <androidTest.apk> (owner-only provider key fixture, ARM64)" },
   ReminderTapProcessDeath: { campaign: "python3 scripts/ci/pending-recovery-ui.py (external process death)" },

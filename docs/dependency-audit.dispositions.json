@@ -1,0 +1,29 @@
+{
+  "description": "Reviewed dispositions for the advisories in docs/dependency-audit.snapshot.json. An exception is time-bounded: after reviewBy, test/dependency-audit.test.mjs fails until the advisory is re-audited and re-reviewed or fixed. The reasoning is in docs/dependency-audit.md.",
+  "fixes": [
+    {
+      "advisory": "GHSA-68fv-2mgg-jv7q",
+      "package": "source-map-js",
+      "severity": "high",
+      "from": "1.2.1",
+      "fixedIn": "1.2.2",
+      "change": "lockfile-only; postcss declares ^1.2.1",
+      "fixedOn": "2026-10-10"
+    }
+  ],
+  "exceptions": [
+    {
+      "advisory": "GHSA-w5hq-g745-h8pq",
+      "severity": "moderate",
+      "packages": ["uuid", "xcode", "@capacitor/cli"],
+      "paths": ["@capacitor/cli", "@capacitor/cli > xcode", "@capacitor/cli > xcode > uuid"],
+      "scope": "dev",
+      "reachability": "Not reachable. The advisory is an out-of-bounds write in uuid v3/v5/v6 when the caller passes its own buffer. The only consumer, xcode 3.0.1, calls uuid.v4() with no arguments (lib/pbxProject.js), and @capacitor/cli loads xcode only for the iOS `migrate uiscene` task. This product has no iOS project and runs only `cap sync android`. Nothing from this chain is in the web bundle or an APK.",
+      "justification": "No compatible fix exists: every xcode release depends on uuid ^7 and the newest @capacitor/cli (8.5.3) still depends on xcode ^3.0.1. npm's proposed fix is a downgrade to @capacitor/cli 8.4.3, which would split it from the pinned @capacitor/core and @capacitor/android 8.5.2. Forcing uuid >=11.1.1 with an override is a four-major jump under a package that declares ^7.",
+      "removeWhen": "@capacitor/cli drops xcode, or xcode ships with uuid >=11.1.1; take that release together with the matching @capacitor/core and @capacitor/android.",
+      "reviewedBy": "Round 3 supply-chain triage (source review of the installed packages)",
+      "reviewedOn": "2026-10-10",
+      "reviewBy": "2027-01-08"
+    }
+  ]
+}
