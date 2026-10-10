@@ -2287,6 +2287,8 @@
       <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to notes" onClick="{{notes.vo.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
+        <sc-if value="{{notes.vo.readAloud}}"><button class="ib" aria-label="Read aloud" onClick="{{notes.vo.readAloud}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.wave}}"></path></svg></button></sc-if>
+        <sc-if value="{{notes.vo.stopReading}}"><button class="ib" aria-label="Stop reading" onClick="{{notes.vo.stopReading}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.stop}}"></path></svg></button></sc-if>
         <button class="ib" aria-label="{{notes.vo.pinLabel}}" onClick="{{notes.vo.pin}}" style="{{notes.vo.pinCss}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.notesPin}}"></path></svg></button>
         <button class="ib" aria-label="Share note" onClick="{{notes.vo.share}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button>
         <button class="ib" aria-label="Delete note" onClick="{{notes.vo.del}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
