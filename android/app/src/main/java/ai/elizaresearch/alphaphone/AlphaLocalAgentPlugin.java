@@ -140,6 +140,11 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private void resolveCurrent(PluginCall call,long epoch,JSObject result) throws Superseded {
   synchronized(lifecycleLock){requireCurrent(epoch);if(pending.remove(call))call.resolve(result);}
  }
+ /** A surface that attaches again supersedes its own earlier calls without advancing the epoch, so
+  * a queued request must still be this surface's pending call before it pairs or is dispatched. */
+ private void requireOwned(PluginCall call,long epoch) throws Superseded {
+  synchronized(lifecycleLock){requireCurrent(epoch);if(!pending.contains(call))throw new Superseded();}
+ }
  private void rejectSuperseded(PluginCall call){synchronized(lifecycleLock){if(pending.remove(call))call.reject("Local agent connection changed. A dispatched operation may still have completed; inspect its receipt before retrying.","LOCAL_AGENT_EPOCH_CHANGED");}}
 
  private boolean runtimePackaged() {
@@ -665,9 +670,10 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   final long epoch;
   try{synchronized(lifecycleLock){epoch=admittedEpoch();pending.add(call);}}catch(Superseded stale){call.reject("Local agent is stopped or unavailable.","LOCAL_AGENT_EPOCH_CHANGED");return;}
   try{workers.execute(()->{try{
+   requireOwned(call,epoch);
    String token=enroll(epoch);
    synchronized(lifecycleLock){requireCurrent(epoch);if(expectedOwner!=null&&!expectedOwner.equals(ownerIdentity)){resolveCurrent(call,epoch,new JSObject().put("status",409).put("body","{\"error\":\"Local owner changed; reconnect before continuing\"}"));return;}}
-   requireCurrent(epoch);
+   requireOwned(call,epoch);
    JSONObject result=raw(path,method,body,token,headers,120000);
    requireCurrent(epoch);
    if(result.getInt("status")==401)synchronized(lifecycleLock){requireCurrent(epoch);clearEnrollment();}

@@ -45,6 +45,13 @@ for(const mode of ['summary-only','missing-start','wrong-method','wrong-class','
 test('workflow refuses existing package registrations before mutation',()=>{
  const r=run('existing');assert.notEqual(r.code,0);assert.ok(!r.commands.some(a=>a[0]==='install'||a.includes('create-user')));
 });
+test('workflow refuses an archive APK replaced after admission before installing it',()=>{
+ const r=run('archive-race');assert.notEqual(r.code,0);assert.match(r.stderr,/App changed after archive admission/);
+ assert.ok(!r.commands.some(a=>a[0]==='install'||a.includes('instrument')));
+ assert.equal(r.record.passed,false);assert.equal(r.record.results.length,1);assert.equal(r.record.results[0].passed,false);
+ assert.deepEqual([r.record.failure.variant,r.record.failure.phase],['standalone','workflow']);
+ assert.equal(r.state.created,false);assert.equal(r.state.user,'0');
+});
 test('workflow validates every archived APK before mutation',()=>{
  const r=run('archive-pin');assert.notEqual(r.code,0);assert.equal(r.commands.length,0);
 });

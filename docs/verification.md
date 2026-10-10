@@ -195,3 +195,10 @@ non-zero. Source checks: `test/installed-upgrade-runner.test.mjs` and
 `test/native-campaign-evidence.test.mjs` drive the real scripts against a synthetic `adb`;
 they are not emulator evidence. Approval notices across process death and account change have
 no native phase yet.
+
+Review follow-up (same date): an attach keeps the epoch, so a request the attaching surface had
+queued earlier is refused before it pairs or is dispatched (`requireOwned`); a lifecycle change
+made by another surface during an attach does not make this surface stop the resident on retry.
+Both runners bind the bytes upstream pins to the admitted hashes in `preflightVariant`, before
+any install, so a build that overwrites the archive after admission fails the run instead of
+being recorded under the admitted hashes. These are source checks only, as above.

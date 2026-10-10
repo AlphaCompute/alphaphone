@@ -40,6 +40,14 @@ test('the plugin start path attaches before it would retire shared work, and att
  // Cancelling an attached start is a no-op that precedes owned-launch retirement.
  const cancel=source.slice(source.indexOf('@PluginMethod public void cancelStart('),source.indexOf('static String startupRefusalMessage('));
  assert.ok(cancel.indexOf('if(attachedStarts.remove(requestId)){call.resolve();return;}')>0&&cancel.indexOf('attachedStarts.remove(requestId)')<cancel.indexOf('requestId.equals(startRequestId)'));
+ // Attach keeps the epoch, so a request this surface queued before attaching again must still be
+ // its pending call before it pairs or is dispatched; the epoch alone would let it through.
+ const owned=source.slice(source.indexOf('private void requireOwned('),source.indexOf('private void rejectSuperseded('));
+ assert.ok(owned.includes('requireCurrent(epoch)')&&owned.includes('if(!pending.contains(call))throw new Superseded();'));
+ const request=source.slice(source.indexOf('@PluginMethod public void request('),source.indexOf('@PluginMethod public void cancelStream('));
+ const firstGuard=request.indexOf('requireOwned(call,epoch);'),pairing=request.indexOf('String token=enroll(epoch);'),lastGuard=request.lastIndexOf('requireOwned(call,epoch);'),dispatch=request.indexOf('JSONObject result=raw(path,method,body,token,headers,120000);');
+ assert.ok(firstGuard>0&&firstGuard<pairing&&pairing<lastGuard&&lastGuard<dispatch,'owned-call guard precedes pairing and dispatch');
+ assert.equal(request.slice(lastGuard,dispatch).trim(),'requireOwned(call,epoch);','nothing runs between the guard and dispatch');
  // The read-only query never mutates lifecycle state.
  const query=source.slice(source.indexOf('@PluginMethod public void residentAttachment('),source.indexOf('@PluginMethod public void configureProvider('));
  for(const forbidden of ['attachLocked(','invalidateOwnCalls','invalidateCalls','lifecycleEpoch','clearEnrollment','ElizaAgentService.start','ElizaAgentService.stop','enroll(','bindCloudProvider'])

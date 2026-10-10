@@ -85,6 +85,17 @@ const superseded=host({state:'ready',attached:true}),supersededClient=new LocalA
 superseded.bridge.request=async()=>{await supersededClient.disconnect();return {status:500,body:'{}'};};
 await assert.rejects(supersededClient.connect(new AbortController().signal),/connection changed/);
 assert.equal(await willing(credential),true,'a superseded attach does not force a restart');
+// Another surface changing the runtime lifecycle mid-attach is not evidence against the runtime:
+// native answers the next attach query from the new state, so this surface is not forced to stop it.
+const displaced=host({state:'ready',attached:true});displaced.bridge.request=async()=>{throw Object.assign(Error('Local agent connection changed.'),{code:'LOCAL_AGENT_EPOCH_CHANGED'});};
+await assert.rejects(new LocalAgentProtocol(displaced.bridge).connect(new AbortController().signal),/connection changed/);
+assert.equal(await willing(credential),true,'a lifecycle change by another surface does not force a restart');
+// ...while any other rejected owner request after an attach still does.
+const refused=host({state:'ready',attached:true});refused.bridge.request=async()=>{throw Object.assign(Error('Local agent request failed. No automatic retry was made.'),{code:'UNKNOWN'});};
+await assert.rejects(new LocalAgentProtocol(refused.bridge).connect(new AbortController().signal));
+assert.equal(await willing(credential),false);
+await new LocalAgentProtocol(host({state:'ready'}).bridge).connect(new AbortController().signal);
+assert.equal(await willing(credential),true);
 // A failed ordinary start is not an attach failure.
 const cold=host({state:'ready'});cold.bridge.request=async()=>({status:500,body:'{}'});
 await assert.rejects(new LocalAgentProtocol(cold.bridge).connect(new AbortController().signal));

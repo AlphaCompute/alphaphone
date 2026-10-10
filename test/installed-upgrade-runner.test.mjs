@@ -45,7 +45,7 @@ else if(a.includes('switch-user')){if(mode==='restore-failure'&&a.at(-1)==='0')p
 else if(a.includes('remove-user')){s.exists=false;save();console.log('Success');}
 else if(a.includes('is-user-stopped'))console.log('true');
 else if(a.includes('users'))console.log('UserInfo{0:Owner:13}'+(s.exists?'\\nUserInfo{10:Fixture:10}':''));
-else if(a.includes('packages'))console.log(Object.keys(s.files).map(p=>'package:'+p).join('\\n'));
+else if(a.includes('packages')){if(mode==='candidate-rebuilt')fs.writeFileSync(${JSON.stringify(path.join(root,'artifacts/standalone-debug.apk'))},'rebuilt during the run');console.log(Object.keys(s.files).map(p=>'package:'+p).join('\\n'));}
 else if(a.includes('resolve-activity'))console.log(host+'/.Launcher');
 else if(a.includes('set-home-activity'))console.log('Success');
 else if(a.includes('activities'))console.log('topResumedActivity=ActivityRecord u'+s.user+' '+host+'/.Launcher');
@@ -144,4 +144,12 @@ test('a replaced installed test APK is refused before the legacy digest class is
 for(const [mode,pattern,kinds] of [['candidate-unverified',/apk-manifest\.json is missing/,['calendar']],['candidate-unpaired',/does not match the instrumentation APK recorded/,['calendar','reminder']],['candidate-app-replaced',/does not match the verified/,['calendar']],['candidate-test-mocks',/records testMocks=true/,['calendar']]])for(const kind of kinds)test(`${kind} upgrade rejects a ${mode} candidate pair before touching the device`,()=>{
  const r=exercise(kind,mode);assert.notEqual(r.status,0);assert.match(r.stderr,pattern);
  assert.deepEqual(r.commands,[]);assert.deepEqual(r.reports,[]);assert.deepEqual(r.state.files,{});assert.equal(r.state.exists,false);
+});
+// A build that overwrites artifacts/ after admission must not be installed under the admitted hashes.
+// Calendar without --bridge has no companion class, so only the preflight binding can refuse it.
+test('calendar upgrade refuses a candidate rebuilt after admission before installing anything',()=>{
+ const r=exercise('calendar','candidate-rebuilt');assert.notEqual(r.status,0);assert.match(r.stderr,/Candidate app changed after admission/);
+ assert.ok(!r.commands.some(a=>a[0]==='install'||a.includes('instrument')));
+ assert.equal(r.reports.length,1);assert.equal(r.reports[0].passed,false);assert.equal(r.reports[0].failedPhase,'admission');
+ assert.deepEqual(r.state.files,{});assert.equal(r.state.exists,false);assert.equal(r.state.user,'0');
 });

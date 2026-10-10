@@ -132,8 +132,9 @@ export class LocalAgentProtocol {
     return {session:this.session,name:typeof agent.name==='string'?agent.name:'Local agent',attached};
     }catch(error){
       // The runtime answered the attach but not as a usable owner session. A cancelled or
-      // superseded connect says nothing about the runtime and changes nothing.
-      if(attached&&!signal.aborted&&generation===this.generation)attachDistrusted=true;
+      // superseded connect says nothing about the runtime and changes nothing; neither does a
+      // lifecycle change made by another surface, which native reports on the next attach query.
+      if(attached&&!signal.aborted&&generation===this.generation&&(error as {code?:unknown}|null)?.code!=='LOCAL_AGENT_EPOCH_CHANGED')attachDistrusted=true;
       cancelOwned();throw error;
     }
     finally{signal.removeEventListener('abort',cancel);}
