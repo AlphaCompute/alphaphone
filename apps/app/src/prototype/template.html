@@ -3866,6 +3866,19 @@
       <sc-if value="{{notAssistantSurface}}"><button class="ib" aria-label="Minimize chat" onClick="{{closeChat}}"><svg class="i" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="{{ic.down}}"></path></svg></button></sc-if>
     </div>
   </div>
+  <sc-if value="{{emailUseOpen}}">
+    <div ref="{{emailUseModal}}" class="scr inbox-review-modal" role="dialog" aria-modal="true" aria-label="Review email suggestion" style="position:absolute;inset:0;z-index:6;background:var(--s1);padding:calc({{panelTop}}px + 16px) 20px 28px;overflow:auto;box-sizing:border-box;display:flex;flex-direction:column;gap:12px">
+      <button class="tap" onClick="{{emailUse.close}}" style="align-self:flex-start;min-height:44px;padding:0 14px;border-radius:22px;background:var(--s2);color:var(--fg);font:inherit;font-weight:600">Cancel</button>
+      <h2 class="serif" style="margin:0;font-size:26px;font-weight:400">Use this reply in an email?</h2>
+      <p data-alpha-email-use-account style="margin:0;font-size:15px;font-weight:600;overflow-wrap:anywhere">{{emailUse.account}}</p>
+      <p data-alpha-email-use-destination style="margin:0;font-size:15px;line-height:1.45;overflow-wrap:anywhere">{{emailUse.destination}}</p>
+      <p data-alpha-email-use-effect style="margin:0;font-size:14px;line-height:1.45;color:var(--mut);overflow-wrap:anywhere">{{emailUse.effect}}</p>
+      <div role="region" aria-label="Suggested text" tabindex="0" style="white-space:pre-wrap;overflow-wrap:anywhere;padding:14px;border-radius:16px;background:var(--s2);font-size:15px;line-height:1.5;user-select:text;-webkit-user-select:text">{{emailUse.text}}</div>
+      <p style="margin:0;font-size:13px;line-height:1.45;color:var(--mut)">{{emailUse.policy}} Nothing is sent: you review and send from the email.</p>
+      <p role="status" style="margin:0;font-size:14px;line-height:1.45;color:var(--fg);font-weight:600;overflow-wrap:anywhere">{{emailUse.notice}}</p>
+      <button class="tap" disabled="{{emailUse.blocked}}" onClick="{{emailUse.confirm}}" style="min-height:52px;padding:10px 16px;border-radius:26px;background:var(--acc);color:#fff;font:inherit;font-weight:600;flex-shrink:0;text-align:center;justify-content:center">{{emailUse.confirmLabel}}</button>
+    </div>
+  </sc-if>
   <sc-if value="{{chatRecorder}}">
     <section data-alpha-chat-recorder data-voice-state="{{chatRecorder.state}}" role="region" aria-label="Voice conversation" style="display:flex;flex-direction:column;flex:{{chatRecorder.flex}};min-height:0;padding:8px 20px 20px;box-sizing:border-box;gap:12px">
       <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
@@ -3987,6 +4000,7 @@
           <div data-alpha-message-actions role="menu" aria-label="Message actions" onKeyDown="{{m.menuKey}}" style="align-self: flex-start; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; padding: 4px; border-radius: 14px; background: var(--s2)">
             <sc-if value="{{m.canReplyMessage}}"><button class="tap" role="menuitem" onClick="{{m.replyMessage}}" style="display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;font-size:14px;font-weight:600"><svg aria-hidden="true" class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="{{ic.reply}}"></path></svg>Reply</button></sc-if>
             <button class="tap" role="menuitem" onClick="{{m.copyMessage}}" style="display:flex;align-items:center;gap:8px;min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 600"><svg aria-hidden="true" class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="{{ic.copy}}"></path></svg>Copy</button>
+            <sc-if value="{{m.canUseInEmail}}"><button class="tap" role="menuitem" onClick="{{m.useInEmail}}" style="display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;font-size:14px;font-weight:600"><svg aria-hidden="true" class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="{{ic.mail}}"></path></svg>Use in email</button></sc-if>
             <sc-if value="{{m.localSpeechAvailable}}"><button class="tap" role="menuitem" onClick="{{m.localSpeech}}" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; color: var(--acct); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{ic.wave}}"></path></svg>{{m.localSpeechLabel}}</button></sc-if>
             <sc-if value="{{m.canEditMessage}}"><button class="tap" role="menuitem" onClick="{{m.editMessage}}" style="display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;font-size:14px;font-weight:600"><svg aria-hidden="true" class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="{{ic.edit}}"></path></svg>Edit and resend</button></sc-if>
             <button class="tap" role="menuitem" aria-label="Close message actions" onClick="{{m.closeMessageActions}}" style="min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{ic.x}}"></path></svg></button>

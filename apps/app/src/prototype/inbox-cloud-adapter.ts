@@ -2,7 +2,7 @@ import { registerPlugin } from '../platform-plugins';
 const attachmentNative=registerPlugin<{openReviewed(input:Record<string,unknown>):Promise<{message:string}>;saveReviewed(input:Record<string,unknown>):Promise<{status:string;message:string}>;cancel():Promise<void>}>('AlphaMailAttachments');
 import {reviewMailContext,validateMailContext,type ReviewedMailContext,type MailContextSource} from '../runtime/reviewed-mail-context';
 import { inboxProviderControls } from './inbox-provider-controls';
-import { inboxDrafts, type ComposePrefill } from './inbox-drafts';
+import { inboxDrafts, type ComposePrefill, type SuggestionTarget } from './inbox-drafts';
 import { classifyGmailFailure, disconnectGmailAccount, disconnectMessage, gmailReadable, setGmailReadState, GMAIL_ACCOUNTS_CHANGED, type GmailFailureKind } from '../runtime/gmail-mailbox';
 import { connectionController } from '../runtime/connection-ui';
 import { safeMailLink, type GmailAccount, type GmailDraftContent, type GmailDraftSummary, type GmailLink, type GmailMessage } from '../runtime/cloud-protocol';
@@ -11,6 +11,8 @@ import { openConnectionBrowser } from '../runtime/native-connection';
 import { DailyApps } from '../daily';
 
 type Bag = Record<string, any>;
+/** A suggestion destination with the account it belongs to. Tokens stay inside the renderer. */
+export type EmailTarget = SuggestionTarget & { accountId?: string; account?: string };
 /** What Home may show about mail. Only counts, the account label and a time leave the Inbox closure;
  * no subject, sender or body. `unreadMore` means the bounded query or loaded pages did not see every message. */
 export interface InboxAttention {
@@ -442,12 +444,28 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   // Mail content is never sent to the agent automatically, so chips ask only for help the agent can give.
   // Sharing one message goes through the explicit "Review email with agent" review.
   view.suggestions = (st: Bag) => drafts.render().composing ? ['Help me write this email'] : st.open != null ? ['Help me write a reply'] : ['Help me write an email'];
+  const openReply = () => { const st = api?.get('inbox'), current = body; return current && st?.open != null && current.message.id === st.open ? current : undefined; };
+  /** The exact destination a suggestion would use now: the selected account, and the open draft, the
+   * open message (a reply) or a new email. The assistant review shows it and passes its token back. */
+  view.emailTarget = (): EmailTarget => {
+    const binding = connectionController.getCloudClient();
+    if (!binding || !selected) return { ready: false, reason: 'Connect a Gmail account in Inbox first. Nothing was added.', token: '' };
+    // A mail operation, attachment or sharing review already on screen is finished or closed first.
+    if (contextReview || attachmentView || provider.render().providerReview) return { ready: false, reason: 'Finish or close the review that is open in Inbox first. Nothing was added.', token: '', accountId: selected, account: accountLabel() || undefined };
+    const current = openReply(), target = drafts.suggestionTarget(current?.message);
+    return { ...target, accountId: selected, account: accountLabel() || 'Selected Gmail account',
+      token: JSON.stringify([binding.sessionId, selected, accountLabel(), target.token, current ? [current.message.id, current.historyId ?? null] : null]) };
+  };
   /** "Use in email" for an agent reply while Inbox is open: a local draft bound to the selected account,
    * replying to the open message when there is one. It opens the normal composer; nothing is sent. */
-  view.useInEmail = (text: string): boolean => {
+  view.useInEmail = (text: string, expected?: { token: string; append?: boolean }): boolean => {
     if (!selected) { api?.toast('Connect a Gmail account first. Nothing was added.'); return false; }
-    const st = api?.get('inbox'), current = body, reply = current && st?.open != null && current.message.id === st.open ? current.message : undefined;
-    return drafts.useSuggestion(text, reply);
+    const reply = openReply()?.message;
+    if (!expected) return drafts.useSuggestion(text, reply);
+    // The reviewed destination must be unchanged: same Cloud session, account, draft content and message.
+    const now = view.emailTarget() as EmailTarget;
+    if (!now.ready || now.token !== expected.token) return false;
+    return drafts.useSuggestion(text, reply, { token: drafts.suggestionTarget(reply).token, append: expected.append === true && now.append });
   };
   view.voicePhrase = 'Help me write an email';
   /** Content shared from Notes, Photos or Files becomes a new local draft for review; nothing is sent. */
