@@ -173,63 +173,63 @@ Evidence/source: [android/settings.gradle](../android/settings.gradle), [shared 
 
 **P1 · implementation · AP-09**
 
-Current: Contracts and review presentation recognize calendar_availability. The native guard includes availability in its snapshot, but the product execution path is not complete.
+Current: Software path implemented; no Android run. A foreground executor is registered and `calendar.availability-read.v1` is negotiated on paired, Cloud and resident connections (not the browser development profile). The owner picks 1 to 16 calendars with none preselected, sees the exact free/busy result and shares it; the same read repeats before sharing and any difference fails with no result. Android reads only the chosen calendars from CalendarProvider with a projection limited to start, end, all-day, availability and status (`CalendarAvailabilityReader.java`), and the action journal has its own bounded policy for the answer; the browser build reads the in-app calendar. Free events are excluded, all-day events follow the owner's civil day, and a time-zone disagreement, denied permission, stale context or changed calendar fails closed. No title, calendar name or account enters the journal, receipt or chat. A proposal that cannot be reviewed from the current screen is named in chat instead of dropped. Evidence: Node, JVM (SQLite stand-in for CalendarProvider) and browser tests against synthetic agent routes. Android sources and `CalendarAvailabilityInstrumentedTest`: compiled by Gradle for both variants (developer and instrumentation APKs without the runtime payload); not run on an emulator or device. See [calendar availability](calendar-availability.md).
 
-Remaining: Carry free/busy availability through provider reads, implement bounded foreground selection/execution, filter only authorized calendars, and return no event titles. Handle all-day, timezone, permission and stale-context cases.
+Remaining: Run the Android path on an emulator and a device: the instrumented reader test, the permission prompt (including WebView visibility while it shows), the review inside the WebView, synced and multi-account calendars, a declined invitation and a time-zone change mid-review. Produce and consume one availability receipt with a real agent. Owner to confirm two engineering defaults: cancelled events and declined invitations are not busy, and calendars at free/busy access level are offered. NEEDS upstream: an availability-carrying selected-calendar read in `plugin-native-calendar` so the Alpha-side reader can be removed, and a journal result bound that fits the 200-interval contract. The notes_search, notes_named, calendar_named and reminder_named reviews stay un-negotiated and fail closed.
 
 Done when: Actual selected-provider result and exact receipt; free events excluded, all-day busy, no unrelated calendars or titles disclosed.
 
-Evidence/source: [apps/app/src/runtime/device-actions.ts](../apps/app/src/runtime/device-actions.ts), [upstream device-review contracts](https://github.com/elizaOS/eliza/pull/34699).
+Evidence/source: [apps/app/src/runtime/device-actions.ts](../apps/app/src/runtime/device-actions.ts), [upstream device-review contracts](https://github.com/elizaOS/eliza/pull/34699), [docs/calendar-availability.md](../docs/calendar-availability.md), [apps/app/src/runtime/calendar-availability.ts](../apps/app/src/runtime/calendar-availability.ts), [android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarAvailabilityReader.java](../android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarAvailabilityReader.java).
 
 ### MVP-13 Finish folder notification and capture context selection
 
 **P1 · implementation · AP-04, AP-10**
 
-Current: Selection contracts exist, but folder/notification selections are not fully wired. native-adapter passes a generic wrapper to askAboutCapture while its public function expects an item identity.
+Current: Implemented in the renderer; no Android run. Folder identity is published as an opaque tree id with a session-local listing revision (never the provider string that embeds name and size), only while that folder is the visible Files subview. `Ask Alpha about this folder` reviews the loaded entry names and types of that one folder and reads it again before use, so a deleted, added, renamed or replaced entry or revoked access adds nothing. Own, unredacted notifications offer a reviewed question whose row is re-listed before the draft is placed; mirrored rows from other apps and lock-redacted rows offer none. Capture routing is corrected: Camera asks about the live frame, the Photos viewer about the exact open item (id and revision re-checked), and a typed Photos search is not treated as a capture. A saved photo or video is identified by a session-local revision instead of the library's added time and size; a renamed selected document gets a new revision. Evidence: Node and browser tests (`test/context-selection.test.mjs`, `test/browser/context-selection.spec.ts`); the folder revoke and withheld-notification cases are stubbed at the plugin boundary. See [context selection](context-selection.md).
 
-Remaining: Audit every retained source adapter, preserve exact selected identity/revision, implement folder and notification review scope, and correct native capture/category routing. Keep unsupported operations visibly unavailable.
+Remaining: Android acceptance on an emulator and a device: SAF folder grants and revocation, MediaStore-backed Photos, the notification listener and the native Camera. A photo changed by another process during an open review is not detected until the library refreshes. On Android every Alpha notification is listed as own, so hosted-result notices offer the question there. Inbox mail context review was not re-audited.
 
 Done when: Switch/delete/revoke during review cannot send a neighboring item; native Camera/Photos and folder selection complete their intended journey.
 
-Evidence/source: [apps/app/src/prototype/native-adapter.ts](../apps/app/src/prototype/native-adapter.ts), [apps/app/src/prototype/camera-adapter.ts](../apps/app/src/prototype/camera-adapter.ts), [docs/flow-audit-and-prd.md](../docs/flow-audit-and-prd.md).
+Evidence/source: [apps/app/src/prototype/native-adapter.ts](../apps/app/src/prototype/native-adapter.ts), [apps/app/src/prototype/camera-adapter.ts](../apps/app/src/prototype/camera-adapter.ts), [docs/flow-audit-and-prd.md](../docs/flow-audit-and-prd.md), [docs/context-selection.md](../docs/context-selection.md), [apps/app/src/prototype/context-selection.ts](../apps/app/src/prototype/context-selection.ts).
 
 ### MVP-14 Expose Use in email through the actual assistant UI
 
 **P1 · implementation · AP-09**
 
-Current: Inbox defines useInEmail, but no other product caller is present in the audited tree. A helper test is not a visible control.
+Current: Implemented in the renderer; fixture evidence only. A finished plain agent reply offers `Use in email` in its message-actions menu while Inbox is the app behind the conversation. A review dialog shows the From account, the exact destination (reply, open draft or new email), the effect and the exact text. The destination is bound by a renderer-only token over the Cloud session, account, open message and its history id, and the draft's identity and content; a stale token, a changed reply or session, a locked phone or another app in front inserts nothing. Draft text is never replaced: an open draft that already has text only offers `Add below existing text`. Nothing is prepared or dispatched to the provider; sending still goes through the composer and the provider review. Selected Files and Photos are not attached (the documented picker-only policy, stated in the dialog). Evidence: `test/use-in-email-review.test.mjs`, sections 7 to 7c of `scripts/test-inbox-attention-flow.mjs` and `test/browser/use-in-email.spec.ts`, all with a synthetic Cloud client and agent.
 
-Remaining: Connect the reviewed assistant result to the exact selected email/local draft, with conflict protection and account identity. Clarify whether selected Files/Photos become attachments or require the picker.
+Remaining: Acceptance on an installed APK and a device with a real Gmail account and a real agent reply, including TalkBack, system Back and the status-bar inset. No flag-off browser spec drives the control. The action is offered only while Inbox is behind the conversation. Owner decision still open (A-15): whether selected Files or Photos may ever become attachments of a suggestion.
 
 Done when: A user can review and insert a suggestion into the intended draft; edited drafts are not overwritten and no message sends automatically.
 
-Evidence/source: [apps/app/src/prototype/inbox-cloud-adapter.ts](../apps/app/src/prototype/inbox-cloud-adapter.ts), [apps/app/src/prototype/agent-adapter.ts](../apps/app/src/prototype/agent-adapter.ts).
+Evidence/source: [apps/app/src/prototype/inbox-cloud-adapter.ts](../apps/app/src/prototype/inbox-cloud-adapter.ts), [apps/app/src/prototype/agent-adapter.ts](../apps/app/src/prototype/agent-adapter.ts), [apps/app/src/prototype/use-in-email-review.ts](../apps/app/src/prototype/use-in-email-review.ts), [apps/app/src/prototype/inbox-drafts.ts](../apps/app/src/prototype/inbox-drafts.ts), [docs/inbox-provider-completion-plan.md](../docs/inbox-provider-completion-plan.md).
 
 ### MVP-15 Complete full Trash recovery
 
 **P1 · implementation · AP-10, AP-15**
 
-Current: Trash preserves notes and voice recordings for three days. Full storage currently refuses deletion and directs the user to empty Trash.
+Current: Implemented; browser and policy evidence, no Android run. Trash preserves notes and voice recordings for three days. A full Trash (policy limits or the native slot cap) refuses a deletion before any effect with a typed refusal and opens `Trash is full` with Cancel, Open Trash and a separately confirmed `Delete forever without Trash`. The permanent path removes only the exact refused record found in saved storage, under the deletion lock, with no Undo; a note changed since the refusal is left alone and another view's Trash copy is kept. A voice note's recording is erased only by the operation that owns its audio trash, and an interrupted permanent voice deletion stays under review and finishes once when Notes next renders. An approved agent notes_delete reports the refusal and never takes the permanent path. Lowered limits: an over-limit Trash stays readable, restorable and purgeable and only additions are refused (policy tests against the pinned upstream policy and a browser test). Expiry holds across a backwards clock, restarts and process death at the write-ahead and erase steps in the browser build. Three native backstop cases were added to `NotesTrashBackstopInstrumentedTest.java`: compiled by Gradle for both variants (developer and instrumentation APKs without the runtime payload); not run on an emulator or device.
 
-Remaining: Add the separately confirmed permanent-delete escape where required, preserving exact note/audio ownership and failure recovery. Qualify expiry across process death and clock changes. Qualify the consumed upstream capacity fix: existing Trash must remain readable, restorable and purgeable after a later host lowers its limits. Current limits are unchanged; the fix merged in [upstream PR 34649](https://github.com/elizaOS/eliza/pull/34649) and is included in the pin.
+Remaining: Run the full-Trash dialog, permanent delete, interrupted-erase recovery and the new instrumented cases on an emulator and a device. NEEDS upstream: `JsonCredentialSlots` read and write must admit an existing slot above a lowered limit and writes that shrink it, with the matching allowance in `AlphaCredentialStore.requireCapacity`; until then `notes-trash:v1:device` must not be lowered below 32 MiB. A clock moved forwards can still purge early (upstream wall-clock policy). An interrupted permanent voice deletion has no startup or native backstop. The ordinary move-to-Trash path can replace another browser view's newer Trash row from a stale view (browser build only). The byte-limit refusal is covered only in Node.
 
 Done when: Full-storage recovery does not silently lose another note; deletion/restore/expiry converge for the exact text and audio under interruption. A document created under larger limits can be read and reduced under smaller limits; only new additions enforce capacity.
 
 Depends on: MVP-09.
 
-Evidence/source: [apps/app/src/prototype/notes-trash-adapter.ts](../apps/app/src/prototype/notes-trash-adapter.ts), [apps/app/src/prototype/agent-adapter.ts](../apps/app/src/prototype/agent-adapter.ts), [docs/browser-storage.md](../docs/browser-storage.md).
+Evidence/source: [apps/app/src/prototype/notes-trash-adapter.ts](../apps/app/src/prototype/notes-trash-adapter.ts), [apps/app/src/prototype/agent-adapter.ts](../apps/app/src/prototype/agent-adapter.ts), [docs/browser-storage.md](../docs/browser-storage.md), [apps/app/src/runtime/notes-trash-policy.ts](../apps/app/src/runtime/notes-trash-policy.ts), [apps/app/src/prototype/voice-adapter.ts](../apps/app/src/prototype/voice-adapter.ts), [test/browser/notes-trash-recovery.spec.ts](../test/browser/notes-trash-recovery.spec.ts).
 
 ### MVP-16 Reuse the resident agent from the assistant surface
 
 **P1 · implementation · AP-04, AP-05**
 
-Current: ACTION_ASSIST has its own renderer/bridge; startup still follows resident connection admission. Per-Activity cancellation was preserved in this merge.
+Current: Implemented in source; no Android run. `ResidentAttachment.java` decides whether a surface attaches to the running resident: only when the runtime is listening, nothing is retiring, the enrollment belongs to it and is not expiring, and the stored provider admission generation is the one the process launched with. An attach does not advance the epoch, clear the enrollment, pair, start the service or change launch ownership; it supersedes only the calling surface's own work, and any doubt falls back to the ordinary start. The renderer no longer stops and rebinds an unchanged Cloud provider when the assistant opens; the credit gate still runs first. Evidence: a JVM contract of the real class, a renderer contract and source guards (`test/resident-attachment.test.mjs`). `AssistantResidentReuseInstrumentedTest`: compiled by Gradle for both variants (developer and instrumentation APKs without the runtime payload); not run on an emulator or device.
 
-Remaining: Separate attaching to an admitted running resident from restarting it. Opening/closing assistant must not retire Home work, enroll another owner or restart active inference.
+Remaining: Run `AssistantResidentReuseInstrumentedTest` on both variants, then a packaged-runtime ARM64 campaign showing that a live inference stream and a real enrollment survive repeated assistant open and close (the instrumented test uses a synthetic runtime, enrollment and streams). Two surfaces that start before any enrollment exists still supersede each other; after the last surface is destroyed the next open pairs again. Whether re-registering the same installation disturbs the other surface's device work is unverified.
 
 Done when: Native dual-Activity test records unchanged runtime identity, correct owned-work cancellation and preserved conversation across repeated assistant invocations.
 
-Evidence/source: [apps/app/src/runtime/connection-ui.tsx](../apps/app/src/runtime/connection-ui.tsx), [apps/app/src/runtime/local-agent.ts](../apps/app/src/runtime/local-agent.ts), [android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java](../android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java).
+Evidence/source: [apps/app/src/runtime/connection-ui.tsx](../apps/app/src/runtime/connection-ui.tsx), [apps/app/src/runtime/local-agent.ts](../apps/app/src/runtime/local-agent.ts), [android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java](../android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java), [android/app/src/main/java/ai/elizaresearch/alphaphone/ResidentAttachment.java](../android/app/src/main/java/ai/elizaresearch/alphaphone/ResidentAttachment.java), [test/resident-attachment.test.mjs](../test/resident-attachment.test.mjs).
 
 ### MVP-17 Qualify retained browser development transports
 
@@ -249,25 +249,25 @@ Evidence/source: [apps/app/src/runtime/native-connection.ts](../apps/app/src/run
 
 **P1 · integration · AP-11**
 
-Current: WorkflowLegacyReminderUpgradeInstrumentedTest and WorkflowApprovalNoticeInstrumentedTest exist without the required runner coverage.
+Current: Runner phases wired; exercised only against a synthetic adb. `scripts/test-installed-upgrade.mjs` runs `WorkflowLegacyReminderUpgradeInstrumentedTest` on both distributions after the candidate verify phase and admits the candidate app and instrumentation APK as one verified pair from `artifacts/apk-manifest.json` before the device is leased. `scripts/android-workflow-native.mjs` runs both `WorkflowApprovalNoticeInstrumentedTest` methods on both distributions. Both runners re-check before any install that the archived bytes are still the admitted pair; receipts record the candidate hashes and the failed phase, and a skipped, failed or incomplete campaign exits non-zero. Evidence: `test/installed-upgrade-runner.test.mjs` and `test/native-campaign-evidence.test.mjs`. See [verification](verification.md).
 
-Remaining: Add installed-upgrade coverage and an approval-notice phase, including immutable APK/test pairing and explicit failure propagation.
+Remaining: Run both runners on an emulator for both variants; no emulator run of either exists. Add a native phase for approval notices across process death and account change: only the JVM contract and the renderer's other-account routing cover them. The baseline pair is hash-pinned only for the duration of a run, and `scripts/android-instrumentation.mjs` has no registry entry for the two classes.
 
 Done when: Runner executes both classes on both flavors; verifies exact scheduled item/approval across upgrade, process death, account change and notification tap.
 
-Evidence/source: [scripts/test-installed-upgrade.mjs](../scripts/test-installed-upgrade.mjs), [android/app/src/androidTest/java/ai/elizaresearch/alphaphone](../android/app/src/androidTest/java/ai/elizaresearch/alphaphone).
+Evidence/source: [scripts/test-installed-upgrade.mjs](../scripts/test-installed-upgrade.mjs), [android/app/src/androidTest/java/ai/elizaresearch/alphaphone](../android/app/src/androidTest/java/ai/elizaresearch/alphaphone), [scripts/android-workflow-native.mjs](../scripts/android-workflow-native.mjs), [docs/verification.md](../docs/verification.md).
 
 ### MVP-19 Complete the daily overview contract
 
 **P1 · implementation · AP-07**
 
-Current: Main Home cards use current Calendar, workflow/automation and loaded Inbox metadata. The PR Home summary helper does not by itself prove every source/timestamp/brief reaches this newer layout.
+Current: Implemented in the renderer; synthetic provider data only. The Calendar card names its source and when this app read it, distinguishes a failed read, access off and not connected, leaves out calendars hidden in Calendar, and marks overdue reminders, which stay first. The Workflows card shows when its list loaded. The Inbox card shows the account and the last completed provider read, and Home still reads no mail. A fourth card shows the latest retained scheduled-digest result only when one is retained for the current connection; an occurrence recorded as missed, overlapping or unavailable is never shown as a brief, and showing or opening the card runs nothing. The flag-off build shows no fixture avatar or fake brief. Evidence: `test/home-cards.test.mjs`, `test/browser/home-daily-overview.spec.ts` and its production spec. See [daily overview](daily-overview.md).
 
-Remaining: Map the requirement to actual cards: source attribution, freshness, loading/empty/error/retry, overdue reminders and latest retained brief. Preserve the no-background-mail-read boundary unless policy explicitly changes.
+Remaining: Real provider transitions on an installed APK and a device: real Gmail, the device CalendarProvider and a real scheduled digest, plus TalkBack reading of the new descriptions. No single test runs from an agent digest result to the card. An overdue reminder still hides the next event on the card, and the lookup of a device calendar's name has no test.
 
 Done when: Real provider transitions render correctly; counts and times correspond to fetched data; no fixture avatar, fake brief or hidden mail fetch.
 
-Evidence/source: [apps/app/src/prototype/data-adapter.ts](../apps/app/src/prototype/data-adapter.ts), [apps/app/src/prototype/template.html](../apps/app/src/prototype/template.html), [apps/app/src/prototype/inbox-cloud-adapter.ts](../apps/app/src/prototype/inbox-cloud-adapter.ts).
+Evidence/source: [apps/app/src/prototype/data-adapter.ts](../apps/app/src/prototype/data-adapter.ts), [apps/app/src/prototype/template.html](../apps/app/src/prototype/template.html), [apps/app/src/prototype/inbox-cloud-adapter.ts](../apps/app/src/prototype/inbox-cloud-adapter.ts), [docs/daily-overview.md](../docs/daily-overview.md), [apps/app/src/prototype/home-cards.ts](../apps/app/src/prototype/home-cards.ts).
 
 ## Native and user journeys
 
@@ -663,15 +663,15 @@ Evidence/source: [docs/mvp-current-status.md](../docs/mvp-current-status.md), [d
 
 **P0 · acceptance · AP-15**
 
-Current: Browser checks cover selected geometry and interaction; no current physical TalkBack/large-text campaign is recorded here.
+Current: Renderer software pass done in Chromium; no device campaign is recorded. A dependency-free audit (`test/browser/accessibility-audit.ts`) checks names, roles, focus, contrast, 24px targets, clipping and tab order over the live, fixture and subview states of every retained view in light and dark, at an emulated 200% text size and in 915x412 landscape, and over the flag-off bundle; a coverage guard fails if a retained view or scrim popup leaves the sweep. Fixed from it: Camera controls in landscape, Maps sheets, the Browser find bar, dark-theme connection buttons, the recovery screen (it scrolls, dismisses orphan dialogs and focuses Reload), ten menus and sheets that left the page in the tab order, an unannounced toast, and clipping at 200% text. Supported sizes and limits are in [renderer accessibility checks](accessibility-renderer-checks.md).
 
-Remaining: Test every retained primary/subview and error state with TalkBack, large font, keyboard/touch, contrast, rotation/landscape, gesture navigation, offline, process death and full storage. Define supported sizes and fix clipping/focus traps.
+Remaining: Device acceptance is entirely open: test every retained primary view, subview and error state with TalkBack, Switch Access, physical large font (WebView text zoom differs from the emulation), keyboard and touch, rotation, gesture navigation, offline, process death and full storage on selected hardware. Known software gaps: titles shortened at 200% text (Camera, Photos, the Home calendar card), a focused control can sit partly under the floating composer, a toast raised under a top-layer dialog is not announced, and landscape with 200% text and provider-connected states are not swept. Landscape policy remains owner decision A-22.
 
 Done when: Independent task completion without inaccessible primary controls or persistent crash/ANR on selected hardware.
 
 Depends on: MVP-06, MVP-20.
 
-Evidence/source: [docs/flow-audit-and-prd.md](../docs/flow-audit-and-prd.md), [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-runbook.md).
+Evidence/source: [docs/flow-audit-and-prd.md](../docs/flow-audit-and-prd.md), [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-runbook.md), [docs/accessibility-renderer-checks.md](../docs/accessibility-renderer-checks.md), [test/browser/accessibility-sweep.spec.ts](../test/browser/accessibility-sweep.spec.ts).
 
 ### MVP-49 Execute all five cross-app journeys
 
@@ -735,15 +735,15 @@ Evidence/source: [docs/decisions.md](../docs/decisions.md), [docs/market-researc
 
 **P1 · implementation and acceptance · AP-01, AP-02, AP-15**
 
-Current: The PR adds drawer/search and native app launch; enumeration alone does not complete the F02 app-library contract.
+Current: Implemented in source; no Android run. Entries are launcher activities identified by package, activity and Android user (`LauncherLibrary.java`), and a launch re-resolves that exact component and is refused with a reason when the row is stale, after which the drawer re-reads the device. Entries from other profiles are listed with their profile and locked state and are refused while paused or locked. An open drawer re-reads on package and profile changes and when Alpha returns to the foreground. Rows that share a label show their package, activity or profile. Favorites and their order persist in WebView storage and are shown only for entries the device lists now. Evidence: `test/home-launcher.test.mjs` and `test/browser/home-app-library.spec.ts` against a native stub. Android sources and `LauncherLibraryInstrumentedTest`: compiled by Gradle for both variants (developer and instrumentation APKs without the runtime payload); not run on an emulator or device. Details are in the MVP-53 software status section at the end of this document.
 
-Remaining: Check and finish favorites/order persistence, real icons, package add/remove refresh, duplicate labels, disabled/unexported components, locked work profiles, no-handler/error states and return-to-HOME. Decide launcher landscape behavior with the broader rotation policy.
+Remaining: Emulator and physical HOME-role runs; a real work profile (paused, locked and unlocked), private space and clone profile; real install, remove and disable while the drawer is open; return from three native apps, HOME while a task runs, and rotation. `LauncherHomeInstrumentedTest` matches the exact label `Open Settings` and needs checking on an image with two Settings entries. Favorites live only in the drawer and do not move to a new phone. NEEDS upstream: make `SystemLauncherApps` component- and profile-aware so `LauncherLibrary.java` can be replaced. Launcher landscape behavior remains owner decision A-22 (MVP-06).
 
 Done when: Source-matched installed app tests and physical role acceptance; exact intended package/component opens and stale inventory cannot create fabricated success.
 
 Depends on: MVP-06, MVP-20.
 
-Evidence/source: [docs/implementation-plan.md](../docs/implementation-plan.md), [docs/flow-audit-and-prd.md](../docs/flow-audit-and-prd.md).
+Evidence/source: [docs/implementation-plan.md](../docs/implementation-plan.md), [docs/flow-audit-and-prd.md](../docs/flow-audit-and-prd.md), [apps/app/src/prototype/home-launcher.ts](../apps/app/src/prototype/home-launcher.ts), [android/app/src/main/java/ai/elizaresearch/alphaphone/LauncherLibrary.java](../android/app/src/main/java/ai/elizaresearch/alphaphone/LauncherLibrary.java).
 
 ## Suggested sequence for the next workflow
 
@@ -767,3 +767,4 @@ Implementation added on branch `claude/r2-app-library`; acceptance parts stay op
 - Other profiles list real launcher activities only: Alpha's own copy and Android's app-details stand-in for apps without a launcher activity are left out and refused.
 - Still open: emulator and physical HOME-role runs, a real work profile (paused and locked), real install/remove, return from three native apps, and launcher landscape behavior (A-22 owner decision).
 - Review additions, 2026-10-10: rows that would still read alike get their full identity (package, activity, profile number); a Phone shortcut whose handler is gone is re-resolved after the refused open; native `launch` rejects a non-text `activityName` or `user` instead of reading it as absent. Same evidence class as above: Node and stubbed-bridge browser tests, `javac` only for Android.
+- Integration, 2026-10-10: `npm run android:build -- --allow-unpackaged-runtime` compiled these sources and `LauncherLibraryInstrumentedTest` into developer and instrumentation APKs for both variants (no runtime payload, unqualified local speech runtime). This is APK-build evidence only: still no lint, emulator or phone run.
