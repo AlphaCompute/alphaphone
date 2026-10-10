@@ -21,14 +21,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "21"
@@ -39,7 +39,7 @@ jobs:
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - name: Install pinned Android native toolchain
@@ -51,7 +51,7 @@ jobs:
           test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: npm ci
       # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .eliza/browser-speech
           key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
@@ -64,7 +64,7 @@ jobs:
       - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
       # Cache only acquisition inputs. Every hit is size/hash verified; generated
       # AARs, extracted sources and models are rebuilt in this clean job.
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .eliza/local-speech/downloads
           key: speech-downloads-${{ runner.os }}-${{ hashFiles('vendor/eliza/packages/app/scripts/local-speech/download-manifest.json') }}
@@ -112,7 +112,7 @@ jobs:
           console.log(JSON.stringify({ testMocks: manifest.testMocks, demoEntryPoints: manifest.demoEntryPoints, version: manifest.version, signing: manifest.signing.release }, null, 2));
           NODE
       - run: npm run aosp:stage -- --apk artifacts/launcher-debug.apk --development
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-distribution-apks-${{ github.run_id }}-${{ github.run_attempt }}
           # R8 mappings travel with the exact APKs they deobfuscate.
@@ -122,7 +122,7 @@ jobs:
           compression-level: 0
           if-no-files-found: error
           retention-days: 3
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: android-build-evidence
@@ -148,7 +148,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: scripts/ci
       - env:
