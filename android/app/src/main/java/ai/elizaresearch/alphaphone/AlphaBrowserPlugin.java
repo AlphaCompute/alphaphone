@@ -804,7 +804,18 @@ public class AlphaBrowserPlugin extends Plugin {
  private void flushCookies() {
   try{if(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)){androidx.webkit.Profile profile=ProfileStore.getInstance().getProfile(PERSISTENT_PROFILE);if(profile!=null)profile.getCookieManager().flush();}}catch(Exception unavailable){/* Chromium also flushes periodically. */}
  }
- @Override protected void handleOnResume() { paused=false; for(Tab t:tabs.values()) if(!t.dead){t.web.onResume();JSObject event=state(t);event.put("surfaceResumed",true);notifyListeners("stateChanged",event);} }
+ @Override protected void handleOnResume() {
+  paused=false;
+  for(Tab t:tabs.values()) if(!t.dead){
+   t.web.onResume();
+   // Android can deliver the authentication result before the renderer responds
+   // to surfaceResumed. Restore only the still-selected native surface now so
+   // the same-document Autofill result passes its visibility check.
+   t.frame.setVisibility(Objects.equals(presentedId,t.id)?View.VISIBLE:View.GONE);
+   syncAutofill(t);
+   JSObject event=state(t);event.put("surfaceResumed",true);notifyListeners("stateChanged",event);
+  }
+ }
  @Override protected void handleOnDestroy() { destroyed=true;if(reading!=null)reading.cancel();getBridge().removeWebViewListener(hostNavigation);if(downloads!=null)downloads.destroy();dismissSiteDialogs();exitFullscreen(true);if(runtimePermissions!=null)runtimePermissions.unregister();if(takePicture!=null)takePicture.unregister();AutofillManager manager=getActivity().getSystemService(AutofillManager.class);if(manager!=null)manager.unregisterCallback(autofillCallback);cancelFile();if(filePicker!=null)filePicker.unregister();if(pageShare!=null)pageShare.unregister();ArrayList<Tab> all=new ArrayList<>(tabs.values());tabs.clear();
   // Clear first: a private profile shared with a pop-up is purged only when no tab still uses it.
   for(Tab t:all) dispose(t); session=null; }

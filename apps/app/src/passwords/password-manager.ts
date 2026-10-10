@@ -4,9 +4,9 @@ import { devSurfacesEnabled } from '../build-flags';
 import { browserDevProfile } from '../browser/dev-profile';
 // Flag-off builds resolve this to an inert stub (vite.config.ts disabledModuleSource).
 import { createDevelopmentVault } from './dev-vault';
-import { createPasswordsClient, passwordsError, type PasswordsClient } from '../../../../.eliza/patched/plugins/plugin-native-passwords/src/client.ts';
-import { filterEntries, normalizeWebsite } from '../../../../.eliza/patched/plugins/plugin-native-passwords/src/bindings.ts';
-import type { ElizaPasswordsPlugin, PasswordBinding, PasswordEntrySummary, PasswordsStatus } from '../../../../.eliza/patched/plugins/plugin-native-passwords/src/definitions.ts';
+import { createPasswordsClient, passwordsError, type PasswordsClient } from '../../../../vendor/eliza/plugins/plugin-native-passwords/src/client.ts';
+import { filterEntries, normalizeWebsite } from '../../../../vendor/eliza/plugins/plugin-native-passwords/src/bindings.ts';
+import type { ElizaPasswordsPlugin, PasswordBinding, PasswordEntrySummary, PasswordsStatus } from '../../../../vendor/eliza/plugins/plugin-native-passwords/src/definitions.ts';
 
 /**
  * Settings → Password manager over the shared plugin-native-passwords vault.
@@ -216,6 +216,7 @@ export function passwordManagerGroups(helpers: Helpers): Bag[] {
   if (status) {
     const selection = { 'this-app': 'Alpha Phone passwords', other: 'Another provider', none: 'None selected', unknown: 'Not checked' }[status.autofill.selected];
     groups.push(captioned(helpers, 'Autofill', [
+      helpers.info('Browser autofill', 'Unavailable in this browser. Use Show or Copy for website passwords.'),
       helpers.info('Autofill service', status.autofill.supported === false ? 'Unavailable for this device or user' : selection),
       ...(status.autofill.supported === false ? [] : [nav(busy === 'autofill' ? 'Opening…' : 'Set as autofill service', () => void run('autofill', async v => {
         const result = await v.openAutofillSettings();
@@ -254,7 +255,7 @@ export function passwordEntryPage(helpers: Helpers, back: () => void): Bag | nul
     const id = current.id;
     groups.push(helpers.group([
       nav('Show password', () => void run('reveal', async v => { await v.reveal(id); }), { sub: 'Shown by Android, hidden after 30 s' }),
-      nav('Copy password', () => void run('copy', async v => { const r = await v.copy(id); helpers.toast(`Copied. Cleared from the clipboard after ${Math.round(r.clearsAfterMs / 1000)} s.`); })),
+      nav('Copy password', () => void run('copy', async v => { const r = await v.copy(id); helpers.toast(`Copied. We try to clear it after ${Math.round(r.clearsAfterMs / 1000)} s, or when you return to the app.`); })),
     ]));
   }
   const actions: Bag[] = [];

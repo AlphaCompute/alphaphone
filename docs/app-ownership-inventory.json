@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "e0d850e6b34e9d8c4a39c27bc310a6b97133be8c277dfce2b5a681e1b58f2a3f",
+  "sourceDigest": "65b28f8d4885604812d0d0273c76ff271c8e00616dcd195064e2194e38add749",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -2011,7 +2011,7 @@
       "file": "public/licenses/THIRD_PARTY_NOTICES.txt",
       "upstreamCandidate": [],
       "bytes": 807423,
-      "sha256": "697a8399e4439722ebd7d3aebbc7da1e695091577e4fa9390a14a0b68d100005",
+      "sha256": "33e2a6d40825213d40ab6c9c4720c54855a828c8943936ac747bbf6039dfdd42",
       "lines": null,
       "owner": "alphaphone",
       "disposition": "retain",
@@ -2024,7 +2024,7 @@
       "file": "public/licenses/third-party-notices.json",
       "upstreamCandidate": [],
       "bytes": 821461,
-      "sha256": "04e97ea2f0e7b1c6bd77d309d901236049a3037d76bd8f6cfdea2a748365cfb1",
+      "sha256": "d09de12027ec554eceaa534135af2d180eb462c19fddeed201d00d2ffc296838",
       "lines": 766,
       "owner": "alphaphone",
       "disposition": "retain",
@@ -8734,15 +8734,15 @@
     {
       "file": "src/passwords/dev-vault.ts",
       "upstreamCandidate": [],
-      "bytes": 5353,
-      "sha256": "522aa510381f5ad35c2b7aaf81698bb16b4dc420e6cdea1d5af4fa1bdf9d755b",
+      "bytes": 5349,
+      "sha256": "2d8ddbd43ddaeb1149f11ad22d7b2ed04ac099e1e6bc1a2517c9418dc4269e4b",
       "lines": 63,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-native-passwords/src/bindings.ts",
-        "../../../../.eliza/patched/plugins/plugin-native-passwords/src/definitions.ts",
+        "../../../../vendor/eliza/plugins/plugin-native-passwords/src/bindings.ts",
+        "../../../../vendor/eliza/plugins/plugin-native-passwords/src/definitions.ts",
         "../browser/dialog-layout"
       ],
       "exports": [
@@ -8773,16 +8773,16 @@
     {
       "file": "src/passwords/password-manager.ts",
       "upstreamCandidate": [],
-      "bytes": 18543,
-      "sha256": "46865d17c3310afd1bccad1aff47ede1c82d653b52179b4641e77f2d377a128d",
-      "lines": 273,
+      "bytes": 18672,
+      "sha256": "11bfa78618efa26ea9c53da84339d512ad3a98677f6c41b49a2128bbc49f4382",
+      "lines": 274,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
       "imports": [
-        "../../../../.eliza/patched/plugins/plugin-native-passwords/src/bindings.ts",
-        "../../../../.eliza/patched/plugins/plugin-native-passwords/src/client.ts",
-        "../../../../.eliza/patched/plugins/plugin-native-passwords/src/definitions.ts",
+        "../../../../vendor/eliza/plugins/plugin-native-passwords/src/bindings.ts",
+        "../../../../vendor/eliza/plugins/plugin-native-passwords/src/client.ts",
+        "../../../../vendor/eliza/plugins/plugin-native-passwords/src/definitions.ts",
         "../browser/dev-profile",
         "../build-flags",
         "../platform-plugins",
@@ -8849,13 +8849,13 @@
           ]
         },
         {
-          "line": 222,
+          "line": 223,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 246,
+          "line": 247,
           "tags": [
             "presentation"
           ]

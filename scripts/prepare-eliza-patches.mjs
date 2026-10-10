@@ -69,7 +69,13 @@ export function prepareElizaPatches({ root = projectRoot } = {}) {
   const manifests = readPatchManifests(root);
   const parent = path.join(root, '.eliza'), destination = path.join(parent, 'patched'), stamp = path.join(destination, '.source.json');
   regularPath(parent, true);
-  if (!manifests.length) { if (regularPath(destination, true)) fs.rmSync(destination, { recursive: true, force: true }); return null; }
+  if (!manifests.length) {
+    if (regularPath(destination, true)) {
+      if (!regularPath(stamp)) throw Error('Refusing to replace an unrecognized patched source directory.');
+      fs.rmSync(destination, { recursive: true, force: true });
+    }
+    return null;
+  }
   const pin = JSON.parse(fs.readFileSync(path.join(root, 'upstream.lock.json'), 'utf8')).commit;
   const expected = {};
   for (const { name, manifest } of manifests) {

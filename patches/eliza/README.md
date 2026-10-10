@@ -7,9 +7,7 @@ source.
 
 ## Applied candidates
 
-| Patch | Shared scope |
-| --- | --- |
-| `0038-password-manager.patch` | Native password manager, Autofill provider and renderer client; encrypted custody comes from the pin |
+None. The password manager and its encrypted custody come from the reviewed upstream pin.
 
 Each applied patch has a `<topic>-source.json` manifest with its pinned base,
 patch hash, authenticated source paths and full output hashes. Export staged

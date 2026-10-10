@@ -119,7 +119,7 @@ Evidence/source: [docs/mvp-current-status.md](../docs/mvp-current-status.md), [d
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: The integration branch pins reviewed upstream merge 945209d3, including native compatibility, touch lifecycle, deterministic synthesis, shared password custody and workflow repairs. Source preparation, repository verification, four developer APKs and journal/photo tests in both variants passed. These are not distributable release or device-acceptance results.
+Current: The integration pin is reviewed upstream password-manager head 352d7a0855, merged through PR #34835 and reachable from develop. Source preparation and consumer verification pass (454 tests, four TODOs); both variants build and all four APK audits pass. These developer APKs use an unqualified speech candidate and omit the resident runtime payload, so they are not distributable. Both variants pass the real-framework browser rejection campaign on API 35. Historical 945209d3 journal/photo evidence remains separate.
 
 Remaining: Complete the remaining retired-pin semantic audit and product-wide browser/native regressions. Release runtime, speech, signing and device acceptance remain separate.
 
@@ -131,7 +131,7 @@ Evidence/source: [scripts/ci/upstream-reachability.json](../scripts/ci/upstream-
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: Twenty-eight patch files and their manifests were retired after their replacements merged upstream. The unused runtime-capability proposal was deleted. The remaining applied password patch contains the manager and Autofill provider; encrypted custody comes from the pin. Password transfer remains a reference candidate.
+Current: The last applied password-manager patch is replaced by the pinned upstream module from PR #34835. Twenty-eight earlier patch files and their manifests were retired after upstream merges. No applied patch remains. Password transfer remains an unshipped reference candidate with unresolved lifecycle and grant-ticket findings.
 
 Remaining: Finish the remaining upstream reviews and remove each patch only when its reviewed replacement is consumed.
 
@@ -211,7 +211,7 @@ Evidence/source: [apps/app/src/prototype/inbox-cloud-adapter.ts](../apps/app/src
 
 Current: Trash preserves notes and voice recordings for three days. Full storage currently refuses deletion and directs the user to empty Trash.
 
-Remaining: Add the separately confirmed permanent-delete escape where required, preserving exact note/audio ownership and failure recovery. Qualify expiry across process death and clock changes. Consume the reviewed upstream capacity fix: existing Trash must remain readable, restorable and purgeable after a later host lowers its limits. Current limits are unchanged in this integration; the candidate fix is [upstream PR 34649](https://github.com/elizaOS/eliza/pull/34649).
+Remaining: Add the separately confirmed permanent-delete escape where required, preserving exact note/audio ownership and failure recovery. Qualify expiry across process death and clock changes. Qualify the consumed upstream capacity fix: existing Trash must remain readable, restorable and purgeable after a later host lowers its limits. Current limits are unchanged; the fix merged in [upstream PR 34649](https://github.com/elizaOS/eliza/pull/34649) and is included in the pin.
 
 Done when: Full-storage recovery does not silently lose another note; deletion/restore/expiry converge for the exact text and audio under interruption. A document created under larger limits can be read and reduced under smaller limits; only new additions enforce capacity.
 
@@ -397,7 +397,7 @@ Evidence/source: [android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserD
 
 **P0 · acceptance · AP-10**
 
-Current: 0038 provides shared password management; source tests and setup UI are not proof of filling.
+Current: The pinned shared password module supplies native vault management and app Autofill. Three real Android consumer tests passed on a clean checkout at 352d7a0855, with exact APK hashes and cleanup evidence in upstream PR #34835. Integrated browser Autofill is unavailable because ordinary WebView lacks native per-field origins. Show and Copy remain available; successful browser filling is not qualified.
 
 Remaining: On release-signed devices test enablement, synthetic credential save/update/fill, biometric unavailable/lock/cancel, exact top-level origin, iframe, app certificate, tab/process switch, disable/re-enable and optional Proton Pass.
 
@@ -425,9 +425,9 @@ Evidence/source: [docs/flow-audit-and-prd.md](../docs/flow-audit-and-prd.md), [d
 
 **P1 · integration · AP-10**
 
-Current: Route selection and guidance integration exists; source tests do not qualify production map data or physical navigation. A source-level reproduction confirms a date-line projection defect: a point at longitude 179.5 on an equatorial route from 179 to -179 is reported 55.6 km off route instead of zero.
+Current: Route selection and guidance integration exists; source tests do not qualify production map data or physical navigation. The previous projection reported a point at longitude 179.5 on a route from 179 to -179 as 55.6 km off route. The pin includes the reviewed geodesic correction; integrated navigation acceptance remains open.
 
-Remaining: Provision approved TLS endpoint and licensed data coverage, verify build configuration, location permission/accuracy, reroute/stale result, offline/no route, background navigation and stop behavior. Adopt a reviewed great-circle projection fix ([candidate upstream PR 34650](https://github.com/elizaOS/eliza/pull/34650)), and qualify date-line/high-latitude routes and maneuver ordering.
+Remaining: Provision approved TLS endpoint and licensed data coverage, verify build configuration, location permission/accuracy, reroute/stale result, offline/no route, background navigation and stop behavior. The great-circle projection fix from [merged upstream PR 34650](https://github.com/elizaOS/eliza/pull/34650) is in the pin; qualify date-line/high-latitude routes and maneuver ordering.
 
 Done when: J04 event-to-route on selected hardware with explicit origin/route, correct live guidance and truthful regional/offline limits. Date-line progress agrees with the existing geodesic distance calculation and never invents an off-route detour.
 

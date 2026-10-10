@@ -13,7 +13,14 @@ function fixture(run){
  const directory=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-eliza-patch-')));
  try{
   fs.copyFileSync(path.join(root,'upstream.lock.json'),path.join(directory,'upstream.lock.json'));
-  fs.cpSync(path.join(root,'patches'),path.join(directory,'patches'),{recursive:true});
+  const file='packages/scripts/native-capacitor-scaffold.json';
+  const original=fs.readFileSync(path.join(root,'vendor/eliza',file),'utf8');
+  assert.ok(original.endsWith('}\n'));
+  const modified=original+'\n',lines=original.trimEnd().split('\n').length;
+  const patch=`diff --git a/${file} b/${file}\n--- a/${file}\n+++ b/${file}\n@@ -${lines},1 +${lines},2 @@\n }\n+\n`;
+  const patches=path.join(directory,'patches/eliza');fs.mkdirSync(patches,{recursive:true});
+  fs.writeFileSync(path.join(patches,'9998-fixture.patch'),patch);
+  fs.writeFileSync(path.join(patches,'fixture-source.json'),JSON.stringify({baseCommit:JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'))).commit,patch:'9998-fixture.patch',sha256:hash(patch),basePaths:[file],addedPaths:[],changed:[file],files:{[file]:hash(modified)}}));
   fs.mkdirSync(path.join(directory,'vendor'));
   // The base is read through the same pin/clean admission as native staging.
   fs.symlinkSync(fs.realpathSync(path.join(root,'vendor/eliza')),path.join(directory,'vendor/eliza'));
@@ -23,18 +30,13 @@ function fixture(run){
 
 test('patch manifests bind each reviewed patch to the pin, its hash and every output file',()=>{
  const manifests=readPatchManifests(root);
- assert.ok(manifests.length>=1);
  const pin=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'))).commit;
  for(const {manifest} of manifests){
   assert.equal(manifest.baseCommit,pin);
   assert.equal(hash(fs.readFileSync(path.join(root,'patches/eliza',manifest.patch))),manifest.sha256);
   for(const file of manifest.changed)assert.ok(file in manifest.files,file);
  }
- // Shared custody is pinned upstream; the candidate adds only its manager/Autofill host.
- const password=manifests.find(item=>item.manifest.patch==='0038-password-manager.patch').manifest;
- assert.deepEqual(password.addedPaths,['plugins/plugin-native-passwords']);
- assert.ok(!password.basePaths.includes('plugins/plugin-native-secure-store'));
- assert.ok(password.basePaths.includes('packages/scripts/native-capacitor-scaffold.json'));
+
 });
 
 test('prepared patched source is exact, reused, repaired and never touches vendor/eliza',()=>fixture(directory=>{
@@ -49,7 +51,7 @@ test('prepared patched source is exact, reused, repaired and never touches vendo
  // Gradle build state inside module directories does not invalidate the reviewed source.
  const build=path.join(output,'plugins/plugin-native-passwords/android/build/intermediates');fs.mkdirSync(build,{recursive:true});fs.writeFileSync(path.join(build,'x'),'gradle');
  assert.equal(prepareElizaPatches({root:directory}),output);assert.ok(fs.existsSync(path.join(build,'x')));
- const changed=path.join(output,manifest.changed.find(file=>file.endsWith('PasswordVaultAccess.java')));
+ const changed=path.join(output,manifest.changed[0]);
  fs.writeFileSync(changed,'tampered');fs.writeFileSync(path.join(output,'plugins/unexpected.java'),'unreviewed');
  prepareElizaPatches({root:directory});
  assert.equal(hash(fs.readFileSync(changed)),manifest.files[path.relative(output,changed)]);
@@ -63,10 +65,10 @@ test('pin, patch and manifest tampering are refused without replacing the prepar
  fs.writeFileSync(lock,JSON.stringify({commit:'0'.repeat(40)}));
  assert.throws(()=>prepareElizaPatches({root:directory}),/Requalify/);
  fs.writeFileSync(lock,pin);
- const patch=path.join(directory,'patches/eliza/0038-password-manager.patch');fs.appendFileSync(patch,'\n');
+ const patch=path.join(directory,'patches/eliza/9998-fixture.patch');fs.appendFileSync(patch,'\n');
  assert.throws(()=>prepareElizaPatches({root:directory}),/hash mismatch/);
  assert.deepEqual(fs.readFileSync(path.join(output,'.source.json')),stamp);
- const manifestFile=path.join(directory,'patches/eliza/password-manager-source.json'),manifest=JSON.parse(fs.readFileSync(manifestFile));
+ const manifestFile=path.join(directory,'patches/eliza/fixture-source.json'),manifest=JSON.parse(fs.readFileSync(manifestFile));
  manifest.files['plugins/plugin-native-passwords/../../escape.txt']='0'.repeat(64);fs.writeFileSync(manifestFile,JSON.stringify(manifest));
  assert.throws(()=>prepareElizaPatches({root:directory}),/Invalid Eliza patch manifest/);
 }));
@@ -75,7 +77,14 @@ test('unknown output directories and symlinks are refused',()=>fixture(directory
  const output=path.join(directory,'.eliza/patched');fs.mkdirSync(output,{recursive:true});fs.writeFileSync(path.join(output,'keep'),'owned elsewhere');
  assert.throws(()=>prepareElizaPatches({root:directory}),/unrecognized/);
  assert.equal(fs.readFileSync(path.join(output,'keep'),'utf8'),'owned elsewhere');
- fs.rmSync(output,{recursive:true});prepareElizaPatches({root:directory});
+ const manifest=path.join(directory,'patches/eliza/fixture-source.json'),bytes=fs.readFileSync(manifest);
+ fs.rmSync(manifest);
+ assert.throws(()=>prepareElizaPatches({root:directory}),/unrecognized/,'retiring the last patch must also preserve unknown directories');
+ assert.equal(fs.readFileSync(path.join(output,'keep'),'utf8'),'owned elsewhere');
+ fs.rmSync(output,{recursive:true});assert.equal(prepareElizaPatches({root:directory}),null);
+ fs.writeFileSync(manifest,bytes);prepareElizaPatches({root:directory});
+ fs.rmSync(manifest);assert.equal(prepareElizaPatches({root:directory}),null);assert.equal(fs.existsSync(output),false);
+ fs.writeFileSync(manifest,bytes);prepareElizaPatches({root:directory});
  fs.symlinkSync(path.join(directory,'upstream.lock.json'),path.join(output,'link'));
  assert.throws(()=>prepareElizaPatches({root:directory}),/Symlink/);
 }));
@@ -87,15 +96,15 @@ test('numbered series: reference-only patches are ignored, unnumbered or duplica
  fs.writeFileSync(path.join(eliza,'reference-only-source-base.json'),JSON.stringify({baseCommit:'0'.repeat(40),patch:'9999-reference-only.patch'}));
  // Every applied manifest (and only those) enters the series, in series-number order.
  const applied=fs.readdirSync(eliza).filter(name=>name.endsWith('-source.json')).map(name=>JSON.parse(fs.readFileSync(path.join(eliza,name))).patch).sort();
- assert.ok(applied.includes('0038-password-manager.patch'));assert.ok(!applied.includes('9999-reference-only.patch'));
+ assert.ok(applied.includes('9998-fixture.patch'));assert.ok(!applied.includes('9999-reference-only.patch'));
  assert.deepEqual(readPatchManifests(directory).map(item=>item.manifest.patch),applied);
  const output=prepareElizaPatches({root:directory});
  assert.equal(JSON.parse(fs.readFileSync(path.join(output,'.source.json'))).patches.length,applied.length);
- fs.writeFileSync(path.join(eliza,'0038-duplicate.patch'),'x\n');
+ fs.writeFileSync(path.join(eliza,'9998-duplicate.patch'),'x\n');
  assert.throws(()=>readPatchManifests(directory),/Duplicate Eliza patch series number/);
- fs.rmSync(path.join(eliza,'0038-duplicate.patch'));
- const manifestFile=path.join(eliza,'password-manager-source.json'),manifest=JSON.parse(fs.readFileSync(manifestFile));
- fs.writeFileSync(manifestFile,JSON.stringify({...manifest,patch:'password-manager.patch'}));
+ fs.rmSync(path.join(eliza,'9998-duplicate.patch'));
+ const manifestFile=path.join(eliza,'fixture-source.json'),manifest=JSON.parse(fs.readFileSync(manifestFile));
+ fs.writeFileSync(manifestFile,JSON.stringify({...manifest,patch:'fixture.patch'}));
  assert.throws(()=>readPatchManifests(directory),/Invalid Eliza patch manifest/);
 }));
 

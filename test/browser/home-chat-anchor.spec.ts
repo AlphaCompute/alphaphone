@@ -11,7 +11,10 @@ for(const shell of ['standalone','launcher'])for(const size of [{width:360,heigh
  const before=await measure();
  await page.getByRole('button',{name:'Open conversation',exact:true}).click();await expect(screen).toHaveAttribute('data-alpha-chat-half','true');await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();
  const half=await measure();
- const handle=page.getByRole('button',{name:'Resize chat',exact:true}),box=(await handle.boundingBox())!;
+ const handle=page.getByRole('button',{name:'Resize chat',exact:true});
+ // Manual pointer coordinates must come from the settled sheet, not its opening animation.
+ await handle.click({trial:true});
+ const box=(await handle.boundingBox())!;
  await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2,box.y+box.height/2+18,{steps:4});
  const during=await measure();await page.mouse.up();
  if(await page.getByRole('button',{name:'Minimize chat',exact:true}).isVisible())await page.getByRole('button',{name:'Minimize chat',exact:true}).click();
