@@ -166,9 +166,26 @@ out.settled=l.settledOccurrences;out.mark=l.lastOccurrence;
 // Back across an occurrence that already ran, then forward again: never twice.
 const again=loop('2026-10-03T07:00:00Z');
 out.again=['2026-10-03T08:00:05Z','2026-10-03T07:58:00Z','2026-10-03T08:00:30Z','2026-10-03T08:01:59Z'].map(time=>tick(again,time));
-// Back behind the jump but past today's time: no late run and no missed record for a day behind the newest record.
+// Back behind the jump but past today's time: never a late run, and the occurrence does not pass without a
+// record. It is recorded once as missed, like any other occurrence found more than 120 seconds late.
 const late=loop('2026-10-03T07:00:00Z');
-out.late=['2026-10-05T08:00:00Z','2026-10-04T09:30:00Z','2026-10-04T23:00:00Z'].map(time=>tick(late,time));
+out.late=['2026-10-05T08:00:00Z','2026-10-04T09:30:00Z','2026-10-04T23:00:00Z','2026-10-05T08:00:00Z','2026-10-06T08:00:00Z'].map(time=>tick(late,time));
+// The round-4 case: the clock jumps two days ahead and is corrected, then the tab sleeps through the real time.
+const asleep=loop('2026-10-03T07:00:00Z');
+out.asleep=['2026-10-05T08:00:10Z','2026-10-03T07:40:00Z','2026-10-03T08:10:00Z','2026-10-03T08:10:30Z','2026-10-04T08:20:00Z','2026-10-05T08:00:00Z','2026-10-06T08:00:00Z'].map(time=>tick(asleep,time));
+// A clock set back onto a day a long absence skipped: one truthful record for that day, never a backlog or a run.
+const absent=loop('2026-10-01T07:00:00Z');
+out.absent=['2026-10-06T09:30:00Z','2026-10-03T09:00:00Z','2026-10-03T09:00:30Z','2026-10-03T23:00:00Z'].map(time=>tick(absent,time));out.absentSettled=absent.settledOccurrences;
+// A schedule moved to another zone keeps no settled civil times: "12:30" settled in Auckland is another
+// instant in Los Angeles and must still run there. Within one zone the memory is kept.
+const auckland=loop('2026-10-09T00:00:00Z',{spec:{timeZone:'Pacific/Auckland',localTime:'12:30'}});
+out.zone=[tick(auckland,'2026-10-09T23:30:05Z')];
+const moved=(zone,created)=>({active:true,removed:false,createdAt:at(created),spec:{timeZone:zone,localTime:'12:30'},...o.carriedSettlement(auckland,zone)});
+const angeles=moved('America/Los_Angeles','2026-10-10T00:00:00Z');
+out.zone.push(tick(angeles,'2026-10-10T19:30:05Z'),tick(angeles,'2026-10-10T19:30:20Z'));
+const sameZone=moved('Pacific/Auckland','2026-10-09T23:30:10Z');
+out.zone.push(sameZone.lastOccurrence,tick(sameZone,'2026-10-09T23:30:20Z'),tick(sameZone,'2026-10-10T23:30:00Z'));
+out.carried=[o.carriedSettlement(undefined,'UTC'),o.carriedSettlement(loop('2026-10-01T07:00:00Z'),'UTC')];
 // A clock set to before the schedule existed settles nothing.
 const before=loop('2026-10-03T07:59:30Z');
 out.before=['2026-10-03T08:00:05Z','2026-10-02T08:00:10Z'].map(time=>tick(before,time));
@@ -187,7 +204,11 @@ console.log(JSON.stringify(out));`);
  assert.deepEqual(out.jump,['run 2026-10-03T08:00','run 2026-10-05T08:00',null,'run 2026-10-04T08:00',null,null,null,null,'run 2026-10-06T08:00']);
  assert.deepEqual(out.settled,['2026-10-03T08:00','2026-10-04T08:00','2026-10-05T08:00','2026-10-06T08:00']);assert.equal(out.mark,'2026-10-06T08:00');
  assert.deepEqual(out.again,['run 2026-10-03T08:00',null,null,null]);
- assert.deepEqual(out.late,['run 2026-10-05T08:00',null,null]);
+ assert.deepEqual(out.late,['run 2026-10-05T08:00','missed 2026-10-04T08:00',null,null,'run 2026-10-06T08:00']);
+ assert.deepEqual(out.asleep,['run 2026-10-05T08:00',null,'missed 2026-10-03T08:00',null,'missed 2026-10-04T08:00',null,'run 2026-10-06T08:00']);
+ assert.deepEqual(out.absent,['missed 2026-10-06T08:00','missed 2026-10-03T08:00',null,null]);assert.deepEqual(out.absentSettled,['2026-10-03T08:00','2026-10-06T08:00']);
+ assert.deepEqual(out.zone,['run 2026-10-10T12:30','run 2026-10-10T12:30',null,'2026-10-10T12:30',null,'run 2026-10-11T12:30']);
+ assert.deepEqual(out.carried,[{},{}]);
  assert.deepEqual(out.before,['run 2026-10-03T08:00',null]);
  assert.deepEqual(out.legacy,[null,null,'run 2026-10-06T08:00',null,null]);assert.equal(out.legacyFloor,'2026-10-05T08:00');
  assert.deepEqual(out.long,{ran:40,kept:32,floor:'2026-01-08T08:00',old:null,recent:null});

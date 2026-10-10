@@ -53,9 +53,16 @@ function latestOccurrence(zone:string,localTime:string,minute:number){
  *
  * At or behind the newest settled occurrence (the clock was moved back, for example after a jump
  * forward settled a later day): an occurrence that was itself settled never settles again, so nothing
- * runs twice. One that was never settled, is not older than the remembered history and is due now
- * runs once, so a jump forward does not suppress the real occurrences before it. It is never recorded
- * as missed: days the schedule skipped by design are not turned into records by a changed clock.
+ * runs twice. One that was never settled and is not older than the remembered history follows the
+ * same rule as any other: it runs when at most 120 seconds late and is otherwise recorded once as
+ * missed, so a jump forward neither suppresses the real occurrences before it nor lets one pass
+ * without a record. Only the most recent occurrence before `now` is ever considered, so a clock set
+ * back onto an earlier day yields at most one truthful record for that day and never a backlog.
+ *
+ * Limits: an occurrence at or below `settledFloor` (older than the 32 remembered settlements, or
+ * behind the newest record of a document written before the list existed) is treated as settled and
+ * leaves no record; a civil time a zone skips (start of daylight saving) has no occurrence that day,
+ * as on the agent, whose cron scan matches civil minutes.
  */
 export function scheduledOccurrence(loop:OccurrenceLoop,now:number):Occurrence|null{
  if(!loop.active||loop.removed||loop.sourcePaused)return null;
@@ -65,8 +72,19 @@ export function scheduledOccurrence(loop:OccurrenceLoop,now:number):Occurrence|n
  if(loop.lastOccurrence===undefined||found.local>loop.lastOccurrence)return {...found,missed};
  const settled=loop.settledOccurrences;
  // Without a settled list (an older document) everything up to the newest record counts as settled.
- if(missed||!settled||settled.includes(found.local)||found.local===loop.lastOccurrence||(loop.settledFloor!==undefined&&found.local<=loop.settledFloor))return null;
- return {...found,missed:false};
+ if(!settled||settled.includes(found.local)||found.local===loop.lastOccurrence||(loop.settledFloor!==undefined&&found.local<=loop.settledFloor))return null;
+ return {...found,missed};
+}
+/**
+ * Settlement memory a new version of a schedule keeps from the one it replaces. Settled civil times
+ * are compared as text, so they carry over only within one time zone: after a zone change the same
+ * text names a different instant, and keeping it would silently suppress the first occurrence in the
+ * new zone ("12:30" already settled in Auckland, then due in Los Angeles). Nothing can run twice
+ * without it: a new version never settles an occurrence from before its own creation.
+ */
+export function carriedSettlement(old:OccurrenceLoop|undefined,timeZone:string):Pick<OccurrenceLoop,'lastOccurrence'|'settledOccurrences'|'settledFloor'>{
+ if(!old||old.spec.timeZone!==timeZone)return {};
+ return {...(old.lastOccurrence?{lastOccurrence:old.lastOccurrence}:{}),...(old.settledOccurrences?{settledOccurrences:[...old.settledOccurrences]}:{}),...(old.settledFloor?{settledFloor:old.settledFloor}:{})};
 }
 /** Records an occurrence as settled before anything else happens for it. */
 export function settleOccurrence(loop:OccurrenceLoop,local:string){

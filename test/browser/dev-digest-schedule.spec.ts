@@ -172,3 +172,31 @@ test.describe('device in another time zone',()=>{
   await expect(schedules.getByRole('listitem').filter({hasText:'Evening at 18:00 (Europe/Paris)'})).not.toContainText('Runs at');
  });
 });
+
+test('two tabs ticking the same occurrence settle it once, run or missed, and a zone change keeps the first occurrence in the new zone',async({page})=>{
+ await page.clock.install({time:new Date('2026-10-03T07:55:00Z')});await page.goto('/?mode=dev');
+ await seedLoops(page,[{template:'morning',localTime:'08:00',text:'Morning text'}]);
+ const other=await page.context().newPage();await other.clock.install({time:new Date('2026-10-03T07:55:00Z')});await other.goto('/?mode=dev');
+ const statuses=async()=>(await digestState(page)).results.map(row=>[row.status,row.scheduledAt]);
+ const both=async(time:string)=>{for(const tab of [page,other])await tab.clock.setFixedTime(new Date(time));
+  await Promise.all([digestCall(page,'tick'),digestCall(other,'tick'),digestCall(page,'results?clientId=reader-a'),digestCall(other,'results?clientId=reader-b'),digestCall(other,'tick'),digestCall(page,'tick')]);};
+ await both('2026-10-03T08:00:05Z');await other.reload();await both('2026-10-03T08:00:40Z');
+ expect(await statuses()).toEqual([['completed','2026-10-03T08:00:00.000Z']]);
+ // Both tabs wake after the next day's time has passed: one missed record between them.
+ await both('2026-10-04T09:10:00Z');await both('2026-10-04T09:10:30Z');
+ expect(await statuses()).toEqual([['completed','2026-10-03T08:00:00.000Z'],['missed','2026-10-04T08:00:00.000Z']]);
+ // Round-4 case: one tab's clock had jumped ahead and settled a later day; the real day is slept through.
+ // It is recorded once as missed rather than passing without a record.
+ await both('2026-10-07T08:00:05Z');await both('2026-10-06T08:30:00Z');await both('2026-10-06T08:31:00Z');
+ const jumped=[['completed','2026-10-03T08:00:00.000Z'],['missed','2026-10-04T08:00:00.000Z'],['completed','2026-10-07T08:00:00.000Z'],['missed','2026-10-06T08:00:00.000Z']];
+ expect(await statuses()).toEqual(jumped);
+ // The schedule moves to America/Los_Angeles, same local time. "2026-10-07T08:00" was settled in UTC, but in
+ // Los Angeles it is a later instant that has not happened: it still runs, once across both tabs.
+ await both('2026-10-07T09:00:00Z');
+ const state=await digestState(page),loop=state.loops[0];expect(loop.lastOccurrence).toBe('2026-10-07T08:00');
+ await digestCall(page,'loops',{confirmed:true,mutationId:'zone-change',id:loop.id,expectedVersionId:loop.versionId,spec:{...loop.spec,timeZone:'America/Los_Angeles'}});
+ const moved=(await digestState(page)).loops[0];expect([moved.lastOccurrence,moved.settledOccurrences,moved.settledFloor]).toEqual([undefined,undefined,undefined]);
+ await both('2026-10-07T15:00:05Z');await both('2026-10-07T15:00:30Z');
+ expect(await statuses()).toEqual([...jumped,['completed','2026-10-07T15:00:00.000Z']]);
+ expect(new Set((await digestState(page)).results.map(row=>row.runId)).size).toBe(5);
+});

@@ -5,7 +5,7 @@ import {developmentDigestDocument,readDevelopmentDigests,validateDevelopmentDige
 import {assertDevelopmentIdentity,verifyDevelopmentIdentity,developmentIdentity,type DevelopmentIdentity} from './development-identity';
 import {revision} from './revision';
 import {devSurfacesEnabled} from '../build-flags';
-import {scheduledOccurrence,settleOccurrence,digestSourceState,wall,DIGEST_MISSED_TEXT,DIGEST_UNAVAILABLE_TEXT} from './development-digest-occurrence';
+import {scheduledOccurrence,settleOccurrence,carriedSettlement,digestSourceState,wall,DIGEST_MISSED_TEXT,DIGEST_UNAVAILABLE_TEXT} from './development-digest-occurrence';
 const id=(v:unknown):string=>{if(typeof v!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(v))throw Error('Invalid digest identity.');return v;};
 /** Requests and periodic inbox checks settle only the latest occurrence, never a backlog. */
 export async function developmentDigestRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){
@@ -61,7 +61,7 @@ export async function developmentDigestRequest(identity:DevelopmentIdentity,path
    const spec=body.spec;if(!spec||spec.version!==1||!['morning','evening'].includes(spec.template)||typeof spec.enabled!=='boolean'||typeof spec.timeZone!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(spec.localTime))throw Error('Invalid digest schedule.');wall(now,spec.timeZone);
    const source=state.sources.find(s=>s.id===spec.sourceId&&s.revision===spec.sourceRevision);if(!source||spec.enabled&&(source.revoked||Date.parse(source.expiresAt)<=now))throw Error('Source access changed.');
    const old=body.id?state.loops.find(l=>l.id===id(body.id)):undefined;if(body.id&&(!old||old.versionId!==body.expectedVersionId))throw Error('Digest version changed.');if(!old&&state.loops.some(l=>!l.removed&&l.spec.template===spec.template))throw Error('Refresh the existing digest schedule.');if(!old&&state.loops.length>=100)throw Error('Digest schedule history is full.');
-   const loop:Loop={id:old?.id||crypto.randomUUID(),versionId:crypto.randomUUID(),name:spec.template+' digest',active:spec.enabled,removed:false,spec:structuredClone(spec),createdAt:now,...(old?.lastOccurrence?{lastOccurrence:old.lastOccurrence}:{}),...(old?.settledOccurrences?{settledOccurrences:[...old.settledOccurrences]}:{}),...(old?.settledFloor?{settledFloor:old.settledFloor}:{})};state.loops=state.loops.filter(l=>l.id!==loop.id);state.loops.push(loop);result={loop};
+   const loop:Loop={id:old?.id||crypto.randomUUID(),versionId:crypto.randomUUID(),name:spec.template+' digest',active:spec.enabled,removed:false,spec:structuredClone(spec),createdAt:now,...carriedSettlement(old,spec.timeZone)};state.loops=state.loops.filter(l=>l.id!==loop.id);state.loops.push(loop);result={loop};
   }else throw Error('Unknown development digest request.');
   state.receipts.push({id:mutationId,input,result});return result;
  }
