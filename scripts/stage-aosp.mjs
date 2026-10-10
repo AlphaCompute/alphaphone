@@ -41,6 +41,19 @@ function admitApk({ apk, hash, development, manifestFile }) {
     throw new Error(`Refusing ${apk}: ${manifestFile} records this release as not distributable (runtime ${entry.runtime ?? "unknown"}, ${entry.signed ? "signed" : "unsigned"}). Unresolved blockers:\n${blockers.map(item => `  - ${item}`).join("\n")}`);
   if (!development && !(entry && entry.mode === "release" && entry.distributable === true && blockers.length === 0))
     throw new Error(`Production staging requires a release APK that verify-apks recorded as distributable in ${manifestFile}.`);
+  // --development is for debug builds. A release reaches an image only through its distributable
+  // manifest row (checked above), so an APK without that row must itself be a debuggable build:
+  // a missing manifest, a row for other bytes or a row relabelled "debug" admits no release.
+  if (development && entry?.mode !== "release") {
+    let debuggable;
+    try {
+      debuggable = /android:debuggable[^\n]*0xffffffff/.test(execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env: androidEnv(), maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "ignore"] }));
+    } catch {
+      throw new Error(`Refusing ${apk}: --development stages debug builds only, and this APK's build type could not be read.`);
+    }
+    if (!debuggable)
+      throw new Error(`Refusing ${apk}: --development stages debug builds only. This is a release build that ${manifestFile} does not record as distributable.`);
+  }
 }
 const args = process.argv.slice(2);
 const get = (key) => {

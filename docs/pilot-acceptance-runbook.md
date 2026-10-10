@@ -32,7 +32,9 @@ signed by the certificate in `android/release-signer.json`, with a versionCode a
 last recorded release, packaging the resident runtime and its notices, with qualified
 speech and no open licence blocker (for example `unresolved-font-licence`). Any other
 release is refused before anything is installed, with each unresolved blocker named;
-`pilot-update` applies the same admission. It
+`pilot-update` applies the same admission. Both also read the APK file itself (flag-off web
+bundle, build type, packaged runtime, signing certificate) and refuse one that contradicts its
+manifest row. It
 refuses a unit that already has Alpha installed (use the update tool), checks the
 installed bytes and versionCode, opens Android's default-Home chooser for the operator
 (`--home-wait-ms` waits for the choice; the tool never makes it), reads the HOME role

@@ -78,8 +78,21 @@ test("AOSP staging refuses test-mocks and non-distributable inputs before any st
     record({ distributable: true, licenceBlockers: [font] });
     assert.match(stage(["--apk", release, "--descriptor", "reviewed.json", "--production"]).stderr, /not distributable[\s\S]*unresolved-font-licence/);
     assert.match(stage(["--apk", release, "--development"]).stderr, /unresolved-font-licence/);
+    // A release cannot be staged as a development input by hiding its row: relabelled "debug", recorded for
+    // other bytes, or with the manifest pointed elsewhere. Only a debuggable build passes without a release row.
+    const onlyDebugBuilds = /--development stages debug builds only/;
+    record({ mode: "debug", distributable: undefined });
+    assert.match(stage(["--apk", release, "--development"]).stderr, onlyDebugBuilds);
+    record({ sha256: "0".repeat(64), distributable: true });
+    assert.match(stage(["--apk", release, "--development"]).stderr, onlyDebugBuilds);
+    assert.match(stage(["--apk", release, "--development", "--apk-manifest", path.join(dir, "absent.json")]).stderr, onlyDebugBuilds);
+    fs.writeFileSync(path.join(dir, "broken.json"), "{ not json");
+    out = stage(["--apk", release, "--development", "--apk-manifest", path.join(dir, "broken.json")]);
+    assert.notEqual(out.status, 0);
+    assert.doesNotMatch(out.stdout, /staging evidence/);
     // Production staging still needs a manifest row: an APK verify-apks never recorded is refused.
     fs.rmSync(path.join(dir, "artifacts/apk-manifest.json"));
+    assert.match(stage(["--apk", release, "--development"]).stderr, onlyDebugBuilds);
     assert.match(stage(["--apk", release, "--descriptor", "reviewed.json", "--production"]).stderr, /Production staging requires a release APK that verify-apks recorded as distributable/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

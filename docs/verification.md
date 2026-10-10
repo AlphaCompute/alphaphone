@@ -34,7 +34,14 @@ update (`scripts/provision-unit.mjs`, `scripts/pilot-update.mjs`) and AOSP stagi
 (`scripts/stage-aosp.mjs`) refuse a release that is not distributable, and
 `scripts/qualify-head.mjs` records the blockers and reports `releasesDistributable: false`
 while one remains. Only the debug emulator rehearsal (`--build debug`) and `--development`
-staging of a debug APK proceed without a distributable release.
+staging of a debug APK proceed without a distributable release, and both are decided from
+the APK file, not only its manifest row: `--development` refuses a non-debuggable APK that has
+no distributable release row (a missing manifest, a row for other bytes or a row relabelled
+`debug` admits nothing), and provisioning and update refuse an APK whose own web-bundle flag,
+build type, packaged runtime or signing certificate contradicts the row that admitted it.
+`apk-manifest.json` is an unsigned record: speech qualification and licence blockers cannot be
+re-derived from the APK, so for those the manifest written by `verify-apks` is the evidence and
+must come from the build being installed.
 
 ## Browser behavior
 

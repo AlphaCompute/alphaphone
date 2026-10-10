@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { admitUnitApk, packageFacts, parseUnitArgs } from "../scripts/provision-unit.mjs";
+import { admitUnitApk, apkContradictions, apkFacts, packageFacts, parseUnitArgs, requireConsistentApk } from "../scripts/provision-unit.mjs";
 import { releaseBlockers } from "../scripts/release-blockers.mjs";
 import { releaseDistribution, verdict } from "../scripts/qualify-head.mjs";
 import { compareDomains, DOMAIN_SCRIPT, parseDomainInventory, readbackInventory, unitApkMismatch, updateAdmission } from "../scripts/pilot-update.mjs";
@@ -82,6 +82,51 @@ test("a pilot or acceptance unit never gets a non-distributable release, and eve
   assert.deepEqual([rehearsal.rehearsal, rehearsal.distributable], [true, false]);
   // A debug row can never be passed off as the release.
   assert.throws(() => admitUnitApk(build(t, { mode: "debug", signed: true, distributable: true }), { variant: "launcher", build: "release" }, { descriptor: descriptor() }), /no launcher release APK/);
+});
+
+test("an admitted APK whose own contents contradict its manifest row is refused before any device is touched", t => {
+  const release = admitUnitApk(build(t, DISTRIBUTABLE), { variant: "launcher", build: "release" }, { descriptor: descriptor() });
+  const good = { testMocks: false, debuggable: false, runtime: "PACKAGED", signerSha256: SIGNER };
+  const check = (apk, facts) => apkContradictions(apk, { descriptor: descriptor(), facts });
+  assert.deepEqual(check(release, good), []);
+  // A hand-edited row can claim anything; the file is what gets installed.
+  assert.match(check(release, { ...good, signerSha256: "b".repeat(64) }).join(), /signed by b{64}, not the certificate in android\/release-signer\.json/);
+  assert.match(check(release, { ...good, signerSha256: null }).join(), /no verified signer/);
+  assert.match(check(release, { ...good, runtime: "NOT_PACKAGED" }).join(), /does not package the resident runtime/);
+  assert.match(check(release, { ...good, debuggable: true }).join(), /not a release build/);
+  assert.match(check(release, { ...good, testMocks: true }).join(), /not a verified flag-off build/);
+  // A fact that could not be read is never taken as good.
+  assert.equal(check(release, { testMocks: null, debuggable: null, runtime: null, signerSha256: null }).length, 4);
+  assert.throws(() => requireConsistentApk(release, { descriptor: descriptor(), facts: { ...good, runtime: "NOT_PACKAGED" } }), /contradicts the manifest row that admitted it:\n  - it does not package the resident runtime/);
+  // The synthetic file in this test is not an APK: reading it yields no fact, so it is refused.
+  assert.deepEqual(apkFacts(release.file), { testMocks: null, debuggable: null, signerSha256: null, runtime: "NOT_PACKAGED" });
+  assert.throws(() => requireConsistentApk(release, { descriptor: descriptor() }), /contradicts the manifest row/);
+  // The rehearsal build must really be the debug build, flag-off; a release relabelled "debug" is not a rehearsal.
+  const rehearsal = admitUnitApk(build(t, { mode: "debug", signed: true }), { variant: "launcher", build: "debug" }, { descriptor: descriptor() });
+  assert.deepEqual(check(rehearsal, { testMocks: false, debuggable: true, runtime: "NOT_PACKAGED", signerSha256: "c".repeat(64) }), []);
+  assert.match(check(rehearsal, { ...good, debuggable: false }).join(), /not the debug rehearsal APK/);
+  assert.match(check(rehearsal, { testMocks: true, debuggable: true }).join(), /not a verified flag-off build/);
+  // A row that contradicts the manifest's own flag-off claim is refused for the rehearsal too.
+  assert.throws(() => admitUnitApk(build(t, { mode: "debug", signed: true, testMocks: true }), { variant: "launcher", build: "debug" }, { descriptor: descriptor() }), /recorded as a test-mocks build/);
+  assert.throws(() => admitUnitApk(build(t, { mode: "debug", signed: true, testMocks: undefined }), { variant: "launcher", build: "debug" }, { descriptor: descriptor() }), /recorded as a test-mocks build/);
+  // Unreadable or structurally wrong manifests fail closed: never an empty blocker list.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alpha-pilot-bad-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const bad = (name, text) => { const file = path.join(dir, name); fs.writeFileSync(file, text); return file; };
+  for (const [name, text] of [["truncated.json", '{"testMocks":false,"results":['], ["no-results.json", '{"testMocks":false}'], ["object-results.json", '{"testMocks":false,"results":{"0":{}}}'],
+    ["null.json", "null"], ["empty.json", ""], ["no-flag.json", '{"results":[]}']])
+    assert.throws(() => admitUnitApk(bad(name, text), { variant: "launcher", build: "release" }, { descriptor: descriptor() }), undefined, name);
+  for (const row of [null, undefined, "release", 1, [], {}]) {
+    let outcome; try { outcome = releaseBlockers(row); } catch (error) { outcome = [error.message]; }
+    assert.ok(outcome.length > 0, `admitted ${JSON.stringify(row)}`);
+  }
+  // Recorded facts of the wrong shape are blockers or errors, never a pass.
+  const shaped = { ...DISTRIBUTABLE, testMocks: false, bundleAudit: "passed", releaseAdmission: { failures: [], blockers: [], signerMatches: true } };
+  for (const change of [{ licenceBlockers: "" }, { licenceBlockers: null }, { licenceBlockers: {} }, { speechQualification: true }, { speechQualification: [] }, { releaseAdmission: true }, { releaseAdmission: {} },
+    { releaseAdmission: { failures: [], blockers: [] } }, { runtimeNotices: "true" }, { signed: "true" }, { distributable: "true" }, { testMocks: undefined }, { runtime: "packaged" }]) {
+    let outcome; try { outcome = releaseBlockers({ ...shaped, ...change }); } catch (error) { outcome = [error.message]; }
+    assert.ok(outcome.length > 0, `admitted ${JSON.stringify(change)}`);
+  }
 });
 
 test("release blockers are named for staging and head qualification", () => {
