@@ -298,7 +298,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       // earlier pages were read (new mail moved every row down). The repeat is dropped as before,
       // and the list says that it is no longer the whole mailbox.
       const shifted = !!pageToken && result.messages.some(m => seen.has(m.id));
-      messages = pageToken ? [...messages, ...result.messages.filter(m => !seen.has(m.id))] : result.messages;
+      // A message the provider lists twice, in one page or across pages, is shown once.
+      const fresh = result.messages.filter(m => !seen.has(m.id) && !!seen.add(m.id));
+      messages = pageToken ? [...messages, ...fresh] : fresh;
       if (!pageToken) seenCursors = new Set();
       // A provider cursor that repeats would page forever; treat it as the end of the results.
       const next = result.nextPageToken ?? null;

@@ -528,6 +528,15 @@ test('F-12: new mail between pages never shows a message twice, and the list say
   expect((await provider(page)).searches).toEqual([['in:inbox', null], ['in:inbox', '1:2'], ['in:inbox', '2:4'], ['in:inbox', null], ['in:inbox', '2:2'], ['in:inbox', '2:4']]);
 });
 
+test('F-12: a message the provider lists twice in one page is shown once', async ({page}) => {
+  await openInbox(page, {inbox: ['m1', 'm1', 'm2', 'm3', 'm3'], pageSize: 3});
+  await expect.poll(() => rows(page)).toEqual(['m1', 'm2']);
+  await button(page, 'Load more').click();
+  await expect.poll(() => rows(page)).toEqual(['m1', 'm2', 'm3']);
+  // Nothing moved between the pages, so the list does not claim that newer mail is missing.
+  await expect(button(page, 'Load newer mail')).toHaveCount(0);
+});
+
 test('F-12: a cursor the provider refuses after the mailbox changed keeps the loaded page and says how to reload', async ({page}) => {
   test.setTimeout(120_000);
   await openInbox(page, {inbox: ['m1', 'm2', 'm3', 'm4'], pageSize: 2, strictCursors: true});

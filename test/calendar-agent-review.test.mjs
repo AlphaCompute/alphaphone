@@ -37,3 +37,28 @@ test('delete and share reviews state what happens to attendees', () => {
   assert.match(calendarAgentReviewText('calendar_read_selected',fields,source,{who:['a','b','c']}),/^Share event with the connected agent\n[\s\S]*Attendees: 3 people on this event\. Their names are not shared\./);
   assert.match(calendarAgentReviewText('calendar_delete',fields,source,{}),/Attendees: none\.$/m);
 });
+test('times on both sides of a daylight-saving change are shown in the event zone with its offset at each instant', () => {
+  // America/New_York leaves daylight time at 06:00Z on 2026-11-01: 01:30 happens twice.
+  const lines=calendarAgentReviewText('calendar_create',{...fields,start:'2026-11-01T05:30:00.000Z',end:'2026-11-01T06:30:00.000Z',timeZone:'America/New_York'},source,undefined,'Asia/Tokyo').split('\n');
+  assert.equal(lines[3],'November 1, 2026 at 1:30 AM EDT – November 1, 2026 at 1:30 AM EST');
+  assert.equal(lines[4],'Time zone: America/New_York (this phone is set to Asia/Tokyo)');
+  // Europe/Paris enters summer time at 01:00Z on 2026-03-29: 02:30 local does not exist.
+  const spring=calendarAgentReviewText('calendar_update',{...fields,start:'2026-03-29T00:30:00.000Z',end:'2026-03-29T01:30:00.000Z',timeZone:'Europe/Paris'},source,{},'Europe/Paris').split('\n');
+  assert.equal(spring[3],'March 29, 2026 at 1:30 AM GMT+1 – March 29, 2026 at 3:30 AM GMT+2');
+  // The same instants shown for a phone in another zone are the same line: the device zone never moves them.
+  assert.equal(calendarAgentReviewText('calendar_update',{...fields,start:'2026-03-29T00:30:00.000Z',end:'2026-03-29T01:30:00.000Z',timeZone:'Europe/Paris'},source,{},'Pacific/Kiritimati').split('\n')[3],spring[3]);
+});
+test('an all-day event is shown as its stored dates whatever the phone zone or the proposal zone', () => {
+  const dates={start:'2026-12-31T00:00:00.000Z',end:'2027-01-02T00:00:00.000Z'};
+  for(const [zone,device] of [['Pacific/Kiritimati','Pacific/Pago_Pago'],['Pacific/Pago_Pago','Pacific/Kiritimati'],['UTC','America/New_York']]){
+    const lines=calendarAgentReviewText('calendar_update',{...fields,...dates,timeZone:zone},source,{allDay:true},device).split('\n');
+    assert.equal(lines[3],'December 31, 2026 – January 1, 2027');
+    assert.equal(lines.some(line=>line.startsWith('Time zone:')),false);
+  }
+});
+test('only whole UTC dates can update an all-day event', async () => {
+  const {wholeUtcDates}=await import('../apps/app/src/browser/calendar-agent-review.ts');
+  assert.equal(wholeUtcDates({start:'2026-10-12T00:00:00.000Z',end:'2026-10-13T00:00:00.000Z'}),true);
+  assert.equal(wholeUtcDates({start:'2026-10-12T15:00:00.000Z',end:'2026-10-13T15:00:00.000Z'}),false);
+  assert.equal(wholeUtcDates({start:'2026-10-12T00:00:00.000Z',end:'2026-10-12T23:59:59.999Z'}),false);
+});

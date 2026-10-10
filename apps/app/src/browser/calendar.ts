@@ -5,7 +5,7 @@ import {openCalendarMeeting} from './calendar-meeting';
 import {calendarRecord,calendarRange,remapCalendarExclusions,replaceCalendarRecord,deleteCalendarRecord,type CalendarRecord} from './calendar-records';
 import { editCalendarEvent } from './calendar-editor';
 import { BrowserReviews } from './review';
-import { calendarAgentReviewText } from './calendar-agent-review';
+import { calendarAgentReviewText, wholeUtcDates } from './calendar-agent-review';
 import { validateCalendarOperation, type CalendarFields, type CalendarResult } from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts';
 import { WebPlugin } from '@capacitor/core';
 import { revision } from './revision';
@@ -45,6 +45,7 @@ export class BrowserCalendar extends WebPlugin {
       if(prior)return prior.binding===binding?{status:'applied',result:prior.result}:{status:'conflict'};
       if(ticket.cancelled||document.hidden)return {status:'cancelled'};
       if(identity.sourceId!=='local'||identity.sourceRevision!==data.sourceRevision||operation.type!=='calendar_create'&&(!row||row.revision!==operation.target.revision))return {status:'conflict'};
+      if(operation.type==='calendar_update'&&row!.allDay&&!wholeUtcDates(operation.fields))return {status:'unsupported'};
       const reviewed='fields' in operation?operation.fields:fields(row!);
       const approved=await this.reviews.confirm(input.operationId,operation.type==='calendar_read_selected'?'Share calendar event with agent?':'Review calendar change',calendarAgentReviewText(operation.type,reviewed,source,row));
       if(!approved||ticket.cancelled)return {status:'cancelled'};

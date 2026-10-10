@@ -12,6 +12,9 @@ type Existing={allDay?:boolean;who?:string[];seriesId?:string};
 export type CalendarReviewSource={name:string;account:string};
 const day=(at:number)=>new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}).format(at);
 const last=(end:string)=>day(Math.max(Date.parse(end)-1,0));
+/** An all-day event is whole UTC calendar dates. An agent update that names any other instants
+ * cannot be shown truthfully as dates, so it is refused before review instead of being saved. */
+export const wholeUtcDates=(fields:Pick<Fields,'start'|'end'>)=>Date.parse(fields.start)%86400000===0&&Date.parse(fields.end)%86400000===0;
 const actions={calendar_create:'Create event',calendar_update:'Update event',calendar_delete:'Delete event',calendar_read_selected:'Share event with the connected agent'} as const;
 export function calendarAgentReviewText(type:keyof typeof actions,fields:Fields,source:CalendarReviewSource,existing?:Existing,deviceZone=Intl.DateTimeFormat().resolvedOptions().timeZone):string{
   const guests=existing?.who?.length||0,people=`${guests} ${guests===1?'person':'people'}`;
