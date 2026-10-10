@@ -125,7 +125,7 @@ function installBrowserCapabilityTiles(Component:any){
   const managed=new Set(['Wi-Fi','Bluetooth','Airplane mode','Agent can listen','Location','Do not disturb']);
   p.renderVals=function(){
     const out=render.call(this);
-    const tiles=(out.tiles||[]).map((tile:any)=>managed.has(tile.label)?{...tile,on:false,disabled:true,css:'background:var(--s2);color:var(--fg);opacity:.55',toggle:()=>{}}:tile);
+    const tiles=(out.tiles||[]).map((tile:any)=>managed.has(tile.label)?{...tile,on:false,pressed:undefined,disabled:true,css:'background:var(--s2);color:var(--fg);opacity:.55',toggle:()=>{}}:tile);
     return {...out,tiles,deviceSettingsPending:true,deviceSettingsMessage:'Network, radio and sensor settings are managed by your browser and operating system.',sbWifi:navigator.onLine,sbPlane:false};
   };
 }

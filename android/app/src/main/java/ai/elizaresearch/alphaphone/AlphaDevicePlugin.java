@@ -97,7 +97,10 @@ public final class AlphaDevicePlugin extends Plugin {
   fact(out,"mobileDataEnabled",()->{
    if(!context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_TELEPHONY))return null;
    android.telephony.TelephonyManager telephony=context.getSystemService(android.telephony.TelephonyManager.class);
-   return telephony==null||telephony.getSimState()!=android.telephony.TelephonyManager.SIM_STATE_READY?null:telephony.isDataEnabled();
+   if(telephony==null||telephony.getSimState()!=android.telephony.TelephonyManager.SIM_STATE_READY)return null;
+   // Readable with the ACCESS_NETWORK_STATE install-time permission; a refusal means unknown, never off.
+   if(context.checkSelfPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)!=PackageManager.PERMISSION_GRANTED)return null;
+   try{return telephony.isDataEnabled();}catch(SecurityException refused){return null;}
   });
   fact(out,"interruptionFilter",()->{NotificationManager manager=context.getSystemService(NotificationManager.class);return manager==null?null:interruptionName(manager.getCurrentInterruptionFilter());});
   fact(out,"adaptiveBrightness",()->{int mode=Settings.System.getInt(resolver,Settings.System.SCREEN_BRIGHTNESS_MODE);return mode==Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC?Boolean.TRUE:mode==Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL?Boolean.FALSE:null;});
