@@ -38,7 +38,7 @@ async function fenceNetwork(page: Page, allowed: string[] = []) {
 
 /** Production Android as the renderer sees it: funded Cloud account, packaged resident agent that
  * keeps its conversations across a page reload, and an intercepted Clock handoff. */
-async function android(page: Page, options: { clock?: 'opened' | 'unavailable' } = {}) {
+async function android(page: Page, options: { clock?: 'opened' | 'unavailable' | 'unknown' } = {}) {
   await page.addInitScript(({ options }) => {
     const w = window as any; w.androidBridge = {};
     const id = '9f1dc45a-4011-4e44-947a-30d999d24fa5', agentId = '6f1d3c3e-8c55-4c1b-9d1f-2b6f0b0d3a11';
@@ -47,7 +47,7 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' }
     const slots: Record<string, string> = kept('core-loops-slots', { 'cloud:production': JSON.stringify({ token: 'synthetic-cloud-key', credentialId: id, expiresAt: Date.now() + 86_400_000 }) });
     const agent: { conversations: { id: string; title: string }[]; history: Record<string, any[]> } = kept('core-loops-agent', { conversations: [], history: {} });
     const persist = () => { sessionStorage.setItem('core-loops-slots', JSON.stringify(slots)); sessionStorage.setItem('core-loops-agent', JSON.stringify(agent)); };
-    const f = w.coreLoops = { calls: [] as string[], posts: [] as string[], streams: 0, cancelled: 0, aborts: 0, clock: [] as unknown[], hold: false, release: null as null | (() => void), unexpected: [] as string[] };
+    const f = w.coreLoops = { calls: [] as string[], posts: [] as string[], views: [] as string[], streams: 0, cancelled: 0, aborts: 0, clock: [] as unknown[], hold: false, release: null as null | (() => void), unexpected: [] as string[] };
     const listeners: Array<{ plugin: string; event: string; callback: (value: unknown) => void }> = [];
     const emit = (streamId: string, event: unknown) => listeners.filter(l => l.plugin === 'Agent' && l.event === 'alphaAgentStream').forEach(l => l.callback({ streamId, event }));
     const data = (streamId: string, value: unknown) => emit(streamId, { type: 'chunk', dataBase64: btoa('data: ' + JSON.stringify(value) + '\n\n') });
@@ -87,6 +87,7 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' }
         if (plugin === 'DailyApps') {
           if (method === 'surfaceInfo') return { developmentBuild: false, assistant: false };
           f.clock.push(input);
+          if (options.clock === 'unknown') return { action: input.action, status: 'unknown', message: 'Clock result is unknown. Check Clock before repeating the request.' };
           return options.clock === 'unavailable' ? { action: input.action, status: 'unavailable', message: 'No Clock app can handle this request.' }
             : { action: input.action, status: 'opened', message: 'Approved Clock handoff sent. Check Clock; Alpha cannot confirm an alarm was changed.' };
         }
@@ -98,7 +99,7 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' }
           if (method === 'requestStream') {
             // The resident agent records the user turn, then streams its reply over native IPC.
             const conversation = /^\/api\/conversations\/([^/]+)\/messages\/stream$/.exec(input.path)![1], body = JSON.parse(input.body), streamId = input.streamId as string;
-            f.streams++; f.posts.push(String(body.text).split('[USER MESSAGE]\n').pop());
+            f.streams++; f.posts.push(String(body.text).split('[USER MESSAGE]\n').pop()); f.views.push(/"view":"([a-z-]+)"/.exec(String(body.text))?.[1] ?? '');
             agent.history[conversation].push({ id: crypto.randomUUID(), role: 'user', text: body.text, timestamp: Date.now() }); persist();
             const reply = 'Resident reply ' + f.streams;
             const finish = () => {
@@ -186,6 +187,8 @@ test('loop A on Android: the resident agent answers, the conversation follows ac
   await expect(bubble(page, 'Resident reply 2')).toHaveCount(1, { timeout: 60_000 });
   await expect(bubble(page, 'Flag-off stopped request')).toHaveCount(1);
   expect(await native(page, f => f.streams)).toBe(2);
+  // Each request carried the screen it was sent from as its current-turn context.
+  expect(await native(page, f => f.views)).toEqual(['home', 'calendar']);
 
   // Restart: the saved conversation comes back by itself. There is no "Load conversations" step here.
   await page.reload();
@@ -195,6 +198,15 @@ test('loop A on Android: the resident agent answers, the conversation follows ac
   for (const text of ['Flag-off first request', 'Resident reply 1', 'Flag-off stopped request', 'Resident reply 2']) await expect(bubble(page, text)).toHaveCount(1, { timeout: 30_000 });
   // Restoring reads history; it posts nothing.
   expect(await native(page, f => f.streams)).toBe(0);
+  // The connection names the agent and where it runs, and no credential is rendered anywhere.
+  await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
+  await button(page, 'Settings').click();
+  await expect(page.getByRole('button', { name: 'Agent connection', exact: true })).toContainText('Alpha');
+  await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
+  const account = page.getByRole('dialog', { name: 'Your Cloud account' });
+  await expect(account).toContainText('Your agent runs on this phone and uses your Eliza Cloud credits for AI.');
+  await expect(account.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+  expect(await page.locator('body').innerText()).not.toContain('synthetic-cloud-key');
   await expectNoDevelopmentSurface(page);
   expect(await native(page, f => f.unexpected)).toEqual([]);
   expect(foreign).toEqual([]);
@@ -229,6 +241,30 @@ for (const outcome of ['opened', 'unavailable'] as const) {
     await expectNoDevelopmentSurface(page);
   });
 }
+
+test('loop C on Android: a cancelled review sends nothing, and an unknown result is remembered across a restart before any repeat', async ({ page }) => {
+  test.setTimeout(120_000);
+  await android(page, { clock: 'unknown' });
+  await residentHome(page);
+  const openClock = async () => { await button(page, 'Calendar').click(); await button(page, 'Clock alarms').click(); return page.getByRole('dialog', { name: 'Clock alarms', exact: true }); };
+  let clock = await openClock();
+  await clock.getByLabel('Alarm time', { exact: true }).fill('07:15');
+  await clock.getByRole('button', { name: 'Review Clock request', exact: true }).click();
+  await clock.getByRole('button', { name: 'Cancel Clock review', exact: true }).click();
+  await expect(clock.getByRole('button', { name: 'Confirm Clock request', exact: true })).toHaveCount(0);
+  expect(await native(page, f => f.clock)).toEqual([]);
+  await clock.getByRole('button', { name: 'Review Clock request', exact: true }).click();
+  await clock.getByRole('button', { name: 'Confirm Clock request', exact: true }).click();
+  await expect(clock).toContainText('Clock result is unknown. Check Clock before repeating the request.');
+  expect(await native(page, f => f.clock.length)).toBe(1);
+  // Restart: the unknown outcome is still stated before another request can be reviewed, and nothing is replayed.
+  await page.reload();
+  await expect.poll(() => native(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
+  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
+  clock = await openClock();
+  await expect(clock).toContainText('Previous Clock result is unknown. Check Clock before repeating a request.');
+  expect(await native(page, f => f.clock)).toEqual([]);
+});
 
 test('loop C on Android: a phone time zone that changes after review retires the request before anything is sent', async ({ page, context }) => {
   test.setTimeout(120_000);
@@ -421,5 +457,32 @@ test('loop J03 in the web build: a chosen document can be reviewed for a questio
   // The development Inbox simulator that feeds journey J03 does not exist here.
   await expect(button(page, 'Incoming email')).toHaveCount(0);
   await expectNoDevelopmentSurface(page);
+  expect(foreign).toEqual([]);
+});
+
+test('loops D and F on Android: schedules are stated as phone-bound, and mail without a Gmail grant asks for one instead of showing a mailbox', async ({ page }) => {
+  test.setTimeout(120_000);
+  const foreign = await fenceNetwork(page);
+  await android(page);
+  await residentHome(page);
+  await button(page, 'Settings').click();
+  await button(page, 'Scheduled digests').click();
+  const digests = page.getByRole('dialog', { name: 'Scheduled digests', exact: true });
+  // The resident agent schedules on the phone and the panel says what that cannot do (decision A-09 is open).
+  await expect(digests).toContainText('Your agent runs schedules on this phone. It cannot run while the phone is off.');
+  await expect(digests).toContainText('one is recorded below as missed and none is run later');
+  await expect(digests.getByText(/Schedules run while this app is open/)).toHaveCount(0);
+  // This stub has no result store: the panel reports that instead of showing results.
+  await expect(digests).toContainText('Result storage could not be connected. Reconnect the agent to try again.');
+  await expect(digests.getByRole('article')).toHaveCount(0);
+  await button(page, 'Close scheduled digests').click();
+  await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
+  await button(page, 'Inbox').click();
+  // Signed in to Cloud but with no Gmail grant (the account list is refused): no messages, an explicit connect.
+  await expect(page.locator('[data-screen]')).toContainText('Gmail access was revoked or needs authorization again. Reconnect Gmail, then retry.');
+  await expect(button(page, 'Connect Gmail')).toBeVisible();
+  await expect(page.getByText('Dinner Friday?', { exact: true })).toHaveCount(0);
+  await expectNoDevelopmentSurface(page);
+  expect(await native(page, f => f.unexpected)).toEqual([]);
   expect(foreign).toEqual([]);
 });
