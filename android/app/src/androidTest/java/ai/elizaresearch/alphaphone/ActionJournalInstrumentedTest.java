@@ -44,6 +44,8 @@ public class ActionJournalInstrumentedTest {
    JSONObject reserved=call("Promise.all([Capacitor.Plugins.AlphaActionJournal.reserve("+params+"),Capacitor.Plugins.AlphaActionJournal.reserve("+params+")]).then(entries=>({entries}))");
    JSONArray rows=reserved.getJSONArray("entries");assertNotEquals(rows.getJSONObject(0).getBoolean("created"),rows.getJSONObject(1).getBoolean("created"));
    assertEquals("reserved",rows.getJSONObject(0).getJSONObject("entry").getString("phase"));
+   JSONObject changedOperation=new JSONObject(params).put("operationId",UUID.randomUUID().toString());
+   assertTrue("Replay must retain the original operation identity",call("Capacitor.Plugins.AlphaActionJournal.reserve("+changedOperation+")").has("error"));
    String encrypted=new String(Files.readAllBytes(new File(folder,hash(entrySlot)).toPath()),StandardCharsets.ISO_8859_1);
    assertFalse("Journal contents must be encrypted",encrypted.contains("Synthetic journal plaintext sentinel"));
    activity.recreate();

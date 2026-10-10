@@ -2,14 +2,14 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
-  "head": "fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
+  "baseCommit": "a9c5b99496c9122d308744feb0bed2d3e33c955a",
+  "head": "a9c5b99496c9122d308744feb0bed2d3e33c955a",
   "recordedAt": "2026-10-10",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...a9c5b99496c9122d308744feb0bed2d3e33c955a",
   "status": "identical",
   "aheadBy": 0,
   "behindBy": 0,
-  "mergeBase": "fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
+  "mergeBase": "a9c5b99496c9122d308744feb0bed2d3e33c955a",
   "pinOnlyCommits": [],
   "pullRequests": [
     {
@@ -123,6 +123,20 @@
       "mergedAt": "2026-10-10T03:15:26Z",
       "mergeCommit": "fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
       "head": "codex/pull-gesture-touch-compatibility-20261009"
+    },
+    {
+      "number": 34743,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:26:13Z",
+      "mergeCommit": "c9ff1a8110335cfde3768299a3299c214626eae3",
+      "head": "codex/local-speech-determinism-20261009"
+    },
+    {
+      "number": 34755,
+      "state": "merged",
+      "mergedAt": "2026-10-10T03:43:50Z",
+      "mergeCommit": "a9c5b99496c9122d308744feb0bed2d3e33c955a",
+      "head": "codex/shared-password-custody-20261009"
     }
   ]
 }

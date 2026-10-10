@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "cf62d636297a5bf794881cf4cdc022760954e84ed33f1cfe6570c933a28ab744",
+  "sourceDigest": "6af5a53f7d274d48da40b225a3d8b77cf48b0e69bb0f0a0639a73de71b5a3f65",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -2011,7 +2011,7 @@
       "file": "public/licenses/THIRD_PARTY_NOTICES.txt",
       "upstreamCandidate": [],
       "bytes": 807423,
-      "sha256": "71957c7e73dbe3a1cef9a8f8322868047e74ce76faaf230be7232492573d884d",
+      "sha256": "47a28b85263e02854982bffcb996ee6d6591d38463073273d03098d3ec509d33",
       "lines": null,
       "owner": "alphaphone",
       "disposition": "retain",
@@ -2024,7 +2024,7 @@
       "file": "public/licenses/third-party-notices.json",
       "upstreamCandidate": [],
       "bytes": 821461,
-      "sha256": "c056ba284db3f8d2d5aff41a1b321f3e3d07760a6056f8e2abbd7f0f9e471c36",
+      "sha256": "2cbd75d6984ca2017f4799ccff384f2b1aa525a555addbf95eda461fd55e4ec5",
       "lines": 766,
       "owner": "alphaphone",
       "disposition": "retain",

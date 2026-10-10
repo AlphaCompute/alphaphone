@@ -117,7 +117,7 @@ Evidence/source: [docs/mvp-current-status.md](../docs/mvp-current-status.md), [d
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: The integration branch pins reviewed upstream merge fa7c722e, including native owner context, confirmed credential shutdown and touch lifecycle fixes. Product qualification at this pin is in progress.
+Current: The integration branch pins reviewed upstream merge a9c5b994, including native compatibility, touch lifecycle, deterministic synthesis and shared password custody. Product qualification at this pin is in progress.
 
 Remaining: Complete product regressions and both Android distributions at the replacement pin.
 
@@ -129,7 +129,7 @@ Evidence/source: [scripts/ci/upstream-reachability.json](../scripts/ci/upstream-
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: Twenty-seven patch files and their manifests were retired after their replacements merged upstream. The unused runtime-capability proposal was deleted. Passwords and deterministic local speech remain applied candidates; password transfer remains a reference candidate.
+Current: Twenty-eight patch files and their manifests were retired after their replacements merged upstream. The unused runtime-capability proposal was deleted. The remaining applied password patch contains the manager and Autofill provider; encrypted custody comes from the pin. Password transfer remains a reference candidate.
 
 Remaining: Finish the remaining upstream reviews and remove each patch only when its reviewed replacement is consumed.
 
@@ -157,7 +157,7 @@ Evidence/source: [android/settings.gradle](../android/settings.gradle), [upstrea
 
 **P1 · integration · AP-11, AP-12**
 
-Current: The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser origins, data downloads, session normalization, intent policy and autofill eligibility use pinned helpers; the action journal is merged upstream and its product adapter still needs consolidation.
+Current: The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser policies use pinned helpers. Alpha now delegates journal transitions to the shared engine and retains product result policy and Clock approval; native qualification of this adapter is in progress.
 
 Remaining: Qualify installed notification policy/history and browser sessions; finish site-permission and journal adapter consolidation without weakening receipt or owner semantics.
 

@@ -29,7 +29,7 @@ project(':eliza-calendar').projectDir = new File('../vendor/eliza/plugins/plugin
 include ':eliza-reminders'
 project(':eliza-reminders').projectDir = new File('../vendor/eliza/plugins/plugin-native-reminders/android')
 include ':elizaos-capacitor-secure-store'
-project(':elizaos-capacitor-secure-store').projectDir = new File('../.eliza/patched/plugins/plugin-native-secure-store/android')
+project(':elizaos-capacitor-secure-store').projectDir = new File('../vendor/eliza/plugins/plugin-native-secure-store/android')
 include ':eliza-passwords'
 project(':eliza-passwords').projectDir = new File('../.eliza/patched/plugins/plugin-native-passwords/android')
 
@@ -38,3 +38,6 @@ project(':eliza-notifications').projectDir = new File('../vendor/eliza/plugins/p
 
 include ':eliza-owned-media'
 project(':eliza-owned-media').projectDir = new File('../vendor/eliza/plugins/plugin-native-media/android')
+
+include ':eliza-action-journal'
+project(':eliza-action-journal').projectDir = new File('../vendor/eliza/plugins/plugin-native-action-journal/android')

@@ -9,8 +9,7 @@ source.
 
 | Patch | Shared scope |
 | --- | --- |
-| `0038-password-manager.patch` | Password vault, native Autofill provider and renderer client |
-| `0066-local-speech-deterministic-synthesis.patch` | Deterministic local Piper synthesis |
+| `0038-password-manager.patch` | Native password manager, Autofill provider and renderer client; encrypted custody comes from the pin |
 
 Each applied patch has a `<topic>-source.json` manifest with its pinned base,
 patch hash, authenticated source paths and full output hashes. Export staged

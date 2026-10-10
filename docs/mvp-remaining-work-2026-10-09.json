@@ -167,7 +167,7 @@
         "AP-11"
       ],
       "title": "Upstream the pin-only commit series",
-      "current": "The integration branch pins reviewed upstream merge fa7c722e, including native owner context, confirmed credential shutdown and touch lifecycle fixes. Product qualification at this pin is in progress.",
+      "current": "The integration branch pins reviewed upstream merge a9c5b994, including native compatibility, touch lifecycle, deterministic synthesis and shared password custody. Product qualification at this pin is in progress.",
       "remaining": "Complete product regressions and both Android distributions at the replacement pin.",
       "acceptance": "Reviewed upstream disposition per commit, clean source preparation and full product regression at the replacement pin.",
       "depends_on": [],
@@ -188,7 +188,7 @@
         "AP-11"
       ],
       "title": "Submit and retire explicit shared patches",
-      "current": "Twenty-seven patch files and their manifests were retired after their replacements merged upstream. The unused runtime-capability proposal was deleted. Passwords and deterministic local speech remain applied candidates; password transfer remains a reference candidate.",
+      "current": "Twenty-eight patch files and their manifests were retired after their replacements merged upstream. The unused runtime-capability proposal was deleted. The remaining applied password patch contains the manager and Autofill provider; encrypted custody comes from the pin. Password transfer remains a reference candidate.",
       "remaining": "Finish the remaining upstream reviews and remove each patch only when its reviewed replacement is consumed.",
       "acceptance": "Patch-to-upstream-PR ledger with exact output hashes, external-consumer tests and no duplicate or silently unapplied implementation.",
       "depends_on": [
@@ -230,7 +230,7 @@
         "AP-12"
       ],
       "title": "Consume shared notification journal and browser candidates",
-      "current": "The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser origins, data downloads, session normalization, intent policy and autofill eligibility use pinned helpers; the action journal is merged upstream and its product adapter still needs consolidation.",
+      "current": "The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser policies use pinned helpers. Alpha now delegates journal transitions to the shared engine and retains product result policy and Clock approval; native qualification of this adapter is in progress.",
       "remaining": "Qualify installed notification policy/history and browser sessions; finish site-permission and journal adapter consolidation without weakening receipt or owner semantics.",
       "acceptance": "No duplicate effect or stale approval after migration; browser bridge isolation and notification privacy remain intact.",
       "depends_on": [

@@ -30,10 +30,11 @@ test('patch manifests bind each reviewed patch to the pin, its hash and every ou
   assert.equal(hash(fs.readFileSync(path.join(root,'patches/eliza',manifest.patch))),manifest.sha256);
   for(const file of manifest.changed)assert.ok(file in manifest.files,file);
  }
- // The upstream candidate is additive to the secure store and adds the passwords plugin.
+ // Shared custody is pinned upstream; the candidate adds only its manager/Autofill host.
  const password=manifests.find(item=>item.manifest.patch==='0038-password-manager.patch').manifest;
  assert.deepEqual(password.addedPaths,['plugins/plugin-native-passwords']);
- assert.ok(password.basePaths.includes('plugins/plugin-native-secure-store'));
+ assert.ok(!password.basePaths.includes('plugins/plugin-native-secure-store'));
+ assert.ok(password.basePaths.includes('packages/scripts/native-capacitor-scaffold.json'));
 });
 
 test('prepared patched source is exact, reused, repaired and never touches vendor/eliza',()=>fixture(directory=>{
@@ -43,13 +44,12 @@ test('prepared patched source is exact, reused, repaired and never touches vendo
  const [{manifest}]=readPatchManifests(directory);
  assert.equal(stamp.baseCommit,manifest.baseCommit);
  for(const [file,digest] of Object.entries(manifest.files))assert.equal(hash(fs.readFileSync(path.join(output,file))),digest,file);
- // Unchanged upstream files are byte-identical to the pin (e.g. the staged credential slots helper).
- const slots='plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java';
- assert.deepEqual(fs.readFileSync(path.join(output,slots)),execFileSync('git',['-C',path.join(root,'vendor/eliza'),'show',`${manifest.baseCommit}:${slots}`]));
+ // Custody must not be shadowed by a second copy in the candidate overlay.
+ assert.equal(fs.existsSync(path.join(output,'plugins/plugin-native-secure-store')),false);
  // Gradle build state inside module directories does not invalidate the reviewed source.
  const build=path.join(output,'plugins/plugin-native-passwords/android/build/intermediates');fs.mkdirSync(build,{recursive:true});fs.writeFileSync(path.join(build,'x'),'gradle');
  assert.equal(prepareElizaPatches({root:directory}),output);assert.ok(fs.existsSync(path.join(build,'x')));
- const changed=path.join(output,manifest.changed.find(file=>file.endsWith('PasswordVaultStore.java')));
+ const changed=path.join(output,manifest.changed.find(file=>file.endsWith('PasswordVaultAccess.java')));
  fs.writeFileSync(changed,'tampered');fs.writeFileSync(path.join(output,'plugins/unexpected.java'),'unreviewed');
  prepareElizaPatches({root:directory});
  assert.equal(hash(fs.readFileSync(changed)),manifest.files[path.relative(output,changed)]);
