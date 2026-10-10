@@ -5,6 +5,9 @@ UI of the browser build, as driven by one journey spec per loop in `test/browser
 Loop definitions: [completion plan](mvp-completion-plan.md) journeys A–F and
 [flow audit](flow-audit-and-prd.md) J01–J05.
 
+The independent audit of these claims, the flag-off (production) path of each loop and the
+remaining work are in [core loop audit](core-loop-audit.md).
+
 **Evidence class: source/test (S) only.** Every journey runs the development profile
 (`?mode=dev`, test mocks on) with the development agent profile where an agent is needed.
 The agent answers with a saved scripted reply and its proposals are authored through the
@@ -39,7 +42,8 @@ Open items:
 
 - With the development profile, the visible chat is not restored by itself after reload;
   the user restores it with Load conversations → Restore conversation (asserted in the
-  journey). Restoring a saved remote conversation on reconnect is covered with a
+  journey). The flag-off Android build restores the saved conversation by itself
+  (`journey-core-loops.production.spec.ts`, stubbed bridge). Restoring a saved remote conversation on reconnect is covered with a
   controlled transport by `chat-continuity.spec.ts`, not by this journey, and no real
   remote or Cloud agent is exercised.
 - Spoken requests are not part of this journey (see B for recording).
@@ -78,13 +82,16 @@ Spec: `journey-c-alarms.spec.ts`
 | --- | --- | --- | --- |
 | Agent proposes a Clock handoff; review shows the exact request and no result claim | yes | — | — |
 | Approve once; receipt records only that the handoff was opened | yes | The Android Clock intent (set/show/snooze/dismiss) and its "Alpha cannot confirm an alarm was changed" wording | Whether an installed Clock app created the alarm |
-| Second reviewed handoff (show) opens the development Clock on that alarm | yes (development Clock) | Android Clock UI | — |
-| Reload: exactly one alarm | yes (development Clock record) | — | Reboot persistence |
+| Second reviewed handoff (show) opens the browser Clock on that alarm | yes (browser Clock) | Android Clock UI | — |
+| Reload: exactly one alarm | yes (browser Clock record) | — | Reboot persistence |
 | Ring, snooze, ring again, dismiss | yes (foreground page, fixed clock) | Actual ringing, snooze, dismiss in Android Clock | Sound, vibration, DND, Doze, DST/time-zone change, no-handler and denied cases |
 | Restart: dismissed alarm stays dismissed; receipts retained | yes | — | — |
 
 Alarm ownership is pending owner decision A-11; the journey asserts the current handoff
-behavior and decides nothing.
+behavior and decides nothing. The alarm list in this journey is the browser build's own
+Clock (`apps/app/src/browser/clock.ts`), which also exists in the flag-off web build. It
+does not exist on Android, where every request is a reviewed handoff to the installed
+Clock app and "Alarm saved." is never shown.
 
 ## D. Scheduled digests
 
@@ -104,9 +111,8 @@ Spec: `journey-d-digests.spec.ts`
 
 Open items:
 
-- After a long absence the development scheduler records the most recent missed
-  occurrence only, while the panel text says "the first is recorded below as missed".
-  The wording and the development scheduler should be reconciled by the digest owner.
+- After a long absence the development scheduler records one missed occurrence (the most
+  recent). The panel now says "one is recorded below as missed", which matches.
 - The development scheduler runs only while the page is open ("Schedules run while this
   app is open"). This is not evidence for resident or hosted scheduling.
 
