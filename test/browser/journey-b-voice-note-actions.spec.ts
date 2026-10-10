@@ -214,7 +214,9 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  await page.getByRole('button',{name:'New event',exact:true}).click();
  await expect.poll(async()=>(await phoneContext(page)).selectedObject?.kind).toBe('calendar-source');
  const source=(await phoneContext(page));
- const calendarCreate={type:'calendar_create',source:{sourceId:source.selectedObject.id,sourceRevision:source.selectedObject.revision},fields:{title:'Venue booking call',description:'From the venue meeting note',location:'Main hall',start:eventStart,end:eventEnd,timeZone:source.timeZone}};
+ // A zone that is not this phone's, so the review has to say which one the event is saved in.
+ const eventZone=source.timeZone==='Asia/Tokyo'?'Europe/Paris':'Asia/Tokyo';
+ const calendarCreate={type:'calendar_create',source:{sourceId:source.selectedObject.id,sourceRevision:source.selectedObject.revision},fields:{title:'Venue booking call',description:'From the venue meeting note',location:'Main hall',start:eventStart,end:eventEnd,timeZone:eventZone}};
  await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();
  await queueAction(page,calendarCreate);
  await page.getByRole('button',{name:'Calendar',exact:true}).click();
@@ -228,7 +230,22 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  expect(await eventTitles(page)).toEqual(['Venue walkthrough']);
  await approveEvent.click();
  const calendarReview=page.getByRole('dialog',{name:'Review calendar change'});
- await expect(calendarReview).toContainText('Venue booking call');
+ // B-13: the review states every consequence of Confirm, not only the title: the calendar and
+ // account written, the exact time in the event's zone, the zone itself (named against the
+ // phone's), the all-day state and what happens to attendees. The agent contract carries no
+ // attendees, so the honest statement is that none are added and nobody is invited.
+ const zoned=(iso:string)=>new Intl.DateTimeFormat('en-US',{timeZone:eventZone,year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(new Date(iso));
+ expect((await calendarReview.getByRole('paragraph').innerText()).split('\n')).toEqual([
+  'Create event',
+  '“Venue booking call”',
+  'Calendar: App calendar · Account: Alpha Phone',
+  `${zoned(eventStart)} – ${zoned(eventEnd)}`,
+  `Time zone: ${eventZone} (this phone is set to ${source.timeZone})`,
+  'All day: no. This is a timed event.',
+  'Attendees: none. This change adds no attendees and sends no invitations.',
+  'Location: Main hall',
+  'From the venue meeting note',
+ ]);
  expect(await eventTitles(page)).toEqual(['Venue walkthrough']);
  await calendarReview.getByRole('button',{name:'Confirm',exact:true}).click();
  await expect(page.getByRole('button',{name:/^Completed Created event “Venue booking call”/})).toBeVisible();
@@ -239,7 +256,10 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  expect(await eventTitles(page)).toEqual(['Venue booking call','Venue walkthrough']);
  expect(await liveReminders(page)).toEqual(['Book the venue','Email the caterer']);
  expect(await reminders(page)).toHaveLength(2);
- expect((await events(page)).find(e=>e.title==='Venue booking call')).toMatchObject({calendarId:'local',body:'From the venue meeting note',location:'Main hall',begin:Date.parse(eventStart),end:Date.parse(eventEnd)});
+ expect((await events(page)).find(e=>e.title==='Venue booking call')).toMatchObject({calendarId:'local',body:'From the venue meeting note',location:'Main hall',begin:Date.parse(eventStart),end:Date.parse(eventEnd),timeZone:eventZone});
+ // What was reviewed is what was saved: a timed event with no attendees.
+ expect((await events(page)).find(e=>e.title==='Venue booking call')).not.toHaveProperty('who');
+ expect((await events(page)).find(e=>e.title==='Venue booking call')).not.toHaveProperty('allDay');
  const recordedActions=await actions(page);
  expect(recordedActions.proposals.map((p:any)=>[p.payload.operation.type,p.state,p.receipt?.outcome])).toEqual([['create_reminder','completed','applied'],['calendar_create','completed','applied']]);
  expect(recordedActions.journal.map((j:any)=>[j.record.operation.type,j.phase,j.status])).toEqual([['create_reminder','terminal','succeeded'],['calendar_create','terminal','succeeded']]);
