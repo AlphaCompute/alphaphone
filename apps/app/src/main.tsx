@@ -45,6 +45,7 @@ import { installSettingsAdapter } from './prototype/settings-adapter';
 import { ConnectionChooser, connectionController } from './runtime/connection-ui';
 import { installNotesTrashAdapter } from './prototype/notes-trash-adapter';
 import { installInboxCloudAdapter, inboxAttention, subscribeInboxAttention } from './prototype/inbox-cloud-adapter';
+import { installUseInEmailReview } from './prototype/use-in-email-review';
 import { latestRetainedDigest, subscribeRetainedDigest } from './runtime/hosted-digests';
 import { installHomeLauncher } from './prototype/home-launcher';
 import { setLocalePreferences } from './prototype/locale-time';
@@ -97,7 +98,7 @@ if (!fixture) {
   installPrototypeBrowserAdapter(Component, VIEWS);
   installSettingsAdapter(Component, VIEWS);
   if(!isAndroid){if(devSurfacesEnabled)installBrowserDeviceAdapter(Component);else installBrowserCapabilityTiles(Component);}
-  if(!browserDevProfile) installInboxCloudAdapter(Component, VIEWS);
+  if(!browserDevProfile) {installInboxCloudAdapter(Component, VIEWS);installUseInEmailReview(Component, VIEWS);}
   // Home cards read only the provider summaries: unread count, account label and read time for
   // mail, and the latest retained brief. Nothing here starts a read or a run.
   if(!browserDevProfile){

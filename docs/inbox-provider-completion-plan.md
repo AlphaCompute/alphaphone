@@ -93,3 +93,21 @@ Gmail provides full-thread retrieval through [threads.get](https://developers.go
 Use a closed synthetic HTTP provider for actual Cloud route/database integration, with two owners and grants, real MIME parsing and controlled response loss. Then exercise the exact phone UI against that service in both distributions: account switch and revocation during fetch, multi-message thread, attachment cancel/open, local/provider draft distinction, stale remote draft, MIME recipient review, duplicate confirmation, lost send response, process restart and canonical receipt lookup. Require zero second send dispatches during recovery and no unselected content in agent context.
 
 Real acceptance separately requires normal Cloud login and working Gmail OAuth, an explicitly authorized test mailbox/recipient, actual provider draft/readback and approved send/reply, label changes and recovery. The current Google code-exchange401 and pending Cloud organization-key approval remain external gates. Do not send real mail merely because the synthetic flow passed. Preserve existing local drafts if those gates remain unresolved.
+
+## Use in email from the assistant (MVP-14, 2026-10-10)
+
+A finished plain assistant reply offers "Use in email" in its message actions while Inbox is the app behind the conversation
+(`apps/app/src/prototype/use-in-email-review.ts`). The review names the From account and the exact destination before anything
+is inserted: the open local draft, a new reply to the open message, or a new email. `view.emailTarget()` returns that destination
+with a renderer-only token covering the Cloud session, account owner, open message and its `historyId`, and the draft's identity
+and current content; `view.useInEmail(text, {token, append})` refuses when any of them changed, and the review then shows the
+current destination again. Text already in a draft is never replaced: the only offered action is adding the suggestion below it.
+A saved local draft that is not open, retained edits, a message without a literal reply address, or a reply longer than a draft
+block the review with the reason. A changed agent session or an edited/removed reply closes the review without inserting.
+
+Attachment policy (unchanged, now stated in the review): only the text is inserted. Files and Photos selected elsewhere are not
+attached by a suggestion or by sharing; the composer's Attach picker remains the only way to add a file.
+
+Nothing in this path prepares or dispatches a provider operation; sending still requires the composer and the provider review.
+Evidence is fixture-only: `test/use-in-email-review.test.mjs`, section 7 of `scripts/test-inbox-attention-flow.mjs` and
+`test/browser/use-in-email.spec.ts`. Real Gmail and device acceptance for this control remain open.
