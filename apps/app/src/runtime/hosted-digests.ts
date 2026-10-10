@@ -157,9 +157,44 @@ export function subscribeRetainedDigest(listener: () => void): () => void {
 	retainedListeners.add(listener);
 	return () => retainedListeners.delete(listener);
 }
-/** Records the newest retained result (by completion, then cursor), or clears it when the connection changes. */
+/** Occurrences the agent recorded without running them. No source was read and no brief was written. */
+const DIGEST_NOT_RUN: Readonly<Record<string, string>> = {
+	missed: "Missed — not run",
+	overlap: "Skipped — an earlier run was still active",
+	unavailable: "Not run — source unavailable",
+};
+/** True when the occurrence executed. A missed, overlapping or unavailable occurrence is a record, not a brief. */
+export function digestRan(result: Pick<DigestResult, "status">): boolean {
+	return !Object.hasOwn(DIGEST_NOT_RUN, result.status);
+}
+/** Owner-facing state of one occurrence. Executed runs keep the agent's own status word. */
+export function digestStatusLabel(status: string): string {
+	return Object.hasOwn(DIGEST_NOT_RUN, status) ? DIGEST_NOT_RUN[status] : status;
+}
+/** Minutes east of UTC for an IANA zone at an instant, or null for an unknown zone. */
+function zoneOffsetMinutes(zone: string, at: number): number | null {
+	try {
+		const parts = Object.fromEntries(
+			new Intl.DateTimeFormat("en-GB", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+				.formatToParts(at)
+				.map((part) => [part.type, part.value]),
+		);
+		const wall = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
+		return Math.round((wall - Math.floor(at / 60000) * 60000) / 60000);
+	} catch {
+		return null;
+	}
+}
+/** A schedule keeps its reviewed time zone. Says so when this device's clock is currently in a different one (travel or a changed setting); empty when they agree. */
+export function digestZoneNote(loop: Pick<DigestLoop, "spec" | "removed">, deviceZone: string, now = Date.now()): string {
+	if (loop.removed || !loop.spec.enabled || loop.spec.timeZone === deviceZone) return "";
+	const reviewed = zoneOffsetMinutes(loop.spec.timeZone, now), device = zoneOffsetMinutes(deviceZone, now);
+	if (reviewed === null || device === null || reviewed === device) return "";
+	return `Runs at ${loop.spec.localTime} ${loop.spec.timeZone} time, not this device’s current time zone (${deviceZone}). Review the schedule to change it.`;
+}
+/** Records the newest retained brief that actually ran (by completion, then cursor), or clears it when the connection changes. A missed or skipped occurrence never replaces the last brief on Home. */
 export function rememberRetainedDigests(results: DigestResult[] | null, agent = "Your agent") {
-	const latest = (results ?? []).reduce<DigestResult | null>((best, row) => {
+	const latest = (results ?? []).filter(digestRan).reduce<DigestResult | null>((best, row) => {
 		if (!best) return row;
 		const a = Date.parse(row.completedAt), b = Date.parse(best.completedAt);
 		return a > b || (a === b && row.cursor > best.cursor) ? row : best;

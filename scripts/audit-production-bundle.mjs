@@ -6,6 +6,7 @@
 import {readFileSync,readdirSync,statSync,existsSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {fontLicenseBlockers} from './font-license-blockers.mjs';
 
 export const DENYLIST = Object.freeze([
   'alpha:force-render-error', 'alpha:render-error-check', 'Forced render failure',
@@ -96,6 +97,8 @@ function main(argv) {
   for (const error of result.errors) console.error(`ERROR ${error}`);
   for (const finding of result.findings) console.error(`DENY ${finding.file}: ${finding.rule}`);
   if (result.pendingAvatarInitials?.length) console.warn(`PENDING hard-coded avatar initials ${result.pendingAvatarInitials.join(', ')} (platform-20; removed by the shell package)`);
+  // Reported, never failed here: a developer build may carry it; a release may not be distributed with it.
+  if (existsSync(dir)) for (const blocker of fontLicenseBlockers(dir)) console.warn(`RELEASE BLOCKER ${blocker.message}`);
   if (result.ok) console.log(`PASS ${path.relative(process.cwd(), dir) || '.'}: ${result.files} files, testMocks=${result.testMocks}${result.testMocks ? ' (denylist skipped for an explicit test-mocks bundle)' : ', no mock, fixture or developer surfaces found'}.`);
   else console.error(`FAIL ${result.findings.length} denylist hit(s), ${result.errors.length} error(s).`);
   return result.ok ? 0 : 1;

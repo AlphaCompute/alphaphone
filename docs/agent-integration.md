@@ -88,7 +88,12 @@ navigation request, not successful page loading or content observation.
 remote definitions, reviewed runs, cancellation and execution receipts. Generation
 must retain selected read scopes and admitted operations. Run admission uses
 expected versions and submission reconciliation when the host advertises those
-capabilities. An unknown response must not trigger another submission. Pause does
+capabilities. An unknown response must not trigger another submission: the phone
+first reads the exact submission receipt. Only when the agent reports no run for that
+submission ID may the owner confirm sending the same request again under the same ID
+and reviewed version, which the agent admits at most once; an agent without
+submission identities is never sent a repeat. If the workflow version changed before
+any admission, the request can no longer be admitted and is closed as not run. Pause does
 not cancel an existing run; a queued receipt is not successful completion.
 See [workflow lifecycle](workflow-lifecycle-validation.md) and
 [mobile workflow packaging](mobile-workflow-packaging.md) for the owning contracts.

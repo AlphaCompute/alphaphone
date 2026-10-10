@@ -56,8 +56,9 @@ The client also:
   must add the button. The "Help me organize my inbox" suggestion is removed;
 - adds `CloudProtocol.revokeSession()`, which uses Cloud's self-revocation route
   (`DELETE /api/v1/api-keys/current`) when the host transport allows `DELETE` and otherwise reports
-  `{supported:false}`. The local credential is cleared either way. The Android transport admits only GET
-  and POST today, so no revocation is sent on Android yet.
+  `{supported:false}`. The local credential is cleared either way. The Android transport admits this one
+  `DELETE` (`ConnectionRoutes.cloudSelfRevocation`), so Android sign-out sends it once; the browser
+  transports do not. No live Eliza Cloud revocation has been observed.
 
 Known limit of provider draft editing: the editable content is the draft's text/plain part and literal recipient
 addresses. A draft that also has a text/html alternative (Gmail's usual form) is offered for editing, and

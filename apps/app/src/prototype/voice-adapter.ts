@@ -612,14 +612,25 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
         const actionText=(note.actions||[]).filter((a:Bag)=>!a.done).map((a:Bag)=>String(a.t||'')).join('\n');
         if(!actionText.trim()){current.toast('No open action items. Review the transcript with Alpha first.');return;}
         if(actionText.length>4000){current.toast('Shorten the action items before creating a reminder. Nothing scheduled.');return;}
-        current.open('calendar',{form:{id:null,title:'',off:1,t:9,d:0,where:'',video:false,who:[],cal:'alpha-reminders',repeat:'none',alert:0,notes:actionText},open:null,month:null,day:1},'hidden');
+        current.open('calendar',{form:{id:null,title:'',off:1,t:9,d:1,where:'',video:false,who:[],cal:'alpha-reminders',repeat:'none',alert:0,notes:actionText},open:null,month:null,day:1},'hidden');
         current.toast('Choose one action and review its time, then Save. Nothing scheduled yet.');
       };
       vo.calLabel='Review reminder draft';vo.calText='Review reminder';vo.calIcon=current.ic.cal;
 
+      // A saved recording's reviewed transcript is read by the same qualified local speech route as text notes.
+      const voText = noteSpeechText(selected), voReading = currentNoteReading()?.noteId === selected.id;
+      vo.stopReading = voReading ? () => stopSpeaking() : undefined;
+      vo.readAloud = voText && !voReading ? () => {
+        stopSaved();
+        void speakNote(voText, { noteId: selected.id }).then(outcome => {
+          if (outcome === 'unavailable') current.toast('On-device speech is unavailable. The note is unchanged.');
+          else if (outcome === 'unsupported') current.toast('This note has text that on-device speech cannot read. Nothing was read.');
+          else if (outcome === 'failed') current.toast('Reading stopped before the end. The note is unchanged.');
+        });
+      } : undefined;
       vo.playLabel = savedPlaying ? 'Stop recording playback' : 'Play recording';
       vo.playIcon = savedPlaying ? current.ic.stop : current.ic.play;
-      vo.play = () => { void playSaved(selected); };
+      vo.play = () => { if (currentNoteReading()?.noteId === selected.id) stopSpeaking(); void playSaved(selected); };
       vo.lines = [{ ini: 'You', who: 'You', t: selected.body || selected.audio.transcript, at: '0:00', chip: 'background:var(--acc);color:#fff', css: '', seek: () => { void playSaved(selected); } }];
       vo.bars = vo.bars.map((bar: Bag) => ({ ...bar, h: 4 })); // No invented amplitude analysis.
       vo.share = () => current.toast('Audio stays in this app. Sharing recordings is not available yet.');

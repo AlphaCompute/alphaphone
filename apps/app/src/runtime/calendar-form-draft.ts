@@ -32,3 +32,11 @@ export function decodeCalendarForm(raw:string,now=new Date(),requireCreation=tru
  const form:Form={...payload.form,id:null,off:(Date.parse(payload.date)-day(now))/86400000,separateCreation:false};
  return {form,date:payload.date,zone:payload.zone};
 }
+/** Why a form's start/end cannot be saved, or '' when it can. A form whose own duration is
+ * zero or negative is a user-correctable end time; only a positive duration that resolves to a
+ * missing or non-advancing wall time is a clock change. */
+export function calendarFormTimeProblem(start:Date|null,end:Date|null,hours:number):string{
+ if(!Number.isFinite(hours)||hours<=0)return 'Choose an end time after the start. Nothing was saved.';
+ if(!start||!end||end.getTime()<=start.getTime())return 'This local time does not exist because the clocks change. Choose another start or end time. Nothing was saved.';
+ return '';
+}
