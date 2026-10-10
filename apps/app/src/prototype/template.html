@@ -110,8 +110,8 @@
         <button class="ib" onClick="{{app.toggleFavorite}}" aria-label="{{app.favoriteAria}}" aria-pressed="{{app.favorite}}" style="flex-shrink: 0"><svg class="i" viewBox="0 0 24 24" style="fill: {{app.favoriteFill}}; color: {{app.favoriteColor}}"><path d="{{ic.star}}"></path></svg></button>
       </div>
         </sc-for>
-        <h2 class="mono" style="margin: 14px 12px 2px; font-size: 12px; font-weight: 400; color: var(--mut)">All apps</h2>
       </section>
+      <h2 class="mono" style="margin: 14px 12px 2px; font-size: 12px; font-weight: 400; color: var(--mut)">All apps</h2>
     </sc-if>
     <sc-for list="{{launcher.rows}}" as="app">
       <div data-launcher-app="{{app.key}}" style="display: flex; align-items: center; gap: 2px">

@@ -50,11 +50,16 @@ public class DeviceAppsPlugin extends Plugin {
   boolean icons = Boolean.TRUE.equals(call.getBoolean("icons", false));
   PackageManager packages = getContext().getPackageManager();
   JSArray apps = new JSArray();
-  for (LauncherLibrary.Entry item : LauncherLibrary.list(getContext())) {
-   JSObject app = new JSObject(); app.put("packageName", item.packageName); app.put("activityName", item.activityName); app.put("label", item.label);
-   if (item.user != null) { app.put("user", item.user); app.put("profile", item.profile); app.put("locked", item.locked); }
-   if (icons) { String icon = iconFor(item.icon(packages)); if (icon == null && item.user == null) icon = iconFor(packages, item.packageName); if (icon != null) app.put("icon", icon); }
-   apps.put(app);
+  try {
+   for (LauncherLibrary.Entry item : LauncherLibrary.list(getContext())) {
+    JSObject app = new JSObject(); app.put("packageName", item.packageName); app.put("activityName", item.activityName); app.put("label", item.label);
+    if (item.user != null) { app.put("user", item.user); app.put("profile", item.profile); app.put("locked", item.locked); }
+    if (icons) { String icon = iconFor(item.icon(packages)); if (icon == null && item.user == null) icon = iconFor(packages, item.packageName); if (icon != null) app.put("icon", icon); }
+    apps.put(app);
+   }
+  } catch (RuntimeException error) {
+   // An unreadable inventory is reported, never a partial list and never a crash of Home.
+   call.reject("Installed apps could not be read", LauncherLibrary.FAILED, error); return;
   }
   JSObject result = new JSObject(); result.put("apps", apps); call.resolve(result);
  }
@@ -66,7 +71,7 @@ public class DeviceAppsPlugin extends Plugin {
   catch (IllegalArgumentException error) { call.reject("Choose an installed app"); return; }
   if (intent == null) { LauncherLibrary.Refusal why = LauncherLibrary.explain(getContext().getPackageManager(), name); call.reject(why.getMessage(), why.code); return; }
   try { getActivity().startActivity(intent); call.resolve(); }
-  catch (android.content.ActivityNotFoundException | SecurityException error) { call.reject("App could not be opened", LauncherLibrary.FAILED, error); }
+  catch (RuntimeException error) { call.reject("App could not be opened", LauncherLibrary.FAILED, error); }
  }
  /** Opens exactly the listed component in its profile, re-resolved now; a stale entry is refused. */
  private void launchComponent(PluginCall call, String packageName, String activityName, String user) {
@@ -79,7 +84,8 @@ public class DeviceAppsPlugin extends Plugin {
    if (target.user == null) getActivity().startActivity(LauncherLibrary.launchIntent(target.component));
    else getContext().getSystemService(LauncherApps.class).startMainActivity(target.component, target.user, null, null);
    call.resolve();
-  } catch (android.content.ActivityNotFoundException | SecurityException | IllegalStateException | NullPointerException error) {
+  } catch (RuntimeException error) {
+   // Gone between resolve and start, refused by Android, or no Activity to start from.
    call.reject("App could not be opened", LauncherLibrary.FAILED, error);
   }
  }
@@ -107,6 +113,10 @@ public class DeviceAppsPlugin extends Plugin {
   IntentFilter profiles = new IntentFilter();
   profiles.addAction(Intent.ACTION_MANAGED_PROFILE_AVAILABLE); profiles.addAction(Intent.ACTION_MANAGED_PROFILE_UNAVAILABLE);
   profiles.addAction(Intent.ACTION_MANAGED_PROFILE_UNLOCKED); profiles.addAction(Intent.ACTION_MANAGED_PROFILE_ADDED); profiles.addAction(Intent.ACTION_MANAGED_PROFILE_REMOVED);
+  // Other profile kinds (clone, private) announce themselves with these on newer Android; older releases never send them.
+  profiles.addAction(Intent.ACTION_PROFILE_ACCESSIBLE); profiles.addAction(Intent.ACTION_PROFILE_INACCESSIBLE);
+  profiles.addAction(Intent.ACTION_PROFILE_ADDED); profiles.addAction(Intent.ACTION_PROFILE_REMOVED);
+  profiles.addAction(Intent.ACTION_PROFILE_AVAILABLE); profiles.addAction(Intent.ACTION_PROFILE_UNAVAILABLE);
   profileReceiver = new BroadcastReceiver() { @Override public void onReceive(Context context, Intent intent) { appsChanged(null, "profile"); } };
   try {
    // System profile broadcasts only; no other app can send to this receiver.

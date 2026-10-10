@@ -48,17 +48,27 @@ export function filterLauncherApps(apps: InstalledApp[], query: string): Install
 }
 
 /** Secondary text per entry key. Entries that share a label in the same profile are told apart by
- * package (or by activity inside one package); another profile's entries always name the profile. */
+ * package, by activity inside one package, and by profile number when two profiles of one kind hold
+ * the same component; another profile's entries always name the profile. */
 export function describeLauncherApps(apps: InstalledApp[]): Map<string, string[]> {
   const groups = new Map<string, InstalledApp[]>();
   for (const app of apps) { const id = `${fold(app.label)}\n${app.profile || ''}`; groups.set(id, [...(groups.get(id) || []), app]); }
+  const short = (app: InstalledApp) => app.activityName ? app.activityName.slice(app.activityName.lastIndexOf('.') + 1) || app.activityName : '';
   const details = new Map<string, string[]>();
   for (const group of groups.values()) {
-    const samePackage = new Set(group.map(app => app.packageName)).size === 1;
     for (const app of group) {
       const parts: string[] = [];
       if (app.profile) parts.push(PROFILE_LABEL[app.profile] + (app.locked ? ' · locked' : ''));
-      if (group.length > 1) parts.push(samePackage && app.activityName ? app.activityName.slice(app.activityName.lastIndexOf('.') + 1) || app.packageName : app.packageName);
+      if (group.length > 1) {
+        const siblings = group.filter(other => other.packageName === app.packageName);
+        const before = parts.length;
+        if (siblings.length < group.length) parts.push(app.packageName);
+        if (siblings.length > 1 && app.activityName) {
+          parts.push(siblings.filter(other => short(other) === short(app)).length === 1 ? short(app) : app.activityName);
+          if (app.user && siblings.filter(other => other.activityName === app.activityName).length > 1) parts.push(`profile ${app.user}`);
+        }
+        if (parts.length === before) parts.push(app.packageName);
+      }
       details.set(appKey(app), parts);
     }
   }
@@ -135,13 +145,9 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
       try { await bridge.launch(target); update({launching: null}); }
       catch (error) {
         update({launching: null, launchError: `${app.label} could not be opened. ${message(error)}`});
-        // The entry may be gone, disabled or locked now: show the device's current list.
-        const current = ++generation;
-        const listed = await bridge.list(options.icons ? {icons: true} : undefined).catch(() => null);
-        if (current !== generation) return;
-        if (!listed || !Array.isArray(listed.apps)) { update({status: 'failed', apps: []}); return; }
-        const seen = new Set<string>();
-        update({apps: listed.apps.filter(valid).filter(item => !seen.has(appKey(item)) && !!seen.add(appKey(item)))});
+        // The entry may be gone, disabled or locked now: show the device's current list. This is a
+        // full read, so one it overtakes (the drawer was still opening) cannot strand the loading state.
+        await load({quiet: true});
       }
     },
     async openDial() {
@@ -189,7 +195,12 @@ export function installHomeLauncher(Component: any, bridge: LauncherBridge, opti
   let owner: any = null;
   const launcher = createLauncher(bridge, () => owner?.setState({launcherRevision: Date.now()}), {...options, favorites: options.favorites || localFavorites()});
   // An open drawer follows the device: package changes, and anything that happened while Alpha was away.
-  const refresh = () => { if (owner?.S().drawer) void launcher.refresh(); };
+  // Android reports one install or update as several changes; they are read once, shortly after.
+  let pending: ReturnType<typeof setTimeout> | null = null;
+  const refresh = () => {
+    if (pending || !owner?.S().drawer) return;
+    pending = setTimeout(() => { pending = null; if (owner?.S().drawer) void launcher.refresh(); }, 120);
+  };
   const visible = () => { if (!document.hidden) refresh(); };
   let subscription: unknown = null;
   p.componentDidMount = function (...args: any[]) {
@@ -200,6 +211,7 @@ export function installHomeLauncher(Component: any, bridge: LauncherBridge, opti
   };
   p.componentWillUnmount = function (...args: any[]) {
     document.removeEventListener('visibilitychange', visible); document.removeEventListener('resume', refresh);
+    if (pending) { clearTimeout(pending); pending = null; }
     void Promise.resolve(subscription).then((handle: any) => handle?.remove?.()).catch(() => {});
     subscription = null; if (owner === this) owner = null;
     return unmount?.apply(this, args);

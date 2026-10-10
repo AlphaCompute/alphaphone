@@ -36,6 +36,14 @@ final class LauncherLibrary {
  static final String PROFILE_LOCKED = "profile-locked";
  static final String PROFILE_UNAVAILABLE = "profile-unavailable";
  static final String FAILED = "failed";
+ /** The stand-in LauncherApps lists for an app with no launcher activity; it opens Android's app
+  * details, not the app, so it is never an entry here. */
+ static final String APP_DETAILS_ACTIVITY = "android.app.AppDetailsActivity";
+
+ /** A real launcher activity of another app: not Alpha's own copy in a profile, not Android's stand-in. */
+ static boolean listable(ComponentName component, String self) {
+  return component != null && !component.getPackageName().equals(self) && !APP_DETAILS_ACTIVITY.equals(component.getClassName());
+ }
 
  static final class Entry {
   final String packageName; final String activityName; final String label;
@@ -125,7 +133,7 @@ final class LauncherLibrary {
    if (activities == null) continue;
    for (LauncherActivityInfo activity : activities) {
     ComponentName component = activity == null ? null : activity.getComponentName();
-    if (component == null) continue;
+    if (!listable(component, self)) continue;
     Entry entry = new Entry(component.getPackageName(), component.getClassName(), text(activity.getLabel(), component.getPackageName()), serial, profile, locked, activity);
     if (seen.add(entry.key())) entries.add(entry);
    }
@@ -179,6 +187,7 @@ final class LauncherLibrary {
   if (packageName == null || packageName.isEmpty() || packageName.equals(self) || activityName == null || activityName.isEmpty()) {
    throw new IllegalArgumentException("Choose an installed app");
   }
+  if (APP_DETAILS_ACTIVITY.equals(activityName)) throw new Refusal(NO_LAUNCHER, "This app has no screen that can be opened from here.");
   PackageManager packages = context.getPackageManager();
   if (user == null) {
    List<Entry> current = describe(packages, packages.queryIntentActivities(launcherQuery().setPackage(packageName), 0), self);

@@ -169,6 +169,9 @@ test('an open drawer follows installs and removals, and a removed favorite is no
   await drawer.getByRole('button', { name: 'Add Settings to favorites', exact: true }).click();
   const favorites = drawer.getByRole('region', { name: 'Favorites', exact: true });
   await expect(favorites.getByRole('button', { name: /^Open / })).toHaveCount(2);
+  // The Favorites region holds only favorites; the full list has its own heading after it.
+  await expect(favorites.getByRole('heading')).toHaveText(['Favorites']);
+  await expect(drawer.getByRole('heading', { name: 'All apps', exact: true })).toHaveCount(2);
 
   // Android reports a removal: the entry and its favorite leave without reopening the drawer,
   // and without a loading state replacing the list.
@@ -179,9 +182,12 @@ test('an open drawer follows installs and removals, and a removed favorite is no
   await expect(drawer.getByText('Reading installed apps…', { exact: true })).toHaveCount(0);
 
   // An install appears; a second app with an existing label becomes distinguishable at once.
-  await page.evaluate(apps => (window as any).deviceChange(apps, true), [SETTINGS, NOTES_A, NOTES_B, CLOCK]);
+  // Android announces one install as several changes; the device is read once for the burst.
+  const readsBefore = (await calls(page, 'list')).length;
+  await page.evaluate(apps => { for (let i = 0; i < 3; i++) (window as any).deviceChange(apps, true); }, [SETTINGS, NOTES_A, NOTES_B, CLOCK]);
   await expect(drawer.getByRole('button', { name: 'Open Notes (com.vendor.notes)', exact: true })).toBeVisible();
   await expect(drawer.getByRole('button', { name: 'Open Notes (org.example.notes)', exact: true })).toBeVisible();
+  expect((await calls(page, 'list')).length).toBe(readsBefore + 1);
   // The reinstalled favorite returns to its saved place.
   await expect.poll(() => names(favorites.getByRole('button', { name: /^Open / }))).toEqual(['Open Clock', 'Open Settings']);
 

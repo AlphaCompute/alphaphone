@@ -292,3 +292,41 @@ test('a locked work-profile entry reports the profile state Android gave and lau
   assert.equal(launcher.snapshot().launchError, 'Notes could not be opened. Work apps are paused or locked. Turn on work apps in Android, then try again.');
   assert.equal(launcher.snapshot().launching, null);
 });
+test('a launch that fails while the drawer is still reading ends in a settled list, never a stuck loading state', async () => {
+  let listed = twins, hold = null;
+  const launcher = createLauncher({
+    list: () => hold ? new Promise(resolve => hold.push(() => resolve({apps: listed}))) : Promise.resolve({apps: listed}),
+    launch: async () => { listed = twins.slice(1); throw Error('This app is no longer installed.'); },
+  }, () => {});
+  await launcher.load();
+  // Reopening the drawer starts a full read; the previous rows are still on screen and one is tapped.
+  hold = [];
+  const reopening = launcher.load();
+  assert.equal(launcher.snapshot().status, 'loading');
+  const launching = launcher.launch(twins[0]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(hold.length, 2, 'the failed launch started its own read of the device');
+  hold[1](); await launching;
+  hold[0](); await reopening;
+  assert.equal(launcher.snapshot().status, 'ready');
+  assert.equal(launcher.snapshot().apps.length, twins.length - 1);
+  assert.equal(launcher.snapshot().launchError, 'Notes could not be opened. This app is no longer installed.');
+});
+test('same-label entries stay distinguishable when packages, activities and profiles overlap', () => {
+  const mixed = [
+    {packageName: 'org.example.notes', activityName: 'org.example.notes.Main', label: 'Notes'},
+    {packageName: 'com.vendor.notes', activityName: 'com.vendor.notes.One', label: 'Notes'},
+    {packageName: 'com.vendor.notes', activityName: 'com.vendor.notes.Two', label: 'Notes'},
+    {packageName: 'com.vendor.suite', activityName: 'com.vendor.suite.mail.Main', label: 'Suite'},
+    {packageName: 'com.vendor.suite', activityName: 'com.vendor.suite.calendar.Main', label: 'Suite'},
+    {packageName: 'com.vendor.chat', activityName: 'com.vendor.chat.Main', label: 'Chat', user: '10', profile: 'work', locked: false},
+    {packageName: 'com.vendor.chat', activityName: 'com.vendor.chat.Main', label: 'Chat', user: '11', profile: 'work', locked: false},
+  ];
+  const details = describeLauncherApps(mixed);
+  assert.deepEqual(mixed.map(app => details.get(appKey(app))), [
+    ['org.example.notes'], ['com.vendor.notes', 'One'], ['com.vendor.notes', 'Two'],
+    ['com.vendor.suite.mail.Main'], ['com.vendor.suite.calendar.Main'],
+    ['Work', 'com.vendor.chat.Main', 'profile 10'], ['Work', 'com.vendor.chat.Main', 'profile 11'],
+  ]);
+  assert.equal(new Set(mixed.map(app => `${app.label}|${details.get(appKey(app)).join('|')}`)).size, mixed.length, 'no two rows read the same');
+});

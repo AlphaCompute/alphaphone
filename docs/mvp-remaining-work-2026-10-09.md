@@ -763,5 +763,6 @@ Implementation added on branch `claude/r2-app-library`; acceptance parts stay op
 - A launch re-resolves the exact component and is refused with a reason (`not-installed`, `disabled`, `no-launcher`, `profile-locked`, `profile-unavailable`) when the row is stale; the drawer then re-reads the device. A failed read clears the list.
 - Favorites and their order are saved on the device (`alpha.launcher.favorites.v1`) and shown only for entries the device lists now.
 - An open drawer re-reads on Android package/profile changes (`appsChanged`) and when Alpha returns to the foreground.
-- Evidence: `test/home-launcher.test.mjs`, `test/browser/home-app-library.spec.ts` (native stub, not Android). `LauncherLibraryInstrumentedTest.java` compiles but has not run on an emulator or phone.
+- Evidence: `test/home-launcher.test.mjs`, `test/browser/home-app-library.spec.ts` (native stub, not Android). The Android sources, including `LauncherLibraryInstrumentedTest.java`, were compiled with `javac` against the SDK only: no Gradle build, lint, APK, emulator or phone run.
+- Other profiles list real launcher activities only: Alpha's own copy and Android's app-details stand-in for apps without a launcher activity are left out and refused.
 - Still open: emulator and physical HOME-role runs, a real work profile (paused and locked), real install/remove, return from three native apps, and launcher landscape behavior (A-22 owner decision).

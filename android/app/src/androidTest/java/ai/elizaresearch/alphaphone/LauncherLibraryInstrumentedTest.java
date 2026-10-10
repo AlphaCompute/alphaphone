@@ -87,6 +87,13 @@ public class LauncherLibraryInstrumentedTest {
   catch (LauncherLibrary.Refusal refusal) { assertEquals(LauncherLibrary.NO_LAUNCHER, refusal.code); }
   try { LauncherLibrary.resolve(context(), own.packageName, own.activityName, "999999999"); fail("An unknown profile must not resolve"); }
   catch (LauncherLibrary.Refusal refusal) { assertEquals(LauncherLibrary.PROFILE_UNAVAILABLE, refusal.code); }
+  try { LauncherLibrary.resolve(context(), own.packageName, LauncherLibrary.APP_DETAILS_ACTIVITY, null); fail("Android's app-details stand-in is not a launcher entry"); }
+  catch (LauncherLibrary.Refusal refusal) { assertEquals(LauncherLibrary.NO_LAUNCHER, refusal.code); }
+  String self = context().getPackageName();
+  assertTrue(LauncherLibrary.listable(new ComponentName(own.packageName, own.activityName), self));
+  assertFalse("Alpha's own copy in another profile is never listed", LauncherLibrary.listable(new ComponentName(self, self + ".MainActivity"), self));
+  assertFalse(LauncherLibrary.listable(new ComponentName(own.packageName, LauncherLibrary.APP_DETAILS_ACTIVITY), self));
+  assertFalse(LauncherLibrary.listable(null, self));
   for (String[] bad : new String[][] {{null, "x.Main"}, {"", "x.Main"}, {context().getPackageName(), "x.Main"}, {own.packageName, null}, {own.packageName, ""}, {own.packageName, own.activityName, "not-a-number"}}) {
    try { LauncherLibrary.resolve(context(), bad[0], bad[1], bad.length > 2 ? bad[2] : null); fail("Malformed request must be rejected"); }
    catch (IllegalArgumentException expected) { assertEquals("Choose an installed app", expected.getMessage()); }
