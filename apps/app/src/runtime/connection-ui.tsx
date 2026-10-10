@@ -1004,6 +1004,10 @@ export const connectionController = {
   async saveDevelopment(profile:DevelopmentProfile,reply:string){if(!devSurfacesEnabled)return;await work('Saving development reply…',async signal=>{await saveDevelopmentReply(profile,reply,signal);update({message:'Development reply saved.'});});},
   async startLocal() { await work('Starting the local agent…', signal => { retire(); return connectResident(signal); }); },
   async pair(kind: 'remote' | 'local', origin: string, code: string) {
+    if (isAndroid && !testMocksEnabled) {
+      update({ error: 'Pairing is unavailable. Your agent runs on this phone; sign in to Eliza Cloud for inference.' });
+      return;
+    }
     await work('Verifying your agent…', signal => { retire(); return connectRemote(kind, origin, code, signal); });
   },
   async residentCloudLogin() {

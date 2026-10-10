@@ -5,8 +5,8 @@ reference. The current renderer includes native browser, camera,
 calendar, reminders, selected files and local notes. Phone, SMS, Contacts and Wallet
 entry points are disabled by the documented MVP profile. Production Android onboarding signs into an Eliza Cloud account, checks account
 credits, then offers microphone and notification setup. The agent runs on the phone;
-Cloud supplies the configured inference and voice services. Remote pairing and local
-provider setup remain explicit development or advanced paths. Mock mode, prototype
+Cloud supplies the configured inference and voice services. Phone pairing is retired in production Android. Browser and test-mocks tooling
+retain remote connections for development. Mock mode, prototype
 fixture data, developer device controls and the local development endpoint are
 development surfaces that exist only when the build-time switch
 `ELIZA_DEV_ALLOW_TEST_MOCKS=1` is set (see [build-time switch](#build-time-test-mock-switch)).

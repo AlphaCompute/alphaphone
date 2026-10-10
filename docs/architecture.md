@@ -61,8 +61,10 @@ Playwright and explicit test-mocks builds, and off for `npm run build`,
 
 The primary agent runs on Android. Local orchestration, durable state and tool
 approvals are separate from model inference: hosted inference requires explicit
-configuration and outbound-context policy. Cloud/remote pairing is an optional
-path. Debug host forwarding (the DevelopmentAgent bridge, present only in test-mocks
+configuration and outbound-context policy. Production Android does not accept remote phone pairing. Cloud sign-in authorizes
+billed inference for the resident agent; it does not select a hosted agent. Existing
+remote credentials and history are retained without automatically reconnecting.
+Browser and test-mocks transports remain development infrastructure. Debug host forwarding (the DevelopmentAgent bridge, present only in test-mocks
 builds) is development infrastructure, not evidence of a resident runtime or
 production authentication.
 
