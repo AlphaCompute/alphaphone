@@ -58,23 +58,41 @@ export type TileKey = 'wifi' | 'bt' | 'dnd' | 'mic' | 'loc' | 'plane' | 'torch';
 export type TileFacts = Partial<Record<TileKey, boolean>>;
 export const tileKeys: Record<string, TileKey> = { 'Wi-Fi': 'wifi', 'Bluetooth': 'bt', 'Do not disturb': 'dnd', 'Agent can listen': 'mic', 'Location': 'loc', 'Airplane mode': 'plane', 'Flashlight': 'torch' };
 /** Settings page each tile hands off to (AlphaDevice.openSettings). The flashlight is a direct control. */
-export const tileSettingsPages: Partial<Record<TileKey, string>> = { wifi: 'wifi', bt: 'bluetooth', dnd: 'dnd', plane: 'mobile', loc: 'privacy', mic: 'privacy' };
-/** AlphaDevice.snapshot() reports an active Wi-Fi transport, which proves Wi-Fi is on. No active
- * transport does not prove it is off (it may be on and disconnected), so false is not a fact. */
+export const tileSettingsPages: Partial<Record<TileKey, string>> = { wifi: 'wifi', bt: 'bluetooth', dnd: 'dnd', plane: 'airplane', loc: 'location', mic: 'privacy' };
+/** Android system switches as AlphaDevice.snapshot() read them. A switch Android did not answer for
+ * is absent. App permissions are not switch states, so the microphone tile never gets one here.
+ * Without the Wi-Fi switch, an active Wi-Fi transport still proves Wi-Fi is on; no active
+ * transport does not prove it is off (it may be on and disconnected). */
 export function tileFactsFromSnapshot(snapshot: unknown, torch?: boolean): TileFacts {
-  const facts: TileFacts = {};
-  if (snapshot && typeof snapshot === 'object' && (snapshot as { wifiActive?: unknown }).wifiActive === true) facts.wifi = true;
+  const facts: TileFacts = {}, value = snapshot && typeof snapshot === 'object' ? snapshot as Record<string, unknown> : {};
+  if (typeof value.wifiEnabled === 'boolean') facts.wifi = value.wifiEnabled;
+  else if (value.wifiActive === true) facts.wifi = true;
+  if (typeof value.bluetoothEnabled === 'boolean') facts.bt = value.bluetoothEnabled;
+  if (typeof value.airplaneMode === 'boolean') facts.plane = value.airplaneMode;
+  if (typeof value.locationEnabled === 'boolean') facts.loc = value.locationEnabled;
+  if (value.interruptionFilter === 'all') facts.dnd = false;
+  else if (value.interruptionFilter === 'priority' || value.interruptionFilter === 'alarms' || value.interruptionFilter === 'none') facts.dnd = true;
   if (typeof torch === 'boolean') facts.torch = torch;
   return facts;
 }
-export type ShadeTile = { label: string; on?: boolean; css?: string; toggle?: () => void; [key: string]: unknown };
-/** Present tiles with state only from native facts. Hide the flashlight without a native control. */
+export type ShadeTile = { label: string; on?: boolean; css?: string; toggle?: () => void; stateText?: string; [key: string]: unknown };
+/** Visible state under each tile. An unread switch says what the tile does instead of looking off. */
+export function tileStateText(key: TileKey | null, on: boolean | undefined): string {
+  if (typeof on === 'boolean') return on ? 'On' : 'Off';
+  return key === 'torch' ? 'Tap to switch' : key === 'mic' ? 'Permissions' : 'Open settings';
+}
+/** Present tiles with state only from native facts. Hide the flashlight without a native control.
+ * Every tile except the flashlight only opens its Android page: Alpha cannot change these switches. */
 export function honestTiles(tiles: ShadeTile[], facts: TileFacts, options: { flashlight: boolean; act: (key: TileKey | null, tile: ShadeTile) => void }): ShadeTile[] {
   return tiles.filter(tile => tileKeys[tile.label] !== 'torch' || options.flashlight).map(tile => {
     const key = tileKeys[tile.label] ?? null, fact = key ? facts[key] : undefined;
     const on = typeof fact === 'boolean' ? fact : undefined;
-    return { ...tile, on, css: on ? 'background:var(--acc);color:#fff' : 'background:var(--s2);color:var(--fg)', toggle: () => options.act(key, tile) };
+    return { ...tile, on, stateText: tileStateText(key, on), css: (on ? 'background:var(--acc);color:#fff' : 'background:var(--s2);color:var(--fg)') + ';flex-direction:column;gap:3px', toggle: () => options.act(key, tile) };
   });
+}
+/** Settings row wording for a system switch: the switch state when Android reported it, else the fallback. */
+export function switchValue(on: unknown, fallback: string, detail?: { on?: string; off?: string }): string {
+  return typeof on === 'boolean' ? (on ? detail?.on ?? 'On' : detail?.off ?? 'Off') : fallback;
 }
 /** One settings handoff per brightness gesture: repeated change events inside the window are ignored. */
 export function handoffGate(windowMs = 2000, now: () => number = () => Date.now()) {
@@ -84,7 +102,22 @@ export function handoffGate(windowMs = 2000, now: () => number = () => Date.now(
     end() { inFlight = false; last = now(); },
   };
 }
+/** What to say when Android opened a broader page than the one asked for; null when the specific page opened. */
+export function broaderPageNotice(page: string, opened: unknown): string | null {
+  if (!opened || typeof opened !== 'object' || (opened as { specific?: unknown }).specific !== false) return null;
+  if (page === 'airplane' || page === 'mobile') return 'Opened Android network settings. This phone has no separate page for that switch.';
+  if (page === 'dnd') return 'Opened Android priority settings. This phone has no separate Do Not Disturb page.';
+  return 'Opened a related Android settings page. This phone has no separate page for that setting.';
+}
 // tile-facts:end
+/** Run each time the owner comes back to the app or its window regains focus (returning from an
+ * Android page, or closing Android's own quick settings), so a changed switch is read again. */
+export function watchReturnToApp(run: () => void): () => void {
+  const check = () => { if (!document.hidden) run(); };
+  document.addEventListener('visibilitychange', check); window.addEventListener('focus', check);
+  const handle = DailyApps.addListener('appResumed', check).catch(() => null);
+  return () => { document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check); void handle.then(listener => listener?.remove()); };
+}
 /** MIME filter for a Files location tile. Unknown locations accept any document. */
 function locationMime(name: string): string {
   const key = name.toLowerCase();

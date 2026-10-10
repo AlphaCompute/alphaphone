@@ -453,9 +453,9 @@ Evidence/source: [apps/app/src/runtime/phone-workflow-authoring.ts](../apps/app/
 
 **P1 · acceptance · AP-12**
 
-Current: Quick setting state, diagnostics and handoffs have implementation coverage; physical state/OS delivery is not established here.
+Current: Tiles and Settings rows read the Wi-Fi, Bluetooth, airplane mode, location, mobile data and Do Not Disturb states Android reports to an ordinary app, hand off to the matching Android page and re-read on return; unreported states are shown as a handoff. Channel and app-notification denial are read back from Android. About shows the packaged version and states that no update check exists. Diagnostics are redacted by construction. All of this has source and renderer-contract coverage on the flag-off bundle; physical state, each image's Settings pages and OS delivery are not established here.
 
-Remaining: Check each settings destination/readback, channel denial/re-enable, lock/Doze, exact result/reminder tap after death, revoke during work, redacted export, version and update availability. Keep mirroring off by default and outside MVP gate.
+Remaining: On an emulator and then a device, check each settings destination and readback (SettingsSystemFacts, SettingsNative, SettingsFlow, SettingsRoles and NotificationChannels instrumentation, then by hand), channel denial/re-enable, lock/Doze, exact result/reminder tap after death, revoke during work and the redacted export. Update availability needs an update authority (A-06) before anything can be shown. Keep mirroring off by default and outside MVP gate.
 
 Done when: No simulated toggle or success; channel-disabled history still available; wrong-owner/deleted notification target fails safely.
 

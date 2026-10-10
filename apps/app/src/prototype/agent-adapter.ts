@@ -39,8 +39,8 @@ import { isAndroid } from '../native';
 import { registerPlugin } from '../platform-plugins';
 import { SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { connectionController } from '../runtime/connection-ui';
-import { honestTiles, handoffGate, tileFactsFromSnapshot, tileSettingsPages, type TileFacts, type TileKey } from './native-adapter';
-const alphaDevice = registerPlugin<{ snapshot(): Promise<Record<string, unknown>>; openSettings(input: { page: string }): Promise<{ status: string }> }>('AlphaDevice');
+import { broaderPageNotice, honestTiles, handoffGate, watchReturnToApp, tileFactsFromSnapshot, tileSettingsPages, type TileFacts, type TileKey } from './native-adapter';
+const alphaDevice = registerPlugin<{ snapshot(): Promise<Record<string, unknown>>; openSettings(input: { page: string }): Promise<{ status: string; specific?: boolean }> }>('AlphaDevice');
 const elizaSystem = registerPlugin<{ setFlashlight(input: { enabled: boolean }): Promise<{ available: boolean; enabled: boolean }> }>('ElizaSystem');
 
 // The reference renderer is a JavaScript state machine. Its presentation API is
@@ -374,6 +374,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     activeShell=this;this.notesOpenAbort=new AbortController();
     originalMount.call(this);
     this.live = true;
+    // An open shade never keeps a switch state Android may have changed while the owner was away.
+    this.stopTileWatch = watchReturnToApp(() => { if (this.live && this.S().shade) this.refreshTileFacts(); });
     this.dialogBackObserver = new MutationObserver(() => updateBackAvailability(this));
     this.dialogBackObserver.observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:['open']});
     this.composerDraft=new AssistantDraftController(assistantDraftStore,()=>String(this.S().draft||''),text=>{this.reviewedSourceDraft=null;if(this.live)this.setState({draft:text});},()=>{if(this.live)this.setState({});});
@@ -710,7 +712,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     document.removeEventListener('visibilitychange', this.visibilityHandler);
     window.removeEventListener('pagehide', this.pageHideHandler);
     window.removeEventListener('pageshow', this.pageShowHandler);
-    this.dialogBackObserver?.disconnect();
+    this.dialogBackObserver?.disconnect();this.stopTileWatch?.();
     this.live = false; alphaClient.disconnect(); window.removeEventListener('alpha-back', this.backHandler); window.removeEventListener('launcher-home', this.homeHandler); window.removeEventListener('alpha-selected-context', this.selectionHandler);
     void this.assistListener?.then((l: Shell) => l?.remove()); originalUnmount.call(this);
   };
@@ -881,11 +883,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   /** Read tile facts when the shade opens. A failed read leaves every tile without a state. */
   p.refreshTileFacts = function () {
-    if (!isAndroid || this.tileFactsReading) return;
+    if (!isAndroid) return;
+    // A read already in flight may predate the change: read once more when it settles.
+    if (this.tileFactsReading) { this.tileFactsAgain = true; return; }
     this.tileFactsReading = true;
     void alphaDevice.snapshot().then(snapshot => tileFactsFromSnapshot(snapshot, this.flashlightOn), () => tileFactsFromSnapshot(null, this.flashlightOn))
       .then(tileFacts => { if (this.live) this.setState((previous: Shell) => ({ q: { ...previous.q, tileFacts } })); })
-      .finally(() => { this.tileFactsReading = false; });
+      .finally(() => { this.tileFactsReading = false; if (this.tileFactsAgain) { this.tileFactsAgain = false; if (this.live) this.refreshTileFacts(); } });
   };
   p.tileAction = async function (key: TileKey | null) {
     if (key === 'torch') {
@@ -905,8 +909,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       return;
     }
     const page = key ? tileSettingsPages[key] : undefined;
-    try { if (!page) throw Error('No settings page'); await alphaDevice.openSettings({ page }); }
-    catch { await DailyApps.perform({ action: 'settings' }).catch(() => this.toast('Android settings is unavailable.')); }
+    // Alpha cannot change these switches: the tile opens the Android page; the shade re-reads on return.
+    try { if (!page) throw Error('No settings page'); const notice = broaderPageNotice(page, await alphaDevice.openSettings({ page })); if (notice) this.toast(notice); }
+    catch { await DailyApps.perform({ action: 'settings' }).then(result => this.toast(result?.status === 'opened' ? 'Opened Android Settings. This phone has no separate page for that switch.' : 'Android settings is unavailable.'), () => this.toast('Android settings is unavailable.')); }
   };
   /** Brightness is a Display settings handoff: one per gesture, never a value Alpha claims to set. */
   p.displayHandoff = async function () {
