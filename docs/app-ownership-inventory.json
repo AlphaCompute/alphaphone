@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "d29211ef6c5173126e5eba7e7553d667d59d4fb1bc5c77bb8869056fdb07d260",
+  "sourceDigest": "ab0ae51d5b957cffdde80f3da2a760639b71a0f5792878bced3ce116aa419ae6",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -8874,9 +8874,9 @@
         "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts",
         "plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts"
       ],
-      "bytes": 114386,
-      "sha256": "4a0fa9bbe2c4158293d1e1274c57f62a69dbf00b0ac0261853ee6c92ceafa884",
-      "lines": 1167,
+      "bytes": 114803,
+      "sha256": "389032ab7113dbd9e27ace5ae4165897573246d7258bc98be8d666f3f32eb264",
+      "lines": 1170,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
@@ -9161,6 +9161,12 @@
           "line": 436,
           "tags": [
             "host-coupling"
+          ]
+        },
+        {
+          "line": 447,
+          "tags": [
+            "identity-or-compatibility"
           ]
         },
         {
@@ -9583,31 +9589,25 @@
           ]
         },
         {
-          "line": 1052,
+          "line": 1055,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1053,
+          "line": 1056,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1058,
+          "line": 1061,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1065,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 1069,
+          "line": 1068,
           "tags": [
             "host-coupling"
           ]
@@ -9619,25 +9619,25 @@
           ]
         },
         {
-          "line": 1079,
+          "line": 1075,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1103,
+          "line": 1082,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1114,
+          "line": 1106,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1118,
+          "line": 1117,
           "tags": [
             "host-coupling"
           ]
@@ -9649,7 +9649,7 @@
           ]
         },
         {
-          "line": 1122,
+          "line": 1124,
           "tags": [
             "host-coupling"
           ]
@@ -9661,13 +9661,19 @@
           ]
         },
         {
-          "line": 1131,
+          "line": 1128,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 1161,
+          "line": 1134,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 1164,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -10998,9 +11004,9 @@
     {
       "file": "src/prototype/data-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 14741,
-      "sha256": "284280a956595811bea0f14b0e20703a759c85c568f3b0fcc31b313942f1615f",
-      "lines": 191,
+      "bytes": 15068,
+      "sha256": "5639530c584918fb36281d08948a3e5b3d7c8d10c40af2b4b4db4e18829b3a35",
+      "lines": 193,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
@@ -11032,19 +11038,19 @@
           ]
         },
         {
-          "line": 141,
+          "line": 143,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 164,
+          "line": 166,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 169,
+          "line": 171,
           "tags": [
             "identity-or-compatibility",
             "storage"
@@ -14053,7 +14059,7 @@
       "file": "src/prototype/phone.css",
       "upstreamCandidate": [],
       "bytes": 18265,
-      "sha256": "67e5fcfdd4eda7fab6cfb775ec730ecad265f6de8fc3f43458484df485ae64ec",
+      "sha256": "32d9898228362f0cc1c16d5354a1743badb8c9abb54784e9b508763068c01452",
       "lines": 203,
       "owner": "alphaphone",
       "disposition": "retain-or-split",

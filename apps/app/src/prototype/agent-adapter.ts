@@ -444,7 +444,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       // native events must not navigate the shell before its dialog closes.
       const dialog = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]')).at(-1);
       if (dialog) { event.preventDefault(); event.stopImmediatePropagation(); if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close(); return; }
-      const inlineModal=Array.from(document.querySelectorAll<HTMLElement>('.os [role="dialog"][aria-modal="true"]')).some(dialog=>!dialog.closest('[inert],[hidden]')&&dialog.getAttribute('aria-hidden')!=='true'&&dialog.getClientRects().length>0&&getComputedStyle(dialog).visibility!=='hidden');
+      const inlineModal=Array.from(document.querySelectorAll<HTMLElement>('.os [role="dialog"][aria-modal="true"]:not([data-alpha-layer="drawer"])')).some(dialog=>!dialog.closest('[inert],[hidden]')&&dialog.getAttribute('aria-hidden')!=='true'&&dialog.getClientRects().length>0&&getComputedStyle(dialog).visibility!=='hidden');
       if (inlineModal||document.querySelector<HTMLElement>('.os')?.inert) return;
       connectionController.cancelViewNavigation();alphaClient.cancel(); this.back();
     };
@@ -851,7 +851,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     // Pending proposals offer Decline beside approval. The digest card renders one button per row.
     const live:Shell[]=this.S().msgs||[];
     out.msgs=(out.msgs||[]).map((m:Shell)=>{
-      const c=m.c||{};if(!c.proposalId||c.done||!m.cGeneric)return m;
+      const c=m.c||{};if(!c.proposalId||c.done||c.reviewUnavailable||!m.cGeneric)return m;
       const message=live.find(item=>item.card===c);if(!message)return m;
       const ic=out.ic||{},busy=!!this.decliningProposal||!!this.pendingActionApproval;
       return {...m,cGeneric:false,cDigest:true,rows:[
@@ -1014,8 +1014,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       for (const proposal of reply.proposals || []) {retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description,proposalCard(proposal));}
       try{await deliverNavigation(reply.actionResults);}catch(error){if(this.live)this.toast(error instanceof AlphaClientError?error.message:'Could not confirm the screen change. Check your screen.');}
     } catch (e) {
-      if(this.live&&e instanceof AlphaClientError&&e.code==='transport-failed'&&readyNavigation){try{await deliverNavigation(readyNavigation);}catch{}}
-      const message=e instanceof Error?e.message:'The agent could not complete this request.';
+      let opened=false;
+      if(this.live&&e instanceof AlphaClientError&&e.code==='transport-failed'&&readyNavigation){try{opened=await deliverNavigation(readyNavigation);}catch{}}
+      const message=opened?'The screen opened, but the conversation response was interrupted. Check history before sending again.':e instanceof Error?e.message:'The agent could not complete this request.';
       await transportSettled(attempt);
       if(!dispatched(attempt,e)){
         // Nothing reached the agent: put the text back and drop the unsent bubble. Never resend.
@@ -1028,8 +1029,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           const check={type:'generic',icon:'info',title:'Check for reply',sub:'Reload this conversation from the agent. Nothing is sent again.',checkReply:{sessionId}};
           if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));
           // An error after dispatch is not a reply: marked interrupted so voice timing abandons the turn and it is never read aloud.
-          else this.setState((previous:Shell)=>({chat:previous.chat==='full'?'full':'sheet',msgs:[...(previous.msgs||[]),{id:crypto.randomUUID(),from:'agent',text:message,card:null,interrupted:true}]}));
-          this.agentSay('Your message may have reached the agent. Check before sending it again.',check);
+          else this.setState((previous:Shell)=>({...(!opened?{chat:previous.chat==='full'?'full':'sheet'}:{}),msgs:[...(previous.msgs||[]),{id:crypto.randomUUID(),from:'agent',text:message,card:null,interrupted:true}]}));
+          const recoveryText='Your message may have reached the agent. Check before sending it again.';
+          if(opened)this.setState((previous:Shell)=>({msgs:[...(previous.msgs||[]),{id:crypto.randomUUID(),from:'agent',text:recoveryText,card:check}]}));
+          else this.agentSay(recoveryText,check);
         }
       }
     }

@@ -1,10 +1,12 @@
 import {test,expect,type Page} from '@playwright/test';
+import {readFileSync} from 'node:fs';
+const upstreamPin=JSON.parse(readFileSync(new URL('../../upstream.lock.json',import.meta.url),'utf8')).commit;
 
 // Real rendered Settings; only the Android IPC boundary is synthetic. These prove the renderer's
 // contract (what it reads, shows and sends). Emulator readback lives in SettingsRolesInstrumentedTest.
 type Options={launcher?:boolean;decline?:number};
 async function nativeStub(page:Page,options:Options={}){
- await page.addInitScript(({launcher,decline})=>{
+ await page.addInitScript(({launcher,decline,upstreamPin})=>{
   const w=window as any;w.androidBridge={};
   try{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));}catch{/* covered elsewhere */}
   const now=Date.now(),store=new Map<string,string>();
@@ -47,7 +49,7 @@ async function nativeStub(page:Page,options:Options={}){
     if(plugin==='AlphaDevice'){
      if(method==='snapshot')return {readAt:now,model:'Fixture phone',manufacturer:'Fixture',appVersion:'0.1.0',androidRelease:'16',build:'fixture',securityPatch:'2026-09-05',permissions:{Microphone:true,Location:false,Camera:false,Calendar:true},locationAccess:'denied',batteryPercent:64,charging:false,powerSave:false,wifiActive:true,cellularActive:false};
      if(method==='crashLog')return {exitHistory:true,entries:[{at:now-60_000,source:'uncaught',errorClass:'java.lang.IllegalStateException',thread:'main',process:'main'},{at:now-30_000,source:'exit',reason:'anr',process:'main'},{at:now-10_000,source:'exit',reason:'crash',process:'main',description:'Fixture note text should not appear'}]};
-     if(method==='diagnosticsFacts')return {appVersion:'0.1.0',versionCode:1,variant:launcher?'launcher':'standalone',buildType:'release',testMocks:false,sdkInt:36,androidRelease:'16',securityPatch:'2026-09-05',upstreamPin:'45242af234e7f3d55c433f327798e7cb2130e06e',runtimeHashes:{'agent/alpha-source.json':'c'.repeat(64)},apiKey:'csk-synthetic-provider-key'};
+     if(method==='diagnosticsFacts')return {appVersion:'0.1.0',versionCode:1,variant:launcher?'launcher':'standalone',buildType:'release',testMocks:false,sdkInt:36,androidRelease:'16',securityPatch:'2026-09-05',upstreamPin,runtimeHashes:{'agent/alpha-source.json':'c'.repeat(64)},apiKey:'csk-synthetic-provider-key'};
      if(method==='shareDiagnostics'){f.shared.push(input.text);return {status:'opened'};}
      if(method==='clearCrashLog'||method==='recordRendererFailure')return {};
      if(method==='openSettings')return {status:'opened'};
@@ -55,7 +57,7 @@ async function nativeStub(page:Page,options:Options={}){
     throw Error('Unexpected native operation '+plugin+'.'+method);
    },
   };
- },{launcher:options.launcher??true,decline:options.decline??0});
+ },{launcher:options.launcher??true,decline:options.decline??0,upstreamPin});
 }
 const settings=async(page:Page)=>{await page.goto('/');await page.getByRole('button',{name:'Settings',exact:true}).click();await expect(page.locator('html')).toHaveAttribute('data-active-view','settings');};
 const app=(page:Page)=>page.locator('[data-alpha-layer="app"]');
@@ -97,7 +99,7 @@ test('Privacy shows Calendar and no Contacts, Developer has no NPU or uptime, an
  await nativeStub(page);
  await settings(page);
  await app(page).getByRole('button',{name:'Privacy & data',exact:true}).click();
- await expect(app(page).getByText('Calendar',{exact:true})).toBeVisible();
+ await expect(app(page).getByText('Calendar',{exact:true}).first()).toBeVisible();
  await expect(app(page).getByText('Allowed for Alpha',{exact:true}).first()).toBeVisible();
  await expect(app(page).getByText('Contacts',{exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Back to Settings',exact:true}).click();
@@ -117,7 +119,7 @@ test('Privacy shows Calendar and no Contacts, Developer has no NPU or uptime, an
  const shared=await page.evaluate(()=>(window as any).settingsFixture.shared[0]);
  const report=JSON.parse(shared);
  expect(report.format).toBe('alpha-diagnostics/v1');
- expect(report.upstreamPin).toBe('45242af234e7f3d55c433f327798e7cb2130e06e');
+ expect(report.upstreamPin).toBe(upstreamPin);
  expect(report.permissions).toEqual({Microphone:true,Location:false,Camera:false,Calendar:true,Notifications:true});
  expect(report.roles.find((r:any)=>r.role==='home')).toEqual({role:'home',held:false,available:true});
  expect(report.crashes.count).toBe(3);

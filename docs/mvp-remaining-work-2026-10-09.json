@@ -309,14 +309,17 @@
       ],
       "title": "Complete full Trash recovery",
       "current": "Trash preserves notes and voice recordings for three days. Full storage currently refuses deletion and directs the user to empty Trash.",
-      "remaining": "Add the separately confirmed permanent-delete escape where required, preserving exact note/audio ownership and failure recovery. Qualify expiry across process death and clock changes.",
-      "acceptance": "Full-storage recovery does not silently lose another note; deletion/restore/expiry converge for the exact text and audio under interruption.",
-      "depends_on": [],
+      "remaining": "Add the separately confirmed permanent-delete escape where required, preserving exact note/audio ownership and failure recovery. Qualify expiry across process death and clock changes. Consume the reviewed upstream capacity fix: existing Trash must remain readable, restorable and purgeable after a later host lowers its limits. Current limits are unchanged in this integration; the candidate fix is upstream PR 34649.",
+      "acceptance": "Full-storage recovery does not silently lose another note; deletion/restore/expiry converge for the exact text and audio under interruption. A document created under larger limits can be read and reduced under smaller limits; only new additions enforce capacity.",
+      "depends_on": [
+        "MVP-09"
+      ],
       "sources": [
         "apps/app/src/prototype/notes-trash-adapter.ts",
         "apps/app/src/prototype/agent-adapter.ts",
         "docs/browser-storage.md"
-      ]
+      ],
+      "upstream_candidate": "https://github.com/elizaOS/eliza/pull/34649"
     },
     {
       "id": "MVP-16",
@@ -638,17 +641,19 @@
         "AP-10"
       ],
       "title": "Finish regional Maps deployment and travel acceptance",
-      "current": "Route selection and guidance integration exists; source tests do not qualify production map data or physical navigation.",
-      "remaining": "Provision approved TLS endpoint and licensed data coverage, verify build configuration, location permission/accuracy, reroute/stale result, offline/no route, background navigation and stop behavior.",
-      "acceptance": "J04 event-to-route on selected hardware with explicit origin/route, correct live guidance and truthful regional/offline limits.",
+      "current": "Route selection and guidance integration exists; source tests do not qualify production map data or physical navigation. A source-level reproduction confirms a date-line projection defect: a point at longitude 179.5 on an equatorial route from 179 to -179 is reported 55.6 km off route instead of zero.",
+      "remaining": "Provision approved TLS endpoint and licensed data coverage, verify build configuration, location permission/accuracy, reroute/stale result, offline/no route, background navigation and stop behavior. Adopt a reviewed great-circle projection fix (candidate upstream PR 34650), and qualify date-line/high-latitude routes and maneuver ordering.",
+      "acceptance": "J04 event-to-route on selected hardware with explicit origin/route, correct live guidance and truthful regional/offline limits. Date-line progress agrees with the existing geodesic distance calculation and never invents an off-route detour.",
       "depends_on": [
         "MVP-04",
-        "MVP-20"
+        "MVP-20",
+        "MVP-09"
       ],
       "sources": [
         "docs/maps-regional-validation.md",
         "apps/app/src/prototype/maps-adapter.ts"
-      ]
+      ],
+      "upstream_candidate": "https://github.com/elizaOS/eliza/pull/34650"
     },
     {
       "id": "MVP-32",

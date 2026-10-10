@@ -54,6 +54,8 @@ for(const mode of ['fresh','double','response-loss','reload-loss','mismatch','mi
   await expect(page.getByText(unknown,{exact:true})).toBeVisible();await save.click();expect(await page.evaluate(()=>(window as any).creates)).toBe(1);
   await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await expect(page.getByRole('button',{name:'Check new reminder status',exact:true})).toBeVisible();
   if(mode==='fresh-attempt'){
+   // New event resumes the retained form; explicitly discard only that draft before a separate attempt.
+   await page.getByRole('button',{name:'New event',exact:true}).click();page.once('dialog',d=>void d.accept());await page.getByRole('button',{name:'Discard calendar draft',exact:true}).click();await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveCount(0);
    await newForm();const dismissed=new Promise<void>(resolve=>page.once('dialog',async d=>{expect(d.message()).toContain('may already exist');await d.dismiss();resolve();}));await save.click();await dismissed;await expect(save).toBeEnabled();expect(await page.evaluate(()=>(window as any).creates)).toBe(1);
    page.once('dialog',d=>void d.accept());await save.click();await expect.poll(()=>page.evaluate(()=>(window as any).creates)).toBe(2);expect(await page.evaluate(async()=>Object.keys(await (await import('/src/runtime/reminder-creations.ts')).reminderCreations()).length)).toBe(2);return;
   }

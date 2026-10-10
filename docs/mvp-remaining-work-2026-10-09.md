@@ -209,9 +209,11 @@ Evidence/source: [apps/app/src/prototype/inbox-cloud-adapter.ts](../apps/app/src
 
 Current: Trash preserves notes and voice recordings for three days. Full storage currently refuses deletion and directs the user to empty Trash.
 
-Remaining: Add the separately confirmed permanent-delete escape where required, preserving exact note/audio ownership and failure recovery. Qualify expiry across process death and clock changes.
+Remaining: Add the separately confirmed permanent-delete escape where required, preserving exact note/audio ownership and failure recovery. Qualify expiry across process death and clock changes. Consume the reviewed upstream capacity fix: existing Trash must remain readable, restorable and purgeable after a later host lowers its limits. Current limits are unchanged in this integration; the candidate fix is [upstream PR 34649](https://github.com/elizaOS/eliza/pull/34649).
 
-Done when: Full-storage recovery does not silently lose another note; deletion/restore/expiry converge for the exact text and audio under interruption.
+Done when: Full-storage recovery does not silently lose another note; deletion/restore/expiry converge for the exact text and audio under interruption. A document created under larger limits can be read and reduced under smaller limits; only new additions enforce capacity.
+
+Depends on: MVP-09.
 
 Evidence/source: [apps/app/src/prototype/notes-trash-adapter.ts](../apps/app/src/prototype/notes-trash-adapter.ts), [apps/app/src/prototype/agent-adapter.ts](../apps/app/src/prototype/agent-adapter.ts), [docs/browser-storage.md](../docs/browser-storage.md).
 
@@ -421,13 +423,13 @@ Evidence/source: [docs/flow-audit-and-prd.md](../docs/flow-audit-and-prd.md), [d
 
 **P1 · integration · AP-10**
 
-Current: Route selection and guidance integration exists; source tests do not qualify production map data or physical navigation.
+Current: Route selection and guidance integration exists; source tests do not qualify production map data or physical navigation. A source-level reproduction confirms a date-line projection defect: a point at longitude 179.5 on an equatorial route from 179 to -179 is reported 55.6 km off route instead of zero.
 
-Remaining: Provision approved TLS endpoint and licensed data coverage, verify build configuration, location permission/accuracy, reroute/stale result, offline/no route, background navigation and stop behavior.
+Remaining: Provision approved TLS endpoint and licensed data coverage, verify build configuration, location permission/accuracy, reroute/stale result, offline/no route, background navigation and stop behavior. Adopt a reviewed great-circle projection fix ([candidate upstream PR 34650](https://github.com/elizaOS/eliza/pull/34650)), and qualify date-line/high-latitude routes and maneuver ordering.
 
-Done when: J04 event-to-route on selected hardware with explicit origin/route, correct live guidance and truthful regional/offline limits.
+Done when: J04 event-to-route on selected hardware with explicit origin/route, correct live guidance and truthful regional/offline limits. Date-line progress agrees with the existing geodesic distance calculation and never invents an off-route detour.
 
-Depends on: MVP-04, MVP-20.
+Depends on: MVP-04, MVP-20, MVP-09.
 
 Evidence/source: [docs/maps-regional-validation.md](../docs/maps-regional-validation.md), [apps/app/src/prototype/maps-adapter.ts](../apps/app/src/prototype/maps-adapter.ts).
 

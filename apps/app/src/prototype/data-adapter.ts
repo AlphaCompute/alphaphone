@@ -98,7 +98,8 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       agenda: agenda ? {title: agenda.event.title || 'Untitled event', begin: agenda.begin, overdue: !!agenda.event.overdue, allDay: !!(agenda.event.nativeEvent?.allDay ?? agenda.event.allDay), video: meeting(agenda.event), people: attendeeInitials(agenda.event.nativeEvent?.attendees ?? agenda.event.who ?? [])} : null,
     });
     // Development inbox fixtures report through the same summary as a provider adapter.
-    const unread=browserDevProfile?(this.vget('inbox').mails||[]).filter((mail:Bag)=>mail.unread&&!mail.arch&&!mail.del).length:0;
+    const unreadRows:Bag[]=browserDevProfile?(this.vget('inbox').mails||[]).filter((mail:Bag)=>mail.unread&&!mail.arch&&!mail.del):[];
+    const unread=unreadRows.length;
     const attentionSummary: HomeAttentionSummary|null = browserDevProfile ? {state:'ready',unread,source:'Development inbox',updatedAt:now} : homeSources.attention();
     const attention = presentHomeAttention(attentionSummary, now);
     const brief = presentHomeBrief(homeSources.brief(), now);
@@ -118,6 +119,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       homePeopleVisibility: calendar.people.length ? 'visible' : 'hidden',
       homeAttentionLabel: attention.label, homeAttentionCount: attention.count, homeAttentionText: attention.text,
       homeAttentionPeople: [], homeAttentionPeopleVisibility: 'hidden',
+      ...(browserDevProfile?{homeInboxCount:attention.count,homeInboxRows:unreadRows.slice(0,2).map(mail=>({subject:mail.subj||'(no subject)',from:mail.name||mail.email||''})),homeInboxHasRows:unread>0,homeInboxTitle:unread?'':'No unread email',homeInboxStatus:'Development inbox'}:{}),
       homeWorkflowLabel: brief.label, homeWorkflowTitle: brief.title, homeWorkflowTime: brief.time, homeWorkflowSource: brief.source,
       goCalendar: () => this.openView('calendar', agenda ? {open:agenda.event.id, day:agenda.event.off, openDay:agenda.event.off} : undefined),
       goFlows: () => this.openView('workflows'),

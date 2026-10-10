@@ -73,7 +73,7 @@ jobs:
     # Repository verification runs once, in parallel with all browser shards.
     timeout-minutes: 60
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         shard: ${{ fromJSON(needs.changes.outputs.browser_shards) }}
     steps:
