@@ -66,14 +66,12 @@ export function summarize(rows) {
 }
 function sha256File(file) { return createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
 function git(args) { try { return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim(); } catch { return null; } }
-/** Binds a result to the exact source, patches and case set that produced it. */
+/** Binds a result to the exact source and case set that produced it. */
 export function sourceBinding() {
-  const patches = path.join(root, 'patches/eliza');
   return {
     head: git(['rev-parse', 'HEAD']),
     dirty: git(['status', '--porcelain', '--untracked-files=no']) !== '',
     upstreamPin: JSON.parse(fs.readFileSync(path.join(root, 'upstream.lock.json'), 'utf8')).commit,
-    patchManifests: Object.fromEntries(fs.readdirSync(patches).filter(name => name.endsWith('-source.json')).sort().map(name => [name, sha256File(path.join(patches, name))])),
     script: sha256File(fileURLToPath(import.meta.url)),
     caseSet: CASESET_SHA256,
   };

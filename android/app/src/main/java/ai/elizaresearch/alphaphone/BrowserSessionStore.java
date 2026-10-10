@@ -1,19 +1,12 @@
 package ai.elizaresearch.alphaphone;
 import ai.eliza.plugins.browsersurface.BrowserSessionPolicy;
 
+import ai.eliza.plugins.securestore.nativeonly.KeystoreTextFrame;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
-import android.security.keystore.KeyGenParameterSpec;
-import android.security.keystore.KeyProperties;
-import android.util.Base64;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import java.security.KeyStore;
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.GCMParameterSpec;
 
 /** Normal-tab browsing history and the restorable tab list. Private tabs never
  * reach this store. URLs can carry private query parameters, so the bounded
@@ -22,13 +15,8 @@ import javax.crypto.spec.GCMParameterSpec;
 final class BrowserSessionStore {
  private static final String ALIAS="alpha-browser-session-v1";
  private final SharedPreferences preferences;
+ private final KeystoreTextFrame frame=new KeystoreTextFrame(ALIAS,2000000);
  BrowserSessionStore(Context context){preferences=context.getSharedPreferences("alpha-browser-session",Context.MODE_PRIVATE);}
- private SecretKey key()throws Exception{
-  KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
-  if(store.containsAlias(ALIAS))return (SecretKey)store.getKey(ALIAS,null);
-  KeyGenerator generator=KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");
-  generator.init(new KeyGenParameterSpec.Builder(ALIAS,KeyProperties.PURPOSE_ENCRYPT|KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());return generator.generateKey();
- }
  static boolean validUrl(String value){return BrowserSessionPolicy.validUrl(value);}
  static boolean validId(String value){return BrowserSessionPolicy.validTabId(value);}
  static String title(String value){return BrowserSessionPolicy.title(value);}
@@ -46,16 +34,8 @@ final class BrowserSessionStore {
   JSONArray rows=new JSONArray();for(BrowserSessionPolicy.Tab tab:saved.tabs)rows.put(new JSONObject().put("id",tab.id).put("url",tab.url).put("title",tab.title));
   return new JSONObject().put("history",new JSONArray(saved.history)).put("tabs",rows).put("cur",saved.current);
  }
- private String seal(JSONObject value)throws Exception{
-  Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,key());
-  byte[] encrypted=cipher.doFinal(value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-  return Base64.encodeToString(cipher.getIV(),Base64.NO_WRAP)+":"+Base64.encodeToString(encrypted,Base64.NO_WRAP);
- }
- private JSONObject open(String packed)throws Exception{
-  String[] parts=packed.split(":",-1);if(parts.length!=2||packed.length()>2000000)throw new IllegalStateException();
-  Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,Base64.decode(parts[0],Base64.NO_WRAP)));
-  return new JSONObject(new String(cipher.doFinal(Base64.decode(parts[1],Base64.NO_WRAP)),java.nio.charset.StandardCharsets.UTF_8));
- }
+ private String seal(JSONObject value)throws Exception{return frame.seal(value.toString());}
+ private JSONObject open(String packed)throws Exception{return new JSONObject(frame.open(packed));}
  synchronized JSONObject read()throws Exception{
   String packed=preferences.getString("sealed",null);
   if(packed==null)return normalize(new JSONObject());

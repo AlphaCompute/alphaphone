@@ -46,7 +46,7 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
   test-mocks builds). The production web build and all four distribution APKs are built
   with the switch off. The web build is a development/preview surface and the APK
   payload, not a separate product. See the
-  [production readiness record](production-readiness-2026-10-04.md).
+  [production readiness record](https://github.com/AlphaCompute/alphaphone/blob/51c8157533353a805afd2811f4e3f41b66b7b9fa/docs/production-readiness-2026-10-04.md).
 
 ## Capabilities and remaining acceptance
 
@@ -121,7 +121,7 @@ debug/release outputs. The production-surface gates are:
 | Head qualification | `node scripts/qualify-head.mjs` | Repository verification, distribution builds and their audits for the exact checked-out commit. | Any later commit, hosted CI, emulator, AOSP image, real integration or device acceptance. |
 
 Integrated-head results for these gates (source/test and APK build classes only) are in the
-[production readiness record](production-readiness-2026-10-04.md#integrated-head-qualification).
+[production readiness record](https://github.com/AlphaCompute/alphaphone/blob/51c8157533353a805afd2811f4e3f41b66b7b9fa/docs/production-readiness-2026-10-04.md#integrated-head-qualification).
 
 Test-mocks builds (`ELIZA_DEV_ALLOW_TEST_MOCKS=1 npm run build`,
 `npm run android:build -- --test-mocks` into `artifacts/test-mocks/`) exist for

@@ -56,8 +56,8 @@ final class WorkflowNoticeDelivery {
   storage.write(SLOT,ledger.toString());return record.getString("status");
  }}
  private JSONObject approvals()throws Exception{String raw=storage.read(APPROVAL_SLOT);JSONObject ledger=raw==null?new JSONObject():new JSONObject(raw);if(ledger.length()>256)throw new IllegalStateException("Approval notice capacity exceeded");return ledger;}
- private static void approvalRecord(JSONObject record,String binding)throws Exception{
-  if(record.length()!=4||!binding.equals(record.getString("binding"))||!record.getString("digest").matches("[a-f0-9]{64}")||!Set.of("applying","succeeded","failed","unknown","withdrawn").contains(record.getString("status")))throw new IllegalStateException("Approval notice receipt mismatch");
+ private static void approvalRecord(JSONObject record,String binding,String digest)throws Exception{
+  if(record.length()!=4||!binding.equals(record.getString("binding"))||!digest.equals(record.getString("digest"))||!Set.of("applying","succeeded","failed","unknown","withdrawn").contains(record.getString("status")))throw new IllegalStateException("Approval notice receipt mismatch");
   Object at=record.get("expiresAt");if(!(at instanceof Integer||at instanceof Long))throw new IllegalStateException("Approval notice receipt mismatch");
  }
  /** One redacted notice per pending phone-step approval ID, posted at most once and never after a decision withdrew it. */
@@ -65,7 +65,7 @@ final class WorkflowNoticeDelivery {
   if(!approvalId(id))throw new IllegalArgumentException("Invalid approval notice identity");
   String digest=identity(id,binding,APPROVAL_TITLE,APPROVAL_BODY);long timeout=approvalTimeout(expiresAt,now);
   JSONObject ledger=approvals(),record=ledger.optJSONObject(id);
-  if(record!=null){approvalRecord(record,binding);if(expiresAt!=record.getLong("expiresAt"))throw new IllegalStateException("Approval notice expiry changed");
+  if(record!=null){approvalRecord(record,binding,digest);if(expiresAt!=record.getLong("expiresAt"))throw new IllegalStateException("Approval notice expiry changed");
    if(Set.of("applying","unknown").contains(record.getString("status"))){String status=poster.matches(id,APPROVAL_TITLE,APPROVAL_BODY)?"succeeded":"unknown";if(!status.equals(record.getString("status"))){record.put("status",status);storage.write(APPROVAL_SLOT,ledger.toString());}}
    return record.getString("status");}
   if(ledger.has(id))throw new IllegalStateException("Invalid approval notice receipt");

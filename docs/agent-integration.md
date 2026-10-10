@@ -95,6 +95,9 @@ and reviewed version, which the agent admits at most once; an agent without
 submission identities is never sent a repeat. If the workflow version changed before
 any admission, the request can no longer be admitted and is closed as not run. Pause does
 not cancel an existing run; a queued receipt is not successful completion.
+Execution updates use explicit receipt reads. Approval and cancellation correctness
+does not depend on a continuous event stream; a dropped connection requires an
+authoritative receipt read before presenting the outcome.
 See [workflow lifecycle](workflow-lifecycle-validation.md) and
 [mobile workflow packaging](mobile-workflow-packaging.md) for the owning contracts.
 

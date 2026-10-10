@@ -17,7 +17,7 @@ export interface InboxOperationDependencies {
   };
 }
 /** Outgoing attachment limits shared by the composer and the operation check. Servers without the
- * multi-attachment policy (patches/eliza/0059) publish maximumOutgoing 1. */
+ * multi-attachment policy publish maximumOutgoing 1. */
 export const outgoingAttachmentLimits = { maximumFiles: 10, maximumTotalBytes: 5 * 1024 * 1024 } as const;
 export function attachmentBytes(file: { dataBase64: string }): number {
   const padding = file.dataBase64.endsWith('==') ? 2 : file.dataBase64.endsWith('=') ? 1 : 0;
@@ -88,7 +88,7 @@ export class InboxOperation {
     if(attachments.length>1&&!Array.isArray(review.attachments))throw new Error('This server cannot review more than one attachment');
     const checked=await Promise.all(attachments.map(async file=>{const {text,...metadata}=await reviewMailAttachment(file as MailAttachment);return metadata;}));
     if(JSON.stringify(checked)!==JSON.stringify(review.attachments||[]))throw new Error('Server changed the reviewed attachments');
-    // Forwarded source attachments (patches/eliza/0059) stay bound to the selected message and its historyId.
+    // Forwarded source attachments stay bound to the selected message and its historyId.
     const forward=record.proposal.forwardAttachments as {messageId?:unknown;historyId?:unknown;partIds?:unknown}|undefined;
     if(forward!==undefined){
      if(record.proposal.mode!=='forward'||!forward||typeof forward.messageId!=='string'||typeof forward.historyId!=='string'||!Array.isArray(forward.partIds)||!forward.partIds.length||forward.partIds.length>outgoingAttachmentLimits.maximumFiles||forward.partIds.some(id=>typeof id!=='string'))throw new Error('Unsupported forwarded attachments');

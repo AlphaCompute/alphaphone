@@ -5,6 +5,7 @@ import { browserDevProfile } from '../browser/dev-profile';
 // Flag-off builds resolve this to an inert stub (vite.config.ts disabledModuleSource).
 import { createDevelopmentVault } from './dev-vault';
 import { createPasswordsClient, passwordsError, type PasswordsClient } from '../../../../vendor/eliza/plugins/plugin-native-passwords/src/client.ts';
+import { createTransferClient, type ElizaPasswordTransferPlugin, type PasswordTransferClient } from '../../../../vendor/eliza/plugins/plugin-native-passwords/src/transfer.ts';
 import { filterEntries, normalizeWebsite } from '../../../../vendor/eliza/plugins/plugin-native-passwords/src/bindings.ts';
 import type { ElizaPasswordsPlugin, PasswordBinding, PasswordEntrySummary, PasswordsStatus } from '../../../../vendor/eliza/plugins/plugin-native-passwords/src/definitions.ts';
 
@@ -44,25 +45,12 @@ function resolveClient(): Promise<PasswordsClient | null> {
   return resolving;
 }
 
-/** Export/import (upstream candidate patch 0060, PasswordTransferPlugin) run entirely natively and
- * resolve with counts only; the results are revalidated so nothing else reaches this module.
- * Offered only where the host registered the native ElizaPasswordTransfer plugin. */
-interface PasswordTransfer { exportVault(): Promise<{ exported: number }>; importVault(): Promise<{ imported: number; skipped: number }> }
-const transferCount = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100000;
-function onlyCounts<T extends Record<string, number>>(value: unknown, keys: (keyof T & string)[]): T {
-  const result = value as Record<string, unknown> | null;
-  if (!result || typeof result !== 'object' || Object.keys(result).some(key => !keys.includes(key)) || !keys.every(key => transferCount(result[key]))) throw new Error('Saved passwords are unavailable');
-  return Object.fromEntries(keys.map(key => [key, result[key]])) as T;
-}
-let transfer: PasswordTransfer | null | undefined;
-function transferClient(): PasswordTransfer | null {
+/** Transfers run natively and expose only counts validated by the shared client. */
+let transfer: PasswordTransferClient | null | undefined;
+function transferClient(): PasswordTransferClient | null {
   if (transfer !== undefined) return transfer;
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('ElizaPasswordTransfer')) return transfer = null;
-  const plugin = registerPlugin<PasswordTransfer>('ElizaPasswordTransfer');
-  return transfer = {
-    exportVault: async () => onlyCounts<{ exported: number }>(await plugin.exportVault(), ['exported']),
-    importVault: async () => onlyCounts<{ imported: number; skipped: number }>(await plugin.importVault(), ['imported', 'skipped']),
-  };
+  return transfer = createTransferClient(registerPlugin<ElizaPasswordTransferPlugin>('ElizaPasswordTransfer'));
 }
 
 function clearSecrets() { if (draft) draft.password = ''; draft = null; }
@@ -107,6 +95,10 @@ async function run(name: string, task: (vault: PasswordsClient) => Promise<void>
     else if (failure.code === 'key-invalidated') { damaged = true; locked(failure.message); }
     else if (draft && (name === 'save' || name === 'remove')) draft.error = failure.message;
     else notice = failure.message;
+    // Transfer can stop after changing the selected file or vault. Never lose
+    // this warning when the generic vault mapper replaces native error text.
+    if (name === 'export') notice = 'Export did not complete. The selected file may contain passwords; delete it if you do not need it.';
+    else if (name === 'import') notice = 'Import did not complete. Check saved passwords before trying again.';
   } finally { busy = ''; notify(); }
 }
 
@@ -199,9 +191,10 @@ export function passwordManagerGroups(helpers: Helpers): Bag[] {
     const move = transferClient();
     if (move) groups.push(captioned(helpers, 'Move passwords', [
       nav(busy === 'import' ? 'Importing…' : 'Import passwords', () => void run('import', async () => {
-        const result = await move.importVault();
-        notice = result.imported ? `Imported ${result.imported} ${result.imported === 1 ? 'password' : 'passwords'}${result.skipped ? `, ${result.skipped} not imported` : ''}.` : 'No passwords were imported.';
-        await refresh();
+        try {
+          const result = await move.importVault();
+          notice = result.imported ? `Imported ${result.imported} ${result.imported === 1 ? 'password' : 'passwords'}${result.skipped ? `, ${result.skipped} not imported` : ''}.` : 'No passwords were imported.';
+        } finally { await refresh(); }
       }), { sub: 'From a CSV file. You review each website first.' }),
       nav(busy === 'export' ? 'Exporting…' : 'Export passwords', () => void run('export', async () => {
         // Native export locks the vault before its fresh authentication, so the list is

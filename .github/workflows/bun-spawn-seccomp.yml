@@ -15,7 +15,7 @@ jobs:
       matrix:
         libc: [glibc, musl]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: true
       - uses: oven-sh/setup-bun@v2
@@ -51,7 +51,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v "$RUNNER_TEMP:$RUNNER_TEMP" \
             -w "$GITHUB_WORKSPACE" -e ALPHA_REPRO_BUN alpine:3.21 \
             sh -ec 'apk add --no-cache python3 gcc musl-dev linux-headers libstdc++ strace git; git config --global --add safe.directory "$PWD/vendor/eliza"; python3 scripts/ci/reproduce-bun-spawn-seccomp.py'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           retention-days: 3

@@ -64,20 +64,20 @@ export interface GoogleConnection {
 export interface GmailInboxCapabilities {
   version:1; from:string; threads:boolean; send:boolean; providerDrafts:boolean;
   mailboxMutations:boolean; attachments:boolean; providerExactlyOnce:false; atomicDraftReplacement:false;
-  /** Reviewed mark-read/mark-unread operations (patches/eliza/0037). Older servers omit it: false. */
+  /** Reviewed mark-read/mark-unread operations. Older servers omit it: false. */
   readState:boolean;
-  /** Provider draft listing and content reads (patches/eliza/0058). Absent: false. */
+  /** Provider draft listing and content reads. Absent: false. */
   draftsList:boolean;
-  /** Forward with the source message's attachments bound to its historyId (patches/eliza/0059). Absent: false. */
+  /** Forward with the source message's attachments bound to its historyId. Absent: false. */
   forwardAttachments:boolean;
-  /** Gmail search can list Trash (patches/eliza/0057). Absent: false. */
+  /** Gmail search can list Trash. Absent: false. */
   searchTrash:boolean;
-  /** Opaque byte-copy download of any attachment type under the cap (patches/eliza/0059). Absent: false. */
+  /** Opaque byte-copy download of any attachment type under the cap. Absent: false. */
   opaqueAttachments:boolean;
   /** Outgoing attachment policy. Older servers publish maximumOutgoing 1 or omit the policy. */
   attachmentPolicy:{maximumOutgoing:number;maximumBytes:number;maximumTotalBytes:number};
 }
-/** A provider-extracted link (patches/eliza/0055): inert data, never fetched or rendered as HTML. */
+/** A provider-extracted link: inert data, never fetched or rendered as HTML. */
 export interface GmailLink { href: string; text: string }
 export interface GmailDraftSummary { draftId: string; messageId: string; subject: string; to: string[]; snippet: string; updatedAt: string | null }
 export interface GmailDraftContent { draftId: string; messageId: string; providerDigest: string; to: string[]; cc: string[]; bcc: string[]; subject: string; bodyText: string; threaded: boolean; attachmentCount: number;
@@ -92,7 +92,7 @@ export interface GmailAccount extends GoogleConnection { label: string }
 export interface GmailMessage {
   id: string; threadId: string; subject: string; from: string; fromEmail: string | null;
   to: string[]; cc?: string[]; replyTo?: string | null; snippet: string; receivedAt: string; unread: boolean;
-  /** Search hint from a multipart/mixed container (patches/eliza/0057); absent on older servers. */
+  /** Search hint from a multipart/mixed container; absent on older servers. */
   hasAttachments?: boolean;
 }
 /** Only absolute http(s) links without credentials are kept; anything else is dropped as untrusted. */
@@ -508,7 +508,7 @@ export class CloudProtocol {
     const total=data.total as number,offset=data.offset as number;if(total<offset+messages.length||total>2000||data.nextOffset!==(offset+messages.length<total?offset+messages.length:null))throw new CloudProtocolError('invalid-response');
     const historyId=string(data.historyId);if(cursor&&cursor.historyId!==historyId)throw new CloudProtocolError('invalid-response');return {messages,total,offset,historyId,nextOffset:data.nextOffset as number|null};
   }
-  /** Opaque byte copy of any type under the server cap (patches/eliza/0059). The bytes are never
+  /** Opaque byte copy of any type under the server cap. The bytes are never
    * previewed or interpreted; only the name, size and SHA-256 are checked here. */
   async gmailOpaqueAttachment(grantId:string,messageId:string,partId:string,historyId:string,signal:AbortSignal):Promise<OpaqueMailAttachment>{
     const data=await this.call(`/api/v1/eliza/google/gmail/inbox-v1/attachment?${new URLSearchParams({grantId,messageId,partId,historyId,opaque:'1'})}`,signal,{authenticated:true});
@@ -516,7 +516,7 @@ export class CloudProtocol {
     let checked:OpaqueMailAttachment;try{checked=await reviewOpaqueAttachment({name:string(data.name),mimeType:typeof data.mimeType==='string'?data.mimeType:'',dataBase64:string(data.dataBase64)});}catch{throw new CloudProtocolError('invalid-response');}
     if(checked.sha256!==data.sha256||checked.size!==data.size)throw new CloudProtocolError('invalid-response');return checked;
   }
-  /** One page of provider drafts (patches/eliza/0058). Metadata only; open one with gmailDraftContent. */
+  /** One page of provider drafts. Metadata only; open one with gmailDraftContent. */
   async gmailDrafts(grantId:string,signal:AbortSignal,pageToken?:string):Promise<{drafts:GmailDraftSummary[];nextPageToken:string|null}>{
     if(pageToken!==undefined&&(!pageToken||pageToken.length>4096))throw new TypeError('Invalid Gmail page token');
     const params=new URLSearchParams({grantId});if(pageToken!==undefined)params.set('pageToken',pageToken);
@@ -526,7 +526,7 @@ export class CloudProtocol {
     const drafts=data.drafts.map(row=>{const d=object(row);if(!Array.isArray(d.to)||typeof d.subject!=='string'||typeof d.snippet!=='string')throw new CloudProtocolError('invalid-response');return {draftId:string(d.draftId),messageId:string(d.messageId),subject:d.subject,to:d.to.map(string),snippet:d.snippet,updatedAt:optionalString(d.updatedAt)};});
     return {drafts,nextPageToken:next==null?null:next};
   }
-  /** Exact provider draft content and its raw-MIME digest from one snapshot (patches/eliza/0058). */
+  /** Exact provider draft content and its raw-MIME digest from one snapshot. */
   async gmailDraftContent(grantId:string,draftId:string,signal:AbortSignal):Promise<GmailDraftContent>{
     const data=await this.call(`/api/v1/eliza/google/gmail/inbox-v1/draft?${new URLSearchParams({grantId,draftId,content:'1'})}`,signal,{authenticated:true});
     if(data.id!==draftId||typeof data.providerDigest!=='string'||!/^[a-f0-9]{64}$/.test(data.providerDigest))throw new CloudProtocolError('invalid-response');
