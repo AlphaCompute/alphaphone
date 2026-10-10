@@ -148,8 +148,9 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
     if(!ready(shell))return 'unconfirmed';
     const stored=shell.notesStore.list.find((n:Bag)=>n.id===id);
     if(!stored||stored.audio||JSON.stringify(stored)!==candidate.snapshot)return 'changed';
-    // A stale row for this live note (an earlier Undo) must not resurface it after this deletion.
-    const stale=(await readNotesTrash()).entries.filter(entry=>entry.note.id===id&&!entry.audio).map(entry=>entry.id);
+    // Any row for this saved note is stale (maintenance would drop it); left in place it would
+    // offer the permanently deleted note for restore again.
+    const stale=(await readNotesTrash()).entries.filter(entry=>entry.note.id===id).map(entry=>entry.id);
     if(stale.length)await editNotesTrash(doc=>removeNotesTrashEntries(doc,stale));
     const list=shell.vget('notes').list.filter((n:Bag)=>n.id!==id);
     if(await shell.vset('notes',{list,open:null,sheet:null,playing:false,dict:false})!==true)return 'unconfirmed';

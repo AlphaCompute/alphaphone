@@ -46,6 +46,8 @@ async function seedVoice(page:Page,noteId:string,audioId:string,title:string,wor
 }
 
 test('Trash written under a larger limit stays readable, restorable and purgeable; a full Trash refuses without losing a note and offers a confirmed permanent delete',async({page})=>{
+ // Many phases (two restarts' worth of Notes work); the default 30 s leaves no margin on a busy runner.
+ test.setTimeout(90_000);
  await page.clock.install({time:Date.UTC(2026,9,7,12)});
  await page.goto('/');await openNotes(page);
  for(const title of ['Alpha','Bravo','Charlie','Delta','Echo'])await createNote(page,title,`${title} body, exact.`);
@@ -72,11 +74,19 @@ test('Trash written under a larger limit stays readable, restorable and purgeabl
  const full=page.getByRole('dialog',{name:'Trash is full'});
  await expect(full).toContainText('“Delta” was not deleted because Trash has no room');
  await expect(full).toContainText('Permanent deletion skips Trash and cannot be undone.');
+ // The editor under the dialog cannot be operated or read by assistive technology while the choice is open
+ // (the inline modal holds every background sibling inert), and focus returns to the control that opened it.
+ const editor=page.locator('[data-alpha-subview="notes-editor"]');
+ expect(await editor.evaluate((element:HTMLElement)=>element.inert)).toBe(true);
+ await expect(editor).toHaveAttribute('aria-hidden','true');
+ expect(await full.evaluate((element:HTMLElement)=>!!element.closest('[inert]'))).toBe(false);
  expect((await savedRecords(page)).map((n:any)=>n.title).sort()).toEqual(['Delta','Echo']);
  expect(await trashEntries(page)).toEqual(stored);
  await page.screenshot({path:test.info().outputPath('notes-trash-full.png')});
  await full.getByRole('button',{name:'Cancel',exact:true}).click();
  await expect(full).toHaveCount(0);
+ expect(await editor.evaluate((element:HTMLElement)=>element.inert)).toBe(false);
+ await expect(page.getByRole('button',{name:'Delete note',exact:true})).toBeFocused();
  await expect(page.getByRole('textbox',{name:'Note',exact:true})).toHaveValue('Delta body, exact.');
  expect((await savedRecords(page)).map((n:any)=>n.title).sort()).toEqual(['Delta','Echo']);
 
@@ -173,6 +183,50 @@ test('a voice note refused by a full Trash is erased with its own recording only
  const other=await describeAudio(page,'other-audio');
  expect(other.transcript).toBe('Words to keep');expect(other.deletedAt).toBeUndefined();expect(other.expired).toBeUndefined();
  await expect(page.getByRole('button',{name:'Check deletion status',exact:true})).toHaveCount(0);
+});
+
+test('a stale Trash row of a note that is then deleted permanently is dropped, so the note cannot be restored from Trash afterwards',async({page})=>{
+ test.setTimeout(60_000);
+ await lowerEntryLimit(page,1);
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/');
+ await seedVoice(page,'stale-voice','stale-audio','Stale memo','Spoken, then erased');
+ await page.reload();await openNotes(page);
+ await createNote(page,'Filler','Occupies Trash');await createNote(page,'Stale text','Typed, then erased');
+ await deleteNote(page,'Filler');
+ const filler=await trashEntries(page);
+ // Rows an interrupted earlier deletion left behind for two notes that are still saved (written by a
+ // host with a larger limit). Maintenance has not run since; it would only drop them.
+ await page.evaluate(async()=>{
+  const trash=await import('/src/runtime/notes-trash.ts');const store=await (await import('/src/runtime/browser-notes-document.ts')).openBrowserNotes();
+  const rows=await Promise.all(store.list.filter((n:any)=>n.title!=='Filler').map(async(note:any,index:number)=>({id:crypto.randomUUID(),note,target:await store.target(note.id),index,deletedAt:Date.now(),...(note.audio?{audio:{audioId:note.audio.audioId}}:{})})));
+  await trash.withNotesDeletionLock(()=>trash.editNotesTrash(doc=>({version:1,entries:[...rows,...doc.entries]} as any)));
+ });
+ expect((await trashEntries(page)).map((e:any)=>e.note.title).sort()).toEqual(['Filler','Stale memo','Stale text']);
+ const full=page.getByRole('dialog',{name:'Trash is full'});
+
+ await page.getByRole('button',{name:'Open Stale text',exact:true}).click();
+ await page.getByRole('button',{name:'Delete note',exact:true}).click();
+ await full.getByRole('button',{name:'Delete forever without Trash',exact:true}).click();
+ await expect(page.getByText('Stale text deleted forever',{exact:true})).toBeVisible();
+ expect((await trashEntries(page)).map((e:any)=>e.note.title).sort()).toEqual(['Filler','Stale memo']);
+
+ await page.getByRole('button',{name:'Open Stale memo',exact:true}).click();
+ await page.getByRole('button',{name:'Delete note',exact:true}).click();
+ await expect(full).toContainText('delete this voice note and its recording permanently now');
+ await full.getByRole('button',{name:'Delete forever without Trash',exact:true}).click();
+ await expect(page.getByText('Stale memo and its recording deleted forever',{exact:true})).toBeVisible();
+ // Neither deleted note is offered for restore, and the unrelated entry is exactly as it was.
+ expect(await trashEntries(page)).toEqual(filler);
+ expect(await savedRecords(page)).toEqual([]);
+ expect(await pendingDeletions(page)).toEqual([]);
+ const erased=await describeAudio(page,'stale-audio');
+ expect(erased.transcript).toBe('');expect(erased.expired).toBe(true);
+ await page.getByRole('button',{name:'Open Trash',exact:true}).click();
+ const trash=page.locator('[data-alpha-subview="notes-trash"]');
+ await expect(trash.getByText('Filler',{exact:true})).toBeVisible();
+ await expect(trash.getByText('Stale memo',{exact:true})).toHaveCount(0);
+ await expect(trash.getByText('Stale text',{exact:true})).toHaveCount(0);
 });
 
 test('an interrupted permanent voice deletion keeps a recovery row and finishes the erase after a restart',async({page})=>{

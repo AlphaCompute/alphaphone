@@ -626,6 +626,12 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
             if(active())current.set({trashFull:{id:reviewed.id,title:reviewed.title||'Voice note',voice:true},trashConfirm:null});
             return;
           }
+          if(permanent){
+            // The note is saved and its recording is live, so any Trash row for it is stale (maintenance
+            // would drop it). Left in place it would offer the permanently deleted note for restore again.
+            const stale=(await readNotesTrash()).entries.filter(entry=>entry.note.id===reviewed.id).map(entry=>entry.id);
+            if(stale.length)await editNotesTrash(doc=>removeNotesTrashEntries(doc,stale));
+          }
           await changeAudioDeletion(row,true);
           const authorized=()=>{if(!active())throw Error('Review changed');};
           try{await current.commitAudioNoteDeletion(row,authorized);}catch{
