@@ -57,6 +57,10 @@ jobs:
           echo "ALPHA_JSON_JAR=$jar" >> "$GITHUB_ENV"
           # The upstream action-journal plugin tests (reference patches 0077-0078) read the upstream name.
           echo "ELIZA_ORG_JSON_JAR=$jar" >> "$GITHUB_ENV"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36
+          log-accepted-android-sdk-licenses: false
       - run: npm run verify
       # Recorded develop compare; warns (never networks) when develop cannot reach the pin.
       - name: Report upstream develop reachability
