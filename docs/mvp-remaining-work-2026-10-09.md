@@ -711,6 +711,36 @@ Depends on: MVP-50.
 
 Evidence/source: [docs/mvp-completion-plan.md](../docs/mvp-completion-plan.md), [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-runbook.md).
 
+## Platform scope
+
+### MVP-52 Resolve and implement AOSP listening and hardware invocation
+
+**P0 · decision and implementation · AP-06, AP-12, AP-14**
+
+Current: decisions.md includes an AOSP always-on-listening direction requiring a new ADR; a foreground microphone button or ACTION_ASSIST Activity does not implement it.
+
+Remaining: Confirm its release scope, approve the narrowly privileged listener architecture that supersedes the nonprivileged rule only where required, then implement consent, mic indicator, stop/revoke, lock/background behavior and supported hardware-key invocation. Do not turn it on implicitly.
+
+Done when: Approved ADR/scope disposition; image/device privacy, battery, audio-focus, screen-lock and reliable stop evidence for each retained entrypoint.
+
+Depends on: MVP-01, MVP-03, MVP-41.
+
+Evidence/source: [docs/decisions.md](../docs/decisions.md), [docs/market-research/12-aosp-always-on-listening.md](../docs/market-research/12-aosp-always-on-listening.md), [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-runbook.md).
+
+### MVP-53 Close the complete installed-app library behavior
+
+**P1 · implementation and acceptance · AP-01, AP-02, AP-15**
+
+Current: The PR adds drawer/search and native app launch; enumeration alone does not complete the F02 app-library contract.
+
+Remaining: Check and finish favorites/order persistence, real icons, package add/remove refresh, duplicate labels, disabled/unexported components, locked work profiles, no-handler/error states and return-to-HOME. Decide launcher landscape behavior with the broader rotation policy.
+
+Done when: Source-matched installed app tests and physical role acceptance; exact intended package/component opens and stale inventory cannot create fabricated success.
+
+Depends on: MVP-06, MVP-20.
+
+Evidence/source: [docs/implementation-plan.md](../docs/implementation-plan.md), [docs/flow-audit-and-prd.md](../docs/flow-audit-and-prd.md).
+
 ## Suggested sequence for the next workflow
 
 1. Resolve MVP-01 through MVP-06 and refresh the requirement ledger. Most native qualification can proceed independently of optional scope decisions.

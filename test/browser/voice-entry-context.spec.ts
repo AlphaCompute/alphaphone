@@ -7,7 +7,7 @@ import {silentMicrophone,recorder,typedTranscript,agentContext} from './voice-fi
 test.describe.configure({timeout:120000});
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));});
 
-test('Use in conversation returns to the open note with the same selectedObject revision',async({page})=>{
+test('unavailable chat voice preserves the selected note and returns to typing without sending',async({page})=>{
  let sent=0;page.on('request',request=>{if(request.method()==='POST'&&!new URL(request.url()).pathname.startsWith('/browser-speech/'))sent++;});
  await page.goto('/');await silentMicrophone(page);
  await page.getByRole('button',{name:'Notes',exact:true}).click();
@@ -18,11 +18,12 @@ test('Use in conversation returns to the open note with the same selectedObject 
  const before=await agentContext(page);
  expect(before.view).toBe('notes');
  await page.getByRole('button',{name:'Talk',exact:true}).first().click();
- await expect(recorder(page)).toBeVisible();
- await typedTranscript(page,'Summarize this note');
- await page.getByRole('button',{name:'Use in conversation',exact:true}).click();
- await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('Summarize this note');
- await expect(recorder(page)).toHaveCount(0);
+ const voice=page.getByRole('region',{name:'Voice conversation',exact:true});
+ await expect(voice).toBeVisible();
+ await expect(voice.getByRole('button',{name:'Connect Eliza Cloud',exact:true})).toBeEnabled();
+ await voice.getByRole('button',{name:'Switch to keyboard',exact:true}).click();
+ await expect(voice).toHaveCount(0);
+ await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('');
  // The same note is still open under the conversation sheet, and the envelope still names it at the same revision.
  await expect(page.locator('textarea[aria-label="Note"]')).toHaveValue('Original body stays put.');
  await expect.poll(async()=>JSON.stringify((await agentContext(page)).selectedObject),{timeout:15000}).toBe(JSON.stringify(before.selectedObject));

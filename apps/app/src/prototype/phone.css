@@ -189,3 +189,14 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 
 /* Assistant owns only its conversation surface. */
 .alpha-assistant-surface .alpha-phone :is([data-alpha-layer="home"],[data-alpha-layer="drawer"]){display:none!important}
+
+/* Landscape (main.tsx scales by the shorter side, so the canvas is wider than tall): Home keeps
+ * the left side and the composer, pill and conversation dock on the right, side by side, so every
+ * Home control stays reachable without the composer covering the grid. */
+.alpha-landscape{--alpha-dock-width:min(400px,46%)}
+.alpha-landscape .alpha-phone [data-alpha-layer="home"],.alpha-landscape .alpha-phone [data-alpha-layer="drawer"]{right:calc(var(--alpha-dock-width) + 16px)!important;padding-bottom:16px!important;scroll-padding-bottom:16px!important}
+.alpha-landscape .alpha-phone [data-alpha-layer="composer"]{left:auto!important;right:16px!important;width:calc(var(--alpha-dock-width) - 16px)}
+.alpha-landscape .alpha-phone [data-alpha-layer="pill"]{left:auto!important;width:var(--alpha-dock-width)}
+.alpha-landscape .alpha-phone [data-alpha-layer="conversation"]{left:auto!important;width:var(--alpha-dock-width);height:100%!important;border-radius:0!important;box-shadow:-1px 0 0 var(--line),-20px 0 60px var(--shc)!important}
+.alpha-landscape.native-phone .alpha-phone [data-alpha-layer="composer"],.alpha-landscape.native-phone .alpha-phone [data-alpha-layer="pill"]{bottom:max(16px,calc(var(--native-bottom-inset,0px) + 8px))!important}
+

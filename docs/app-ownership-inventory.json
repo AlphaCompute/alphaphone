@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "163f413859f70f829dc06459c3b3803a3784ee02010c85e08af9f913835be883",
+  "sourceDigest": "0b0b62c1883694172143e3d2d4825d1195102fb9b4aa0ca2faa160ddc1a43b8b",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -2011,7 +2011,7 @@
       "file": "public/licenses/THIRD_PARTY_NOTICES.txt",
       "upstreamCandidate": [],
       "bytes": 807423,
-      "sha256": "bb2ae6f3ca2b35634be99e21f3a2f442da3d1a16b79e7ffe90c0dc863ed4178a",
+      "sha256": "b4a6012ca76f6e78d8dac99ba17e71beef31ee1e2aa8d49d7ec14acb23926fcc",
       "lines": null,
       "owner": "alphaphone",
       "disposition": "retain",
@@ -2024,7 +2024,7 @@
       "file": "public/licenses/third-party-notices.json",
       "upstreamCandidate": [],
       "bytes": 821461,
-      "sha256": "edfe3595b3cc55c283e5e0e866433bbf6a3f1a42a25dbe2c16aa0406a74f9d4e",
+      "sha256": "bc44c82d5d43e219360c8e555b4c4d01838f5ef3ce107db4850f35eb4807331b",
       "lines": 766,
       "owner": "alphaphone",
       "disposition": "retain",
@@ -8140,9 +8140,9 @@
         "packages/ui/src/gestures/constants",
         "packages/ui/src/components/shell/use-pull-gesture"
       ],
-      "bytes": 17945,
-      "sha256": "3d2c16e252a809f5096f981da6e39e2df95123915d7ecd85207eceb6ccf390f6",
-      "lines": 239,
+      "bytes": 18270,
+      "sha256": "e4378c28c489be2a5c9e1d63f57665693fec995c846d083d97090ec7109ba8c2",
+      "lines": 241,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -8257,33 +8257,39 @@
           ]
         },
         {
-          "line": 185,
-          "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 193,
-          "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 194,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 208,
+          "line": 177,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 220,
+          "line": 187,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 195,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 196,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 210,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 222,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -14046,9 +14052,9 @@
     {
       "file": "src/prototype/phone.css",
       "upstreamCandidate": [],
-      "bytes": 16926,
-      "sha256": "1886c639ad6c6b1ef8ec7149c5968e168776bfa594d02d07824c7d0923c40f09",
-      "lines": 192,
+      "bytes": 18180,
+      "sha256": "ea49310c87bb43806809403036132e5febcadf086cff406d183426f021408630",
+      "lines": 203,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -14554,6 +14560,42 @@
         },
         {
           "line": 191,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 196,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 197,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 198,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 199,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 200,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 201,
           "tags": [
             "identity-or-compatibility"
           ]

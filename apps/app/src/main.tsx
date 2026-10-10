@@ -165,14 +165,16 @@ function Phone() {
       const available = Math.max(1, height - banner - (desktop ? 48 : 0) - toolsInset);
       // Standalone Android uses the available width without magnifying the
       // portrait canvas in landscape. Keep the launcher presentation unchanged.
+      const landscape = !desktop && window.screen.width > window.screen.height && window.innerWidth > window.innerHeight;
       const fluidNative = isAndroid && !launcherPresentation;
-      const scale = desktop ? Math.min(1, available / 915) : fluidNative ? Math.min(1, window.innerWidth / 412) : window.innerWidth / 412;
+      const scale = desktop ? Math.min(1, available / 915) : landscape ? Math.max(0.1, Math.min(window.innerWidth, window.screen.height) / 412) : fluidNative ? Math.min(1, window.innerWidth / 412) : window.innerWidth / 412;
       document.documentElement.style.setProperty('--phone-scale', String(scale));
-      document.documentElement.style.setProperty('--phone-width', `${fluidNative ? window.innerWidth / scale : 412}px`);
+      document.documentElement.style.setProperty('--phone-width', landscape ? `calc(100vw / ${scale})` : `${fluidNative ? window.innerWidth / scale : 412}px`);
       document.documentElement.style.setProperty('--phone-height', `${desktop ? 915 : available / scale}px`);
       document.documentElement.style.setProperty('--phone-left', `${desktop ? (window.innerWidth - 412 * scale) / 2 : 0}px`);
       document.documentElement.style.setProperty('--phone-top', `${banner + (desktop ? 24 : 0)}px`);
       document.documentElement.classList.toggle('browser-desktop', desktop);
+      document.documentElement.classList.toggle('alpha-landscape', landscape);
 
     };
     const bannerObserver=new ResizeObserver(size);const bannerElement=testMocksEnabled&&mock?document.querySelector('.mock-mode-banner'):null;if(bannerElement)bannerObserver.observe(bannerElement);

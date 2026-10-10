@@ -1,9 +1,8 @@
 import {test,expect,type Page} from '@playwright/test';
 import {recorder} from './voice-fixture';
 
-// A signed-in Eliza Cloud session never selects Cloud speech by itself. The recorder's explicit,
-// disclosed choice is persisted (voice-route:v1) and survives a reload. The Cloud session is a
-// synthetic in-page binding; no Cloud request is made.
+// Main uses Cloud speech. Legacy persisted local preferences cannot silently select a
+// different route. The Cloud binding is synthetic; no request or capture is made.
 // The development server is shared and slow on a loaded machine.
 test.describe.configure({timeout:120000});
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));});
@@ -19,29 +18,17 @@ async function openRecorder(page:Page){
  await page.getByRole('button',{name:'Record and transcribe',exact:true}).click();
  await expect(recorder(page)).toBeVisible();
 }
-test('on-device speech stays the default with a Cloud account until the disclosed choice, which persists',async({page})=>{
+test('Cloud remains the default across reload and legacy local preferences cannot silently switch routes',async({page})=>{
  const cloud:string[]=[];page.on('request',request=>{if(/elizacloud|eliza\.how|\/api\/v1\//.test(request.url()))cloud.push(request.url());});
  await page.goto('/');await signedInCloud(page);await openRecorder(page);
- await expect(recorder(page)).toContainText('English-only speech recognition runs in this browser');
- const choose=page.getByRole('button',{name:'Use Eliza Cloud voice (uses credits)',exact:true});
- await expect(choose).toBeVisible();
- expect(await page.evaluate(()=>localStorage.getItem('alphaphone:voice-route:v1'))).toBeNull();
- await choose.click();
- await expect(page.getByRole('button',{name:'Use on-device voice',exact:true})).toBeVisible();
- const stored=JSON.parse(await page.evaluate(()=>localStorage.getItem('alphaphone:voice-route:v1'))||'null');
- expect(stored).toMatchObject({version:1,route:'cloud',disclosed:'cloud-speech-uses-credits'});
- // Restart: the persisted choice is the default for the signed-in account.
+ await expect(recorder(page)).toContainText('Audio stays in this app until you choose Transcribe with Eliza Cloud');
+ await expect(page.getByRole('button',{name:'Use Eliza Cloud voice (uses credits)',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Use on-device voice',exact:true})).toHaveCount(0);
+ await page.evaluate(()=>localStorage.setItem('alphaphone:voice-route:v1',JSON.stringify({version:1,route:'device',chosenAt:1})));
  await page.reload();await signedInCloud(page);await openRecorder(page);
- await expect(page.getByRole('button',{name:'Use on-device voice',exact:true})).toBeVisible();
- await expect(recorder(page)).not.toContainText('English-only speech recognition runs in this browser');
- // Choosing on-device again persists across another restart.
- await page.getByRole('button',{name:'Use on-device voice',exact:true}).click();
- await expect(page.getByRole('button',{name:'Use Eliza Cloud voice (uses credits)',exact:true})).toBeVisible();
- await page.reload();await signedInCloud(page);await openRecorder(page);
- await expect(recorder(page)).toContainText('English-only speech recognition runs in this browser');
- // Signed out: a stored Cloud choice can never select Cloud.
- await page.evaluate(()=>localStorage.setItem('alphaphone:voice-route:v1',JSON.stringify({version:1,route:'cloud',disclosed:'cloud-speech-uses-credits',chosenAt:1})));
+ await expect(recorder(page)).toContainText('Transcribe with Eliza Cloud');
  await page.reload();await openRecorder(page);
- await expect(recorder(page)).toContainText('English-only speech recognition runs in this browser');
+ await expect(recorder(page)).toContainText('Sign in to Eliza Cloud to use voice.');
+ await expect(page.getByRole('button',{name:'Connect Eliza Cloud',exact:true})).toBeEnabled();
  expect(cloud).toEqual([]);
 });

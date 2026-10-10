@@ -1097,6 +1097,54 @@
         "docs/mvp-completion-plan.md",
         "docs/pilot-acceptance-runbook.md"
       ]
+    },
+    {
+      "id": "MVP-52",
+      "group": "Platform scope",
+      "priority": "P0",
+      "kind": "decision and implementation",
+      "requirements": [
+        "AP-06",
+        "AP-12",
+        "AP-14"
+      ],
+      "title": "Resolve and implement AOSP listening and hardware invocation",
+      "current": "decisions.md includes an AOSP always-on-listening direction requiring a new ADR; a foreground microphone button or ACTION_ASSIST Activity does not implement it.",
+      "remaining": "Confirm its release scope, approve the narrowly privileged listener architecture that supersedes the nonprivileged rule only where required, then implement consent, mic indicator, stop/revoke, lock/background behavior and supported hardware-key invocation. Do not turn it on implicitly.",
+      "acceptance": "Approved ADR/scope disposition; image/device privacy, battery, audio-focus, screen-lock and reliable stop evidence for each retained entrypoint.",
+      "depends_on": [
+        "MVP-01",
+        "MVP-03",
+        "MVP-41"
+      ],
+      "sources": [
+        "docs/decisions.md",
+        "docs/market-research/12-aosp-always-on-listening.md",
+        "docs/pilot-acceptance-runbook.md"
+      ]
+    },
+    {
+      "id": "MVP-53",
+      "group": "Platform scope",
+      "priority": "P1",
+      "kind": "implementation and acceptance",
+      "requirements": [
+        "AP-01",
+        "AP-02",
+        "AP-15"
+      ],
+      "title": "Close the complete installed-app library behavior",
+      "current": "The PR adds drawer/search and native app launch; enumeration alone does not complete the F02 app-library contract.",
+      "remaining": "Check and finish favorites/order persistence, real icons, package add/remove refresh, duplicate labels, disabled/unexported components, locked work profiles, no-handler/error states and return-to-HOME. Decide launcher landscape behavior with the broader rotation policy.",
+      "acceptance": "Source-matched installed app tests and physical role acceptance; exact intended package/component opens and stale inventory cannot create fabricated success.",
+      "depends_on": [
+        "MVP-06",
+        "MVP-20"
+      ],
+      "sources": [
+        "docs/implementation-plan.md",
+        "docs/flow-audit-and-prd.md"
+      ]
     }
   ]
 }
