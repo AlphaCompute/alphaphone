@@ -107,6 +107,10 @@ async function run(name: string, task: (vault: PasswordsClient) => Promise<void>
     else if (failure.code === 'key-invalidated') { damaged = true; locked(failure.message); }
     else if (draft && (name === 'save' || name === 'remove')) draft.error = failure.message;
     else notice = failure.message;
+    // Transfer can stop after changing the selected file or vault. Never lose
+    // this warning when the generic vault mapper replaces native error text.
+    if (name === 'export') notice = 'Export did not complete. The selected file may contain passwords; delete it if you do not need it.';
+    else if (name === 'import') notice = 'Import did not complete. Check saved passwords before trying again.';
   } finally { busy = ''; notify(); }
 }
 
@@ -199,9 +203,10 @@ export function passwordManagerGroups(helpers: Helpers): Bag[] {
     const move = transferClient();
     if (move) groups.push(captioned(helpers, 'Move passwords', [
       nav(busy === 'import' ? 'Importing…' : 'Import passwords', () => void run('import', async () => {
-        const result = await move.importVault();
-        notice = result.imported ? `Imported ${result.imported} ${result.imported === 1 ? 'password' : 'passwords'}${result.skipped ? `, ${result.skipped} not imported` : ''}.` : 'No passwords were imported.';
-        await refresh();
+        try {
+          const result = await move.importVault();
+          notice = result.imported ? `Imported ${result.imported} ${result.imported === 1 ? 'password' : 'passwords'}${result.skipped ? `, ${result.skipped} not imported` : ''}.` : 'No passwords were imported.';
+        } finally { await refresh(); }
       }), { sub: 'From a CSV file. You review each website first.' }),
       nav(busy === 'export' ? 'Exporting…' : 'Export passwords', () => void run('export', async () => {
         // Native export locks the vault before its fresh authentication, so the list is
