@@ -26,6 +26,31 @@ public final class ConnectionRoutesTest {
   for(String host:new String[]{"agent.example.test","api.eliza.app.example.test","evil-api.eliza.app","cloud.eliza.app","API.ELIZA.APP",null})check(!revoke("https",host,-1,"/api/v1/api-keys/current",null,"DELETE",false,true),"host "+host);
   for(String path:new String[]{"/api/v1/api-keys","/api/v1/api-keys/","/api/v1/api-keys/current/","/api/v1/api-keys/other","/api/v1/api-keys/%63urrent","/api/v1/api-keys/current/../other","/api/v1/user","/api/conversations/1",null})check(!revoke("https","api.eliza.app",-1,path,null,"DELETE",false,true),"path "+path);
   for(String method:new String[]{"GET","POST","PUT","PATCH","delete",null})check(!revoke("https","api.eliza.app",-1,"/api/v1/api-keys/current",null,method,false,true),"method "+method);
-  System.out.println("PASS connection routes: retired pairing and exact Cloud self-revocation");
+  // Flag-off builds contact only the fixed Cloud authority; a remote agent origin is refused from the URL alone.
+  String agent="0f8fad5b-d9cb-469f-a165-70867728950e";
+  for(String host:new String[]{"api.eliza.app",agent+".cloud.eliza.app"}){
+   check(ConnectionRoutes.admittedOrigin("https",host,-1,false),"flag-off admits "+host);
+   check(ConnectionRoutes.admittedOrigin("https",host,443,false),"flag-off admits the explicit default port of "+host);
+   check(!ConnectionRoutes.admittedOrigin("http",host,-1,false),"flag-off HTTPS only for "+host);
+   check(!ConnectionRoutes.admittedOrigin("https",host,8443,false),"flag-off default port only for "+host);
+   check(!ConnectionRoutes.admittedOrigin(null,host,-1,false),"flag-off needs a scheme for "+host);
+  }
+  for(String host:new String[]{
+   // A paired remote or development agent, and other public hosts.
+   "agent.example.test","my-agent.example","192.168.1.20","10.0.2.2","127.0.0.1","localhost","[::1]","example.com",
+   // The staging authority exists only in test-mocks builds.
+   "api-staging.eliza.app",agent+".cloud-staging.eliza.app",
+   // Lookalikes, other Eliza hosts and spellings the renderer never produces.
+   "eliza.app","www.eliza.app","cloud.eliza.app","evil.cloud.eliza.app","evil-api.eliza.app","xapi.eliza.app","api.eliza.app.example.test","api.eliza.app.",
+   "API.ELIZA.APP","api.eliza.app\n","api.eliza.app\u200b","api.eliza.app%00","sub.api.eliza.app",
+   agent+".cloud.eliza.app.example.test",agent+".cloud.eliza.app.",agent.toUpperCase(java.util.Locale.ROOT)+".cloud.eliza.app","x"+agent+".cloud.eliza.app",
+   agent+".evil.cloud.eliza.app","a."+agent+".cloud.eliza.app",agent+"xcloud.eliza.app",agent+".cloud.eliza.app\n","0f8fad5b-d9cb-069f-a165-70867728950e.cloud.eliza.app",
+   "0f8fad5bd9cb469fa16570867728950e.cloud.eliza.app","",null})
+   check(!ConnectionRoutes.admittedOrigin("https",host,-1,false),"flag-off refuses "+host);
+  // Test-mocks builds are unchanged: every origin the URL validation admits still reaches the transport.
+  for(String host:new String[]{"agent.example.test","api-staging.eliza.app","api.eliza.app",agent+".cloud.eliza.app"})check(ConnectionRoutes.admittedOrigin("https",host,-1,true),"test mocks keep "+host);
+  check(ConnectionRoutes.admittedOrigin("https","agent.example.test",8443,true),"test mocks keep a remote agent port");
+  check(ConnectionRoutes.admittedOrigin("http","10.0.2.2",2138,true),"test mocks keep the development agent");
+  System.out.println("PASS connection routes: retired pairing, exact Cloud self-revocation and flag-off Cloud-only origins");
  }
 }
