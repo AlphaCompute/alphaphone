@@ -24,7 +24,7 @@ import {test, expect, type Page} from '@playwright/test';
 
 const button = (page: Page, name: string) => page.getByRole('button', {name, exact: true});
 const KEY = 'journey-f-review-provider';
-type Options = {inbox?: string[]; pageSize?: number; strictCursors?: boolean; forward?: boolean};
+type Options = {inbox?: string[]; pageSize?: number; strictCursors?: boolean; forward?: boolean; overlap?: boolean};
 
 /** Synthetic managed provider. Re-installed after every load; its state lives in localStorage. */
 async function installProvider(page: Page, options: Options = {}) {
@@ -58,7 +58,9 @@ async function installProvider(page: Page, options: Options = {}) {
         const ids: string[] = query === 'in:inbox' ? value.inbox : query === 'in:trash' ? value.trashed : [];
         const [cut, start] = pageToken ? pageToken.split(':').map(Number) : [value.revision, 0];
         if (pageToken && options.strictCursors && cut !== value.revision) throw new CloudProtocolError('http', 400, {error: 'Invalid Gmail page token.'});
-        return {messages: ids.slice(start, start + size).map(id => mail(id)), syncedAt: '2026-10-08T12:00:00Z', nextPageToken: start + size < ids.length ? `${value.revision}:${start + size}` : null};
+        // A provider whose later pages always begin with the last row of the page before.
+        const from = pageToken && options.overlap ? start - 1 : start;
+        return {messages: ids.slice(from, start + size).map(id => mail(id)), syncedAt: '2026-10-08T12:00:00Z', nextPageToken: start + size < ids.length ? `${value.revision}:${start + size}` : null};
       },
       gmailRead: async (_grant: string, id: string) => ({message: mail(id), bodyText: 'Body of ' + id, links: []}),
       gmailThread: async (_grant: string, threadId: string) => {
@@ -159,7 +161,7 @@ test('F-5: the send review shows From, To, Cc, Bcc, subject, body and the attach
       'Subject: Timetable for Friday',
       'Selected message/draft:',
     ]);
-    await expect(review.getByLabel('Attachments', {exact: true})).toHaveText(`timetable.txt · text/plain · ${bytes.length} bytes · SHA-256 ${sha256}`);
+    await expect(review.locator('[data-alpha-review-attachments]')).toHaveText(`timetable.txt · text/plain · ${bytes.length} bytes · SHA-256 ${sha256}`);
     await expect(review.getByText('Line one of the reviewed body.\nLine two.', {exact: true})).toBeVisible();
   };
   await reviewed();
@@ -198,7 +200,7 @@ test('F-5: an email with no Cc, Bcc or attachment says so in the review', async 
   const review = page.getByRole('dialog', {name: 'Review mail operation'});
   await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toBeVisible();
   expect((await review.locator('p').nth(1).innerText()).split('\n').slice(0, 4).map(line => line.trimEnd())).toEqual(['From: owner@example.invalid', 'To: friend@example.invalid', 'Cc:', 'Bcc:']);
-  await expect(review.getByLabel('Attachments', {exact: true})).toHaveText('No attachments.');
+  await expect(review.locator('[data-alpha-review-attachments]')).toHaveText('No attachments.');
   expect(JSON.parse((await provider(page)).prepared[0].proposal)).toMatchObject({cc: [], bcc: [], attachments: []});
 });
 
@@ -215,7 +217,7 @@ test('F-5: a forward lists the original attachments it will send, and removing o
   const review = page.getByRole('dialog', {name: 'Review mail operation'});
   await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toBeVisible();
   // The forwarded original is part of what will be sent, so the review names it with its size.
-  await expect(review.getByLabel('Attachments', {exact: true})).toHaveText(`original-plan.pdf (forwarded original) · 4321 bytes · SHA-256 ${'ab'.repeat(32)}`);
+  await expect(review.locator('[data-alpha-review-attachments]')).toHaveText(`original-plan.pdf (forwarded original) · 4321 bytes · SHA-256 ${'ab'.repeat(32)}`);
   expect(JSON.parse((await provider(page)).prepared[0].proposal)).toMatchObject({mode: 'forward', subject: 'Fwd: Subject m1', attachments: [], forwardAttachments: {messageId: 'm1', historyId: 'h-m1', partIds: ['part-1']}});
   // Removing the original after that review is an edit: the review is discarded and the next one
   // says the email has no attachments.
@@ -223,7 +225,7 @@ test('F-5: a forward lists the original attachments it will send, and removing o
   await button(page, 'Remove original-plan.pdf (original)').click();
   await expect(page.getByText(editedStatus, {exact: true})).toBeVisible();
   await button(page, 'Send email').click();
-  await expect(review.getByLabel('Attachments', {exact: true})).toHaveText('No attachments.');
+  await expect(review.locator('[data-alpha-review-attachments]')).toHaveText('No attachments.');
   await review.getByRole('button', {name: 'Send this email', exact: true}).click();
   await expect(review.getByRole('status')).toHaveText('Provider confirmed this operation.');
   const state = await provider(page);
@@ -414,6 +416,23 @@ test('F-12: new mail between pages never shows a message twice; the list restart
   await expect(button(page, 'Load more')).toHaveCount(0);
   // One restart, and it happened once: the stale cursor is not used again.
   expect((await provider(page)).searches).toEqual([['in:inbox', null], ['in:inbox', '1:2'], ['in:inbox', null], ['in:inbox', '2:2'], ['in:inbox', '2:4']]);
+});
+
+test('F-12: a provider whose pages always overlap restarts the list once, then pages on without repeats', async ({page}) => {
+  test.setTimeout(120_000);
+  await openInbox(page, {inbox: ['m1', 'm2', 'm3', 'm4', 'm5'], pageSize: 2, overlap: true});
+  await expect.poll(() => rows(page)).toEqual(['m1', 'm2']);
+  await button(page, 'Load more').click();
+  await expect(page.getByText('Your mailbox changed while more messages were loading. The list was reloaded from the start so no message is shown twice.', {exact: true})).toBeVisible();
+  await expect.poll(async () => (await provider(page)).searches.length).toBe(3);
+  await expect.poll(() => rows(page)).toEqual(['m1', 'm2']);
+  // The same overlap again is not treated as another change: the list is not held on page one.
+  await button(page, 'Load more').click();
+  await expect.poll(() => rows(page)).toEqual(['m1', 'm2', 'm3', 'm4']);
+  await button(page, 'Load more').click();
+  await expect.poll(() => rows(page)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5']);
+  await expect(button(page, 'Load more')).toHaveCount(0);
+  expect((await provider(page)).searches.map(search => search[1])).toEqual([null, '1:2', null, '1:2', '1:4']);
 });
 
 test('F-12: a cursor the provider refuses after the mailbox changed keeps the loaded page and says how to reload', async ({page}) => {

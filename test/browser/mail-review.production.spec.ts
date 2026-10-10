@@ -172,7 +172,7 @@ test('Android: the send review shows Cc and Bcc, an edit after review is reviewe
   await expect(review.getByRole('status')).toHaveText('Review every field before confirming. No mail has been sent.');
   expect((await review.locator('p').nth(1).innerText()).split('\n').map(line => line.trimEnd()).slice(0, 5)).toEqual([
     'From: owner@example.invalid', 'To: friend@example.invalid', 'Cc: carol@example.invalid', 'Bcc: audit@example.invalid', 'Subject: Flag-off reviewed send']);
-  await expect(review.getByLabel('Attachments', { exact: true })).toHaveText('No attachments.');
+  await expect(review.locator('[data-alpha-review-attachments]')).toHaveText('No attachments.');
   await expect(review.getByText('First body', { exact: true })).toBeVisible();
   let state = await fixture(page);
   expect(state.prepares).toHaveLength(1);
