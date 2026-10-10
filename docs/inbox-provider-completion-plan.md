@@ -102,12 +102,14 @@ is inserted: the open local draft, a new reply to the open message, or a new ema
 with a renderer-only token covering the Cloud session, account owner, open message and its `historyId`, and the draft's identity
 and current content; `view.useInEmail(text, {token, append})` refuses when any of them changed, and the review then shows the
 current destination again. Text already in a draft is never replaced: the only offered action is adding the suggestion below it.
-A saved local draft that is not open, retained edits, a message without a literal reply address, or a reply longer than a draft
-block the review with the reason. A changed agent session or an edited/removed reply closes the review without inserting.
+A saved local draft that is not open, retained edits, a message without a literal reply address, a reply longer than a draft, or
+an open draft without room for the whole reply block the review with the reason; text is never cut short. A changed agent
+session or an edited/removed reply closes the review without inserting. The review names the recipients the draft really gets,
+literal address first: a reply to a message from the account's own address (for example one opened from Sent) has none.
 
 Attachment policy (unchanged, now stated in the review): only the text is inserted. Files and Photos selected elsewhere are not
 attached by a suggestion or by sharing; the composer's Attach picker remains the only way to add a file.
 
 Nothing in this path prepares or dispatches a provider operation; sending still requires the composer and the provider review.
-Evidence is fixture-only: `test/use-in-email-review.test.mjs`, section 7 of `scripts/test-inbox-attention-flow.mjs` and
+Evidence is fixture-only: `test/use-in-email-review.test.mjs`, sections 7 to 7d of `scripts/test-inbox-attention-flow.mjs` and
 `test/browser/use-in-email.spec.ts`. Real Gmail and device acceptance for this control remain open.

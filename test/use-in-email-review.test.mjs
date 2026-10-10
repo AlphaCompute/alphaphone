@@ -19,8 +19,8 @@ async function boot() {
   const world = { session: { sessionId: 'agent-1', agentId: 'a', ownerId: 'o', origin: 'https://agent.invalid' }, cloud: 'cloud-1', chooser: false, hidden: false };
   const inserted = [], toasts = [];
   // The stub Inbox: one destination whose token changes whenever `revision` changes.
-  const inbox = { revision: 1, ready: true, append: false,
-    emailTarget() { return this.ready ? { ready: true, kind: 'reply', append: this.append, reply: true, subject: 'Re: Plan', to: ['sender@example.invalid'], from: 'Sender', accountId: 'grant-a', account: 'owner@example.invalid', token: 'token-' + this.revision }
+  const inbox = { revision: 1, ready: true, append: false, room: 64000,
+    emailTarget() { return this.ready ? { ready: true, kind: 'reply', append: this.append, reply: true, subject: 'Re: Plan', to: ['sender@example.invalid'], from: 'Sender', room: this.room, accountId: 'grant-a', account: 'owner@example.invalid', token: 'token-' + this.revision }
       : { ready: false, reason: 'Restore or discard the saved local draft in Inbox first. The suggestion was not added.', token: 'blocked', accountId: 'grant-a', account: 'owner@example.invalid' }; },
     useInEmail(text, expected) { if (!this.ready || expected.token !== 'token-' + this.revision) return false; inserted.push({ text, append: expected.append === true }); return true; } };
   class Shell {
@@ -61,7 +61,7 @@ test('the review names the account, the exact destination and the attachment pol
   const review = t.render().emailUse;
   assert.equal(t.render().emailUseOpen, true);
   assert.deepEqual(plain({ account: review.account, destination: review.destination, text: review.text, blocked: review.blocked, confirmLabel: review.confirmLabel, notice: review.notice }),
-    { account: 'From owner@example.invalid', destination: 'New reply to Sender <sender@example.invalid> · Re: Plan', text: t.reply.text, blocked: false, confirmLabel: 'Insert into draft', notice: '' });
+    { account: 'From owner@example.invalid', destination: 'New reply to sender@example.invalid (Sender) · Re: Plan', text: t.reply.text, blocked: false, confirmLabel: 'Insert into draft', notice: '' });
   assert.match(review.policy, /Files and photos are not attached/);
   assert.equal(t.inserted.length, 0, 'opening the review inserts nothing');
   review.close();
@@ -134,6 +134,28 @@ test('a reply longer than a draft can hold is refused in the review', async () =
   t.render().emailUse.confirm(); assert.equal(t.inserted.length, 0);
 });
 
+test('a draft without room for the whole reply blocks the review instead of cutting the text', async () => {
+  const t = await boot(); t.inbox.append = true; t.inbox.room = t.reply.text.length - 1;
+  t.row('reply-1').useInEmail();
+  let review = t.render().emailUse;
+  assert.equal(review.blocked, true); assert.match(review.effect, /does not have room for this whole reply/); assert.equal(review.account, 'From owner@example.invalid');
+  review.confirm(); assert.equal(t.inserted.length, 0); assert.equal(t.render().emailUseOpen, true);
+  // Exactly enough room is accepted whole.
+  review.close(); t.inbox.room = t.reply.text.length;
+  t.row('reply-1').useInEmail(); review = t.render().emailUse;
+  assert.equal(review.blocked, false); review.confirm();
+  assert.deepEqual(plain(t.inserted), [{ text: t.reply.text, append: true }]);
+});
+
+test('a destination that changed to one without room is refused and then stays blocked', async () => {
+  const t = await boot(); t.inbox.append = true;
+  t.row('reply-1').useInEmail(); t.inbox.revision = 2; t.inbox.room = 3;
+  t.render().emailUse.confirm();
+  assert.equal(t.inserted.length, 0); assert.equal(t.render().emailUse.blocked, true);
+  assert.match(t.render().emailUse.effect, /does not have room/);
+  t.render().emailUse.confirm(); assert.equal(t.inserted.length, 0);
+});
+
 test('destination wording covers a new email and an open draft', async () => {
   const t = await boot(), describe = t.sandbox.describeEmailTarget;
   assert.deepEqual(plain(describe({ ready: true, kind: 'new', append: false, reply: false, subject: '', to: [], account: 'me@example.invalid', token: 't' })),
@@ -141,4 +163,10 @@ test('destination wording covers a new email and an open draft', async () => {
   assert.equal(describe({ ready: true, kind: 'draft', append: false, reply: false, subject: '', to: [], account: 'me@example.invalid', token: 't' }).destination, 'Your open email draft · (no subject) · to no recipients yet');
   assert.equal(describe({ ready: true, kind: 'draft', append: true, reply: true, subject: 'Re: Plan', to: ['a@example.invalid', 'b@example.invalid'], account: 'me@example.invalid', token: 't' }).destination, 'Your open reply draft · Re: Plan · to a@example.invalid, b@example.invalid');
   assert.equal(describe({ ready: false, reason: 'Connect a Gmail account in Inbox first. Nothing was added.', token: '' }).blocked, true);
+  // The literal address leads; a display name chosen by the sender cannot stand in for it.
+  assert.equal(describe({ ready: true, kind: 'reply', append: false, reply: true, subject: 'Re: Invoice', to: ['billing@other.invalid'], from: 'Bank <help@bank.invalid>', account: 'me@example.invalid', token: 't' }).destination,
+    'New reply to billing@other.invalid (Bank <help@bank.invalid>) · Re: Invoice');
+  // A message from the account's own address has no other reply address: none is named.
+  assert.equal(describe({ ready: true, kind: 'reply', append: false, reply: true, subject: 'Re: Notes', to: [], from: 'Me', account: 'me@example.invalid', token: 't' }).destination,
+    'New reply · Re: Notes · no recipients yet');
 });

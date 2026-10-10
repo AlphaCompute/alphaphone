@@ -13,7 +13,8 @@ export function describeEmailTarget(target: EmailTarget): { account: string; des
   if (!target.ready) return { account: target.account ? `From ${target.account}` : '', destination: 'No email draft can take this suggestion yet.', effect: target.reason, confirmLabel: 'Insert into draft', blocked: true };
   const to = target.to.length ? target.to.join(', ') : 'no recipients yet';
   const subject = target.subject.trim() || '(no subject)';
-  const destination = target.kind === 'reply' ? `New reply to ${target.from ? `${target.from} ` : ''}<${to}> · ${subject}`
+  // The literal address comes first; the sender's display name is their own text and only follows it.
+  const destination = target.kind === 'reply' ? (target.to.length ? `New reply to ${to}${target.from ? ` (${target.from})` : ''} · ${subject}` : `New reply · ${subject} · no recipients yet`)
     : target.kind === 'draft' ? `Your open ${target.reply ? 'reply' : 'email'} draft · ${subject} · to ${to}`
     : 'A new email. You add the recipients and subject.';
   return { account: `From ${target.account || 'the selected Gmail account'}`, destination,
@@ -36,17 +37,20 @@ export function installUseInEmailReview(Component: Shell, views: Record<string, 
   const target = (): EmailTarget => typeof views.inbox?.emailTarget === 'function' ? views.inbox.emailTarget() : { ready: false, reason: 'Inbox is unavailable. Nothing was added.', token: '' };
   const eligible = (entry: Shell) => !!entry && entry.from === 'agent' && !entry.card && !entry.streaming && !entry.interrupted && typeof entry.id === 'string' && typeof entry.text === 'string' && !!entry.text.trim();
   const close = (shell: Shell) => { if (reviews.delete(shell)) refresh(shell); };
+  /** A destination that cannot hold the whole reply is blocked in the review; text is never cut short. */
+  const fit = (found: EmailTarget, text: string): EmailTarget => !found.ready ? found
+    : text.length > MAXIMUM ? { ...found, ready: false, reason: 'This reply is longer than an email draft can hold. Copy the part you need instead.' }
+    : text.length > found.room ? { ...found, ready: false, reason: 'The open draft does not have room for this whole reply. Copy the part you need instead. Nothing was added.' } : found;
   function open(shell: Shell, entry: Shell) {
     if (shell.S().view !== 'inbox' || !eligible(entry)) return;
-    const found = target();
     // Focus returns to the reply itself: its actions menu may close while the review is open.
     reviews.set(shell, { id: entry.id, text: entry.text, session: agentSession(), cloud: cloudSession(), opener: document.querySelector<HTMLElement>(`[data-alpha-message-id="${CSS.escape(entry.id)}"] [data-alpha-message-text]`),
-      target: entry.text.length > MAXIMUM ? { ...found, ready: false, reason: 'This reply is longer than an email draft can hold. Copy the part you need instead.', token: found.token } : found, notice: '' });
+      target: fit(target(), entry.text), notice: '' });
     refresh(shell);
   }
   function confirm(shell: Shell) {
     const review = reviews.get(shell); if (!review || !review.target.ready) return;
-    const fail = (notice: string) => { const next = target(); review.target = review.text.length > MAXIMUM ? review.target : next; review.notice = notice; refresh(shell); };
+    const fail = (notice: string) => { review.target = fit(target(), review.text); review.notice = notice; refresh(shell); };
     // The reply must still be the one on screen, from the same agent conversation, over the same Inbox.
     const message = (shell.S().msgs || []).find((row: Shell) => row.id === review.id);
     if (!eligible(message) || message.text !== review.text || review.session !== agentSession()) { reviews.delete(shell); shell.toast?.('The conversation changed. Nothing was added to an email.'); refresh(shell); return; }

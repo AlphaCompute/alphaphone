@@ -16,7 +16,9 @@ export type ComposePrefill = {to:string[];cc?:string[];bcc?:string[];subject:str
 export type ForwardSource = {messageId:string;historyId:string;parts:{partId:string;name:string;mimeType:string;size:number}[]};
 type Draft = {version:1;id:string;revision:string;owner:string;to:string[];cc?:string[];bcc?:string[];attachments?:MailAttachment[];forward?:ForwardSource;provider?:{draftId:string;providerDigest:string};subject:string;body:string;mode?:'compose'|'reply'|'reply-all'|'forward';reply?:{messageId:string;threadId:string}};
 /** The destination of a reviewed assistant suggestion, as shown to the user before inserting it. */
-export type SuggestionTarget={ready:false;reason:string;token:string}|{ready:true;kind:'draft'|'reply'|'new';append:boolean;reply:boolean;subject:string;to:string[];from?:string;token:string};
+export type SuggestionTarget={ready:false;reason:string;token:string}|{ready:true;kind:'draft'|'reply'|'new';append:boolean;reply:boolean;subject:string;to:string[];from?:string;
+ /** Characters of suggestion text this destination can still take. */
+ room:number;token:string};
 type Policy={maximumOutgoing:number;maximumTotalBytes:number};
 const forwardValid=(f:any)=>f===undefined||(!!f&&typeof f.messageId==='string'&&typeof f.historyId==='string'&&Array.isArray(f.parts)&&f.parts.length<=outgoingAttachmentLimits.maximumFiles&&f.parts.every((p:any)=>p&&typeof p.partId==='string'&&typeof p.name==='string'&&typeof p.mimeType==='string'&&typeof p.size==='number'));
 const address=(v:string)=>v.length<=254&&/^[^\s<>@,;]+@[^\s<>@,;]+\.[^\s<>@,;]+$/.test(v);
@@ -111,17 +113,20 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   if(!owner||!ready||busy)return blocked(loading||busy?'The local email draft is still loading. Try again in a moment.':status||'Connect a Gmail account first.');
   if(draft){
    const recipients=[...draft.to,...(draft.cc||[]),...(draft.bcc||[])];
-   return {ready:true,kind:'draft',append:!!draft.body.trim(),reply:!!draft.reply||draft.mode==='reply'||draft.mode==='reply-all',subject:draft.subject,to:recipients,
+   const append=!!draft.body.trim();
+   return {ready:true,kind:'draft',append,reply:!!draft.reply||draft.mode==='reply'||draft.mode==='reply-all',subject:draft.subject,to:recipients,room:append?Math.max(0,64000-draft.body.replace(/\s+$/,'').length-2):64000,
     token:JSON.stringify([owner,'draft',draft.id,draft.mode||'',draft.reply?.messageId||'',draft.provider?.draftId||'',draft.subject,draft.to,draft.cc||[],draft.bcc||[],draft.body,toQ])};
   }
   if(retained?.available)return blocked('Resume the retained email edits in Inbox first. The suggestion was not added.');
   if(saved)return blocked('Restore or discard the saved local draft in Inbox first. The suggestion was not added.');
   if(reply){
-   const to=reply.replyTo||reply.fromEmail||'';
-   if(!address(to))return blocked('This message has no valid literal reply address.');
-   return {ready:true,kind:'reply',append:false,reply:true,subject:(/^re:/i.test(reply.subject)?reply.subject:`Re: ${reply.subject}`).slice(0,998),to:[to],from:reply.from,token:JSON.stringify([owner,'reply',reply.id,reply.threadId,to,reply.subject])};
+   const primary=reply.replyTo||reply.fromEmail||'';
+   if(!address(primary))return blocked('This message has no valid literal reply address.');
+   // The recipients `begin` gives a reply: the literal reply address, never the account's own address.
+   const self=provider?.capabilities()?.from?.toLowerCase(),to=[primary].filter(a=>a.toLowerCase()!==self);
+   return {ready:true,kind:'reply',append:false,reply:true,subject:(/^re:/i.test(reply.subject)?reply.subject:`Re: ${reply.subject}`).slice(0,998),to,from:reply.from,room:64000,token:JSON.stringify([owner,'reply',reply.id,reply.threadId,to,reply.subject])};
   }
-  return {ready:true,kind:'new',append:false,reply:false,subject:'',to:[],token:JSON.stringify([owner,'new'])};
+  return {ready:true,kind:'new',append:false,reply:false,subject:'',to:[],room:64000,token:JSON.stringify([owner,'new'])};
  }
  return {
   bind,reset,begin,transfer,

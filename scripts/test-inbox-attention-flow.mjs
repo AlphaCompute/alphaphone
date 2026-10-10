@@ -196,7 +196,7 @@ deq(t.prepared.at(-1).attachments.map(a=>a.name),['c.txt','a.txt']);assert.equal
  const t=await boot({accounts:two});t.mount();t.setActive(true);t.render();await t.tick();
  const inbox=t.views.inbox,target=()=>JSON.parse(JSON.stringify(inbox.emailTarget()));
  // List view: a new email under the selected account.
- const fresh=target();deq({ready:fresh.ready,kind:fresh.kind,append:fresh.append,account:fresh.account,accountId:fresh.accountId},{ready:true,kind:'new',append:false,account:'a@example.invalid',accountId:'grant-a'});
+ const fresh=target();deq({ready:fresh.ready,kind:fresh.kind,append:fresh.append,room:fresh.room,account:fresh.account,accountId:fresh.accountId},{ready:true,kind:'new',append:false,room:64000,account:'a@example.invalid',accountId:'grant-a'});
  // Open message: an exact reply target naming the sender's literal address and subject.
  t.render().rows[1].open();await t.tick();
  const reply=target();deq({kind:reply.kind,to:reply.to,subject:reply.subject,from:reply.from,reply:reply.reply},{kind:'reply',to:['sender@example.invalid'],subject:'Re: Fixture m2',from:'Sender',reply:true});
@@ -222,8 +222,9 @@ deq(t.prepared.at(-1).attachments.map(a=>a.name),['c.txt','a.txt']);assert.equal
  const edited=target();assert.notEqual(edited.token,open.token);
  assert.equal(inbox.useInEmail('Second paragraph.',{token:edited.token,append:true}),true);
  c=t.render().c;assert.equal(c.body,'Thanks, reviewed. My own edit.\n\nSecond paragraph.');assert.match(c.status,/added below your text/);
- // Capacity: an append that would exceed the draft limit changes nothing.
- const full=target();assert.equal(inbox.useInEmail('x'.repeat(64000),{token:full.token,append:true}),false);assert.match(t.toasts.at(-1),/too long/);
+ // Capacity: the review is told how much room is left, and an append that would exceed it changes nothing.
+ const full=target();assert.equal(full.room,64000-'Thanks, reviewed. My own edit.\n\nSecond paragraph.'.length-2);
+ assert.equal(inbox.useInEmail('x'.repeat(64000),{token:full.token,append:true}),false);assert.match(t.toasts.at(-1),/too long/);
  assert.equal(t.render().c.body,'Thanks, reviewed. My own edit.\n\nSecond paragraph.');
  // Account identity: after switching account the reviewed token for the first account is refused.
  t.render().c.confirmDiscard?.();await t.tick();
@@ -269,5 +270,21 @@ deq(t.prepared.at(-1).attachments.map(a=>a.name),['c.txt','a.txt']);assert.equal
  assert.equal(inbox.useInEmail('Late addition',{token:open.token,append:true}),false);assert.equal(t.render().c.body,'Reviewed reply');
  assert.equal(t.dispatched.length,0);
  t.shell.componentWillUnmount();
+}
+// 7d. The reviewed recipients are the ones the reply draft really gets. A message from the account's own
+// address (for example one opened from Sent) has no other reply address, so the review names none.
+{
+ const original=inboxPage[2].fromEmail;inboxPage[2].fromEmail='Owner@Example.invalid';
+ try{
+  const t=await boot();t.mount();t.setActive(true);t.render();await t.tick();
+  const inbox=t.views.inbox;
+  t.render().rows[2].open();await t.tick();
+  const own=JSON.parse(JSON.stringify(inbox.emailTarget()));
+  deq({ready:own.ready,kind:own.kind,to:own.to,subject:own.subject},{ready:true,kind:'reply',to:[],subject:'Re: Fixture m3'});
+  assert.equal(inbox.useInEmail('Note to self',{token:own.token}),true);
+  deq(t.render().c.chips.map(r=>r.name),own.to,'the draft holds exactly the reviewed recipients');
+  assert.equal(t.prepared.length,0);assert.equal(t.dispatched.length,0);
+  t.shell.componentWillUnmount();
+ }finally{inboxPage[2].fromEmail=original;}
 }
 console.log('PASS: Inbox attention (not-connected/ready/error/stale), no background mail fetch, openInbox, reviewed HTTPS links in Browser, clip/time rows, Archive/Trash/Drafts folders, provider draft editing, three-attachment add/remove, forwarded source attachments, opaque Save to Files, Use in email and its reviewed destination binding. Fixture only; zero dispatches.');

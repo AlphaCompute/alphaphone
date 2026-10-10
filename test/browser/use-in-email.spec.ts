@@ -7,22 +7,22 @@ const menu=(page:Page)=>page.getByRole('menu',{name:'Message actions'});
 const review=(page:Page)=>page.getByRole('dialog',{name:'Review email suggestion',exact:true});
 const reply=(page:Page,text:string)=>page.locator('[data-alpha-message-text]').filter({hasText:text});
 const body=(page:Page)=>page.getByRole('textbox',{name:'Message',exact:true});
-async function setup(page:Page,theme='light'){
+async function setup(page:Page,theme='light',own=false){
  await page.goto('/?theme='+theme);
- await page.evaluate(async()=>{
+ await page.evaluate(async own=>{
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
   const {secureConnectionStore:s}=await import('/src/runtime/native-connection.ts');
   const {Component}=await import('/src/prototype/model.js');
   const f=(window as any).useInEmail={slots:{} as Record<string,unknown>,writes:0,shell:null as any};
   s.read=async(key:string)=>structuredClone(f.slots[key]??null) as any;
   s.compareExchange=async(key:string,prior:unknown,next:unknown)=>{if(JSON.stringify(f.slots[key]??null)!==JSON.stringify(prior))return {status:'conflict'} as any;f.slots[key]=structuredClone(next);return {status:'saved'} as any;};
-  const message={id:'selected',threadId:'thread',from:'Fixture sender',fromEmail:'sender@example.invalid',to:['owner@example.invalid'],subject:'Planning session',snippet:'Can you do Tuesday?',receivedAt:'2026-10-04T12:00:00Z',unread:false};
+  const message={id:'selected',threadId:'thread',from:own?'Fixture owner':'Fixture sender',fromEmail:own?'Owner@example.invalid':'sender@example.invalid',to:['owner@example.invalid'],subject:'Planning session',snippet:'Can you do Tuesday?',receivedAt:'2026-10-04T12:00:00Z',unread:false};
   const write=async()=>{f.writes++;throw Error('No provider writes allowed');};
-  const client={gmailAccounts:async()=>[{connectionId:'fixture-grant',label:'owner@example.invalid',connected:true,grantedCapabilities:['google.gmail.triage']}],gmailInboxCapabilities:async()=>({send:false,providerDrafts:false,mailboxMutations:false}),gmailSearch:async()=>({messages:[message],syncedAt:'1'}),gmailRead:async()=>({message,bodyText:'Can you do Tuesday at 10?',historyId:'1',attachments:[]}),gmailPrepareOperation:write,gmailDispatchOperation:write};
+  const client={gmailAccounts:async()=>[{connectionId:'fixture-grant',label:'owner@example.invalid',connected:true,grantedCapabilities:['google.gmail.triage']}],gmailInboxCapabilities:async()=>({send:false,providerDrafts:false,mailboxMutations:false,...(own?{from:'owner@example.invalid'}:{})}),gmailSearch:async()=>({messages:[message],syncedAt:'1'}),gmailRead:async()=>({message,bodyText:'Can you do Tuesday at 10?',historyId:'1',attachments:[]}),gmailPrepareOperation:write,gmailDispatchOperation:write};
   c.getCloudClient=()=>({client,sessionId:'fixture-session'} as any);
   const snapshot={...c.getSnapshot(),session:{ownerId:'fixture-owner',agentId:'fixture-agent',sessionId:'fixture-agent-session',origin:'https://agent.invalid'},cloudAccount:{environment:'production',userId:'fixture-owner',sessionId:'fixture-session',credentialId:'fixture'}} as any;c.getSnapshot=()=>snapshot;
   const original=Component.prototype.renderVals;Component.prototype.renderVals=function(){f.shell=this;return original.call(this);};
- });
+ },own);
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
  await page.getByText('Planning session',{exact:true}).click();
  await expect(page.getByText('Can you do Tuesday at 10?',{exact:true})).toBeVisible();
@@ -40,7 +40,7 @@ for(const theme of ['light','dark'])test(`reviewed reply fills the selected emai
  const dialog=review(page);await expect(dialog).toBeVisible();
  await expect(dialog.getByRole('button',{name:'Cancel',exact:true})).toBeFocused();
  await expect(dialog.locator('[data-alpha-email-use-account]')).toHaveText('From owner@example.invalid');
- await expect(dialog.locator('[data-alpha-email-use-destination]')).toHaveText('New reply to Fixture sender <sender@example.invalid> · Re: Planning session');
+ await expect(dialog.locator('[data-alpha-email-use-destination]')).toHaveText('New reply to sender@example.invalid (Fixture sender) · Re: Planning session');
  await expect(dialog.getByRole('region',{name:'Suggested text'})).toHaveText(first);
  await expect(dialog).toContainText('Files and photos are not attached');await expect(dialog).toContainText('Nothing is sent');
  expect(await dialog.evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
@@ -93,5 +93,23 @@ test('outside Inbox, and for a reply from another agent session, nothing is offe
  await say(page,second);await expect(reply(page,second)).toBeVisible();await reply(page,second).click();
  await expect(menu(page).getByRole('menuitem',{name:'Copy',exact:true})).toBeVisible();
  await expect(menu(page).getByRole('menuitem',{name:'Use in email',exact:true})).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).useInEmail.writes)).toBe(0);
+});
+
+test('system Back cancels the review, and a message from the account itself names no recipient',async({page})=>{
+ await setup(page,'light',true);await say(page,first);await openReview(page,first);
+ const dialog=review(page);
+ // The draft a reply to your own message gets has no recipient, so the review names none.
+ await expect(dialog.locator('[data-alpha-email-use-destination]')).toHaveText('New reply · Re: Planning session · no recipients yet');
+ // Everything behind the review is inert: the selected email cannot change underneath it.
+ expect(await page.evaluate(()=>!!document.querySelector('[data-alpha-message-text]')?.closest('[inert]')&&!!Array.from(document.querySelectorAll('*')).find(node=>node.textContent==='Can you do Tuesday at 10?')?.closest('[inert]'))).toBe(true);
+ // Back closes only the review: nothing is inserted and the email stays selected.
+ await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));
+ await expect(dialog).toHaveCount(0);await expect(body(page)).toHaveCount(0);
+ await expect(page.getByText('Can you do Tuesday at 10?',{exact:true})).toBeVisible();await expect(reply(page,first)).toBeVisible();
+ await openReview(page,first);await review(page).getByRole('button',{name:'Insert into draft',exact:true}).click();
+ await expect(body(page)).toHaveValue(first);
+ await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveValue('Re: Planning session');
+ await expect(page.getByRole('textbox',{name:'To',exact:true})).toBeVisible();await expect(page.locator('.inbox-recipient-chip')).toHaveCount(0);
  expect(await page.evaluate(()=>(window as any).useInEmail.writes)).toBe(0);
 });
