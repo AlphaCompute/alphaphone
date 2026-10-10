@@ -1,8 +1,7 @@
-import {newWorkflow,installWorkflowListFixture} from './workflow-navigation';
 import { returnToApps } from './app-navigation';
 import {test,expect,type Page} from '@playwright/test';
 async function setup(page:Page,mode='normal'){
- await page.goto('/?mode=dev&workflows=agent');await installWorkflowListFixture(page);
+ await page.goto('/?mode=dev&workflows=agent');
  await page.evaluate(async mode=>{
   const {WorkflowProtocol}=await import('/src/runtime/workflow-protocol.ts');const {workflowSha}=await import('/src/runtime/workflow-device-contract.ts');
   const {normalizePhoneSpec}=await import('/src/runtime/phone-workflow-authoring.ts');
