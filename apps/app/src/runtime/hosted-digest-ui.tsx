@@ -22,6 +22,9 @@ import {
  digestSummaryText,
  digestRenewals,
  digestLoopState,
+ digestStatusLabel,
+ digestRan,
+ digestZoneNote,
  rememberRetainedDigests,
  DIGEST_SOURCE_MAX_HOURS,
 	type DigestCapabilities,
@@ -432,6 +435,8 @@ export function HostedDigestPanel() {
 	}
 	const liveBinding = binding.current;
     const now=Date.now(),renewals=digestRenewals(sources,loops,now);
+    // Read at render: travel or a changed system setting moves the device zone, never a reviewed schedule.
+    const deviceZone=(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone;}catch{return '';}})();
 	if (!open || (binding.current && binding.current.sessionId!==connection.session?.sessionId)) return null;
 	return (
 		<div className="alpha-connection-scrim">
@@ -458,6 +463,7 @@ export function HostedDigestPanel() {
 					{interactiveDevelopment ? 'Schedules run while this app is open.' : connection.kind==='resident'
                         ? (isAndroid?'Your agent runs schedules on this phone. It cannot run while the phone is off.':'Schedules run on this computer while the local agent process is running.')
                         : connection.session ? 'Schedules run on your connected agent’s host, which must remain available.' : 'Choose where your agent runs to set up scheduled digests.'}
+                    {connection.session&&(interactiveDevelopment||connection.kind==='resident') ? ' If scheduled times pass while it is not running, the first is recorded below as missed and none is run later.' : ''}
                 </p>
                 <p>Choose an expiring snapshot or review a read-only source from an account already connected to this agent.
 				</p>
@@ -478,7 +484,7 @@ export function HostedDigestPanel() {
                         {renewing===r.source.id&&<span> Renewal in progress.</span>}
                     </p>)}
                 </section>}
-                {loops.some(l=>!l.removed)&&<section aria-label="Digest schedules"><h2>Schedules</h2><ul>{loops.filter(l=>!l.removed).map(l=><li key={l.id}>{l.spec.template==='evening'?'Evening':'Morning'} at {l.spec.localTime} ({l.spec.timeZone}) · {sources.find(s=>s.id===l.spec.sourceId)?.label??'Unknown source'} · {digestLoopState(l,sources,now,features.sourcePause)}</li>)}</ul></section>}
+                {loops.some(l=>!l.removed)&&<section aria-label="Digest schedules"><h2>Schedules</h2><ul>{loops.filter(l=>!l.removed).map(l=><li key={l.id}>{l.spec.template==='evening'?'Evening':'Morning'} at {l.spec.localTime} ({l.spec.timeZone}) · {sources.find(s=>s.id===l.spec.sourceId)?.label??'Unknown source'} · {digestLoopState(l,sources,now,features.sourcePause)}{deviceZone&&digestZoneNote(l,deviceZone,now)?<><br/><span>{digestZoneNote(l,deviceZone,now)}</span></>:null}</li>)}</ul></section>}
 				{pending ? (
 					<section>
 						<h2>Unconfirmed save</h2>
@@ -629,7 +635,8 @@ export function HostedDigestPanel() {
 							</label>}
 							<p>
 								Skipped clock times are missed; repeated times run once at the
-								earlier offset. A missed schedule does not replay a backlog.
+								earlier offset. A missed schedule does not replay a backlog. Only these
+								digests are scheduled; workflows you build run when you start them.
 								{interactiveDevelopment ? 'Digests use the configured development reply.' : 'Model usage is billed by the connected agent.'}
 							</p>
 							{(["morning", "evening"] as const).filter(t=>t==='morning'||features.nativeEvening||sources.find(source=>source.id===sourceId)?.live?.provider!=='native').map((t) => (
@@ -681,7 +688,7 @@ export function HostedDigestPanel() {
                             {focusedRun===result.runId&&<span>Opened from notification</span>}
 							<strong>
 								{new Date(result.scheduledAt).toLocaleString()} ·{" "}
-								{result.status}
+								{digestStatusLabel(result.status)}
 							</strong>
 							<span>
 								{result.source.type==='live_selected_native_read'?'Phone sources read':result.source.type==='live_selected_google_read'?'Connected sources read':'Snapshot observed'} {new Date(String(result.source.observedAt)).toLocaleString()}; {result.source.type==='live_selected_native_read'?'permission expires':'expires'}{" "}
@@ -697,7 +704,7 @@ export function HostedDigestPanel() {
 							>
 								{digestSummaryText(result)}
 							</pre>
-                            {result.source.type!=='live_selected_native_read'&&<details><summary>Execution details</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',font:'inherit',width:'100%'}}>{JSON.stringify(result.output,null,2)}</pre></details>}
+                            {digestRan(result)&&result.source.type!=='live_selected_native_read'&&<details><summary>Execution details</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',font:'inherit',width:'100%'}}>{JSON.stringify(result.output,null,2)}</pre></details>}
 						</article>
 					))}
 			</section>
