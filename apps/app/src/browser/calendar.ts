@@ -139,6 +139,26 @@ ${reviewed.description}`);
   async requestAccess(){return {status:'granted'};}
   async requestWorkflowReadAccess(){return {status:'granted'};}
   async workflowCalendars(){return {status:'ready',calendars:[source]};}
+  /** The in-app calendar is the only free/busy source in the browser. Its name stays on this device. */
+  async availabilitySources(input:{timeZone:string}){if(input?.timeZone!==Intl.DateTimeFormat().resolvedOptions().timeZone)return {status:'timezone-changed'};const {sourceRevision}=await this.prepareAgentSource();return {status:'ready',timeZone:input.timeZone,calendars:[{id:source.id,name:'In this app',account:'Saved on this device',sourceRevision}]};}
+  /**
+   * Free/busy rows for the chosen calendar: interval, all-day flag and availability only.
+   * Titles, notes, places and guests are never projected. All-day rows are matched by the
+   * owner's civil dates. In-app events have no "show as free" setting, so each one is busy.
+   */
+  async readAvailability(input:{calendars:{id:string;revision:string}[];start:string;end:string;timeZone:string}){
+    if(input.timeZone!==Intl.DateTimeFormat().resolvedOptions().timeZone)return {status:'timezone-changed'};
+    const begin=Date.parse(input.start),end=Date.parse(input.end);
+    if(!Array.isArray(input.calendars)||input.calendars.length!==1||!Number.isFinite(begin)||!Number.isFinite(end)||begin<0||end<=begin||end-begin>7*86400000)throw Error('Invalid availability read.');
+    const data=await calendarDocument.read(initial);
+    if(input.calendars[0].id!==source.id||input.calendars[0].revision!==data.sourceRevision)return {status:'changed'};
+    const civil=(instant:number)=>Date.parse(new Intl.DateTimeFormat('en-CA',{timeZone:input.timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).format(instant)+'T00:00:00Z');
+    const civilBegin=civil(begin),civilEnd=civil(end-1)+86400000;
+    const range=calendarRange(data.events.filter(row=>row.calendarId===source.id),{begin:Math.min(begin,civilBegin),end:Math.max(end,civilEnd)});
+    const rows=range.events.filter(row=>row.allDay?row.begin<civilEnd&&row.end>civilBegin:row.begin<end&&row.end>begin);
+    if(range.truncated||rows.length>200)return {status:'too-many'};
+    return {status:'ready',events:rows.map(row=>({start:new Date(row.begin).toISOString(),end:new Date(row.end).toISOString(),allDay:!!row.allDay,availability:'busy'}))};
+  }
   async list(input:{begin:number;end:number}) {const data=await calendarDocument.read(initial);return {status:'ready',calendars:[{...source,...(data.preferences??{visible:true,color:'acc'})}],...calendarRange(data.events,input)};}
   async prepareAgentSource(){const raw=await calendarDocument.readRaw(),data:State=raw===null?await calendarDocument.edit(initial,data=>data):JSON.parse(raw);return {status:'ready',sourceId:'local',sourceRevision:data.sourceRevision};}
   async pendingCreations(){const data=await calendarDocument.read(initial);return {status:'ready',creations:Object.values(data.creations||{}).filter(row=>!row.acknowledged).map(row=>row.result)};}
