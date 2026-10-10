@@ -30,4 +30,11 @@ export const DeviceApps = registerPlugin<{
   localeInfo(): Promise<{ locale: string; hour24: boolean }>;
 }>("DeviceApps");
 export const isAndroid = Capacitor.getPlatform() === "android";
+/** False only when a native DeviceApps is present without listener support. Capacitor turns a
+ * listener on such a plugin into a rejection its caller cannot catch, and the returned promise
+ * never settles. Every Android `Plugin` declares `addListener`, so this is true on a phone. */
+export const deviceAppsListens = (() => {
+  const header = (Capacitor as typeof Capacitor & { PluginHeaders?: { name: string; methods?: { name: string }[] }[] }).PluginHeaders?.find(entry => entry.name === "DeviceApps");
+  return !header || !!header.methods?.some(method => method.name === "addListener");
+})();
 export { System };

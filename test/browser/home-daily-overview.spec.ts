@@ -226,12 +226,12 @@ test('the latest retained brief appears with its agent and run time, reports fai
  await expect(calendarCard(page)).toBeVisible();
  await expect(briefCard(page)).toHaveCount(0);
  await expect(home(page)).not.toContainText(/Morning brief|No brief yet/);
- const ranAt=await page.evaluate(async()=>{
+ const {ranAt,ranIso}=await page.evaluate(async()=>{
   const {rememberRetainedDigests}=await import('/src/runtime/hosted-digests.ts'),at=new Date(Date.now()-3600000);
   rememberRetainedDigests([
    {cursor:1,runId:'run-old',completedAt:new Date(at.getTime()-86400000).toISOString(),status:'succeeded',output:'Synthetic older brief'},
    {cursor:2,runId:'run-new',completedAt:at.toISOString(),status:'succeeded',output:{summary:'Synthetic brief: two meetings and one reply to send.'}}] as any,'Synthetic agent');
-  const {whenLabel}=await import('/src/prototype/home-cards.ts');return whenLabel(at.getTime(),Date.now());
+  const {whenLabel}=await import('/src/prototype/home-cards.ts');return {ranAt:whenLabel(at.getTime(),Date.now()),ranIso:at.toISOString()};
  });
  const card=briefCard(page);
  await expect(card).toBeVisible();
@@ -248,16 +248,24 @@ test('the latest retained brief appears with its agent and run time, reports fai
  await card.scrollIntoViewIfNeeded();
  expect(await card.evaluate(element=>{const box=element.getBoundingClientRect(),title=element.querySelector('.home-brief-title')!.getBoundingClientRect(),status=element.querySelector('.home-brief-status')!.getBoundingClientRect();return {height:Math.round(box.height),overflow:element.scrollWidth-element.clientWidth,ordered:title.bottom<=status.top,inside:status.bottom<=box.bottom};})).toEqual({height:196,overflow:0,ordered:true,inside:true});
  await page.screenshot({path:info.outputPath('home-brief.png'),animations:'disabled'});
- // A newer result that records a skipped occurrence replaces it and is not presented as a run.
- await page.evaluate(async()=>{
-  const {rememberRetainedDigests}=await import('/src/runtime/hosted-digests.ts');
-  rememberRetainedDigests([{cursor:3,runId:'run-missed',completedAt:new Date(Date.now()-1800000).toISOString(),status:'missed',output:{status:'missed',text:'The scheduled time was missed. No backlog was executed.'},error:null}] as any,'Synthetic agent');
- });
- await expect(card).toContainText('The scheduled time was missed. No backlog was executed.');
- await expect(card).toContainText(/Synthetic agent · Did not run \d{1,2}:\d{2}/);
- await expect(card).not.toContainText(/· Ran /);
- await expect(card).toHaveAccessibleName(/^Open scheduled digests\. Latest brief from Synthetic agent, did not run /);
+ // A newer occurrence that was recorded but did not run (missed) is a record, not a brief: it never
+ // replaces the last brief that ran and is never presented as a run.
+ const missed={cursor:3,runId:'run-missed',completedAt:new Date(Date.now()-1800000).toISOString(),status:'missed',output:{status:'missed',text:'The scheduled time was missed. No backlog was executed.'},error:null};
+ const latest=await page.evaluate(async({missed,ranIso})=>{
+  const {rememberRetainedDigests,latestRetainedDigest}=await import('/src/runtime/hosted-digests.ts');
+  rememberRetainedDigests([{cursor:2,runId:'run-new',completedAt:ranIso,status:'succeeded',output:{summary:'Synthetic brief: two meetings and one reply to send.'}},missed] as any,'Synthetic agent');
+  return latestRetainedDigest();
+ },{missed,ranIso});
+ expect(latest).toMatchObject({status:'succeeded',ranAt:ranIso});
+ await expect(card).toContainText('Synthetic brief: two meetings and one reply to send.');
+ await expect(card).toContainText(`Synthetic agent · Ran ${ranAt}`);
+ await expect(card).not.toContainText('The scheduled time was missed');
+ await expect(card).not.toContainText(/Did not run/);
  await expect(card).toHaveAttribute('data-alpha-home-brief-failed','false');
+ // With only occurrences that did not run, there is no brief and no card.
+ await page.evaluate(async missed=>{(await import('/src/runtime/hosted-digests.ts')).rememberRetainedDigests([missed] as any,'Synthetic agent');},missed);
+ await expect(briefCard(page)).toHaveCount(0);
+ await expect(home(page)).not.toContainText('The scheduled time was missed');
  // A newer failed run replaces it and says it failed.
  await page.evaluate(async()=>{
   const {rememberRetainedDigests}=await import('/src/runtime/hosted-digests.ts');

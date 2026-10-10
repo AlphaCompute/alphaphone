@@ -206,7 +206,7 @@ export type Launcher = ReturnType<typeof createLauncher>;
 
 /** Home's All-apps drawer. Shell state (open, query) lives in the model so Back and Home close
  * it; the installed list lives here. */
-export function installHomeLauncher(Component: any, bridge: LauncherBridge, options: {icons?: boolean; favorites?: FavoritesStore} = {}) {
+export function installHomeLauncher(Component: any, bridge: LauncherBridge, options: {icons?: boolean; favorites?: FavoritesStore; /** False when the bridge cannot report package changes; the drawer still re-reads on open and on resume. */ follow?: boolean} = {}) {
   const p = Component.prototype, mount = p.componentDidMount, unmount = p.componentWillUnmount, render = p.renderVals;
   let owner: any = null;
   const launcher = createLauncher(bridge, () => owner?.setState({launcherRevision: Date.now()}), {...options, favorites: options.favorites || localFavorites()});
@@ -222,7 +222,7 @@ export function installHomeLauncher(Component: any, bridge: LauncherBridge, opti
   p.componentDidMount = function (...args: any[]) {
     owner = this;
     document.addEventListener('visibilitychange', visible); document.addEventListener('resume', refresh);
-    try { subscription = bridge.addListener ? Promise.resolve(bridge.addListener('appsChanged', refresh)).catch(() => null) : null; } catch { subscription = null; }
+    try { subscription = options.follow !== false && bridge.addListener ? Promise.resolve(bridge.addListener('appsChanged', refresh)).catch(() => null) : null; } catch { subscription = null; }
     return mount?.apply(this, args);
   };
   p.componentWillUnmount = function (...args: any[]) {
