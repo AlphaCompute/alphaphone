@@ -54,9 +54,14 @@ Browser tests exercise the rendered application and its persistent stores. Unit
 helper tables, source-text/regex assertions, extracted-method harnesses, and
 upstream unit-suite forwarding are removed from the consumer suite. Shared
 behavior is tested through its product integration; upstream owns its unit tests.
+This includes retiring the secure-store helper harness that cloned and repeatedly
+authenticated the entire upstream tree to test one input-reading helper. The real
+Android build still stages and compiles those sources; Git/source-admission
+integrations retain corruption and incomplete-checkout coverage.
 The Whisper model/runtime transcription test remains, including silence and
 cancellation. Type checking, production bundle auditing and APK inspection remain
-build gates.
+build gates. The host verification job keeps JDK/JSON inputs for native component
+integration, but no longer installs an Android SDK used only by removed harnesses.
 
 Verification prepares the pinned client source and speech inputs once, then runs
 the existing commands without repeating their individual preparation hooks. Standalone
