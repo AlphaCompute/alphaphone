@@ -39,8 +39,8 @@ import { isAndroid } from '../native';
 import { registerPlugin } from '../platform-plugins';
 import { SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { connectionController } from '../runtime/connection-ui';
-import { honestTiles, handoffGate, tileFactsFromSnapshot, tileSettingsPages, type TileFacts, type TileKey } from './native-adapter';
-const alphaDevice = registerPlugin<{ snapshot(): Promise<Record<string, unknown>>; openSettings(input: { page: string }): Promise<{ status: string }> }>('AlphaDevice');
+import { honestTiles, handoffGate, onReturnToApp, tileFactsFromSnapshot, tileSettingsPages, type TileFacts, type TileKey } from './native-adapter';
+const alphaDevice = registerPlugin<{ snapshot(): Promise<Record<string, unknown>>; openSettings(input: { page: string }): Promise<{ status: string; specific?: boolean }> }>('AlphaDevice');
 const elizaSystem = registerPlugin<{ setFlashlight(input: { enabled: boolean }): Promise<{ available: boolean; enabled: boolean }> }>('ElizaSystem');
 
 // The reference renderer is a JavaScript state machine. Its presentation API is
@@ -905,8 +905,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       return;
     }
     const page = key ? tileSettingsPages[key] : undefined;
-    try { if (!page) throw Error('No settings page'); await alphaDevice.openSettings({ page }); }
-    catch { await DailyApps.perform({ action: 'settings' }).catch(() => this.toast('Android settings is unavailable.')); }
+    // Alpha cannot change these switches: the tile opens the Android page and re-reads on return.
+    onReturnToApp(() => { if (this.live) this.refreshTileFacts(); });
+    try { if (!page) throw Error('No settings page'); const opened = await alphaDevice.openSettings({ page }); if (opened?.specific === false) this.toast('Opened Android network settings. This phone has no separate page for that switch.'); }
+    catch { await DailyApps.perform({ action: 'settings' }).then(result => this.toast(result?.status === 'opened' ? 'Opened Android Settings. This phone has no separate page for that switch.' : 'Android settings is unavailable.'), () => this.toast('Android settings is unavailable.')); }
   };
   /** Brightness is a Display settings handoff: one per gesture, never a value Alpha claims to set. */
   p.displayHandoff = async function () {
