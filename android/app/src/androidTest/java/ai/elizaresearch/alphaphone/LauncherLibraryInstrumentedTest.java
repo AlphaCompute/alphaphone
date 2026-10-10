@@ -113,4 +113,19 @@ public class LauncherLibraryInstrumentedTest {
   assertTrue(LauncherLibrary.lockedMessage("private").startsWith("Private space is locked"));
   assertTrue(LauncherLibrary.lockedMessage("other").startsWith("This profile is paused or locked"));
  }
+
+ @Test public void aComponentOrProfileThatIsNotTextIsMalformedNotAbsent() throws Exception {
+  com.getcapacitor.JSObject request = new com.getcapacitor.JSObject();
+  request.put("packageName", "org.example.one"); request.put("activityName", "org.example.one.Main"); request.put("user", 10);
+  assertTrue("A numeric profile must not be read as the current user", DeviceAppsPlugin.malformed(request, "user"));
+  assertFalse(DeviceAppsPlugin.malformed(request, "activityName"));
+  request.put("user", "10"); request.put("activityName", true);
+  assertFalse(DeviceAppsPlugin.malformed(request, "user"));
+  assertTrue("A non-text activity must not fall back to the package default", DeviceAppsPlugin.malformed(request, "activityName"));
+  com.getcapacitor.JSObject legacy = new com.getcapacitor.JSObject();
+  legacy.put("packageName", "org.example.one"); legacy.put("user", org.json.JSONObject.NULL);
+  assertFalse("A package-only request stays valid", DeviceAppsPlugin.malformed(legacy, "activityName"));
+  assertFalse(DeviceAppsPlugin.malformed(legacy, "user"));
+  assertFalse(DeviceAppsPlugin.malformed(null, "user"));
+ }
 }

@@ -330,3 +330,52 @@ test('same-label entries stay distinguishable when packages, activities and prof
   ]);
   assert.equal(new Set(mixed.map(app => `${app.label}|${details.get(appKey(app)).join('|')}`)).size, mixed.length, 'no two rows read the same');
 });
+test('rows that would still read the same get their full identity as a last resort', () => {
+  // A profile entry without an activity, and an activity whose short name reads like a profile.
+  const odd = [
+    {packageName: 'com.vendor.chat', label: 'Chat', user: '10', profile: 'work', locked: false},
+    {packageName: 'com.vendor.chat', label: 'Chat', user: '11', profile: 'work', locked: false},
+    {packageName: 'org.example.notes', activityName: 'org.example.notes.Work', label: 'Notes'},
+    {packageName: 'org.example.notes', activityName: 'org.example.notes.Home', label: 'Notes'},
+    {packageName: 'com.vendor.notes', activityName: 'com.vendor.notes.Main', label: 'Notes', user: '10', profile: 'work', locked: false},
+  ];
+  const details = describeLauncherApps(odd);
+  assert.deepEqual(odd.map(app => details.get(appKey(app))), [
+    ['Work', 'com.vendor.chat', 'profile 10'], ['Work', 'com.vendor.chat', 'profile 11'],
+    ['Work', 'org.example.notes', 'org.example.notes.Work'], ['Home'],
+    ['Work', 'com.vendor.notes', 'com.vendor.notes.Main', 'profile 10'],
+  ]);
+  // Every mix of packages, activities, labels and profiles: no two different entries read alike.
+  let seed = 42;
+  const next = n => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return Math.floor(((t ^ t >>> 14) >>> 0) / 4294967296 * n); };
+  const packages = ['a.one', 'a.two', 'b.one'], activities = ['Main', 'x.Main', 'Other', 'Work', ''], labels = ['Notes', 'notes', 'Nótes', 'Mail'], users = ['', '10', '11', '12'], kinds = {10: 'work', 11: 'work', 12: 'clone'};
+  for (let round = 0; round < 3000; round++) {
+    const byKey = new Map();
+    for (let i = 0, count = 2 + next(7); i < count; i++) {
+      const packageName = packages[next(3)], activity = activities[next(5)], user = users[next(4)], app = {packageName, label: labels[next(4)]};
+      if (activity) app.activityName = `${packageName}.${activity}`;
+      if (user) Object.assign(app, {user, profile: kinds[user], locked: !!next(2)});
+      byKey.set(appKey(app), app);
+    }
+    const list = [...byKey.values()], described = describeLauncherApps(list);
+    const shown = list.map(app => `${app.label.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()}|${described.get(appKey(app)).join('|')}`);
+    assert.equal(new Set(shown).size, list.length, JSON.stringify(list.map(app => [appKey(app), app.label, described.get(appKey(app))])));
+  }
+});
+test('a Phone shortcut whose handler is gone reports why and leaves after the device is read again', async () => {
+  let handler = true;
+  const {launcher, calls} = stub({
+    resolveDefault: async () => handler ? {role: 'dial', available: true, packageName: 'com.android.dialer', label: 'Phone'} : {role: 'dial', available: false},
+    openDefault: async () => { handler = false; throw Error('No app on this phone handles this'); },
+  });
+  await launcher.load();
+  assert.equal(launcher.snapshot().dial.packageName, 'com.android.dialer');
+  await launcher.openDial();
+  assert.equal(launcher.snapshot().dial, null, 'the stale shortcut is not offered again');
+  assert.equal(launcher.snapshot().launching, null);
+  assert.equal(launcher.snapshot().status, 'ready');
+  assert.equal(launcher.snapshot().launchError, 'Phone could not be opened. No app on this phone handles this');
+  assert.equal(calls.filter(call => call[0] === 'list').length, 2, 'one read on open, one after the refusal');
+  await launcher.openDial();
+  assert.equal(launcher.snapshot().launchError, 'Phone could not be opened. No app on this phone handles this', 'nothing further is attempted without a handler');
+});

@@ -49,7 +49,7 @@ export function filterLauncherApps(apps: InstalledApp[], query: string): Install
 
 /** Secondary text per entry key. Entries that share a label in the same profile are told apart by
  * package, by activity inside one package, and by profile number when two profiles of one kind hold
- * the same component; another profile's entries always name the profile. */
+ * the same component; another profile's entries always name the profile. No two entries read alike. */
 export function describeLauncherApps(apps: InstalledApp[]): Map<string, string[]> {
   const groups = new Map<string, InstalledApp[]>();
   for (const app of apps) { const id = `${fold(app.label)}\n${app.profile || ''}`; groups.set(id, [...(groups.get(id) || []), app]); }
@@ -70,6 +70,18 @@ export function describeLauncherApps(apps: InstalledApp[]): Map<string, string[]
         if (parts.length === before) parts.push(app.packageName);
       }
       details.set(appKey(app), parts);
+    }
+  }
+  // Last resort for shapes the rules above do not separate (a profile entry without an activity,
+  // an activity whose short name reads like a profile): rows that still read the same get their
+  // full identity, so two different entries are never presented as one.
+  const shown = new Map<string, InstalledApp[]>();
+  for (const app of apps) { const id = `${fold(app.label)}\n${(details.get(appKey(app)) || []).join('\n')}`; shown.set(id, [...(shown.get(id) || []), app]); }
+  for (const same of shown.values()) {
+    if (new Set(same.map(appKey)).size < 2) continue;
+    for (const app of same) {
+      const parts = details.get(appKey(app)) || [];
+      for (const part of [app.packageName, app.activityName, app.user ? `profile ${app.user}` : '']) if (part && !parts.includes(part)) parts.push(part);
     }
   }
   return details;
@@ -155,7 +167,11 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
       const label = state.dial.label || 'Phone';
       update({launching: 'dial', launchError: null});
       try { await bridge.openDefault({role: 'dial'}); update({launching: null}); }
-      catch (error) { update({launching: null, launchError: `${label} could not be opened. ${message(error)}`}); }
+      catch (error) {
+        update({launching: null, launchError: `${label} could not be opened. ${message(error)}`});
+        // The handler may have been removed or disabled: re-resolve it so a dead shortcut does not stay.
+        await load({quiet: true});
+      }
     },
     isFavorite: (app: InstalledApp) => state.favorites.includes(appKey(app)),
     /** Installed favorites in the saved order. A saved favorite that is not installed is not shown. */

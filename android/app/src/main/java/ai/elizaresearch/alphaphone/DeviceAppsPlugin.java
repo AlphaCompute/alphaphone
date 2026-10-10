@@ -63,7 +63,13 @@ public class DeviceAppsPlugin extends Plugin {
   }
   JSObject result = new JSObject(); result.put("apps", apps); call.resolve(result);
  }
+ /** A component or profile given as anything but text is refused: read as absent it would open the
+  * package's default activity, or the personal copy of a work app, instead of the entry asked for. */
+ static boolean malformed(JSObject data, String key) {
+  return data != null && data.has(key) && !data.isNull(key) && !(data.opt(key) instanceof String);
+ }
  @PluginMethod public void launch(PluginCall call) {
+  if (malformed(call.getData(), "activityName") || malformed(call.getData(), "user")) { call.reject("Choose an installed app"); return; }
   String name = call.getString("packageName"), activityName = call.getString("activityName"), user = call.getString("user");
   if (activityName != null || user != null) { launchComponent(call, name, activityName, user); return; }
   Intent intent;
