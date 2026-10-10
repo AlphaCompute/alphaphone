@@ -131,7 +131,7 @@ Evidence/source: [scripts/ci/upstream-reachability.json](../scripts/ci/upstream-
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: The last applied password-manager patch is replaced by the pinned upstream module from PR #34835. Twenty-eight earlier patch files and their manifests were retired after upstream merges. No applied patch remains. Password transfer remains an unshipped reference candidate with unresolved lifecycle and grant-ticket findings.
+Current: The last applied password-manager patch is replaced by the pinned upstream module from PR #34835. Twenty-eight earlier patch files and their manifests were retired after upstream merges. No applied patch remains. Password transfer remains an unshipped reference candidate under upstream native validation.
 
 Remaining: Finish the remaining upstream reviews and remove each patch only when its reviewed replacement is consumed.
 
@@ -139,7 +139,7 @@ Done when: Patch-to-upstream-PR ledger with exact output hashes, external-consum
 
 Depends on: MVP-08.
 
-Evidence/source: [patches/eliza/README.md](../patches/eliza/README.md), [scripts/prepare-eliza-patches.mjs](../scripts/prepare-eliza-patches.mjs).
+Evidence/source: [patches/eliza/README.md](../patches/eliza/README.md).
 
 ### MVP-10 Consume shared media implementation
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import {sourceDirectory} from './local-agent-source.mjs';
 import {prepareClientFeatures} from './prepare-client-features.mjs';
-import {prepareElizaPatches} from './prepare-eliza-patches.mjs';
 import {developmentSpeechEnvironment} from './dev-speech-settings.mjs';
 // Owns only the two processes it starts. Credentials stay in the host profile.
 import {spawn,execFileSync} from 'node:child_process';
@@ -11,7 +10,6 @@ import {readFileSync,existsSync} from 'node:fs';
 import {createServer} from 'node:net';
 // This launcher invokes Vite directly, so npm's predev hook does not run.
 prepareClientFeatures();
-prepareElizaPatches();
 const profile=resolve(process.env.ALPHA_REMOTE_PROFILE||join(homedir(),'.local/share/alphaphone/browser-agent'));
 const configuredEnvironment=developmentSpeechEnvironment(profile);
 const port=Number(process.env.ALPHA_REMOTE_PORT||47849);

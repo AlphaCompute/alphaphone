@@ -27,8 +27,6 @@ roots.push('android/app/src/main/assets/agent','android/app/src/main/jniLibs',
  'android/app/build/generated/local-agent/java',
  'android/app/build/generated/local-agent/source-manifest.json',
  'upstream.lock.json',
- // Reviewed upstream patches materialized into .eliza/patched and compiled by Gradle.
- 'patches/eliza','scripts/prepare-eliza-patches.mjs',
  'scripts/prepare-local-agent.mjs','scripts/local-agent-source.mjs','scripts/copy-file-clone.mjs',
  'scripts/stage-local-agent-runtime.mjs','scripts/stage-local-agent-sources.mjs',
  'scripts/build-workflow-worker.ts','scripts/prepared-workflow-worker.mjs',

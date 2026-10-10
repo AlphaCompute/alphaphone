@@ -19,6 +19,14 @@ test('worker staging rejects drift, traversal, missing files and symlinks before
   const expected={sourceStampSha256:manifest.sourceStampSha256,lockSha256:manifest.lockSha256};
   const first=stageWorkerArtifact(source,target,expected);assert.equal(first.files,7);
   const original=fs.readFileSync(path.join(target,'files.sha256'),'utf8');
+  const overlay=`${source}.patch-overlay.json`;
+  fs.writeFileSync(overlay,JSON.stringify({overlay:{baseCommit:'c'.repeat(40),patches:[{patch:'retired.patch'}]}}));
+  assert.throws(()=>stageWorkerArtifact(source,target,expected),/Patched worker artifact/);
+  assert.equal(fs.readFileSync(path.join(target,'files.sha256'),'utf8'),original);
+  fs.writeFileSync(overlay,JSON.stringify({overlay:null}));
+  assert.equal(stageWorkerArtifact(source,target,expected).indexSha256,first.indexSha256);
+  fs.unlinkSync(overlay);
+
   assert.throws(()=>stageWorkerArtifact(source,target,{sourceStampSha256:'c'.repeat(64)}),/mismatch/);
   assert.throws(()=>stageWorkerArtifact(source,target,{lockSha256:'c'.repeat(64)}),/mismatch/);
   fs.appendFileSync(path.join(source,'lib/worker.js'),'changed');assert.throws(()=>stageWorkerArtifact(source,target,expected),/hash mismatch/);
