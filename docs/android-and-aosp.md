@@ -98,6 +98,11 @@ signed build ([runbook](pilot-acceptance-runbook.md#external-integration-runbook
 
 ## Full AOSP product integration
 
+The selected validation target is Cuttlefish; the hardware build target is Pixel 10.
+Keep their source locks and evidence separate. A Cuttlefish pass does not establish
+Pixel radio/hardware or verified-boot/rollback behavior. Do not substitute a Pixel 11
+product or publish a Pixel 10 installer before its device inputs are admitted.
+
 1. Allocate a Linux x86_64 AOSP builder with the storage/RAM required by the selected
    pinned source tree. macOS SDK builds are sufficient for APKs, not this image lane.
 2. Select exact hardware/SKU, Android branch, kernel/vendor inputs and compatible
@@ -123,6 +128,34 @@ signed build ([runbook](pilot-acceptance-runbook.md#external-integration-runbook
 
 An SDK emulator with an installed launcher is useful HOME/app evidence, but is not
 proof that this product makefile built or booted in a custom AOSP image.
+
+## Cuttlefish and Pixel 10 handoff
+
+Track image work in [Alpha #377](https://github.com/AlphaCompute/alphaphone/issues/377)
+and app acceptance in [Alpha #378](https://github.com/AlphaCompute/alphaphone/issues/378).
+The image build and Cuttlefish run will be completed on the separate Linux builder.
+
+On that builder, check out the reviewed Alpha commit and its exact `vendor/eliza`
+pin, install the pinned Node/JDK/Android toolchain, then run the speech preparation
+and `npm run android:build:local` commands above. Preserve the four APKs, instrumentation
+APKs, lint results, runtime provenance and `artifacts/apk-manifest.json`. Current speech
+functional acceptance is a separate gate; do not bypass APK admission to stage a release.
+
+Use `npm run aosp:stage` with the admitted launcher and reviewed signer descriptor.
+Inherit the generated Alpha product fragment in the pinned Cuttlefish product, build
+the image and use its matching Cuttlefish host package. Verify boot, `/product` package
+placement, signer, HOME routing, resident startup, authenticated inference, native
+approvals, saved history and lifecycle recovery. Preserve build IDs, hashes and logs.
+The [Cuttlefish host instructions](https://source.android.com/docs/devices/cuttlefish/get-started)
+require KVM and a host package matching the image build.
+
+Pixel 10 needs its own verified device/kernel/vendor lock and product configuration.
+The currently inspected OS catalog has no Pixel 10 product; its tegu and grizzly
+products must not be relabeled. Acquire and validate the exact inputs before exposing
+a Pixel 10 lunch target. Keep licensed inputs outside Git. A successful Cuttlefish
+image is the agreed virtual-device validation, not evidence that Pixel 10 images
+build or boot. Physical flashing, hardware checks and signed recovery remain later
+acceptance steps.
 
 ## Distribution boundaries
 

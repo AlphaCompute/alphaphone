@@ -342,3 +342,15 @@ for(const change of ['room','account','hidden','replacement','retire'])test(`hel
 test('legacy validated Notes metadata drains media before any journal/claim/approval, without completion authority',async()=>{const f=fixture();await f.api.controller.initialize();const held=Promise.withResolvers(),entered=Promise.withResolvers();f.api.controller.setDeviceReadReview(async(proposal)=>{assert.equal(proposal.privateNotesRead,true);assert.equal(proposal.readReply,undefined);entered.resolve();await held.promise;});const pending=f.api.controller.execute({...pendingReview,privateNotesRead:true},reviewContext,new AbortController().signal);await entered.promise;assert.equal(f.approved(),0);held.resolve();const receipt=await pending;assert.equal(f.approved(),1);assert.equal(receipt.readReply,undefined);assert.equal(f.calls.filter(c=>c.path==='/read-completion').length,0);});
 for(const change of ['account','room','session','replacement','hidden','abort'])test(`legacy Notes review drain cannot admit a changed ${change}`,async()=>{const f=fixture();await f.api.controller.initialize();const held=Promise.withResolvers(),entered=Promise.withResolvers(),signal=new AbortController();f.api.controller.setDeviceReadReview(async()=>{entered.resolve();await held.promise;});const pending=f.api.controller.execute({...pendingReview,privateNotesRead:true},reviewContext,signal.signal),rejected=assert.rejects(pending);await entered.promise;assert.equal(f.approved(),0);if(change==='account')f.api.replaceService();if(change==='room')f.api.replaceRoom();if(change==='session')f.api.newSession();if(change==='replacement')f.api.replaceActive();if(change==='hidden')f.document.hidden=true;if(change==='abort')signal.abort();held.resolve();await rejected;assert.equal(f.approved(),0);});
 test('missing private Notes review gate fails before journal or claim',async()=>{const f=fixture();await f.api.controller.initialize();await assert.rejects(f.api.controller.execute({...pendingReview,privateNotesRead:true},reviewContext,new AbortController().signal),/review is unavailable/);assert.equal(f.approved(),0);});
+
+for(const kind of ['remote','local'])test(`production Android refuses ${kind} pairing without retiring its resident session`,async()=>{
+  const f=fixture();await f.api.controller.initialize();
+  const before=f.api.controller.getSnapshot(),stored=[...f.memory],calls=f.calls.length;
+  await f.api.controller.pair(kind,'https://retired-agent.example','AAAA-BBBB-CCCC');
+  const after=f.api.controller.getSnapshot();
+  assert.match(after.error,/Pairing is unavailable/);
+  assert.equal(after.session,before.session);
+  assert.equal(after.history,before.history);
+  assert.deepEqual([...f.memory],stored);
+  assert.equal(f.calls.length,calls);
+});
