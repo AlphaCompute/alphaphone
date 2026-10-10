@@ -637,9 +637,15 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     closeQuestion=reviewContentQuestion({name:'Camera frame',text:'',current:()=>token===epoch&&active(),compose:draft=>owner.composeContentQuestion(draft),image:async signal=>{const photo=await camera.capturePhoto({format:'jpeg',quality:85,saveToGallery:false});signal.throwIfAborted();if(!photo.base64)throw Error('Camera frame unavailable.');return new Blob([Uint8Array.from(atob(photo.base64),char=>char.charCodeAt(0))],{type:'image/jpeg'});}});
     return true;
   }
+  /** The reviewed item is still the listed one at the revision the review started with:
+   * an edited, replaced or removed capture ends its review instead of continuing under the same id. */
+  function sameCapture(selected:SavedPhoto):boolean{
+    const live=[preview,...captures,...albumRows].find(row=>row?.id===selected.id);
+    return !!live&&!live.trashed===!selected.trashed&&(selected.mutationRevision&&live.mutationRevision?live.mutationRevision===selected.mutationRevision:live.revision===selected.revision);
+  }
   function askCapture(selected:SavedPhoto,owner:Bag):boolean{
     closeQuestion?.();
-    closeQuestion=reviewContentQuestion({name:selected.kind==='video'?'Video preview frame':'Selected photo',text:'',current:()=>!disposed&&!document.hidden&&owner.isActive()&&owner.get('photos').open===selected.id,compose:draft=>owner.composeContentQuestion(draft),image:async signal=>{const row=await library.read({id:nativeId(selected.id)});signal.throwIfAborted();if(selected.mutationRevision?row.mutationRevision!==selected.mutationRevision:row.revision!==selected.revision)throw Error('Photo changed.');if(!/^(blob:|data:image\/)/.test(row.image))throw Error('Choose a local image.');return (await fetch(row.image,{signal})).blob();}});
+    closeQuestion=reviewContentQuestion({name:selected.kind==='video'?'Video preview frame':'Selected photo',text:'',current:()=>!disposed&&!document.hidden&&owner.isActive()&&owner.get('photos').open===selected.id&&sameCapture(selected),compose:draft=>owner.composeContentQuestion(draft),image:async signal=>{const row=await library.read({id:nativeId(selected.id)});signal.throwIfAborted();if(selected.mutationRevision?row.mutationRevision!==selected.mutationRevision:row.revision!==selected.revision)throw Error('Photo changed.');if(!/^(blob:|data:image\/)/.test(row.image))throw Error('Choose a local image.');return (await fetch(row.image,{signal})).blob();}});
     return true;
   }
   captureQuestion=item=>{
