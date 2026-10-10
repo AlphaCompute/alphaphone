@@ -50,6 +50,12 @@ const supported = [
   'Email me the summary',
   'Email the summary to maya@example.com',
   'Read my calendar and text',
+  // Phrasal verbs and namings that share a word with a refused action.
+  'Read my calendar and call out conflicts',
+  'Summarize supplied text; call out the key deadlines',
+  'Read the calendar range and dial down the detail in the summary',
+  'Call the workflow Morning brief and read my calendar',
+  'Summarize the context of my selected notes and recall the dentist appointment from my calendar',
 ];
 
 for (const [category, prompts] of Object.entries(refused)) {

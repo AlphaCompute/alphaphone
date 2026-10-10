@@ -40,9 +40,11 @@ const verb=(words:string)=>new RegExp(clause+'(?:'+words+')\\s+'+target);
 // An imperative at the start of a clause in any letter case ("call maya", "CALL MAYA", "text the group"),
 // unless the next word makes it a noun phrase ("call notes", "text from the note") or a naming ("call it Morning").
 const anyClause=String.raw`(?:^|[.,;:!?]\s*|\b(?:to|and|then|please|also|or)\s+)`;
-const nounTail=String.raw`(?:notes?|logs?|sheets?|summar(?:y|ies)|histor(?:y|ies)|transcripts?|lists?|recordings?|agendas?|digests?|prep|it|this|that|these|those|from|in|on|of|for|is|was|are|were|should|must|will|can|and|or|to|with|about|files?|messages?|texts?|contents?|body|fields?|titles?|sizes?|only|if|when|then|notifications?|steps?)\b`;
+const nounTail=String.raw`(?:notes?|logs?|sheets?|summar(?:y|ies)|histor(?:y|ies)|transcripts?|lists?|recordings?|agendas?|digests?|prep|it|this|that|these|those|from|in|on|of|for|is|was|are|were|should|must|will|can|and|or|to|with|about|files?|messages?|texts?|contents?|body|fields?|titles?|sizes?|only|if|when|then|notifications?|steps?|out|off|down|attention)\b`;
+// A naming of the workflow or its output ("call the workflow Morning brief"), not a phone call.
+const naming=String.raw`the\s+(?:workflow|note|draft|digest|summary|notification|result|output)\b`;
 const interface_=String.raw`(?:an?|the|my|this|that)\s+(?:\w+\s+)?(?:api|endpoint|webhook|function|script|url|command|program)\b`;
-const imperative=(words:string)=>new RegExp(anyClause+'(?:'+words+')\\s+(?!'+nounTail+')(?!'+interface_+')[\\p{L}\\d+]','iu');
+const imperative=(words:string)=>new RegExp(anyClause+'(?:'+words+')\\s+(?!'+nounTail+')(?!'+interface_+')(?!'+naming+')[\\p{L}\\d+]','iu');
 // A determiner target ("the dentist", "a taxi") for verbs that are too often nouns to match broadly.
 const determined=(words:string)=>new RegExp(anyClause+'(?:'+words+')\\s+(?:the|an?|our|his|her|their|your|every(?:one|body)|some(?:one|body))\\s+\\p{L}','iu');
 const callPatterns=[
