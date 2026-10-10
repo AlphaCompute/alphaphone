@@ -5,6 +5,13 @@ export const workerHash=bytes=>createHash('sha256').update(bytes).digest('hex');
 export function verifyWorkerArtifact(directory,expected={}) {
  const root=resolve(directory);
  for(let path=root;;path=dirname(path)){if(lstatSync(path).isSymbolicLink())throw Error('Worker artifact path contains a symlink');if(dirname(path)===path)break;}
+ // An artifact from the retired patch builder must not be reused as upstream source.
+ const overlayRecord=`${root}.patch-overlay.json`;
+ if(existsSync(overlayRecord)){
+  const stat=lstatSync(overlayRecord);
+  if(!stat.isFile()||stat.isSymbolicLink()||stat.size>1024*1024)throw Error('Invalid worker source record');
+  if(JSON.parse(readFileSync(overlayRecord,'utf8')).overlay!==null)throw Error('Patched worker artifact is not upstream source; rebuild into a fresh directory');
+ }
  const manifestStat=lstatSync(join(root,'manifest.json'));
  if(!manifestStat.isFile()||manifestStat.isSymbolicLink()||manifestStat.size>1024*1024)throw Error('Invalid worker manifest file');
  const manifestBytes=readFileSync(join(root,'manifest.json'));

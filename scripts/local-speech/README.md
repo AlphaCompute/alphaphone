@@ -163,16 +163,16 @@ lexicon framing). Recorded on macOS arm64, 2026-10-08:
 | 0.667, 0.8 (pinned engine) | 120 | 94 (16 heard `lady`) | no |
 | 0.333, 0.333 | 60 | 57 | no |
 | 0.2, 0.2 | 60 | 60 | no |
-| 0, 0 (patch 0066) | 60 | 60 | yes |
+| 0, 0 (deterministic synthesis) | 60 | 60 | yes |
 
-Patch `0066-local-speech-deterministic-synthesis` sets noise and noise_w to 0 and length to 1,
-so each text has one repeatable rendering; `android/local-speech/build.gradle` compiles the
-patched engine from `.eliza/patched` over the pinned module. Host results are evidence for the
+The pinned upstream engine sets noise and noise_w to 0 and length to 1,
+so each text has one repeatable rendering. `android/local-speech/build.gradle` compiles
+that upstream module directly. Host results are evidence for the
 cause only. They are not Android execution: the unchanged `LocalSpeechInstrumentedTest` must
 still pass per ABI on a device or emulator of that ABI before `functionalAcceptance` records a
 pass, and a model, runtime or engine change re-runs it.
 
-**Android result (2026-10-09).** With patch 0066 compiled in, the unchanged canonical test
+**Android result (2026-10-09).** With deterministic synthesis compiled in, the unchanged canonical test
 (SHA-256 `fc05574d…`) passed both tests on an arm64-v8a Android 16 emulator with networking
 off (`OK (2 tests)`; synthesis transcript `The quick brown fox jumps over the lazy dog.`). It ran
 through `requalify-runtime.py run` against an independent rebuild of the runtime (AAR

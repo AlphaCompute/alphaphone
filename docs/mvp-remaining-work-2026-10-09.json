@@ -193,15 +193,14 @@
         "AP-11"
       ],
       "title": "Submit and retire explicit shared patches",
-      "current": "The last applied password-manager patch is replaced by the pinned upstream module from PR #34835. Twenty-eight earlier patch files and their manifests were retired after upstream merges. No applied patch remains. Password transfer remains an unshipped reference candidate with unresolved lifecycle and grant-ticket findings.",
+      "current": "The last applied password-manager patch is replaced by the pinned upstream module from PR #34835. Twenty-eight earlier patch files and their manifests were retired after upstream merges. No applied patch remains. Password transfer remains an unshipped reference candidate under upstream native validation.",
       "remaining": "Finish the remaining upstream reviews and remove each patch only when its reviewed replacement is consumed.",
       "acceptance": "Patch-to-upstream-PR ledger with exact output hashes, external-consumer tests and no duplicate or silently unapplied implementation.",
       "depends_on": [
         "MVP-08"
       ],
       "sources": [
-        "patches/eliza/README.md",
-        "scripts/prepare-eliza-patches.mjs"
+        "patches/eliza/README.md"
       ]
     },
     {
