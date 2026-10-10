@@ -3,7 +3,7 @@ import {BrowserCloudConnection} from '../browser/cloud-connection';
 import {Capacitor} from '@capacitor/core';
 import {devSurfacesEnabled} from '../build-flags';
 import { registerPlugin } from '../platform-plugins';
-import type { CloudNativeRequest, CloudCredentialStore, CloudCredential } from './cloud-protocol';
+import type { CloudNativeRequest, CloudCredentialStore, CloudCredential, CloudEnvironment } from './cloud-protocol';
 import type { RemoteRequester, RemoteCredentialStore } from './remote-protocol';
 
 const nativeConnectionHeader=(Capacitor as typeof Capacitor&{PluginHeaders?:{name:string}[]}).PluginHeaders?.some(header=>header.name==='AlphaConnection')??false;
@@ -188,6 +188,17 @@ export const cloudCredentialStore:CloudCredentialStore={
   }),
   clear:environment=>serial(()=>secureConnectionStore.remove(`cloud:${environment}`)),
 };
+/**
+ * Forced sign-out of a build that cannot use Eliza Cloud: removes the Cloud key an earlier build
+ * stored for this environment. Only the `cloud:<environment>` slot is deleted, without reading or
+ * decrypting it; remote-agent, device and every other slot is left alone. Where the browser can list
+ * its databases, a browser that never stored a secret is not given a secret store by this.
+ */
+export async function removeStoredCloudCredential(environment:CloudEnvironment):Promise<void>{
+  if(!Capacitor.isNativePlatform()&&typeof indexedDB!=='undefined'&&typeof indexedDB.databases==='function'
+    &&!(await indexedDB.databases()).some(database=>database.name===SECRET_DATABASE))return;
+  await cloudCredentialStore.clear(environment);
+}
 export const remoteCredentialStore:RemoteCredentialStore={
   read:origin=>serial(()=>secureConnectionStore.read(`remote:${origin}`)),
   write:record=>serial(()=>secureConnectionStore.write(`remote:${record.origin}`,record)),

@@ -40,7 +40,7 @@ import type { ActionProposal, OperationReceipt, ContextEnvelope, VerifiedSession
 import { CloudProtocol, CloudProtocolError, type CloudAgent, type CloudEnvironment, type CloudPhoneTarget } from './cloud-protocol';
 import { RemoteProtocol, RemoteProtocolError } from './remote-protocol';
 import { phoneContextMessage } from './phone-context';
-import { cloudCredentialStore, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, secureConnectionStore } from './native-connection';
+import { cloudCredentialStore, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, removeStoredCloudCredential, secureConnectionStore } from './native-connection';
 import './connection-ui.css';
 
 type Selection = {kind:'development';profile:DevelopmentProfile;account?:string} | { kind: 'resident' } | { kind: 'offline'; localApps?: true } | { kind: 'none' } | { kind: 'mock' } | { kind: 'remote' | 'local'; origin: string } | { kind: 'cloud'; environment: CloudEnvironment; agentId: string; ownerId?: string };
@@ -962,6 +962,8 @@ export const connectionController = {
         if (webCloudUnavailable()) {
           // A saved Cloud service or Cloud agent is signed out here without a request or a stored-token read.
           try { localStorage.removeItem(CLOUD_SERVICE); } catch { /* Nothing is restored either way. */ }
+          // Best effort, not awaited: the stored Cloud key goes too. Only that slot; it is not read.
+          void removeStoredCloudCredential('production').catch(() => {});
           if (saved?.kind === 'cloud') { try { save({ kind: 'none' }); } catch { /* The chooser still requires a choice. */ } update({ open: true, message: '', error: WEB_CLOUD_UNAVAILABLE }); return; }
         }
         const environment = localStorage.getItem(CLOUD_SERVICE);

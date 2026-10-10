@@ -245,6 +245,84 @@ for (const legacy of legacyWeb) {
   });
 }
 
+// Browser secret store as the web build writes it: database alpha-connection-secrets.v1, object stores
+// "keys" and "slots", one {iv,data} record per slot. Records here are synthetic bytes, never a real key.
+const SECRETS = 'alpha-connection-secrets.v1';
+const slotRecords = (page: Page) => page.evaluate(async name => {
+  if (!(await indexedDB.databases()).some(database => database.name === name)) return null;
+  const db = await new Promise<IDBDatabase>((resolve, reject) => { const open = indexedDB.open(name); open.onsuccess = () => resolve(open.result); open.onerror = () => reject(open.error); });
+  try {
+    if (!db.objectStoreNames.contains('slots')) return {};
+    const store = db.transaction('slots', 'readonly').objectStore('slots');
+    const all = <T,>(request: IDBRequest<T>) => new Promise<T>((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+    const [keys, values] = await Promise.all([all(store.getAllKeys()), all(store.getAll())]);
+    return Object.fromEntries(keys.map((key, index) => [String(key), [...new Uint8Array(values[index].iv), ...new Uint8Array(values[index].data)].join(',')]));
+  } finally { db.close(); }
+}, SECRETS);
+const KEPT_SLOTS = [`remote:${origin}`, 'remote:https://second-agent.example.test', 'device:installation', 'cloud-runtime:synthetic', 'cloud:staging'];
+// Stand-ins for other data this origin holds (notes, unsent drafts); the keys are synthetic so the app does not interpret them.
+const LOCAL_DATA = { 'synthetic.notes': '{"notes":[{"id":"n1","text":"Synthetic note"}]}', 'synthetic.assistant-draft': 'Synthetic unsent draft', 'synthetic.workflow-draft': '{"prompt":"Synthetic workflow draft"}' };
+for (const saved of [
+  { name: 'a saved Cloud agent', selection: { kind: 'cloud', environment: 'production', agentId: agent, ownerId: owner }, service: 'production' as string | null },
+  { name: 'a saved Cloud service', selection: { kind: 'none' }, service: 'production' as string | null },
+  // Round 3 already removed the marker and selection here; the key it left behind is removed on the next start.
+  { name: 'a Cloud key left by an earlier sign-out', selection: { kind: 'none' }, service: null as string | null },
+]) {
+  test(`the web build's forced sign-out removes the stored Cloud key and nothing else: ${saved.name}`, async ({ page }) => {
+    const foreign = await fenceNetwork(page);
+    // Seed from a static file of the same origin, before the app has run.
+    await page.goto('/build-flags.json');
+    await page.evaluate(async ({ saved, SELECTION, CLOUD_SERVICE, SECRETS, KEPT_SLOTS, LOCAL_DATA }) => {
+      localStorage.setItem(SELECTION, JSON.stringify(saved.selection));
+      if (saved.service) localStorage.setItem(CLOUD_SERVICE, saved.service);
+      for (const [key, value] of Object.entries(LOCAL_DATA)) localStorage.setItem(key, value);
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const open = indexedDB.open(SECRETS, 1);
+        open.onupgradeneeded = () => { open.result.createObjectStore('keys'); open.result.createObjectStore('slots'); };
+        open.onsuccess = () => resolve(open.result); open.onerror = () => reject(open.error);
+      });
+      const tx = db.transaction('slots', 'readwrite');
+      ['cloud:production', ...KEPT_SLOTS].forEach((slot, index) => tx.objectStore('slots').put({ iv: new Uint8Array(12).fill(index + 1), data: new Uint8Array(24).fill(index + 101).buffer }, slot));
+      await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
+      db.close();
+    }, { saved, SELECTION, CLOUD_SERVICE, SECRETS, KEPT_SLOTS, LOCAL_DATA });
+    const before = (await slotRecords(page))!;
+    expect(Object.keys(before).sort()).toEqual(['cloud:production', ...KEPT_SLOTS].sort());
+    await page.goto('/');
+    const chooser = page.locator('.alpha-connection');
+    await expect(chooser.getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
+    await expect.poll(async () => Object.keys((await slotRecords(page))!).sort()).toEqual([...KEPT_SLOTS].sort());
+    // Remote-agent, device and other slots keep their exact bytes; notes and drafts are untouched.
+    const { 'cloud:production': removed, ...kept } = before;
+    expect(removed).toBeTruthy();
+    expect(await slotRecords(page)).toEqual(kept);
+    expect(await page.evaluate(keys => Object.fromEntries(keys.map(key => [key, localStorage.getItem(key)])), Object.keys(LOCAL_DATA))).toEqual(LOCAL_DATA);
+    expect(await page.evaluate(key => localStorage.getItem(key), CLOUD_SERVICE)).toBeNull();
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual({ kind: 'none' });
+    await expect(chooser.getByText(/Connected ·/)).toHaveCount(0);
+    // A later start changes nothing further, and no request left the page at any point.
+    await page.reload();
+    await expect(chooser.getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
+    expect(await slotRecords(page)).toEqual(kept);
+    expect(foreign).toEqual([]);
+  });
+}
+
+test('the web build\'s forced sign-out does not create a secret store in a browser that never had one', async ({ page }) => {
+  const foreign = await fenceNetwork(page);
+  await page.addInitScript(({ SELECTION, CLOUD_SERVICE }) => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    localStorage.setItem(SELECTION, JSON.stringify({ kind: 'none' })); localStorage.setItem(CLOUD_SERVICE, 'production');
+  }, { SELECTION, CLOUD_SERVICE });
+  await page.goto('/');
+  await expect(page.locator('.alpha-connection').getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(key => localStorage.getItem(key), CLOUD_SERVICE)).toBeNull();
+  await page.waitForTimeout(500);
+  expect(await slotRecords(page)).toBeNull();
+  expect(foreign).toEqual([]);
+});
+
 type RemoteMode = 'ok' | 'wrong-role' | 'identity-mismatch' | 'expired-session' | 'used-code' | 'pairing-disabled' | 'instance-mismatch' | 'enrollment-refused' | 'revoke-refused';
 interface RemoteFixture { mode: RemoteMode; requests: Array<{ method: string; path: string; authorization?: string }>; loggedOut: boolean }
 function serveRemote(page: Page, fixture: RemoteFixture) {
