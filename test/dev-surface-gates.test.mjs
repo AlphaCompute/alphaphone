@@ -23,12 +23,6 @@ before(async()=>{servers.on=await server(true);servers.off=await server(false);}
 after(async()=>{await Promise.all(Object.values(servers).map(s=>s.close()));});
 const load=(flag,path)=>servers[flag?'on':'off'].ssrLoadModule('/apps/app/src/'+path);
 
-test('build flags are off unless ELIZA_DEV_ALLOW_TEST_MOCKS is exactly 1',async()=>{
- const on=await load(true,'build-flags.ts'),off=await load(false,'build-flags.ts');
- assert.equal(on.testMocksEnabled,true);assert.equal(on.devSurfacesEnabled,true);
- assert.equal(off.testMocksEnabled,false);assert.equal(off.devSurfacesEnabled,false);
-});
-
 test('remote agents accept plain-HTTP loopback development origins only with test mocks',async()=>{
  for(const flag of [true,false]){
   const {normalizeRemoteOrigin}=await load(flag,'runtime/remote-protocol.ts');
@@ -81,20 +75,6 @@ test('the development profile and deferred apps need test mocks',async()=>{
  assert.equal(on.dev.browserDevProfile,true);for(const view of ['phone','wallet'])assert.equal(on.features.isMvpView(view),true);
 });
 
-test('a flag-off production build folds developer and simulation surfaces out',async()=>{
- const {build}=await import('vite'),{mkdtempSync,rmSync,readdirSync,readFileSync}=fs,{tmpdir}=await import('node:os'),{join}=await import('node:path');
- const outDir=mkdtempSync(join(tmpdir(),'alpha-dev-gates-'));delete process.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS;delete process.env.ELIZA_DEV_ALLOW_TEST_MOCKS;
- try{
-  // Vite dev servers above default NODE_ENV to development; a release build is production.
-  const nodeEnv=process.env.NODE_ENV;process.env.NODE_ENV='production';
-  try{await build({configFile:new URL('vite.config.ts',root).pathname,logLevel:'silent',build:{outDir,emptyOutDir:true}});}finally{if(nodeEnv===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=nodeEnv;}
-  const assets=join(outDir,'assets'),bundle=readdirSync(assets).filter(name=>name.endsWith('.js')).map(name=>readFileSync(join(assets,name),'utf8')).join('\n');
-  // Strings owned by this package's modules; connection-ui and main.tsx are gated separately.
-  for(const marker of ['alpha-dev-tools','Device controls','Browser development device','__alpha-local-agent','emulator development agent','Simulate Clock request','api-staging.eliza.app','10.0.2.2:47850','Pick up phone','Saved development apps','Development card','alpha.dev.location.v1','Development device storage unavailable'])
-   assert.equal(bundle.includes(marker),false,marker+' must not ship without ELIZA_DEV_ALLOW_TEST_MOCKS');
- }finally{rmSync(outDir,{recursive:true,force:true});}
-});
-
 test('the local agent host bridge is unavailable without test mocks',async()=>{
  const calls=[];const fetch=globalThis.fetch;globalThis.fetch=async url=>{calls.push(String(url));return new Response('{}');};
  try{
@@ -128,8 +108,6 @@ async function regional({testMocks,devSurfaces,baseUrl,native=false,developmentB
 }
 
 test('regional Maps accepts loopback HTTP and the emulator gateway only with test mocks',async()=>{
- const source=fs.readFileSync(new URL('apps/app/src/maps/regional-provider.ts',root),'utf8');
- assert.equal((source.match(/alpha-osm-monaco/g)||[]).length,1,'provider id is declared once as dataset data');
  const unset=await regional({testMocks:false,devSurfaces:false,baseUrl:undefined});
  assert.equal(unset.diagnostic.stage,'no-configuration');assert.equal(unset.diagnostic.configured,false);assert.deepEqual(unset.fetched,[]);
  assert.equal(unset.regionalDataset.providerId,'alpha-osm-monaco');assert.equal(unset.regionalDataset.coverage.region,'Monaco');

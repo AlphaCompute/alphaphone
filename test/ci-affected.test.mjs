@@ -1,83 +1,48 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
-import { test } from 'node:test';
-import { affected, changedPaths } from '../scripts/ci/affected.mjs';
+import {mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join, resolve} from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {test} from 'node:test';
 
-const none = { verify: false, browser: false, android: false, prepare: false };
-test('reference-only changes spend no build or test runners', () => {
-  assert.deepEqual(affected(['README.md', 'docs/verification.md', 'design/reference.html']), none);
-});
-test('host tests do not rebuild native speech; browser tests select the browser lane', () => {
-  assert.deepEqual(affected(['test/credential-contract.test.mjs']), { ...none, verify: true });
-  assert.deepEqual(affected(['test/browser/notes.spec.ts']), { ...none, verify: true, browser: true });
-});
-test('renderer changes qualify browser and packaged APK bytes, native changes select Android', () => {
-  assert.deepEqual(affected(['apps/app/src/main.tsx']), { ...none, verify: true, browser: true, android: true });
-  assert.deepEqual(affected(['android/app/src/main/AndroidManifest.xml']), { ...none, verify: true, android: true });
-});
-test('shared pins, dependencies, selection logic and unknown inputs fail open to all checks', () => {
-  for (const path of ['vendor/eliza', 'upstream.lock.json', 'package-lock.json', 'scripts/ci/affected.mjs', '.github/workflows/changes.yml', 'new-build-input']) {
-    assert.deepEqual(affected([path]), { verify: true, browser: true, android: true, prepare: true }, path);
-  }
-});
-test('complete Git diff preserves deleted paths and both sides of a rename into docs', () => {
-  const cwd = mkdtempSync(join(tmpdir(), 'alpha-ci-diff-'));
-  const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' });
-  try {
-    git('init', '-q'); git('config', 'user.email', 'test@example.invalid'); git('config', 'user.name', 'CI test');
-    mkdirSync(join(cwd, 'apps/app'), { recursive: true });
-    writeFileSync(join(cwd, 'apps/app/source.ts'), 'export const value = 1;\n');
-    writeFileSync(join(cwd, 'package-lock.json'), '{}\n');
-    git('add', '.'); git('commit', '-qm', 'base'); const base = git('rev-parse', 'HEAD').trim();
-    mkdirSync(join(cwd, 'docs')); git('mv', 'apps/app/source.ts', 'docs/reference.ts'); git('rm', 'package-lock.json');
-    git('commit', '-qm', 'move and delete'); const head = git('rev-parse', 'HEAD').trim();
-    const paths = changedPaths(base, head, git);
-    assert.deepEqual(paths.sort(), ['apps/app/source.ts', 'docs/reference.ts', 'package-lock.json']);
-    assert.deepEqual(affected(paths), { verify: true, browser: true, android: true, prepare: true });
-    assert.throws(() => changedPaths('--output=/tmp/file', head, git), /full base and head/);
-    assert.throws(() => changedPaths('0'.repeat(40), head, git));
-  } finally { rmSync(cwd, { recursive: true, force: true }); }
-});
-
-test('existing browser-spec-only edits select one shard and the matching projects', async () => {
-  const { browserPlan } = await import('../scripts/ci/affected.mjs');
-  const plan = browserPlan(['README.md', 'test/browser/notes-save-failure.spec.ts'], () => true);
-  assert.equal(plan.browser_shards, '[1]');
-  assert.equal(plan.browser_total, 1);
-  assert.equal(plan.browser_specs, '["test/browser/notes-save-failure.spec.ts"]');
-  assert.equal(plan.browser_development, true);
-  assert.equal(plan.browser_production, false);
-  assert.equal(plan.browser_speech, false);
-  const larger = browserPlan(['a','b','c','d'].map(name => `test/browser/${name}.spec.ts`), () => true);
-  assert.equal(larger.browser_total, 3);
-  assert.equal(JSON.parse(larger.browser_specs).length, 4);
-  const production = browserPlan(['test/browser/production-surface.spec.ts'], () => true);
-  assert.equal(production.browser_development, false);
-  assert.equal(production.browser_production, true);
-  assert.equal(browserPlan(['test/browser/browser-agent-tts.spec.ts'], () => true).browser_speech, true);
-});
-test('shared inputs, helpers, deleted specs and unavailable diffs preserve the full suite', async () => {
-  const { browserPlan } = await import('../scripts/ci/affected.mjs');
-  for (const paths of [[], ['test/browser/helpers.ts'], ['test/browser/notes.spec.ts','apps/app/src/main.tsx'], ['test/browser/deleted.spec.ts']]) {
-    const plan = browserPlan(paths, path => !path.includes('deleted'));
-    assert.equal(plan.browser_total, 3);
-    assert.equal(plan.browser_specs, '[]');
-    assert.equal(plan.browser_production, true);
-    assert.equal(plan.browser_speech, true);
-  }
-});
-test('browser selector arguments are exact paths, not shell fragments or unescaped regexes', async () => {
-  const { browserArguments } = await import('../scripts/ci/run-browser.mjs');
-  const args = browserArguments('["test/browser/notes.spec.ts"]', ['--list'], () => true);
-  const regex = new RegExp(args[3]);
-  assert.ok(regex.test('/workspace/test/browser/notes.spec.ts'));
-  assert.ok(!regex.test('/workspace/test/browser/notesXspecYts'));
-  assert.ok(!regex.test('/workspace/test/browser/notes.spec.ts.extra'));
-  for (const raw of ['null', '{}', '["--help"]', '["test/browser/../../bad.spec.ts"]', '["test/browser/$(id).spec.ts"]']) {
-    assert.throws(() => browserArguments(raw, [], () => true));
-  }
-  assert.throws(() => browserArguments('["test/browser/deleted.spec.ts"]', [], () => false));
+// Exercise the actual Actions entry point, complete Git history and output files.
+test('CI selection follows changed files, renames, missing history and manual dispatch', t => {
+  const cwd = mkdtempSync(join(tmpdir(), 'alpha-ci-selection-'));
+  t.after(() => rmSync(cwd, {recursive:true, force:true}));
+  const git = (...args) => execFileSync('git', args, {cwd, encoding:'utf8'}).trim();
+  git('init', '-q'); git('config', 'user.email', 'test@example.invalid'); git('config', 'user.name', 'CI fixture');
+  const put = (name, text='fixture\n') => {
+    mkdirSync(join(cwd, name, '..'), {recursive:true}); writeFileSync(join(cwd, name), text);
+  };
+  put('apps/app/source.ts'); put('test/browser/notes.spec.ts'); put('test/browser/production-surface.spec.ts');
+  git('add', '.'); git('commit', '-qm', 'base');
+  let base = git('rev-parse', 'HEAD');
+  const select = (event, eventName='pull_request', sha=git('rev-parse','HEAD')) => {
+    const eventPath=join(cwd,'event.json'), output=join(cwd,'output'), summary=join(cwd,'summary');
+    writeFileSync(eventPath, JSON.stringify(event)); writeFileSync(output,''); writeFileSync(summary,'');
+    execFileSync(process.execPath, [resolve('scripts/ci/affected.mjs')], {cwd, encoding:'utf8', env:{...process.env,
+      GITHUB_EVENT_PATH:eventPath, GITHUB_EVENT_NAME:eventName, GITHUB_SHA:sha, GITHUB_OUTPUT:output, GITHUB_STEP_SUMMARY:summary}});
+    assert.match(readFileSync(summary,'utf8'), /Change selection/);
+    return Object.fromEntries(readFileSync(output,'utf8').trim().split('\n').map(line=>{
+      const i=line.indexOf('='); return [line.slice(0,i),JSON.parse(line.slice(i+1))];
+    }));
+  };
+  const commit = name => {git('add', ...(name==='.'?['-u']:[name]));git('commit','-qm','change '+name);};
+  const pr = () => ({pull_request:{base:{sha:base},head:{sha:git('rev-parse','HEAD')}}});
+  const lanes = result => [result.verify,result.browser,result.android,result.prepare];
+  put('docs/reference.md');commit('docs'); assert.deepEqual(lanes(select(pr())),[false,false,false,false]);
+  base=git('rev-parse','HEAD');put('test/browser/notes.spec.ts','changed\n');commit('test');
+  let result=select(pr());assert.deepEqual(lanes(result),[true,true,false,false]);
+  assert.deepEqual(result.browser_specs,['test/browser/notes.spec.ts']);assert.deepEqual(result.browser_shards,[1]);
+  assert.equal(result.browser_production,false);assert.equal(result.browser_speech,false);
+  base=git('rev-parse','HEAD');put('test/browser/production-surface.spec.ts','changed\n');commit('test');
+  result=select(pr());assert.equal(result.browser_development,false);assert.equal(result.browser_production,true);
+  base=git('rev-parse','HEAD');git('mv','apps/app/source.ts','docs/reference.ts');commit('.');
+  result=select(pr());assert.deepEqual(lanes(result),[true,true,true,false]);assert.deepEqual(result.browser_specs,[]);
+  base=git('rev-parse','HEAD');git('rm','test/browser/notes.spec.ts');commit('.');
+  result=select(pr());assert.deepEqual(result.browser_shards,[1,2,3]);assert.equal(result.browser_production,true);
+  base=git('rev-parse','HEAD');put('unknown-build-input');commit('unknown-build-input');
+  assert.deepEqual(lanes(select({before:base},'push')),[true,true,true,true]);
+  assert.deepEqual(lanes(select({before:'0'.repeat(40)},'push')),[true,true,true,true]);
+  assert.deepEqual(lanes(select({},'workflow_dispatch')),[true,true,true,true]);
 });

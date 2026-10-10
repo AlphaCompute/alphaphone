@@ -100,7 +100,7 @@ jobs:
           node --input-type=module -e "import fs from 'node:fs'; fs.writeFileSync(process.env.RUNNER_TEMP + '/alpha-synthetic-owner-token', 'a'.repeat(64), {mode: 0o600});"
           PLAYWRIGHT_HTML_OUTPUT_DIR=test-results/browser-agent-profile-report ELIZA_DEV_ALLOW_TEST_MOCKS=1 VITE_LOCAL_AGENT=1 ALPHA_LOCAL_AGENT_TOKEN_FILE="$RUNNER_TEMP/alpha-synthetic-owner-token" ALPHA_LOCAL_AGENT_ORIGIN=http://127.0.0.1:1 npm run test:browser -- test/browser/browser-agent-recording.spec.ts test/browser/browser-agent-tts.spec.ts test/browser/browser-host-disclosure.spec.ts --grep 'rendered browser recording|local agent TTS|prepared agent audio|connected browser host' --output=test-results/browser-agent-profile
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: browser-mvp-shard-${{ matrix.shard }}-of-${{ needs.changes.outputs.browser_total }}
           path: |
@@ -140,7 +140,7 @@ jobs:
       # Builds and previews a flag-off bundle; the flag is deliberately unset here.
       - run: npm run test:browser:production
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: browser-production-surface
           path: |
@@ -198,7 +198,7 @@ jobs:
         # The firefox and webkit projects in playwright.config.ts select the storage specs.
         run: npx playwright test --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: browser-storage-${{ matrix.browser }}-shard-${{ matrix.shard }}-of-2
           path: |
