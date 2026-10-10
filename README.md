@@ -200,6 +200,17 @@ npm run android:build -- --allow-unpackaged-runtime
 `vendor/eliza` checkout, the installed speech AAR, the prepared runtime source or (for
 distribution builds) the staged runtime payload is missing or stale.
 
+One input has no build step: the reviewed ARM64 embedding host
+(`android/embedding-host/qualified-host.json`). Its three native libraries are ignored by
+Git and are staged byte for byte from a qualification receipt with
+`node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json>` (the receipt comes
+from `scripts/prepare-embedding-host.mjs --build`). Gradle's `:app:verifyEmbeddingHost`
+requires them for every distribution and test-mocks build, so `npm run android:build:local`
+stops at the preflight on a checkout that does not have them. The unpackaged developer
+build (`--allow-unpackaged-runtime`, which `--test-mocks` may be combined with) passes only
+while no resident payload is staged at all: once `agent:stage-android` has run, remove
+`android/app/src/main/assets/agent` and `android/app/src/main/jniLibs` or stage the host.
+
 Preparation, worker build and staging run the upstream Turborepo build inside the
 immutable prepared checkout. Turborepo appends an agent-guidance block to a
 repository's `AGENTS.md` when it detects an AI coding agent; these scripts therefore
