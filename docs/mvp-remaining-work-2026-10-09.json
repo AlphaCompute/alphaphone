@@ -1,11 +1,26 @@
 {
-  "schema": 1,
+  "schema": 2,
   "title": "Alpha Phone remaining MVP work after PR 373 integration review",
   "date": "2026-10-09",
   "pull_request": "https://github.com/AlphaCompute/alphaphone/pull/373",
   "reviewed_pr_head": "44c9d57ce38b3b29f5b104a2f6efc103fdd914c3",
   "integrated_main": "06ca5d62e09e8898fc9242db5e6a70f5be374510",
-  "upstream_pin": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
+  "reviewed_upstream_pin": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
+  "upstream_pin": "40dbe96bd1fc2603aaff655cd52d0ab899704e2c",
+  "ledger_refresh": {
+    "date": "2026-10-10",
+    "branch": "claude/r6-ledger",
+    "base": "4ec513b1 (open PR #389, containing main d9a081e3)",
+    "note": "current and remaining were checked against source, tests and recorded evidence and rewritten where they no longer held; blocked_on was added to every item. Items MVP-12 to 16, 18, 19, 48 and 53 are implemented on open PR #388, not on main; their current and remaining text is left for that pull request and only blocked_on was added."
+  },
+  "blocked_on_classes": {
+    "SOFTWARE": "can be implemented, built or tested from this repository now",
+    "EMULATOR": "needs a disposable-emulator run of the named instrumentation on APKs built from the source",
+    "CI": "needs a GitHub-hosted runner (resident-android.yml)",
+    "HUMAN": "needs a named owner decision, account, key, deployment or other owner action",
+    "DEVICE": "needs physical hardware",
+    "UPSTREAM": "needs a named elizaOS change"
+  },
   "status": "53-item source audit complete; candidate validation recorded in companion review",
   "priorities": {
     "P0": "blocks the affected required MVP or release acceptance",
@@ -17,12 +32,15 @@
       "group": "Product decisions",
       "priority": "P0",
       "kind": "decision",
+      "blocked_on": [
+        "HUMAN: owner decision on voice send and route policy (reconcile P-01, P-07 and PRD AP-06, with pending A-04 and A-24)"
+      ],
       "requirements": [
         "AP-06"
       ],
       "title": "Reconcile voice send and route policy",
-      "current": "Main uses ongoing Cloud voice; decisions P-07 now names Cloud, while P-01 and AP-06 still require manual send and the PRD still says local-first. Incoming manual-entry acceptance is retained as explicit TODO, not a passing product test.",
-      "remaining": "Choose the authoritative policy for chat, Notes, read-aloud and browser; reconcile PRD, decisions, completion plan, Settings, implementation and tests. Do not silently equate optional local code with a production local route.",
+      "current": "Flag-off builds select Eliza Cloud speech unconditionally (apps/app/src/runtime/voice-selection.ts; its own comment says this differs from P-01/P-07 as the PRD states them and needs a decision). decisions.md P-07 names Cloud as the default for chat voice, Notes transcription and read-aloud; P-01 requires record, transcribe, review, then the user sends; an ongoing Cloud conversation sends each new spoken turn (test/browser/chat-voice-mode.spec.ts). The PRD's AP-06 row still says local first with Cloud as a disclosed opt-in, and its closing section says on-device speech remains required on Android. The four manual-entry scenarios are test.todo entries in test/voice-entry-timing.test.mjs, not passing tests.",
+      "remaining": "The owner chooses the authoritative policy for chat, Notes, read-aloud and browser, including whether on-device speech is still required (A-24); then reconcile the PRD, decisions, completion plan, Settings, implementation and tests. Do not silently equate optional local code with a production local route.",
       "acceptance": "One dated approved policy; all entrypoints and cancellation/consent tests match it; no unsupported latency claim.",
       "depends_on": [],
       "sources": [
@@ -38,12 +56,15 @@
       "group": "Product decisions",
       "priority": "P0",
       "kind": "decision",
+      "blocked_on": [
+        "HUMAN: decision A-09"
+      ],
       "requirements": [
         "AP-11"
       ],
       "title": "Resolve powered-off execution A-09",
-      "current": "Resident schedules and recovery cannot execute on a powered-off phone.",
-      "remaining": "Either formally amend the DoD to resident missed-occurrence recovery or deliver two genuinely hosted loops. Define owner, source freshness, zone, DST, overlap, retry and missed-run policy.",
+      "current": "Resident schedules cannot execute on a powered-off phone, and hosted execution while the phone is off does not exist. A scheduled time that passes while the host is not running is recorded once as missed and never run later, and a missed record never replaces the last brief (test/digest-occurrence-delivery.test.mjs, test/browser/dev-digest-schedule.spec.ts, test/browser/journey-d-digests.spec.ts; development scheduler, class S). The flag-off Android panel says schedules run on the phone and cannot run while it is off (test/browser/journey-core-loops.production.spec.ts).",
+      "remaining": "The owner either formally amends the DoD to resident missed-occurrence recovery or funds two genuinely hosted loops. Under the amendment, the remaining evidence is emulator and device (MVP-38); under hosted loops, the service does not exist.",
       "acceptance": "Approved amendment and corresponding evidence, or two distinct hosted terminal results while the phone remains powered off and one delivery each on reconnect.",
       "depends_on": [],
       "sources": [
@@ -56,11 +77,14 @@
       "group": "Product decisions",
       "priority": "P0",
       "kind": "decision",
+      "blocked_on": [
+        "HUMAN: decisions A-01 (exact SKU, Android version, device inputs) and A-06 (signing owner, release key, update and rollback authority)"
+      ],
       "requirements": [
         "AP-14"
       ],
       "title": "Pin Pixel 10 hardware inputs and release authority",
-      "current": "PR 379 selects Cuttlefish for image validation and Pixel 10 for the hardware build. Exact Pixel 10 SKU/device/kernel/vendor inputs and the release signer are not qualified by this integration.",
+      "current": "docs/android-and-aosp.md names Cuttlefish as the image validation target and Pixel 10 as the hardware build target. The exact Pixel 10 SKU, Android version and device, kernel and vendor inputs are not admitted. android/release-signer.json records signerSha256 \"unset\" and no last release, so no release can be marked distributable.",
       "remaining": "Close A-01/A-06 for Pixel 10: exact SKU/variant, Android version, device tree/blobs/kernel, signing/update custody and recovery/support owner. Keep Cuttlefish evidence separate; do not relabel another Pixel product. Preserve stock recovery and emergency access.",
       "acceptance": "Named owners and immutable source/device/signer manifest sufficient for reproducible image and rollback work.",
       "depends_on": [],
@@ -78,14 +102,17 @@
       "group": "Product decisions",
       "priority": "P1",
       "kind": "decision",
+      "blocked_on": [
+        "HUMAN: decisions A-02, A-07, A-15, A-16, A-20 and A-26"
+      ],
       "requirements": [
         "AP-03",
         "AP-04",
         "AP-09"
       ],
       "title": "Freeze services accounts and billing",
-      "current": "Production Android uses resident execution with Cloud sign-in and credit checks for billed inference. Direct Cerebras and browser/test-mocks remote transports remain separate development paths; service authorization is not live-qualified.",
-      "remaining": "Close A-02/A-07/A-16/A-20: confirm the billed inference endpoint, pilot account provisioning, Gmail scopes and usage semantics. Document any retained development provider profile separately. Retired phone pairing and hosted-agent enrollment are not production prerequisites.",
+      "current": "Production Android uses resident execution with Eliza Cloud sign-in and credit checks for billed inference. With test mocks off the native transport admits only https://api.eliza.app (ConnectionRoutes.java, JVM-tested, not run in an APK), so no Android build reaches a Cloud agent host. Direct Cerebras and browser/test-mocks remote transports remain separate development paths. No real Cloud sign-in, credit check or Gmail grant has been exercised; the Google code exchange returns 401 (docs/cloud-production-validation.md).",
+      "remaining": "Close A-02, A-07, A-15, A-16, A-20 and A-26: confirm the billed inference endpoint, pilot account provisioning, Gmail scopes and usage semantics. Document any retained development provider profile separately. Retired phone pairing and hosted-agent enrollment are not production prerequisites.",
       "acceptance": "Documented supported service matrix; approved non-secret operator provisioning procedure and matching real-service tests.",
       "depends_on": [],
       "sources": [
@@ -100,12 +127,16 @@
       "group": "Product decisions",
       "priority": "P1",
       "kind": "decision",
+      "blocked_on": [
+        "HUMAN: decision A-10, after MVP-01",
+        "DEVICE: latency samples on the selected phone"
+      ],
       "requirements": [
         "AP-06",
         "AP-15"
       ],
       "title": "Agree measurable voice latency acceptance",
-      "current": "The six-second target and manual review requirement are inconsistent; this merge supplies no physical latency samples.",
+      "current": "The six-second target and the manual review requirement are inconsistent. No latency sample exists for any route or device. Timing helpers and an aggregation script exist (apps/app/src/runtime/voice-timing.ts, scripts/aggregate-voice-latency.mjs); the entry-point marks they need are among the test.todo cases in test/voice-entry-timing.test.mjs.",
       "remaining": "Close A-10 with start/end boundaries, inclusion of review time, cold/warm definitions, percentile, task set and failure accounting. Wire real entrypoint marks rather than only helper-level records.",
       "acceptance": "At least the agreed sample set per route/device, raw timings and failures retained; no fabricated first-audio mark.",
       "depends_on": [
@@ -122,13 +153,16 @@
       "group": "Product decisions",
       "priority": "P1",
       "kind": "decision",
+      "blocked_on": [
+        "HUMAN: decisions A-11 to A-19, A-22 and A-25"
+      ],
       "requirements": [
         "AP-10",
         "AP-12"
       ],
       "title": "Set remaining optional feature boundaries",
-      "current": "Several design surfaces exceed the frozen MVP.",
-      "remaining": "Disposition A-11 through A-19 and A-22: alarm ownership, passkeys, third-party cookies, trusted browsers, attachments/labels, secure camera, gallery scope, backup/erase and landscape. Keep optional features separate from mandatory release gates.",
+      "current": "Several design surfaces exceed the frozen MVP. Current behavior for each is stated in decisions.md: alarms are a handoff to Android Clock (A-11), passkeys are not implemented (A-12), third-party cookies are blocked (A-13), only the Alpha browser is trusted for fills (A-14), no secure camera (A-17), Photos shows only Alpha-captured media (A-18), no backup and no in-app erase (A-19), and the app rotates with a landscape layout for Home only (A-22). Four further decisions were recorded on 2026-10-10: a production Maps provider (A-23), whether on-device speech is still required (A-24), recoverability of deleted Calendar events and reminders (A-25) and Cloud agent host admission on Android (A-26).",
+      "remaining": "The owner dispositions A-11 through A-19, A-22 and A-25. A-23 belongs to MVP-31, A-24 to MVP-01 and MVP-23, and A-26 to MVP-04. Keep optional features separate from mandatory release gates.",
       "acceptance": "Each item has a chosen scope or explicit deferral, user-visible unavailable behavior and restoration gate.",
       "depends_on": [],
       "sources": [
@@ -141,6 +175,10 @@
       "group": "Product decisions",
       "priority": "P1",
       "kind": "documentation",
+      "blocked_on": [
+        "SOFTWARE: reconcile docs/mvp-browser-review.md and docs/mvp-completion-plan.md, and take PR #388's inventory entries when it merges",
+        "HUMAN: voice policy decision (MVP-01) before the A-04, A-10 and AP-06 wording is final"
+      ],
       "requirements": [
         "AP-01",
         "AP-02",
@@ -149,8 +187,8 @@
         "AP-07"
       ],
       "title": "Refresh the requirement and evidence ledger",
-      "current": "Current-status rows still describe no drawer, no offline entry, no browser transport and early draft consumption although this PR adds those paths; it also cites the previous pin and obsolete patch 0039.",
-      "remaining": "Reconcile requirements.json, current status, browser review and completion plan against the merged commit. Retain historical results as historical. Update the misleading pending A-04 and A-10 wording after voice policy is settled.",
+      "current": "Refreshed on 2026-10-10 against upstream pin 40dbe96bd1 from source, tests and recorded evidence: docs/mvp-current-status.md, docs/requirements.json, this inventory, the evidence statements in docs/decisions.md, and the false statements in README.md, docs/ci-cost-policy.md and docs/prd.md. docs/mvp-owner-actions.md lists what only the owner can do. test/docs-requirements-consistency.test.mjs and test/docs-inventory-consistency.test.mjs keep the ledgers and the two inventory files in agreement.",
+      "remaining": "docs/mvp-browser-review.md and docs/mvp-completion-plan.md were not reconciled in this refresh. The A-04, A-10 and PRD AP-06 wording cannot be made final until the voice policy is settled (MVP-01). The entries for MVP-12 to 16, 18, 19, 48 and 53 keep their pre-PR-388 text here and are rewritten by that pull request.",
       "acceptance": "Every AP and retained F/J journey has current implementation, test class, exact source/artifact, remaining gate and owner; no old failure is called current without reproduction.",
       "depends_on": [
         "MVP-01"
@@ -166,14 +204,18 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "integration",
+      "blocked_on": [
+        "SOFTWARE: reviewed pin move for upstream pull request 34888, then an APK build at that pin",
+        "EMULATOR: default instrumentation campaign at the pin"
+      ],
       "requirements": [
         "AP-04",
         "AP-10",
         "AP-11"
       ],
       "title": "Upstream the pin-only commit series",
-      "current": "The integration pin is merged upstream commit 4148a1660921a354ece2badf25a79a2398a51058, including the password manager and password transfer. The submodule and lock agree and the pin is reachable from develop. Consumer verification passes 443 tests with four TODOs, all eight password-manager browser cases pass, and both variants build with all four APK audits passing. These developer APKs omit the resident payload and use unqualified speech bytes; they are not distributable. Integrated native transfer and device acceptance remain pending. Earlier source, browser and native results remain scoped to their recorded commits.",
-      "remaining": "Complete the remaining retired-pin semantic audit and product-wide browser/native regressions. Release runtime, speech, signing and device acceptance remain separate.",
+      "current": "The pin is elizaOS commit 40dbe96bd1fc2603aaff655cd52d0ab899704e2c: upstream.lock.json and the submodule agree, and scripts/ci/upstream-reachability.json records it as identical to develop on 2026-10-10 with no pin-only commit and 25 merged upstream pull requests. It includes the password manager, password transfer and Keystore text frames. Repository verification at this pin is recorded in docs/mvp-current-status.md. No APK build and no emulator run is recorded at this pin; the last developer APK builds are at product commit 1de85a13 (pin 4148a166) and are not distributable. Upstream pull request 34888 (shared notification delivery receipts) merged after the pin and is not consumed.",
+      "remaining": "Move the pin to consume upstream pull request 34888 when it is reviewed, build the four APKs at the resulting pin and run the product-wide browser and native regressions. Whether the retired-pin semantic audit named by the original item was completed is not re-verified at this source. Release runtime, speech, signing and device acceptance remain separate.",
       "acceptance": "Reviewed upstream disposition per commit, clean source preparation and full product regression at the replacement pin.",
       "depends_on": [],
       "sources": [
@@ -186,14 +228,17 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "integration",
+      "blocked_on": [
+        "EMULATOR: native qualification of the consumed modules at the pin"
+      ],
       "requirements": [
         "AP-04",
         "AP-10",
         "AP-11"
       ],
       "title": "Submit and retire explicit shared patches",
-      "current": "Alpha consumes the merged password-manager and password-transfer modules directly. The final reference patch and its manifest are removed; no applied or reference patch remains. The host registers password transfer and uses the shared count-only client. Integrated product qualification at the replacement pin remains pending.",
-      "remaining": "Finish the remaining upstream reviews and remove each patch only when its reviewed replacement is consumed.",
+      "current": "No patch remains. The patches directory and the patch tooling are gone (9475074c, PR #385) and Alpha consumes the merged password-manager, password-transfer and Keystore modules directly from the pin. The host registers password transfer and uses the shared count-only client.",
+      "remaining": "Nothing is left to submit or retire. Integrated native qualification of the consumed modules at the pin remains (password transfer has browser-fixture evidence only). Two upstream changes identified by the core-loop audit are not submitted: the native Calendar review dialog should name the account and state that no attendees change, and Gmail search pages should carry a mailbox revision; neither blocks a step.",
       "acceptance": "Patch-to-upstream-PR ledger with exact output hashes, external-consumer tests and no duplicate or silently unapplied implementation.",
       "depends_on": [
         "MVP-08"
@@ -208,12 +253,15 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "integration",
+      "blocked_on": [
+        "EMULATOR: photo and capture instrumentation on APKs built at the current pin"
+      ],
       "requirements": [
         "AP-10"
       ],
       "title": "Consume shared media implementation",
-      "current": "Alpha uses the shared owned-media module for photo edits, filters and capture publication, preserving alpha storage names and media paths. Both library variants and targeted host adapter compilation pass.",
-      "remaining": "Complete both APK builds and selected capture/edit/save-copy and installed-data instrumentation at this composition.",
+      "current": "Alpha uses the shared owned-media module for photo edits, filters and capture publication, preserving alpha storage names and media paths. Compilation at the current pin is not re-verified at this source. Seven photo-filter preview and export cases passed on an emulator at d3dc9977 (pin 945209d3); that result is historical.",
+      "remaining": "Build both APK variants at the current pin and run the capture, edit, save-copy and installed-data instrumentation (PhotoEdit, PhotoFilter, PhotosBatch, PhotosTrash, PhotosMultiShare, Video and CameraScan are registered with the runner; no run is recorded at the current source).",
       "acceptance": "Both APK variants compile; selected capture/edit/save-copy and process-death instrumentation pass with exact output bytes.",
       "depends_on": [
         "MVP-09"
@@ -229,13 +277,16 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "integration",
+      "blocked_on": [
+        "EMULATOR: journal, notification and browser-session instrumentation at the current pin"
+      ],
       "requirements": [
         "AP-11",
         "AP-12"
       ],
       "title": "Consume shared notification journal and browser candidates",
-      "current": "The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser policies use pinned helpers. Alpha delegates journal transitions to the shared engine and retains product result policy and Clock approval. Journal persistence, replay refusal and history redaction passed native tests in both variants.",
-      "remaining": "Qualify installed notification policy/history and browser sessions; finish site-permission consolidation without weakening receipt or owner semantics.",
+      "current": "The shared notification mirror is included in Gradle behind Alpha storage and component identities. Browser policies use pinned helpers. Alpha delegates journal transitions to the shared engine and retains product result policy and Clock approval. Journal persistence, replay refusal and history redaction passed native tests in both variants at d3dc9977 (pin 945209d3); that result is historical. Notification approval receipts reject a stored digest that does not match their content (PR #385).",
+      "remaining": "Qualify installed notification policy and history and browser sessions at the current pin (ActionJournal, Notifications, HostedResultNotice, BrowserSignins and the browser storage-format campaign; no run is recorded at the current source); finish site-permission consolidation without weakening receipt or owner semantics.",
       "acceptance": "No duplicate effect or stale approval after migration; browser bridge isolation and notification privacy remain intact.",
       "depends_on": [
         "MVP-09"
@@ -251,6 +302,11 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "implementation",
+      "blocked_on": [
+        "SOFTWARE: implemented on open PR #388, not on main",
+        "EMULATOR: CalendarAvailabilityInstrumentedTest (on that pull request) has never run",
+        "HUMAN: owner confirms the two busy defaults named in PR #388 (cancelled and declined events are not busy, and free/busy-level calendars are offered)"
+      ],
       "requirements": [
         "AP-09"
       ],
@@ -269,6 +325,11 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "implementation",
+      "blocked_on": [
+        "SOFTWARE: implemented on open PR #388, not on main",
+        "EMULATOR: folder grants, MediaStore Photos, notification listener and native Camera paths have never run",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-04",
         "AP-10"
@@ -289,6 +350,11 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "implementation",
+      "blocked_on": [
+        "SOFTWARE: implemented on open PR #388, not on main",
+        "HUMAN: Gmail grant (MVP-35) and the attachment question under A-15",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-09"
       ],
@@ -307,6 +373,11 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "implementation",
+      "blocked_on": [
+        "SOFTWARE: implemented on open PR #388, not on main",
+        "EMULATOR: NotesTrashBackstop and NotesStorageDurability have never run",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-10",
         "AP-15"
@@ -330,6 +401,11 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "implementation",
+      "blocked_on": [
+        "SOFTWARE: implemented on open PR #388, not on main",
+        "EMULATOR: AssistantResidentReuseInstrumentedTest (on that pull request) has never run",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-04",
         "AP-05"
@@ -350,13 +426,16 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "integration",
+      "blocked_on": [
+        "HUMAN: decision A-02 (whether remote pairing stays a supported route) and a real private remote host to pair with"
+      ],
       "requirements": [
         "AP-03",
         "AP-11"
       ],
       "title": "Qualify retained browser development transports",
       "current": "HTTPS remote browser transport exists as development infrastructure; direct Cloud sign-in is honestly unavailable for this origin. The development host has a separate credential-reference bridge. Synthetic flag-off coverage (test/browser/connection-boundaries.production.spec.ts): saved mock, staging, Cloud, plain-HTTP local, development and on-device selections open the chooser signed out with no request; refused pairings (wrong role, identity or instance mismatch, expired session, used code, pairing disabled, non-HTTPS address) store nothing and connect nothing; unverified device enrollment grants no phone actions; unconfirmed revocation is reported as unconfirmed.",
-      "remaining": "Record the supported browser development scope and qualify its account return, storage degradation, revoke and Automations behavior. Keep unsupported Cloud sign-in unavailable unless that route is separately approved and implemented with an admitted origin/server bridge. Do not add browser Cloud login as a production Android MVP prerequisite.",
+      "remaining": "Record the supported browser development scope. Its account return, storage degradation, revoke and Automations behavior have synthetic flag-off coverage only; no real private remote host has been paired. Keep unsupported Cloud sign-in unavailable unless that route is separately approved and implemented with an admitted origin/server bridge. Do not add browser Cloud login as a production Android MVP prerequisite.",
       "acceptance": "Flag-off browser can complete only advertised routes; host-only references never leak or masquerade as bearer tokens; account changes fence pending work.",
       "depends_on": [
         "MVP-04"
@@ -374,6 +453,10 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "integration",
+      "blocked_on": [
+        "SOFTWARE: implemented on open PR #388, not on main (on main WorkflowApprovalNotice has a runner registry entry and WorkflowLegacyReminderUpgrade is listed as run by no runner)",
+        "EMULATOR: neither runner has run on an emulator"
+      ],
       "requirements": [
         "AP-11"
       ],
@@ -392,6 +475,11 @@
       "group": "Upstream and runtime integration",
       "priority": "P1",
       "kind": "implementation",
+      "blocked_on": [
+        "SOFTWARE: implemented on open PR #388, not on main",
+        "HUMAN: Gmail grant (MVP-35) for real Inbox data",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-07"
       ],
@@ -411,13 +499,17 @@
       "group": "Native and user journeys",
       "priority": "P0",
       "kind": "acceptance",
+      "blocked_on": [
+        "EMULATOR: default campaign and `--variants launcher --home-role --classes SettingsRoles,LauncherHome`",
+        "DEVICE: physical HOME, recovery and emergency routes"
+      ],
       "requirements": [
         "AP-02",
         "AP-15"
       ],
       "title": "Qualify both installed variants and HOME",
-      "current": "Four developer APK builds pass inspection; this is not installation or HOME-role evidence.",
-      "remaining": "Install source-matched standalone/HOME and paired instrumentation; test cold launch, role accept/deny/revoke, opening three installed apps, repeated HOME, stock settings/recovery, upgrade and default-role changes.",
+      "current": "No APK build is recorded at the current pin, so nothing is installed. The instrumentation runner has a HOME-role phase (--home-role) that selects the launcher APK as HOME on an owned emulator, requires a cold start through the HOME key, runs SettingsRoles (role removed, declined and accepted) and LauncherHome (drawer search, three installed apps with HOME returning each time, stock dialer, Android Settings and the default-Home chooser) and restores the original holder; both classes are refused without it. The phase is tested against a scripted adb only (test/android-instrumentation-runner.test.mjs). No run is recorded at the current source.",
+      "remaining": "Build source-matched standalone and launcher APKs with their instrumentation, then run the default campaign and the HOME-role campaign on an owned emulator; then cold launch, role changes, stock settings and recovery, upgrade and default-role changes on a phone.",
       "acceptance": "Current emulator reports for both flavors and separate physical run; no role trap or system emergency/recovery regression.",
       "depends_on": [],
       "sources": [
@@ -430,12 +522,17 @@
       "group": "Native and user journeys",
       "priority": "P0",
       "kind": "acceptance",
+      "blocked_on": [
+        "CI: dispatch resident-android.yml (jobs native and recovery-ui) on the candidate commit",
+        "HUMAN: owner-only Cerebras key file for the resident instrumentation",
+        "DEVICE: reboot, network loss and lock on a phone"
+      ],
       "requirements": [
         "AP-03",
         "AP-04"
       ],
       "title": "Qualify resident lifecycle and account isolation",
-      "current": "Host/JVM fixtures exercise admission, owner context and credential retirement. They do not prove packaged native execution.",
+      "current": "Host and JVM fixtures exercise admission, owner context and credential retirement. They do not prove packaged native execution. The process-kill classes (PrivateResidentSocket, ResidentStreamTransport, ResidentWorkflowCrash) and the credential-slot class (Connection) run only in the two dispatch-only jobs of .github/workflows/resident-android.yml, which refuse to run outside a GitHub-hosted x86_64 runner; no passing run of either job is recorded. ResidentService with real inference needs an arm64 emulator and an owner-only Cerebras key file (scripts/android-resident-instrumentation.mjs); no run is recorded at the current source.",
       "remaining": "Run resident start/restart, socket/auth/IPC, overlapping Activity teardown, credential replacement, logout, network loss, reboot, killed worker and pending native receipt recovery.",
       "acceptance": "No old-owner output/action, duplicate effect or leaked process; current native runtime/process evidence and conversation IDs retained.",
       "depends_on": [
@@ -451,13 +548,17 @@
       "group": "Native and user journeys",
       "priority": "P0",
       "kind": "acceptance",
+      "blocked_on": [
+        "EMULATOR: chat continuity on an installed APK (Shell includes a soft-keyboard layout check, Assistant and Flow are registered, none has a recorded run)",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-05",
         "AP-15"
       ],
       "title": "Qualify chat draft history and navigation continuity",
       "current": "Source and browser tests cover pre-dispatch retention (no agent, expired session, offline setup, Stop before the post), unknown post-dispatch outcome, Stop with one cancel and one reconciliation shown in the chat, double submit, owner change mid-reply, history paging and restore on connect, reply/edit/truncate, and draft retention across Home, Back and a viewport resize.",
-      "remaining": "Exercise the same paths on the emulator HOME role and a target device: real soft-keyboard resize, system Back/Home, drawer/assistant overlays, resident restart mid-reply and concurrent owner changes.",
+      "remaining": "Exercise the same paths on an installed APK with the HOME role and on a target device: real soft-keyboard resize, system Back/Home, drawer/assistant overlays, resident restart mid-reply and concurrent owner changes. No instrumentation result exists for these at the current source.",
       "acceptance": "Text survives every pre-dispatch failure; no implicit resend; selection/history/scroll remain bound to the intended conversation.",
       "depends_on": [
         "MVP-20"
@@ -473,12 +574,16 @@
       "group": "Native and user journeys",
       "priority": "P0",
       "kind": "acceptance",
+      "blocked_on": [
+        "HUMAN: decision A-24",
+        "EMULATOR: LocalSpeechInstrumentedTest on arm64-v8a and on an x86_64 host"
+      ],
       "requirements": [
         "AP-06"
       ],
       "title": "Admit a functionally passing speech runtime",
-      "current": "Committed qualification has failed/pending functional acceptance. A later ARM64 candidate is evidence, not admitted bytes; x86_64 remains unqualified. Local available AAR hash differs from the committed runtime manifest.",
-      "remaining": "Rebuild with reviewed deterministic synthesis patch, execute unchanged functional suite on both ABIs, investigate failures and admit exact candidate/models/notices through the qualification process.",
+      "current": "Committed qualification is failed: android/local-speech/qualified-runtime-manifest.json records functionalAcceptance.passed false (LocalSpeechInstrumentedTest, 1 of 2 failed on arm64-v8a; x86_64 not executed). A later arm64 candidate is recorded but not admitted. Flag-off builds do not use on-device speech (P-07), and whether it is still required is pending decision A-24. A rebuild of the runtime at pin 352d7a08 is described on branch claude/r3-packaging (scripts/local-speech/README.md at 73b973a5) as source and build evidence only, with both ABIs not executed; it is not on main.",
+      "remaining": "If A-24 keeps on-device speech required: rebuild at the current pin, execute the unchanged functional suite on arm64-v8a and on an x86_64 emulator or device (this host is arm64 and no workflow runs the test), and admit the exact candidate through the qualification process. If A-24 drops the requirement, retire the distribution build's qualified-speech input instead.",
       "acceptance": "Both ABI reports match the artifact hash/source; manifests updated only from passing evidence; strict build accepts the same bytes.",
       "depends_on": [],
       "sources": [
@@ -492,6 +597,10 @@
       "group": "Native and user journeys",
       "priority": "P0",
       "kind": "acceptance",
+      "blocked_on": [
+        "HUMAN: decisions MVP-01 and A-10",
+        "DEVICE: physical microphone, speaker and Bluetooth campaign"
+      ],
       "requirements": [
         "AP-06",
         "AP-15"
@@ -515,11 +624,15 @@
       "group": "Native and user journeys",
       "priority": "P1",
       "kind": "acceptance",
+      "blocked_on": [
+        "EMULATOR: `--classes NotesTrashBackstop,NotesStorageDurability,NotesSecureStorage` and `scripts/test-native-restart.mjs notes`",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-10"
       ],
       "title": "Finish Notes and voice-recording lifecycle",
-      "current": "Text/checklist/link/voice notes and transactional recovery exist.",
+      "current": "Text, checklist, link and voice notes and transactional recovery exist. In the browser build a saved voice note offers a calendar event draft and created records link back to the note (test/browser/note-calendar-handoff.spec.ts), and a full Trash refuses a deletion without losing data (test/browser/notes-trash-full.spec.ts). The native classes NotesTrashBackstop, NotesStorageDurability and NotesSecureStorage are registered with the runner and the notes restart campaign exists; no run is recorded at the current source.",
       "remaining": "Test creation/edit/search/import/export, native encryption, dictation selection, audio/save failure, summary revision, Trash/restore/expiry and installed-data upgrades on the release candidate.",
       "acceptance": "Exact note/audio bytes survive promised transitions; failed writes remain unsaved; no duplicate note after retries or unrelated source disclosure.",
       "depends_on": [
@@ -536,11 +649,15 @@
       "group": "Native and user journeys",
       "priority": "P1",
       "kind": "acceptance",
+      "blocked_on": [
+        "EMULATOR: `scripts/test-calendar-regression.mjs --case=CalendarCrudInstrumentedTest`, then `--case=CalendarAgentCrudInstrumentedTest`",
+        "DEVICE: a real synced calendar account"
+      ],
       "requirements": [
         "AP-09"
       ],
       "title": "Qualify Calendar CRUD and recurrence",
-      "current": "Native Calendar consumes the new pin plus direct-save options; browser fixtures do not prove Android provider state.",
+      "current": "Native Calendar comes from the pinned upstream plugin plus direct-save options; whether it compiles at the current pin is not re-verified at this source. The browser review of an agent calendar change states the calendar and account, the times in the event's zone against the phone's, the all-day state and attendees (test/calendar-agent-review.test.mjs, test/browser/journey-b-voice-note-actions.spec.ts); on Android the second review is the plugin's own dialog, which names the calendar and the time but not the account or attendees. Browser fixtures do not prove Android provider state, and CalendarCrud and CalendarAgentCrud have no run at the current source.",
       "remaining": "Create/read-back/edit/delete in a real selected writable calendar; all-day, cross-midnight, DST, travel zone, recurrence scope, invitations/RSVP, read-only, revoke and lost response. Decide any unsupported required subflow explicitly.",
       "acceptance": "Exact provider IDs/revisions and read-back, scoped invitations separately reviewed, no duplicate create after timeout.",
       "depends_on": [
@@ -557,12 +674,18 @@
       "group": "Native and user journeys",
       "priority": "P1",
       "kind": "acceptance",
+      "blocked_on": [
+        "EMULATOR: `--classes ClockHandoff,ClockRepeatDays,ReminderLifecycle`, `--classes RealClock --clock-exclusive`, `scripts/test-reminder-one-off.mjs`, `scripts/test-reminder-recovery.mjs`",
+        "CI: ClockAgentReview and ReminderTapProcessDeath in resident-android.yml job recovery-ui",
+        "HUMAN: decision A-11",
+        "DEVICE: audible ringing, vibration and Do Not Disturb"
+      ],
       "requirements": [
         "AP-09",
         "AP-11"
       ],
       "title": "Qualify Reminders and Clock separately",
-      "current": "Reminders have local schedules; Clock is a reviewed Android handoff, not confirmed ringing.",
+      "current": "Reminders have local schedules; Clock is a reviewed Android handoff, not confirmed ringing. On the stubbed Android path one approval sends one handoff, a cancelled review sends nothing, a time-zone change retires the request and a missing Clock app is reported without claiming an alarm (test/browser/journey-core-loops.production.spec.ts). ClockHandoff, ClockRepeatDays, RealClock and ReminderLifecycle are registered with the runner and the one-off and recovery reminder campaigns exist; no run is recorded at the current source.",
       "remaining": "Exercise lead None/numeric, snooze/complete/reopen/cancel, recurrence, reboot/timezone, permission/DND/Doze and force-stop. Separately observe Clock set/show/snooze/dismiss and actual ring/vibration.",
       "acceptance": "Delivery receipts and exact deep links; no reminder-as-alarm guarantee; actual audible alarm evidence or approved scope change.",
       "depends_on": [
@@ -579,11 +702,15 @@
       "group": "Native and user journeys",
       "priority": "P1",
       "kind": "acceptance",
+      "blocked_on": [
+        "EMULATOR: default campaign, the BrowserReading classes, BrowserPageQuestion, `--test-mocks --classes BrowserDownload,BrowserFlow` and `scripts/test-native-restart.mjs signin`",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-10"
       ],
       "title": "Qualify native Browser and downloads",
-      "current": "Persistent isolated normal tabs, ephemeral private tabs and reviewed downloads exist.",
+      "current": "Persistent isolated normal tabs, ephemeral private tabs and reviewed downloads exist. The runner covers BrowserSignins, BrowserFlow, BrowserContinuity, BrowserDownload, the four BrowserReading classes and BrowserPageQuestion, and the restart runner has the signin case for sign-in persistence and private-tab cleanup; no run is recorded at the current source. The last recorded download pass is \"Build47, 2026-09-30\" with no commit.",
       "remaining": "Run sign-in/restart/private cleanup, pop-ups/app links, upload/download exact bytes, cookies across same/cross-origin redirects, closed private tab cancellation, provider errors and hostile content/bridge isolation.",
       "acceptance": "Current installed WebView evidence; no credential forwarding to redirect origins; private history absent after close; exact authorized file only.",
       "depends_on": [
@@ -599,11 +726,16 @@
       "group": "Native and user journeys",
       "priority": "P0",
       "kind": "acceptance",
+      "blocked_on": [
+        "EMULATOR: `--test-mocks --classes BrowserAutofill` and `--classes PasswordBrowserFill`",
+        "HUMAN: decision A-06 (release signer), decisions A-12 and A-14, and a Proton Pass test vault with synthetic credentials",
+        "DEVICE: release-signed device"
+      ],
       "requirements": [
         "AP-10"
       ],
       "title": "Qualify integrated password manager and optional provider",
-      "current": "The pinned shared password module supplies native vault management and app Autofill. Three real Android consumer tests passed on a clean checkout at 352d7a0855, with exact APK hashes and cleanup evidence in upstream PR #34835. Integrated browser Autofill is unavailable because ordinary WebView lacks native per-field origins. Show and Copy remain available; successful browser filling is not qualified.",
+      "current": "The pinned shared password module supplies native vault management and app Autofill. Three Android consumer tests passed upstream at 352d7a0855 (upstream pull request 34835). Integrated browser Autofill is unavailable because ordinary WebView lacks native per-field origins; Show and Copy remain available. Alpha's own native save and fill flow was recorded at d3dc9977 as failing before save or unlock and has not been re-run. BrowserAutofill (test-mocks APK) and PasswordBrowserFill are registered with the runner; no run is recorded at the current source. No release signer exists, so nothing can be qualified on a release-signed device.",
       "remaining": "On release-signed devices test enablement, synthetic credential save/update/fill, biometric unavailable/lock/cancel, exact top-level origin, iframe, app certificate, tab/process switch, disable/re-enable and optional Proton Pass.",
       "acceptance": "No secret in model context/logs; correct-origin fill and wrong-origin refusal recorded. Passkeys remain separate until explicitly scoped and implemented.",
       "depends_on": [
@@ -621,11 +753,15 @@
       "group": "Native and user journeys",
       "priority": "P1",
       "kind": "acceptance",
+      "blocked_on": [
+        "EMULATOR: `--classes CameraScan,FilesTree`, `scripts/test-native-restart.mjs document`, `scripts/test-native-permissions.mjs camera`",
+        "DEVICE: physical camera, real documents and storage volumes"
+      ],
       "requirements": [
         "AP-10"
       ],
       "title": "Qualify Files Camera Photos Scan and OCR",
-      "current": "Source implements selected media, browser/native paths, recent/search and scan/PDF handling.",
+      "current": "Source implements selected media, browser and native paths, recent and search, and scan and PDF handling. Native Camera offers image selection into scan review and the multi-page scan builder (apps/app/src/prototype/camera-adapter.ts, scan-document.ts). CameraScan and FilesTree are registered with the runner and the document restart and camera permission campaigns exist; no run is recorded at the current source. The capture and category selection gaps are closed on open PR #388, not on main (MVP-13).",
       "remaining": "Run provider URI retention/revoke, native capture/cancel/retake, volume/low-storage, gallery refresh, non-destructive edits, exact share/export, video interruption and English OCR on real documents. Resolve category/capture selection gaps first.",
       "acceptance": "Correct MIME/bytes/identity and recoverable failures; no privileged HTML execution or neighboring-image upload. Real OCR task quality documented.",
       "depends_on": [
@@ -643,12 +779,17 @@
       "group": "Native and user journeys",
       "priority": "P1",
       "kind": "integration",
+      "blocked_on": [
+        "HUMAN: decision A-23, then an HTTPS Maps gateway supplied as VITE_MAPS_BASE_URL",
+        "EMULATOR: `scripts/maps/test-native-recovery.mjs` and `scripts/maps/test-native-navigation.mjs` against the regional fixture gateway",
+        "DEVICE: GPS navigation"
+      ],
       "requirements": [
         "AP-10"
       ],
       "title": "Finish regional Maps deployment and travel acceptance",
-      "current": "Route selection and guidance integration exists; source tests do not qualify production map data or physical navigation. The previous projection reported a point at longitude 179.5 on a route from 179 to -179 as 55.6 km off route. The pin includes the reviewed geodesic correction; integrated navigation acceptance remains open.",
-      "remaining": "Provision approved TLS endpoint and licensed data coverage, verify build configuration, location permission/accuracy, reroute/stale result, offline/no route, background navigation and stop behavior. The great-circle projection fix from merged upstream PR 34650 is in the pin; qualify date-line/high-latitude routes and maneuver ordering.",
+      "current": "No flag-off build has a Maps provider: VITE_MAPS_BASE_URL is unset and the emulator gateway exists only in test-mocks builds (apps/app/src/maps/regional-provider.ts), so a production user reads \"Connect a Maps provider to search places and plan routes.\" and no route is produced. With a synthetic provider, an event's address enters Maps once, several candidates wait for a choice, \"Back to event\" returns to the originating event and the travel-mode buttons expose their state (test/browser/journey-j04-schedule-travel.spec.ts, maps-event-return.spec.ts). The pin includes the reviewed great-circle projection correction (upstream pull request 34650); integrated navigation acceptance remains open.",
+      "remaining": "The owner chooses and licenses a production Maps provider (A-23) and supplies an HTTPS gateway as VITE_MAPS_BASE_URL. Then verify build configuration, location permission and accuracy, reroute and stale result, offline and no route, background navigation and stop behavior, and qualify date-line and high-latitude routes and maneuver ordering.",
       "acceptance": "J04 event-to-route on selected hardware with explicit origin/route, correct live guidance and truthful regional/offline limits. Date-line progress agrees with the existing geodesic distance calculation and never invents an off-route detour.",
       "depends_on": [
         "MVP-04",
@@ -666,12 +807,18 @@
       "group": "Native and user journeys",
       "priority": "P1",
       "kind": "acceptance",
+      "blocked_on": [
+        "EMULATOR: `scripts/android-workflow-native.mjs` and `--classes WorkflowApprovalNotice,HostedProcessRestart`",
+        "CI: ResidentWorkflowCrash and WorkflowNoticeProcessDeath in resident-android.yml",
+        "HUMAN: inference credential for generated-candidate quality",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-11",
         "AP-12"
       ],
       "title": "Qualify workflows approvals and result delivery",
-      "current": "Typed phone workflows are manual-triggered; digest scheduling and newer Automations have distinct contracts. Unknown outcomes are retained.",
+      "current": "Typed phone workflows are manual-triggered; digest scheduling and Automations have distinct contracts. Unknown outcomes are retained and never replayed; a lost Run or Save request can be resent once by the owner under its original identity (docs/agent-integration.md; test/browser/workflow-interruption-recovery.spec.ts, workflow-outcome-unknown.spec.ts). The phrase filter for calls, messages, payments, contacts and code refuses before generation and the typed catalog bounds the rest. WorkflowApprovalNotice and HostedProcessRestart are registered with the runner, the native workflow campaign exists, and the process-death classes run only in hosted CI; no run is recorded for any of them at the current source.",
       "remaining": "Exercise generated candidate quality, Use/Save/Run separation, capability denial, approvals, cancellation, worker death, run history, pending effect/receipt gaps and migrated definitions. Do not advertise scheduled arbitrary workflows from digest support.",
       "acceptance": "No duplicate external effect or invented receipt; every interrupted run has an explicit disposition and exact history on reconnect.",
       "depends_on": [
@@ -688,12 +835,18 @@
       "group": "Native and user journeys",
       "priority": "P1",
       "kind": "acceptance",
+      "blocked_on": [
+        "EMULATOR: `--classes SettingsSystemFacts,SettingsFlow`, the HOME-role campaign for SettingsRoles, and `scripts/test-native-permissions.mjs settings`, `channels` and `notice-denied`",
+        "CI: ReminderTapProcessDeath and WorkflowNoticeProcessDeath in resident-android.yml job recovery-ui",
+        "HUMAN: decision A-06 for any update check",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-12"
       ],
       "title": "Qualify settings and notification truthfulness",
       "current": "Tiles and Settings rows read the Wi-Fi, Bluetooth, airplane mode, location, mobile data and Do Not Disturb states Android reports to an ordinary app, hand off to the matching Android page and re-read on return; unreported states are shown as a handoff. Channel and app-notification denial are read back from Android. About shows the packaged version and states that no update check exists. Diagnostics are redacted by construction. All of this has source and renderer-contract coverage on the flag-off bundle; physical state, each image's Settings pages and OS delivery are not established here.",
-      "remaining": "On an emulator and then a device, check each settings destination and readback (SettingsSystemFacts, SettingsNative, SettingsFlow, SettingsRoles and NotificationChannels instrumentation, then by hand), channel denial/re-enable, lock/Doze, exact result/reminder tap after death, revoke during work and the redacted export. Update availability needs an update authority (A-06) before anything can be shown. Keep mirroring off by default and outside MVP gate.",
+      "remaining": "On an installed APK and then a device, check each settings destination and readback (SettingsSystemFacts, SettingsFlow and SettingsRoles through the runner; SettingsNative, NotificationChannels and the denied-notice case through scripts/test-native-permissions.mjs; then by hand), channel denial and re-enable, lock and Doze, exact result or reminder tap after process death (hosted CI only), revoke during work and the redacted export. No run is recorded at the current source. Update availability needs an update authority (A-06) before anything can be shown. Keep mirroring off by default and outside the MVP gate.",
       "acceptance": "No simulated toggle or success; channel-disabled history still available; wrong-owner/deleted notification target fails safely.",
       "depends_on": [
         "MVP-20",
@@ -709,12 +862,17 @@
       "group": "Live integrations",
       "priority": "P0",
       "kind": "deployment",
+      "blocked_on": [
+        "HUMAN: a designated Eliza Cloud test account with credits, and a pilot Cerebras key in the owner-only key file (decisions A-02 and A-20)",
+        "EMULATOR: `scripts/android-resident-instrumentation.mjs` on an arm64 emulator once the key exists",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-03",
         "AP-04"
       ],
       "title": "Qualify production Cloud inference and approved provider profiles",
-      "current": "Synthetic transports and historical local inference do not establish the current release service path.",
+      "current": "Synthetic transports and historical local inference do not establish the current release service path. No real Eliza Cloud sign-in, credit check, top-up, expiry or revocation has been exercised; renderer coverage is against a stubbed bridge (test/browser/production-surface.spec.ts, connection-boundaries.production.spec.ts). ResidentService with real inference runs through scripts/android-resident-instrumentation.mjs and has no recorded run.",
       "remaining": "Operator provisions approved production Cloud accounts/credits; verify actual Qwen model, provider health, expiry/revoke/wrong owner, credit failure/top-up and account replacement during requests. Qualify direct Cerebras only as a separately retained profile. Keep credentials out of logs and audit artifacts.",
       "acceptance": "Current source-bound real round trip, correct billing/model identity and controlled recovery; no inference-ready claim from a saved credential alone.",
       "depends_on": [
@@ -731,11 +889,14 @@
       "group": "Live integrations",
       "priority": "P0",
       "kind": "deployment",
+      "blocked_on": [
+        "HUMAN: an operator with access to the deployed Eliza Cloud Worker fixes the Google code exchange, then authorizes a designated test Google account under the A-15 scope set"
+      ],
       "requirements": [
         "AP-09"
       ],
       "title": "Deploy and authorize Gmail end to end",
-      "current": "Historical code exchange returned 401. Client and synthetic Gmail routes cover many operations, but deployed managed endpoints and real mailbox behavior remain open.",
+      "current": "The Google code exchange returns 401 (docs/cloud-production-validation.md; the client secret binding is the documented hypothesis), so no real mailbox has been reached. Client and synthetic Gmail routes cover threads, attachments, drafts, send, archive, Trash and undo, and read state. Deployed managed endpoints and real mailbox behavior remain open.",
       "remaining": "Resolve OAuth exchange/approved redirect, deploy supported route/capability versions, consent least scopes, load threads/attachments, account-switch/revoke, provider drafts and archive/trash/read-state.",
       "acceptance": "Real selected mailbox read and mutation receipts, correct scope/account isolation and no unsupported controls.",
       "depends_on": [
@@ -751,12 +912,16 @@
       "group": "Live integrations",
       "priority": "P0",
       "kind": "acceptance",
+      "blocked_on": [
+        "HUMAN: Gmail grant (MVP-35), then the owner authorizes one exact recipient and message",
+        "EMULATOR: `--classes InboxOperationJournal,MailAttachment` and `scripts/test-native-restart.mjs inbox`"
+      ],
       "requirements": [
         "AP-09"
       ],
       "title": "Qualify email send and ambiguous outcomes",
-      "current": "Client supports reviewed provider-bound sends; fixture sends do not establish external delivery.",
-      "remaining": "After explicit authorization for the exact test recipient/message, verify To/Cc/Bcc/From, attachments, reply/forward, sent receipt and lost-response reconciliation. Cover changed draft and incorrect returned provider ID.",
+      "current": "The client supports reviewed provider-bound sends. Against a synthetic provider the review lists From, To, Cc, Bcc, body and attachments, the dispatched request equals the reviewed one, an edited or moved draft cannot be confirmed, a reply naming another request is refused, a lost response is never resent and a confirmed send removes the retained local copy (test/browser/journey-f-reviewed-send.spec.ts, journey-f-email-notifications.spec.ts, scripts/test-inbox-sent-cleanup.mjs). Fixture sends do not establish external delivery. InboxOperationJournal has no run at the current source.",
+      "remaining": "After MVP-35 and an explicit authorization for the exact test recipient and message, verify one real send, reply and forward with attachments, the sent receipt and lost-response reconciliation.",
       "acceptance": "Exactly one authorized delivery; uncertain result never auto-resends; local draft remains distinct from provider draft.",
       "depends_on": [
         "MVP-14",
@@ -772,13 +937,18 @@
       "group": "Live integrations",
       "priority": "P1",
       "kind": "acceptance",
+      "blocked_on": [
+        "CI: Connection in resident-android.yml job recovery-ui",
+        "EMULATOR: `--test-mocks --classes ConnectionChooser` and the default campaign on a flag-off APK",
+        "HUMAN: a real Eliza Cloud account for live self-revocation"
+      ],
       "requirements": [
         "AP-03",
         "AP-04"
       ],
       "title": "Verify retired phone pairing and retained development boundaries",
       "current": "PR 379 retires production Android phone pairing and adds a controller guard. Browser and test-mocks transports remain for development; existing credentials/history must be preserved. connectRemote now refuses every caller on production Android and the native transport rejects the pairing route (ConnectionRoutes.java, JVM-tested and compiled, not run in an APK). A stubbed-bridge production-bundle test shows a saved remote, local or Cloud-agent selection is neither paired nor restored, its credential slot is not written or removed, and a Cloud sign-in starts the resident agent instead.",
-      "remaining": "Verify flag-off Android rejects pairing without network mutation or automatic reconnection, preserves old remote credentials/history, and uses resident execution with Cloud provider authorization. Qualify retained browser/test-mocks transport ownership, expiry, revoke and recovery separately. Real hosted-agent deployment is optional scope, not a phone MVP prerequisite.",
+      "remaining": "Verify on an installed flag-off APK that Android rejects pairing without network mutation or automatic reconnection, preserves old remote credentials and history, and uses resident execution with Cloud provider authorization. The native route and origin guards are JVM-tested and have not run in an APK; the credential-slot class (Connection) runs only in hosted CI. Qualify retained browser and test-mocks transport ownership, expiry, revoke and recovery separately. Real hosted-agent deployment is optional scope, not a phone MVP prerequisite.",
       "acceptance": "Production Android cannot pair or silently restore a remote primary agent; old data remains intact. Retained development transports cannot bypass owner, expiry or device-action boundaries.",
       "depends_on": [
         "MVP-04",
@@ -796,13 +966,20 @@
       "group": "Live integrations",
       "priority": "P1",
       "kind": "acceptance",
+      "blocked_on": [
+        "HUMAN: decision A-09, then the Gmail grant (MVP-35) and an inference credential (MVP-34) for real sources and output",
+        "SOFTWARE: rerun `npm run agent:test-digest-restart` at the current pin",
+        "EMULATOR: `--classes HostedProcessRestart`",
+        "CI: WorkflowNoticeProcessDeath in resident-android.yml job recovery-ui",
+        "DEVICE: battery saver, Doze and lock"
+      ],
       "requirements": [
         "AP-07",
         "AP-11"
       ],
       "title": "Qualify digests under the approved execution policy",
-      "current": "Local durable scheduling and hosted-result controls exist. The proposed resident missed-occurrence replacement for powered-off hosted loops still needs an explicit acceptance disposition.",
-      "remaining": "Implement the selected A-09 path: resident missed-run recovery, or separately authorized hosted execution if that scope is retained. Exercise morning/evening input provenance, worker restart, duplicate occurrence, revoke/edit/disable/overlap/DST and reconnect acknowledgements.",
+      "current": "Local durable scheduling and hosted-result controls exist. The explicit missed record is implemented and tested: one missed occurrence, never run later, never replacing the last brief; morning and evening schedules, DST, overlap, revoke, edit and disable are covered with the development scheduler (test/browser/dev-digest-schedule.spec.ts, journey-d-digests.spec.ts). A resident worker killed at an admission or execution boundary created no duplicate result in one host run with a synthetic model at upstream 352d7a08 (npm run agent:test-digest-restart); it was not repeated at the current pin and is in no automated lane. A-09 is undecided.",
+      "remaining": "After A-09: for the resident path, rerun the digest restart check at the current pin, run HostedProcessRestart on an emulator and the notice process-death class in hosted CI, then real provider sources and a real model on a phone. The hosted path would need a service that does not exist.",
       "acceptance": "Distinct source-backed terminal outputs and exactly one visible delivery per occurrence, under the approved scope.",
       "depends_on": [
         "MVP-02",
@@ -821,13 +998,18 @@
       "group": "Release and security",
       "priority": "P0",
       "kind": "release",
+      "blocked_on": [
+        "SOFTWARE: `npm run android:build:local` at the current pin with the embedding host staged",
+        "HUMAN: decision A-24 (the strict build needs qualified speech or the requirement retired)",
+        "EMULATOR: speech qualification (MVP-23) if A-24 keeps it"
+      ],
       "requirements": [
         "AP-02",
         "AP-04"
       ],
       "title": "Stage the complete admitted resident runtime",
-      "current": "Source-only runtime preparation and developer builds are not packaged-runtime qualification.",
-      "remaining": "Build/bundle the pinned resident runtime and workflow worker, stage native executable/assets/policy, generate packaged notices and source stamps, then run strict android:build and verify-apks for both flavors.",
+      "current": "No build with the staged resident runtime is recorded at the current pin. `npm run android:build:local` chains the input check, agent:prepare, agent:build-workflow-worker, agent:stage-android and android:build; plain android:build stops before Gradle when an input is missing. Gradle's verifyEmbeddingHost requires the reviewed ARM64 embedding host libraries described by android/embedding-host/qualified-host.json, which are not in Git. A distribution build also requires qualified speech assets, which do not exist (MVP-23).",
+      "remaining": "Stage the embedding host from its qualification receipt, build and stage the pinned resident runtime and workflow worker, generate packaged notices and source stamps, then run the strict build and verify-apks for both flavors with no unpackaged or unqualified override.",
       "acceptance": "All four intended distribution artifacts pass strict checks with no unpackaged/unqualified overrides; installed resident uses those exact bytes.",
       "depends_on": [
         "MVP-23"
@@ -843,11 +1025,14 @@
       "group": "Release and security",
       "priority": "P0",
       "kind": "release",
+      "blocked_on": [
+        "HUMAN: decision A-06, then the release owner creates the key, sets the ELIZAOS_* signing values in the signing service and publishes assetlinks.json on an owned domain"
+      ],
       "requirements": [
         "AP-14"
       ],
       "title": "Produce controlled signed artifacts and verified links",
-      "current": "This review built unsigned releases; release-signer.json is not qualified. Custom scheme callback is not verified HTTPS App Links.",
+      "current": "android/release-signer.json records signerSha256 \"unset\"; every recorded release APK is unsigned. Provisioning, pilot update and AOSP staging refuse a release that verify-apks does not mark distributable (scripts/release-blockers.mjs). The custom scheme callback is not verified HTTPS App Links; android/app/src/main/assetlinks.template.json is a template.",
       "remaining": "Operator sets release signer/version, protects key custody, publishes approved assetlinks for the real host, enables reviewed manifest filter and verifies installed link association.",
       "acceptance": "Signed exact APK hashes/certificate/version and working domain verification on both variants; no secrets in the evidence bundle.",
       "depends_on": [
@@ -865,6 +1050,10 @@
       "group": "Release and security",
       "priority": "P0",
       "kind": "release",
+      "blocked_on": [
+        "HUMAN: decision A-01 and a Linux builder with the AOSP source (MVP-03, MVP-40)",
+        "DEVICE: Pixel 10 hardware for the physical build"
+      ],
       "requirements": [
         "AP-14"
       ],
@@ -889,12 +1078,17 @@
       "group": "Release and security",
       "priority": "P0",
       "kind": "release",
+      "blocked_on": [
+        "HUMAN: decision A-06 (rollback design and signed artifacts)",
+        "EMULATOR: `scripts/test-installed-upgrade.mjs` from agreed baselines",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-14",
         "AP-15"
       ],
       "title": "Prove signed upgrade rollback and data preservation",
-      "current": "No current signed OTA/recovery drill is supplied by this review.",
+      "current": "No signed update or recovery drill exists. scripts/pilot-update.mjs installs a newer versionCode over an existing install and refuses a non-distributable release; rollback is not offered (its header and its result say so, pending A-06). The installed-upgrade runner exists (scripts/test-installed-upgrade.mjs) and has no recorded run at the current source.",
       "remaining": "Upgrade from agreed installed baselines including old mock selection; verify namespaces/Keystore/data migrations, interrupted update, rollback authorization, recovery and support runbook.",
       "acceptance": "Observed recovery on selected device with preserved promised data and no reopened mock surface or replayed side effect.",
       "depends_on": [
@@ -910,13 +1104,16 @@
       "group": "Release and security",
       "priority": "P0",
       "kind": "release",
+      "blocked_on": [
+        "HUMAN: decision A-21"
+      ],
       "requirements": [
         "AP-01",
         "AP-14"
       ],
       "title": "Resolve Denton distribution rights",
-      "current": "Denton is still listed in the unverified license allowlist despite the PRD naming Fraunces.",
-      "remaining": "Obtain valid app/web embedding rights and record evidence, or replace bundled Denton usage with the approved open fallback and recheck layout. Verify all shipped fonts/models/native dependencies.",
+      "current": "Denton (apps/app/public/denton-300.woff2) is an unlicensed commercial typeface listed in licenses/unverified-allowlist.json. The production bundle audit prints it as a named release blocker without failing developer builds, and the release gates refuse a release while it stands. docs/dependency-audit.md records where it is referenced, that Fraunces is not yet a complete fallback, and the steps for either choice.",
+      "remaining": "The owner obtains app and web embedding rights and records the evidence, or approves replacing Denton with Fraunces; the replacement and layout recheck are then software work.",
       "acceptance": "No unresolved commercial font rights in a distributable artifact; notice inventory matches final packaged bytes.",
       "depends_on": [],
       "sources": [
@@ -930,6 +1127,11 @@
       "group": "Release and security",
       "priority": "P0",
       "kind": "acceptance",
+      "blocked_on": [
+        "HUMAN: inference credential (MVP-34) for the resident redaction run",
+        "EMULATOR: ResidentEgressRedaction through `scripts/android-resident-instrumentation.mjs`",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-03",
         "AP-04",
@@ -954,13 +1156,16 @@
       "group": "Release and security",
       "priority": "P1",
       "kind": "security",
+      "blocked_on": [
+        "SOFTWARE: Gradle dependency verification metadata and an SBOM for the release candidate (needs MVP-39)"
+      ],
       "requirements": [
         "AP-03",
         "AP-14"
       ],
       "title": "Triage dependency and artifact supply chain findings",
-      "current": "npm install reported 3 moderate and 1 high audit findings; counts are advisory and not an exploitability disposition.",
-      "remaining": "Identify exact affected dependency paths/reachability, apply compatible fixes or reviewed time-bounded exceptions, check native/model provenance and release SBOM. Do not blindly upgrade the pinned platform.",
+      "current": "Triaged on 2026-10-10 (docs/dependency-audit.md): the 3 moderate and 1 high npm findings reduce to two advisories, both in development-only packages that ship in no bundle or APK. The high one was fixed by a lockfile bump; the moderate one is a recorded exception until 2027-01-08. test/dependency-audit.test.mjs binds the record to the hash of package-lock.json. `node scripts/generate-sbom.mjs` writes a deterministic CycloneDX document offline.",
+      "remaining": "The SBOM records no hashes for the 71 Gradle coordinates (no dependency verification metadata) and does not cover the staged resident runtime or scan APK bytes; generate and attach it for the release candidate. Remove the exception when @capacitor/cli drops the affected path or on its expiry date.",
       "acceptance": "Recorded vulnerability dispositions and reproducible locked dependencies, with relevant regressions passing.",
       "depends_on": [],
       "sources": [
@@ -974,12 +1179,15 @@
       "group": "Release and security",
       "priority": "P1",
       "kind": "administration",
+      "blocked_on": [
+        "HUMAN: the repository owner installs the \"Main required checks\" ruleset"
+      ],
       "requirements": [
         "AP-14"
       ],
       "title": "Install the agreed required-check ruleset",
-      "current": "Ruleset preparation exists; repository enforcement is a separate administrative state.",
-      "remaining": "Have repository owner review/install the intended required contexts and protection rules; ensure renamed/sharded checks cannot be omitted or bypassed silently.",
+      "current": "scripts/ci/required-checks-ruleset.json holds the intended ruleset and scripts/ci/read-required-checks.mjs reads the enforced state back without changing it. Read back on 2026-10-10 for this refresh: only \"Default branch baseline\" is active (deletion, non-fast-forward, pull request); \"Main required checks\" is not installed, so Repository verification, Browser MVP result and Android foundation result are not required.",
+      "remaining": "The repository owner installs the ruleset (the script prints the command), confirms with the read-back, and opens one controlled pull request showing that a missing or failing check blocks the merge.",
       "acceptance": "Read-back of enforced rules and a controlled PR demonstrating missing/failing checks prevent merge.",
       "depends_on": [],
       "sources": [
@@ -992,6 +1200,12 @@
       "group": "Release and security",
       "priority": "P0",
       "kind": "qualification",
+      "blocked_on": [
+        "HUMAN: release signer (A-06) and the decisions that gate MVP-39 and MVP-40",
+        "EMULATOR: every campaign in docs/core-loop-audit.md on the candidate's APKs",
+        "CI: resident-android.yml on the candidate commit",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-01",
         "AP-02",
@@ -1027,6 +1241,12 @@
       "group": "Pilot and handoff",
       "priority": "P0",
       "kind": "acceptance",
+      "blocked_on": [
+        "SOFTWARE: implemented on open PR #388, not on main (software part)",
+        "EMULATOR: Accessibility, TextScale and Rotation instrumentation have no recorded run",
+        "HUMAN: decision A-22",
+        "DEVICE: TalkBack, Switch Access and physical large text"
+      ],
       "requirements": [
         "AP-15"
       ],
@@ -1048,6 +1268,11 @@
       "group": "Pilot and handoff",
       "priority": "P1",
       "kind": "acceptance",
+      "blocked_on": [
+        "EMULATOR: campaigns 2, 6, 7, 8, 9, 10 and 14 of docs/core-loop-audit.md",
+        "HUMAN: Gmail grant (MVP-35), inference credential (MVP-34) and a Maps provider (A-23)",
+        "DEVICE: the final device image"
+      ],
       "requirements": [
         "AP-07",
         "AP-09",
@@ -1055,8 +1280,8 @@
         "AP-11"
       ],
       "title": "Execute all five cross-app journeys",
-      "current": "J01 poster-to-calendar, J02 voice-to-note/reminder, J03 document analysis, J04 schedule-to-travel and J05 web-research-to-note have source-level pieces.",
-      "remaining": "Run each end to end with real selected data, explicit source review, separate save/effect approval, changed-source rejection and recovery on the final device image. Record unsupported subflows rather than substituting a mock.",
+      "current": "Each of J01 to J05 has an end-to-end browser journey driven through rendered controls with the development profile and synthetic providers (test/browser/journey-j01, journey-b for J02, journey-j03, journey-j04, journey-j05) and a flag-off assertion (test/browser/journey-core-loops.production.spec.ts). This is class S evidence only. docs/core-loop-audit.md classifies every step: J01 6 of 9 closable steps evidenced, J02 (loop B) 17 of 23, J03 8 of 9, J04 8 of 8, J05 7 of 8. For a production user J03's attachment half is blocked on the Gmail grant and J04 ends at an honest unavailable state because no Maps provider exists.",
+      "remaining": "Run the open emulator steps (J01-6, J01-7, J01-10, J03-7, J05-2 and loop B's six), then each journey end to end with real selected data on the final device image. Record unsupported subflows rather than substituting a mock.",
       "acceptance": "Unedited demonstrations and exact receipts/source identities; no automatic send/save or silently changed source.",
       "depends_on": [
         "MVP-24",
@@ -1075,12 +1300,16 @@
       "group": "Pilot and handoff",
       "priority": "P0",
       "kind": "acceptance",
+      "blocked_on": [
+        "HUMAN: decision A-01, four purchased units and a distributable release (A-06)",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-14",
         "AP-15"
       ],
       "title": "Provision four units and obtain user acceptance",
-      "current": "The pilot runbook still has four pending unit rows.",
+      "current": "The pilot runbook has four unit rows, all pending and not run. scripts/provision-unit.mjs provisions a unit and refuses a release that is not distributable; no phone SKU is chosen and no unit exists.",
       "remaining": "Provision four independently identified units, record image/APK/runtime/model/signer versions, execute mandatory journeys/performance/stability per unit, agree P0/P1 definitions and resolve the issue list with stakeholders.",
       "acceptance": "Four complete evidence manifests, no open blocking defect, explicit target-user acceptance and named support/recovery owner.",
       "depends_on": [
@@ -1099,11 +1328,15 @@
       "group": "Pilot and handoff",
       "priority": "P1",
       "kind": "delivery",
+      "blocked_on": [
+        "HUMAN: completes after the pilot (MVP-50)",
+        "DEVICE"
+      ],
       "requirements": [
         "AP-14"
       ],
       "title": "Deliver reproducible operational handoff",
-      "current": "Source and runbooks are available but do not constitute a completed pilot handoff.",
+      "current": "Source, runbooks, provisioning and update tooling (scripts/provision-unit.mjs, scripts/pilot-update.mjs), the dependency audit and the SBOM generator exist. Rollback is not offered. They do not constitute a completed pilot handoff.",
       "remaining": "Deliver reviewed upstream references, app/OS build and provisioning instructions, dependency/license inventory, service/backend guide, privacy/retention statements, release manifests, backup/export policy, rollback instructions, demos and final issue dispositions.",
       "acceptance": "An independent operator can rebuild/provision/recover and execute acceptance without undocumented credentials or steps.",
       "depends_on": [
@@ -1119,6 +1352,11 @@
       "group": "Platform scope",
       "priority": "P0",
       "kind": "decision and implementation",
+      "blocked_on": [
+        "HUMAN: owner confirms release scope and approves the listener ADR (decisions.md foundation decision 8)",
+        "SOFTWARE: implementation after the ADR",
+        "DEVICE: image and device evidence"
+      ],
       "requirements": [
         "AP-06",
         "AP-12",
@@ -1144,6 +1382,12 @@
       "group": "Platform scope",
       "priority": "P1",
       "kind": "implementation and acceptance",
+      "blocked_on": [
+        "SOFTWARE: implemented on open PR #388, not on main",
+        "EMULATOR: the HOME-role campaign and LauncherLibraryInstrumentedTest (on that pull request) have never run",
+        "HUMAN: decision A-22",
+        "DEVICE: physical HOME role, work profiles, real install and remove"
+      ],
       "requirements": [
         "AP-01",
         "AP-02",
