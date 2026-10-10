@@ -1,5 +1,5 @@
 package ai.elizaresearch.alphaphone;
-import ai.eliza.plugins.media.PhotoFilter;
+import ai.eliza.plugins.media.OwnedPhotoEdits;
 import android.content.*;
 import android.database.Cursor;
 import android.graphics.*;
@@ -26,7 +26,7 @@ public final class PhotoFilterInstrumentedTest {
  }
  @Test public void sevenFiltersMatchBrowserChartInPreviewAndExportWithImmutableIdentity()throws Exception{
   assertTrue(android.os.Build.VERSION.SDK_INT>=30);Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();ContentResolver r=c.getContentResolver();JSONObject golden=new JSONObject(new String(bytes(InstrumentationRegistry.getInstrumentation().getContext().getAssets().open("photo-filter-goldens.json")),java.nio.charset.StandardCharsets.UTF_8));JSONArray filters=golden.getJSONArray("results");JSONArray samples=filters.getJSONObject(0).getJSONArray("samples");
-  Uri original=null;List<Uri> copies=new ArrayList<>();List<String> tokens=new ArrayList<>();OwnedPhotoEdits edits=new OwnedPhotoEdits(c);
+  Uri original=null;List<Uri> copies=new ArrayList<>();List<String> tokens=new ArrayList<>();OwnedPhotoEdits edits=new OwnedPhotoEdits(c, AlphaPhotosPlugin.MEDIA_CONFIG);
   try{
    ContentValues values=new ContentValues();values.put("_display_name","alpha-filter-chart-"+UUID.randomUUID()+".png");values.put("mime_type","image/png");values.put("relative_path","Pictures/AlphaPhone-tests/");values.put("is_pending",1);original=r.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);assertNotNull(original);
    byte[] canonical=bytes(InstrumentationRegistry.getInstrumentation().getContext().getAssets().open("photo-filter-source.png"));byte[] hash=java.security.MessageDigest.getInstance("SHA-256").digest(canonical);StringBuilder digest=new StringBuilder();for(byte value:hash)digest.append(String.format(java.util.Locale.ROOT,"%02x",value&255));assertEquals("Browser/native source PNG must be byte-identical",golden.getString("sourceSha256"),digest.toString());try(OutputStream out=r.openOutputStream(original)){assertNotNull(out);out.write(canonical);}values.clear();values.put("is_pending",0);r.update(original,values,null,null);byte[] before=bytes(r.openInputStream(original));String id=Long.toString(ContentUris.parseId(original));

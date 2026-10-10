@@ -24,7 +24,7 @@ import java.util.concurrent.Executors;
 @CapacitorPlugin(name="AlphaPhotos")
 public class AlphaPhotosPlugin extends Plugin {
  private OwnedVideoPlayback playback;
- private static final OwnedMediaConfig MEDIA_CONFIG=OwnedMediaConfig.builder("alpha")
+ static final OwnedMediaConfig MEDIA_CONFIG=OwnedMediaConfig.builder("alpha")
    .edits("Pictures/Alpha Phone/Edits/", "Alpha-edit-").captures("Pictures/", "SCAN_").build();
  private OwnedPhotoEdits edits;
  private OwnedCaptures captures;

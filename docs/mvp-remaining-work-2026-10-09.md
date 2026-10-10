@@ -117,7 +117,7 @@ Evidence/source: [docs/mvp-current-status.md](../docs/mvp-current-status.md), [d
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: The integration branch pins reviewed upstream merge a9c5b994, including native compatibility, touch lifecycle, deterministic synthesis and shared password custody. Product qualification at this pin is in progress.
+Current: The integration branch pins reviewed upstream merge 41c5c20a, including native compatibility, touch lifecycle, deterministic synthesis and shared password custody. Product qualification at this pin is in progress.
 
 Remaining: Complete product regressions and both Android distributions at the replacement pin.
 
