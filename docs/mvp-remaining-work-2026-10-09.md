@@ -119,9 +119,9 @@ Evidence/source: [docs/mvp-current-status.md](../docs/mvp-current-status.md), [d
 
 **P1 · integration · AP-04, AP-10, AP-11**
 
-Current: The integration branch pins reviewed upstream merge 945209d3, including native compatibility, touch lifecycle, deterministic synthesis and shared password custody. Product qualification at this pin is in progress.
+Current: The integration branch pins reviewed upstream merge 945209d3, including native compatibility, touch lifecycle, deterministic synthesis, shared password custody and workflow repairs. Source preparation, repository verification, four developer APKs and journal/photo tests in both variants passed. These are not distributable release or device-acceptance results.
 
-Remaining: Complete product regressions and both Android distributions at the replacement pin.
+Remaining: Complete the remaining retired-pin semantic audit and product-wide browser/native regressions. Release runtime, speech, signing and device acceptance remain separate.
 
 Done when: Reviewed upstream disposition per commit, clean source preparation and full product regression at the replacement pin.
 
@@ -159,9 +159,9 @@ Evidence/source: [android/settings.gradle](../android/settings.gradle), [upstrea
 
 **P1 · integration · AP-11, AP-12**
 
-Current: The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser policies use pinned helpers. Alpha now delegates journal transitions to the shared engine and retains product result policy and Clock approval; native qualification of this adapter is in progress.
+Current: The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser policies use pinned helpers. Alpha delegates journal transitions to the shared engine and retains product result policy and Clock approval. Journal persistence, replay refusal and history redaction passed native tests in both variants.
 
-Remaining: Qualify installed notification policy/history and browser sessions; finish site-permission and journal adapter consolidation without weakening receipt or owner semantics.
+Remaining: Qualify installed notification policy/history and browser sessions; finish site-permission consolidation without weakening receipt or owner semantics.
 
 Done when: No duplicate effect or stale approval after migration; browser bridge isolation and notification privacy remain intact.
 

@@ -76,7 +76,7 @@ class has no evidence of that kind for the current head.
 | Design and accessibility | Themed bounded dialogs, visible actions, keyboard-scrollable content and large-text checks across core flows. | Complete current-source subviews, error/empty states, Pixel geometry, physical accessibility and user task acceptance. Browser assertions alone are not design approval. | S |
 | Settings | Settings includes connection management, per-connection privacy disclosure, third-party licences and the password manager pages. | Quick-setting tiles show no native on/off facts and open generic Android Settings rather than the specific page. Device qualification of each Android handoff. | S; E historical only |
 | Privacy and outbound context | Approval/context binding, native secure storage, contact references and credential redaction contracts. The resident Android agent starts with the upstream `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED` switches on by default; the browser development host keeps both off unless both are set to `true` on qualified source. Privacy disclosure is per connection: hosted Cerebras inference is disclosed, and no connection claims that data stays local. Browser development storage is disclosed as unencrypted. | Re-run resident redaction on the current APK (emulator, then device, as separate gates) and broaden category/provider coverage. The host default stays off until its enablement campaign passes. Inspect the selected runtime's actual configuration; a past host snapshot does not prove present settings or that data stays local. | S; E historical only |
-| Release | Pinned upstream source, standalone/HOME packaging and source-admitted runtime staging. Distribution builds exclude mock/fixture/developer surfaces and debug-only native hooks; release signing and version come from `ELIZAOS_KEYSTORE_PATH`, `ELIZAOS_KEYSTORE_PASSWORD`, `ELIZAOS_KEY_ALIAS`, `ELIZAOS_KEY_PASSWORD`, `ELIZAOS_VERSION_CODE` and `ELIZAOS_VERSION_NAME` (unsigned `*-release-unsigned.apk` without all four signing values). | The earlier Calendar and native compatibility compile breaks are fixed upstream. The integration branch built four developer APKs at `fa7c722e` on 2026-10-09 with `--allow-unpackaged-runtime --skip-instrumentation`. All were recorded as not distributable: no packaged runtime, unqualified speech input, and unsigned release APKs. The current `945209d3` pin adds shared password custody and deterministic speech; qualification of that pin and the shared journal adapter is in progress. A distribution build still requires qualified speech assets and a staged resident runtime. The pin is reachable from upstream `develop`; the previous off-branch pin is retired. Speech functional acceptance failed (see the Speech row). Then: controlled release key and signed artifacts, installed-data upgrade from earlier (including mock-state) installs, image/hardware qualification, App Links verification on a real domain, signed update/rollback, support and pilot acceptance. | S; B developer APKs only (not distributable) |
+| Release | Pinned upstream source, standalone/HOME packaging and source-admitted runtime staging. Distribution builds exclude mock/fixture/developer surfaces and debug-only native hooks; release signing and version come from `ELIZAOS_KEYSTORE_PATH`, `ELIZAOS_KEYSTORE_PASSWORD`, `ELIZAOS_KEY_ALIAS`, `ELIZAOS_KEY_PASSWORD`, `ELIZAOS_VERSION_CODE` and `ELIZAOS_VERSION_NAME` (unsigned `*-release-unsigned.apk` without all four signing values). | The Calendar and native compatibility compile breaks are fixed upstream. At reviewed pin `945209d3`, source preparation, repository verification and all four developer APK builds passed on 2026-10-10, including instrumentation APKs and lint. Both variants passed journal persistence/replay/redaction and seven-filter preview/export tests on a disposable API 35 emulator. Builds used the recorded unqualified speech candidate and `--allow-unpackaged-runtime`; release APKs remain unsigned and not distributable. A distribution build requires qualified speech assets and a staged resident runtime. The pin is reachable from upstream `develop`; the previous off-branch pin is retired. Speech functional acceptance failed (see the Speech row). Then: controlled release key and signed artifacts, installed-data upgrade from earlier (including mock-state) installs, image/hardware qualification, App Links verification on a real domain, signed update/rollback, support and pilot acceptance. | S; B developer APKs only (not distributable) |
 | Licenses | Settings renders `apps/app/public/licenses/third-party-notices.json` (name, version, license, source, text) with an explicit unavailable fallback; `THIRD_PARTY_NOTICES.txt` accompanies it. | Legal review of the generated notices, corresponding-source offers where required, and the separate native-app/OS-image notices in [native-app distribution](native-app-distribution.md). | S |
 | Phone, SMS, Contacts and Wallet | Deferred by MVP policy. Source and design references are retained; app entries, `open_view` destinations and agent actions are disabled. Emergency calling stays with the system. | Restoring any of them needs a recorded scope change, then native role, permission, recipient and return-to-HOME acceptance; Wallet also needs provider, key custody and transaction-approval decisions ([A-08](decisions.md#open-decisions)). | not applicable |
 
@@ -139,18 +139,24 @@ instrumentation; (I) full AOSP image build and boot; (R) real integrations (acco
 providers, OAuth grants); (D) physical-device and user acceptance. A result in one class
 never stands in for another.
 
-### Current head
+### Current qualification evidence
 
-- Class S: `npm run verify` (typecheck, unit tests including the documentation checks,
-  flag-off build and bundle audit) is the repository gate on every change. Record its
-  result against the exact commit it ran on.
-- Class B: four developer APKs passed at `fa7c722e`, with all marked not distributable.
-  The newer pin and shared journal adapter still need their full build and native checks.
-  No distribution build or qualification result exists for the current main commit.
-- Classes E, I, R and D: no result exists for the current head. Emulator results on this
-  page marked "historical" come from older builds. The aggregate emulator runners were
-  removed on October 8 (commit `49b1bf4c`); focused campaigns in the
-  [verification guide](verification.md) remain.
+- Class S: `npm run verify` passed at `d3dc9977` / upstream `945209d3` on
+  2026-10-10: 454 tests passed, four existing TODOs, zero failures or skips;
+  typecheck, build and the 395-file production bundle audit passed.
+- Class B: the same source built and verified all four standalone/launcher
+  debug/release APKs, both instrumentation APKs and lint. The explicit
+  unpackaged-runtime option and recorded unqualified speech input make these
+  developer artifacts; unsigned releases are not distributable.
+- Class E: the same source passed six journal/photo test cases across both variants
+  on a disposable stock API 35 emulator. This covers encrypted journal persistence,
+  Activity recreation, replay refusal, history redaction and seven photo filters.
+  A cold-start test dispatch race was corrected with the existing document-readiness
+  probe. Password save/fill remains unqualified: its separate native flow still
+  fails before reaching save/unlock. Older emulator results remain historical.
+- Classes I, R and D: these checks establish no AOSP image boot, real-integration,
+  physical-device or user acceptance. HOME-role acceptance is also separate.
+  Focused campaigns are in the [verification guide](verification.md).
 
 ## Remaining external items
 

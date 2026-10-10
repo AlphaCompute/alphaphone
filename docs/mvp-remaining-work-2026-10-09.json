@@ -172,8 +172,8 @@
         "AP-11"
       ],
       "title": "Upstream the pin-only commit series",
-      "current": "The integration branch pins reviewed upstream merge 945209d3, including native compatibility, touch lifecycle, deterministic synthesis and shared password custody. Product qualification at this pin is in progress.",
-      "remaining": "Complete product regressions and both Android distributions at the replacement pin.",
+      "current": "The integration branch pins reviewed upstream merge 945209d3, including native compatibility, touch lifecycle, deterministic synthesis, shared password custody and workflow repairs. Source preparation, repository verification, four developer APKs and journal/photo tests in both variants passed. These are not distributable release or device-acceptance results.",
+      "remaining": "Complete the remaining retired-pin semantic audit and product-wide browser/native regressions. Release runtime, speech, signing and device acceptance remain separate.",
       "acceptance": "Reviewed upstream disposition per commit, clean source preparation and full product regression at the replacement pin.",
       "depends_on": [],
       "sources": [
@@ -235,8 +235,8 @@
         "AP-12"
       ],
       "title": "Consume shared notification journal and browser candidates",
-      "current": "The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser policies use pinned helpers. Alpha now delegates journal transitions to the shared engine and retains product result policy and Clock approval; native qualification of this adapter is in progress.",
-      "remaining": "Qualify installed notification policy/history and browser sessions; finish site-permission and journal adapter consolidation without weakening receipt or owner semantics.",
+      "current": "The shared notification mirror is included in Gradle behind Alpha storage/component identities. Browser policies use pinned helpers. Alpha delegates journal transitions to the shared engine and retains product result policy and Clock approval. Journal persistence, replay refusal and history redaction passed native tests in both variants.",
+      "remaining": "Qualify installed notification policy/history and browser sessions; finish site-permission consolidation without weakening receipt or owner semantics.",
       "acceptance": "No duplicate effect or stale approval after migration; browser bridge isolation and notification privacy remain intact.",
       "depends_on": [
         "MVP-09"
