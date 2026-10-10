@@ -216,3 +216,5 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 .alpha-landscape .alpha-phone [data-alpha-layer="conversation"]{left:auto!important;width:var(--alpha-dock-width);height:100%!important;border-radius:0!important;box-shadow:-1px 0 0 var(--line),-20px 0 60px var(--shc)!important}
 .alpha-landscape.native-phone .alpha-phone [data-alpha-layer="composer"],.alpha-landscape.native-phone .alpha-phone [data-alpha-layer="pill"]{bottom:max(16px,calc(var(--native-bottom-inset,0px) + 8px))!important}
 .alpha-landscape .alpha-phone>[data-screen]{width:var(--phone-width,412px)!important}
+/* App library: a favorite at either end cannot move further. */
+.alpha-app-drawer button.ib:disabled{opacity:.3}

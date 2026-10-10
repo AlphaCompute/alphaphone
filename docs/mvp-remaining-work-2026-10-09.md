@@ -754,3 +754,16 @@ Evidence/source: [docs/implementation-plan.md](../docs/implementation-plan.md), 
 5. Run final exact-head qualification and the four-unit pilot; deliver operational handoff.
 
 For each work item, the future workflow should record a named owner, dependencies, branch/PR, exact source/artifact identity, acceptance commands or human procedure, evidence class, result, and any explicit scope decision. A source test, APK build, emulator HOME test, full AOSP boot, real service exchange and physical/user acceptance are separate result fields. None substitutes for another.
+
+## MVP-53 software status, 2026-10-10
+
+Implementation added on branch `claude/r2-app-library`; acceptance parts stay open.
+
+- Entries are launcher activities identified by package, activity and Android user (`LauncherLibrary.java`); labels never identify. Same-label entries show their package, activity or profile.
+- A launch re-resolves the exact component and is refused with a reason (`not-installed`, `disabled`, `no-launcher`, `profile-locked`, `profile-unavailable`) when the row is stale; the drawer then re-reads the device. A failed read clears the list.
+- Favorites and their order are saved on the device (`alpha.launcher.favorites.v1`) and shown only for entries the device lists now.
+- An open drawer re-reads on Android package/profile changes (`appsChanged`) and when Alpha returns to the foreground.
+- Evidence: `test/home-launcher.test.mjs`, `test/browser/home-app-library.spec.ts` (native stub, not Android). The Android sources, including `LauncherLibraryInstrumentedTest.java`, were compiled with `javac` against the SDK only: no Gradle build, lint, APK, emulator or phone run.
+- Other profiles list real launcher activities only: Alpha's own copy and Android's app-details stand-in for apps without a launcher activity are left out and refused.
+- Still open: emulator and physical HOME-role runs, a real work profile (paused and locked), real install/remove, return from three native apps, and launcher landscape behavior (A-22 owner decision).
+- Review additions, 2026-10-10: rows that would still read alike get their full identity (package, activity, profile number); a Phone shortcut whose handler is gone is re-resolved after the refused open; native `launch` rejects a non-text `activityName` or `user` instead of reading it as absent. Same evidence class as above: Node and stubbed-bridge browser tests, `javac` only for Android.
