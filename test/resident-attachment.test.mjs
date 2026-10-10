@@ -1,0 +1,52 @@
+// Resident reuse (MVP-16): JVM contract of the native attach decision, the renderer attach
+// contract, and structural guards on the plugin's start path. Not emulator or device evidence.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {existsSync,readdirSync,mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {homedir,tmpdir} from 'node:os';
+import {join,resolve} from 'node:path';
+import {execFileSync} from 'node:child_process';
+const root=resolve(import.meta.dirname,'..');
+const cache=join(homedir(),'.gradle/caches/modules-2/files-2.1/org.json/json/20250517');
+const cached=existsSync(cache)?readdirSync(cache).flatMap(hash=>readdirSync(join(cache,hash)).filter(name=>name==='json-20250517.jar').map(name=>join(cache,hash,name)))[0]:undefined;
+const jsonJar=process.env.ALPHA_JSON_JAR||cached;
+test('an admitted running resident is attached to; any change in runtime, enrollment or provider restarts',{skip:!jsonJar?'Set ALPHA_JSON_JAR or install the pinned Gradle JSON test dependency':false},()=>{
+ const temporary=mkdtempSync(join(tmpdir(),'resident-attachment-'));
+ const java=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');const binary=name=>java?join(java,'bin',name):name;
+ try{
+  execFileSync(binary('javac'),['--release','11','-cp',jsonJar,'-d',temporary,join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/ResidentAttachment.java'),join(root,'test/fixtures/ResidentAttachmentTest.java')],{timeout:120000});
+  assert.match(execFileSync(binary('java'),['-cp',temporary+':'+jsonJar,'ai.elizaresearch.alphaphone.ResidentAttachmentTest'],{encoding:'utf8',timeout:120000}),/^PASS resident attachment/);
+ }finally{rmSync(temporary,{recursive:true,force:true});}
+});
+test('renderer attaches without rebinding the provider and keeps one identity across assistant invocations',()=>{
+ assert.match(execFileSync(process.execPath,['--import','tsx','scripts/test-resident-reuse.mjs'],{cwd:root,timeout:120000,encoding:'utf8'}),/PASS resident reuse/);
+});
+test('the plugin start path attaches before it would retire shared work, and attach never pairs',()=>{
+ const source=readFileSync(join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java'),'utf8');
+ const start=source.slice(source.indexOf('@PluginMethod public void start('),source.indexOf('@PluginMethod public void cancelStart('));
+ const attach=start.indexOf('if(attachLocked(nativeState,currentRoot,currentGeneration)==null)'),retire=start.indexOf('invalidateCalls();admitted=++lifecycleEpoch;');
+ assert.ok(attach>0&&retire>attach,'attach admission precedes the full-start retirement');
+ const admission=start.slice(attach,retire);
+ assert.match(admission,/admitted=lifecycleEpoch;attached=true;/);
+ for(const forbidden of ['++lifecycleEpoch','clearEnrollment()','invalidateCalls()','ElizaAgentService.start','startRequestId=','startOwnsLaunch='])
+  assert.ok(!admission.includes(forbidden),`attach admission must not ${forbidden}`);
+ // The attach worker verifies the runtime and the existing enrollment; it has no pairing call.
+ const worker=start.slice(start.indexOf('if(attached){'),start.indexOf('long deadline=android.os.SystemClock.elapsedRealtime()+90000'));
+ assert.ok(worker.includes('authenticatedStatus(epoch,root)')&&worker.includes('attachUnverified=true'));
+ assert.ok(!worker.includes('enroll(')&&!worker.includes('ElizaAgentService.start')&&!worker.includes('clearEnrollment'));
+ // attachLocked supersedes only the calling surface's own work.
+ const locked=source.slice(source.indexOf('private String attachLocked('),source.indexOf('private static String storedProviderGeneration('));
+ assert.ok(locked.includes('invalidateOwnCalls()')&&!locked.includes('invalidateCalls()')&&!locked.includes('lifecycleEpoch'));
+ // Cancelling an attached start is a no-op that precedes owned-launch retirement.
+ const cancel=source.slice(source.indexOf('@PluginMethod public void cancelStart('),source.indexOf('static String startupRefusalMessage('));
+ assert.ok(cancel.indexOf('if(attachedStarts.remove(requestId)){call.resolve();return;}')>0&&cancel.indexOf('attachedStarts.remove(requestId)')<cancel.indexOf('requestId.equals(startRequestId)'));
+ // The read-only query never mutates lifecycle state.
+ const query=source.slice(source.indexOf('@PluginMethod public void residentAttachment('),source.indexOf('@PluginMethod public void configureProvider('));
+ for(const forbidden of ['attachLocked(','invalidateOwnCalls','invalidateCalls','lifecycleEpoch','clearEnrollment','ElizaAgentService.start','ElizaAgentService.stop','enroll(','bindCloudProvider'])
+  assert.ok(!query.includes(forbidden),`attachment query must not ${forbidden}`);
+ // Renderer: resident admission binds through the attach-aware helper, and connect() surfaces the flag.
+ const ui=readFileSync(join(root,'apps/app/src/runtime/connection-ui.tsx'),'utf8');
+ const admit=ui.slice(ui.indexOf('async function admitCloudResident('),ui.indexOf('async function connectResident('));
+ assert.ok(admit.includes('await bindResidentCloudProvider(credits.credentialId)')&&!admit.includes('configureLocalCloudProvider('));
+ assert.ok(admit.indexOf('credits.balance<=0')<admit.indexOf('bindResidentCloudProvider'),'the credit gate still precedes any attach');
+});

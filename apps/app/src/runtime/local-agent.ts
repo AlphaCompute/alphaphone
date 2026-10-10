@@ -15,6 +15,8 @@ export interface LocalAgentBridge {
   providerStatus?():Promise<{provider?:unknown;configured?:unknown;model?:unknown}>;
   clearProvider?():Promise<{configured?:unknown}>;
   launchSurface?():Promise<{assistant?:unknown}>;
+  /** Read-only native query; see residentAttachable. */
+  residentAttachment?(input:{credentialId?:string}):Promise<{attachable?:unknown;reason?:unknown}>;
   configureCloudProvider?(input:{credentialId:string;model:string}):Promise<unknown>;
   request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: AutomationsMethod; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
   stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void,onReplyReady?:(results:readonly unknown[]|undefined)=>void):Promise<RemoteChatReply>;
@@ -103,7 +105,10 @@ export class LocalAgentProtocol {
     dispatched=true;
     const started=this.bridge.start({requestId});
     if(signal.aborted)cancel();
-    await Promise.race([started,cancelled]);
+    const startup=await Promise.race([started,cancelled]);
+    // Native reports when it attached this surface to the already admitted running resident
+    // instead of starting it: no epoch change, no new enrollment, other surfaces' work untouched.
+    const attached=Boolean(startup)&&typeof startup==='object'&&(startup as {attached?:unknown}).attached===true;
     signal.throwIfAborted();
     if(generation!==this.generation)throw Error('Local agent connection changed.');
     const who=record(await this.request('/api/auth/me',undefined,signal));
@@ -118,7 +123,7 @@ export class LocalAgentProtocol {
     if(agent.status!=='running')throw Error('The local agent is still starting. Try again when it is ready.');
     if(generation!==this.generation)throw Error('Local agent connection changed.');
     this.session={ownerId:identifier(identity.id),agentId:identifier(agent.id),sessionId:crypto.randomUUID(),origin:this.origin};
-    return {session:this.session,name:typeof agent.name==='string'?agent.name:'Local agent'};
+    return {session:this.session,name:typeof agent.name==='string'?agent.name:'Local agent',attached};
     }catch(error){cancelOwned();throw error;}
     finally{signal.removeEventListener('abort',cancel);}
   }
@@ -277,6 +282,23 @@ export async function clearLocalProvider():Promise<LocalProviderStatus> {
 export async function launchedAsAssistant():Promise<boolean> {
   if(!Capacitor.isNativePlatform()||!Capacitor.isPluginAvailable('Agent')||!native.launchSurface)return false;
   try{return (await native.launchSurface()).assistant===true;}catch{return false;}
+}
+
+/** True only when native confirms an admitted, running, enrolled resident whose stored provider
+ * admission is this Cloud credential and is the one the running process launched with. Read-only:
+ * it never starts, stops, pairs or rebinds. Any error or doubt reports false, which keeps the
+ * ordinary stop → bind → start path. */
+export async function residentAttachable(credentialId:string,bridge:Pick<LocalAgentBridge,'residentAttachment'>=native,nativePlatform:boolean=Capacitor.isNativePlatform()):Promise<boolean> {
+  if(!nativePlatform||typeof credentialId!=='string'||!credentialId||!bridge.residentAttachment)return false;
+  try{return (await bridge.residentAttachment({credentialId}))?.attachable===true;}catch{return false;}
+}
+/** Bind the resident's Cloud provider for one surface. A surface that can attach (Home or the
+ * assistant reopening, a recreated Activity) reuses the running agent: rebinding would stop it,
+ * retiring another surface's in-flight work and restarting inference. */
+export async function bindResidentCloudProvider(credentialId:string,ports:{attachable:(credentialId:string)=>Promise<boolean>;configure:(credentialId:string)=>Promise<void>}={attachable:residentAttachable,configure:configureLocalCloudProvider}):Promise<'attached'|'configured'> {
+  if(await ports.attachable(credentialId))return 'attached';
+  await ports.configure(credentialId);
+  return 'configured';
 }
 
 export async function configureLocalCloudProvider(credentialId:string) {

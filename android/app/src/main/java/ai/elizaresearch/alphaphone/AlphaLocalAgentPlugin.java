@@ -30,6 +30,12 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private final java.util.Set<String> cancelledStarts=new java.util.HashSet<>();
  private static boolean accepting=true,stopping;
  private volatile boolean disposed;
+ // Provider admission generation the running agent process was launched with (configureEnvironment).
+ private static String launchedGeneration;
+ // This surface's start requests that attached. Cancelling one never retires the shared launch.
+ private final ResidentAttachment.Requests attachedStarts=new ResidentAttachment.Requests();
+ // Set when this surface's attach could not be verified; its next start takes the full path.
+ private boolean attachUnverified;
  // Each Activity bridge (MainActivity, AlphaAssistActivity) has its own plugin instance. Calls,
  // streams and their invalidators belong to the instance that admitted them, so one surface's
  // destruction cancels only its own work. The runtime, epoch and enrollment stay process-wide.
@@ -55,6 +61,34 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  /** Instrumentation-only: register a synthetic in-flight stream owned by this instance. */
  void adoptStreamForTest(String id,ElizaAgentService.LocalStreamHandle handle,Runnable invalidator){if(!BuildConfig.DEBUG)throw new IllegalStateException();synchronized(lifecycleLock){instances.add(this);streams.put(id,handle);streamInvalidators.put(id,invalidator);}}
  static void enrollForTest(String root,String owner,String identity,long expiry){if(!BuildConfig.DEBUG)throw new IllegalStateException();synchronized(lifecycleLock){rootToken=root;ownerToken=owner;ownerIdentity=identity;expiresAt=expiry;}}
+ static void launchedGenerationForTest(String generation){if(!BuildConfig.DEBUG)throw new IllegalStateException();synchronized(lifecycleLock){launchedGeneration=generation;}}
+ static long lifecycleEpochForTest(){if(!BuildConfig.DEBUG)throw new IllegalStateException();synchronized(lifecycleLock){return lifecycleEpoch;}}
+ /** Instrumentation-only: the production attach admission against a synthetic runtime observation. */
+ String attachForTest(JSONObject bootState,String currentRoot,String currentGeneration){if(!BuildConfig.DEBUG)throw new IllegalStateException();synchronized(lifecycleLock){return attachLocked(bootState,currentRoot,currentGeneration);}}
+ /** Caller holds lifecycleLock. Read-only: null when this surface may attach to the running resident. */
+ private String attachRefusalLocked(JSONObject bootState,String currentRoot,String currentGeneration){
+  if(disposed)return "bridge-closed";
+  ResidentAttachment.Facts facts=new ResidentAttachment.Facts();
+  facts.accepting=accepting;facts.stopping=stopping;facts.credentialMutating=credentialMutationEpoch>=0;facts.credentialShutdownPending=credentialShutdownRequest!=-1;facts.attachUnverified=attachUnverified;
+  facts.currentRoot=currentRoot;facts.enrolledRoot=rootToken;facts.ownerToken=ownerToken;facts.ownerIdentity=ownerIdentity;facts.expiresAt=expiresAt;facts.now=System.currentTimeMillis();
+  facts.launchedGeneration=launchedGeneration;facts.currentGeneration=currentGeneration;
+  return ResidentAttachment.refusal(bootState,facts);
+ }
+ /** Caller holds lifecycleLock. Attaching supersedes only this surface's own earlier work: the
+  * runtime epoch, the owner enrollment and every other surface's calls and streams are untouched. */
+ private String attachLocked(JSONObject bootState,String currentRoot,String currentGeneration){
+  String refusal=attachRefusalLocked(bootState,currentRoot,currentGeneration);
+  if(refusal==null)invalidateOwnCalls();
+  return refusal;
+ }
+ /** Stored provider admission generation; null when absent, legacy or no longer valid. Never writes. */
+ private static String storedProviderGeneration(AlphaCredentialStore store){
+  try{
+   String saved=store.readCredentialSlot("local-agent-provider:v1");if(saved==null)return null;
+   String cloud="elizacloud".equals(new JSONObject(saved).optString("provider"))?store.readCredentialSlot("cloud:production"):null;
+   return LocalAgentProviderAdmission.currentGeneration(saved,cloud);
+  }catch(Exception unavailable){return null;}
+ }
  private void rejectPending(PluginCall call,String message){synchronized(lifecycleLock){if(pending.remove(call))call.reject(message);}}
 
  private static final class Superseded extends Exception {}
@@ -170,6 +204,27 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   android.app.Activity activity=getActivity();
   boolean assistant=activity instanceof AlphaAssistActivity&&activity.getIntent()!=null&&activity.getIntent().getBooleanExtra(AlphaAssistActivity.EXTRA_ASSISTANT,false);
   call.resolve(new JSObject().put("assistant",assistant));
+ }
+ /** Read-only: may this surface attach to the admitted running resident under the stored provider
+  * admission? Never starts, stops, pairs or rebinds. With credentialId, the stored admission must
+  * be that Cloud credential on the pinned model. Reasons are non-sensitive diagnostics. */
+ @PluginMethod public void residentAttachment(PluginCall call) {
+  final String credentialId=call.getString("credentialId");
+  try{workers.execute(()->{try{
+   AlphaCredentialStore store=new AlphaCredentialStore(getContext());
+   String refusal=null;
+   if(credentialId!=null){
+    try{
+     JSONObject provider=new JSONObject(store.readCredentialSlot("local-agent-provider:v1"));
+     if(!"elizacloud".equals(provider.optString("provider"))||!credentialId.equals(provider.optString("credentialId"))||!CLOUD_PROVIDER_MODEL.equals(provider.optString("model")))refusal="provider-changed";
+    }catch(Exception unreadable){refusal="provider-unadmitted";}
+   }
+   String generation=storedProviderGeneration(store),root=ElizaAgentService.localAgentToken();
+   JSONObject bootState=ElizaAgentService.getLocalAgentBootState(getContext());
+   if(refusal==null)synchronized(lifecycleLock){refusal=attachRefusalLocked(bootState,root,generation);}
+   call.resolve(new JSObject(ResidentAttachment.describe(refusal).toString()));
+  }catch(Exception unavailable){call.resolve(new JSObject().put("attachable",false).put("reason","unavailable"));}});}
+  catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
  }
  @PluginMethod public void configureProvider(PluginCall call) {
   if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
@@ -354,7 +409,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  }
  static void configureEnvironment(Context context,java.util.Map<String,String> env) throws java.io.IOException {
   final long epoch;
-  synchronized(lifecycleLock){if(!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider is retiring");epoch=lifecycleEpoch;}
+  synchronized(lifecycleLock){launchedGeneration=null;if(!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider is retiring");epoch=lifecycleEpoch;}
   configureNativeViews(context.getAssets().open("agent/native-view-declarations.json"),env);
   env.remove("ELIZA_MOBILE_WORKFLOWS");
   java.io.InputStream workerIndex=null;
@@ -369,7 +424,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   String saved=new AlphaCredentialStore(context).readCredentialSlot("local-agent-provider:v1");
   if(saved==null)throw new IllegalStateException("Configure a model provider before starting the local agent");
   JSONObject provider=new JSONObject(saved);
-  applyProviderEnvironment(provider,"elizacloud".equals(provider.optString("provider"))?new AlphaCredentialStore(context).readCredentialSlot("cloud:production"):null,env,System.currentTimeMillis());
+  String cloudSaved="elizacloud".equals(provider.optString("provider"))?new AlphaCredentialStore(context).readCredentialSlot("cloud:production"):null;
+  applyProviderEnvironment(provider,cloudSaved,env,System.currentTimeMillis());
   if(!"elizacloud".equals(provider.optString("provider","cerebras")))configureLocalEmbeddings(new File(context.getApplicationInfo().nativeLibraryDir),context.getFilesDir(),env);
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
@@ -388,7 +444,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    env.put("CEREBRAS_BASE_URL",endpoint);env.put("OPENAI_BASE_URL",endpoint);
    env.put("OPENAI_API_KEY","synthetic-resident-recovery-only");env.put("ELIZA_PROVIDER","cerebras");
   }
-  synchronized(lifecycleLock){if(epoch!=lifecycleEpoch||!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider changed");}
+  // Later surfaces attach only while the stored admission is the one this process launched with.
+  synchronized(lifecycleLock){if(epoch!=lifecycleEpoch||!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider changed");launchedGeneration=LocalAgentProviderAdmission.currentGeneration(saved,cloudSaved);}
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
  @PluginMethod public void start(PluginCall call) {
@@ -396,11 +453,13 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(requestId!=null&&!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
   try {
    if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
-   if(new AlphaCredentialStore(getContext()).readCredentialSlot("local-agent-provider:v1")==null){call.reject("Configure your model provider before starting the local agent.");return;}
+   final AlphaCredentialStore providerStore=new AlphaCredentialStore(getContext());
+   if(providerStore.readCredentialSlot("local-agent-provider:v1")==null){call.reject("Configure your model provider before starting the local agent.");return;}
    // Hosted inference is distinct from an on-device language-model payload.
    getContext().getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).edit().putString("eliza:mobile-runtime-mode","cloud-hybrid").apply();
    final long epoch;
    long admitted=-1;
+   boolean attached=false;
    for(int attempt=0;attempt<3;attempt++){
     final long observedEpoch;
     synchronized(lifecycleLock){
@@ -409,6 +468,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
      observedEpoch=lifecycleEpoch;
     }
     JSONObject nativeState=ElizaAgentService.getLocalAgentBootState(getContext());
+    // Read-only observations for attach admission; a concurrent lifecycle change retries the loop.
+    String currentGeneration=storedProviderGeneration(providerStore),currentRoot=ElizaAgentService.localAgentToken();
     synchronized(lifecycleLock){
      if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
      if(observedEpoch!=lifecycleEpoch)continue;
@@ -417,6 +478,10 @@ public final class AlphaLocalAgentPlugin extends Plugin {
      if(credentialShutdownRequest!=-1&&(credentialShutdownRequest<0||!ElizaAgentService.isCredentialShutdownConfirmed(credentialShutdownRequest))){call.reject("Provider shutdown is unconfirmed; check the local agent before starting.");return;}
      if(stopping&&shutdownConfirmed(nativeState))stopping=false;
      if(stopping){call.reject("Local agent is stopping; wait for stopped status before starting.");return;}
+     // An admitted running resident is attached to, never restarted: another surface's work,
+     // the runtime epoch, the owner enrollment and the launch owner all stay as they are.
+     if(attachLocked(nativeState,currentRoot,currentGeneration)==null){admitted=lifecycleEpoch;attached=true;attachedStarts.add(requestId);pending.add(call);break;}
+     attachUnverified=false;
      invalidateCalls();admitted=++lifecycleEpoch;credentialShutdownRequest=-1;accepting=true;clearEnrollment();pending.add(call);
      startRequestId=requestId;startRequestEpoch=admitted;startOwnsLaunch=shutdownConfirmed(nativeState);
      ElizaAgentService.start(getContext());break;
@@ -424,6 +489,20 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    }
    if(admitted<0){call.reject("Local agent connection changed; check status before starting again.");return;}
    epoch=admitted;
+   if(attached){
+    workers.execute(()->{
+     try{
+      String root=ElizaAgentService.localAgentToken();if(root==null||root.isEmpty())throw new IllegalStateException();
+      authenticatedStatus(epoch,root);
+      // Attach never pairs: the enrollment it was admitted against must still be the current one.
+      synchronized(lifecycleLock){requireCurrent(epoch);if(!root.equals(rootToken)||ownerToken==null)throw new IllegalStateException();}
+      resolveCurrent(call,epoch,new JSObject().put("state","ready").put("attached",true));
+     }
+     catch(Superseded stale){rejectSuperseded(call);}
+     catch(Exception unverified){synchronized(lifecycleLock){attachUnverified=true;}rejectPending(call,"The running local agent did not answer. Start again to restart it; no chat was sent.");}
+    });
+    return;
+   }
    workers.execute(()->{
     long deadline=android.os.SystemClock.elapsedRealtime()+90000;
     boolean ready=false;
@@ -447,6 +526,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   String requestId=call.getString("requestId","");
   if(!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
   synchronized(lifecycleLock){
+   // A start that attached owns no launch: its cancellation retires nothing.
+   if(attachedStarts.remove(requestId)){call.resolve();return;}
    if(requestId.equals(startRequestId)&&startRequestEpoch==lifecycleEpoch){
     boolean stopOwned=startOwnsLaunch;
     startRequestId=null;startOwnsLaunch=false;
