@@ -84,6 +84,16 @@ test('brief card: shown only for a retained result, with agent, run time and fai
   assert.equal(failed.failed, true); assert.equal(failed.status, 'Your agent · Failed Tue, Oct 6 10:30 PM');
   assert.ok(failed.title.length <= 96 && failed.title.endsWith('…'));
   assert.match(failed.label, /^Open scheduled digests\. Latest brief from Your agent, failed Tue, Oct 6 10:30 PM: Source expired\./);
+  // The agent also retains occurrences it skipped. Those are never presented as a run.
+  for (const status of ['missed', 'overlap', 'unavailable']) {
+    const skipped = H.presentHomeBriefCard({summary: 'The scheduled time was missed. No backlog was executed.', ranAt: at(8), agent: 'Alpha', status}, now);
+    assert.equal(skipped.status, 'Alpha · Did not run 8:00 AM', status); assert.equal(skipped.failed, false);
+    assert.match(skipped.label, /^Open scheduled digests\. Latest brief from Alpha, did not run 8:00 AM: The scheduled time was missed\./);
+    assert.doesNotMatch(skipped.status + skipped.label, /\bran\b/i);
+    assert.equal(H.presentHomeBrief({summary: 'x', ranAt: at(8), agent: 'Alpha', status}, now).time, 'Did not run 8:00 AM');
+  }
+  assert.deepEqual(['finished', 'succeeded', 'completed', '', undefined].map(H.briefOutcome), ['ran', 'ran', 'ran', 'ran', 'ran']);
+  assert.deepEqual(['failed', 'cancelled', 'error'].map(H.briefOutcome), ['failed', 'failed', 'failed']);
 });
 test('calendar source: names where and when the item was read; no time is claimed without a read', () => {
   const base = {overdue: false, readAt: at(15, 4), now, native: true};
@@ -96,6 +106,12 @@ test('calendar source: names where and when the item was read; no time is claime
   assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', readAt: null}), {origin: '', read: '', description: ''});
   assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'error'}), {origin: '', read: 'Open Calendar to retry', description: 'Calendar could not be read. Open Calendar to retry.'});
   assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'error', overdue: true}), {origin: '', read: '', description: 'Overdue reminder saved on this device'}, 'an overdue reminder keeps its own source when the calendar read failed');
+  // A reminder is attributed to the reminder store and that store's read time, never the calendar's.
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', calendar: 'Work', reminder: true, reminderReadAt: at(14, 50)}), {origin: 'Reminder', read: 'Read 2:50 PM', description: 'Reminder saved on this device, read 2:50 PM'});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'loading', native: false, reminder: true, reminderReadAt: at(8, 15, 6)}), {origin: 'Reminder', read: 'Read Tue, Oct 6', description: 'Reminder saved on this browser, read Tue, Oct 6 8:15 AM'});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', reminder: true, reminderReadAt: null}), {origin: 'Reminder', read: '', description: 'Reminder saved on this device'}, 'no read time is claimed for a reminder without a recorded read');
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', overdue: true, reminderReadAt: at(14, 50)}), {origin: '', read: 'Read 2:50 PM', description: 'Overdue reminder saved on this device, read 2:50 PM'});
+  assert.equal(H.presentHomeCalendarSource({...base, state: 'error', reminder: true, reminderReadAt: at(14, 50)}).read, 'Open Calendar to retry', 'a failed calendar read stays visible above an upcoming reminder');
   assert.equal(H.homeAgendaHeader('Mon, Oct 5', 0), 'Mon, Oct 5');
   assert.equal(H.homeAgendaHeader('Mon, Oct 5', 1), 'Overdue reminder');
   assert.equal(H.homeAgendaHeader('Mon, Oct 5', 3), '3 overdue reminders');
@@ -118,6 +134,7 @@ test('workflow freshness: a load time only after a list was actually loaded', ()
   for (const loadedAt of [null, undefined, 0, NaN]) assert.deepEqual(H.presentHomeWorkflowFreshness({loadedAt, now, unified: true}), {visible: '', description: ''});
   assert.deepEqual(H.presentHomeWorkflowFreshness({loadedAt: at(15, 4), now, unified: false}), {visible: 'Loaded 3:04 PM', description: 'Workflows from your agent, loaded 3:04 PM'});
   assert.deepEqual(H.presentHomeWorkflowFreshness({loadedAt: at(8, 15, 6), now, unified: true}), {visible: 'Loaded Tue, Oct 6 8:15 AM', description: 'Automations from your agent and reminders on this phone, loaded Tue, Oct 6 8:15 AM'});
+  assert.deepEqual(H.presentHomeWorkflowFreshness({loadedAt: at(15, 4), now, unified: true, agent: false}), {visible: 'Loaded 3:04 PM', description: 'Reminders on this phone, loaded 3:04 PM'}, 'no agent is named when none is connected');
 });
 test('Home template renders source, freshness and the brief card only from live values', () => {
   const template = readFileSync(new URL('../apps/app/src/prototype/template.html', import.meta.url), 'utf8');

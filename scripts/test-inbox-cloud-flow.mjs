@@ -10,6 +10,7 @@ import { CloudProtocolError, safeMailLink } from '../apps/app/src/runtime/cloud-
 import { reviewOpaqueAttachment, checkOutgoingAttachments, outgoingAttachmentLimits } from '../apps/app/src/runtime/inbox-operation.ts';
 import * as mailbox from '../apps/app/src/runtime/gmail-mailbox.ts';
 import { presentHomeInboxStatus } from '../apps/app/src/prototype/home-cards.ts';
+import { formatTime } from '../apps/app/src/prototype/locale-time.ts';
 let session='account-a',agent='remote-a',releaseSearch,delay=false,failNext=null,connected=true,confirmAnswer=true;
 const slots=new Map(),searches=[],disconnects=[],toasts=[],events=[];
 const mail=(id,extra={})=>({id,threadId:'thread-'+id,subject:'Fixture '+id,from:'Sender',fromEmail:'sender@example.invalid',to:['fixture@example.invalid'],snippet:'Preview',receivedAt:'2026-09-30T00:00:00Z',unread:false,...extra});
@@ -42,18 +43,27 @@ const local=value=>JSON.parse(JSON.stringify(value));// vm-realm arrays compare 
 const chip=label=>{const found=render().chips.find(c=>c.label===label);assert.ok(found,`chip ${label} in ${render().chips.map(c=>c.label)}`);return found;};
 
 assert.equal(shell.renderVals().homeInboxTitle,'Inbox');assert.equal(searches.length,0,'Home does not discover accounts or read mail');
+// Home's read time is the completed first-page read; a later page or a local recount never moves it.
+const realNow=Date.now,noon=new Date();noon.setHours(12,0,0,0);const clock=minutes=>{const value=noon.getTime()+minutes*60000;Date.now=()=>value;return formatTime(new Date(value));};
+const firstRead=clock(0);
 render();await tick();
+assert.equal(shell.renderVals().homeInboxStatus,`From loaded messages · Read ${firstRead}`,'a partial page names its read time');
 assert.equal(shell.renderVals().homeInboxCount,'1+ unread');assert.deepEqual(local(shell.renderVals().homeInboxRows),[{subject:'Fixture mail-1',from:'Sender'}]);
 assert.deepEqual(searches.map(s=>s.query),['in:inbox'],'opening Inbox loads the connected account without another tap');
 assert.equal(render().rows.length,2);assert.equal(views.inbox.badge(),true,'badge reflects a real unread provider message');
 assert.equal(render().hasMore,true,'provider page token offers Load more');
+const laterPage=clock(7);assert.notEqual(laterPage,firstRead);
 render().loadMore();await tick();
 assert.deepEqual(searches.at(-1),{query:'in:inbox',size:25,pageToken:'page-1'},'Load more sends the opaque provider page token');
+assert.match(shell.renderVals().homeInboxStatus,new RegExp(` · Read ${firstRead.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`),'a later page keeps the time of the oldest data counted');
+assert.equal(shell.renderVals().homeInboxDescription,shell.renderVals().homeInboxStatus);
 assert.deepEqual(local(render().rows.map(r=>r.subj)),['Fixture mail-1','Fixture mail-2','Fixture mail-3'],'pages append without duplicates');
 assert.equal(render().hasMore,false,'last page has no Load more');
 assert.equal(shell.renderVals().homeInboxCount,'1 unread','complete paging removes the lower-bound qualifier');const homeSearches=searches.length;for(let i=0;i<5;i++)shell.renderVals();assert.equal(searches.length,homeSearches,'Home rerenders never fetch mail');
 render();[...swipes.values()].at(-1)(-120,4);await tick();assert.match(toasts.at(-1),/Authorize mailbox changes/,'swipe without the grant changes nothing');
+const refreshed=clock(19);
 chip('Refresh').pick();await tick();assert.deepEqual(searches.at(-1),{query:'in:inbox',size:25,pageToken:null},'Refresh restarts from the first page');
+assert.match(shell.renderVals().homeInboxStatus,new RegExp(`Read ${refreshed.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`),'a completed refresh moves the read time');Date.now=realNow;
 assert.equal(render().rows.length,2);
 render().rows[0].open();await tick();assert.equal(render().d.body,'Fixture body');
 agent='remote-b';for(const fn of listeners)fn();assert.equal(shell.st.nativeMailSelection,null,'target change clears observation authority');assert.equal(render().d.body,'Fixture body','Cloud mailbox remains independent');

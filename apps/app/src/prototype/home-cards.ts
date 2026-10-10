@@ -49,42 +49,59 @@ export function presentHomeAttention(summary: HomeAttentionSummary | null | unde
   return {action: 'connections' as const, count: '—', text: 'Set up Gmail', label: 'Set up Gmail in Connections to see what needs your attention'};
 }
 
+/** How a retained digest result ended. The agent also records occurrences it skipped (a missed
+ * time, an overlapping run, an expired or revoked source); those are results, not runs. */
+export function briefOutcome(status: unknown): 'ran' | 'failed' | 'not-run' {
+  const text = typeof status === 'string' ? status : '';
+  return /fail|error|cancel/i.test(text) ? 'failed' : /^(missed|overlap|unavailable)$/i.test(text.trim()) ? 'not-run' : 'ran';
+}
+const BRIEF_VERB = {ran: 'Ran', failed: 'Failed', 'not-run': 'Did not run'} as const;
+
 export function presentHomeBrief(brief: HomeBriefSummary | null | undefined, now: number) {
   const summary = typeof brief?.summary === 'string' ? brief.summary.replace(/\s+/g, ' ').trim() : '';
   const ran = instant(brief?.ranAt);
   if (!brief || !summary || !ran) return {title: 'No brief yet', time: 'Workflows', source: '', label: 'Open workflows', has: false};
   const agent = typeof brief.agent === 'string' && brief.agent.trim() ? brief.agent.trim().slice(0, 40) : 'Your agent';
-  const failed = typeof brief.status === 'string' && /fail|error|cancel/i.test(brief.status);
+  const verb = BRIEF_VERB[briefOutcome(brief.status)];
   const title = summary.length > 56 ? `${summary.slice(0, 55).trimEnd()}…` : summary;
-  return {title, time: `${failed ? 'Failed' : 'Ran'} ${whenLabel(ran, now)}`, source: agent, has: true,
-    label: `Open workflows. Latest brief from ${agent}, ${failed ? 'failed' : 'ran'} ${whenLabel(ran, now)}: ${summary.slice(0, 280)}`};
+  return {title, time: `${verb} ${whenLabel(ran, now)}`, source: agent, has: true,
+    label: `Open workflows. Latest brief from ${agent}, ${verb.toLowerCase()} ${whenLabel(ran, now)}: ${summary.slice(0, 280)}`};
 }
 
 /** The Home brief card: the newest result retained in this app for the current connection. It is
- * shown only when one exists; it never stands for a fresh run, and a failed run says so. */
+ * shown only when one exists; it never stands for a fresh run. A failed run says so, and a result
+ * that records a skipped occurrence says it did not run. */
 export function presentHomeBriefCard(brief: HomeBriefSummary | null | undefined, now: number) {
   const base = presentHomeBrief(brief, now);
   if (!base.has) return {has: false as const, title: '', status: '', failed: false, label: ''};
   const summary = String(brief!.summary).replace(/\s+/g, ' ').trim();
-  const failed = base.time.startsWith('Failed');
-  return {has: true as const, title: summary.length > 96 ? `${summary.slice(0, 95).trimEnd()}…` : summary, failed,
+  const outcome = briefOutcome(brief!.status);
+  return {has: true as const, title: summary.length > 96 ? `${summary.slice(0, 95).trimEnd()}…` : summary, failed: outcome === 'failed',
     status: `${base.source} · ${base.time}`,
-    label: `Open scheduled digests. Latest brief from ${base.source}, ${failed ? 'failed' : 'ran'} ${whenLabel(Number(instant(brief!.ranAt)), now)}: ${summary.slice(0, 280)}`};
+    label: `Open scheduled digests. Latest brief from ${base.source}, ${BRIEF_VERB[outcome].toLowerCase()} ${whenLabel(Number(instant(brief!.ranAt)), now)}: ${summary.slice(0, 280)}`};
 }
 
-/** Source and freshness of the Home calendar card. `origin` (which calendar) sits beside the date
- * and `read` (when this app read it) beside the event time; `description` is the full sentence
- * exposed as the card's accessible description. Times are when this app last read the source on
- * this device, never a provider sync claim. An overdue reminder is named in the card header, so
- * it carries only a description. */
-export function presentHomeCalendarSource(input: {state: 'ready' | 'loading' | 'error' | 'other'; overdue: boolean; readAt: number | null; now: number; native: boolean; calendar?: string | null; truncated?: boolean}) {
+/** Source and freshness of the Home calendar card. `origin` (which calendar, or that the item is
+ * a reminder) sits beside the date and `read` (when this app read it) beside the item's time;
+ * `description` is the full sentence exposed as the card's accessible description. Times are when
+ * this app last read the source on this device, never a provider sync claim. A reminder comes from
+ * the reminder store, so it carries that store's read time and never the calendar's. An overdue
+ * reminder is already named in the card header. */
+export function presentHomeCalendarSource(input: {state: 'ready' | 'loading' | 'error' | 'other'; overdue: boolean; reminder?: boolean; reminderReadAt?: number | null; readAt: number | null; now: number; native: boolean; calendar?: string | null; truncated?: boolean}) {
   const {state, overdue, readAt, now, native} = input;
-  if (overdue) return {origin: '', read: '', description: `Overdue reminder saved on this ${native ? 'device' : 'browser'}`};
+  const short = (at: number) => { const date = new Date(at); return date.toDateString() === new Date(now).toDateString() ? formatTime(date) : formatShortDate(date); };
+  const reminder = () => {
+    const at = instant(input.reminderReadAt);
+    return {origin: overdue ? '' : 'Reminder', read: at ? `Read ${short(at)}` : '',
+      description: `${overdue ? 'Overdue reminder' : 'Reminder'} saved on this ${native ? 'device' : 'browser'}${at ? `, read ${whenLabel(at, now)}` : ''}`};
+  };
+  if (overdue) return reminder();
+  // A failed calendar read stays visible above an upcoming reminder: events may be missing before it.
   if (state === 'error') return {origin: '', read: 'Open Calendar to retry', description: 'Calendar could not be read. Open Calendar to retry.'};
+  if (input.reminder) return reminder();
   if (state !== 'ready' || !readAt) return {origin: '', read: '', description: ''};
-  const date = new Date(readAt), today = date.toDateString() === new Date(now).toDateString();
   const name = typeof input.calendar === 'string' && input.calendar.trim() ? input.calendar.trim().slice(0, 60) : '';
-  return {origin: name || (native ? 'Device' : 'This app'), read: `Read ${today ? formatTime(date) : formatShortDate(date)}`,
+  return {origin: name || (native ? 'Device' : 'This app'), read: `Read ${short(readAt)}`,
     description: `${name ? `${name}. ` : ''}Read ${whenLabel(readAt, now)} from ${native ? 'calendars on this device' : 'the calendar saved in this browser'}${input.truncated ? '; only the first 2,000 events were read' : ''}`};
 }
 /** Header of the Home calendar card: the item's day, or that reminders are overdue. */
@@ -95,12 +112,14 @@ export function homeAgendaHeader(dateLabel: string, overdue: number) {
 export function overdueDueLabel(at: number, now: number) { return `Due ${whenLabel(at, now)}`; }
 
 /** When the Home workflows card's rows were loaded from the agent (and, for the unified list, this
- * phone). Empty until a list has actually been loaded for the current connection. */
-export function presentHomeWorkflowFreshness(input: {loadedAt: number | null | undefined; now: number; unified: boolean}) {
+ * phone). Empty until a list has actually been loaded for the current connection. With no agent
+ * connected the unified list holds only this phone's reminders, and says so. */
+export function presentHomeWorkflowFreshness(input: {loadedAt: number | null | undefined; now: number; unified: boolean; agent?: boolean}) {
   const at = instant(input.loadedAt);
   if (!at) return {visible: '', description: ''};
   const when = whenLabel(at, input.now);
-  return {visible: `Loaded ${when}`, description: `${input.unified ? 'Automations from your agent and reminders on this phone' : 'Workflows from your agent'}, loaded ${when}`};
+  const source = !input.unified ? 'Workflows from your agent' : input.agent === false ? 'Reminders on this phone' : 'Automations from your agent and reminders on this phone';
+  return {visible: `Loaded ${when}`, description: `${source}, loaded ${when}`};
 }
 
 /** Status line of the Home Inbox card. It describes only metadata the user already loaded in

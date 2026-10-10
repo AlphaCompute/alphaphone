@@ -42,7 +42,7 @@ test('calendar card names its source and read time for an event and for an empty
  await page.screenshot({path:info.outputPath('home-calendar-source.png'),animations:'disabled'});
 });
 
-test('a failed calendar read shows the failure and a retry route with no read time, then recovers',async({page})=>{
+test('a failed calendar read shows the failure with no read time, and opening Calendar from the card reads it again',async({page})=>{
  await page.addInitScript(offline);await page.goto('/');
  const card=calendarCard(page),source=card.locator('[data-alpha-home-calendar-source]');
  await expect(source).toHaveText(/^Read \d/);
@@ -55,10 +55,20 @@ test('a failed calendar read shows the failure and a retry route with no read ti
  await expect(source).toHaveText('Open Calendar to retry');
  await expect(card).not.toContainText(/This app|Read \d/);
  await expect(card).toHaveAttribute('aria-description','Calendar could not be read. Open Calendar to retry.');
+ // Staying on Home does not hide the failure, and the source working again changes nothing by itself.
  await page.evaluate(async()=>{
-  const {BrowserCalendar}=await import('/src/browser/calendar.ts');(BrowserCalendar.prototype as any).list=(window as any).__calendarList;
-  window.dispatchEvent(new Event('alpha:calendar-preferences'));
+  const {BrowserCalendar}=await import('/src/browser/calendar.ts'),proto=BrowserCalendar.prototype as any,list=(window as any).__calendarList;
+  (window as any).__calendarReads=0;proto.list=function(...args:unknown[]){(window as any).__calendarReads++;return list.apply(this,args);};
  });
+ await page.getByRole('textbox',{name:'Ask Alpha',exact:true}).fill('Unsent rerender');
+ await page.waitForTimeout(500);
+ await expect(card).toContainText('Calendar unavailable');
+ expect(await page.evaluate(()=>(window as any).__calendarReads)).toBe(0);
+ // The route the card names: opening Calendar from it reads the calendar again.
+ await card.click();
+ await expect(page.locator('html')).toHaveAttribute('data-active-view','calendar');
+ await expect.poll(()=>page.evaluate(()=>(window as any).__calendarReads)).toBeGreaterThan(0);
+ await returnToApps(page);
  await expect(card).toContainText('No upcoming events');
  await expect(source).toHaveText(/^Read \d{1,2}:\d{2}/);
  await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('This app');
@@ -71,6 +81,9 @@ test('an overdue reminder stays on Home, marked overdue with its own source, and
   const {DailyApps}=await import('/src/daily.ts'),at=Date.now()+1500;
   const a=await DailyApps.scheduleReminder({id:'overview-overdue-a',title:'Synthetic overdue reminder',body:'',at});
   const b=await DailyApps.scheduleReminder({id:'overview-overdue-b',title:'Synthetic second overdue',body:'',at:at+200});
+  // An event already in progress began before either reminder was due. It must not hide them.
+  const {BrowserCalendar}=await import('/src/browser/calendar.ts'),begin=Date.now()-3600000;
+  await new BrowserCalendar().save({calendarId:'local',title:'Synthetic in-progress event',begin,end:begin+3*3600000,allDay:false,creationId:crypto.randomUUID()});
   return {at,statuses:[a.status,b.status]};
  });
  expect(scheduled.statuses).toEqual(['scheduled','scheduled']);
@@ -84,14 +97,49 @@ test('an overdue reminder stays on Home, marked overdue with its own source, and
  await expect(card).toHaveAccessibleName(`Open overdue reminder: Synthetic overdue reminder, ${due}`);
  await expect(card).toContainText('2 overdue reminders');
  await expect(card.locator('.home-calendar-footer')).toHaveText(due);
- await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveCount(0);await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('');
- await expect(card).toHaveAttribute('aria-description','Overdue reminder saved on this browser');
+ await expect(card).not.toContainText('Synthetic in-progress event');
+ // Its source is the reminder store and that store's read time, not a calendar.
+ await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('');
+ const read=await card.locator('[data-alpha-home-calendar-source]').textContent();
+ expect(read).toMatch(/^Read \d{1,2}:\d{2}/);
+ await expect(card).toHaveAttribute('aria-description',`Overdue reminder saved on this browser, read ${read!.slice('Read '.length)}`);
+ await expect(card).not.toContainText(/In this app|This app/);
  // It is still there after another render and a reload: nothing dismissed it.
  await page.reload();await expect(card).toHaveAttribute('data-alpha-home-calendar-overdue','true');
  await page.screenshot({path:info.outputPath('home-overdue.png'),animations:'disabled'});
  await card.click();
  await expect(page.locator('html')).toHaveAttribute('data-active-view','calendar');
  await expect(page.getByText('Synthetic overdue reminder').first()).toBeVisible();
+ // Handling the oldest one moves the next overdue reminder up; handling both returns the card to the calendar.
+ const done=(id:string)=>page.evaluate(async id=>{const {DailyApps}=await import('/src/daily.ts'),row=(await DailyApps.listReminders()).reminders.find(reminder=>reminder.id===id)!;return (await DailyApps.reminderDecision({id,occurrenceId:row.occurrenceId!,action:'done'})).status;},id);
+ expect(await done('overview-overdue-a')).toBe('completed');
+ await page.reload();
+ await expect(card).toContainText('Synthetic second overdue');
+ await expect(card).toContainText('Overdue reminder');await expect(card).not.toContainText('overdue reminders');
+ expect(await done('overview-overdue-b')).toBe('completed');
+ await page.reload();
+ await expect(card).toHaveAttribute('data-alpha-home-calendar-overdue','false');
+ await expect(card).toContainText('Synthetic in-progress event');
+ await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('In this app');
+ await expect(card).toHaveAttribute('aria-description',/^In this app\. Read \d{1,2}:\d{2}.* from the calendar saved in this browser$/);
+});
+
+test('an upcoming reminder is attributed to the reminder store, not to a calendar',async({page,context})=>{
+ await context.grantPermissions(['notifications']);
+ await page.addInitScript(offline);await page.goto('/');
+ expect(await page.evaluate(async()=>{
+  const {DailyApps}=await import('/src/daily.ts');
+  return (await DailyApps.scheduleReminder({id:'overview-upcoming',title:'Synthetic upcoming reminder',body:'',at:Date.now()+3600000})).status;
+ })).toBe('scheduled');
+ await page.reload();
+ const card=calendarCard(page);
+ await expect(card).toContainText('Synthetic upcoming reminder');
+ await expect(card).toHaveAttribute('data-alpha-home-calendar-overdue','false');
+ await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('Reminder');
+ const read=await card.locator('[data-alpha-home-calendar-source]').textContent();
+ expect(read).toMatch(/^Read \d{1,2}:\d{2}/);
+ await expect(card).toHaveAttribute('aria-description',`Reminder saved on this browser, read ${read!.slice('Read '.length)}`);
+ await expect(card).not.toContainText(/In this app|This app/);
 });
 
 async function mailFixture(page:Page){
@@ -178,10 +226,20 @@ test('the latest retained brief appears with its agent and run time, reports fai
  await card.scrollIntoViewIfNeeded();
  expect(await card.evaluate(element=>{const box=element.getBoundingClientRect(),title=element.querySelector('.home-brief-title')!.getBoundingClientRect(),status=element.querySelector('.home-brief-status')!.getBoundingClientRect();return {height:Math.round(box.height),overflow:element.scrollWidth-element.clientWidth,ordered:title.bottom<=status.top,inside:status.bottom<=box.bottom};})).toEqual({height:196,overflow:0,ordered:true,inside:true});
  await page.screenshot({path:info.outputPath('home-brief.png'),animations:'disabled'});
+ // A newer result that records a skipped occurrence replaces it and is not presented as a run.
+ await page.evaluate(async()=>{
+  const {rememberRetainedDigests}=await import('/src/runtime/hosted-digests.ts');
+  rememberRetainedDigests([{cursor:3,runId:'run-missed',completedAt:new Date(Date.now()-1800000).toISOString(),status:'missed',output:{status:'missed',text:'The scheduled time was missed. No backlog was executed.'},error:null}] as any,'Synthetic agent');
+ });
+ await expect(card).toContainText('The scheduled time was missed. No backlog was executed.');
+ await expect(card).toContainText(/Synthetic agent · Did not run \d{1,2}:\d{2}/);
+ await expect(card).not.toContainText(/· Ran /);
+ await expect(card).toHaveAccessibleName(/^Open scheduled digests\. Latest brief from Synthetic agent, did not run /);
+ await expect(card).toHaveAttribute('data-alpha-home-brief-failed','false');
  // A newer failed run replaces it and says it failed.
  await page.evaluate(async()=>{
   const {rememberRetainedDigests}=await import('/src/runtime/hosted-digests.ts');
-  rememberRetainedDigests([{cursor:3,runId:'run-failed',completedAt:new Date(Date.now()-60000).toISOString(),status:'failed',error:'Synthetic source expired'}] as any,'Synthetic agent');
+  rememberRetainedDigests([{cursor:4,runId:'run-failed',completedAt:new Date(Date.now()-60000).toISOString(),status:'failed',error:'Synthetic source expired'}] as any,'Synthetic agent');
  });
  await expect(card).toHaveAttribute('data-alpha-home-brief-failed','true');
  await expect(card).toContainText('Synthetic source expired');

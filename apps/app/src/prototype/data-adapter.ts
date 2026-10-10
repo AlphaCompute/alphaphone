@@ -84,7 +84,8 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       // Overdue reminders (reminder adapter's overdueReminders()) stay on Home until handled.
       .concat(overdueRows.map((row: Bag) => ({event: {id: row.id, title: row.title, off: row.off, overdue: true}, begin: Number(row.at), end: Infinity})))
       .filter((item: Bag) => Number.isFinite(item.begin) && (Number.isFinite(item.end) || item.event.overdue) && (item.event.nativeEvent?.allDay?item.end>now:item.end>=now))
-      .sort((a: Bag, b: Bag) => a.begin - b.begin)[0];
+      // An overdue reminder is first even when an event already in progress began before it was due.
+      .sort((a: Bag, b: Bag) => Number(!!b.event.overdue) - Number(!!a.event.overdue) || a.begin - b.begin)[0];
     const cardState = calendarSource?.loading ? 'loading' : calendarSource?.ready ? 'ready' : 'error';
     // The calendar adapter may report its read time; otherwise the first render that sees the
     // loaded rows stands in for it (both are reads from this device, never a sync claim).
@@ -92,6 +93,10 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     if (cardState === 'ready' && rows !== calendarReadRows) { calendarReadRows = rows; calendarReadAt = now; }
     if (cardState !== 'ready') calendarReadRows = undefined;
     const readAt = Number.isFinite(calendarState.nativeCalendarReadAt) ? Number(calendarState.nativeCalendarReadAt) : cardState === 'ready' ? calendarReadAt : null;
+    // Reminders have their own store and read time: the reminder adapter replaces reminderRows on
+    // each completed read, and the first render that sees the new rows stands in for that read.
+    const reminderRows = this.reminderRows;
+    if (reminderRows !== reminderReadRows) { reminderReadRows = reminderRows; reminderReadAt = Array.isArray(reminderRows) ? now : null; }
     const meeting = (event: Bag) => [event.nativeEvent?.meetingUrl, event.nativeEvent?.location, event.where].some((value: unknown) => typeof value === 'string' && /\bhttps:\/\/[^\s]+/i.test(value));
     const calendar = presentHomeCalendar({
       state: cardState, readAt, now, device: Capacitor.isNativePlatform() ? 'this device' : 'this browser',
@@ -110,7 +115,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     // Source and freshness of the item on the card: the calendar it was read from and when this
     // app read it, or the reminder store for an overdue reminder.
     const calendarName = agenda && !overdue ? (calendarSource?.sources || []).find((source: Bag) => source.id === agenda.event.nativeEvent?.calendarId)?.name : null;
-    const provenance = presentHomeCalendarSource({state: cardState === 'error' && !calendarSource?.error ? 'other' : cardState, overdue, readAt, now, native: Capacitor.isNativePlatform(), calendar: calendarName, truncated: !!calendarSource?.truncated});
+    const provenance = presentHomeCalendarSource({state: cardState === 'error' && !calendarSource?.error ? 'other' : cardState, overdue, reminder: !!agenda?.event.alphaReminderId, reminderReadAt, readAt, now, native: Capacitor.isNativePlatform(), calendar: calendarName, truncated: !!calendarSource?.truncated});
     // A refused or unconnected calendar says so instead of the generic failure copy.
     const sourceState = calendarCardState(calendarSource?.status);
     const eventTitle=agenda?String(agenda.event.title||'Untitled event'):'';
@@ -134,9 +139,11 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       homeAttentionPeople: [], homeAttentionPeopleVisibility: 'hidden',
       ...(browserDevProfile?{homeInboxCount:attention.count,homeInboxRows:unreadRows.slice(0,2).map(mail=>({subject:mail.subj||'(no subject)',from:mail.name||mail.email||''})),homeInboxHasRows:unread>0,homeInboxTitle:unread?'':'No unread email',homeInboxStatus:'Development inbox'}:{}),
       homeWorkflowLabel: brief.label, homeWorkflowTitle: brief.title, homeWorkflowTime: brief.time, homeWorkflowSource: brief.source,
-      goCalendar: () => this.openView('calendar', agenda ? {open:agenda.event.id, day:agenda.event.off, openDay:agenda.event.off} : undefined),
+      // After a failed read, opening Calendar from the card reads it again; Calendar itself does not retry on entry.
+      goCalendar: () => { if (calendarSource?.error) calendarSource.retry?.(); this.openView('calendar', agenda ? {open:agenda.event.id, day:agenda.event.off, openDay:agenda.event.off} : undefined); },
       homeBriefHas: briefCard.has, homeBriefTitle: briefCard.title, homeBriefStatus: briefCard.status, homeBriefLabel: briefCard.label, homeBriefFailed: briefCard.failed,
-      // Opens the retained results list. Nothing is run or fetched by showing or tapping the card.
+      // Opens the retained results list. Showing the card reads nothing; opening the list syncs
+      // retained results with the agent as it does from Settings. Neither runs a digest.
       goBrief: () => window.dispatchEvent(new Event('alpha:hosted-digests')),
       goFlows: () => this.openView('workflows'),
       goTriage: () => attention.action === 'connections' ? this.openView('settings', {page:'connections'}) : this.openView('inbox',{acct:'all',open:null,q:null}),
@@ -155,6 +162,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
   };
 }
 let calendarReadRows: unknown, calendarReadAt: number | null = null;
+let reminderReadRows: unknown, reminderReadAt: number | null = null;
 
 export const HOME_SOURCES_CHANGED = 'alpha:home-sources-changed';
 /** Live Home card sources. Provider adapters register here (P06 inboxAttention(), P05

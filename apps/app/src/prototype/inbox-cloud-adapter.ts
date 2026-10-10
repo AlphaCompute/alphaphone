@@ -73,7 +73,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let providerDrafts: GmailDraftSummary[] = [];
   // Only a boolean leaves this closure: the Home badge reflects the last loaded Inbox page(s).
   // Home retains only metadata from Inbox pages the user already loaded, never message bodies.
-  let inboxPreview: {sessionId:string;accountId:string;messages:Pick<GmailMessage,'id'|'subject'|'from'|'unread'>[];more:boolean;readAt:number}|null=null;
+  let inboxPreview: {sessionId:string;accountId:string;messages:Pick<GmailMessage,'id'|'subject'|'from'|'unread'>[];more:boolean;readAt:number|null}|null=null;
   let homeFailure:GmailFailureKind|null=null;
   let hasUnread = false;
   let failure: { kind: GmailFailureKind; retry: () => void } | null = null;
@@ -102,9 +102,10 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const readable = () => accounts.filter(gmailReadable);
   const currentQuery = () => String(api?.get('inbox')?.q || '').trim() || folderQuery[folder];
   const accountLabel = (id = selected) => accounts.find(a => a.connectionId === id)?.label || null;
-  // `fresh` marks a completed provider read; local recounts keep the time of the read they came from.
+  // `fresh` marks a completed first-page provider read. Later pages and local recounts keep that
+  // time, so the time shown is never newer than the oldest data counted; no time is invented.
   const recountUnread = (more=inboxPreview?.more??nextPageToken!==null,fresh=false) => {
-    if (loadedQuery === 'in:inbox') inboxPreview={sessionId:connectionController.getCloudClient()?.sessionId||'',accountId:selected,messages:messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),more,readAt:fresh?Date.now():inboxPreview?.readAt??Date.now()};
+    if (loadedQuery === 'in:inbox') inboxPreview={sessionId:connectionController.getCloudClient()?.sessionId||'',accountId:selected,messages:messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),more,readAt:fresh?Date.now():inboxPreview?.readAt??null};
     if(loadedQuery==='in:inbox')setAttention({state:'ready',unread:messages.filter(m=>m.unread).length,unreadMore:more,source:accountLabel(),updatedAt:revision||new Date().toISOString()});
     hasUnread=!!inboxPreview?.messages.some(m=>m.unread);
   };
@@ -297,7 +298,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       nextPageToken = next && !seenCursors.has(next) ? next : null;
       if (nextPageToken) seenCursors.add(nextPageToken);
       loadedQuery = query; revision = result.syncedAt;
-      recountUnread(result.nextPageToken!=null,true);
+      recountUnread(result.nextPageToken!=null,!pageToken);
       if (!pageToken) body = null;
       providerDrafts = [];
       status = messages.length ? `${messages.length} messages loaded` : query === 'in:inbox' ? 'Your Inbox is empty' : query === 'in:sent' ? 'No sent messages' : query === 'in:archive' ? 'No archived messages' : query === 'in:trash' ? 'Trash is empty' : 'No messages match this search';
