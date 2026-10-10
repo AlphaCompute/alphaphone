@@ -1384,7 +1384,9 @@ export function ConnectionChooser() {
 
     if (phone && panel.current) {
       const theme = getComputedStyle(phone);
-      for (const key of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.current.style.setProperty(`--connection-${key}`, theme.getPropertyValue(`--${key}`));
+      // The dialog's accent colours text and focus rings, so it takes the theme's text accent
+      // (--acct): the fill accent (--acc) is 2.4:1 against the dark background.
+      for (const key of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.current.style.setProperty(`--connection-${key}`, theme.getPropertyValue(key === 'acc' ? '--acct' : `--${key}`));
     }
     panel.current?.focus();
     const back = (event: Event) => { if(document.querySelector("dialog[open]"))return; event.preventDefault(); event.stopImmediatePropagation(); if (snapshot.busy) connectionController.cancel(); else connectionController.close(); };

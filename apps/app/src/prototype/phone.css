@@ -218,3 +218,46 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 .alpha-landscape .alpha-phone>[data-screen]{width:var(--phone-width,412px)!important}
 /* App library: a favorite at either end cannot move further. */
 .alpha-app-drawer button.ib:disabled{opacity:.3}
+
+/* Accessibility and resilience (MVP-48). Large text arrives as WebView text zoom, which CSS cannot
+ * read, so these are layout rules: text either fits, wraps or is hidden whole; it is never cut. */
+/* A short timeline block shows the lines that fit. A line that does not fit wraps into a hidden
+ * column instead of being cut through; the block's accessible name still carries title and time. */
+.calendar-block-text{display:flex;flex-direction:column;flex-wrap:wrap;align-self:stretch;min-height:0;overflow:hidden}
+.calendar-block-text>span{width:100%;flex-shrink:0}
+/* Map sheets keep the search field visible and scroll their own content when it outgrows the
+ * design height (large text) or the screen (landscape). 104px is where the full sheet meets the
+ * search field in the 915px design. */
+[data-alpha-maps-sheet="results"]{max-height:calc(100% - 104px)}
+[data-alpha-maps-sheet="place"],[data-alpha-maps-sheet="directions"]{min-height:min(var(--alpha-sheet-height,300px),calc(100% - 104px));max-height:calc(100% - 104px);overflow-y:auto;overscroll-behavior:contain;padding-bottom:116px!important}
+/* Landscape has no room to stack the directions card above a sheet: the sheet takes the right
+ * half (under the docked composer, as in portrait) and the directions card the left. */
+.alpha-landscape [data-alpha-maps-sheet]{left:auto!important;width:min(440px,50%);border-radius:28px 0 0 0!important}
+.alpha-landscape [data-alpha-maps-directions]{right:auto!important;width:calc(50% - 24px);box-sizing:border-box;max-height:calc(100% - 64px);overflow-y:auto}
+
+/* Camera in landscape: the portrait stack (viewfinder, zoom, modes, capture row) is 800px tall and
+ * would leave every capture control below the screen. The capture controls move to a column on the
+ * right; zoom, mode and scan status sit over the bottom of the viewfinder. */
+.alpha-landscape [data-alpha-camera-root]{--alpha-camera-rail:132px;--alpha-camera-top:96px}
+.alpha-landscape.standalone-app [data-alpha-camera-root]{--alpha-camera-top:52px}
+.alpha-landscape [data-alpha-camera="viewfinder"]{top:0!important;bottom:0!important;height:auto!important;right:var(--alpha-camera-rail)!important}
+.alpha-landscape [data-alpha-camera="capture"]{left:auto!important;right:0!important;top:var(--alpha-camera-top)!important;bottom:0!important;width:var(--alpha-camera-rail)!important;height:auto!important;flex-direction:column-reverse!important;padding:8px 0!important;box-sizing:border-box}
+.alpha-landscape [data-alpha-camera="modes"]{top:auto!important;bottom:8px!important;right:var(--alpha-camera-rail)!important;z-index:2}
+.alpha-landscape [data-alpha-camera="modes"] button{background:rgba(0,0,0,.62);border-radius:22px}
+.alpha-landscape [data-alpha-camera="zoom"]{top:auto!important;bottom:60px!important;right:var(--alpha-camera-rail)!important}
+.alpha-landscape [data-alpha-camera="status"]{top:auto!important;bottom:112px!important;right:var(--alpha-camera-rail)!important}
+/* The photo viewer header holds two lines of text; it grows with them instead of cutting the first. */
+.standalone-app [data-alpha-subview="photos-viewer"] [data-alpha-app-header]{height:auto!important}
+/* The note editor header can hold eight actions: at 52px each the last one (Delete) leaves the
+ * 412px canvas. 44px targets keep all of them on screen. */
+.standalone-app .note-editor [data-alpha-app-header] .ib{width:44px!important;min-width:44px}
+/* Browser menu rows grow with their label and wrap it; a fixed 50px row let large text spill
+ * over the next row. The menu itself already scrolls. */
+[data-alpha-browser-menu]>button{height:auto!important;min-height:50px;flex-shrink:0;text-align:left}
+/* The photo editor is a fixed portrait stack (preview, tools, filters). Where the screen is
+ * shorter than the stack (landscape) it scrolls, so Rotate, Crop and the filters stay reachable. */
+[data-alpha-subview="photos-edit"]{overflow-y:auto;overscroll-behavior:contain}
+/* Headers whose title is larger than the standard 20px app title grow with it instead of letting
+ * it leave the top of the screen: the Files selection count and the Notes Trash heading. */
+.standalone-app [data-alpha-app-header][data-alpha-header-grow]{height:auto!important}
+[data-alpha-subview="notes-trash"]>div:first-child{height:auto!important;min-height:56px}
