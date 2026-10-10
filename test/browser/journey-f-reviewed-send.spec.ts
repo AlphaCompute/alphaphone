@@ -24,7 +24,7 @@ import {test, expect, type Page} from '@playwright/test';
 
 const button = (page: Page, name: string) => page.getByRole('button', {name, exact: true});
 const KEY = 'journey-f-review-provider';
-type Options = {inbox?: string[]; pageSize?: number; strictCursors?: boolean; forward?: boolean; overlap?: boolean};
+type Options = {inbox?: string[]; pageSize?: number; strictCursors?: boolean; forward?: boolean};
 
 /** Synthetic managed provider. Re-installed after every load; its state lives in localStorage. */
 async function installProvider(page: Page, options: Options = {}) {
@@ -58,9 +58,7 @@ async function installProvider(page: Page, options: Options = {}) {
         const ids: string[] = query === 'in:inbox' ? value.inbox : query === 'in:trash' ? value.trashed : [];
         const [cut, start] = pageToken ? pageToken.split(':').map(Number) : [value.revision, 0];
         if (pageToken && options.strictCursors && cut !== value.revision) throw new CloudProtocolError('http', 400, {error: 'Invalid Gmail page token.'});
-        // A provider whose later pages always begin with the last row of the page before.
-        const from = pageToken && options.overlap ? start - 1 : start;
-        return {messages: ids.slice(from, start + size).map(id => mail(id)), syncedAt: '2026-10-08T12:00:00Z', nextPageToken: start + size < ids.length ? `${value.revision}:${start + size}` : null};
+        return {messages: ids.slice(start, start + size).map(id => mail(id)), syncedAt: '2026-10-08T12:00:00Z', nextPageToken: start + size < ids.length ? `${value.revision}:${start + size}` : null};
       },
       gmailRead: async (_grant: string, id: string) => ({message: mail(id), bodyText: 'Body of ' + id, links: []}),
       gmailThread: async (_grant: string, threadId: string) => {
@@ -399,7 +397,8 @@ test('F-13: a lost Trash reply is an unknown outcome, handled like an unknown se
   expect(state).toMatchObject({trashed: ['m2'], inbox: ['m1']});
 });
 
-test('F-12: new mail between pages never shows a message twice; the list restarts from the first page', async ({page}) => {
+const mailboxChanged = 'Newer mail arrived while this list was loading and is not shown yet. Load newer mail to read the list again.';
+test('F-12: new mail between pages never shows a message twice, and the list says it is no longer the whole mailbox', async ({page}) => {
   test.setTimeout(120_000);
   await openInbox(page, {inbox: ['m1', 'm2', 'm3', 'm4', 'm5'], pageSize: 2});
   await expect.poll(() => rows(page)).toEqual(['m1', 'm2']);
@@ -407,32 +406,25 @@ test('F-12: new mail between pages never shows a message twice; the list restart
   // second page starts one row early and repeats m2.
   await setProvider(page, {inbox: ['m9', 'm1', 'm2', 'm3', 'm4', 'm5'], revision: 2});
   await button(page, 'Load more').click();
-  await expect(page.getByText('Your mailbox changed while more messages were loading. The list was reloaded from the start so no message is shown twice.', {exact: true})).toBeVisible();
-  await expect.poll(() => rows(page)).toEqual(['m9', 'm1']);
-  await button(page, 'Load more').click();
-  await expect.poll(() => rows(page)).toEqual(['m9', 'm1', 'm2', 'm3']);
-  await button(page, 'Load more').click();
-  await expect.poll(() => rows(page)).toEqual(['m9', 'm1', 'm2', 'm3', 'm4', 'm5']);
-  await expect(button(page, 'Load more')).toHaveCount(0);
-  // One restart, and it happened once: the stale cursor is not used again.
-  expect((await provider(page)).searches).toEqual([['in:inbox', null], ['in:inbox', '1:2'], ['in:inbox', null], ['in:inbox', '2:2'], ['in:inbox', '2:4']]);
-});
-
-test('F-12: a provider whose pages always overlap restarts the list once, then pages on without repeats', async ({page}) => {
-  test.setTimeout(120_000);
-  await openInbox(page, {inbox: ['m1', 'm2', 'm3', 'm4', 'm5'], pageSize: 2, overlap: true});
-  await expect.poll(() => rows(page)).toEqual(['m1', 'm2']);
-  await button(page, 'Load more').click();
-  await expect(page.getByText('Your mailbox changed while more messages were loading. The list was reloaded from the start so no message is shown twice.', {exact: true})).toBeVisible();
-  await expect.poll(async () => (await provider(page)).searches.length).toBe(3);
-  await expect.poll(() => rows(page)).toEqual(['m1', 'm2']);
-  // The same overlap again is not treated as another change: the list is not held on page one.
-  await button(page, 'Load more').click();
-  await expect.poll(() => rows(page)).toEqual(['m1', 'm2', 'm3', 'm4']);
+  // The repeat is dropped, every message that was in the mailbox is still listed once, and the
+  // list states that newer mail is missing from it and how to load it.
+  await expect.poll(() => rows(page)).toEqual(['m1', 'm2', 'm3']);
+  await expect(page.getByText(mailboxChanged, {exact: true}).first()).toBeVisible();
+  // The notice passes; a control that loads the newer mail stays until the list is read again.
+  await expect(button(page, 'Load newer mail')).toBeVisible();
   await button(page, 'Load more').click();
   await expect.poll(() => rows(page)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5']);
   await expect(button(page, 'Load more')).toHaveCount(0);
-  expect((await provider(page)).searches.map(search => search[1])).toEqual([null, '1:2', null, '1:2', '1:4']);
+  await expect(button(page, 'Load newer mail')).toBeVisible();
+  // It loads the mailbox as it is now, newest first, with nothing repeated or left out.
+  await button(page, 'Load newer mail').click();
+  await expect.poll(() => rows(page)).toEqual(['m9', 'm1']);
+  await expect(button(page, 'Load newer mail')).toHaveCount(0);
+  await button(page, 'Load more').click();
+  await button(page, 'Load more').click();
+  await expect.poll(() => rows(page)).toEqual(['m9', 'm1', 'm2', 'm3', 'm4', 'm5']);
+  await expect(page.getByText(/Newer mail arrived/)).toHaveCount(0);
+  expect((await provider(page)).searches).toEqual([['in:inbox', null], ['in:inbox', '1:2'], ['in:inbox', '2:4'], ['in:inbox', null], ['in:inbox', '2:2'], ['in:inbox', '2:4']]);
 });
 
 test('F-12: a cursor the provider refuses after the mailbox changed keeps the loaded page and says how to reload', async ({page}) => {

@@ -66,6 +66,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let shell: Bag | undefined, api: Bag | undefined;
   let accounts: GmailAccount[] = [], messages: GmailMessage[] = [], accountsChecked = false;
   type Folder = 'inbox' | 'sent' | 'drafts' | 'archive' | 'trash';
+  const MAILBOX_CHANGED = 'Newer mail arrived while this list was loading and is not shown yet. Load newer mail to read the list again.';
+  let newerMail = false;
   const folderQuery: Record<Folder, string> = { inbox: 'in:inbox', sent: 'in:sent', drafts: 'in:drafts', archive: 'in:archive', trash: 'in:trash' };
   let loadedQuery = '', nextPageToken: string | null = null, folder: Folder = 'inbox';
   // Provider drafts (patches/eliza/0058) are listed separately from messages.
@@ -276,10 +278,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     const opened = await drafts.editProvider({ mode: 'compose', to: draft.to, cc: draft.cc, bcc: draft.bcc, subject: draft.subject, bodyText: draft.bodyText, attachments: [] }, { draftId: draft.draftId, providerDigest: draft.providerDigest });
     if (!opened && !drafts.render().composing) api?.toast('Save or discard the open email first. The Gmail draft was not opened.');
   }
-  // The list a paging restart was last made for. A second overlapping page of the same list is
-  // joined without its repeats, so a provider that always overlaps cannot hold the list on page one.
-  let pagingRestarted = '';
-  async function load(more = false, restarted = false) {
+  async function load(more = false) {
     if (!selected) { await refreshAccounts(); return; }
     if (draftsView()) { await loadDrafts(more); return; }
     const accountId = selected, query = currentQuery();
@@ -289,15 +288,14 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     // A cursor is used once. If its page fails (for example an expired cursor), Load more is not
     // offered again with it; Retry reloads the list from the first page instead.
     if (pageToken) nextPageToken = null;
-    let shifted = false; const listKey = JSON.stringify([accountId, query]);
-    if (!pageToken && !restarted) pagingRestarted = '';
     await work(more ? 'Loading more messages…' : 'Loading Gmail…', async ({ client }, signal, valid) => {
       const result = await client.gmailSearch(accountId, query, signal, 25, pageToken || undefined);
       if (!valid() || selected !== accountId || currentQuery() !== query) return;
       const seen = new Set(pageToken ? messages.map(m => m.id) : []);
       // A later page that repeats a loaded message was cut from a mailbox that changed after the
-      // first page (new mail moved every row down). Its pages cannot be joined; start again.
-      if (pageToken && pagingRestarted !== listKey && result.messages.some(m => seen.has(m.id))) { shifted = true; return; }
+      // earlier pages were read (new mail moved every row down). The repeat is dropped as before,
+      // and the list says that it is no longer the whole mailbox.
+      const shifted = !!pageToken && result.messages.some(m => seen.has(m.id));
       messages = pageToken ? [...messages, ...result.messages.filter(m => !seen.has(m.id))] : result.messages;
       if (!pageToken) seenCursors = new Set();
       // A provider cursor that repeats would page forever; treat it as the end of the results.
@@ -309,13 +307,10 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if (!pageToken) body = null;
       providerDrafts = [];
       status = messages.length ? `${messages.length} messages loaded` : query === 'in:inbox' ? 'Your Inbox is empty' : query === 'in:sent' ? 'No sent messages' : query === 'in:archive' ? 'No archived messages' : query === 'in:trash' ? 'Trash is empty' : 'No messages match this search';
+      newerMail = pageToken ? newerMail || shifted : false;
+      if (shifted) api?.toast(MAILBOX_CHANGED);
       publish(pageToken ? {} : { open: null, nativeMailSelection: null });
     }, () => void load(), more, more ? ' The messages already shown were kept. Retry reloads the list from the start.' : '');
-    if (shifted && selected === accountId && currentQuery() === query && !operation) {
-      api?.toast('Your mailbox changed while more messages were loading. The list was reloaded from the start so no message is shown twice.');
-      pagingRestarted = listKey;
-      await load(false, true);
-    }
   }
   function setFolder(next: Folder) {
     if (folder === next && !api?.get('inbox')?.q && (messages.length || providerDrafts.length)) return;
@@ -511,6 +506,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
         chip('Archive', () => setFolder('archive'), folder === 'archive'),
         ...(provider.capabilities()?.searchTrash ? [chip('Trash', () => setFolder('trash'), folder === 'trash')] : [])] : []),
       ...(selected ? [chip(st.q ? 'Search Gmail' : 'Refresh', () => void load())] : []),
+      // Stays after the notice has passed, until the list is loaded again from its first page.
+      ...(selected && newerMail && messages.length && loadedQuery === currentQuery() ? [chip('Load newer mail', () => void load())] : []),
       chip('Connect Gmail', () => void connect()),
       chip('Check connection', () => void refreshAccounts()),
       ...(selected&&!provider.capabilities()?.send?[chip('Authorize Gmail sending',()=>void connect('send'))]:[]),

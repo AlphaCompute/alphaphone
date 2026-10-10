@@ -233,7 +233,7 @@ Spec: `journey-j05-web-research-note.spec.ts` (two serial tests)
 | F | Send after editing a reviewed email reopened the earlier review, so the earlier text could be sent | product bug | Fixed in `inbox-provider-controls.ts`: the stale review is discarded and the email is reviewed again (`journey-f-reviewed-send.spec.ts`, `mail-review.production.spec.ts`) |
 | F | A forward's original attachments were not listed in the send review | product bug | Fixed in `inbox-provider-controls.ts` (`journey-f-reviewed-send.spec.ts`) |
 | F | A double tap on Confirm landed on the Undo control that replaced it | product bug | Fixed in `inbox-provider-controls.ts` (`journey-f-reviewed-send.spec.ts`) |
-| F | A later page that repeated a loaded message was joined to the list | product bug | Fixed in `inbox-cloud-adapter.ts`: the list restarts from the first page |
+| F | A later page that repeated a loaded message was joined without saying that newer mail was missing from the list | product gap | Fixed in `inbox-cloud-adapter.ts`: a notice and a "Load newer mail" control |
 | J03 | "No preview · Save to Files" failed in the browser build | product bug | Fixed in `browser/mail-attachments.ts` (`inbox-hostile-attachment.spec.ts`) |
 | B | The agent calendar review showed raw UTC timestamps and neither the calendar, the account nor attendees | product gap | Fixed in `browser/calendar-agent-review.ts` and `device-record-presentation.ts` (journey B, `calendar-proposal-review.production.spec.ts`) |
 | A | A spoken turn with the development profile always stopped after the reply: the development agent returned no message identities | development fixture | Fixed in `development-connection.ts`; journey A now has a spoken request |
