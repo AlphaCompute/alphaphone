@@ -1,7 +1,7 @@
-diff --git a/packages/contracts/package.json b/packages/contracts/package.json
-index 2635760e9ae400b0d8ad1263dd8e30235af09402..fabb692b47cd34d26baf935397ed46c36b904cb4 100644
---- a/packages/contracts/package.json
-+++ b/packages/contracts/package.json
+diff --git c/packages/contracts/package.json i/packages/contracts/package.json
+index 473493276e62afe31c2f99f278c7247523a37e63..12644f9d313ff791dbc6dd5d2e6070114fbd962a 100644
+--- c/packages/contracts/package.json
++++ i/packages/contracts/package.json
 @@ -27,6 +27,12 @@
        "types": "./dist/native-notes-query.d.ts",
        "import": "./dist/native-notes-query.js",
@@ -15,11 +15,11 @@ index 2635760e9ae400b0d8ad1263dd8e30235af09402..fabb692b47cd34d26baf935397ed46c3
      }
    },
    "scripts": {
-diff --git a/packages/contracts/src/runtime-capabilities.test.ts b/packages/contracts/src/runtime-capabilities.test.ts
+diff --git c/packages/contracts/src/runtime-capabilities.test.ts i/packages/contracts/src/runtime-capabilities.test.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..7a885fe7c5507fe11abb761c24241dd7d724c868
 --- /dev/null
-+++ b/packages/contracts/src/runtime-capabilities.test.ts
++++ i/packages/contracts/src/runtime-capabilities.test.ts
 @@ -0,0 +1,121 @@
 +import { describe, expect, it } from "vitest";
 +import {
@@ -142,11 +142,11 @@ index 0000000000000000000000000000000000000000..7a885fe7c5507fe11abb761c24241dd7
 +    ).toThrow();
 +  });
 +});
-diff --git a/packages/contracts/src/runtime-capabilities.ts b/packages/contracts/src/runtime-capabilities.ts
+diff --git c/packages/contracts/src/runtime-capabilities.ts i/packages/contracts/src/runtime-capabilities.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..c6945f2c51433b5a3544c702c220c1cd1201a718
 --- /dev/null
-+++ b/packages/contracts/src/runtime-capabilities.ts
++++ i/packages/contracts/src/runtime-capabilities.ts
 @@ -0,0 +1,324 @@
 +/**
 + * Versioned, browser-safe descriptions a host negotiates with a client: what the

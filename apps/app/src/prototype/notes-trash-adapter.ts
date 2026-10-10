@@ -3,8 +3,8 @@ import {
  restoreNotesTrashEntry,savedNoteIds,sortedNotesTrash,withNotesDeletionLock,type NotesTrashEntry,
 } from '../runtime/notes-trash';
 import {notesTrashPolicy} from '../runtime/notes-trash-policy';
-import {maintainNotesTrash} from '../../../../.eliza/patched/plugins/plugin-notes/src/client/notes-trash-maintenance.ts';
-import {scheduleNotesTrashMaintenance} from '../../../../.eliza/patched/plugins/plugin-notes/src/client/notes-trash-schedule.ts';
+import {maintainNotesTrash} from '../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-maintenance.ts';
+import {scheduleNotesTrashMaintenance} from '../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-schedule.ts';
 import {DailyApps} from '../daily';
 import {isStorageFull} from '../runtime/notes-store';
 type Bag=Record<string,any>;

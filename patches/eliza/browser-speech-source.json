@@ -1,8 +1,8 @@
 {
-  "baseCommit": "0d40aa6e6e1b5192311ca916515003c8a4473c0c",
+  "baseCommit": "a8ad88dbedaf8a6d0f15f77d7a9a06f8e4b89603",
   "patch": "0065-browser-speech.patch",
-  "sha256": "288465b30960d9247178e749712313e692f1a2598d0aa73163e2ec34546a2f79",
-  "status": "Candidate for elizaOS develop: @elizaos/voice/browser-speech (Whisper tiny.en worker, recognizer, protocol) and @elizaos/voice/browser-capture (MediaRecorder sessions with host microphone admission, mono PCM and PCM16 WAV) with host inputs; authored at 45242af; bun tests 12/12 in the authoring clone; not submitted upstream",
+  "sha256": "05bc22367a8e956567a1f3d431e518da846af45685846189a219692caecc518a",
+  "status": "Rebased to reviewed upstream a8ad88db, preserving upstream voice README; consumer verification pending.",
   "basePaths": [
     "packages/voice/README.md",
     "packages/voice/package.json"
@@ -36,12 +36,12 @@
     "packages/voice/src/browser-speech/whisper-engine.ts"
   ],
   "files": {
-    "packages/voice/README.md": "22f25f2f0934f19e1ab548abb9b9014d6ea1086585934f17a7264bcf74cbbd4a",
-    "packages/voice/package.json": "ce70a5b7b1f0231deb084305947687a66463f2d93a8875e217fe341715c40ac8",
-    "packages/voice/src/browser-capture/README.md": "fcf40e93627f2128563c350c30b71c1d8bf5d8e0fcbccca461f4bdfb1ff8509d",
+    "packages/voice/package.json": "d2c34678e4112922ee8660b84d69f5cf9c089e2be466be6d69288fb139792e43",
+    "packages/voice/README.md": "f02fd51824065482a2e2bd4e425048bdc4d8c0ddc2299322b4e1fab52e08240f",
     "packages/voice/src/browser-capture/audio-capture.ts": "e2f6a3386b43161301afbaef7d6dd49624245784bd698e2251e9aa48939328b8",
     "packages/voice/src/browser-capture/browser-capture.test.ts": "f50db980b41f504518b9607d88648934d7dc070bb7e210b5d68833409afadcae",
     "packages/voice/src/browser-capture/index.ts": "7af08759bbd5903aae2dbf59f4be03ae527906925c3c0e71113e481d1231a165",
+    "packages/voice/src/browser-capture/README.md": "fcf40e93627f2128563c350c30b71c1d8bf5d8e0fcbccca461f4bdfb1ff8509d",
     "packages/voice/src/browser-capture/recording-pcm.ts": "433ea1c7f5b1d203b728e1bd06d3b15e7a68bccd69f456f75fb1edb875025751",
     "packages/voice/src/browser-speech/browser-speech.test.ts": "fe4cb2198098b0f00310dadf344744b12c0a32e45ea94b835fbc65c70c009e95",
     "packages/voice/src/browser-speech/index.ts": "16faff092b8b0a1f8be61b20d70be331b39c1262bb227d2cbb605107c61dbf5f",

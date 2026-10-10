@@ -1,6 +1,6 @@
 import type {NoteRecord} from './notes-store';
 import type {NotesTarget} from './notes-contract';
-import {createNotesTrashPolicy,type NotesTrashDocument as SharedDocument,type NotesTrashEntry as SharedEntry,type NotesTrashPlan as SharedPlan} from '../../../../.eliza/patched/plugins/plugin-notes/src/client/notes-trash-policy.ts';
+import {createNotesTrashPolicy,type NotesTrashDocument as SharedDocument,type NotesTrashEntry as SharedEntry,type NotesTrashPlan as SharedPlan} from '../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-policy.ts';
 
 /** Product deletion policy: a deleted note stays restorable in Trash for exactly three days. */
 export const NOTES_TRASH_RETENTION_MS=3*24*60*60*1000;

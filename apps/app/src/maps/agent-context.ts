@@ -1,1 +1,1 @@
-export * from '../../../../.eliza/patched/plugins/plugin-maps/src/client/agent-context.ts';
+export * from '../../../../.eliza/client-features/plugins/plugin-maps/src/client/agent-context.ts';

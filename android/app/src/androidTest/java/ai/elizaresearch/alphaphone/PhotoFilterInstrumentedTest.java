@@ -1,4 +1,5 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.media.PhotoFilter;
 import android.content.*;
 import android.database.Cursor;
 import android.graphics.*;

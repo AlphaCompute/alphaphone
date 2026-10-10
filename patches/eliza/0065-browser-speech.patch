@@ -1,11 +1,11 @@
-diff --git i/packages/voice/README.md w/packages/voice/README.md
-index 8960753..68d7b88 100644
---- i/packages/voice/README.md
-+++ w/packages/voice/README.md
+diff --git c/packages/voice/README.md i/packages/voice/README.md
+index e73ab57eb20518383a3fcba79875e3aae3088d7e..2cd625d123361b07844d036a869727813a05d23c 100644
+--- c/packages/voice/README.md
++++ i/packages/voice/README.md
 @@ -9,3 +9,30 @@ remain in their plugins.
  
  From the repository root, run `bun run --cwd packages/voice build`,
- `bun run --cwd packages/voice typecheck` and `bun run --cwd packages/voice test`.
+ and `bun run --cwd packages/voice typecheck`.
 +
 +## Browser speech recognition
 +
@@ -33,10 +33,10 @@ index 8960753..68d7b88 100644
 +`decodeRecordingPcm` decodes a clip to bounded mono 16 kHz samples for
 +`BrowserSpeechRecognizer`, and `encodePcm16Wav` / `recordingPcmWav` produce mono PCM16 WAV.
 +See `src/browser-capture/README.md`.
-diff --git i/packages/voice/package.json w/packages/voice/package.json
-index 6fe3557..3896dac 100644
---- i/packages/voice/package.json
-+++ w/packages/voice/package.json
+diff --git c/packages/voice/package.json i/packages/voice/package.json
+index 19a483246b3f8ae191f9a051964b7cbf3e35ba7b..b13d2469130cdf43f72631c656e99fe05e9616c1 100644
+--- c/packages/voice/package.json
++++ i/packages/voice/package.json
 @@ -21,6 +21,18 @@
        "types": "./dist/turn.d.ts",
        "import": "./dist/turn.js",
@@ -56,11 +56,11 @@ index 6fe3557..3896dac 100644
      }
    },
    "scripts": {
-diff --git i/packages/voice/src/browser-capture/README.md w/packages/voice/src/browser-capture/README.md
+diff --git c/packages/voice/src/browser-capture/README.md i/packages/voice/src/browser-capture/README.md
 new file mode 100644
-index 0000000..e3a3d8b
+index 0000000000000000000000000000000000000000..e3a3d8b1038a0151693ce798d7e85481a2a73990
 --- /dev/null
-+++ w/packages/voice/src/browser-capture/README.md
++++ i/packages/voice/src/browser-capture/README.md
 @@ -0,0 +1,14 @@
 +# Browser voice capture
 +
@@ -76,11 +76,11 @@ index 0000000..e3a3d8b
 +  `encodePcm16Wav` and `recordingPcmWav` produce mono PCM16 WAV for speech services.
 +
 +Exported as `@elizaos/voice/browser-capture`.
-diff --git i/packages/voice/src/browser-capture/audio-capture.ts w/packages/voice/src/browser-capture/audio-capture.ts
+diff --git c/packages/voice/src/browser-capture/audio-capture.ts i/packages/voice/src/browser-capture/audio-capture.ts
 new file mode 100644
-index 0000000..5a0658e
+index 0000000000000000000000000000000000000000..5a0658e96998cf541aab0e2b62d521a85b8601f1
 --- /dev/null
-+++ w/packages/voice/src/browser-capture/audio-capture.ts
++++ i/packages/voice/src/browser-capture/audio-capture.ts
 @@ -0,0 +1,115 @@
 +/** A microphone stream the host admitted, with its own release. */
 +export type AdmittedMicrophone = { stream: MediaStream; close(): void };
@@ -197,11 +197,11 @@ index 0000000..5a0658e
 +    return session.finishing;
 +  }
 +}
-diff --git i/packages/voice/src/browser-capture/browser-capture.test.ts w/packages/voice/src/browser-capture/browser-capture.test.ts
+diff --git c/packages/voice/src/browser-capture/browser-capture.test.ts i/packages/voice/src/browser-capture/browser-capture.test.ts
 new file mode 100644
-index 0000000..92ade5b
+index 0000000000000000000000000000000000000000..92ade5b5fa3a5bcd7df43c6c850fea6300e2f9aa
 --- /dev/null
-+++ w/packages/voice/src/browser-capture/browser-capture.test.ts
++++ i/packages/voice/src/browser-capture/browser-capture.test.ts
 @@ -0,0 +1,68 @@
 +import { describe, expect, it } from "vitest";
 +import { BrowserAudioCapture } from "./audio-capture.ts";
@@ -271,11 +271,11 @@ index 0000000..92ade5b
 +    await expect(hidden.start()).rejects.toMatchObject({ name: "AbortError" });
 +  });
 +});
-diff --git i/packages/voice/src/browser-capture/index.ts w/packages/voice/src/browser-capture/index.ts
+diff --git c/packages/voice/src/browser-capture/index.ts i/packages/voice/src/browser-capture/index.ts
 new file mode 100644
-index 0000000..510f61a
+index 0000000000000000000000000000000000000000..510f61af52ed67c9e4aab2783ac43cc8420a5199
 --- /dev/null
-+++ w/packages/voice/src/browser-capture/index.ts
++++ i/packages/voice/src/browser-capture/index.ts
 @@ -0,0 +1,8 @@
 +/**
 + * Generic browser voice capture: MediaRecorder sessions with host microphone admission, and
@@ -285,11 +285,11 @@ index 0000000..510f61a
 +export { BrowserAudioCapture } from "./audio-capture.ts";
 +export type { RecordingPcmLimits } from "./recording-pcm.ts";
 +export { decodeRecordingPcm, encodePcm16Wav, recordingPcmWav } from "./recording-pcm.ts";
-diff --git i/packages/voice/src/browser-capture/recording-pcm.ts w/packages/voice/src/browser-capture/recording-pcm.ts
+diff --git c/packages/voice/src/browser-capture/recording-pcm.ts i/packages/voice/src/browser-capture/recording-pcm.ts
 new file mode 100644
-index 0000000..cb85970
+index 0000000000000000000000000000000000000000..cb85970ba467987e00b4a87952efc3ef2de2ee42
 --- /dev/null
-+++ w/packages/voice/src/browser-capture/recording-pcm.ts
++++ i/packages/voice/src/browser-capture/recording-pcm.ts
 @@ -0,0 +1,47 @@
 +/** Bounds for decoding an owned recording to mono PCM. */
 +export type RecordingPcmLimits = { sampleRate?: number; maxSeconds?: number; maxBytes?: number };
@@ -338,11 +338,11 @@ index 0000000..cb85970
 +export async function recordingPcmWav(blob: Blob, signal: AbortSignal, limits: RecordingPcmLimits = {}): Promise<Uint8Array> {
 +  return encodePcm16Wav(await decodeRecordingPcm(blob, signal, limits), limits.sampleRate ?? 16000);
 +}
-diff --git i/packages/voice/src/browser-speech/browser-speech.test.ts w/packages/voice/src/browser-speech/browser-speech.test.ts
+diff --git c/packages/voice/src/browser-speech/browser-speech.test.ts i/packages/voice/src/browser-speech/browser-speech.test.ts
 new file mode 100644
-index 0000000..0963896
+index 0000000000000000000000000000000000000000..0963896d1dd022504058ac56845613a275e6b965
 --- /dev/null
-+++ w/packages/voice/src/browser-speech/browser-speech.test.ts
++++ i/packages/voice/src/browser-speech/browser-speech.test.ts
 @@ -0,0 +1,122 @@
 +import { describe, expect, it } from "vitest";
 +import { BrowserSpeechRecognizer } from "./speech-recognizer.ts";
@@ -466,11 +466,11 @@ index 0000000..0963896
 +    expect(messages.at(-1)).toEqual({ type: "error", id: "b", code: "model-load-failed", message: "Speech model file is not served by this host" });
 +  });
 +});
-diff --git i/packages/voice/src/browser-speech/index.ts w/packages/voice/src/browser-speech/index.ts
+diff --git c/packages/voice/src/browser-speech/index.ts i/packages/voice/src/browser-speech/index.ts
 new file mode 100644
-index 0000000..ec3a7bb
+index 0000000000000000000000000000000000000000..ec3a7bb91ada0fcb821f0e334a2ada0f154ad733
 --- /dev/null
-+++ w/packages/voice/src/browser-speech/index.ts
++++ i/packages/voice/src/browser-speech/index.ts
 @@ -0,0 +1,13 @@
 +/**
 + * In-browser English speech recognition: Whisper tiny.en over ONNX Runtime Web in a dedicated
@@ -485,11 +485,11 @@ index 0000000..ec3a7bb
 +export {speechError} from './speech-protocol.ts';
 +export type {WhisperCheck,WhisperGeneration,WhisperModels,WhisperRuntime,WhisperSession,WhisperTensor,WhisperTranscript} from './whisper-engine.ts';
 +export {audioActivity,createTokenDecoder,createWhisperRecognizer,logMelSpectrogram,logProbability,melFilterBank,noSpeechDecision,repeatingTail,selectToken,silentRecording,WHISPER} from './whisper-engine.ts';
-diff --git i/packages/voice/src/browser-speech/speech-protocol.ts w/packages/voice/src/browser-speech/speech-protocol.ts
+diff --git c/packages/voice/src/browser-speech/speech-protocol.ts i/packages/voice/src/browser-speech/speech-protocol.ts
 new file mode 100644
-index 0000000..0d78e59
+index 0000000000000000000000000000000000000000..0d78e59baea266d979bb700574c3686c3ab70948
 --- /dev/null
-+++ w/packages/voice/src/browser-speech/speech-protocol.ts
++++ i/packages/voice/src/browser-speech/speech-protocol.ts
 @@ -0,0 +1,16 @@
 +/** Messages between the page and the in-browser speech worker, and the build's model manifest. */
 +export type SpeechFile = {path:string;bytes:number;sha256:string};
@@ -507,11 +507,11 @@ index 0000000..0d78e59
 +/** Error codes surfaced to the recorder; each one has its own user-facing state. */
 +export type SpeechErrorCode = 'no-speech'|'model-load-failed'|'recognition-failed';
 +export function speechError(code:SpeechErrorCode,message:string){return Object.assign(new Error(message),{code});}
-diff --git i/packages/voice/src/browser-speech/speech-recognizer.ts w/packages/voice/src/browser-speech/speech-recognizer.ts
+diff --git c/packages/voice/src/browser-speech/speech-recognizer.ts i/packages/voice/src/browser-speech/speech-recognizer.ts
 new file mode 100644
-index 0000000..9e1909b
+index 0000000000000000000000000000000000000000..9e1909b62bc23aa18e9b5ce7ccb603580b86775c
 --- /dev/null
-+++ w/packages/voice/src/browser-speech/speech-recognizer.ts
++++ i/packages/voice/src/browser-speech/speech-recognizer.ts
 @@ -0,0 +1,69 @@
 +import {speechError,type BrowserTranscript,type SpeechProgress,type SpeechWorkerMessage} from './speech-protocol.ts';
 +
@@ -582,11 +582,11 @@ index 0000000..9e1909b
 +  });
 + }
 +}
-diff --git i/packages/voice/src/browser-speech/speech-worker.ts w/packages/voice/src/browser-speech/speech-worker.ts
+diff --git c/packages/voice/src/browser-speech/speech-worker.ts i/packages/voice/src/browser-speech/speech-worker.ts
 new file mode 100644
-index 0000000..e58086a
+index 0000000000000000000000000000000000000000..e58086a6fc761683660a04c52d94c7bf2a45ab5e
 --- /dev/null
-+++ w/packages/voice/src/browser-speech/speech-worker.ts
++++ i/packages/voice/src/browser-speech/speech-worker.ts
 @@ -0,0 +1,65 @@
 +import {createWhisperRecognizer,type WhisperGeneration,type WhisperRuntime} from './whisper-engine.ts';
 +import type {SpeechManifest,SpeechWorkerRequest,SpeechWorkerMessage} from './speech-protocol.ts';
@@ -653,11 +653,11 @@ index 0000000..e58086a
 +  })();
 + });
 +}
-diff --git i/packages/voice/src/browser-speech/whisper-engine.ts w/packages/voice/src/browser-speech/whisper-engine.ts
+diff --git c/packages/voice/src/browser-speech/whisper-engine.ts i/packages/voice/src/browser-speech/whisper-engine.ts
 new file mode 100644
-index 0000000..4121f38
+index 0000000000000000000000000000000000000000..4121f38c6974089e3d2b84214f58a52accd1ec85
 --- /dev/null
-+++ w/packages/voice/src/browser-speech/whisper-engine.ts
++++ i/packages/voice/src/browser-speech/whisper-engine.ts
 @@ -0,0 +1,242 @@
 +/**
 + * Whisper tiny.en inference over ONNX Runtime, independent of the host environment.

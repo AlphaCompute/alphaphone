@@ -1,7 +1,7 @@
 import type {NativeNotesQueryOperation} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
 import {validateNotesQueryResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts';
 import {queryLocalNotes} from '../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-query.ts';
-import {resolveNamedTarget,type NamedTargetOperation,type NotesSearchOperation} from '../../../../.eliza/patched/packages/contracts/src/device-reviews.ts';
+import {resolveNamedTarget,type NamedTargetOperation,type NotesSearchOperation} from '../../../../.eliza/client-features/packages/contracts/src/device-reviews.ts';
 import type {NotesOperation,NotesResult} from '../runtime/notes-contract';
 import {namedTargetValidators,validateForegroundReviewResult,type ForegroundReviewResult} from '../runtime/device-actions';
 import type {SecureNotesStore} from '../runtime/notes-secure-store';

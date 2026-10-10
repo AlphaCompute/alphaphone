@@ -56,8 +56,8 @@ public final class CrossAppNotificationsInstrumentedTest {
  private long foreignCount(JSONArray rows)throws Exception{long count=0;for(int i=0;i<rows.length();i++)if("external".equals(rows.getJSONObject(i).optString("source")))count++;return count;}
  /** Hold the real listener worker, not the Android provider or a fabricated notification. */
  private void queuedEventCannotRepopulateClearedHistory(String nonce)throws Exception{
-  AlphaNotificationListener service=NotificationAccess.listener;assertNotNull("Actual connected listener",service);
-  java.lang.reflect.Field field=AlphaNotificationListener.class.getDeclaredField("events");field.setAccessible(true);
+  AlphaNotificationListener service=NotificationAccess.listener();assertNotNull("Actual connected listener",service);
+  java.lang.reflect.Field field=ai.eliza.plugins.notifications.NotificationMirrorListenerService.class.getDeclaredField("events");field.setAccessible(true);
   java.util.concurrent.ThreadPoolExecutor worker=(java.util.concurrent.ThreadPoolExecutor)field.get(service);
   waitFor(()->worker.getActiveCount()==0&&worker.getQueue().isEmpty(),"Listener worker drained before controlled race");
   java.util.concurrent.CountDownLatch held=new java.util.concurrent.CountDownLatch(1),release=new java.util.concurrent.CountDownLatch(1);
@@ -67,7 +67,7 @@ public final class CrossAppNotificationsInstrumentedTest {
    assertTrue("Test-only worker barrier entered",held.await(8,java.util.concurrent.TimeUnit.SECONDS));
    witness(SELECTED,nonce,"replace");
    waitFor(()->!worker.getQueue().isEmpty(),"Actual companion notification callback queued behind barrier");
-   assertSame("No substituted listener",service,NotificationAccess.listener);
+   assertSame("No substituted listener",service,NotificationAccess.listener());
    long observedGeneration=NotificationAccess.eventGeneration();
    value("clearNotificationHistory",new JSONObject());
    assertTrue("Clear invalidates callbacks before acknowledgement",NotificationAccess.eventGeneration()>observedGeneration);
@@ -108,7 +108,7 @@ public final class CrossAppNotificationsInstrumentedTest {
    waitFor(()->{AccessibilityNodeInfo root=ui().getRootInActiveWindow();return root!=null&&SELECTED.contentEquals(root.getPackageName())&&!root.findAccessibilityNodeInfosByText("Tapped "+nonce+" count 1").isEmpty();},"Exact synthetic PendingIntent tap receipt");foreground();
    waitFor(()->foreignCount(feed())==4,"Auto-cancel reconciled from Android");
    JSONArray immutable=new JSONArray(),visible=feed();for(int i=0;i<visible.length();i++)if("external".equals(visible.getJSONObject(i).optString("source")))immutable.put(visible.getJSONObject(i));value("clear",new JSONObject().put("items",immutable));waitFor(()->foreignCount(feed())==1,"Only ongoing selected notice remains");
-   assertEquals("Unselected package notices were not dismissed",5,NotificationAccess.listener.getActiveNotifications()==null?-1:java.util.Arrays.stream(NotificationAccess.listener.getActiveNotifications()).filter(n->EXCLUDED.equals(n.getPackageName())&&other.equals(n.getTag())).count());
+   assertEquals("Unselected package notices were not dismissed",5,NotificationAccess.listener().getActiveNotifications()==null?-1:java.util.Arrays.stream(NotificationAccess.listener().getActiveNotifications()).filter(n->EXCLUDED.equals(n.getPackageName())&&other.equals(n.getTag())).count());
    JSONArray history=value("notificationHistory",new JSONObject()).getJSONArray("items");assertTrue(history.length()>0);assertFalse(history.toString().contains(nonce));assertFalse(history.toString().contains(other));assertFalse(history.toString().contains("Canary"));
    byte[] disk=java.nio.file.Files.readAllBytes(new java.io.File(c.getNoBackupFilesDir(),"notification-history.enc").toPath());assertFalse(new String(disk,java.nio.charset.StandardCharsets.ISO_8859_1).contains(nonce));
    scenario.recreate();AppNavigation.liveMode();foreground();assertTrue(value("notificationHistory",new JSONObject()).getJSONArray("items").length()>0);

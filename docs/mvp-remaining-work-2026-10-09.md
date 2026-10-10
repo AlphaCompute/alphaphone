@@ -151,7 +151,7 @@ Done when: Both APK variants compile; selected capture/edit/save-copy and proces
 
 Depends on: MVP-09.
 
-Evidence/source: [android/settings.gradle](../android/settings.gradle), [patches/eliza/owned-media-edits-source.json](../patches/eliza/owned-media-edits-source.json), [patches/eliza/owned-media-captures-source.json](../patches/eliza/owned-media-captures-source.json).
+Evidence/source: [android/settings.gradle](../android/settings.gradle), [upstream owned-media library](https://github.com/elizaOS/eliza/pull/34691).
 
 ### MVP-11 Consume shared notification journal and browser candidates
 

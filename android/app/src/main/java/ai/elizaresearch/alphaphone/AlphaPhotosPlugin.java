@@ -1,4 +1,6 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.media.OwnedPhotoEdits;
+import ai.eliza.plugins.media.OwnedMediaConfig;
 
 import android.content.ContentResolver;
 import android.content.ContentUris;
@@ -29,7 +31,7 @@ public class AlphaPhotosPlugin extends Plugin {
   try{worker.execute(()->{if(destroyed)call.reject("Photo library closed");else action.run();});}
   catch(java.util.concurrent.RejectedExecutionException stopped){call.reject("Photo library closed");}
  }
- @Override public void load(){edits=new OwnedPhotoEdits(getContext());mediaVersions=getContext().getSharedPreferences("alpha-owned-media-versions",0);playback=new OwnedVideoPlayback(getBridge());getBridge().setWebViewClient(playback);}
+ @Override public void load(){edits=new OwnedPhotoEdits(getContext(), OwnedMediaConfig.builder("alpha").edits("Pictures/Alpha Phone/Edits/", "Alpha-edit-").captures("Pictures/", "SCAN_").build());mediaVersions=getContext().getSharedPreferences("alpha-owned-media-versions",0);playback=new OwnedVideoPlayback(getBridge());getBridge().setWebViewClient(playback);}
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
  private String owned(){return owned(false);}
  private String owned(boolean trashed){return MediaStore.MediaColumns.OWNER_PACKAGE_NAME+"=? AND "+MediaStore.MediaColumns.IS_PENDING+"=0"+(Build.VERSION.SDK_INT>=30?" AND "+MediaStore.MediaColumns.IS_TRASHED+"="+(trashed?1:0):"");}

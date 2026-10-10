@@ -1,5 +1,5 @@
-import { shareMap as sharedShareMap, type MapShare } from '../../../../.eliza/patched/plugins/plugin-maps/src/client/share.ts';
-export { placeShare, routeShare, type MapShare } from '../../../../.eliza/patched/plugins/plugin-maps/src/client/share.ts';
+import { shareMap as sharedShareMap, type MapShare } from '../../../../.eliza/client-features/plugins/plugin-maps/src/client/share.ts';
+export { placeShare, routeShare, type MapShare } from '../../../../.eliza/client-features/plugins/plugin-maps/src/client/share.ts';
 const cancelled=()=>new DOMException('Share cancelled','AbortError');
 export function shareMap(data:MapShare,signal:AbortSignal):Promise<'shared'|'copied'|'closed'> {
  return sharedShareMap(data, signal, shareDialog);

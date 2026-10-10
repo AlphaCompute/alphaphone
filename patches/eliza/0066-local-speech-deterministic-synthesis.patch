@@ -1,7 +1,7 @@
-diff --git a/packages/app/platforms/android/local-speech/src/main/java/ai/eliza/speech/LocalSpeechEngine.java b/packages/app/platforms/android/local-speech/src/main/java/ai/eliza/speech/LocalSpeechEngine.java
+diff --git c/packages/app/platforms/android/local-speech/src/main/java/ai/eliza/speech/LocalSpeechEngine.java i/packages/app/platforms/android/local-speech/src/main/java/ai/eliza/speech/LocalSpeechEngine.java
 index de8320480b78fa3bf8bafaae99ec340b36fd4bd7..1608f98456bb7941bc77daab42ebc8b0e1d459ff 100644
---- a/packages/app/platforms/android/local-speech/src/main/java/ai/eliza/speech/LocalSpeechEngine.java
-+++ b/packages/app/platforms/android/local-speech/src/main/java/ai/eliza/speech/LocalSpeechEngine.java
+--- c/packages/app/platforms/android/local-speech/src/main/java/ai/eliza/speech/LocalSpeechEngine.java
++++ i/packages/app/platforms/android/local-speech/src/main/java/ai/eliza/speech/LocalSpeechEngine.java
 @@ -16,6 +16,8 @@ public final class LocalSpeechEngine implements AutoCloseable {
   private OfflineTts speaker;
   private boolean closed;

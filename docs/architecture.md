@@ -20,7 +20,7 @@ revision in `upstream.lock.json` and `vendor/eliza`.
 Maps, Files and Notes implementations are copied from authenticated upstream
 source into a generated cache outside the submodule. A shared change not yet in a
 reviewed upstream commit is an explicit, hash-bound patch in `patches/eliza`
-(currently the password manager), materialized into `.eliza/patched`; Gradle
+(see the current patch inventory), materialized into `.eliza/patched`; Gradle
 includes the patched `plugin-native-secure-store` and `plugin-native-passwords`
 modules from there. See [patches/eliza/README.md](../patches/eliza/README.md). Product wrappers inject
 presentation, device configuration and installed storage identities. Resident
