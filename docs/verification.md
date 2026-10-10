@@ -198,6 +198,99 @@ Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
 
+## Emulator results at 73b973a5 (2026-10-10)
+
+Class E only (emulator instrumentation). Not physical-device, AOSP image, real-integration or
+user acceptance, and not evidence for any later source.
+
+- Emulator: AVD `r3_packaging_api36`, system image `system-images;android-36;default;arm64-v8a`
+  (API 36, Android 16 `BE2A.250530.026.D1` userdebug), ABI arm64-v8a, stock HOME
+  `com.android.launcher3`, WebView `com.android.webview` 133.0.6943.137.
+- APKs: **developer-override builds, never distributable**: `npm run android:build --
+  --allow-unpackaged-runtime` (resident runtime `NOT_PACKAGED`: the reviewed embedding host
+  libraries are not on the build machine) with a speech runtime installed by
+  `install-generated.py --allow-unqualified-runtime`. App: `standalone-debug.apk`
+  `3bcac1ad…7ba516b`, `launcher-debug.apk` `666f7a65…c5934e`. Instrumentation APKs at `bef5cd5b`
+  `2bf1dcce…` / `3bf3eef7…` (rows marked A) and at `73b973a5` `5b3cdd0e…` / `755acbc2…` (rows
+  marked B). Test-mocks pair: `5b126815…` / `8c13d13a…` with `caccd38c…` / `4c0c9cc9…`.
+- The fixture campaigns ran from a hand-assembled directory of those APKs with a name-to-hash
+  manifest; `scripts/build-archive.mjs` needs the strict build and was not run.
+- The machine was heavily loaded (load average 30 to 140), so a timeout seen once is listed as
+  not reproduced rather than as a defect.
+
+### `npm run test:android:instrumentation`
+
+Results are standalone / launcher. "skipped" names the gate.
+
+| Class | Result | Classification |
+| --- | --- | --- |
+| NoMockProduct, Shell, StartupReadiness | passed / passed (A) | |
+| TextScale | passed 1 of 2 / same; restart phase skipped (`textScalePhase`, restart runner) (A) | |
+| BrowserSignins | passed 5 of 6 / same; restart phase skipped (`signinPhase`) (A) | |
+| BrowserContinuity | passed 1 of 3 / same; two skipped (restart runner, test-mocks) (A) | |
+| BrowserFlow (flag-off) | 1 of 2 real-HTTPS tests failed / passed (A) | Environment: `submittedSearchUsesRealProviderAndRejectsExecutableAddress` needs a live `www.google.com/search` page; it failed in 3 of 6 runs. The other test passes since the lock selector fix. |
+| BrowserDownload (flag-off) | skipped / skipped (test-mocks gate) (A) | |
+| Video, PhotosTrash, SettingsSystemFacts | passed / passed (A) | |
+| Rotation | passed / passed (B) | Two test defects fixed (see below). |
+| SettingsFlow | failed (`Battery` row not found) / passed (B) | Not reproduced on launcher; standalone unresolved. |
+| Accessibility | failed / failed (B) | Reaches its TalkBack order check and reports `Home at 200% font: unlabelled control` at the composer area. Open: product accessibility finding or checker limit; not triaged further. |
+| NotesTrashBackstop, ClockHandoff, ClockRepeatDays, InboxOperationJournal, MailAttachment | passed / passed (A) | |
+| HostedResultNotice | builders passed; posted and denied notices skipped (permission runner) (A) | |
+| NotesSecureStorage | passed 1 of 2 / same; legacy migration skipped (gate) (A) | |
+| LauncherHome | not applicable / passed 4 of 4 with `--home-role` (A) | HOME selected, cold HOME resumed, original holder `com.android.launcher3` restored and read back. |
+| SettingsRoles | not applicable / failed 1 of 2 (A) | `homeRequestDeclineAndAcceptMatchRoleHolders`: "Home app not changed" never appears after declining Android's role dialog. Unresolved (three runs). |
+| LocalAgentOfflineApps, NotesStorageDurability, ReminderLifecycle, Notifications, FilesTree, PasswordBrowserFill | one flavor passed, the other failed once (A) | Rerun pending; see the report for this run. |
+| DailyApps | failed 1 of 6 / same (A) | `localReminderPostsRealNotificationAndTapOpensItsContext`: the notification tap does not open the reminder's Calendar detail. Unresolved. |
+| WorkflowApprovalNotice | failed 1 of 2 / same (A) | With the notification permission granted it posts, then fails later (`unknown` status, or the route not released). Unresolved. |
+| BrowserReading, BrowserSensitiveReading | failed / failed (A) | Test precondition: without a speech route the product answers "Select an available speech route before reading" before the sensitivity check the tests expect. |
+| BrowserIsolatedReading, BrowserReadingNavigation, BrowserPageQuestion (3 of 4) | failed / failed (A) | Environment: this WebView reports `JS_INJECTION_IN_FRAME_AND_WORLD=false`; the classes need isolated-world injection. |
+| CameraScan | failed 2 of 2 / same (A) | Open: the review dialog reports "The image could not be read by the local scan engine" for the fixture pages; a picked image also left a second Photos row. Not triaged to a cause. |
+| RealClock (`--clock-exclusive`) | failed / failed (A) | Environment: the fixture asserts API 35; this image is API 36. |
+| HostedProcessRestart, HostedBackgroundWorker | refused by the runner | They assert a disposable secondary user no runner creates. |
+| Test-mocks: BrowserDownload, ConnectionChooser | passed / passed | |
+| Test-mocks: BrowserFlow | passed 5 of 5 / 4 of 5 | Same live-search dependency. |
+| Test-mocks: BrowserAutofill | failed / failed in the runner; passed 4 of 4 run alone | The synthetic autofill service fills both fields through the framework every time. The intermittent failure is later: Android's suggestion popup stayed visible for ten seconds after the Menu overlay made the tab ineligible ("Overlay cancels native credential suggestion", cycle 0 or 1). Cause not isolated. |
+
+### Fixture campaigns (fresh secondary user per run)
+
+| Campaign | Result (standalone / launcher) | Classification |
+| --- | --- | --- |
+| `test-native-restart.mjs signin`, `notes`, `document` | passed / passed (A) | |
+| `test-native-restart.mjs inbox` | failed / failed (A) | Test waited for the "Cloud services connected" heading removed in `9aa75ce1`; fixed, rerun pending. |
+| `test-native-permissions.mjs channels`, `settings`, `voice-limit` | passed / passed (A) | |
+| `test-native-permissions.mjs voice-revoke` | runner error / passed (A) | Runner parsed `cat`'s "No such file" text as the marker; fixed between the two runs. |
+| `test-native-permissions.mjs camera` | failed / failed (A) | Test expects "Tap the shutter to retry"; the product shows "Camera access is off" with Open Android settings and Try again. Stale expectation or changed denial path; unresolved. |
+| `test-native-permissions.mjs voice` | failed / failed (A) | "Record without transcription" never offered. Unresolved. |
+| `test-native-permissions.mjs notice`, `notice-denied` | failed / failed (A) | Test reflected a plugin field that no longer exists; fixed, rerun pending. |
+| `test-reminder-one-off.mjs` | passed / passed (A) | |
+| `test-calendar-regression.mjs --case=CalendarAgentCrudInstrumentedTest` | passed / passed (A) | |
+| `test-calendar-regression.mjs --case=CalendarCrudInstrumentedTest` | failed / not run (A) | An event row was never hit-testable. Unresolved; rerun pending. |
+| `test-reminder-recovery.mjs`, resident campaign (`ResidentEgressRedaction`, `ResidentService`) | not run | Recovery reboots the emulator (left for last); the resident campaign needs the packaged runtime and reads an owner-held provider key. |
+
+### Confirmed on this image
+
+- `AlphaDevicePlugin.snapshot()` at target SDK 36 returns `wifiEnabled`, `bluetoothEnabled`,
+  `airplaneMode`, `locationEnabled`, `mobileDataEnabled`, `interruptionFilter` and
+  `adaptiveBrightness`, matching `settings get global` and the Bluetooth service state, and follows
+  an airplane-mode change. No read was refused.
+- Closing Android's own shade did **not** refresh an open Alpha shade: while `NotificationShade`
+  held window focus and after it closed, the page received no `focus`, `blur`, `visibilitychange`
+  or `appResumed`, and made no new snapshot call. `MainActivity.onWindowFocusChanged` now tells the
+  page; that fix is built into these APKs but its effect was not re-measured.
+- `LocalSpeechInstrumentedTest` passed 2 of 2 on this emulator with networking off against the
+  speech candidate rebuilt at this pin (recorded through `requalify-runtime.py run`; not admitted,
+  x86_64 not executed).
+
+### Defects found by these runs and fixed on this branch
+
+Runner: classes shared app data and a left-open system shade (now cleared before each class);
+secondary-user classes were run to certain failure; `WorkflowApprovalNotice` had no notification
+permission; an empty listing was reported "missing" with nothing recorded; `voice-revoke` marker
+polling. Tests: nine browser classes selected `svg[aria-label="Secure connection"]` after the icon
+became a `role=img` span; Rotation's clipping rule failed portrait Home and compared a quoted
+string; gesture tests did not settle the startup access panel; `InboxDraft` and
+`HostedResultNotice` referred to removed product details.
+
 ## Evidence and reporting
 
 Keep generated logs, screenshots and machine-readable receipts under ignored
