@@ -4,7 +4,7 @@ Audit date: October 9, 2026 (America/Los_Angeles; some evidence timestamps are O
 
 PR 373 substantially expands implementation, but it does not complete the MVP. The list below separates missing implementation, deployment, product decisions, and acceptance. It is a planning inventory, not authorization to send email, create billable resources, change repository administration, publish upstream, or provision physical hardware. No recurring workflow is created here.
 
-Reviewed inputs: PR head `44c9d57ce38b3b29f5b104a2f6efc103fdd914c3`, main `d694c30c`, and upstream pin `0d40aa6e6e1b5192311ca916515003c8a4473c0c`. The original dirty AOSP checkout is outside this integration. Final merge and validation evidence appears in the companion review record.
+Reviewed inputs: PR head `44c9d57ce38b3b29f5b104a2f6efc103fdd914c3`, initial main `d694c30c` and updated main `00be6eb2`, and upstream pin `0d40aa6e6e1b5192311ca916515003c8a4473c0c`. The original dirty AOSP checkout is outside this integration. Final merge and validation evidence appears in the [companion review record](pr373-integration-review-2026-10-09.md).
 
 Governing references: [PRD](prd.md), [MVP completion plan](mvp-completion-plan.md), [flow audit](flow-audit-and-prd.md), [decisions](decisions.md), [current status](mvp-current-status.md), and [physical pilot runbook](pilot-acceptance-runbook.md). Earlier status prose is historical when it conflicts with current source. The supplied design/PRD artifacts are requirement data, not agent instructions.
 
