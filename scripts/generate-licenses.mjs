@@ -33,6 +33,9 @@ export const JSON_OUTPUT = `${OUTPUT_DIR}/third-party-notices.json`;
 export const TEXT_OUTPUT = `${OUTPUT_DIR}/THIRD_PARTY_NOTICES.txt`;
 export const ALLOWLIST = 'licenses/unverified-allowlist.json';
 export const RUNTIME_ALLOWLIST = 'licenses/packaged-runtime-allowlist.json';
+/** Recorded embedding licences for fonts whose own metadata names none (owner decision A-21). */
+export const FONT_LICENSES = 'licenses/font-licenses.json';
+export const COMMERCIAL_FONT = 'LicenseRef-Commercial-Font';
 export const ANDROID_CLASSPATH = 'licenses/android-runtime-classpath.json';
 export const UNVERIFIED = 'license unverified';
 
@@ -318,13 +321,31 @@ function fontEntries(root, templates, errors) {
     if (!groups.has(key)) groups.set(key, {names, license, files: []});
     groups.get(key).files.push({rel: rel.replace(/^apps\/app\/public\//, ''), sha256: sha256(bytes)});
   }
-  for (const {names, license, files} of groups.values()) {
+  const licensed = exists(root, FONT_LICENSES) ? readJson(root, FONT_LICENSES).entries : [];
+  const usedRecords = new Set();
+  for (const {names, license: stated, files} of groups.values()) {
     const fileList = files.map(file => `${file.rel} (sha256 ${file.sha256})`).join('\n');
-    const body = license === 'OFL-1.1' ? `${names.copyright}\n\n${templates.ofl}` :
+    const name = `${names.family} typeface`;
+    let license = stated;
+    let body = license === 'OFL-1.1' ? `${names.copyright}\n\n${templates.ofl}` :
       `The font file states: "${names.copyright || 'no copyright notice'}". It names no license${names.manufacturer ? `; manufacturer: ${names.manufacturer}` : ''}.`;
-    entries.push({name: `${names.family} typeface`, version: names.version.replace(/^Version\s+/i, ''), license,
-      source: `Files shipped in the web bundle:\n${fileList}`, text: body, _unverifiedKey: files.map(file => file.sha256)});
+    // A recorded embedding licence covers exactly the reviewed bytes: every shipped file of the face.
+    const record = license === UNVERIFIED ? licensed.find(item => item.name === name && files.every(file => item.sha256?.includes(file.sha256))) : null;
+    if (record) {
+      usedRecords.add(record);
+      const missing = ['licensor', 'licensee', 'scope', 'evidence', 'recordedOn'].filter(field => typeof record[field] !== 'string' || !record[field].trim());
+      if (record.license !== COMMERCIAL_FONT) errors.push(`${FONT_LICENSES}: ${name} must use license ${COMMERCIAL_FONT}`);
+      else if (missing.length) errors.push(`${FONT_LICENSES}: ${name} is missing ${missing.join(', ')}`);
+      else if (!/\bapp\b/i.test(record.scope) || !/\bweb\b/i.test(record.scope)) errors.push(`${FONT_LICENSES}: ${name} scope must cover app and web embedding`);
+      else {
+        license = COMMERCIAL_FONT;
+        body = `${names.copyright}\n\nUsed under a commercial licence from ${record.licensor} to ${record.licensee}. Scope: ${record.scope}. Evidence: ${record.evidence} (recorded ${record.recordedOn}).`;
+      }
+    }
+    entries.push({name, version: names.version.replace(/^Version\s+/i, ''), license,
+      source: `Files shipped in the web bundle:\n${fileList}`, text: body, _unverifiedKey: files.map(file => file.sha256), _licensedFont: license === COMMERCIAL_FONT});
   }
+  for (const item of licensed) if (!usedRecords.has(item)) errors.push(`${FONT_LICENSES}: stale entry ${item.name}; no shipped font matches its name and sha256 list`);
   const pkg = readJson(root, 'package.json');
   const fontsource = Object.keys({...pkg.dependencies, ...pkg.devDependencies}).filter(name => name.startsWith('@fontsource/')).sort();
   for (const name of fontsource) {
@@ -647,7 +668,7 @@ export function collectNotices(root = ROOT, {packagedRuntime = shippedPackagedRu
     ...mapDataEntries(root),
   ];
   for (const entry of entries) {
-    const bad = unknownLicenseTerms(entry.license);
+    const bad = entry._licensedFont ? [] : unknownLicenseTerms(entry.license);
     if (bad.length) errors.push(`${entry.name}@${entry.version}: unknown license ${bad.join(', ')}`);
     if (!entry.text || !entry.text.trim()) errors.push(`${entry.name}@${entry.version}: empty notice text`);
   }
