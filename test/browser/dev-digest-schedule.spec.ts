@@ -103,3 +103,15 @@ test('reopening after a missed time shows one honest missed record and one notic
  await page.reload();await page.evaluate(async()=>window.dispatchEvent(new Event('alpha:hosted-digests')));await expect(records).toHaveCount(1);await expect(records).toContainText('Missed — not run');
  expect((await digestState(page)).results.map(row=>[row.status,row.scheduledAt])).toEqual([['missed','2026-10-05T12:05:00.000Z']]);expect(await notices()).toBe(1);
 });
+
+test.describe('device in another time zone',()=>{
+ test.use({timezoneId:'Europe/Paris'});
+ test('a schedule reviewed in one time zone says so when the device clock is in another',async({page})=>{
+  await page.clock.install({time:new Date('2026-10-03T12:00:10Z')});
+  await page.goto('/?mode=dev');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();await page.getByRole('button',{name:'Connect development profile'}).click();
+  await seedLoops(page,[{template:'morning',localTime:'08:00',text:'Morning text'}],'America/New_York');await seedLoops(page,[{template:'evening',localTime:'18:00',text:'Evening text'}],'Europe/Paris');
+  await page.evaluate(async()=>window.dispatchEvent(new Event('alpha:hosted-digests')));const schedules=page.getByRole('dialog',{name:'Scheduled digests',exact:true}).getByRole('region',{name:'Digest schedules',exact:true});
+  await expect(schedules.getByRole('listitem').filter({hasText:'Morning at 08:00 (America/New_York)'})).toContainText('Runs at 08:00 America/New_York time, not this device’s current time zone (Europe/Paris). Review the schedule to change it.');
+  await expect(schedules.getByRole('listitem').filter({hasText:'Evening at 18:00 (Europe/Paris)'})).not.toContainText('Runs at');
+ });
+});
