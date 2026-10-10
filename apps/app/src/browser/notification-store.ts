@@ -37,6 +37,8 @@ export const notificationDocument={
   if(modified)changed();return result;
  }
 };
+/** A notice read that straddled a policy edit. The snapshot is discarded; a later read can succeed. */
+export class NotificationPolicyChanged extends Error{constructor(){super('Notification settings changed. Refresh notifications.');this.name='NotificationPolicyChanged';}}
 /** Persist authority once; ordinary policy reads never advance its document revision. */
 export async function notificationState(signal?:AbortSignal):Promise<NotificationState>{
  return initialize(async()=>{
