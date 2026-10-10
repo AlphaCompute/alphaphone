@@ -60,6 +60,7 @@ export const CLASS_REGISTRY = {
   // src/testMocks/androidTest: compiled only into the test-mocks instrumentation APK.
   BrowserAutofill: { testMocks: true },
   HostedProcessRestart: {
+    secondaryUser: true,
     args: { alphaHostedProcessRestartFixture: "true" },
     phases: ["prepareCommittedResultWithLostAck", "resumeAfterProcessDeathRecoversAckOnce", "verifySecondRestartAndCleanup"],
   },
@@ -79,8 +80,8 @@ export const CLASS_REGISTRY = {
   ClockHandoff: { args: { clockHandoff: "1" }, note: "Clock intents are intercepted; not ringing evidence" },
   ClockRepeatDays: {},
   HostedResultNotice: { note: "builders only here; the posted and denied notices need the notification permission set first: node scripts/test-native-permissions.mjs notice|notice-denied APP.apk TEST.apk OUTPUT" },
-  HostedBackgroundWorker: { args: { alphaHostedBackgroundFixture: "true" } },
-  WorkflowApprovalNotice: { args: { workflowApprovalNotice: "1" } },
+  HostedBackgroundWorker: { secondaryUser: true, args: { alphaHostedBackgroundFixture: "true" } },
+  WorkflowApprovalNotice: { args: { workflowApprovalNotice: "1" }, grant: ["POST_NOTIFICATIONS"], note: "the runner grants the notification permission the class requires after clearing app data" },
   BrowserReading: { args: { browserReading: "1" } },
   BrowserSensitiveReading: { args: { browserSensitiveReading: "1" } },
   BrowserIsolatedReading: { args: { browserIsolatedReading: "1" } },
@@ -191,7 +192,7 @@ export const NOT_RUN_BY_A_RUNNER = {
 
 export const DEFAULT_CLASSES = [
   "NoMockProduct", "Shell", "StartupReadiness", "TextScale", "BrowserSignins", "BrowserFlow",
-  "BrowserContinuity", "HostedProcessRestart", "BrowserDownload",
+  "BrowserContinuity", "BrowserDownload",
 ];
 
 const short = name => name.replace(new RegExp(`^${PACKAGE.replace(/\./g, "\\.")}\\.`), "").replace(/InstrumentedTest$/, "");
@@ -240,6 +241,9 @@ export function parseInstrumentationArgs(argv) {
     for (const cls of requested) {
       const spec = CLASS_REGISTRY[short(cls)] ?? {};
       if (spec.campaign) throw new Error(`${short(cls)} needs its own campaign: ${spec.campaign}`);
+      // These classes assert a disposable secondary Android user; this runner installs for user 0
+      // and no campaign creates that user yet, so passing their gate could only fail.
+      if (spec.secondaryUser) throw new Error(`${short(cls)} asserts a disposable secondary Android user, which no runner provides yet; it cannot run here`);
       if (spec.requires === "--clock-exclusive" && !options.clockExclusive)
         throw new Error(`${short(cls)} changes real alarms; pass --clock-exclusive only on an exclusive, unlocked emulator with no other timers`);
       if (spec.testMocks && !options.testMocks) throw new Error(`${short(cls)} runs only on the --test-mocks variant`);
@@ -442,8 +446,16 @@ export async function runLeased({ options, serial, adb, timing = {} }) {
         const runClass = cls => {
           const spec = CLASS_REGISTRY[short(cls)] ?? {};
           for (const command of classIsolationCommands()) adb(command, { allowFailure: true });
-          const listed = listedInstrumentationTests(adb(instrumentArgs(cls, { log: true }), { allowFailure: true }));
-          if (!listed.length) { record(cls, { started: 0, passed: 0, failed: [], ignored: [], status: "missing" }); return; }
+          for (const permission of spec.grant ?? []) adb(["shell", "pm", "grant", PACKAGE, `android.permission.${permission}`]);
+          // A listing that names no test is retried once and kept: three classes that exist were
+          // reported "missing" on a loaded emulator with nothing recorded to say why.
+          let listing = adb(instrumentArgs(cls, { log: true }), { allowFailure: true });
+          let listed = listedInstrumentationTests(listing);
+          if (!listed.length) { listing = adb(instrumentArgs(cls, { log: true }), { allowFailure: true }); listed = listedInstrumentationTests(listing); }
+          if (!listed.length) {
+            fs.writeFileSync(path.join(dir, `${short(cls)}-listing.txt`), listing);
+            record(cls, { started: 0, passed: 0, failed: [], ignored: [], status: "missing" }); return;
+          }
           const runs = spec.phases ? spec.phases : [null];
           let merged = { started: 0, passed: 0, failed: [], ignored: [], status: "passed" };
           for (const method of runs) {

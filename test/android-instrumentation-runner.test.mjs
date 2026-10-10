@@ -384,3 +384,22 @@ test("each named class starts from cleared app data with Android's shade closed"
   const loop = runner.slice(runner.indexOf("const runClass = cls =>"));
   assert.ok(loop.indexOf("classIsolationCommands()") > 0 && loop.indexOf("classIsolationCommands()") < loop.indexOf("spec.phases"), "isolation runs once per class, before its phases");
 });
+
+test("classes that assert a secondary user are refused, and declared permissions are granted after isolation", () => {
+  // First run: HostedProcessRestart (then a default class) and HostedBackgroundWorker received their
+  // gates and failed on "Disposable secondary user required"; WorkflowApprovalNotice failed to post
+  // because nothing had granted the notification permission its fixture requires.
+  for (const name of ["HostedProcessRestart", "HostedBackgroundWorker"]) {
+    assert.equal(CLASS_REGISTRY[name].secondaryUser, true);
+    assert.throws(() => parseInstrumentationArgs(["--classes", name]), /secondary Android user/);
+    assert.ok(!DEFAULT_CLASSES.includes(name), `${name} cannot be a default class`);
+    const source = fs.readFileSync(`android/app/src/androidTest/java/ai/elizaresearch/alphaphone/${name}InstrumentedTest.java`, "utf8");
+    assert.match(source, /isSystemUser\(\)/, `${name} still asserts a secondary user`);
+  }
+  assert.doesNotThrow(() => parseInstrumentationArgs([]));
+  assert.deepEqual(CLASS_REGISTRY.WorkflowApprovalNotice.grant, ["POST_NOTIFICATIONS"]);
+  const runner = fs.readFileSync("scripts/android-instrumentation.mjs", "utf8");
+  const body = runner.slice(runner.indexOf("const runClass = cls =>"));
+  assert.ok(body.indexOf("classIsolationCommands()") < body.indexOf("spec.grant"), "grants follow the data clear, which revokes them");
+  assert.match(body, /-listing\.txt/);
+});

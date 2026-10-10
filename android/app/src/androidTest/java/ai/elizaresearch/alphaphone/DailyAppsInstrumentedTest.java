@@ -186,6 +186,11 @@ public class DailyAppsInstrumentedTest {
  @Test public void rootBackFinishesStandaloneAndKeepsLauncherHome() throws Exception {
   try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
    ready(scenario);
+   // A fresh install opens the sign-in panel and the access panel over Home; both count as
+   // something Back can close. Settle them the way an owner does before reading Home's state.
+   WebViewTestDriver.evaluate(AppNavigation.request("Home"));
+   for (int i = 0; i < 100; i++) { if ("true".equals(WebViewTestDriver.evaluate("Boolean(" + AppNavigation.selected("Home") + "&&!document.querySelector('.alpha-connection-scrim'))"))) break; SystemClock.sleep(100); }
+   AppNavigation.declineStartupAccess();
    for (int i = 0; i < 30; i++) {
     if ("\"false\"".equals(evaluate(scenario,"document.documentElement.dataset.alphaCanGoBack"))) break;
     SystemClock.sleep(100);

@@ -156,7 +156,7 @@ public final class BrowserPageQuestionInstrumentedTest {
    waitFor("document.querySelector('input[aria-label=Address]')");
    assertEquals("true", js(address));
   }
-  waitFor("window.__pageTab&&document.querySelector('svg[aria-label=\"Secure connection\"]')");
+  waitFor("window.__pageTab&&document.querySelector('[role=img][aria-label=\"Secure connection\"]')");
   String tabId = new JSONObject((String) new JSONTokener(js("JSON.stringify(window.__pageTab)")).nextValue()).getString("id");
   AtomicReference<Pages> pages = new AtomicReference<>();
   BoundedActivityScenario.main(() -> { try { pages.set(new Pages(tabId)); } catch (Exception error) { throw new AssertionError(error); } });

@@ -106,12 +106,12 @@ public final class BrowserSensitiveReadingInstrumentedTest {
     js("window.__readingNative=Capacitor.nativePromise;Capacitor.nativePromise=function(p,m,a){if(p==='AlphaBrowser'&&m==='present'&&a.id)window.__readingTab={session:a.session,id:a.id};return window.__readingNative.apply(this,arguments);}");
     js("(()=>{const e=document.querySelector('input[aria-label=Address]');if(e){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'https://example.com/');e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}else [...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Edit address').click();})()");
     if("true".equals(js("!!document.querySelector('input[aria-label=Address]')")))js("(()=>{const e=document.querySelector('input[aria-label=Address]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'https://example.com/');e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));})()");
-    waitFor("window.__readingTab&&document.querySelector('svg[aria-label=\"Secure connection\"]')");
+    waitFor("window.__readingTab&&document.querySelector('[role=img][aria-label=\"Secure connection\"]')");
     assertEquals("true",child.child("typeof Capacitor==='undefined'&&location.origin==='https://example.com'"));
     assertFalse(call("Capacitor.Plugins.AlphaConnection.secureWrite({slot:"+JSONObject.quote(slot)+",value:JSON.stringify({origin:"+JSONObject.quote(origin)+",identityId:'synthetic-browser-owner',token:'browser-reading-synthetic',expiresAt:"+expiry+"})})").has("error"));
     urlVariants(binding,server);
     navigate("https://example.com/");
-    waitFor("document.querySelector('svg[aria-label=\"Secure connection\"]')");
+    waitFor("document.querySelector('[role=img][aria-label=\"Secure connection\"]')");
     for(int i=0;i<300&&!"true".equals(child.child("location.href==='https://example.com/'&&document.readyState==='complete'"));i++)SystemClock.sleep(100);
     assertEquals("true",child.child("location.href==='https://example.com/'&&document.readyState==='complete'"));
     String markup="<article><p>"+article+"</p><form><p>"+secret+"</p><input value='"+secret+"'></form><p hidden>"+secret+"</p><p style='opacity:0'>"+secret+"</p><p aria-hidden='true'>"+secret+"</p><div contenteditable>"+secret+"</div></article>";

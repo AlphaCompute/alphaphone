@@ -25,8 +25,11 @@ public final class RotationInstrumentedTest {
  private static void until(String code)throws Exception{for(int i=0;i<200;i++){if("true".equals(js("Boolean("+code+")")))return;SystemClock.sleep(100);}fail("Rotation flow condition: "+code);}
  private static int orientation()throws Exception{AtomicInteger value=new AtomicInteger();WebViewTestDriver.withActivity(MainActivity.class,a->value.set(a.getResources().getConfiguration().orientation));return value.get();}
  private static void awaitOrientation(int expected)throws Exception{for(int i=0;i<100;i++){if(orientation()==expected)return;SystemClock.sleep(100);}fail("Activity did not reach orientation "+expected+" (landscape layout required)");}
- /** Visible enabled buttons of the active view whose box leaves the viewport. */
- private static final String CLIPPED="JSON.stringify([...document.querySelectorAll('button,[role=button]')].filter(e=>!e.disabled&&e.getClientRects().length&&!e.closest('[inert],[aria-hidden=\"true\"]')).map(e=>({l:e.getAttribute('aria-label')||e.textContent.trim(),r:e.getBoundingClientRect()})).filter(x=>x.r.width>0&&(x.r.left<-1||x.r.top<-1||x.r.right>innerWidth+1||x.r.bottom>innerHeight+1)).map(x=>x.l))";
+ /** Visible enabled buttons of the active view that cannot be brought inside the viewport. Home
+  * scrolls (its card row sideways in portrait, its app grid down in landscape), so each control is
+  * scrolled to first: only one whose centre still lies outside the viewport is clipped (a card
+  * wider than the screen is reachable). */
+ private static final String CLIPPED="JSON.stringify([...document.querySelectorAll('button,[role=button]')].filter(e=>!e.disabled&&e.getClientRects().length&&!e.closest('[inert],[aria-hidden=\"true\"]')).map(e=>{e.scrollIntoView({block:'center',inline:'center',behavior:'instant'});return {l:e.getAttribute('aria-label')||e.textContent.trim(),r:e.getBoundingClientRect()};}).filter(x=>{const cx=x.r.left+x.r.width/2,cy=x.r.top+x.r.height/2;return x.r.width>0&&(cx<0||cy<0||cx>innerWidth||cy>innerHeight);}).map(x=>x.l))";
 
  private static void rotateAndCheck(UiDevice device,String view,String extra)throws Exception{
   device.setOrientationLeft();awaitOrientation(Configuration.ORIENTATION_LANDSCAPE);

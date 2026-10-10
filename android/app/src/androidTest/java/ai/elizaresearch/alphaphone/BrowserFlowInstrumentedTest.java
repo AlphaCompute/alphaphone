@@ -157,11 +157,11 @@ public class BrowserFlowInstrumentedTest {
    until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));
    address("http://127.0.0.1:"+server.getLocalPort()+"/slow");nativeText("Loading website…");
    click("Menu");click("Stop loading");nativeText("Loading stopped. Reload from the menu to try again.");
-   assertEquals("Cancelled page has no secure indicator","false",host("!!document.querySelector('svg[aria-label=\"Secure connection\"]')"));
+   assertEquals("Cancelled page has no secure indicator","false",host("!!document.querySelector('[role=img][aria-label=\"Secure connection\"]')"));
    release.countDown();click("Menu");click("Reload page");
    boolean recovered=false;for(int i=0;i<150;i++){if("true".equals(child("document.title==='Recovered page' && document.body.innerText.includes('reload succeeded')"))){recovered=true;break;}SystemClock.sleep(100);}
    assertTrue("Reload presents actual response bytes after cancellation",recovered);
-   assertEquals("HTTP fixture never has a secure indicator","false",host("!!document.querySelector('svg[aria-label=\"Secure connection\"]')"));
+   assertEquals("HTTP fixture never has a secure indicator","false",host("!!document.querySelector('[role=img][aria-label=\"Secure connection\"]')"));
   }finally{release.countDown();server.close();workers.shutdownNow();}
  }
  @Test public void httpErrorDocumentRetainsItsRetryLink()throws Exception{
@@ -195,9 +195,9 @@ public class BrowserFlowInstrumentedTest {
    // The address bar closes only after the native tab exists; typing the next
    // address before then races that close and loses the text.
    until("!document.querySelector('input[aria-label=Address]')");
-   assertEquals("Uncommitted navigation must not display a secure connection", "false", host("!!document.querySelector('svg[aria-label=\"Secure connection\"]')"));
+   assertEquals("Uncommitted navigation must not display a secure connection", "false", host("!!document.querySelector('[role=img][aria-label=\"Secure connection\"]')"));
    address("https://example.com/"+one);page(one);
-   until("document.querySelector('svg[aria-label=\"Secure connection\"]')");
+   until("document.querySelector('[role=img][aria-label=\"Secure connection\"]')");
    assertEquals("Remote page cannot call native app bridge","true",child("typeof Capacitor==='undefined' && typeof androidBridge==='undefined'"));
    child("localStorage.setItem('alpha_flow_marker',"+JSONObject.quote(token)+");true");
    address("https://example.com/"+two);page(two);click("Previous page");page(one);click("Next page");page(two);

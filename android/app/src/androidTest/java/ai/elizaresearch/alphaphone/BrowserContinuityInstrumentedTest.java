@@ -31,7 +31,7 @@ public final class BrowserContinuityInstrumentedTest {
  }
  private void page(String url)throws Exception{
   for(int i=0;i<300;i++){if("true".equals(browser.child("location.href==="+JSONObject.quote(url)+" && document.readyState==='complete' && document.title==='Example Domain' && typeof Capacitor==='undefined'")))return;SystemClock.sleep(100);}fail("Actual isolated HTTPS document not restored; "+browser.diagnostics());
-  ready("document.querySelector('svg[aria-label=\"Secure connection\"]')");
+  ready("document.querySelector('[role=img][aria-label=\"Secure connection\"]')");
  }
  private int savedTabs(android.content.Context context,int expected)throws Exception{
   int count=0;for(int i=0;i<100;i++){count=new BrowserSessionStore(context).read().getJSONArray("tabs").length();if(count==expected)break;SystemClock.sleep(100);}return count;
