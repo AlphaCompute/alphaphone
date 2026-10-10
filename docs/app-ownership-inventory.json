@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "0d0d43119252e20c76b336a87723cb455716f33e7578518d738218527d8d68d3",
+  "sourceDigest": "163f413859f70f829dc06459c3b3803a3784ee02010c85e08af9f913835be883",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -23479,9 +23479,9 @@
     {
       "file": "src/runtime/voice-selection.ts",
       "upstreamCandidate": [],
-      "bytes": 4146,
-      "sha256": "ec009ef11d36e24865ca7ac2aedd3b271c37a32073244a2836c0e870c5ddde6f",
-      "lines": 61,
+      "bytes": 4145,
+      "sha256": "dd0502cfe8fe4c570d942abbfbd4a396a81b7f507a560918530f75a89da15720",
+      "lines": 60,
       "owner": "plugins/plugin-native-talkmode",
       "disposition": "extract-or-split",
       "reason": "Owned audio capture/playback and speech transport; inject review surfaces, account binding and product language/recording policy.",
