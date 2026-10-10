@@ -3,6 +3,7 @@ import {openCalendarRecovery} from '../browser/calendar-recovery';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
+import {calendarFormTimeProblem} from '../runtime/calendar-form-draft';
 type Bag = Record<string, any>;
 const calendar = registerPlugin<any>('AlphaCalendar');
 const DAY=86400000;
@@ -282,7 +283,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           await saveOptions(current,currentOwner);return;
         }
         const date=wallTime(Number(current.off||0),Number(current.t)),end=wallTime(Number(current.off||0),Number(current.t)+Number(current.d));
-        if(!date||!end||end.getTime()<=date.getTime()){api.toast('This local time does not exist because the clocks change. Choose another start or end time. Nothing was saved.');return;}
+        const timeProblem=calendarFormTimeProblem(date,end,Number(current.d));if(timeProblem){api.toast(timeProblem);return;}
         const epoch=creationDraftEpoch;let submittedForm=current;
         const ownsForm=()=>owner===currentOwner&&!document.hidden&&api.isActive()&&creationDraftEpoch===epoch&&api.get('calendar').form===submittedForm;
         currentOwner.calendarSaving=true;
