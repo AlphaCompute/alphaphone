@@ -98,6 +98,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const provider = inboxProviderControls(() => publish(), text => api?.toast(text));
   const drafts = inboxDrafts(() => publish(), text => api?.toast(text), provider);
   provider.setEditor((proposal,reference)=>drafts.editProvider(proposal,reference));
+  provider.setComposer(()=>drafts.proposal());
   const readable = () => accounts.filter(gmailReadable);
   const currentQuery = () => String(api?.get('inbox')?.q || '').trim() || folderQuery[folder];
   const accountLabel = (id = selected) => accounts.find(a => a.connectionId === id)?.label || null;
@@ -119,6 +120,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if (body?.message.id === id) { body = null; thread = null; publish({ open: null, nativeMailSelection: null }); } else publish();
     },
   });
+  provider.onRestored(() => { if (selected && !draftsView()) void load(); });
   function clear() {
     providerDrafts = [];
     setAttention({ state: connectionController.getCloudClient() ? 'loading' : 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null });
@@ -141,7 +143,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   }
   /** One provider read at a time. `retry` is offered after a classified failure; `keep` leaves the
    * loaded list in place when only a message, attachment or later page failed. */
-  async function work(label: string, task: (binding: NonNullable<ReturnType<typeof connectionController.getCloudClient>>, signal: AbortSignal, valid: () => boolean) => Promise<void>, retry?: () => void, keep = false) {
+  async function work(label: string, task: (binding: NonNullable<ReturnType<typeof connectionController.getCloudClient>>, signal: AbortSignal, valid: () => boolean) => Promise<void>, retry?: () => void, keep = false, kept = '') {
     if (operation) return;
     const binding = connectionController.getCloudClient();
     if (!binding) { connectionController.openCloudAccount(); return; }
@@ -158,9 +160,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
         homeFailure=classified.kind;
         if(classified.kind==='revoked'){inboxPreview=null;hasUnread=false;}
         if (!keep) { messages = []; nextPageToken = null; }
-        body = null; thread = null; phase = 'error'; status = classified.message;
+        body = null; thread = null; phase = 'error'; status = classified.message + (keep && messages.length ? kept : '');
         failure = retry ? { kind: classified.kind, retry } : null;
-        if (keep && messages.length) api?.toast(classified.message);
+        if (keep && messages.length) api?.toast(status);
         publish({ open: null, nativeMailSelection: null });
       }
     } finally { if (token === generation) { operation = null; if (phase === 'busy') phase = 'ready'; publish(); } }
@@ -284,10 +286,14 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     // A cursor is used once. If its page fails (for example an expired cursor), Load more is not
     // offered again with it; Retry reloads the list from the first page instead.
     if (pageToken) nextPageToken = null;
+    let shifted = false;
     await work(more ? 'Loading more messages…' : 'Loading Gmail…', async ({ client }, signal, valid) => {
       const result = await client.gmailSearch(accountId, query, signal, 25, pageToken || undefined);
       if (!valid() || selected !== accountId || currentQuery() !== query) return;
       const seen = new Set(pageToken ? messages.map(m => m.id) : []);
+      // A later page that repeats a loaded message was cut from a mailbox that changed after the
+      // first page (new mail moved every row down). Its pages cannot be joined; start again.
+      if (pageToken && result.messages.some(m => seen.has(m.id))) { shifted = true; return; }
       messages = pageToken ? [...messages, ...result.messages.filter(m => !seen.has(m.id))] : result.messages;
       if (!pageToken) seenCursors = new Set();
       // A provider cursor that repeats would page forever; treat it as the end of the results.
@@ -300,7 +306,11 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       providerDrafts = [];
       status = messages.length ? `${messages.length} messages loaded` : query === 'in:inbox' ? 'Your Inbox is empty' : query === 'in:sent' ? 'No sent messages' : query === 'in:archive' ? 'No archived messages' : query === 'in:trash' ? 'Trash is empty' : 'No messages match this search';
       publish(pageToken ? {} : { open: null, nativeMailSelection: null });
-    }, () => void load(), more);
+    }, () => void load(), more, more ? ' The messages already shown were kept. Retry reloads the list from the start.' : '');
+    if (shifted && selected === accountId && currentQuery() === query && !operation) {
+      api?.toast('Your mailbox changed while more messages were loading. The list was reloaded from the start so no message is shown twice.');
+      await load();
+    }
   }
   function setFolder(next: Folder) {
     if (folder === next && !api?.get('inbox')?.q && (messages.length || providerDrafts.length)) return;
