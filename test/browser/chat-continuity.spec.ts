@@ -1,0 +1,317 @@
+import { test, expect, type Page } from '@playwright/test';
+
+// Real composer, draft store, shell adapter and connection controller. Only the Android IPC
+// boundary and a remote agent are synthetic, in-page fixtures; nothing leaves the page and no
+// model is called. This is browser source evidence, not emulator or device acceptance.
+const REMOTE = 'https://agent.example.test';
+const ROOM = '99999999-8888-4777-8666-555555555555';
+type Options = { createFails?: boolean; createHangs?: boolean; abortRoute?: boolean; abortResult?: boolean; long?: boolean };
+
+async function remoteAgent(page: Page, options: Options = {}) {
+  await page.addInitScript(({ remote, room, options }) => {
+    const w = window as any;
+    w.androidBridge = {};
+    // Stands in for Android secure storage, which survives a reload of the page.
+    let saved: [string, string][] = [];
+    try { saved = JSON.parse(sessionStorage.getItem('continuity-store') || '[]'); } catch { /* fixture only */ }
+    const store = new Map<string, string>(saved);
+    const keep = () => { try { sessionStorage.setItem('continuity-store', JSON.stringify([...store])); } catch { /* fixture only */ } };
+    const expiresAt = Date.now() + 86_400_000;
+    store.set('remote:' + remote, JSON.stringify({ origin: remote, token: 'remote-session-token', identityId: 'fixture-owner', sessionId: 'remote-session-token', expiresAt }));
+    // The agent's own state survives a page reload; the phone's visible chat does not.
+    let agent: { created: boolean; history: any[] } = { created: false, history: [] };
+    try {
+      if (!sessionStorage.getItem('continuity-seeded')) {
+        sessionStorage.setItem('continuity-seeded', '1');
+        localStorage.setItem('alpha.connection.selection.v1', JSON.stringify({ kind: 'remote', origin: remote }));
+        if (options.long) agent.history = Array.from({ length: 230 }, (_, index) => ({ id: `77777777-7777-4777-8777-${String(index).padStart(12, '0')}`, role: index % 2 ? 'assistant' : 'user', text: `Synthetic message ${index}`, timestamp: 1_000 + index }));
+      } else agent = JSON.parse(sessionStorage.getItem('continuity-agent') || 'null') ?? agent;
+    } catch { /* storage failures are covered elsewhere */ }
+    const persist = () => { try { sessionStorage.setItem('continuity-agent', JSON.stringify(agent)); } catch { /* fixture only */ } };
+    const f = w.continuity = {
+      posts: 0, creates: 0, aborts: 0, historyReads: 0, pageReads: 0, ready: false, messageIds: [] as unknown[],
+      createFails: !!options.createFails, createHangs: !!options.createHangs, abortResult: !!options.abortResult,
+      release: null as null | ((text: string) => void),
+      /** The agent finishes the held turn and persists its reply, whether or not the phone still listens. */
+      finish(text: string) { const user = [...agent.history].reverse().find(item => item.role === 'user'); agent.history.push({ id: crypto.randomUUID(), role: 'assistant', text, timestamp: Date.now() + 1, replyToMessageId: user?.id }); persist(); },
+    };
+    const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
+    w.Capacitor = {
+      PluginHeaders: [
+        { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureCompareExchange', 'secureRemove', 'request', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
+        { name: 'AlphaActionJournal', methods: methods(['list', 'get']) },
+        { name: 'AlphaNotifications', methods: methods(['status', 'crossAppStatus', 'addListener', 'removeListener']) },
+        { name: 'AlphaVoiceCloud', methods: methods(['checkPermissions']) },
+        { name: 'DeviceApps', methods: methods(['buildInfo']) },
+      ],
+      nativePromise: async (plugin: string, method: string, input: any) => {
+        if (plugin === 'AlphaNotifications') return { permissionGranted: true, appEnabled: true };
+        if (plugin === 'AlphaVoiceCloud') return { microphone: 'granted' };
+        if (plugin === 'DeviceApps') return { launcher: false, version: 'continuity-fixture' };
+        if (plugin === 'AlphaActionJournal') return method === 'list' ? { entries: [] } : { entry: null };
+        if (plugin !== 'AlphaConnection') throw Error('Unexpected native operation');
+        if (method === 'secureRead') return { value: store.get(input.slot) ?? null };
+        if (method === 'secureCompareExchange') { if ((store.get(input.slot) ?? null) !== input.expectedValue) return { status: 'conflict' }; if (input.value === null) store.delete(input.slot); else store.set(input.slot, input.value); keep(); return { status: 'saved' }; }
+        if (method === 'secureWrite') { store.set(input.slot, input.value); keep(); return {}; }
+        if (method === 'secureRemove') { store.delete(input.slot); keep(); return {}; }
+        if (method !== 'request') return {};
+        const url = new URL(input.url), ok = (data: unknown) => ({ status: 200, data }), path = url.pathname;
+        if (url.origin !== remote || input.headers?.Authorization !== 'Bearer remote-session-token') return { status: 401, data: {} };
+        if (path === '/api/auth/me') return ok({ identity: { kind: 'owner', id: 'fixture-owner', displayName: 'Owner' }, session: { kind: 'machine', id: 'remote-session-token', expiresAt }, access: { role: 'OWNER', mode: 'session' } });
+        if (path === '/api/agents') { f.ready = true; return ok({ agents: [{ id: '6f1d3c3e-8c55-4c1b-9d1f-2b6f0b0d3a11', name: 'Continuity fixture', status: 'running' }] }); }
+        if (path === '/api/client-devices/register') return ok({ installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: [] });
+        if (path === '/api/client-devices/proposals') return ok({ proposals: [] });
+        if (path === '/api/workflow/status') return ok({ status: 'unavailable' });
+        if (path === '/api/conversations' && input.method === 'POST') {
+          f.creates++;
+          // Offline: the request never completes, so no conversation exists and nothing was posted.
+          if (f.createFails) throw Error('Network unavailable');
+          if (f.createHangs) return new Promise(() => {});
+          const id = agent.created ? 'fixture-chat-2' : 'fixture-chat';
+          agent.created = true; persist();
+          return ok({ conversation: { id, title: 'Alpha Phone' } });
+        }
+        if (path === '/api/conversations' && input.method === 'GET') return ok({ conversations: agent.created ? [{ id: 'fixture-chat', title: 'Alpha Phone', ...(options.abortRoute ? { roomId: room } : {}) }] : [] });
+        if (path === `/api/turns/${room}/abort` && input.method === 'POST') { f.aborts++; return options.abortRoute ? ok({ aborted: f.abortResult, roomId: room }) : { status: 404, data: {} }; }
+        if (path === '/api/conversations/fixture-chat/messages' && input.method === 'POST') {
+          const body = JSON.parse(input.body || '{}');
+          f.posts++; f.messageIds.push(body.clientMessageId ?? null);
+          agent.history.push({ id: crypto.randomUUID(), role: 'user', text: body.text, timestamp: Date.now() }); persist();
+          // Held until the test lets the agent answer over the still-open request.
+          return new Promise(resolve => { f.release = (text: string) => { f.release = null; resolve(ok({ text, agentName: 'Continuity fixture' })); }; });
+        }
+        if (path === '/api/conversations/fixture-chat/messages' && input.method === 'GET') {
+          if (!url.searchParams.has('before')) { f.historyReads++; return ok({ messages: agent.history.slice(-200) }); }
+          f.pageReads++;
+          const before = Number(url.searchParams.get('before')), beforeId = url.searchParams.get('beforeId') || '';
+          const older = agent.history.filter(item => item.timestamp < before || (item.timestamp === before && item.id < beforeId));
+          return ok({ messages: older.slice(-200), hasMore: older.length > 200 });
+        }
+        return { status: 404, data: {} };
+      },
+    };
+  }, { remote: REMOTE, room: ROOM, options });
+}
+// The home composer and the conversation sheet each render one visible composer textbox.
+const composer = (page: Page) => page.locator('[data-alpha-layer="composer"][aria-hidden="false"], [data-alpha-layer="conversation"][aria-hidden="false"]').getByRole('textbox').first();
+const conversation = (page: Page) => page.locator('[data-alpha-layer="conversation"]');
+const fixture = <T>(page: Page, read: (f: any) => T) => page.evaluate(`(${read.toString()})(window.continuity)`) as Promise<T>;
+const stop = (page: Page) => page.getByRole('button', { name: 'Stop reply', exact: true });
+const bindingKey = (page: Page) => page.evaluate(async () => {
+  const { connectionController } = await import('/src/runtime/connection-ui.tsx');
+  return connectionController.assistantDraftBinding(new AbortController().signal);
+});
+async function savedDraft(page: Page, key?: string) {
+  const binding = key ?? await bindingKey(page);
+  return page.evaluate(async binding => {
+    const { assistantDraftStore } = await import('/src/runtime/assistant-draft-store.ts');
+    return (await (await assistantDraftStore(binding)).read())?.text ?? null;
+  }, binding);
+}
+async function connected(page: Page, options: Options = {}) {
+  await remoteAgent(page, options);
+  await page.goto('/');
+  await expect.poll(() => fixture(page, f => f.ready), { timeout: 30_000 }).toBe(true);
+  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 20_000 });
+}
+async function typeDraft(page: Page, text: string) {
+  await composer(page).fill(text);
+  await expect.poll(() => savedDraft(page), { timeout: 15_000 }).toBe(text);
+}
+const MAY_FINISH = 'The agent may still finish this reply. Alpha Phone will check once and show it here if it does.';
+const UNKNOWN = 'Your message may have reached the agent. Check before sending it again.';
+
+test('an offline failure before the message is posted keeps the text and a later send posts it once', async ({ page }) => {
+  test.setTimeout(90_000);
+  await connected(page, { createFails: true });
+  await typeDraft(page, 'Keep this while offline');
+  const key = await bindingKey(page);
+  await composer(page).press('Enter');
+  await expect(page.getByText('Not sent. Your message is back in the composer.', { exact: true }).first()).toBeVisible();
+  await expect(composer(page)).toHaveValue('Keep this while offline');
+  // Nothing carrying the message left the phone, so no unknown-outcome claim and no reconciliation.
+  await expect(page.getByText(UNKNOWN, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Check for reply/ })).toHaveCount(0);
+  expect(await fixture(page, f => ({ posts: f.posts, creates: f.creates, reads: f.historyReads }))).toEqual({ posts: 0, creates: 1, reads: 0 });
+  expect(await savedDraft(page, key)).toBe('Keep this while offline');
+  // Back online: only the person's own second Send posts the message, exactly once.
+  await fixture(page, f => { f.createFails = false; });
+  await expect(stop(page)).toHaveCount(0);
+  await composer(page).press('Enter');
+  await expect.poll(() => fixture(page, f => f.posts), { timeout: 15_000 }).toBe(1);
+  await fixture(page, f => f.release('Delivered once.'));
+  await expect(conversation(page).getByText('Delivered once.', { exact: true })).toHaveCount(1);
+  await expect(composer(page)).toHaveValue('');
+  expect(await fixture(page, f => ({ posts: f.posts, ids: new Set(f.messageIds).size }))).toEqual({ posts: 1, ids: 1 });
+});
+
+test('Stop before the message is posted returns the text and never contacts the agent about it', async ({ page }) => {
+  test.setTimeout(90_000);
+  await connected(page, { createHangs: true, abortRoute: true });
+  await typeDraft(page, 'Stopped before sending');
+  await composer(page).press('Enter');
+  await expect.poll(() => fixture(page, f => f.creates), { timeout: 15_000 }).toBe(1);
+  await stop(page).click();
+  await expect(composer(page)).toHaveValue('Stopped before sending');
+  await expect(page.getByText(MAY_FINISH, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(UNKNOWN, { exact: true })).toHaveCount(0);
+  expect(await fixture(page, f => ({ posts: f.posts, aborts: f.aborts }))).toEqual({ posts: 0, aborts: 0 });
+  expect(await savedDraft(page)).toBe('Stopped before sending');
+});
+
+test('Stop says the agent may still finish, discards the late reply and reconciles once without resending', async ({ page }) => {
+  test.setTimeout(120_000);
+  await connected(page);
+  await typeDraft(page, 'Please finish anyway');
+  const key = await bindingKey(page);
+  await composer(page).press('Enter');
+  await expect.poll(() => fixture(page, f => f.posts), { timeout: 15_000 }).toBe(1);
+  await stop(page).click();
+  // The honest state is shown in the chat itself, not only in Agent connection.
+  await expect(conversation(page).getByText(MAY_FINISH, { exact: true })).toBeVisible();
+  await expect(stop(page)).toHaveCount(0);
+  await expect(page.getByText(UNKNOWN, { exact: true })).toHaveCount(0);
+  await expect(composer(page)).toHaveValue('');
+  await expect.poll(() => savedDraft(page, key)).toBe('');
+  // The agent answers on the closed request and persists the reply: the late transport reply is discarded.
+  await fixture(page, f => { f.release('Finished after Stop'); f.finish('Finished after Stop'); });
+  await expect(conversation(page).getByText('Finished after Stop', { exact: true })).toHaveCount(0);
+  expect(await fixture(page, f => f.historyReads)).toBe(0);
+  // One reconciliation read later shows it exactly once.
+  await expect(conversation(page).getByText('Finished after Stop', { exact: true })).toHaveCount(1, { timeout: 40_000 });
+  await expect(conversation(page).getByText(MAY_FINISH, { exact: true })).toHaveCount(0);
+  await expect(conversation(page).getByText('Please finish anyway', { exact: true })).toHaveCount(1);
+  await page.waitForTimeout(1_000);
+  expect(await fixture(page, f => ({ posts: f.posts, reads: f.historyReads, ids: new Set(f.messageIds).size }))).toEqual({ posts: 1, reads: 1, ids: 1 });
+});
+
+test('Stop asks the agent to cancel exactly once and reports a confirmed cancel in the chat', async ({ page }) => {
+  test.setTimeout(120_000);
+  await connected(page, { abortRoute: true, abortResult: true });
+  await typeDraft(page, 'Please stop this one');
+  await composer(page).press('Enter');
+  await expect.poll(() => fixture(page, f => f.posts), { timeout: 15_000 }).toBe(1);
+  await stop(page).click();
+  await expect(conversation(page).getByText('The agent cancelled this reply. Alpha Phone will check once in case it had already finished.', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(conversation(page).getByText('The agent stopped this reply.', { exact: true })).toBeVisible({ timeout: 40_000 });
+  await expect(conversation(page).getByText(/Alpha Phone will check once/)).toHaveCount(0);
+  await expect(conversation(page).getByText('Please stop this one', { exact: true })).toHaveCount(1);
+  expect(await fixture(page, f => ({ posts: f.posts, aborts: f.aborts, reads: f.historyReads }))).toEqual({ posts: 1, aborts: 1, reads: 1 });
+});
+
+test('a new message after Stop retires the pending check and says so; nothing is resent', async ({ page }) => {
+  test.setTimeout(90_000);
+  await connected(page);
+  await typeDraft(page, 'First question');
+  await composer(page).press('Enter');
+  await expect.poll(() => fixture(page, f => f.posts), { timeout: 15_000 }).toBe(1);
+  await stop(page).click();
+  await expect(conversation(page).getByText(MAY_FINISH, { exact: true })).toBeVisible();
+  await typeDraft(page, 'Second question');
+  await composer(page).press('Enter');
+  await expect.poll(() => fixture(page, f => f.posts), { timeout: 15_000 }).toBe(2);
+  await expect(conversation(page).getByText(MAY_FINISH, { exact: true })).toHaveCount(0);
+  await expect(conversation(page).getByText(/The stopped reply was not checked because another message was sent\./)).toHaveCount(1);
+  await fixture(page, f => f.release('Answer to the second question'));
+  await expect(conversation(page).getByText('Answer to the second question', { exact: true })).toHaveCount(1);
+  // Two messages the person sent, two distinct identities, no automatic history replacement.
+  expect(await fixture(page, f => ({ posts: f.posts, ids: new Set(f.messageIds).size, reads: f.historyReads }))).toEqual({ posts: 2, ids: 2, reads: 0 });
+  await expect(conversation(page).getByText('First question', { exact: true })).toHaveCount(1);
+});
+
+test('a new conversation after Stop retires the check; the stopped reply never replaces the new chat', async ({ page }) => {
+  test.setTimeout(120_000);
+  await connected(page);
+  await typeDraft(page, 'Asked in the first conversation');
+  await composer(page).press('Enter');
+  await expect.poll(() => fixture(page, f => f.posts), { timeout: 15_000 }).toBe(1);
+  await stop(page).click();
+  await expect(conversation(page).getByText(MAY_FINISH, { exact: true })).toBeVisible();
+  const selected = () => page.evaluate(async () => {
+    const { connectionController } = await import('/src/runtime/connection-ui.tsx');
+    const { history, replyNotice } = connectionController.getSnapshot();
+    return { conversation: history?.conversationId, messages: history?.messages.length, replyNotice };
+  });
+  await page.evaluate(async () => { const { connectionController } = await import('/src/runtime/connection-ui.tsx'); await connectionController.newConversation(); });
+  await expect.poll(selected, { timeout: 15_000 }).toEqual({ conversation: 'fixture-chat-2', messages: 0, replyNotice: '' });
+  await expect(conversation(page).getByText(MAY_FINISH, { exact: true })).toHaveCount(0);
+  // The first conversation's reply lands on the agent; the pending check would have fired by now.
+  await fixture(page, f => { f.release('Reply for the first conversation'); f.finish('Reply for the first conversation'); });
+  await page.waitForTimeout(17_000);
+  await expect(conversation(page).getByText('Reply for the first conversation', { exact: true })).toHaveCount(0);
+  await expect(conversation(page).getByText('Asked in the first conversation', { exact: true })).toHaveCount(0);
+  expect(await selected()).toEqual({ conversation: 'fixture-chat-2', messages: 0, replyNotice: '' });
+  expect(await fixture(page, f => ({ posts: f.posts, reads: f.historyReads }))).toEqual({ posts: 1, reads: 0 });
+});
+
+test('pressing Send twice dispatches one message', async ({ page }) => {
+  test.setTimeout(90_000);
+  await connected(page);
+  await typeDraft(page, 'Only once please');
+  const box = composer(page);
+  await box.focus();
+  // Two key presses with no wait between them, as a fast double tap delivers them.
+  await Promise.all([page.keyboard.press('Enter'), page.keyboard.press('Enter')]);
+  await expect.poll(() => fixture(page, f => f.posts), { timeout: 15_000 }).toBe(1);
+  await expect(page.getByText('Review local draft storage before sending.', { exact: true })).toHaveCount(0);
+  await fixture(page, f => f.release('One reply.'));
+  await expect(conversation(page).getByText('One reply.', { exact: true })).toHaveCount(1);
+  await expect(conversation(page).getByText('Only once please', { exact: true })).toHaveCount(1);
+  expect(await fixture(page, f => ({ posts: f.posts, creates: f.creates }))).toEqual({ posts: 1, creates: 1 });
+});
+
+test('disconnecting the agent mid-reply never shows the old reply or a recovery offer for a different agent', async ({ page }) => {
+  test.setTimeout(90_000);
+  await connected(page);
+  await typeDraft(page, 'Asked the first agent');
+  await composer(page).press('Enter');
+  await expect.poll(() => fixture(page, f => f.posts), { timeout: 15_000 }).toBe(1);
+  await page.evaluate(async () => { const { connectionController } = await import('/src/runtime/connection-ui.tsx'); await connectionController.disconnect(); });
+  await expect.poll(() => page.evaluate(async () => { const { connectionController } = await import('/src/runtime/connection-ui.tsx'); return connectionController.getSnapshot().session; }), { timeout: 15_000 }).toBeNull();
+  await fixture(page, f => f.release?.('Late reply for the old agent'));
+  await page.locator('.alpha-connection').getByRole('button', { name: 'Close connection settings', exact: true }).first().click({ timeout: 5_000 }).catch(() => {});
+  // The interruption is stated once; the old turn's text, reply and recovery offer never appear under the new owner.
+  await expect(conversation(page).getByText(/^Request cancelled\./)).toHaveCount(1);
+  for (const text of ['Asked the first agent', 'Late reply for the old agent', UNKNOWN, MAY_FINISH]) await expect(conversation(page).getByText(text, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Check for reply/ })).toHaveCount(0);
+  await expect(stop(page)).toHaveCount(0);
+  expect(await fixture(page, f => ({ posts: f.posts, reads: f.historyReads }))).toEqual({ posts: 1, reads: 0 });
+});
+
+test('reconnecting restores the saved remote conversation with older pages; the draft survives Home, Back and a keyboard resize', async ({ page }) => {
+  test.setTimeout(120_000);
+  await connected(page, { long: true });
+  await typeDraft(page, 'Newest question');
+  await composer(page).press('Enter');
+  await expect.poll(() => fixture(page, f => f.posts), { timeout: 15_000 }).toBe(1);
+  await fixture(page, f => { f.release('Newest answer'); f.finish('Newest answer'); });
+  await expect(conversation(page).getByText('Newest answer', { exact: true })).toHaveCount(1);
+  await page.reload();
+  await expect.poll(() => fixture(page, f => f.ready), { timeout: 30_000 }).toBe(true);
+  // Restored from the agent on connect: the recent window plus one older page, oldest first, once each.
+  await expect.poll(() => fixture(page, f => ({ reads: f.historyReads, pages: f.pageReads })), { timeout: 30_000 }).toEqual({ reads: 1, pages: 1 });
+  const restored = () => page.evaluate(async () => {
+    const { connectionController } = await import('/src/runtime/connection-ui.tsx');
+    const history = connectionController.getSnapshot().history;
+    return history && { automatic: history.automatic, count: history.messages.length, first: history.messages[0].text, last: history.messages.at(-1)!.text, conversation: history.conversationId };
+  });
+  await expect.poll(restored, { timeout: 20_000 }).toEqual({ automatic: true, count: 232, first: 'Synthetic message 0', last: 'Newest answer', conversation: 'fixture-chat' });
+  expect(await fixture(page, f => f.posts)).toBe(0);
+  await typeDraft(page, 'Unsent across navigation');
+  const key = await bindingKey(page);
+  expect(JSON.parse(key).at(-1)).toBe('fixture-chat');
+  await page.evaluate(() => { window.dispatchEvent(new Event('launcher-home')); window.dispatchEvent(new Event('alpha-back', { cancelable: true })); });
+  await expect(composer(page)).toHaveValue('Unsent across navigation');
+  // A soft keyboard shrinks the viewport: the composer stays on screen with the same text.
+  await page.setViewportSize({ width: 412, height: 520 });
+  await expect(composer(page)).toHaveValue('Unsent across navigation');
+  await expect(composer(page)).toBeInViewport();
+  await page.setViewportSize({ width: 412, height: 915 });
+  expect(await savedDraft(page, key)).toBe('Unsent across navigation');
+  await page.reload();
+  await expect.poll(() => fixture(page, f => f.ready), { timeout: 30_000 }).toBe(true);
+  await expect(composer(page)).toHaveValue('Unsent across navigation', { timeout: 30_000 });
+  // Nothing was sent by restoring, navigating, resizing or reloading.
+  expect(await fixture(page, f => f.posts)).toBe(0);
+  await expect.poll(restored, { timeout: 30_000 }).toMatchObject({ count: 232, conversation: 'fixture-chat' });
+});
