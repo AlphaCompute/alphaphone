@@ -38,6 +38,9 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
       else if(path==='/api/agents')body={agents:[{id:'fixture-agent',name:'Resident fixture',status:'running'}]};
       else if(path==='/api/client-devices/register')body={installationId:input.headers['X-Eliza-Device-Id'],enrollmentId:'fixture-enrollment',capabilities:[]};
       else if(path==='/api/conversations')body={conversations:[]};
+      else if(path==='/api/automations')body={automations:[]};
+      else if(path==='/api/lifeops/reminders')body={reminders:[]};
+      else if(path==='/api/lifeops/scheduled-tasks?ownerVisibleOnly=1')body={tasks:[]};
       else if(path==='/api/workflow/status')body={hostedDigestProtocol:1};
       else if(path==='/api/workflow/hosted/sources')body={sources:[]};
       else if(path==='/api/workflow/hosted/loops')body={loops:[]};
@@ -99,7 +102,7 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
   await expect(page.getByText('Verified retained result run1',{exact:true})).toHaveCount(0);
  }else if(scenario==='builder-race'){
   await expect.poll(()=>page.evaluate(()=>Boolean((window as any).deliveryFixture.release))).toBe(true);
-  await page.getByRole('button',{name:'New workflow',exact:true}).click();
+  await page.getByRole('button',{name:'New automation',exact:true}).click();await page.getByRole('button',{name:/^Workflow Build reviewed steps/}).click();
   await page.evaluate(()=>(window as any).deliveryFixture.release());
   await expect(page.getByText('Verified retained result run1',{exact:true})).toHaveCount(0);
   expect(await page.evaluate(()=>(window as any).deliveryFixture.consumed?.length||0)).toBe(0);

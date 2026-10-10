@@ -18,6 +18,9 @@ async function setup(page:Page){
   const w=window as any;w.agentRequests=[];
   const request=async(path:string,body:any)=>{
    w.agentRequests.push({path,method:body===undefined?'GET':'POST',body});
+   if(path==='/api/automations')return {automations:Object.values(flows).filter((flow:any)=>!flow.removed).map((flow:any)=>({id:'workflow:'+flow.id,type:'workflow',workflowId:flow.id,title:flow.name,description:flow.description,enabled:flow.active,status:flow.active?'active':'paused',schedules:[]}))};
+   if(path==='/api/lifeops/reminders')return {reminders:[]};
+   if(path==='/api/lifeops/scheduled-tasks?ownerVisibleOnly=1')return {tasks:[]};
    if(path==='/api/workflow/status')return {engine:'smthrs',status:'ready',manualSubmissionProtocol:1,lifecycleMutationProtocol:1};
    if(path==='/api/workflow/workflows')return {workflows:Object.values(flows)};
    let m=/^\/api\/workflow\/workflows\/([^/]+)(\/.*)?$/.exec(path);
@@ -35,6 +38,7 @@ async function setup(page:Page){
   };
   const client=new WorkflowProtocol((path,body)=>request(path,body));const original=c.getWorkflowClient.bind(c);
   c.getWorkflowClient=()=>{const binding=original();return binding?{...binding,client}:binding;};
+  const automations=c.getAutomationsClient.bind(c);c.getAutomationsClient=()=>{const binding=automations();return binding?{...binding,request:async(path,method)=>{if(method!=='GET')throw Error('Unexpected automation mutation');return request(path,undefined);}}:binding;};
  });
  await returnToApps(page);await page.getByRole('button',{name:'Workflows',exact:true}).click();
 }
@@ -42,7 +46,7 @@ const posts=(page:Page,suffix:string)=>page.evaluate(suffix=>(window as any).age
 const status=(page:Page)=>page.getByRole('status',{name:'Workflow run status',exact:true});
 
 test('side-effecting workflow: interrupted run is shown as outcome unknown, never replayed, and blocks new runs until cancelled',async({page})=>{
- await setup(page);await page.getByText('Save agenda note',{exact:true}).first().click();
+ await setup(page);await page.getByRole('region',{name:'Workflows',exact:true}).getByText('Save agenda note',{exact:true}).first().click();
  await expect(status(page)).toHaveText('An earlier run was interrupted — outcome unknown. New runs stay blocked until you cancel it');
  const history=page.getByRole('button',{name:'Interrupted — outcome unknown execution',exact:true});await expect(history).toBeVisible();
  await page.getByRole('button',{name:'Run now',exact:true}).click();await page.getByRole('button',{name:'Run now',exact:true}).click();
@@ -61,7 +65,7 @@ test('side-effecting workflow: interrupted run is shown as outcome unknown, neve
 });
 
 test('read-only digest: Run again is explicit, confirmed and creates a new run ID without replaying the interrupted one',async({page})=>{
- await setup(page);await page.getByText('Morning notes digest',{exact:true}).first().click();
+ await setup(page);await page.getByRole('region',{name:'Workflows',exact:true}).getByText('Morning notes digest',{exact:true}).first().click();
  await expect(status(page)).toHaveText('An earlier run was interrupted — outcome unknown. Open it to run these read-only steps again');
  await page.getByRole('button',{name:'Interrupted — outcome unknown execution',exact:true}).click();await expect(page.getByText(/The agent did not replay it/)).toBeVisible();
  await page.waitForTimeout(1000);expect(await posts(page,'/run')).toBe(0);
@@ -75,6 +79,6 @@ test('read-only digest: Run again is explicit, confirmed and creates a new run I
 });
 
 test('hosted digest: interrupted occurrence is not replayable from the phone',async({page})=>{
- await setup(page);await page.getByText('Scheduled hosted digest',{exact:true}).first().click();await page.getByRole('button',{name:'Interrupted — outcome unknown execution',exact:true}).click();
+ await setup(page);await page.getByRole('region',{name:'Workflows',exact:true}).getByText('Scheduled hosted digest',{exact:true}).first().click();await page.getByRole('button',{name:'Interrupted — outcome unknown execution',exact:true}).click();
  await expect(page.getByRole('button',{name:'Run this read-only workflow again as a new run',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Cancel execution',exact:true})).toBeVisible();expect(await posts(page,'/run')).toBe(0);
 });
