@@ -230,6 +230,27 @@ for (const outcome of ['opened', 'unavailable'] as const) {
   });
 }
 
+test('loop C on Android: a phone time zone that changes after review retires the request before anything is sent', async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await android(page);
+  await residentHome(page);
+  await button(page, 'Calendar').click();
+  await button(page, 'Clock alarms').click();
+  const clock = page.getByRole('dialog', { name: 'Clock alarms', exact: true });
+  await clock.getByLabel('Alarm time', { exact: true }).fill('07:15');
+  await clock.getByRole('button', { name: 'Review Clock request', exact: true }).click();
+  const confirm = clock.getByRole('button', { name: 'Confirm Clock request', exact: true });
+  await expect(confirm).toBeVisible();
+  // The phone moves to another zone between review and confirmation (browser time zone override).
+  const before = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+  await (await context.newCDPSession(page)).send('Emulation.setTimezoneOverride', { timezoneId: before === 'Asia/Tokyo' ? 'Europe/Paris' : 'Asia/Tokyo' });
+  expect(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).not.toBe(before);
+  await confirm.click();
+  await expect(clock).toContainText('Phone time zone changed. Review the Clock request again.');
+  await expect(confirm).toHaveCount(0);
+  expect(await native(page, f => f.clock)).toEqual([]);
+});
+
 test('loops B, C and J04 in the web build: local calendar and alarm records are real, and Maps says a provider is missing instead of routing', async ({ page }) => {
   test.setTimeout(120_000);
   const foreign = await fenceNetwork(page);

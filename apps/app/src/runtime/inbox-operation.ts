@@ -107,7 +107,7 @@ export class InboxOperation {
     await this.observe(receipt);return this.snapshot();
   }); }
   private async observe(receipt: GmailInboxReceipt) {
-    const record=this.record!;if(receipt.requestId!==record.requestId||receipt.kind!==record.proposal.kind||(record.receipt&&receipt.reviewDigest!==record.receipt.reviewDigest))throw new Error('Unexpected operation receipt');
+    const record=this.record!;if(receipt.requestId!==record.requestId||receipt.kind!==record.proposal.kind||(record.receipt&&receipt.reviewDigest!==record.receipt.reviewDigest))throw new Error('Gmail answered for a different request, so nothing was confirmed. Check the saved receipt before trying again; do not send this message again.');
     // A prepared response after an attempted dispatch remains uncertain locally; never re-enable Send.
     await this.save({...record,receipt:copy(receipt),phase:receipt.state==='prepared'?(record.phase==='dispatching'?'dispatching':record.review?'review':'preparing'):'observed'});
   }
