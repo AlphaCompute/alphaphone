@@ -522,3 +522,28 @@ test('InboxOperation.confirm refuses before any write when the composer does not
     assert.equal(d.operationSlot().phase, 'observed'); assert.equal(d.remote.dispatches, 1); d.remote.dispatches = 0;
   }
 });
+
+test('an edit or a cancel while Send is in flight never discards the operation or sends twice; a lost reply stays unknown', async () => {
+  const d = device(), app = d.boot(); await app.bind();
+  await app.compose('In flight', 'First'); await app.send();
+  const first = d.operationSlot();
+  const release = hold(d.remote); d.remote.outcome = 'lost'; d.remote.unsure = true;
+  await app.confirm();
+  assert.equal(d.operationSlot().phase, 'dispatching');
+  // Everything a person can press while the request is out: edit, Send again, Confirm again, Cancel.
+  app.composer().onBody({target: {value: 'Second'}}); app.receipt(); await tick();
+  await app.send(); await app.confirm(); await app.closeReceipt();
+  assert.equal(d.operationSlot().requestId, first.requestId); assert.equal(d.operationSlot().phase, 'dispatching');
+  await release();
+  // The reply was lost: the outcome is unknown, the record survives, and nothing can repeat or drop it.
+  assert.equal(d.operationSlot().phase, 'dispatching'); assert.equal(app.receipt().canConfirm, false); assert.equal(app.receipt().canClear, false);
+  assert.match(app.receipt().status, /do not send this message again|check the saved receipt/i);
+  await app.confirm(); await app.closeReceipt(); await app.send();
+  assert.equal(d.operationSlot().requestId, first.requestId, 'the edited email cannot start a second send while the first is unresolved');
+  assert.equal(d.remote.dispatches, 1); assert.equal(dispatched(d).length, 1); assert.equal(dispatched(d)[0][3].bodyText, 'First');
+  assert.equal(app.composer().body, 'Second', 'the edit is kept');
+  // Resolved by an explicit check only: one message, and the edited copy stays.
+  d.remote.unsure = false; await app.check();
+  assert.equal(app.receipt().status, 'Provider confirmed this operation.'); assert.equal(d.remote.dispatches, 1);
+  assert.ok(app.composer()); assert.match(app.receipt().draftNote, /still on this device/);
+});
