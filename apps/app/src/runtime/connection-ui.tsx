@@ -25,7 +25,7 @@ import { PersonalProtocolError, type CloudPersonalProtocol, type PersonalView, t
 import { holdPhoneInert } from './modal-inert';
 import { pauseHostedBackground } from './hosted-background';
 import {developmentDeviceStore,developmentActionJournal} from './local-agent-storage';
-import { stopLocalAgent, configureLocalProvider, configureLocalCloudProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled, localProviderStatus, clearLocalProvider, providerStatusLabel, LOCAL_PROVIDER_MODEL, type LocalProviderStatus } from './local-agent';
+import { stopLocalAgent, configureLocalProvider, bindResidentCloudProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled, localProviderStatus, clearLocalProvider, providerStatusLabel, LOCAL_PROVIDER_MODEL, type LocalProviderStatus } from './local-agent';
 import { presentDeviceRecordOperation } from './device-record-presentation';
 import type { MessagePage } from './remote-protocol';
 import type {DeviceRecovery} from "./device-actions";
@@ -346,7 +346,9 @@ async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
   if(!account || service!==account || credits.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
   update({residentBalance:credits.balance});
   if(credits.balance<=0){await stopLocalAgent();await retire();update({open:true,message:'Add credits to use your agent. Your saved data stays on this device.'});return false;}
-  await configureLocalCloudProvider(credits.credentialId);
+  // An admitted running resident under this same Cloud admission is reused, not stopped and rebound:
+  // opening the assistant, or reconnecting one surface, must not retire the other surface's work.
+  await bindResidentCloudProvider(credits.credentialId);
   signal.throwIfAborted();
   if(service!==account || (await cloudCredentialStore.read('production'))?.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
   return true;
