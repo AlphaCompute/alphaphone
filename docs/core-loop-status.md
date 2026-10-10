@@ -99,7 +99,7 @@ Still open:
 - Reminder deletion from the detail page is still immediate ("Reminder cancelled").
   It was not changed.
 
-Pending owner decision (recorded here, not in decisions.md):
+Pending owner decision (now A-25 under [pending owner decisions](decisions.md#new-decision-items)):
 
 - **Calendar deletion recoverability.** PRD AP-15 / MVP-48 suggest "no unrecoverable
   user-data loss" as P0, and Notes has a Trash. Calendar has neither a Trash nor Undo

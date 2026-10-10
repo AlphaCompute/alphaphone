@@ -356,7 +356,7 @@ Journey spec: `test/browser/journey-j04-schedule-travel.spec.ts` (passed in this
 | J04-3 | Several candidate addresses: nothing is selected or routed until the user chooses | Journey J04. | EVIDENCED |
 | J04-4 | No Maps provider: the address is kept and no destination is invented | `calendar-maps-handoff.spec.ts`; flag-off web: `journey-core-loops.production.spec.ts` (B, C, J04). | EVIDENCED |
 | J04-5 | No location permission: a manual origin is offered | Journey J04 ("Start" reports the missing permission). Native: `node scripts/maps/test-native-recovery.mjs permission`. | EVIDENCED |
-| J04-6 | A route for a production user | The flag-off build has no Maps provider: `VITE_MAPS_BASE_URL` is unset and the emulator gateway exists only in test-mocks builds (`apps/app/src/maps/regional-provider.ts`). A production user gets "Connect a Maps provider to search places and plan routes." No decision ID covers choosing and licensing a provider. | HUMAN |
+| J04-6 | A route for a production user | The flag-off build has no Maps provider: `VITE_MAPS_BASE_URL` is unset and the emulator gateway exists only in test-mocks builds (`apps/app/src/maps/regional-provider.ts`). A production user gets "Connect a Maps provider to search places and plan routes." Choosing and licensing a provider is pending decision A-23 (recorded in the October 10 ledger refresh). | HUMAN |
 | J04-7 | Return to the same event | Merged from `main` (round 4 hand-offs): `maps-event-return.spec.ts` (three tests): "Back to event" returns to exactly the originating event from every Maps layer, once and without a new search; a deleted or moved event fails closed; a reload in Maps drops the return. | EVIDENCED |
 | J04-8 | Reload does not replay the hand-off | Journey J04. | EVIDENCED |
 | J04-9 | GPS navigation and turn-by-turn | `MapsRegionalInstrumentedTest`, `MapsBackgroundNavigationInstrumentedTest` (regional fixture gateway). Physical navigation: none. | DEVICE |
@@ -534,7 +534,7 @@ emulator; this host can run arm64 images only.
 | A-12 passkeys | E-19 | Choose (a), (b) or (c). |
 | A-06 signing | E-20 | Name the signing owner and produce the release key; nothing can be qualified on a release-signed device before that. |
 | Password provider account (runbook "Password provider real-site filling") | E-18 | Provide a Proton Pass test vault with synthetic credentials on a signed build. |
-| Maps provider (no decision ID exists) | J04-6 | Open a decision item for the production Maps provider and its licence, then supply `VITE_MAPS_BASE_URL` for an HTTPS gateway. Until then J04 ends at an honest unavailable state for every production user. |
+| Maps provider (A-23, recorded in the October 10 ledger refresh) | J04-6 | Choose the production Maps provider and its licence, then supply `VITE_MAPS_BASE_URL` for an HTTPS gateway. Until then J04 ends at an honest unavailable state for every production user. |
 | A-01 phone and image | A-2, A-7 and every DEVICE row | Choose the SKU; build and boot the image. |
 
 DEVICE rows (13): A-2, A-7, A-21, A-31, B-2, B-6, C-5, C-9, C-12, D-20, E-17, J01-2,

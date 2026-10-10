@@ -33,8 +33,11 @@ separate test-mocks bundle still receives its own audit.
 Repository verification runs once in parallel with Chromium's three shards and
 Android, instead of four times per event. Browser shards remain parallel; a failing matrix cancels siblings to limit wasted minutes.
 On October 8 the owner requested removal of all smoke tests and checks. The aggregate
-smoke runners, emulator CI jobs, provider diagnostic job and smoke-only APK bundles
-are removed. Distribution APK builds, repository checks and browser regression tests remain.
+smoke runners, their emulator CI jobs, the provider diagnostic job and smoke-only APK bundles
+are removed. Two emulator jobs remain, `native` and `recovery-ui` in
+`.github/workflows/resident-android.yml`; they run only on an explicit dispatch or when
+the repository variable `ELIZA_RESIDENT_QUALIFICATION` is `push` or `nightly`, and no
+passing run of either is recorded for the current source. Distribution APK builds, repository checks and browser regression tests remain.
 Main pushes run affected repository verification, including the production bundle
 audit, and the affected Android foundation build of both variants, so a merge that
 breaks packaging is visible on the exact main commit. They do not repeat PR browser
