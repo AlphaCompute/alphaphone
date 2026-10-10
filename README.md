@@ -317,6 +317,13 @@ Secondary-user setup and teardown use the upstream lifecycle helper under the sa
 emulator lease. Missing package-cleanup proof retains the test user for recovery.
 These campaigns require an owned disposable emulator and do not prove device acceptance.
 
+The browser storage-format campaign uses the same archived APK and owned-emulator
+inputs: `node scripts/test-browser-storage-format.mjs APP.apk TEST.apk NEW_OUTPUT`.
+It runs in a fresh disposable user and checks the real product stores against the
+deployed Keystore ciphertext format in both directions, including bookmarks,
+tabs/history and site permissions. It does not open a website or establish browser
+UI, process-death or physical-device acceptance.
+
 ## AOSP integration
 
 ```sh
