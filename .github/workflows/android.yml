@@ -76,8 +76,10 @@ jobs:
       - name: Build and qualify both no-eSpeak runtime ABIs
         timeout-minutes: 65
         run: |
+          jobs="$(nproc)"
+          jobs=$((jobs > 4 ? 4 : jobs))
           for abi in arm64-v8a x86_64; do
-            python3 scripts/local-speech/build-no-espeak.py --abi "$abi" --ndk "$ANDROID_NDK_HOME" --jobs 2
+            python3 scripts/local-speech/build-no-espeak.py --abi "$abi" --ndk "$ANDROID_NDK_HOME" --jobs "$jobs"
             python3 scripts/local-speech/strip-runtime.py --abi "$abi" --ndk "$ANDROID_NDK_HOME"
           done
           python3 scripts/local-speech/verify-source.py
@@ -93,11 +95,12 @@ jobs:
       # Distribution build: flag-off whatever the runner exports. This job stages no
       # resident runtime, so releases are recorded distributable:false (APK-build
       # evidence only); the resident workflow builds and verifies PACKAGED releases.
+      # This lane never runs instrumentation; manual build archives still include it.
       - name: Build flag-off distribution APKs
         env:
           ELIZA_DEV_ALLOW_TEST_MOCKS: ""
           VITE_ELIZA_DEV_ALLOW_TEST_MOCKS: ""
-        run: npm run android:build -- --allow-unpackaged-runtime
+        run: npm run android:build -- --allow-unpackaged-runtime --skip-instrumentation
       - name: Require test-mock-free distribution
         run: |
           node scripts/audit-production-bundle.mjs web-dist
@@ -116,6 +119,7 @@ jobs:
           path: |
             artifacts/*.apk
             artifacts/mapping/*.txt
+          compression-level: 0
           if-no-files-found: error
           retention-days: 3
       - uses: actions/upload-artifact@v4

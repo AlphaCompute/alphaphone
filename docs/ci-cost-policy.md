@@ -116,6 +116,50 @@ never networks for it. The default warns; `--upstream-reachability=fail` or
 `off` skips it. Refresh the record after a pin change with
 `node scripts/verify-upstream.mjs --record-reachability` (uses `gh api`).
 
+## Integration and end-to-end coverage
+
+The host suite exercises complete adapters, HTTP protocols, real filesystem and
+subprocess boundaries, native component interactions, and packaging commands.
+Browser tests exercise the rendered application and its persistent stores. Root-view
+empty-state, landmark and keyboard checks share one fresh page per view/theme,
+removing 48 repeated loads and fixed waits. Configured Maps recovery supplies its
+own worker-scoped fixture server; it no longer depends on an unset global build
+variable. Retired local-agent Notes UI journeys and their PCM helper table are
+removed; current Cloud-bound capture/save/playback E2E and explicit real-host
+playback qualification remain. Unit
+helper tables, source-text/regex assertions, extracted-method harnesses, and
+upstream unit-suite forwarding are removed from the consumer suite. Shared
+behavior is tested through its product integration; upstream owns its unit tests.
+This includes retiring the secure-store helper harness that cloned and repeatedly
+authenticated the entire upstream tree to test one input-reading helper. The real
+Android build still stages and compiles those sources; Git/source-admission
+integrations retain corruption and incomplete-checkout coverage.
+The Whisper model/runtime transcription test remains, including silence and
+cancellation. Type checking, production bundle auditing and APK inspection remain
+build gates. The host verification job keeps JDK/JSON inputs for native component
+integration, but no longer installs an Android SDK used only by removed harnesses.
+
+Verification prepares the pinned client source and speech inputs once, then runs
+the existing commands without repeating their individual preparation hooks. Standalone
+commands keep their preparation hooks. Verification builds and audits the production
+bundle once. Two older host tests
+that rebuilt the same bundle, and a duplicate Cloud protocol invocation, were
+removed. The restart runner keeps a successful integration for every campaign
+configuration, but exercises shared rejection cases once instead of multiplying
+them across six configurations. CI selection is tested through its actual CLI,
+a temporary Git repository and Actions output files.
+
+The automatic Android lane passes `--skip-instrumentation`: it still builds both
+standalone and launcher, debug and release, and runs lint and APK inspection.
+Manual builds and archives retain their instrumentation APKs. Native speech uses
+up to four compiler jobs, bounded by the runner CPU count, within each ABI; its shared workspace is locked, so
+ABIs stay sequential. Already-compressed APK uploads use compression level zero.
+Browser reports, traces and screenshots upload only on failure; passing test
+counts and timings remain in Actions logs.
+
+These changes reduce repeated work; they do not establish emulator HOME-role,
+resident execution, full AOSP boot, live-provider or device acceptance.
+
 ## Explicit, expensive qualification
 
 Alpha Phone ships Android WebView. Chromium remains automatic for affected PRs.

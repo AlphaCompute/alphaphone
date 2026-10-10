@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "ab0ae51d5b957cffdde80f3da2a760639b71a0f5792878bced3ce116aa419ae6",
+  "sourceDigest": "fc5b74b3583802a93e2bc71f3bccb79a7d1358fadd02ca2169b8f09effb12017",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -12739,9 +12739,9 @@
     {
       "file": "src/prototype/model.js",
       "upstreamCandidate": [],
-      "bytes": 422119,
-      "sha256": "28d1c3c9916dc3d7a88af5d88320144b54c5bada069bc12b85348ed1def5efbd",
-      "lines": 5608,
+      "bytes": 422317,
+      "sha256": "6929ec2a225d80c34c4dcbf4c3961153e790a23792683a74cb6be79b02f7b8c1",
+      "lines": 5610,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -13548,13 +13548,13 @@
           ]
         },
         {
-          "line": 5536,
+          "line": 5538,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 5598,
+          "line": 5600,
           "tags": [
             "presentation"
           ]
@@ -14058,9 +14058,9 @@
     {
       "file": "src/prototype/phone.css",
       "upstreamCandidate": [],
-      "bytes": 18265,
-      "sha256": "32d9898228362f0cc1c16d5354a1743badb8c9abb54784e9b508763068c01452",
-      "lines": 203,
+      "bytes": 18177,
+      "sha256": "fa87bb78c25cc527cdcd525750eee435144a8321d3d06770a23654513da1a0df",
+      "lines": 202,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -14517,7 +14517,7 @@
           ]
         },
         {
-          "line": 171,
+          "line": 175,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -14535,7 +14535,7 @@
           ]
         },
         {
-          "line": 178,
+          "line": 182,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -14553,19 +14553,19 @@
           ]
         },
         {
-          "line": 185,
+          "line": 187,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 188,
+          "line": 190,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 191,
+          "line": 195,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -14602,12 +14602,6 @@
         },
         {
           "line": 201,
-          "tags": [
-            "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 202,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -15927,8 +15921,8 @@
     {
       "file": "src/prototype/template.html",
       "upstreamCandidate": [],
-      "bytes": 481814,
-      "sha256": "72d0fa30b68266110d2f721a0fb2a5a04d91ddd0e0baccf946a2e5425fdbc37d",
+      "bytes": 481850,
+      "sha256": "554d76223aa7502bfde1dc0719468e120babf40783de97cc9f620c60d766dc34",
       "lines": 4243,
       "owner": "alphaphone",
       "disposition": "retain-or-split",

@@ -52,7 +52,7 @@ workers without a readiness probe, and verifies cold cancellation/recovery. It
 writes `test-results/cold-kokoro/result.json`. It never sends text to a model
 provider and uses only a fixed synthetic phrase. The opt-in browser case
 `first host speech request plays without a readiness probe` in
-`test/browser/browser-agent-recording.spec.ts` additionally checks actual playback;
+`test/browser/browser-agent-playback.spec.ts` additionally checks actual playback;
 set `ALPHA_REAL_KOKORO=1` and point a serverless Playwright configuration at the
 freshly restarted local dev server. Agent readiness is separate from TTS readiness.
 
@@ -93,7 +93,7 @@ run. It does not download assets or configure speech on Android.
 
 The Kokoro directory must contain the pinned `kokoro-82m-v1_0.gguf` and `voices/af_bella.bin` assets. The launcher checks the model and voice hashes; the host service checks the native library and ABI and warms synthesis before readiness. This command uses already installed qualified assets; it does not download a model or build a native library. `ALPHA_LOCAL_TTS=auto` stays disabled unless a library is explicitly configured, and `off` disables synthesis. Browser phrases are bounded to 500 characters; the transcript player divides longer text into shorter phrases. Speech runs on the development computer; text-model inference still uses the configured hosted provider.
 
-The real browser test can be repeated with `VITE_LOCAL_AGENT=1`, `ALPHA_LOCAL_AGENT_ORIGIN`, `ALPHA_LOCAL_AGENT_TOKEN_FILE`, and `ALPHA_SPEECH_FIXTURE` pointing to a locally generated synthetic WAV, then running `npx playwright test test/browser/browser-agent-recording.spec.ts`. It verifies capture, transcription, real audio playback, stop and connection retirement. Its host-dependent cases explicitly skip without the required environment. Native Android speech and physical-device acceptance remain separate.
+Notes recording uses the selected Cloud account. The retired local-agent Notes UI journeys are removed; real browser capture, reviewed saves, cancellation and playback remain covered by the Cloud-bound recording E2E fixtures. Those fixtures use synthetic transport and do not qualify a live Cloud provider. The explicit local-host playback check above remains available for development speech. Native Android speech and physical-device acceptance remain separate.
 
 For a real arithmetic-only workflow check against a disposable local host, provide an owner-only paired session JSON file and run:
 
