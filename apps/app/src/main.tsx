@@ -31,6 +31,7 @@ import { reopenStartupPermissions } from './startup-permission-flow';
 import { createRoot } from 'react-dom/client';
 import { Component, VIEWS } from './prototype/model.js';
 import { installReminderAdapter } from './prototype/reminder-adapter';
+import { installNoteOriginAdapter } from './prototype/note-origin-adapter';
 import { installAgentAdapter } from './prototype/agent-adapter';
 import { installPrototypeNativeAdapters } from './prototype/native-adapter';
 import { installSelectedDocumentAdapter } from './prototype/selection-adapter';
@@ -87,6 +88,7 @@ if (!fixture) {
   installCalendarAdapter(Component, VIEWS);
   installCalendarFormDraftAdapter(Component, VIEWS);
   installCalendarEditDraftAdapter(Component, VIEWS);
+  installNoteOriginAdapter(Component, VIEWS);
   installPrototypeDataAdapter(Component, VIEWS);
   installNotificationsAdapter(Component);
   installPrototypeVoiceAdapter(Component, VIEWS);

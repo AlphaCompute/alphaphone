@@ -924,6 +924,7 @@
         <h1 class="serif" style="margin: 0; font-size: 38px; line-height: 1.05; letter-spacing: -.01em">{{calendar.ev.title}}</h1>
         <div style="font-size: 17px; margin-top: 14px">{{calendar.ev.when}}</div>
         <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--mut); margin-top: 4px"><span style="width: 8px; height: 8px; border-radius: 4px; background: {{calendar.ev.dot}}"></span>{{calendar.ev.day}} · {{calendar.ev.calName}}</div>
+        <sc-if value="{{calendar.ev.hasOrigin}}"><div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 14px; color: var(--mut); margin-top: 8px"><span>{{calendar.ev.originLabel}}</span><button class="tap" aria-label="{{calendar.ev.originOpenLabel}}" onClick="{{calendar.ev.openOrigin}}" style="min-height: 44px; padding: 0 14px; border-radius: 18px; background: var(--s2); color: var(--fg); font-weight: 600">Open note</button></div></sc-if>
 
         <sc-if value="{{calendar.ev.recurringReminder}}">
           <div style="margin-top: 20px; font-size: 14px; color: var(--mut)">{{calendar.ev.reminderPolicy}}</div>
@@ -2335,6 +2336,7 @@
               <button onClick="{{notes.vo.toCal}}" aria-label="{{notes.vo.calLabel}}" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; margin: 6px 0 4px 10px; border-radius: 18px; background: var(--bg); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--acct)"><path d="{{notes.vo.calIcon}}"></path></svg>{{notes.vo.calText}}</button>
             </div>
           </sc-if>
+              <sc-if value="{{notes.vo.toEvent}}"><button onClick="{{notes.vo.toEvent}}" aria-label="{{notes.vo.eventLabel}}" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; margin: 6px 0 4px 10px; border-radius: 18px; background: var(--bg); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--acct)"><path d="{{notes.vo.calIcon}}"></path></svg>{{notes.vo.eventText}}</button></sc-if>
         </sc-if>
 
         <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 26px">

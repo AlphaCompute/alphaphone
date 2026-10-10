@@ -4,6 +4,8 @@ import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import {calendarFormTimeProblem} from '../runtime/calendar-form-draft';
+import {mapsEventOriginFor} from '../runtime/maps-event-return';
+import {rememberNoteOrigin,forgetNoteOrigin,noteOriginSupported} from './note-origin-adapter';
 type Bag = Record<string, any>;
 const calendar = registerPlugin<any>('AlphaCalendar');
 const DAY=86400000;
@@ -303,6 +305,8 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           if(result.status==='conflict'){api.toast('This event changed. Reload it before editing. Nothing was overwritten.');return;}
           if(result.status!=='saved')throw Error('Unconfirmed calendar write');
           if(creationId&&result.creationId!==creationId)throw Error('Mismatched creation receipt');
+          // A new event from a note draft keeps a link to that note. The event is already saved either way.
+          if(creationId&&current.origin&&noteOriginSupported('event'))void rememberNoteOrigin('event',String(result.id),current.origin).then(linked=>{if(!linked&&owner===currentOwner&&currentOwner.live)api.toast('Event saved. The link to its note could not be saved.');});
           const targetDay=Number(current.off||0);
           // Retire only this exact submitted draft before an acknowledgement can be lost.
           currentOwner.calendarFormCommitted?.(api.get('calendar').form);
@@ -389,6 +393,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           if(result.status==='deleted'){
             // The receipt belongs to the deleted event, not a newer detail or draft.
             const current=api.get('calendar');
+            if(!event.seriesId&&!/:occ:-?\d+$/.test(String(event.id)))void forgetNoteOrigin('event',String(event.id));
             if(!document.hidden&&api.isActive()&&current.open===selected.id&&!current.form){
               api.set({open:null,openDay:null});api.toast('Local event deleted and verified.');
             }
