@@ -235,7 +235,7 @@ Evidence/source: [apps/app/src/runtime/connection-ui.tsx](../apps/app/src/runtim
 
 **P1 · integration · AP-03, AP-11**
 
-Current: HTTPS remote browser transport exists as development infrastructure; direct Cloud sign-in is honestly unavailable for this origin. The development host has a separate credential-reference bridge.
+Current: HTTPS remote browser transport exists as development infrastructure; direct Cloud sign-in is honestly unavailable for this origin. The development host has a separate credential-reference bridge. Synthetic flag-off coverage (test/browser/connection-boundaries.production.spec.ts): saved mock, staging, Cloud, plain-HTTP local, development and on-device selections open the chooser signed out with no request; refused pairings (wrong role, identity or instance mismatch, expired session, used code, pairing disabled, non-HTTPS address) store nothing and connect nothing; unverified device enrollment grants no phone actions; unconfirmed revocation is reported as unconfirmed.
 
 Remaining: Record the supported browser development scope and qualify its account return, storage degradation, revoke and Automations behavior. Keep unsupported Cloud sign-in unavailable unless that route is separately approved and implemented with an admitted origin/server bridge. Do not add browser Cloud login as a production Android MVP prerequisite.
 
@@ -511,7 +511,7 @@ Evidence/source: [docs/mvp-completion-plan.md](../docs/mvp-completion-plan.md), 
 
 **P1 · acceptance · AP-03, AP-04**
 
-Current: PR 379 retires production Android phone pairing and adds a controller guard. Browser and test-mocks transports remain for development; existing credentials/history must be preserved.
+Current: PR 379 retires production Android phone pairing and adds a controller guard. Browser and test-mocks transports remain for development; existing credentials/history must be preserved. connectRemote now refuses every caller on production Android and the native transport rejects the pairing route (ConnectionRoutes.java, JVM-tested and compiled, not run in an APK). A stubbed-bridge production-bundle test shows a saved remote, local or Cloud-agent selection is neither paired nor restored, its credential slot is not written or removed, and a Cloud sign-in starts the resident agent instead.
 
 Remaining: Verify flag-off Android rejects pairing without network mutation or automatic reconnection, preserves old remote credentials/history, and uses resident execution with Cloud provider authorization. Qualify retained browser/test-mocks transport ownership, expiry, revoke and recovery separately. Real hosted-agent deployment is optional scope, not a phone MVP prerequisite.
 
