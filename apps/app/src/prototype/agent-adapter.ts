@@ -11,7 +11,7 @@ import {AssistantDraftController} from './assistant-draft-controller';
 import {assistantDraftStore} from '../runtime/assistant-draft-store';
 import {openBrowserNotes,browserNotesRecovery} from '../runtime/browser-notes-document';
 import {audioDeletionRecovery} from '../runtime/note-audio-deletions';
-import {addNotesTrashEntry,editNotesTrash,withNotesDeletionLock} from '../runtime/notes-trash';
+import {addNotesTrashEntry,editNotesTrash,isNotesTrashFull,withNotesDeletionLock} from '../runtime/notes-trash';
 import {openDomainRecovery} from '../browser/domain-recovery';
 import {reviewSummaryNote} from './summary-note-review';
 import {summarySourceOf as sourceOf,recordingSourceOf,recordingRevision,type SummarySource as Source} from './summary-source';
@@ -648,7 +648,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
             if(this.live){originalSet.call(this,'notes',{storageStatus:this.notesStorageFull?failedNotesStatus(this,false):this.notesCommitUncertain?'Save outcome unknown. Reopen the app to inspect saved notes; do not repeat.':'Notes storage needs recovery. Reopen the app to inspect saved notes before editing.'});context(this);}
           }
           // A full Trash refuses the write-ahead copy before the note is touched.
-          if(!uncertain&&operation.type==='notes_delete'&&isStorageFull(error))return {status:'failed',summary:'Trash is full. Empty Trash in Notes, then review this deletion again. Nothing was deleted.'};
+          if(!uncertain&&operation.type==='notes_delete'&&isNotesTrashFull(error))return {status:'failed',summary:'Trash is full. Empty Trash in Notes, then review this deletion again. Nothing was deleted.'};
           return {status:uncertain?'unknown':'failed',summary:uncertain?'Notes outcome is uncertain. Review history; do not repeat automatically.':(error as Error).message};
         }
       }
