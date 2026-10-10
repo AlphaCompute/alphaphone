@@ -188,7 +188,7 @@ function analyze(text:string,context?:ScanEventContext):ScanEventSuggestion{
 
 /**
  * All-day Calendar draft from a reviewed date: one civil day, no time. It never saves; Calendar's
- * own Save writes it as an all-day provider event (patch 0041) after review.
+ * own Save writes it as an all-day provider event after review.
  */
 export function scanAllDayEventDraft(fields:Pick<ScanEventFields,'title'|'date'|'location'>&{repeat?:ScanEventRepeat},text:string,now=new Date()):ScanEventDraft{
  if(text.length>16000)throw Error('Event notes support up to 16,000 characters. Shorten the scanned text before creating an event draft.');
