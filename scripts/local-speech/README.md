@@ -200,7 +200,7 @@ changed. No AAR on the build machine matches the reviewed record (`4f7b23a6…`)
 **Where the x86_64 run can come from.** No workflow runs the canonical test.
 `.github/workflows/android.yml` only builds. `resident-android.yml` (`workflow_dispatch`) boots an
 x86_64 API 35 emulator in its `native` job, but `scripts/ci/resident-native.py` runs four resident
-classes only, and its speech runtime is a separate Linux build installed with
+test methods only, and its speech runtime is a separate Linux build installed with
 `--allow-unqualified-runtime` and never recorded. A debug APK packages both ABIs, so one
 candidate's debug and androidTest APKs can be carried to an x86_64 host unchanged: run
 `requalify-runtime.py run --serial <device> --apk … --test-apk … --candidate …` there with
