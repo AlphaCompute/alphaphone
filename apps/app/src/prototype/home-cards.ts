@@ -144,6 +144,16 @@ export function calendarCardState(status: unknown): CalendarCardState {
   if (/available in the Android app/i.test(text)) return 'unavailable';
   return 'not-connected';
 }
+/** Title of the Home calendar card when it shows no item. `hidden`: the app calendar is hidden in
+ * Calendar's display settings. A refused or unconnected device calendar says so; a failed read and
+ * a calendar this build cannot reach are both "unavailable". */
+export function homeCalendarEmptyTitle(source: {loading?: boolean; ready?: boolean; error?: boolean; truncated?: boolean; native?: boolean; status?: unknown} | null | undefined, hidden = false) {
+  if (!source || source.loading) return 'Loading events…';
+  if (source.ready) return hidden ? 'No visible events' : source.truncated ? 'Results limited' : 'No upcoming events';
+  if (source.error) return 'Calendar unavailable';
+  const state = calendarCardState(source.status);
+  return state === 'denied' ? 'Calendar access is off' : state === 'not-connected' && source.native ? 'Connect your calendar' : 'Calendar unavailable';
+}
 export interface HomeAgenda { title: string; begin: number; allDay: boolean; video: boolean; people: string[]; overdue?: boolean }
 export function presentHomeCalendar(input: {state: CalendarCardState; agenda: HomeAgenda | null; readAt: number | null; now: number; device: string}) {
   const {state, agenda, readAt, now, device} = input;

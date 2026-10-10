@@ -42,6 +42,28 @@ test('calendar card names its source and read time for an event and for an empty
  await page.screenshot({path:info.outputPath('home-calendar-source.png'),animations:'disabled'});
 });
 
+test('events of an app calendar hidden in Calendar stay off Home until it is shown again',async({page})=>{
+ await page.addInitScript(offline);await page.goto('/');
+ const card=calendarCard(page);
+ await expect(card).toContainText('No upcoming events');
+ const toggle=()=>page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');await new BrowserCalendar().changePreferences({action:'visibility'});});
+ await page.evaluate(async()=>{
+  const {BrowserCalendar}=await import('/src/browser/calendar.ts'),date=new Date(Date.now()+2*86400000);date.setHours(9,30,0,0);
+  await new BrowserCalendar().save({calendarId:'local',title:'Synthetic hidden event',begin:date.getTime(),end:date.getTime()+1800000,allDay:false,creationId:crypto.randomUUID()});
+ });
+ await page.reload();
+ await expect(card).toContainText('Synthetic hidden event');
+ await toggle();await page.reload();
+ await expect(card).toContainText('No visible events');
+ await expect(card).not.toContainText(/Synthetic hidden event|No upcoming events/);
+ await expect(card).toHaveAccessibleName('Open your calendar');
+ await expect(card).toHaveAttribute('data-alpha-home-calendar-event','false');
+ // The calendar was still read; only its display is off.
+ await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveText(/^Read \d{1,2}:\d{2}/);
+ await toggle();await page.reload();
+ await expect(card).toContainText('Synthetic hidden event');
+});
+
 test('a failed calendar read shows the failure with no read time, and opening Calendar from the card reads it again',async({page})=>{
  await page.addInitScript(offline);await page.goto('/');
  const card=calendarCard(page),source=card.locator('[data-alpha-home-calendar-source]');
@@ -251,6 +273,32 @@ test('the latest retained brief appears with its agent and run time, reports fai
  // When the retained result is cleared (for example the connection changes), the card goes away.
  await page.evaluate(async()=>{(await import('/src/runtime/hosted-digests.ts')).rememberRetainedDigests(null);});
  await expect(briefCard(page)).toHaveCount(0);
+});
+
+// The other half of the brief card's path: the digest panel is what records the retained result
+// Home reads. The development profile registers no Home brief source, so this checks the value the
+// panel publishes for the connected profile rather than the card (the test above covers the card).
+test('the digest panel publishes the connected profile\'s newest retained result and withdraws it on disconnect',async({page})=>{
+ await page.addInitScript(()=>{if(!localStorage.getItem('alpha.connection.selection.v1'))localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));});
+ await page.goto('/?mode=dev');
+ const retained=()=>page.evaluate(async()=>(await import('/src/runtime/hosted-digests.ts')).latestRetainedDigest());
+ await expect(page.locator('[data-alpha-home-calendar]')).toBeVisible();
+ expect(await retained()).toBeNull();
+ // Saved for the development profile before it is connected, as results retained from an earlier session.
+ const completedAt=await page.evaluate(()=>{
+  const at=Date.now()-3600000,iso=(value:number)=>new Date(value).toISOString(),key='alpha.browser.digests.local.v1',state=JSON.parse(localStorage.getItem(key)||'{"sources":[],"loops":[],"receipts":[],"results":[],"cursor":0,"acks":{}}');
+  const row=(runId:string,completed:number,extra:object)=>({cursor:++state.cursor,runId,workflowId:'workflow',workflowVersionId:'version',templateVersion:'hosted-digest-1',scheduledAt:iso(completed),source:{observedAt:iso(completed),expiresAt:iso(Date.now()+3600000)},startedAt:iso(completed),completedAt:iso(completed),error:null,...extra});
+  // Stored newest-first by cursor on purpose: the newest completion wins, not the last row.
+  state.results.push(row('overview-new',at,{status:'finished',output:[{nodeId:'typed-steps',runId:'overview-new',text:'Synthetic retained brief.',steps:[{id:'source',text:'SYNTHETIC_RAW_SOURCE_456'}]}]}),row('overview-old',at-86400000,{status:'finished',output:'Synthetic older brief'}));
+  localStorage.setItem(key,JSON.stringify(state));return iso(at);
+ });
+ expect(await retained()).toBeNull();
+ await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();await page.getByRole('button',{name:'Connect development profile'}).click();
+ await expect.poll(retained,{timeout:20000}).toMatchObject({summary:'Synthetic retained brief.',ranAt:completedAt,status:'finished'});
+ // Only the final summary is retained for Home, never the typed-step source payload.
+ expect(JSON.stringify(await retained())).not.toContain('SYNTHETIC_RAW_SOURCE_456');
+ await page.evaluate(async()=>{await(await import('/src/runtime/connection-ui.tsx')).connectionController.offline();});
+ await expect.poll(retained).toBeNull();
 });
 
 test('workflows card shows when its rows were loaded, and nothing before a list is loaded',async({page},info)=>{

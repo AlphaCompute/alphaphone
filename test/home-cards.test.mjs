@@ -64,6 +64,23 @@ test('calendar: denied, error and retry copy replace neutral copy, and reads nam
   assert.equal(H.presentHomeCalendar({...base, state: 'ready', agenda: {title: 'Pay rent', begin: at(9), allDay: false, video: false, people: [], overdue: true}}).time, 'Overdue');
   assert.equal(H.presentHomeCalendar({...base, state: 'ready', agenda: {title: 'Trip', begin: at(0, 0, 9), allDay: true, video: true, people: []}}).time, 'Fri, Oct 9');
 });
+test('calendar empty title: every state the card can show without an item', () => {
+  const T = H.homeCalendarEmptyTitle;
+  for (const source of [null, undefined, {loading: true, ready: true, status: 'Loading calendars…'}]) assert.equal(T(source), 'Loading events…');
+  assert.equal(T({ready: true, status: 'Device calendar access allowed'}), 'No upcoming events');
+  assert.equal(T({ready: true, truncated: true}), 'Results limited');
+  assert.equal(T({ready: true, truncated: true}, true), 'No visible events', 'a hidden app calendar is not reported as empty');
+  assert.equal(T({error: true, native: true, status: 'Calendar range could not be loaded. Open device calendars to retry.'}), 'Calendar unavailable');
+  assert.equal(T({error: true, status: 'Calendar access denied'}), 'Calendar unavailable', 'a failed read is reported as a failure even after an earlier refusal');
+  // A refusal and a calendar that was never connected are not failures and say what they are.
+  assert.equal(T({native: true, status: 'Calendar access denied'}), 'Calendar access is off');
+  assert.equal(T({native: true, status: 'Connect device calendars'}), 'Connect your calendar');
+  assert.equal(T({native: true, status: 'Not connected'}), 'Connect your calendar');
+  // A browser build without a calendar cannot offer a connection.
+  assert.equal(T({native: false, status: 'Device calendars are available in the Android app.'}), 'Calendar unavailable');
+  assert.equal(T({native: false, status: 'Connect device calendars'}), 'Calendar unavailable');
+  assert.doesNotMatch(readFileSync(new URL('../apps/app/src/prototype/data-adapter.ts', import.meta.url), 'utf8'), /'No upcoming events'|'Calendar access is off'/, 'the Home adapter takes the title from this helper');
+});
 test('attendee initials come only from event names, capped with an overflow count', () => {
   assert.deepEqual(H.attendeeInitials([]), []);
   assert.deepEqual(H.attendeeInitials(['Ada Lovelace', 'grace hopper', 42, '']), ['AL', 'GH']);

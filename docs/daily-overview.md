@@ -14,6 +14,10 @@ device acceptance evidence; those gates stay open in [current status](mvp-curren
 | Inbox (`data-alpha-home-inbox`) | Metadata of the Inbox page the user loaded in Inbox | Account label and `Read <time>`; `From loaded messages` when the page was partial. The time is the completed first-page read; loading more pages or changing read state in Inbox does not move it | Connect email, open to check or load, updating, no unread email, failed with `Open to retry · last read <time>`, reconnect |
 | Latest brief (`data-alpha-home-brief`) | Newest scheduled-digest result retained in this app for the current connection (`latestRetainedDigest`) | Agent name and `Ran <time>`, `Failed <time>`, or `Did not run <time>` for a retained result that records a skipped occurrence (missed time, overlapping run, expired or revoked source) | Absent when no result is retained; a failed run shows its error text. Opens the scheduled digests list |
 
+While the app calendar is hidden in Calendar's display settings (browser only; device calendars
+have no in-app toggle), Home leaves its events out as Calendar does and shows `No visible events`
+when nothing else is due. Reminders are not affected.
+
 Times are when this app read the data on this device. They are not provider sync times.
 A read from an earlier day shows its date.
 
@@ -35,12 +39,20 @@ A read from an earlier day shows its date.
 - `test/home-cards.test.mjs`: presentation of every card state.
 - `scripts/test-inbox-cloud-flow.mjs` (run by `test/adapter-contracts.test.mjs`): the Inbox read
   time across a first page, a later page and a refresh.
-- `test/browser/home-daily-overview.spec.ts` (development lane, synthetic provider data).
+- `test/browser/home-daily-overview.spec.ts` (development lane, synthetic provider data). The
+  brief card is covered in two halves: the card renders a retained result placed directly in the
+  retained-result store, and the digest panel is checked to publish the connected development
+  profile's newest retained result to that store and withdraw it on disconnect. The development
+  profile registers no Home brief source, so no single run goes from an agent result to the card.
 - `test/browser/home-daily-overview.production.spec.ts` (flag-off build, fresh profile).
 
 ## Still open
 
 - Real Gmail, device-calendar and scheduled-digest transitions on an installed build.
-- Calendar access denied and device calendar names are Android-only states with unit coverage
-  but no instrumented or device run.
+- Calendar access denied, not connected and device calendar names are Android-only states. Unit
+  tests cover the status mapping, the card title and the source line for them; the lookup of a
+  device calendar's name by the event's calendar id has no test, and there is no instrumented or
+  device run.
 - TalkBack reading of the card descriptions on a device.
+- A digest result travelling from a real agent through the digest panel to the brief card in one
+  run (see Tests).

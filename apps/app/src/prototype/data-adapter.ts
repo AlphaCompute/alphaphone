@@ -3,7 +3,7 @@ import {mockAttentionRows} from './mock-attention';
 import {HOME_DEFAULTS} from './model.js';
 import {browserStorageUsage} from '../browser/storage-usage';
 import {browserDevProfile} from '../browser/dev-profile';
-import {attendeeInitials, calendarCardState, homeAgendaHeader, overdueDueLabel, presentHomeAttention, presentHomeBrief, presentHomeBriefCard, presentHomeCalendar, presentHomeCalendarSource, type HomeAttentionSummary, type HomeBriefSummary} from './home-cards';
+import {attendeeInitials, homeAgendaHeader, homeCalendarEmptyTitle, overdueDueLabel, presentHomeAttention, presentHomeBrief, presentHomeBriefCard, presentHomeCalendar, presentHomeCalendarSource, type HomeAttentionSummary, type HomeBriefSummary} from './home-cards';
 type Bag = Record<string, any>;
 const installed = new WeakSet<object>();
 
@@ -74,9 +74,12 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     const calendarState = this.vget('calendar');
     const overdueRows: Bag[] = (typeof this.overdueReminders === 'function' ? (() => { try { return this.overdueReminders(); } catch { return []; } })() : [])
       .filter((row: Bag) => row && typeof row.title === 'string' && Number.isFinite(row.at) && Number(row.at) < now);
+    // The app calendar can be hidden in Calendar's display settings; Calendar then leaves its events
+    // out, and so does Home. Device calendars have no in-app toggle. Reminders are not affected.
+    const calendarHidden = !!calendarSource && !calendarSource.native && (calendarSource.sources || []).some((source: Bag) => source.id === 'local' && source.on === false);
     const agenda = (calendarState.events || [])
       .filter((event: Bag) => event.reminderStatus !== 'completed')
-      .filter((event: Bag) => !event.alphaCalendarId || calendarSource?.ready)
+      .filter((event: Bag) => !event.alphaCalendarId || (calendarSource?.ready && !calendarHidden))
       .map((event: Bag) => {
         const instant=(value:number)=>{const date=new Date(value);return event.nativeEvent?.allDay?new Date(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()).getTime():Number(value);};
         return {event,begin:instant(event.nativeEvent?.begin??event.reminderAt),end:instant(event.nativeEvent?.end??event.reminderAt)};
@@ -116,8 +119,6 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     // app read it, or the reminder store for an overdue reminder.
     const calendarName = agenda && !overdue ? (calendarSource?.sources || []).find((source: Bag) => source.id === agenda.event.nativeEvent?.calendarId)?.name : null;
     const provenance = presentHomeCalendarSource({state: cardState === 'error' && !calendarSource?.error ? 'other' : cardState, overdue, reminder: !!agenda?.event.alphaReminderId, reminderReadAt, readAt, now, native: Capacitor.isNativePlatform(), calendar: calendarName, truncated: !!calendarSource?.truncated});
-    // A refused or unconnected calendar says so instead of the generic failure copy.
-    const sourceState = calendarCardState(calendarSource?.status);
     const eventTitle=agenda?String(agenda.event.title||'Untitled event'):'';
     const timeLabel=(instant:number)=>new Date(instant).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
     const endDay=agenda?new Date(agenda.end):null;
@@ -129,7 +130,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       homeCalendarHasEvent:!!agenda,homeCalendarFooter:eventTime,
       homeCalendarLabel: agenda ? overdue ? `Open overdue reminder: ${eventTitle}, ${eventTime}` : `Open calendar event: ${eventTitle}, ${dateLabel}, ${eventTime}` : 'Open your calendar',
       homeCalendarTime: homeAgendaHeader(dateLabel, overdue ? overdueRows.length : 0),
-      homeCalendarTitle: eventTitle || (calendarSource?.loading ? 'Loading events…' : calendarSource?.ready ? calendarSource.truncated ? 'Results limited' : 'No upcoming events' : !calendarSource ? 'Loading events…' : calendarSource.error ? 'Calendar unavailable' : sourceState === 'denied' ? 'Calendar access is off' : sourceState === 'not-connected' && calendarSource.native ? 'Connect your calendar' : 'Calendar unavailable'),
+      homeCalendarTitle: eventTitle || homeCalendarEmptyTitle(calendarSource, calendarHidden),
       // The card's last row holds the event time and, when known, where and when it was read.
       homeCalendarHasMeta: !!(agenda || provenance.read),
       homeCalendarSource: provenance.read, homeCalendarOrigin: provenance.origin, homeCalendarDescription: provenance.description, homeCalendarOverdue: overdue,
