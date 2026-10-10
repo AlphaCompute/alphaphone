@@ -23,6 +23,21 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 .home-calendar-card[data-alpha-home-calendar-event="true"] { grid-template-rows:auto minmax(0,1fr) auto; }
 .home-calendar-card[data-alpha-home-calendar-event="true"] .home-calendar-title { font-size:26px; line-height:1.1; max-height:3.3em; }
 .home-calendar-footer { min-width:0; font-size:14px; font-weight:500; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* Last row of the calendar card: event time, then where and when the item was read. The time keeps
+   its full width; the source line gives way first. */
+.home-calendar-card[data-alpha-home-calendar-meta="true"] { grid-template-rows:auto minmax(0,1fr) auto; }
+.home-calendar-meta { display:flex; align-items:baseline; justify-content:space-between; gap:10px; min-width:0; }
+.home-calendar-meta .home-calendar-footer { flex:0 1 auto; }
+.home-calendar-source { flex:1 1 0; min-width:0; font-size:12px; font-weight:500; line-height:1.25; color:rgba(255,255,255,.85); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; }
+.home-calendar-meta > .home-calendar-source:first-child { text-align:left; }
+/* Which calendar the item came from, beside the date. */
+.home-calendar-origin { flex:1 1 0; min-width:0; margin:0 8px; font-size:12px; font-weight:500; line-height:1.25; color:rgba(255,255,255,.85); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; }
+/* Latest retained brief: present only when a result is retained for this connection. */
+.home-brief-card { flex-shrink:0; scroll-snap-align:start; width:280px; max-width:calc(100% - 48px); height:196px; border-radius:30px; background:var(--s2); padding:22px; box-sizing:border-box; display:grid; grid-template-rows:auto minmax(0,1fr) auto; gap:12px; text-align:left; }
+.home-brief-head { display:flex; justify-content:space-between; align-items:center; min-width:0; font-size:14px; font-weight:600; }
+.home-brief-title { min-width:0; align-self:center; font-size:18px; font-weight:600; line-height:1.25; overflow:hidden; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; }
+.home-brief-status { min-width:0; font-size:12px; line-height:1.4; color:var(--mut); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.home-brief-card[data-alpha-home-brief-failed="true"] .home-brief-status { color:var(--fg,inherit); font-weight:600; }
 
 /* Recipient suggestions and attachments must not push the draft out of reach. */
 .inbox-compose-fields { overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; scroll-padding-block:12px; padding-bottom:64px!important; }
