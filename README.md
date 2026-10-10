@@ -29,7 +29,7 @@ the required evidence rather than treating a successful APK build as acceptance.
 - [Detailed flow PRD](docs/flow-audit-and-prd.md)
 - [Current implementation plan](docs/flow-implementation-plan.md)
 - [current product status](docs/mvp-current-status.md)
-- [Production readiness record, 2026-10-04](docs/production-readiness-2026-10-04.md)
+- [Production readiness record, 2026-10-04](https://github.com/AlphaCompute/alphaphone/blob/51c8157533353a805afd2811f4e3f41b66b7b9fa/docs/production-readiness-2026-10-04.md)
 - [Cloud deployment and authentication findings](docs/cloud-production-validation.md)
 - [Enclave candidate and signing gates](docs/enclave-candidate-validation.md)
 - [Browser autofill and Proton integration](docs/browser-autofill-integration.md)
