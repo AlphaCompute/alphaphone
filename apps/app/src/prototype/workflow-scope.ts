@@ -3,10 +3,14 @@
  * /api/workflow/phone/generate request so requests the typed phone catalog can
  * never satisfy (calls, SMS, payments, Contacts, arbitrary code, email to
  * unnamed recipients) are refused on the phone and never sent to the model.
- * This is a refusal filter only: anything it lets through is still bounded by
- * the agent's typed catalog, compiler validation and separate review/Save/Run.
- * It recognizes phrasings, not intent: wording it does not recognize reaches the
- * generator, which still cannot emit a step outside the typed catalog.
+ * This is a refusal filter only. The typed catalog is the hard bound: anything
+ * the filter lets through is still limited by the agent's typed catalog, compiler
+ * validation and separate review/Save/Run, so a missed phrasing can never add a
+ * capability. It recognizes phrasings, not intent: wording it does not recognize
+ * reaches the generator, which still cannot emit a step outside the typed catalog.
+ * Patterns are therefore kept narrow enough not to refuse supported requests that
+ * merely share a word with an unsupported one ("ring the changes", "call me out",
+ * "whether to book a room", "notes on the website redesign").
  */
 export type WorkflowScopeCategory='calls'|'sms'|'payments'|'contacts'|'code'|'email';
 export type WorkflowScopeResult={refused:false}|{refused:true;categories:WorkflowScopeCategory[];message:string};
@@ -46,7 +50,8 @@ const naming=String.raw`the\s+(?:workflow|note|draft|digest|summary|notification
 const interface_=String.raw`(?:an?|the|my|this|that)\s+(?:\w+\s+)?(?:api|endpoint|webhook|function|script|url|command|program)\b`;
 const imperative=(words:string)=>new RegExp(anyClause+'(?:'+words+')\\s+(?!'+nounTail+')(?!'+interface_+')(?!'+naming+')[\\p{L}\\d+]','iu');
 // A determiner target ("the dentist", "a taxi") for verbs that are too often nouns to match broadly.
-const determined=(words:string)=>new RegExp(anyClause+'(?:'+words+')\\s+(?:the|an?|our|his|her|their|your|every(?:one|body)|some(?:one|body))\\s+\\p{L}','iu');
+// Idioms are not calls ("ring the changes", "that rings a bell").
+const determined=(words:string)=>new RegExp(anyClause+'(?:'+words+')\\s+(?!(?:the|an?)\\s+(?:changes|bell|alarm|doorbell|till|curtain)\\b)(?:the|an?|our|his|her|their|your|every(?:one|body)|some(?:one|body))\\s+\\p{L}','iu');
 const callPatterns=[
  /\b(?:make|place|start|schedule|return)\s+(?:a\s+|the\s+)?(?:phone\s+|voice\s+|video\s+)?calls?\b/i,
  /\b(?:answer|pick\s+up|decline|reject)\s+(?:the\s+|my\s+|incoming\s+)*calls?\b/i,
@@ -75,7 +80,9 @@ const paymentPatterns=[
  /\b(?:with|using)\s+(?:my|our)\s+(?:credit\s+|debit\s+)?card\b/i,
  /\bplace\s+(?:an?|the|my)\s+order\b/i,
  /\bsubscribe\s+to\b/i,
- /\bbook\s+(?:an?|the|my)\s+(?:flight|hotel|table|tickets?|ride|room|car|taxi|cab)\b/i,
+ // A booking stated as an instruction ("book a flight", "a workflow to book a taxi"), never a question
+ // the workflow answers ("tell me if I should book a room", "whether to book a table").
+ new RegExp(String.raw`(?<!\b(?:whether|when|where|how|what|which|who)\s+)`+anyClause+String.raw`book\s+(?:an?|the|my|our)\s+(?:\w+\s+)?(?:flight|hotel|table|tickets?|ride|room|car|taxi|cab)\b`,'i'),
  /\b(?:tip|donate)\b[^.!?\n]{0,30}(?:\$|€|£|\d+\s*(?:dollars|euros|pounds))/i,
  new RegExp(instruction+'tip\\s+(?:the|my|our)\\s+\\p{L}','iu'),
  /\b(?:send|transfer|move|withdraw|deposit|wire)\s+(?:the\s+|some\s+)?(?:money|funds|cash|\$|€|£|\d+\s*(?:dollars|euros|pounds))/i,
@@ -85,14 +92,18 @@ const paymentPatterns=[
 const contactPatterns=[/\bContacts\b/,/\b(?:my|the|all|our|your|phone)\s+contacts\b/i,/\bcontact\s+(?:list|card|details|info(?:rmation)?)\b/i,/\baddress\s*book\b/i,/\bphone\s*book\b/i,
  /\b(?:add|create|save|update|delete|remove|edit|import|export|sync)\s+(?:(?:a|an|the|new|my|these|those)\s+)*contacts?\b(?!\s+lens)/i];
 const codePatterns=[
- /\b(?:run|execute|eval|evaluate|use|write|create|add|call)\s+(?:a\s+|an\s+|this\s+|my\s+|some\s+|the\s+)?(?:custom\s+)?(?:(?:python|javascript|typescript|node|bash|ruby|perl|lua|sql|shell)\s+)?(?:code|script|shell|command|program|python|javascript|js|bash|sql|query|snippet|function)\b/i,
+ /\b(?:run|execute|eval|evaluate|use|write|create|add|call)\s+(?:a\s+|an\s+|this\s+|my\s+|some\s+|the\s+)?(?:custom\s+)?(?:(?:python|javascript|typescript|node|bash|ruby|perl|lua|sql|shell)\s+)?(?:code|script|shell|command|program|python|javascript|js|bash|sql|query|snippet|function)\b(?!\s+(?:summar(?:y|ies)|overview|outline|review|notes?|description|explanation|list|section|title|name|heading|recap|digest|reference|glossary|comment|ideas?)\b)/i,
  /\b(?:run|execute)\s+(?:a\s+|an\s+|this\s+|some\s+|the\s+)?(?:shell|terminal|bash|powershell)\b/i,
  /\b(?:curl|wget|sudo|webhook|http\s+(?:request|call|post|get)|api\s+(?:call|request)|fetch\s+(?:the\s+)?url)\b/i,
  /```|<script\b|\beval\s*\(|\bfunction\s*\(|=>\s*\{/i,
  /\b(?:run|execute|exec)\s+(?:rm|ls|cat|npm|npx|pip|git|python3?|node|sh|bash|zsh|powershell|cmd|chmod|ssh)\b/i,
  /\b(?:open|start|launch|spawn|use)\s+(?:a\s+|the\s+|my\s+)?(?:shell|terminal|command\s+line|console)\b/i,
  /\b(?:call|hit|query|use|invoke|ping)\s+(?:an?\s+|the\s+|my\s+|this\s+|that\s+)?(?:\w+\s+)?(?:api|endpoint|webhook)\b/i,
- /\b(?:fetch|download|scrape|crawl|request|load|visit|open|get|post\s+to)\b[^.!?\n]{0,40}(?:https?:\/\/|\bwww\.|\burl\b|\bwebsite\b|\bweb\s*page\b|\bendpoint\b)/i,
+ // A literal address near a retrieval verb, or the web resource as that verb's own object ("load the
+ // website", "open the company web page"). Not a later mention ("load my notes and summarise the
+ // website redesign section") and not a topic ("open my notes on the website copy").
+ /\b(?:fetch|download|scrape|crawl|request|load|visit|open|get|post\s+to)\b[^.!?\n]{0,40}(?:https?:\/\/|\bwww\.)/i,
+ /\b(?:fetch|download|scrape|crawl|request|load|visit|open|get|post\s+to)\s+(?:(?:from|to|at)\s+)?(?:(?:an?|the|this|that|my|our|its|their)\s+)?(?:(?!(?:and|then|or|on|about|for|of|in|with)\b)[\w-]+\s+){0,2}(?:urls?|websites?|web\s*pages?|web\s*sites?|endpoints?)\b(?!\s+(?:redesign|design|notes?|copy|drafts?|plan|project|section|content|ideas?|launch|feedback|review|brief|update|text|team|migration|shortener|list|summary)\b)/i,
 ];
 const emailSend=[
  /\b(?:send|forward|reply|cc|bcc)\b[^.!?\n]{0,60}\b(?:e-?mails?|mail)\b/i,
@@ -105,13 +116,19 @@ const ownerOnly=/\b(?:to\s+me|to\s+myself|e-?mail\s+me|e-?mail\s+myself|send\s+m
 // Subjects of supported steps ("notes about bill payments", "remind me to call Mom", "a notification
 // saying text Sam") describe what a note, reminder or notification says. They are not actions, so
 // that span is ignored up to the next clause boundary.
-const subject=/\b(?:remind(?:er)?\s+(?:me\s+)?(?:to|about)|(?:a|the)\s+(?:note|notification|reminder)\s+(?:to|about|saying|that\s+says)|notes?\s+(?:about|on|mentioning|containing|that\s+mention)|notify\s+me\s+(?:to|about)|(?:titled|called|named|labell?ed))\s+[^.;:!?\n,]*?(?=[.;:!?\n,]|\s+(?:and\s+)?then\b|$)/gi;
+const subject=/\b(?:remind(?:er)?\s+(?:me\s+)?(?:to|about)|(?:a|the)\s+(?:note|notification|reminder)\s+(?:to|about|saying|that\s+says)|notes?\s+(?:about|on|mentioning|containing|that\s+mention|mentions?)|notify\s+me\s+(?:to|about)|(?:titled|called|named|labell?ed))\s+[^.;:!?\n,]*?(?=[.;:!?\n,]|\s+(?:and\s+)?then\b|$)/gi;
 // Invisible characters that would split a recognized word without changing how the request reads.
 const invisible=/[\u00AD\u200B-\u200D\u2060\uFEFF]/g;
 
+// Phrases that share a verb with a refused action and mean something a workflow can do: a change of
+// wording ("ring the changes"), pointing something out ("call me out on overdue items") and an app
+// notification ("message me a notification"). Only these exact shapes are set aside; "call me",
+// "text me a notification" and "message Sam a notification" are still refused.
+const benign=/\bring\s+the\s+changes\b|\bcall\s+(?:me|him|her|them|us|it)\s+out\b(?!\s+of\b)|\bmessage\s+me\s+(?:with\s+)?(?:an?|the|my)\s+(?:\w+\s+)?notifications?\b/gi;
+
 /** Categories the typed phone catalog cannot satisfy, in a stable order. */
 export function workflowScopeCategories(prompt:string):WorkflowScopeCategory[]{
- const text=prompt.normalize('NFKC').replace(invisible,'').replace(subject,' ');
+ const text=prompt.normalize('NFKC').replace(invisible,'').replace(benign,' note ').replace(subject,' ');
  const found:WorkflowScopeCategory[]=[];
  if(callPatterns.some(p=>p.test(text)))found.push('calls');
  if(smsPatterns.some(p=>p.test(text)))found.push('sms');

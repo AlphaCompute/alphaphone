@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 const S = await import('../apps/app/src/prototype/workflow-scope.ts');
 const operations = ['supplied_text', 'selected_notes', 'calendar_range', 'contains', 'compose_draft', 'model_draft', 'save_note', 'app_notification', 'read_aloud'];
 
-const refused = {
+const baseRefused = {
   calls: ['Call Maya every morning with my agenda', 'call maya every morning', 'CALL MAYA', 'Call the dentist at 9', 'call a taxi when my meeting ends', 'Phone the office and read my agenda', 'Ring the school', 'dial 911', 'FaceTime Maya', 'make a phone call', 'Read my notes, then call Sam', 'When Maya calls, read my agenda', 'ca​ll Maya', 'Ｃall Maya'],
   sms: ['Text Sam my calendar every evening', 'text sam my calendar', 'text the group my agenda', 'Message the team my notes', 'SMS my agenda', 'send a WhatsApp to Sam', 'Send a text', 'Whenever Maya texts, check my calendar'],
   payments: ['Pay my rent on the first of the month', 'pay rent', 'Pay the electricity bill', 'transfer $50 to John', 'Venmo Sam 20 dollars', 'send 20 dollars to Sam', 'wire money to Sam', 'send bitcoin', 'buy 2 shares of ACME', 'Buy milk', 'Read my list, then purchase the tickets', 'purchase the tickets with my card', 'order a pizza and pay with my card', 'donate $5', 'tip the driver', 'place an order', 'subscribe to Netflix', 'book a flight', 'add the amount to my wallet'],
@@ -15,6 +15,22 @@ const refused = {
   code: ['Run this python script every hour', 'Run a script', 'execute rm -rf', 'evaluate this javascript: alert(1)', 'open a shell', 'post to a webhook', 'call an API', 'fetch https://example.com and summarize', 'curl the status page', 'use ```js console.log(1)```'],
   email: ['Email the summary to the team', 'Email my boss the summary', 'Email everyone my notes', 'send the summary by email', 'mail it to the team', 'Forward the notes to the team', 'reply to the email from Sam', 'Email it'],
 };
+const extraRefused = {
+  // Round-3 review: these must stay refused after the patterns were narrowed, including when an
+  // invisible character splits the word.
+  calls: ['call the dentist', 'Call me', 'call me when the note is saved', 'Ring the dentist and ask about a cleaning', 'ring the office when my meeting ends', 'Phone my mum every Sunday',
+    'ring the changes then call the dentist', 'Read my notes and call me out of the meeting', 'call the den\u00ADtist', 'ca\u200Bll the dentist', 'ri\u2060ng the school'],
+  sms: ['text sam', 'text me my agenda at 8', 'text me a notification', 'Message Sam a notification', 'message me on WhatsApp', 'reply to Sam with my agenda',
+    'message me a notification and text sam', 'te\u200Bxt sam', 'mes\uFEFFsage the team my notes'],
+  payments: ['buy milk', 'Book a room at the Hilton for Friday', 'Read my calendar, then book a table for two', 'I want a workflow to book a taxi home', 'book a hotel room near the venue',
+    'Buy the tickets if my calendar is free', 'pay the dentist', 'refund Sam', 'bu\u200By milk', 'bo\u200Cok a flight'],
+  contacts: ['add a contact', 'Add Sam to my contacts', 'update the contact for Maya', 'add a con\u200Dtact'],
+  code: ['open a shell', 'fetch https://example.com/feed', 'Load the website and summarise it', 'Load my selected notes and summarise https://example.com/redesign', 'visit www.example.com and read it aloud',
+    'Open the company web page and draft a summary', 'download the page at https://example.com/report', 'get the url and read it aloud', 'Add a function that fetches my bank balance', 'Add a function',
+    'write a python script to sort my notes', 'Run a SQL query against my notes', 'open the terminal and list files', 'open a sh\u2060ell', 'fe\uFEFFtch https://example.com', 'lo\u200Bad the website'],
+  email: ['mail it to the team', 'forward it to the team', 'mail the summary to everyone', 'ma\u200Cil it to the team'],
+};
+const refused = Object.fromEntries(Object.entries(baseRefused).map(([category, prompts]) => [category, [...prompts, ...extraRefused[category]]]));
 const supported = [
   'Read my calendar for today and draft an agenda note',
   'Read my calendar for today, then draft an agenda and save a note',
@@ -56,6 +72,37 @@ const supported = [
   'Read the calendar range and dial down the detail in the summary',
   'Call the workflow Morning brief and read my calendar',
   'Summarize the context of my selected notes and recall the dentist appointment from my calendar',
+  // Round-3 review: wording that shares a word with a refused action but asks for a supported step.
+  'ring the changes',
+  'Ring the changes on the wording of my morning summary',
+  'tell me if I should book a room',
+  'Tell me if I should book a room for the offsite',
+  'Read my notes and tell me whether to book a table for Friday',
+  'Check my calendar for today and tell me when to book a car',
+  'Load my selected notes and summarise the website redesign section',
+  'Open my selected notes on the website copy and draft a summary',
+  'Summarise my notes on the website launch plan',
+  'Read the supplied text and get the key points about the endpoint migration',
+  'Load my notes on the URL shortener project and draft a summary',
+  'message me a notification',
+  'Message me a notification when the draft is ready',
+  'Read supplied text and message me with a short notification of the gist',
+  'call me out',
+  'Read my notes and call me out on anything overdue',
+  'Read my calendar and call them out if two meetings overlap',
+  'Add a function summary',
+  'Add a function summary to the note',
+  'Read my notes and write a script outline for the podcast',
+  'Save a note with a command reference from the supplied text',
+  'Compose a draft that calls out the top three risks from my notes',
+  'Draft a text summary of my selected notes',
+  'If the supplied text contains refund then post a notification',
+  'Post a notification if my notes mention a wire transfer',
+  'Summarise my selected notes and order the points by priority',
+  'Read my notes and draft a reply I can paste later',
+  'Read my calendar and tell me when to call it a day',
+  'Draft a note on what to buy and then read it aloud',
+  'Read my notes and tip me off about anything urgent',
 ];
 
 for (const [category, prompts] of Object.entries(refused)) {
