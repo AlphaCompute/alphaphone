@@ -237,14 +237,15 @@ Results are standalone / launcher. "skipped" names the gate.
 | NotesTrashBackstop, ClockHandoff, ClockRepeatDays, InboxOperationJournal, MailAttachment | passed / passed (A) | |
 | HostedResultNotice | builders passed; posted and denied notices skipped (permission runner) (A) | |
 | NotesSecureStorage | passed 1 of 2 / same; legacy migration skipped (gate) (A) | |
-| LauncherHome | not applicable / passed 4 of 4 with `--home-role` (A) | HOME selected, cold HOME resumed, original holder `com.android.launcher3` restored and read back. |
-| SettingsRoles | not applicable / failed 1 of 2 (A) | `homeRequestDeclineAndAcceptMatchRoleHolders`: "Home app not changed" never appears after declining Android's role dialog. Unresolved (three runs). |
-| LocalAgentOfflineApps, NotesStorageDurability, ReminderLifecycle, Notifications, FilesTree, PasswordBrowserFill | one flavor passed, the other failed once (A) | Rerun pending; see the report for this run. |
-| DailyApps | failed 1 of 6 / same (A) | `localReminderPostsRealNotificationAndTapOpensItsContext`: the notification tap does not open the reminder's Calendar detail. Unresolved. |
-| WorkflowApprovalNotice | failed 1 of 2 / same (A) | With the notification permission granted it posts, then fails later (`unknown` status, or the route not released). Unresolved. |
+| LauncherHome | not applicable / passed 4 of 4 with `--home-role` (A, B) | HOME selected, cold HOME resumed, original holder `com.android.launcher3` restored and read back. |
+| SettingsRoles | not applicable / failed 1 of 2 (A, B) | `homeRequestDeclineAndAcceptMatchRoleHolders`: "Home app not changed" never appears after declining Android's role dialog. Unresolved (three runs). |
+| LocalAgentOfflineApps, NotesStorageDurability, ReminderLifecycle, Notifications, PasswordBrowserFill | passed / passed on rerun (B) | Each failed once on one flavor in the first run (A) under load; not reproduced. |
+| FilesTree | failed twice / passed twice (A, B) | Standalone only: `Open Renamed destination` never appears and the Files view is empty. Unresolved. |
+| DailyApps | failed 1 of 6 / same (A, B: three runs) | `localReminderPostsRealNotificationAndTapOpensItsContext`: the notification tap does not open the reminder's Calendar detail. Unresolved. |
+| WorkflowApprovalNotice | failed 1 of 2 / same (A, B) | With the notification permission granted it posts, then fails later (`unknown` status, or the route not released). Unresolved. |
 | BrowserReading, BrowserSensitiveReading | failed / failed (A) | Test precondition: without a speech route the product answers "Select an available speech route before reading" before the sensitivity check the tests expect. |
 | BrowserIsolatedReading, BrowserReadingNavigation, BrowserPageQuestion (3 of 4) | failed / failed (A) | Environment: this WebView reports `JS_INJECTION_IN_FRAME_AND_WORLD=false`; the classes need isolated-world injection. |
-| CameraScan | failed 2 of 2 / same (A) | Open: the review dialog reports "The image could not be read by the local scan engine" for the fixture pages; a picked image also left a second Photos row. Not triaged to a cause. |
+| CameraScan | failed 2 of 2 / same (A, B) | Open: the review dialog reports "The image could not be read by the local scan engine" for the fixture pages; a picked image also left a second Photos row. Not triaged to a cause. |
 | RealClock (`--clock-exclusive`) | failed / failed (A) | Environment: the fixture asserts API 35; this image is API 36. |
 | HostedProcessRestart, HostedBackgroundWorker | refused by the runner | They assert a disposable secondary user no runner creates. |
 | Test-mocks: BrowserDownload, ConnectionChooser | passed / passed | |
@@ -256,15 +257,15 @@ Results are standalone / launcher. "skipped" names the gate.
 | Campaign | Result (standalone / launcher) | Classification |
 | --- | --- | --- |
 | `test-native-restart.mjs signin`, `notes`, `document` | passed / passed (A) | |
-| `test-native-restart.mjs inbox` | failed / failed (A) | Test waited for the "Cloud services connected" heading removed in `9aa75ce1`; fixed, rerun pending. |
+| `test-native-restart.mjs inbox` | failed / failed (A, B) | The test waited for the "Cloud services connected" heading removed in `9aa75ce1`. With the wait changed to the signed-in account summary it still times out: the synthetic sign-in never shows a signed-in account. Unresolved. |
 | `test-native-permissions.mjs channels`, `settings`, `voice-limit` | passed / passed (A) | |
-| `test-native-permissions.mjs voice-revoke` | runner error / passed (A) | Runner parsed `cat`'s "No such file" text as the marker; fixed between the two runs. |
+| `test-native-permissions.mjs voice-revoke` | passed (B) / passed (A) | The first standalone run stopped in the runner, which parsed `cat`'s "No such file" text as the marker; fixed. |
 | `test-native-permissions.mjs camera` | failed / failed (A) | Test expects "Tap the shutter to retry"; the product shows "Camera access is off" with Open Android settings and Try again. Stale expectation or changed denial path; unresolved. |
 | `test-native-permissions.mjs voice` | failed / failed (A) | "Record without transcription" never offered. Unresolved. |
-| `test-native-permissions.mjs notice`, `notice-denied` | failed / failed (A) | Test reflected a plugin field that no longer exists; fixed, rerun pending. |
+| `test-native-permissions.mjs notice`, `notice-denied` | failed / failed (A, B) | The test reflected a plugin field that no longer exists (fixed); it now fails on a later bare assertion. Unresolved. |
 | `test-reminder-one-off.mjs` | passed / passed (A) | |
 | `test-calendar-regression.mjs --case=CalendarAgentCrudInstrumentedTest` | passed / passed (A) | |
-| `test-calendar-regression.mjs --case=CalendarCrudInstrumentedTest` | failed / not run (A) | An event row was never hit-testable. Unresolved; rerun pending. |
+| `test-calendar-regression.mjs --case=CalendarCrudInstrumentedTest` | failed twice / not run (A, B) | An event row never satisfies the visible-and-hit-testable condition. Unresolved; the runner stops before the launcher variant. |
 | `test-reminder-recovery.mjs`, resident campaign (`ResidentEgressRedaction`, `ResidentService`) | not run | Recovery reboots the emulator (left for last); the resident campaign needs the packaged runtime and reads an owner-held provider key. |
 
 ### Confirmed on this image
@@ -276,7 +277,8 @@ Results are standalone / launcher. "skipped" names the gate.
 - Closing Android's own shade did **not** refresh an open Alpha shade: while `NotificationShade`
   held window focus and after it closed, the page received no `focus`, `blur`, `visibilitychange`
   or `appResumed`, and made no new snapshot call. `MainActivity.onWindowFocusChanged` now tells the
-  page; that fix is built into these APKs but its effect was not re-measured.
+  page. Re-measured with the fix: one `focus` event and one new snapshot call after the system shade
+  closed over an open Alpha shade.
 - `LocalSpeechInstrumentedTest` passed 2 of 2 on this emulator with networking off against the
   speech candidate rebuilt at this pin (recorded through `requalify-runtime.py run`; not admitted,
   x86_64 not executed).
