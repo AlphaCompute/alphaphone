@@ -1,0 +1,4 @@
+{
+  "description": "Recorded embedding licences for bundled fonts whose own metadata names no licence. An entry is evidence that the owner obtained the licence (docs/decisions.md A-21); it is read by scripts/generate-licenses.mjs and covers only the listed file hashes. Entry shape: {name, sha256: [..], license: \"LicenseRef-Commercial-Font\", licensor, licensee, scope (must name app and web embedding), evidence (where the signed licence is held), recordedOn}. Empty until a licence exists.",
+  "entries": []
+}

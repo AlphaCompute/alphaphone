@@ -6,15 +6,32 @@ import {assertDevelopmentIdentity,verifyDevelopmentIdentity,developmentIdentity,
 import {revision} from './revision';
 import {devSurfacesEnabled} from '../build-flags';
 const id=(v:unknown):string=>{if(typeof v!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(v))throw Error('Invalid digest identity.');return v;};
-function wall(at:number,zone:string){const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(at).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
-function scheduledOccurrence(loop:Loop,minute:number):string|null{
- if(!loop.active||loop.removed||loop.createdAt>minute)return null;
- const local=wall(minute,loop.spec.timeZone);if(local.slice(11)!==loop.spec.localTime||loop.lastOccurrence===local)return null;
- // Repeated civil times execute at their earlier instant. Gaps never match.
- for(let delta=60000;delta<=3*3600000;delta+=60000)if(wall(minute-delta,loop.spec.timeZone)===local)return null;
- return local;
+const formats=new Map<string,Intl.DateTimeFormat>();
+function wall(at:number,zone:string){let format=formats.get(zone);if(!format){format=new Intl.DateTimeFormat('en-GB',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});formats.set(zone,format);}const p=Object.fromEntries(format.formatToParts(at).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
+type Occurrence={at:number;local:string;missed:boolean};
+const latest=new Map<string,{at:number;local:string}|null>();
+/** The most recent instant at or before this minute whose civil time is the reviewed local time.
+ * Repeated civil times resolve to their earlier instant. Skipped civil times never match. */
+function latestOccurrence(zone:string,localTime:string,minute:number){
+ const key=zone+'|'+localTime+'|'+minute;if(latest.has(key))return latest.get(key)!;
+ let found:{at:number;local:string}|null=null;
+ for(let at=minute;at>minute-26*3600000;at-=60000){const local=wall(at,zone);if(local.slice(11)!==localTime)continue;
+  let first=at;for(let delta=60000;delta<=3*3600000;delta+=60000)if(wall(at-delta,zone)===local)first=at-delta;
+  found={at:first,local};break;}
+ if(latest.size>200)latest.clear();latest.set(key,found);return found;
 }
-/** Requests and periodic inbox checks advance only the current minute, never a backlog. */
+/** One occurrence to settle now, or null. The exact minute runs. A later minute means the scheduled
+ * time passed while nothing was ticking (closed app, sleeping tab, changed clock): that occurrence is
+ * recorded once as missed and is never run late. Only the most recent occurrence is considered, so a
+ * long absence yields one record and no backlog. Local times only move forward, so a clock set back
+ * cannot settle an occurrence twice. */
+function scheduledOccurrence(loop:Loop,minute:number):Occurrence|null{
+ if(!loop.active||loop.removed)return null;
+ const found=latestOccurrence(loop.spec.timeZone,loop.spec.localTime,minute);
+ if(!found||loop.createdAt>found.at||(loop.lastOccurrence!==undefined&&found.local<=loop.lastOccurrence))return null;
+ return {...found,missed:found.at!==minute};
+}
+/** Requests and periodic inbox checks settle only the latest occurrence, never a backlog. */
 export async function developmentDigestRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){
  if(!devSurfacesEnabled)throw Error('Development profiles are unavailable in this build.');
  const check=async()=>{signal?.throwIfAborted();await verifyDevelopmentIdentity(identity,signal);assertDevelopmentIdentity(identity);const selected=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');if(selected?.kind!=='development'||selected.profile!==identity.profile)throw Error('Digest connection changed.');};await check();
@@ -37,8 +54,10 @@ export async function developmentDigestRequest(identity:DevelopmentIdentity,path
   const liveAccount=(accountId:string)=>{if(accountId==='browser:'+identity.namespace)return browserDigestAccount(identity,state.liveRevision||'');const grant=delegation.grants.find(g=>'cloud:'+g.id===accountId&&!g.revoked&&Date.parse(g.expiresAt)>now);if(!grant)throw Error('Source access changed.');return grantAccount(grant);};
   const validateLive=(value:any)=>{const account=liveAccount(value?.accountId);return validateBrowserDigestSelection(value,identity,account.accountRevision,account);};
   if(path.startsWith('/api/workflow/hosted/cloud-delegation/')){const operation=path.slice('/api/workflow/hosted/cloud-delegation/'.length),result=developmentDelegationRequest(delegation,operation,body,now);if(operation==='revoke')for(const source of state.sources)if(source.live?.provider==='google'&&source.live.accountId==='cloud:'+body.grantId)source.revoked=true;return result;}
-  const tick=async()=>{for(const loop of state.loops){const local=scheduledOccurrence(loop,minute);if(local===null)continue;
-   loop.lastOccurrence=local;const source=state.sources.find(s=>s.id===loop.spec.sourceId&&s.revision===loop.spec.sourceRevision);if(!source||source.revoked||Date.parse(source.expiresAt)<=now)continue;
+  const tick=async()=>{for(const loop of state.loops){const occurrence=scheduledOccurrence(loop,minute);if(occurrence===null)continue;
+   loop.lastOccurrence=occurrence.local;const source=state.sources.find(s=>s.id===loop.spec.sourceId&&s.revision===loop.spec.sourceRevision);if(!source||source.revoked||Date.parse(source.expiresAt)<=now)continue;
+   // Same record the resident agent writes for an overdue occurrence: no source read, no model request.
+   if(occurrence.missed){const at=new Date(now).toISOString();state.results.push({cursor:++state.cursor,runId:crypto.randomUUID(),workflowId:loop.id,workflowVersionId:loop.versionId,templateVersion:'development-v1',scheduledAt:new Date(occurrence.at).toISOString(),source:{id:source.id,revision:source.revision,observedAt:source.observedAt,expiresAt:source.expiresAt,...(source.live?{live:source.live}:{})},status:'missed',startedAt:at,completedAt:at,output:{status:'missed',text:'The scheduled time was missed. No backlog was executed.'},error:null});if(state.results.length>100)state.results.shift();continue;}
    let readError:string|null=null,liveInput:Awaited<ReturnType<typeof readBrowserDigestSource>>|undefined;if(source.live){try{if(source.live.provider!=='google')throw Error('Native phone sources are unavailable in development browser workflows.');validateLive(source.live);liveInput=await readBrowserDigestSource(source.live,now);}catch(error){readError=(error as Error).message;}await check();}
    const output=(await readDevelopmentAgent(identity,signal)).reply;await check();if(typeof output!=='string'||output.length>16000)throw Error('Digest output exceeds the development limit.');
    const time=new Date(now).toISOString();state.results.push({cursor:++state.cursor,runId:crypto.randomUUID(),workflowId:loop.id,workflowVersionId:loop.versionId,templateVersion:'development-v1',scheduledAt:new Date(minute).toISOString(),source:{id:source.id,revision:source.revision,observedAt:source.live?time:source.observedAt,expiresAt:source.expiresAt,...(source.live?{live:source.live}:{})},status:readError?'failed':'completed',startedAt:time,completedAt:time,output:readError?null:liveInput?{summary:output,...liveInput}:output,error:readError});if(state.results.length>100)state.results.shift();

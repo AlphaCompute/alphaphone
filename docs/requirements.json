@@ -48,7 +48,7 @@
         "android/app/build.gradle",
         "apps/app/src/runtime/connection-ui.tsx"
       ],
-      "remaining": "The Android build fails at the pinned calendar plugin, and the Android Welcome dialog has no offline choice."
+      "remaining": "The Android build fails at the pinned calendar plugin. The Welcome dialog's local-apps entry is covered only by a stubbed-bridge browser test, not on a device."
     },
     {
       "id": "AP-03",
@@ -67,7 +67,7 @@
         "apps/app/src/runtime/native-connection.ts",
         "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java"
       ],
-      "remaining": "No remote pairing on production Android, no web AlphaConnection bridge, and Disconnect does not revoke the server credential."
+      "remaining": "Production Android pairing is retired by design. Cloud self-revocation on sign-out and the native pairing-route guard have synthetic and JVM coverage only: no live Eliza Cloud revocation, APK or device run. The web build cannot sign in to or revoke Eliza Cloud."
     },
     {
       "id": "AP-04",
@@ -87,7 +87,7 @@
         "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java",
         "docs/on-device-agent-plan.md"
       ],
-      "remaining": "Cancellation is transport-only, and remote and Cloud history is not restored on connect."
+      "remaining": "Emulator and device acceptance of restart, reconnect, Stop and history restoration. Cloud agents have no cancel route or older-page history cursor, and the read after Stop matches by text and time because upstream history rows do not expose the client message ID."
     },
     {
       "id": "AP-05",
@@ -103,9 +103,11 @@
         "apps/app/src/prototype/agent-adapter.ts",
         "apps/app/src/prototype/assistant-draft-controller.ts",
         "test/browser/assistant-draft-recovery.spec.ts",
+        "test/browser/assistant-draft-dispatch.spec.ts",
+        "test/browser/chat-continuity.spec.ts",
         "test/browser/compact-viewport.spec.ts"
       ],
-      "remaining": "The composer consumes the draft before dispatch, so a pre-dispatch failure loses the text from the composer."
+      "remaining": "Emulator and device acceptance of resize, Back and HOME without keyboard obstruction; draft retention through pre-dispatch failures has browser source evidence only."
     },
     {
       "id": "AP-06",

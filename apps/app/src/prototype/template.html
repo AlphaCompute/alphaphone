@@ -2295,6 +2295,8 @@
       <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to notes" onClick="{{notes.vo.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
+        <sc-if value="{{notes.vo.readAloud}}"><button class="ib" aria-label="Read aloud" onClick="{{notes.vo.readAloud}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.wave}}"></path></svg></button></sc-if>
+        <sc-if value="{{notes.vo.stopReading}}"><button class="ib" aria-label="Stop reading" onClick="{{notes.vo.stopReading}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.stop}}"></path></svg></button></sc-if>
         <button class="ib" aria-label="{{notes.vo.pinLabel}}" onClick="{{notes.vo.pin}}" style="{{notes.vo.pinCss}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.notesPin}}"></path></svg></button>
         <button class="ib" aria-label="Share note" onClick="{{notes.vo.share}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button>
         <button class="ib" aria-label="Delete note" onClick="{{notes.vo.del}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
@@ -3487,6 +3489,7 @@
           </sc-if>
           <sc-if value="{{workflows.b.hasTypedReview}}"><pre aria-label="Workflow save review" style="white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;border-radius:18px;background:var(--s2);font-size:12px">{{workflows.b.typedReview}}</pre></sc-if>
           <sc-if value="{{workflows.b.unknown}}"><button onClick="{{workflows.b.refresh}}" style="min-height:44px;padding:12px;border-radius:22px;background:var(--s2)">Refresh save receipt</button></sc-if>
+          <sc-if value="{{workflows.b.canResend}}"><button onClick="{{workflows.b.resend}}" style="min-height:44px;padding:12px;border-radius:22px;background:var(--s2)">{{workflows.b.resendLabel}}</button></sc-if>
           <sc-if value="{{workflows.b.canDiscard}}"><button onClick="{{workflows.b.discard}}" style="min-height:44px;padding:12px;border-radius:22px;background:var(--s2)">Discard local draft</button></sc-if>
         </sc-if>
         <sc-if value="{{workflows.b.fullEditor}}">
@@ -4094,7 +4097,7 @@
   <sc-if value="{{systemShell}}">
   <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
     <sc-for list="{{tiles}}" as="t">
-      <button aria-label="{{t.label}}" aria-pressed="{{t.on}}" disabled="{{t.disabled}}" onClick="{{t.toggle}}" style="height: 62px; border-radius: 22px; display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24"><path d="{{t.d}}"></path></svg></button>
+      <button aria-label="{{t.label}}" aria-pressed="{{t.on}}" disabled="{{t.disabled}}" onClick="{{t.toggle}}" style="height: 62px; border-radius: 22px; display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24"><path d="{{t.d}}"></path></svg><sc-if value="{{t.stateText}}"><span data-tile-state style="font-size: 11px; line-height: 1; white-space: nowrap">{{t.stateText}}</span></sc-if></button>
     </sc-for>
   </div>
   <div style="display: flex; align-items: center; gap: 12px; padding: 14px 10px 6px; color: var(--mut)">

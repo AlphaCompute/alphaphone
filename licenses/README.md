@@ -46,5 +46,10 @@ metadata. An entry only lets generation proceed and must give a reason; the item
 `license unverified` in the shipped notices. It is not legal sign-off. Fonts are allowlisted by
 exact file hash.
 
+`font-licenses.json` records an obtained embedding licence for a font whose own metadata names
+none (licensor, licensee, scope, evidence, exact file hashes). It is empty until the owner
+obtains one; see `docs/dependency-audit.md` for the Denton typeface (decision A-21) and the
+release blocker reported while it is unresolved.
+
 Prototype design images are not part of production builds; their licensing is recorded in
 `apps/app/src/prototype/README.md`.
