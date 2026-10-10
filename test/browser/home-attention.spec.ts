@@ -3,10 +3,10 @@ import { test, expect } from '@playwright/test';
 // mail provider adapter uses, which exercises the connected Home state; the calendar failure is a
 // real browser-calendar read failure. home-attention.production.spec.ts covers the flag-off build.
 
-test('Home does not infer unread counts from a development summary before Inbox is loaded', async ({ page }) => {
+test('the explicit development fixture reports unread email and opens Inbox', async ({ page }) => {
   await page.goto('/?mode=dev');
   const home=page.getByRole('region',{name:'Home',exact:true});
-  await expect(home.getByRole('button',{name:/^Open Inbox: \d+ unread emails?$/})).toHaveCount(0);
+  await expect(home.getByRole('button',{name:/^Open Inbox: \d+ unread emails?$/})).toHaveCount(1);
   await home.getByRole('button',{name:'Inbox',exact:true}).click();
   await expect(page.locator('html')).toHaveAttribute('data-active-view','inbox');
 });

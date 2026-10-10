@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "sourceDigest": "0b0b62c1883694172143e3d2d4825d1195102fb9b4aa0ca2faa160ddc1a43b8b",
+  "sourceDigest": "d29211ef6c5173126e5eba7e7553d667d59d4fb1bc5c77bb8869056fdb07d260",
   "scope": "apps/app",
   "note": "Static ownership inventory. Seams are inspection pointers, not evidence of completed semantic review or migration. Legacy Alpha-prefixed storage/bridge/event names may be compatibility contracts.",
   "files": [
@@ -14052,8 +14052,8 @@
     {
       "file": "src/prototype/phone.css",
       "upstreamCandidate": [],
-      "bytes": 18180,
-      "sha256": "ea49310c87bb43806809403036132e5febcadf086cff406d183426f021408630",
+      "bytes": 18265,
+      "sha256": "67e5fcfdd4eda7fab6cfb775ec730ecad265f6de8fc3f43458484df485ae64ec",
       "lines": 203,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
@@ -14596,6 +14596,12 @@
         },
         {
           "line": 201,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 202,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -15915,8 +15921,8 @@
     {
       "file": "src/prototype/template.html",
       "upstreamCandidate": [],
-      "bytes": 481734,
-      "sha256": "9cc02596de5353479c2eef218f648edc1975976afe8f44b1b731c46bde409010",
+      "bytes": 481814,
+      "sha256": "72d0fa30b68266110d2f721a0fb2a5a04d91ddd0e0baccf946a2e5425fdbc37d",
       "lines": 4243,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
