@@ -46,8 +46,8 @@ control still exists. Their scrim stays exposed as a named close control for tou
 Toasts ("Saved", refusals, "Deleted … Undo") are written into a polite live region that
 is always present, and an open menu or inline dialog does not take that region out of
 the accessibility tree. Whether TalkBack speaks them is a device check. A top-layer
-`<dialog>` still makes the region inert while it is open; those dialogs show their own
-status text.
+`<dialog>` still makes the region inert while it is open, so a toast raised under one
+is not announced; that case is open.
 
 The recovery screen dismisses any open modal dialog when it appears. A modal dialog is
 drawn above everything else and would otherwise leave Reload covered and unfocusable.
