@@ -109,6 +109,9 @@ if (!fixture) {
     });
   }
   if(!browserDevProfile) {installWorkflowAdapter(Component, VIEWS);installAutomationsAdapter(Component,VIEWS);}
+  // The development profile has no provider mail summary, but its scheduled digests retain results
+  // the same way, so its Home reads the latest retained brief from the same source.
+  if(browserDevProfile){subscribeRetainedDigest(()=>window.dispatchEvent(new Event(HOME_SOURCES_CHANGED)));setHomeSources({brief:latestRetainedDigest});}
 }
 if(devSurfacesEnabled&&simulatedApps)installSimulatedApps(Component,VIEWS,simulatedApps);
 if(developmentAgentWorkflows){installWorkflowAdapter(Component,VIEWS);installAutomationsAdapter(Component,VIEWS);}
