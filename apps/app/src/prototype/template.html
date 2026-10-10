@@ -4097,6 +4097,7 @@
           <div style="font-size: 13.5px; color: var(--mut); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.text}}</div>
         </div>
         </button>
+        <sc-if value="{{n.canAsk}}"><button class="ib" aria-label="{{n.askLabel}}" onClick="{{n.ask}}" style="flex-shrink: 0; align-self: center"><span style="width: 30px; height: 30px; border-radius: 15px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 18px; color: var(--acct)"><span class="alpha-compute-mark" aria-hidden="true"></span></span></button></sc-if>
       </div>
     </sc-for>
     <!-- Shown only while the list above renders no notification before it. -->

@@ -23,6 +23,7 @@ import {installNoteSourceAdapter} from './prototype/note-source-adapter';
 import { installNotesDocumentAdapter } from './prototype/notes-document-adapter';
 import { installPrototypeMapsAdapter } from './prototype/maps-adapter';
 import { installNotificationsAdapter } from './prototype/notifications-adapter';
+import { installContextSelection } from './prototype/context-selection';
 import { installWorkflowAdapter } from './prototype/workflow-adapter';
 import { installAutomationsAdapter } from './prototype/automations-adapter';
 import { useEffect, useState, useSyncExternalStore } from 'react';
@@ -89,6 +90,7 @@ if (!fixture) {
   installCalendarEditDraftAdapter(Component, VIEWS);
   installPrototypeDataAdapter(Component, VIEWS);
   installNotificationsAdapter(Component);
+  installContextSelection(Component);
   installPrototypeVoiceAdapter(Component, VIEWS);
   installNotesDocumentAdapter(Component, VIEWS);
   installNotesTrashAdapter(Component, VIEWS);

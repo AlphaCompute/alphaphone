@@ -3,7 +3,8 @@ import { Capacitor } from '@capacitor/core';
 import { DailyApps, type Action, type NativeResult } from '../daily';
 import { registerPlugin } from '../platform-plugins';
 import { connectionController, type ConnectionSnapshot } from '../runtime/connection-ui';
-import * as cameraAdapter from './camera-adapter';
+import { askAboutCapture } from './camera-adapter';
+import { captureQuestion, locationMimeTypes } from './context-selection';
 
 type Bag = Record<string, any>;
 type Callback = (...args: any[]) => any;
@@ -118,16 +119,6 @@ export function watchReturnToApp(run: () => void): () => void {
   const handle = DailyApps.addListener('appResumed', check).catch(() => null);
   return () => { document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check); void handle.then(listener => listener?.remove()); };
 }
-/** MIME filter for a Files location tile. Unknown locations accept any document. */
-function locationMime(name: string): string {
-  const key = name.toLowerCase();
-  if (/(picture|image|photo)/.test(key)) return 'image/*';
-  if (/(music|audio|recording)/.test(key)) return 'audio/*';
-  if (/video|movie/.test(key)) return 'video/*';
-  if (/doc|pdf/.test(key)) return 'application/pdf,text/*,application/*';
-  return '*/*';
-}
-
 /** Keep the prototype's render tree and local navigation; replace simulated effects.
  * Install once before mounting. Component is accepted for the extraction seam but
  * no component internals are patched. Agent/voice/notes persistence are separate.
@@ -199,10 +190,16 @@ export function installPrototypeNativeAdapters(
     if(browserDevProfile&&['photos','files'].includes(module)&&['askQ','askSearch'].includes(key))return ()=>{
       const query=text(api.get(module).q).trim();if(query)api.composeContentQuestion(module==='files'?'Find the file '+query:query);
     };
-    // The reviewed local-OCR question flow, when installed, asks about the open capture.
-    const askAboutCapture = (cameraAdapter as unknown as Record<string, unknown>).askAboutCapture;
-    if (['camera', 'photos'].includes(module) && ['ask', 'askQ', 'askSearch'].includes(key) && typeof askAboutCapture === 'function')
-      return () => (askAboutCapture as (input: Bag) => unknown)({ module, key, row, state: api.get(module), api });
+    // Camera and Photos questions go to the reviewed local flow with the exact subject: the
+    // live frame, or the one saved item that is open. A typed library search names no
+    // capture, so it stays visibly unavailable below instead of reaching a capture review.
+    const capture = captureQuestion(module, key, path, st);
+    if (capture?.kind === 'frame') return () => { if (!askAboutCapture()) notify(api, 'Start the camera, or finish the current capture, then ask again. Nothing has been sent.'); };
+    if (capture?.kind === 'item') return () => {
+      // Read the open item when pressed: the render that built this control may be stale.
+      const open = api.get(module).open;
+      if (open !== capture.id || !askAboutCapture({ id: capture.id })) notify(api, 'Open a saved photo or video, then ask again. Nothing has been sent.');
+    };
     if (['camera', 'photos', 'files'].includes(module) && ['ask', 'askQ', 'askSearch', 'saveSum'].includes(key)) return unavailable(api, 'Content analysis is not connected. No photo or document content has been sent.');
     if (module === 'workflows' && ['run', 'again', 'toggle', 'save'].includes(key)) return unavailable(api, 'Workflow execution is not connected. No automation has been activated or run.');
     const native = (action: Action, payload: Bag = {}) => () => perform(module, api, action, payload);
@@ -269,7 +266,7 @@ export function installPrototypeNativeAdapters(
     }
     if (module === 'files') {
       // Photos opens Alpha Photos; each location opens a picker filtered to its kind of file.
-      if (key === 'go' && path.startsWith('locs.')) return row.name === 'Photos' ? () => api.open('photos') : native('files', { mime: locationMime(text(row.name)) });
+      if (key === 'go' && path.startsWith('locs.')) return row.name === 'Photos' ? () => api.open('photos') : native('files', (types => types ? { mime: types } : {})(locationMimeTypes(text(row.name))));
       if (key === 'tap' && row.isFile) return native('files');
       if (key === 'rnKey') return (e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); void perform(module, api, 'files'); } };
       if (key === 'go' && path.startsWith('moveTo.')) return native('files');
