@@ -39,3 +39,49 @@ test('a brightness change triggers at most one settings handoff',()=>{
  assert.equal(handoffs,1);
  now+=5000;assert.equal(gate.begin(),true,'a later, separate gesture may hand off again');
 });
+
+test('system switches reported by Android become tile state; anything else stays unknown',()=>{
+ const snapshot={wifiEnabled:false,wifiActive:false,bluetoothEnabled:true,airplaneMode:false,locationEnabled:true,interruptionFilter:'priority',permissions:{Microphone:true}};
+ assert.deepEqual(m.tileFactsFromSnapshot(snapshot),{wifi:false,bt:true,plane:false,loc:true,dnd:true});
+ assert.deepEqual(m.tileFactsFromSnapshot({interruptionFilter:'all'}),{dnd:false});
+ // Wrong types, unknown filters and permission grants are never a switch state.
+ assert.deepEqual(m.tileFactsFromSnapshot({wifiEnabled:1,bluetoothEnabled:'true',airplaneMode:null,locationEnabled:'on',interruptionFilter:'unknown',permissions:{Microphone:true,Location:true},locationAccess:'precise'}),{});
+ // The Wi-Fi switch wins over the transport: on and disconnected is on, and off is off.
+ assert.deepEqual(m.tileFactsFromSnapshot({wifiEnabled:true,wifiActive:false}),{wifi:true});
+ const tiles=m.honestTiles(modelTiles(),m.tileFactsFromSnapshot(snapshot),{flashlight:true,act:()=>{}});
+ assert.deepEqual(tiles.map(t=>[t.label,t.on,t.stateText]),[['Wi-Fi',false,'Off'],['Bluetooth',true,'On'],['Do not disturb',true,'On'],['Agent can listen',undefined,'Permissions'],['Location',true,'On'],['Airplane mode',false,'Off'],['Enclave lock',undefined,'Open settings'],['Flashlight',undefined,'Tap to switch']]);
+});
+test('an unread switch is labelled as a handoff, never as off',()=>{
+ for(const tile of m.honestTiles(modelTiles(),{},{flashlight:true,act:()=>{}})){assert.notEqual(tile.stateText,'Off');assert.notEqual(tile.stateText,'On');assert.ok(tile.stateText.length>0);}
+ assert.equal(m.switchValue(undefined,'Manage in Android'),'Manage in Android');
+ assert.equal(m.switchValue('true','Not reported by Android'),'Not reported by Android');
+ assert.equal(m.switchValue(true,'x',{on:'On · connected'}),'On · connected');
+ assert.equal(m.switchValue(false,'x',{on:'On · connected'}),'Off');
+});
+test('every tile with a switch opens its own Android page, and the native allowlist has each one',()=>{
+ assert.deepEqual(m.tileSettingsPages,{wifi:'wifi',bt:'bluetooth',dnd:'dnd',plane:'airplane',loc:'location',mic:'privacy'});
+ const java=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaDevicePlugin.java','utf8');
+ const body=java.slice(java.indexOf('static String[] settingsActions(String page)'),java.indexOf('@PluginMethod public void openSettings'));
+ const pages=Object.fromEntries([...body.matchAll(/case "([a-z-]+)":return new String\[\]\{([^}]*)\}/g)].map(match=>[match[1],match[2].split(',')]));
+ for(const page of Object.values(m.tileSettingsPages))assert.ok(pages[page]?.length,`${page} is allowlisted natively`);
+ // No page resolves to the generic Settings home, and each first choice is distinct.
+ for(const [page,actions] of Object.entries(pages))for(const action of actions)assert.notEqual(action.trim(),'Settings.ACTION_SETTINGS',page);
+ const first=Object.values(pages).map(actions=>actions[0]);assert.equal(new Set(first).size,first.length);
+ assert.deepEqual([pages.airplane[0],pages.location[0],pages.mobile[0]],['Settings.ACTION_AIRPLANE_MODE_SETTINGS','Settings.ACTION_LOCATION_SOURCE_SETTINGS','Settings.ACTION_DATA_ROAMING_SETTINGS']);
+});
+test('a broader Android page is named for what it is, and a specific page says nothing',()=>{
+ for(const opened of [{status:'opened',specific:true},{status:'opened'},null,undefined,'opened'])for(const page of ['wifi','dnd','airplane'])assert.equal(m.broaderPageNotice(page,opened),null);
+ const broad={status:'opened',specific:false};
+ assert.match(m.broaderPageNotice('airplane',broad),/^Opened Android network settings\./);
+ assert.match(m.broaderPageNotice('mobile',broad),/^Opened Android network settings\./);
+ // Do Not Disturb falls back to the priority page, which is not a network page.
+ assert.match(m.broaderPageNotice('dnd',broad),/^Opened Android priority settings\./);
+ assert.doesNotMatch(m.broaderPageNotice('dnd',broad),/network/);
+ assert.doesNotMatch(m.broaderPageNotice('battery',broad),/network|priority/);
+});
+test('the Bluetooth fact is the radio state on Android 12 and later, not the stored switch',()=>{
+ const java=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaDevicePlugin.java','utf8');
+ const read=java.slice(java.indexOf('fact(out,"bluetoothEnabled"'),java.indexOf('fact(out,"airplaneMode"'));
+ assert.match(read,/SDK_INT<Build\.VERSION_CODES\.S\)return binarySwitch\(Settings\.Global\.getInt\(resolver,Settings\.Global\.BLUETOOTH_ON\)\)/);
+ assert.match(read,/adapter==null\?null:adapterSwitch\(adapter\.getState\(\)\)/);
+});

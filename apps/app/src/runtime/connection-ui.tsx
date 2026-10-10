@@ -38,7 +38,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isAndroid } from '../native';
 import type { ActionProposal, OperationReceipt, ContextEnvelope, VerifiedSession } from './alpha-client';
 import { CloudProtocol, CloudProtocolError, type CloudAgent, type CloudEnvironment, type CloudPhoneTarget } from './cloud-protocol';
-import { RemoteProtocol } from './remote-protocol';
+import { RemoteProtocol, RemoteProtocolError } from './remote-protocol';
 import { phoneContextMessage } from './phone-context';
 import { cloudCredentialStore, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, secureConnectionStore } from './native-connection';
 import './connection-ui.css';
@@ -77,6 +77,10 @@ const SELECTION = 'alpha.connection.selection.v1';
 const browserDevProfile = devSurfacesEnabled && devProfileQuery;
 /** Production builds offer only the production Cloud environment. */
 const cloudEnvironmentAllowed = (environment: unknown): environment is CloudEnvironment => environment === 'production' || (testMocksEnabled && environment === 'staging');
+/** Production phones run the resident agent; remote pairing and remote restore are retired there. */
+const remotePairingRetired = isAndroid && !testMocksEnabled;
+/** Eliza Cloud admits no request from the production web origin, so no Cloud route is started there. */
+const webCloudUnavailable = () => !testMocksEnabled && !isAndroid && !browserLocalAgentEnabled;
 const CLOUD_SERVICE = 'alpha.connection.cloud-service.v1';
 const listeners = new Set<() => void>();
 let developmentPageSuspended = false;
@@ -163,7 +167,8 @@ async function personalWork(message:string,action:(binding:NonNullable<typeof pe
  });
 }
 function detachCloudTarget() { if (active?.kind === 'cloud') retire(); }
-function makeCloud(environment: CloudEnvironment) { return new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser); }
+// Only the Android transport admits Cloud's self-revocation DELETE; elsewhere sign-out reports a local removal.
+function makeCloud(environment: CloudEnvironment) { return new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: isAndroid }); }
 function update(patch: Partial<ConnectionSnapshot>) { state = { ...state, ...patch }; if (!developmentPageSuspended) listeners.forEach(listener => listener()); }
 function save(selection: Selection) { localStorage.setItem(SELECTION, JSON.stringify(selection)); }
 function retire(name = 'Offline') {
@@ -261,6 +266,8 @@ async function remoteIdentity(remote: RemoteProtocol, signal: AbortSignal) {
   return { id: agent.id, name: typeof agent.name === 'string' ? agent.name : 'Remote agent' };
 }
 async function connectRemote(kind: 'remote' | 'local', origin: string, code: string, signal: AbortSignal) {
+  // Fences every caller, including restore: no request is made and the saved credential is kept.
+  if (remotePairingRetired) throw new Error(PAIRING_RETIRED);
   let deviceHeaders: Record<string, string> = {};
   const remote = new RemoteProtocol(origin.trim(), input => nativeRemoteRequest({ ...input, headers: { ...input.headers, ...deviceHeaders } }), remoteCredentialStore, { developmentOrigins: kind === 'local' ? [new URL(origin).origin] : [] });
   if (code.trim()) await remote.pair(code.trim(), signal);
@@ -338,7 +345,7 @@ async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
 
 async function connectResident(signal: AbortSignal) {
   if(isAndroid && !testMocksEnabled && !await admitCloudResident(signal))return;
-  if (!await localAgentPackaged()) throw new Error('The local agent is unavailable here. Connect a remote agent, sign in with Eliza Cloud, or continue offline.');
+  if (!await localAgentPackaged()) throw new Error(remotePairingRetired ? 'The on-device agent is not included in this build. You can use local apps without AI.' : webCloudUnavailable() ? 'The local agent is unavailable here. Connect a remote agent or continue offline.' : 'The local agent is unavailable here. Connect a remote agent, sign in with Eliza Cloud, or continue offline.');
   signal.throwIfAborted();
   const client = new LocalAgentProtocol();
   const { session, name } = await client.connect(signal);
@@ -503,6 +510,18 @@ function restoredMessages(items:Record<string,unknown>[]):RestoredMessage[] {
 /** Eliza Cloud's API answers credentialed browser requests only from Eliza's own origins
  * (pinned upstream `cloud-api-hono-cors.ts`), so the flag-off web build cannot sign in or read the
  * account. It offers the account page instead of a sign-in that would always fail. */
+/** Says what a refused pairing means. Nothing was connected; 401 and 503 keep their shared wording. */
+function pairingError(error: unknown, withCode: boolean): unknown {
+  if (!(error instanceof RemoteProtocolError) || error.status === 401 || error.status === 503) return error;
+  const text = ['invalid_origin', 'origin_required', 'https_required'].includes(error.code) ? 'Enter the agent’s HTTPS address without a path, for example https://your-agent.example. Nothing was sent.'
+    : error.code === 'pairing_unavailable' ? 'This agent is not accepting pairing. Enable pairing on the agent, then try again.'
+    : error.code === 'session_expired' ? 'The saved session for this agent has expired. Enter a new pairing code.'
+    : ['owner_session_required', 'machine_session_required', 'identity_changed', 'pairing_identity_mismatch'].includes(error.code) ? 'The agent did not confirm an owner session for this phone. Nothing was connected.'
+    : error.code === 'remote_request_failed' && withCode && error.status !== undefined && error.status >= 400 && error.status < 500 ? 'The agent refused this pairing code. Codes expire and work once; ask your agent for a new one.'
+    : 'The agent did not answer as expected. Nothing was connected.';
+  return new Error(text, { cause: error });
+}
+const PAIRING_RETIRED = 'Pairing is unavailable. Your agent runs on this phone; sign in to Eliza Cloud for inference.';
 export const WEB_CLOUD_UNAVAILABLE = 'Eliza Cloud sign-in is available in the Alpha Phone Android app. Eliza Cloud does not accept sign-in requests from this web page.';
 /** Stop closes the transport and asks the agent to cancel through upstream's
  * `POST /api/turns/:roomId/abort` (resident, remote and local agents). Cloud agents and agents that
@@ -510,14 +529,17 @@ export const WEB_CLOUD_UNAVAILABLE = 'Eliza Cloud sign-in is available in the Al
  * conversation shows the reply if the agent finished it before or despite the cancel. */
 const STOPPED_REPLY_CHECK_MS = 15_000;
 export const STOPPED_REPLY_NOTICE = 'The agent may still finish this reply. Alpha Phone will check once and show it here if it does.';
+export const STOPPED_CONFIRMED_NOTICE = 'The agent stopped this reply.';
 export const STOPPED_CANCELLED_NOTICE = 'The agent cancelled this reply. Alpha Phone will check once in case it had already finished.';
 let stoppedReply: { timer: ReturnType<typeof setTimeout>; controller: AbortController } | null = null;
 function cancelStoppedReply() { if (!stoppedReply) return; clearTimeout(stoppedReply.timer); stoppedReply.controller.abort(); stoppedReply = null; }
 function scheduleStoppedReply(selected: Active, session: VerifiedSession, conversationId: string, text: string, sentAt: number, delay = STOPPED_REPLY_CHECK_MS) {
   cancelStoppedReply();
   const generation = epoch, controller = new AbortController();
-  const current = () => !controller.signal.aborted && generation === epoch && selected === active && state.session?.sessionId === session.sessionId;
-  update({ replyNotice: STOPPED_REPLY_NOTICE });
+  // The check belongs to the stopped conversation: selecting another one retires it.
+  const current = () => !controller.signal.aborted && generation === epoch && selected === active && state.session?.sessionId === session.sessionId && conversationMemory.get(conversationKey(session)) === conversationId;
+  // An earlier turn's confirmed stop is not this turn's outcome.
+  update({ replyNotice: STOPPED_REPLY_NOTICE, ...(state.message === STOPPED_CONFIRMED_NOTICE ? { message: '' } : {}) });
   let cancelled = false;
   // The single reconciliation read waits for the cancel attempt, so it reports the settled outcome.
   const cancelAttempt = selected.kind === 'cloud' ? Promise.resolve() : selected.remote.abortTurn(conversationId, controller.signal).then(outcome => {
@@ -531,12 +553,14 @@ function scheduleStoppedReply(selected: Active, session: VerifiedSession, conver
       if (!current()) return;
       if (sending || operation) { update({ replyNotice: 'Load this conversation from Agent connection to see whether the stopped reply finished.' }); return; }
       const result = await readConversation(selected, conversationId, controller.signal, () => { if (!current()) throw Error('The agent changed.'); });
-      if (!current() || sending || operation) return;
+      if (!current()) return;
+      // Another operation began during the read: say so instead of leaving "will check once" standing.
+      if (sending || operation) { update({ replyNotice: 'Load this conversation from Agent connection to see whether the stopped reply finished.' }); return; }
       const user = [...result.messages].reverse().find(item => item.role === 'user' && typeof item.text === 'string' && restoredText(item.text, item.userTextFormat) === text && (typeof item.timestamp !== 'number' || item.timestamp >= sentAt - 120_000));
       const index = user ? result.messages.indexOf(user) : -1;
       const reply = user && (result.messages.find(item => item.role === 'assistant' && item.replyToMessageId === user.id) ?? result.messages.slice(index + 1).find(item => item.role === 'assistant' && item.replyToMessageId === undefined));
       if (!user) { update({ replyNotice: 'The agent did not record the stopped message.' }); return; }
-      if (!reply || typeof reply.text !== 'string' || !reply.text.trim()) { update(cancelled ? { replyNotice: '', message: 'The agent stopped this reply.' } : { replyNotice: 'The agent had not finished the stopped reply when Alpha Phone checked. Load conversations later to see it.' }); return; }
+      if (!reply || typeof reply.text !== 'string' || !reply.text.trim()) { update(cancelled ? { replyNotice: '', message: STOPPED_CONFIRMED_NOTICE } : { replyNotice: 'The agent had not finished the stopped reply when Alpha Phone checked. Load conversations later to see it.' }); return; }
       update({ history: { sessionId: session.sessionId, conversationId, revision: (state.history?.revision || 0) + 1, messages: restoredMessages(result.messages), automatic: true }, historyPartial: result.partial, replyNotice: '', message: 'The agent finished the stopped reply.' });
     } catch { if (current()) update({ replyNotice: 'The stopped reply could not be checked. Load conversations from Agent connection to see it.' }); }
     finally { if (stoppedReply?.controller === controller) stoppedReply = null; }
@@ -577,7 +601,9 @@ async function restoreConversationHistory(id:string,signal:AbortSignal,automatic
   }
   conversationMemory.set(key,id);
   const older=result.partial?' Older messages remain on the agent.':'';
-  update({history:{sessionId:session.sessionId,conversationId:id,revision:(state.history?.revision||0)+1,messages,automatic},historyError:'',historyPartial:result.partial,...(automatic?{}:{open:false}),message:(automatic?'Saved conversation restored.':saved?'Conversation restored.':'History restored for this session; restart selection could not be saved.')+older});
+  // An explicit reload already shows whether a stopped reply finished; the pending check is retired.
+  if(!automatic)cancelStoppedReply();
+  update({history:{sessionId:session.sessionId,conversationId:id,revision:(state.history?.revision||0)+1,messages,automatic},historyError:'',historyPartial:result.partial,...(automatic?{}:{open:false,replyNotice:''}),message:(automatic?'Saved conversation restored.':saved?'Conversation restored.':'History restored for this session; restart selection could not be saved.')+older});
 }
 /** Restored chats are bounded; anything older stays on the agent and is reported as partial. */
 const HISTORY_LIMIT=2000, HISTORY_PAGE=200;
@@ -933,6 +959,11 @@ export const connectionController = {
       if (saved?.kind === 'offline') return;
       if (saved?.kind === 'mock') { const url = new URL(location.href); url.searchParams.set('mode', 'mock'); location.replace(url.href); return; }
       await work('Restoring your connection…', async signal => {
+        if (webCloudUnavailable()) {
+          // A saved Cloud service or Cloud agent is signed out here without a request or a stored-token read.
+          try { localStorage.removeItem(CLOUD_SERVICE); } catch { /* Nothing is restored either way. */ }
+          if (saved?.kind === 'cloud') { try { save({ kind: 'none' }); } catch { /* The chooser still requires a choice. */ } update({ open: true, message: '', error: WEB_CLOUD_UNAVAILABLE }); return; }
+        }
         const environment = localStorage.getItem(CLOUD_SERVICE);
         if (environment === 'staging' && !testMocksEnabled) { localStorage.removeItem(CLOUD_SERVICE); update({ message: 'Sign in with Eliza Cloud to continue.' }); }
         else if (cloudEnvironmentAllowed(environment)) {
@@ -995,8 +1026,8 @@ export const connectionController = {
       assertCurrent();
       let saved = true;
       try { await selectConversation(key, expected, created.id, signal, assertCurrent); } catch { saved = false; }
-      assertCurrent(); conversationMemory.set(key, created.id);
-      update({ history: { sessionId: session.sessionId, conversationId: created.id, revision: (state.history?.revision || 0) + 1, messages: [], automatic: false }, historyError: '', historyPartial: false, open: false, message: saved ? 'New conversation started.' : 'New conversation started for this session; restart selection could not be saved.' });
+      assertCurrent(); conversationMemory.set(key, created.id); cancelStoppedReply();
+      update({ history: { sessionId: session.sessionId, conversationId: created.id, revision: (state.history?.revision || 0) + 1, messages: [], automatic: false }, historyError: '', historyPartial: false, replyNotice: '', open: false, message: saved ? 'New conversation started.' : 'New conversation started for this session; restart selection could not be saved.' });
     });
   },
   async authorDevelopment(profile:DevelopmentProfile,json:string){if(!devSurfacesEnabled)return;await work('Preparing development action…',async signal=>{await authorDevelopmentAction(profile,json,signal);update({message:'Action queued. Send a chat message to review it on the current screen.'});});},
@@ -1004,11 +1035,8 @@ export const connectionController = {
   async saveDevelopment(profile:DevelopmentProfile,reply:string){if(!devSurfacesEnabled)return;await work('Saving development reply…',async signal=>{await saveDevelopmentReply(profile,reply,signal);update({message:'Development reply saved.'});});},
   async startLocal() { await work('Starting the local agent…', signal => { retire(); return connectResident(signal); }); },
   async pair(kind: 'remote' | 'local', origin: string, code: string) {
-    if (isAndroid && !testMocksEnabled) {
-      update({ error: 'Pairing is unavailable. Your agent runs on this phone; sign in to Eliza Cloud for inference.' });
-      return;
-    }
-    await work('Verifying your agent…', signal => { retire(); return connectRemote(kind, origin, code, signal); });
+    if (remotePairingRetired) { update({ error: PAIRING_RETIRED }); return; }
+    await work('Verifying your agent…', async signal => { retire(); try { await connectRemote(kind, origin, code, signal); } catch (error) { throw pairingError(error, !!code.trim()); } });
   },
   async residentCloudLogin() {
     await work('Opening Eliza Cloud sign-in…',async signal=>{
@@ -1039,6 +1067,7 @@ export const connectionController = {
     });
   },
   async cloudList(environment: CloudEnvironment) {
+    if (webCloudUnavailable()) { update({ open: true, error: WEB_CLOUD_UNAVAILABLE, message: '' }); return; }
     await work('Loading your agents…', async signal => { cloud = makeCloud(environment);
       if (service && service.identity.environment !== environment) { detachCloudTarget(); detachService(); }
       const previous = service?.identity.sessionId;
@@ -1117,7 +1146,7 @@ export const connectionController = {
       // Only a confirmed server-side revocation counts. A transport or server that does not offer
       // the route ({supported:false}) or a failed request removes this phone's token only, and the copy says so.
       let revoked = false;
-      if (typeof client.revokeSession === 'function') { try { const result = await client.revokeSession(signal); revoked = result?.supported === true && result.revoked === true; } catch { signal.throwIfAborted(); } }
+      if (typeof client.revokeSession === 'function') { try { const result = await client.revokeSession(signal); revoked = result?.supported === true && result.revoked === true; } catch { /* Unconfirmed. A cancelled or failed revocation still removes the local token below. */ } }
       await client.disconnect();
       update({ agents: [], residentSavedCredential:false, message: revoked ? 'Signed out of Eliza Cloud. This sign-in was revoked.' : 'Signed out of Eliza Cloud on this phone. The sign-in token was removed here; Eliza Cloud did not confirm revoking it.' });
     });
@@ -1245,10 +1274,17 @@ export const connectionController = {
         ? `${responseFailure.message} Pending phone actions are available for separate review. Nothing has been approved or performed automatically.`
         : reply.text, ...(!responseFailure?{...(typeof reply.messageId==='string'?{messageId:reply.messageId}:{}),...(typeof reply.userMessageId==='string'?{userMessageId:reply.userMessageId}:{}),messageBinding:{conversationId:id,session:{...session}}}:{}), ...(proposals ? { proposals } : {}), ...(!responseFailure&&Array.isArray(reply.actionResults)?{actionResults:reply.actionResults}:{}) };
     } catch (error) {
+      // Nothing carrying the message left this phone (no conversation, offline, changed owner, or a
+      // Stop before the post): the composer keeps the text instead of reporting an unknown outcome.
+      // The marker is set per failure: an error object seen after the post never keeps an earlier mark.
+      const mark = (target: unknown) => { if (target && typeof target === 'object' && (!dispatched || 'notDispatched' in target)) try { Object.defineProperty(target, 'notDispatched', { value: !dispatched, configurable: true }); } catch { /* An unmarkable error stays an unknown outcome. */ } };
+      mark(error);
       // Stop (or leaving the chat) after dispatch: the turn may still complete on the agent.
       if (signal.aborted && dispatched && generation === epoch && selected === active && state.session?.sessionId === session.sessionId) scheduleStoppedReply(selected, session, dispatched.conversationId, text, dispatched.at);
       if (error && typeof error === 'object' && 'status' in error && error.status === 429) {
-        throw new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.');
+        const limited = new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.');
+        // Rate-limited before the post (creating or reading the conversation): still provably unsent.
+        mark(limited); throw limited;
       }
       if (expired(error) && generation === epoch) {
         retire('Sign-in required');

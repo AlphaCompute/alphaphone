@@ -63,7 +63,72 @@ public final class AlphaDevicePlugin extends Plugin {
   String[][] permissions={{"Microphone",Manifest.permission.RECORD_AUDIO},{"Location",Manifest.permission.ACCESS_FINE_LOCATION},{"Camera",Manifest.permission.CAMERA},{"Calendar",Manifest.permission.READ_CALENDAR}};
   for(String[] p:permissions)grants.put(p[0],getContext().checkSelfPermission(p[1])==PackageManager.PERMISSION_GRANTED);
   grants.put("Location",fine||coarse);out.put("permissions",grants);
-  out.put("passwordProvider",PasswordProviderSupport.status(getContext()));call.resolve(out);
+  out.put("passwordProvider",PasswordProviderSupport.status(getContext()));
+  systemFacts(getContext(),out);call.resolve(out);
+ }
+ /** Maps Settings.Global.WIFI_ON: 1 and 2 (kept on in airplane mode) are on, 0 and 3 are off; anything else is unknown. */
+ static Boolean wifiSwitch(int value){return value==1||value==2?Boolean.TRUE:value==0||value==3?Boolean.FALSE:null;}
+ /** Maps a 0/1 system switch; any other stored value is unknown rather than guessed. */
+ static Boolean binarySwitch(int value){return value==1?Boolean.TRUE:value==0?Boolean.FALSE:null;}
+ /** Maps BluetoothAdapter.getState(): only settled on and off are facts; turning on or off is unknown. */
+ static Boolean adapterSwitch(int state){return state==android.bluetooth.BluetoothAdapter.STATE_ON?Boolean.TRUE:state==android.bluetooth.BluetoothAdapter.STATE_OFF?Boolean.FALSE:null;}
+ static String interruptionName(int filter){return filter==NotificationManager.INTERRUPTION_FILTER_ALL?"all":filter==NotificationManager.INTERRUPTION_FILTER_PRIORITY?"priority":filter==NotificationManager.INTERRUPTION_FILTER_ALARMS?"alarms":filter==NotificationManager.INTERRUPTION_FILTER_NONE?"none":null;}
+ private interface Fact {Object read()throws Exception;}
+ private static void fact(JSObject out,String key,Fact source){try{Object value=source.read();if(value!=null)out.put(key,value);}catch(Exception unreadable){/* Omitted: the renderer shows this setting as unknown. */}}
+ /**
+  * System switch states an ordinary app may read without a permission Alpha does not hold. Each
+  * fact is added only when Android answers; a missing key means unknown, never off. Alpha cannot
+  * change any of these, so the renderer only shows them and hands off to Android Settings.
+  */
+ static void systemFacts(Context context,JSObject out){
+  android.content.ContentResolver resolver=context.getContentResolver();
+  fact(out,"wifiEnabled",()->wifiSwitch(Settings.Global.getInt(resolver,Settings.Global.WIFI_ON)));
+  // The adapter state is what the radio is doing now and needs no permission from Android 12. The
+  // stored switch is the owner's last choice, which airplane mode can override, and is used only
+  // on older releases, where the adapter read needs a permission Alpha does not hold.
+  fact(out,"bluetoothEnabled",()->{
+   if(Build.VERSION.SDK_INT<Build.VERSION_CODES.S)return binarySwitch(Settings.Global.getInt(resolver,Settings.Global.BLUETOOTH_ON));
+   android.bluetooth.BluetoothManager manager=context.getSystemService(android.bluetooth.BluetoothManager.class);
+   android.bluetooth.BluetoothAdapter adapter=manager==null?null:manager.getAdapter();
+   return adapter==null?null:adapterSwitch(adapter.getState());
+  });
+  fact(out,"airplaneMode",()->binarySwitch(Settings.Global.getInt(resolver,Settings.Global.AIRPLANE_MODE_ON)));
+  fact(out,"locationEnabled",()->{android.location.LocationManager location=context.getSystemService(android.location.LocationManager.class);return location==null?null:location.isLocationEnabled();});
+  fact(out,"mobileDataEnabled",()->{
+   if(!context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_TELEPHONY))return null;
+   android.telephony.TelephonyManager telephony=context.getSystemService(android.telephony.TelephonyManager.class);
+   if(telephony==null||telephony.getSimState()!=android.telephony.TelephonyManager.SIM_STATE_READY)return null;
+   // Readable with the ACCESS_NETWORK_STATE install-time permission; a refusal means unknown, never off.
+   if(context.checkSelfPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)!=PackageManager.PERMISSION_GRANTED)return null;
+   try{return telephony.isDataEnabled();}catch(SecurityException refused){return null;}
+  });
+  fact(out,"interruptionFilter",()->{NotificationManager manager=context.getSystemService(NotificationManager.class);return manager==null?null:interruptionName(manager.getCurrentInterruptionFilter());});
+  fact(out,"adaptiveBrightness",()->{int mode=Settings.System.getInt(resolver,Settings.System.SCREEN_BRIGHTNESS_MODE);return mode==Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC?Boolean.TRUE:mode==Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL?Boolean.FALSE:null;});
+  fact(out,"appVersionCode",()->BuildConfig.VERSION_CODE);
+  fact(out,"appUpdatedAt",()->{long at=context.getPackageManager().getPackageInfo(context.getPackageName(),0).lastUpdateTime;return at>0?at:null;});
+ }
+ /** Android pages tried in order for one allowlisted name; the first that opens wins. */
+ static String[] settingsActions(String page){
+  switch(page){
+   case "accounts":return new String[]{Settings.ACTION_SYNC_SETTINGS};
+   case "wifi":return new String[]{Settings.ACTION_WIFI_SETTINGS};
+   case "bluetooth":return new String[]{Settings.ACTION_BLUETOOTH_SETTINGS};
+   // The mobile network page; images without it fall back to Network & internet.
+   case "mobile":return new String[]{Settings.ACTION_DATA_ROAMING_SETTINGS,Settings.ACTION_WIRELESS_SETTINGS};
+   case "airplane":return new String[]{Settings.ACTION_AIRPLANE_MODE_SETTINGS,Settings.ACTION_WIRELESS_SETTINGS};
+   case "location":return new String[]{Settings.ACTION_LOCATION_SOURCE_SETTINGS};
+   case "display":return new String[]{Settings.ACTION_DISPLAY_SETTINGS};
+   case "sound":return new String[]{Settings.ACTION_SOUND_SETTINGS};
+   case "battery":return new String[]{Settings.ACTION_BATTERY_SAVER_SETTINGS};
+   case "about":return new String[]{Settings.ACTION_DEVICE_INFO_SETTINGS};
+   case "developer":return new String[]{Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS};
+   case "notifications":return new String[]{Settings.ACTION_APP_NOTIFICATION_SETTINGS};
+   case "privacy":return new String[]{Settings.ACTION_APPLICATION_DETAILS_SETTINGS};
+   case "default-apps":return new String[]{Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS};
+   // Do not disturb: the platform Zen mode page, then the public priority-mode page.
+   case "dnd":return new String[]{"android.settings.ZEN_MODE_SETTINGS",Settings.ACTION_ZEN_MODE_PRIORITY_SETTINGS};
+   default:return null;
+  }
  }
  @PluginMethod public void openPasswordProvider(PluginCall call) {
   String action=call.getString("action","");
@@ -82,30 +147,18 @@ public final class AlphaDevicePlugin extends Plugin {
   });
  }
  @PluginMethod public void openSettings(PluginCall call) {
-  String page=call.getString("page","");String action;
-  switch(page){
-   case "accounts":action=Settings.ACTION_SYNC_SETTINGS;break;
-   case "wifi":action=Settings.ACTION_WIFI_SETTINGS;break;
-   case "bluetooth":action=Settings.ACTION_BLUETOOTH_SETTINGS;break;
-   case "mobile":action=Settings.ACTION_WIRELESS_SETTINGS;break;
-   case "display":action=Settings.ACTION_DISPLAY_SETTINGS;break;
-   case "sound":action=Settings.ACTION_SOUND_SETTINGS;break;
-   case "battery":action=Settings.ACTION_BATTERY_SAVER_SETTINGS;break;
-   case "about":action=Settings.ACTION_DEVICE_INFO_SETTINGS;break;
-   case "developer":action=Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS;break;
-   case "notifications":action=Settings.ACTION_APP_NOTIFICATION_SETTINGS;break;
-   case "privacy":action=Settings.ACTION_APPLICATION_DETAILS_SETTINGS;break;
-   case "default-apps":action=Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS;break;
-   // Do not disturb: the platform Zen mode page; an image without it rejects and the tile falls back to Settings.
-   case "dnd":action="android.settings.ZEN_MODE_SETTINGS";break;
-   default:call.reject("Unsupported settings page");return;
-  }
-  Intent intent=new Intent(action);
-  if(page.equals("privacy"))intent.setData(Uri.parse("package:"+getContext().getPackageName()));
-  if(page.equals("notifications"))intent.putExtra(Settings.EXTRA_APP_PACKAGE,getContext().getPackageName());
+  String page=call.getString("page","");String[] actions=settingsActions(page);
+  if(actions==null){call.reject("Unsupported settings page");return;}
   getActivity().runOnUiThread(()->{
-   try{getActivity().startActivity(intent);JSObject out=new JSObject();out.put("status","opened");call.resolve(out);}
-   catch(RuntimeException error){call.reject("This Android settings page is unavailable");}
+   for(int index=0;index<actions.length;index++){
+    Intent intent=new Intent(actions[index]);
+    if(page.equals("privacy"))intent.setData(Uri.parse("package:"+getContext().getPackageName()));
+    if(page.equals("notifications"))intent.putExtra(Settings.EXTRA_APP_PACKAGE,getContext().getPackageName());
+    // "specific" is false when only the broader fallback page opened; the renderer says so.
+    try{getActivity().startActivity(intent);JSObject out=new JSObject();out.put("status","opened");out.put("page",page);out.put("specific",index==0);call.resolve(out);return;}
+    catch(RuntimeException unavailable){/* Try the next allowlisted page. */}
+   }
+   call.reject("This Android settings page is unavailable");
   });
  }
 
