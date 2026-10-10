@@ -60,6 +60,60 @@ export function presentHomeBrief(brief: HomeBriefSummary | null | undefined, now
     label: `Open workflows. Latest brief from ${agent}, ${failed ? 'failed' : 'ran'} ${whenLabel(ran, now)}: ${summary.slice(0, 280)}`};
 }
 
+/** The Home brief card: the newest result retained in this app for the current connection. It is
+ * shown only when one exists; it never stands for a fresh run, and a failed run says so. */
+export function presentHomeBriefCard(brief: HomeBriefSummary | null | undefined, now: number) {
+  const base = presentHomeBrief(brief, now);
+  if (!base.has) return {has: false as const, title: '', status: '', failed: false, label: ''};
+  const summary = String(brief!.summary).replace(/\s+/g, ' ').trim();
+  const failed = base.time.startsWith('Failed');
+  return {has: true as const, title: summary.length > 96 ? `${summary.slice(0, 95).trimEnd()}…` : summary, failed,
+    status: `${base.source} · ${base.time}`,
+    label: `Open scheduled digests. Latest brief from ${base.source}, ${failed ? 'failed' : 'ran'} ${whenLabel(Number(instant(brief!.ranAt)), now)}: ${summary.slice(0, 280)}`};
+}
+
+/** Source and freshness of the Home calendar card. `origin` (which calendar) sits beside the date
+ * and `read` (when this app read it) beside the event time; `description` is the full sentence
+ * exposed as the card's accessible description. Times are when this app last read the source on
+ * this device, never a provider sync claim. An overdue reminder is named in the card header, so
+ * it carries only a description. */
+export function presentHomeCalendarSource(input: {state: 'ready' | 'loading' | 'error' | 'other'; overdue: boolean; readAt: number | null; now: number; native: boolean; calendar?: string | null; truncated?: boolean}) {
+  const {state, overdue, readAt, now, native} = input;
+  if (overdue) return {origin: '', read: '', description: `Overdue reminder saved on this ${native ? 'device' : 'browser'}`};
+  if (state === 'error') return {origin: '', read: 'Open Calendar to retry', description: 'Calendar could not be read. Open Calendar to retry.'};
+  if (state !== 'ready' || !readAt) return {origin: '', read: '', description: ''};
+  const date = new Date(readAt), today = date.toDateString() === new Date(now).toDateString();
+  const name = typeof input.calendar === 'string' && input.calendar.trim() ? input.calendar.trim().slice(0, 60) : '';
+  return {origin: name || (native ? 'Device' : 'This app'), read: `Read ${today ? formatTime(date) : formatShortDate(date)}`,
+    description: `${name ? `${name}. ` : ''}Read ${whenLabel(readAt, now)} from ${native ? 'calendars on this device' : 'the calendar saved in this browser'}${input.truncated ? '; only the first 2,000 events were read' : ''}`};
+}
+/** Header of the Home calendar card: the item's day, or that reminders are overdue. */
+export function homeAgendaHeader(dateLabel: string, overdue: number) {
+  return overdue > 1 ? `${overdue} overdue reminders` : overdue === 1 ? 'Overdue reminder' : dateLabel;
+}
+/** "Due 9:00 AM" today, otherwise "Due Mon, Oct 5 9:00 AM". */
+export function overdueDueLabel(at: number, now: number) { return `Due ${whenLabel(at, now)}`; }
+
+/** When the Home workflows card's rows were loaded from the agent (and, for the unified list, this
+ * phone). Empty until a list has actually been loaded for the current connection. */
+export function presentHomeWorkflowFreshness(input: {loadedAt: number | null | undefined; now: number; unified: boolean}) {
+  const at = instant(input.loadedAt);
+  if (!at) return {visible: '', description: ''};
+  const when = whenLabel(at, input.now);
+  return {visible: `Loaded ${when}`, description: `${input.unified ? 'Automations from your agent and reminders on this phone' : 'Workflows from your agent'}, loaded ${when}`};
+}
+
+/** Status line of the Home Inbox card. It describes only metadata the user already loaded in
+ * Inbox: which account, whether the loaded page was complete, and when it was read. */
+export function presentHomeInboxStatus(input: {failure: boolean; pending: boolean; cached: {more: boolean; label: string; readAt: number | null} | null; connected: boolean; unchecked: boolean; now: number}) {
+  const {failure, pending, cached, now} = input;
+  const read = cached?.readAt && Number.isFinite(cached.readAt) && cached.readAt > 0 ? whenLabel(cached.readAt, now) : '';
+  if (failure) return `Open to retry${read ? ` · last read ${read}` : ''}`;
+  if (pending) return 'Updating email…';
+  if (cached) return [cached.more ? 'From loaded messages' : cached.label, read ? `Read ${read}` : ''].filter(Boolean).join(' · ');
+  return input.connected ? 'Open to load email' : input.unchecked ? 'Open to check email' : '';
+}
+
 /** Calendar adapter status strings (calendar-adapter nativeCalendarStatus) mapped to card states. */
 export type CalendarCardState = 'ready' | 'loading' | 'denied' | 'error' | 'unavailable' | 'not-connected';
 export function calendarCardState(status: unknown): CalendarCardState {

@@ -3,6 +3,7 @@ import {AutomationsProtocol,AutomationOutcomeError,automationIssue,automationLoc
 import {connectionController} from '../runtime/connection-ui';
 import {DailyApps,type Reminder} from '../daily';
 import {WorkflowIntentStore,workflowIntentKey} from '../runtime/workflow-intents';
+import {presentHomeWorkflowFreshness} from './home-cards';
 import './automations.css';
 type Bag=Record<string,any>;
 type Binding={sessionId:string;request:AutomationRequest};
@@ -27,7 +28,7 @@ export function installAutomationsAdapter(Component:any,views:Bag){
  let state:'idle'|'loading'|'ready'|'failed'='idle',message='',controller:AbortController|null=null,epoch=0,session:string|null=null,loadedSession:string|null=null,history:string[]=[];
  const uncertain=new Set<string>();
  let intentStore:WorkflowIntentStore|null=null,suspended=document.hidden;
- let homeCache:{sessionId:string;rows:Array<{name:string;status:string}>;total:number;partial:boolean;stale:boolean;error:boolean}|null=null;
+ let homeCache:{sessionId:string;rows:Array<{name:string;status:string}>;total:number;partial:boolean;stale:boolean;error:boolean;loadedAt:number}|null=null;
  const binding=():Binding|null=>(connectionController as typeof connectionController & {getAutomationsClient():Binding|null}).getAutomationsClient();
  const reminderBlock=()=>!binding()?'Connect an agent for its reminders.':loadedSession!==binding()?.sessionId||state!=='ready'?'Refresh agent reminders before creating or changing one.':issues.find(issue=>issue.source==='reminders')?.message||'';
  const automationBlock=()=>!binding()?'Connect an agent for its automations.':loadedSession!==binding()?.sessionId||state!=='ready'?'Refresh agent automations before creating one.':issues.find(issue=>issue.source==='automations'&&issue.unavailable)?.message||'';
@@ -50,7 +51,7 @@ export function installAutomationsAdapter(Component:any,views:Bag){
    if(local.status==='fulfilled')next.push(...local.value.reminders.map(deviceRow));else failures.push(automationIssue('device',local.reason));
    intentStore=store;if(pending.status==='rejected')failures.push({source:'automations',unavailable:false,message:'Pending requests could not be checked. Changes stay blocked until this agent’s request history is available.'});
    rows=mergeAutomationRows(next);issues=failures;state='ready';loadedSession=selected?.sessionId||'offline';
-   homeCache={sessionId:loadedSession,rows:rows.map(row=>({name:row.title,status:rowStatus(row)})),total:rows.length,partial:failures.some(issue=>!issue.unavailable||issue.source==='device'),stale:false,error:false};
+   homeCache={sessionId:loadedSession,rows:rows.map(row=>({name:row.title,status:rowStatus(row)})),total:rows.length,partial:failures.some(issue=>!issue.unavailable||issue.source==='device'),stale:false,error:false,loadedAt:Date.now()};
    if(!selected)message=ownerContext?'Reminders on this phone stay available.':'Connect an agent for its automations. Reminders on this phone stay available.';
    if(detail)detail=rows.find(row=>row.key===detail!.key)||null;
   }catch{if(valid()){state='failed';if(homeCache)homeCache.error=true;message='Automations could not refresh. Retry to check their current state.';}}
@@ -92,7 +93,7 @@ export function installAutomationsAdapter(Component:any,views:Bag){
  view.onLeave=()=>{retire(true);leave?.();};
  p.cachedAutomationsHome=function(){return this===owner&&homeCache?.sessionId===(binding()?.sessionId||'offline')?homeCache:null;};
  const values=p.renderVals;
- p.renderVals=function(){const out=values?.call(this)||{},cached=this.cachedAutomationsHome();if(!cached)return out.homeWorkflowHasRows?out:{...out,homeWorkflowTitle:'Workflows',homeWorkflowTime:'Open to view',homeWorkflowLabel:'Open workflows and automations',goFlows:()=>this.openView('workflows')};return {...out,homeWorkflowRows:cached.rows.slice(0,2),homeWorkflowHasRows:cached.total>0,homeWorkflowTitle:cached.total?'':cached.partial?'Some automations unavailable':'No automations yet',homeWorkflowTime:cached.error?'Couldn’t refresh · last loaded':cached.stale?'Last loaded items':cached.partial?'Some items unavailable':cached.total>2?`+${cached.total-2} more`:cached.total?'View automations':'',homeWorkflowLabel:'Open workflows and automations',goFlows:()=>this.openView('workflows')};};
+ p.renderVals=function(){const out=values?.call(this)||{},cached=this.cachedAutomationsHome();if(!cached)return out.homeWorkflowHasRows?out:{...out,homeWorkflowFreshness:'',homeWorkflowDescription:'',homeWorkflowTitle:'Workflows',homeWorkflowTime:'Open to view',homeWorkflowLabel:'Open workflows and automations',goFlows:()=>this.openView('workflows')};const loaded=presentHomeWorkflowFreshness({loadedAt:cached.loadedAt,now:Date.now(),unified:true});return {...out,homeWorkflowFreshness:loaded.visible,homeWorkflowDescription:loaded.description,homeWorkflowRows:cached.rows.slice(0,2),homeWorkflowHasRows:cached.total>0,homeWorkflowTitle:cached.total?'':cached.partial?'Some automations unavailable':'No automations yet',homeWorkflowTime:cached.error?'Couldn’t refresh · last loaded':cached.stale?'Last loaded items':cached.partial?'Some items unavailable':cached.total>2?`+${cached.total-2} more`:cached.total?'View automations':'',homeWorkflowLabel:'Open workflows and automations',goFlows:()=>this.openView('workflows')};};
  view.render=(value:Bag,current:Bag)=>{
   api=current;const workflow=render(value,current),currentSession=binding()?.sessionId||'offline';
   if(visible()&&state==='idle'&&!controller){state='loading';queueMicrotask(()=>void refresh());}

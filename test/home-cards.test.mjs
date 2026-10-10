@@ -73,3 +73,63 @@ test('attendee initials come only from event names, capped with an overflow coun
   assert.doesNotMatch(template, /\{\{lockSum\}\}|\{\{showHeads\}\}/, 'no fixture lock summary or heads-up banner');
   assert.match(template, /<sc-if value="\{\{homeCalendarVideo\}\}"[^>]*><svg[^>]*><path d="\{\{ic\.video\}\}">/, 'video icon only with a meeting link');
 });
+test('brief card: shown only for a retained result, with agent, run time and failure state', () => {
+  assert.deepEqual(H.presentHomeBriefCard(null, now), {has: false, title: '', status: '', failed: false, label: ''});
+  assert.equal(H.presentHomeBriefCard({summary: '  ', ranAt: at(7), agent: 'Alpha', status: 'succeeded'}, now).has, false);
+  assert.equal(H.presentHomeBriefCard({summary: 'Ready', ranAt: 'not a time', agent: 'Alpha', status: 'succeeded'}, now).has, false, 'a result without a run time is not presented as a brief');
+  const card = H.presentHomeBriefCard({summary: 'Two meetings today\nand one reply to send.', ranAt: new Date(at(7, 2)).toISOString(), agent: 'Alpha', status: 'succeeded'}, now);
+  assert.deepEqual(card, {has: true, title: 'Two meetings today and one reply to send.', failed: false, status: 'Alpha · Ran 7:02 AM',
+    label: 'Open scheduled digests. Latest brief from Alpha, ran 7:02 AM: Two meetings today and one reply to send.'});
+  const failed = H.presentHomeBriefCard({summary: 'Source expired. ' + 'x'.repeat(200), ranAt: at(22, 30, 6), agent: '', status: 'failed'}, now);
+  assert.equal(failed.failed, true); assert.equal(failed.status, 'Your agent · Failed Tue, Oct 6 10:30 PM');
+  assert.ok(failed.title.length <= 96 && failed.title.endsWith('…'));
+  assert.match(failed.label, /^Open scheduled digests\. Latest brief from Your agent, failed Tue, Oct 6 10:30 PM: Source expired\./);
+});
+test('calendar source: names where and when the item was read; no time is claimed without a read', () => {
+  const base = {overdue: false, readAt: at(15, 4), now, native: true};
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', calendar: 'Work'}), {origin: 'Work', read: 'Read 3:04 PM', description: 'Work. Read 3:04 PM from calendars on this device'});
+  assert.equal(H.presentHomeCalendarSource({...base, state: 'ready'}).origin, 'Device');
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', native: false, truncated: true}), {origin: 'This app', read: 'Read 3:04 PM', description: 'Read 3:04 PM from the calendar saved in this browser; only the first 2,000 events were read'});
+  const old = H.presentHomeCalendarSource({...base, state: 'ready', readAt: at(8, 15, 6)});
+  assert.deepEqual([old.read, old.description], ['Read Tue, Oct 6', 'Read Tue, Oct 6 8:15 AM from calendars on this device'], 'an old read shows its date');
+  for (const state of ['loading', 'other']) assert.deepEqual(H.presentHomeCalendarSource({...base, state}), {origin: '', read: '', description: ''});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', readAt: null}), {origin: '', read: '', description: ''});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'error'}), {origin: '', read: 'Open Calendar to retry', description: 'Calendar could not be read. Open Calendar to retry.'});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'error', overdue: true}), {origin: '', read: '', description: 'Overdue reminder saved on this device'}, 'an overdue reminder keeps its own source when the calendar read failed');
+  assert.equal(H.homeAgendaHeader('Mon, Oct 5', 0), 'Mon, Oct 5');
+  assert.equal(H.homeAgendaHeader('Mon, Oct 5', 1), 'Overdue reminder');
+  assert.equal(H.homeAgendaHeader('Mon, Oct 5', 3), '3 overdue reminders');
+  assert.equal(H.overdueDueLabel(at(9), now), 'Due 9:00 AM');
+  assert.equal(H.overdueDueLabel(at(9, 0, 5), now), 'Due Mon, Oct 5 9:00 AM');
+});
+test('inbox status: account and read time of the loaded page, and every non-ready state', () => {
+  const base = {failure: false, pending: false, cached: null, connected: false, unchecked: false, now};
+  assert.equal(H.presentHomeInboxStatus({...base, cached: {more: false, label: 'work@example.test', readAt: at(15, 4)}}), 'work@example.test · Read 3:04 PM');
+  assert.equal(H.presentHomeInboxStatus({...base, cached: {more: true, label: 'work@example.test', readAt: at(8, 15, 6)}}), 'From loaded messages · Read Tue, Oct 6 8:15 AM');
+  assert.equal(H.presentHomeInboxStatus({...base, cached: {more: false, label: '', readAt: null}}), '');
+  assert.equal(H.presentHomeInboxStatus({...base, failure: true, cached: {more: false, label: 'a', readAt: at(15, 4)}}), 'Open to retry · last read 3:04 PM');
+  assert.equal(H.presentHomeInboxStatus({...base, failure: true}), 'Open to retry');
+  assert.equal(H.presentHomeInboxStatus({...base, pending: true, cached: {more: false, label: 'a', readAt: at(15, 4)}}), 'Updating email…');
+  assert.equal(H.presentHomeInboxStatus({...base, connected: true}), 'Open to load email');
+  assert.equal(H.presentHomeInboxStatus({...base, unchecked: true}), 'Open to check email');
+  assert.equal(H.presentHomeInboxStatus(base), '');
+});
+test('workflow freshness: a load time only after a list was actually loaded', () => {
+  for (const loadedAt of [null, undefined, 0, NaN]) assert.deepEqual(H.presentHomeWorkflowFreshness({loadedAt, now, unified: true}), {visible: '', description: ''});
+  assert.deepEqual(H.presentHomeWorkflowFreshness({loadedAt: at(15, 4), now, unified: false}), {visible: 'Loaded 3:04 PM', description: 'Workflows from your agent, loaded 3:04 PM'});
+  assert.deepEqual(H.presentHomeWorkflowFreshness({loadedAt: at(8, 15, 6), now, unified: true}), {visible: 'Loaded Tue, Oct 6 8:15 AM', description: 'Automations from your agent and reminders on this phone, loaded Tue, Oct 6 8:15 AM'});
+});
+test('Home template renders source, freshness and the brief card only from live values', () => {
+  const template = readFileSync(new URL('../apps/app/src/prototype/template.html', import.meta.url), 'utf8');
+  const home = template.slice(template.indexOf('data-alpha-home-layout'), template.indexOf('{{apps}}'));
+  assert.match(home, /data-alpha-home-calendar-source>\{\{homeCalendarSource\}\}</);
+  assert.match(home, /data-alpha-home-calendar-origin>\{\{homeCalendarOrigin\}\}</);
+  assert.match(home, /aria-description="\{\{homeCalendarDescription\}\}"/);
+  assert.match(home, /aria-description="\{\{homeInboxDescription\}\}"/);
+  assert.match(home, /aria-description="\{\{homeWorkflowDescription\}\}"/);
+  assert.match(home, /<sc-if value="\{\{homeWorkflowFreshness\}\}"><span data-alpha-home-workflow-freshness>/);
+  assert.match(home, /<sc-if value="\{\{homeBriefHas\}\}"><button[^>]*data-alpha-home-brief[^>]*aria-label="\{\{homeBriefLabel\}\}"/, 'no brief card without a retained brief');
+  assert.doesNotMatch(home, /Morning brief|Design review|7:02 AM/, 'no fixture brief or agenda text in the template');
+  const adapter = readFileSync(new URL('../apps/app/src/prototype/data-adapter.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(adapter, /gmailSearch|gmailThread|\.sync\(|fetch\(/, 'the Home adapter starts no mail read, digest sync or network request');
+});

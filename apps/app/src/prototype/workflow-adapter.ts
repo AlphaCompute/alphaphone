@@ -3,6 +3,7 @@ import {Capacitor} from '@capacitor/core';
 import {registerPlugin} from '../platform-plugins';
 import {resolveWorkflowTap,type WorkflowTapNative} from '../runtime/workflow-notice-taps';
 import { createWorkflowAuthoring } from './workflow-authoring';
+import { presentHomeWorkflowFreshness } from './home-cards';
 import { alphaClient, type ActionProposal } from '../runtime/alpha-client';
 import { workflowApprovalNotice, type WorkflowPhoneReview } from '../runtime/workflow-device-contract';
 import type { WorkflowNoticeRoute } from '../runtime/device-actions';
@@ -49,7 +50,7 @@ export function installWorkflowAdapter(Component:any,views:Bag){
  const lockKey=(id:string)=>{const s=connectionController.getSnapshot().session;if(!s)throw new Error('Workflow account unavailable');return workflowIntentKey(s,id);};
  const locked=(id:string)=>intentStore?.locked(lockKey(id))??true;
  let intentStore:WorkflowIntentStore|null=null,recovery:AbortController|null=null;
- let suspended=false,listPhase:'idle'|'loading'|'ready'|'failed'='idle',listSession:string|null=null,homeVisit:string|null=null;
+ let suspended=false,listPhase:'idle'|'loading'|'ready'|'failed'='idle',listSession:string|null=null,listReadAt:number|null=null,homeVisit:string|null=null;
  // Retirement still cancels work, but must not render after document storage is revoked.
  const publish=()=>{if(!suspended&&!document.hidden)owner?.vset('workflows',{remoteWorkflowTick:Date.now()});};
  const authoring=createWorkflowAuthoring(()=>owner,publish,async(id)=>{await open(id);});
@@ -105,7 +106,7 @@ export function installWorkflowAdapter(Component:any,views:Bag){
  const refresh=async()=>{
   if(operation)return;
   listPhase='loading';publish();
-  const pending=work(async(client,signal,valid,sessionId)=>{const homeRequest=!owner?.S().view;let available=homeRequest?lifecycleAvailable:await client.lifecycleSupported(signal);const list=removedList?await client.removedWorkflows(signal):await client.list(signal);if(homeRequest&&owner?.S().view==='workflows')available=await client.lifecycleSupported(signal);if(valid()){lifecycleAvailable=available;flows=list;listPhase='ready';listSession=sessionId;status=removedList?'Removed workflows — history retained':list.length?'Workflows on this agent':'No workflows on this agent';}}),token=generation;
+  const pending=work(async(client,signal,valid,sessionId)=>{const homeRequest=!owner?.S().view;let available=homeRequest?lifecycleAvailable:await client.lifecycleSupported(signal);const list=removedList?await client.removedWorkflows(signal):await client.list(signal);if(homeRequest&&owner?.S().view==='workflows')available=await client.lifecycleSupported(signal);if(valid()){lifecycleAvailable=available;flows=list;listPhase='ready';listSession=sessionId;listReadAt=Date.now();status=removedList?'Removed workflows — history retained':list.length?'Workflows on this agent':'No workflows on this agent';}}),token=generation;
   await pending;
   if(token===generation&&listPhase==='loading'){listPhase='failed';publish();}
  };
@@ -118,7 +119,8 @@ export function installWorkflowAdapter(Component:any,views:Bag){
  const values=p.renderVals;
  p.renderVals=function(){
   const out=values.call(this),binding=connectionController.getWorkflowClient(),current=binding?.sessionId===listSession&&listPhase==='ready',saved=current?flows.filter(flow=>!flow.removed):[],rows=saved.slice(0,2);
-  return {...out,homeWorkflowRows:rows.map(flow=>({name:flow.name,status:flow.active?'Enabled':'Paused'})),homeWorkflowHasRows:rows.length>0,
+  const loaded=presentHomeWorkflowFreshness({loadedAt:current?listReadAt:null,now:Date.now(),unified:false});
+  return {...out,homeWorkflowFreshness:loaded.visible,homeWorkflowDescription:loaded.description,homeWorkflowRows:rows.map(flow=>({name:flow.name,status:flow.active?'Enabled':'Paused'})),homeWorkflowHasRows:rows.length>0,
    homeWorkflowTitle:rows.length?'':!binding?'Connect your agent':listPhase==='failed'?'Couldn’t load workflows':listPhase==='ready'?'No workflows yet':'Loading workflows…',
    homeWorkflowTime:!binding?'Tap to connect':listPhase==='failed'?'Tap to retry':listPhase!=='ready'?'':saved.length>2?`+${saved.length-2} more`:saved.length?'View '+(saved.length===1?'workflow':'workflows'):'',
    homeWorkflowLabel:!binding?'Connect agent for workflows':listPhase==='failed'?'Retry workflows':'Open workflows',

@@ -3,7 +3,7 @@ import {mockAttentionRows} from './mock-attention';
 import {HOME_DEFAULTS} from './model.js';
 import {browserStorageUsage} from '../browser/storage-usage';
 import {browserDevProfile} from '../browser/dev-profile';
-import {attendeeInitials, calendarCardState, presentHomeAttention, presentHomeBrief, presentHomeCalendar, type HomeAttentionSummary, type HomeBriefSummary} from './home-cards';
+import {attendeeInitials, calendarCardState, homeAgendaHeader, overdueDueLabel, presentHomeAttention, presentHomeBrief, presentHomeBriefCard, presentHomeCalendar, presentHomeCalendarSource, type HomeAttentionSummary, type HomeBriefSummary} from './home-cards';
 type Bag = Record<string, any>;
 const installed = new WeakSet<object>();
 
@@ -72,6 +72,8 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     const now = Date.now();
     const calendarSource = views.calendar.displaySources?.();
     const calendarState = this.vget('calendar');
+    const overdueRows: Bag[] = (typeof this.overdueReminders === 'function' ? (() => { try { return this.overdueReminders(); } catch { return []; } })() : [])
+      .filter((row: Bag) => row && typeof row.title === 'string' && Number.isFinite(row.at) && Number(row.at) < now);
     const agenda = (calendarState.events || [])
       .filter((event: Bag) => event.reminderStatus !== 'completed')
       .filter((event: Bag) => !event.alphaCalendarId || calendarSource?.ready)
@@ -80,9 +82,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
         return {event,begin:instant(event.nativeEvent?.begin??event.reminderAt),end:instant(event.nativeEvent?.end??event.reminderAt)};
       })
       // Overdue reminders (reminder adapter's overdueReminders()) stay on Home until handled.
-      .concat((typeof this.overdueReminders === 'function' ? (() => { try { return this.overdueReminders(); } catch { return []; } })() : [])
-        .filter((row: Bag) => row && typeof row.title === 'string' && Number.isFinite(row.at))
-        .map((row: Bag) => ({event: {id: row.id, title: row.title, off: row.off, overdue: true}, begin: Number(row.at), end: Infinity})))
+      .concat(overdueRows.map((row: Bag) => ({event: {id: row.id, title: row.title, off: row.off, overdue: true}, begin: Number(row.at), end: Infinity})))
       .filter((item: Bag) => Number.isFinite(item.begin) && (Number.isFinite(item.end) || item.event.overdue) && (item.event.nativeEvent?.allDay?item.end>now:item.end>=now))
       .sort((a: Bag, b: Bag) => a.begin - b.begin)[0];
     const cardState = calendarSource?.loading ? 'loading' : calendarSource?.ready ? 'ready' : 'error';
@@ -102,26 +102,42 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     const unread=unreadRows.length;
     const attentionSummary: HomeAttentionSummary|null = browserDevProfile ? {state:'ready',unread,source:'Development inbox',updatedAt:now} : homeSources.attention();
     const attention = presentHomeAttention(attentionSummary, now);
-    const brief = presentHomeBrief(homeSources.brief(), now);
+    const retainedBrief = homeSources.brief();
+    const brief = presentHomeBrief(retainedBrief, now), briefCard = presentHomeBriefCard(retainedBrief, now);
     const day = agenda ? new Date(agenda.begin) : null;
     const dateLabel = (day || new Date(now)).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    const overdue = !!agenda?.event.overdue;
+    // Source and freshness of the item on the card: the calendar it was read from and when this
+    // app read it, or the reminder store for an overdue reminder.
+    const calendarName = agenda && !overdue ? (calendarSource?.sources || []).find((source: Bag) => source.id === agenda.event.nativeEvent?.calendarId)?.name : null;
+    const provenance = presentHomeCalendarSource({state: cardState === 'error' && !calendarSource?.error ? 'other' : cardState, overdue, readAt, now, native: Capacitor.isNativePlatform(), calendar: calendarName, truncated: !!calendarSource?.truncated});
+    // A refused or unconnected calendar says so instead of the generic failure copy.
+    const sourceState = calendarCardState(calendarSource?.status);
     const eventTitle=agenda?String(agenda.event.title||'Untitled event'):'';
     const timeLabel=(instant:number)=>new Date(instant).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
     const endDay=agenda?new Date(agenda.end):null;
     const endLabel=agenda&&endDay&&day&&endDay.toDateString()!==day.toDateString()?`${endDay.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}, ${timeLabel(agenda.end)}`:agenda?timeLabel(agenda.end):'';
-    const eventTime=agenda?agenda.event.nativeEvent?.allDay?'All day':timeLabel(agenda.begin)+(Number.isFinite(agenda.end)&&agenda.end>agenda.begin?` – ${endLabel}`:''):'';
+    const eventTime=agenda?overdue?overdueDueLabel(agenda.begin,now):agenda.event.nativeEvent?.allDay?'All day':timeLabel(agenda.begin)+(Number.isFinite(agenda.end)&&agenda.end>agenda.begin?` – ${endLabel}`:''):'';
     return {
       ...out, shadeN: [],
       sugg: suggestions.map(label => ({ label, go: () => this.send(label) })),
       homeCalendarHasEvent:!!agenda,homeCalendarFooter:eventTime,
-      homeCalendarLabel: agenda ? `Open calendar event: ${eventTitle}, ${dateLabel}, ${eventTime}` : 'Open your calendar', homeCalendarTime: dateLabel, homeCalendarTitle: eventTitle || (calendarSource?.loading ? 'Loading events…' : calendarSource?.ready ? calendarSource.truncated ? 'Calendar results limited' : 'No upcoming events' : calendarSource ? 'Calendar unavailable' : 'Loading events…'),
-      homeCalendarSource: calendar.source, homeCalendarVideo: calendar.video, homeCalendarPeople: calendar.people.map(ini => ({ini})),
+      homeCalendarLabel: agenda ? overdue ? `Open overdue reminder: ${eventTitle}, ${eventTime}` : `Open calendar event: ${eventTitle}, ${dateLabel}, ${eventTime}` : 'Open your calendar',
+      homeCalendarTime: homeAgendaHeader(dateLabel, overdue ? overdueRows.length : 0),
+      homeCalendarTitle: eventTitle || (calendarSource?.loading ? 'Loading events…' : calendarSource?.ready ? calendarSource.truncated ? 'Results limited' : 'No upcoming events' : !calendarSource ? 'Loading events…' : calendarSource.error ? 'Calendar unavailable' : sourceState === 'denied' ? 'Calendar access is off' : sourceState === 'not-connected' && calendarSource.native ? 'Connect your calendar' : 'Calendar unavailable'),
+      // The card's last row holds the event time and, when known, where and when it was read.
+      homeCalendarHasMeta: !!(agenda || provenance.read),
+      homeCalendarSource: provenance.read, homeCalendarOrigin: provenance.origin, homeCalendarDescription: provenance.description, homeCalendarOverdue: overdue,
+      homeCalendarVideo: calendar.video, homeCalendarPeople: calendar.people.map(ini => ({ini})),
       homePeopleVisibility: calendar.people.length ? 'visible' : 'hidden',
       homeAttentionLabel: attention.label, homeAttentionCount: attention.count, homeAttentionText: attention.text,
       homeAttentionPeople: [], homeAttentionPeopleVisibility: 'hidden',
       ...(browserDevProfile?{homeInboxCount:attention.count,homeInboxRows:unreadRows.slice(0,2).map(mail=>({subject:mail.subj||'(no subject)',from:mail.name||mail.email||''})),homeInboxHasRows:unread>0,homeInboxTitle:unread?'':'No unread email',homeInboxStatus:'Development inbox'}:{}),
       homeWorkflowLabel: brief.label, homeWorkflowTitle: brief.title, homeWorkflowTime: brief.time, homeWorkflowSource: brief.source,
       goCalendar: () => this.openView('calendar', agenda ? {open:agenda.event.id, day:agenda.event.off, openDay:agenda.event.off} : undefined),
+      homeBriefHas: briefCard.has, homeBriefTitle: briefCard.title, homeBriefStatus: briefCard.status, homeBriefLabel: briefCard.label, homeBriefFailed: briefCard.failed,
+      // Opens the retained results list. Nothing is run or fetched by showing or tapping the card.
+      goBrief: () => window.dispatchEvent(new Event('alpha:hosted-digests')),
       goFlows: () => this.openView('workflows'),
       goTriage: () => attention.action === 'connections' ? this.openView('settings', {page:'connections'}) : this.openView('inbox',{acct:'all',open:null,q:null}),
       clearAll: () => this.setState({ shade: false }),
@@ -153,8 +169,10 @@ export function setHomeSources(next: Partial<typeof homeSources>) {
 
 /** Neutral Home card values used when no fixture defaults are bundled. */
 const NEUTRAL_HOME = {
-  homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'Loading events…',homeCalendarHasEvent:false,homeCalendarFooter:'',
-  homeCalendarSource: '', homeCalendarVideo: false, homeCalendarPeople: [] as Bag[],
+  homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'Loading events…',homeCalendarHasEvent:false,homeCalendarHasMeta:false,homeCalendarFooter:'',
+  homeCalendarSource: '', homeCalendarOrigin: '', homeCalendarDescription: '', homeCalendarOverdue: false, homeCalendarVideo: false, homeCalendarPeople: [] as Bag[],
+  homeWorkflowFreshness: '', homeWorkflowDescription: '',
+  homeBriefHas: false, homeBriefTitle: '', homeBriefStatus: '', homeBriefLabel: '', homeBriefFailed: false, homeInboxDescription: '',
   homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'No brief yet', homeWorkflowTime: 'Workflows', homeWorkflowSource: '',
   homeAttentionText: '',
 };

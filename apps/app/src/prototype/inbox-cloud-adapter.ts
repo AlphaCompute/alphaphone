@@ -2,6 +2,7 @@ import { registerPlugin } from '../platform-plugins';
 const attachmentNative=registerPlugin<{openReviewed(input:Record<string,unknown>):Promise<{message:string}>;saveReviewed(input:Record<string,unknown>):Promise<{status:string;message:string}>;cancel():Promise<void>}>('AlphaMailAttachments');
 import {reviewMailContext,validateMailContext,type ReviewedMailContext,type MailContextSource} from '../runtime/reviewed-mail-context';
 import { inboxProviderControls } from './inbox-provider-controls';
+import { presentHomeInboxStatus } from './home-cards';
 import { inboxDrafts, type ComposePrefill } from './inbox-drafts';
 import { classifyGmailFailure, disconnectGmailAccount, disconnectMessage, gmailReadable, setGmailReadState, GMAIL_ACCOUNTS_CHANGED, type GmailFailureKind } from '../runtime/gmail-mailbox';
 import { connectionController } from '../runtime/connection-ui';
@@ -72,7 +73,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let providerDrafts: GmailDraftSummary[] = [];
   // Only a boolean leaves this closure: the Home badge reflects the last loaded Inbox page(s).
   // Home retains only metadata from Inbox pages the user already loaded, never message bodies.
-  let inboxPreview: {sessionId:string;accountId:string;messages:Pick<GmailMessage,'id'|'subject'|'from'|'unread'>[];more:boolean}|null=null;
+  let inboxPreview: {sessionId:string;accountId:string;messages:Pick<GmailMessage,'id'|'subject'|'from'|'unread'>[];more:boolean;readAt:number}|null=null;
   let homeFailure:GmailFailureKind|null=null;
   let hasUnread = false;
   let failure: { kind: GmailFailureKind; retry: () => void } | null = null;
@@ -101,8 +102,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const readable = () => accounts.filter(gmailReadable);
   const currentQuery = () => String(api?.get('inbox')?.q || '').trim() || folderQuery[folder];
   const accountLabel = (id = selected) => accounts.find(a => a.connectionId === id)?.label || null;
-  const recountUnread = (more=inboxPreview?.more??nextPageToken!==null) => {
-    if (loadedQuery === 'in:inbox') inboxPreview={sessionId:connectionController.getCloudClient()?.sessionId||'',accountId:selected,messages:messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),more};
+  // `fresh` marks a completed provider read; local recounts keep the time of the read they came from.
+  const recountUnread = (more=inboxPreview?.more??nextPageToken!==null,fresh=false) => {
+    if (loadedQuery === 'in:inbox') inboxPreview={sessionId:connectionController.getCloudClient()?.sessionId||'',accountId:selected,messages:messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),more,readAt:fresh?Date.now():inboxPreview?.readAt??Date.now()};
     if(loadedQuery==='in:inbox')setAttention({state:'ready',unread:messages.filter(m=>m.unread).length,unreadMore:more,source:accountLabel(),updatedAt:revision||new Date().toISOString()});
     hasUnread=!!inboxPreview?.messages.some(m=>m.unread);
   };
@@ -295,7 +297,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       nextPageToken = next && !seenCursors.has(next) ? next : null;
       if (nextPageToken) seenCursors.add(nextPageToken);
       loadedQuery = query; revision = result.syncedAt;
-      recountUnread(result.nextPageToken!=null);
+      recountUnread(result.nextPageToken!=null,true);
       if (!pageToken) body = null;
       providerDrafts = [];
       status = messages.length ? `${messages.length} messages loaded` : query === 'in:inbox' ? 'Your Inbox is empty' : query === 'in:sent' ? 'No sent messages' : query === 'in:archive' ? 'No archived messages' : query === 'in:trash' ? 'Trash is empty' : 'No messages match this search';
@@ -434,10 +436,12 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     const cached=inboxPreview?.sessionId===binding?.sessionId&&inboxPreview?.accountId===selected?inboxPreview:null;
     const unread=cached?.messages.filter(m=>m.unread)||[],pending=phase==='busy'||phase==='scheduled';
     const count=unread.length?`${unread.length}${cached?.more?'+':''} unread`:'';
+    // Account and read time of the page the user loaded in Inbox; Home never reads mail to refresh it.
+    const homeInboxStatus=presentHomeInboxStatus({failure:!!homeFailure,pending,cached:cached?{more:cached.more,label:accounts.find(a=>a.connectionId===selected)?.label||'',readAt:cached.readAt}:null,connected,unchecked:!!binding&&!accountsChecked,now:Date.now()});
     return {...out,homeAttentionLabel:count?`Open Inbox: ${count} email${unread.length===1?'':'s'}`:!binding||accountsChecked&&!connected?'Connect email':'Open Inbox',
       homeInboxCount:count,homeInboxRows:unread.slice(0,2).map(m=>({subject:m.subject||'(no subject)',from:m.from})),homeInboxHasRows:unread.length>0,
       homeInboxTitle:unread.length?'':homeFailure==='revoked'?'Reconnect email':homeFailure?'Email unavailable':pending?'Loading email…':cached&&!cached.more?'No unread email':!binding||accountsChecked&&!connected?'Connect email':'Inbox',
-      homeInboxStatus:homeFailure?'Open to retry':pending?'Updating email…':cached?(cached.more?'From loaded messages':accounts.find(a=>a.connectionId===selected)?.label||''):connected?'Open to load email':binding&&!accountsChecked?'Open to check email':''};
+      homeInboxStatus,homeInboxDescription:homeInboxStatus};
   };
   // Mail content is never sent to the agent automatically, so chips ask only for help the agent can give.
   // Sharing one message goes through the explicit "Review email with agent" review.
