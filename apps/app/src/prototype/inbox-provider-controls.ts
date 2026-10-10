@@ -10,10 +10,11 @@ export function inboxProviderControls(publish:()=>void,toast:(message:string)=>v
  let selected='',session='',epoch=0,operation:InboxOperation|null=null,caps:GmailInboxCapabilities|null=null,busy=false,visible=false,status='';
  let draftRead:AbortController|null=null,failure:GmailFailureKind|null=null;
  let onStale:(()=>void)|null=null,onReceipt:((receipt:GmailInboxReceipt)=>void)|null=null,reported='';
- let onSent:((source:{draftId:string},proposal:Bag)=>void)|null=null,sentNote:((source:{draftId:string})=>string)|null=null;
- /** A provider-confirmed send that recorded its source draft. Unknown, rejected and unsent states never qualify. */
- const sentSource=(record:ReturnType<InboxOperation['snapshot']>)=>record&&record.phase==='observed'&&record.receipt?.state==='succeeded'&&record.receipt.kind==='send'&&record.proposal.kind==='send'&&record.receipt.requestId===record.requestId&&record.source?record.source:null;
- const settleSent=(owned:InboxOperation)=>{const record=owned.snapshot(),source=sentSource(record);if(record&&source)onSent?.(source,record.proposal);};
+ let onSent:((source:{draftId:string},proposal:Bag,grant:string)=>void)|null=null,sentNote:((source:{draftId:string})=>string)|null=null;
+ /** A provider-confirmed send that recorded its source draft. Unknown, rejected and unsent states never
+  * qualify, nor does a succeeded receipt that names no provider message or another account's operation. */
+ const sentSource=(record:ReturnType<InboxOperation['snapshot']>)=>record&&record.phase==='observed'&&record.receipt?.state==='succeeded'&&record.receipt.kind==='send'&&record.proposal.kind==='send'&&record.receipt.requestId===record.requestId&&typeof record.receipt.providerResult?.messageId==='string'&&!!record.receipt.providerResult.messageId&&!!selected&&record.grantId===selected&&record.source?record.source:null;
+ const settleSent=(owned:InboxOperation)=>{const record=owned.snapshot(),source=sentSource(record);if(record&&source)onSent?.(source,record.proposal,record.grantId);};
  function reset(){epoch++;draftRead?.abort();draftRead=null;operation?.stop();operation=null;selected=session='';caps=null;busy=visible=false;status='';failure=null;reported='';}
  async function bind(grant:string){
   const binding=connectionController.getCloudClient(),account=connectionController.getSnapshot().cloudAccount;
@@ -40,7 +41,7 @@ export function inboxProviderControls(publish:()=>void,toast:(message:string)=>v
  async function followup(kind:'delete-draft'|'undo'){await run(async(owned,check)=>{const record=owned.snapshot(),result=record?.receipt?.providerResult;if(!record||!result)throw new Error('No confirmed provider result');const proposal=kind==='delete-draft'?{kind:'draft-delete',draftId:result.draftId,expectedDigest:result.providerDigest,confirmPermanentDelete:true}:{kind:record.proposal.kind==='archive'?'unarchive':'untrash',messageId:result.messageId,expectedHistoryId:result.historyId};await owned.clear();check();await owned.prepare(proposal);});}
 
  return {bind,reset,prepare,setEditor:(value:typeof editor)=>{editor=value;},capabilities:()=>caps,
- setObservers(value:{stale?:()=>void;receipt?:(receipt:GmailInboxReceipt)=>void;sent?:(source:{draftId:string},proposal:Bag)=>void;sentNote?:(source:{draftId:string})=>string}){onStale=value.stale||null;onReceipt=value.receipt||null;onSent=value.sent||null;sentNote=value.sentNote||null;},
+ setObservers(value:{stale?:()=>void;receipt?:(receipt:GmailInboxReceipt)=>void;sent?:(source:{draftId:string},proposal:Bag,grant:string)=>void;sentNote?:(source:{draftId:string})=>string}){onStale=value.stale||null;onReceipt=value.receipt||null;onSent=value.sent||null;sentNote=value.sentNote||null;},
  close(){if(!visible)return false;visible=false;publish();return true;},
  chips(chip:(label:string,action:()=>void)=>Bag){return operation?.snapshot()?[chip('Mail review / receipt',()=>{visible=true;publish();})]:[];},
  render(){const record=operation?.snapshot(),review=record?.review,sent=sentSource(record||null);const uncertain=record&&(record.phase==='dispatching'||record.receipt?.state==='outcome-unknown'||record.receipt?.state==='dispatched');return {providerReview:visible,provider:{busy,status:status||(uncertain?'Delivery outcome is unknown. Check the saved receipt; do not send this message again.':record?.receipt?.state==='succeeded'?'Provider confirmed this operation.':record?.receipt?.state==='rejected'?'Provider rejected this operation.':'Review every field before confirming. No mail has been sent.'),

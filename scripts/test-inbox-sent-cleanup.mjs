@@ -23,21 +23,21 @@ const tick = async () => { for (let i = 0; i < 12; i++) await new Promise(resolv
 /** One "device": slots and the retained copy persist across `boot()` (a reload); the provider is remote. */
 function device() {
   const slots = new Map(), unsavedText = new Map(), toasts = [];
-  const remote = {receipts: new Map(), dispatches: 0, outcome: 'succeeded', failRetainedClear: false};
+  const remote = {receipts: new Map(), dispatches: 0, outcome: 'succeeded', failRetainedClear: false, requests: []};
   const client = {
     gmailInboxCapabilities: async () => ({send: true, providerDrafts: true, mailboxMutations: true, from: 'owner@example.invalid'}),
-    gmailPrepareOperation: async (_grant, requestId, proposal) => {
+    gmailPrepareOperation: async (...args) => { const [_grant, requestId, proposal] = args; remote.requests.push(JSON.stringify(args.slice(0, 3)));
       const review = {...proposal, from: 'owner@example.invalid', attachments: []};
       const receipt = {requestId, kind: proposal.kind, state: 'prepared', reviewDigest: await digest(JSON.stringify(review)), providerResult: null, rejectionCode: null};
       remote.receipts.set(requestId, receipt); return {receipt, review};
     },
-    gmailDispatchOperation: async (_grant, requestId, reviewDigest) => {
+    gmailDispatchOperation: async (...args) => { const [_grant, requestId, reviewDigest] = args; remote.requests.push(JSON.stringify(args.slice(0, 4)));
       remote.dispatches++;
       if (remote.outcome === 'lost') { remote.receipts.set(requestId, {requestId, kind: 'send', state: 'succeeded', reviewDigest, providerResult: {messageId: 'sent-1'}, rejectionCode: null}); throw new TypeError('Failed to fetch'); }
       const receipt = {requestId, kind: remote.receipts.get(requestId).kind, state: remote.outcome, reviewDigest, providerResult: remote.outcome === 'succeeded' ? {messageId: 'sent-1'} : null, rejectionCode: remote.outcome === 'rejected' ? 'policy' : null};
       remote.receipts.set(requestId, receipt); return receipt;
     },
-    gmailOperation: async (_grant, requestId) => remote.unsure ? {...remote.receipts.get(requestId), state: 'outcome-unknown', providerResult: null} : remote.receipts.get(requestId),
+    gmailOperation: async (_grant, requestId) => (remote.requests.push(JSON.stringify([_grant, requestId])), remote.unsure) ? {...remote.receipts.get(requestId), state: 'outcome-unknown', providerResult: null} : remote.receipts.get(requestId),
   };
   const store = {
     read: async key => structuredClone(slots.get(key) ?? null),
@@ -64,7 +64,7 @@ function device() {
     vm.createContext(sandbox); for (const source of sources) vm.runInContext(source, sandbox);
     const provider = sandbox.inboxProviderControls(() => {}, text => toasts.push(text));
     const drafts = sandbox.inboxDrafts(() => {}, text => toasts.push(text), provider);
-    provider.setObservers({sent: (source, proposal) => void drafts.settleSent(source.draftId, proposal), sentNote: source => drafts.sentNote(source.draftId)});
+    provider.setObservers({sent: (source, proposal, grant) => void drafts.settleSent(source.draftId, proposal, grant), sentNote: source => drafts.sentNote(source.draftId)});
     const chips = () => [...drafts.chips((label, pick) => ({label, pick})), ...provider.chips((label, pick) => ({label, pick}))];
     const app = {provider, drafts, labels: () => chips().map(c => c.label), pick: label => chips().find(c => c.label === label).pick(),
       composer: () => drafts.render().c, receipt: () => provider.render().provider,
@@ -230,4 +230,115 @@ test('non-send operations and operations saved before this change clear nothing'
   assert.match(again.receipt().draftNote, /local draft stays on this device/);
   d.slots.set(key, {...d.slots.get(key), source: {draftId: ''}});
   const bad = d.boot(); await bad.bind(); assert.equal(bad.receipt().requestId, '', 'a malformed source is rejected on load'); assert.ok(d.draftSlot());
+});
+
+/** Leaves the device as a reload finds it: the confirmed receipt is saved, no local copy removed yet. */
+async function confirmedBeforeCleanup(d, providerResult = {messageId: 'sent-1'}) {
+  const key = [...d.slots.keys()].find(k => k.startsWith('inbox-operation:')), saved = d.slots.get(key);
+  const receipt = {...d.remote.receipts.get(saved.requestId), state: 'succeeded', providerResult};
+  d.remote.receipts.set(saved.requestId, receipt); d.slots.set(key, {...saved, phase: 'observed', receipt});
+}
+const draftKey = d => [...d.slots.keys()].find(k => k.startsWith('inbox-drafts:'));
+
+test('a succeeded receipt that names no provider message clears nothing', async () => {
+  for (const providerResult of [{}, {messageId: ''}, {messageId: 7}, {threadId: 'thread-only'}]) {
+    const d = device(), app = d.boot(); await app.bind();
+    await app.compose('No message id'); await app.save(); await app.send();
+    const before = d.draftSlot(); await confirmedBeforeCleanup(d, providerResult);
+    const again = d.boot(); await again.bind(); await again.check();
+    assert.deepEqual(d.draftSlot(), before, 'the saved draft stays without a provider message id');
+    assert.match(again.receipt().draftNote, /local draft stays on this device/);
+  }
+});
+
+test('a saved draft that differs from the sent email in any reviewed field is kept', async () => {
+  const pdf = {name: 'a.txt', mimeType: 'text/plain', dataBase64: 'YQ=='};
+  const changes = {
+    'trailing whitespace': s => ({...s, body: s.body + ' '}),
+    'a trailing newline': s => ({...s, body: s.body + '\n'}),
+    'Unicode normalisation': s => ({...s, body: s.body.normalize('NFD')}),
+    'subject case': s => ({...s, subject: s.subject.toUpperCase()}),
+    'an added recipient': s => ({...s, to: [...s.to, 'second@example.invalid']}),
+    'a replaced recipient': s => ({...s, to: ['other@example.invalid']}),
+    'recipient case': s => ({...s, to: s.to.map(a => a.toUpperCase())}),
+    'an added Cc': s => ({...s, cc: ['copy@example.invalid']}),
+    'an added Bcc': s => ({...s, bcc: ['hidden@example.invalid']}),
+    'an added attachment': s => ({...s, attachments: [pdf]}),
+    'a reply target': s => ({...s, reply: {messageId: 'm-1', threadId: 't-1'}}),
+    'a forward mode': s => ({...s, mode: 'forward'}),
+    'forwarded originals': s => ({...s, forward: {messageId: 'm-1', historyId: 'h-1', parts: [{partId: 'p1', name: 'x.pdf', mimeType: 'application/pdf', size: 3}]}}),
+  };
+  for (const [name, change] of Object.entries(changes)) {
+    const d = device(), app = d.boot(); await app.bind();
+    await app.compose('Café plan', 'Résumé attached'); await app.save(); await app.send();
+    const changed = change(d.draftSlot()); assert.notDeepEqual(changed, d.draftSlot(), name);
+    d.slots.set(draftKey(d), changed); await confirmedBeforeCleanup(d);
+    const again = d.boot(); await again.bind(); await again.check();
+    assert.deepEqual(d.draftSlot(), changed, name + ' keeps the saved draft');
+    assert.match(again.receipt().draftNote, /still on this device/, name);
+  }
+  // Same content, different attachment bytes under the same name.
+  const d = device(), app = d.boot(); await app.bind();
+  await app.compose('With a file'); await app.save();
+  d.slots.set(draftKey(d), {...d.draftSlot(), attachments: [pdf]});
+  const withFile = d.boot(); await withFile.bind(); withFile.pick('Restore local draft'); await withFile.send();
+  assert.deepEqual(d.operationSlot().proposal.attachments, [pdf]);
+  const swapped = {...d.draftSlot(), attachments: [{...pdf, dataBase64: 'Yg=='}]};
+  d.slots.set(draftKey(d), swapped); await confirmedBeforeCleanup(d);
+  const again = d.boot(); await again.bind();
+  assert.deepEqual(d.draftSlot(), swapped, 'changed attachment bytes keep the saved draft');
+});
+
+test('edits retained after Send keep the saved draft they are based on, also after a reload', async () => {
+  const d = device(), app = d.boot(); await app.bind();
+  await app.compose('Based on saved', 'Sent text'); await app.save(); await app.send();
+  app.composer().onBody({target: {value: 'Sent text, then more'}});
+  const saved = d.draftSlot(); assert.equal(d.unsavedText.size, 1);
+  await confirmedBeforeCleanup(d);
+  const again = d.boot(); await again.bind(); await again.check();
+  assert.deepEqual(d.draftSlot(), saved, 'the saved draft the retained edits are based on stays');
+  assert.equal(d.unsavedText.size, 1, 'the edited retained copy stays');
+  assert.match(again.receipt().draftNote, /still on this device/);
+  again.pick('Resume unsaved email'); await tick();
+  assert.equal(again.composer().body, 'Sent text, then more'); assert.equal(again.composer().staleBase, false, 'the edits can still be saved');
+  await again.save(); assert.equal(d.draftSlot().body, 'Sent text, then more');
+});
+
+test('a retained copy that cannot be cleared keeps the saved draft until the retry removes both', async () => {
+  const d = device(), app = d.boot(); await app.bind();
+  await app.compose('Both or neither'); await app.save();
+  app.composer().onBody({target: {value: 'Body again'}}); app.composer().onBody({target: {value: 'Body'}});
+  assert.equal(d.unsavedText.size, 1); await app.send();
+  d.remote.failRetainedClear = true; await app.confirm();
+  assert.ok(d.draftSlot(), 'the saved draft waits for the retained copy'); assert.equal(d.unsavedText.size, 1);
+  assert.match(app.receipt().draftNote, /could not be removed/);
+  d.remote.failRetainedClear = false; await app.check();
+  assert.equal(d.draftSlot(), null); assert.equal(d.unsavedText.size, 0);
+});
+
+test("another account's draft is never cleared, even with the same id and content", async () => {
+  const d = device(), app = d.boot(); await app.bind();
+  await app.compose('Two accounts'); await app.save(); await app.send();
+  const key = draftKey(d), mine = d.slots.get(key), otherOwner = JSON.stringify(['production', 'owner-1', '', 'grant-b']);
+  const otherKey = 'inbox-drafts:v1:' + otherOwner, other = {...mine, owner: otherOwner};
+  d.slots.set(otherKey, other); d.slots.delete(key); await confirmedBeforeCleanup(d);
+  // The receipt belongs to grant-a while the composer shows grant-b.
+  const again = d.boot(); void again.provider.bind('grant-a'); void again.drafts.bind('grant-b', 'Other'); await tick();
+  assert.deepEqual(d.slots.get(otherKey), other, 'the other account keeps its draft');
+  await again.check(); assert.deepEqual(d.slots.get(otherKey), other);
+  // Switching back to the sending account does not carry the pending cleanup across either.
+  void again.drafts.bind('grant-a', 'Fixture'); await tick(); void again.drafts.bind('grant-b', 'Other'); await tick();
+  assert.deepEqual(d.slots.get(otherKey), other);
+});
+
+test('the source draft id stays out of every provider request', async () => {
+  const d = device(), app = d.boot(); await app.bind();
+  const seen = [];
+  await app.compose('Local identity'); await app.save();
+  const id = d.draftSlot().id, original = JSON.stringify;
+  await app.send(); await app.confirm(); await app.check();
+  for (const receipt of d.remote.receipts.values()) seen.push(original(receipt));
+  assert.equal(seen.some(text => text.includes(id)), false, 'no receipt echoes the local draft id');
+  assert.equal(d.remote.requests.some(text => text.includes(id)), false, 'no provider request carries the local draft id');
+  assert.ok(d.remote.requests.length >= 3);
 });
