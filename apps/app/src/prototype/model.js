@@ -2802,7 +2802,7 @@ registerView("maps", {
         via: "via " + [first].concat(via).filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 2).join(" and "),
         modes: MAPS_MODES.map(function (md, i) {
           var on = i === mi;
-          return { d: IC[md[1]], label: md[2] + ", " + mapsFmtMin(dst.min[i]), t: mapsFmtMin(dst.min[i]), css: on ? "background: var(--acc); color: #fff" : "background: var(--s2); color: var(--fg)", go: function () { api.set({ mode: md[0] }); } };
+          return { d: IC[md[1]], label: md[2] + ", " + mapsFmtMin(dst.min[i]), t: mapsFmtMin(dst.min[i]), on: on, css: on ? "background: var(--acc); color: #fff" : "background: var(--s2); color: var(--fg)", go: function () { api.set({ mode: md[0] }); } };
         }),
         close: function () { api.set({ directions: null, place: dst.id, pan: null }); },
         start: function () { mapsStartNav(api, dst.id); },

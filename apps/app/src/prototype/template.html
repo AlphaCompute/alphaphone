@@ -1976,6 +1976,7 @@
       </div></sc-if>
     </div>
   </sc-if>
+  <sc-if value="{{maps.eventReturnFloating}}"><button data-alpha-maps-event-return aria-label="Back to event" title="{{maps.backToEventTitle}}" onClick="{{maps.backToEvent}}" style="position: absolute; left: 12px; top: 114px; z-index: 5; background: var(--bg); color: var(--fg); box-shadow: 0 6px 22px var(--shc), 0 0 0 1px var(--line); height: 40px; padding: 0 14px 0 8px; border-radius: 20px; display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; flex-shrink: 0"><path d="{{ic.back}}"></path></svg>Back to event</button></sc-if>
   <sc-if value="{{maps.showSearch}}">
     <div data-alpha-app-header="main" data-alpha-app-header-overlay style="position: absolute; left: 12px; right: 12px; top: 52px; height: 54px; border-radius: 27px; background: var(--bg); box-shadow: 0 6px 22px var(--shc), 0 0 0 1px var(--line); display: flex; align-items: center; padding: 0 5px; z-index: 3">
     <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
@@ -2091,9 +2092,10 @@
       </div>
       <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 8px 0 0 8px">
         <sc-for list="{{maps.dr.modes}}" as="md">
-          <button aria-label="{{md.label}}" onClick="{{md.go}}" style="height: 40px; border-radius: 20px; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 13px; font-weight: 600; white-space: nowrap; {{md.css}}"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{md.d}}"></path></svg>{{md.t}}</button>
+          <button aria-label="{{md.label}}" aria-pressed="{{md.on}}" onClick="{{md.go}}" style="height: 40px; border-radius: 20px; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 13px; font-weight: 600; white-space: nowrap; {{md.css}}"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{md.d}}"></path></svg>{{md.t}}</button>
         </sc-for>
       </div>
+      <sc-if value="{{maps.eventReturnInline}}"><button data-alpha-maps-event-return aria-label="Back to event" title="{{maps.backToEventTitle}}" onClick="{{maps.backToEvent}}" style="margin: 8px 0 0 8px; background: var(--s2); color: var(--fg); height: 40px; padding: 0 14px 0 8px; border-radius: 20px; display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; flex-shrink: 0"><path d="{{ic.back}}"></path></svg>Back to event</button></sc-if>
     </div>
     <div class="enter" style="position: absolute; left: 0; right: 0; bottom: 0; height: {{maps.sheetH}}px; border-radius: 28px 28px 0 0; background: var(--bg); box-shadow: 0 -10px 40px var(--shc), 0 -1px 0 var(--line); z-index: 4; padding: 22px 20px 0; box-sizing: border-box">
       <div style="display: flex; align-items: baseline; gap: 12px"><span class="serif" style="font-size: 44px; line-height: 1">{{maps.dr.min}}</span><span style="font-size: 15px; color: var(--mut)">{{maps.dr.meta}}</span></div>
@@ -2334,9 +2336,9 @@
                 </div>
               </sc-for>
               <button onClick="{{notes.vo.toCal}}" aria-label="{{notes.vo.calLabel}}" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; margin: 6px 0 4px 10px; border-radius: 18px; background: var(--bg); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--acct)"><path d="{{notes.vo.calIcon}}"></path></svg>{{notes.vo.calText}}</button>
+              <sc-if value="{{notes.vo.toEvent}}"><button onClick="{{notes.vo.toEvent}}" aria-label="{{notes.vo.eventLabel}}" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; margin: 6px 0 4px 10px; border-radius: 18px; background: var(--bg); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--acct)"><path d="{{notes.vo.calIcon}}"></path></svg>{{notes.vo.eventText}}</button></sc-if>
             </div>
           </sc-if>
-              <sc-if value="{{notes.vo.toEvent}}"><button onClick="{{notes.vo.toEvent}}" aria-label="{{notes.vo.eventLabel}}" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; margin: 6px 0 4px 10px; border-radius: 18px; background: var(--bg); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--acct)"><path d="{{notes.vo.calIcon}}"></path></svg>{{notes.vo.eventText}}</button></sc-if>
         </sc-if>
 
         <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 26px">
