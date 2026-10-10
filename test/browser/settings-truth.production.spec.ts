@@ -403,5 +403,7 @@ test('the browser build of Settings shows no fixture value and no radio or senso
   const button=shade.getByRole('button',{name,exact:true});
   if(await button.count())await expect(button).toBeDisabled();
  }
+ // A tile the browser cannot read or switch claims no pressed state, and none announces a reference value as on.
+ expect(await shade.locator('[aria-pressed]').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')))).toEqual([]);
  noFixtures(await shade.innerText(),'Browser shade');
 });
