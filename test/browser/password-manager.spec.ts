@@ -159,7 +159,7 @@ test('native vault: Android unlock, app bindings, copy and autofill picker with 
   await bank.click();
   await expect(page.getByText('App · verified publisher', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Copy password', exact: true }).click();
-  await expect(page.getByText('Copied. Cleared from the clipboard after 45 s.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Copied. We try to clear it after 45 s, or when you return to the app.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back to Password manager', exact: true }).click();
   await page.getByRole('button', { name: 'Set as autofill service', exact: true }).click();
   // Opening Android's confirmation is not a selection; only the readback changes the status.

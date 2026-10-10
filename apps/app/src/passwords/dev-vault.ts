@@ -1,5 +1,5 @@
-import type {ElizaPasswordsPlugin,PasswordEntrySummary,PasswordSaveInput,PasswordsStatus} from '../../../../.eliza/patched/plugins/plugin-native-passwords/src/definitions.ts';
-import {normalizeWebsite} from '../../../../.eliza/patched/plugins/plugin-native-passwords/src/bindings.ts';
+import type {ElizaPasswordsPlugin,PasswordEntrySummary,PasswordSaveInput,PasswordsStatus} from '../../../../vendor/eliza/plugins/plugin-native-passwords/src/definitions.ts';
+import {normalizeWebsite} from '../../../../vendor/eliza/plugins/plugin-native-passwords/src/bindings.ts';
 import {layoutBrowserDialog} from '../browser/dialog-layout';
 
 /**

@@ -2,14 +2,14 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "ec0cf83057678af0c2be86c119a2bdf20688e4be",
-  "head": "945209d3e75053cc834ddf6352fc8c2feefc42f7",
+  "baseCommit": "9b0d1477eabf0bf759f85d26f0923af40de147da",
+  "head": "352d7a0855b713319cbe1acdab5fbf556fb85aa8",
   "recordedAt": "2026-10-10",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...945209d3e75053cc834ddf6352fc8c2feefc42f7",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...352d7a0855b713319cbe1acdab5fbf556fb85aa8",
   "status": "behind",
   "aheadBy": 0,
-  "behindBy": 4,
-  "mergeBase": "945209d3e75053cc834ddf6352fc8c2feefc42f7",
+  "behindBy": 45,
+  "mergeBase": "352d7a0855b713319cbe1acdab5fbf556fb85aa8",
   "pinOnlyCommits": [],
   "pullRequests": [
     {
@@ -165,6 +165,13 @@
       "mergedAt": "2026-10-10T04:33:16Z",
       "mergeCommit": "945209d3e75053cc834ddf6352fc8c2feefc42f7",
       "head": "fix/endtest-app-tests-20261009"
+    },
+    {
+      "number": 34835,
+      "state": "merged",
+      "mergedAt": "2026-10-10T06:30:36Z",
+      "mergeCommit": "f7ffc3eacbed93659c1b95b89bc9d9ce33db676a",
+      "head": "codex/native-password-manager-20261010"
     }
   ]
 }

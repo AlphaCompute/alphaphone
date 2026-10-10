@@ -172,7 +172,7 @@
         "AP-11"
       ],
       "title": "Upstream the pin-only commit series",
-      "current": "The integration branch pins reviewed upstream merge 945209d3, including native compatibility, touch lifecycle, deterministic synthesis, shared password custody and workflow repairs. Source preparation, repository verification, four developer APKs and journal/photo tests in both variants passed. These are not distributable release or device-acceptance results.",
+      "current": "The integration pin is reviewed upstream password-manager head 352d7a0855, merged through PR #34835 and reachable from develop. Source preparation and consumer verification pass (454 tests, four TODOs); both variants build and all four APK audits pass. These developer APKs use an unqualified speech candidate and omit the resident runtime payload, so they are not distributable. Both variants pass the real-framework browser rejection campaign on API 35. Historical 945209d3 journal/photo evidence remains separate.",
       "remaining": "Complete the remaining retired-pin semantic audit and product-wide browser/native regressions. Release runtime, speech, signing and device acceptance remain separate.",
       "acceptance": "Reviewed upstream disposition per commit, clean source preparation and full product regression at the replacement pin.",
       "depends_on": [],
@@ -193,7 +193,7 @@
         "AP-11"
       ],
       "title": "Submit and retire explicit shared patches",
-      "current": "Twenty-eight patch files and their manifests were retired after their replacements merged upstream. The unused runtime-capability proposal was deleted. The remaining applied password patch contains the manager and Autofill provider; encrypted custody comes from the pin. Password transfer remains a reference candidate.",
+      "current": "The last applied password-manager patch is replaced by the pinned upstream module from PR #34835. Twenty-eight earlier patch files and their manifests were retired after upstream merges. No applied patch remains. Password transfer remains an unshipped reference candidate with unresolved lifecycle and grant-ticket findings.",
       "remaining": "Finish the remaining upstream reviews and remove each patch only when its reviewed replacement is consumed.",
       "acceptance": "Patch-to-upstream-PR ledger with exact output hashes, external-consumer tests and no duplicate or silently unapplied implementation.",
       "depends_on": [
@@ -314,7 +314,7 @@
       ],
       "title": "Complete full Trash recovery",
       "current": "Trash preserves notes and voice recordings for three days. Full storage currently refuses deletion and directs the user to empty Trash.",
-      "remaining": "Add the separately confirmed permanent-delete escape where required, preserving exact note/audio ownership and failure recovery. Qualify expiry across process death and clock changes. Consume the reviewed upstream capacity fix: existing Trash must remain readable, restorable and purgeable after a later host lowers its limits. Current limits are unchanged in this integration; the candidate fix is upstream PR 34649.",
+      "remaining": "Add the separately confirmed permanent-delete escape where required, preserving exact note/audio ownership and failure recovery. Qualify expiry across process death and clock changes. Qualify the consumed upstream capacity fix: existing Trash must remain readable, restorable and purgeable after a later host lowers its limits. Current limits are unchanged; the fix merged in upstream PR 34649 and is included in the pin.",
       "acceptance": "Full-storage recovery does not silently lose another note; deletion/restore/expiry converge for the exact text and audio under interruption. A document created under larger limits can be read and reduced under smaller limits; only new additions enforce capacity.",
       "depends_on": [
         "MVP-09"
@@ -604,7 +604,7 @@
         "AP-10"
       ],
       "title": "Qualify integrated password manager and optional provider",
-      "current": "0038 provides shared password management; source tests and setup UI are not proof of filling.",
+      "current": "The pinned shared password module supplies native vault management and app Autofill. Three real Android consumer tests passed on a clean checkout at 352d7a0855, with exact APK hashes and cleanup evidence in upstream PR #34835. Integrated browser Autofill is unavailable because ordinary WebView lacks native per-field origins. Show and Copy remain available; successful browser filling is not qualified.",
       "remaining": "On release-signed devices test enablement, synthetic credential save/update/fill, biometric unavailable/lock/cancel, exact top-level origin, iframe, app certificate, tab/process switch, disable/re-enable and optional Proton Pass.",
       "acceptance": "No secret in model context/logs; correct-origin fill and wrong-origin refusal recorded. Passkeys remain separate until explicitly scoped and implemented.",
       "depends_on": [
@@ -648,8 +648,8 @@
         "AP-10"
       ],
       "title": "Finish regional Maps deployment and travel acceptance",
-      "current": "Route selection and guidance integration exists; source tests do not qualify production map data or physical navigation. A source-level reproduction confirms a date-line projection defect: a point at longitude 179.5 on an equatorial route from 179 to -179 is reported 55.6 km off route instead of zero.",
-      "remaining": "Provision approved TLS endpoint and licensed data coverage, verify build configuration, location permission/accuracy, reroute/stale result, offline/no route, background navigation and stop behavior. Adopt a reviewed great-circle projection fix (candidate upstream PR 34650), and qualify date-line/high-latitude routes and maneuver ordering.",
+      "current": "Route selection and guidance integration exists; source tests do not qualify production map data or physical navigation. The previous projection reported a point at longitude 179.5 on a route from 179 to -179 as 55.6 km off route. The pin includes the reviewed geodesic correction; integrated navigation acceptance remains open.",
+      "remaining": "Provision approved TLS endpoint and licensed data coverage, verify build configuration, location permission/accuracy, reroute/stale result, offline/no route, background navigation and stop behavior. The great-circle projection fix from merged upstream PR 34650 is in the pin; qualify date-line/high-latitude routes and maneuver ordering.",
       "acceptance": "J04 event-to-route on selected hardware with explicit origin/route, correct live guidance and truthful regional/offline limits. Date-line progress agrees with the existing geodesic distance calculation and never invents an off-route detour.",
       "depends_on": [
         "MVP-04",
