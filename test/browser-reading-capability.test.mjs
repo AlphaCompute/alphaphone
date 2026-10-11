@@ -42,11 +42,16 @@ test("the native side reports the capability and refuses a review with the unava
   assert.match(world, /this\.web=web;\s*if\(!supported\(\)\)return;/, "no world, listener or script is created without the capability");
   assert.match(world, /boolean available\(\)\{return !closed&&world!=null;\}/);
   assert.match(plugin, /@PluginMethod public void readingSupport\(PluginCall call\) \{ JSObject out=new JSObject\(\);out\.put\("available",BrowserReadingWorld\.supported\(\)\);call\.resolve\(out\); \}/);
-  // Unavailable is decided before extraction and is not the "reload this page" answer.
-  const unsupported = reading.indexOf("if(world==null||!world.available()){call.reject(UNSUPPORTED,UNSUPPORTED_CODE);return;}");
-  const notReady = reading.indexOf('if(!world.ready()){call.reject("This page is not ready for private reading. Reload this page, then try again.","reading-not-ready");return;}');
-  const extract = reading.indexOf("world.evaluate(EXTRACT,");
-  assert.ok(unsupported > 0 && notReady > unsupported && extract > notReady, "unsupported, then not ready, then extraction");
+  // Unavailable is the first answer of a review: before a speech route is asked for, before the
+  // page is judged, before extraction, and it is not the "reload this page" answer.
+  const review = reading.slice(reading.indexOf("private void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent,boolean question){"));
+  const unsupported = review.indexOf("if(world==null||!world.available()){call.reject(UNSUPPORTED,UNSUPPORTED_CODE);return;}");
+  const route = review.indexOf('call.reject("Select an available speech route before reading")');
+  const sensitive = review.indexOf('call.reject("Reading unavailable on a sensitive or unverified page")');
+  const notReady = review.indexOf('if(!world.ready()){call.reject("This page is not ready for private reading. Reload this page, then try again.","reading-not-ready");return;}');
+  const extract = review.indexOf("world.evaluate(EXTRACT,");
+  assert.ok(unsupported > 0 && route > unsupported && sensitive > route && notReady > sensitive && extract > notReady, "unsupported, then speech route, sensitive page, not ready, then extraction");
+  assert.match(review, /^[^\n]*\n\s*cancel\(\);final long expected=generation;\n\s*\/\/[^\n]*\n\s*if\(world==null\|\|!world\.available\(\)\)/, "nothing but the cancellation of an earlier review precedes it");
   assert.match(reading, /static final String UNSUPPORTED_CODE="reading-unsupported";/);
 });
 

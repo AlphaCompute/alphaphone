@@ -103,10 +103,10 @@ final class BrowserReading {
  void reviewQuestion(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){review(call,web,world,stillCurrent,true);}
  private void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent,boolean question){
   cancel();final long expected=generation;
+  // The provider cannot read in isolation: say so before anything else. No speech route, other page or reload can help, and nothing falls back to the page's own world.
+  if(world==null||!world.available()){call.reject(UNSUPPORTED,UNSUPPORTED_CODE);return;}
   try{if(!question)binding=binding(call);}catch(Exception error){call.reject("Select an available speech route before reading");return;}
   if(sensitiveUrl(web.getUrl())){call.reject("Reading unavailable on a sensitive or unverified page");return;}
-  // The provider cannot read in isolation: say so. Reloading cannot help, and nothing falls back to the page's own world.
-  if(world==null||!world.available()){call.reject(UNSUPPORTED,UNSUPPORTED_CODE);return;}
   if(!world.ready()){call.reject("This page is not ready for private reading. Reload this page, then try again.","reading-not-ready");return;}
   current=stillCurrent;pending=call;expires=System.currentTimeMillis()+120000;
   scheduleTimeout(expected,120000);

@@ -270,6 +270,26 @@ class B or class E evidence, and no fix below has been shown to hold on Android.
   it fails on the pre-change sources at the eight places named above. It is a source-shape
   guard: no late call was delivered to a destroyed plugin on a device. Three hand-offs are
   listed in the test as reviewed exceptions with the reason for each.
+- **Requests that launch through the activity** (found in review of this branch; same class,
+  not an executor). A permission request or an activity-result request has no launcher once
+  the activity is destroyed: androidx unregisters it then and `launch()` throws
+  `IllegalStateException`, on Capacitor's bridge thread (read from the `androidx.activity`
+  1.10.1 classes this build resolves; not reproduced on a device). Unguarded before:
+  `AlphaHostedResultsPlugin.enable`, `AlphaVoiceCloudPlugin.startRecording`,
+  `DailyAppsPlugin.perform` (a selection), Capacitor's own `requestPermissions` on the four
+  plugins that declare permissions (the startup access panel calls it on `DailyApps` and
+  `AlphaVoiceCloud`), and three plugin methods the app's plugins inherit from shared ones
+  (`CalendarPlugin.requestAccess`, `requestWorkflowReadAccess`, `ReminderPlugin.scheduleReminder`).
+  Each is now the body of `LateLaunch.ask`, which rejects the call; the inherited ones are
+  overridden in the app's subclass, and the shared sources are unchanged. The guard test scans
+  every app source for such a request outside `LateLaunch.ask` or a `try` that answers it, and
+  reads the shared parent classes so a new inherited request needs its override. **Not
+  covered:** the shared camera and location plugins, which the app registers without
+  subclassing, make the same permission requests unguarded (`vendor/eliza/plugins`); that
+  needs an upstream change, not an edit here. Also changed: `AlphaMapsTransportPlugin.startNavigation`
+  refuses after destroy and retires a session it started while destruction ran, so a late
+  call cannot leave a navigation notification with no renderer behind it; and the native
+  reading review now gives the unavailable answer before it asks for a speech route.
 - **BrowserFlow live search** (failed in rounds 7 and 8). The product request is correct:
   search words become `https://www.google.com/search?q=<words>`. The saved result files
   (`f-default/*/BrowserFlow.txt`) show a complete HTTPS page with a body that was not that
@@ -284,7 +304,9 @@ class B or class E evidence, and no fix below has been shown to hold on Android.
   `=provider-check`, so a campaign can say which it saw; a pass with `provider-check` is not
   evidence that a results page renders. Any other page still fails, now with the host and path
   class of what loaded. If the next campaign fails with `host: other`, the hypothesis is wrong
-  and the method needs another look. Not run.
+  and the method needs another look; a failure that reports `www.google.com`, `/search` and a
+  short `textLength` would instead mean the results address answered with a page that never
+  filled in (a script check that did not complete), which this method does not accept. Not run.
 - **Page reading without isolated-world injection** (WebView 133 on the SDK emulator).
   Nothing was injected into a page's own world before this round and nothing is now; the
   refusal was a toast after a speech route had been prepared, with advice to reload that could
@@ -305,9 +327,10 @@ class B or class E evidence, and no fix below has been shown to hold on Android.
   -x :local-speech:preBuild -x :app:stageLocalAgentSources -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1`
   with `-PELIZA_DEV_ALLOW_TEST_MOCKS=0` and again with `=1`: BUILD SUCCESSFUL both times.
   Compilation only.
-- Run on a development machine at this source: `npm run verify` exit 0 (692 tests, 688 passed,
+- Run on a development machine at the reviewed source (after the review additions above; the
+  Gradle compile was repeated then too): `npm run verify` exit 0 (695 tests, 691 passed,
   0 failed, 4 todo; bundle audit passed, 395 files, `testMocks=false`);
-  `ALPHA_BROWSER_TEST_PORT=7033 npx playwright test --project=chromium --workers=4` on
+  `ALPHA_BROWSER_TEST_PORT=7053 npx playwright test --project=chromium --workers=4` on
   `reading-capability`, `browser-navigation`, `reading-review`, `reading-source`,
   `reading-sensitive`, `journey-e-browser-credentials`, `web-summary-note` and
   `browser-signins`: 67 passed. The Chromium specs run the web build, which never asks the
@@ -317,9 +340,11 @@ class B or class E evidence, and no fix below has been shown to hold on Android.
   `RUN --classes BrowserFlow,BrowserReadingNavigation,BrowserSignins,BrowserContinuity,MailAttachment,ClockHandoff`
   (network needed for BrowserFlow); `RUN --test-mocks --classes BrowserDownload,BrowserFlow,BrowserDialogLifecycle,BrowserWebFeatures`;
   `RUN --variants launcher --home-role --classes SettingsRoles,LauncherHome`, repeated, since
-  the crash it found appeared once in 22 runs. These exercise the changed plugins while the
-  activity is alive, and LauncherHome destroys it; none delivers a call to a destroyed plugin
-  on purpose, so a pass is regression evidence only.
+  the crash it found appeared once in 22 runs; and, for the plugin methods now routed through
+  `LateLaunch`, `RUN --classes DailyApps,ReminderLifecycle,HostedResultsLifecycle,StartupReadiness`
+  with the voice permission campaigns of `scripts/test-native-permissions.mjs`. These exercise
+  the changed plugins while the activity is alive, and LauncherHome destroys it; none delivers
+  a call to a destroyed plugin on purpose, so a pass is regression evidence only.
 
 ## Round 8 (2026-10-11): runner cases, fixes and hosted jobs, none run
 

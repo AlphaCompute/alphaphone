@@ -184,3 +184,94 @@ test("receivers and callbacks a plugin registers are released when it is destroy
     if (/setStopListener\(/.test(code) && /extends Plugin/.test(code)) assert.ok(/clearStopListener\(/.test(code), `${name}: sets a navigation stop listener and never clears it`);
   }
 });
+
+// A second way the same late call ends the process. A permission request or an activity-result
+// request launches through the activity, and androidx unregisters every launcher when the
+// activity is destroyed: launch() then throws IllegalStateException on Capacitor's bridge thread.
+// Rule: such a request is the body of LateLaunch.ask(call, () -> ...), or sits in a try that
+// answers the exception, with no lambda or anonymous class body between the two.
+const ANSWERS_A_MISSING_LAUNCHER = new Set(["IllegalStateException", "RuntimeException", "Exception", "Throwable"]);
+const REQUESTS = "requestPermissionForAlias|requestPermissionForAliases|requestAllPermissions|requestPermissions|startActivityForResult";
+
+/** Every request in this source that launches through the activity, and whether a missing launcher is answered. */
+function launches(name, code) {
+  const launchers = new Set([...code.matchAll(/\bActivityResultLauncher<[^;=()]*>\s+(\w+)\s*[=;,]/g)].map(match => match[1]));
+  const all = blocks(code), sites = [];
+  for (const match of code.matchAll(new RegExp(`(?:\\b(\\w+)\\.)?\\b(${REQUESTS}|launch)\\(`, "g"))) {
+    const [, receiver, method] = match, at = match.index;
+    if (method === "launch" ? !launchers.has(receiver) : receiver !== undefined && receiver !== "super" && receiver !== "this") continue;
+    // A declaration of the method, not a call of it.
+    if (/\b(?:void|boolean)\s+$/.test(code.slice(Math.max(0, at - 12), at))) continue;
+    let guarded = /LateLaunch\.ask\(\s*\w+\s*,\s*\(\)\s*->\s*$/.test(code.slice(Math.max(0, at - 80), at));
+    for (const block of all.filter(block => block.start < at && at < block.end).sort((a, b) => b.start - a.start)) {
+      if (guarded || block.kind === "deferred") break;
+      if (block.kind === "try" && block.catches.some(type => ANSWERS_A_MISSING_LAUNCHER.has(type))) guarded = true;
+    }
+    sites.push({ file: name, at, line: code.slice(0, at).split("\n").length, method: receiver ? `${receiver}.${method}` : method, guarded });
+  }
+  return sites;
+}
+
+/** The plugin methods of a source: name, parameter name and body. */
+function pluginMethods(code) {
+  const all = blocks(code), found = [];
+  for (const match of code.matchAll(/@PluginMethod(?:\([^)]*\))?\s+public\s+(?:synchronized\s+)?void\s+(\w+)\(PluginCall\s+(\w+)\)\s*\{/g)) {
+    const open = match.index + match[0].length - 1, body = all.find(block => block.start === open);
+    if (body) found.push({ name: match[1], start: open, end: body.end });
+  }
+  return found;
+}
+
+test("a permission or activity-result request that arrives after the activity is destroyed is rejected, not thrown", () => {
+  const helper = read("LateLaunch.java");
+  assert.match(helper, /static boolean ask\(PluginCall call,Runnable launch\)\{\s*try\{launch\.run\(\);return true;\}\s*catch\(IllegalStateException \w+\)\{call\.reject\(CLOSED\);return false;\}\s*\}/);
+
+  const sample = "class A extends Plugin{ActivityResultLauncher<Intent> picker;void a(PluginCall c){requestPermissionForAlias(\"x\",c,\"cb\");}void b(PluginCall c){LateLaunch.ask(c,()->requestPermissionForAlias(\"x\",c,\"cb\"));}void c(PluginCall c){try{startActivityForResult(c,i,\"cb\");}catch(ActivityNotFoundException e){}}void d(PluginCall c){try{picker.launch(i);}catch(RuntimeException e){}}void e(PluginCall c){try{run(()->{picker.launch(i);});}catch(Exception e){}}@Override public void requestPermissions(PluginCall c){LateLaunch.ask(c,()->super.requestPermissions(c));}void f(){other.launch(i);activity.startActivityForResult(i,1);}}";
+  assert.deepEqual(launches("A.java", mask(sample)).map(site => [site.method, site.guarded]),
+    [["requestPermissionForAlias", false], ["requestPermissionForAlias", true], ["startActivityForResult", false], ["picker.launch", true], ["picker.launch", false], ["super.requestPermissions", true]],
+    "a bare request, one whose try answers something else and one inside a lambda within a try are unguarded; a declaration, another object's launch and an activity's own request are not requests of this kind");
+
+  const found = files.flatMap(name => launches(name, mask(read(name))));
+  // A scanner that silently finds nothing would pass.
+  for (const [name, method] of [["AlphaHostedResultsPlugin.java", "requestPermissionForAlias"], ["AlphaVoiceCloudPlugin.java", "requestPermissionForAlias"], ["DailyAppsPlugin.java", "startActivityForResult"], ["AlphaFilesPlugin.java", "startActivityForResult"], ["AlphaMailAttachmentsPlugin.java", "startActivityForResult"], ["AlphaNoteDocumentsPlugin.java", "startActivityForResult"], ["AlphaBrowserPlugin.java", "takePicture.launch"], ["AlphaBrowserPlugin.java", "runtimePermissions.launch"], ["AlphaBrowserPlugin.java", "filePicker.launch"], ["AlphaBrowserPlugin.java", "pageShare.launch"]])
+    assert.ok(found.some(site => site.file === name && site.method === method), `${name}: ${method} not found`);
+  assert.deepEqual(found.filter(site => !site.guarded).map(site => `${site.file}:${site.line} ${site.method}(`), [],
+    "each of these throws on the calling thread once the activity is destroyed; make it the body of LateLaunch.ask");
+});
+
+test("Capacitor's own permission request, and the shared plugins' requests an app plugin inherits, are answered the same way", () => {
+  const guardedOverride = (source, method) => new RegExp(`@Override @PluginMethod public void ${method}\\(PluginCall call\\)\\{LateLaunch\\.ask\\(call,\\(\\)->super\\.${method}\\(call\\)\\);\\}`).test(source);
+  // Plugin.requestPermissions is a plugin method of every plugin and launches for one that declares permissions.
+  const declaring = files.filter(name => /@CapacitorPlugin\([^\n]*\bpermissions\s*=/.test(read(name)));
+  assert.deepEqual(declaring, ["AlphaCalendarPlugin.java", "AlphaHostedResultsPlugin.java", "AlphaVoiceCloudPlugin.java", "DailyAppsPlugin.java"], "the plugins that declare permissions");
+  for (const name of declaring) assert.ok(guardedOverride(read(name), "requestPermissions"), `${name}: requestPermissions is overridden with the guard`);
+
+  // A plugin that extends a shared (vendored) plugin inherits its plugin methods. The shared
+  // source is not edited here; the app's subclass overrides each inherited method that launches.
+  const shared = new Map();
+  const walk = directory => { for (const entry of fs.readdirSync(directory, { withFileTypes: true })) { const full = path.join(directory, entry.name); if (entry.isDirectory()) { if (!["node_modules", "build", "test", "androidTest"].includes(entry.name)) walk(full); } else if (entry.name.endsWith(".java")) shared.set(entry.name.slice(0, -5), full); } };
+  for (const plugin of fs.readdirSync("vendor/eliza/plugins")) { const android = path.join("vendor/eliza/plugins", plugin, "android/src/main/java"); if (fs.existsSync(android)) walk(android); }
+  const inherited = [];
+  for (const name of files) {
+    const source = read(name), parent = /\bclass\s+\w+\s+extends\s+([\w.]+)/.exec(mask(source))?.[1].split(".").pop();
+    if (!parent || parent === "Plugin" || !shared.has(parent) || !/@CapacitorPlugin\(/.test(source)) continue;
+    const code = mask(fs.readFileSync(shared.get(parent), "utf8")), open = launches(parent, code).filter(site => !site.guarded);
+    for (const method of pluginMethods(code))
+      if (open.some(site => method.start < site.at && site.at < method.end)) {
+        inherited.push(`${name}<${parent}#${method.name}`);
+        assert.ok(guardedOverride(source, method.name), `${name}: ${parent}.${method.name} launches through the activity and is not overridden with the guard`);
+      }
+  }
+  assert.deepEqual(inherited.sort(), ["AlphaCalendarPlugin.java<CalendarPlugin#requestAccess", "AlphaCalendarPlugin.java<CalendarPlugin#requestWorkflowReadAccess", "DailyAppsPlugin.java<ReminderPlugin#scheduleReminder"],
+    "the inherited plugin methods that launch; a new one in a shared plugin needs its override here");
+});
+
+test("background navigation cannot be started by a call that arrives after its renderer closed", () => {
+  const maps = read("AlphaMapsTransportPlugin.java");
+  const start = maps.slice(maps.indexOf("@PluginMethod public void startNavigation(PluginCall call){"), maps.indexOf("@PluginMethod public void updateNavigation(PluginCall call){"));
+  const refused = 'if(destroyed){call.reject("Background navigation is unavailable: Alpha closed","unavailable");return;}';
+  assert.ok(start.indexOf(refused) > 0 && start.indexOf(refused) < start.indexOf("AlphaNavigationService.start("), "refused before the service is started");
+  assert.match(start, /AlphaNavigationService\.start\([^\n]*\n[^\n]*\n\s*if\(destroyed\)\{AlphaNavigationService\.stop\(getContext\(\),session,"renderer-closed"\);call\.reject\(/, "a start that raced destruction retires its own session");
+  const destroy = maps.slice(maps.indexOf("@Override protected void handleOnDestroy(){"));
+  assert.ok(destroy.indexOf("destroyed=true;") > 0 && destroy.indexOf("destroyed=true;") < destroy.indexOf("AlphaNavigationService.activeSession()"), "the flag is set before the active session is read and stopped");
+});

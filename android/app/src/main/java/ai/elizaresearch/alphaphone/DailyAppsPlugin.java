@@ -40,6 +40,10 @@ public class DailyAppsPlugin extends ai.eliza.plugins.reminders.ReminderPlugin {
   JSObject value = new JSObject(); value.put("source", "android-assist"); value.put("surface", "assistant");
   notifyListeners("assistantInvoked", value, true);
  }
+ /** Capacitor's own permission request launches through the activity; see {@link LateLaunch}. */
+ @Override @PluginMethod public void requestPermissions(PluginCall call){LateLaunch.ask(call,()->super.requestPermissions(call));}
+ /** The shared reminder plugin asks for the notification permission inside this method; see {@link LateLaunch}. */
+ @Override @PluginMethod public void scheduleReminder(PluginCall call){LateLaunch.ask(call,()->super.scheduleReminder(call));}
  @PluginMethod public void surfaceInfo(PluginCall call) {
   JSObject value = new JSObject(); value.put("assistant", getActivity() instanceof AlphaAssistActivity); value.put("developmentBuild", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   addReminderCapabilities(value);
@@ -171,7 +175,7 @@ public class DailyAppsPlugin extends ai.eliza.plugins.reminders.ReminderPlugin {
    if (isSelection(action)) {
     if (selectionPending) { finish(call, "failed", "Finish the current selection first"); return; }
     selectionPending = true;
-    startActivityForResult(call, target, "selectionResult");
+    if (!LateLaunch.ask(call, () -> startActivityForResult(call, target, "selectionResult"))) selectionPending = false;
    } else { getActivity().startActivity(target); finish(call, "opened", "autofill".equals(action) ? "Opened Android settings. Search for passwords or autofill to choose your installed provider." : "Opened the system app. Review and complete the action there."); }
   } catch (ActivityNotFoundException error) { selectionPending = false; finish(call, "unavailable", "The app is no longer available"); }
   catch (SecurityException error) { selectionPending = false; finish(call, "failed", "Android did not allow this action"); }
