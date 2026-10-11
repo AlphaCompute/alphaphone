@@ -5539,7 +5539,7 @@ class Component extends DCLogic {
     var legend = [
       [IC.up, "Swipe up from the bottom bar, or tap it · Home, from anywhere"],
       [IC.back, "Swipe in from either edge · back one step inside the app"],
-      [IC.down, "Pull down from the top · notifications and quick settings"],
+      [IC.down, "Tap or pull the Notifications handle on Home · notifications and quick settings"],
       [IC.half, "Swipe up on Home · chat. Drag its grabber to resize"],
       [IC.mic, "Side key: hold · talk, tap · lock"]
     ].map(function (l) { return { d: l[0], t: l[1] }; });

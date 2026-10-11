@@ -48,12 +48,18 @@ Home" are removed. They were the ones that competed with Android's status bar.
 - A button labelled "Notifications" with a bell, centred at the top of Home, above the cards.
   Its accessible name is "Open notifications"; it names the panel it controls
   (`aria-controls`) and is in the tab order.
-- Target size: at least 44 by 44 CSS pixels (it is 44 high and at least 120 wide), at every
-  supported text size.
+- Target size: at least 44 by 44 pixels of the 412px canvas (it is 44 high and at least 120
+  wide), at every supported text size. The canvas is scaled down to a screen narrower than
+  412px, so there the handle, like every other control, is smaller on screen by that factor
+  (38px high at 360px).
 - Position: below the status bar in every presentation. The standalone app's page starts
   below Android's bars. The launcher flavor reserves 44px for the bar and Home adds padding;
   when Android reports a taller bar (`--native-top-inset`, set by `MainActivity` from the
-  system bar inset), Home's top padding grows so the handle starts at least 12px below it.
+  system bar inset), Home's top padding grows so the handle starts at least 12 screen pixels
+  below it. The inset is in screen pixels and Home is laid out on the 412px canvas, which is
+  scaled to the screen width, so the rule divides the inset and its margin by that scale
+  (`--phone-scale`). Without the division a 360px wide screen with a 48px bar left under 8px
+  and a 100px bar overlapped the handle (found and fixed in the round-8 review).
 - Ways to open: a tap or click; Enter or Space when it has focus; the accessibility click
   action (what TalkBack's double tap and Switch Access send); a pull down that starts on the
   handle. `touch-action: none` on the handle gives the pull to the page instead of scrolling
@@ -74,6 +80,9 @@ Home; Android's own shade is available everywhere from the top edge.
 | `test/browser/notifications-handle.spec.ts` | `npm run test:browser` | In the standalone and launcher presentations: the handle's name, size and position; tap, Enter, Space, accessibility click and pull-from-handle open the panel; Close, Back and Escape close it and focus returns; swipes from the top edge, inside the status bar band, beside, above and below the handle, in the middle of Home and inside an app view open nothing; a taller status bar inset moves the handle down; the handle keeps its target at 200% text. |
 | `test/browser/accessibility-sweep.spec.ts`, `accessibility-sweep.production.spec.ts` | both lanes | Home with the handle passes the name, role, focus order, contrast, target size, clipping and overlap rules, at the default size, at 200% text and in landscape. |
 | `test/browser/settings-truth.production.spec.ts`, `root-view-states.spec.ts`, `fixtures-empty-runtime.spec.ts` | both lanes | Open the panel through the handle (they used the removed top-edge swipe). |
+| `test/browser/notifications-handle.spec.ts`, "the launcher handle starts 12 screen pixels below any status bar" | `npm run test:browser` | At 360, 412 and 480px wide and insets of 24 to 100px the handle's top edge on screen is at least 12px below the inset. |
+| `NotificationsInstrumentedTest`, `NotificationChannelsInstrumentedTest` | emulator | Both opened the panel with a synthetic swipe from y=50 that the product no longer answers; they now go to Home and click the handle (`AppNavigation.openNotifications`). Compiled at this source, not run. |
+| `test/gesture-zones-single-instance.test.mjs` | `npm test` | Source shape only: no swipe opener in the shell, no instrumented test synthesizes the removed swipe, the handle's margin rule divides by the canvas scale. |
 | `AccessibilityInstrumentedTest.homeShadeSettingsAndComposerAtDoubleFontScale` | emulator | A swipe from the top edge leaves Alpha's panel closed; a swipe beside the handle opens nothing; the accessibility click action on the handle opens the panel; a pull from the handle opens it. Compiled at this source, not run. |
 
 ## Left to the owner

@@ -171,10 +171,11 @@ kiosk is not enabled by default; preserve a recovery route and normal Android se
 
 `MainActivity` is `singleTask` and, on the launcher flavor, also answers `ACTION_MAIN` /
 `CATEGORY_HOME`. Android keeps the two kinds of start apart. A HOME start (the HOME key, the
-start Android makes when the role is granted, boot) carries only the HOME category and no
-component, and Android gives the activity the home activity type in the display's home task.
-Every other start (the app icon, a notification tap, the `alphaphone://cloud-delegation`
-sign-in return, an explicit component) has the standard type. A task's activity type never
+start Android makes when the role is granted, boot) has `ACTION_MAIN` with HOME as its only
+category, no data and no type, and either names no component or is made by the system itself;
+Android gives the activity the home activity type in the display's home task. Every other
+start (the app icon, a notification tap, the `alphaphone://cloud-delegation` sign-in return, an
+explicit component from another app) has the standard type. A task's activity type never
 changes, and the task lookup that makes `singleTask` reuse an instance only matches a task of a
 compatible type. So a HOME start cannot reuse a standard-type instance and the reverse, and
 Android creates a second `MainActivity`. Round 7 measured this on the API 36 emulator when the
@@ -194,6 +195,18 @@ kind it is (`MainActivity`, "One live MainActivity"):
   removed; Android's home task is left alone.
 - If that front start ever created another instance instead of reaching the live one, that
   instance finishes without starting anything. The hand-off cannot loop.
+- Which kind the live instance is belongs to its task and is read from the start intent once,
+  for the first instance in that task. Android hands a relaunched activity (renderer recovery,
+  a system font-size change; `fontScale` is not in `configChanges`) the last intent given to
+  `setIntent`, and `AlphaConnectionPlugin` keeps the Cloud sign-in return there
+  (`CloudDelegationCallbackInstrumentedTest` relies on exactly that). Reading the kind again
+  after a relaunch would call a home-type instance standard; the front start would then come
+  back to the instance that asked, and a later notice tap or sign-in return would be delivered
+  without Alpha coming to the front. The round-8 review found this in the first version of the
+  hand-off and changed it to keep the kind per task id.
+- `MainActivity` is exported, so the marker extra of the front start is read inside a
+  `try`/`catch`: an intent whose extras do not unparcel in this process is treated as not ours.
+  The instance that hands off never removes a task it shares with the live instance.
 
 What follows from keeping the first instance:
 
@@ -208,8 +221,12 @@ What follows from keeping the first instance:
 Evidence: `SettingsRolesInstrumentedTest` (one resumed instance, the same object and page with
 its unsent draft, and one `MainActivity` record in `dumpsys activity activities`, after the
 role is accepted, after three HOME presses and after an explicit start) and
-`LauncherHomeInstrumentedTest` (one resumed instance after every HOME return). Both were
-compiled at this source and not run. The second instance is what round 7 observed; the
+`LauncherHomeInstrumentedTest` (one resumed instance after every HOME return; and
+`aRelaunchHoldingAReplacedIntentKeepsOneInstanceThatLaterStartsBringToTheFront`: after a
+relaunch that holds an intent of the other kind, the kind is unchanged and an explicit start
+and the HOME key each bring the one instance to the front over Android Settings). Both were
+compiled at this source and not run. `test/gesture-zones-single-instance.test.mjs` holds the
+source shape (class S); it shows nothing about Android's behaviour. The second instance is what round 7 observed; the
 explanation by activity type is how AOSP assigns the home type to a HOME start and matches
 tasks for `singleTask`, which is platform implementation, not a public API contract, and was
 not re-measured here. The hand-off itself has no emulator result yet. Whether the short-lived

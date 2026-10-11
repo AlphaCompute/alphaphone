@@ -370,6 +370,30 @@ Other rows of the tables above, re-read for product defects:
   Home visible above it (the library kept the launcher's status-bar offset). Fixed in
   `phone.css`; `large-text-overlap.spec.ts` asserts the library covers the screen.
 
+Independent review of the above (same branch, source and browser tests only; no emulator). It
+changed four things:
+
+- `NotificationsInstrumentedTest` and `NotificationChannelsInstrumentedTest` opened Alpha's
+  panel with a synthetic swipe from the top band, which the product no longer answers, so both
+  would have timed out on the next emulator run. They now go to Home and click the handle.
+- The launcher handle's margin below the status bar was computed in canvas pixels against an
+  inset in screen pixels. On a screen narrower than the 412px canvas the margin shrank (under
+  8px at 360px wide with a 48px bar) and a 100px bar overlapped the handle. The rule now divides
+  by the canvas scale; `notifications-handle.spec.ts` measures it on screen at three widths.
+- The hand-off read the live instance's kind (home or standard) from the intent the instance
+  held when it was created. A relaunch is handed the last intent given to `setIntent`, where the
+  Cloud sign-in return is kept, so after a sign-in and then a relaunch (a system font-size
+  change, renderer recovery) a home-type instance was treated as standard and a later notice tap
+  or sign-in return would have been delivered without Alpha coming to the front. The kind is
+  now kept per task id. `LauncherHomeInstrumentedTest` has a method for it; compiled, not run.
+- Smaller: the front-start marker extra is read without trusting a foreign parcel, and the
+  instance that hands off never removes a task it shares with the live one.
+
+The Java at the reviewed head was compiled for both flavors (app and androidTest sources) with
+plain `javac` against the Gradle cache's dependency jars and the generated classes of an existing
+build of the same base commit, not with Gradle; no APK was assembled and no lint was run on the
+review's changes. Every native statement in this subsection is still class S.
+
 ## Emulator results at 73b973a5 (2026-10-10)
 
 Class E only (emulator instrumentation). Not physical-device, AOSP image, real-integration or
