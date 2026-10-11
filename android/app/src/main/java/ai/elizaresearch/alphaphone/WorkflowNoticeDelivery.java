@@ -45,6 +45,10 @@ final class WorkflowNoticeDelivery {
  /** A decision withdraws the notice. The receipt stays (as withdrawn) until expiry, so the notice is never
   * reposted. A decision that arrives before any publish is retained too, for the maximum approval lifetime. */
  void withdrawApproval(String id,long now)throws Exception{shared.withdrawApproval(id,now);}
+ /** The whole withdrawal. The shared ledger refuses a withdrawal it cannot record (a full or unreadable
+  * ledger); the route is released all the same unless its receipt is still posted, so a decided approval
+  * never keeps a route that no later call would free. */
+ void withdrawApproval(WorkflowNoticeTaps taps,String id,long now)throws Exception{try{withdrawApproval(id,now);}finally{taps.forget(id);}}
  /** Removes receipts whose approval expired (the OS already timed the notice out) and returns their IDs. */
  List<String> expireApprovals(long now)throws Exception{return shared.expireApprovals(now);}
 }

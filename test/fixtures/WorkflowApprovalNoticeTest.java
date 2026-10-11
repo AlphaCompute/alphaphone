@@ -58,18 +58,41 @@ public final class WorkflowApprovalNoticeTest {
   require(new JSONObject(store.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT)).length()==0&&taps.token(third)==null,"ledgers bounded after expiry");
   // A muted approval channel records failure without posting; step notices are unaffected.
   Poster muted=new Poster();muted.approvals=false;String fourth="approval-"+"4".repeat(64);require("failed".equals(new WorkflowNoticeDelivery(new Store(),muted).publishApproval(fourth,binding,now+minute,now))&&muted.posted.isEmpty(),"muted channel posts nothing");
-  // Receipts written before the shared ledger was adopted (same slots, same record shapes) still read:
-  // these literals are the stored format of the retired in-app ledger, not output of the code under test.
-  {Store old=new Store();Poster quiet=new Poster();String digest="5ad03d9c2f0a4ce9b3d1bd36b6ba0e7a6f3a5a3b3ba0a5d8bbd1c7d7e3b0c1aa";
-   String posted="approval-"+"8".repeat(64),decided="approval-"+"9".repeat(64);
-   String approvalDigest=new JSONObject(raw).getJSONObject(first).getString("digest");
-   old.values.put("workflow-approval-notices:v1","{\""+posted+"\":{\"binding\":\""+binding+"\",\"digest\":\""+approvalDigest+"\",\"status\":\"succeeded\",\"expiresAt\":"+(now+5*minute)+"},\""+decided+"\":{\"binding\":\""+binding+"\",\"digest\":\""+approvalDigest+"\",\"status\":\"withdrawn\",\"expiresAt\":"+(now+5*minute)+"}}");
-   WorkflowNoticeDelivery upgraded=new WorkflowNoticeDelivery(old,quiet);quiet.active.put(posted,WorkflowNoticeDelivery.APPROVAL_TITLE+"\n"+WorkflowNoticeDelivery.APPROVAL_BODY);
-   require("succeeded".equals(upgraded.publishApproval(posted,binding,now+5*minute,now))&&"withdrawn".equals(upgraded.publishApproval(decided,binding,now+5*minute,now))&&quiet.posted.isEmpty(),"stored approval receipts read without reposting");
-   old.values.put("workflow-notice-delivery:v1","{\"op1\":{\"binding\":\""+binding+"\",\"digest\":\""+digest+"\",\"status\":\"succeeded\"}}");
-   rejects(()->upgraded.publish("op1",binding,"Other title","Other body"),"stored step receipt keeps its digest check");
+  // Receipts written before the shared ledger was adopted still read. The two literals below are bytes the
+  // retired in-app ledger wrote (generated from its source at dfacccb3 with this binding, this expiry and,
+  // for the steps, "Exact title"/"Exact body"); nothing in them is output of the code under test. A shared
+  // ledger that derived another digest or expected another record shape would refuse them as a mismatch.
+  {Store old=new Store();Poster quiet=new Poster();
+   String posted="approval-"+"8".repeat(64),decided="approval-"+"9".repeat(64),uncertain="approval-"+"7".repeat(64),muted6="approval-"+"6".repeat(64);
+   String storedApprovals="{\"approval-6666666666666666666666666666666666666666666666666666666666666666\":{\"digest\":\"374b7f013c957e10f18b9d08e29ed707f2eb956fe1496cd77087908d98fb249c\",\"binding\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"expiresAt\":1760000300000,\"status\":\"failed\"},\"approval-8888888888888888888888888888888888888888888888888888888888888888\":{\"digest\":\"374b7f013c957e10f18b9d08e29ed707f2eb956fe1496cd77087908d98fb249c\",\"binding\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"expiresAt\":1760000300000,\"status\":\"succeeded\"},\"approval-7777777777777777777777777777777777777777777777777777777777777777\":{\"digest\":\"374b7f013c957e10f18b9d08e29ed707f2eb956fe1496cd77087908d98fb249c\",\"binding\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"expiresAt\":1760000300000,\"status\":\"unknown\"},\"approval-9999999999999999999999999999999999999999999999999999999999999999\":{\"digest\":\"374b7f013c957e10f18b9d08e29ed707f2eb956fe1496cd77087908d98fb249c\",\"binding\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"expiresAt\":1760000300000,\"status\":\"withdrawn\"}}";
+   String storedSteps="{\"op-posted\":{\"digest\":\"c2bab42876959c49ccb08681278ca0b2e3a50a01f2d06bb5b736eccba554b1aa\",\"binding\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"status\":\"succeeded\"},\"op-denied\":{\"digest\":\"c2bab42876959c49ccb08681278ca0b2e3a50a01f2d06bb5b736eccba554b1aa\",\"binding\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"status\":\"failed\"},\"op-uncertain\":{\"digest\":\"c2bab42876959c49ccb08681278ca0b2e3a50a01f2d06bb5b736eccba554b1aa\",\"binding\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"status\":\"unknown\"}}";
+   require(now+5*minute==1760000300000L&&binding.equals("b".repeat(64)),"stored fixtures match this test's binding and expiry");
+   old.values.put("workflow-approval-notices:v1",storedApprovals);old.values.put("workflow-notice-delivery:v1",storedSteps);
+   WorkflowNoticeDelivery upgraded=new WorkflowNoticeDelivery(old,quiet);
+   // Approvals: every stored status answers as stored, nothing is posted and nothing is rewritten.
+   require("succeeded".equals(upgraded.publishApproval(posted,binding,now+5*minute,now))&&"withdrawn".equals(upgraded.publishApproval(decided,binding,now+5*minute,now))&&"failed".equals(upgraded.publishApproval(muted6,binding,now+5*minute,now))&&"unknown".equals(upgraded.publishApproval(uncertain,binding,now+5*minute,now)),"stored approval receipts answer as stored");
+   require(quiet.posted.isEmpty()&&storedApprovals.equals(old.values.get("workflow-approval-notices:v1")),"stored approval receipts read without reposting or rewriting");
+   rejects(()->upgraded.publishApproval(posted,"c".repeat(64),now+5*minute,now),"stored approval receipt keeps its binding check");
+   rejects(()->upgraded.publishApproval(posted,binding,now+6*minute,now),"stored approval receipt keeps its expiry check");
+   {WorkflowNoticeTaps routes=new WorkflowNoticeTaps(old);String stored=routes.prepare(posted,binding,route("run8"));routes.capture(stored);require(routes.pending().getBoolean("retained"),"a stored posted approval still opens its run");routes.consume(stored);}
+   quiet.active.put(uncertain,WorkflowNoticeDelivery.APPROVAL_TITLE+"\n"+WorkflowNoticeDelivery.APPROVAL_BODY);
+   require("succeeded".equals(upgraded.publishApproval(uncertain,binding,now+5*minute,now))&&quiet.posted.isEmpty(),"a stored uncertain approval is confirmed from the live notice, never reposted");
+   // Steps: the Poster above fails the test on any step post, so a repost cannot pass unnoticed.
+   require("succeeded".equals(upgraded.publish("op-posted",binding,"Exact title","Exact body"))&&"succeeded".equals(upgraded.receipt("op-posted",binding,"Exact title","Exact body"))&&"failed".equals(upgraded.publish("op-denied",binding,"Exact title","Exact body"))&&"unknown".equals(upgraded.publish("op-uncertain",binding,"Exact title","Exact body")),"stored step receipts answer as stored");
+   require(storedSteps.equals(old.values.get("workflow-notice-delivery:v1")),"stored step receipts are not rewritten");
+   rejects(()->upgraded.publish("op-posted",binding,"Other title","Exact body"),"stored step receipt keeps its digest check");
+   rejects(()->upgraded.publish("op-posted","c".repeat(64),"Exact title","Exact body"),"stored step receipt keeps its binding check");
    require(WorkflowNoticeDelivery.SLOT.equals("workflow-notice-delivery:v1")&&WorkflowNoticeDelivery.APPROVAL_SLOT.equals("workflow-approval-notices:v1"),"deployed slot names unchanged");
-   require(upgraded.expireApprovals(now+5*minute).size()==2&&new JSONObject(old.values.get("workflow-approval-notices:v1")).length()==0,"stored approval receipts expire");}
+   require(upgraded.expireApprovals(now+5*minute).size()==4&&new JSONObject(old.values.get("workflow-approval-notices:v1")).length()==0,"stored approval receipts expire");}
+  // Receipts the retired ledger left at "applying" (the process died between its intent and its result
+  // write) are literal bytes too. The shared ledger must settle them as unknown and never post them.
+  {Store cut=new Store();Poster silent=new Poster();String interrupted="approval-"+"5".repeat(64);
+   cut.values.put("workflow-notice-delivery:v1","{\"op-interrupted\":{\"digest\":\"c2bab42876959c49ccb08681278ca0b2e3a50a01f2d06bb5b736eccba554b1aa\",\"binding\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"status\":\"applying\"}}");
+   cut.values.put("workflow-approval-notices:v1","{\"approval-5555555555555555555555555555555555555555555555555555555555555555\":{\"digest\":\"374b7f013c957e10f18b9d08e29ed707f2eb956fe1496cd77087908d98fb249c\",\"binding\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"expiresAt\":1760000300000,\"status\":\"applying\"}}");
+   WorkflowNoticeDelivery resumed=new WorkflowNoticeDelivery(cut,silent);
+   require("unknown".equals(resumed.publish("op-interrupted",binding,"Exact title","Exact body"))&&"unknown".equals(resumed.publish("op-interrupted",binding,"Exact title","Exact body")),"an interrupted stored step receipt settles as unknown");
+   require("unknown".equals(resumed.publishApproval(interrupted,binding,now+5*minute,now))&&"unknown".equals(resumed.publishApproval(interrupted,binding,now+5*minute,now))&&silent.posted.isEmpty(),"an interrupted stored approval receipt settles as unknown and is never posted");
+   require("unknown".equals(new JSONObject(cut.values.get("workflow-notice-delivery:v1")).getJSONObject("op-interrupted").getString("status"))&&"unknown".equals(new JSONObject(cut.values.get("workflow-approval-notices:v1")).getJSONObject(interrupted).getString("status")),"the settled status is stored");}
   // A decision that reaches the phone before any publish is retained: the late publish never posts,
   // the prepared route is released, an unpublished withdrawal cannot open a tap, and expiry prunes it.
   {Store s3=new Store();Poster p3=new Poster();WorkflowNoticeDelivery d3=new WorkflowNoticeDelivery(s3,p3);WorkflowNoticeTaps t3=new WorkflowNoticeTaps(s3);String early="approval-"+"a".repeat(64);
@@ -79,12 +102,29 @@ public final class WorkflowApprovalNoticeTest {
    require("withdrawn".equals(d3.postApproval(t3,early,binding,route("run9"),now+10*minute,now+minute))&&p3.posted.isEmpty()&&t3.token(early)==null,"late publish after an early decision posts nothing and keeps no route");
    d3.withdrawApproval(early,now+2*minute);require(new JSONObject(s3.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT)).getJSONObject(early).getLong("expiresAt")==now+WorkflowNoticeDelivery.MAXIMUM_APPROVAL_MS,"repeated withdrawal keeps the first expiry");
    require(d3.expireApprovals(now+WorkflowNoticeDelivery.MAXIMUM_APPROVAL_MS).equals(List.of(early))&&"expired".equals(d3.postApproval(t3,early,binding,route("run9"),now+10*minute,now+WorkflowNoticeDelivery.MAXIMUM_APPROVAL_MS)),"early withdrawal is pruned at its bound");}
+  // The plugin's whole withdrawal. A full ledger refuses to record a withdrawal for an approval it has no
+  // receipt for; the route a refused post left behind is released all the same, and a posted one is kept.
+  {Store s4=new Store();Poster p4=new Poster();WorkflowNoticeDelivery d4=new WorkflowNoticeDelivery(s4,p4);WorkflowNoticeTaps t4=new WorkflowNoticeTaps(s4);String live="approval-"+"c".repeat(64),refused="approval-"+"d".repeat(64);
+   require("succeeded".equals(d4.postApproval(t4,live,binding,route("run4"),now+10*minute,now)),"live approval posts");
+   for(int i=0;i<255;i++)d4.withdrawApproval("approval-"+String.format("%064x",i),now);
+   require(new JSONObject(s4.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT)).length()==256,"approval ledger at capacity");
+   rejects(()->d4.postApproval(t4,refused,binding,route("run5"),now+10*minute,now),"a full ledger refuses a new approval");require(t4.token(refused)!=null&&p4.posted.size()==1,"the refused post leaves its prepared route and posts nothing");
+   String before=s4.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT);
+   rejects(()->d4.withdrawApproval(t4,refused,now),"a full ledger cannot record the withdrawal");require(t4.token(refused)==null&&before.equals(s4.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT)),"the refused withdrawal still releases the route and changes no receipt");
+   d4.withdrawApproval(t4,live,now+minute);require(t4.token(live)==null&&p4.cancelled.contains(live)&&"withdrawn".equals(d4.publishApproval(live,binding,now+10*minute,now+minute)),"a recorded withdrawal cancels, releases and never reposts");
+   // A receipt that could not be marked withdrawn is still posted, so its route stays openable.
+   boolean[] deny={false};Store s5=new Store(){public void write(String slot,String value){if(deny[0]&&WorkflowNoticeDelivery.APPROVAL_SLOT.equals(slot))throw new IllegalStateException("Disk");super.write(slot,value);}};
+   Poster p5=new Poster();WorkflowNoticeDelivery d5=new WorkflowNoticeDelivery(s5,p5);WorkflowNoticeTaps t5=new WorkflowNoticeTaps(s5);
+   require("succeeded".equals(d5.postApproval(t5,live,binding,route("run4"),now+10*minute,now)),"posted before the storage fault");
+   deny[0]=true;rejects(()->d5.withdrawApproval(t5,live,now+minute),"a storage fault refuses the withdrawal");
+   require(t5.token(live)!=null&&p5.active.containsKey(live)&&!p5.cancelled.contains(live),"an unrecorded withdrawal keeps the posted notice and its route");
+   deny[0]=false;d5.withdrawApproval(t5,live,now+minute);require(t5.token(live)==null&&p5.cancelled.contains(live)&&"withdrawn".equals(d5.publishApproval(live,binding,now+10*minute,now+minute))&&p5.posted.size()==1,"the repeated withdrawal is recorded, cancels and releases");}
   // Bounds.
   rejects(()->delivery.publishApproval("op1",binding,now+minute,now),"only approval IDs");
   rejects(()->delivery.publishApproval(fourth,binding,now+8*86400000L,now),"over-long approval refused");
   rejects(()->taps.forget("op1"),"step routes are never released here");
   require(delivery.approvalTimeout(now+minute,now)==minute&&delivery.approvalTimeout(now,now)==-1,"timeout policy");
   require(WorkflowNoticeDelivery.STEP_NOTICE_TIMEOUT_MS==24L*3600000,"step notices time out after a day");
-  System.out.println("PASS workflow approval notices: one per approval ID, expiry timeout, tap after restart, withdrawal on decision (also before publish), stored receipts, pruning and bounds");
+  System.out.println("PASS workflow approval notices: one per approval ID, expiry timeout, tap after restart, withdrawal on decision (also before publish and when refused), stored receipts, pruning and bounds");
  }
 }
