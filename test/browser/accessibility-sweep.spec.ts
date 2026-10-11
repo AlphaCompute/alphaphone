@@ -50,7 +50,7 @@ test.describe('landscape', () => {
       await state.open(page, 'light');
       // The landscape layout is what is being checked, not a scaled-down portrait canvas.
       await expect(page.locator('html')).toHaveClass(/alpha-landscape/);
-      const found = blocking(format([...await auditPage(page, { clipping: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
+      const found = blocking(format([...await auditPage(page, { clipping: true, overlap: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
       expect(blocking(found), blocking(found).join('\n')).toEqual([]);
     });
   }

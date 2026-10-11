@@ -71,9 +71,12 @@ test('the sweep applies every dimension and cannot be narrowed silently', () => 
   assert.match(sweep, /const STATES = \[\.\.\.LIVE_STATES, \.\.\.DEVELOPMENT_STATES, \.\.\.MOCK_STATES, \.\.\.FAILURE_STATES\];/);
   assert.match(sweep, /for \(const theme of \['light', 'dark'\] as const\)/);
   assert.match(sweep, /auditTree\(page\)/);
-  assert.match(sweep, /auditPage\(page, \{ contrast: true, targetSize: 24, clipping: true \}\)/);
+  assert.match(sweep, /auditPage\(page, \{ contrast: true, targetSize: 24, clipping: true, overlap: true \}\)/);
   assert.match(sweep, /auditTabOrder\(page\)/);
   assert.match(sweep, /setTextScale\(page, 2\)/);
+  // 200% text is checked for overlap as well as clipping (text printed over text, a label split
+  // mid-word, a control on or cut by another box): the round-7 Home defect was not a clipping defect.
+  assert.match(sweep, /setTextScale\(page, 2\);[\s\S]{0,400}auditPage\(page, \{ clipping: true, overlap: true \}\)/);
   assert.match(sweep, /viewport: \{ width: 915, height: 412 \}/);
   for (const spec of [sweep, production]) assert.match(spec, /toHaveClass\(\/alpha-landscape\/\)/, 'the landscape lane asserts the landscape layout is active');
   // Only deliberate truncation is tolerated; nothing else is filtered out of the results.
@@ -84,7 +87,7 @@ test('the sweep applies every dimension and cannot be narrowed silently', () => 
   assert.doesNotMatch(production, /test\.skip|test\.fixme|\.only\(/);
   assert.doesNotMatch(states, /fixme|largeTextOpen/);
   assert.match(production, /for \(const state of LIVE_STATES\)/);
-  assert.match(production, /auditPage\(page, \{ contrast: true, targetSize: 24, clipping: true \}\)/);
+  assert.match(production, /auditPage\(page, \{ contrast: true, targetSize: 24, clipping: true, overlap: true \}\)/);
 });
 
 test('the layout fixes the sweep depends on stay in the stylesheet and template', () => {
@@ -99,6 +102,15 @@ test('the layout fixes the sweep depends on stay in the stylesheet and template'
   assert.match(css, /\[data-alpha-subview="photos-edit"\]\{[^}]*overflow-y:auto/);
   assert.match(css, /\[data-alpha-app-header\]\[data-alpha-header-grow\]\{height:auto!important\}/);
   assert.ok(template.includes('data-alpha-browser-menu') && template.includes('data-alpha-header-grow'));
+  // Large text (PRD AP-15): Home cards grow with their text, tile grids drop a column when their
+  // labels stop fitting, and both read the measured text scale.
+  assert.match(css, /\.home-calendar-card \{[^}]*min-height:196px/);
+  assert.doesNotMatch(css, /\.home-calendar-title \{[^}]*max-height/);
+  assert.match(css, /\.alpha-fit-grid\{[^}]*repeat\(auto-fill,[^}]*var\(--alpha-text-scale,1\)/);
+  assert.match(template, /class="alpha-fit-grid" data-alpha-home-apps style="--fit-columns: 4; --fit-min: 62px/);
+  assert.doesNotMatch(template, /data-alpha-home-(calendar|workflows|inbox)\b[^>]*height: 196px/);
+  assert.match(read('apps/app/src/main.tsx'), /installTextScale\(\)/);
+  assert.match(read('apps/app/src/runtime/text-scale.ts'), /font-size:100px;line-height:1/);
   // Search fields may shrink below the input's intrinsic width, so Close search stays on screen.
   for (const label of ['Search mail', 'Search photos', 'Search notes', 'Search files']) {
     const at = template.indexOf(`aria-label="${label}" placeholder`);
