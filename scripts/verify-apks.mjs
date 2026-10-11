@@ -26,6 +26,7 @@ import { androidEnv, tool } from "./toolchain.mjs";
 import { readReleaseSigner, releaseAdmission, RELEASE_SIGNER_FILE } from "./build-android.mjs";
 import { BUN_ENTRY } from "./generate-licenses.mjs";
 import { fontLicenseBlockers } from "./font-license-blockers.mjs";
+import { packagedGzipProblems } from "./android-gzip-assets.mjs";
 
 const USAGE = "Usage: node scripts/verify-apks.mjs [--test-mocks] [--allow-unpackaged-runtime]";
 const args = process.argv.slice(2);
@@ -83,6 +84,8 @@ for (const variant of ["standalone", "launcher"])
       if (flags.testMocks !== testMocks)
         problems.push(`Packaged web bundle has testMocks=${flags.testMocks}; expected ${testMocks}`);
       auditBundle(payload.public, { testMocks });
+      // The asset merger unpacks *.gz; the scan engine needs its model under the published name.
+      problems.push(...packagedGzipProblems(payload.public));
     } catch (error) {
       problems.push(error.message);
     } finally {
