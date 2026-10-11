@@ -3,7 +3,7 @@
  * The ARM64 embedding host step of `npm run android:build:local`.
  *
  *   node scripts/build-embedding-host.mjs              # staged? else reproduce + stage, or stop naming who is needed
- *   node scripts/build-embedding-host.mjs --status     # report only; exit 0 staged, 3 not staged
+ *   node scripts/build-embedding-host.mjs --status     # report only; exit 0 staged, 3 not staged, 2 a staged library differs
  *   node scripts/build-embedding-host.mjs --candidate  # build a path-independent candidate for qualification; never staged
  *   --offline                                          # never fetch the engine source
  *
@@ -27,7 +27,7 @@ import {verifyEmbeddingInputs} from './stage-embedding-host.mjs';
 export const QUALIFIED_HOST = 'android/embedding-host/qualified-host.json';
 export const BUILD_TOOLCHAIN = 'android/embedding-host/build-toolchain.json';
 export const WORKSPACE = '.eliza/embedding-host';
-export const HUMAN_ACTION = 'Needs a person: (a) whoever holds the reviewed libraries and their qualification receipt stages them with node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json>; or (b) a reviewer qualifies a rebuilt candidate (node scripts/build-embedding-host.mjs --candidate, then ARM64 execution evidence recorded in its receipt as qualifiedAt), stages it with the same command and commits the new android/embedding-host/qualified-host.json with "remapBuildPath": true in android/embedding-host/build-toolchain.json. No script may do either.';
+export const HUMAN_ACTION = 'Needs a person: (a) whoever holds the reviewed libraries and their qualification receipt stages them with node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json>; or (b) a reviewer qualifies a rebuilt candidate (node scripts/build-embedding-host.mjs --candidate, then ARM64 execution evidence recorded in its receipt as qualifiedAt), removes the superseded android/embedding-host/qualified-host.json (the staging command refuses to replace a differing one), stages the candidate with the same command and commits the new android/embedding-host/qualified-host.json with "remapBuildPath": true in android/embedding-host/build-toolchain.json. Either way the staging command checks the staged embedding model, so run npm run agent:prepare, npm run agent:build-workflow-worker and npm run agent:stage-android before it. No script may do either.';
 
 const sha256 = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -153,13 +153,14 @@ function compile(root, manifest, toolchain, output, {offline, remap}) {
   return {receiptFile, comparison, reproduced};
 }
 
-export function run(root, {status = false, offline = false, candidate = false} = {}) {
+/** `build` is the compile step; tests replace it, the command line never does. */
+export function run(root, {status = false, offline = false, candidate = false, build = compile} = {}) {
   const manifest = readJson(path.join(root, QUALIFIED_HOST));
   const toolchain = readJson(path.join(root, BUILD_TOOLCHAIN));
   const workspace = path.join(root, WORKSPACE);
   if (candidate) {
     const output = path.join(workspace, `candidate-${manifest.forkPin}`);
-    const {receiptFile, reproduced} = compile(root, manifest, toolchain, output, {offline, remap: true});
+    const {receiptFile, reproduced} = build(root, manifest, toolchain, output, {offline, remap: true});
     console.log(`Candidate built with a remapped build path: ${path.relative(root, receiptFile)}. ${reproduced ? 'It is byte-identical to the reviewed libraries.' : 'It is NOT the reviewed bytes, is not staged and is not qualified.'}\n${HUMAN_ACTION}`);
     return 0;
   }
@@ -179,7 +180,8 @@ export function run(root, {status = false, offline = false, candidate = false} =
     return 3;
   }
   const output = path.join(workspace, `build-${manifest.forkPin}`);
-  const {comparison, reproduced} = compile(root, manifest, toolchain, output, {offline, remap: true});
+  // The reviewed bytes of a reproducible manifest were built with the remap, so the rebuild is too.
+  const {comparison, reproduced} = build(root, manifest, toolchain, output, {offline, remap: true});
   if (!reproduced)
     throw new Stop(3, `The rebuilt embedding host is not the reviewed bytes and was not staged:\n${describeDifference(comparison).map(line => `  - ${line}`).join('\n')}\nRebuilt files and COMPARISON.json are in ${path.relative(root, output)}.\n${HUMAN_ACTION}`);
   stageReproduced(root, manifest, comparison);

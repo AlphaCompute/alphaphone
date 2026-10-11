@@ -154,7 +154,12 @@ function gradleComponents(root) {
   });
 }
 
-/** The reviewed embedding host: pins only. Whether the libraries are staged is not this document's claim. */
+/**
+ * The reviewed embedding host: pins only. Whether the libraries are staged is not this document's
+ * claim, and an APK built without the resident runtime (--allow-unpackaged-runtime) contains none
+ * of them; each APK row says which it is (`resident-runtime`).
+ */
+const WITH_RESIDENT_RUNTIME = 'apk (only one that packages the resident runtime)';
 function embeddingHostComponents(root) {
   if (!exists(root, EMBEDDING_HOST)) return [];
   const host = readJson(root, EMBEDDING_HOST);
@@ -163,11 +168,11 @@ function embeddingHostComponents(root) {
     ...host.libraries.map(library => ({
       type: 'library', 'bom-ref': `embedding-host:${host.abi}/${library.name}`, name: `${library.name} (${host.abi})`, version: library.name === 'libc++_shared.so' ? 'Android NDK C++ runtime' : `engine ${host.forkPin}`,
       hashes: [{alg: 'SHA-256', content: library.sha256}], licenses: library.name === 'libc++_shared.so' ? licenses('Apache-2.0 WITH LLVM-exception') : undefined,
-      properties: [property('ships-in', 'apk'), property('abi', host.abi), property('bytes', library.bytes), property('source', source)],
+      properties: [property('ships-in', WITH_RESIDENT_RUNTIME), property('abi', host.abi), property('bytes', library.bytes), property('source', source)],
     })),
     {type: 'machine-learning-model', 'bom-ref': `embedding-model:${path.basename(host.model.path)}`, name: path.basename(host.model.path), version: `${host.model.dimensions} dimensions`,
       hashes: [{alg: 'SHA-256', content: host.model.sha256}],
-      properties: [property('ships-in', 'apk'), property('source', `${EMBEDDING_HOST} (staged to ${host.model.path})`)]},
+      properties: [property('ships-in', WITH_RESIDENT_RUNTIME), property('source', `${EMBEDDING_HOST} (staged to ${host.model.path})`)]},
   ];
 }
 

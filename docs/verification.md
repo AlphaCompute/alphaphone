@@ -313,6 +313,43 @@ speech runtime; any signed release; any Linux or hosted build with the verificat
 metadata; any install. `resident-android.yml` (dispatch-only) stages no embedding host and
 so cannot pass `:app:verifyEmbeddingHost` either; it was not changed or dispatched.
 
+Review of this package (2026-10-11, same machine; source tests and two offline Gradle
+configuration runs, no APK task, no native build, nothing installed):
+
+- The repository review had read only the two root Gradle scripts while stating that "the
+  build" declares three repositories. The fifteen included projects have build scripts of
+  their own, and five of them name a repository by URL (Maven Central in four upstream
+  plugins, the plugin portal in Capacitor). The check now reads every included script and
+  the documents say what is declared
+  ([dependency audit](dependency-audit.md#gradle-dependency-verification)).
+- The instruction printed for the embedding host did not work as written on a clean
+  checkout: `stage-embedding-host.mjs --receipt` reads the staged embedding model, which
+  only `agent:stage-android` stages and which the chain reaches after the step that stops;
+  and it refuses to replace a differing `qualified-host.json`. The message, the README and
+  the owner action now say both, and the staging command names the missing model instead
+  of failing on a missing file.
+- "Rebuilds and stages the libraries on any machine" was more than was measured (three
+  directories on one macOS arm64 host). The wording now says that, and that a rebuild is
+  staged only when it is byte-identical.
+- The step's rebuild-and-stage path (taken only once `remapBuildPath` is true) had no test.
+  It now has one with the compile step replaced: an exact reproduction is staged, any
+  difference stages nothing and exits 3, `--status` and `--candidate` never stage.
+- Two assertions would have failed on the day a person supplied an input (a release host
+  with signing values set; the commit that qualifies a remapped host). They now follow the
+  committed records.
+- The recorded checksums were compared with the origin: the 71 shipped coordinates and the
+  three `aapt2` archives were fetched again from Google's Maven repository and Maven Central
+  and matched. `android/gradle/verification-metadata.xml` is now part of the build-input
+  snapshot (`scripts/source-snapshot.mjs`), and the check accepts one checksum per artifact.
+- Gradle was run twice, offline, to see the metadata refuse: with the Android Gradle plugin
+  jar's checksum changed `./gradlew help` failed on dependency verification (the file was
+  restored). `:app:dependencies` does not verify, because it resolves no artifact. No APK
+  task was run in review.
+- The embedding host and model entries of the SBOM said `ships-in: apk` in every document,
+  including the one written beside the foundation job's unpackaged APKs, which contain
+  neither. They now say an APK that packages the resident runtime.
+- Still open, unchanged by review: no Linux or hosted build has run with the metadata.
+
 ## Round 8 (2026-10-11): runner cases, fixes and hosted jobs, none run
 
 Branch `claude/r8-runner-ci`. This section records source, compile and host-runtime checks

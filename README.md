@@ -220,10 +220,15 @@ Three inputs of a distributable build cannot come from a script, and
   (`node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json>`) or qualify a
   rebuilt candidate: `node scripts/build-embedding-host.mjs --candidate` fetches the pinned
   engine, builds with NDK `29.0.13113456` and CMake `4.0.3` using
-  `prepare-embedding-host.mjs --remap-build-path`, and never stages the result. Two such
-  builds in different directories were byte-identical, so once a candidate is qualified
-  and `remapBuildPath` is set to `true` in the same commit, the step rebuilds and stages
-  the libraries on any machine. Gradle's `:app:verifyEmbeddingHost` requires them for every
+  `prepare-embedding-host.mjs --remap-build-path`, and never stages the result. The staging
+  command checks the staged embedding model, so run `agent:prepare`,
+  `agent:build-workflow-worker` and `agent:stage-android` before it; and it refuses to
+  replace a differing `qualified-host.json`, so a new qualification removes the old one in
+  the same reviewed change. Three remapped builds in three directories on one macOS arm64
+  host were byte-identical; no other host has been tried. Once a candidate is qualified and
+  `remapBuildPath` is set to `true` in the same commit, the step rebuilds the libraries and
+  stages them only when they are byte-identical to the reviewed ones, and stops (exit 3)
+  when they are not. Gradle's `:app:verifyEmbeddingHost` requires them for every
   distribution and test-mocks build. The unpackaged developer build
   (`--allow-unpackaged-runtime`, which `--test-mocks` may be combined with) passes only
   while no resident payload is staged at all: once `agent:stage-android` has run, remove

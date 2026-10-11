@@ -115,8 +115,11 @@ test('the embedding host is listed from its reviewed pins, without claiming it i
     assert.deepEqual(component.hashes, [{alg: 'SHA-256', content: library.sha256}]);
     assert.equal(prop(component, 'bytes'), String(library.bytes));
     assert.match(prop(component, 'source'), new RegExp(`qualification receipt sha256 ${host.qualificationReceiptSha256}`));
+    // The foundation job's unpackaged APKs contain no embedding host; the pin must not read as if they did.
+    assert.equal(prop(component, 'ships-in'), 'apk (only one that packages the resident runtime)');
   }
   assert.equal(byRef.get('embedding-model:bge-small-en-v1.5-f16.gguf').hashes[0].content, host.model.sha256);
+  assert.equal(prop(byRef.get('embedding-model:bge-small-en-v1.5-f16.gguf'), 'ships-in'), 'apk (only one that packages the resident runtime)');
   // No licence is recorded for the engine or the model in this repository: say so, flagged.
   assert.deepEqual([prop(byRef.get(`embedding-host:${host.abi}/libelizainference.so`), 'licence-expression'), prop(byRef.get(`embedding-host:${host.abi}/libelizainference.so`), 'licence-flags')], [LICENCE_NOT_RECORDED, 'unverified']);
 });

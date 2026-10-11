@@ -7,6 +7,8 @@ const roots=['apps/app/src','apps/app/public','android/app/src/main/java','andro
 // Generated web assets and Gradle output remain outputs, not source inputs.
 roots.push('android/app/src/launcher','android/app/src/standalone','android/app/src/release',
  'android/build.gradle','android/variables.gradle','android/gradle.properties',
+ // Which dependency and plugin artifacts Gradle accepts (SHA-256); absent means unverified.
+ 'android/gradle/verification-metadata.xml',
  'android/gradle/wrapper/gradle-wrapper.properties','android/gradle/wrapper/gradle-wrapper.jar',
  'android/gradlew','android/gradlew.bat','android/app/proguard-rules.pro',
  'android/notification-fixture/build.gradle','android/notification-fixture/src',

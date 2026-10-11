@@ -150,14 +150,42 @@ same command. A second, ordinary strict build then passed with verification enfo
 macOS. No hosted Linux build has run with this file: the first Android foundation run
 after it merges is that evidence, and a failure there names the artifact to add.
 
-Review of sources: the build declares `google()`, `mavenCentral()` and
-`gradlePluginPortal()` only, and `test/gradle-verification.test.mjs` fails when another
-repository is declared. The 130 publisher groups are listed in
-`android/gradle/verification-reviewed-groups.json`; they are Android, Google, JetBrains,
-Apache and the transitive libraries of the Android Gradle plugin, lint and the AndroidX
-test stack, and none was unfamiliar. A component in a group not on that list fails the
-check. This was an engineering reading of the list, not a security sign-off, and the
-metadata does not record which repository served an artifact.
+Review of sources. The root scripts (`android/settings.gradle`, `android/build.gradle`)
+declare `google()`, `mavenCentral()` and `gradlePluginPortal()` only. The build also
+includes fifteen projects with a `build.gradle` of their own (the app, the speech module,
+the notification fixture, Capacitor from `node_modules` and eleven plugins from the pinned
+upstream checkout), and some of those declare repositories too: the same named ones, Maven
+Central by URL (`https://repo.maven.apache.org/maven2`, four upstream plugins) and the
+plugin portal by URL (`https://plugins.gradle.org/m2/`, Capacitor's build script). The
+check reads every one of those scripts (`buildScripts` in `scripts/gradle-verification.mjs`)
+and fails on any other repository, on a `maven { }` block without a literal reviewed URL,
+on `flatDir`, `mavenLocal()` and the like, and on an included script it cannot read. The
+four upstream plugins take a mirror in place of Maven Central when the root project
+defines `mavenCentralMirrorUrl`; nothing in this repository defines it and the check
+fails if a root Gradle file or a build script here names it. Someone running Gradle by
+hand can still pass that property, which is why the checksum, not the repository list, is
+the enforcement.
+
+The 130 publisher groups are listed in `android/gradle/verification-reviewed-groups.json`;
+they are Android, Google, JetBrains, Apache and the transitive libraries of the Android
+Gradle plugin, lint and the AndroidX test stack, and none was unfamiliar. A component in a
+group not on that list fails the check. This was an engineering reading of the list, not a
+security sign-off, and the metadata does not record which repository served an artifact.
+
+Enforcement was seen to refuse, in review on 2026-10-11 on the same macOS machine: with the
+recorded checksum of the Android Gradle plugin jar changed, `./gradlew --offline help`
+failed with "Dependency verification failed for configuration 'classpath'" before any
+task ran. Gradle verifies when it reads an artifact file: `:app:dependencies`, which
+`generate-licenses.mjs` uses to list the runtime classpath and which resolves no artifact,
+passed with a metadata checksum changed, so that command is not a verification point. One
+checksum per artifact is accepted; a second value (`also-trust`) fails the check.
+
+Two checks of the recorded values themselves, made in review on 2026-10-11 from the same
+macOS machine: all 900 entries Gradle generated match the files in that machine's Gradle
+cache, and the 71 shipped coordinates were fetched again directly from their repositories
+(61 from Google's Maven repository, 10 from Maven Central) and each hashed to the recorded
+SHA-256, as did the three `aapt2` archives. The remaining components (plugins, lint, build
+tools and test libraries) were not fetched a second time.
 
 Not covered: the two side projects built with their own Gradle root
 (`android/private-peer-fixture`, and the calendar consumer fixture of

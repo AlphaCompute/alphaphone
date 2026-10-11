@@ -22,14 +22,31 @@ import {fileURLToPath} from 'node:url';
 
 export const METADATA = 'android/gradle/verification-metadata.xml';
 export const CLASSPATH = 'licenses/android-runtime-classpath.json';
-/** Every task a script or workflow runs on the android/ Gradle project. */
+/**
+ * Every task a script or workflow runs on the android/ Gradle project that resolves artifacts.
+ * (`generate-licenses.mjs` also runs `:app:dependencies`, which reads the dependency graph of the
+ * same runtime classpaths and resolves no artifact, so Gradle verifies nothing in that run.)
+ */
 export const VERIFIED_TASKS = [
   ':app:assembleStandaloneDebug', ':app:assembleLauncherDebug', ':app:assembleStandaloneRelease', ':app:assembleLauncherRelease',
   ':app:assembleStandaloneDebugAndroidTest', ':app:assembleLauncherDebugAndroidTest', ':app:lint',
   ':notification-fixture:assembleSelectedDebug', ':notification-fixture:assembleExcludedDebug', ':notification-fixture:lint',
 ];
-/** Repositories the Gradle build may resolve from (android/settings.gradle and build.gradle). */
+/** Named repositories a Gradle script of the build may declare. */
 export const ALLOWED_REPOSITORIES = ['google()', 'mavenCentral()', 'gradlePluginPortal()'];
+/**
+ * URL repositories that included modules declare (the pinned upstream plugins name Maven Central
+ * by URL, Capacitor names the plugin portal by URL). A `maven { }` block may name only these.
+ */
+export const ALLOWED_REPOSITORY_URLS = ['https://repo.maven.apache.org/maven2', 'https://plugins.gradle.org/m2/'];
+/**
+ * The pinned upstream plugins read this root property to replace Maven Central with a mirror.
+ * Nothing in this repository may set it: a mirror is not a reviewed source. (A caller can still
+ * pass it to Gradle as a property; the SHA-256 of every artifact is what is enforced.)
+ */
+export const MIRROR_PROPERTY = 'mavenCentralMirrorUrl';
+const MIRROR_FREE = ['android/build.gradle', 'android/settings.gradle', 'android/variables.gradle', 'android/gradle.properties',
+  'scripts/build-android.mjs', 'scripts/build-notification-fixture.mjs', 'scripts/generate-licenses.mjs', 'scripts/toolchain.mjs'];
 /**
  * Publisher groups reviewed for this build, with the date and what was looked at. A component in
  * another group fails --check until someone looks at where it comes from and adds the group.
@@ -54,7 +71,7 @@ export function parseVerificationMetadata(text) {
     if (!component.group || !component.name || !component.version) throw new Error(`Malformed component: ${match[1].trim()}`);
     for (const artifact of match[2].matchAll(/<artifact\b([^>]*)>([\s\S]*?)<\/artifact>/g)) {
       const hashes = [...artifact[2].matchAll(/<(md5|sha1|sha256|sha512|pgp)\b([^>]*)\/>/g)].map(hash => ({algorithm: hash[1], value: attribute(hash[2], 'value'), origin: attribute(hash[2], 'origin') ?? null}));
-      component.artifacts.push({name: attribute(artifact[1], 'name'), hashes});
+      component.artifacts.push({name: attribute(artifact[1], 'name'), hashes, alsoTrust: /<also-trust\b/.test(artifact[2])});
     }
     components.push(component);
   }
@@ -76,12 +93,57 @@ export function coordinateChecksum(metadata, group, name, version) {
   return null;
 }
 
-/** Repository declarations in a Gradle script, e.g. ['google()', 'mavenCentral()']. */
+/**
+ * Repository declarations in a Gradle script, one entry per declaration with whitespace
+ * collapsed, e.g. ['google()', "maven { url = 'https://example.org/m2' }"]. Nested blocks are
+ * kept whole, so a `maven { }` or `flatDir { }` inside `repositories { }` is one entry.
+ */
 export function declaredRepositories(text) {
   const found = [];
-  for (const block of text.matchAll(/repositories\s*\{([^}]*)\}/g))
-    for (const entry of block[1].split(/[;\n]/).map(item => item.trim()).filter(Boolean)) found.push(entry);
+  for (const match of text.matchAll(/\brepositories\s*\{/g)) {
+    let depth = 1, at = match.index + match[0].length, entry = '';
+    const push = () => { const value = entry.replace(/\s+/g, ' ').trim(); if (value) found.push(value); entry = ''; };
+    for (; at < text.length && depth > 0; at += 1) {
+      const char = text[at];
+      if (char === '{' || char === '(') depth += 1;
+      else if (char === '}' || char === ')') depth -= 1;
+      if (depth === 0) break;
+      if (depth === 1 && (char === ';' || char === '\n')) push(); else entry += char;
+      // A nested block that closes back to the top level ends its declaration.
+      if (depth === 1 && char === '}') push();
+    }
+    if (depth !== 0) throw new Error('Unbalanced repositories block');
+    push();
+  }
   return found;
+}
+
+/** Why a repository declaration is not a reviewed one, or null when it is. */
+export function repositoryProblem(entry) {
+  if (ALLOWED_REPOSITORIES.includes(entry)) return null;
+  if (/^maven\s*\{/.test(entry)) {
+    const urls = [...entry.matchAll(/['"]([a-z][a-z0-9+.-]*:[^'"]*)['"]/gi)].map(match => match[1]);
+    if (urls.length && urls.every(url => ALLOWED_REPOSITORY_URLS.includes(url))) return null;
+    return urls.length ? `names ${urls.filter(url => !ALLOWED_REPOSITORY_URLS.includes(url)).join(', ')}` : 'names no literal URL';
+  }
+  return 'is not a reviewed form';
+}
+
+/**
+ * Every Gradle script that can declare a repository for the android/ build: the root scripts and
+ * the build.gradle of each project android/settings.gradle includes (the app, the fixtures, the
+ * speech module, Capacitor from node_modules and the plugins from the pinned upstream checkout).
+ */
+export function buildScripts(root) {
+  const settings = fs.readFileSync(path.join(root, 'android/settings.gradle'), 'utf8');
+  const directories = new Map();
+  for (const include of settings.matchAll(/^\s*include\s+(.+)$/gm))
+    for (const name of include[1].matchAll(/['"](:[^'"]+)['"]/g)) directories.set(name[1], name[1].slice(1).replaceAll(':', '/'));
+  for (const moved of settings.matchAll(/project\(\s*['"](:[^'"]+)['"]\s*\)\.projectDir\s*=\s*new File\(\s*['"]([^'"]+)['"]\s*\)/g)) {
+    if (!directories.has(moved[1])) throw new Error(`android/settings.gradle relocates ${moved[1]} without including it`);
+    directories.set(moved[1], moved[2]);
+  }
+  return ['android/settings.gradle', 'android/build.gradle', ...[...directories.values()].map(directory => path.posix.normalize(`android/${directory}/build.gradle`)).sort()];
 }
 
 export function checkVerification(root) {
@@ -103,8 +165,9 @@ export function checkVerification(root) {
     if (!component.artifacts.length) problems.push(`${id} lists no artifact`);
     for (const artifact of component.artifacts) {
       const sha = artifact.hashes.filter(hash => hash.algorithm === 'sha256');
-      if (artifact.hashes.length !== sha.length || sha.length < 1 || sha.some(hash => !/^[0-9a-f]{64}$/.test(hash.value ?? '')))
-        problems.push(`${id} ${artifact.name}: exactly SHA-256 checksums are expected`);
+      // One checksum per artifact: a second value (Gradle writes it as also-trust) would accept other bytes.
+      if (artifact.hashes.length !== sha.length || sha.length !== 1 || artifact.alsoTrust || sha.some(hash => !/^[0-9a-f]{64}$/.test(hash.value ?? '')))
+        problems.push(`${id} ${artifact.name}: exactly one SHA-256 checksum is expected`);
       if (sha.some(hash => hash.origin !== 'Generated by Gradle' && hash.origin !== AAPT2_ORIGIN)) problems.push(`${id} ${artifact.name}: unexpected checksum origin ${sha.map(hash => hash.origin).join(', ')}`);
     }
   }
@@ -119,9 +182,18 @@ export function checkVerification(root) {
     for (const host of AAPT2_HOSTS)
       if (!component.artifacts.some(artifact => artifact.name === `aapt2-${component.version}-${host}.jar`)) problems.push(`aapt2 ${component.version} has no ${host} archive recorded`);
   if (!metadata.components.some(item => item.group === 'com.android.tools.build' && item.name === 'aapt2')) problems.push('aapt2 is not recorded: the metadata was not generated from a real build');
-  for (const script of ['android/settings.gradle', 'android/build.gradle'])
-    for (const repository of declaredRepositories(fs.readFileSync(path.join(root, script), 'utf8')))
-      if (!ALLOWED_REPOSITORIES.includes(repository)) problems.push(`${script} declares repository ${repository}; only ${ALLOWED_REPOSITORIES.join(', ')} are reviewed`);
+  for (const script of buildScripts(root)) {
+    const file = path.join(root, script);
+    // An included project that cannot be read was not reviewed; the checkout or npm ci is incomplete.
+    if (!fs.existsSync(file)) { problems.push(`${script} is missing: the repositories it declares cannot be checked (git submodule update --init vendor/eliza; npm ci)`); continue; }
+    for (const repository of declaredRepositories(fs.readFileSync(file, 'utf8'))) {
+      const problem = repositoryProblem(repository);
+      if (problem) problems.push(`${script} declares repository ${repository}, which ${problem}; reviewed: ${ALLOWED_REPOSITORIES.join(', ')} and maven { } naming ${ALLOWED_REPOSITORY_URLS.join(' or ')}`);
+    }
+  }
+  for (const file of MIRROR_FREE)
+    if (fs.existsSync(path.join(root, file)) && fs.readFileSync(path.join(root, file), 'utf8').includes(MIRROR_PROPERTY))
+      problems.push(`${file} mentions ${MIRROR_PROPERTY}: a Maven Central mirror is not a reviewed source`);
   return {problems, metadata};
 }
 
@@ -165,7 +237,8 @@ async function write(root, {allowUnpackagedRuntime}) {
   const preflight = [path.join(root, 'scripts/android-build-preflight.mjs'), ...(allowUnpackagedRuntime ? ['--allow-unpackaged-runtime'] : [])];
   execFileSync(process.execPath, preflight, {cwd: root, stdio: 'inherit', env});
   execFileSync('npm', ['run', 'android:sync'], {cwd: root, stdio: 'inherit', env});
-  // The fixture's lint needs a signing input only to configure; a throwaway path is enough to resolve dependencies.
+  // No ALPHA_NOTIFICATION_FIXTURE_KEYSTORE here: the fixture then takes the default debug key, and
+  // its dependencies resolve exactly as in scripts/build-notification-fixture.mjs.
   execFileSync('./gradlew', ['--no-daemon', '--write-verification-metadata', 'sha256', '-PELIZA_DEV_ALLOW_TEST_MOCKS=0',
     `-PELIZA_ALLOW_UNPACKAGED_RUNTIME=${allowUnpackagedRuntime ? '1' : '0'}`, ...VERIFIED_TASKS], {cwd: path.join(root, 'android'), stdio: 'inherit', env});
   await recordOtherHostAapt2(root);
