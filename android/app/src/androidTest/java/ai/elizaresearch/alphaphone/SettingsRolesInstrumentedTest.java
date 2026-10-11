@@ -140,9 +140,9 @@ public final class SettingsRolesInstrumentedTest {
    // type and cannot reuse the running standard-type task, so Android creates a second MainActivity
    // for it (measured on the API 36 emulator in round 7). The product hands that start to the
    // instance that was already running and the new one finishes: one instance, the same page, the
-   // draft still in the composer. The HOME start takes the page to Alpha Home.
+   // draft still in the composer.
    assertOneLiveInstance("after the role is accepted",original);
-   until(AppNavigation.selected("Home"));
+   js(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));
    until(draft()+"==="+JSONObject.quote(DRAFT));
    // Repeated HOME presses, from Alpha Home and from inside a view: still the one instance.
    for(int press=1;press<=3;press++){
@@ -154,7 +154,9 @@ public final class SettingsRolesInstrumentedTest {
     until(draft()+"==="+JSONObject.quote(DRAFT));
    }
    // A start that is not a HOME start (the app icon, a notification tap) reaches the same instance too.
-   shell("am start -W -n "+context.getPackageName()+"/"+MainActivity.class.getName());
+   // No -W: the instance Android creates for this start finishes at once, by design.
+   shell("am start -n "+context.getPackageName()+"/"+MainActivity.class.getName());
+   SystemClock.sleep(1000);
    assertOneLiveInstance("after an explicit start",original);
    // Settings in that instance names Alpha as the Home app, read back from Android.
    settings();
