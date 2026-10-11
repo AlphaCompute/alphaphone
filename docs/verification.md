@@ -346,6 +346,63 @@ class B or class E evidence, and no fix below has been shown to hold on Android.
   the changed plugins while the activity is alive, and LauncherHome destroys it; none delivers
   a call to a destroyed plugin on purpose, so a pass is regression evidence only.
 
+## Round 10 (2026-10-11): approval notices across process death and owner change, not run
+
+Class S only. Nothing in this section ran on an emulator or a device, and no APK was built.
+
+- Product change: when a different owner connects, the renderer asks the native ledger to
+  withdraw the approval notices posted for any other owner
+  (`AlphaHostedResults.withdrawOtherOwnerApprovalNotices`, only the owner ID crosses the
+  bridge; `WorkflowNoticeDelivery.withdrawOtherOwners`). The notice is cancelled, its tap route
+  is released and its receipt stays `withdrawn` in the shared upstream ledger (`NoticeDelivery`)
+  until the approval expires, so it is never posted again. Step (result) notices are not
+  touched. This is an engineering default, not an owner decision
+  ([owner actions](mvp-owner-actions.md), decision 18). Before this change the notice stayed in
+  the shade and its tap answered "Connect its original agent".
+- `scripts/android-workflow-native.mjs` has a third phase, `approval-notice-recovery`, two
+  cases on each distribution (18 cases in all):
+  `WorkflowApprovalNoticeProcessDeathInstrumentedTest` under the instrumentation APK's
+  `WorkflowNoticeProcessRunner` (the test runs in a helper process of the app and kills the
+  main process), and
+  `WorkflowApprovalNoticeInstrumentedTest#ownerChangeWithdrawsThePendingApprovalNoticeAndItsTapOpensNothing`.
+  Each case runs in its own disposable user from the hash-admitted archive pair, records the
+  pair and its runner, and a failed, skipped or missing case stops the campaign and exits
+  non-zero. `scripts/android-instrumentation.mjs` names the process-death class as a campaign
+  class; `--classes WorkflowApprovalNotice` now runs three methods, two of which post.
+- What the process-death case asserts: one receipt and one route before the death; after the
+  main process is killed and proven absent, the same OS notice (key, post time, PendingIntent)
+  and byte-identical ledgers; the tap starts a new main process whose plugin captures the
+  original token with the exact approval ID, binding and route; the capture rewrites no receipt;
+  a repeated request posts nothing and rewrites neither ledger; a changed binding or expiry is
+  refused. Not covered: the renderer's authenticated read after the capture (the fixture has
+  no agent), a decision made after the restart, reboot, and force-stop.
+- Source checks run: `test/workflow-approval-notice.test.mjs` (JVM contract of the withdrawal:
+  both ledgers, a captured tap of the old owner, a storage fault, invalid owners),
+  `test/native-campaign-evidence.test.mjs` (the real runner against a synthetic `adb`: runner
+  component, gates, grants, report, selection, failure propagation),
+  `test/android-instrumentation-runner.test.mjs`, and
+  `test/browser/workflow-notice-taps.spec.ts` (the renderer sends exactly the connected owner's
+  ID once, repeats a failed request, and in the `owner-change` scenario asks again with the next
+  owner's ID after a different owner connects, whose session never opens the first owner's
+  retained tap). The touched Java (three main and three androidTest
+  files) was compiled with `javac` against the SDK 36 `android.jar`, Capacitor's sources and the
+  Gradle cache's dependency jars with stub `R` and `BuildConfig` classes; the errors that
+  remained were all in untouched files that need generated or unstaged inputs. It was not
+  compiled by Gradle and no lint ran.
+- Review follow-up (same date): the renderer now reads an approval notice's route when the
+  request is queued, not when the queue reaches it (`queueApprovalNotices` in
+  `workflow-adapter.ts`). A request that waited behind an earlier one while the owner changed
+  used to take the next owner's identity, so its notice would have been posted for that owner
+  and kept by the withdrawal; a decision's withdrawal likewise keeps the route of the session
+  that made it. No browser spec drives the renderer's approval post or withdrawal calls (the
+  phone-step specs run without a native platform), so this is covered by the type check only.
+  The owner-change instrumented case also refuses to start with an approval route left by an
+  earlier test and releases its own routes when it fails.
+- Ledger check (MVP-12): the inventory still said no runner grants the Calendar permissions to
+  `CalendarAvailabilityInstrumentedTest`. `scripts/test-calendar-regression.mjs` has done so
+  since round 8 and the class passed on both flavors in the run recorded below; the entry was
+  corrected.
+
 ## Round 8 (2026-10-11): runner cases, fixes and hosted jobs, none run
 
 Branch `claude/r8-runner-ci`. This section records source, compile and host-runtime checks
@@ -837,8 +894,8 @@ case is granted `POST_NOTIFICATIONS` in its owned user). Each receipt names its 
 hashes; a failed, skipped or missing phase is recorded (`failedPhase` / `failure`) and exits
 non-zero. Source checks: `test/installed-upgrade-runner.test.mjs` and
 `test/native-campaign-evidence.test.mjs` drive the real scripts against a synthetic `adb`;
-they are not emulator evidence. Approval notices across process death and account change have
-no native phase yet.
+they are not emulator evidence. Approval notices across process death and account change had
+no native phase at that date; round 10 added one (see "Round 10" above), which has not run.
 
 Review follow-up (same date): an attach keeps the epoch, so a request the attaching surface had
 queued earlier is refused before it pairs or is dispatched (`requireOwned`); a lifecycle change

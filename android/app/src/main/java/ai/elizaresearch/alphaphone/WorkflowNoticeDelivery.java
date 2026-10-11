@@ -49,6 +49,18 @@ final class WorkflowNoticeDelivery {
   * ledger); the route is released all the same unless its receipt is still posted, so a decided approval
   * never keeps a route that no later call would free. */
  void withdrawApproval(WorkflowNoticeTaps taps,String id,long now)throws Exception{try{withdrawApproval(id,now);}finally{taps.forget(id);}}
+ /** An owner change withdraws every approval notice that was posted for another owner: the notice leaves
+  * the shade, its route is released and its receipt stays withdrawn until the approval expires, so a
+  * later request under either owner never posts it again. The step itself is untouched and stays
+  * waiting in Workflows for the owner it belongs to. Every listed approval is attempted; the first
+  * failure is rethrown afterwards, and an approval that could not be recorded keeps its notice and route
+  * for the next attempt. Engineering default, not an owner decision (docs/mvp-owner-actions.md). */
+ int withdrawOtherOwners(WorkflowNoticeTaps taps,String ownerId,long now)throws Exception{
+  Exception first=null;int withdrawn=0;
+  for(String id:taps.approvalsOfOtherOwners(ownerId)){try{withdrawApproval(taps,id,now);withdrawn++;}catch(Exception failure){if(first==null)first=failure;}}
+  if(first!=null)throw first;
+  return withdrawn;
+ }
  /** Removes receipts whose approval expired (the OS already timed the notice out) and returns their IDs. */
  List<String> expireApprovals(long now)throws Exception{return shared.expireApprovals(now);}
 }
