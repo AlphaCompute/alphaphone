@@ -267,6 +267,12 @@ test('journey A: a spoken request is transcribed, sent once, answered once and r
  const cloud=()=>page.evaluate(()=>{const f=(window as any).cloudVoiceFixture;return {transcriptions:f.transcriptions.length as number,speech:f.speech.map((s:any)=>s.text) as string[]};});
  await page.goto('/?mode=dev');
  await expect(page.getByRole('region',{name:'Home'})).toBeVisible();
+ // The Cloud voice fixture replaces the controller's account getters without publishing a connection
+ // update. It is installed before the agent connects, so every later update carries one unchanged
+ // account. Installed after connecting, the first update after Talk (the conversation the voice start
+ // selects) read as an account change and ended the conversation whenever it arrived after voice had
+ // started, which it did on every hosted run.
+ await installCloudVoiceFixture(page,SPOKEN,true);
  await openConnection(page);
  const dialog=page.getByRole('dialog',{name:'Development connections'});
  await dialog.getByRole('textbox',{name:'Scripted reply'}).fill(REPLY);
@@ -274,7 +280,6 @@ test('journey A: a spoken request is transcribed, sent once, answered once and r
  await dialog.getByRole('button',{name:'Connect development profile'}).click();
  await expect(dialog).toHaveCount(0);
  await returnToApps(page);
- await installCloudVoiceFixture(page,SPOKEN,true);
  await page.bringToFront();
  await page.evaluate(()=>{
   const w=window as any;w.speechFixture={spoken:[],current:null};
@@ -284,10 +289,11 @@ test('journey A: a spoken request is transcribed, sent once, answered once and r
   Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:async()=>{const sink=ctx.createMediaStreamDestination();gain.connect(sink);w.mic.opened++;return sink.stream;}},configurable:true});w.mic={ctx,osc,gain,opened:0};
  });
 
- // Talk opens the conversation from Home; Talk there starts listening. Nothing is sent by opening it.
+ // One press of Talk on Home opens the conversation and starts listening. Nothing is sent by opening it.
  const voice=page.getByRole('region',{name:'Voice conversation',exact:true}),talk=page.getByRole('button',{name:'Talk',exact:true});
- await expect(async()=>{if(!await voice.isVisible())await talk.first().click();await expect(voice).toBeVisible({timeout:3000});}).toPass({timeout:30_000});
- await expect(voice).toHaveAttribute('data-voice-state','listening');
+ await expect(talk).toHaveCount(1);
+ await talk.click();
+ await expect(voice).toHaveAttribute('data-voice-state','listening',{timeout:30_000});
  await expect(voice).toContainText('Speech is transcribed with Eliza Cloud and sent to this conversation');
  // Silence: the microphone is open and nothing is transcribed or sent.
  await page.waitForTimeout(2500);
@@ -317,9 +323,13 @@ test('journey A: a spoken request is transcribed, sent once, answered once and r
  expect(await cloud()).toEqual({transcriptions:1,speech:[REPLY]});
  expect(await agentDocument(page)).toEqual(stored);
 
- // Stop: the same turn is in the typed conversation, once.
+ // Stop returns to where Talk was pressed: Home with the conversation minimized. Opened, the typed
+ // conversation holds the same turn, once.
  await voice.getByRole('button',{name:'Stop voice conversation',exact:true}).click();
  await expect(voice).toHaveCount(0);
+ await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toBeVisible();
+ await expect(bubble(page,SPOKEN)).toHaveCount(0);
+ await page.getByRole('button',{name:'Open conversation',exact:true}).click();
  await expect(bubble(page,SPOKEN)).toHaveCount(1);
  await expect(bubble(page,REPLY)).toHaveCount(1);
  // A typed request continues the same conversation.
