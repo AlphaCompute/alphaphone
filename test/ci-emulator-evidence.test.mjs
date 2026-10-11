@@ -298,3 +298,15 @@ test('speech package holds what ingest reads and reports only what the candidate
  const empty=packageSpeechRun({workspace:'ws',output:'out-empty',repository:root});
  assert.equal(empty.passed,false);assert.equal(empty.state,'no-candidate');
 });
+
+test('the suite command refuses to start, and writes nothing, outside a hosted runner',t=>{
+ const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'emulator-suite-cli-')));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const env={PATH:process.env.PATH,HOME:process.env.HOME};
+ for(const suite of emulatorJobs){
+  const run=spawnSync(process.execPath,[path.resolve('scripts/ci/emulator-suite.mjs'),suite],{cwd:root,env,encoding:'utf8'});
+  assert.notEqual(run.status,0,suite);assert.match(run.stderr,/only on a GitHub-hosted runner/,suite);
+ }
+ const unknown=spawnSync(process.execPath,[path.resolve('scripts/ci/emulator-suite.mjs'),'all'],{cwd:root,env:{...env,GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted'},encoding:'utf8'});
+ assert.notEqual(unknown.status,0);assert.match(unknown.stderr,/Unknown suite/);
+ assert.deepEqual(fs.readdirSync(root),[]);
+});

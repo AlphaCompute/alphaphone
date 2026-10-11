@@ -79,6 +79,12 @@ export function disableEmulatorNetwork(adb, { attempts = 60, sleep = ms => Atomi
   throw new Error(`The emulator still has a default network (${state}); the canonical speech test would refuse to run`);
 }
 
+/** Outside a hosted runner emulator-5554 may be someone's emulator; nothing is touched or written. */
+export function requireHostedRunner(environment = process.env) {
+  if (environment.GITHUB_ACTIONS !== "true" || environment.RUNNER_ENVIRONMENT !== "github-hosted")
+    throw new Error("These suites treat emulator-5554 as disposable; they run only on a GitHub-hosted runner");
+}
+
 /** Class rows of an instrumentation results.json, or the speech candidate's x86_64 state. */
 function readEvidence(file) {
   if (!fs.existsSync(file)) return null;
@@ -94,8 +100,7 @@ function readEvidence(file) {
  * Never throws for a failed step: the record says what ran, and `passed` is the verdict.
  */
 export function runSuite(suite, { execute, adb, record = () => {}, environment = process.env, network = {} } = {}) {
-  if (environment.GITHUB_ACTIONS !== "true" || environment.RUNNER_ENVIRONMENT !== "github-hosted")
-    throw new Error("These suites treat emulator-5554 as disposable; they run only on a GitHub-hosted runner");
+  requireHostedRunner(environment);
   const steps = suitePlan(suite).map(step => ({ name: step.name, kind: step.kind, ...(step.command ? { command: step.command } : { action: step.action }), status: "not-run" }));
   const report = { suite, commit: environment.GITHUB_SHA ?? null, runId: environment.GITHUB_RUN_ID ?? null, serial: SERIAL, avd: AVD,
     evidenceClass: "E", notEvidenceFor: ["distributable build", "physical-device acceptance", "user acceptance", "speech runtime admission"], passed: false, steps };
@@ -136,6 +141,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const suite = process.argv[2];
   if (process.argv.length !== 3) throw new Error("Use: node scripts/ci/emulator-suite.mjs instrumentation|browser-reading|local-speech");
   suitePlan(suite); // Refuse an unknown suite before anything is written.
+  requireHostedRunner();
   const output = path.resolve("test-results/emulator-suite", `${suite}.json`);
   fs.mkdirSync(path.dirname(output), { recursive: true });
   if (fs.existsSync(output)) throw new Error(`${path.relative(process.cwd(), output)} already exists; evidence is never replaced`);
