@@ -34,7 +34,8 @@ function admitApk({ apk, hash, development, manifestFile }) {
   if (entry && (manifest.testMocks === true || entry.testMocks === true))
     throw new Error(`Refusing ${apk}: ${manifestFile} records it as a test-mocks build.`);
   // Every unresolved blocker verify-apks recorded for a release (signing, runtime, speech,
-  // font licence, test mocks) is named; a release is never staged while one remains.
+  // the proprietary-font check, test mocks) is named; a release is never staged while one remains.
+  // Open-source licence flags (licenceFlags) are a record, never a blocker (decision P-09).
   const blockers = entry?.mode === "release" || entry?.distributable !== undefined
     ? releaseBlockers(entry, { manifestTestMocks: manifest.testMocks }) : [];
   if (entry && (entry.distributable === false || (entry.mode === "release" && blockers.length)))

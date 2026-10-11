@@ -91,7 +91,16 @@ test('decisions.md lists the pending owner decisions with options and records no
   assert.match(pending, /Nothing in this section is decided\./);
   const rows = pending.split('\n').filter(line => /^\| A-\d\d \|/.test(line)).map(cells);
   const ids = rows.map(row => row[0]);
-  for (const id of ['A-09', 'A-10', 'A-02', 'A-04', 'A-05', 'A-01', 'A-06', ...Array.from({ length: 16 }, (_, index) => `A-${index + 11}`)]) assert.ok(ids.includes(id), `${id} missing from pending owner decisions`);
+  // A-21 (Denton typeface licence) was closed by the owner on 2026-10-10 (P-09) and has its own row below.
+  const CLOSED = ['A-21'];
+  for (const id of ['A-09', 'A-10', 'A-02', 'A-04', 'A-05', 'A-01', 'A-06', ...Array.from({ length: 16 }, (_, index) => `A-${index + 11}`)].filter(id => !CLOSED.includes(id))) assert.ok(ids.includes(id), `${id} missing from pending owner decisions`);
+  const closed = section(decisions, 'Closed owner decisions').split('\n').filter(line => /^\| A-\d\d \|/.test(line)).map(cells);
+  assert.deepEqual(closed.map(row => row[0]), CLOSED, 'closed owner decisions');
+  for (const id of CLOSED) assert.ok(!ids.includes(id), `${id} is closed and still listed as pending`);
+  // A closed row names the entry that closed it and does not overstate it: the Denton licence document was not seen.
+  assert.match(closed[0].join(' '), /Closed: licensed; the owner holds the licence outside the repository \(P-09\)/);
+  assert.match(closed[0].join(' '), /no licence document, name, number, scope or terms has been seen or recorded/);
+  assert.match(section(decisions, 'October 10 owner product decision'), /\*\*P-09\*\*[\s\S]*closes A-21 as licensed/);
   assert.equal(new Set(ids).size, ids.length, 'duplicate pending decision');
   for (const row of rows) {
     assert.equal(row.length, 4, `${row[0]}: expected ID, decision, options and evidence`);

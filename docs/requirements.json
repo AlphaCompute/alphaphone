@@ -33,7 +33,7 @@
         "test/browser/home-landscape.spec.ts",
         "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LauncherHomeInstrumentedTest.java"
       ],
-      "remaining": "The All-apps drawer, search and landscape Home exist with browser tests against a stubbed bridge; no emulator HOME-role run is recorded. Favorites and order, exact component and profile identity and refresh on package change are implemented on open PR #388, not on main (MVP-53)."
+      "remaining": "The All-apps drawer, search and landscape Home exist with browser tests against a stubbed bridge; no emulator HOME-role run is recorded. Favorites and order, exact component and profile identity and refresh on package change are implemented in source with Node and stubbed-bridge browser tests; LauncherLibraryInstrumentedTest has no recorded run (MVP-53)."
     },
     {
       "id": "AP-02",
@@ -114,7 +114,7 @@
         "test/browser/chat-continuity.spec.ts",
         "test/browser/compact-viewport.spec.ts"
       ],
-      "remaining": "Draft retention through every pre-dispatch failure is implemented with browser source evidence only (test/browser/chat-continuity.spec.ts). Emulator and device acceptance of resize, Back and HOME without keyboard obstruction remain. Attaching the assistant surface to a running resident without restarting it is implemented on open PR #388, not on main (MVP-16)."
+      "remaining": "Draft retention through every pre-dispatch failure is implemented with browser source evidence only (test/browser/chat-continuity.spec.ts). Emulator and device acceptance of resize, Back and HOME without keyboard obstruction remain. Attaching the assistant surface to a running resident without restarting it is implemented in source with JVM and renderer contract tests; AssistantResidentReuseInstrumentedTest has no recorded run (MVP-16)."
     },
     {
       "id": "AP-06",
@@ -146,16 +146,19 @@
         "Home and launcher",
         "Digests and schedules"
       ],
-      "gate": "S: the daily-overview cards and brief card on open PR #388 reach main (MVP-19); then R: real provider agenda and digests with loading, empty, stale and error states; then D",
+      "gate": "R: real provider agenda and digests with loading, empty, stale and error states; then D",
       "evidence": [
         "apps/app/src/prototype/data-adapter.ts",
         "apps/app/src/runtime/hosted-digests.ts",
         "test/browser/dev-digest-schedule.spec.ts",
         "test/browser/journey-d-digests.spec.ts",
         "test/digest-occurrence-delivery.test.mjs",
-        "test/home-cards.test.mjs"
+        "test/home-cards.test.mjs",
+        "apps/app/src/prototype/home-cards.ts",
+        "test/browser/home-daily-overview.spec.ts",
+        "test/browser/home-daily-overview.production.spec.ts"
       ],
-      "remaining": "Agenda comes from on-device calendars only, and schedules are digest-only. A missed occurrence is recorded once and never replaces the last brief. In the product profile the Home brief text is overwritten by the workflow list; source attribution, freshness and the dedicated brief card are on open PR #388, not on main."
+      "remaining": "Agenda comes from on-device calendars only, and schedules are digest-only. A missed occurrence is recorded once and never replaces the last brief. The Home cards name their source and when it was read, and the latest retained brief has its own card, with synthetic provider data only; no test runs from an agent digest result to that card (MVP-19)."
     },
     {
       "id": "AP-08",
@@ -191,7 +194,7 @@
         "scripts/test-calendar-regression.mjs",
         "docs/cloud-production-validation.md"
       ],
-      "remaining": "Gmail OAuth code exchange returns 401 (docs/cloud-production-validation.md), so no real mailbox has been used. Calendar shows only on-device calendars. Whether the native calendar plugin compiles at the current pin is not re-verified; it compiled in the recorded builds at earlier pins. Calendar availability and Use in email are implemented on open PR #388, not on main (MVP-12, MVP-14)."
+      "remaining": "Gmail OAuth code exchange returns 401 (docs/cloud-production-validation.md), so no real mailbox has been used. Calendar shows only on-device calendars. Whether the native calendar plugin compiles at the current pin is not re-verified; it compiled in the recorded builds at earlier pins. Calendar availability and Use in email are implemented in source with synthetic agent and provider tests only; neither has run on an emulator, with a real account or on a device (MVP-12, MVP-14)."
     },
     {
       "id": "AP-10",
@@ -307,7 +310,7 @@
         "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/RotationInstrumentedTest.java",
         "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/AccessibilityInstrumentedTest.java"
       ],
-      "remaining": "A landscape Home layout exists with a browser test; RotationInstrumentedTest and AccessibilityInstrumentedTest have no recorded run. The all-views accessibility sweep and its fixes are on open PR #388, not on main (MVP-48). Physical TalkBack and accessibility acceptance remain."
+      "remaining": "A landscape Home layout exists with a browser test; RotationInstrumentedTest and AccessibilityInstrumentedTest have no recorded run. The all-views accessibility sweep and its fixes are a Chromium renderer check (test/browser/accessibility-sweep.spec.ts), not device acceptance (MVP-48). Physical TalkBack and accessibility acceptance remain."
     }
   ]
 }

@@ -136,7 +136,11 @@ import templateHtml from "./template.html?raw";
     var isSvg = n.namespaceURI === "http://www.w3.org/2000/svg";
     var tname = isSvg ? n.localName : tag;
     var c = kids(n.childNodes, scope);
-    return h.apply(null, [tname, props(n, scope, key)].concat(c));
+    var built = props(n, scope, key);
+    // A drawing with no name of its own is decoration for the control or text beside it. Without
+    // this it is announced as an unlabelled image (uncatalogued icon paths, the map drawing).
+    if (tag === "svg" && !built["aria-label"] && !built["aria-labelledby"] && !built.role && built["aria-hidden"] === undefined) built["aria-hidden"] = "true";
+    return h.apply(null, [tname, built].concat(c));
   }
 
   const templateElement = document.createElement("template");

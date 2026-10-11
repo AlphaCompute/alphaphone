@@ -88,6 +88,8 @@ export interface AgentReply {
   text: string;
   actionResults?: readonly unknown[];
   proposals?: ActionProposal[];
+  /** Owner-facing reasons a pending phone action cannot be reviewed from this screen. Display only. */
+  notices?: string[];
 }
 export interface OperationReceipt {
   proposalId: string;
@@ -402,6 +404,7 @@ export class AlphaClient {
         ...(result.messageBinding?{messageBinding:result.messageBinding}:{}),
         ...(Array.isArray(result.actionResults)?{actionResults:result.actionResults}:{}),
         proposals: [...next.values()].map((p) => ({ ...p })),
+        ...(Array.isArray(result.notices)?{notices:result.notices.filter((notice):notice is string=>typeof notice==='string'&&!!notice.trim()&&notice.length<=500).slice(0,5)}:{}),
       };
     },options?.signal);
   }

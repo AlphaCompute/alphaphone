@@ -59,7 +59,12 @@ try {
  await send('Describe the selected screen only');
  await page.getByText('VIDEO_CONTEXT_ACCEPTED', { exact: true }).waitFor();
  const wire = await page.evaluate(() => window.fixture.requests[0]);
- assert.deepEqual(wire.context.selectedObject, { kind: 'video', id: 'native-camera-video-fixture-71', revision: 'revision-2' });
+ // The identity carries the exact item and a session-local revision; the library's own
+ // revision string (added time and size on Android) never reaches the agent.
+ const { revision: selectedRevision, ...selectedItem } = wire.context.selectedObject;
+ assert.deepEqual(selectedItem, { kind: 'video', id: 'native-camera-video-fixture-71' });
+ assert.match(selectedRevision, /^capture-[0-9a-f]{12}-1$/);
+ assert.ok(!JSON.stringify(wire).includes('revision-2'));
  assert.equal(wire.context.view, 'photos');
  assert.ok(!wire.text.includes('PRIVATE_VIDEO_') && !wire.text.includes('content://'));
  for (const mode of ['chooser', 'background', 'pagehide']) {
