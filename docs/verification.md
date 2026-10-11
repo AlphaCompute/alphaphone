@@ -276,7 +276,7 @@ the latest emulator results. They do not carry forward to this source.
   ([CI cost policy](ci-cost-policy.md#emulator-evidence-android-emulatoryml)).
 - Host-runtime evidence, not Android: `npm run agent:test-digest-restart` at the current pin
   `40dbe96b`, exit 0, one run ([record](local-agent-development.md#isolated-digest-process-recovery-check)).
-- Source and browser checks on this branch (class S): `npm run verify` exit 0 (671 tests, 667
+- Source and browser checks on this branch (class S): `npm run verify` exit 0 at `ce8488f2` (672 tests, 668
   passed, 0 failed, 4 todo; bundle audit passed, 395 files, `testMocks=false`);
   `ALPHA_BROWSER_TEST_PORT=6912 npm run test:browser:production` 175 passed; the Chromium
   project for the Notes specs this round touches (`notes-document-receipt`, `mvp`,
