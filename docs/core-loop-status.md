@@ -46,7 +46,11 @@ Open items:
   (`journey-core-loops.production.spec.ts`, stubbed bridge). Restoring a saved remote conversation on reconnect is covered with a
   controlled transport by `chat-continuity.spec.ts`, not by this journey, and no real
   remote or Cloud agent is exercised.
-- Spoken requests are not part of this journey (see B for recording).
+- One spoken request is part of this journey: a synthetic microphone (a Web Audio oscillator
+  through the browser's real recorder) and the closed Cloud transcription fixture; the request
+  is transcribed, sent once, answered once and read back, and silence sends nothing (class S).
+  A physically spoken request, microphone quality and a real transcription service are not
+  exercised (see B for recording).
 
 ## B. Voice → note → calendar event and reminder (J02)
 

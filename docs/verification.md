@@ -274,8 +274,9 @@ the latest emulator results. They do not carry forward to this source.
 - Hosted jobs, linted with `actionlint` and checked by `test/ci-emulator-evidence.test.mjs`,
   never dispatched: `.github/workflows/android-emulator.yml`
   ([CI cost policy](ci-cost-policy.md#emulator-evidence-android-emulatoryml)).
-- Host-runtime evidence, not Android: `npm run agent:test-digest-restart` at the current pin
-  `40dbe96b`, exit 0, one run ([record](local-agent-development.md#isolated-digest-process-recovery-check)).
+- Host-runtime evidence, not Android: `npm run agent:test-digest-restart` at pin `40dbe96b`
+  (the pin of this branch before it was merged with round 9, which moved the pin to
+  `13c9857598`; not repeated there), exit 0, one run ([record](local-agent-development.md#isolated-digest-process-recovery-check)).
 - Source and browser checks on this branch (class S): `npm run verify` exit 0 at `ce8488f2` (672 tests, 668
   passed, 0 failed, 4 todo; bundle audit passed, 395 files, `testMocks=false`);
   `ALPHA_BROWSER_TEST_PORT=6912 npm run test:browser:production` 175 passed; the Chromium
@@ -430,16 +431,17 @@ stand as what the round-7 APKs do; this records what changed in source afterward
 
 Other rows of the tables above, re-read for product defects:
 
-- `CalendarTruncation` ("Calendar results incomplete" never appears) is not a product defect at
-  this pin and not an owner decision. The class assumes "the actual native 2,000-instance cap".
-  The pinned upstream reader (`plugin-native-calendar`, `CalendarPlugin.list` at `40dbe96bd1`)
-  reads every instance in the requested range and always answers `truncated: false`, so the
-  2,002 fixture rows are all returned and nothing is hidden. The renderer's incomplete-result
-  notice (`calendar-adapter.ts`) is unreachable on Android until the reader bounds its result
-  again. The class needs either that upstream bound or retirement; it was left unchanged.
+- `CalendarTruncation` ("Calendar results incomplete" never appears) is not an owner decision.
+  The class assumes "the actual native 2,000-instance cap". The shared upstream reader
+  (`plugin-native-calendar`, `CalendarPlugin.list`, read at `40dbe96bd1`) reads every instance
+  in the requested range and always answers `truncated: false`, so the 2,002 fixture rows were
+  all returned and the renderer's incomplete-result notice (`calendar-adapter.ts`) could not
+  appear. This package left it unchanged; the runner package of the same round restored the
+  bound in the product (`CalendarRangeReader`, see "Round 8" above), with the class unchanged.
 - The first-run failures recorded as "cause not established" (the launcher `notes` restart
-  campaign, `PasswordBrowserFill`, `FilesTree`) did not recur and name no product behaviour that
-  can be checked from source. They stay open as recorded.
+  campaign, `PasswordBrowserFill`, `FilesTree`) were left open by this package. The runner
+  package of the same round read a cause for each from the saved result files (see "Round 8"
+  above); none of those fixes has an emulator run.
 - Found while checking large text: in the standalone app the app library left a 44px strip of
   Home visible above it (the library kept the launcher's status-bar offset). Fixed in
   `phone.css`; `large-text-overlap.spec.ts` asserts the library covers the screen.
@@ -491,7 +493,7 @@ user acceptance, and not evidence for any later source.
 Scope of this record. It is a written summary by the session that ran the campaign, and it is
 the only committed form of it: the runner's `results.json` files and raw logs are not in the
 repository, and the APK hashes below are abbreviated. The source ran at upstream pin `352d7a08`,
-not the current pin `40dbe96bd1`. Changes made after `73b973a5` in response to these results
+not the later pins `40dbe96bd1` (round 7) or `13c9857598` (current since round 9). Changes made after `73b973a5` in response to these results
 have no run in this section: the approval-notice route release and posted-notice wait, the gzip
 packaging of the scan model, the camera resume decision, the "Open app settings" control, hiding
 the native browser page under modal panels, the secondary-user phase of the runner, the role
