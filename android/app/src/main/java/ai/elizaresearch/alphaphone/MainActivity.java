@@ -57,8 +57,85 @@ public class MainActivity extends BridgeActivity {
    return true;
   }
  };
+ /*
+  * One live MainActivity (launcher flavor).
+  *
+  * MainActivity is singleTask, but Android keeps home and ordinary activities apart: an intent with
+  * ACTION_MAIN and only CATEGORY_HOME and no component (what the system sends for the HOME key and
+  * when the role is granted) starts the activity with the home activity type in the display's home
+  * task, and every other start (the app icon, a notification tap, the alphaphone:// sign-in return,
+  * an explicit component) has the standard type. A task's activity type never changes and task
+  * lookup for singleTask only matches a task of a compatible type, so each kind of start finds or
+  * creates its own task. Granting the HOME role to a running Alpha, or tapping an Alpha notice while
+  * Alpha is the home activity, therefore created a second MainActivity with a second page, while
+  * the draft, open conversation and pending approvals stayed in the first.
+  *
+  * The first live instance is kept, whichever kind it is. A second instance never creates a bridge
+  * or loads the page: it gives its intent to the live instance (the same onNewIntent path Android
+  * uses for a reused singleTask activity), brings that instance's task to the front and finishes.
+  * The front start uses an intent of the live instance's own kind so Android resolves it to the
+  * existing task: the implicit HOME intent for a home-type instance, the explicit component for a
+  * standard one. If that start ever produced another instance instead, it finishes without
+  * starting anything, so this cannot loop.
+  */
+ private static java.lang.ref.WeakReference<MainActivity> liveInstance = new java.lang.ref.WeakReference<>(null);
+ private static final long FRONT_START_WINDOW_MS = 5_000L;
+ /** elapsedRealtime of this process's own bring-to-front start, 0 when none is outstanding. */
+ private static long frontStartAt = 0L;
+ private boolean handedOff = false;
+ private boolean startedAsHome = false;
+ static boolean isHomeIntent(Intent intent) {
+  return intent != null && Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_HOME);
+ }
+ /** The instance that owns the page, or null. Main thread only. */
+ static MainActivity liveInstance() {
+  MainActivity live = liveInstance.get();
+  return live != null && !live.isFinishing() && !live.isDestroyed() ? live : null;
+ }
+ /** True for an instance that gave its start to the live one and is finishing without a page. */
+ boolean wasHandedOff() { return handedOff; }
+ /** Marks this process's own bring-to-front start. Honoured only while one is outstanding. */
+ private static final String EXTRA_FRONT_START = "alpha.frontStart";
+ private static boolean isOwnFrontStart(Intent intent) {
+  return intent != null && intent.getBooleanExtra(EXTRA_FRONT_START, false)
+    && frontStartAt != 0L && SystemClock.elapsedRealtime() - frontStartAt < FRONT_START_WINDOW_MS;
+ }
+ @Override protected void load() { if (!handedOff) super.load(); }
+ private void handOff(MainActivity live) {
+  boolean home = isHomeIntent(getIntent());
+  if (isOwnFrontStart(getIntent())) {
+   // This instance was created by our own bring-to-front start: Android did not resolve it to the
+   // live task on this build. Stop here; the live instance already has the intent.
+   frontStartAt = 0L;
+   android.util.Log.w("AlphaInstance", "Front start created an instance; finishing it without another start");
+  } else {
+   android.util.Log.i("AlphaInstance", "Second start handed to the live instance; home=" + home + " liveHome=" + live.startedAsHome);
+   if (getIntent() != null) live.onNewIntent(new Intent(getIntent()));
+   if (live.getTaskId() != getTaskId()) {
+    Intent front = live.startedAsHome
+      ? new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(getPackageName())
+      : new Intent(this, MainActivity.class);
+    front.putExtra(EXTRA_FRONT_START, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+    frontStartAt = SystemClock.elapsedRealtime();
+    try { startActivity(front); }
+    catch (RuntimeException failure) { frontStartAt = 0L; android.util.Log.w("AlphaInstance", "Live instance could not be brought to the front: " + failure.getClass().getSimpleName()); }
+   }
+  }
+  // The home task belongs to Android and keeps existing; a standard task made for this start does not.
+  if (home) finish(); else finishAndRemoveTask();
+  overridePendingTransition(0, 0);
+ }
  @Override public void onCreate(Bundle state) {
   SplashScreen.installSplashScreen(this);
+  MainActivity live = BuildConfig.IS_LAUNCHER && !isAssistantSurface() ? liveInstance() : null;
+  if (live != null && live != this) {
+   handedOff = true;
+   // No plugins, bridge or page: BridgeActivity.onCreate calls load(), which does nothing here.
+   super.onCreate(null);
+   handOff(live);
+   return;
+  }
+  if (BuildConfig.IS_LAUNCHER && !isAssistantSurface()) { liveInstance = new java.lang.ref.WeakReference<>(this); startedAsHome = isHomeIntent(getIntent()); }
   registerPlugin(SystemPlugin.class);
   registerPlugin(DeviceAppsPlugin.class);
   registerPlugin(DailyAppsPlugin.class);
@@ -138,8 +215,14 @@ public class MainActivity extends BridgeActivity {
  }
  @Override public void onNewIntent(Intent intent) {
   super.onNewIntent(intent);
-  if (getBridge() != null && !isAssistantSurface() && Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_HOME))
+  // Our own bring-to-front start (see handOff) carries nothing: the real intent was delivered first.
+  if (isOwnFrontStart(intent)) { frontStartAt = 0L; return; }
+  if (getBridge() != null && !isAssistantSurface() && isHomeIntent(intent))
    getBridge().getWebView().evaluateJavascript("window.dispatchEvent(new Event('launcher-home'))", null);
+ }
+ @Override public void onDestroy() {
+  if (liveInstance.get() == this) liveInstance = new java.lang.ref.WeakReference<>(null);
+  super.onDestroy();
  }
  /**
   * Android's own shade, quick settings or a system dialog take this window's focus without pausing

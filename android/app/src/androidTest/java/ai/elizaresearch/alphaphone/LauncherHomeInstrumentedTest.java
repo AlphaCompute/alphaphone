@@ -74,6 +74,24 @@ public class LauncherHomeInstrumentedTest {
   pressHome();
   awaitForeground(context.getPackageName(), "HOME returns to Alpha");
   until("document.documentElement.dataset.activeView==='home'&&!" + DRAWER, "HOME lands on Alpha Home with the drawer closed");
+  assertOneMainActivity("after HOME");
+ }
+ /** HOME is delivered to the one live MainActivity: no second instance is left behind (MainActivity "One live MainActivity"). */
+ private static void assertOneMainActivity(String when) throws Exception {
+  java.util.List<String> seen = new java.util.ArrayList<>();
+  for (int attempt = 0; attempt < 100; attempt++) {
+   seen.clear();
+   BoundedActivityScenario.main(() -> {
+    for (androidx.test.runner.lifecycle.Stage stage : androidx.test.runner.lifecycle.Stage.values()) {
+     if (stage == androidx.test.runner.lifecycle.Stage.DESTROYED) continue;
+     for (android.app.Activity activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(stage))
+      if (activity.getClass() == MainActivity.class && !activity.isDestroyed()) seen.add(stage.name());
+    }
+   });
+   if (seen.size() == 1 && "RESUMED".equals(seen.get(0))) return;
+   SystemClock.sleep(100);
+  }
+  fail("One resumed MainActivity " + when + ": " + seen);
  }
 
  @Test public void allAppsSearchLaunchesSettingsAndHomeReturnsToAlpha() throws Exception {
