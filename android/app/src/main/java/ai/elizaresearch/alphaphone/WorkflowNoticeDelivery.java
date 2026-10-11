@@ -78,6 +78,18 @@ final class WorkflowNoticeDelivery {
   catch(Exception failure){record.put("status","unknown");}
   storage.write(APPROVAL_SLOT,ledger.toString());return record.getString("status");
  }}
+ /** The whole approval post. The tap route is prepared first because the notice's tap needs it. A route
+  * whose receipt is not live afterwards (withdrawn, failed) is released again: a repeated request for
+  * a decided approval must not keep a route that no notice can ever open. */
+ String postApproval(WorkflowNoticeTaps taps,String id,String binding,JSONObject route,long expiresAt,long now)throws Exception{
+  if(!approvalId(id)||route==null)throw new IllegalArgumentException("Invalid approval notice identity");
+  for(String expired:expireApprovals(now))taps.forget(expired);
+  if(approvalTimeout(expiresAt,now)<=0)return "expired";
+  taps.prepare(id,binding,route);
+  String status=publishApproval(id,binding,expiresAt,now);
+  if(!Set.of("applying","succeeded","unknown").contains(status))taps.forget(id);
+  return status;
+ }
  /** A decision withdraws the notice. The receipt stays (as withdrawn) until expiry, so the notice is never reposted. */
  void withdrawApproval(String id)throws Exception{synchronized(LOCK){
   if(!approvalId(id))throw new IllegalArgumentException("Invalid approval notice identity");
