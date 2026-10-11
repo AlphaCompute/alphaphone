@@ -16,7 +16,9 @@ import static org.junit.Assert.*;
 public class NotificationsInstrumentedTest {
  private void until(String condition)throws Exception{long end=SystemClock.elapsedRealtime()+20000;while(SystemClock.elapsedRealtime()<end){if("true".equals(WebViewTestDriver.evaluate("Boolean("+condition+")")))return;SystemClock.sleep(100);}fail("Notification state: "+condition);}
  private void shade()throws Exception{
-  WebViewTestDriver.evaluate("(()=>{const s=document.querySelector('[data-screen]'),r=s.getBoundingClientRect(),scale=r.width/412;for(const [type,y] of [['pointerdown',50],['pointerup',200]])s.dispatchEvent(new PointerEvent(type,{bubbles:true,clientX:r.left+200*scale,clientY:r.top+y*scale,pointerId:1,pointerType:'touch'}));})()");
+  // The panel opens from its handle on Home; the former top-edge swipe is Android's (docs/gesture-zones.md).
+  until(AppNavigation.selected("Home"));
+  for(int i=0;i<200&&!"true".equals(WebViewTestDriver.evaluate(AppNavigation.openNotifications()));i++)SystemClock.sleep(100);
   until("document.querySelector('[data-alpha-layer=shade]').getAttribute('aria-hidden')==='false'");
  }
  private String button(String title){return "document.querySelector('[data-alpha-layer=shade] button[aria-label='+"+JSONObject.quote(JSONObject.quote("Open "+title))+"+']')";}
