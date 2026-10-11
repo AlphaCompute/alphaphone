@@ -1273,7 +1273,7 @@
       "kind": "acceptance",
       "blocked_on": [
         "SOFTWARE: what the renderer sweep still does not visit (the launcher presentation of the app views, zoom above 200%, connected states other than a mailbox)",
-        "EMULATOR: repeat Accessibility and large-text/rotation coverage after round 10 (Accessibility failed and TextScale passed on both flavors in round 8; Rotation passed only in round 7)",
+        "EMULATOR: repeat Accessibility and large-text/rotation coverage after round 10 (Accessibility failed and TextScale passed on both flavors in round 8, and Rotation passed only in round 7)",
         "HUMAN: decision A-22",
         "DEVICE: TalkBack, Switch Access and physical large text"
       ],
