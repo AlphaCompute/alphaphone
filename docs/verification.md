@@ -371,7 +371,7 @@ Other rows of the tables above, re-read for product defects:
   `phone.css`; `large-text-overlap.spec.ts` asserts the library covers the screen.
 
 Independent review of the above (same branch, source and browser tests only; no emulator). It
-changed four things:
+changed five things:
 
 - `NotificationsInstrumentedTest` and `NotificationChannelsInstrumentedTest` opened Alpha's
   panel with a synthetic swipe from the top band, which the product no longer answers, so both
@@ -386,6 +386,12 @@ changed four things:
   change, renderer recovery) a home-type instance was treated as standard and a later notice tap
   or sign-in return would have been delivered without Alpha coming to the front. The kind is
   now kept per task id. `LauncherHomeInstrumentedTest` has a method for it; compiled, not run.
+- The hand-off could repeat without end. If the bring-to-front start missed the live instance,
+  the home-type instance still finished and left the home task empty, and Android would start
+  HOME again. The process now stops handing starts off when a front start makes a new instance,
+  cannot be made, or goes unreceived three times in a row; a new start then keeps its own
+  instance, which is the two-instance state round 7 measured. Whether the front start reaches
+  the live task on a given image is still an emulator question (logcat tag `AlphaInstance`).
 - Smaller: the front-start marker extra is read without trusting a foreign parcel, and the
   instance that hands off never removes a task it shares with the live one.
 
@@ -393,6 +399,15 @@ The Java at the reviewed head was compiled for both flavors (app and androidTest
 plain `javac` against the Gradle cache's dependency jars and the generated classes of an existing
 build of the same base commit, not with Gradle; no APK was assembled and no lint was run on the
 review's changes. Every native statement in this subsection is still class S.
+
+Run in review (class S): `npm run verify` exit 0 (647 node tests: 643 pass, 0 fail, 4 todo;
+bundle audit `PASS web-dist`); the production Playwright project, 183 passed; in the Chromium
+project the accessibility audit, resilience and sweep specs, `large-text-*`,
+`notifications-handle`, `home-*`, `root-view-states`, `fixtures-empty-runtime`,
+`standalone-shell`, `native-insets`, `compact-viewport` and `design`, 726 passed. The rest of
+the Chromium project was not rerun in review. With the fixed card height and the fixed four
+columns put back, `large-text-overlap.spec.ts` failed 5 of 11, so the spec does detect the
+round-7 defect.
 
 ## Emulator results at 73b973a5 (2026-10-10)
 
