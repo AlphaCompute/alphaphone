@@ -282,6 +282,24 @@ the latest emulator results. They do not carry forward to this source.
   project for the Notes specs this round touches (`notes-document-receipt`, `mvp`,
   `notes-document-storage`, `notes-save-failure`, `notes-status-layout`, `notes-trash`,
   `journey-b-voice-note-actions`, `journey-j03-document-analysis`) 51 passed.
+- Review of this branch (2026-10-10; the same evidence classes, no emulator and no dispatch).
+  Two changes. The Notes failure notice ("Document operation failed. No completed export or
+  import is confirmed.") was still issued at once, so a failure that returned while the
+  system picker covered the app could be over before anyone saw it, the race the receipts
+  had; it now waits for the document to be visible too, and
+  `test/browser/notes-document-receipt.spec.ts` has that case (it fails without the change).
+  The four third-party actions the older workflows named by major tag are pinned to the
+  commits those tags resolved to (`git ls-remote`, 2026-10-10: `android-actions/setup-android`
+  v3 = v3.2.2 `9fc6c4e9`, `gradle/actions/setup-gradle` v4 = v4.4.3 `ed408507`,
+  `reactivecircus/android-emulator-runner` v2 = v2.38.0 `a421e438`, `oven-sh/setup-bun` v2 =
+  v2.2.0 `0c5077e5`), which are the commits `android-emulator.yml` already named, and
+  `test/ci-emulator-evidence.test.mjs` now requires a commit in every workflow file.
+  Checks on the reviewed tree: `npm run verify` exit 0 (673 tests, 669 passed, 0 failed, 4
+  todo; bundle audit passed, 395 files, `testMocks=false`);
+  `ALPHA_BROWSER_TEST_PORT=6932 npm run test:browser:production` 175 passed; the same eight
+  Chromium Notes specs 52 passed; `actionlint` exit 0 on the seven workflow files; the Gradle
+  compile above repeated for both flavors, app and androidTest, with test mocks off and on:
+  BUILD SUCCESSFUL twice (compile only, no APK). The digest restart check was not repeated.
 
 ## Emulator results at 6dcdde34 (2026-10-10, round 7)
 
