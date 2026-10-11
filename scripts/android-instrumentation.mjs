@@ -94,10 +94,6 @@ export const CLASS_REGISTRY = {
   Notifications: {},
   CameraScan: {},
   FilesTree: {},
-  // Round-2 classes (PR #388). Registered so a named run reaches them; none has a recorded run yet.
-  AssistantResidentReuse: { note: "synthetic runtime observation and streams; attach admission and Activity lifecycle are the production paths. Not evidence that a live runtime stream survives" },
-  CalendarAvailability: { note: "provider-backed methods skip unless the calendar permission was granted before the run; this runner does not grant it" },
-  LauncherLibrary: { note: "two methods skip on an image with no other launchable app" },
   // J05-2: native page excerpt -> reviewed question -> composer; a note's web source across recreation.
   BrowserPageQuestion: { args: { browserPageQuestion: "1" }, note: "needs network for the first tab (example.com) and a WebView provider with isolated-world injection; the agent's answer and the summary-note save that follows it need a connected agent and are not covered" },
   // Mock mode and loopback fixtures exist only in a test-mocks app build.
