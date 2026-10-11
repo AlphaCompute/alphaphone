@@ -227,6 +227,118 @@ Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
 
+## Emulator results at 6dcdde34 (2026-10-10, round 7)
+
+Class E only (emulator instrumentation), for these exact APKs. Not distributable-build,
+physical-device, AOSP image, real-integration or user acceptance, and not evidence for any later
+source. The section below this one is the first campaign and is kept as history.
+
+- Emulators (all created for this run and deleted afterwards; stock HOME
+  `com.android.launcher3` read back before deletion, no Alpha package and no secondary user left):
+  - `r7_api36`: `system-images;android-36;default;arm64-v8a`, API 36 (Android 16
+    `BE2A.250530.026.D1` userdebug), arm64-v8a, WebView `com.android.webview` 133.0.6943.137.
+    Every row below unless it says otherwise.
+  - `r7_api35`: `system-images;android-35;default;arm64-v8a`, API 35 (`AE3A.240806.019`),
+    WebView `com.android.webview` 124.0.6367.219. RealClock only.
+  - `r7_g36`: `system-images;android-36;google_apis;arm64-v8a`, API 36, with
+    `com.google.android.webview` 145.0.7632.218 installed over its 133 from the
+    `android-37.0;google_apis` image already on this machine. The isolated-world check only.
+- APKs: **developer-override builds, never distributable**: `npm run android:build --
+  --allow-unpackaged-runtime` (resident runtime `NOT_PACKAGED`; the reviewed embedding host
+  libraries are not on the build machine) with a speech runtime installed by
+  `install-generated.py --allow-unqualified-runtime`. App APKs built at `55737f3b`:
+  `standalone-debug.apk` `d085c16d…c61f0eb`, `launcher-debug.apk` `0e14b5c9…2205cf9`;
+  test-mocks pair `57cda4aa…` / `81b580e2…`. The only later change to app source (`51a29979`)
+  affects the browser build, not Android. Instrumentation APKs were rebuilt as tests were
+  repaired, with the app APKs byte-identical: set B `ccb07e88…` / `5a224a96…` (the campaigns),
+  set C at `6dcdde34` `cbdde6cc…` / `60647098…` (the instrumentation runner, the Calendar
+  campaign and the notes rerun), test-mocks `559ae5f8…` / `da62c9db…`; RealClock ran with the
+  set built at `55737f3b` (`19fe5d0d…` / `bc3c503e…`).
+- The fixture campaigns ran from a hand-assembled directory of those APKs with a name-to-hash
+  manifest; `scripts/build-archive.mjs` needs the strict build and was not run. The resident
+  campaign (owner-held provider key) was not run.
+- Host load was 13 to 60 during these runs. On the first attempt at the launcher half the
+  emulator's `system_server` was killed by its watchdog (WindowManager blocked for 74 s) and the
+  emulator was restarted; nothing from that attempt is counted.
+
+### `npm run test:android:instrumentation`
+
+Results are standalone / launcher. Result files: `test-results/android-instrumentation/r7-main`,
+`r7-homerole`, `r7-accessibility`, `r7-mocks`, `r7-realclock-api35`, `r7-pbf-1..3`,
+`r7-webview145-reading`.
+
+| Class | Result | Classification |
+| --- | --- | --- |
+| NoMockProduct, Shell, StartupReadiness, Video, PhotosTrash, SettingsSystemFacts, NotesTrashBackstop, ClockHandoff, ClockRepeatDays, InboxOperationJournal, MailAttachment, NotesStorageDurability, ReminderLifecycle, Notifications, LocalAgentOfflineApps | passed / passed | |
+| TextScale | passed 1 of 2 / same; restart phase skipped (restart runner) | |
+| BrowserSignins | passed 5 of 6 / same; restart phase skipped (`signin` campaign, below) | |
+| BrowserContinuity | passed 1 of 3 / same; two skipped (restart runner, test-mocks) | |
+| HostedResultNotice | builders passed; posted and denied notices skipped here (`notice`, `notice-denied` campaigns, below) | |
+| NotesSecureStorage | passed 1 of 2 / same; legacy migration skipped (gate, no campaign) | |
+| DailyApps | passed 6 of 6 / passed 6 of 6 | Was failing. Test: a reminder tap is retained while the first-run sign-in panel is open and opens when it is answered; the test now asserts both. |
+| WorkflowApprovalNotice | passed / passed | Was failing. Two product defects fixed (repeated post of a decided approval kept a tap route; the receipt read the notice list before Android had listed the notice). |
+| CameraScan | passed 2 of 2 / same | Was failing. Product defect fixed (the scan model was packaged under the wrong name; see below) and three test defects (fixture PNGs counted as Photos rows, export read back with an unparsed quoted path, pages counted in compressed PDF objects). No duplicate save exists. |
+| Accessibility | passed / passed | Was failing. Test: an empty text field's accessible name is its hint, which the checker did not read; on the launcher flavor the shade swipe started under Android's status bar. |
+| FilesTree | passed / passed | The earlier standalone failure did not recur (also passed in two earlier round-7 runs); it was recorded at host load 30 to 140. Cause not established. |
+| SettingsFlow | passed / passed | Was failing on standalone. Test: the standalone flavor lists no system-only rows by design; it now asserts that and runs the battery handoff on the launcher flavor. |
+| Rotation | passed / passed | With the strict clipping rule (whole box inside the viewport and every clipping ancestor after the best scroll alignment). No clipping found. |
+| PasswordBrowserFill | failed once then passed 3 of 3 / passed | One standalone run failed its own tap-geometry precondition ("Synthetic form tap stays inside the visible browser"); not reproduced in three reruns. Cause not established. |
+| LauncherHome | not applicable / passed 4 of 4 with `--home-role` | HOME selected, cold HOME resumed, original holder restored and read back. |
+| SettingsRoles | not applicable / passed 2 of 2 with `--home-role` | Was failing. Test: Android 16's role dialog ignores Back (decline uses Cancel), the row is the node whose text is exactly the app name, and becoming HOME starts a new activity instance. |
+| BrowserFlow (flag-off) | failed 1 of 2 runnable / same | Environment: `submittedSearchUsesRealProviderAndRejectsExecutableAddress` needs a live `www.google.com/search` page; the page that loaded was HTTPS and complete but not that address (every run this round). |
+| BrowserDownload (flag-off) | skipped / skipped (test-mocks gate) | |
+| BrowserReadingNavigation, BrowserPageQuestion (3 of 4) | failed / failed | Environment: no WebView provider on this machine reports `JS_INJECTION_IN_FRAME_AND_WORLD`. 133 (API 36 default image) and 145.0.7632.218 (the newest, from the API 37 image, installed on `r7_g36`) both report false; CI's fixture uses Chromium snapshot 157.0.8083.0 (x86_64). |
+| RealClock (`--clock-exclusive`, `r7_api35`) | passed / passed | The fixture is qualified for API 35 and asserts it. It also needs AOSP Clock's notification permission, which the runner now grants. Not run on API 36. |
+| Test-mocks: BrowserDownload, ConnectionChooser, BrowserAutofill | passed / passed | BrowserAutofill's intermittent failure was the test's reading of the closing popup window (10 of 10 fresh-data runs passed after the fix; 4 of 8 failed before). |
+| Test-mocks: HostedProcessRestart, HostedBackgroundWorker | passed 3 of 3 phases, passed / same | New secondary-user phase: users 11 and 12 created, used and removed. Both classes need the test-mocks build (loopback HTTP fixture). |
+| Test-mocks: BrowserFlow | passed 4 of 5 / same | Same live-search dependency; upload, stop/reload and the error page pass. |
+| Test-mocks: BrowserReading, BrowserSensitiveReading, BrowserIsolatedReading | failed / failed | Environment: isolated-world injection (above). On a test-mocks build the sensitive-page rejections pass and the classes stop at the review dialog that needs the isolated world. "The product asks for a speech route first" was the correct refusal on a build without test mocks: their synthetic HTTP route is admitted by a test-mocks build only, and they are now registered and asserted that way. |
+
+### Fixture campaigns (fresh secondary user per run)
+
+Result files: `test-results/r7-camp/<campaign>-<flavor>`, `test-results/calendar-regression-1791688*`.
+
+| Campaign | Result (standalone / launcher) | Classification |
+| --- | --- | --- |
+| `test-native-restart.mjs signin`, `document` | passed / passed | |
+| `test-native-restart.mjs notes` | passed / failed then passed | The first launcher run timed out waiting for "Export saved and exact bytes verified." after the system picker; the rerun passed. Cause not established. |
+| `test-native-restart.mjs inbox` | passed / passed | Was failing. Test: the Android account panel names the signed-in state differently, Inbox loads the mailbox itself, and after a restart with local apps chosen the saved sign-in is offered as "Retry saved connection" in Settings, not restored. |
+| `test-native-permissions.mjs channels`, `settings`, `voice-limit`, `voice-revoke` | passed / passed | |
+| `test-native-permissions.mjs camera` | passed / passed | Was failing. Product defect fixed: a second permission dialog opened straight after "Don't allow". |
+| `test-native-permissions.mjs voice` | passed / passed | Was failing. Product defect fixed (the "Open app settings" control the denied message names was missing) and the test now signs in through the closed synthetic Cloud transport, because a build without test mocks records only through Eliza Cloud voice. |
+| `test-native-permissions.mjs notice`, `notice-denied` | passed / passed | Was failing. Test: the fixture wrote native-only result slots through the page bridge, which refuses them. |
+| `test-reminder-one-off.mjs` | passed / passed | |
+| `test-reminder-recovery.mjs` | passed / passed | First run. Reboots the emulator. |
+| `test-calendar-regression.mjs` CalendarCrud, CalendarAgentCrud, CalendarFlow, CalendarRange, CalendarCreationRecovery | passed / passed | CalendarCrud was failing. Test: the modal access panel covered the real touch, and scroll-driven animations report running forever. |
+| `test-calendar-regression.mjs` CalendarTruncation | failed / not run | First run of this class. "Calendar results incomplete" never appears. Not triaged. The runner stops at the first failure, so the launcher cases above were run one by one with `--variant=launcher --case=`. |
+| Resident campaign (`ResidentEgressRedaction`, `ResidentService`) | not run | Needs the packaged runtime and reads an owner-held provider key. |
+
+### Product defects found by these runs and fixed on this branch
+
+- The Android asset merger unpacked `ocr/eng.traineddata.gz` and dropped the suffix, so no APK
+  carried the name the scan engine requests and every Android scan ended with "The image could
+  not be read by the local scan engine". `android:sync` now protects `*.gz` web assets and
+  `verify-apks` fails an APK whose gzip assets differ from the web build.
+- A repeated post for a decided phone-step approval left a tap route behind; the approval and
+  step receipts could record "unknown" for a notice Android was about to show.
+- Closing Android's camera permission dialog with "Don't allow" restarted the preview and asked
+  again at once.
+- The denied-microphone message told the owner to choose "Open app settings", a control lost in
+  merge `344d1305`.
+- The native browser page stayed above modal host panels (the first-run access panel, the
+  connection panel) and remained interactive.
+
+### Observed and left open
+
+- Inbox's "Connect Eliza Cloud" panel offers only a new sign-in when a saved sign-in exists and
+  local apps are selected; the saved one is offered in Settings › Agent connection. Owner decision.
+- On the launcher flavor a swipe from the very top opens Android's shade and a swipe from just
+  below it opens Alpha's. Owner decision for the AOSP image.
+- At 200% font the Home card title and app labels overlap or cut (screenshots taken while
+  triaging Accessibility; the instrumentation's bounds checks do not catch it). Not fixed.
+- Accepting the HOME role starts a second `MainActivity` in the home task while the first stays
+  in its own task.
+
 ## Emulator results at 73b973a5 (2026-10-10)
 
 Class E only (emulator instrumentation). Not physical-device, AOSP image, real-integration or
