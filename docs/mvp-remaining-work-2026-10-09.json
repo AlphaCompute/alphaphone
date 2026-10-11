@@ -824,7 +824,7 @@
       "priority": "P1",
       "kind": "acceptance",
       "blocked_on": [
-        "EMULATOR: `scripts/android-workflow-native.mjs` and `--classes WorkflowApprovalNotice,HostedProcessRestart`",
+        "EMULATOR: `scripts/android-workflow-native.mjs`, `--classes WorkflowApprovalNotice` and `--test-mocks --classes HostedProcessRestart`",
         "CI: ResidentWorkflowCrash and WorkflowNoticeProcessDeath in resident-android.yml",
         "HUMAN: inference credential for generated-candidate quality",
         "DEVICE"
@@ -985,7 +985,7 @@
       "blocked_on": [
         "HUMAN: decision A-09, then the Gmail grant (MVP-35) and an inference credential (MVP-34) for real sources and output",
         "SOFTWARE: rerun `npm run agent:test-digest-restart` at the current pin",
-        "EMULATOR: `--classes HostedProcessRestart`",
+        "EMULATOR: `--test-mocks --classes HostedProcessRestart`",
         "CI: WorkflowNoticeProcessDeath in resident-android.yml job recovery-ui",
         "DEVICE: battery saver, Doze and lock"
       ],

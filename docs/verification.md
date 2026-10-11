@@ -217,6 +217,16 @@ device-owner provisioning and target-user task acceptance remain independent gat
 Class E only (emulator instrumentation). Not physical-device, AOSP image, real-integration or
 user acceptance, and not evidence for any later source.
 
+Scope of this record. It is a written summary by the session that ran the campaign, and it is
+the only committed form of it: the runner's `results.json` files and raw logs are not in the
+repository, and the APK hashes below are abbreviated. The source ran at upstream pin `352d7a08`,
+not the current pin `40dbe96bd1`. Changes made after `73b973a5` in response to these results
+have no recorded run: the approval-notice route release and posted-notice wait, the gzip
+packaging of the scan model, the camera resume decision, the "Open app settings" control, hiding
+the native browser page under modal panels, the secondary-user phase of the runner, the role
+dialog driver in SettingsRoles, and the later test repairs. Rows marked failed or unresolved
+describe `73b973a5`; none of them is shown fixed by a run.
+
 - Emulator: AVD `r3_packaging_api36`, system image `system-images;android-36;default;arm64-v8a`
   (API 36, Android 16 `BE2A.250530.026.D1` userdebug), ABI arm64-v8a, stock HOME
   `com.android.launcher3`, WebView `com.android.webview` 133.0.6943.137.
