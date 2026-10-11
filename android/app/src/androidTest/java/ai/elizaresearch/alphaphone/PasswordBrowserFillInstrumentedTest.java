@@ -86,19 +86,62 @@ public final class PasswordBrowserFillInstrumentedTest {
   WebViewTestDriver.withActivity(MainActivity.class,main->{List<WebView> children=new ArrayList<>();collect(main.getWindow().getDecorView(),children,main.getBridge().getWebView());for(WebView child:children)if(child.isShown())found.set(child);});
   assertNotNull("Actual native child must be visible",found.get());return found.get();
  }
- private void tapPage(double cssX,double cssY)throws Exception{
-  double width=Double.parseDouble(browser.child("innerWidth"));WebView child=visibleChild();float[] point=new float[2];
-  BoundedActivityScenario.main(()->{int[] position=new int[2];child.getLocationOnScreen(position);float scale=(float)(child.getWidth()/width);point[0]=position[0]+(float)cssX*scale;point[1]=position[1]+(float)cssY*scale;android.graphics.Rect visible=new android.graphics.Rect();assertTrue("Synthetic form tap stays inside the visible browser",child.getGlobalVisibleRect(visible)&&visible.contains((int)point[0],(int)point[1]));});
-  long down=SystemClock.uptimeMillis();
-  for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}){MotionEvent event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,point[0],point[1],0);event.setSource(InputDevice.SOURCE_TOUCHSCREEN);InstrumentationRegistry.getInstrumentation().sendPointerSync(event);event.recycle();}
+ private interface DocumentPoint{double[] read()throws Exception;}
+ /**
+  * Screen position of a point in the child document, or null while the native child and its
+  * document disagree about the viewport. They disagree for a while after the keyboard opens: the
+  * activity's bottom padding changes first, so the child is clipped by its parent; the host renderer
+  * then gives the native child its smaller frame (it measures on a timer); and the child document
+  * learns its new height last. A rectangle read from the document in that interval maps to a place
+  * the view no longer shows, which is how one run failed its own "stays inside the visible browser"
+  * check. A point counts only when the child is wholly visible, the document's height is the view's
+  * height, and the point is inside what is visible.
+  */
+ private float[] screenPoint(double cssX,double cssY,StringBuilder seen)throws Exception{
+  String raw=browser.child("[innerWidth,innerHeight]");seen.setLength(0);
+  if(raw==null||!raw.startsWith("[")){seen.append("no child document");return null;}
+  JSONArray viewport=new JSONArray(raw);double width=viewport.getDouble(0),height=viewport.getDouble(1);
+  if(!(width>0&&height>0)){seen.append("document ").append(raw);return null;}
+  WebView child=visibleChild();float[] point=new float[2];boolean[] settled={false};
+  BoundedActivityScenario.main(()->{
+   int[] position=new int[2];child.getLocationOnScreen(position);float scale=(float)(child.getWidth()/width);int slack=(int)Math.ceil(scale)+1;
+   android.graphics.Rect visible=new android.graphics.Rect();boolean shown=child.isShown()&&child.getGlobalVisibleRect(visible);
+   boolean whole=shown&&visible.width()>=child.getWidth()-slack&&visible.height()>=child.getHeight()-slack;
+   boolean agrees=Math.abs(height*scale-child.getHeight())<=2*slack;
+   point[0]=position[0]+(float)cssX*scale;point[1]=position[1]+(float)cssY*scale;
+   settled[0]=whole&&agrees&&visible.contains((int)point[0],(int)point[1]);
+   seen.append("view ").append(child.getWidth()).append('x').append(child.getHeight()).append(" visible ").append(shown?visible.width()+"x"+visible.height():"none").append(" document ").append(raw).append(" scale ").append(scale).append(" point ").append((int)point[0]).append(',').append((int)point[1]);
+  });
+  return settled[0]?point:null;
  }
+ /** Waits until the same settled screen position is read twice, then sends one real touch there. */
+ private void tapSettled(String what,DocumentPoint source)throws Exception{
+  float[] point=null,previous=null;StringBuilder seen=new StringBuilder("never sampled");
+  for(int i=0;i<300&&point==null;i++){
+   double[] css=source.read();float[] next=css==null?null:screenPoint(css[0],css[1],seen);
+   if(next!=null&&previous!=null&&Math.abs(next[0]-previous[0])<=1&&Math.abs(next[1]-previous[1])<=1)point=next;
+   else{previous=next;SystemClock.sleep(100);}
+  }
+  assertNotNull("Synthetic form tap stays inside the visible browser ("+what+"): "+seen,point);
+  float[] target=point;WebView child=visibleChild();
+  // The same precondition as before, read on the UI thread immediately before the touch.
+  BoundedActivityScenario.main(()->{android.graphics.Rect visible=new android.graphics.Rect();assertTrue("Synthetic form tap stays inside the visible browser",child.getGlobalVisibleRect(visible)&&visible.contains((int)target[0],(int)target[1]));});
+  long down=SystemClock.uptimeMillis();
+  for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}){MotionEvent event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,target[0],target[1],0);event.setSource(InputDevice.SOURCE_TOUCHSCREEN);InstrumentationRegistry.getInstrumentation().sendPointerSync(event);event.recycle();}
+ }
+ private void tapPage(double cssX,double cssY)throws Exception{tapSettled("page point",()->new double[]{cssX,cssY});}
  private void tapField(String id)throws Exception{
-  // The IME shrinks the page after typing the username. Scroll the next field
-  // into view before a real tap so it cannot hit the host's dock below the page.
-  browser.child("window.__alphaLayout=false;document.getElementById("+JSONObject.quote(id)+").scrollIntoView({block:'center'});requestAnimationFrame(()=>requestAnimationFrame(()=>window.__alphaLayout=true))");
-  childReady("window.__alphaLayout===true && (()=>{const r=document.getElementById("+JSONObject.quote(id)+").getBoundingClientRect();return r.height>0&&r.top>=0&&r.bottom<=innerHeight})()");
-  JSONArray rect=new JSONArray(browser.child("(()=>{const r=document.getElementById("+JSONObject.quote(id)+").getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()"));
-  tapPage(rect.getDouble(0),rect.getDouble(1));
+  // The IME shrinks the page after typing the username. Scroll the next field into view before a
+  // real tap so it cannot hit the host's dock below the page, and read its place again on every
+  // pass: a viewport that is still changing moves it.
+  String element="document.getElementById("+JSONObject.quote(id)+")";
+  tapSettled("field "+id,()->{
+   browser.child("window.__alphaLayout=false;"+element+".scrollIntoView({block:'center'});requestAnimationFrame(()=>requestAnimationFrame(()=>window.__alphaLayout=true))");
+   childReady("window.__alphaLayout===true");
+   String raw=browser.child("(()=>{const r="+element+".getBoundingClientRect();return r.height>0&&r.top>=0&&r.bottom<=innerHeight?[r.x+r.width/2,r.y+r.height/2]:null})()");
+   if(raw==null||!raw.startsWith("["))return null;
+   JSONArray rect=new JSONArray(raw);return new double[]{rect.getDouble(0),rect.getDouble(1)};
+  });
   childReady("document.activeElement?.id==="+JSONObject.quote(id));
  }
  /** Native IME commits after the framework refusal and WebView input connection are ready.
