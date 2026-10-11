@@ -62,4 +62,57 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
    assertNull(active(manager,id));assertNull("Route released",WorkflowNoticeTapsFactory.create(context).token(id));
   }finally{manager.cancel("alpha-workflow-"+id,0);store.removeCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT);}
  }
+ private static JSONObject route(String owner,String run)throws Exception{return new JSONObject().put("scope","a".repeat(64)).put("origin","https://workflow-fixture.invalid").put("ownerId",owner).put("agentId","fixture-agent").put("workflowId","fixture-flow").put("runId",run).put("versionId","fixture-version");}
+ private static StatusBarNotification row(NotificationManager manager,String id){StatusBarNotification found=null;for(StatusBarNotification row:manager.getActiveNotifications())if(("alpha-workflow-"+id).equals(row.getTag())){assertNull("One OS notice per approval",found);assertEquals(0,row.getId());found=row;}return found;}
+ /** A cancelled notice leaves the active list asynchronously. */
+ private static void awaitGone(NotificationManager manager,String id,String message){long end=SystemClock.elapsedRealtime()+5000;while(row(manager,id)!=null&&SystemClock.elapsedRealtime()<end)SystemClock.sleep(50);assertNull(message,row(manager,id));}
+ /** Runner-owned, as above. The connected owner changes while the first owner's approval notice is pending: the notice is
+  * withdrawn, its retained tap opens nothing, the new owner's notice is untouched and the old approval is never posted again.
+  * Synthetic routes and owner IDs; no agent, account, sign-in or device action. The renderer's refusal to review another
+  * owner's run is browser evidence (test/browser/workflow-notice-taps.spec.ts), not this test. */
+ @Test public void ownerChangeWithdrawsThePendingApprovalNoticeAndItsTapOpensNothing()throws Exception{
+  org.junit.Assume.assumeTrue("Dedicated workflow approval notice campaign","1".equals(InstrumentationRegistry.getArguments().getString("workflowApprovalNotice")));
+  Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();NotificationManager manager=context.getSystemService(NotificationManager.class);AlphaCredentialStore store=new AlphaCredentialStore(context);
+  assertNull("Fresh approval fixture required",store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT));
+  String oldId=approvalId('e'),nextId=approvalId('f'),oldRun="fixture-old-"+java.util.UUID.randomUUID(),nextRun="fixture-next-"+java.util.UUID.randomUUID();long expiresAt=System.currentTimeMillis()+10*60000L;
+  JSONObject oldInput=new JSONObject().put("id",oldId).put("bindingHash","b".repeat(64)).put("expiresAt",expiresAt).put("route",route("fixture-owner",oldRun));
+  JSONObject nextInput=new JSONObject().put("id",nextId).put("bindingHash","c".repeat(64)).put("expiresAt",expiresAt).put("route",route("fixture-next-owner",nextRun));
+  String change="Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({ownerId:\"fixture-next-owner\"})";
+  try(BoundedActivityScenario<MainActivity> activity=BoundedActivityScenario.launch(MainActivity.class)){
+   AppNavigation.liveMode();
+   assertEquals("succeeded",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+oldInput+")").getString("status"));
+   assertEquals("succeeded",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+nextInput+")").getString("status"));
+   StatusBarNotification oldNotice=row(manager,oldId),nextNotice=row(manager,nextId);assertNotNull("First owner's approval notice posted",oldNotice);assertNotNull("Next owner's approval notice posted",nextNotice);
+   PendingIntent oldTap=oldNotice.getNotification().contentIntent;assertNotNull(oldTap);
+   String oldToken=WorkflowNoticeTapsFactory.create(context).token(oldId),nextToken=WorkflowNoticeTapsFactory.create(context).token(nextId);assertNotNull(oldToken);assertNotNull(nextToken);assertNotEquals(oldToken,nextToken);
+   // The owner changes. Only the next owner's ID crosses the bridge.
+   assertEquals("Exactly the first owner's notice is withdrawn",1,call(change).getInt("withdrawn"));
+   awaitGone(manager,oldId,"The first owner's approval notice is withdrawn");
+   StatusBarNotification kept=row(manager,nextId);assertNotNull("The next owner's notice stays",kept);assertEquals("The next owner's notice was not posted again",nextNotice.getPostTime(),kept.getPostTime());
+   assertNull("First owner's route released",WorkflowNoticeTapsFactory.create(context).token(oldId));assertEquals(nextToken,WorkflowNoticeTapsFactory.create(context).token(nextId));
+   JSONObject receipts=new JSONObject(store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT));
+   assertEquals(2,receipts.length());assertEquals("withdrawn",receipts.getJSONObject(oldId).getString("status"));assertEquals(expiresAt,receipts.getJSONObject(oldId).getLong("expiresAt"));assertEquals("succeeded",receipts.getJSONObject(nextId).getString("status"));
+   // A tap on the withdrawn notice that the OS still held: it opens nothing under the next owner.
+   oldTap.send();
+   long quiet=SystemClock.elapsedRealtime()+3000;
+   while(SystemClock.elapsedRealtime()<quiet){JSONObject stale=call("Capacitor.Plugins.AlphaNotifications.pendingWorkflowTap()");assertFalse("A withdrawn approval tap must not become pending",stale.has("token")||stale.has("runId"));SystemClock.sleep(100);}
+   // Positive control through the same single notice worker, after the stale tap: the next owner's own tap opens its exact run.
+   kept.getNotification().contentIntent.send();
+   long end=SystemClock.elapsedRealtime()+15000;JSONObject pending=new JSONObject();
+   while(SystemClock.elapsedRealtime()<end){pending=call("Capacitor.Plugins.AlphaNotifications.pendingWorkflowTap()");if(nextToken.equals(pending.optString("token")))break;SystemClock.sleep(100);}
+   assertEquals("Only the next owner's tap is pending",nextToken,pending.optString("token"));assertEquals(nextRun,pending.optString("runId"));assertEquals("fixture-next-owner",pending.optString("ownerId"));assertEquals(nextId,pending.optString("operationId"));assertTrue(pending.optBoolean("retained"));
+   assertNull(WorkflowNoticeTapsFactory.create(context).token(oldId));
+   // The first owner's approval is never posted again, also if its request is repeated.
+   assertEquals("withdrawn",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+oldInput+")").getString("status"));
+   assertNull(row(manager,oldId));assertNull("A repeated request keeps no route",WorkflowNoticeTapsFactory.create(context).token(oldId));
+   assertEquals("A repeated owner change withdraws nothing more",0,call(change).getInt("withdrawn"));
+   assertTrue("An owner change without an owner is refused",call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({})").has("error"));
+   kept=row(manager,nextId);assertNotNull(kept);assertEquals(nextNotice.getPostTime(),kept.getPostTime());
+   receipts=new JSONObject(store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT));assertEquals(2,receipts.length());assertEquals("withdrawn",receipts.getJSONObject(oldId).getString("status"));assertEquals("succeeded",receipts.getJSONObject(nextId).getString("status"));
+   assertFalse(call("Capacitor.Plugins.AlphaNotifications.consumeWorkflowTap({token:"+JSONObject.quote(nextToken)+"})").has("error"));
+   awaitGone(manager,nextId,"Opening the next owner's notice cancels it");
+   assertFalse(call("Capacitor.Plugins.AlphaHostedResults.withdrawWorkflowApprovalNotice({id:"+JSONObject.quote(nextId)+"})").has("error"));
+   assertNull("Route released",WorkflowNoticeTapsFactory.create(context).token(nextId));
+  }finally{manager.cancel("alpha-workflow-"+oldId,0);manager.cancel("alpha-workflow-"+nextId,0);store.removeCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT);}
+ }
 }

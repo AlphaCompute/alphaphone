@@ -17,7 +17,8 @@ import static org.junit.Assert.*;
 /** Runs only in the separate instrumentation host; main dies while the test remains alive. */
 public final class WorkflowNoticeProcessDeathInstrumentedTest {
  private static final String APP="ai.elizaresearch.alphaphone";
- private static final class Identity {
+ /** Package-visible: WorkflowApprovalNoticeProcessDeathInstrumentedTest proves the same death boundary. */
+ static final class Identity {
   final int pid,uid;final String start,argvState;final boolean argvReady;
   Identity(int pid)throws Exception {
    this.pid=pid;
@@ -35,13 +36,13 @@ public final class WorkflowNoticeProcessDeathInstrumentedTest {
   }
   void exact()throws Exception {Identity now=new Identity(pid);assertEquals(uid,now.uid);assertEquals(start,now.start);assertTrue("Unexpected process argv at kill boundary: "+now.argvState,now.argvReady);}
  }
- private static List<Integer> mainPids(Context context){
+ static List<Integer> mainPids(Context context){
   List<Integer> found=new ArrayList<>();List<ActivityManager.RunningAppProcessInfo> rows=context.getSystemService(ActivityManager.class).getRunningAppProcesses();
   assertNotNull("Process inventory unavailable",rows);
   for(ActivityManager.RunningAppProcessInfo row:rows)if(APP.equals(row.processName)){assertEquals(android.os.Process.myUid(),row.uid);found.add(row.pid);}
   assertTrue("Multiple main processes",found.size()<=1);return found;
  }
- private static Identity awaitMain(Context context)throws Exception {
+ static Identity awaitMain(Context context)throws Exception {
   long end=SystemClock.elapsedRealtime()+15000;Identity candidate=null;String argvState="not-observed";
   do{
    List<Integer> rows=mainPids(context);
