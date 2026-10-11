@@ -2,7 +2,7 @@
 
 ## Current plan — October 4, production surfaces
 
-Mock mode, prototype fixtures, the development profile, device controls, simulated apps, the local development agent option and the debug-only native hooks are now flag-only: they exist only in builds with `ELIZA_DEV_ALLOW_TEST_MOCKS=1` (`npm run dev`, Playwright, `ELIZA_DEV_ALLOW_TEST_MOCKS=1 npm run build`, `npm run android:build -- --test-mocks`). The production web build and all four distribution APKs exclude them, and the production bundle audit, production browser lane and APK verification enforce it. Mentions of mock mode in older checkpoints below describe their recorded builds. See the [production readiness record](production-readiness-2026-10-04.md) and [current status](mvp-current-status.md).
+Mock mode, prototype fixtures, the development profile, device controls, simulated apps, the local development agent option and the debug-only native hooks are now flag-only: they exist only in builds with `ELIZA_DEV_ALLOW_TEST_MOCKS=1` (`npm run dev`, Playwright, `ELIZA_DEV_ALLOW_TEST_MOCKS=1 npm run build`, `npm run android:build -- --test-mocks`). The production web build and all four distribution APKs exclude them, and the production bundle audit, production browser lane and APK verification enforce it. Mentions of mock mode in older checkpoints below describe their recorded builds. See the [production readiness record](https://github.com/AlphaCompute/alphaphone/blob/51c8157533353a805afd2811f4e3f41b66b7b9fa/docs/production-readiness-2026-10-04.md) and [current status](mvp-current-status.md).
 
 ## October 7 owner decisions
 

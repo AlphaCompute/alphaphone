@@ -66,9 +66,11 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let shell: Bag | undefined, api: Bag | undefined;
   let accounts: GmailAccount[] = [], messages: GmailMessage[] = [], accountsChecked = false;
   type Folder = 'inbox' | 'sent' | 'drafts' | 'archive' | 'trash';
+  const MAILBOX_CHANGED = 'Newer mail arrived while this list was loading and is not shown yet. Load newer mail to read the list again.';
+  let newerMail = false;
   const folderQuery: Record<Folder, string> = { inbox: 'in:inbox', sent: 'in:sent', drafts: 'in:drafts', archive: 'in:archive', trash: 'in:trash' };
   let loadedQuery = '', nextPageToken: string | null = null, folder: Folder = 'inbox';
-  // Provider drafts (patches/eliza/0058) are listed separately from messages.
+  // Provider drafts are listed separately from messages.
   let providerDrafts: GmailDraftSummary[] = [];
   // Only a boolean leaves this closure: the Home badge reflects the last loaded Inbox page(s).
   // Home retains only metadata from Inbox pages the user already loaded, never message bodies.
@@ -98,6 +100,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const provider = inboxProviderControls(() => publish(), text => api?.toast(text));
   const drafts = inboxDrafts(() => publish(), text => api?.toast(text), provider);
   provider.setEditor((proposal,reference)=>drafts.editProvider(proposal,reference));
+  provider.setComposer(()=>drafts.email());
   const readable = () => accounts.filter(gmailReadable);
   const currentQuery = () => String(api?.get('inbox')?.q || '').trim() || folderQuery[folder];
   const accountLabel = (id = selected) => accounts.find(a => a.connectionId === id)?.label || null;
@@ -108,6 +111,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   };
   drafts.setFromSwitch({ count: () => readable().length, cycle: () => void switchFrom() });
   provider.setObservers({
+    // A provider-confirmed send removes the local copies of exactly the draft it was sent from.
+    sent: (source, proposal, grant) => void drafts.settleSent(source.draftId, proposal, grant), sentNote: source => drafts.sentNote(source.draftId),
     // A stale review was discarded without dispatch; reload the open message so the user sees its current state.
     stale: () => { if (body) void open(body.message); else void load(); },
     receipt: receipt => {
@@ -119,6 +124,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if (body?.message.id === id) { body = null; thread = null; publish({ open: null, nativeMailSelection: null }); } else publish();
     },
   });
+  provider.onRestored(() => { if (selected && !draftsView()) void load(); });
   function clear() {
     providerDrafts = [];
     setAttention({ state: connectionController.getCloudClient() ? 'loading' : 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null });
@@ -141,7 +147,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   }
   /** One provider read at a time. `retry` is offered after a classified failure; `keep` leaves the
    * loaded list in place when only a message, attachment or later page failed. */
-  async function work(label: string, task: (binding: NonNullable<ReturnType<typeof connectionController.getCloudClient>>, signal: AbortSignal, valid: () => boolean) => Promise<void>, retry?: () => void, keep = false) {
+  async function work(label: string, task: (binding: NonNullable<ReturnType<typeof connectionController.getCloudClient>>, signal: AbortSignal, valid: () => boolean) => Promise<void>, retry?: () => void, keep = false, kept = '') {
     if (operation) return;
     const binding = connectionController.getCloudClient();
     if (!binding) { connectionController.openCloudAccount(); return; }
@@ -158,9 +164,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
         homeFailure=classified.kind;
         if(classified.kind==='revoked'){inboxPreview=null;hasUnread=false;}
         if (!keep) { messages = []; nextPageToken = null; }
-        body = null; thread = null; phase = 'error'; status = classified.message;
+        body = null; thread = null; phase = 'error'; status = classified.message + (keep && messages.length ? kept : '');
         failure = retry ? { kind: classified.kind, retry } : null;
-        if (keep && messages.length) api?.toast(classified.message);
+        if (keep && messages.length) api?.toast(status);
         publish({ open: null, nativeMailSelection: null });
       }
     } finally { if (token === generation) { operation = null; if (phase === 'busy') phase = 'ready'; publish(); } }
@@ -240,7 +246,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     });
   }
   const draftsView = () => folder === 'drafts' && !String(api?.get('inbox')?.q || '').trim();
-  /** Provider drafts list (patches/eliza/0058): metadata only until one is opened for editing. */
+  /** Provider drafts list: metadata only until one is opened for editing. */
   async function loadDrafts(more = false) {
     const accountId = selected, pageToken = more && loadedQuery === 'in:drafts' ? nextPageToken : null;
     if (more && !pageToken) return;
@@ -288,7 +294,13 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       const result = await client.gmailSearch(accountId, query, signal, 25, pageToken || undefined);
       if (!valid() || selected !== accountId || currentQuery() !== query) return;
       const seen = new Set(pageToken ? messages.map(m => m.id) : []);
-      messages = pageToken ? [...messages, ...result.messages.filter(m => !seen.has(m.id))] : result.messages;
+      // A later page that repeats a loaded message was cut from a mailbox that changed after the
+      // earlier pages were read (new mail moved every row down). The repeat is dropped as before,
+      // and the list says that it is no longer the whole mailbox.
+      const shifted = !!pageToken && result.messages.some(m => seen.has(m.id));
+      // A message the provider lists twice, in one page or across pages, is shown once.
+      const fresh = result.messages.filter(m => !seen.has(m.id) && !!seen.add(m.id));
+      messages = pageToken ? [...messages, ...fresh] : fresh;
       if (!pageToken) seenCursors = new Set();
       // A provider cursor that repeats would page forever; treat it as the end of the results.
       const next = result.nextPageToken ?? null;
@@ -299,8 +311,10 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if (!pageToken) body = null;
       providerDrafts = [];
       status = messages.length ? `${messages.length} messages loaded` : query === 'in:inbox' ? 'Your Inbox is empty' : query === 'in:sent' ? 'No sent messages' : query === 'in:archive' ? 'No archived messages' : query === 'in:trash' ? 'Trash is empty' : 'No messages match this search';
+      newerMail = pageToken ? newerMail || shifted : false;
+      if (shifted) api?.toast(MAILBOX_CHANGED);
       publish(pageToken ? {} : { open: null, nativeMailSelection: null });
-    }, () => void load(), more);
+    }, () => void load(), more, more ? ' The messages already shown were kept. Retry reloads the list from the start.' : '');
   }
   function setFolder(next: Folder) {
     if (folder === next && !api?.get('inbox')?.q && (messages.length || providerDrafts.length)) return;
@@ -380,7 +394,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     }};attachmentView=review;publish();},()=>void openAttachment(source,attachment),true);
   }
   /** Unsupported types (for example .docx or .zip) can only be saved as an exact byte copy: no preview,
-   * no viewer handoff and no agent access. Requires the server's opaque download (patches/eliza/0059). */
+   * no viewer handoff and no agent access. Requires the server's opaque download. */
   async function saveOpaque(source:NonNullable<typeof body>,attachment:NonNullable<NonNullable<typeof body>['attachments']>[number]){
     if(!provider.capabilities()?.opaqueAttachments||attachment.size>5*1024*1024){api?.toast('This attachment type cannot be previewed here, and this account cannot save it to Files. Open it in Gmail.');return;}
     const accountId=selected;
@@ -496,6 +510,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
         chip('Archive', () => setFolder('archive'), folder === 'archive'),
         ...(provider.capabilities()?.searchTrash ? [chip('Trash', () => setFolder('trash'), folder === 'trash')] : [])] : []),
       ...(selected ? [chip(st.q ? 'Search Gmail' : 'Refresh', () => void load())] : []),
+      // Stays after the notice has passed, until the list is loaded again from its first page.
+      ...(selected && newerMail && messages.length && loadedQuery === currentQuery() ? [chip('Load newer mail', () => void load())] : []),
       chip('Connect Gmail', () => void connect()),
       chip('Check connection', () => void refreshAccounts()),
       ...(selected&&!provider.capabilities()?.send?[chip('Authorize Gmail sending',()=>void connect('send'))]:[]),

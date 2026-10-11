@@ -155,6 +155,8 @@ export const CAMPAIGN_RUNNERS = [
   "scripts/android-workflow-native.mjs", "scripts/android-resident-instrumentation.mjs", "scripts/android-browser-reading-live.mjs",
   "scripts/android-paired-asr-live.mjs", "scripts/android-paired-voice-live.mjs", "scripts/maps/test-native-navigation.mjs",
   "scripts/maps/test-native-recovery.mjs", "scripts/ci/pending-recovery-ui.py", "scripts/ci/resident-native.py",
+  // Added on main while the reachability check was being written: BrowserStorageFormat.
+  "scripts/test-browser-storage-format.mjs",
 ];
 
 /**

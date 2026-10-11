@@ -29,9 +29,8 @@ the required evidence rather than treating a successful APK build as acceptance.
 - [Detailed flow PRD](docs/flow-audit-and-prd.md)
 - [Current implementation plan](docs/flow-implementation-plan.md)
 - [current product status](docs/mvp-current-status.md)
-- [Production readiness record, 2026-10-04](docs/production-readiness-2026-10-04.md)
+- [Production readiness record, 2026-10-04](https://github.com/AlphaCompute/alphaphone/blob/51c8157533353a805afd2811f4e3f41b66b7b9fa/docs/production-readiness-2026-10-04.md)
 - [Cloud deployment and authentication findings](docs/cloud-production-validation.md)
-- [Enclave candidate and signing gates](docs/enclave-candidate-validation.md)
 - [Browser autofill and Proton integration](docs/browser-autofill-integration.md)
 - [Calendar and reminder contracts](docs/calendar-reminder-contract.md)
 
@@ -274,10 +273,17 @@ debug-signed or test-mocks builds as production.
 
 ## Emulator verification
 
-The aggregate smoke suites and their CI jobs were removed on October 8 at the
-owner's request. APK builds and bundle audits remain required. Focused native
-campaigns below can be run separately on an owned disposable emulator; a build
-does not establish native behavior or HOME-role acceptance.
+The aggregate smoke suites, their npm entry point and their CI jobs were removed on
+October 8 at the owner's request. APK builds and bundle audits remain required. The
+current entry point for native instrumentation is
+`npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN`
+(per-class results bound to the commit and the installed APK hashes; see the
+[verification guide](docs/verification.md)). It and the focused campaigns below run on an
+owned disposable emulator; a build does not establish native behavior or HOME-role
+acceptance. Two emulator jobs remain in CI: `native` and `recovery-ui` in
+`.github/workflows/resident-android.yml`, which run only when the workflow is dispatched
+or the repository variable `ELIZA_RESIDENT_QUALIFICATION` enables it. No emulator or CI
+result is recorded for the current source ([current status](docs/mvp-current-status.md#current-qualification-evidence)).
 
 The independent native Calendar consumer comes from the pinned upstream source.
 Build its app and instrumentation APKs with
@@ -331,6 +337,13 @@ Reports go to `test-results/calendar-upgrade-*` or `test-results/reminder-upgrad
 Secondary-user setup and teardown use the upstream lifecycle helper under the same
 emulator lease. Missing package-cleanup proof retains the test user for recovery.
 These campaigns require an owned disposable emulator and do not prove device acceptance.
+
+The browser storage-format campaign uses the same archived APK and owned-emulator
+inputs: `node scripts/test-browser-storage-format.mjs APP.apk TEST.apk NEW_OUTPUT`.
+It runs in a fresh disposable user and checks the real product stores against the
+deployed Keystore ciphertext format in both directions, including bookmarks,
+tabs/history and site permissions. It does not open a website or establish browser
+UI, process-death or physical-device acceptance.
 
 ## AOSP integration
 

@@ -6,7 +6,7 @@ The `Removed workflows` card provides fresh-session access to removed definition
 
 ## Reviewed upstream implementation
 
-Apply `patches/eliza/0009-workflow-lifecycle-mutations.patch` after0008. SHA256 `e2b0521bb613e5a3579cc7dd23e245ab74b431e8cf6471f9fe6f6f1b4ebf72e2`. The additive SQL table stores owner/workflow/mutation identity, expected version, operation and immutable receipt. Normal plugin schema migration creates it. No existing execution rows are deleted. Legacy destructive DELETE now returns409 and requires this reviewed path.
+The pinned upstream workflow plugin owns this contract. The additive SQL table stores owner/workflow/mutation identity, expected version, operation and immutable receipt. Normal plugin schema migration creates it. No existing execution rows are deleted. Legacy destructive DELETE now returns409 and requires this reviewed path.
 
 Definition row locking serializes lifecycle transitions with queued execution admission, metadata CAS, activation and update. Removal rejects unfinished/unsupported terminal states. The retained definition blocks background and manual admission while removed; paused definitions also reject trigger admission. Failed trigger deletion leaves durable pending cleanup and blocks restore. Startup retries exact workflow task removal. Cleanup never touches unrelated workflow tasks. Schedule synchronization is serialized within one service; an in-flight task created by another host rechecks version/state and deletes its own stale task. Durable admission still rejects a stale task while removed or paused. This does not establish distributed scheduler exactly-once delivery or cron/DST acceptance.
 
@@ -19,16 +19,10 @@ Endpoints under `/api/workflow`:
 
 Detail and execution receipt routes remain owner-scoped and readable. Typed `WORKFLOW_LIFECYCLE_NOT_APPLIED` is accepted by the phone only when workflow, mutation and expected-version identity match. Other409/network failures retain the pending lock.
 
-## Evidence
+## Validation
 
-2026-09-30: owning plugin typecheck passed. Four actual HTTP/PGlite integration tests passed98 assertions before the final duplicate guard; the final lifecycle rerun passed39 assertions: owner isolation; actual held run refuses removal before explicit cancellation; six duplicate removals one revision; retained completed execution; cleanup failure; reopened database/startup cleanup limited to the fixture; restore paused; historical duplicate receipt does not re-remove a restored definition.
+`node --import=tsx scripts/test-workflow-lifecycle-ui-flow.mjs` checks explicit removal review, account changes, retained history and GET-only reconciliation against a synthetic HTTP host.
 
-`test-results/workflow-lifecycle/real-host.json`: actual paired isolated47856, forwarded non-loopback authorization, unauthenticated401, six duplicate mutations, retained completed arithmetic run, removed list and admission refusal. `real-restart.json`: changed OS process PID, same immutable receipt and completed execution, restore paused. No model call or communication effect was needed. Other local agents remained running.
+The shared implementation is consumed through [upstream.lock.json](../upstream.lock.json); see [agent integration](agent-integration.md) for the product boundary. These adapter checks are not live-provider, native process-death, HOME-role, AOSP or device acceptance.
 
-`node --experimental-transform-types scripts/test-workflow-lifecycle-ui-flow.mjs`: real phone adapter/protocol against synthetic HTTP passed explicit review, lost response, component recreation, account-switch cancellation, history reachability and GET-only reconciliation. Existing approval and metadata adapter fixtures also passed.
-
-**Build74 scoped Android acceptance passed both variants:** `WorkflowLifecycleInstrumentedTest#removedHistorySurvivesRecreationAndExplicitRestore`, opt-in `workflowLifecycle=true`. The Build74 wrapper was removed on October 8 with the other aggregate smoke runners, at the owner's request; no repository runner reproduces this result today. A direct `adb shell am instrument` run of the method with `-e workflowLifecycle true` on an owned disposable emulator is a different, narrower result because it omits the wrapper's host-side checks. The archived run required the isolated47856 owner-paired fixture, uses forwarded proxy47857 with unauthenticated401, checks archived app/test hashes, restores the previous connection and secure credential, and uses one completed synthetic arithmetic run. Activity recreation is not process-death proof. Build, emulator HOME-role, unified agent, Cloud and enclave acceptance remain separate.
-
-Final duplicate guard: `real-historical-replay.json` verifies the revised real host preserves the restored definition byte-for-byte when returning a historical removal receipt. The39-assertion lifecycle test additionally confirms this replay does not access the task store.
-
-Native evidence: `test-results/prototype-build74/workflow-lifecycle/result.json`, standalone and launcher instrumentation each `OK (1 test)`. Each observed2POST (remove and explicit restore),1 exact mutation GET,1 retained completed arithmetic execution and2 revisions. Source and schedule remained unchanged, restored state was paused, and the forwarding proxy rejected unauthenticated requests with401. This includes real chooser pairing, Activity recreation and navigation through Removed workflows, not a HOME-role or unified-host claim. Exact app/test APK hashes are retained in that result.
+The [historical validation record](https://github.com/AlphaCompute/alphaphone/blob/1de85a13ecd1d7658fa2453c9c2b8ed5b82646c6/docs/workflow-lifecycle-validation.md) preserves the earlier host and Android campaign details and APK identities. Those results apply only to their recorded builds; the removed aggregate runners do not qualify the current pin.

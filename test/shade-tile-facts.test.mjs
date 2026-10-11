@@ -100,3 +100,17 @@ test('closing Android\'s own shade reaches the tile watch through a native windo
  const shell=readFileSync('apps/app/src/prototype/agent-adapter.ts','utf8');
  assert.match(shell,/watchReturnToApp\(\(\) => \{ if \(this\.live && this\.S\(\)\.shade\) this\.refreshTileFacts\(\); \}\)/);
 });
+test('handoff tiles are buttons named with their reported state; only the flashlight is a toggle',()=>{
+ const snapshot={wifiEnabled:true,bluetoothEnabled:false,airplaneMode:false,locationEnabled:true,interruptionFilter:'priority'};
+ const tiles=m.honestTiles(modelTiles(),m.tileFactsFromSnapshot(snapshot,true),{flashlight:true,act:()=>{}});
+ assert.deepEqual(tiles.map(t=>[t.aria,t.pressed]),[['Wi-Fi, on, opens Android settings',undefined],['Bluetooth, off, opens Android settings',undefined],['Do not disturb, on, opens Android settings',undefined],
+  ['Agent can listen, opens Android permission settings',undefined],['Location, on, opens Android settings',undefined],['Airplane mode, off, opens Android settings',undefined],['Enclave lock, opens Android settings',undefined],['Flashlight',true]]);
+ // The visible label, colour and state text are unchanged; only the announced role and name differ.
+ assert.deepEqual(tiles.slice(0,2).map(t=>[t.label,t.on,t.stateText]),[['Wi-Fi',true,'On'],['Bluetooth',false,'Off']]);
+ // Unreported switches say what the tile does and claim no state; an unconfirmed flashlight has no pressed state.
+ const unknown=m.honestTiles(modelTiles(),{},{flashlight:true,act:()=>{}});
+ assert.deepEqual(unknown.map(t=>[t.aria,t.pressed]),[['Wi-Fi, opens Android settings',undefined],['Bluetooth, opens Android settings',undefined],['Do not disturb, opens Android settings',undefined],
+  ['Agent can listen, opens Android permission settings',undefined],['Location, opens Android settings',undefined],['Airplane mode, opens Android settings',undefined],['Enclave lock, opens Android settings',undefined],['Flashlight',undefined]]);
+ assert.equal(m.honestTiles(modelTiles(),{torch:false},{flashlight:true,act:()=>{}}).at(-1).pressed,false);
+ for(const tile of [...tiles,...unknown])assert.doesNotMatch(tile.aria,/toggle|switch|pressed/i);
+});

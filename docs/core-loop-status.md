@@ -59,20 +59,56 @@ Spec: `journey-b-voice-note-actions.spec.ts`
 | Reload, reopen, read aloud / stop reading | yes (synthetic speech output) | Native synthesis | Audible playback, interruption, latency (A-10) |
 | Review transcript with the agent, save reviewed summary note | yes | — | Real agent answer quality |
 | Reminder from the note ("Review reminder draft" → Calendar form → Save) | yes | Native reminder scheduling | OS notification delivery, snooze from the notification, reboot |
-| Calendar event from the note | partial: only by switching the reminder draft to the "In this app" calendar | Android CalendarProvider accounts | Provider read-back, attendees |
+| Calendar event from the note ("Review calendar event draft" → Calendar form → Save; nothing is written before Save) | yes | Android CalendarProvider accounts | Provider read-back, attendees |
+| Saved reminder and event show "From note: <current title>" and "Open note" opens that exact recording, after reload and after an edit | yes (`note-calendar-handoff.spec.ts` covers a deleted, replaced, renamed or edited note) | The link for a device-calendar event (see open items) | — |
 | Agent-proposed reminder and event, each reviewed and approved, with receipts | yes | Native action journal | A real agent choosing to propose them |
 | Reload: every record exists exactly once | yes | — | — |
-| Edit and delete the event and the reminder | yes | — | — |
+| Edit and delete the event and the reminder; the event deletion has one review step and Cancel deletes nothing | yes | The Android "Delete calendar event?" dialog | — |
 
-Open items (hand-off gaps, not fixed here):
+Closed in the browser build:
 
-- A saved voice note has no dedicated control to draft a calendar event; the only
-  rendered route is the reminder draft with its calendar switched.
-- A reminder or event created from a note carries the action text but no link back to
-  the note it came from.
-- Calendar "Delete event" deletes immediately with no confirmation or undo. Neither
-  [the calendar contract](calendar-reminder-contract.md) nor the flow audit requires
-  one for a direct user deletion, so this is recorded as an observation, not a defect.
+- Notes → Calendar event: a saved voice note offers "Review calendar event draft"
+  beside "Review reminder draft". Both open a Calendar draft only; nothing is written
+  until Save in Calendar.
+- Back-reference: a reminder or event saved from a note draft is linked to that note
+  (note id, recording id and the reviewed revision; no note content and no title).
+  Calendar shows "From note: <title>" with "Open note", where the title is read from
+  the note as it is now, so a renamed note is shown under its current name. The action
+  opens that note only if exactly one note still has that id and recording; otherwise
+  it opens nothing and says so. A note that is in Trash, deleted or replaced is shown
+  as "From a note that is no longer in Notes" with no title. A note
+  edited since is opened with a notice. The link is created once at Save, is never
+  changed by a later hand-off, and is removed when the record is deleted.
+- Browser "Delete event" now shows one review step that names the event, like the
+  Android plugin's "Delete calendar event?" dialog. Cancel, Back, Escape, hiding or
+  locking the app delete nothing, and an event changed during the review is not deleted.
+
+Still open:
+
+- Device-calendar events are not linked to their note in the Android build:
+  CalendarProvider row ids are assigned by the provider and can be reused, and the
+  pinned native Calendar plugin stores no Alpha field on an event. Reminder links use
+  the reminder's own id and the same store on Android, but no Android run exists.
+  NEEDS upstream: a stable per-event identity (or an extended property) returned by
+  `list` in plugin-native-calendar.
+- The contract documents ([notes document flows](notes-document-flows.md),
+  [calendar contract](calendar-reminder-contract.md), flow audit J02) do not describe a
+  note back-reference or a calendar-event hand-off from a note. The behavior above is
+  implemented from the J02 loop description and should be written into the contract
+  by its owner.
+- Reminder deletion from the detail page is still immediate ("Reminder cancelled").
+  It was not changed.
+
+Pending owner decision (now A-25 under [pending owner decisions](decisions.md#new-decision-items)):
+
+- **Calendar deletion recoverability.** PRD AP-15 / MVP-48 suggest "no unrecoverable
+  user-data loss" as P0, and Notes has a Trash. Calendar has neither a Trash nor Undo
+  for provider-backed events. What was implemented is only parity with the existing
+  Android behavior (one review step before an irreversible delete), using the review
+  dialog Calendar already uses for "Delete repeating series". No retention window,
+  Trash or Undo was added. The owner should decide whether deleted events and
+  reminders need a recoverable state, for how long, and whether reminder deletion
+  needs the same review step.
 
 ## C. Alarms
 
@@ -137,6 +173,11 @@ Spec: `journey-e-browser-credentials.spec.ts`
 
 Spec: `journey-f-email-notifications.spec.ts` (small serial group)
 
+`journey-f-reviewed-send.spec.ts` covers the reviewed provider operations the first spec does
+not: Cc, Bcc and attachments in the review with a byte-for-byte dispatch, an email edited
+after its review, Trash and undo, an unknown Trash outcome, and paging while the mailbox
+changes. `inbox-hostile-attachment.spec.ts` covers hostile attachments.
+
 | Step | Browser | Native-only | Human or device |
 | --- | --- | --- | --- |
 | Inbox load and open a message (development mailbox) | yes | — | Real mailbox |
@@ -144,16 +185,36 @@ Spec: `journey-f-email-notifications.spec.ts` (small serial group)
 | Reviewed send against the synthetic provider: exactly one receipt and one message after reload | yes | — | Real Google OAuth grant (code exchange currently returns 401), managed Cloud routes, a real authorized send |
 | Lost send response: outcome unknown, never sent again | yes | — | Real response loss against Gmail |
 | A due reminder notice tapped after reload opens exactly its own event, once | yes (simulated shade) | OS notification delivery, system shade, lock-screen tap, process death between delivery and tap | Notification permission and channel settings on a device |
-| A hosted digest result notice tapped after reload reaches the exact result | not in this journey | — | — |
+| A provider-confirmed send removes the saved local draft, the retained unsaved copy and the open composer of exactly that email; unknown and failed outcomes keep them | yes | Keystore-encrypted draft slots | A real authorized send |
+| Two hosted digest result notices, each tapped after a restart, reach exactly their own retained result, once | yes, in `journey-f-hosted-result.spec.ts` (local-agent build on its own server; routed fixture service) | OS notification delivery, system shade, process death between delivery and tap | A real hosted worker (owner decision A-09) |
 
 Open items:
 
-- After a provider-confirmed send the composer's retained local copy is still offered
-  ("Resume unsaved email") and the receipt says so. Nothing is re-sent automatically,
-  but the user can explicitly send it again. The journey asserts this current behavior
-  as a recorded gap. Any change belongs to the Inbox adapter owned by another package.
-- The hosted digest result tap needs a local-agent build and its own server; it is
-  covered only by `dev-hosted-journey.spec.ts`, not by journey F.
+- Closed in the browser build: a send records the local draft it came from (draft id,
+  kept only on the device and never sent to the provider). When the provider confirms
+  that send, each local copy of that draft that still holds exactly the sent content is
+  removed and the receipt says so. A copy edited after Send, a different draft with the
+  same text, a draft changed in another window, another account's draft, and every
+  unknown, rejected or unsent outcome are left alone; the receipt then says a copy
+  remains. A succeeded receipt that names no provider message clears nothing. When the
+  open or retained copy was edited after Send, or the retained copy cannot be cleared,
+  the saved draft those edits are based on is kept too. Comparison is exact (recipients,
+  subject, body, attachments, reply target, forwarded originals); a copy restored to
+  exactly the sent content counts as the sent email and is removed. A reload between the
+  confirmation and the cleanup finishes the cleanup from the saved receipt. Cases:
+  `scripts/test-inbox-sent-cleanup.mjs`. Both that script and the journey supply their
+  own slot store; the removal of the saved draft relies on the platform store's
+  compare-exchange (Android Keystore slots), which no run here exercises. The saved
+  receipt is trusted to the same degree as the drafts stored beside it: it is not
+  re-confirmed with the provider before a cleanup that resumes after a reload.
+- Still open: a saved local draft that is an older version of the sent email (the user
+  edited after saving, then sent) is kept and still offered, because it does not hold
+  the sent content. Operations saved before this change carry no source draft and
+  clear nothing.
+- Closed in the browser build: the hosted result tap after a restart is a journey-level
+  spec (`journey-f-hosted-result.spec.ts`) that shares the harness of
+  `dev-hosted-journey.spec.ts` (`hosted-harness.ts`). It needs a local-agent build, so
+  it is a separate file from the mail journey. The hosted service is a routed fixture.
 - New-mail notifications are not implemented (pending decision A-05).
 
 ## J01. Poster → Calendar
@@ -191,16 +252,26 @@ Spec: `journey-j04-schedule-travel.spec.ts`
 | Create an event with a location through the editor | yes | — | — |
 | Reopen after reload; hand its location to Maps exactly once | yes (synthetic Maps provider) | — | Production Maps gateway, licensed data |
 | Explicit destination, explicit origin (manual), explicit route choice | yes | Device location as origin, turn-by-turn Start | Location permission, GPS, physical navigation |
-| Return to the same event without another hand-off | partial: only through system Back (development device control) | Android system Back | — |
+| Return to the same event without another hand-off: "Back to event" in Maps, and system Back | yes (`maps-event-return.spec.ts` covers two events with one address, a deleted or moved event, double activation and reload) | Android system Back | — |
+| Travel-mode buttons expose the selected mode (`aria-pressed`); a refused mode is not selected | yes | — | Screen-reader check on a device |
 | Reload does not replay the hand-off; a new tap is one new hand-off | yes | — | — |
 
-Open items:
+Closed in the browser build:
 
-- Maps has no in-app control that returns to the event that opened it; "Back to apps"
-  goes Home and the return path is system Back.
-- The travel-mode buttons show the selected mode by color only and expose no
-  `aria-pressed`. The change belongs in the shared template owned by the accessibility
-  package.
+- Maps shows "Back to event" only while it was opened from an event's location and
+  Calendar is the view beneath it. It checks that the exact event (id and start) still
+  exists, returns to that event and removes the cross-app step, so system Back does not
+  reopen Maps. It never sets a search. If the event was deleted or moved, Maps stays
+  open, says so and withdraws the control. The origin is view state only: it is gone
+  after a reload, after Home, and when Maps is opened from the launcher.
+- The travel-mode buttons expose `aria-pressed`. Round 2's accessibility branch did not
+  change these buttons, so there is no overlap.
+
+Still open:
+
+- The control is not offered during active guidance.
+- No Android run: the return uses the same `list` call the Calendar adapter uses, but
+  only the browser build was exercised.
 
 ## J05. Web research → note
 
@@ -224,7 +295,23 @@ Spec: `journey-j05-web-research-note.spec.ts` (two serial tests)
 | E | A refused page question left the Browser menu open over the error | product bug | Fixed in `browser-adapter.ts` |
 | J04 | An unavailable Bike mode reported that transit schedules were unavailable | product bug | Fixed in `maps-adapter.ts` |
 | D | No explicit missed record in the browser development scheduler | gap versus proposed policy | Implemented by the workflows and digests package; journey D now asserts it |
-| B, F, J04 | Hand-off gaps listed under each loop's open items | missing hand-off | Recorded, not changed |
+| B | No direct calendar-event hand-off from a note; no link back to the note | missing hand-off | Fixed in `voice-adapter.ts`, `note-origin-adapter.ts`, `runtime/note-origin.ts` (browser build; device-calendar event link still open) |
+| B | Browser "Delete event" deleted with no review, unlike the Android plugin | parity gap | Fixed in `browser/calendar.ts`; recoverability is a pending owner decision |
+| F | A confirmed send left its local draft and unsaved copy on offer | missing hand-off | Fixed in `inbox-drafts.ts`, `inbox-provider-controls.ts`, `runtime/inbox-operation.ts` |
+| F | Hosted result tap after restart had no journey-level spec | coverage gap | Added `journey-f-hosted-result.spec.ts` |
+| J04 | No in-app return from Maps to the originating event; travel mode shown by color only | missing hand-off | Fixed in `maps-adapter.ts`, `calendar-adapter.ts`, `runtime/maps-event-return.ts`, `template.html` |
+| F | Send after editing a reviewed email reopened the earlier review, so the earlier text could be sent | product bug | Fixed in `inbox-provider-controls.ts`: the stale review is discarded and the email is reviewed again (`journey-f-reviewed-send.spec.ts`, `mail-review.production.spec.ts`) |
+| F | A forward's original attachments were not listed in the send review | product bug | Fixed in `inbox-provider-controls.ts` (`journey-f-reviewed-send.spec.ts`) |
+| F | A double tap on Confirm landed on the Undo control that replaced it | product bug | Fixed in `inbox-provider-controls.ts` (`journey-f-reviewed-send.spec.ts`) |
+| F | A later page that repeated a loaded message was joined without saying that newer mail was missing from the list | product gap | Fixed in `inbox-cloud-adapter.ts`: a notice and a "Load newer mail" control |
+| J03 | "No preview · Save to Files" failed in the browser build | product bug | Fixed in `browser/mail-attachments.ts` (`inbox-hostile-attachment.spec.ts`) |
+| B | The agent calendar review showed raw UTC timestamps and neither the calendar, the account nor attendees | product gap | Fixed in `browser/calendar-agent-review.ts` and `device-record-presentation.ts` (journey B, `calendar-proposal-review.production.spec.ts`) |
+| A | A spoken turn with the development profile always stopped after the reply: the development agent returned no message identities | development fixture | Fixed in `development-connection.ts`; journey A now has a spoken request |
+| D | The development profile's Home never showed a brief | development profile | It now reads the retained brief; journey D asserts the rendered card |
+| E | Read aloud on a page whose address is no longer known was refused behind the open menu | product bug | Fixed in `browser-adapter.ts`; journey E navigates during the review |
+| F | A saved review could still be sent after a reload with the edit only in the retained copy, or after the email was moved to another From account and sent there | product bug | Fixed in `runtime/inbox-operation.ts` and `inbox-provider-controls.ts`: a review is bound to its local draft and to the exact content in the composer when Send is confirmed (`journey-f-reviewed-send.spec.ts`, `scripts/test-inbox-sent-cleanup.mjs`) |
+| F | A message listed twice in one provider page was shown twice | product bug | Fixed in `inbox-cloud-adapter.ts` (`journey-f-reviewed-send.spec.ts`) |
+| B | An agent update to an all-day event was saved with instants that are not whole dates | product bug | Refused before review in `browser/calendar.ts` (`calendar-agent-all-day-review.spec.ts`) |
 
 ## What no browser journey can establish
 

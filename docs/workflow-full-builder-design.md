@@ -1,6 +1,6 @@
 # Real New workflow and full builder design
 
-Source audit during Build77 freeze. This document changes no renderer, native code, service, account or schedule. Reviewed host source: `alphaphone-combined-20260930`, source fingerprint `39b481e7be8765a6f4b31e4e559021ad87767459615130357e32a668faa5e431`. Build74 removal/restore is implemented; the older create/delete plan's opening “Delete unavailable” describes its historical pre0009 state, not current behavior.
+Source audit during Build77 freeze. This document changes no renderer, native code, service, account or schedule. Reviewed host source: `alphaphone-combined-20260930`, source fingerprint `39b481e7be8765a6f4b31e4e559021ad87767459615130357e32a668faa5e431`.
 
 ## Exact prototype contract and current gaps
 

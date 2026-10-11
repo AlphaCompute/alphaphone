@@ -5,7 +5,7 @@ import {assertDevelopmentIdentity,verifyDevelopmentIdentity,type DevelopmentIden
 import type {DevelopmentDelegation} from './digest-delegation';
 import type {DigestResult,DigestSource,DigestLoop} from '../runtime/hosted-digests';
 export type DevelopmentDigestSource=DigestSource&{text:string};
-export type DevelopmentDigestLoop=DigestLoop&{createdAt:number;lastOccurrence?:string};
+export type DevelopmentDigestLoop=DigestLoop&{createdAt:number;lastOccurrence?:string;settledOccurrences?:string[];settledFloor?:string;sourcePaused?:true};
 export type DevelopmentDigestState={delegation?:DevelopmentDelegation;liveRevision?:string;sources:DevelopmentDigestSource[];loops:DevelopmentDigestLoop[];receipts:Array<{id:string;input:string;result:unknown}>;results:DigestResult[];cursor:number;acks:Record<string,number>};
 export const initialDevelopmentDigests=():DevelopmentDigestState=>({sources:[],loops:[],receipts:[],results:[],cursor:0,acks:{}});
 export function validateDevelopmentDigests(state:DevelopmentDigestState){

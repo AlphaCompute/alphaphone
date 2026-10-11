@@ -3,6 +3,7 @@ import {atStep,guidanceView} from '../maps/guidance';
 import {BackgroundNavigation,type NavigationBridge} from '../maps/background-navigation';
 import {registerPlugin} from '../platform-plugins';
 import {DailyApps} from '../daily';
+import {mapsEventReturnOffered,mapsEventStillThere,type MapsEventOrigin} from '../runtime/maps-event-return';
 import {Capacitor} from '@capacitor/core';
 import {isAndroid} from '../native';
 import {NavigationVoice} from '../maps/navigation-voice';
@@ -46,6 +47,25 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     return navigationLocation.stop();
   }
   let pendingHandoff: {query:string;intent:number}|undefined;
+  // Explicit return to the event whose location opened Maps. It checks that exact event still exists,
+  // restores Calendar on it and pops the cross-app stack. It never sets a Maps query.
+  let returningToEvent=false;
+  const calendarPlugin=registerPlugin<{list(input:{begin:number;end:number}):Promise<{status:string;events?:unknown[]}>}>('AlphaCalendar');
+  async function returnToEvent(currentApi:Bag,origin:MapsEventOrigin,raw:unknown){
+    if(returningToEvent)return;returningToEvent=true;
+    try{
+      let exists=false;
+      try{const result=await calendarPlugin.list({begin:origin.begin-1,end:origin.begin+1});exists=result.status==='ready'&&mapsEventStillThere(origin,result.events);}catch{/* Unknown is treated as missing. */}
+      if(disposed||document.hidden||!currentApi.isActive()||currentApi.get('maps').fromEvent!==raw||!mapsEventReturnOffered(raw,api?.S.stack,navigating))return;
+      if(!exists){currentApi.set({fromEvent:null});currentApi.toast('That event was deleted or moved. Maps stays open; nothing else changed.');return;}
+      const stack=(api?.S.stack||[]).slice(0,-1);
+      // Unwind this visit's Maps layers (route, place, results, search text) as system Back would, so
+      // nothing of the hand-off is left to show or replay when Maps is opened again.
+      for(let layer=0;layer<8&&back();layer++);
+      currentApi.setView('calendar',{open:origin.rowId,openDay:origin.day,day:origin.day,month:null,form:null});
+      currentApi.open('calendar',{keepState:true});currentApi.shell({stack});
+    }finally{returningToEvent=false;}
+  }
   let sharing: {abort:AbortController;current:()=>boolean}|undefined;
   function share(data:MapShare,current:()=>boolean){
     if(!current()||document.hidden)return;sharing?.abort.abort();const owner={abort:new AbortController(),current};sharing=owner;
@@ -315,7 +335,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
         void ensure().reroute(from);invalidate();
       };
       data.dr={name:selected.label,close:()=>back(),min:route?Math.max(1,Math.round(route.durationSeconds/60))+' min':snapshot.route.phase==='loading'?'Planning…':'No route',meta:route?(route.distanceMeters/1000).toFixed(1)+' km · no live traffic':'Regional route',via:route?(snapshot.originLabel?'From '+snapshot.originLabel+' · ':'')+(route.steps[0]?.instruction||''):'Choose a real origin to calculate a route.',shareLabel:'Share route',shareEta:()=>{if(route&&snapshot.route.phase==='ready'){const target=selected;share(routeShare(target!.label,route),()=>!disposed&&!!api?.isActive()&&selected===target&&!!directions&&state?.route.phase==='ready'&&state.route.value===route);}},
-       modes:data.nativeModeMetadata.map((reference:{mode:'drive'|'walk'|'bike'|'transit';label:string;d:string})=>{const mode=reference.mode==='bike'?'bicycle':reference.mode;const {label,d}=reference;return {label,t:label,d,css:snapshot.mode===mode?'background:var(--acc);color:#fff':'background:var(--s2);color:var(--fg)',go:()=>{if(!ensure().capabilities().modes.includes(mode)){message=mode==='transit'?'Transit schedules are not available for this region.':`${label} directions are not available from this Maps provider.`;invalidate();return;}ensure().setMode(mode);message='';if(snapshot.origin)void ensure().planRoute();}};}),
+       modes:data.nativeModeMetadata.map((reference:{mode:'drive'|'walk'|'bike'|'transit';label:string;d:string})=>{const mode=reference.mode==='bike'?'bicycle':reference.mode;const {label,d}=reference;return {label,t:label,d,on:snapshot.mode===mode,css:snapshot.mode===mode?'background:var(--acc);color:#fff':'background:var(--s2);color:var(--fg)',go:()=>{if(!ensure().capabilities().modes.includes(mode)){message=mode==='transit'?'Transit schedules are not available for this region.':`${label} directions are not available from this Maps provider.`;invalidate();return;}ensure().setMode(mode);message='';if(snapshot.origin)void ensure().planRoute();}};}),
        start:()=>{
         if(!route){message='Calculate a route before starting navigation.';invalidate();return;}
         navigationVoice.pause();arrived=false;navigating=true;follow=true;navStep=0;offRoute=false;rerouting=false;navFix=undefined;navRouteId=route.id;backgroundRunning=false;
@@ -334,6 +354,10 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
         offRoute,canReroute:offRoute&&!!navFix&&!rerouting,reroute,rerouteLabel:'Reroute from here',background:backgroundRunning,
         end,ask:()=>currentApi.send('Help me with this route.'),voiceLabel:navigationVoice.enabled?'Mute voice guidance':'Enable voice guidance',voice:()=>{navigationVoice.toggle();invalidate();},voiceD:PIN}};
     }
+    const eventOrigin=mapsEventReturnOffered(st.fromEvent,currentApi.S.stack,navigating);
+    data.eventReturnFloating=!!eventOrigin&&!!data.showSearch;data.eventReturnInline=!!eventOrigin&&!!data.isDir;
+    data.backToEvent=eventOrigin?()=>void returnToEvent(currentApi,eventOrigin,st.fromEvent):undefined;
+    data.backToEventTitle=eventOrigin?.title||'';
     return data;
   };
   const changed = onMapsConnectionChange(() => {

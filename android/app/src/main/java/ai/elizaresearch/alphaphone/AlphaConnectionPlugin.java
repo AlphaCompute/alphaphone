@@ -212,6 +212,8 @@ public final class AlphaConnectionPlugin extends Plugin {
    try {
     if (pending.cancelled) throw new IllegalStateException();
     URI url = validatedUrl(call.getString("url"), true);
+    // Before any route, header or body handling: a flag-off build contacts only Eliza Cloud here.
+    if(!ConnectionRoutes.admittedOrigin(url.getScheme(),url.getHost(),url.getPort(),BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS))throw new IllegalArgumentException();
     {
      String path=url.getPath();
      if("/api/auth/cli-session".equals(path))operation=RequestOperation.CLI_CREATE;

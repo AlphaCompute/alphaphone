@@ -39,7 +39,7 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
   try{const doc=await readNotesTrash();if(shell.live)shell.vset('notes',{trash:sortedNotesTrash(doc),trashError:''});}
   catch{if(shell.live)shell.vset('notes',{trash:[],trashError:'Trash could not be read. Nothing in it was deleted.'});}
  }
- /** Idempotent: a second run with the same clock finds nothing to do (elizaOS maintenance pass, patch 0071). */
+ /** Idempotent: a second run with the same clock finds nothing to do. */
  async function maintain(shell:Shell,background:boolean,now=Date.now()){
   const result=await maintainNotesTrash({policy:notesTrashPolicy,read:readNotesTrash,edit:editNotesTrash,liveNoteIds:savedNoteIds,withLock:work=>withNotesDeletionLock(work),purge:entry=>purge(shell,entry)},now);
   // A background pass repaints only when it changed Trash; an open Notes view re-reads every time.
@@ -51,7 +51,7 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
   maintaining=maintain(shell,background).catch(()=>load(shell)).finally(()=>{maintaining=null;});
   return maintaining;
  }
- /** Foreground, resume and timer passes (elizaOS schedule, patch 0072). They wait for saved Notes and never run on failed storage. */
+ /** Foreground, resume and timer passes. They wait for saved Notes and never run on failed storage. */
  function scheduleMaintenance(shell:Shell){
   return scheduleNotesTrashMaintenance({
    intervalMs:NOTES_TRASH_MAINTENANCE_INTERVAL_MS,visibility:document,

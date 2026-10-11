@@ -20,7 +20,8 @@
  *
  * Missed occurrences follow the proposed scheduler policy ("explicit missed/overlap records", no backlog replay):
  * a scheduled time that passed while the app was closed leaves exactly one `missed` record, is never run late, is
- * labelled "Missed — not run" in the panel and does not replace the last real brief on Home. The resident engine's
+ * labelled "Missed — not run" in the panel and does not replace the last real brief on Home (asserted on the
+ * rendered Home card; the development profile reads the same latestRetainedDigest source as the product profile). The resident engine's
  * own restart behaviour is covered by scripts/test-local-digest-restart.mjs, not here.
  */
 import {test,expect,type Page} from '@playwright/test';
@@ -35,6 +36,13 @@ const digests=(page:Page)=>page.evaluate(async()=>{
  const d:any=await (await import('/src/browser/development-digest-document.ts')).readDevelopmentDigests((await import('/src/browser/development-identity.ts')).developmentIdentity('local'));
  return {loops:d.loops.map((l:any)=>({id:l.id,template:l.spec.template,localTime:l.spec.localTime,timeZone:l.spec.timeZone,active:l.active})),results:d.results.map((r:any)=>({cursor:r.cursor,runId:r.runId,workflowId:r.workflowId,scheduledAt:r.scheduledAt,status:r.status,output:r.output})),acks:Object.values(d.acks) as number[]};
 });
+/**
+ * The brief card as Home renders it (the workflows tile). Located in the DOM because the digest panel
+ * is a modal over Home at some of the points it is read; where Home is the visible screen the
+ * assertions below also require the card to be visible.
+ */
+const homeBrief=(page:Page)=>page.locator('button[aria-label^="Open workflows"]');
+const BRIEF=(when:string)=>`Open workflows. Latest brief from On-device agent · development, ran ${when}: ${OUTPUT}`;
 /** Move the page clock to an instant without running every intermediate timer. */
 /** Read-only: the retained brief Home presents (apps/app/src/runtime/hosted-digests.ts). */
 const retainedBrief=(page:Page)=>page.evaluate(async()=>(await import('/src/runtime/hosted-digests.ts')).latestRetainedDigest());
@@ -90,6 +98,9 @@ test('journey D: morning and evening digests run once each, are retained and ack
  expect(state.loops.map(l=>[l.template,l.localTime,l.timeZone,l.active])).toEqual([['morning','07:00','UTC',true],['evening','19:00','UTC',true]]);
  expect(state.results).toEqual([]);
  const [morning,evening]=state.loops.map(l=>l.id);
+ // Schedules exist and nothing has run: Home says there is no brief.
+ await expect(homeBrief(page)).toHaveAttribute('aria-label','Open workflows');
+ await expect(homeBrief(page)).toContainText('No brief yet');
 
  // 2. Morning occurrence: exactly one retained result, shown once, delivery acknowledged.
  await page.clock.runFor(120_000);
@@ -110,6 +121,11 @@ test('journey D: morning and evening digests run once each, are retained and ack
  await page.clock.runFor(20_000);
  expect(new Date(await page.evaluate(()=>Date.now())).toISOString().slice(0,16)).toBe('2026-10-03T07:00');
  expect((await digests(page)).results).toEqual([first]);
+ // Home, the visible screen after the restart, shows that morning brief: its text, its agent and when it ran.
+ await expect(homeBrief(page)).toBeVisible();
+ await expect(homeBrief(page)).toHaveAttribute('aria-label',BRIEF('7:00 AM'));
+ await expect(homeBrief(page)).toContainText(OUTPUT);
+ await expect(homeBrief(page)).toContainText('Ran 7:00 AM');
 
  // 4. Evening occurrence after that restart: one more result, for the evening schedule only.
  await advanceTo(page,'2026-10-03T18:59:30Z');
@@ -154,14 +170,22 @@ test('journey D: morning and evening digests run once each, are retained and ack
  await expect(missedArticle).not.toContainText(OUTPUT);
  await expect(panel.getByRole('article').filter({hasText:'Missed — not run'})).toHaveCount(1);
  await expect.poll(async()=>(await digests(page)).acks).toEqual([3]);
- // The missed record does not replace the last real brief Home reads (latestRetainedDigest, filled by this
- // sync). With an agent connected the Home card itself lists workflows, so the value Home reads is asserted.
+ // The missed record does not replace the last real brief: the value Home reads (latestRetainedDigest,
+ // filled by this sync) and the card Home renders both still carry the evening brief of the day before.
  expect(await retainedBrief(page)).toMatchObject({summary:OUTPUT,ranAt:expect.stringMatching(/^2026-10-03T19:0/),status:'completed'});
+ await expect(homeBrief(page)).toHaveAttribute('aria-label',BRIEF('Sat, Oct 3 7:00 PM'));
+ await expect(homeBrief(page)).not.toContainText(/missed|not run/i);
  // A later tick and a restart settle nothing further for that occurrence.
  await page.clock.runFor(120_000);
  await page.reload();
  await expect(page.getByRole('region',{name:'Home'})).toBeVisible();
  await page.clock.runFor(60_000);
+ // After the restart Home is the visible screen and shows the same last real brief, never the missed record.
+ await expect(homeBrief(page)).toBeVisible();
+ await expect(homeBrief(page)).toHaveAttribute('aria-label',BRIEF('Sat, Oct 3 7:00 PM'));
+ await expect(homeBrief(page)).toContainText(OUTPUT);
+ await expect(homeBrief(page)).toContainText('Ran Sat, Oct 3 7:00 PM');
+ await expect(homeBrief(page)).not.toContainText(/missed|not run/i);
  expect((await digests(page)).results).toEqual(state.results);
  panel=await openDigests(page);
 
@@ -212,8 +236,14 @@ test('journey D: an occurrence missed while the app was closed leaves one explic
  await expect.poll(async()=>(await digests(page)).acks).toEqual([1]);
  // The delivered missed record is not a brief: Home has nothing to show for this schedule.
  expect(await retainedBrief(page)).toBeNull();
+ await expect(homeBrief(page)).toHaveAttribute('aria-label','Open workflows');
  await page.reload();
  await expect(page.getByRole('region',{name:'Home'})).toBeVisible();
  await page.clock.runFor(60_000);
+ // The card Home renders says so, and names neither a brief nor the missed occurrence.
+ await expect(homeBrief(page)).toBeVisible();
+ await expect(homeBrief(page)).toHaveAttribute('aria-label','Open workflows');
+ await expect(homeBrief(page)).toContainText('No brief yet');
+ await expect(homeBrief(page)).not.toContainText(/missed|not run|Journey D/i);
  expect((await digests(page)).results).toEqual(state.results);
 });

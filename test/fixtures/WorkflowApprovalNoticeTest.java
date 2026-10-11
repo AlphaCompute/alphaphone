@@ -26,6 +26,11 @@ public final class WorkflowApprovalNoticeTest {
   rejects(()->delivery.publishApproval(first,"c".repeat(64),now+10*minute,now),"binding change refused");
   rejects(()->delivery.publishApproval(first,binding,now+20*minute,now),"expiry change refused");
   String raw=store.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT);require(!raw.contains("run1")&&!raw.contains(WorkflowNoticeDelivery.APPROVAL_TITLE),"receipt holds no route or text");
+  // A well-shaped but different persisted digest must not count as the original receipt.
+  JSONObject damaged=new JSONObject(raw);damaged.getJSONObject(first).put("digest","0".repeat(64));
+  store.values.put(WorkflowNoticeDelivery.APPROVAL_SLOT,damaged.toString());
+  rejects(()->new WorkflowNoticeDelivery(store,poster).publishApproval(first,binding,now+10*minute,now),"changed receipt digest refused");
+  require(poster.posted.size()==1,"corrupt receipt never reposts");store.values.put(WorkflowNoticeDelivery.APPROVAL_SLOT,raw);
   // Tap after process death: a fresh ledger instance still resolves the exact run.
   taps.capture(token);JSONObject pending=new WorkflowNoticeTaps(store).pending();require("run1".equals(pending.getString("runId"))&&pending.getBoolean("retained"),"tap opens that run");
   new WorkflowNoticeTaps(store).consume(token);require(new WorkflowNoticeTaps(store).pending().length()==0,"tap consumed once");

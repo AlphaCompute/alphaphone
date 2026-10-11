@@ -83,7 +83,8 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     if(reading){stopReading();shell?.toast('Reading stopped');return;}
     const id=state()?.cur, info=metadata.get(id), revision=documentRevisions.get(id);
     if(!Capacitor.isNativePlatform()){
-      if(!info?.committed || info.loading || info.error){report(new Error('Load a page before reading.'));return;}
+      // The refusal is not left behind an open menu (the same rule as Ask about page).
+      if(!info?.committed || info.loading || info.error){shell.vset('browser',{menu:false});report(new Error('Load a page before reading.'));return;}
       const controller=new AbortController();reading=controller;
       const valid=()=>{controller.signal.throwIfAborted();if(disposed||document.hidden||document.documentElement.hasAttribute('data-dev-background')||shell.S().screen!=='home'||shell.S().view!=='browser'||state()?.cur!==id||documentRevisions.get(id)!==revision||connectionController.getSnapshot().open)throw new DOMException('Reading cancelled','AbortError');};
       try{shell.vset('browser',{menu:false});const {reviewBrowserReading}=await import('../browser/reading-review');valid();await reviewBrowserReading(info.url,controller.signal,valid);}
