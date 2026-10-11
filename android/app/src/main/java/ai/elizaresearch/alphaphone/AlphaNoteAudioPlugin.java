@@ -43,7 +43,11 @@ public class AlphaNoteAudioPlugin extends Plugin {
   }catch(Exception retained){migrationFailures++;}
   finally{migrationState=destroyed?"stopped":migrationFailures>0?"needs-recovery":"complete";}
  }
- private void sweepTrashOnStart(){if(destroyed)return;try{sweepExpiredTrash(getContext(),System.currentTimeMillis());}catch(Exception retained){/* The renderer and the periodic sweep retry. */}}
+ private void sweepTrashOnStart(){
+  if(destroyed)return;
+  try{finishPermanentDeletions(getContext(),System.currentTimeMillis());}catch(Exception retained){/* The renderer's startup pass and the periodic sweep retry. */}
+  try{sweepExpiredTrash(getContext(),System.currentTimeMillis());}catch(Exception retained){/* The renderer and the periodic sweep retry. */}
+ }
 
  /** Product Trash retention, matching notes-trash-policy.ts: three days after deletion. */
  static final long NOTES_TRASH_RETENTION_MS=3L*24*60*60*1000;
@@ -60,7 +64,13 @@ public class AlphaNoteAudioPlugin extends Plugin {
  }
  public static final class NotesTrashBackstopWorker extends androidx.work.Worker {
   public NotesTrashBackstopWorker(@androidx.annotation.NonNull android.content.Context context,@androidx.annotation.NonNull androidx.work.WorkerParameters params){super(context,params);}
-  @androidx.annotation.NonNull @Override public Result doWork(){try{sweepExpiredTrash(getApplicationContext(),System.currentTimeMillis());return Result.success();}catch(Exception unavailable){return Result.retry();}}
+  @androidx.annotation.NonNull @Override public Result doWork(){
+   boolean retry=false;
+   // Independent passes: a failure of one never skips the other.
+   try{finishPermanentDeletions(getApplicationContext(),System.currentTimeMillis());}catch(Exception unavailable){retry=true;}
+   try{sweepExpiredTrash(getApplicationContext(),System.currentTimeMillis());}catch(Exception unavailable){retry=true;}
+   return retry?Result.retry():Result.success();
+  }
  }
 
  /**
@@ -120,13 +130,109 @@ public class AlphaNoteAudioPlugin extends Plugin {
   }catch(Exception retained){return false;}
  }
  /**
+  * Native backstop for a permanent voice deletion ("Delete forever without Trash") that process
+  * death interrupted after its tombstone was committed. Such a deletion has no Trash entry, so
+  * sweepExpiredTrash never sees it; its recovery row in the pending-deletions slot (marked
+  * permanent) is the only record. For each such row this erases the recording and retires the
+  * row, but only on exact ownership read from the encrypted stores:
+  * - the saved Notes document holds this operation's own tombstone for the reviewed note id and
+  *   revision in the reviewed collection, the note is not saved, and no saved note references
+  *   the recording;
+  * - the recording's metadata names that note; and
+  * - this operation already holds the recording in the audio trash (receipt "removed"), already
+  *   erased it ("purged"), or the recording was never moved and no other deletion holds it.
+  * A recording with a "restored" receipt, one that another deletion holds, a note that is saved
+  * again or changed, a row that is not marked permanent, and any unreadable or unrecognized
+  * store are left exactly as they are for the renderer's review. This pass never writes the Notes
+  * document, so it cannot roll back or finish a deletion whose note is still saved; the
+  * renderer's startup pass does that. Kept rows are copied byte for byte and the slot is edited
+  * by compare-and-exchange, so a concurrent renderer edit wins. Returns the number of rows retired.
+  */
+ static int finishPermanentDeletions(android.content.Context context,long now)throws Exception{
+  synchronized(SWEEP_LOCK){
+   AlphaCredentialStore store=new AlphaCredentialStore(context);
+   String raw=store.readCredentialSlot(PENDING_AUDIO_SLOT);if(raw==null)return 0;
+   List<String> members=pendingMemberSpans(raw);if(members==null||members.isEmpty())return 0;
+   String notesRaw=store.readCredentialSlot(NOTES_SLOT);if(notesRaw==null)return 0;
+   JSONObject envelope=new JSONObject(new JSONObject(notesRaw).getString("currentRaw"));
+   org.json.JSONArray records=envelope.getJSONArray("records"),tombstones=envelope.getJSONArray("deleted");String collection=envelope.getString("collectionId");
+   Set<String> liveNotes=new HashSet<>(),liveAudio=new HashSet<>();
+   for(int i=0;i<records.length();i++){JSONObject note=records.getJSONObject(i);liveNotes.add(note.getString("id"));JSONObject audio=note.optJSONObject("audio");if(audio!=null&&audio.optString("audioId").length()>0)liveAudio.add(audio.getString("audioId"));}
+   List<String> kept=new ArrayList<>();int retired=0;
+   for(String member:members){
+    boolean done=false;
+    try{
+     JSONObject holder=new JSONObject("{"+member+"}");String operation=holder.keys().next();JSONObject row=holder.getJSONObject(operation);
+     JSONObject target=row.getJSONObject("target"),note=row.getJSONObject("note"),noteAudio=note.getJSONObject("audio");
+     String noteId=note.getString("id"),audioId=row.getString("audioId");
+     boolean bound=Boolean.TRUE.equals(row.opt("permanent"))&&operation.matches(OPERATION)&&operation.equals(row.getString("id"))
+      &&noteId.equals(target.getString("noteId"))&&audioId.equals(noteAudio.getString("audioId"))&&noteId.equals(noteAudio.getString("noteId"));
+     boolean tombstoned=false;
+     if(bound&&!liveNotes.contains(noteId)&&!liveAudio.contains(audioId)&&collection.equals(target.getString("sourceId")))for(int i=0;i<tombstones.length()&&!tombstoned;i++){
+      JSONObject tombstone=tombstones.getJSONObject(i);
+      tombstoned=noteId.equals(tombstone.optString("id"))&&target.getString("revision").equals(tombstone.optString("revision"))&&operation.equals(tombstone.optString("operationId"));
+     }
+     if(tombstoned)synchronized(METADATA_LOCK){done=finishPermanentLocked(context,store,audioId,noteId,operation,now);}
+    }catch(Exception retained){done=false;}
+    if(done)retired++;else kept.add(member);
+   }
+   if(retired==0)return 0;
+   StringBuilder next=new StringBuilder("{");
+   for(int i=0;i<kept.size();i++){if(i>0)next.append(',');next.append(kept.get(i));}
+   next.append('}');
+   return store.compareExchangeCredentialSlot(PENDING_AUDIO_SLOT,raw,next.toString())?retired:0;
+  }
+ }
+ /**
+  * The remaining recording steps of a permanent deletion whose tombstone is committed, with the
+  * same receipts as remove() then purge(). Caller holds METADATA_LOCK. True only when the
+  * recording is confirmed erased under this operation.
+  */
+ private static boolean finishPermanentLocked(android.content.Context context,AlphaCredentialStore store,String audioId,String noteId,String operation,long now){
+  try{
+   JSONObject record=readLocked(context,store,id(audioId));
+   if(!audioId.equals(record.optString("audioId"))||!noteId.equals(record.optString("noteId")))return false;
+   JSONObject receipts=record.optJSONObject("deletionOperations");String prior=receipts==null?"unknown":receipts.optString(operation,"unknown");
+   if(prior.equals("unknown")){
+    // Never moved. A recording already in the audio trash belongs to another deletion.
+    if(record.has("deletedAt")||record.has("activeDeletionOperation"))return false;
+    if(receipts==null)receipts=new JSONObject();
+    if(receipts.length()>=128)return false;
+    record.put("deletedAt",now);record.put("activeDeletionOperation",operation);receipts.put(operation,"removed");record.put("deletionOperations",receipts);
+    writeLocked(context,store,audioId,record);
+   }else if(!prior.equals("removed")&&!prior.equals("purged"))return false;
+   return purgeTrashedLocked(context,store,audioId,noteId,operation);
+  }catch(Exception retained){return false;}
+ }
+ /**
   * Top-level entry substrings of a Trash document written by JSON.stringify, or null when the
   * bytes are not exactly {"version":1,"entries":[...]}.
   */
  static List<String> trashEntrySpans(String raw){
   if(raw==null||!raw.startsWith(TRASH_PREFIX)||!raw.endsWith(TRASH_SUFFIX))return null;
-  int end=raw.length()-TRASH_SUFFIX.length();List<String> spans=new ArrayList<>();
-  int depth=0,start=TRASH_PREFIX.length();boolean string=false,escape=false;
+  List<String> spans=topLevelSpans(raw,TRASH_PREFIX.length(),raw.length()-TRASH_SUFFIX.length());
+  if(spans==null)return null;
+  for(String span:spans)if(!span.startsWith("{")||!span.endsWith("}"))return null;
+  return spans;
+ }
+ /**
+  * Top-level "id":{row} member substrings of the pending-deletions document written by
+  * JSON.stringify, or null when the bytes are not one flat object of object-valued members.
+  */
+ static List<String> pendingMemberSpans(String raw){
+  if(raw==null||raw.length()<2||!raw.startsWith("{")||!raw.endsWith("}"))return null;
+  List<String> spans=topLevelSpans(raw,1,raw.length()-1);
+  if(spans==null)return null;
+  for(String span:spans){
+   try{JSONObject holder=new JSONObject("{"+span+"}");if(holder.length()!=1||!span.startsWith("\"")||!span.endsWith("}")||holder.optJSONObject(holder.keys().next())==null)return null;}
+   catch(Exception unrecognized){return null;}
+  }
+  return spans;
+ }
+ /** Comma-separated values between start and end at nesting depth zero, verbatim; null when unbalanced or empty-valued. */
+ private static List<String> topLevelSpans(String raw,int start,int end){
+  List<String> spans=new ArrayList<>();
+  int depth=0;boolean string=false,escape=false;
   if(start==end)return spans;
   for(int i=start;i<end;i++){
    char c=raw.charAt(i);
@@ -138,7 +244,6 @@ public class AlphaNoteAudioPlugin extends Plugin {
   }
   if(string||depth!=0||start>=end)return null;
   spans.add(raw.substring(start,end));
-  for(String span:spans)if(!span.startsWith("{")||!span.endsWith("}"))return null;
   return spans;
  }
 

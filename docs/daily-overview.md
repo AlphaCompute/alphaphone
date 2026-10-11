@@ -39,20 +39,49 @@ A read from an earlier day shows its date.
 - `test/home-cards.test.mjs`: presentation of every card state.
 - `scripts/test-inbox-cloud-flow.mjs` (run by `test/adapter-contracts.test.mjs`): the Inbox read
   time across a first page, a later page and a refresh.
+- `test/home-cards.test.mjs` also covers `homeCalendarName`, the lookup of the calendar an event
+  was read from: the event's own calendar id in the same read, exact string ids, no name for an
+  unknown calendar, a calendar without a display name or a read that returned no calendars, and
+  the latest read's name after a rename.
 - `test/browser/home-daily-overview.spec.ts` (development lane, synthetic provider data). The
   brief card is covered in two halves: the card renders a retained result placed directly in the
   retained-result store, and the digest panel is checked to publish the connected development
-  profile's newest retained result to that store and withdraw it on disconnect. The development
-  profile registers no Home brief source, so no single run goes from an agent result to the card.
+  profile's newest retained result to that store and withdraw it on disconnect.
+- `test/browser/journey-d-digests.spec.ts` (development lane): the development scheduler runs a
+  digest and the rendered Home card is asserted at each stage. The development profile reads the
+  same `latestRetainedDigest` source as the product profile.
 - `test/browser/home-daily-overview.production.spec.ts` (flag-off build, fresh profile).
+- `test/browser/home-brief-result.production.spec.ts` (flag-off build, Android bridge stubbed by
+  `test/browser/flag-off-android.ts`; nothing is placed in the renderer or the retained-result
+  store):
+  - One run from a digest result to the card, by both result routes. `native`: the stubbed Android
+    result inbox (`AlphaHostedResults.syncInbox`) returns what the agent produced. `renderer`:
+    background delivery could not be configured, so the renderer reads the agent's result page over
+    the bridge, commits each result to the secure store and acknowledges it. In both, the digest
+    panel publishes the newest result that ran and Home renders it with the connected agent's name
+    and the run's completion time. Later missed, overlapping and unavailable records reach the
+    digests list and leave the card unchanged; with only missed and unavailable records there is no
+    card; a newer run and a failed run replace the card; the card returns after the renderer
+    restarts. No request that would start or change a schedule, a source or a delegation is made,
+    before or after that restart: the stub records and refuses every such request, and answers only
+    the digests list's read of pending Google access revocations.
+  - The calendar name: a named device calendar, a rename seen on the next read after the app
+    resumes, an event whose calendar the read did not return (`Device`, and no other calendar's
+    name), a calendar the provider reports without a display name (`Unnamed calendar`), permission
+    revoked between reads (`Connect your calendar`, no event, name or read time), and permission
+    denied on request (`Calendar access is off`), then granted.
+  The stub is not the resident runtime, its scheduler, `HostedDeliveryWorker`, the native inbox
+  journal or Android CalendarProvider. No digest ran and no device calendar was read.
 
 ## Still open
 
 - Real Gmail, device-calendar and scheduled-digest transitions on an installed build.
 - Calendar access denied, not connected and device calendar names are Android-only states. Unit
-  tests cover the status mapping, the card title and the source line for them; the lookup of a
-  device calendar's name by the event's calendar id has no test, and there is no instrumented or
-  device run.
+  tests cover the status mapping, the card title, the source line and the name lookup, and the
+  flag-off browser spec covers them with the Android bridge stubbed. There is no instrumented or
+  device run: nothing here has read Android CalendarProvider.
 - TalkBack reading of the card descriptions on a device.
-- A digest result travelling from a real agent through the digest panel to the brief card in one
-  run (see Tests).
+- A digest result travelling from a real agent (the resident scheduler, a real run and the native
+  delivery path) to the brief card on an installed build. The browser tests cover that run only
+  with a stubbed agent and bridge (see Tests).
+- An overdue reminder still hides the next event on the card.

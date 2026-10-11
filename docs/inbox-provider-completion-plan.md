@@ -115,5 +115,12 @@ Attachment policy (unchanged, now stated in the review): only the text is insert
 attached by a suggestion or by sharing; the composer's Attach picker remains the only way to add a file.
 
 Nothing in this path prepares or dispatches a provider operation; sending still requires the composer and the provider review.
-Evidence is fixture-only: `test/use-in-email-review.test.mjs`, sections 7 to 7e of `scripts/test-inbox-attention-flow.mjs` and
-`test/browser/use-in-email.spec.ts`. Real Gmail and device acceptance for this control remain open.
+Evidence is source and browser tests with synthetic data only: `test/use-in-email-review.test.mjs`, sections 7 to 7e of
+`scripts/test-inbox-attention-flow.mjs`, `test/browser/use-in-email.spec.ts` (development lane, a synthetic Cloud client and
+agent placed in the page) and `test/browser/use-in-email.production.spec.ts` (flag-off build with only the Android bridge
+stubbed by `test/browser/flag-off-android.ts`). The flag-off spec drives the control from an agent reply that streams back over
+the stubbed bridge, against a synthetic managed Gmail answered at the native HTTP boundary: review and insert into a reply draft
+for the selected email; a draft that changed under the open review is refused, then appended after re-review; a Gmail account
+that changed while the review was open is refused and no draft is stored for either account; a send review left pending is
+discarded when a suggestion is added, and only the request reviewed afterwards is dispatched; outside Inbox no action is
+offered. Real Gmail, a real agent reply and device acceptance for this control remain open.

@@ -20,8 +20,9 @@ revision in `upstream.lock.json` and `vendor/eliza`.
 Maps, Files and Notes implementations are copied from authenticated upstream
 source into a generated cache outside the submodule. Gradle includes the shared
 password manager and secure store directly from the reviewed pin. No source
-patch is applied during client, worker or resident-runtime builds. Photo edits, capture publication and the opt-in notification mirror also use shared native
-modules. Alpha wrappers retain installed storage names, media paths and Android components.
+patch is applied during client, worker or resident-runtime builds. Photo edits, capture publication, the opt-in notification mirror and the delivery-receipt
+ledger for Alpha's own workflow and approval notices (`NoticeDelivery`, configured by
+`WorkflowNoticeDelivery`) also use shared native modules. Alpha wrappers retain installed storage names, media paths and Android components.
 Browser policy helpers are staged from the same authenticated pin. Gradle writes shared
 library outputs under the host build directory, outside the immutable vendor checkout.
 Product wrappers inject presentation, device configuration and installed storage identities. Resident

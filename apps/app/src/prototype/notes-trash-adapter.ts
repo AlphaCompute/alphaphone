@@ -43,6 +43,10 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
  }
  /** Idempotent: a second run with the same clock finds nothing to do. */
  async function maintain(shell:Shell,background:boolean,now=Date.now()){
+  // Interrupted voice deletions are settled with every pass (startup, resume, timer, Notes open), so
+  // a permanent deletion cut short by process death never waits for the person to open Notes. Not
+  // awaited: it queues for the deletion-effects lock on its own and never delays Trash upkeep.
+  try{const recover=voice(shell).recoverVoiceDeletions;if(typeof recover==='function')void Promise.resolve(recover()).catch(()=>{/* The row stays under review. */});}catch{/* Unavailable. */}
   const result=await maintainNotesTrash({policy:notesTrashPolicy,read:readNotesTrash,edit:editNotesTrash,liveNoteIds:savedNoteIds,withLock:work=>withNotesDeletionLock(work),purge:entry=>purge(shell,entry)},now);
   // A background pass repaints only when it changed Trash; an open Notes view re-reads every time.
   if(!background||result.removed.length)await load(shell);

@@ -3,7 +3,10 @@
 Everything on this page needs the owner, or a person with an account, a key, a hosted
 runner or hardware. Nothing here can be closed by more code in this repository, and
 nothing here is already done. It is written from source, tests and recorded evidence on
-2026-10-10 (branch `claude/r6-ledger`, based on `4ec513b1`, upstream pin `40dbe96bd1`).
+2026-10-10 (branch `claude/r6-ledger`, based on `4ec513b1`, upstream pin `40dbe96bd1`). The
+round 9 integration of 2026-10-11 (pull request #391) moved the pin to `13c9857598` and
+updated what it changed here: the state of evidence below, the pull-request table and the
+rotation row.
 
 Each entry says what it unblocks: loops A–F and J01–J05 with the step numbers of the
 [core loop audit](core-loop-audit.md), and items of the
@@ -12,17 +15,20 @@ entries are ordered by how much they unblock. Options are quoted from
 [decisions](decisions.md#pending-owner-decisions); listing an option is not a
 recommendation, and until a choice is recorded there the current behaviour stays.
 
-State of evidence today: source and browser tests only. No APK build, emulator run, hosted
-CI run, real-account use or device result exists at the current pin
+State of evidence today, at the current pin `13c9857598`: source and browser tests, and
+developer APK builds that carry no resident runtime, are not distributable and were not
+installed. No distribution APK build, emulator run, `resident-android.yml` run,
+real-account use or device result exists
 ([current status](mvp-current-status.md#current-qualification-evidence)).
 
-The software this page builds on came in two pull requests. Neither needs an owner action
+The software this page builds on came in three pull requests. None needs an owner action
 now; what they leave open is in the groups below.
 
 | Pull request | Holds | State |
 | --- | --- | --- |
 | #389 `claude/r5-loop-software` | The audit's remaining software work orders and the native-runner campaigns used in group 3. This page and the refreshed ledgers came with it. | This page reaches main with it. |
 | #388 `claude/r2-integration` | Calendar availability, context selection, Use in email, Trash recovery, resident reuse, runner phases, daily overview, the accessibility sweep and the app library: the software part of MVP-12, 13, 14, 15, 16, 18, 19, 48 and 53. | Merged into main on 2026-10-10 (`042265c9`). None of it has run on an emulator or a device. |
+| #391 `claude/r9-integration` | The upstream pin `13c9857598` with the shared notification receipt ledger (MVP-08); flag-off browser tests of Use in email and of a digest result reaching the Home brief card (MVP-14, 19); the startup and native backstop for an interrupted permanent voice deletion and the Trash byte-limit test (MVP-15); the reconciled browser review and completion plan (MVP-07). | This row reaches main with it. Browser-build and host evidence only: the instrumented notice tests against the shared ledger wait on campaigns 1 and 2 below (`WorkflowApprovalNotice`, and the tap and process-death phases of `recovery-ui`), the nine `NotesTrashBackstop` cases on campaign 1, and MVP-14 and 19 on the Gmail grant. |
 
 ## 1. Decisions
 
@@ -37,7 +43,7 @@ now; what they leave open is in the groups below.
 | 7 | A-11 | Who owns alarms | (a) Keep handing alarms to Android Clock. (b) Alpha owns alarms with exact-alarm scheduling and its own ringing screen. (c) An Alpha clock in the AOSP image. | (a): one reviewed handoff, and Alpha says it cannot confirm an alarm was changed. With no Clock app it says so and claims nothing. | Whether the image must ship a Clock app, and which acceptance run closes loop C. | C (C-8, C-15) | MVP-06, 27 |
 | 8 | A-23 | Production Maps provider | (a) Operate the regional OpenStreetMap gateway on an HTTPS endpoint Alpha owns. (b) License a commercial provider. (c) No in-app routes in the MVP. | No flag-off build has a provider. The user reads "Connect a Maps provider to search places and plan routes." and no route is produced. | Any route for a production user. | J04 (J04-6) | MVP-31, 49 |
 | 9 | A-21 | Denton typeface licence | Decided 2026-10-10 (P-09): licensed; the owner holds the licence outside the repository. No decision is needed. | Denton ships as a proprietary face recorded on the owner's statement (`licenses/font-licenses.json`), flagged `proprietary-licence-held-outside-repo`. The font check reports it resolved-by-owner-statement and blocks nothing. No licence document is in the repository. | Nothing. | none | MVP-43 |
-| 10 | A-22 | Rotation | (a) Ship the responsive landscape layout. (b) Lock both activities to portrait. (c) Allow rotation without a landscape layout. | The app rotates. Home, the composer and the docked conversation have a tested landscape layout; the other views have none on main. | The accessibility acceptance scope and the launcher's landscape behaviour. | none | MVP-06, 48, 53 |
+| 10 | A-22 | Rotation | (a) Ship the responsive landscape layout. (b) Lock both activities to portrait. (c) Allow rotation without a landscape layout. | The app rotates. Home, the composer and the docked conversation have a tested landscape layout (`home-landscape.spec.ts`); the other retained views are covered by a browser landscape sweep on main (`test/browser/accessibility-sweep.spec.ts`: every control stays on screen). Both are Chromium tests; `RotationInstrumentedTest` has no recorded emulator run. | The accessibility acceptance scope and the launcher's landscape behaviour. | none | MVP-06, 48, 53 |
 | 11 | A-05 | Background notification and reconnect policy | (a) Check only on resume and app start. (b) Periodic background work. (c) A persistent connection held by a foreground service. | New-mail notifications are not implemented. Hosted results use background delivery work. | New-mail notifications. | F (F-21) | MVP-06 |
 | 12 | A-12, A-14, A-13 | Passkeys; which browsers the password manager trusts; third-party cookies | A-12: (a) no passkeys in the MVP. (b) WebAuthn through the system credential provider. (c) the integrated manager becomes a passkey provider. A-14: (a) only the Alpha browser. (b) also recognized browsers. A-13: (a) keep third-party cookies blocked. (b) allow per site. (c) allow in normal tabs only. | Passkeys are not implemented; only the Alpha browser is trusted; third-party cookies are blocked. | The password acceptance scope. | E (E-19) | MVP-06, 29 |
 | 13 | A-25 | Recoverability of deleted Calendar events and reminders | (a) Keep deletion irreversible behind one review. (b) Add a short Undo. (c) Add a Trash with a retention period. Reminders: (i) no review, (ii) the same review as events. | (a): one review, then nothing can be restored. | Whether loop B needs a recovery step. | B | MVP-06 |
@@ -112,8 +118,8 @@ was dispatched on; its artifacts expire after three days, so copy what the ledge
 
 | Order | Campaign | Command | Loops (steps) | Items |
 | --- | --- | --- | --- | --- |
-| 1 | Core-loop classes | `RUN --classes LocalAgentOfflineApps,NotesTrashBackstop,NotesStorageDurability,DailyApps,ReminderLifecycle,ClockHandoff,ClockRepeatDays,HostedResultNotice,WorkflowApprovalNotice,BrowserReadingNavigation,PasswordBrowserFill,InboxOperationJournal,MailAttachment,Notifications,CameraScan,FilesTree` | B (B-9, B-10 native), C (C-3), E (E-8 navigation class, E-16), F (F-7, F-15 reminder half), J01 (J01-10) | MVP-11, 15, 25, 27, 28, 29, 30, 32, 36 |
-| 2 | Hosted CI: resident process death and recovery | `gh workflow run resident-android.yml --ref <branch>` (no inputs; one dispatch runs `build`, then `native` and `recovery-ui`; the `build` job alone is limited to 180 minutes; subject to the [CI cost policy](ci-cost-policy.md)). Then `gh run list --workflow resident-android.yml --branch <branch> --limit 1` for the run id, `gh run download RUN_ID -n resident-native-evidence-RUN_ID` and `-n pending-recovery-ui-evidence-RUN_ID`. `native` is A-23; `recovery-ui` is A-27, C-7, D-15 and F-16. Each job writes its `result.json` only when every method passed on both distributions; the methods per step are in the [core loop audit](core-loop-audit.md), "The five CI steps" | A (A-23, A-27), C (C-7), D (D-15), F (F-16) | MVP-21, 27, 32, 33, 37, 38, 47 |
+| 1 | Core-loop classes | `RUN --classes LocalAgentOfflineApps,NotesTrashBackstop,NotesStorageDurability,DailyApps,ReminderLifecycle,ClockHandoff,ClockRepeatDays,HostedResultNotice,WorkflowApprovalNotice,BrowserReadingNavigation,PasswordBrowserFill,InboxOperationJournal,MailAttachment,Notifications,CameraScan,FilesTree` | B (B-9, B-10 native), C (C-3), E (E-8 navigation class, E-16), F (F-7, F-15 reminder half), J01 (J01-10) | MVP-08, 11, 15, 25, 27, 28, 29, 30, 32, 36 |
+| 2 | Hosted CI: resident process death and recovery | `gh workflow run resident-android.yml --ref <branch>` (no inputs; one dispatch runs `build`, then `native` and `recovery-ui`; the `build` job alone is limited to 180 minutes; subject to the [CI cost policy](ci-cost-policy.md)). Then `gh run list --workflow resident-android.yml --branch <branch> --limit 1` for the run id, `gh run download RUN_ID -n resident-native-evidence-RUN_ID` and `-n pending-recovery-ui-evidence-RUN_ID`. `native` is A-23; `recovery-ui` is A-27, C-7, D-15 and F-16. Each job writes its `result.json` only when every method passed on both distributions; the methods per step are in the [core loop audit](core-loop-audit.md), "The five CI steps" | A (A-23, A-27), C (C-7), D (D-15), F (F-16) | MVP-08, 21, 27, 32, 33, 37, 38, 47 |
 | 3 | Default product-surface classes | `RUN` (NoMockProduct, Shell, StartupReadiness, TextScale, BrowserSignins, BrowserFlow, BrowserContinuity; BrowserDownload left the defaults in round 8 because it can only be skipped on a build without test mocks, and it stays in campaign 6). Hosted: campaign 20 | A (A-29), E (E-3) | MVP-08, 20, 22, 28, 32, 38 |
 | 4 | Calendar provider read-back | `ALPHA_CALENDAR_TEST_SERIAL=emulator-NNNN ALPHA_CALENDAR_TEST_AVD=<avd> ALPHA_CALENDAR_TEST_ABI=arm64-v8a node scripts/test-calendar-regression.mjs --case=CalendarCrudInstrumentedTest`, then `--case=CalendarAgentCrudInstrumentedTest` (since round 8 this runs the reviewed method and then `directSaveReadsBackAllDayChosenZoneAndRrule` with `calendarOptions=1`, each with its own result folder), `--case=CalendarAvailabilityInstrumentedTest` (round 8) and `--case=CalendarTruncationInstrumentedTest` (failed in round 7; product fix in round 8, not rerun). The WorkflowPhoneNative half of B-25 and J01-7 is campaign 17 | B (B-15, B-25), J01 (J01-6, J01-7) | MVP-12, 26, 49 |
 | 5 | Process restarts | `node scripts/test-native-restart.mjs notes APP.apk TEST.apk NEW_OUTPUT`, then `inbox`, `document`, `signin` (the last needs network on the emulator) | B (B-12), F (F-7), J03 (J03-7), E (E-10, E-11) | MVP-25, 28, 30, 36 |

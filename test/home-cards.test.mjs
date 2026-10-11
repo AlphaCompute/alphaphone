@@ -167,3 +167,29 @@ test('Home template renders source, freshness and the brief card only from live 
   const adapter = readFileSync(new URL('../apps/app/src/prototype/data-adapter.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(adapter, /gmailSearch|gmailThread|\.sync\(|fetch\(/, 'the Home adapter starts no mail read, digest sync or network request');
 });
+
+test('calendar name lookup: the event\'s own calendar in the same read, and no borrowed or stale name', () => {
+  const sources = [{id: '7', name: 'Harbour team', account: 'owner@example.invalid'}, {id: '8', name: '  Family  '}, {id: '9', name: ''}, {id: '10'}, {id: 11, name: 'Numeric id'}, null, 'text'];
+  assert.equal(H.homeCalendarName(sources, '7'), 'Harbour team');
+  assert.equal(H.homeCalendarName(sources, '8'), 'Family', 'surrounding space is not part of a name');
+  // Unknown calendar: the event names a calendar the read did not return.
+  assert.equal(H.homeCalendarName(sources, '99'), null);
+  assert.equal(H.homeCalendarName(sources, '70'), null, 'no prefix or partial match');
+  // A calendar with no display name has no name to show.
+  assert.equal(H.homeCalendarName(sources, '9'), null);
+  assert.equal(H.homeCalendarName(sources, '10'), null);
+  // Ids are strings on both sides; nothing is coerced into a match.
+  assert.equal(H.homeCalendarName(sources, 7), null);
+  assert.equal(H.homeCalendarName(sources, '11'), null);
+  for (const id of [undefined, null, '', 0, {}]) assert.equal(H.homeCalendarName(sources, id), null);
+  // Permission denied, not connected and a failed read all leave no sources.
+  for (const none of [undefined, null, [], {}, 'x']) assert.equal(H.homeCalendarName(none, '7'), null);
+  // Renamed calendar: the name is whatever the latest read returned for the same id.
+  assert.equal(H.homeCalendarName([{id: '7', name: 'Harbour crew'}], '7'), 'Harbour crew');
+  // Two sources with one id (not expected from the provider): the first in provider order.
+  assert.equal(H.homeCalendarName([{id: '7', name: 'First'}, {id: '7', name: 'Second'}], '7'), 'First');
+  // The card's source line follows the lookup: a name when known, otherwise only the device.
+  const base = {state: 'ready', overdue: false, readAt: at(15, 4), now, native: true};
+  assert.equal(H.presentHomeCalendarSource({...base, calendar: H.homeCalendarName(sources, '7')}).description, 'Harbour team. Read 3:04 PM from calendars on this device');
+  assert.deepEqual(H.presentHomeCalendarSource({...base, calendar: H.homeCalendarName(sources, '99')}), {origin: 'Device', read: 'Read 3:04 PM', description: 'Read 3:04 PM from calendars on this device'});
+});
