@@ -284,8 +284,10 @@ test('the latest retained brief appears with its agent and run time, reports fai
 });
 
 // The other half of the brief card's path: the digest panel is what records the retained result
-// Home reads. The development profile registers no Home brief source, so this checks the value the
-// panel publishes for the connected profile rather than the card (the test above covers the card).
+// Home reads. This checks the value the panel publishes for the connected profile rather than the
+// card (the test above covers the card). One run from an agent result to the rendered card is in
+// journey-d-digests.spec.ts (development scheduler) and home-brief-result.production.spec.ts
+// (flag-off build, Android bridge stubbed).
 test('the digest panel publishes the connected profile\'s newest retained result and withdraws it on disconnect',async({page})=>{
  await page.addInitScript(()=>{if(!localStorage.getItem('alpha.connection.selection.v1'))localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));});
  await page.goto('/?mode=dev');
