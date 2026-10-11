@@ -35,7 +35,7 @@ public final class WorkflowApprovalNoticeTest {
   taps.capture(token);JSONObject pending=new WorkflowNoticeTaps(store).pending();require("run1".equals(pending.getString("runId"))&&pending.getBoolean("retained"),"tap opens that run");
   new WorkflowNoticeTaps(store).consume(token);require(new WorkflowNoticeTaps(store).pending().length()==0,"tap consumed once");
   // Decision withdraws the notice and frees its route; it is never reposted.
-  delivery.withdrawApproval(first);taps.forget(first);require(poster.cancelled.contains(first)&&!poster.active.containsKey(first),"decision cancels the notice");
+  delivery.withdrawApproval(first,now+minute);taps.forget(first);require(poster.cancelled.contains(first)&&!poster.active.containsKey(first),"decision cancels the notice");
   require("withdrawn".equals(delivery.publishApproval(first,binding,now+10*minute,now))&&poster.posted.size()==1,"withdrawn approval never reposts");
   require(taps.token(first)==null,"withdrawn route released");
   // The plugin's whole post prepares the route before the receipt answers; a repeated request for the
@@ -50,7 +50,7 @@ public final class WorkflowApprovalNoticeTest {
    p2.approvals=false;require("failed".equals(d2.postApproval(t2,seventh,binding,route("run7"),now+minute,now))&&t2.token(seventh)==null&&p2.posted.size()==1,"a muted channel keeps no route");}
   // A captured tap whose approval was decided elsewhere is released instead of blocking later taps.
   String secondToken=taps.prepare(second,binding,route("run2"));require("succeeded".equals(delivery.publishApproval(second,binding,now+5*minute,now)),"second approval posts");
-  taps.capture(secondToken);delivery.withdrawApproval(second);require(!new WorkflowNoticeTaps(store).pending().getBoolean("retained"),"withdrawn tap is not retained");taps.forget(second);require(taps.pending().length()==0,"stale captured tap released");
+  taps.capture(secondToken);delivery.withdrawApproval(second,now+minute);require(!new WorkflowNoticeTaps(store).pending().getBoolean("retained"),"withdrawn tap is not retained");taps.forget(second);require(taps.pending().length()==0,"stale captured tap released");
   // Expiry: nothing posts for an expired approval and expired receipts are pruned.
   String third="approval-"+"3".repeat(64);require("expired".equals(delivery.publishApproval(third,binding,now,now))&&!poster.posted.contains(third),"expired approval posts nothing");
   taps.prepare(third,binding,route("run3"));require("succeeded".equals(delivery.publishApproval(third,binding,now+minute,now)),"third posts");
@@ -58,12 +58,33 @@ public final class WorkflowApprovalNoticeTest {
   require(new JSONObject(store.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT)).length()==0&&taps.token(third)==null,"ledgers bounded after expiry");
   // A muted approval channel records failure without posting; step notices are unaffected.
   Poster muted=new Poster();muted.approvals=false;String fourth="approval-"+"4".repeat(64);require("failed".equals(new WorkflowNoticeDelivery(new Store(),muted).publishApproval(fourth,binding,now+minute,now))&&muted.posted.isEmpty(),"muted channel posts nothing");
+  // Receipts written before the shared ledger was adopted (same slots, same record shapes) still read:
+  // these literals are the stored format of the retired in-app ledger, not output of the code under test.
+  {Store old=new Store();Poster quiet=new Poster();String digest="5ad03d9c2f0a4ce9b3d1bd36b6ba0e7a6f3a5a3b3ba0a5d8bbd1c7d7e3b0c1aa";
+   String posted="approval-"+"8".repeat(64),decided="approval-"+"9".repeat(64);
+   String approvalDigest=new JSONObject(raw).getJSONObject(first).getString("digest");
+   old.values.put("workflow-approval-notices:v1","{\""+posted+"\":{\"binding\":\""+binding+"\",\"digest\":\""+approvalDigest+"\",\"status\":\"succeeded\",\"expiresAt\":"+(now+5*minute)+"},\""+decided+"\":{\"binding\":\""+binding+"\",\"digest\":\""+approvalDigest+"\",\"status\":\"withdrawn\",\"expiresAt\":"+(now+5*minute)+"}}");
+   WorkflowNoticeDelivery upgraded=new WorkflowNoticeDelivery(old,quiet);quiet.active.put(posted,WorkflowNoticeDelivery.APPROVAL_TITLE+"\n"+WorkflowNoticeDelivery.APPROVAL_BODY);
+   require("succeeded".equals(upgraded.publishApproval(posted,binding,now+5*minute,now))&&"withdrawn".equals(upgraded.publishApproval(decided,binding,now+5*minute,now))&&quiet.posted.isEmpty(),"stored approval receipts read without reposting");
+   old.values.put("workflow-notice-delivery:v1","{\"op1\":{\"binding\":\""+binding+"\",\"digest\":\""+digest+"\",\"status\":\"succeeded\"}}");
+   rejects(()->upgraded.publish("op1",binding,"Other title","Other body"),"stored step receipt keeps its digest check");
+   require(WorkflowNoticeDelivery.SLOT.equals("workflow-notice-delivery:v1")&&WorkflowNoticeDelivery.APPROVAL_SLOT.equals("workflow-approval-notices:v1"),"deployed slot names unchanged");
+   require(upgraded.expireApprovals(now+5*minute).size()==2&&new JSONObject(old.values.get("workflow-approval-notices:v1")).length()==0,"stored approval receipts expire");}
+  // A decision that reaches the phone before any publish is retained: the late publish never posts,
+  // the prepared route is released, an unpublished withdrawal cannot open a tap, and expiry prunes it.
+  {Store s3=new Store();Poster p3=new Poster();WorkflowNoticeDelivery d3=new WorkflowNoticeDelivery(s3,p3);WorkflowNoticeTaps t3=new WorkflowNoticeTaps(s3);String early="approval-"+"a".repeat(64);
+   d3.withdrawApproval(early,now);require(p3.cancelled.contains(early),"early decision cancels");
+   JSONObject kept=new JSONObject(s3.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT)).getJSONObject(early);
+   require(kept.length()==2&&"withdrawn".equals(kept.getString("status"))&&kept.getLong("expiresAt")==now+WorkflowNoticeDelivery.MAXIMUM_APPROVAL_MS,"early withdrawal holds only the opaque ID for the approval bound");
+   require("withdrawn".equals(d3.postApproval(t3,early,binding,route("run9"),now+10*minute,now+minute))&&p3.posted.isEmpty()&&t3.token(early)==null,"late publish after an early decision posts nothing and keeps no route");
+   d3.withdrawApproval(early,now+2*minute);require(new JSONObject(s3.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT)).getJSONObject(early).getLong("expiresAt")==now+WorkflowNoticeDelivery.MAXIMUM_APPROVAL_MS,"repeated withdrawal keeps the first expiry");
+   require(d3.expireApprovals(now+WorkflowNoticeDelivery.MAXIMUM_APPROVAL_MS).equals(List.of(early))&&"expired".equals(d3.postApproval(t3,early,binding,route("run9"),now+10*minute,now+WorkflowNoticeDelivery.MAXIMUM_APPROVAL_MS)),"early withdrawal is pruned at its bound");}
   // Bounds.
   rejects(()->delivery.publishApproval("op1",binding,now+minute,now),"only approval IDs");
   rejects(()->delivery.publishApproval(fourth,binding,now+8*86400000L,now),"over-long approval refused");
   rejects(()->taps.forget("op1"),"step routes are never released here");
-  require(WorkflowNoticeDelivery.approvalTimeout(now+minute,now)==minute&&WorkflowNoticeDelivery.approvalTimeout(now,now)==-1,"timeout policy");
+  require(delivery.approvalTimeout(now+minute,now)==minute&&delivery.approvalTimeout(now,now)==-1,"timeout policy");
   require(WorkflowNoticeDelivery.STEP_NOTICE_TIMEOUT_MS==24L*3600000,"step notices time out after a day");
-  System.out.println("PASS workflow approval notices: one per approval ID, expiry timeout, tap after restart, withdrawal on decision, pruning and bounds");
+  System.out.println("PASS workflow approval notices: one per approval ID, expiry timeout, tap after restart, withdrawal on decision (also before publish), stored receipts, pruning and bounds");
  }
 }

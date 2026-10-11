@@ -1,83 +1,35 @@
 package ai.elizaresearch.alphaphone;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.Locale;
+import ai.eliza.plugins.notifications.NoticeDelivery;
+import java.util.List;
 import java.util.Set;
-import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** At-most-once OS dispatch. An uncertain or dismissed notice is never reposted. */
+/** Alpha's inputs to the shared receipt ledger (ai.eliza.plugins.notifications.NoticeDelivery): the slot
+ * names, redacted approval text and approval bound already deployed, plus the tap-route step that only
+ * this host has. The ledger itself (at-most-once OS dispatch, never reposting an uncertain or dismissed
+ * notice) is upstream code; the stored record formats are unchanged. */
 final class WorkflowNoticeDelivery {
- interface Storage {String read(String slot)throws Exception;void write(String slot,String value)throws Exception;}
- interface Poster {
-  boolean allowed();void post(String id,String title,String body)throws Exception;boolean matches(String id,String title,String body)throws Exception;
-  /** Approval notices use their own high-importance channel, which the owner can mute separately. */
-  default boolean approvalsAllowed(){return allowed();}
-  default void postApproval(String id,String title,String body,long timeoutMs)throws Exception{throw new UnsupportedOperationException("Approval notices unavailable");}
-  default void cancel(String id){}
- }
+ interface Storage extends NoticeDelivery.Storage {}
+ interface Poster extends NoticeDelivery.Poster {}
  /** An unopened step notice withdraws itself after a day; its receipt and history stay retained. */
  static final long STEP_NOTICE_TIMEOUT_MS=24L*3600000;
  /** Phone-step approvals are short-lived; a longer requested lifetime is refused. */
  static final long MAXIMUM_APPROVAL_MS=7L*86400000;
- static final String APPROVAL_SLOT="workflow-approval-notices:v1";
+ /** Deployed slot names. Changing either one orphans the receipts already stored on installed phones. */
+ static final String SLOT="workflow-notice-delivery:v1",APPROVAL_SLOT="workflow-approval-notices:v1";
  /** Redacted: no workflow name, destination, source or operation detail leaves the app. */
  static final String APPROVAL_TITLE="Workflow step waiting for approval",APPROVAL_BODY="Open Alpha Phone to review it. Nothing runs until you approve it on this phone.";
- static boolean approvalId(String id){return id!=null&&id.matches("approval-[a-f0-9]{64}");}
+ private static final NoticeDelivery.Config CONFIG=new NoticeDelivery.Config(SLOT,APPROVAL_SLOT,APPROVAL_TITLE,APPROVAL_BODY,MAXIMUM_APPROVAL_MS);
+ static boolean approvalId(String id){return NoticeDelivery.approvalId(id);}
+ private final NoticeDelivery shared;
+ WorkflowNoticeDelivery(Storage storage,Poster poster){shared=new NoticeDelivery(CONFIG,storage,poster);}
  /** Time until the approval expires, or -1 when it already expired. */
- static long approvalTimeout(long expiresAt,long now){if(expiresAt-now>MAXIMUM_APPROVAL_MS)throw new IllegalArgumentException("Approval expiry exceeds the reviewed bound");return expiresAt<=now?-1:expiresAt-now;}
- private static final Object LOCK=new Object();
- static final String SLOT="workflow-notice-delivery:v1";
- private final Storage storage;private final Poster poster;
- WorkflowNoticeDelivery(Storage storage,Poster poster){this.storage=storage;this.poster=poster;}
- private static String text(String value,int maximum){if(value==null||value.isBlank()||value.length()>maximum||value.indexOf('\0')>=0)throw new IllegalArgumentException("Invalid notification text");return value;}
- private static String hash(String value)throws Exception{byte[] bytes=MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte b:bytes)out.append(String.format(Locale.ROOT,"%02x",b&255));return out.toString();}
- private static String identity(String id,String binding,String title,String body)throws Exception{
-  if(id==null||!id.matches("[A-Za-z0-9_-]{1,128}")||binding==null||!binding.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid notification binding");
-  return hash(new JSONArray().put(text(title,200)).put(text(body,2000)).toString());
- }
- private JSONObject ledger()throws Exception{String raw=storage.read(SLOT);JSONObject ledger=raw==null?new JSONObject():new JSONObject(raw);if(ledger.length()>512)throw new IllegalStateException("Notification receipt capacity exceeded");return ledger;}
- private String retained(JSONObject ledger,JSONObject record,String id,String binding,String digest,String title,String body)throws Exception{
-  if(record.length()!=3||!binding.equals(record.getString("binding"))||!digest.equals(record.getString("digest"))||!Set.of("applying","succeeded","failed","unknown").contains(record.getString("status")))throw new IllegalStateException("Notification receipt mismatch");
-  if(Set.of("applying","unknown").contains(record.getString("status"))){String status=poster.matches(id,title,body)?"succeeded":"unknown";if(!status.equals(record.getString("status"))){record.put("status",status);storage.write(SLOT,ledger.toString());}}
-  return record.getString("status");
- }
- String receipt(String id,String binding,String title,String body)throws Exception{synchronized(LOCK){String digest=identity(id,binding,title,body);JSONObject ledger=ledger(),record=ledger.optJSONObject(id);if(record==null){if(ledger.has(id))throw new IllegalStateException("Invalid notification receipt");return "unknown";}return retained(ledger,record,id,binding,digest,title,body);}}
- String publish(String id,String binding,String title,String body)throws Exception{synchronized(LOCK){
-  String digest=identity(id,binding,title,body);JSONObject ledger=ledger(),record=ledger.optJSONObject(id);
-  if(record!=null)return retained(ledger,record,id,binding,digest,title,body);
-  if(ledger.has(id)||ledger.length()>=512)throw new IllegalStateException("Notification receipt history is full or unavailable");
-  record=new JSONObject().put("binding",binding).put("digest",digest).put("status",poster.allowed()?"applying":"failed");ledger.put(id,record);
-  storage.write(SLOT,ledger.toString()); // A committed intent precedes every OS effect.
-  if(record.getString("status").equals("failed"))return "failed";
-  try{poster.post(id,title,body);record.put("status",poster.matches(id,title,body)?"succeeded":"unknown");}
-  catch(Exception failure){record.put("status","unknown");}
-  storage.write(SLOT,ledger.toString());return record.getString("status");
- }}
- private JSONObject approvals()throws Exception{String raw=storage.read(APPROVAL_SLOT);JSONObject ledger=raw==null?new JSONObject():new JSONObject(raw);if(ledger.length()>256)throw new IllegalStateException("Approval notice capacity exceeded");return ledger;}
- private static void approvalRecord(JSONObject record,String binding,String digest)throws Exception{
-  if(record.length()!=4||!binding.equals(record.getString("binding"))||!digest.equals(record.getString("digest"))||!Set.of("applying","succeeded","failed","unknown","withdrawn").contains(record.getString("status")))throw new IllegalStateException("Approval notice receipt mismatch");
-  Object at=record.get("expiresAt");if(!(at instanceof Integer||at instanceof Long))throw new IllegalStateException("Approval notice receipt mismatch");
- }
+ long approvalTimeout(long expiresAt,long now){return shared.approvalTimeout(expiresAt,now);}
+ String receipt(String id,String binding,String title,String body)throws Exception{return shared.receipt(id,binding,title,body);}
+ String publish(String id,String binding,String title,String body)throws Exception{return shared.publish(id,binding,title,body);}
  /** One redacted notice per pending phone-step approval ID, posted at most once and never after a decision withdrew it. */
- String publishApproval(String id,String binding,long expiresAt,long now)throws Exception{synchronized(LOCK){
-  if(!approvalId(id))throw new IllegalArgumentException("Invalid approval notice identity");
-  String digest=identity(id,binding,APPROVAL_TITLE,APPROVAL_BODY);long timeout=approvalTimeout(expiresAt,now);
-  JSONObject ledger=approvals(),record=ledger.optJSONObject(id);
-  if(record!=null){approvalRecord(record,binding,digest);if(expiresAt!=record.getLong("expiresAt"))throw new IllegalStateException("Approval notice expiry changed");
-   if(Set.of("applying","unknown").contains(record.getString("status"))){String status=poster.matches(id,APPROVAL_TITLE,APPROVAL_BODY)?"succeeded":"unknown";if(!status.equals(record.getString("status"))){record.put("status",status);storage.write(APPROVAL_SLOT,ledger.toString());}}
-   return record.getString("status");}
-  if(ledger.has(id))throw new IllegalStateException("Invalid approval notice receipt");
-  if(timeout<0)return "expired";
-  if(ledger.length()>=256)throw new IllegalStateException("Approval notice history is full");
-  record=new JSONObject().put("binding",binding).put("digest",digest).put("status",poster.approvalsAllowed()?"applying":"failed").put("expiresAt",expiresAt);ledger.put(id,record);
-  storage.write(APPROVAL_SLOT,ledger.toString()); // A committed intent precedes every OS effect.
-  if(record.getString("status").equals("failed"))return "failed";
-  try{poster.postApproval(id,APPROVAL_TITLE,APPROVAL_BODY,timeout);record.put("status",poster.matches(id,APPROVAL_TITLE,APPROVAL_BODY)?"succeeded":"unknown");}
-  catch(Exception failure){record.put("status","unknown");}
-  storage.write(APPROVAL_SLOT,ledger.toString());return record.getString("status");
- }}
+ String publishApproval(String id,String binding,long expiresAt,long now)throws Exception{return shared.publishApproval(id,binding,expiresAt,now);}
  /** The whole approval post. The tap route is prepared first because the notice's tap needs it. A route
   * whose receipt is not live afterwards (withdrawn, failed) is released again: a repeated request for
   * a decided approval must not keep a route that no notice can ever open. */
@@ -90,18 +42,9 @@ final class WorkflowNoticeDelivery {
   if(!Set.of("applying","succeeded","unknown").contains(status))taps.forget(id);
   return status;
  }
- /** A decision withdraws the notice. The receipt stays (as withdrawn) until expiry, so the notice is never reposted. */
- void withdrawApproval(String id)throws Exception{synchronized(LOCK){
-  if(!approvalId(id))throw new IllegalArgumentException("Invalid approval notice identity");
-  JSONObject ledger=approvals(),record=ledger.optJSONObject(id);
-  if(record!=null&&!"withdrawn".equals(record.getString("status"))){record.put("status","withdrawn");storage.write(APPROVAL_SLOT,ledger.toString());}
-  poster.cancel(id);
- }}
+ /** A decision withdraws the notice. The receipt stays (as withdrawn) until expiry, so the notice is never
+  * reposted. A decision that arrives before any publish is retained too, for the maximum approval lifetime. */
+ void withdrawApproval(String id,long now)throws Exception{shared.withdrawApproval(id,now);}
  /** Removes receipts whose approval expired (the OS already timed the notice out) and returns their IDs. */
- java.util.List<String> expireApprovals(long now)throws Exception{synchronized(LOCK){
-  JSONObject ledger=approvals();java.util.List<String> expired=new java.util.ArrayList<>();
-  for(java.util.Iterator<String> keys=ledger.keys();keys.hasNext();){String id=keys.next();if(ledger.getJSONObject(id).getLong("expiresAt")<=now)expired.add(id);}
-  for(String id:expired){ledger.remove(id);poster.cancel(id);}
-  if(!expired.isEmpty())storage.write(APPROVAL_SLOT,ledger.toString());return expired;
- }}
+ List<String> expireApprovals(long now)throws Exception{return shared.expireApprovals(now);}
 }
