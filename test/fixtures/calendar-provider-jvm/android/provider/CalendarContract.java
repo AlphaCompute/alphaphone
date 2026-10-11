@@ -19,7 +19,8 @@ public final class CalendarContract {
  public static final class Instances {
   public static final android.net.Uri CONTENT_URI=new android.net.Uri("instances");
   public static final String CALENDAR_ID="calendar_id",EVENT_ID="event_id",TITLE="title",BEGIN="begin",END="end",ALL_DAY="allDay",
-   AVAILABILITY="availability",STATUS="eventStatus",SELF_ATTENDEE_STATUS="selfAttendeeStatus";
+   AVAILABILITY="availability",STATUS="eventStatus",SELF_ATTENDEE_STATUS="selfAttendeeStatus",
+   DESCRIPTION="description",EVENT_LOCATION="eventLocation",RRULE="rrule";
  }
  public static final class Events {
   public static final android.net.Uri CONTENT_URI=new android.net.Uri("events");
