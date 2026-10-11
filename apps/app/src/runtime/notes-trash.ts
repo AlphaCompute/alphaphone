@@ -2,7 +2,8 @@ import {Capacitor} from '@capacitor/core';
 import type {BrowserJsonDomainDocument} from '../browser/json-domain-document';
 import {secureConnectionStore} from './native-connection';
 import {SECURE_NOTES_SLOT} from './notes-secure-store';
-import {validateNotesTrash,type NotesTrashDocument} from './notes-trash-policy';
+import {validateNotesTrash,NOTES_TRASH_FULL_CODE,type NotesTrashDocument} from './notes-trash-policy';
+import {isStorageFull} from './notes-store';
 export * from './notes-trash-policy';
 
 /**
@@ -46,3 +47,11 @@ export async function savedNotes():Promise<Array<{id:string;audio?:{audioId?:str
  return records;
 }
 export async function savedNoteIds():Promise<Set<string>>{return new Set((await savedNotes()).map(n=>n.id));}
+
+/**
+ * A definite refusal to add a restorable copy: the Trash limits (entries or bytes) or the
+ * native slot cap. In both cases nothing was written and the note is untouched.
+ */
+export function isNotesTrashFull(error:unknown):boolean{
+ return isStorageFull(error)||(!!error&&typeof error==='object'&&(error as {code?:unknown}).code===NOTES_TRASH_FULL_CODE);
+}

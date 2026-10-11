@@ -176,3 +176,43 @@ Never carry a dated APK or device result forward as proof for changed source.
 Report source checks, APK builds, emulator/HOME tests, real integrations, custom
 image boot and physical/user acceptance separately. Requirement evidence remains
 unset until a retained, revision-bound result supports that requirement's full scope.
+
+## Resident reuse and native runner phases (2026-10-10)
+
+Assistant surface reuse (MVP-16): `Agent.start` attaches a surface to the resident agent that is
+already admitted, running, enrolled and launched under the stored provider admission. An attach
+keeps the runtime epoch, the owner enrollment and other surfaces' calls and streams; it never
+pairs, and cancelling it retires nothing. Any doubt (runtime not listening, restarted runtime,
+expiring or missing enrollment, changed or unadmitted provider, retirement in progress, an
+unverified earlier attach) takes the ordinary start path. `Agent.residentAttachment` is the
+read-only query the renderer uses to skip the stop-and-rebind of an unchanged Cloud provider;
+the credit gate still runs first. A surface whose attach did not yield a verified owner session
+stops asking to attach, so its retry stops, rebinds and restarts as before. Not covered: two
+surfaces starting before any enrollment exists still supersede each other, and a lone surface
+recreated after the last one was destroyed pairs again. Source checks: `test/resident-attachment.test.mjs` (JVM
+contract of `ResidentAttachment`, renderer contract, start-path guards). The dual-Activity
+case is `AssistantResidentReuseInstrumentedTest`; it uses a synthetic runtime observation,
+enrollment and streams, so a passing run is emulator-class evidence of surface ownership only,
+not of a live inference stream surviving, and never device acceptance.
+
+Native runner phases (MVP-18): `node scripts/test-reminder-upgrade.mjs` now also runs
+`WorkflowLegacyReminderUpgradeInstrumentedTest` on both distributions after the candidate verify
+phase, against the same upgraded data. Calendar and reminder upgrades admit the candidate app
+and instrumentation APK as one verified pair from `artifacts/apk-manifest.json` and
+`artifacts/instrumentation/` (`npm run android:build`); shared Gradle outputs are no longer
+installed, and companion classes run only while the installed bytes match that pair.
+`node scripts/android-workflow-native.mjs` adds an `approval-notice` phase
+(`WorkflowApprovalNoticeInstrumentedTest`, both methods, both distributions; the OS-posting
+case is granted `POST_NOTIFICATIONS` in its owned user). Each receipt names its phase and APK
+hashes; a failed, skipped or missing phase is recorded (`failedPhase` / `failure`) and exits
+non-zero. Source checks: `test/installed-upgrade-runner.test.mjs` and
+`test/native-campaign-evidence.test.mjs` drive the real scripts against a synthetic `adb`;
+they are not emulator evidence. Approval notices across process death and account change have
+no native phase yet.
+
+Review follow-up (same date): an attach keeps the epoch, so a request the attaching surface had
+queued earlier is refused before it pairs or is dispatched (`requireOwned`); a lifecycle change
+made by another surface during an attach does not make this surface stop the resident on retry.
+Both runners bind the bytes upstream pins to the admitted hashes in `preflightVariant`, before
+any install, so a build that overwrites the archive after admission fails the run instead of
+being recorded under the admitted hashes. These are source checks only, as above.

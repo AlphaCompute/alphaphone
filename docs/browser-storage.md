@@ -226,6 +226,34 @@ untouched and only the note text goes to Trash. The 3-day window uses wall-clock
 epoch time (time-zone changes have no effect); a clock moved backwards delays the
 purge, and a clock moved forwards can advance it.
 
+Full Trash (MVP-15). The entry and byte limits (`NOTES_TRASH_MAX_ENTRIES`,
+`NOTES_TRASH_MAX_BYTES`) and the Android slot cap admit new entries only. A refused
+addition is a typed, definite refusal (`NotesTrashFull` or the native `storage-full`
+code, see `isNotesTrashFull`): nothing was written and the note, its recording and every
+other Trash entry are unchanged. The editor then shows a "Trash is full" dialog with three
+choices: Cancel, Open Trash to make room, or "Delete forever without Trash". The last is
+the only way a note skips Trash and is confirmed separately from the ordinary delete. For
+a text, checklist or link note it is one saved-list commit of the exact refused record; a
+note that changed since the refusal is left alone. The comparison reads saved storage, not
+only the open view: if another view changed the note or already moved it to Trash, nothing
+is deleted and that Trash entry is kept. This path and the voice path below first drop any
+Trash row still present for that saved note (the maintenance rule for a live note), so
+the erased note is not offered for restore afterwards. For a voice note the reviewed deletion
+protocol runs without a Trash row: the recovery row (marked `permanent`) holds the only
+copy until the tombstone commit, the move of this recording to the audio trash under the
+same operation id and its erase are all confirmed. An interruption leaves that row under
+review; the next deletion-status check finishes the erase only when this operation
+already owns the audio trash, and otherwise keeps the existing Restore control. An
+approved agent `notes_delete` never takes this path: it fails with "Trash is full" and
+nothing is deleted. A Trash document that already exceeds the limits (written by a host
+with larger limits) stays readable, restorable, purgeable and subject to expiry; only
+additions are refused until it is below the limits again. `notes-trash-recovery.spec.ts`
+and `scripts/test-notes-trash-flow.ts` cover this in the browser build and the policy;
+the Android slot cap itself is a hard read and write limit of the shared
+`JsonCredentialSlots`, so Alpha must not lower `notes-trash:v1:device` below 32 MiB
+until that store admits reads and reductions above its limit. Not yet qualified on a
+device.
+
 The owning suites cover independent tabs, stale editors, exact archives,
 malformed recovery, failed writes, lost acknowledgements, deletion receipts,
 retained unknown outcomes and restoration against newer notes. Browser CI runs

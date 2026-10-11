@@ -1,0 +1,30 @@
+import {test,expect} from '@playwright/test';
+// Production lane (flag-off build, mocks unset): the daily overview on a fresh profile with no
+// account. The calendar card names its source and read time, no brief card or fixture content is
+// present, and loading Home makes no request beyond the app's own origin.
+test.beforeEach(({}, info) => { test.skip(info.project.name !== 'production', 'Runs against the flag-off production build only'); });
+
+test('fresh Home shows sourced calendar state, no brief card, no fixture content and no outside request',async({page},info)=>{
+ const errors:string[]=[],outside:string[]=[];
+ page.on('pageerror',error=>errors.push(error.message));
+ page.on('request',request=>{const url=new URL(request.url());if(['http:','https:','ws:','wss:'].includes(url.protocol)&&!['127.0.0.1','localhost'].includes(url.hostname))outside.push(request.url());});
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/');
+ await expect(page.locator('html')).toHaveAttribute('data-connection-mode','live');
+ const home=page.getByRole('region',{name:'Home',exact:true}),calendar=page.locator('[data-alpha-home-calendar]');
+ await expect(calendar).toContainText('No upcoming events');
+ await expect(calendar.locator('[data-alpha-home-calendar-source]')).toHaveText(/^Read \d{1,2}:\d{2}/);
+ await expect(calendar.locator('[data-alpha-home-calendar-origin]')).toHaveText('This app');
+ await expect(calendar).toHaveAttribute('aria-description',/^Read \d{1,2}:\d{2}.* from the calendar saved in this browser$/);
+ await expect(calendar).toHaveAttribute('data-alpha-home-calendar-overdue','false');
+ await expect(home.locator('[data-alpha-home-brief]')).toHaveCount(0);
+ const inbox=home.locator('[data-alpha-home-inbox]');
+ await expect(inbox).toHaveAccessibleName('Connect email');
+ await expect(inbox).not.toContainText(/unread|Read \d/);
+ await expect(home).not.toContainText(/Morning brief|Design review|7:02 AM|No brief yet/);
+ await expect(home.getByText(/^(MC|JP|PN|\+2)$/)).toHaveCount(0);
+ await page.waitForTimeout(1500);
+ expect(outside).toEqual([]);
+ expect(errors).toEqual([]);
+ await page.screenshot({path:info.outputPath('home-overview-production.png'),animations:'disabled'});
+});

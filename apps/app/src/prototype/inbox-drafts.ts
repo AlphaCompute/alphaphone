@@ -15,6 +15,14 @@ export type ComposePrefill = {to:string[];cc?:string[];bcc?:string[];subject:str
 /** Source attachments a forward carries, bound to the selected message and its historyId. */
 export type ForwardSource = {messageId:string;historyId:string;parts:{partId:string;name:string;mimeType:string;size:number}[]};
 type Draft = {version:1;id:string;revision:string;owner:string;to:string[];cc?:string[];bcc?:string[];attachments?:MailAttachment[];forward?:ForwardSource;provider?:{draftId:string;providerDigest:string};subject:string;body:string;mode?:'compose'|'reply'|'reply-all'|'forward';reply?:{messageId:string;threadId:string}};
+/** The destination of a reviewed assistant suggestion, as shown to the user before inserting it. */
+export type SuggestionTarget={ready:false;reason:string;token:string}|{ready:true;kind:'draft'|'reply'|'new';append:boolean;reply:boolean;subject:string;to:string[];from?:string;
+ /** A draft that was set aside: it exists but its composer is not on screen. */
+ aside?:boolean;
+ /** A set-aside draft that is not a reply to the message on screen. */
+ elsewhere?:boolean;
+ /** Characters of suggestion text this destination can still take. */
+ room:number;token:string};
 type Policy={maximumOutgoing:number;maximumTotalBytes:number};
 const forwardValid=(f:any)=>f===undefined||(!!f&&typeof f.messageId==='string'&&typeof f.historyId==='string'&&Array.isArray(f.parts)&&f.parts.length<=outgoingAttachmentLimits.maximumFiles&&f.parts.every((p:any)=>p&&typeof p.partId==='string'&&typeof p.name==='string'&&typeof p.mimeType==='string'&&typeof p.size==='number'));
 const address=(v:string)=>v.length<=254&&/^[^\s<>@,;]+@[^\s<>@,;]+\.[^\s<>@,;]+$/.test(v);
@@ -140,17 +148,54 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
  }
  async function attach(){if(!draft||busy)return;if((draft.attachments?.length||0)>=Math.min(policy().maximumOutgoing,outgoingAttachmentLimits.maximumFiles)){toast(policy().maximumOutgoing===1?'This account accepts one attachment per email. Remove it to choose another.':`Attach at most ${outgoingAttachmentLimits.maximumFiles} files.`);return;}const token=epoch;let selectionId:string|undefined;busy=true;publish();try{const selected=await DailyApps.perform({action:'files'});selectionId=selected.selectionId;if(token!==epoch)return;if(selected.status==='cancelled')return;if(selected.status!=='selected'||!selected.selectionId||!selected.name)throw new Error('Select one supported document or image');const file=await attachmentNative.readSelected({selectionId:selected.selectionId});const checked=await reviewMailAttachment(file);if(checked.sha256!==file.sha256||checked.size!==file.size)throw new Error('Selected file changed');if(token!==epoch||!draft)return;const next=[...(draft.attachments||[]),{name:file.name,mimeType:file.mimeType,dataBase64:file.dataBase64}];checkOutgoingAttachments(next,policy());if(draft.forward&&next.length+draft.forward.parts.length>outgoingAttachmentLimits.maximumFiles)throw new Error(`Attach at most ${outgoingAttachmentLimits.maximumFiles} files including forwarded ones.`);draft.attachments=next;status=`${next.length} attachment${next.length===1?'':'s'} selected locally. Nothing uploaded until provider review.`;persist();}catch(error){if(token===epoch)toast(error instanceof Error?error.message:'Attachment unavailable');}finally{if(selectionId)await DailyApps.forgetSelected({selectionId}).catch(()=>{});if(token===epoch){busy=false;publish();void settleSent();}}}
  function edit(key:'subject'|'body',value:string){if(draft&&!busy){draft[key]=value;status='Unsaved local draft';persist();publish();}}
+ /** Where a suggestion would land right now, for review before anything is inserted. The token
+  * identifies the account owner and the exact draft content or message; it never leaves the renderer. */
+ function suggestionTarget(reply?:GmailMessage):SuggestionTarget{
+  const blocked=(reason:string):SuggestionTarget=>({ready:false,reason,token:JSON.stringify([owner,'blocked',reason])});
+  if(!owner||!ready||busy)return blocked(loading||busy?'The local email draft is still loading. Try again in a moment.':status||'Connect a Gmail account first.');
+  if(draft){
+   const recipients=[...draft.to,...(draft.cc||[]),...(draft.bcc||[])];
+   const append=!!draft.body.trim();
+   // One draft exists per account. When its composer is closed the user may be looking at another
+   // message, so the review says that this draft is not on screen and is not a reply to that message.
+   const aside=!open,elsewhere=aside&&!!reply&&draft.reply?.messageId!==reply.id;
+   return {ready:true,kind:'draft',append,aside,elsewhere,reply:!!draft.reply||draft.mode==='reply'||draft.mode==='reply-all',subject:draft.subject,to:recipients,room:append?Math.max(0,64000-draft.body.replace(/\s+$/,'').length-2):64000,
+    token:JSON.stringify([owner,'draft',draft.id,draft.mode||'',draft.reply?.messageId||'',draft.provider?.draftId||'',draft.subject,draft.to,draft.cc||[],draft.bcc||[],draft.body,toQ,aside,elsewhere])};
+  }
+  if(retained?.available)return blocked('Resume the retained email edits in Inbox first. The suggestion was not added.');
+  if(saved)return blocked('Restore or discard the saved local draft in Inbox first. The suggestion was not added.');
+  if(reply){
+   const primary=reply.replyTo||reply.fromEmail||'';
+   if(!address(primary))return blocked('This message has no valid literal reply address.');
+   // The recipients `begin` gives a reply: the literal reply address, never the account's own address.
+   const self=provider?.capabilities()?.from?.toLowerCase(),to=[primary].filter(a=>a.toLowerCase()!==self);
+   return {ready:true,kind:'reply',append:false,reply:true,subject:(/^re:/i.test(reply.subject)?reply.subject:`Re: ${reply.subject}`).slice(0,998),to,from:reply.from,room:64000,token:JSON.stringify([owner,'reply',reply.id,reply.threadId,to,reply.subject])};
+  }
+  return {ready:true,kind:'new',append:false,reply:false,subject:'',to:[],room:64000,token:JSON.stringify([owner,'new'])};
+ }
  return {
   bind,reset,begin,transfer,
   /** "Use in email": agent text becomes a local draft for the selected message (a reply) or a new
-   * email, under the selected account. It is never sent; the composer and provider review still apply. */
-  useSuggestion(text:string,reply?:GmailMessage):boolean{
+   * email, under the selected account. It is never sent; the composer and provider review still apply.
+   * With `expected` (the assistant review), the destination must still be the one that was reviewed, and
+   * `append` adds the text below what the open draft already holds. Existing text is never replaced. */
+  useSuggestion(text:string,reply?:GmailMessage,expected?:{token:string;append?:boolean}):boolean{
    const body=String(text||'').slice(0,64000);if(!body.trim()){toast('The suggestion is empty.');return false;}
    if(!ready||busy){toast(status||'Connect a Gmail account first.');return false;}
-   if(draft){if(draft.body.trim()){toast('Finish, save or discard the open email draft first. The suggestion was not added.');return false;}draft.body=body;open=true;confirm=false;status='Agent suggestion placed in the open draft. Review and edit before sending; nothing has been sent.';persist();publish();return true;}
+   // A reviewed suggestion is inserted whole or not at all; only the legacy call shortens it.
+   if(expected&&(String(text).length>64000||suggestionTarget(reply).token!==expected.token))return false;
+   if(draft){
+    if(draft.body.trim()){
+     if(!expected?.append){toast('Finish, save or discard the open email draft first. The suggestion was not added.');return false;}
+     const joined=draft.body.replace(/\s+$/,'')+'\n\n'+body;
+     if(joined.length>64000){toast('The draft would be too long with this suggestion. Nothing was added.');return false;}
+     draft.body=joined;open=true;confirm=false;status='Agent suggestion added below your text. Review and edit before sending; nothing has been sent.';persist();publish();return true;
+    }
+    draft.body=body;open=true;confirm=false;status='Agent suggestion placed in the open draft. Review and edit before sending; nothing has been sent.';persist();publish();return true;}
    if(reply)return begin(reply,'reply','',undefined,{body});
    return begin(undefined,'reply','',{to:[],subject:'',body,status:'Agent suggestion placed in a local draft. Review and edit before sending; nothing has been sent.'});
-  },setFromSwitch(value:typeof fromSwitch){fromSwitch=value;},get ready(){return ready&&!busy;},get hasDraft(){return !!draft;},
+  },suggestionTarget,
+setFromSwitch(value:typeof fromSwitch){fromSwitch=value;},get ready(){return ready&&!busy;},get hasDraft(){return !!draft;},
   async editProvider(proposal:Bag,reference:{draftId:string;providerDigest:string}){if(retained?.available&&!draft){toast('Resume retained email edits before editing another provider draft.');return false;}if(!ready||busy){toast('Local draft storage unavailable');return false;}if(draft&&(draft.body!==proposal.bodyText||draft.subject!==proposal.subject||JSON.stringify(draft.to)!==JSON.stringify(proposal.to)||JSON.stringify(draft.cc||[])!==JSON.stringify(proposal.cc||[])||JSON.stringify(draft.bcc||[])!==JSON.stringify(proposal.bcc||[])||JSON.stringify(draft.attachments||[])!==JSON.stringify(proposal.attachments||[])))return false;draft={version:1,id:crypto.randomUUID(),revision:crypto.randomUUID(),owner,to:[...proposal.to],cc:[...(proposal.cc||[])],bcc:[...(proposal.bcc||[])],subject:proposal.subject,body:proposal.bodyText,mode:proposal.mode,attachments:proposal.attachments||[],provider:reference,...(proposal.replyMessageId?{reply:{messageId:proposal.replyMessageId,threadId:''}}:{})};baseRevision=saved?.revision||null;staleBase=false;open=true;confirm=false;status='Editing provider draft. Save locally to preserve edits. Gmail replacement is not atomic.';publish();await update();return saved?.provider?.draftId===reference.draftId&&saved?.provider?.providerDigest===reference.providerDigest;},
   close(){if(!open)return false;if(busy){toast('Wait for the local draft update.');return true;}open=false;confirm=false;if(status==='Unsaved local draft')toast(retained?.status||'Edits remain in this session.');publish();return true;},
   chips(chip:(label:string,action:()=>void)=>Bag){return ready?[
