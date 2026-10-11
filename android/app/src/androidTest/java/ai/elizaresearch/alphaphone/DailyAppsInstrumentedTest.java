@@ -169,9 +169,23 @@ public class DailyAppsInstrumentedTest {
     SystemClock.sleep(100);
    }
    assertTrue("Durable notification tap signals pending delivery", opened);
+   // A fresh install still shows the first-run sign-in panel. The product keeps the tap while that
+   // panel is open and opens the reminder when the owner answers it; it must not open underneath.
+   String detail = "document.documentElement.dataset.activeView==='calendar' && [...document.querySelectorAll('[data-screen] h1')].some(h=>h.textContent==="+JSONObject.quote("Device flow test " + id)+") && !!document.querySelector('button[aria-label=\"Edit event\"]')";
+   String offline = "[...document.querySelectorAll('.alpha-connection-scrim button')].find(e=>e.textContent.trim()==="+JSONObject.quote(AppNavigation.offlineLabel())+"&&!e.disabled)";
+   if ("true".equals(evaluate(scenario, "!!document.querySelector('.alpha-connection-scrim')"))) {
+    SystemClock.sleep(1500);
+    assertEquals("The reminder does not open under the sign-in panel", "false", evaluate(scenario, "Boolean("+detail+")"));
+    begin(scenario, "Capacitor.Plugins.DailyApps.pendingReminderTap()");
+    JSONObject retainedTap = result(scenario);
+    assertTrue("The tap is retained while the sign-in panel is open: " + retainedTap, retainedTap.optBoolean("retained") && retainedTap.has("token"));
+    uiWait(scenario, offline);
+    evaluate(scenario, "("+offline+").click()");
+    uiWait(scenario, "!document.querySelector('.alpha-connection-scrim')");
+   }
    boolean detailOpened = false;
    for (int i = 0; i < 80; i++) {
-    if ("true".equals(evaluate(scenario,"document.documentElement.dataset.activeView==='calendar' && [...document.querySelectorAll('[data-screen] h1')].some(h=>h.textContent==="+JSONObject.quote("Device flow test " + id)+") && !!document.querySelector('button[aria-label=\"Edit event\"]')"))) { detailOpened=true; break; }
+    if ("true".equals(evaluate(scenario,"Boolean("+detail+")"))) { detailOpened=true; break; }
     SystemClock.sleep(100);
    }
    assertTrue("Notification tap opens this reminder's real Calendar detail", detailOpened);

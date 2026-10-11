@@ -28,8 +28,9 @@ public class CalendarCrudInstrumentedTest {
   until(node);eval("("+node+").scrollIntoView({block:'center',behavior:'instant'})");
   String check="(()=>{const e="+node+",r=e.getBoundingClientRect(),p=e.closest('.scr').getBoundingClientRect();const top=Math.max(r.top,p.top,0),bottom=Math.min(r.bottom,p.bottom,innerHeight);return bottom>top+8&&(r.height>p.height||(r.top>=p.top&&r.bottom<=p.bottom))&&e.contains(document.elementFromPoint(r.x+r.width/2,(top+bottom)/2))})()";
   until(check);
-  // Tap the rendered event only after its finite ancestor entrance animation settles.
-  until("(()=>{const e="+node+";return !document.getAnimations().some(a=>a.playState==='running'&&a.effect?.getTiming().iterations!==Infinity&&a.effect?.target?.contains(e))})()");
+  // Tap the rendered event only after its finite ancestor entrance animation settles. The timeline's
+  // scroll-driven edge fades report "running" for as long as they exist and never advance with time.
+  until("(()=>{const e="+node+";return !document.getAnimations().some(a=>a.timeline===document.timeline&&a.playState==='running'&&a.effect?.getTiming().iterations!==Infinity&&a.effect?.target?.contains(e))})()");
   until(check);
   boolean[] focused={false};String[] window={"unobserved"};long focusDeadline=SystemClock.elapsedRealtime()+15000;
   while(SystemClock.elapsedRealtime()<focusDeadline){WebViewTestDriver.withActivity(MainActivity.class,activity->{android.webkit.WebView web=activity.getBridge().getWebView();focused[0]=activity.hasWindowFocus()&&web.hasWindowFocus()&&web.isShown();window[0]="activityFocus="+activity.hasWindowFocus()+" webFocus="+web.hasWindowFocus()+" shown="+web.isShown()+" size="+web.getWidth()+"x"+web.getHeight();});if(focused[0])break;SystemClock.sleep(100);}
@@ -58,7 +59,7 @@ public class CalendarCrudInstrumentedTest {
   try {
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
     AppNavigation.liveMode();
-    until("document.documentElement.dataset.activeView");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));
+    until("document.documentElement.dataset.activeView");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();
     click("New event");until("document.querySelector('input[aria-label=Title]')");
     eval("(()=>{const e=document.querySelector('input[aria-label=Title]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(title)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
     until("document.querySelector('input[aria-label=Title]').value==="+JSONObject.quote(title));
@@ -104,7 +105,7 @@ public class CalendarCrudInstrumentedTest {
    Calendar when=Calendar.getInstance();when.set(Calendar.HOUR_OF_DAY,12);when.set(Calendar.MINUTE,0);when.set(Calendar.SECOND,0);when.set(Calendar.MILLISECOND,0);
    ContentValues event=new ContentValues();event.put(CalendarContract.Events.CALENDAR_ID,calendarId);event.put(CalendarContract.Events.TITLE,unique);event.put(CalendarContract.Events.DTSTART,when.getTimeInMillis());event.put(CalendarContract.Events.DTEND,when.getTimeInMillis()+3600000);event.put(CalendarContract.Events.EVENT_TIMEZONE,TimeZone.getDefault().getID());android.net.Uri row=resolver.insert(CalendarContract.Events.CONTENT_URI,event);assertNotNull(row);
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-    AppNavigation.liveMode();until("document.documentElement.dataset.activeView");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));tapVisibleEvent(unique);click("Delete event");nativeWait("Delete calendar event?");
+    AppNavigation.liveMode();until("document.documentElement.dataset.activeView");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();tapVisibleEvent(unique);click("Delete event");nativeWait("Delete calendar event?");
     ContentValues revoked=new ContentValues();revoked.put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,CalendarContract.Calendars.CAL_ACCESS_READ);assertEquals(1,resolver.update(calendar,revoked,null,null));
     nativeClick("Delete event");until("document.querySelector('[data-screen]').textContent.includes('Nothing was deleted')");assertEquals("Calendar ACL revocation preserves exact fixture",1,ids(resolver,unique).size());
    }

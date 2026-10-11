@@ -56,6 +56,8 @@ public final class AccessibilityInstrumentedTest {
    Rect r=node.getVisibleBounds();
    if(r.isEmpty())continue;
    String label=((node.getText()==null?"":node.getText())+" "+(node.getContentDescription()==null?"":node.getContentDescription())).trim();
+   // An empty text field has no text; Android carries its accessible name (aria-label/placeholder) as the hint, which TalkBack reads.
+   if(label.isEmpty()&&"android.widget.EditText".equals(node.getClassName())&&node.getHint()!=null)label=node.getHint().trim();
    if(node.isClickable()){actionable++;if(label.isEmpty()&&node.getChildren().stream().noneMatch(c->c.getText()!=null&&!c.getText().trim().isEmpty()))problems.add("unlabelled control at "+r.toShortString());}
    if(r.left<0||r.right>width)problems.add("clipped '"+label+"' at "+r.toShortString());
    if(previous!=null){

@@ -91,16 +91,24 @@ public final class InboxDraftInstrumentedTest {
    js("localStorage.setItem("+JSONObject.quote(SELECTION)+",JSON.stringify({kind:'none'}));localStorage.removeItem("+JSONObject.quote(SERVICE)+")");reload();
    // Exercise the production sign-in control with a closed test-APK transport;
    // a developer-only environment selector is not part of this UI contract.
-   nav("Settings");click("Agent connection");click("Sign in with Eliza Cloud");until("document.querySelector('.alpha-connection-current.alpha-cloud-account-summary button')?.textContent.includes('Sign out of Eliza Cloud')");click("Close connection settings");
-   nav("Inbox");until(button("Load Inbox"));click("Compose");input("To","literal@example.invalid");click("literal@example.invalid");input("Subject","Synthetic saved draft");input("Message","Exact native draft\nSecond line");click("Save draft locally");until("[...document.querySelectorAll('[role=status]')].some(e=>e.textContent==='Saved locally on this device')");
+   nav("Settings");click("Agent connection");click("Sign in with Eliza Cloud");// The Android account panel names the signed-in state and offers Sign out only once /api/v1/user verified the session.
+   until("document.querySelector('#connection-title')?.textContent==='Your Cloud account'&&"+button("Sign out"));click("Close connection settings");
+   // Inbox loads the signed-in mailbox by itself (the old explicit Load Inbox control is gone).
+   nav("Inbox");until(button("Fixture a"));until(button("Refresh"));click("Compose");input("To","literal@example.invalid");click("literal@example.invalid");input("Subject","Synthetic saved draft");input("Message","Exact native draft\nSecond line");click("Save draft locally");until("[...document.querySelectorAll('[role=status]')].some(e=>e.textContent==='Saved locally on this device')");
    JSONObject draft=new JSONObject(read(slot()).getString("value"));assertEquals("Exact native draft\nSecond line",draft.getString("body"));
    StringBuilder hash=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(slot().getBytes(StandardCharsets.UTF_8)))hash.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
    byte[] bytes=Files.readAllBytes(new File(context.getNoBackupFilesDir(),"connection-credentials/"+hash).toPath());assertFalse(new String(bytes,StandardCharsets.ISO_8859_1).contains("Exact native draft"));
   }else{
    JSONObject prior=new JSONObject(new String(Files.readAllBytes(backup.toPath()),java.nio.charset.StandardCharsets.UTF_8));assertNotEquals("Actual new Android process required",prior.getInt("pid"),android.os.Process.myPid());
+   // The prepare phase chose local apps, and that choice is kept across a restart: the saved sign-in is
+   // offered as "Retry saved connection" (a local read) and is not restored without the owner asking.
+   // Until then Inbox asks for Eliza Cloud and shows no draft from the signed-out state.
+   nav("Inbox");until(button("Connect Eliza Cloud"));assertEquals("false",js("Boolean("+button("Restore local draft")+")"));
+   nav("Settings");click("Agent connection");click("Retry saved connection");
+   until("document.querySelector('#connection-title')?.textContent==='Your Cloud account'&&"+button("Sign out"));click("Close connection settings");
    nav("Inbox");click("Restore local draft");until("document.querySelector('textarea[aria-label=Message]')?.value==='Exact native draft\\nSecond line'");assertEquals("\"Synthetic saved draft\"",js("document.querySelector('input[aria-label=Subject]').value"));
-   click("Discard local draft");click("Keep draft");assertFalse(read(slot()).isNull("value"));click("Discard local draft");click("Discard permanently");until(button("Load Inbox"));assertTrue(read(slot()).isNull("value"));
-   click("Load Inbox");click("Synthetic sender, Fixture reply");click("Reply");input("Message","Native reply draft");click("Save draft locally");until("[...document.querySelectorAll('[role=status]')].some(e=>e.textContent==='Saved locally on this device')");
+   click("Discard local draft");click("Keep draft");assertFalse(read(slot()).isNull("value"));click("Discard local draft");click("Discard permanently");until(button("Refresh"));assertTrue(read(slot()).isNull("value"));
+   click("Refresh");click("Synthetic sender, Fixture reply");click("Reply");input("Message","Native reply draft");click("Save draft locally");until("[...document.querySelectorAll('[role=status]')].some(e=>e.textContent==='Saved locally on this device')");
    JSONObject reply=new JSONObject(read(slot()).getString("value")).getJSONObject("reply");assertEquals("fixture-message",reply.getString("messageId"));assertEquals("fixture-thread",reply.getString("threadId"));
    click("Back from draft");click("Back to inbox");click("Fixture b");click("Compose");until("document.querySelector('textarea[aria-label=Message]')?.value===''");assertFalse(read(slot()).isNull("value"));
   }
