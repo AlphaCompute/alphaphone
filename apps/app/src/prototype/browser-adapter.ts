@@ -394,11 +394,17 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   void Browser.addListener('tabClosed',(event:Bag)=>{if(!disposed&&event.session===session&&created.has(event.id))forgetTabs([event.id]);}).then((value:any)=>{closedListener=value;}).catch(()=>{});
   void Browser.addListener('notice',(event:Bag)=>{if(!disposed&&event.session===session&&typeof event.message==='string')shell?.toast(event.message.slice(0,200));}).then((value:any)=>{noticeListener=value;}).catch(()=>{});
   // A native surface sits above the host WebView. Hide it for every host overlay.
+  // host-modal:begin
+  /** A modal host layer (a dialog opened with showModal, such as the first-run access panel, or the
+   * connection panel) makes the rest of the host inert, but Android draws the native page above the
+   * whole host WebView: left visible, the page covered the panel and stayed interactive. */
+  const hostModalOpen = (root: { querySelector(selector: string): unknown }): boolean => !!root.querySelector('dialog:modal, .alpha-connection-scrim');
+  // host-modal:end
   const update = () => {
     if(disposed)return;
     const s=state(), S=shell?.S();
     const element=document.querySelector('[data-native-browser-viewport]') as HTMLElement|null;
-    const hidden=questionReview || confirming || !s || !element || !element.isConnected || !element.getClientRects().length || S?.view!=='browser' || s.editing || s.tabsOpen || s.menu || s.lib || s.share || s.ag || s.confirm || S?.shade || S?.screen !== 'home' || ['sheet','full'].includes(S?.chat) || document.hidden;
+    const hidden=questionReview || confirming || hostModalOpen(document) || !s || !element || !element.isConnected || !element.getClientRects().length || S?.view!=='browser' || s.editing || s.tabsOpen || s.menu || s.lib || s.share || s.ag || s.confirm || S?.shade || S?.screen !== 'home' || ['sheet','full'].includes(S?.chat) || document.hidden;
     if(reading && (disposed || document.hidden || document.documentElement.hasAttribute('data-dev-background') || S?.screen!=='home' || S?.view!=='browser' || s?.tabsOpen || s?.editing || S?.shade || ['sheet','full'].includes(S?.chat)))stopReading();
     const rect=element?.getBoundingClientRect();
     const composer=document.querySelector('[aria-label="Open conversation"]')?.parentElement?.getBoundingClientRect();

@@ -60,6 +60,25 @@ public final class BrowserAutofillInstrumentedTest {
   for(AccessibilityNodeInfo node:root.findAccessibilityNodeInfosByText(SyntheticAutofillService.LABEL))if(node.isVisibleToUser())return node;
   return null;
  }
+ /**
+  * The popup is gone only when the active window has a root and that root shows no suggestion in
+  * five consecutive readings. While Android removes the popup window the active root is briefly
+  * null; a single null reading followed by one more look at the closing window failed this check
+  * about two seconds after the product had cancelled the session (logcat of the failing cycle).
+  * A popup that stays, or a root that never settles, still fails after ten seconds.
+  */
+ private boolean suggestionGone(){
+  int absent=0;long end=SystemClock.elapsedRealtime()+10000;
+  while(SystemClock.elapsedRealtime()<end){
+   AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();
+   boolean shown=false;
+   if(root!=null)for(AccessibilityNodeInfo node:root.findAccessibilityNodeInfosByText(SyntheticAutofillService.LABEL))if(node.isVisibleToUser())shown=true;
+   absent=root!=null&&!shown?absent+1:0;
+   if(absent>=5)return true;
+   SystemClock.sleep(100);
+  }
+  return false;
+ }
  private void selectSuggestion()throws Exception{
   for(int i=0;i<150;i++){AccessibilityNodeInfo node=suggestion();if(node!=null){while(node!=null&&!node.isClickable())node=node.getParent();if(node!=null&&node.performAction(AccessibilityNodeInfo.ACTION_CLICK))return;}SystemClock.sleep(100);}
   fail("Android synthetic dataset was not visibly selectable");
@@ -98,6 +117,9 @@ public final class BrowserAutofillInstrumentedTest {
    shell("settings --user "+user+" put secure autofill_service "+component);
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
     AppNavigation.liveMode();host(AppNavigation.request("Browser"));waitHost(AppNavigation.selected("Browser"));
+    // A fresh install opens the modal access panel a few seconds after launch, in the middle of the
+    // real taps below. Answer it first, as an owner does ("Not now" grants nothing).
+    AppNavigation.declineStartupAccess();
     WebViewTestDriver.withActivity(MainActivity.class,main->assertEquals("Privileged host excludes credentials",View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS,main.getBridge().getWebView().getImportantForAutofill()));
     address("https://example.com/?alpha_autofill="+UUID.randomUUID());
     childReady("location.protocol==='https:' && location.hostname==='example.com' && document.readyState==='complete'");
@@ -128,8 +150,7 @@ public final class BrowserAutofillInstrumentedTest {
     assertNotNull("Real suggestion exists before overlay cycle "+cycle,popup);
     assertTrue("New document starts a framework request in cycle "+cycle,SyntheticAutofillService.accepted.get()>previousRequests);
     click("Menu");eligibility(child,View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
-    for(int i=0;i<100&&suggestion()!=null;i++)SystemClock.sleep(100);
-    assertNull("Overlay cancels native credential suggestion in cycle "+cycle,suggestion());
+    assertTrue("Overlay cancels native credential suggestion in cycle "+cycle,suggestionGone());
     // Reload and a different HTTPS origin must never reuse the prior filled form.
     click("Reload page");childReady("location.hostname==='example.com' && document.readyState==='complete' && !document.querySelector('#alpha-password')");
     }
