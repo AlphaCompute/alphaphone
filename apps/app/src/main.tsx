@@ -51,6 +51,7 @@ import { installUseInEmailReview } from './prototype/use-in-email-review';
 import { latestRetainedDigest, subscribeRetainedDigest } from './runtime/hosted-digests';
 import { installHomeLauncher } from './prototype/home-launcher';
 import { setLocalePreferences } from './prototype/locale-time';
+import { installTextScale } from './runtime/text-scale';
 import './prototype/prototype.css';
 import './prototype/phone.css';
 installGlobalErrorRecovery();
@@ -229,6 +230,8 @@ async function mountPhone() {
   }
   document.documentElement.classList.toggle('alpha-assistant-surface', assistantSurface);
   document.documentElement.classList.toggle('standalone-app', !launcherPresentation);
+  // Large text is measured, not declared: layout rules read --alpha-text-scale (runtime/text-scale.ts).
+  installTextScale();
   if (testMocksEnabled && mock && isAndroid) {
     const { pauseLiveActivityForMock } = await import('./runtime/mock-admission');
     const root=document.getElementById('root')!;

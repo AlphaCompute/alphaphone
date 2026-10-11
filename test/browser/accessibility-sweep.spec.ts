@@ -19,7 +19,7 @@ for (const theme of ['light', 'dark'] as const) {
       await state.open(page, theme);
       const found = format([
         ...await auditTree(page),
-        ...await auditPage(page, { contrast: true, targetSize: 24, clipping: true }),
+        ...await auditPage(page, { contrast: true, targetSize: 24, clipping: true, overlap: true }),
         ...await auditTabOrder(page),
       ]);
       expect(blocking(found), blocking(found).join('\n')).toEqual([]);
@@ -28,10 +28,12 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 for (const state of STATES) {
-  test(`200% text is not clipped: ${state.name}`, async ({ page }, info) => {
+  test(`200% text is not clipped and does not overlap: ${state.name}`, async ({ page }, info) => {
     await state.open(page, 'light');
     await setTextScale(page, 2);
-    const found = format(await auditPage(page, { clipping: true }));
+    // Clipping and overlap: nothing is cut, nothing is printed over anything else, no label is
+    // split mid-word and no control sits on or is cut by another box (accessibility-audit.ts rule 7).
+    const found = format(await auditPage(page, { clipping: true, overlap: true }));
     await info.attach('truncated', { body: found.filter(line => line.startsWith('text-truncated:')).join('\n') || 'none', contentType: 'text/plain' });
     expect(blocking(found), blocking(found).join('\n')).toEqual([]);
     // Names and focusability must survive the reflow too.

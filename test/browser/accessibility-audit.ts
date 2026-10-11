@@ -66,11 +66,17 @@ export type PageAuditOptions = {
   clipping?: boolean;
   /** Smallest pointer target in CSS pixels (WCAG 2.5.8 requires 24). */
   targetSize?: number;
+  /**
+   * Check that no two pieces of readable text and no two controls are painted over each other, and
+   * that no control is cut through by a box that does not scroll (WCAG 1.4.4, 1.4.12). Measured from
+   * bounding boxes after clipping; text or a control under an opaque layer is not counted.
+   */
+  overlap?: boolean;
 };
 
 /** Structure, keyboard operability, contrast and clipping measured in the page. */
 export async function auditPage(page: Page, options: PageAuditOptions = {}): Promise<Violation[]> {
-  return page.evaluate(({ contrast, clipping, targetSize }) => {
+  return page.evaluate(({ contrast, clipping, targetSize, overlap }) => {
     const out: Array<{ rule: string; target: string; detail?: string }> = [];
     const describe = (el: Element) => {
       const layer = el.closest('[data-alpha-subview],[data-alpha-layer],[data-screen],dialog,[role=dialog]');
@@ -266,8 +272,124 @@ export async function auditPage(page: Page, options: PageAuditOptions = {}): Pro
         if (!scroller(el, 'y') && (rect.top > viewport.height - 1 || rect.bottom < 1) && getComputedStyle(el).position !== 'fixed') out.push({ rule: 'control-unreachable', target: describe(el), detail: `top ${Math.round(rect.top)} in ${viewport.height}` });
       }
     }
+    // 7. Overlap: readable text must not be printed over other readable text, a control must not
+    //    sit on another control, and a control must not be cut through by a box that cannot scroll.
+    if (overlap) {
+      type Box = { left: number; top: number; right: number; bottom: number };
+      const root = top || document.querySelector('.alpha-recovery') || document.querySelector('.os') || document.body;
+      const scrolls = (value: string) => value === 'auto' || value === 'scroll';
+      // What is left of a box once every clipping ancestor and the viewport have cut it.
+      const painted = (rect: Box, el: Element): Box | null => {
+        const box = { left: Math.max(0, rect.left), top: Math.max(0, rect.top), right: Math.min(viewport.width, rect.right), bottom: Math.min(viewport.height, rect.bottom) };
+        for (let node: Element | null = el; node && node !== document.documentElement; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          if (Number(style.opacity) < .05) return null;
+          if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+          const frame = node.getBoundingClientRect();
+          if (style.overflowX !== 'visible') { box.left = Math.max(box.left, frame.left); box.right = Math.min(box.right, frame.right); }
+          if (style.overflowY !== 'visible') { box.top = Math.max(box.top, frame.top); box.bottom = Math.min(box.bottom, frame.bottom); }
+        }
+        return box.right - box.left > 1 && box.bottom - box.top > 1 ? box : null;
+      };
+      // Hit testing skips pointer-events:none content; for the duration of the measurement
+      // everything is hit-testable so the paint order of any two boxes can be read.
+      const probe = document.createElement('style'); probe.textContent = '*{pointer-events:auto!important}'; document.head.append(probe);
+      try {
+        const opaque = (el: Element) => {
+          const style = getComputedStyle(el);
+          if (el.matches('img,video,canvas,picture,iframe') || style.backgroundImage !== 'none') return true;
+          const match = style.backgroundColor.match(/rgba?\(([^)]+)\)/);
+          const parts = match ? match[1].split(/[,\s/]+/).filter(Boolean).map(Number) : [];
+          return parts.length >= 3 && (parts.length < 4 || parts[3] >= .5);
+        };
+        // Both boxes are painted where they meet: neither is behind an opaque layer of the other's stack.
+        const together = (a: Element, b: Element, x: number, y: number) => {
+          const stack = document.elementsFromPoint(x, y);
+          const first = stack.indexOf(a), second = stack.indexOf(b);
+          if (first < 0 || second < 0) return false;
+          for (let index = Math.min(first, second); index < Math.max(first, second); index++) if (opaque(stack[index])) return false;
+          return true;
+        };
+        const meet = (a: Box, b: Box) => ({ left: Math.max(a.left, b.left), top: Math.max(a.top, b.top), right: Math.min(a.right, b.right), bottom: Math.min(a.bottom, b.bottom) });
+
+        // Text. A line's box is reduced to its em box (font size, centred): line boxes of adjacent
+        // lines overlap by design wherever the line height is below the font's content area.
+        const runs: Array<{ el: Element; text: string; size: number; box: Box }> = [];
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const el = node.parentElement; const text = (node.nodeValue || '').trim();
+          if (!el || !text || !exposed(el) || el.closest('[aria-hidden="true"],script,style,option') || el.closest(PANNABLE)) continue;
+          const size = parseFloat(getComputedStyle(el).fontSize) || 0;
+          const range = document.createRange(); range.selectNodeContents(node);
+          for (const rect of Array.from(range.getClientRects())) {
+            if (rect.width <= 1 || rect.height <= 1) continue;
+            const trim = Math.max(0, (rect.height - size) / 2);
+            const box = painted({ left: rect.left, right: rect.right, top: rect.top + trim, bottom: rect.bottom - trim }, el);
+            if (box) runs.push({ el, text, size, box });
+          }
+        }
+        const reported = new Set<string>();
+        const key = (a: Element, b: Element) => `${describe(a)}\n${describe(b)}`;
+        for (let i = 0; i < runs.length; i++) for (let j = i + 1; j < runs.length; j++) {
+          const a = runs[i], b = runs[j];
+          if (a.el === b.el) continue;
+          const shared = meet(a.box, b.box);
+          if (shared.right - shared.left <= 2 || shared.bottom - shared.top <= Math.max(2, .15 * Math.min(a.size, b.size))) continue;
+          if (!together(a.el, b.el, (shared.left + shared.right) / 2, (shared.top + shared.bottom) / 2)) continue;
+          const id = key(a.el, b.el); if (reported.has(id)) continue; reported.add(id);
+          out.push({ rule: 'text-overlap', target: describe(a.el), detail: `"${a.text.slice(0, 30)}" is printed over "${b.text.slice(0, 30)}" (${Math.round(shared.right - shared.left)}x${Math.round(shared.bottom - shared.top)})` });
+        }
+
+        // A short word in a control's label that is split across lines reads as two fragments
+        // ("Calenda" / "r"): the label needed more room than its control gave it.
+        for (const el of root.querySelectorAll(INTERACTIVE)) {
+          if (!exposed(el) || el.closest('[aria-hidden="true"]') || el.closest(PANNABLE) || el.matches('input,textarea,select')) continue;
+          const labels = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          let broken = '';
+          for (let node = labels.nextNode(); node && !broken; node = labels.nextNode()) {
+            if (!node.parentElement || !shown(node.parentElement)) continue;
+            const value = node.nodeValue || '';
+            for (const word of value.matchAll(/[\p{L}\p{N}]{2,14}/gu)) {
+              // Only whole words: a fragment of a longer unbroken string (an address, a file name) is content, not a label.
+              const before = value[word.index! - 1], after = value[word.index! + word[0].length];
+              if ((before && !/\s/.test(before)) || (after && !/[\s.,:;!?…]/.test(after))) continue;
+              const range = document.createRange(); range.setStart(node, word.index!); range.setEnd(node, word.index! + word[0].length);
+              const lines = Array.from(range.getClientRects()).filter(item => item.width > 1 && item.height > 1 && painted(item, node.parentElement!));
+              if (new Set(lines.map(item => Math.round(item.top))).size > 1) { broken = word[0]; break; }
+            }
+          }
+          if (broken) out.push({ rule: 'label-word-broken', target: describe(el), detail: `"${broken}" is split across lines` });
+        }
+
+        // Controls.
+        const controls: Array<{ el: Element; box: Box }> = [];
+        for (const el of root.querySelectorAll(INTERACTIVE)) {
+          if (!exposed(el) || el.closest('[aria-hidden="true"]') || el.closest(PANNABLE)) continue;
+          const rect = el.getBoundingClientRect(); if (!rect.width || !rect.height) continue;
+          const box = painted(rect, el.parentElement || el);
+          if (!box) continue;
+          const cutX = Math.max(box.left - rect.left, rect.right - box.right), cutY = Math.max(box.top - rect.top, rect.bottom - box.bottom);
+          // Cut by a box the user cannot scroll: part of the control is not painted and cannot be brought back.
+          let scrollable = false;
+          for (let node = el.parentElement; node; node = node.parentElement) { const style = getComputedStyle(node); if ((scrolls(style.overflowX) && node.scrollWidth > node.clientWidth) || (scrolls(style.overflowY) && node.scrollHeight > node.clientHeight)) { scrollable = true; break; } }
+          const inside = rect.left >= -1 && rect.top >= -1 && rect.right <= viewport.width + 1 && rect.bottom <= viewport.height + 1;
+          if (!scrollable && inside && (cutX > 2.5 || cutY > 2.5)) out.push({ rule: 'control-clipped', target: describe(el), detail: `${Math.round(Math.max(cutX, cutY))}px of ${Math.round(rect.width)}x${Math.round(rect.height)} is cut off` });
+          controls.push({ el, box });
+        }
+        for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
+          const a = controls[i], b = controls[j];
+          if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
+          // A label and the native control it wraps, or a field and the affordance drawn inside it, are one target.
+          if (a.el.matches('input,textarea,select') || b.el.matches('input,textarea,select')) continue;
+          const shared = meet(a.box, b.box);
+          if (shared.right - shared.left <= 4 || shared.bottom - shared.top <= 4) continue;
+          if (!together(a.el, b.el, (shared.left + shared.right) / 2, (shared.top + shared.bottom) / 2)) continue;
+          out.push({ rule: 'control-overlap', target: describe(a.el), detail: `shares ${Math.round(shared.right - shared.left)}x${Math.round(shared.bottom - shared.top)} with ${describe(b.el).slice(0, 100)}` });
+        }
+      } finally { probe.remove(); }
+    }
     return out;
-  }, { contrast: !!options.contrast, clipping: !!options.clipping, targetSize: options.targetSize || 0 });
+  }, { contrast: !!options.contrast, clipping: !!options.clipping, targetSize: options.targetSize || 0, overlap: !!options.overlap });
 }
 
 /**
