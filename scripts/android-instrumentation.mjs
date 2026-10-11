@@ -189,7 +189,6 @@ export const NOT_RUN_BY_A_RUNNER = {
   Workflow: "needs the reviewed-workflow host (workflows=true); its runner was removed in 49b1bf4c",
   WorkflowApproval: "needs the reviewed-workflow host and a response-dropping proxy (workflowApproval=true); its runner was removed in 49b1bf4c",
   WorkflowCancellation: "needs the reviewed-workflow host (workflowCancellation=true); its runner was removed in 49b1bf4c",
-  WorkflowLegacyReminderUpgrade: "runs only in the installed-upgrade verify phase after an old APK seeded a reminder; scripts/test-installed-upgrade.mjs does not name it",
   WorkflowLifecycle: "needs the reviewed-workflow host (workflowLifecycle=true); its runner was removed in 49b1bf4c",
   WorkflowMetadata: "needs the reviewed-workflow host (workflowMetadata=true); its runner was removed in 49b1bf4c",
   WorkflowSubmission: "needs the reviewed-workflow host and a response-dropping proxy (workflowSubmission=true); its runner was removed in 49b1bf4c",
