@@ -17,6 +17,9 @@
  *   - android/local-speech/runtime-manifest.json and the pinned upstream local-speech manifests:
  *     SHA-256 of the speech AAR, its native libraries per ABI, and the acquired model inputs.
  *   - upstream.lock.json: the pinned elizaOS commit.
+ * Licences (decision P-09): every component carries `alphaphone:licence-expression` (the declared
+ * expression, or "not recorded in this inventory") and `alphaphone:licence-flags` (the flags of
+ * scripts/licence-policy.mjs, or "none"). Flags are a record, never a failure of this script.
  * Not covered: the staged resident runtime payload (Bun, bundled agent packages, PGlite), which
  * exists only after `npm run agent:stage-android`; scripts/verify-packaged-runtime.py and
  * `generate-licenses.mjs --packaged-runtime` cover it for a concrete APK. This is a source-pin
@@ -26,7 +29,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {ANDROID_CLASSPATH, BROWSER_SPEECH_CONFIG, KNOWN_LICENSES, ROOT, TESSERACT_CORE_SOURCES, UNVERIFIED, fontLicense, fontNames, productionLockPackages} from './generate-licenses.mjs';
+import {ANDROID_CLASSPATH, BROWSER_SPEECH_CONFIG, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, collectNotices, fontLicense, fontNames, productionLockPackages} from './generate-licenses.mjs';
+import {classifyLicence, flagSummary} from './licence-policy.mjs';
+
+export const LICENCE_NOT_RECORDED = 'not recorded in this inventory';
 
 export const DEFAULT_OUTPUT = 'artifacts/sbom/alphaphone.cdx.json';
 const SPEECH_RUNTIME = 'android/local-speech/runtime-manifest.json';
@@ -40,7 +46,7 @@ const property = (name, value) => ({name: `alphaphone:${name}`, value: String(va
 
 function licenses(expression) {
   if (!expression) return undefined;
-  if (expression === UNVERIFIED) return [{license: {name: UNVERIFIED}}];
+  if ([UNVERIFIED, NO_FONT_LICENCE, UNKNOWN].includes(expression)) return [{license: {name: expression}}];
   if (KNOWN_LICENSES.has(expression) && !/\s/.test(expression)) return [{license: {id: expression}}];
   return [{expression}];
 }
@@ -85,6 +91,7 @@ function ocrComponents(root) {
   const pinned = readJson(root, TESSERACT_CORE_SOURCES);
   return Object.entries(pinned.cores).sort(([a], [b]) => a.localeCompare(b)).map(([file, digest]) => ({
     type: 'file', 'bom-ref': `ocr-core:${file}`, name: `${pinned.package} ${file}`, version: pinned.version, hashes: [{alg: 'SHA-256', content: digest}],
+    licenses: licenses([...new Set(pinned.components.map(component => component.license))].map(item => /\s/.test(item) ? `(${item})` : item).join(' AND ')),
     properties: [property('ships-in', 'web,apk'), property('source', TESSERACT_CORE_SOURCES),
       property('statically-linked', pinned.components.map(component => `${component.name} ${component.version} (${component.license})`).join('; '))],
   }));
@@ -111,7 +118,8 @@ function gradleComponents(root) {
     const [group, artifact, version] = coordinate.split(':');
     if (!group || !artifact || !version) throw new Error(`${ANDROID_CLASSPATH}: malformed coordinate ${coordinate}`);
     const purl = `pkg:maven/${group}/${artifact}@${version}`;
-    return {type: 'library', 'bom-ref': purl, group, name: artifact, version, purl,
+    const family = MAVEN_FAMILIES.find(item => item.exact ? group === item.prefix : group.startsWith(item.prefix));
+    return {type: 'library', 'bom-ref': purl, group, name: artifact, version, purl, licenses: licenses(family ? family.license : UNKNOWN),
       properties: [property('ships-in', 'apk'), property('hash', 'not recorded: Gradle dependency verification metadata is not enabled'),
         property('source', `${ANDROID_CLASSPATH} (${snapshot.configurations.join(', ')}; input fingerprint ${snapshot.inputFingerprint})`)]};
   });
@@ -168,6 +176,27 @@ function upstreamComponent(root) {
     properties: [property('ships-in', 'web,apk'), property('source', 'upstream.lock.json (git commit; vendor/eliza submodule)')]};
 }
 
+const expressionOf = component => {
+  const item = component.licenses?.[0];
+  return item?.expression ?? item?.license?.id ?? item?.license?.name ?? LICENCE_NOT_RECORDED;
+};
+
+/**
+ * Add the licence expression and flags to every component. npm packages and fonts take the flags
+ * of their notice entry (which also knows when a package ships no licence file); everything else
+ * is classified from its expression. A component with no recorded licence is flagged unverified.
+ */
+function withLicenceFlags(root, components) {
+  const notices = new Map(collectNotices(root, {packagedRuntime: false}).entries.map(entry => [`${entry.name}@${entry.version}`, entry.flags]));
+  const order = flags => flagSummary([{flags}]).map(group => group.flag);
+  return components.map(component => {
+    const expression = expressionOf(component);
+    const key = component['bom-ref'].startsWith('font:') ? `${component.name.replace(/ \(.*\)$/, '')}@${component.version}` : `${component.name}@${component.version}`;
+    const flags = order([...(notices.get(key) ?? []), ...(expression === LICENCE_NOT_RECORDED ? ['unverified'] : classifyLicence(expression).flags)]);
+    return {...component, properties: [...component.properties, property('licence-expression', expression), property('licence-flags', flags.join(',') || 'none')]};
+  });
+}
+
 const strip = value => Array.isArray(value) ? value.map(strip)
   : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined).map(([key, item]) => [key, strip(item)])) : value;
 
@@ -175,10 +204,10 @@ export function buildSbom(root = ROOT) {
   const pkg = readJson(root, 'package.json');
   const lockText = fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8');
   const lock = JSON.parse(lockText);
-  const components = strip([
+  const components = strip(withLicenceFlags(root, [
     ...npmComponents(root, lock), ...fontComponents(root), ...ocrComponents(root), ...browserSpeechComponents(root),
     ...gradleComponents(root), ...speechComponents(root), upstreamComponent(root),
-  ]).sort((a, b) => a['bom-ref'].localeCompare(b['bom-ref']));
+  ])).sort((a, b) => a['bom-ref'].localeCompare(b['bom-ref']));
   const refs = new Set();
   for (const component of components) {
     if (refs.has(component['bom-ref'])) throw new Error(`Duplicate SBOM component ${component['bom-ref']}`);
@@ -217,6 +246,11 @@ function main(argv) {
   fs.writeFileSync(out, text);
   const hashed = sbom.components.filter(component => component.hashes?.length).length;
   console.log(`Wrote ${out}: ${sbom.components.length} components, ${hashed} with hashes, ${sbom.components.length - hashed} without (Gradle coordinates). sha256 ${sha256(text)}`);
+  // Licence flags are warnings (decision P-09): printed, recorded per component, exit 0.
+  for (const component of sbom.components) {
+    const value = name => component.properties.find(item => item.name === `alphaphone:${name}`)?.value;
+    if (value('licence-flags') !== 'none') for (const flag of value('licence-flags').split(',')) console.warn(`LICENCE FLAG ${flag}: ${component.name}@${component.version ?? 'unversioned'} (${value('licence-expression')})`);
+  }
   return 0;
 }
 

@@ -1,21 +1,28 @@
 /**
- * Release blockers for font licences in a built web payload (web-dist or an APK's assets/public).
+ * The one licence check that is not covered by the open-source licence policy (P-09): a font in
+ * a built web payload (web-dist or an APK's assets/public) that is proprietary and has no
+ * recorded licence. Today that is the Denton typeface (owner decision A-21).
  *
- * A font is blocked when the payload's own notices mark its typeface "license unverified", or when
+ * A font is reported when the payload's own notices flag its typeface
+ * `proprietary-no-licence-recorded` (or carry the earlier "license unverified" marking), or when
  * a payload file has the exact bytes of a font listed by hash in licenses/unverified-allowlist.json
- * (so stale or regenerated notices cannot hide it). Reporting only: callers decide what a blocker
- * stops. Developer builds are not failed by it; scripts/verify-apks.mjs refuses to mark a release
- * distributable while one remains.
+ * (so stale or regenerated notices cannot hide it).
+ *
+ * The check is always run, always recorded and always printed as a LICENCE FLAG warning. Whether
+ * it also withholds `distributable` and blocks release gates is the single constant
+ * UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION in scripts/licence-policy.mjs. Developer builds are
+ * never failed by it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
+import {NO_FONT_LICENCE, UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION, UNVERIFIED} from './licence-policy.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UNVERIFIED = 'license unverified';
 const FONT_FILE = /\.(?:woff2?|ttf|otf)$/i;
 export const FONT_BLOCKER = 'unresolved-font-licence';
+export const FONT_FLAG = 'proprietary-no-licence-recorded';
 export const FONT_BLOCKER_REFERENCE = 'docs/dependency-audit.md#denton-typeface-mvp-43';
 
 function walk(root, directory = root, out = []) {
@@ -33,10 +40,13 @@ export function readUnverifiedFontHashes(root = ROOT) {
   return JSON.parse(fs.readFileSync(file, 'utf8')).entries.filter(entry => entry.sha256).map(entry => ({name: entry.name, sha256: entry.sha256}));
 }
 
+const unresolvedTypeface = entry => typeof entry?.name === 'string' && entry.name.endsWith(' typeface') &&
+  ((Array.isArray(entry.flags) && entry.flags.includes(FONT_FLAG)) || entry.license === NO_FONT_LICENCE || entry.license === UNVERIFIED);
+
 /**
  * @param {string} publicDir built web payload root
  * @param {{unverifiedFonts?: Array<{name: string, sha256: string}>}} [options]
- * @returns {Array<{blocker: string, name: string, files: string[], message: string}>}
+ * @returns {Array<{blocker: string, flag: string, name: string, files: string[], message: string}>}
  */
 export function fontLicenseBlockers(publicDir, {unverifiedFonts = readUnverifiedFontHashes()} = {}) {
   const found = new Map();
@@ -48,7 +58,7 @@ export function fontLicenseBlockers(publicDir, {unverifiedFonts = readUnverified
   let notices = [];
   try { notices = JSON.parse(fs.readFileSync(noticesFile, 'utf8')); } catch { /* a payload without readable notices is judged by its bytes */ }
   for (const entry of Array.isArray(notices) ? notices : []) {
-    if (entry?.license !== UNVERIFIED || typeof entry.name !== 'string' || !entry.name.endsWith(' typeface')) continue;
+    if (!unresolvedTypeface(entry)) continue;
     add(entry.name);
     for (const match of String(entry.source ?? '').matchAll(/^(\S+) \(sha256 [0-9a-f]{64}\)$/gm)) add(entry.name, match[1]);
   }
@@ -60,8 +70,23 @@ export function fontLicenseBlockers(publicDir, {unverifiedFonts = readUnverified
   return [...found].sort(([a], [b]) => a.localeCompare(b)).map(([name, files]) => {
     const list = [...files].sort();
     return {
-      blocker: FONT_BLOCKER, name, files: list,
+      blocker: FONT_BLOCKER, flag: FONT_FLAG, name, files: list,
       message: `${FONT_BLOCKER}: ${name}${list.length ? ` (${list.join(', ')})` : ''} has no recorded embedding licence; license it or replace it before distribution (owner decision A-21, ${FONT_BLOCKER_REFERENCE})`,
     };
   });
 }
+
+/**
+ * The record verify-apks writes for one APK payload.
+ * `items` are always reported. `blockers` are the same items only while the check blocks distribution.
+ * @param {string} publicDir
+ * @param {{blocksDistribution?: boolean, unverifiedFonts?: Array<{name: string, sha256: string}>}} [options]
+ */
+export function fontLicenceCheck(publicDir, {blocksDistribution = UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION, ...options} = {}) {
+  const items = fontLicenseBlockers(publicDir, options).map(row => row.message);
+  return {check: FONT_BLOCKER, flag: FONT_FLAG, blocksDistribution, items, blockers: blocksDistribution ? items : []};
+}
+
+/** How a flagged font item is printed: a blocker only while the constant says so. */
+export const fontLicenceLine = (message, blocksDistribution = UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION) =>
+  `${blocksDistribution ? 'RELEASE BLOCKER' : 'LICENCE FLAG (reported, not blocking)'} ${message}`;

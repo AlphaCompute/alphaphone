@@ -1,13 +1,18 @@
 // MVP-43: the Denton typeface has no recorded embedding licence (owner decision A-21).
-// These checks keep the release blocker, both exits from it, and the documented patch honest.
+// It is proprietary, so the open-source licence policy (P-09) does not cover it. It stays listed and
+// flagged proprietary-no-licence-recorded, and keeps the one separately named check
+// unresolved-font-licence. Whether that check withholds `distributable` is the single constant
+// UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION; both settings are exercised here.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {ALLOWLIST, COMMERCIAL_FONT, FONT_LICENSES, ROOT, UNVERIFIED, collectNotices, fontLicense, fontNames, sha256} from '../scripts/generate-licenses.mjs';
-import {FONT_BLOCKER, FONT_BLOCKER_REFERENCE, fontLicenseBlockers, readUnverifiedFontHashes} from '../scripts/font-license-blockers.mjs';
+import {ALLOWLIST, COMMERCIAL_FONT, FONT_LICENSES, NO_FONT_LICENCE, ROOT, UNVERIFIED, collectNotices, fontLicense, fontNames, sha256} from '../scripts/generate-licenses.mjs';
+import {FONT_BLOCKER, FONT_BLOCKER_REFERENCE, FONT_FLAG, fontLicenceCheck, fontLicenceLine, fontLicenseBlockers, readUnverifiedFontHashes} from '../scripts/font-license-blockers.mjs';
+import {UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION} from '../scripts/licence-policy.mjs';
+import {releaseBlockers} from '../scripts/release-blockers.mjs';
 
 const DENTON = 'apps/app/public/denton-300.woff2';
 const dentonBytes = fs.readFileSync(path.join(ROOT, DENTON));
@@ -26,7 +31,58 @@ function payload(t, {notices, files = {}}) {
   return dir;
 }
 
-test('the shipped public directory reports Denton as the one named font release blocker', () => {
+test('Denton stays listed, flagged proprietary and described plainly; it is never presented as open source', () => {
+  const denton = committedNotices.find(entry => entry.name === 'Denton typeface');
+  assert.equal(denton.license, NO_FONT_LICENCE);
+  assert.deepEqual(denton.flags, [FONT_FLAG]);
+  assert.equal(FONT_FLAG, 'proprietary-no-licence-recorded');
+  assert.match(denton.text, /All rights reserved/i);
+  assert.match(denton.obligations[0].note, /proprietary item, not open-source software, and no licence to embed or redistribute it is recorded/);
+  assert.match(denton.obligations[0].note, /open-source licence policy does not cover it/);
+  assert.ok(denton.source.includes(`denton-300.woff2 (sha256 ${dentonSha})`));
+  assert.ok(fs.existsSync(path.join(ROOT, DENTON)), 'the font is not removed');
+  const text = fs.readFileSync(path.join(ROOT, 'apps/app/public/licenses/THIRD_PARTY_NOTICES.txt'), 'utf8');
+  assert.match(text.split('='.repeat(78))[0], /proprietary-no-licence-recorded \(1\):\n  - Denton typeface@/);
+  // No other entry of the committed notices is a font-check item.
+  assert.deepEqual(committedNotices.filter(entry => entry.flags.includes(FONT_FLAG)).map(entry => entry.name), ['Denton typeface']);
+});
+
+test('the one constant decides whether unresolved-font-licence withholds distribution: both settings', t => {
+  assert.equal(UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION, true, 'default keeps the behaviour before P-09 for Denton only; changing it is the owner\'s decision (A-21)');
+  const dir = payload(t, {notices: committedNotices, files: {'denton-300.woff2': dentonBytes}});
+  const message = fontLicenseBlockers(dir)[0].message;
+  const row = {mode: 'release', distributable: true, testMocks: false, bundleAudit: 'passed', signed: true, runtime: 'PACKAGED', runtimeNotices: true,
+    releaseAdmission: {failures: [], blockers: [], signerMatches: true}, speechQualification: {byteMatch: true, functionalPassed: true, qualified: true}, licenceFlags: []};
+  // What verify-apks computes for `distributable`, with the same inputs it uses.
+  const distributable = check => check.blockers.length === 0;
+
+  // true: recorded, printed as a release blocker, withholds distributable, blocks every gate.
+  const blocking = fontLicenceCheck(dir, {blocksDistribution: true});
+  assert.deepEqual(blocking, {check: FONT_BLOCKER, flag: FONT_FLAG, blocksDistribution: true, items: [message], blockers: [message]});
+  assert.equal(distributable(blocking), false);
+  assert.deepEqual(releaseBlockers({...row, licenceBlockers: blocking.blockers}, {fontLicenceBlocks: true}), [message]);
+  assert.equal(fontLicenceLine(message, true), `RELEASE BLOCKER ${message}`);
+
+  // false: still run, still recorded as a flagged item, printed as a warning, and nothing is withheld or blocked.
+  const reporting = fontLicenceCheck(dir, {blocksDistribution: false});
+  assert.deepEqual(reporting, {check: FONT_BLOCKER, flag: FONT_FLAG, blocksDistribution: false, items: [message], blockers: []});
+  assert.equal(distributable(reporting), true);
+  assert.deepEqual(releaseBlockers({...row, licenceBlockers: reporting.blockers}, {fontLicenceBlocks: false}), []);
+  // A row recorded while the check blocked is not a blocker once the constant is false, and the reverse holds.
+  assert.deepEqual(releaseBlockers({...row, licenceBlockers: [message]}, {fontLicenceBlocks: false}), []);
+  assert.deepEqual(releaseBlockers({...row, licenceBlockers: [message]}, {fontLicenceBlocks: true}), [message]);
+  assert.equal(fontLicenceLine(message, false), `LICENCE FLAG (reported, not blocking) ${message}`);
+  // Either way the check must have been run and recorded.
+  for (const fontLicenceBlocks of [true, false]) assert.deepEqual(releaseBlockers({...row, licenceBlockers: undefined}, {fontLicenceBlocks}), ['font licence check was not recorded']);
+
+  // The defaults follow the constant, and a payload without the font reports nothing under either setting.
+  assert.equal(fontLicenceCheck(dir).blocksDistribution, UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION);
+  assert.deepEqual(releaseBlockers({...row, licenceBlockers: [message]}), UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION ? [message] : []);
+  const clean = payload(t, {notices: committedNotices.filter(entry => entry.name !== 'Denton typeface'), files: {'other.woff2': Buffer.from('other')}});
+  for (const blocksDistribution of [true, false]) assert.deepEqual(fontLicenceCheck(clean, {blocksDistribution}).items, []);
+});
+
+test('the shipped public directory reports Denton as the one named font check item', () => {
   assert.deepEqual(readUnverifiedFontHashes(), [{name: 'Denton typeface', sha256: dentonSha}]);
   const blockers = fontLicenseBlockers(path.join(ROOT, 'apps/app/public'));
   assert.equal(blockers.length, 1);
@@ -41,10 +97,12 @@ test('the shipped public directory reports Denton as the one named font release 
 
 test('the blocker follows the packaged bytes and notices, and clears for either owner choice', t => {
   const denton = committedNotices.find(entry => entry.name === 'Denton typeface');
-  assert.equal(denton.license, UNVERIFIED);
+  assert.equal(denton.license, NO_FONT_LICENCE);
   const others = committedNotices.filter(entry => entry !== denton);
-  // Notices say unverified.
+  // Notices flag it; a payload built before P-09 marked it "license unverified" and is still caught.
   assert.equal(fontLicenseBlockers(payload(t, {notices: committedNotices, files: {'denton-300.woff2': dentonBytes}})).length, 1);
+  for (const legacy of [{name: denton.name, version: denton.version, license: UNVERIFIED, source: denton.source, text: denton.text}, {...denton, flags: [], license: NO_FONT_LICENCE}])
+    assert.deepEqual(fontLicenseBlockers(payload(t, {notices: [...others, legacy]}), {unverifiedFonts: []}).map(row => row.files), [['denton-300.woff2']]);
   // Stale or missing notices cannot hide the bytes, wherever the file sits.
   for (const notices of [others, null]) {
     const [blocker] = fontLicenseBlockers(payload(t, {notices, files: {'assets/renamed.woff2': dentonBytes}}));
@@ -53,29 +111,42 @@ test('the blocker follows the packaged bytes and notices, and clears for either 
   // Choice (b): the face is gone from bytes and notices.
   assert.deepEqual(fontLicenseBlockers(payload(t, {notices: others, files: {'fonts/other.woff2': Buffer.from('not denton')}})), []);
   // Choice (a): a recorded licence replaces the unverified marker and the allowlist entry.
-  const licensed = [...others, {...denton, license: COMMERCIAL_FONT}];
+  const licensed = [...others, {...denton, license: COMMERCIAL_FONT, flags: [], obligations: undefined}];
   assert.deepEqual(fontLicenseBlockers(payload(t, {notices: licensed, files: {'denton-300.woff2': dentonBytes}}), {unverifiedFonts: []}), []);
-  // Other unverified items (models, runtimes) are not font blockers.
-  assert.ok(others.some(entry => entry.license === UNVERIFIED));
+  // Other flagged items (models, runtimes, copyleft and text-less packages) are not font check items.
+  assert.ok(others.some(entry => entry.license === UNVERIFIED) && others.some(entry => entry.flags.includes('copyleft-strong')));
 });
 
-test('the bundle audit reports the blocker without failing a developer build', t => {
+test('the bundle audit prints licence flags and the font check as warnings without failing a developer build', t => {
   const dir = payload(t, {notices: committedNotices, files: {
     'denton-300.woff2': dentonBytes, 'index.html': '<!doctype html>', 'build-flags.json': JSON.stringify({testMocks: false}),
   }});
   const run = spawnSync(process.execPath, [path.join(ROOT, 'scripts/audit-production-bundle.mjs'), dir], {encoding: 'utf8'});
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /^PASS /m);
-  assert.match(run.stderr, /^RELEASE BLOCKER unresolved-font-licence: Denton typeface \(denton-300\.woff2\)/m);
+  assert.match(run.stderr, new RegExp(`^${UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION ? 'RELEASE BLOCKER' : 'LICENCE FLAG \\(reported, not blocking\\)'} unresolved-font-licence: Denton typeface \\(denton-300\\.woff2\\)`, 'm'));
+  assert.match(run.stderr, /^LICENCE FLAG proprietary-no-licence-recorded: Denton typeface@[^\n]+ \(proprietary, no licence recorded\)$/m);
+  assert.match(run.stderr, /^LICENCE FLAG copyleft-strong: pdf\.js standard fonts: Liberation@/m);
+  assert.match(run.stderr, /^LICENCE FLAG unverified: Piper LJSpeech medium voice model \(int8\)@/m);
+  // Flags are warnings: nothing but the font check is ever called a blocker.
+  assert.deepEqual(run.stderr.split('\n').filter(line => line.startsWith('RELEASE BLOCKER') && !line.includes('unresolved-font-licence')), []);
 });
 
-test('verify-apks records the blocker and withholds distributable without throwing', () => {
+test('verify-apks records licence flags and the font check, and only the font check can withhold distributable', () => {
   const source = fs.readFileSync(path.join(ROOT, 'scripts/verify-apks.mjs'), 'utf8');
-  assert.match(source, /licenceBlockers = fontLicenseBlockers\(payload\.public\)\.map\(row => row\.message\)/);
+  // The font check is recorded in full; only its `blockers` (empty while the constant is false) reach `distributable`.
+  assert.match(source, /fontCheck = fontLicenceCheck\(payload\.public\);/);
+  assert.match(source, /const licenceBlockers = fontCheck\.blockers;/);
+  assert.match(source, /fontLicenceCheck: \{ check: fontCheck\.check, flag: fontCheck\.flag, blocksDistribution: fontCheck\.blocksDistribution, items: fontCheck\.items \},/);
   assert.match(source, /row\.speechQualification\.qualified === true &&\n\s+row\.licenceBlockers\.length === 0;/);
-  assert.match(source, /console\.warn\(`RELEASE BLOCKER \$\{blocker\}`\)/);
-  // Reported per row and in the manifest; never added to the per-APK failures that abort verification.
-  assert.doesNotMatch(source, /problems\.push\([^)]*licenceBlockers/);
+  // Flags are recorded per APK and printed; they are not part of the distributable expression or of any failure.
+  assert.match(source, /licenceFlags = licenceFlagRecords\(entries\);/);
+  assert.match(source, /for \(const line of flagLines\) console\.warn\(line\);/);
+  const distributable = /row\.distributable = ([\s\S]*?);\n/.exec(source)[1];
+  assert.doesNotMatch(distributable, /licenceFlags/);
+  assert.doesNotMatch(source, /problems\.push\([^)]*licence/i);
+  assert.doesNotMatch(source, /failures\.push\([^)]*licence/i);
+  assert.match(source, /console\.warn\(fontLicenceLine\(item, blocks\)\)/);
 });
 
 function scratchRoot(t) {
@@ -105,13 +176,16 @@ test('choice (a): a recorded embedding licence is data only, bound to the exact 
   const entry = result.entries.find(item => item.name === 'Denton typeface');
   assert.equal(entry.license, COMMERCIAL_FONT);
   assert.match(entry.text, /Used under a commercial licence from Example Foundry to Example Licensee\. Scope: app embedding and web embedding\. Evidence: licence reference EXAMPLE-1/);
-  // The allowlist entry must go in the same change.
+  assert.deepEqual([entry.flags, entry.obligations], [[], undefined], 'a recorded licence clears the flag');
+  // The recorded reason should go in the same change; leaving it is reported, not fatal.
   write([record], true);
-  assert.ok(collectNotices(dir).errors.some(error => error.includes('stale entry Denton typeface')));
+  assert.ok(collectNotices(dir).warnings.some(warning => warning.includes('stale entry Denton typeface')));
+  assert.deepEqual(collectNotices(dir).errors, []);
   // A record for other bytes, an incomplete record, or a scope without web embedding does not license the face.
   write([{...record, sha256: ['0'.repeat(64)]}]);
   let errors = collectNotices(dir).errors;
-  assert.ok(errors.some(error => error.startsWith('Denton typeface') && error.includes(UNVERIFIED)) && errors.some(error => error.includes(`${FONT_LICENSES}: stale entry Denton typeface`)));
+  assert.ok(errors.some(error => error.includes(`${FONT_LICENSES}: stale entry Denton typeface`)));
+  assert.deepEqual(collectNotices(dir).entries.find(item => item.name === 'Denton typeface').flags, [FONT_FLAG], 'a record for other bytes does not license the face');
   write([{...record, evidence: ''}]);
   assert.ok(collectNotices(dir).errors.some(error => error.includes('is missing evidence')));
   write([{...record, scope: 'app embedding'}]);

@@ -1,14 +1,14 @@
 {
-  "description": "Items shipped or staged whose license could not be established from shipped metadata. Listing an item here only lets generation proceed; it is not legal sign-off. Each item stays marked 'license unverified' in the notices until legal review replaces it with a verified license or removes the item.",
+  "description": "Recorded reasons for shipped or staged items whose licence could not be established from shipped metadata, and for the proprietary Denton typeface. This file gates nothing (docs/decisions.md P-09): each item is listed in the notices and flagged 'unverified' (or, for a font, 'proprietary-no-licence-recorded') whether or not it has an entry here, and the reason below is printed as its obligation note. A reason is a record, not legal sign-off. Font entries carry the exact file hash; scripts/font-license-blockers.mjs uses those hashes for the separately named unresolved-font-licence check.",
   "entries": [
     {
       "name": "Denton typeface",
       "sha256": "7e9341445b0bf2ec7f75e4a5d4dd4a677e9d2341f67ddcf766db92a21f310e05",
-      "reason": "Commercial typeface by Peregrin Studio imported from the design prototype (apps/app/src/prototype/asset-manifest.json). The font states 'All rights reserved' and names no license; an app/web embedding license must be confirmed or the face replaced before distribution."
+      "reason": "Commercial typeface by Peregrin Studio imported from the design prototype (apps/app/src/prototype/asset-manifest.json). The font states 'All rights reserved' and names no license."
     },
     {
       "name": "Piper LJSpeech medium voice model (int8)",
-      "reason": "The pinned voice model card lists the LJ Speech dataset as public domain and the piper-voices repository metadata declares MIT, but the card states no license for the trained voice itself; legal must confirm before the speech bundle ships."
+      "reason": "The pinned voice model card lists the LJ Speech dataset as public domain and the piper-voices repository metadata declares MIT, but the card states no license for the trained voice itself."
     },
     {
       "name": "Sherpa-ONNX native build dependencies",
@@ -16,7 +16,7 @@
     },
     {
       "name": "On-device elizaOS agent runtime payload",
-      "reason": "The staged runtime can ship in standard Android builds. When it is staged, Bun and the bundled agent and workflow-worker npm packages are enumerated from the prepared source; the remaining payload files (musl loader, libstdc++/libgcc_s, PGlite WebAssembly and data, PostgreSQL extensions, models) are not, and need review before any APK containing that runtime is distributed."
+      "reason": "The staged runtime can ship in standard Android builds. When it is staged, Bun and the bundled agent and workflow-worker npm packages are enumerated from the prepared source; the remaining payload files (musl loader, libstdc++/libgcc_s, PGlite WebAssembly and data, PostgreSQL extensions, models) are not."
     },
     {
       "name": "pdf.js QuickJS sandbox",
@@ -24,7 +24,7 @@
     },
     {
       "name": "ONNX Runtime Web WebAssembly (statically linked components)",
-      "reason": "The onnxruntime-web WebAssembly binary used for in-browser speech statically links third-party libraries listed in ONNX Runtime's ThirdPartyNotices.txt (pinned at v1.30.0 and shipped verbatim here). Those notices span several licenses and are not enumerated per component, so their identifiers are not checked here; legal must review before the web build is distributed."
+      "reason": "The onnxruntime-web WebAssembly binary used for in-browser speech statically links third-party libraries listed in ONNX Runtime's ThirdPartyNotices.txt (pinned at v1.30.0 and shipped verbatim here). Those notices span several licenses and are not enumerated per component, so their identifiers are not checked here."
     }
   ]
 }
