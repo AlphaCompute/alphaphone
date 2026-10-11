@@ -497,8 +497,10 @@ export async function runLeased({ options, serial, adb, timing = {}, withSeconda
             const row = instrumentationClassResults(raw, [cls]).results.find(entry => entry.class === cls);
             merged = { started: merged.started + row.started, passed: merged.passed + row.passed,
               failed: [...merged.failed, ...row.failed], ignored: [...merged.ignored, ...row.ignored],
-              // A phase that did not run (missing) or only skipped fails the phased class.
-              status: merged.status !== "passed" ? merged.status : row.status === "passed" ? "passed" : "failed" };
+              // A phase that did not run (missing) or only skipped fails the phased class. A class
+              // without phases keeps its own status: one whose every method was skipped by its
+              // gate is "skipped", as documented, and was recorded as "failed" until round 7.
+              status: merged.status !== "passed" ? merged.status : row.status === "passed" ? "passed" : spec.phases ? "failed" : row.status };
             if (row.status !== "passed") break; // Later phases depend on earlier ones.
           }
           record(cls, merged, { listed: listed.length, ...inUser, ...(spec.note ? { note: spec.note } : {}) });

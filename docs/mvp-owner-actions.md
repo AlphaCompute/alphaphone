@@ -118,11 +118,12 @@ this host runs arm64 images only):
 | 17 | Workflows, upgrade and Maps | `node scripts/android-workflow-native.mjs` (environment in the [verification guide](verification.md)); `node scripts/test-installed-upgrade.mjs` from agreed baselines; `node scripts/maps/test-native-recovery.mjs permission` | J04 (J04-5 native) | MVP-18, 31, 32, 42 |
 | 18 | On-device speech, only if A-24 keeps it required | `LocalSpeechInstrumentedTest` on arm64-v8a and on an x86_64 emulator or device through the requalification tooling in `scripts/local-speech/README.md`. No workflow runs it, and this host cannot run x86_64. | B (B-7) | MVP-23, 39 |
 
-Known obstacle for campaigns 1 and 3: branch `claude/r3-packaging` records (commit
-`0c6c68b0`) that HostedProcessRestart and HostedBackgroundWorker assert a disposable
-secondary user the plain runner never creates, and refuses them there. That change is not
-on this base, so on this source those two classes are expected to fail, and D-14 and the
-background half of F-15 have no working runner until it lands.
+Campaigns 1 and 3: HostedProcessRestart and HostedBackgroundWorker assert a disposable
+secondary user and serve results from a loopback HTTP fixture. Since round 7 the runner
+creates and removes that user itself, and both classes are registered as needing a test-mocks
+app build (any other build answers "HTTPS required"):
+`npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --test-mocks --classes HostedProcessRestart,HostedBackgroundWorker`.
+Because they need the test-mocks pair they are not default classes.
 
 ## 4. Physical-device steps
 

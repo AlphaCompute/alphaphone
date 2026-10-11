@@ -83,7 +83,11 @@ public final class AccessibilityInstrumentedTest {
     open("Home");AppNavigation.declineStartupAccess();onView(isRoot()).check(AccessibilityChecks.accessibilityAssertion());talkBackOrder(device,"Home");
     // The notification shade opens with a downward swipe from the top of the phone screen.
     Rect web=device.findObject(By.clazz("android.webkit.WebView")).getVisibleBounds();
-    device.swipe(web.centerX(),web.top+web.height()/40,web.centerX(),web.top+web.height()/2,20);
+    // The launcher flavor draws edge to edge under Android's status bar, where a swipe that starts
+    // on or just below the bar belongs to Android and opens its own shade (measured on the API 36
+    // emulator: 131 px opened Android's shade, a start further down opened Alpha's). Start 120 CSS px
+    // into the page: clear of the status bar in both flavors, and Home pulls the shade from there.
+    device.swipe(web.centerX(),web.top+Math.round(web.width()/412f*120),web.centerX(),web.top+web.height()*3/5,20);
     until("document.querySelector('[data-alpha-layer=\"shade\"]')?.getAttribute('aria-hidden')!=='true'");
     talkBackOrder(device,"Notification shade");
     device.pressBack();until("document.querySelector('[data-alpha-layer=\"shade\"]')?.getAttribute('aria-hidden')==='true'");
