@@ -27,8 +27,11 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 .alpha-shade-handle .i { width:16px; height:16px; flex-shrink:0; color:var(--mut); }
 .alpha-shade-handle:focus-visible { outline:2px solid var(--acct,#0000ff); outline-offset:2px; }
 /* The launcher draws under Android's status bar. The design reserves 44px for it; a taller bar
- * (a display cutout) pushes Home down so the handle stays clear of the bar. */
-[data-alpha-home-layout] { padding-top:max(20px,calc(var(--native-top-inset,0px) - 44px + 12px))!important; }
+ * (a display cutout) pushes Home down so the handle stays clear of the bar. The inset is in
+ * screen pixels and Home is laid out on the 412px canvas, which is scaled to the screen
+ * (--phone-scale, main.tsx): the inset and its 12px margin are divided by that scale, so the
+ * handle starts 12 screen pixels below the bar on a narrow phone as well as on a 412px one. */
+[data-alpha-home-layout] { padding-top:max(20px,calc((var(--native-top-inset,0px) + 12px) / var(--phone-scale,1) - 44px))!important; }
 /* Home cards are at least their design size and grow with their text (PRD AP-15 large font).
  * Android delivers large text as WebView text zoom, which leaves a fixed 196px box and an em
  * max-height at their authored size while the glyphs double: the title was then printed over the

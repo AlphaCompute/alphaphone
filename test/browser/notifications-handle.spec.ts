@@ -153,6 +153,21 @@ test('a taller status bar pushes the launcher handle down, clear of the system g
   await expect(panel(page)).toHaveAttribute('aria-hidden', 'false');
 });
 
+// The inset Android reports is in screen pixels; Home is laid out on a 412px canvas scaled to the
+// screen. On a phone narrower than the canvas the margin must still be measured on the screen.
+for (const width of [360, 412, 480]) {
+  test(`the launcher handle starts 12 screen pixels below any status bar on a ${width}px wide screen`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await home(page, '/?shell=launcher');
+    for (const inset of [24, 48, 56, 72, 100]) {
+      await page.evaluate(value => document.documentElement.style.setProperty('--native-top-inset', `${value}px`), inset);
+      // Screen coordinates, not the canvas's own: this is where a finger lands.
+      await expect.poll(async () => Math.round(((await handle(page).boundingBox())!.y - (await page.locator('[data-screen]').boundingBox())!.y) * 10) / 10, { message: `inset ${inset}` }).toBeGreaterThanOrEqual(inset + 12 - .5);
+      expect((await handle(page).boundingBox())!.height, `inset ${inset}`).toBeGreaterThanOrEqual(44 * Math.min(1, width / 412) - .5);
+    }
+  });
+}
+
 test('the handle keeps its target and its whole label at 200% text', async ({ page }) => {
   await home(page);
   await page.evaluate(async () => { const display = await import('/src/browser/display.ts' as string); display.installBrowserDisplay(); document.documentElement.style.setProperty('--browser-text-scale', '2'); });
