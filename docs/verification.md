@@ -140,6 +140,11 @@ own evidence; desktop screenshots cannot establish native isolation.
 
 Calendar CRUD cases run through `scripts/test-calendar-regression.mjs` with
 `--case=CalendarCrudInstrumentedTest` or `--case=CalendarAgentCrudInstrumentedTest`.
+`--case=` takes a class (every case of it) or `Class#method`. CalendarAgentCrud has two
+cases, each with its own gate and result folder: the reviewed create/read/update/delete
+method (`calendarAgent`) and `directSaveReadsBackAllDayChosenZoneAndRrule`
+(`calendarOptions`). `--case=CalendarAvailabilityInstrumentedTest` runs that whole class,
+which skips unless both calendar permissions are granted before it starts.
 Set `ALPHA_CALENDAR_TEST_SERIAL`, `ALPHA_CALENDAR_TEST_AVD`, and
 `ALPHA_CALENDAR_TEST_ABI` for the owned disposable emulator. Both distributions
 run by default; `--variant=standalone` or `--variant=launcher` selects one.
@@ -149,8 +154,15 @@ retained instrumentation and cleanup evidence.
 The native workflow campaign uses `node scripts/android-workflow-native.mjs` with
 `ANDROID_SERIAL`, `ALPHA_WORKFLOW_TEST_AVD`, `ALPHA_WORKFLOW_TEST_ABI`, and
 `ALPHA_BUILD_ARCHIVE`. The archive must contain both distributions' debug and
-instrumentation APKs plus their filename-to-SHA256 `apk-manifest.json`. Evidence
-is written to a new `ALPHA_CAMPAIGN_OUTPUT` directory beneath `test-results/`.
+instrumentation APKs plus their filename-to-SHA256 `apk-manifest.json`:
+`node scripts/build-archive.mjs test-results/<new>` makes it from the strict build, and
+`node scripts/developer-archive.mjs [--test-mocks] test-results/<new>` copies it from a
+developer build that verify-apks recorded in `artifacts/` (it admits each APK against
+`artifacts/apk-manifest.json` and writes `archive-source.json` saying it is a developer
+archive). Evidence is written to a new `ALPHA_CAMPAIGN_OUTPUT` directory beneath
+`test-results/`. `--variant=standalone|launcher` and `--phase=workflow|approval-notice`
+run part of the campaign after a failure stopped it; such a report carries `selection`
+and `selectionPassed`, and its `passed` stays false.
 Set `ALPHA_TEST_HOME_PACKAGE` when the image’s stock launcher differs from
 `com.android.launcher3` (for example, `com.google.android.apps.nexuslauncher` on
 Google APIs images). This also applies to Calendar and permission campaigns.
@@ -227,6 +239,347 @@ Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
 
+## Round 8 (2026-10-11): runner cases, fixes and hosted jobs, none run
+
+Branch `claude/r8-runner-ci`. This section records source, compile and host-runtime checks
+only. No APK was assembled, no emulator was started and no workflow was dispatched, so
+nothing below is class B or class E evidence. When this section was written the round 7
+results were the latest emulator results; the integration of this branch then ran part of
+the campaign, recorded under "Emulator results at 2961bd9e" further down, which is where
+each fix named here is shown to hold, to fail or to be still unrun.
+
+- Compiled (JDK 21, `--offline`, staged agent sources, the speech AAR used as a compile
+  input): `./gradlew :app:compileStandaloneDebugJavaWithJavac :app:compileLauncherDebugJavaWithJavac
+  :app:compileStandaloneDebugAndroidTestJavaWithJavac :app:compileLauncherDebugAndroidTestJavaWithJavac
+  -x :local-speech:preBuild -x :app:stageLocalAgentSources -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1`
+  with `-PELIZA_DEV_ALLOW_TEST_MOCKS=0` and again with `=1`: BUILD SUCCESSFUL both times.
+- CalendarTruncation (failed in round 7, "not triaged"): product defect. `AlphaCalendar.list`
+  had returned every instance with `truncated:false` since the shared calendar plugin was
+  adopted (`ab780d04`), so the documented 2,000-instance bound no longer existed and the
+  warning the test waits for could not appear. `AlphaCalendarPlugin.list` reads through
+  `CalendarRangeReader` again. `test/calendar-range-reader.test.mjs` runs that reader on the
+  JVM against a stand-in provider (2,000 returned whole, 2,001 reported incomplete, reading
+  stops at the first row past the bound). The instrumentation is unchanged and not rerun.
+- PasswordBrowserFill, `test-native-restart.mjs notes` and FilesTree (each failed once or
+  twice in round 7, "cause not established"): each has a cause read from the saved result
+  files and the source, and a fix. The causes, the fixes and the repeat commands that would
+  show them hold are in the [core loop audit](core-loop-audit.md), "Repeat runs for the round 7
+  failures". One of them changes the product: a document receipt in Notes now waits until the
+  page is visible (`test/browser/notes-document-receipt.spec.ts`).
+- Runner cases, checked against the synthetic `adb` fixtures only:
+  `scripts/test-calendar-regression.mjs` runs `directSaveReadsBackAllDayChosenZoneAndRrule`
+  with `calendarOptions=1` and the whole `CalendarAvailabilityInstrumentedTest`;
+  `scripts/developer-archive.mjs` assembles the archive `scripts/android-workflow-native.mjs`
+  reads from a verify-apks developer build, and that campaign accepts `--variant=` and
+  `--phase=`; BrowserDownload left the default class list, because on a build without test
+  mocks it can only be skipped and a skipped class fails the run.
+- Hosted jobs, linted with `actionlint` and checked by `test/ci-emulator-evidence.test.mjs`,
+  never dispatched: `.github/workflows/android-emulator.yml`
+  ([CI cost policy](ci-cost-policy.md#emulator-evidence-android-emulatoryml)).
+- Host-runtime evidence, not Android: `npm run agent:test-digest-restart` at pin `40dbe96b`
+  (the pin of this branch before it was merged with round 9, which moved the pin to
+  `13c9857598`; not repeated there), exit 0, one run ([record](local-agent-development.md#isolated-digest-process-recovery-check)).
+- Source and browser checks on this branch (class S): `npm run verify` exit 0 at `ce8488f2` (672 tests, 668
+  passed, 0 failed, 4 todo; bundle audit passed, 395 files, `testMocks=false`);
+  `ALPHA_BROWSER_TEST_PORT=6912 npm run test:browser:production` 175 passed; the Chromium
+  project for the Notes specs this round touches (`notes-document-receipt`, `mvp`,
+  `notes-document-storage`, `notes-save-failure`, `notes-status-layout`, `notes-trash`,
+  `journey-b-voice-note-actions`, `journey-j03-document-analysis`) 51 passed.
+- Review of this branch (2026-10-10; the same evidence classes, no emulator and no dispatch).
+  Two changes. The Notes failure notice ("Document operation failed. No completed export or
+  import is confirmed.") was still issued at once, so a failure that returned while the
+  system picker covered the app could be over before anyone saw it, the race the receipts
+  had; it now waits for the document to be visible too, and
+  `test/browser/notes-document-receipt.spec.ts` has that case (it fails without the change).
+  The four third-party actions the older workflows named by major tag are pinned to the
+  commits those tags resolved to (`git ls-remote`, 2026-10-10: `android-actions/setup-android`
+  v3 = v3.2.2 `9fc6c4e9`, `gradle/actions/setup-gradle` v4 = v4.4.3 `ed408507`,
+  `reactivecircus/android-emulator-runner` v2 = v2.38.0 `a421e438`, `oven-sh/setup-bun` v2 =
+  v2.2.0 `0c5077e5`), which are the commits `android-emulator.yml` already named, and
+  `test/ci-emulator-evidence.test.mjs` now requires a commit in every workflow file.
+  Checks on the reviewed tree: `npm run verify` exit 0 (673 tests, 669 passed, 0 failed, 4
+  todo; bundle audit passed, 395 files, `testMocks=false`);
+  `ALPHA_BROWSER_TEST_PORT=6932 npm run test:browser:production` 175 passed; the same eight
+  Chromium Notes specs 52 passed; `actionlint` exit 0 on the seven workflow files; the Gradle
+  compile above repeated for both flavors, app and androidTest, with test mocks off and on:
+  BUILD SUCCESSFUL twice (compile only, no APK). The digest restart check was not repeated.
+
+## Emulator results at 2961bd9e (2026-10-11, round 8 merged with round 9)
+
+Class E only (emulator instrumentation), for these exact APKs. Not distributable-build,
+physical-device, AOSP image, real-integration or user acceptance, and not evidence for any
+later source. This is the first emulator record at upstream pin `13c98575987a`. It is a
+written summary; the result files under `test-results/` are not committed. The sections below
+are earlier campaigns and are kept as history.
+
+- Source: branch `claude/r8-finish`, the round 8 packages merged with `main` at `394c4698`
+  (round 9). App APKs A were built at `2961bd9e` and ran everything below unless a row says
+  otherwise. `008ccf9d` and `f87850fa` change instrumented test source only; after each the
+  app APKs were rebuilt byte-identical and only the instrumentation APKs changed. `a326b8dd`
+  changes product source (the problem-log rejection found in this run) and `9a1ca161` test
+  source; app APKs B were built at `9a1ca161` and ran the "final" rows.
+- APKs: **developer builds with an unpackaged resident runtime, never distributable**:
+  `npm run agent:prepare -- --source-only`, then `ALPHA_ANDROID_LOW_DISK=1 npm run android:build --
+  --allow-unpackaged-runtime` (resident runtime not packaged), with an unqualified locally
+  built speech AAR (`0ce9e976…`) and its developer-override `runtime-manifest.json`, which is
+  not committed (every result file therefore says `dirty: true`). App APKs A:
+  `standalone-debug.apk` `118c2f56…f4b4fff303`, `launcher-debug.apk` `6dfb7ce8…66f4ccd5`; app
+  APKs B: `7c6d33f1…bbfaad41f2524` / `47e7c58e…b2867a2a0cb1a0`. Instrumentation APKs
+  (standalone / launcher): set 1 at `2961bd9e` `946529ad…` / `f94b0f95…`; set 2 at `008ccf9d`
+  `1b39fc2f…` / `592d58f9…`; set 3 at `f87850fa` `0037730b…` / `bc832485…`; final set at
+  `9a1ca161` `fde2847b…` / `cb45b093…`. No test-mocks pair was built, so no test-mocks class ran.
+- Emulator: AVD `r8_api36`, `system-images;android-36;default;arm64-v8a`, API 36 (Android 16
+  `BE2A.250530.026.D1` userdebug), arm64-v8a, WebView `com.android.webview` 133.0.6943.137,
+  serial `emulator-5670`. It was created by the round 8 session that stopped before recording
+  anything and was reused here; it was left running, with stock HOME `com.android.launcher3`
+  read back and no Alpha package installed. The guest was rebooted once (see the restart
+  campaigns).
+- Host load average was 15 to 40 during these runs (Chromium batches and Gradle beside them).
+- Not run: the test-mocks classes, the reading classes that need isolated-world injection
+  (no such WebView on this machine), RealClock (API 35 image), reminders, the other
+  permission scenarios, `signin` restart, rotation, the media classes, the resident campaign,
+  and every hosted job. Nothing was dispatched.
+
+### `npm run test:android:instrumentation`
+
+Results are standalone / launcher, instrumentation set 1 unless a row says otherwise.
+
+| Class | Result | Classification |
+| --- | --- | --- |
+| LauncherHome (`--home-role`, launcher only) | passed in 21 of 22 runs with app APKs A, and 3 of 3 with app APKs B (5 methods) | The one failure was a process crash, a product defect: a `crashLog` call the page made just before the activity was destroyed reached `AlphaDevicePlugin`'s stopped worker, and the `RejectedExecutionException` on the bridge thread killed the process. The problem-log methods now answer such a call with a rejection (`a326b8dd`, `test/device-plugin-diagnostics.test.mjs`); other plugins that stop a worker in `handleOnDestroy` were not reviewed for the same path. The original HOME holder was read back after every run. |
+| SettingsRoles (`--home-role`, launcher only) | with the test as round 8 wrote it: passed in 2 of 7 runs. With the final test: passed in 8 of 8 runs (app APKs A) and 3 of 3 (app APKs B) | Test defect, two conditions not awaited. Every failure was the same step of `homeRequestDeclineAndAcceptMatchRoleHolders`: after the role is accepted and a HOME key is injected, the page did not report the Home view within 20 s, with the one-instance assertions before it passing. (1) A HOME key injected before the page owner's window has input focus again starts nothing: the log shows no HOME start for the 20 s that followed. (2) The navigation helper keeps a 100 ms step pending after its target view renders; a HOME start that lands first is undone when that step finds Home and opens Settings again (with only (1) awaited the class passed 6 of 7 and the failing run had heard the HOME start). Each press now waits for window focus and for the helper to finish, and must be heard by the page as a HOME start (`9a1ca161`), which is stricter than before. Five of the first seven runs were before the guest reboot and two after. |
+| Accessibility | **failed / failed** | Open, two different steps. Standalone: `Home at 200% font: reading order goes up from 'All apps' to 'Open conversation'`. At 200% Home has three columns and four rows of apps, and at the top of the scroll the last row is drawn under and below the floating composer, so the composer reads after controls that sit lower on the screen; the last row scrolls clear of the composer. Whether Home should end above the composer at this size is a layout question that was not changed here. Launcher: the same check passes by 16 px; the class then fails at "the accessibility click action opens the panel". The handle is found by name (after the lookup fix below) and `ACTION_CLICK` is accepted, but no click reaches the page. A diagnostic build showed the same for the "Open your calendar" card, while `ACTION_FOCUS` on the handle did move page focus: on this WebView (133) through UiAutomation, `ACTION_CLICK` dispatches no click to any page control, so the step cannot pass on this image. The measured text scale (2), the Home text-overlap and label-split checks and the two swipe checks before it passed on the launcher flavor. |
+| Notifications, SettingsSystemFacts | passed / passed | Notifications now opens the panel through the handle. |
+| TextScale | passed / passed | The restart method is skipped by its gate, as designed. |
+| NoMockProduct, Shell, StartupReadiness, BrowserSignins, BrowserContinuity (default run) | passed / passed | Seven default classes per flavor; no BrowserDownload row. |
+| BrowserFlow (default run) | failed 1 of 2 runnable / same | Environment, as in round 7: `submittedSearchUsesRealProviderAndRejectsExecutableAddress` needs a live `www.google.com/search` page; the page that loaded was HTTPS and complete but not that address. The default run therefore exits 1. |
+| LocalAgentOfflineApps, NotesStorageDurability, DailyApps, ReminderLifecycle, ClockHandoff, ClockRepeatDays, HostedResultNotice, WorkflowApprovalNotice, InboxOperationJournal, MailAttachment, CameraScan | passed / passed | WorkflowApprovalNotice is the first run against the shared receipt ledger of pin `13c98575987a`. HostedResultNotice skips two methods by assumption. |
+| PasswordBrowserFill | passed / passed | Standalone 4 of 4 runs, launcher 1 of 1. The round 7 failure did not recur; four runs do not prove the race closed. |
+| FilesTree | passed / passed | Standalone 4 of 4 runs, launcher 1 of 1. Same caveat. |
+| NotesTrashBackstop | failed / failed with set 1 (8 of 9 methods); passed / passed with set 2 (9 of 9) | Test defect in a method that had never run (`unreadableStoresMakeThePermanentDeletionPassANoOp`, round 9): it wrote text that is not JSON into the pending slot, and the secure store refuses such a write. The test now asserts that refusal, the unchanged slot and that the pass erases nothing (`008ccf9d`). |
+| BrowserReadingNavigation | failed / failed | Environment: this WebView reports `JS_INJECTION_IN_FRAME_AND_WORLD=false`. Hosted job `browser-reading` is the way to run it. |
+
+### Calendar (`scripts/test-calendar-regression.mjs`)
+
+| Case | Result | Classification |
+| --- | --- | --- |
+| CalendarTruncationInstrumentedTest | passed / passed | Failed in round 7. The product fix of round 8 (`CalendarRangeReader`) holds on this image; the class is unchanged. First run on the launcher flavor. |
+| CalendarAvailabilityInstrumentedTest | passed / passed | 4 tests on each flavor. First run of the class. |
+| CalendarAgentCrudInstrumentedTest | reviewed method passed; `directSaveReadsBackAllDayChosenZoneAndRrule` (gate `calendarOptions`) failed on standalone with set 1, and both methods passed / passed with set 2 | First run of the options method. Test defect: it expected the recurring row's `DURATION` as `P3600S`; the shared calendar module writes `PT3600S`, which is what its own consumer test asserts (`008ccf9d`). |
+| CalendarRangeInstrumentedTest, CalendarFlowInstrumentedTest (5 tests), CalendarCrudInstrumentedTest (2 tests) | passed / passed | They read through the bounded `AlphaCalendar.list`. |
+
+### Campaigns from the developer archive
+
+`node scripts/developer-archive.mjs` assembled the archive from the verified developer pairs
+(set 2, and set 3 for `channels`).
+
+| Campaign | Result | Classification |
+| --- | --- | --- |
+| `test-native-restart.mjs notes` | launcher passed 3 of 3, standalone passed 1 of 1 | After the guest reboot. Before it every campaign that writes a fixture through MediaStore failed with `SQLiteException: Exception thrown by custom scalar function` from the provider's insert, on an emulator that had been up for three hours; those attempts are not counted. Three runs do not prove the round 7 timeout closed. |
+| `test-native-restart.mjs document` | standalone passed | The cancellation notice and the import receipt are still observed with the visibility-aware receipts. Launcher not run. |
+| `test-native-restart.mjs inbox` | passed / passed | Includes the round 8 step: after the restart with local apps chosen, Inbox's "Connect Eliza Cloud" panel offers "Retry saved connection" and a new sign-in and shows no account. |
+| `test-native-permissions.mjs channels` | failed / failed with set 2 (twice); passed / passed with set 3 | Test defect caused by round 8 and missed by its review: the test clicked the first visible button whose text starts with "Notifications", which since round 8 is Home's handle (Home stays laid out under Settings), so it never reached the channel page. `CrossAppNotificationsRestartInstrumentedTest` had the same selector. Both now exclude the handle (`f87850fa`). |
+| `android-workflow-native.mjs --phase=approval-notice` | 4 of 4 cases passed (2 per flavor) | A selection: `selectionPassed` true, `passed` false by design. |
+| `android-workflow-native.mjs` (WorkflowPhoneNative and approval notice, 14 cases) | failed at its first case twice with set 2; **14 of 14 passed** with app APKs B and the final set (`passed: true`) | Test defect in a class that had never run: `privateReadResultSurvivesRecreationButNeverExpandsPassiveHistory` removed its journal fixture through the page's `AlphaConnection.secureRemove` and asserted success, but that bridge refuses native-only journal slots (`RendererCredentialSlots`). The test now asserts the refusal and removes the fixture through the native store (`9a1ca161`). `deniedCalendarGrantReturnsNoEvents` passed on both flavors (B-25, J01-7). |
+
+### Found and changed in this run
+
+- `AccessibilityInstrumentedTest` looked the handle up with `findAccessibilityNodeInfosByText`,
+  which WebView's node provider answers with an empty list; it now walks the tree (`2961bd9e`).
+- The test defects named in the tables (`008ccf9d`, `f87850fa`, `9a1ca161`) and one product
+  defect, the problem-log rejection (`a326b8dd`). With app APKs B the HOME-role classes, the
+  workflow campaign and NoMockProduct, Shell, StartupReadiness, Notifications,
+  SettingsSystemFacts, WorkflowApprovalNotice and NotesTrashBackstop (both flavors, all passed)
+  ran; nothing else was repeated on them.
+- The hand-off fix `66a1a56c` was made by the earlier round 8 session from its own emulator
+  run: at the source before it SettingsRoles and LauncherHome both failed because the live
+  task was not raised. Its result files are not part of this record.
+- Still open from this run: Accessibility on both flavors (two different steps, see its row),
+  BrowserFlow's live-search method, and everything listed under "Not run".
+
+## Emulator results at 6dcdde34 (2026-10-10, round 7)
+
+Class E only (emulator instrumentation), for these exact APKs. Not distributable-build,
+physical-device, AOSP image, real-integration or user acceptance, and not evidence for any later
+source. The section below this one is the first campaign and is kept as history.
+
+- Emulators (all created for this run and deleted afterwards; stock HOME
+  `com.android.launcher3` read back before deletion, no Alpha package and no secondary user left):
+  - `r7_api36`: `system-images;android-36;default;arm64-v8a`, API 36 (Android 16
+    `BE2A.250530.026.D1` userdebug), arm64-v8a, WebView `com.android.webview` 133.0.6943.137.
+    Every row below unless it says otherwise.
+  - `r7_api35`: `system-images;android-35;default;arm64-v8a`, API 35 (`AE3A.240806.019`),
+    WebView `com.android.webview` 124.0.6367.219. RealClock only.
+  - `r7_g36`: `system-images;android-36;google_apis;arm64-v8a`, API 36, with
+    `com.google.android.webview` 145.0.7632.218 installed over its 133 from the
+    `android-37.0;google_apis` image already on this machine. The isolated-world check only.
+- APKs: **developer-override builds, never distributable**: `npm run android:build --
+  --allow-unpackaged-runtime` (resident runtime `NOT_PACKAGED`; the reviewed embedding host
+  libraries are not on the build machine) with a speech runtime installed by
+  `install-generated.py --allow-unqualified-runtime`. App APKs built at `55737f3b`:
+  `standalone-debug.apk` `d085c16d…c61f0eb`, `launcher-debug.apk` `0e14b5c9…2205cf9`;
+  test-mocks pair `57cda4aa…` / `81b580e2…`. The only later change to app source (`51a29979`)
+  affects the browser build, not Android. Instrumentation APKs were rebuilt as tests were
+  repaired, with the app APKs byte-identical: set B `ccb07e88…` / `5a224a96…` (the campaigns),
+  set C at `6dcdde34` `cbdde6cc…` / `60647098…` (the instrumentation runner, the Calendar
+  campaign and the notes rerun), test-mocks `559ae5f8…` / `da62c9db…`; RealClock ran with the
+  set built at `55737f3b` (`19fe5d0d…` / `bc3c503e…`).
+- The fixture campaigns ran from a hand-assembled directory of those APKs with a name-to-hash
+  manifest; `scripts/build-archive.mjs` needs the strict build and was not run. The resident
+  campaign (owner-held provider key) was not run.
+- Host load was 13 to 60 during these runs. On the first attempt at the launcher half the
+  emulator's `system_server` was killed by its watchdog (WindowManager blocked for 74 s) and the
+  emulator was restarted; nothing from that attempt is counted.
+
+### `npm run test:android:instrumentation`
+
+Results are standalone / launcher. Result files: `test-results/android-instrumentation/r7-main`,
+`r7-homerole`, `r7-accessibility`, `r7-mocks`, `r7-realclock-api35`, `r7-pbf-1..3`,
+`r7-webview145-reading`.
+
+| Class | Result | Classification |
+| --- | --- | --- |
+| NoMockProduct, Shell, StartupReadiness, Video, PhotosTrash, SettingsSystemFacts, NotesTrashBackstop, ClockHandoff, ClockRepeatDays, InboxOperationJournal, MailAttachment, NotesStorageDurability, ReminderLifecycle, Notifications, LocalAgentOfflineApps | passed / passed | |
+| TextScale | passed 1 of 2 / same; restart phase skipped (restart runner) | |
+| BrowserSignins | passed 5 of 6 / same; restart phase skipped (`signin` campaign, below) | |
+| BrowserContinuity | passed 1 of 3 / same; two skipped (restart runner, test-mocks) | |
+| HostedResultNotice | builders passed; posted and denied notices skipped here (`notice`, `notice-denied` campaigns, below) | |
+| NotesSecureStorage | passed 1 of 2 / same; legacy migration skipped (gate, no campaign) | |
+| DailyApps | passed 6 of 6 / passed 6 of 6 | Was failing. Test: a reminder tap is retained while the first-run sign-in panel is open and opens when it is answered; the test now asserts both. |
+| WorkflowApprovalNotice | passed / passed | Was failing. Two product defects fixed (repeated post of a decided approval kept a tap route; the receipt read the notice list before Android had listed the notice). |
+| CameraScan | passed 2 of 2 / same | Was failing. Product defect fixed (the scan model was packaged under the wrong name; see below) and three test defects (fixture PNGs counted as Photos rows, export read back with an unparsed quoted path, pages counted in compressed PDF objects). No duplicate save exists. |
+| Accessibility | passed / passed | Was failing. Test: an empty text field's accessible name is its hint, which the checker did not read; on the launcher flavor the shade swipe started under Android's status bar. |
+| FilesTree | passed / passed | The earlier standalone failure did not recur (also passed in two earlier round-7 runs); it was recorded at host load 30 to 140. Cause not established. |
+| SettingsFlow | passed / passed | Was failing on standalone. Test: the standalone flavor lists no system-only rows by design; it now asserts that and runs the battery handoff on the launcher flavor. |
+| Rotation | passed / passed | With the strict clipping rule (whole box inside the viewport and every clipping ancestor after the best scroll alignment). No clipping found. |
+| PasswordBrowserFill | failed once then passed 3 of 3 / passed | One standalone run failed its own tap-geometry precondition ("Synthetic form tap stays inside the visible browser"); not reproduced in three reruns. Cause not established. |
+| LauncherHome | not applicable / passed 4 of 4 with `--home-role` | HOME selected, cold HOME resumed, original holder restored and read back. |
+| SettingsRoles | not applicable / passed 2 of 2 with `--home-role` | Was failing. Test: Android 16's role dialog ignores Back (decline uses Cancel), the row is the node whose text is exactly the app name, and becoming HOME starts a new activity instance. |
+| BrowserFlow (flag-off) | failed 1 of 2 runnable / same | Environment: `submittedSearchUsesRealProviderAndRejectsExecutableAddress` needs a live `www.google.com/search` page; the page that loaded was HTTPS and complete but not that address (every run this round). |
+| BrowserDownload (flag-off) | skipped / skipped (test-mocks gate) | |
+| BrowserReadingNavigation, BrowserPageQuestion (3 of 4) | failed / failed | Environment: no WebView provider on this machine reports `JS_INJECTION_IN_FRAME_AND_WORLD`. 133 (API 36 default image) and 145.0.7632.218 (the newest, from the API 37 image, installed on `r7_g36`) both report false; CI's fixture uses Chromium snapshot 157.0.8083.0 (x86_64). |
+| RealClock (`--clock-exclusive`, `r7_api35`) | passed / passed | The fixture is qualified for API 35 and asserts it. It also needs AOSP Clock's notification permission, which the runner now grants. Not run on API 36. |
+| Test-mocks: BrowserDownload, ConnectionChooser, BrowserAutofill | passed / passed | BrowserAutofill's intermittent failure was the test's reading of the closing popup window (10 of 10 fresh-data runs passed after the fix; 4 of 8 failed before). |
+| Test-mocks: HostedProcessRestart, HostedBackgroundWorker | passed 3 of 3 phases, passed / same | New secondary-user phase: users 11 and 12 created, used and removed. Both classes need the test-mocks build (loopback HTTP fixture). |
+| Test-mocks: BrowserFlow | passed 4 of 5 / same | Same live-search dependency; upload, stop/reload and the error page pass. |
+| Test-mocks: BrowserReading, BrowserSensitiveReading, BrowserIsolatedReading | failed / failed | Environment: isolated-world injection (above). On a test-mocks build the sensitive-page rejections pass and the classes stop at the review dialog that needs the isolated world. "The product asks for a speech route first" was the correct refusal on a build without test mocks: their synthetic HTTP route is admitted by a test-mocks build only, and they are now registered and asserted that way. |
+
+### Fixture campaigns (fresh secondary user per run)
+
+Result files: `test-results/r7-camp/<campaign>-<flavor>`, `test-results/calendar-regression-1791688*`.
+
+| Campaign | Result (standalone / launcher) | Classification |
+| --- | --- | --- |
+| `test-native-restart.mjs signin`, `document` | passed / passed | |
+| `test-native-restart.mjs notes` | passed / failed then passed | The first launcher run timed out waiting for "Export saved and exact bytes verified." after the system picker; the rerun passed. Cause not established. |
+| `test-native-restart.mjs inbox` | passed / passed | Was failing. Test: the Android account panel names the signed-in state differently, Inbox loads the mailbox itself, and after a restart with local apps chosen the saved sign-in is offered as "Retry saved connection" in Settings, not restored. |
+| `test-native-permissions.mjs channels`, `settings`, `voice-limit`, `voice-revoke` | passed / passed | |
+| `test-native-permissions.mjs camera` | passed / passed | Was failing. Product defect fixed: a second permission dialog opened straight after "Don't allow". |
+| `test-native-permissions.mjs voice` | passed / passed | Was failing. Product defect fixed (the "Open app settings" control the denied message names was missing) and the test now signs in through the closed synthetic Cloud transport, because a build without test mocks records only through Eliza Cloud voice. |
+| `test-native-permissions.mjs notice`, `notice-denied` | passed / passed | Was failing. Test: the fixture wrote native-only result slots through the page bridge, which refuses them. |
+| `test-reminder-one-off.mjs` | passed / passed | |
+| `test-reminder-recovery.mjs` | passed / passed | First run. Reboots the emulator. |
+| `test-calendar-regression.mjs` CalendarCrud, CalendarAgentCrud, CalendarFlow, CalendarRange, CalendarCreationRecovery | passed / passed | CalendarCrud was failing. Test: the modal access panel covered the real touch, and scroll-driven animations report running forever. |
+| `test-calendar-regression.mjs` CalendarTruncation | failed / not run | First run of this class. "Calendar results incomplete" never appears. Not triaged. The runner stops at the first failure, so the launcher cases above were run one by one with `--variant=launcher --case=`. |
+| Resident campaign (`ResidentEgressRedaction`, `ResidentService`) | not run | Needs the packaged runtime and reads an owner-held provider key. |
+
+### Product defects found by these runs and fixed on this branch
+
+- The Android asset merger unpacked `ocr/eng.traineddata.gz` and dropped the suffix, so no APK
+  carried the name the scan engine requests and every Android scan ended with "The image could
+  not be read by the local scan engine". `android:sync` now protects `*.gz` web assets and
+  `verify-apks` fails an APK whose gzip assets differ from the web build.
+- A repeated post for a decided phone-step approval left a tap route behind; the approval and
+  step receipts could record "unknown" for a notice Android was about to show.
+- Closing Android's camera permission dialog with "Don't allow" restarted the preview and asked
+  again at once.
+- The denied-microphone message told the owner to choose "Open app settings", a control lost in
+  merge `344d1305`.
+- The native browser page stayed above modal host panels (the first-run access panel, the
+  connection panel) and remained interactive.
+
+### Observed and left open
+
+- Inbox's "Connect Eliza Cloud" panel offers only a new sign-in when a saved sign-in exists and
+  local apps are selected; the saved one is offered in Settings › Agent connection. Owner decision.
+- On the launcher flavor a swipe from the very top opens Android's shade and a swipe from just
+  below it opens Alpha's. Owner decision for the AOSP image.
+- At 200% font the Home card title and app labels overlap or cut (screenshots taken while
+  triaging Accessibility; the instrumentation's bounds checks do not catch it). Not fixed.
+- Accepting the HOME role starts a second `MainActivity` in the home task while the first stays
+  in its own task.
+
+### Round 8 follow-up to "Observed and left open" (source and browser tests only)
+
+Branch `claude/r8-ui-defects`. Nothing in this subsection was run on an emulator: the browser
+results are class S, and the instrumented tests named here were compiled
+(`:app:compileLauncherDebugJavaWithJavac`, `:app:compileLauncherDebugAndroidTestJavaWithJavac`,
+`:app:compileStandaloneDebugAndroidTestJavaWithJavac`) and not run. The four observations above
+stand as what the round-7 APKs do; this records what changed in source afterwards.
+
+| Round-7 observation | Classification | Change | Evidence at this source |
+| --- | --- | --- | --- |
+| Inbox's "Connect Eliza Cloud" panel offers only a new sign-in when a saved one exists | Plain defect, not an owner decision: the same saved sign-in was already offered in Settings | The Inbox panel offers "Retry saved connection" under the Settings panel's rules (`runtime/connection-ui.tsx`) | `saved-signin-retry.production.spec.ts` (flag-off bundle, stubbed Android bridge, both panels). `InboxDraftInstrumentedTest` restart phase asserts the Inbox offer; compiled, not run |
+| A top-edge swipe opens Android's shade, a swipe just below opens Alpha's | The zones are decided by the PRD and flow audit (the status shade is Android's); what stays with the owner is listed in [core loop status](core-loop-status.md#gesture-zones-and-the-notifications-panel-round-8) | Alpha's notifications open only from a visible handle on Home ([gesture zones](gesture-zones.md)) | `notifications-handle.spec.ts`, the accessibility sweeps. `AccessibilityInstrumentedTest` covers the zones; compiled, not run |
+| At 200% font the Home card title and app labels overlap or cut | Plain defect (PRD AP-15) | Home cards grow with their text, tile grids drop a column when labels stop fitting, both driven by the measured text scale (`runtime/text-scale.ts`, `phone.css`) | `large-text-overlap.spec.ts`; the overlap rules of `accessibility-audit.ts` over every retained view at 100% and 200% (`accessibility-sweep.spec.ts`, production sweep). `AccessibilityInstrumentedTest` reads the measured scale and checks Home overlap in the WebView; compiled, not run |
+| Accepting the HOME role starts a second `MainActivity` | Plain defect: two pages over one store, and the in-flight state stayed in the hidden one | The first live instance is kept and later starts are handed to it (`MainActivity`, "One live MainActivity") | `SettingsRolesInstrumentedTest`, `LauncherHomeInstrumentedTest`; compiled, not run |
+
+Other rows of the tables above, re-read for product defects:
+
+- `CalendarTruncation` ("Calendar results incomplete" never appears) is not an owner decision.
+  The class assumes "the actual native 2,000-instance cap". The shared upstream reader
+  (`plugin-native-calendar`, `CalendarPlugin.list`, read at `40dbe96bd1`) reads every instance
+  in the requested range and always answers `truncated: false`, so the 2,002 fixture rows were
+  all returned and the renderer's incomplete-result notice (`calendar-adapter.ts`) could not
+  appear. This package left it unchanged; the runner package of the same round restored the
+  bound in the product (`CalendarRangeReader`, see "Round 8" above), with the class unchanged.
+- The first-run failures recorded as "cause not established" (the launcher `notes` restart
+  campaign, `PasswordBrowserFill`, `FilesTree`) were left open by this package. The runner
+  package of the same round read a cause for each from the saved result files (see "Round 8"
+  above); none of those fixes has an emulator run.
+- Found while checking large text: in the standalone app the app library left a 44px strip of
+  Home visible above it (the library kept the launcher's status-bar offset). Fixed in
+  `phone.css`; `large-text-overlap.spec.ts` asserts the library covers the screen.
+
+Independent review of the above (same branch, source and browser tests only; no emulator). It
+changed five things:
+
+- `NotificationsInstrumentedTest` and `NotificationChannelsInstrumentedTest` opened Alpha's
+  panel with a synthetic swipe from the top band, which the product no longer answers, so both
+  would have timed out on the next emulator run. They now go to Home and click the handle.
+- The launcher handle's margin below the status bar was computed in canvas pixels against an
+  inset in screen pixels. On a screen narrower than the 412px canvas the margin shrank (under
+  8px at 360px wide with a 48px bar) and a 100px bar overlapped the handle. The rule now divides
+  by the canvas scale; `notifications-handle.spec.ts` measures it on screen at three widths.
+- The hand-off read the live instance's kind (home or standard) from the intent the instance
+  held when it was created. A relaunch is handed the last intent given to `setIntent`, where the
+  Cloud sign-in return is kept, so after a sign-in and then a relaunch (a system font-size
+  change, renderer recovery) a home-type instance was treated as standard and a later notice tap
+  or sign-in return would have been delivered without Alpha coming to the front. The kind is
+  now kept per task id. `LauncherHomeInstrumentedTest` has a method for it; compiled, not run.
+- The hand-off could repeat without end. If the bring-to-front start missed the live instance,
+  the home-type instance still finished and left the home task empty, and Android would start
+  HOME again. The process now stops handing starts off when a front start makes a new instance,
+  cannot be made, or goes unreceived three times in a row; a new start then keeps its own
+  instance, which is the two-instance state round 7 measured. Whether the front start reaches
+  the live task on a given image is still an emulator question (logcat tag `AlphaInstance`).
+- Smaller: the front-start marker extra is read without trusting a foreign parcel, and the
+  instance that hands off never removes a task it shares with the live one.
+
+The Java at the reviewed head was compiled for both flavors (app and androidTest sources) with
+plain `javac` against the Gradle cache's dependency jars and the generated classes of an existing
+build of the same base commit, not with Gradle; no APK was assembled and no lint was run on the
+review's changes. Every native statement in this subsection is still class S.
+
+Run in review (class S): `npm run verify` exit 0 (647 node tests: 643 pass, 0 fail, 4 todo;
+bundle audit `PASS web-dist`); the production Playwright project, 183 passed; in the Chromium
+project the accessibility audit, resilience and sweep specs, `large-text-*`,
+`notifications-handle`, `home-*`, `root-view-states`, `fixtures-empty-runtime`,
+`standalone-shell`, `native-insets`, `compact-viewport` and `design`, 726 passed. The rest of
+the Chromium project was not rerun in review. With the fixed card height and the fixed four
+columns put back, `large-text-overlap.spec.ts` failed 5 of 11, so the spec does detect the
+round-7 defect.
+
 ## Emulator results at 73b973a5 (2026-10-10)
 
 Class E only (emulator instrumentation). Not physical-device, AOSP image, real-integration or
@@ -235,12 +588,14 @@ user acceptance, and not evidence for any later source.
 Scope of this record. It is a written summary by the session that ran the campaign, and it is
 the only committed form of it: the runner's `results.json` files and raw logs are not in the
 repository, and the APK hashes below are abbreviated. The source ran at upstream pin `352d7a08`,
-not the current pin `40dbe96bd1`. Changes made after `73b973a5` in response to these results
-have no recorded run: the approval-notice route release and posted-notice wait, the gzip
+not the later pins `40dbe96bd1` (round 7) or `13c9857598` (current since round 9). Changes made after `73b973a5` in response to these results
+have no run in this section: the approval-notice route release and posted-notice wait, the gzip
 packaging of the scan model, the camera resume decision, the "Open app settings" control, hiding
 the native browser page under modal panels, the secondary-user phase of the runner, the role
 dialog driver in SettingsRoles, and the later test repairs. Rows marked failed or unresolved
-describe `73b973a5`; none of them is shown fixed by a run.
+describe `73b973a5`; nothing in this section shows them fixed. Their later runs, at pin
+`40dbe96bd1`, are the round 7 section above ("Emulator results at 6dcdde34"), which is the same
+kind of record: a written summary whose result files under `test-results/` are not committed.
 
 - Emulator: AVD `r3_packaging_api36`, system image `system-images;android-36;default;arm64-v8a`
   (API 36, Android 16 `BE2A.250530.026.D1` userdebug), ABI arm64-v8a, stock HOME

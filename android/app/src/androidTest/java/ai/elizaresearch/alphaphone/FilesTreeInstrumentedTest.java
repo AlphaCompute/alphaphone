@@ -21,6 +21,15 @@ public class FilesTreeInstrumentedTest {
  private String eval(String js)throws Exception{return WebViewTestDriver.evaluate(js);}
  private void until(String js)throws Exception{long end=SystemClock.elapsedRealtime()+20000;while(SystemClock.elapsedRealtime()<end){if("true".equals(eval("Boolean("+js+")")))return;SystemClock.sleep(100);}fail("Files condition: "+js+"; UI="+eval("JSON.stringify({view:document.documentElement.dataset.activeView,dialog:[...document.querySelectorAll('[role=dialog] h2,[role=dialog] p')].map(e=>e.textContent.slice(0,200)),buttons:[...document.querySelectorAll('[role=dialog] button')].slice(0,30).map(e=>({label:e.getAttribute('aria-label'),disabled:e.disabled})),status:[...document.querySelectorAll('[role=status]')].slice(0,10).map(e=>e.textContent.slice(0,200))})"));}
  private void click(String label)throws Exception{String q="document.querySelector('button[aria-label='+"+JSONObject.quote(JSONObject.quote(label))+"+']')";until(q+" && !("+q+").disabled");eval("("+q+").click()");}
+ /**
+  * The open folder's title. The adapter ignores Back, Refresh, a row tap and a new dialog while a
+  * folder operation is in flight, and the confirmation dialog closes before the listing that
+  * follows a create, rename or delete has returned. The title changes only when that listing is
+  * applied, and the adapter stops being busy in the same turn, so a step that depends on the
+  * operation being over waits for the title, not for the dialog to go.
+  */
+ private static final String FOLDER_TITLE="document.querySelector('[data-alpha-subview=\"files-folder\"] [data-alpha-app-title]')?.textContent";
+ private void untilFolder(String name)throws Exception{until(FOLDER_TITLE+"==="+JSONObject.quote(name));}
  private void input(String value)throws Exception{eval("(()=>{const e=document.querySelector('input[aria-label=\"Folder or file name\"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(value)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");}
  private AccessibilityNodeInfo find(Predicate<AccessibilityNodeInfo> predicate){AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();if(root==null)return null;ArrayDeque<AccessibilityNodeInfo> queue=new ArrayDeque<>();queue.add(root);while(!queue.isEmpty()){AccessibilityNodeInfo n=queue.removeFirst();if(n.isVisibleToUser()&&predicate.test(n))return n;for(int i=0;i<n.getChildCount();i++){AccessibilityNodeInfo c=n.getChild(i);if(c!=null)queue.add(c);}}return null;}
  private boolean press(AccessibilityNodeInfo n){for(int i=0;n!=null&&i<5;i++,n=n.getParent())if(n.isEnabled()&&n.isClickable()&&n.performAction(AccessibilityNodeInfo.ACTION_CLICK))return true;return false;}
@@ -106,8 +115,8 @@ public class FilesTreeInstrumentedTest {
     click("Choose folder");chooseFixtureFolder(folder);pickerText("Use this folder");pickerText("Allow");
     until("document.querySelector('button[aria-label='+"+JSONObject.quote(JSONObject.quote("Open "+file))+"+']')");
     String saved=context.getSharedPreferences("alpha-files-tree",0).getString("root",null);assertNotNull("Actual picker persisted its tree grant",saved);treeUri=Uri.parse(saved);Uri root=DocumentsContract.buildDocumentUriUsingTree(treeUri,DocumentsContract.getTreeDocumentId(treeUri));assertEquals(folder,name(resolver,root));
-    click("View and sort");click("New folder");input(destination);click("Create folder");until("!document.querySelector('[role=dialog]')");click("Open "+destination);
-    click("View and sort");click("Rename folder");input(renamed);click("Rename");until("!document.querySelector('[role=dialog]')");click("Back to files");
+    click("View and sort");click("New folder");input(destination);click("Create folder");until("!document.querySelector('[role=dialog]')");click("Open "+destination);untilFolder(destination);
+    click("View and sort");click("Rename folder");input(renamed);click("Rename");until("!document.querySelector('[role=dialog]')");untilFolder(renamed);click("Back to files");
     until("document.querySelector('button[aria-label='+"+JSONObject.quote(JSONObject.quote("Open "+renamed))+"+']')");
     click("Open "+file);until("document.querySelector('[data-screen]').textContent.includes("+JSONObject.quote(text)+")");
     click("Delete file");until("document.querySelector('[role=dialog]')?.textContent.includes('cannot be undone')");click("Cancel file operation");assertEquals("Cancelling deletion preserves root file",2,children(resolver,treeUri,root).size());
@@ -118,6 +127,8 @@ public class FilesTreeInstrumentedTest {
     click("Delete file");click("Delete permanently");until("!document.querySelector('[role=dialog]')");until("!document.querySelector('button[aria-label='+"+JSONObject.quote(JSONObject.quote("Open "+file))+"+']')");
     List<Uri> roots=children(resolver,treeUri,root);assertEquals(1,roots.size());assertEquals(renamed,name(resolver,roots.get(0)));assertTrue("Explicit deletion removes provider bytes",children(resolver,treeUri,roots.get(0)).isEmpty());
     click("View and sort");click("Delete empty folder");click("Delete permanently");until("!document.querySelector('[role=dialog]')");assertTrue(children(resolver,treeUri,root).isEmpty());
+    // The listing of the parent has been applied: the refresh below is not dropped as busy, and no read made before the revocation is still on its way.
+    until(FOLDER_TITLE+" && "+FOLDER_TITLE+"!=="+JSONObject.quote(renamed));
     // Revoke the actual system grant; renderer refresh must not retain authority.
     int flags=0;for(android.content.UriPermission p:resolver.getPersistedUriPermissions())if(treeUri.equals(p.getUri()))flags=(p.isReadPermission()?1:0)|(p.isWritePermission()?2:0);
     assertTrue(flags!=0);resolver.releasePersistableUriPermission(treeUri,flags);

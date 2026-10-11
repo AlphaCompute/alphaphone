@@ -163,9 +163,19 @@ public final class AlphaDevicePlugin extends Plugin {
  }
 
  private final java.util.concurrent.ExecutorService diagnosticsWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
+ /**
+  * Runs problem-log work off the bridge thread. A call that the page made just before the activity
+  * was destroyed can arrive after handleOnDestroy has stopped the worker; the executor then throws
+  * on the bridge thread and the process dies (seen once on the API 36 emulator in
+  * LauncherHomeInstrumentedTest). Such a call is answered with a rejection instead.
+  */
+ private void diagnostics(PluginCall call,Runnable work){
+  try{diagnosticsWorker.execute(work);}
+  catch(java.util.concurrent.RejectedExecutionException stopped){call.reject("Problem log is unavailable");}
+ }
  /** Local problem log: failure classes only, never messages, stacks or content. */
  @PluginMethod public void crashLog(PluginCall call){
-  diagnosticsWorker.execute(()->{
+  diagnostics(call,()->{
    try{
     try{AlphaCrashLog.collectExitReasons(getContext());}catch(Exception unavailable){/* Exit history is best effort. */}
     JSObject out=new JSObject();out.put("entries",AlphaCrashLog.read(getContext()).getJSONArray("entries"));out.put("exitHistory",Build.VERSION.SDK_INT>=Build.VERSION_CODES.R);call.resolve(out);
@@ -173,14 +183,14 @@ public final class AlphaDevicePlugin extends Plugin {
   });
  }
  @PluginMethod public void recordRendererFailure(PluginCall call){
-  diagnosticsWorker.execute(()->{try{AlphaCrashLog.recordRenderer(getContext(),call.getString("kind"),call.getString("errorClass"));call.resolve();}catch(Exception error){call.reject("Problem was not recorded");}});
+  diagnostics(call,()->{try{AlphaCrashLog.recordRenderer(getContext(),call.getString("kind"),call.getString("errorClass"));call.resolve();}catch(Exception error){call.reject("Problem was not recorded");}});
  }
  @PluginMethod public void clearCrashLog(PluginCall call){
-  diagnosticsWorker.execute(()->{try{AlphaCrashLog.clear(getContext());call.resolve();}catch(Exception error){call.reject("Problem log could not be cleared");}});
+  diagnostics(call,()->{try{AlphaCrashLog.clear(getContext());call.resolve();}catch(Exception error){call.reject("Problem log could not be cleared");}});
  }
  /** Non-secret build identity for diagnostics: variant, pin and packaged runtime hashes. */
  @PluginMethod public void diagnosticsFacts(PluginCall call){
-  diagnosticsWorker.execute(()->{
+  diagnostics(call,()->{
    try{
     JSObject out=new JSObject();
     out.put("appVersion",BuildConfig.VERSION_NAME);out.put("versionCode",BuildConfig.VERSION_CODE);

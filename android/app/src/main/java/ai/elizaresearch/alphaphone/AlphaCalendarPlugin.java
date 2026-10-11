@@ -30,6 +30,23 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
  private boolean granted(){return getPermissionState("calendar")==PermissionState.GRANTED;}
  private static JSObject status(String value){JSObject out=new JSObject();out.put("status",value);return out;}
  private boolean foreground(){return getActivity()!=null&&!getActivity().isFinishing()&&!getActivity().isDestroyed()&&getActivity().hasWindowFocus();}
+ /**
+  * The Calendar view's range read. The shared plugin's list returns every instance and always
+  * reports truncated:false; this product keeps its documented bound of
+  * CalendarRangeReader.MAXIMUM_EVENTS per read and reports when the provider held more.
+  * Statuses: ready, permission-required.
+  */
+ @Override @PluginMethod public void list(PluginCall c){
+  if(!granted()){c.resolve(status("permission-required"));return;}
+  Long begin=c.getLong("begin"),end=c.getLong("end");
+  if(begin==null||end==null||begin<0||end<=begin||end-begin>CalendarRangeReader.MAXIMUM_RANGE){c.reject("A valid calendar range of at most 370 days is required");return;}
+  try{
+   android.content.ContentResolver resolver=getContext().getContentResolver();
+   org.json.JSONObject read=CalendarRangeReader.read(resolver,begin,end);
+   JSObject value=status("ready");value.put("calendars",new ai.eliza.plugins.calendar.read.CalendarReadAccess(resolver).calendars());
+   value.put("events",read.getJSONArray("events"));value.put("truncated",read.getBoolean("truncated"));c.resolve(value);
+  }catch(Exception unavailable){c.reject("Calendar provider could not be read");}
+ }
 
  /**
   * Creates one all-day, explicitly zoned or simply recurring event on the local or a writable

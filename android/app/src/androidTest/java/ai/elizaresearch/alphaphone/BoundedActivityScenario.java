@@ -66,6 +66,17 @@ final class BoundedActivityScenario<T extends Activity> implements AutoCloseable
   observer=(candidate,event)->{
   if(candidate.getClass()!=type)return;
   record(candidate,event);
+  // The launcher flavor keeps one MainActivity: a start that arrives while one is live is handed to
+  // it, and the instance Android created for that start finishes without a page (MainActivity
+  // "One live MainActivity"). The launch then is the live instance, in whatever stage it is in.
+  if(candidate instanceof MainActivity&&((MainActivity)candidate).wasHandedOff()){
+   MainActivity live=MainActivity.liveInstance();
+   if(activity==null&&event==Stage.CREATED&&live!=null&&live.getClass()==type){
+    activity=type.cast(live);
+    try{stage=ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(live);}catch(RuntimeException unknown){stage=null;}
+   }
+   return;
+  }
   // CLEAR_TASK may report the previous instance's teardown before the new creation.
   // Only a created instance or an actually resumed singleTask reuse can be adopted.
   if((activity==null&&(event==Stage.CREATED||event==Stage.RESUMED)) || (recreating!=null&&candidate!=recreating&&event==Stage.CREATED))activity=type.cast(candidate);

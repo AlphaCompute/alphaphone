@@ -20,11 +20,12 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
   transfer and Keystore text frames; no local source patch remains (the `patches`
   directory is gone). Results recorded at the earlier pins `40dbe96bd1`, `945209d3`,
   `4148a166` and `352d7a08` are historical, and that includes every entry under
-  [current qualification evidence](#current-qualification-evidence) except its first, the
-  round 9 integration, which is the only one at the current pin. At the current pin there
-  are source and browser test results and developer APK builds without the resident runtime
-  (not distributable, not installed); no distribution APK build and no emulator or device
-  run is recorded: see MVP-08 in the
+  [current qualification evidence](#current-qualification-evidence) except its first two, the
+  round 8 and round 9 integrations, which are the only ones at the current pin. At the
+  current pin there are source and browser test results, developer APK builds without the
+  resident runtime (not distributable) and one partial emulator campaign on such builds
+  ([verification](verification.md#emulator-results-at-2961bd9e-2026-10-11-round-8-merged-with-round-9));
+  no distribution APK build and no device run is recorded: see MVP-08 in the
   [remaining-work inventory](mvp-remaining-work-2026-10-09.md).
 - Local orchestration does not imply local inference. The configured text model
   uses hosted Cerebras; Whisper/Kokoro speech has separate host and Android paths.
@@ -157,11 +158,44 @@ never stands in for another.
 
 ### Current qualification evidence
 
+Round 8 integration, 2026-10-11 UTC: pull request #392 (branch `claude/r8-finish`), the
+round 8 packages merged after round 9, upstream pin `13c9857598`. The hosted runs are at
+commit `f87850fa`; the commits after it change one Android plugin method, instrumented test
+source, one node test and documents, and the development-machine checks were repeated at
+`9a1ca161`.
+
+- Class S, hosted at `f87850fa` (Browser MVP run 38131665096): Repository verification
+  passed with 678 tests, 674 passed, 0 failed, 4 TODO, and the bundle audit passed (395
+  files, `testMocks=false`). The three Chromium shards passed 967, 970 and 974 tests (2911)
+  and failed none; 12 were skipped (host speech profile; the disclosure spec ran in that
+  profile on shard 1, 7 passed). The `production` project passed 193.
+- Class S, development machine: `npm run verify` exited 0 at `9a1ca161` (679 tests, 675
+  passed, 0 failed, 4 TODO; bundle audit 395 files, `testMocks=false`) and the `production`
+  project passed 193. The Chromium project ran in eight batches of spec files with 4 workers
+  at the merge commit `8a0c5b61`, whose browser source is that of `9a1ca161`: 2906 passed, 12
+  skipped and 5 failed in four spec files (`browser-cloud-dev`, `connection-preference-storage`,
+  `journey-c-alarms`, `local-agent-native-stream`) while Gradle and an emulator ran beside
+  them. Repeated five times each, the same specs failed at a similar rate on `main` at
+  `394c4698` on the same machine, and all passed on the hosted shards.
+- Class B, hosted at `f87850fa` (Android foundation run 38131665152): standalone and
+  launcher debug and unsigned release APKs assembled with the flag off and verified as
+  developer builds, not distributable. On a development machine
+  `npm run agent:prepare -- --source-only` and
+  `npm run android:build -- --allow-unpackaged-runtime` built and verified both flavors with
+  their instrumentation APKs and an unqualified local speech AAR: developer builds without
+  the resident runtime, not distributable.
+- Class E: one partial campaign on those developer APKs on one API 36 arm64 SDK emulator
+  ([verification](verification.md#emulator-results-at-2961bd9e-2026-10-11-round-8-merged-with-round-9)).
+  It is not evidence for a distributable build or a device. Open from it: Accessibility
+  fails on both flavors and BrowserFlow fails on its live-search method; the test-mocks
+  classes, the reading classes and the hosted jobs did not run.
+- Classes I, R and D: none.
+
 Round 9 integration, 2026-10-11 UTC: pull request #391 (branch `claude/r9-integration`),
 upstream pin `13c9857598`. The hosted runs and `npm run verify` ran at commit `c0b19147`,
 the other development-machine runs at `c0b19147` or `3aeb9f99`; those two commits and the
-one that carries this entry differ only in documentation. It is the only entry at the
-current pin.
+one that carries this entry differ only in documentation. With the round 8 entry above it
+is one of the two entries at the current pin.
 
 - Class S, hosted (Browser MVP run 38118499274): Repository verification passed with 644
   tests, 640 passed, 0 failed, 0 skipped, 4 TODO, and the bundle audit passed (395 files,
@@ -222,8 +256,13 @@ otherwise.
   there as failing before save/unlock and has not been re-run. A campaign on an
   API 36 arm64 emulator is summarized in [verification](verification.md#emulator-results-at-73b973a5-2026-10-10):
   source `73b973a5` at the earlier pin `352d7a08`, developer-override APKs, results mixed
-  with several failures unresolved, and no raw result files committed. It is historical
-  for the same reason: the fixes made after it have no recorded run.
+  with several failures unresolved, and no raw result files committed. It is historical:
+  the fixes made after it were run in a second campaign (round 7), summarized in
+  [verification](verification.md#emulator-results-at-6dcdde34-2026-10-10-round-7): source
+  `6dcdde34` at the current pin, developer-override APKs on owned API 35 and 36 arm64
+  emulators, again a written summary with no raw result files committed. That section lists
+  what passed, what failed and what did not run; it is class E for those APKs only, not
+  for a distributable build and not for any later source.
 - CI: no passing run of the `native` or `recovery-ui` job of
   `.github/workflows/resident-android.yml` is recorded for the current source.
 - Classes I, R and D: none. No AOSP image has been booted, no real account or provider

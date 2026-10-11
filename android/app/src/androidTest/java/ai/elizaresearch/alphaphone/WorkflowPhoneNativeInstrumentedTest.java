@@ -40,7 +40,11 @@ public final class WorkflowPhoneNativeInstrumentedTest {
     scenario.recreate();JSONObject retained=call("Capacitor.Plugins.AlphaActionJournal.get("+binding+")").getJSONObject("entry");assertEquals(content,retained.getJSONObject("result").getJSONObject("readResult").getJSONArray("notes").getJSONObject(0).getString("text"));assertEquals(operation,retained.getString("operationId"));
     assertTrue("Recovered entry cannot execute again",call("Capacitor.Plugins.AlphaActionJournal.markApplying("+new JSONObject(binding.toString()).put("attemptId",UUID.randomUUID().toString())+")").has("error"));
     finish.getJSONObject("result").getJSONObject("readResult").getJSONArray("notes").getJSONObject(0).put("text","changed");assertTrue(call("Capacitor.Plugins.AlphaActionJournal.finish("+finish+")").has("error"));
-   }catch(Exception|AssertionError failure){primary=failure;throw failure;}finally{try{for(String slot:new String[]{entrySlot,indexSlot}){assertFalse(call("Capacitor.Plugins.AlphaConnection.secureRemove({slot:"+JSONObject.quote(slot)+"})").has("error"));for(String suffix:new String[]{"",".bak",".new"})assertFalse(new File(folder,sha(slot)+suffix).exists());}}catch(Exception|AssertionError cleanup){if(primary!=null)primary.addSuppressed(cleanup);else throw cleanup;}}
+   }catch(Exception|AssertionError failure){primary=failure;throw failure;}finally{try{
+    // Journal slots are native-only (RendererCredentialSlots): the page's secure-storage bridge must
+    // refuse to remove them, so the fixture is removed through the native store the journal uses.
+    AlphaCredentialStore nativeStore=new AlphaCredentialStore(InstrumentationRegistry.getInstrumentation().getTargetContext());
+    for(String slot:new String[]{entrySlot,indexSlot}){assertTrue("The page cannot remove a native journal slot",call("Capacitor.Plugins.AlphaConnection.secureRemove({slot:"+JSONObject.quote(slot)+"})").has("error"));nativeStore.removeCredentialSlot(slot);for(String suffix:new String[]{"",".bak",".new"})assertFalse(new File(folder,sha(slot)+suffix).exists());}}catch(Exception|AssertionError cleanup){if(primary!=null)primary.addSuppressed(cleanup);else throw cleanup;}}
   }
  }
  @Test public void deniedCalendarGrantReturnsNoEvents()throws Exception{

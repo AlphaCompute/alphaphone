@@ -46,7 +46,11 @@ Open items:
   (`journey-core-loops.production.spec.ts`, stubbed bridge). Restoring a saved remote conversation on reconnect is covered with a
   controlled transport by `chat-continuity.spec.ts`, not by this journey, and no real
   remote or Cloud agent is exercised.
-- Spoken requests are not part of this journey (see B for recording).
+- One spoken request is part of this journey: a synthetic microphone (a Web Audio oscillator
+  through the browser's real recorder) and the closed Cloud transcription fixture; the request
+  is transcribed, sent once, answered once and read back, and silence sends nothing (class S).
+  A physically spoken request, microphone quality and a real transcription service are not
+  exercised (see B for recording).
 
 ## B. Voice → note → calendar event and reminder (J02)
 
@@ -312,6 +316,31 @@ Spec: `journey-j05-web-research-note.spec.ts` (two serial tests)
 | F | A saved review could still be sent after a reload with the edit only in the retained copy, or after the email was moved to another From account and sent there | product bug | Fixed in `runtime/inbox-operation.ts` and `inbox-provider-controls.ts`: a review is bound to its local draft and to the exact content in the composer when Send is confirmed (`journey-f-reviewed-send.spec.ts`, `scripts/test-inbox-sent-cleanup.mjs`) |
 | F | A message listed twice in one provider page was shown twice | product bug | Fixed in `inbox-cloud-adapter.ts` (`journey-f-reviewed-send.spec.ts`) |
 | B | An agent update to an all-day event was saved with instants that are not whole dates | product bug | Refused before review in `browser/calendar.ts` (`calendar-agent-all-day-review.spec.ts`) |
+
+## Gesture zones and the notifications panel (round 8)
+
+Behaviour and tests are in [gesture zones](gesture-zones.md). The top-edge swipe is Android's
+and Alpha's notifications open only from the "Notifications" handle on Home; that follows the
+PRD ("Android status shade … is OS/role work, not CSS inside a launcher") and the flow audit
+(F14: "not a replacement system shade"), so it was implemented, not decided here.
+
+Owner decisions this leaves open. Neither is decided and the current behaviour stays until one
+is recorded in [decisions](decisions.md#pending-owner-decisions):
+
+| Question | Options | Current behaviour |
+| --- | --- | --- |
+| On the AOSP image, where do Alpha's own notices and the quick-settings tiles live? | (a) In Alpha's panel on Home, as now. (b) In Android's shade, through a SystemUI change in the image; Alpha's panel is removed. (c) Both. | (a). The panel lists Alpha's own notices, and on the launcher flavor the tiles that open Android's settings pages. |
+| Should a downward swipe on Alpha Home open Android's shade, as stock launchers do? | (a) No Home swipe; the top edge only. (b) Home swipe expands Android's shade (needs `EXPAND_STATUS_BAR`). | (a). A downward swipe on Home away from the handle does nothing. |
+
+The remaining "Still open" notes in this document, re-read in round 8 for plain defects:
+
+| Note | Class |
+| --- | --- |
+| Reminder deletion from the detail page is immediate | Owner decision A-25 (reminders: review before deletion or not). Not changed. |
+| A saved local draft that is an older version of the sent email is kept and offered | By design: the draft does not hold the sent content, so removing it would delete text the owner never sent. Not a defect. |
+| The Maps "Back to event" control is not offered during active guidance | By design: leaving guidance is its own explicit action. Not a defect. |
+| Device-calendar events are not linked to their note on Android | NEEDS upstream, as recorded above. |
+| The contract documents do not describe the note back-reference | Documentation owed by the contract's owner. Not product behaviour. |
 
 ## What no browser journey can establish
 

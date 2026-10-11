@@ -61,3 +61,23 @@ test('workflow transport failure stops owned packages before cleanup',()=>{
 test('workflow retains its fixture on uncertain termination',()=>{
  const r=run('stop-failure');assert.notEqual(r.code,0);assert.equal(r.record.results[0].userLifecycle.cleanupDeferred,true);assert.equal(r.state.created,true);assert.equal(r.commands.filter(a=>a[0]==='uninstall').length,0);
 });
+
+test('a selected variant and phase run only those cases and never read as the whole campaign',()=>{
+ const r=exercise('pass','workflow',['--variant=launcher','--phase=workflow']);assert.equal(r.code,0,r.stderr);
+ assert.deepEqual(r.record.selection,{variants:['launcher'],phases:['workflow']});assert.equal(r.record.selectionPassed,true);
+ assert.equal(r.record.passed,false,'the whole campaign did not run');
+ assert.equal(r.record.results.length,5);assert.ok(r.record.results.every(row=>row.variant==='launcher'&&row.phase==='workflow'&&row.passed&&row.userLifecycle.removed));
+ const calls=r.commands.filter(a=>a.includes('instrument')).map(a=>a[a.indexOf('class')+1]);assert.equal(calls.length,5);
+ assert.ok(calls.includes('ai.elizaresearch.alphaphone.WorkflowPhoneNativeInstrumentedTest#deniedCalendarGrantReturnsNoEvents'));
+ // The denied case is the only one whose Calendar permissions are revoked, before it starts.
+ const denied=r.commands.findIndex(a=>a.includes('instrument')&&a[a.indexOf('class')+1].endsWith('#deniedCalendarGrantReturnsNoEvents'));
+ const before=r.commands.slice(0,denied).filter(a=>a.includes('revoke')||a.includes('grant')).slice(-2);
+ assert.deepEqual(before.map(a=>[a.includes('revoke'),a.at(-1)]),[[true,'android.permission.READ_CALENDAR'],[true,'android.permission.WRITE_CALENDAR']]);
+ const deniedCall=r.commands[denied];assert.equal(deniedCall[deniedCall.indexOf('workflowPhoneDenied')+1],'1');assert.ok(!deniedCall.includes('workflowPhoneNative'));
+ assert.deepEqual([r.record.phases.workflow.expected,r.record.phases.workflow.passed,r.record.phases.workflow.complete],[10,5,false]);
+ assert.ok(r.record.phases['approval-notice'].cases.every(row=>row.status==='not-run'));
+ assert.equal(r.state.user,'0');assert.equal(r.state.created,false);assert.deepEqual(r.state.files,{});
+});
+test('an unknown or repeated selection is refused before the emulator is touched',()=>{
+ for(const extra of [['--variant=tablet'],['--phase=notice'],['--phase=workflow','--phase=workflow'],['--all']]){const r=exercise('pass','workflow',extra);assert.notEqual(r.code,0,extra.join(' '));assert.equal(r.commands.length,0,extra.join(' '));assert.equal(r.record,null);}
+});

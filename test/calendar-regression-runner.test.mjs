@@ -27,3 +27,39 @@ for(const [kind,method] of [['agent','reviewedNativeCreateReadUpdateDeleteAndSta
   const r=exercise('wrong-method',kind);assert.notEqual(r.code,0);assert.equal(r.record.passed,false);assert.equal(r.state.created,false);assert.match(r.log,/unrequestedMethod/);
  });
 }
+
+test('Calendar options case passes calendarOptions=1 to exactly directSaveReadsBackAllDayChosenZoneAndRrule and keeps its own result folder',()=>{
+ const r=exercise('pass','options');assert.equal(r.code,0,r.stderr);assert.equal(r.record.passed,true);
+ assert.equal(r.record.testMethod,'directSaveReadsBackAllDayChosenZoneAndRrule');assert.equal(r.record.gate,'calendarOptions');
+ assert.deepEqual(Object.keys(r.records),['standalone-CalendarAgentCrudInstrumentedTest-directSaveReadsBackAllDayChosenZoneAndRrule']);
+ const instruments=r.commands.filter(a=>a.includes('instrument'));assert.equal(instruments.length,1);const instrument=instruments[0];
+ assert.equal(instrument[instrument.indexOf('class')+1],'ai.elizaresearch.alphaphone.CalendarAgentCrudInstrumentedTest#directSaveReadsBackAllDayChosenZoneAndRrule');
+ assert.equal(instrument[instrument.indexOf('calendarOptions')+1],'1');assert.ok(!instrument.includes('calendarAgent'),'the reviewed-CRUD gate belongs to the other method');
+ const grants=r.commands.filter(a=>a.includes('grant'));assert.equal(grants.length,2);assert.ok(grants.every(a=>a[a.indexOf('--user')+1]==='10'));
+ assert.equal(r.state.created,false);assert.equal(r.state.user,'0');
+});
+test('Calendar options case rejects a different method and a skipped one',()=>{
+ for(const mode of ['wrong-method','skipped']){const r=exercise(mode,'options');assert.notEqual(r.code,0,mode);assert.equal(r.record.passed,false,mode);assert.equal(r.state.created,false,mode);}
+});
+test('Selecting CalendarAgentCrud by class runs the reviewed method and then the options method, each with its own gate and folder',()=>{
+ const r=exercise('pass','agent-class');assert.equal(r.code,0,r.stderr);
+ assert.deepEqual(Object.keys(r.records),['standalone-CalendarAgentCrudInstrumentedTest','standalone-CalendarAgentCrudInstrumentedTest-directSaveReadsBackAllDayChosenZoneAndRrule']);
+ assert.ok(Object.values(r.records).every(record=>record?.passed===true));
+ const selected=r.commands.filter(a=>a.includes('instrument')).map(a=>[a[a.indexOf('class')+1].split('#')[1],a.includes('calendarAgent'),a.includes('calendarOptions')]);
+ assert.deepEqual(selected,[['reviewedNativeCreateReadUpdateDeleteAndStaleRevision',true,false],['directSaveReadsBackAllDayChosenZoneAndRrule',false,true]]);
+ assert.equal(r.state.created,false);assert.equal(r.state.user,'0');
+});
+test('Calendar availability runs the whole class with both calendar permissions granted in its own user',()=>{
+ const r=exercise('pass','availability');assert.equal(r.code,0,r.stderr);assert.equal(r.record.passed,true);assert.equal(r.record.expectedTests,4);
+ assert.equal(r.record.result.variants[0].instrumentation.totalTests,4);
+ const instrument=r.commands.find(a=>a.includes('instrument'));
+ assert.equal(instrument[instrument.indexOf('class')+1],'ai.elizaresearch.alphaphone.CalendarAvailabilityInstrumentedTest','no method is selected: every test of the class must run');
+ const grants=r.commands.filter(a=>a.includes('grant'));
+ assert.deepEqual(grants.map(a=>a.at(-1)).sort(),['android.permission.READ_CALENDAR','android.permission.WRITE_CALENDAR']);
+ assert.ok(grants.every(a=>a[a.indexOf('--user')+1]==='10'&&a.includes('ai.elizaresearch.alphaphone')));
+ assert.ok(r.commands.findIndex(a=>a.includes('grant'))<r.commands.findIndex(a=>a.includes('instrument')),'granted before the class starts, or it skips');
+ assert.equal(r.state.created,false);assert.equal(r.state.user,'0');
+});
+test('Calendar availability rejects a run in which a method is missing or the class was skipped',()=>{
+ for(const mode of ['missing-method','skipped']){const r=exercise(mode,'availability');assert.notEqual(r.code,0,mode);assert.equal(r.record.passed,false,mode);}
+});

@@ -39,6 +39,51 @@ test('hidden focus, broken references, small targets and low contrast are report
   expect(format(await auditPage(page, { contrast: true, targetSize: 24 }))).toEqual([]);
 });
 
+test('text printed over text, stacked or cut controls and labels split mid-word are reported', async ({ page }) => {
+  await page.setViewportSize({ width: 400, height: 400 });
+  // The round-7 Home card at 200% text: a title too tall for its fixed box, printed over the time
+  // above it. A four-column tile whose one-word label breaks after its seventh letter. Two buttons
+  // on the same pixels. A button cut through by a box that does not scroll.
+  await load(page, `<div class="os" style="position:relative;width:400px;height:400px">
+    <div style="position:absolute;left:0;top:0;width:200px;height:60px">
+      <span id="time" style="display:block;font-size:14px;line-height:18px">3:00 PM</span>
+      <div id="title" style="font-size:40px;line-height:40px;margin-top:-22px">Design review</div>
+    </div>
+    <button id="tile" style="position:absolute;left:0;top:140px;width:60px;padding:0;border:0;font-size:24px;overflow-wrap:anywhere">Calendar</button>
+    <button id="under" style="position:absolute;left:220px;top:0;width:100px;height:44px">Under</button>
+    <button id="over" style="position:absolute;left:260px;top:10px;width:100px;height:44px;background:transparent">Over</button>
+    <div style="position:absolute;left:0;top:260px;width:200px;height:20px;overflow:hidden"><button id="cut" style="height:44px;width:120px;padding:0;border:0"><span style="display:block;height:44px"></span></button></div>
+  </div>`);
+  const found = format(await auditPage(page, { overlap: true }));
+  expect(rules(found)).toEqual(['control-clipped', 'control-overlap', 'label-word-broken', 'text-overlap']);
+  expect(found.find(line => line.startsWith('text-overlap'))).toMatch(/3:00 PM.*Design review|Design review.*3:00 PM/);
+  expect(found.find(line => line.startsWith('label-word-broken'))).toContain('"Calendar" is split across lines');
+  expect(found.find(line => line.startsWith('control-clipped'))).toContain('id="cut"');
+  expect(found.filter(line => line.startsWith('control-overlap'))).toHaveLength(1);
+
+  // The same content laid out with room: the card grows with its title, the tile is wide enough,
+  // the buttons sit side by side and the clipped row scrolls. Tight line heights, a label that
+  // wraps between words, a long unbroken address, a field with its clear button, text under an
+  // opaque sheet and text scrolled out of a list are not defects.
+  await load(page, `<div class="os" style="position:relative;width:400px;height:400px">
+    <div style="position:absolute;left:0;top:0;width:200px">
+      <span style="display:block;font-size:14px;line-height:18px">3:00 PM</span>
+      <div style="font-family:serif;font-size:40px;line-height:1.02">Design review</div>
+      <span style="display:block;font-size:14px;line-height:1.1">Room 4</span>
+    </div>
+    <button style="position:absolute;left:0;top:140px;width:130px;padding:0;border:0;font-size:24px;overflow-wrap:anywhere">Calendar</button>
+    <button style="position:absolute;left:140px;top:140px;width:60px;padding:0;border:0;font-size:16px">All apps</button>
+    <button style="position:absolute;left:210px;top:140px;width:90px;padding:0;border:0;font-size:14px;overflow-wrap:anywhere">https://a-very-long-host.example/path</button>
+    <button style="position:absolute;left:220px;top:0;width:80px;height:44px">Left</button>
+    <button style="position:absolute;left:300px;top:0;width:80px;height:44px">Right</button>
+    <label style="position:absolute;left:0;top:220px;width:200px;height:44px"><input aria-label="Search" style="width:200px;height:44px;box-sizing:border-box"><button aria-label="Clear" style="position:absolute;right:0;top:0;width:44px;height:44px">x</button></label>
+    <div style="position:absolute;left:0;top:280px;width:200px;height:44px;overflow-y:auto"><button style="height:44px;width:120px">First</button><button style="display:block;height:44px;width:120px">Second</button><p style="margin:0">Scrolled text</p></div>
+    <p style="position:absolute;left:220px;top:300px;margin:0">Behind the sheet</p>
+    <div style="position:absolute;left:210px;top:290px;width:180px;height:60px;background:#fff"><p style="margin:10px">On the sheet</p></div>
+  </div>`);
+  expect(format(await auditPage(page, { overlap: true }))).toEqual([]);
+});
+
 test('clipped text, spilling labels and unreachable controls are reported; ellipsis is separate', async ({ page }) => {
   await page.setViewportSize({ width: 400, height: 300 });
   await load(page, `<div class="os" style="position:relative;width:400px;height:300px;overflow:hidden">

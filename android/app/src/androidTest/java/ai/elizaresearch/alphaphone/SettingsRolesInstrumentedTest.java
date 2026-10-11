@@ -54,13 +54,76 @@ public final class SettingsRolesInstrumentedTest {
  private void back(){long t=SystemClock.uptimeMillis();for(int action:new int[]{KeyEvent.ACTION_DOWN,KeyEvent.ACTION_UP})ui().injectInputEvent(new KeyEvent(t,SystemClock.uptimeMillis(),action,KeyEvent.KEYCODE_BACK,0),true);}
  private static boolean click(AccessibilityNodeInfo node){for(AccessibilityNodeInfo n=node;n!=null;n=n.getParent())if(n.isClickable())return n.performAction(AccessibilityNodeInfo.ACTION_CLICK);return false;}
 
+ // One live MainActivity (MainActivity "One live MainActivity"): what the app process holds and what Android lists.
+ private static final String PROBE="kept-across-the-home-role",DRAFT="Draft kept across the Home role change";
+ private static final java.util.regex.Pattern TOP=java.util.regex.Pattern.compile("(?:topResumedActivity|mResumedActivity)[=:][^\\n]*?\\s([A-Za-z0-9_.]+)/");
+ /** Every MainActivity of this process that is not destroyed, with its stage. Main thread. */
+ private java.util.Map<android.app.Activity,androidx.test.runner.lifecycle.Stage> instances()throws Exception{
+  java.util.Map<android.app.Activity,androidx.test.runner.lifecycle.Stage> found=new java.util.LinkedHashMap<>();
+  BoundedActivityScenario.main(()->{
+   for(androidx.test.runner.lifecycle.Stage stage:androidx.test.runner.lifecycle.Stage.values()){
+    if(stage==androidx.test.runner.lifecycle.Stage.DESTROYED)continue;
+    for(android.app.Activity activity:androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(stage))
+     if(activity.getClass()==MainActivity.class&&!activity.isDestroyed())found.put(activity,stage);
+   }
+  });
+  return found;
+ }
+ /** Distinct MainActivity records in Android's own activity dump (home and standard tasks alike). */
+ private int systemRecords()throws Exception{
+  java.util.regex.Matcher records=java.util.regex.Pattern.compile("ActivityRecord\\{([0-9a-f]+) u\\d+ "+java.util.regex.Pattern.quote(context.getPackageName())+"/[A-Za-z0-9_.]*\\.MainActivity[\\s}]").matcher(shell("dumpsys activity activities"));
+  java.util.Set<String> ids=new java.util.HashSet<>();while(records.find())ids.add(records.group(1));return ids.size();
+ }
+ private String foreground()throws Exception{java.util.regex.Matcher match=TOP.matcher(shell("dumpsys activity activities"));return match.find()?match.group(1):null;}
+ private void pressHome(){
+  long down=SystemClock.uptimeMillis();
+  assertTrue("Android accepted HOME down",ui().injectInputEvent(new KeyEvent(down,down,KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_HOME,0,0,android.view.KeyCharacterMap.VIRTUAL_KEYBOARD,0,KeyEvent.FLAG_FROM_SYSTEM,android.view.InputDevice.SOURCE_KEYBOARD),true));
+  assertTrue("Android accepted HOME up",ui().injectInputEvent(new KeyEvent(down,SystemClock.uptimeMillis(),KeyEvent.ACTION_UP,KeyEvent.KEYCODE_HOME,0,0,android.view.KeyCharacterMap.VIRTUAL_KEYBOARD,0,KeyEvent.FLAG_FROM_SYSTEM,android.view.InputDevice.SOURCE_KEYBOARD),true));
+ }
+ /** The page owner's window holds input focus: the state in which Android acts on a HOME key. */
+ private void awaitWindowFocus(android.app.Activity owner,String when)throws Exception{
+  boolean[] focused=new boolean[1];
+  for(int i=0;i<150&&!focused[0];i++){BoundedActivityScenario.main(()->focused[0]=owner.hasWindowFocus());if(!focused[0])SystemClock.sleep(100);}
+  assertTrue("The page owner's window has input focus "+when,focused[0]);
+ }
+ private static final String NAVIGATION_SETTLED="window.__alphaTestNavigation?.status==='complete'";
+ private String draft(){return "("+AppNavigation.composer()+")?.value";}
+ /**
+  * Exactly one MainActivity exists, it is resumed and in front, it is the instance that existed
+  * before (same object, same page: the marker and the unsent draft are still in it), and Android
+  * lists one MainActivity record. Polled, because the instance Android creates for a HOME start
+  * finishes a moment after it hands the start over.
+  */
+ private void assertOneLiveInstance(String when,android.app.Activity original)throws Exception{
+  String seen="";
+  for(int i=0;i<150;i++){
+   java.util.Map<android.app.Activity,androidx.test.runner.lifecycle.Stage> live=instances();
+   int records=systemRecords();String front=foreground();
+   seen="instances="+live.values()+" same="+live.containsKey(original)+" systemRecords="+records+" foreground="+front;
+   if(live.size()==1&&live.get(original)==androidx.test.runner.lifecycle.Stage.RESUMED&&records==1&&context.getPackageName().equals(front))break;
+   if(i==149)fail("One resumed MainActivity "+when+": "+seen);
+   SystemClock.sleep(100);
+  }
+  MainActivity[] owner=new MainActivity[1];BoundedActivityScenario.main(()->owner[0]=MainActivity.liveInstance());
+  assertSame("The page owner "+when+" is the instance that existed before",original,owner[0]);
+  assertEquals("The page was not reloaded "+when,"\""+PROBE+"\"",js("window.__alphaInstanceProbe"));
+ }
+
  @Test public void homeRequestDeclineAndAcceptMatchRoleHolders()throws Exception{
   Assume.assumeTrue("Only the launcher variant declares HOME",BuildConfig.IS_LAUNCHER);
   String previous=shell("cmd role get-role-holders --user 0 "+HOME);
   shell("cmd role remove-role-holder --user 0 "+HOME+" "+context.getPackageName());
   assertFalse("Fixture starts without the HOME role",holdsHome());
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();settings();
+   AppNavigation.liveMode();
+   // In-flight state that exists only in this page: a marker and an unsent draft in the composer.
+   js(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));until(AppNavigation.composer());
+   js("(()=>{window.__alphaInstanceProbe="+JSONObject.quote(PROBE)+";const e="+AppNavigation.composer()+";Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,"+JSONObject.quote(DRAFT)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+   until(draft()+"==="+JSONObject.quote(DRAFT));
+   java.util.Map<android.app.Activity,androidx.test.runner.lifecycle.Stage> started=instances();
+   assertEquals("One MainActivity before the role request: "+started.values(),1,started.size());
+   android.app.Activity original=started.keySet().iterator().next();
+   settings();
    until(text("Home app"));until(text("Make Alpha your Home app"));
    // Decline in Android's own dialog: nothing changes, and Settings says so after reading back.
    button("Make Alpha your Home app");
@@ -80,10 +143,43 @@ public final class SettingsRolesInstrumentedTest {
    if(confirm!=null)assertTrue("Set as default is pressed",click(confirm));
    for(int i=0;i<200&&!holdsHome();i++)SystemClock.sleep(100);
    assertTrue("Android reports Alpha as HOME holder",holdsHome());
-   // Becoming HOME makes Android start Alpha as the home activity. On the API 36 emulator that is a
-   // new MainActivity in the home task, so the page that asked is no longer in front and its
-   // "Last change" notice is not what the owner sees. Settings in the instance now in front must
-   // name Alpha as the Home app, read back from Android.
+   // Becoming HOME makes Android start Alpha as the home activity. That start has the home activity
+   // type and cannot reuse the running standard-type task, so Android creates a second MainActivity
+   // for it (measured on the API 36 emulator in round 7). The product hands that start to the
+   // instance that was already running and the new one finishes: one instance, the same page, the
+   // draft still in the composer.
+   assertOneLiveInstance("after the role is accepted",original);
+   js(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));
+   until(draft()+"==="+JSONObject.quote(DRAFT));
+   // Repeated HOME presses, from Alpha Home and from inside a view: still the one instance.
+   // Every press must reach the page as a HOME start, so each is counted where the page hears it.
+   js("window.__alphaHomeStarts=0;window.addEventListener('launcher-home',()=>{window.__alphaHomeStarts++;})");
+   for(int press=1;press<=3;press++){
+    // The navigation helper keeps a 100 ms timer until it has seen its target view. A HOME start that
+    // lands inside that window is undone by the helper's next step, which finds Home and opens
+    // Settings again (measured: the page heard the HOME start and still ended in Settings). The
+    // helper is therefore finished before the key is pressed.
+    if(press==2){js(AppNavigation.request("Settings"));until(AppNavigation.selected("Settings"));}
+    until(NAVIGATION_SETTLED);
+    // A HOME key is acted on only once the page owner's window has input focus again. The hand-off
+    // of the previous HOME start (or of the role grant) is still in transition for a moment after
+    // the activity reports resumed, and a key injected then starts nothing (measured on the API 36
+    // emulator: no HOME start in the log for the 20 s that followed).
+    awaitWindowFocus(original,"before HOME press "+press);
+    int heard=Integer.parseInt(js("window.__alphaHomeStarts"));
+    pressHome();
+    until("window.__alphaHomeStarts>"+heard);
+    for(int i=0;i<100&&!context.getPackageName().equals(foreground());i++)SystemClock.sleep(150);
+    until(AppNavigation.selected("Home"));
+    assertOneLiveInstance("after HOME press "+press,original);
+    until(draft()+"==="+JSONObject.quote(DRAFT));
+   }
+   // A start that is not a HOME start (the app icon, a notification tap) reaches the same instance too.
+   // No -W: the instance Android creates for this start finishes at once, by design.
+   shell("am start -n "+context.getPackageName()+"/"+MainActivity.class.getName());
+   SystemClock.sleep(1000);
+   assertOneLiveInstance("after an explicit start",original);
+   // Settings in that instance names Alpha as the Home app, read back from Android.
    settings();
    until("[...document.querySelectorAll('[data-screen] *')].some(e=>e.childElementCount<4&&e.textContent.trim().startsWith('Home app')&&e.textContent.includes('Alpha Phone'))");
    assertEquals("The request is no longer offered","false",js("Boolean([...document.querySelectorAll('button')].find(e=>e.textContent.trim().startsWith('Make Alpha your Home app')))"));
