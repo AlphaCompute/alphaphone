@@ -4,8 +4,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {ROOT, productionLockPackages} from '../scripts/generate-licenses.mjs';
-import {buildSbom, integrityHash, renderSbom} from '../scripts/generate-sbom.mjs';
+import os from 'node:os';
+import {spawnSync} from 'node:child_process';
+import {ROOT, collectNotices, productionLockPackages} from '../scripts/generate-licenses.mjs';
+import {LICENCE_NOT_RECORDED, buildSbom, integrityHash, renderSbom} from '../scripts/generate-sbom.mjs';
+import {FLAGS} from '../scripts/licence-policy.mjs';
 
 const sbom = buildSbom(ROOT);
 const read = rel => JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
@@ -49,12 +52,17 @@ test('every shipped npm package is listed with its lockfile integrity, and no de
 
 test('fonts, OCR cores and web speech files carry the hashes of the pinned bytes', () => {
   const denton = byRef.get('font:apps/app/public/denton-300.woff2');
-  assert.deepEqual(denton.hashes, [{alg: 'SHA-256', content: read('licenses/unverified-allowlist.json').entries.find(entry => entry.name === 'Denton typeface').sha256}]);
-  assert.deepEqual(denton.licenses, [{license: {name: 'license unverified'}}]);
+  assert.deepEqual(denton.hashes, [{alg: 'SHA-256', content: read('licenses/font-licenses.json').entries.find(entry => entry.name === 'Denton typeface').sha256[0]}]);
+  // Proprietary, recorded on the owner's statement: never an open-source identifier, and flagged so nobody assumes it is redistributable.
+  assert.deepEqual(denton.licenses, [{license: {name: 'LicenseRef-Commercial-Font'}}]);
+  assert.deepEqual([prop(denton, 'licence-expression'), prop(denton, 'licence-flags')], ['LicenseRef-Commercial-Font', 'proprietary-licence-held-outside-repo']);
+  assert.equal(prop(denton, 'open-source'), 'false');
+  assert.equal(prop(denton, 'licence-evidence'), 'held-outside-repository: owner statement recorded in licenses/font-licenses.json; the licence document is not in this repository');
   const fraunces = sbom.components.filter(component => component.name.startsWith('Fraunces typeface'));
   assert.equal(fraunces.length, 2);
   for (const font of fraunces) {
     assert.deepEqual(font.licenses, [{license: {id: 'OFL-1.1'}}]);
+    assert.deepEqual([prop(font, 'licence-expression'), prop(font, 'licence-flags')], ['OFL-1.1', 'none']);
     assert.equal(font.hashes[0].content, createHash('sha256').update(fs.readFileSync(path.join(ROOT, prop(font, 'source')))).digest('hex'));
   }
   for (const [file, digest] of Object.entries(read('licenses/tesseract-core/sources.json').cores)) assert.equal(byRef.get(`ocr-core:${file}`).hashes[0].content, digest);
@@ -90,4 +98,34 @@ test('Android coordinates, speech natives and the upstream pin match their manif
   assert.equal(sbom.components.find(component => component.name === 'elizaOS').version, upstream.commit);
   assert.match(prop(sbom.metadata, 'not-covered'), /resident runtime payload/);
   assert.match(prop(sbom.metadata, 'evidence'), /not a scan of built APK/);
+});
+
+test('every component carries its licence expression and flags, matching the notices', () => {
+  const notices = new Map(collectNotices(ROOT, {packagedRuntime: false}).entries.map(entry => [`${entry.name}@${entry.version}`, entry]));
+  for (const component of sbom.components) {
+    assert.ok(prop(component, 'licence-expression'), component['bom-ref']);
+    const flags = prop(component, 'licence-flags');
+    assert.ok(flags === 'none' || flags.split(',').every(flag => FLAGS.includes(flag)), `${component['bom-ref']}: ${flags}`);
+  }
+  for (const component of sbom.components.filter(item => item.purl?.startsWith('pkg:npm/'))) {
+    const notice = notices.get(`${component.name}@${component.version}`);
+    assert.equal(prop(component, 'licence-expression'), notice.license, component.name);
+    assert.equal(prop(component, 'licence-flags'), notice.flags.join(',') || 'none', component.name);
+  }
+  const npm = name => sbom.components.find(component => component.purl?.startsWith('pkg:npm/') && component.name === name);
+  assert.deepEqual([prop(npm('mediabunny'), 'licence-expression'), prop(npm('mediabunny'), 'licence-flags')], ['MPL-2.0', 'copyleft-weak']);
+  assert.equal(prop(npm('tr46'), 'licence-flags'), 'licence-text-missing-from-package');
+  assert.deepEqual([prop(npm('react'), 'licence-expression'), prop(npm('react'), 'licence-flags')], ['MIT', 'none']);
+  for (const component of sbom.components.filter(item => item.purl?.startsWith('pkg:maven/'))) assert.deepEqual([prop(component, 'licence-expression'), prop(component, 'licence-flags')], ['Apache-2.0', 'none'], component.name);
+  // A component whose licence this inventory does not record says so and is flagged, never left blank.
+  const unrecorded = sbom.components.filter(component => prop(component, 'licence-expression') === LICENCE_NOT_RECORDED);
+  assert.ok(unrecorded.length > 0);
+  for (const component of unrecorded) assert.equal(prop(component, 'licence-flags'), 'unverified', component['bom-ref']);
+  // Flags never fail the SBOM: the script exits 0 and prints them as warnings.
+  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-sbom-')), 'sbom.json');
+  const run = spawnSync(process.execPath, [path.join(ROOT, 'scripts/generate-sbom.mjs'), '--out', out], {cwd: ROOT, encoding: 'utf8'});
+  fs.rmSync(path.dirname(out), {recursive: true, force: true});
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stderr, /^LICENCE FLAG copyleft-weak: mediabunny@[^ ]+ \(MPL-2\.0\)$/m);
+  assert.match(run.stderr, /^LICENCE FLAG proprietary-licence-held-outside-repo: Denton typeface /m);
 });

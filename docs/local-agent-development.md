@@ -265,9 +265,23 @@ Evidence: `test-results/redaction-boundary-review/reply-stream-tests.log`, `repl
 
 ## Isolated digest process-recovery check
 
-Run `ALPHA_ELIZA_SOURCE=/absolute/path/to/reproduced/source npm run agent:test-digest-restart` on a POSIX host with that source's pinned dependencies installed and Bun available. The command verifies the consumer source manifest and creates its own temporary working directory, database and workflow state. It kills only its own detached fixture process group after synthetic read-only inference begins. Logs and results remain in the printed temporary evidence directory; the live local-agent profile is untouched.
+`npm run agent:test-digest-restart` kills a resident workflow worker while a scheduled digest is inside inference and checks what the runtime does next. It is a host test of the pinned upstream runtime with a synthetic model. It needs no emulator, account, provider key or network after preparation, and it is not Android evidence.
 
-The current runtime preserves the interrupted run as `outcome-unknown`, with no finished result or repeated inference. Concurrent duplicate admissions return the same run ID. A separate never-admitted occurrence outside the two-minute schedule window produces an explicit missed result without executing backlog. This checks process-loss safety and overdue scheduling, not automatic recovery of an ambiguous worker outcome, Android background execution, physical power-loss durability or exactly-once provider calls.
+Preparation, from the repository root on a POSIX host with Bun and about 6 GB free:
+
+```sh
+git submodule update --init vendor/eliza     # the pinned commit in upstream.lock.json
+ALPHA_RUNTIME_GIT_CACHE="$PWD/vendor/eliza" npm run agent:prepare
+npm run agent:test-digest-restart
+```
+
+`agent:prepare` creates `artifacts/local-agent-resident-<commit>` from the pinned commit and runs `bun install --frozen-lockfile` in it (the install builds the workspace packages and takes several minutes). `ALPHA_RUNTIME_GIT_CACHE` only avoids a network fetch of the source; it does not change the commit. The check uses that directory by default. `ALPHA_ELIZA_SOURCE=/absolute/path` selects another prepared checkout of the same commit; a `--source-only` preparation is not enough. With no prepared source, no installed dependencies, a relative path or no Bun, the command exits 2 before starting any process and prints these steps. Remove `artifacts/local-agent-resident-<commit>/node_modules` (or the whole directory) afterwards to get the space back.
+
+The command verifies the prepared source against the pinned commit before and after the run, and creates its own temporary working directory, database and workflow state. It kills only its own detached fixture process group after synthetic inference begins. Logs and results stay in the temporary evidence directory it prints; the live local-agent profile is untouched.
+
+What a pass means: the interrupted run is kept as `outcome-unknown` with no finished result and no repeated inference; two concurrent duplicate admissions of the same occurrence return the same run ID; and a separate, never-admitted occurrence a day outside the schedule window produces one explicit `missed` result without running the backlog, with the next occurrence in the future. It checks process-loss safety and overdue scheduling on a host. It does not check automatic recovery of an ambiguous worker outcome, Android background execution, physical power-loss durability or exactly-once provider calls.
+
+Nothing runs this check automatically: it is not part of `npm test`, `npm run verify` or any workflow, because of the prepared source it needs. `test/digest-restart-input.test.mjs` covers only its input admission. Recorded run (host-runtime evidence, not Android): product branch `claude/r5-runner-gaps`, the script as committed in `15d29c3d` (its test phases are unchanged from `8acc6e4b`; only input admission and result labels changed), upstream `352d7a0855b713319cbe1acdab5fbf556fb85aa8`, macOS arm64, Node 24.15.0, Bun 1.4.2, 2026-10-10: exit 0 twice (once with `ALPHA_ELIZA_SOURCE`, once with the default directory); one model call in the admit phase and none in recover or overdue; `recovered.json` `{"sameRunId":true,"resultCount":0,"duplicateAdmissionsSameRun":true,"reconciliation":"outcome-unknown","finished":false}`; `overdue-result.json` `{"status":"missed","resultCount":1,"nextOccurrenceFuture":true,"duplicateAdmissionSameRun":true}`. A changed upstream pin needs a new run.
 
 ## Contact placeholder semantics (October 3)
 

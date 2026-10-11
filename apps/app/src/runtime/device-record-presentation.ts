@@ -81,9 +81,15 @@ export function presentDeviceRecordOperation(
           : "Updated event";
       const timing = `${formatDeviceRecordDateTime(fields.start, fields.timeZone)} – ${formatDeviceRecordDateTime(fields.end, fields.timeZone)} (${fields.timeZone})`;
       summaryDetails = `“${fields.title}” — ${timing}.`;
+      // The agent contract carries no calendar choice, attendees or all-day flag: an agent event
+      // is written to the calendar kept on this phone, and guests are never added or invited.
       details = [
         `“${fields.title}”`,
         timing,
+        "Calendar: the calendar kept on this phone. No account calendar is changed.",
+        operation.type === "calendar_update"
+          ? "Attendees: not changed. No invitations are sent."
+          : "Attendees: none. No invitations are sent.",
         ...(fields.location.trim() ? [`Location: ${fields.location}`] : []),
         ...(fields.description.trim() ? [fields.description] : []),
       ].join("\n");

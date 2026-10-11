@@ -99,7 +99,7 @@ Still open:
 - Reminder deletion from the detail page is still immediate ("Reminder cancelled").
   It was not changed.
 
-Pending owner decision (recorded here, not in decisions.md):
+Pending owner decision (now A-25 under [pending owner decisions](decisions.md#new-decision-items)):
 
 - **Calendar deletion recoverability.** PRD AP-15 / MVP-48 suggest "no unrecoverable
   user-data loss" as P0, and Notes has a Trash. Calendar has neither a Trash nor Undo
@@ -172,6 +172,11 @@ Spec: `journey-e-browser-credentials.spec.ts`
 ## F. Email and reconnect notifications
 
 Spec: `journey-f-email-notifications.spec.ts` (small serial group)
+
+`journey-f-reviewed-send.spec.ts` covers the reviewed provider operations the first spec does
+not: Cc, Bcc and attachments in the review with a byte-for-byte dispatch, an email edited
+after its review, Trash and undo, an unknown Trash outcome, and paging while the mailbox
+changes. `inbox-hostile-attachment.spec.ts` covers hostile attachments.
 
 | Step | Browser | Native-only | Human or device |
 | --- | --- | --- | --- |
@@ -295,6 +300,18 @@ Spec: `journey-j05-web-research-note.spec.ts` (two serial tests)
 | F | A confirmed send left its local draft and unsaved copy on offer | missing hand-off | Fixed in `inbox-drafts.ts`, `inbox-provider-controls.ts`, `runtime/inbox-operation.ts` |
 | F | Hosted result tap after restart had no journey-level spec | coverage gap | Added `journey-f-hosted-result.spec.ts` |
 | J04 | No in-app return from Maps to the originating event; travel mode shown by color only | missing hand-off | Fixed in `maps-adapter.ts`, `calendar-adapter.ts`, `runtime/maps-event-return.ts`, `template.html` |
+| F | Send after editing a reviewed email reopened the earlier review, so the earlier text could be sent | product bug | Fixed in `inbox-provider-controls.ts`: the stale review is discarded and the email is reviewed again (`journey-f-reviewed-send.spec.ts`, `mail-review.production.spec.ts`) |
+| F | A forward's original attachments were not listed in the send review | product bug | Fixed in `inbox-provider-controls.ts` (`journey-f-reviewed-send.spec.ts`) |
+| F | A double tap on Confirm landed on the Undo control that replaced it | product bug | Fixed in `inbox-provider-controls.ts` (`journey-f-reviewed-send.spec.ts`) |
+| F | A later page that repeated a loaded message was joined without saying that newer mail was missing from the list | product gap | Fixed in `inbox-cloud-adapter.ts`: a notice and a "Load newer mail" control |
+| J03 | "No preview · Save to Files" failed in the browser build | product bug | Fixed in `browser/mail-attachments.ts` (`inbox-hostile-attachment.spec.ts`) |
+| B | The agent calendar review showed raw UTC timestamps and neither the calendar, the account nor attendees | product gap | Fixed in `browser/calendar-agent-review.ts` and `device-record-presentation.ts` (journey B, `calendar-proposal-review.production.spec.ts`) |
+| A | A spoken turn with the development profile always stopped after the reply: the development agent returned no message identities | development fixture | Fixed in `development-connection.ts`; journey A now has a spoken request |
+| D | The development profile's Home never showed a brief | development profile | It now reads the retained brief; journey D asserts the rendered card |
+| E | Read aloud on a page whose address is no longer known was refused behind the open menu | product bug | Fixed in `browser-adapter.ts`; journey E navigates during the review |
+| F | A saved review could still be sent after a reload with the edit only in the retained copy, or after the email was moved to another From account and sent there | product bug | Fixed in `runtime/inbox-operation.ts` and `inbox-provider-controls.ts`: a review is bound to its local draft and to the exact content in the composer when Send is confirmed (`journey-f-reviewed-send.spec.ts`, `scripts/test-inbox-sent-cleanup.mjs`) |
+| F | A message listed twice in one provider page was shown twice | product bug | Fixed in `inbox-cloud-adapter.ts` (`journey-f-reviewed-send.spec.ts`) |
+| B | An agent update to an all-day event was saved with instants that are not whole dates | product bug | Refused before review in `browser/calendar.ts` (`calendar-agent-all-day-review.spec.ts`) |
 
 ## What no browser journey can establish
 

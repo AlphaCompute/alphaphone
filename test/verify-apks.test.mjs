@@ -72,12 +72,17 @@ test("AOSP staging refuses test-mocks and non-distributable inputs before any st
     for (const mode of [["--development"], ["--descriptor", "reviewed.json", "--production"]]) {
       out = stage(["--apk", release, ...mode]);
       assert.notEqual(out.status, 0);
-      assert.match(out.stderr, /not distributable[\s\S]*- unqualified speech \(functional acceptance pending or failed\)[\s\S]*- unresolved-font-licence: Denton typeface/);
+      assert.match(out.stderr, /not distributable[\s\S]*- unqualified speech \(functional acceptance pending or failed\)/);
+      // The Denton font check is flag-only (P-09, A-21): recorded on the row, never cited as a blocker.
+      assert.doesNotMatch(out.stderr, /unresolved-font-licence/);
     }
     // A release flagged distributable whose recorded facts still hold a blocker is not staged either.
+    record({ distributable: true, licenceBlockers: [font], runtimeNotices: false });
+    assert.match(stage(["--apk", release, "--descriptor", "reviewed.json", "--production"]).stderr, /not distributable[\s\S]*notices lack the packaged runtime/);
+    assert.match(stage(["--apk", release, "--development"]).stderr, /notices lack the packaged runtime/);
+    // The recorded font item alone does not make staging cite a licence blocker.
     record({ distributable: true, licenceBlockers: [font] });
-    assert.match(stage(["--apk", release, "--descriptor", "reviewed.json", "--production"]).stderr, /not distributable[\s\S]*unresolved-font-licence/);
-    assert.match(stage(["--apk", release, "--development"]).stderr, /unresolved-font-licence/);
+    assert.doesNotMatch(stage(["--apk", release, "--descriptor", "reviewed.json", "--production"]).stderr, /unresolved-font-licence|not distributable/);
     // A release cannot be staged as a development input by hiding its row: relabelled "debug", recorded for
     // other bytes, or with the manifest pointed elsewhere. Only a debuggable build passes without a release row.
     const onlyDebugBuilds = /--development stages debug builds only/;

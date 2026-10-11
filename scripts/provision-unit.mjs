@@ -74,7 +74,8 @@ export function admitUnitApk(manifestFile, { variant, build }, { descriptor = re
   if (row.testMocks !== false) throw new Error(`${file} is recorded as a test-mocks build; pilot units get distribution builds only`);
   if (build === "release") {
     // Judged against the current signer descriptor and against what verify-apks recorded:
-    // signing, versionCode, flag-off audit, packaged runtime, speech qualification, font licences.
+    // signing, versionCode, flag-off audit, packaged runtime, speech qualification and the one
+    // proprietary-font check. Open-source licence flags are never a blocker (decision P-09).
     const recorded = row.releaseAdmission ? [...(row.releaseAdmission.failures ?? []), ...(row.releaseAdmission.blockers ?? [])] : [];
     const blockers = [...new Set([...releaseBlockers(row, { manifestTestMocks: manifest.testMocks, admission: releaseAdmission(row, descriptor) }), ...recorded])];
     if (blockers.length) throw new Error(`${file} cannot be provisioned: it is not distributable. Unresolved blockers:\n${blockers.map(item => `  - ${item}`).join("\n")}\n` +

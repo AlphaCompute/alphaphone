@@ -262,10 +262,17 @@ debug-signed or test-mocks builds as production.
 
 ## Emulator verification
 
-The aggregate smoke suites and their CI jobs were removed on October 8 at the
-owner's request. APK builds and bundle audits remain required. Focused native
-campaigns below can be run separately on an owned disposable emulator; a build
-does not establish native behavior or HOME-role acceptance.
+The aggregate smoke suites, their npm entry point and their CI jobs were removed on
+October 8 at the owner's request. APK builds and bundle audits remain required. The
+current entry point for native instrumentation is
+`npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN`
+(per-class results bound to the commit and the installed APK hashes; see the
+[verification guide](docs/verification.md)). It and the focused campaigns below run on an
+owned disposable emulator; a build does not establish native behavior or HOME-role
+acceptance. Two emulator jobs remain in CI: `native` and `recovery-ui` in
+`.github/workflows/resident-android.yml`, which run only when the workflow is dispatched
+or the repository variable `ELIZA_RESIDENT_QUALIFICATION` enables it. No emulator or CI
+result is recorded for the current source ([current status](docs/mvp-current-status.md#current-qualification-evidence)).
 
 The independent native Calendar consumer comes from the pinned upstream source.
 Build its app and instrumentation APKs with
@@ -283,7 +290,10 @@ harness. Set `ANDROID_SERIAL`, `ALPHA_NATIVE_TEST_AVD` and
 `ALPHA_NATIVE_TEST_ABI`, then run
 `node scripts/test-native-permissions.mjs camera APP.apk MATCHING_TEST.apk NEW_OUTPUT`.
 Use `settings` or `channels` in place of `camera` for location/Accounts settings
-or notification-channel recovery with the same archived pair and emulator inputs.
+or notification-channel recovery with the same archived pair and emulator inputs;
+`voice`, `voice-revoke` and `voice-limit` for the denied, revoked-while-recording and
+granted microphone cases; and `notice` or `notice-denied` for the hosted result notice
+with notifications allowed or denied (see the [verification guide](docs/verification.md)).
 The APKs must be a matching archived standalone or launcher pair with their
 `apk-manifest.json`. Existing package registrations are refused.
 For Google APIs images, set `ALPHA_TEST_HOME_PACKAGE=com.google.android.apps.nexuslauncher`;

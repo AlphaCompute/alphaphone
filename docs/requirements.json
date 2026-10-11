@@ -8,7 +8,7 @@
     "deferred": "Out of the MVP by recorded policy.",
     "blocked": "Cannot progress without an external decision, resource or artifact."
   },
-  "note": "Status is software state, not acceptance. Evidence lists source and test paths that implement or check the requirement; they are not passing results. Each gate names the next evidence class required.",
+  "note": "Status is software state, not acceptance. Evidence lists source and test paths that implement or check the requirement; they are not passing results. Each gate names the next evidence class required. Refreshed 2026-10-10 against upstream pin 40dbe96bd1; no APK build, emulator run or device result exists at that pin (docs/mvp-current-status.md, Current qualification evidence).",
   "requirements": [
     {
       "id": "AP-01",
@@ -19,16 +19,21 @@
         "Home and launcher",
         "Design and accessibility"
       ],
-      "gate": "E: launcher HOME-role instrumentation on both APKs, then D on the selected phone",
+      "gate": "E: the runner's HOME-role phase (SettingsRoles, LauncherHome) on the launcher APK, then D on the selected phone",
       "evidence": [
         "apps/app/src/prototype/template.html",
         "apps/app/src/prototype/mvp-features.ts",
         "app.config.json",
         "android/app/src/launcher/AndroidManifest.xml",
         "test/browser/design.spec.ts",
-        "test/browser/home-compact-scroll.spec.ts"
+        "test/browser/home-compact-scroll.spec.ts",
+        "apps/app/src/prototype/home-launcher.ts",
+        "test/browser/home-launcher.spec.ts",
+        "test/browser/home-native-launcher.spec.ts",
+        "test/browser/home-landscape.spec.ts",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LauncherHomeInstrumentedTest.java"
       ],
-      "remaining": "Home has no all-apps drawer or search, so installed third-party apps cannot be opened from it."
+      "remaining": "The All-apps drawer, search and landscape Home exist with browser tests against a stubbed bridge; no emulator HOME-role run is recorded. Favorites and order, exact component and profile identity and refresh on package change are implemented in source with Node and stubbed-bridge browser tests; LauncherLibraryInstrumentedTest has no recorded run (MVP-53)."
     },
     {
       "id": "AP-02",
@@ -41,14 +46,16 @@
         "Connection choices",
         "Release"
       ],
-      "gate": "B: four distribution APKs build and pass scripts/verify-apks.mjs; then E: install both modes, open apps and return HOME repeatedly",
+      "gate": "B: four distribution APKs build at the current pin and pass scripts/verify-apks.mjs; then E: install both modes, open apps and return HOME repeatedly",
       "evidence": [
         "scripts/build-android.mjs",
         "scripts/verify-apks.mjs",
         "android/app/build.gradle",
-        "apps/app/src/runtime/connection-ui.tsx"
+        "apps/app/src/runtime/connection-ui.tsx",
+        "scripts/android-build-preflight.mjs",
+        "scripts/release-blockers.mjs"
       ],
-      "remaining": "The Android build fails at the pinned calendar plugin. The Welcome dialog's local-apps entry is covered only by a stubbed-bridge browser test, not on a device."
+      "remaining": "No APK build is recorded at the current pin (40dbe96bd1); the last recorded developer APK builds are at pins 4148a166 and 945209d3, and whether the pinned calendar plugin compiles at the current pin is not re-verified. A distribution build also needs the staged resident runtime, qualified speech assets and the reviewed embedding host. The Welcome dialog's local-apps entry is covered only by a stubbed-bridge browser test, not on a device."
     },
     {
       "id": "AP-03",
@@ -87,7 +94,7 @@
         "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java",
         "docs/on-device-agent-plan.md"
       ],
-      "remaining": "Emulator and device acceptance of restart, reconnect, Stop and history restoration. Cloud agents have no cancel route or older-page history cursor, and the read after Stop matches by text and time because upstream history rows do not expose the client message ID."
+      "remaining": "Emulator and device acceptance of restart, reconnect, Stop and history restoration; the resident process-kill classes run only in the hosted CI lane and have no recorded passing run. Cloud agents have no cancel route or older-page history cursor, and the read after Stop matches by text and time because upstream history rows do not expose the client message ID."
     },
     {
       "id": "AP-05",
@@ -98,7 +105,7 @@
         "Chat and retained context",
         "Design and accessibility"
       ],
-      "gate": "S: composer draft survives every pre-dispatch failure; then E: resize, Back and HOME without keyboard obstruction",
+      "gate": "E: soft-keyboard resize, Back and HOME without keyboard obstruction on an installed APK; then D",
       "evidence": [
         "apps/app/src/prototype/agent-adapter.ts",
         "apps/app/src/prototype/assistant-draft-controller.ts",
@@ -107,7 +114,7 @@
         "test/browser/chat-continuity.spec.ts",
         "test/browser/compact-viewport.spec.ts"
       ],
-      "remaining": "Emulator and device acceptance of resize, Back and HOME without keyboard obstruction; draft retention through pre-dispatch failures has browser source evidence only."
+      "remaining": "Draft retention through every pre-dispatch failure is implemented with browser source evidence only (test/browser/chat-continuity.spec.ts). Emulator and device acceptance of resize, Back and HOME without keyboard obstruction remain. Attaching the assistant surface to a running resident without restarting it is implemented in source with JVM and renderer contract tests; AssistantResidentReuseInstrumentedTest has no recorded run (MVP-16)."
     },
     {
       "id": "AP-06",
@@ -117,14 +124,18 @@
       "statusRows": [
         "Speech and recording (J02)"
       ],
-      "gate": "E: LocalSpeechInstrumentedTest passes on x86_64 and arm64-v8a; then D: physical audio, interruption and latency (A-10)",
+      "gate": "Owner: voice send and route policy (MVP-01) and whether on-device speech is still required (A-24); then R: Cloud speech with a signed-in account, and D: physical audio, interruption and latency (A-10)",
       "evidence": [
         "apps/app/src/prototype/voice-adapter.ts",
         "android/local-speech/qualified-runtime-manifest.json",
         "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LocalSpeechInstrumentedTest.java",
-        "test/browser/browser-speech.spec.ts"
+        "test/browser/browser-speech.spec.ts",
+        "apps/app/src/runtime/voice-selection.ts",
+        "test/browser/chat-voice-mode.spec.ts",
+        "test/browser/production-surface.spec.ts",
+        "scripts/test-native-permissions.mjs"
       ],
-      "remaining": "Speech functional acceptance failed on arm64-v8a and x86_64 execution is unverified."
+      "remaining": "Flag-off builds use Eliza Cloud speech (P-07); no real Cloud transcription has been exercised. On-device speech functional acceptance failed on arm64-v8a and x86_64 execution is unverified; whether it is still required is pending (A-24). An ongoing Cloud conversation sends spoken turns without the P-01 review step (MVP-01). The denied- and revoked-microphone campaigns have no recorded run."
     },
     {
       "id": "AP-07",
@@ -139,9 +150,15 @@
       "evidence": [
         "apps/app/src/prototype/data-adapter.ts",
         "apps/app/src/runtime/hosted-digests.ts",
-        "test/browser/dev-digest-schedule.spec.ts"
+        "test/browser/dev-digest-schedule.spec.ts",
+        "test/browser/journey-d-digests.spec.ts",
+        "test/digest-occurrence-delivery.test.mjs",
+        "test/home-cards.test.mjs",
+        "apps/app/src/prototype/home-cards.ts",
+        "test/browser/home-daily-overview.spec.ts",
+        "test/browser/home-daily-overview.production.spec.ts"
       ],
-      "remaining": "Agenda comes from on-device calendars only, and schedules are digest-only."
+      "remaining": "Agenda comes from on-device calendars only, and schedules are digest-only. A missed occurrence is recorded once and never replaces the last brief. The Home cards name their source and when it was read, and the latest retained brief has its own card, with synthetic provider data only; no test runs from an agent digest result to that card (MVP-19)."
     },
     {
       "id": "AP-08",
@@ -166,14 +183,18 @@
         "Email/Gmail",
         "Notes, Calendar and Reminders"
       ],
-      "gate": "R: real Google OAuth grant, managed Cloud Gmail routes and a real mailbox; B: the native calendar plugin compiles at the pin",
+      "gate": "R: real Google OAuth grant, managed Cloud Gmail routes and a real mailbox; E: Calendar CRUD and agent CRUD instrumentation read back from CalendarProvider",
       "evidence": [
         "apps/app/src/prototype/inbox-cloud-adapter.ts",
         "apps/app/src/runtime/gmail-mailbox.ts",
         "apps/app/src/prototype/calendar-adapter.ts",
-        "vendor/eliza/plugins/plugin-inbox/src/inbox/google-gmail-seam.ts"
+        "vendor/eliza/plugins/plugin-inbox/src/inbox/google-gmail-seam.ts",
+        "test/browser/journey-f-reviewed-send.spec.ts",
+        "test/browser/journey-f-email-notifications.spec.ts",
+        "scripts/test-calendar-regression.mjs",
+        "docs/cloud-production-validation.md"
       ],
-      "remaining": "Gmail OAuth code exchange returns 401, Calendar shows only on-device calendars, and the native calendar plugin does not compile at the pin."
+      "remaining": "Gmail OAuth code exchange returns 401 (docs/cloud-production-validation.md), so no real mailbox has been used. Calendar shows only on-device calendars. Whether the native calendar plugin compiles at the current pin is not re-verified; it compiled in the recorded builds at earlier pins. Calendar availability and Use in email are implemented in source with synthetic agent and provider tests only; neither has run on an emulator, with a real account or on a device (MVP-12, MVP-14)."
     },
     {
       "id": "AP-10",
@@ -186,15 +207,18 @@
         "Schedule to travel (J04) and Maps",
         "Notes, Calendar and Reminders"
       ],
-      "gate": "E: browser sign-in, private-tab, pop-up and app-link instrumentation (P-04) and password-manager fill (P-05); then R and D",
+      "gate": "E: browser sign-in, private-tab, pop-up and app-link instrumentation (P-04) and password-manager fill (P-05); Owner: a production Maps provider (A-23); then R and D",
       "evidence": [
         "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaBrowserPlugin.java",
         "apps/app/src/prototype/camera-adapter.ts",
         "apps/app/src/runtime/notes-trash-policy.ts",
         "apps/app/src/maps",
-        "test/browser/browser-signins.spec.ts"
+        "test/browser/browser-signins.spec.ts",
+        "apps/app/src/prototype/scan-document.ts",
+        "apps/app/src/maps/regional-provider.ts",
+        "test/browser/journey-core-loops.production.spec.ts"
       ],
-      "remaining": "Native camera lacks image import and the multi-page scan builder, and the regional Maps gateway is not in production."
+      "remaining": "No flag-off build has a Maps provider, so no route can be produced for a production user (A-23). Native Camera has image selection into scan review and the multi-page scan builder; device behaviour is unverified. The native browser, reading and password instrumentation has no recorded run at this source."
     },
     {
       "id": "AP-11",
@@ -210,9 +234,11 @@
         "apps/app/src/runtime/workflow-protocol.ts",
         "apps/app/src/runtime/phone-workflow-authoring.ts",
         "scripts/android-workflow-native.mjs",
-        "docs/workflow-run-cancellation.md"
+        "docs/workflow-run-cancellation.md",
+        "scripts/test-local-digest-restart.mjs",
+        "test/browser/workflow-interruption-recovery.spec.ts"
       ],
-      "remaining": "Phone workflows have manual triggers only, and the resident interrupted-worker case is unqualified."
+      "remaining": "Phone workflows have manual triggers only, and the resident interrupted-worker case is unqualified on Android: the host digest restart check passed once at an earlier pin with a synthetic model and is in no automated lane."
     },
     {
       "id": "AP-12",
@@ -224,13 +250,16 @@
         "Privacy and outbound context",
         "Licenses"
       ],
-      "gate": "E: each Android settings handoff and readback; no simulated switches",
+      "gate": "E: each Android settings handoff and readback on an installed APK (SettingsSystemFacts, SettingsNative, SettingsFlow, SettingsRoles, NotificationChannels)",
       "evidence": [
         "apps/app/src/prototype/settings-adapter.ts",
         "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/SettingsFlowInstrumentedTest.java",
-        "test/browser/settings-page-accessibility.spec.ts"
+        "test/browser/settings-page-accessibility.spec.ts",
+        "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaDevicePlugin.java",
+        "test/browser/settings-truth.production.spec.ts",
+        "test/shade-tile-facts.test.mjs"
       ],
-      "remaining": "Quick-setting tiles show no native state and open generic Android Settings."
+      "remaining": "Tiles and Settings rows show the states Android reports and open the matching Android page, with renderer coverage on the flag-off bundle against a stubbed bridge only; no installed-APK run exists. No update check (A-06) and no erase control (A-19) are offered."
     },
     {
       "id": "AP-13",
@@ -272,13 +301,16 @@
         "Design and accessibility",
         "Home and launcher"
       ],
-      "gate": "E then D: TalkBack, large font, touch and keyboard, offline, killed process, rotation and repeated HOME navigation",
+      "gate": "E: Accessibility, TextScale and Rotation instrumentation; then D: TalkBack, large font, touch and keyboard, offline, killed process, rotation and repeated HOME navigation",
       "evidence": [
         "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/TextScaleInstrumentedTest.java",
         "test/browser/compact-viewport.spec.ts",
-        "test/browser/settings-page-accessibility.spec.ts"
+        "test/browser/settings-page-accessibility.spec.ts",
+        "test/browser/home-landscape.spec.ts",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/RotationInstrumentedTest.java",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/AccessibilityInstrumentedTest.java"
       ],
-      "remaining": "No landscape layout, and physical TalkBack and accessibility acceptance remain."
+      "remaining": "A landscape Home layout exists with a browser test; RotationInstrumentedTest and AccessibilityInstrumentedTest have no recorded run. The all-views accessibility sweep and its fixes are a Chromium renderer check (test/browser/accessibility-sweep.spec.ts), not device acceptance (MVP-48). Physical TalkBack and accessibility acceptance remain."
     }
   ]
 }

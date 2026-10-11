@@ -242,6 +242,42 @@ for (const outcome of ['opened', 'unavailable'] as const) {
   });
 }
 
+// Journey hardening (docs/core-loop-audit.md, work order 14): snooze and dismiss on the Android path.
+test('loop C on Android: snooze and dismiss are reviewed Clock requests, one handoff each, and neither claims an alarm changed', async ({ page }) => {
+  test.setTimeout(120_000);
+  await android(page, { clock: 'opened' });
+  await residentHome(page);
+  await button(page, 'Calendar').click();
+  await button(page, 'Clock alarms').click();
+  const clock = page.getByRole('dialog', { name: 'Clock alarms', exact: true });
+  const confirm = clock.getByRole('button', { name: 'Confirm Clock request', exact: true });
+
+  await clock.getByRole('button', { name: 'Snooze', exact: true }).click();
+  // The alarm time and label belong to Set; a snooze request carries only the minutes asked for.
+  await expect(clock.getByLabel('Alarm time', { exact: true })).toHaveCount(0);
+  await clock.getByLabel('Snooze minutes', { exact: true }).fill('7');
+  await clock.getByRole('button', { name: 'Review Clock request', exact: true }).click();
+  await expect(clock).toContainText('Ask Clock to snooze ringing alarms, requesting 7 minutes. Clock may use its default duration and snooze all ringing alarms. If nothing is ringing, Clock may do nothing.');
+  expect(await native(page, f => f.clock)).toEqual([]);
+  await confirm.dblclick();
+  await expect(clock).toContainText('Approved Clock handoff sent. Check Clock; Alpha cannot confirm an alarm was changed.');
+  expect(await native(page, f => f.clock)).toEqual([{ action: 'snooze', snoozeMinutes: 7, reviewed: true }]);
+
+  await clock.getByRole('button', { name: 'Dismiss', exact: true }).click();
+  // Choosing another action withdraws the earlier review; nothing is sent by choosing.
+  await expect(confirm).toHaveCount(0);
+  await expect(clock.getByLabel('Snooze minutes', { exact: true })).toHaveCount(0);
+  await clock.getByRole('button', { name: 'Review Clock request', exact: true }).click();
+  await expect(clock).toContainText('Ask Clock to dismiss the active alarm. If there is more than one, Clock may ask you to choose. A one-time alarm is disabled; a repeated alarm skips its upcoming occurrence.');
+  expect(await native(page, f => f.clock.length)).toBe(1);
+  await confirm.click();
+  await expect.poll(() => native(page, f => f.clock.length)).toBe(2);
+  expect(await native(page, f => f.clock)).toEqual([{ action: 'snooze', snoozeMinutes: 7, reviewed: true }, { action: 'dismiss', reviewed: true }]);
+  await expect(clock).toContainText('Approved Clock handoff sent. Check Clock; Alpha cannot confirm an alarm was changed.');
+  await expect(clock).not.toContainText(/Alarm saved|snoozed for|was dismissed|Ringing/i);
+  await expectNoDevelopmentSurface(page);
+});
+
 test('loop C on Android: a cancelled review sends nothing, and an unknown result is remembered across a restart before any repeat', async ({ page }) => {
   test.setTimeout(120_000);
   await android(page, { clock: 'unknown' });
