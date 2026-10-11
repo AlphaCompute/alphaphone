@@ -20,8 +20,11 @@ public final class HostedResultNoticeInstrumentedTest {
   long end=SystemClock.elapsedRealtime()+20000;
   while(SystemClock.elapsedRealtime()<end){String raw=WebViewTestDriver.evaluate("window."+global);if(!"null".equals(raw)&&!"undefined".equals(raw))return new JSONObject((String)new JSONTokener(raw).nextValue());SystemClock.sleep(50);}throw new AssertionError("Native call timed out");
  }
- private void save(String slot,JSONObject value)throws Exception {assertFalse(call("Capacitor.Plugins.AlphaConnection.secureWrite({slot:"+JSONObject.quote(slot)+",value:"+JSONObject.quote(value.toString())+"})").has("error"));}
- private JSONObject read(String slot)throws Exception {JSONObject r=call("Capacitor.Plugins.AlphaConnection.secureRead({slot:"+JSONObject.quote(slot)+"})");return r.isNull("value")?new JSONObject():new JSONObject(r.getString("value"));}
+ // Hosted digest slots are native-only (RendererCredentialSlots): the page cannot read or write them,
+ // so the fixture uses the same native store the product's hosted delivery reads.
+ private AlphaCredentialStore store(){return new AlphaCredentialStore(InstrumentationRegistry.getInstrumentation().getTargetContext());}
+ private void save(String slot,JSONObject value)throws Exception {store().writeCredentialSlot(slot,value.toString());}
+ private JSONObject read(String slot)throws Exception {String raw=store().readCredentialSlot(slot);return raw==null?new JSONObject():new JSONObject(raw);}
  private void cleanNotice(String key)throws Exception {
   java.util.concurrent.atomic.AtomicReference<AlphaHostedResultsPlugin> plugin=new java.util.concurrent.atomic.AtomicReference<>();java.util.concurrent.atomic.AtomicReference<AlphaConnectionPlugin> store=new java.util.concurrent.atomic.AtomicReference<>();
   BoundedActivityScenario.main(()->{for(android.app.Activity a:androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED))if(a instanceof MainActivity){plugin.set((AlphaHostedResultsPlugin)((MainActivity)a).getBridge().getPlugin("AlphaHostedResults").getInstance());store.set((AlphaConnectionPlugin)((MainActivity)a).getBridge().getPlugin("AlphaConnection").getInstance());}});
@@ -36,6 +39,8 @@ public final class HostedResultNoticeInstrumentedTest {
    String run="fixture_"+UUID.randomUUID(),origin="https://hosted-fixture.invalid",owner=UUID.randomUUID().toString(),agent=UUID.randomUUID().toString(),scope=HostedResultNotices.hash(new JSONArray().put(origin).put(owner).put(agent).toString()),slot="hosted-digests:v1:"+scope,key=HostedResultNotices.hash(scope+":"+run),secret="PRIVATE-HOSTED-FIXTURE-"+UUID.randomUUID();
    JSONObject route=new JSONObject().put("scope",scope).put("origin",origin).put("ownerId",owner).put("agentId",agent).put("runId",run).put("workflowId",run).put("workflowVersionId","version1");
    try {
+    assertTrue("The page cannot write a native-only result slot",call("Capacitor.Plugins.AlphaConnection.secureWrite({slot:"+JSONObject.quote(slot)+",value:'{}'})").has("error"));
+    assertTrue("The page cannot read a native-only result slot",call("Capacitor.Plugins.AlphaConnection.secureRead({slot:"+JSONObject.quote(slot)+"})").has("error"));
     save(slot,new JSONObject().put("ids",new JSONArray().put(run)));save(slot+":"+run,new JSONObject().put("runId",run).put("workflowId",run).put("workflowVersionId","version1").put("output",secret));
     File file=new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getNoBackupFilesDir(),"connection-credentials/"+HostedResultNotices.hash(slot+":"+run));assertFalse(new String(Files.readAllBytes(file.toPath()),StandardCharsets.ISO_8859_1).contains(secret));
     assertEquals(granted?"posted":"denied",call("Capacitor.Plugins.AlphaHostedResults.publishResult("+route+")").getString("phase"));
@@ -56,7 +61,7 @@ public final class HostedResultNoticeInstrumentedTest {
    } finally {
     cleanNotice(key);
     InstrumentationRegistry.getInstrumentation().getTargetContext().getSystemService(NotificationManager.class).cancel(key,0);
-    assertFalse(call("Capacitor.Plugins.AlphaConnection.secureRemove({slot:"+JSONObject.quote(slot)+"})").has("error"));assertFalse(call("Capacitor.Plugins.AlphaConnection.secureRemove({slot:"+JSONObject.quote(slot+":"+run)+"})").has("error"));
+    store().removeCredentialSlot(slot);store().removeCredentialSlot(slot+":"+run);
    }
   }
  }

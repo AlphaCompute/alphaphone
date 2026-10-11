@@ -25,20 +25,29 @@ public final class RotationInstrumentedTest {
  private static void until(String code)throws Exception{for(int i=0;i<200;i++){if("true".equals(js("Boolean("+code+")")))return;SystemClock.sleep(100);}fail("Rotation flow condition: "+code);}
  private static int orientation()throws Exception{AtomicInteger value=new AtomicInteger();WebViewTestDriver.withActivity(MainActivity.class,a->value.set(a.getResources().getConfiguration().orientation));return value.get();}
  private static void awaitOrientation(int expected)throws Exception{for(int i=0;i<100;i++){if(orientation()==expected)return;SystemClock.sleep(100);}fail("Activity did not reach orientation "+expected+" (landscape layout required)");}
- /** Visible enabled buttons of the active view that cannot be brought inside the viewport. Home
-  * scrolls (its card row sideways in portrait, its app grid down in landscape), so each control is
-  * scrolled to first: only one whose centre still lies outside the viewport is clipped (a card
-  * wider than the screen is reachable). The WebView answers in JSON, so the array itself is
-  * returned: a stringified one came back quoted and could never equal "[]". */
- private static final String CLIPPED="[...document.querySelectorAll('button,[role=button]')].filter(e=>!e.disabled&&e.getClientRects().length&&!e.closest('[inert],[aria-hidden=\"true\"]')).map(e=>{e.scrollIntoView({block:'center',inline:'center',behavior:'instant'});return {l:e.getAttribute('aria-label')||e.textContent.trim(),r:e.getBoundingClientRect()};}).filter(x=>{const cx=x.r.left+x.r.width/2,cy=x.r.top+x.r.height/2;return x.r.width>0&&(cx<0||cy<0||cx>innerWidth||cy>innerHeight);}).map(x=>x.l)";
+ /**
+  * Visible enabled controls of the active view that are really clipped. Home scrolls (its card row
+  * sideways with mandatory snap points, its app grid down in landscape), so each control is first
+  * scrolled to, trying every alignment because a "nearest" request snaps back on the card row.
+  * After the best alignment the control's whole box (1px tolerance) must lie inside the viewport
+  * and inside every ancestor that clips. A part may stay outside only along an axis in which a
+  * scrolling ancestor is smaller than the control itself, where it is reachable piece by piece.
+  * The check waits for layout between scrolls, so it runs asynchronously and is polled.
+  */
+ private static final String CLIPPED="window.__rotationClipped=null;(async()=>{const frame=()=>new Promise(r=>requestAnimationFrame(()=>r())); const cut=e=>{const r=e.getBoundingClientRect(),why=[];if(!r.width||!r.height)return why; const check=(name,left,top,right,bottom,sx,sy)=>{if(Math.max(left-r.left,r.right-right)>1&&!(sx&&r.width>right-left))why.push(name+' x');if(Math.max(top-r.top,r.bottom-bottom)>1&&!(sy&&r.height>bottom-top))why.push(name+' y');}; let fixed=getComputedStyle(e).position==='fixed'; for(let p=e.parentElement;p&&!fixed;p=p.parentElement){const s=getComputedStyle(p),cx=s.overflowX!=='visible',cy=s.overflowY!=='visible';if(cx||cy){const b=p.getBoundingClientRect(),scrolls=v=>v==='auto'||v==='scroll';check((p.getAttribute('aria-label')||p.className||p.tagName).toString().slice(0,30),cx?b.left:-1e9,cy?b.top:-1e9,cx?b.right:1e9,cy?b.bottom:1e9,scrolls(s.overflowX)&&p.scrollWidth>p.clientWidth,scrolls(s.overflowY)&&p.scrollHeight>p.clientHeight);}if(s.position==='fixed')fixed=true;} check('viewport',0,0,innerWidth,innerHeight,false,false);return why;}; const out=[]; for(const e of [...document.querySelectorAll('button,[role=button]')].filter(e=>!e.disabled&&e.getClientRects().length&&!e.closest('[inert],[aria-hidden=\"true\"]'))){ let why=[]; for(const align of ['nearest','center','start','end']){e.scrollIntoView({block:align,inline:align,behavior:'instant'});await frame();await frame();why=cut(e);if(!why.length)break;} if(why.length)out.push((e.getAttribute('aria-label')||e.textContent.trim())+': '+why.join(', '));} return out;})().then(v=>window.__rotationClipped=JSON.stringify(v),e=>window.__rotationClipped=JSON.stringify(['check failed: '+e]))";
+ private static String clipped()throws Exception{
+  js(CLIPPED);
+  for(int i=0;i<200;i++){String value=js("window.__rotationClipped");if(!"null".equals(value))return (String)new org.json.JSONTokener(value).nextValue();SystemClock.sleep(100);}
+  fail("Clipping check did not finish");return null;
+ }
 
  private static void rotateAndCheck(UiDevice device,String view,String extra)throws Exception{
   device.setOrientationLeft();awaitOrientation(Configuration.ORIENTATION_LANDSCAPE);
   until(AppNavigation.selected(view));if(extra!=null)until(extra);
-  assertEquals("Primary actions clipped in landscape "+view,"[]",js(CLIPPED));
+  assertEquals("Primary actions clipped in landscape "+view,"[]",clipped());
   device.setOrientationNatural();awaitOrientation(Configuration.ORIENTATION_PORTRAIT);
   until(AppNavigation.selected(view));if(extra!=null)until(extra);
-  assertEquals("Primary actions clipped after returning to portrait "+view,"[]",js(CLIPPED));
+  assertEquals("Primary actions clipped after returning to portrait "+view,"[]",clipped());
  }
 
  @Test public void homeAndComposerDraftSurviveRotation()throws Exception{
