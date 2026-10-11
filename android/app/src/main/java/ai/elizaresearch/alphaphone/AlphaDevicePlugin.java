@@ -28,7 +28,7 @@ public final class AlphaDevicePlugin extends Plugin {
  @PluginMethod public void setTextScale(PluginCall call){
   Integer percent=call.getInt("percent");if(percent==null||percent<75||percent>150){call.reject("Text size must be between75 and150 percent");return;}
   getActivity().runOnUiThread(()->{
-   if(!(getActivity() instanceof MainActivity)||getActivity().isFinishing()){call.reject("Alpha view is unavailable");return;}
+   if(!(getActivity() instanceof MainActivity)||getActivity().isFinishing()||getActivity().isDestroyed()){call.reject("Alpha view is unavailable");return;}
    if(!getContext().getSharedPreferences("alpha-appearance",Context.MODE_PRIVATE).edit().putInt("text-scale-percent",percent).commit()){call.reject("Text size could not be saved");return;}
    applyTextScale((MainActivity)getActivity());JSObject out=new JSObject();out.put("textScalePercent",textScalePercent(getContext()));out.put("effectiveTextZoom",getBridge().getWebView().getSettings().getTextZoom());call.resolve(out);
   });

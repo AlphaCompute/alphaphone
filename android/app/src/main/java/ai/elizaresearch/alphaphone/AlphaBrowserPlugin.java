@@ -304,8 +304,14 @@ public class AlphaBrowserPlugin extends Plugin {
  private void fail(Tab t, String message) { disableAutofill(t); clearTimeout(t); t.error = message; t.loading = false; t.committed = false; t.web.stopLoading(); t.web.setVisibility(View.INVISIBLE); t.message.setText(message); t.message.setVisibility(View.VISIBLE); emit(t); }
  private JSObject state(Tab t) { JSObject s = new JSObject(); s.put("session", session); s.put("id", t.id); s.put("sequence", ++sequence); s.put("navigation", String.valueOf(t.navigation)); s.put("url", t.url); s.put("title", t.dead ? "" : t.web.getTitle()); s.put("loading", t.loading); s.put("committed", t.committed); s.put("httpStatus", t.httpStatus); s.put("progress", t.dead ? 0 : t.web.getProgress()); s.put("canBack", !t.dead && t.web.canGoBack()); s.put("canForward", !t.dead && t.web.canGoForward()); s.put("error", t.error); s.put("private", t.priv); s.put("passkeys", t.passkeys); return s; }
  private void emit(Tab t) { if (tabs.get(t.id) == t) notifyListeners("stateChanged", state(t)); }
- private void run(PluginCall call, java.util.function.Consumer<Tab> action) { getActivity().runOnUiThread(() -> { if (!Objects.equals(session, call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t = tabs.get(call.getString("id")); if (t == null || t.dead) { call.reject("Browser tab is unavailable"); return; } try { action.accept(t); call.resolve(state(t)); } catch (Exception e) { call.reject("Browser operation failed"); } }); }
- @PluginMethod public void create(PluginCall call) { getActivity().runOnUiThread(() -> {
+ /**
+  * Capacitor can deliver a call the page made just before the activity was destroyed after
+  * handleOnDestroy. Nothing may then create a WebView or show a dialog on the dead activity (a
+  * dialog would throw on the main thread and end the process); every such call is rejected.
+  */
+ private boolean closed(PluginCall call){if(!destroyed)return false;call.reject("Browser closed");return true;}
+ private void run(PluginCall call, java.util.function.Consumer<Tab> action) { getActivity().runOnUiThread(() -> {if(closed(call))return; if (!Objects.equals(session, call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t = tabs.get(call.getString("id")); if (t == null || t.dead) { call.reject("Browser tab is unavailable"); return; } try { action.accept(t); call.resolve(state(t)); } catch (Exception e) { call.reject("Browser operation failed"); } }); }
+ @PluginMethod public void create(PluginCall call) { getActivity().runOnUiThread(() -> {if(closed(call))return;
   String requested = call.getString("session"), id = call.getString("id");
   if (requested == null || id == null || !id.matches("[A-Za-z0-9_-]{1,80}")) { call.reject("Invalid browser identity"); return; }
   if (session != null && !session.equals(requested)) { call.reject("Expired browser session"); return; }
@@ -702,7 +708,7 @@ public class AlphaBrowserPlugin extends Plugin {
  private void closePopup(Tab t){navigationHandler.post(()->{if(tabs.get(t.id)!=t)return;tabs.remove(t.id);dispose(t);tabClosed(t.id);});}
  @PluginMethod public void navigate(PluginCall call) { String url=call.getString("url"); if (url==null || !safe(url)) { call.reject("Enter an HTTP or HTTPS address without credentials"); return; } run(call,t -> { t.url=url; loading(t); emit(t); if(t.readingWorld!=null)t.readingWorld.prepare(url); t.web.loadUrl(url); }); }
  @PluginMethod public void command(PluginCall call) { run(call,t -> { String op=call.getString("command"); if ("back".equals(op)) { if(t.web.canGoBack()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(-1);t.web.goBack();} } else if ("forward".equals(op)) { if(t.web.canGoForward()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(1);t.web.goForward();} } else if ("reload".equals(op)) {loading(t);if(t.readingWorld!=null)t.readingWorld.prepare(t.web.getUrl());t.web.reload();} else if ("stop".equals(op)) { clearTimeout(t); if(!t.committed)fail(t,"Loading stopped. Reload from the menu to try again."); else {t.web.stopLoading();t.loading=false;syncAutofill(t);} } else throw new IllegalArgumentException(); emit(t); }); }
- @PluginMethod public void present(PluginCall call) { getActivity().runOnUiThread(() -> {
+ @PluginMethod public void present(PluginCall call) { getActivity().runOnUiThread(() -> {if(closed(call))return;
   if (!Objects.equals(session,call.getString("session"))) { call.reject("Expired browser session"); return; }
   String nextId=call.getString("id");
   // Revoke selected-tab authority before any synchronous framework callback.
@@ -716,22 +722,22 @@ public class AlphaBrowserPlugin extends Plugin {
   session=requested;return true;
  }
  private JSObject bookmarkResult(ArrayList<String> urls) { JSObject result=new JSObject();JSArray list=new JSArray();for(String url:urls)list.put(url);result.put("urls",list);return result; }
- @PluginMethod public void bookmarks(PluginCall call) { getActivity().runOnUiThread(()->{
+ @PluginMethod public void bookmarks(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
   if(!bookmarkSession(call))return;
   try{call.resolve(bookmarkResult(bookmarks.read()));}catch(Exception unavailable){call.reject("Saved bookmarks could not be read. Existing bookmarks were not changed.");}
  }); }
- @PluginMethod public void setBookmark(PluginCall call) { getActivity().runOnUiThread(()->{
+ @PluginMethod public void setBookmark(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
   if(!bookmarkSession(call))return;
   String url=call.getString("url");Boolean saved=call.getBoolean("saved");
   if(!BrowserBookmarks.valid(url)||saved==null){call.reject("Only HTTPS addresses without embedded credentials can be bookmarked.");return;}
   try{call.resolve(bookmarkResult(bookmarks.change(url,saved)));}catch(Exception unavailable){call.reject("Bookmark could not be saved. The device stores up to 100 bookmarks; existing data was not changed.");}
  }); }
- @PluginMethod public void browsingState(PluginCall call) { getActivity().runOnUiThread(()->{
+ @PluginMethod public void browsingState(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
   if(!bookmarkSession(call))return;
   try{call.resolve(JSObject.fromJSONObject(sessionStore.read()));}catch(Exception unavailable){call.reject("Saved tabs and history could not be read. They were not changed.");}
  }); }
  /** Normal tabs and history only; the renderer never sends private tabs. */
- @PluginMethod public void saveBrowsingState(PluginCall call) { getActivity().runOnUiThread(()->{
+ @PluginMethod public void saveBrowsingState(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
   if(!bookmarkSession(call))return;
   if(clearing){call.reject("Browsing data is being cleared.");return;}
   try{
@@ -743,7 +749,7 @@ public class AlphaBrowserPlugin extends Plugin {
  /** Clear browsing data: cookies and site data, history and cache of the
   * persistent normal-tab profile. Open normal tabs close first so a live page
   * cannot rewrite its data; private tabs are unaffected. Bookmarks remain. */
- @PluginMethod public void clearBrowsingData(PluginCall call) { getActivity().runOnUiThread(()->{
+ @PluginMethod public void clearBrowsingData(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
   if(!bookmarkSession(call))return;
   if(clearing){call.reject("Browsing data is already being cleared.");return;}
   if(!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)||!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)){call.reject("This Android WebView cannot clear browser data. Update Android System WebView.");return;}
@@ -763,7 +769,7 @@ public class AlphaBrowserPlugin extends Plugin {
   });
  }); }
  /** Cookies and storage for the selected tab's site (registrable domain) only. */
- @PluginMethod public void clearSiteData(PluginCall call) { getActivity().runOnUiThread(()->{
+ @PluginMethod public void clearSiteData(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
   if(!Objects.equals(session,call.getString("session"))){call.reject("Expired browser session");return;}
   Tab t=tabs.get(call.getString("id"));
   if(t==null||t.dead||!safe(t.url)||!Objects.equals(call.getString("url"),t.url)){call.reject("Load a website before clearing its data.");return;}
@@ -777,15 +783,17 @@ public class AlphaBrowserPlugin extends Plugin {
    if(!t.priv)try{sessionStore.clearPermissionsForSite(cleared);}catch(Exception unavailable){notice(t,"Website permissions for this site could not be cleared. Use Clear browsing data.");}
   }catch(Exception unavailable){call.reject("Site data could not be cleared.");}
  }); }
+ /** A fact about this WebView provider, not about a page, tab or session: whether page reading can work at all. */
+ @PluginMethod public void readingSupport(PluginCall call) { JSObject out=new JSObject();out.put("available",BrowserReadingWorld.supported());call.resolve(out); }
  @PluginMethod public void reviewQuestion(PluginCall call) { reviewPage(call,true); }
  @PluginMethod public void reviewReading(PluginCall call) { reviewPage(call,false); }
- private void reviewPage(PluginCall call,boolean question) { getActivity().runOnUiThread(()->{
+ private void reviewPage(PluginCall call,boolean question) { getActivity().runOnUiThread(()->{if(closed(call))return;
   Tab tab=tabs.get(call.getString("id"));String owner=session,url=call.getString("url"),navigation=call.getString("navigation");
   java.util.function.BooleanSupplier current=()->!destroyed&&!paused&&Objects.equals(owner,session)&&Objects.equals(session,call.getString("session"))&&tab!=null&&tabs.get(tab.id)==tab&&!tab.dead&&Objects.equals(presentedId,tab.id)&&tab.web.isShown()&&tab.committed&&!tab.loading&&tab.error.isEmpty()&&Objects.equals(url,tab.url)&&Objects.equals(url,tab.web.getUrl())&&Objects.equals(navigation,String.valueOf(tab.navigation))&&url!=null&&url.startsWith("https://");
   if(!current.getAsBoolean()){call.reject("Load a visible HTTPS page before reading");return;}
   if(question)reading.reviewQuestion(call,tab.web,tab.readingWorld,current);else reading.review(call,tab.web,tab.readingWorld,current);
  }); }
- @PluginMethod public void cancelReading(PluginCall call) { getActivity().runOnUiThread(()->{if(Objects.equals(session,call.getString("session")))reading.cancel();call.resolve();}); }
+ @PluginMethod public void cancelReading(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;if(Objects.equals(session,call.getString("session")))reading.cancel();call.resolve();}); }
  String consumeReading(PluginCall call)throws Exception{return reading.consume(call);}
  @PluginMethod public void share(PluginCall call) { run(call,t->{
   // The renderer supplies only identity/revision guards. Page data comes from
@@ -797,8 +805,8 @@ public class AlphaBrowserPlugin extends Plugin {
   for(Tab tab:tabs.values())disableAutofill(tab);
   shareOutstanding=true;try{pageShare.launch(Intent.createChooser(send,"Share page"));}catch(RuntimeException failure){shareOutstanding=false;throw failure;}
  }); }
- @PluginMethod public void downloads(PluginCall call) { getActivity().runOnUiThread(()->{String requested=call.getString("session");if(requested==null||(session!=null&&!Objects.equals(session,requested))){call.reject("Expired browser session");return;}session=requested;for(Tab tab:tabs.values())disableAutofill(tab);downloads.show();call.resolve();}); }
- @PluginMethod public void close(PluginCall call) { getActivity().runOnUiThread(() -> { if (!Objects.equals(session,call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t=tabs.remove(call.getString("id")); if(t!=null) dispose(t); call.resolve(); }); }
+ @PluginMethod public void downloads(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;String requested=call.getString("session");if(requested==null||(session!=null&&!Objects.equals(session,requested))){call.reject("Expired browser session");return;}session=requested;for(Tab tab:tabs.values())disableAutofill(tab);downloads.show();call.resolve();}); }
+ @PluginMethod public void close(PluginCall call) { getActivity().runOnUiThread(() -> {if(closed(call))return; if (!Objects.equals(session,call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t=tabs.remove(call.getString("id")); if(t!=null) dispose(t); call.resolve(); }); }
  @Override protected void handleOnPause() { paused=true;if(reading!=null)reading.cancel();flushCookies();exitFullscreen(true); for(Tab t:tabs.values()) { syncAutofill(t); t.frame.setVisibility(View.GONE); if(!t.dead)t.web.onPause(); } }
  /** Persist normal-tab sign-in cookies promptly; the process may be killed in background. */
  private void flushCookies() {
