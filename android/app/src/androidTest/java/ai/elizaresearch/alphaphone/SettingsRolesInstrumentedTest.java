@@ -43,6 +43,14 @@ public final class SettingsRolesInstrumentedTest {
   }
   return null;
  }
+ private AccessibilityNodeInfo exactDialogNode(String label){
+  for(int i=0;i<100;i++){
+   AccessibilityNodeInfo root=ui().getRootInActiveWindow();
+   if(root!=null&&!context.getPackageName().contentEquals(root.getPackageName()))for(AccessibilityNodeInfo node:root.findAccessibilityNodeInfosByText(label))if(node.getText()!=null&&label.equalsIgnoreCase(node.getText().toString().trim()))return node;
+   SystemClock.sleep(100);
+  }
+  return null;
+ }
  private void back(){long t=SystemClock.uptimeMillis();for(int action:new int[]{KeyEvent.ACTION_DOWN,KeyEvent.ACTION_UP})ui().injectInputEvent(new KeyEvent(t,SystemClock.uptimeMillis(),action,KeyEvent.KEYCODE_BACK,0),true);}
  private static boolean click(AccessibilityNodeInfo node){for(AccessibilityNodeInfo n=node;n!=null;n=n.getParent())if(n.isClickable())return n.performAction(AccessibilityNodeInfo.ACTION_CLICK);return false;}
 
@@ -57,16 +65,27 @@ public final class SettingsRolesInstrumentedTest {
    // Decline in Android's own dialog: nothing changes, and Settings says so after reading back.
    button("Make Alpha your Home app");
    assertNotNull("Android role dialog shown",dialogNode("Alpha Phone","Cancel"));
-   back();
+   // Decline with the dialog's own Cancel: on Android 16 this dialog ignores the Back key
+   // (measured on the API 36 emulator), so Back is only the fallback for a dialog without the button.
+   AccessibilityNodeInfo cancel=dialogNode("Cancel");
+   if(cancel==null||!click(cancel))back();
    until(text("Home app not changed"));
    assertFalse("Declined request holds no role",holdsHome());
    assertEquals("Settings offers the request again","true",js("Boolean("+"[...document.querySelectorAll('button')].find(e=>e.textContent.trim().startsWith('Make Alpha your Home app'))"+")"));
    // Accept: choose Alpha, then confirm when the dialog asks.
    button("Make Alpha your Home app");
-   AccessibilityNodeInfo alpha=dialogNode("Alpha Phone");assertNotNull("Alpha listed as a Home app",alpha);assertTrue(click(alpha));
-   AccessibilityNodeInfo confirm=dialogNode("Set as default","SET AS DEFAULT");if(confirm!=null)click(confirm);
-   until(text("Alpha Phone is your Home app"));
+   // The dialog's title also contains the app name; the list row is the node whose text is exactly it.
+   AccessibilityNodeInfo alpha=exactDialogNode("Alpha Phone");assertNotNull("Alpha listed as a Home app",alpha);assertTrue("Alpha's row is selectable",click(alpha));
+   AccessibilityNodeInfo confirm=null;for(int i=0;i<50&&(confirm==null||!confirm.isEnabled());i++){confirm=exactDialogNode("Set as default");if(confirm==null||!confirm.isEnabled())SystemClock.sleep(100);}
+   if(confirm!=null)assertTrue("Set as default is pressed",click(confirm));
+   for(int i=0;i<200&&!holdsHome();i++)SystemClock.sleep(100);
    assertTrue("Android reports Alpha as HOME holder",holdsHome());
+   // Becoming HOME makes Android start Alpha as the home activity. On the API 36 emulator that is a
+   // new MainActivity in the home task, so the page that asked is no longer in front and its
+   // "Last change" notice is not what the owner sees. Settings in the instance now in front must
+   // name Alpha as the Home app, read back from Android.
+   settings();
+   until("[...document.querySelectorAll('[data-screen] *')].some(e=>e.childElementCount<4&&e.textContent.trim().startsWith('Home app')&&e.textContent.includes('Alpha Phone'))");
    assertEquals("The request is no longer offered","false",js("Boolean([...document.querySelectorAll('button')].find(e=>e.textContent.trim().startsWith('Make Alpha your Home app')))"));
   }finally{
    for(String holder:previous.split("\\s+"))if(!holder.isEmpty())shell("cmd role add-role-holder --user 0 "+HOME+" "+holder);
