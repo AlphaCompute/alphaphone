@@ -180,3 +180,78 @@ test('a focus trap and focus inside hidden content are reported; a bounded order
   await load(page, `<div role="dialog" aria-label="Alarm"><input type="time" aria-label="Alarm time" value="07:00"><button>Save</button></div>`);
   expect(format(await auditTabOrder(page))).toEqual([]);
 });
+
+// Round 10: the floating dock and toasts, measured from bounding boxes and hit tests.
+const phone = (body: string) => `<div class="os" style="position:relative;width:400px;height:600px;overflow:hidden"><div data-screen="1" style="position:absolute;inset:0">${body}</div></div>`;
+const composer = `<div data-alpha-layer="composer" style="position:absolute;left:16px;right:16px;bottom:28px;z-index:40"><div data-alpha-input-bar style="height:62px;border-radius:31px;background:#eee"><button aria-label="Open conversation" style="width:44px;height:44px">A</button></div></div>`;
+const pill = `<div data-alpha-layer="pill" style="position:absolute;left:0;right:0;bottom:26px;z-index:40;display:flex;justify-content:center;pointer-events:none"><div style="pointer-events:auto;padding:5px;background:#eee"><button aria-label="Open conversation" style="width:44px;height:44px">A</button></div></div>`;
+const rows = (count: number) => Array.from({ length: count }, (_, index) => `<button style="display:block;width:100%;height:60px">Row ${index + 1}</button>`).join('');
+
+test('a control or label under the floating dock is reported; one that ends above it or scrolls clear is not', async ({ page }) => {
+  await page.setViewportSize({ width: 400, height: 600 });
+  // Home may not put anything under the composer at all, scrollable or not.
+  await load(page, phone(`<div data-alpha-layer="home" style="position:absolute;inset:0;overflow-y:auto;z-index:10">${rows(12)}<p>Last line of Home</p></div>${composer}`));
+  const home = format(await auditPage(page, { dock: true }));
+  expect(rules(home)).toEqual(['obscured-by-dock']);
+  expect(home.join('\n')).toContain('under composer');
+  expect(home.every(line => line.includes('[home]'))).toBe(true);
+  // The same Home ending above the dock: its last visible row is cut by the scroll area, not covered.
+  await load(page, phone(`<div data-alpha-layer="home" style="position:absolute;inset:0 0 96px;overflow-y:auto;z-index:10">${rows(12)}<p>Last line of Home</p></div>${composer}`));
+  expect(format(await auditPage(page, { dock: true }))).toEqual([]);
+
+  // An app page scrolls under the dock by design. With no room to scroll its last control clear, it is stuck there.
+  const app = (padding: number, dock: string) => phone(`<div data-alpha-layer="app" style="position:absolute;inset:0;z-index:20;display:flex;flex-direction:column"><div data-alpha-app-scroll="x" style="flex:1;overflow-y:auto;padding-bottom:${padding}px">${rows(10)}<p>Fine print under the list</p></div></div>${dock}`);
+  await load(page, app(0, composer));
+  await page.locator('[data-alpha-app-scroll]').evaluate(el => { el.scrollTop = el.scrollHeight; });
+  const stuck = format(await auditPage(page, { dock: true }));
+  expect(rules(stuck)).toEqual(['obscured-by-dock']);
+  expect(stuck.join('\n')).toMatch(/only \d+px of the \d+px needed can be scrolled/);
+  expect(stuck.join('\n')).toContain('Fine print under the list');
+  // With the dock's footprint as padding every row can be scrolled above it, wherever the page is scrolled to.
+  await load(page, app(110, composer));
+  expect(format(await auditPage(page, { dock: true }))).toEqual([]);
+  await page.locator('[data-alpha-app-scroll]').evaluate(el => { el.scrollTop = 120; });
+  expect(format(await auditPage(page, { dock: true }))).toEqual([]);
+  // The pill is narrower: only what is actually behind it counts, and a retired dock covers nothing.
+  await load(page, app(0, pill));
+  await page.locator('[data-alpha-app-scroll]').evaluate(el => { el.scrollTop = el.scrollHeight; });
+  expect(format(await auditPage(page, { dock: true })).join('\n')).toContain('under pill');
+  await load(page, app(0, composer.replace('data-alpha-layer="composer"', 'data-alpha-layer="composer" inert aria-hidden="true" hidden')));
+  expect(format(await auditPage(page, { dock: true }))).toEqual([]);
+});
+
+test('keyboard focus left partly under the dock is reported; focus scrolled clear of it is not', async ({ page }) => {
+  await page.setViewportSize({ width: 400, height: 600 });
+  const app = (script: string) => phone(`<div data-alpha-layer="app" style="position:absolute;inset:0;z-index:20;display:flex;flex-direction:column"><div data-alpha-app-scroll="x" style="flex:1;overflow-y:auto;padding-bottom:120px">${rows(9)}</div></div>${composer}${script}`);
+  // Nine 60px rows in a 600px page: the last ones take focus where they are, under the composer.
+  await load(page, app(''));
+  const under = format(await auditTabOrder(page));
+  expect(rules(under)).toEqual(['focus-obscured']);
+  expect(under.join('\n')).toContain('under composer');
+  // The same page bringing whatever takes focus above the dock.
+  await load(page, app(`<script>document.querySelector('[data-alpha-app-scroll]').addEventListener('focusin',event=>{const dock=document.querySelector('[data-alpha-layer="composer"]').getBoundingClientRect(),box=event.target.getBoundingClientRect();if(box.bottom>dock.top-8)event.currentTarget.scrollTop+=box.bottom-dock.top+8;});</script>`));
+  expect(format(await auditTabOrder(page))).toEqual([]);
+  // A focusable scroll region is the scroller, not a control inside it.
+  await load(page, phone(`<div data-alpha-layer="app" style="position:absolute;inset:0;z-index:20"><div tabindex="0" role="region" aria-label="Timeline" style="height:100%;overflow-y:auto"><p style="height:900px;margin:0">Hours</p></div></div>${composer}`));
+  expect(format(await auditTabOrder(page))).toEqual([]);
+});
+
+test('a toast under a top-layer dialog is reported; one shown inside the dialog, above it, is not', async ({ page }) => {
+  await page.setViewportSize({ width: 400, height: 600 });
+  const toast = `<div data-alpha-toast aria-live="polite" aria-atomic="true" style="position:absolute;left:16px;right:16px;bottom:40px;z-index:97;display:flex;justify-content:center;pointer-events:none"><div style="pointer-events:auto;min-height:48px;padding:0 18px;background:#000;color:#fff;display:flex;align-items:center"><span>Saved to Notes</span></div></div>`;
+  const dialog = (inside: string) => `<dialog aria-label="Review" style="width:360px;height:520px;margin:auto;border:0;padding:16px"><p>Review this page.</p><button>Close</button>${inside}</dialog><script>document.querySelector('dialog').showModal();</script>`;
+  // Nothing open: the page's toast is on top and reachable.
+  await load(page, phone(toast));
+  expect(format(await auditPage(page, { dock: true }))).toEqual([]);
+  // A modal dialog opened over it: covered, and inert, so never announced.
+  await load(page, phone(toast) + dialog(''));
+  const hidden = format(await auditPage(page, { dock: true }));
+  expect(rules(hidden)).toEqual(['toast-not-announced']);
+  expect(hidden.join('\n')).toContain('Saved to Notes');
+  // The same text in the dialog's own status region, drawn above the dialog.
+  await load(page, phone(toast) + dialog(`<div data-alpha-dialog-toast role="status" aria-live="polite" popover="manual" style="position:fixed;inset:auto;left:16px;width:368px;bottom:40px;margin:0;padding:0;border:0;background:transparent;display:flex;justify-content:center;pointer-events:none"><div style="pointer-events:auto;min-height:48px;padding:0 18px;background:#000;color:#fff;display:flex;align-items:center"><span>Saved to Notes</span></div></div>`) + `<script>document.querySelector('[data-alpha-dialog-toast]').showPopover();</script>`);
+  expect(format(await auditPage(page, { dock: true }))).toEqual([]);
+  // A toast with something drawn over it is not on screen for a sighted user either.
+  await load(page, phone(toast + `<div style="position:absolute;inset:0;z-index:99;background:#fff"><p>Cover</p></div>`));
+  expect(rules(format(await auditPage(page, { dock: true })))).toEqual(['toast-covered']);
+});

@@ -3822,10 +3822,10 @@
               </sc-if>
 
               <sc-if value="{{r.kInfo}}">
-                <div style="display: flex; align-items: center; gap: 14px; padding: 8px 18px; min-height: 52px; box-sizing: border-box">
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; padding: 8px 18px; min-height: 52px; box-sizing: border-box">
                   <sc-if value="{{r.hasIcon}}"><svg class="i" viewBox="0 0 24 24"><path d="{{r.d}}"></path></svg></sc-if>
-                  <span style="flex-grow: 1; font-size: 16px">{{r.label}}</span>
-                  <span style="font-size: 14px; color: var(--mut); text-align: right">{{r.val}}</span>
+                  <span style="flex: 1 1 auto; min-width: 0; font-size: 16px; overflow-wrap: anywhere">{{r.label}}</span>
+                  <span style="flex: 0 1 auto; min-width: 0; margin-left: auto; font-size: 14px; color: var(--mut); text-align: right; overflow-wrap: anywhere">{{r.val}}</span>
                 </div>
               </sc-if>
 

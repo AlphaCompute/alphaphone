@@ -4,6 +4,7 @@ import {
 } from "../../../../.eliza/client-features/packages/ui/src/components/shell/chat-overlay-motion.ts";
 import { resolveChatPanelLayout } from "../../../../.eliza/client-features/packages/ui/src/components/shell/chat-panel-layout.ts";
 import { TAP_SLOP } from "../../../../.eliza/client-features/packages/ui/src/gestures/constants";
+import { visibleDocks } from "../runtime/dock-clearance";
 
 const PANEL_TRANSITION = `height .42s cubic-bezier(${OVERLAY_EASE.join(",")}), border-radius .42s, opacity .2s`;
 type Shell = any;
@@ -24,6 +25,18 @@ type Drag = {
 	moved: boolean;
 	tap?: () => void;
 };
+/** The nearest ancestor that scrolls vertically and has somewhere to scroll to. */
+function scrollParent(element: HTMLElement): HTMLElement | null {
+	for (let node = element.parentElement; node; node = node.parentElement) {
+		const overflow = getComputedStyle(node).overflowY;
+		if (
+			(overflow === "auto" || overflow === "scroll") &&
+			node.scrollHeight > node.clientHeight
+		)
+			return node;
+	}
+	return null;
+}
 /** Product gesture binding over shared pure geometry; never owns transcript or editable-control gestures. */
 export function installChatOverlayMotion(Component: Shell) {
 	const p = Component.prototype,
@@ -210,10 +223,12 @@ export function installChatOverlayMotion(Component: Shell) {
 		out.panelTransition = drag?.moved ? "none" : PANEL_TRANSITION;
 		// As in OG's scroll clearance, reserve the resting sheet's footprint and
 		// reveal focused app controls without changing the sheet or focus owner.
+		// The same holds for the floating dock (composer bar or pill): a control
+		// that takes focus while part of it is under the dock is scrolled wholly
+		// above it, so keyboard and switch focus is never left half covered.
 		out.focusAppContent = (event: FocusEvent) => {
 			const target = event.target;
 			if (
-				shell.S().chat !== "sheet" ||
 				!(target instanceof HTMLElement) ||
 				target.closest('[inert],[role="dialog"]') ||
 				document.querySelector("dialog[open]")
@@ -221,15 +236,28 @@ export function installChatOverlayMotion(Component: Shell) {
 				return;
 			const scroll = target.closest<HTMLElement>(
 				'[data-alpha-app-scroll],[data-alpha-layer="home"],.calendar-timeline,.calendar-draft-fields',
-			);
-			const panel = document.querySelector<HTMLElement>(
-				'[data-alpha-layer="conversation"]',
-			);
-			if (!scroll || !panel || target === scroll) return;
-			const hidden =
-				target.getBoundingClientRect().bottom -
-				panel.getBoundingClientRect().top +
-				12;
+			) ?? scrollParent(target);
+			if (!scroll || target === scroll) return;
+			const box = target.getBoundingClientRect();
+			const sheet = shell.S().chat === "sheet";
+			// Under the dock only focus that did not come from a pointer is moved:
+			// scrolling a pressed control out from under the finger would lose the tap.
+			if (!sheet && !target.matches(":focus-visible")) return;
+			const covers =
+				sheet
+					? Array.from(
+							document.querySelectorAll<HTMLElement>(
+								'[data-alpha-layer="conversation"]',
+							),
+						)
+					: visibleDocks();
+			let hidden = 0;
+			for (const cover of covers) {
+				const over = cover.getBoundingClientRect();
+				// A dock beside the page (landscape) covers nothing of it.
+				if (over.right <= box.left || over.left >= box.right) continue;
+				hidden = Math.max(hidden, box.bottom - over.top + 12);
+			}
 			if (hidden > 0) scroll.scrollTop += hidden / geometry.scale;
 		};
 		out.pillDragStyle = drag?.moved

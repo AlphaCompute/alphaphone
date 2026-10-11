@@ -72,11 +72,20 @@ export type PageAuditOptions = {
    * bounding boxes after clipping; text or a control under an opaque layer is not counted.
    */
   overlap?: boolean;
+  /**
+   * Check the floating dock (the composer bar, the pill, the resting half sheet) and toasts:
+   * on Home and in the app library nothing readable or operable may be painted under the dock at
+   * all; in an app's own scroller a control or label under the dock must be reachable by scrolling
+   * it fully clear; and a toast on screen must be painted on top and not be inert (a toast left
+   * under a top-layer dialog is neither seen nor announced). Measured from bounding boxes after
+   * clipping and from hit tests.
+   */
+  dock?: boolean;
 };
 
 /** Structure, keyboard operability, contrast and clipping measured in the page. */
 export async function auditPage(page: Page, options: PageAuditOptions = {}): Promise<Violation[]> {
-  return page.evaluate(({ contrast, clipping, targetSize, overlap }) => {
+  return page.evaluate(({ contrast, clipping, targetSize, overlap, dock }) => {
     const out: Array<{ rule: string; target: string; detail?: string }> = [];
     const describe = (el: Element) => {
       const layer = el.closest('[data-alpha-subview],[data-alpha-layer],[data-screen],dialog,[role=dialog]');
@@ -388,8 +397,85 @@ export async function auditPage(page: Page, options: PageAuditOptions = {}): Pro
         }
       } finally { probe.remove(); }
     }
+    // 8. The floating dock and toasts.
+    if (dock) {
+      type Box = { left: number; top: number; right: number; bottom: number };
+      const scrolls = (value: string) => value === 'auto' || value === 'scroll';
+      const painted = (rect: Box, el: Element): Box | null => {
+        const box = { left: Math.max(0, rect.left), top: Math.max(0, rect.top), right: Math.min(viewport.width, rect.right), bottom: Math.min(viewport.height, rect.bottom) };
+        for (let node: Element | null = el; node && node !== document.documentElement; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          if (Number(style.opacity) < .05) return null;
+          if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+          const frame = node.getBoundingClientRect();
+          if (style.overflowX !== 'visible') { box.left = Math.max(box.left, frame.left); box.right = Math.min(box.right, frame.right); }
+          if (style.overflowY !== 'visible') { box.top = Math.max(box.top, frame.top); box.bottom = Math.min(box.bottom, frame.bottom); }
+        }
+        return box.right - box.left > 1 && box.bottom - box.top > 1 ? box : null;
+      };
+      // The dock is whichever of these is on screen: the composer bar with anything stacked on
+      // it, the pill, or the conversation sheet resting over the lower part of the page.
+      const DOCK = '[data-alpha-layer="composer"],[data-alpha-layer="pill"] > *,[data-alpha-layer="conversation"]';
+      const docks = top ? [] : Array.from(document.querySelectorAll(DOCK)).filter(el => exposed(el) && !el.closest('[aria-hidden="true"]'))
+        .map(el => ({ el, box: el.getBoundingClientRect() })).filter(item => item.box.width > 1 && item.box.height > 1);
+      // Only the page the dock floats over is judged; menus, sheets, the shade and toasts are drawn above it.
+      const UNDER = '[data-alpha-layer="home"],[data-alpha-layer="drawer"],[data-alpha-layer="app"]';
+      const STRICT = '[data-alpha-layer="home"],[data-alpha-layer="drawer"]';
+      const scale = (() => { const screen = document.querySelector<HTMLElement>('[data-screen]'); return screen && screen.offsetWidth ? screen.getBoundingClientRect().width / screen.offsetWidth : 1; })();
+      const judge = (el: Element, rect: Box, what: string) => {
+        const layer = el.closest(UNDER); if (!layer || !docks.length) return;
+        const box = painted(rect, el.parentElement || el); if (!box) return;
+        for (const item of docks) {
+          const width = Math.min(box.right, item.box.right) - Math.max(box.left, item.box.left), height = Math.min(box.bottom, item.box.bottom) - Math.max(box.top, item.box.top);
+          if (width <= 2 || height <= 2) continue;
+          // The dock really is what is painted there (an inline dialog or a sheet above both is not the dock's doing).
+          const hit = document.elementFromPoint(Math.max(box.left, item.box.left) + width / 2, Math.max(box.top, item.box.top) + height / 2);
+          if (!hit || !(item.el === hit || item.el.contains(hit))) continue;
+          // Home and the app library end above the composer bar and the pill. The conversation
+          // sheet is opened over them on purpose and they scroll under it, like any app page.
+          const strict = !!el.closest(STRICT) && !item.el.matches('[data-alpha-layer="conversation"]');
+          // Elsewhere the page scrolls under the dock by design: what matters is that it can be scrolled clear.
+          let room = 0;
+          for (let node = el.parentElement; node && !strict; node = node.parentElement) {
+            const style = getComputedStyle(node);
+            if (scrolls(style.overflowY) && node.scrollHeight > node.clientHeight) { room = (node.scrollHeight - node.clientHeight - node.scrollTop) * scale; break; }
+          }
+          const need = rect.bottom - item.box.top;
+          if (strict || room + 1 < need) out.push({ rule: 'obscured-by-dock', target: describe(el), detail: `${what} has ${Math.round(width)}x${Math.round(height)} under ${item.el.getAttribute('data-alpha-layer') || item.el.parentElement?.getAttribute('data-alpha-layer')}${strict ? '' : `, and only ${Math.round(room)}px of the ${Math.round(need)}px needed can be scrolled`}` });
+          return;
+        }
+      };
+      if (docks.length) {
+        for (const el of document.querySelectorAll(INTERACTIVE)) {
+          if (!exposed(el) || el.closest('[aria-hidden="true"]') || el.closest(PANNABLE) || el.matches(':disabled')) continue;
+          const rect = el.getBoundingClientRect(); if (rect.width && rect.height) judge(el, rect, 'control');
+        }
+        const seen = new Set<Element>();
+        const walker = document.createTreeWalker(document.querySelector('.os') || document.body, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const el = node.parentElement; const text = (node.nodeValue || '').trim();
+          if (!el || !text || seen.has(el) || !exposed(el) || el.closest('[aria-hidden="true"],script,style,option') || el.closest(PANNABLE) || el.closest(INTERACTIVE)) continue;
+          seen.add(el);
+          const range = document.createRange(); range.selectNodeContents(node);
+          for (const rect of Array.from(range.getClientRects())) if (rect.width > 1 && rect.height > 1) judge(el, rect, `"${text.slice(0, 30)}"`);
+        }
+      }
+      // A toast on screen is the topmost thing where it is drawn, and assistive technology can
+      // reach it: under a top-layer dialog it would be covered and inert, so never announced.
+      for (const el of document.querySelectorAll('[data-alpha-toast],[data-alpha-dialog-toast]')) {
+        const text = (el.textContent || '').trim(); if (!text || !shown(el)) continue;
+        const mirrored = el.matches('[data-alpha-toast]') && Array.from(document.querySelectorAll('[data-alpha-dialog-toast]')).some(copy => shown(copy) && (copy.textContent || '').trim() === text);
+        if (mirrored) continue;
+        const body = el.firstElementChild || el, box = body.getBoundingClientRect();
+        const modal = Array.from(document.querySelectorAll('dialog[open]')).filter(item => item.matches(':modal')).at(-1);
+        if (el.closest('[inert]') || (modal && !modal.contains(el))) { out.push({ rule: 'toast-not-announced', target: describe(el), detail: `"${text.slice(0, 40)}" is inert${modal ? ' under a modal dialog' : ''}` }); continue; }
+        const hit = box.width > 1 && box.height > 1 ? document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) : null;
+        // pointer-events:none wrappers are skipped by hit testing; the toast body takes pointer events.
+        if (!hit || !(body === hit || body.contains(hit) || hit.contains(body) && el.contains(hit))) out.push({ rule: 'toast-covered', target: describe(el), detail: `"${text.slice(0, 40)}" is under ${hit ? describe(hit).slice(0, 80) : 'nothing painted'}` });
+      }
+    }
     return out;
-  }, { contrast: !!options.contrast, clipping: !!options.clipping, targetSize: options.targetSize || 0, overlap: !!options.overlap });
+  }, { contrast: !!options.contrast, clipping: !!options.clipping, targetSize: options.targetSize || 0, overlap: !!options.overlap, dock: !!options.dock });
 }
 
 /**
@@ -403,7 +489,7 @@ export async function auditPage(page: Page, options: PageAuditOptions = {}): Pro
 export async function auditTabOrder(page: Page, limit = 120): Promise<Violation[]> {
   const read = () => page.evaluate(() => {
     const el = document.activeElement;
-    if (!el || el === document.body || el === document.documentElement) return { key: 'body', hidden: false, visible: true, behind: false, modal: false, stops: 0, segmented: false, text: 'body' };
+    if (!el || el === document.body || el === document.documentElement) return { key: 'body', hidden: false, visible: true, behind: false, under: '', modal: false, stops: 0, segmented: false, text: 'body' };
     const anyEl = el as any; anyEl.__alphaTabId ||= Math.random().toString(36).slice(2);
     const rect = el.getBoundingClientRect();
     const dialog = el.closest('dialog,[role=dialog],[role=alertdialog]');
@@ -420,9 +506,32 @@ export async function auditTabOrder(page: Page, limit = 120): Promise<Violation[
     });
     const hit = scrim ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
     const behind = !!scrim && !!hit && hit !== el && !el.contains(hit) && !hit.contains(el) && (hit === scrim || !!(scrim.compareDocumentPosition(hit) & Node.DOCUMENT_POSITION_FOLLOWING));
+    // The focused control must be wholly visible: no part of it under the floating dock (the
+    // composer bar, the pill or the resting sheet). Its painted box is what clipping leaves of it.
+    let under = '';
+    // A focusable scroll region is the scroller itself: it runs under the dock by design and its
+    // content is scrolled clear, which the obscured-by-dock rule of auditPage judges.
+    const region = ['auto', 'scroll'].includes(getComputedStyle(el).overflowY);
+    if (!region && !el.closest('[data-alpha-layer="composer"],[data-alpha-layer="pill"],[data-alpha-layer="conversation"],dialog')) {
+      const box = { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+      for (let node = el.parentElement; node && node !== document.documentElement; node = node.parentElement) {
+        const style = getComputedStyle(node); if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+        const frame = node.getBoundingClientRect();
+        if (style.overflowX !== 'visible') { box.left = Math.max(box.left, frame.left); box.right = Math.min(box.right, frame.right); }
+        if (style.overflowY !== 'visible') { box.top = Math.max(box.top, frame.top); box.bottom = Math.min(box.bottom, frame.bottom); }
+      }
+      for (const dock of document.querySelectorAll('[data-alpha-layer="composer"],[data-alpha-layer="pill"] > *,[data-alpha-layer="conversation"]')) {
+        if (dock.closest('[inert],[aria-hidden="true"]') || !dock.getClientRects().length) continue;
+        const frame = dock.getBoundingClientRect();
+        const width = Math.min(box.right, frame.right) - Math.max(box.left, frame.left), height = Math.min(box.bottom, frame.bottom) - Math.max(box.top, frame.top);
+        if (width <= 2 || height <= 2) continue;
+        const over = document.elementFromPoint(Math.max(box.left, frame.left) + width / 2, Math.max(box.top, frame.top) + height / 2);
+        if (over && (dock === over || dock.contains(over))) under = `${Math.round(width)}x${Math.round(height)} under ${dock.getAttribute('data-alpha-layer') || dock.parentElement?.getAttribute('data-alpha-layer')}`;
+      }
+    }
     return {
       key: anyEl.__alphaTabId as string, hidden: !!el.closest('[inert],[aria-hidden="true"]'),
-      visible: rect.width > 0 && rect.height > 0, behind, modal: !!dialog, stops,
+      visible: rect.width > 0 && rect.height > 0, behind, under, modal: !!dialog, stops,
       // Tab steps through the hour, minute and period fields of a native date or time input before leaving it.
       segmented: el.matches('input[type=time],input[type=date],input[type=datetime-local],input[type=month],input[type=week]'), text: el.outerHTML.replace(/\s+/g, ' ').replace(/ style="[^"]*"/g, '').slice(0, 140),
     };
@@ -439,6 +548,7 @@ export async function auditTabOrder(page: Page, limit = 120): Promise<Violation[
     if (current.hidden) out.push({ rule: 'focus-in-hidden-content', target: current.text });
     if (!current.visible && current.key !== 'body') out.push({ rule: 'focus-not-visible', target: current.text });
     if (current.behind) out.push({ rule: 'focus-behind-scrim', target: current.text });
+    if (current.under) out.push({ rule: 'focus-obscured', target: current.text, detail: current.under });
     if (current.key === previous && current.key !== 'body') { if (++stuck >= (current.segmented ? 8 : 2)) { if (!current.modal || current.stops > 1) out.push({ rule: 'focus-trap', target: current.text }); break; } } else stuck = 0;
     previous = current.key;
     if (stuck) continue;

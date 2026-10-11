@@ -52,6 +52,8 @@ import { latestRetainedDigest, subscribeRetainedDigest } from './runtime/hosted-
 import { installHomeLauncher } from './prototype/home-launcher';
 import { setLocalePreferences } from './prototype/locale-time';
 import { installTextScale } from './runtime/text-scale';
+import { installDockClearance } from './runtime/dock-clearance';
+import { installToastLayer } from './runtime/toast-layer';
 import './prototype/prototype.css';
 import './prototype/phone.css';
 installGlobalErrorRecovery();
@@ -232,6 +234,10 @@ async function mountPhone() {
   document.documentElement.classList.toggle('standalone-app', !launcherPresentation);
   // Large text is measured, not declared: layout rules read --alpha-text-scale (runtime/text-scale.ts).
   installTextScale();
+  // The floating dock's footprint is measured too: Home ends above it (runtime/dock-clearance.ts).
+  installDockClearance();
+  // A toast raised under a top-layer dialog is shown and announced inside that dialog (runtime/toast-layer.ts).
+  installToastLayer();
   if (testMocksEnabled && mock && isAndroid) {
     const { pauseLiveActivityForMock } = await import('./runtime/mock-admission');
     const root=document.getElementById('root')!;
