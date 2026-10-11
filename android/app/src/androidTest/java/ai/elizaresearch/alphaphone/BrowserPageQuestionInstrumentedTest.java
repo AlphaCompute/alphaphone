@@ -149,6 +149,8 @@ public final class BrowserPageQuestionInstrumentedTest {
  /** Opens the Browser view on a first public page and returns the fixture for its visible tab. */
  private Pages openBrowser() throws Exception {
   AppNavigation.liveMode(); js(AppNavigation.request("Browser")); waitFor(AppNavigation.selected("Browser")); waitFor("window.__alphaTestNavigation?.status==='complete'");
+    // The native page is withdrawn while the modal first-run access panel is open; answer it first, as an owner does.
+    AppNavigation.declineStartupAccess();
   recordNativeCalls();
   String address = "(()=>{const e=document.querySelector('input[aria-label=Address]');if(!e)return false;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'https://example.com/');e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return true;})()";
   if (!"true".equals(js(address))) {

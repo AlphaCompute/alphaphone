@@ -29,13 +29,19 @@ public class BrowserFlowInstrumentedTest {
  }
  private void collect(View view,List<WebView> result,WebView host){if(view instanceof WebView&&view!=host)result.add((WebView)view);if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)collect(group.getChildAt(i),result,host);}}
  String child(String js)throws Exception{
-  CountDownLatch done=new CountDownLatch(1);AtomicReference<String> answer=new AtomicReference<>("null");AtomicReference<Throwable> error=new AtomicReference<>();
+  CountDownLatch done=new CountDownLatch(1);AtomicReference<String> answer=new AtomicReference<>("null");AtomicReference<Throwable> error=new AtomicReference<>();java.util.concurrent.atomic.AtomicBoolean shown=new java.util.concurrent.atomic.AtomicBoolean();
   TestUiDispatch dispatch=TestUiDispatch.post(()->{try{
    for(Activity a:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))if(a instanceof MainActivity){MainActivity main=(MainActivity)a;List<WebView> views=new ArrayList<>();collect(main.getWindow().getDecorView(),views,main.getBridge().getWebView());
-    for(WebView web:views)if(web.isShown()){web.evaluateJavascript(js,v->{answer.set(v);done.countDown();});return;}}
+    for(WebView web:views)if(web.isShown()){shown.set(true);web.evaluateJavascript(js,v->{answer.set(v);done.countDown();});return;}}
    done.countDown();
   }catch(Throwable e){error.set(e);done.countDown();}});
-  dispatch.await(done,"Child browser callback");if(error.get()!=null)throw new AssertionError(error.get());return answer.get();
+  dispatch.await(done,"Child browser callback");if(error.get()!=null)throw new AssertionError(error.get());
+  // No page is shown while a modal host panel is open: the product withdraws the native page under
+  // it. On a fresh install that is the first-run access panel, which opens some seconds after
+  // launch; answer it with its own "Not now" (nothing is granted), as an owner would, so the next
+  // look finds the page. Callers poll, and a page that never shows still fails them.
+  if(!shown.get())WebViewTestDriver.evaluate("(()=>{const b=[...document.querySelectorAll('dialog.alpha-startup-permissions[open] button')].find(b=>b.textContent.trim()==='Not now');if(b)b.click();return !!b})()");
+  return answer.get();
  }
  /** Failure-only structural diagnostics: no page text, URLs, cookies or credentials. */
  String diagnostics(){
