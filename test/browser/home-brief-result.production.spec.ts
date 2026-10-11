@@ -66,53 +66,67 @@ for (const route of ['native', 'renderer'] as const) test(`a digest result from 
   await card.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath(`home-brief-${route}.png`), animations: 'disabled' });
 
-  // 2. Later occurrences that the agent recorded without running them: a missed time and an
-  // overlapping run. They are newer than the brief and must not replace it or count as a run.
+  // 2. Later occurrences that the agent recorded without running them: a missed time, an
+  // overlapping run and a source that was not available. They are newer than the brief and must
+  // not replace it or count as a run.
   await deliver(page, [
     result(2, 'run-missed', now - 3_600_000, { status: 'missed', output: { status: 'missed', text: 'The scheduled time was missed. No backlog was executed.' } }),
-    result(3, 'run-overlap', now - 1_800_000, { status: 'overlap', output: { status: 'overlap', text: 'An earlier run was still active.' } })]);
+    result(3, 'run-overlap', now - 1_800_000, { status: 'overlap', output: { status: 'overlap', text: 'An earlier run was still active.' } }),
+    result(4, 'run-unavailable', now - 1_500_000, { status: 'unavailable', output: { status: 'unavailable', text: 'The source was not available.' } })]);
   await card.click();
   const list = page.getByRole('dialog', { name: 'Scheduled digests', exact: true });
-  // The list received both records (so the card had every chance to show them) and labels them honestly.
+  // The list received all three records (so the card had every chance to show them) and labels them honestly.
   await expect(list.locator('#hosted-result-run-missed')).toContainText('Missed — not run', { timeout: 20_000 });
   await expect(list.locator('#hosted-result-run-overlap')).toContainText('Skipped — an earlier run was still active');
+  await expect(list.locator('#hosted-result-run-unavailable')).toContainText('Not run — source unavailable');
   await expect(list.locator('#hosted-result-run-morning')).toContainText('Synthetic brief: two meetings and one reply to send.');
   await button(page, 'Close scheduled digests').click();
   await expect(card.locator('.home-brief-title')).toHaveText('Synthetic brief: two meetings and one reply to send.');
   await expect(card.locator('.home-brief-status')).toHaveText(`${AGENT_NAME} · Ran ${ran}`);
-  await expect(card).not.toContainText(/missed|Did not run|earlier run/i);
+  await expect(card).not.toContainText(/missed|Did not run|earlier run|not available/i);
   await expect(card).toHaveAttribute('data-alpha-home-brief-failed', 'false');
 
   // 3. A newer run replaces it, with its own completion time.
   const secondAt = now - 600_000;
-  await deliver(page, [result(4, 'run-evening', secondAt, { status: 'finished', output: { summary: 'Synthetic evening brief: nothing left open.' } })]);
+  await deliver(page, [result(5, 'run-evening', secondAt, { status: 'finished', output: { summary: 'Synthetic evening brief: nothing left open.' } })]);
   await expect(card.locator('.home-brief-title')).toHaveText('Synthetic evening brief: nothing left open.', { timeout: 20_000 });
   await expect(card.locator('.home-brief-status')).toHaveText(`${AGENT_NAME} · Ran ${await when(page, secondAt)}`);
 
   // 4. A newer failed run is shown as a failure with the agent's own error text.
   const failedAt = now - 120_000;
-  await deliver(page, [result(5, 'run-failed', failedAt, { status: 'failed', output: null, error: 'Synthetic source expired' })]);
+  await deliver(page, [result(6, 'run-failed', failedAt, { status: 'failed', output: null, error: 'Synthetic source expired' })]);
   await expect(card).toHaveAttribute('data-alpha-home-brief-failed', 'true', { timeout: 20_000 });
   await expect(card.locator('.home-brief-title')).toHaveText('Synthetic source expired');
   await expect(card.locator('.home-brief-status')).toHaveText(`${AGENT_NAME} · Failed ${await when(page, failedAt)}`);
+
+  // The harness counters start again when the page reloads, so what the first session asked of the
+  // agent is checked here: showing and opening the card started or changed no schedule, and on the
+  // native route the renderer never read the agent's result page itself.
+  const firstSession = await harness(page, f => ({ refused: f.digests.refused as string[], runs: f.digests.runs, pages: f.digests.pages, configured: f.digests.configured.length, unexpected: f.unexpected }));
+  expect(firstSession.refused).toEqual([]);
+  expect(firstSession.runs).toBe(0);
+  expect(firstSession.unexpected).toEqual([]);
+  if (route === 'native') { expect(firstSession.configured).toBeGreaterThan(0); expect(firstSession.pages).toBe(0); }
+  else { expect(firstSession.configured).toBe(0); expect(firstSession.pages).toBeGreaterThan(0); }
 
   // 5. The retained result survives a restart of the renderer and is shown again for the same agent.
   await page.reload();
   await expect(brief(page)).toHaveAttribute('data-alpha-home-brief-failed', 'true', { timeout: 30_000 });
   await expect(brief(page).locator('.home-brief-title')).toHaveText('Synthetic source expired');
 
-  // Showing and opening the card started or changed nothing on the agent.
-  const state = await harness(page, f => ({ runs: f.digests.runs, pages: f.digests.pages, acks: f.digests.acks, configured: f.digests.configured.length, inbox: f.digests.inbox.length, unexpected: f.unexpected }));
+  // After the reload, too, nothing was started or changed on the agent.
+  const state = await harness(page, f => ({ refused: f.digests.refused as string[], runs: f.digests.runs, pages: f.digests.pages, acks: f.digests.acks, configured: f.digests.configured.length, inbox: f.digests.inbox.length, unexpected: f.unexpected }));
+  expect(state.refused).toEqual([]);
   expect(state.runs).toBe(0);
   if (route === 'native') {
     // The Android inbox was bound to the resident agent and is the only reader of the agent's results.
     expect(state.configured).toBeGreaterThan(0);
     expect(state.pages).toBe(0);
-    expect(state.inbox).toBe(5);
+    expect(state.inbox).toBe(6);
   } else {
     // The renderer committed each page before acknowledging it, in cursor order.
     expect(state.configured).toBe(0);
-    expect(state.acks).toEqual([1, 3, 4, 5]);
+    expect(state.acks).toEqual([1, 4, 5, 6]);
   }
   await expectNoDevelopmentSurface(page);
   expect(state.unexpected).toEqual([]);

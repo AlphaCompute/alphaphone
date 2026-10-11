@@ -23,6 +23,8 @@ const other: FlagOffAccount = { connectionId: 'grant-other', email: 'other@examp
 const review = (page: Page) => page.getByRole('dialog', { name: 'Review email suggestion', exact: true });
 const bubble = (page: Page, text: string) => page.getByRole('button', { name: 'Message actions: ' + text, exact: true });
 const body = (page: Page) => page.getByRole('textbox', { name: 'Message', exact: true });
+/** Keystore slots that hold `text`: where a local draft or its retained unsaved copy is stored. */
+const drafts = (page: Page, text: string) => page.evaluate(text => Object.entries((window as any).flagOff.slots as Record<string, string>).filter(([, value]) => String(value).includes(text)).map(([slot]) => slot), text);
 const mail = (page: Page) => harness(page, f => ({ prepares: f.mail.prepares as { requestId: string; grantId: string; digest: string; bodyText: string }[], dispatches: f.mail.dispatches as { requestId: string; grantId: string; digest: string; bodyText: string }[], sent: f.mail.sent as string[] }));
 
 /** Inbox with the synthetic email open, on a connected resident agent. */
@@ -88,6 +90,9 @@ test('a resident agent reply is reviewed and placed in a reply draft for the sel
   await expect(page.locator('.inbox-recipient-chip')).toHaveText(['sender@example.invalid']);
   await page.screenshot({ path: info.outputPath('use-in-email-draft-production.png'), animations: 'disabled' });
 
+  // The draft is kept on this phone only: its text reaches the (stubbed) Keystore store, which is
+  // where the account-change test below looks for a draft that must not exist.
+  await expect.poll(() => drafts(page, 'Tuesday at 10 works'), { timeout: 20_000 }).not.toEqual([]);
   // Inserting is local: the provider was never asked to prepare or dispatch anything.
   expect(await mail(page)).toEqual({ prepares: [], dispatches: [], sent: [] });
   await expectNoDevelopmentSurface(page);
@@ -161,7 +166,7 @@ test('the Gmail account changes while the review is open: the insert is refused 
   await expect(dialog).toHaveCount(0);
   await expect(body(page)).toHaveCount(0);
   // No local draft was stored for either account, and the provider was never asked for anything.
-  expect(await harness(page, f => Object.entries(f.slots as Record<string, string>).filter(([, value]) => String(value).includes('Tuesday at 10 works')).map(([slot]) => slot))).toEqual([]);
+  expect(await drafts(page, 'Tuesday at 10 works')).toEqual([]);
   expect(await mail(page)).toEqual({ prepares: [], dispatches: [], sent: [] });
   expect(await harness(page, f => f.unexpected)).toEqual([]);
 });

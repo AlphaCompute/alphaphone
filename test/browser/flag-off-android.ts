@@ -44,7 +44,7 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
       mail: { accounts: structuredClone(options.accounts ?? null) as any[] | null, accountReads: 0, searches: 0, reads: [] as string[], prepares: [] as any[], dispatches: [] as any[], operations: {} as Record<string, any>, sent: [] as string[] },
       // Results the resident agent has produced, in cursor order. `acked` is the agent's cursor for
       // the renderer route; `inbox` is what the Android result inbox has committed for the native one.
-      digests: { ...produced, pages: 0, syncs: 0, histories: 0, configured: [] as any[], runs: 0 },
+      digests: { ...produced, pages: 0, syncs: 0, histories: 0, configured: [] as any[], runs: 0, refused: [] as string[] },
       calendar: { ...structuredClone(options.calendar ?? { access: 'not-granted', calendars: [], events: [] }), lists: 0, requests: 0 } as any,
       emit: (plugin: string, event: string, value: unknown = {}) => { listeners.filter(l => l.plugin === plugin && l.event === event).forEach(l => l.callback(value)); },
       slots, persist: () => persist(),
@@ -65,8 +65,12 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
         if (path === '/api/workflow/hosted/loops') return ok({ loops: [] });
         if (path.startsWith('/api/workflow/hosted/results?clientId=') && method === 'GET') { f.digests.pages++; return ok({ entries: f.digests.results.filter(row => row.cursor > f.digests.acked).slice(0, 50) }); }
         if (path === '/api/workflow/hosted/results/ack' && method === 'POST') { f.digests.acks.push(body.cursor); f.digests.acked = Math.max(f.digests.acked, body.cursor); persist(); return ok({}); }
-        // Anything that would start, restart or change a schedule is counted and refused.
-        if (path.startsWith('/api/workflow/hosted/') && method === 'POST') { f.digests.runs++; return { status: 409, data: {} }; }
+        // The digests list asks which Google access revocations are still pending. It is a read sent
+        // as a POST (the agent's cloud-delegation route); this agent has none.
+        if (path === '/api/workflow/hosted/cloud-delegation/revocations' && method === 'POST') return ok({ grants: [] });
+        // Every other POST would start, restart or change a schedule, a source or a delegation: it is
+        // counted, its path is recorded and it is refused.
+        if (path.startsWith('/api/workflow/hosted/') && method === 'POST') { f.digests.runs++; f.digests.refused.push(path); return { status: 409, data: {} }; }
       }
       if (path === '/api/conversations' && method === 'POST') { const row = { id: 'resident-chat-' + (agent.conversations.length + 1), title: String(body.title || 'Alpha Phone') }; agent.conversations.push(row); agent.history[row.id] = []; persist(); return ok({ conversation: row }); }
       if (path === '/api/conversations') return ok({ conversations: agent.conversations });

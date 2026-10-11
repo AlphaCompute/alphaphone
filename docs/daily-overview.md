@@ -59,10 +59,12 @@ A read from an earlier day shows its date.
     background delivery could not be configured, so the renderer reads the agent's result page over
     the bridge, commits each result to the secure store and acknowledges it. In both, the digest
     panel publishes the newest result that ran and Home renders it with the connected agent's name
-    and the run's completion time. Later missed and overlapping records reach the digests list and
-    leave the card unchanged; with only missed and unavailable records there is no card; a newer run
-    and a failed run replace the card; the card returns after the renderer restarts. No request that
-    would start or change a schedule is made.
+    and the run's completion time. Later missed, overlapping and unavailable records reach the
+    digests list and leave the card unchanged; with only missed and unavailable records there is no
+    card; a newer run and a failed run replace the card; the card returns after the renderer
+    restarts. No request that would start or change a schedule, a source or a delegation is made,
+    before or after that restart: the stub records and refuses every such request, and answers only
+    the digests list's read of pending Google access revocations.
   - The calendar name: a named device calendar, a rename seen on the next read after the app
     resumes, an event whose calendar the read did not return (`Device`, and no other calendar's
     name), a calendar the provider reports without a display name (`Unnamed calendar`), permission
