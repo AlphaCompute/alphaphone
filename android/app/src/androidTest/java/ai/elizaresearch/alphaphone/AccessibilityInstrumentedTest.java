@@ -80,6 +80,14 @@ public final class AccessibilityInstrumentedTest {
   assertTrue(surface+" at 200% font: "+problems,problems.isEmpty());
  }
 
+ /** The first node visible to the user whose text or content description is exactly the name. */
+ private static android.view.accessibility.AccessibilityNodeInfo named(android.view.accessibility.AccessibilityNodeInfo node,String name,int depth){
+  if(node==null||depth>60)return null;
+  if(node.isVisibleToUser()&&(name.contentEquals(node.getText()==null?"":node.getText())||name.contentEquals(node.getContentDescription()==null?"":node.getContentDescription())))return node;
+  for(int i=0;i<node.getChildCount();i++){android.view.accessibility.AccessibilityNodeInfo found=named(node.getChild(i),name,depth+1);if(found!=null)return found;}
+  return null;
+ }
+
  private static final String SHADE_CLOSED="document.querySelector('[data-alpha-layer=\"shade\"]')?.getAttribute('aria-hidden')==='true'";
  private static final String SHADE_OPEN="document.querySelector('[data-alpha-layer=\"shade\"]')?.getAttribute('aria-hidden')!=='true'";
  /** evaluateJavascript returns a JSON value; this unwraps a JSON string result. */
@@ -142,7 +150,9 @@ public final class AccessibilityInstrumentedTest {
     android.view.accessibility.AccessibilityNodeInfo node=null;
     for(int i=0;i<50&&node==null;i++){
      android.view.accessibility.AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();
-     if(root!=null)for(android.view.accessibility.AccessibilityNodeInfo found:root.findAccessibilityNodeInfosByText("Open notifications"))if(found.isVisibleToUser()){node=found;break;}
+     // The tree is walked: WebView's node provider answers findAccessibilityNodeInfosByText with an
+     // empty list for every query (measured on WebView 133, API 36), so that lookup cannot find a page control.
+     if(root!=null)node=named(root,"Open notifications",0);
      if(node==null)SystemClock.sleep(100);
     }
     assertNotNull("The handle is exposed to accessibility services by its name",node);
