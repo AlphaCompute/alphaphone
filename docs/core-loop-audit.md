@@ -574,7 +574,8 @@ that holds the result differ. `RUN_ID` is the run the dispatch created
 
 Both jobs write `result.json` only when every method of every phase passed on both
 distributions, so a missing file is a failed run. The dispatch builds the PACKAGED archive
-first (about three hours of runner time in all); artifacts expire after three days.
+first (the `build` job is limited to 180 minutes, `native` to 100 and `recovery-ui` to 55; no
+duration of a passing run is recorded); artifacts expire after three days.
 
 ### Repeat runs for the round 7 failures (round 8)
 

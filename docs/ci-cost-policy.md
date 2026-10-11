@@ -194,10 +194,11 @@ Dispatch only: no push, pull request, schedule or reusable-workflow trigger, and
 other workflow starts it. `test/ci-emulator-evidence.test.mjs` fails if that changes, if
 an action in it is not pinned to an exact commit, or if an emulator job stops uploading
 its results. A change to the file itself selects no automatic lane. One `build` job
-(about the cost of an Android foundation build, plus a second Gradle build when the
-reading suite is selected) builds the speech runtime, records it as a requalification
-candidate and builds developer APKs; each selected suite then boots one API 35 x86_64
-emulator. A later dispatch of the same suite on the same ref cancels the earlier one.
+repeats the Android foundation build's speech and APK steps with the instrumentation
+APKs (and a second Gradle build for the test-mocks pair when the reading suite is
+selected), and records the speech runtime as a requalification candidate; each selected
+suite then boots one API 35 x86_64 emulator. No run exists yet, so no duration is known:
+the `build` job is limited to 150 minutes and the emulator jobs to 90, 90 and 60. A later dispatch of the same suite on the same ref cancels the earlier one.
 
 ```sh
 # Default instrumentation classes on both distributions (flag-off developer APKs).
