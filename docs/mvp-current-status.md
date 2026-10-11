@@ -100,7 +100,7 @@ Status of each [PRD](prd.md) requirement, mirrored in `docs/requirements.json` a
 
 | Requirement | Status | Status rows | Next gate |
 | --- | --- | --- | --- |
-| AP-01 | partial | Home and launcher; Design and accessibility | E: the runner's HOME-role phase (SettingsRoles, LauncherHome) on the launcher APK, then D on the selected phone |
+| AP-01 | partial | Home and launcher; Design and accessibility | E: LauncherLibrary, which has never run, and the HOME-role phase (SettingsRoles, LauncherHome) on a distributable launcher APK; then D on the selected phone |
 | AP-02 | partial | Home and launcher; Local startup and ownership; Connection choices; Release | B: four distribution APKs build at the current pin and pass scripts/verify-apks.mjs; then E: install both modes, open apps and return HOME repeatedly |
 | AP-03 | partial | Connection choices; Local startup and ownership | R and D: real-device wrong-owner and wrong-origin, expired and reused token, and callback tests against the managed endpoint (A-02) |
 | AP-04 | partial | Chat and retained context; Connection choices; Privacy and outbound context | E then D: resident process restart and reconnect without duplicate messages or writes; no inference-available claim without provider health evidence |
@@ -108,13 +108,13 @@ Status of each [PRD](prd.md) requirement, mirrored in `docs/requirements.json` a
 | AP-06 | partial | Speech and recording (J02) | Owner: voice send and route policy (MVP-01) and whether on-device speech is still required (A-24); then R: Cloud speech with a signed-in account, and D: physical audio, interruption and latency (A-10) |
 | AP-07 | partial | Home and launcher; Digests and schedules | R: real provider agenda and digests with loading, empty, stale and error states; then D |
 | AP-08 | deferred | Phone, SMS, Contacts and Wallet | A recorded scope change, then native role, permission and return-to-HOME acceptance |
-| AP-09 | partial | Email/Gmail; Notes, Calendar and Reminders | R: real Google OAuth grant, managed Cloud Gmail routes and a real mailbox; E: Calendar CRUD and agent CRUD instrumentation read back from CalendarProvider |
-| AP-10 | partial | Browser and passwords; Files, camera, scans and media; Schedule to travel (J04) and Maps; Notes, Calendar and Reminders | E: browser sign-in, private-tab, pop-up and app-link instrumentation (P-04) and password-manager fill (P-05); Owner: a production Maps provider (A-23); then R and D |
+| AP-09 | partial | Email/Gmail; Notes, Calendar and Reminders | R: real Google OAuth grant, managed Cloud Gmail routes and a real mailbox; then D: a real synced calendar account on a phone |
+| AP-10 | partial | Browser and passwords; Files, camera, scans and media; Schedule to travel (J04) and Maps; Notes, Calendar and Reminders | E: the reading and page-question classes on a WebView with isolated-world injection, and BrowserFlow's live-search method; Owner: a production Maps provider (A-23); then R and D |
 | AP-11 | partial | Typed workflows; Digests and schedules | E then D: interrupted-worker behavior on the resident runtime with real receipts |
-| AP-12 | partial | Settings; Privacy and outbound context; Licenses | E: each Android settings handoff and readback on an installed APK (SettingsSystemFacts, SettingsNative, SettingsFlow, SettingsRoles, NotificationChannels) |
+| AP-12 | partial | Settings; Privacy and outbound context; Licenses | E: SettingsFlow and the settings campaign at the current pin, then every settings handoff and readback on a distributable APK (SettingsSystemFacts, SettingsNative, SettingsFlow, SettingsRoles, NotificationChannels); then D |
 | AP-13 | deferred | Phone, SMS, Contacts and Wallet | Provider, key custody, device security and transaction-approval decisions (A-08) before any work |
 | AP-14 | blocked | Release | I and D: exact source, blob, kernel and signer lock, hardware checklist and recovery test; blocked on hardware (A-01) and signing authority (A-06) |
-| AP-15 | partial | Design and accessibility; Home and launcher | E: Accessibility, TextScale and Rotation instrumentation; then D: TalkBack, large font, touch and keyboard, offline, killed process, rotation and repeated HOME navigation |
+| AP-15 | partial | Design and accessibility; Home and launcher | E: Accessibility, which fails on both flavors at the current source, and Rotation at the current pin; then D: TalkBack, large font, touch and keyboard, offline, killed process, rotation and repeated HOME navigation |
 
 ## Qualification
 
