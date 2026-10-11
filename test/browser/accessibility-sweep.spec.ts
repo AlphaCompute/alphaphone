@@ -40,8 +40,8 @@ for (const state of STATES) {
     // Names and focusability must survive the reflow too.
     const tree = format(await auditTree(page));
     expect(tree, tree.join('\n')).toEqual([]);
-    // Keyboard focus stays wholly visible at this size: no stop is left partly under the composer.
-    const focus = format(await auditTabOrder(page)).filter(line => line.startsWith('focus-obscured:'));
+    // The tab order survives it as well, and no stop is left partly under the composer.
+    const focus = format(await auditTabOrder(page));
     expect(focus, focus.join('\n')).toEqual([]);
   });
 }

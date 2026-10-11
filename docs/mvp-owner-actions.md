@@ -120,7 +120,11 @@ still open from that run, for whoever runs the campaigns next: Accessibility fai
 flavors (campaign 13: at 200% text the last Home row is drawn under the floating composer,
 and on this image's WebView an accessibility click reaches no page control) and BrowserFlow
 fails on its live-search method (campaign 3). Campaigns 9 and 17 passed after test defects
-were corrected. The repeat
+were corrected. Round 10 (source and Chromium tests, no emulator run) changed both
+Accessibility findings: Home now ends above the composer, and the dropped click was traced to
+the test (WebView serves a reduced accessibility mode, which drops default actions, unless a
+screen reader is bound; the test binds a stand-in for that step). Campaign 13 has to be run
+again to confirm either. The repeat
 commands for the round 7 failures are in the [core loop audit](core-loop-audit.md)
 under "Repeat runs for the round 7 failures"; they were repeated 3 or 4 times here, not 10. A hosted run is evidence only for the commit it
 was dispatched on; its artifacts expire after three days, so copy what the ledger cites.

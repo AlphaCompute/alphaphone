@@ -249,7 +249,7 @@ test('a toast under a top-layer dialog is reported; one shown inside the dialog,
   expect(rules(hidden)).toEqual(['toast-not-announced']);
   expect(hidden.join('\n')).toContain('Saved to Notes');
   // The same text in the dialog's own status region, drawn above the dialog.
-  await load(page, phone(toast) + dialog(`<div data-alpha-dialog-toast role="status" aria-live="polite" popover="manual" style="position:fixed;inset:auto;left:16px;width:368px;bottom:40px;margin:0;padding:0;border:0;background:transparent;display:flex;justify-content:center;pointer-events:none"><div style="pointer-events:auto;min-height:48px;padding:0 18px;background:#000;color:#fff;display:flex;align-items:center"><span>Saved to Notes</span></div></div>`) + `<script>document.querySelector('[data-alpha-dialog-toast]').showPopover();</script>`);
+  await load(page, phone(toast) + dialog(`<div data-alpha-dialog-toast aria-live="polite" aria-atomic="true" popover="manual" style="position:fixed;inset:auto;left:16px;width:368px;bottom:40px;margin:0;padding:0;border:0;background:transparent;display:flex;justify-content:center;pointer-events:none"><div style="pointer-events:auto;min-height:48px;padding:0 18px;background:#000;color:#fff;display:flex;align-items:center"><span>Saved to Notes</span></div></div>`) + `<script>document.querySelector('[data-alpha-dialog-toast]').showPopover();</script>`);
   expect(format(await auditPage(page, { dock: true }))).toEqual([]);
   // A toast with something drawn over it is not on screen for a sighted user either.
   await load(page, phone(toast + `<div style="position:absolute;inset:0;z-index:99;background:#fff"><p>Cover</p></div>`));

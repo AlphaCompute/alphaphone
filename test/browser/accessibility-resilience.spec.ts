@@ -586,13 +586,15 @@ test.describe('a toast raised while a top-layer dialog is open', () => {
     return dialog;
   }
 
-  test('it is drawn above the dialog, inside it, in a status region that was there before the text', async ({ page }) => {
+  test('it is drawn above the dialog, inside it, in a live region that was there before the text', async ({ page }) => {
     const dialog = await openDialog(page);
     const region = dialog.locator('[data-alpha-dialog-toast]');
     // Present and empty as soon as the dialog is open.
     await expect(region).toHaveCount(1);
     await expect(region).toHaveAttribute('aria-live', 'polite');
-    await expect(region).toHaveAttribute('role', 'status');
+    // Marked like the page's own toast region: a live region with no role of its own.
+    expect(await region.getAttribute('role')).toBeNull();
+    await expect(region).toHaveAttribute('aria-atomic', 'true');
     await expect(region).toBeEmpty();
     await raise(page, 'Saved to Notes');
     await expect(region).toHaveText('Saved to Notes');
@@ -604,12 +606,11 @@ test.describe('a toast raised while a top-layer dialog is open', () => {
       return { onTop: !!hit && body.contains(hit), inside: box.left >= screen.left && box.right <= screen.right && box.bottom <= screen.bottom && box.top >= screen.top, height: Math.round(box.height), inert: !!el.closest('[inert]'), topLayer: el.matches(':popover-open') };
     });
     expect(measured).toEqual({ onTop: true, inside: true, height: 48, inert: false, topLayer: true });
-    // Assistive technology is offered it: a status node with this text in Chromium's accessibility tree.
+    // Assistive technology is offered it: the text is in Chromium's accessibility tree once, not ignored.
     const session = await page.context().newCDPSession(page);
     await session.send('Accessibility.enable');
     const { nodes } = await session.send('Accessibility.getFullAXTree') as { nodes: Array<{ ignored?: boolean; role?: { value?: string }; name?: { value?: string } }> };
     const exposed = nodes.filter(node => !node.ignored);
-    expect(exposed.filter(node => node.role?.value === 'status').length).toBeGreaterThanOrEqual(1);
     expect(exposed.filter(node => node.role?.value === 'StaticText' && node.name?.value === 'Saved to Notes')).toHaveLength(1);
     const found = format(await auditPage(page, { dock: true })).filter(line => line.startsWith('toast-'));
     expect(found, found.join('\n')).toEqual([]);
@@ -637,4 +638,38 @@ test.describe('a toast raised while a top-layer dialog is open', () => {
     const found = format(await auditPage(page, { dock: true })).filter(line => line.startsWith('toast-'));
     expect(found, found.join('\n')).toEqual([]);
   });
+});
+
+// The product side of the accessibility click Android delivers (docs/verification.md, round 10).
+// WebView's native click only reaches a node that is enabled with every ancestor enabled, and it
+// arrives in the page as pointerdown, mousedown, pointerup, mouseup and click on the element with
+// no pointer travel. Chromium's desktop tree and synthetic events stand in for WebView here; the
+// native delivery itself is AccessibilityInstrumentedTest on an emulator.
+for (const shell of HOME_SHELLS) test(`${shell.name}: the notifications handle is an enabled button under enabled ancestors, and an accessibility click's events open the panel`, async ({ page }) => {
+  await page.addInitScript(offline);
+  await page.goto(shell.url);
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+  const session = await page.context().newCDPSession(page);
+  await session.send('Accessibility.enable');
+  type Node = { nodeId: string; parentId?: string; ignored?: boolean; role?: { value?: string }; name?: { value?: string }; properties?: Array<{ name: string; value: { value?: unknown } }> };
+  const { nodes } = await session.send('Accessibility.getFullAXTree') as { nodes: Node[] };
+  const byId = new Map(nodes.map(node => [node.nodeId, node]));
+  const handle = nodes.find(node => !node.ignored && node.role?.value === 'button' && node.name?.value === 'Open notifications');
+  expect(handle).toBeTruthy();
+  const restricted: string[] = [];
+  for (let node: Node | undefined = handle; node; node = node.parentId ? byId.get(node.parentId) : undefined)
+    for (const property of node.properties || []) if (['disabled', 'readonly'].includes(property.name) && property.value.value) restricted.push(`${node.role?.value}:${property.name}`);
+  expect(restricted).toEqual([]);
+  expect(handle!.properties?.find(property => property.name === 'focusable')?.value.value).toBe(true);
+  const seen = await page.evaluate(() => {
+    const target = document.querySelector<HTMLElement>('[data-alpha-shade-handle]')!, log: string[] = [];
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) document.addEventListener(type, event => { if (event.target === target) log.push(type); }, true);
+    target.focus();
+    const fire = (type: string, Kind: typeof MouseEvent) => target.isConnected && target.dispatchEvent(new Kind(type, { bubbles: true, cancelable: true, composed: true, view: window }));
+    fire('pointerdown', PointerEvent); fire('mousedown', MouseEvent); fire('pointerup', PointerEvent); fire('mouseup', MouseEvent); fire('click', MouseEvent);
+    return log;
+  });
+  // The handle is still the same element when the click arrives: nothing re-renders it on pointerdown.
+  expect(seen).toEqual(['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']);
+  await expect(page.locator('[data-alpha-layer="shade"]')).toHaveAttribute('aria-hidden', 'false');
 });

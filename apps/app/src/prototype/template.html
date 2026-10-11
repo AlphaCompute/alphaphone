@@ -1549,7 +1549,7 @@
   </div>
 
   <sc-if value="{{camera.hasSaid}}">
-    <button class="drop" aria-label="Dismiss" onClick="{{camera.clearSaid}}" style="position: absolute; left: 16px; right: 16px; top: 108px; z-index: 3; display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 22px; background: rgba(0,0,0,.62); color: #ffffff; text-align: left">
+    <button class="drop" data-alpha-camera="said" aria-label="Dismiss" onClick="{{camera.clearSaid}}" style="position: absolute; left: 16px; right: 16px; top: 108px; z-index: 3; display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 22px; background: rgba(0,0,0,.62); color: #ffffff; text-align: left">
       <span style="width: 26px; height: 26px; border-radius: 13px; background: var(--acc); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 16px"><span class="alpha-compute-mark" aria-hidden="true"></span></span>
       <span style="font-size: 14.5px; line-height: 1.4">{{camera.said}}</span>
     </button>

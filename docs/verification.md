@@ -304,6 +304,80 @@ each fix named here is shown to hold, to fail or to be still unrun.
   compile above repeated for both flavors, app and androidTest, with test mocks off and on:
   BUILD SUCCESSFUL twice (compile only, no APK). The digest restart check was not repeated.
 
+## Round 10 (2026-10-11): accessibility gaps (MVP-48), source and browser tests only
+
+Class S throughout: source, Node tests and Chromium on a development server or the flag-off
+bundle. No emulator, device, APK or hosted job was used; the emulator rows below are unchanged
+history and none of this is evidence for them. Branch `claude/r10-a11y-gaps`, from `2560eead`.
+
+| Finding | What changed | Covered by |
+| --- | --- | --- |
+| Home's last row under the floating composer at 200% text (emulator, standalone flavor) | Home and the app library end above the dock; the dock's footprint is measured (`runtime/dock-clearance.ts`), 108px stays the minimum | `accessibility-resilience.spec.ts` (both shells at 100%, 150% and 200%, a raised dock, a longer draft, a stacked status line, landscape); rule `obscured-by-dock` in every lane of the sweep |
+| A focused control partly under the composer | Focus that did not come from a pointer is scrolled wholly above the dock; app scrollers carry the dock's footprint as scroll padding | rule `focus-obscured` in the tab-order walk of every lane, now also walked at 200%; the Settings focus tests |
+| Titles shortened at 200% (Photos, Camera, Password manager; the Home calendar title cut by its clamp) | Above 150% text a screen title takes a row of its own; the Home title's line height opens with the text scale | the title tests in `accessibility-resilience.spec.ts`; no `[data-alpha-app-title]` or `.home-calendar-title` truncation is left in the 200% lane |
+| A toast under a top-layer dialog was neither seen nor announced | The topmost modal dialog gets a live region of its own, drawn above it (`runtime/toast-layer.ts`) | rules `toast-not-announced` and `toast-covered`; the dialog toast tests (position, hit test, accessibility tree, Undo, cleanup) |
+| Landscape with 200% text was not swept | A lane of its own. It needed one fix, caused by the title row: in landscape the camera's capture rail starts below that row and the camera's message stops at the rail | `accessibility-sweep.spec.ts` |
+| Provider-connected states were not swept | Ten states against a synthetic mailbox at the provider boundary. They found two defects, fixed: the email message field ran 16px under the pill, and a connection's status was cut off at 200% text in Settings | `accessibility-sweep.spec.ts`, `test/accessibility-coverage.test.mjs` |
+| Launcher flavor: "an accessibility click reaches no page control on this WebView" | Test defect, not a product one; see below | `test/accessibility-stand-in.test.mjs` (source checks only) |
+
+Each new rule is shown to fire on a seeded defect and to stay quiet on corrected markup in
+`accessibility-audit.spec.ts`. With the Home rule, the scroll padding and the focus handler
+taken out, the Home tests at 200% and the Settings focus test at 100% failed, so they do
+detect the defects.
+
+**The dropped accessibility click.** The round 8 result files show `ACTION_CLICK` accepted
+on the handle, on an app tile and on the calendar card with no click arriving and focus
+staying on the page body, while `ACTION_FOCUS` on the same node did move focus. The cause was
+found by reading Chromium source at the image's WebView version (133.0.6943.137), not by a
+run:
+
+- `WebContentsAccessibilityImpl.performAction` calls native `Click` and returns `true`
+  whatever happens next.
+- `BrowserAccessibilityManager::DoDefaultAction` returns without sending anything when the
+  node has no default action verb (`BrowserAccessibility::HasDefaultAction`). `SetFocus` has
+  no such gate.
+- Blink writes the default action verb in `AXObject::SerializeOtherScreenReaderAttributes`,
+  which runs only in the screen reader accessibility mode.
+- On Android that mode is chosen from `AccessibilityManager.getEnabledAccessibilityServiceList`
+  (`AccessibilityState.updateAccessibilityServices`; `SetBrowserAXMode` falls back to the basic
+  mode when no listed service looks like a screen reader). UiAutomation is not in that list,
+  and the image has no TalkBack.
+
+So on that image WebView was in its reduced mode and dropped every default action; with
+TalkBack or Switch Access bound it would not. The product side was checked in Chromium: the
+handle is a named, enabled button with no disabled or read-only ancestor in the
+accessibility tree, and the event sequence an accessibility click produces (pointerdown,
+mousedown, pointerup, mouseup, click on the element) opens the panel in both shells.
+`AccessibilityInstrumentedTest` now binds a stand-in screen reader from the instrumentation
+APK for that step (`ScreenReaderStandInService`: every event type, spoken feedback, no touch
+exploration), connects UiAutomation without suspending other services, requires the click to
+open the panel, then requires a single further click to open it again, and restores the two
+settings it changes. The click is repeated once a second for at most 20 seconds only while
+WebView is still switching modes, because nothing visible to a test says when it has. The
+check that the panel reads in order moved to the pull-down step, so it runs in the same
+WebView mode as before. None of this has run: the diagnosis is from source and the changed
+test is compiled only (`javac` 21 against `android-36`, the Gradle cache's dependency jars
+and the app classes of an existing build; no Gradle build, lint or APK).
+
+Run for this branch (class S): `npm run verify` exit 0 (684 Node tests: 680 pass, 0 fail, 4
+todo; bundle audit `PASS web-dist`). The Chromium project, every spec file, in nine batches
+with four workers: 3099 passed, 12 skipped, 1 failed. The failure is
+`local-agent-native-stream.spec.ts` "retained navigation waits for native stream settlement:
+ready-failure"; it fails 4 of 4 with the app source of `2560eead` as well and was not
+changed here. Two tests for the product side of the accessibility click were added after
+that run and passed with their spec (`accessibility-audit` and `accessibility-resilience`
+together: 60 passed). In the production project `accessibility-sweep.production.spec.ts` (now with the
+dock rules), `production-surface`, `settings`, `home-attention`, `home-daily-overview` and
+`journey-core-loops`: 119 passed; the rest of that project was not run.
+
+Open after this round: an emulator run of Accessibility on both flavors (the Home change and
+the stand-in step are unproven there; if the click still does not arrive with the stand-in
+bound, the failure message now carries the attempts, the running services and the enabled
+state of the node and its ancestors); TextScale and Rotation; everything in MVP-48's device
+list. Not swept: the launcher presentation of the app views, zoom above 200%, connected
+states other than a mailbox. An app page's own content still scrolls under the composer by
+design; only Home and the app library end above it.
+
 ## Emulator results at 2961bd9e (2026-10-11, round 8 merged with round 9)
 
 Class E only (emulator instrumentation), for these exact APKs. Not distributable-build,

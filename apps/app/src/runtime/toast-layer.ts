@@ -6,7 +6,8 @@
  * a refusal, "Deleted … Undo") was painted underneath the dialog and removed from the
  * accessibility tree: neither seen nor announced.
  *
- * While a modal dialog is open it is given a status region of its own: an element inside the
+ * While a modal dialog is open it is given a live region of its own, marked like the page's
+ * (aria-live, no role, so a dialog's own role="status" line stays the only status in it): an element inside the
  * dialog (so it is not inert and belongs to what assistive technology reads), shown as a manual
  * popover (so it is drawn above the dialog, in the top layer, and is never clipped by it). The
  * region is present and empty from the moment the dialog opens, because a live region that
@@ -28,7 +29,6 @@ export function installToastLayer(): () => void {
     if (region) return region;
     region = document.createElement('div');
     region.setAttribute(HOST, '');
-    region.setAttribute('role', 'status');
     region.setAttribute('aria-live', 'polite');
     region.setAttribute('aria-atomic', 'true');
     region.setAttribute('popover', 'manual');
