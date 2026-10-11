@@ -80,6 +80,13 @@ public final class SettingsRolesInstrumentedTest {
   assertTrue("Android accepted HOME down",ui().injectInputEvent(new KeyEvent(down,down,KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_HOME,0,0,android.view.KeyCharacterMap.VIRTUAL_KEYBOARD,0,KeyEvent.FLAG_FROM_SYSTEM,android.view.InputDevice.SOURCE_KEYBOARD),true));
   assertTrue("Android accepted HOME up",ui().injectInputEvent(new KeyEvent(down,SystemClock.uptimeMillis(),KeyEvent.ACTION_UP,KeyEvent.KEYCODE_HOME,0,0,android.view.KeyCharacterMap.VIRTUAL_KEYBOARD,0,KeyEvent.FLAG_FROM_SYSTEM,android.view.InputDevice.SOURCE_KEYBOARD),true));
  }
+ /** The page owner's window holds input focus: the state in which Android acts on a HOME key. */
+ private void awaitWindowFocus(android.app.Activity owner,String when)throws Exception{
+  boolean[] focused=new boolean[1];
+  for(int i=0;i<150&&!focused[0];i++){BoundedActivityScenario.main(()->focused[0]=owner.hasWindowFocus());if(!focused[0])SystemClock.sleep(100);}
+  assertTrue("The page owner's window has input focus "+when,focused[0]);
+ }
+ private static final String NAVIGATION_SETTLED="window.__alphaTestNavigation?.status==='complete'";
  private String draft(){return "("+AppNavigation.composer()+")?.value";}
  /**
   * Exactly one MainActivity exists, it is resumed and in front, it is the instance that existed
@@ -145,9 +152,23 @@ public final class SettingsRolesInstrumentedTest {
    js(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));
    until(draft()+"==="+JSONObject.quote(DRAFT));
    // Repeated HOME presses, from Alpha Home and from inside a view: still the one instance.
+   // Every press must reach the page as a HOME start, so each is counted where the page hears it.
+   js("window.__alphaHomeStarts=0;window.addEventListener('launcher-home',()=>{window.__alphaHomeStarts++;})");
    for(int press=1;press<=3;press++){
+    // The navigation helper keeps a 100 ms timer until it has seen its target view. A HOME start that
+    // lands inside that window is undone by the helper's next step, which finds Home and opens
+    // Settings again (measured: the page heard the HOME start and still ended in Settings). The
+    // helper is therefore finished before the key is pressed.
     if(press==2){js(AppNavigation.request("Settings"));until(AppNavigation.selected("Settings"));}
+    until(NAVIGATION_SETTLED);
+    // A HOME key is acted on only once the page owner's window has input focus again. The hand-off
+    // of the previous HOME start (or of the role grant) is still in transition for a moment after
+    // the activity reports resumed, and a key injected then starts nothing (measured on the API 36
+    // emulator: no HOME start in the log for the 20 s that followed).
+    awaitWindowFocus(original,"before HOME press "+press);
+    int heard=Integer.parseInt(js("window.__alphaHomeStarts"));
     pressHome();
+    until("window.__alphaHomeStarts>"+heard);
     for(int i=0;i<100&&!context.getPackageName().equals(foreground());i++)SystemClock.sleep(150);
     until(AppNavigation.selected("Home"));
     assertOneLiveInstance("after HOME press "+press,original);
