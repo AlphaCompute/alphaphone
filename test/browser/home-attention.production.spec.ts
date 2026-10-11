@@ -33,7 +33,7 @@ test('unloaded workflow and empty calendar states do not fabricate results or av
   await expect(page.locator('html')).toHaveAttribute('data-active-view', 'workflows');
   await page.getByRole('button', { name: 'Back to apps', exact: true }).click();
   // The browser calendar is read from this browser; an empty calendar says so instead of neutral copy.
-  const calendar = page.locator('[data-alpha-layer="home"] button[aria-label^="Open"]').first();
+  const calendar = page.locator('[data-alpha-layer="home"] button[data-alpha-home-calendar]');
   await expect(calendar).toHaveAttribute('aria-label', /^(Open your calendar|Open calendar event: .+)$/);
   await expect(calendar).toContainText(/No upcoming events|Calendar/);
   await expect(calendar).toHaveAttribute('data-alpha-home-calendar-event','false');

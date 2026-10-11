@@ -462,7 +462,7 @@
       </div>
     </sc-for>
     <sc-if value="{{messages.empty}}">
-      <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 110px; color: var(--mut)">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 110px; color: var(--mut); padding-left: 24px; padding-right: 24px; text-align: center">
         <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{messages.emptyIcon}}"></path></svg>
         <span style="font-size: 15px">{{messages.emptyText}}</span>
       </div>
@@ -639,7 +639,7 @@
       <button onClick="{{inbox.loadMore}}" style="display: block; margin: 12px auto; height: 44px; padding: 0 20px; border-radius: 22px; background: var(--s2); color: var(--fg); font-size: 14px; font-weight: 600">Load more</button>
     </sc-if>
     <sc-if value="{{inbox.empty}}">
-      <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 110px; color: var(--mut)">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 110px; color: var(--mut); padding-left: 24px; padding-right: 24px; text-align: center">
         <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{inbox.emptyIcon}}"></path></svg>
         <span style="font-size: 15px">{{inbox.emptyText}}</span>
         <sc-if value="{{inbox.emptyAdd}}">
@@ -1698,7 +1698,7 @@
         <button class="tap" aria-label="Retry saved photos" onClick="{{photos.libraryRetry}}" style="display: block; margin: 20px auto; padding: 12px 20px; color: var(--mut)">{{photos.libraryError}}</button>
       </sc-if>
       <sc-if value="{{photos.empty}}">
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 140px; color: var(--mut)">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 140px; color: var(--mut); padding-left: 24px; padding-right: 24px; text-align: center">
           <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{ic.photo}}"></path></svg>
           <span style="font-size: 15px">No photos</span>
         </div>
@@ -1776,7 +1776,7 @@
         <sc-if value="{{photos.alb.status}}"><div role="status" style="padding: 16px 24px; color: var(--mut); font-size: 14px">{{photos.alb.status}}</div></sc-if>
         <sc-if value="{{photos.alb.more}}"><button class="tap" aria-label="Load more album media" onClick="{{photos.alb.loadMore}}" style="display: block; margin: 16px auto; padding: 12px 24px; border-radius: 24px; background: var(--s2); color: var(--fg)">{{photos.alb.moreLabel}}</button></sc-if>
         <sc-if value="{{photos.alb.empty}}">
-          <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 140px; color: var(--mut)">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 140px; color: var(--mut); padding-left: 24px; padding-right: 24px; text-align: center">
             <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{ic.photo}}"></path></svg>
             <span style="font-size: 15px">Nothing here</span>
           </div>
@@ -2211,7 +2211,7 @@
       <button onClick="{{notes.search}}" aria-label="Search notes" style="display: flex; align-items: center; gap: 10px; width: 100%; height: 48px; padding: 0 16px; margin-bottom: 12px; border-radius: 24px; background: var(--s2); color: var(--mut); font-size: 16px; box-sizing: border-box"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{ic.search}}"></path></svg>Search</button>
     </sc-if>
     <sc-if value="{{notes.none}}">
-      <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 110px; color: var(--mut)">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 110px; color: var(--mut); padding-left: 24px; padding-right: 24px; text-align: center">
         <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{ic.search}}"></path></svg>
         <div style="font-size: 15px">{{notes.emptyText}}</div>
       </div>
@@ -2427,7 +2427,7 @@
         <p style="margin: 0 8px 14px; font-size: 14px; line-height: 1.43; color: var(--mut)">Deleted notes stay here for 3 days, then they are deleted permanently.</p>
         <sc-if value="{{notes.trashError}}"><div role="status" style="margin: 0 8px 12px; font-size: 13px; color: var(--mut)">{{notes.trashError}}</div></sc-if>
         <sc-if value="{{notes.trashNone}}">
-          <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 90px; color: var(--mut)">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 90px; color: var(--mut); padding-left: 24px; padding-right: 24px; text-align: center">
             <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{ic.trash}}"></path></svg>
             <div style="font-size: 15px">Trash is empty.</div>
           </div>
@@ -2560,7 +2560,7 @@
       </div>
     </sc-for>
     <sc-if value="{{contacts.noHits}}">
-      <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 64px; color: var(--mut)">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 64px; color: var(--mut); padding-left: 24px; padding-right: 24px; text-align: center">
         <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px; "><path d="{{ic.user}}"></path></svg>
         <span style="font-size: 15px">No matches</span>
         <button onClick="{{contacts.addNew}}" aria-label="Add {{contacts.qRaw}}" style="display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px 0 12px; border-radius: 18px; background: var(--s2); color: var(--fg); font-size: 14px; font-weight: 600; margin-top: 4px">
@@ -2717,7 +2717,7 @@
         </button>
       </sc-for>
       <sc-if value="{{files.noResults}}">
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 110px; color: var(--mut)"><svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{ic.search}}"></path></svg><div style="font-size: 15px">No matches</div></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 110px; color: var(--mut); padding-left: 24px; padding-right: 24px; text-align: center"><svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{ic.search}}"></path></svg><div style="font-size: 15px">No matches</div></div>
       </sc-if>
       <div style="display: flex; justify-content: center; margin-top: 18px">
         <button onClick="{{files.askSearch}}" aria-label="{{files.askQ}}" style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: 18px; background: var(--s2); font-size: 14px; font-weight: 600; max-width: 100%; overflow: hidden; white-space: nowrap"><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex-shrink:0;color:var(--acct)"><span class="alpha-compute-mark" aria-hidden="true" style="width:100%;height:100%"></span></span>{{files.askQ}}</button>
