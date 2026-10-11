@@ -249,7 +249,10 @@ Interrupted permanent voice deletion. A failure inside the process that started 
 deletion leaves its row under review with the Restore control, and the next
 deletion-status check finishes the erase only when that operation already owns the audio
 trash; an effect that failed in a live process may still land, so nothing else is
-inferred there. A row left by an earlier process (process death) is settled by a backstop
+inferred there. The test is "this JavaScript process did not create the row": on Android,
+with one renderer, that means the creating process is dead; in the browser build a second
+tab also settles a row that a first, still open tab left under review, once that tab has
+released the lock. A row left by an earlier process (process death) is settled by a backstop
 that is started with every Trash maintenance pass and takes the deletion-effects lock
 itself: at startup once saved Notes open, on resume, on the 15-minute timer and when Notes
 opens, so it never waits for Notes to be opened. With no recovery row it takes no lock and
@@ -277,12 +280,25 @@ of the table natively when the plugin loads and from the 6-hour
 recording-metadata slots, and retires the row by compare-and-exchange with the other rows
 copied byte for byte. It never writes the Notes document, so the three "still saved" rows
 are left to the renderer's startup pass. The native job cannot take the renderer's Web
-Lock: if it runs in the instant a live renderer is between its tombstone commit and its
-own recording steps, the deletion still completes exactly once but that view reports it as
-unconfirmed until its next status check. `notes-permanent-delete-backstop.spec.ts` covers
-the six rows and the refusals in the browser build with a writer that holds the lock until
-the reload; `scripts/test-notes-trash-flow.ts` enumerates the plan; four cases in
-`NotesTrashBackstopInstrumentedTest` cover the native pass and have been compiled, not run. A Trash document that already exceeds the limits (written by a host
+Lock and does not know which process wrote a row, so it acts on every permanent row whose
+tombstone is committed. Three consequences: if it runs in the instant a live renderer is
+between its tombstone commit and its own recording steps, the deletion still completes
+exactly once but that view reports it as unconfirmed until its next status check; a row
+with a committed tombstone that a live renderer still shows under review after a failure
+in that process is finished by the job, after which its Restore control can no longer
+bring the recording back (a restore whose recording step has landed is never
+overridden: its `restored` receipt is read under the recording-metadata lock); and at
+process start the job can overlap the renderer's own
+pass, in which case a recording the job erased under the same operation while the renderer
+was moving it is confirmed by the renderer and the row retired in the same pass.
+`notes-permanent-delete-backstop.spec.ts` covers the six rows and the refusals in the
+browser build with a writer that holds the lock until the reload, that a deletion which
+failed in the process that started it is not settled by that process even when its
+tombstone lands late (and is finished by the next start), and the overlap with the erase
+injected into the served recording module; `scripts/test-notes-trash-flow.ts` enumerates
+the plan; four cases in `NotesTrashBackstopInstrumentedTest` cover the native pass and
+have been compiled, not run. None of the three Android consequences above has run on an
+emulator or a device. A Trash document that already exceeds the limits (written by a host
 with larger limits) stays readable, restorable, purgeable and subject to expiry; only
 additions are refused until it is below the limits again. `notes-trash-recovery.spec.ts`
 and `scripts/test-notes-trash-flow.ts` cover this in the browser build and the policy, and

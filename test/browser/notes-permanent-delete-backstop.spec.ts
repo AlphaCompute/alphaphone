@@ -216,3 +216,125 @@ test('startup never erases a recording that a different or a restored note owns;
  const back=await describeAudio(page,'undone-audio');
  expect(back.transcript).toBe('Restored words');expect(back.deletedAt).toBeUndefined();
 });
+
+/** A later host with an entry limit of `limit`: only NOTES_TRASH_MAX_ENTRIES is replaced in the served policy module. Test-only. */
+async function lowerEntryLimit(page:Page,limit:number){
+ await page.route(/\/src\/runtime\/notes-trash-policy\.ts(\?.*)?$/,async route=>{
+  const response=await route.fetch(),source=await response.text();
+  const body=source.replace(/(NOTES_TRASH_MAX_ENTRIES\s*=\s*)[^;]+;/,`$1${limit};`);
+  if(body===source)throw Error('Notes Trash entry limit was not found in the served module');
+  await route.fulfill({response,body});
+ });
+}
+const lockIdle=(page:Page)=>expect.poll(()=>page.evaluate(async()=>{const locks=await navigator.locks.query();return [...(locks.held||[]),...(locks.pending||[])].filter(lock=>lock.name==='alpha.notes-audio-effects.v1').length;})).toBe(0);
+/**
+ * Runs `trigger` and returns once a deletion-status pass of this page has read the recording after
+ * it and released the deletion-effects lock. Every pass reads each row's recording under the lock.
+ */
+async function afterPass(page:Page,trigger:()=>Promise<unknown>){
+ await lockIdle(page);
+ const seen=await page.evaluate(()=>(window as any).recordingReads as number);
+ await trigger();
+ await expect.poll(()=>page.evaluate(()=>(window as any).recordingReads as number)).toBeGreaterThan(seen);
+ await lockIdle(page);
+}
+
+test('a permanent deletion that fails inside the process that started it is never settled by that process: a tombstone that lands late keeps its recovery row, and the next start finishes the erase',async({page})=>{
+ await lowerEntryLimit(page,1);
+ await start(page);
+ await seedVoice(page,'late-voice','late-audio','Late memo','Late words');
+ await seedVoice(page,'bystander-voice','bystander-audio','Bystander memo','Bystander words');
+ await page.reload();await openNotes(page);
+ // One Trash entry fills the lowered Trash, so the voice deletion is refused and offers the permanent path.
+ await page.getByRole('button',{name:'New note',exact:true}).click();
+ await page.getByRole('textbox',{name:'Title',exact:true}).fill('Filler');
+ await page.getByRole('button',{name:'Back to notes',exact:true}).click();
+ await page.getByRole('button',{name:'Open Filler',exact:true}).click();
+ await page.getByRole('button',{name:'Delete note',exact:true}).click();
+ await expect(page.getByText('Filler moved to Trash',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Open Late memo',exact:true}).click();
+ // The tombstone commit reports a failure to this process but is not lost: it can still land later.
+ await page.evaluate(async()=>{
+  const {DocumentNotesStore}=await import('/src/runtime/browser-notes-document.ts');const {BrowserVoice}=await import('/src/browser/voice.ts');
+  const execute=DocumentNotesStore.prototype.execute,describe=BrowserVoice.prototype.describe;
+  (window as any).recordingReads=0;
+  BrowserVoice.prototype.describe=async function(input:any){(window as any).recordingReads++;return describe.call(this,input);};
+  DocumentNotesStore.prototype.execute=async function(...args:any[]){
+   if(args[0]?.type!=='notes_delete'||(window as any).landTombstone)return execute.apply(this,args as any);
+   const store=this;(window as any).landTombstone=()=>execute.call(store,args[0],args[1],new AbortController().signal,()=>{});
+   throw Error('Notes reply lost');
+  };
+ });
+ await page.getByRole('button',{name:'Delete note',exact:true}).click();
+ await page.getByRole('dialog',{name:'Trash is full'}).getByRole('button',{name:'Delete forever without Trash',exact:true}).click();
+ await expect(page.getByText(/Deletion is unconfirmed/).first()).toBeVisible();
+ const before=await pendingDeletions(page);
+ expect(before.map(row=>[row.note.id,row.audioId,row.permanent,row.audioRequested])).toEqual([['late-voice','late-audio',true,undefined]]);
+ const operation=before[0].id as string;
+ expect((await savedRecords(page)).some(n=>n.id==='late-voice')).toBe(true);
+ expect(await tombstones(page)).toEqual([]);
+
+ // To a later process this state is "death before the tombstone commit" and is rolled back by retiring
+ // the row. The process that started the deletion must not do that: a status check and a maintenance
+ // pass (resume) both leave the row, because the commit it believes failed can still land.
+ await page.getByRole('button',{name:'Back to notes',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Check deletion status',exact:true})).toBeVisible();
+ await afterPass(page,()=>page.getByRole('button',{name:'Check deletion status',exact:true}).click());
+ expect(await pendingDeletions(page)).toEqual(before);
+ await afterPass(page,()=>page.evaluate(()=>{document.dispatchEvent(new Event('visibilitychange'));}));
+ expect(await pendingDeletions(page)).toEqual(before);
+ const untouched=await describeAudio(page,'late-audio');
+ expect(untouched.transcript).toBe('Late words');expect(untouched.deletedAt).toBeUndefined();expect(untouched.deletionOperations).toBeUndefined();
+
+ // The lost commit lands. The note is gone and its recording is still live: only the row ties them together.
+ await page.evaluate(()=>(window as any).landTombstone());
+ expect((await tombstones(page)).map(d=>[d.id,d.operationId])).toEqual([['late-voice',operation]]);
+ expect((await savedRecords(page)).map(n=>n.id)).toEqual(['bystander-voice']);
+ await afterPass(page,()=>page.evaluate(()=>{document.dispatchEvent(new Event('visibilitychange'));}));
+ // Never orphaned: while the recording is not erased, the recovery row for exactly this operation exists.
+ const during=await describeAudio(page,'late-audio');
+ if(during.deletionOperations?.[operation]!=='purged')expect((await pendingDeletions(page)).map(row=>[row.id,row.note.id,row.audioId])).toEqual([[operation,'late-voice','late-audio']]);
+
+ // The next start finishes the confirmed deletion for that recording only, on Home.
+ await page.reload();
+ await expect(page.locator('html')).not.toHaveAttribute('data-active-view','notes');
+ await expect.poll(()=>pendingDeletions(page)).toEqual([]);
+ const erased=await describeAudio(page,'late-audio');
+ expect(erased.noteId).toBe('late-voice');expect(erased.transcript).toBe('');expect(erased.expired).toBe(true);
+ expect(erased.deletionOperations).toEqual({[operation]:'purged'});
+ expect(await audioBytes(page,'late-audio')).toBe(0);
+ const kept=await describeAudio(page,'bystander-audio');
+ expect(kept.transcript).toBe('Bystander words');expect(kept.deletedAt).toBeUndefined();expect(kept.deletionOperations).toBeUndefined();
+ expect((await savedRecords(page)).map(n=>n.id)).toEqual(['bystander-voice']);
+ expect((await trashEntries(page)).map(entry=>entry.note.title)).toEqual(['Filler']);
+ await expectNoReview(page);
+});
+
+test('a recording that another finisher erased under the same operation while this pass was moving it is confirmed and the row retired, not left under review',async({page})=>{
+ await start(page);
+ await seedVoice(page,'raced-voice','raced-audio','Raced memo','Raced words');
+ await seedVoice(page,'bystander-voice','bystander-audio','Bystander memo','Bystander words');
+ const operation=await interrupt(page,'raced-voice','tombstone');
+ // On Android the native pass runs beside the renderer's startup pass and shares no lock with it: it can
+ // move and erase the recording under this operation after the renderer read it as live. Here the
+ // next start's own move request finds exactly that: moved and already erased under the same operation.
+ let rewritten=0;
+ await page.route(/\/src\/browser\/voice\.ts(\?.*)?$/,async route=>{
+  const response=await route.fetch(),source=await response.text();
+  const body=source.replace(/(await changeAudioDeleted\(input\.audioId,\s*input\.noteId,\s*true,\s*input\.operationId\);)/,'$1await purgeAudio(input.audioId,input.noteId,input.operationId);');
+  if(body===source)throw Error('The recording move was not found in the served module');
+  rewritten++;await route.fulfill({response,body});
+ });
+ await page.reload();
+ await expect(page.locator('html')).not.toHaveAttribute('data-active-view','notes');
+ await expect.poll(()=>pendingDeletions(page)).toEqual([]);
+ expect(rewritten).toBeGreaterThan(0);
+ const erased=await describeAudio(page,'raced-audio');
+ expect(erased.noteId).toBe('raced-voice');expect(erased.transcript).toBe('');expect(erased.expired).toBe(true);
+ expect(erased.deletionOperations).toEqual({[operation]:'purged'});expect(erased.activeDeletionOperation).toBe(operation);
+ expect(await audioBytes(page,'raced-audio')).toBe(0);
+ expect((await savedRecords(page)).map(n=>n.id)).toEqual(['bystander-voice']);
+ const kept=await describeAudio(page,'bystander-audio');
+ expect(kept.transcript).toBe('Bystander words');expect(kept.deletedAt).toBeUndefined();expect(kept.deletionOperations).toBeUndefined();
+ await expectNoReview(page);
+});

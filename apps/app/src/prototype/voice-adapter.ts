@@ -699,12 +699,13 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if(step==='review')return;
     if(step==='erase')await eraseForever(row);
     else if(step==='trash-then-erase'){
-      // Same order and receipts as the uninterrupted deletion: dispatch mark, audio trash under this operation, erase.
+      // Same order as the uninterrupted deletion: dispatch mark, audio trash under this operation, erase.
       if(!row.audioRequested){const dispatched={...row,audioRequested:true as const};await changeAudioDeletion(row,false,dispatched);row=dispatched;}
       await noteAudio.remove({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
       const removed=await noteAudio.describe({audioId:row.audioId});
       if(removed.noteId!==row.note.id||!removed.deletedAt||await audioDeletionNoteState(row)!=='deleted')throw Error('Deletion unconfirmed');
-      await deletionReceipt(row,'removed');
+      // eraseForever requires this operation's own receipt: `removed` (it then erases) or `purged`. The
+      // Android native pass shares no lock with this one and may have finished the same operation meanwhile.
       await eraseForever(row);
     }else if(step==='restore-recording'){
       await noteAudio.restore({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
