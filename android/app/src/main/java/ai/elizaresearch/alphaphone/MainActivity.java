@@ -68,7 +68,9 @@ public class MainActivity extends BridgeActivity {
   * lookup for singleTask only matches a task of a compatible type, so each kind of start finds or
   * creates its own task. Granting the HOME role to a running Alpha, or tapping an Alpha notice while
   * Alpha is the home activity, therefore created a second MainActivity with a second page, while
-  * the draft, open conversation and pending approvals stayed in the first.
+  * the draft, open conversation and pending approvals stayed in the first. (The second instance on
+  * role grant was measured on the API 36 emulator in round 7; the activity-type rule is AOSP's
+  * implementation, not a public API contract. See docs/android-and-aosp.md.)
   *
   * The first live instance is kept, whichever kind it is. A second instance never creates a bridge
   * or loads the page: it gives its intent to the live instance (the same onNewIntent path Android
@@ -132,6 +134,12 @@ public class MainActivity extends BridgeActivity {
    handedOff = true;
    // No plugins, bridge or page: BridgeActivity.onCreate calls load(), which does nothing here.
    super.onCreate(null);
+   // Its layout still inflated a WebView that will never load; release it now.
+   android.view.View unused = findViewById(com.getcapacitor.android.R.id.webview);
+   if (unused instanceof WebView) {
+    if (unused.getParent() instanceof ViewGroup) ((ViewGroup) unused.getParent()).removeView(unused);
+    ((WebView) unused).destroy();
+   }
    handOff(live);
    return;
   }

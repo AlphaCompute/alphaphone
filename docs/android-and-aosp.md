@@ -167,6 +167,54 @@ A persistent cross-app helper and secure Chromium component require their explic
 native/OS integration and signer-admission work in the implementation plan. Managed
 kiosk is not enabled by default; preserve a recovery route and normal Android settings.
 
+## One live MainActivity on the launcher flavor
+
+`MainActivity` is `singleTask` and, on the launcher flavor, also answers `ACTION_MAIN` /
+`CATEGORY_HOME`. Android keeps the two kinds of start apart. A HOME start (the HOME key, the
+start Android makes when the role is granted, boot) carries only the HOME category and no
+component, and Android gives the activity the home activity type in the display's home task.
+Every other start (the app icon, a notification tap, the `alphaphone://cloud-delegation`
+sign-in return, an explicit component) has the standard type. A task's activity type never
+changes, and the task lookup that makes `singleTask` reuse an instance only matches a task of a
+compatible type. So a HOME start cannot reuse a standard-type instance and the reverse, and
+Android creates a second `MainActivity`. Round 7 measured this on the API 36 emulator when the
+HOME role was accepted.
+
+Two instances mean two pages over one store, with the draft, the open conversation and pending
+approvals in whichever page is hidden. The product keeps the first live instance, whichever
+kind it is (`MainActivity`, "One live MainActivity"):
+
+- A second instance creates no Capacitor bridge and loads no page. It delivers its intent to
+  the live instance through `onNewIntent`, the path Android itself uses for a reused
+  `singleTask` activity, so a HOME start shows Alpha Home and a notice tap or sign-in return
+  reaches the plugins that handle it.
+- It then brings the live instance's task to the front with an intent of that instance's own
+  kind (the implicit HOME intent restricted to this package for a home-type instance, the
+  explicit component for a standard one) and finishes. A standard task created for the start is
+  removed; Android's home task is left alone.
+- If that front start ever created another instance instead of reaching the live one, that
+  instance finishes without starting anything. The hand-off cannot loop.
+
+What follows from keeping the first instance:
+
+- When the role is granted to an Alpha that is already running, the running standard-type
+  instance stays the page owner until its task or the process ends. During that time each HOME
+  press creates and immediately finishes a home-type instance; the next cold start (after a
+  reboot, or after the task is removed) is a home-type instance from the beginning. On an
+  image where Alpha is HOME from boot this transitional state does not arise.
+- The standalone flavor has no HOME filter and is unchanged: `singleTask` already guarantees
+  one instance there.
+
+Evidence: `SettingsRolesInstrumentedTest` (one resumed instance, the same object and page with
+its unsent draft, and one `MainActivity` record in `dumpsys activity activities`, after the
+role is accepted, after three HOME presses and after an explicit start) and
+`LauncherHomeInstrumentedTest` (one resumed instance after every HOME return). Both were
+compiled at this source and not run. The second instance is what round 7 observed; the
+explanation by activity type is how AOSP assigns the home type to a HOME start and matches
+tasks for `singleTask`, which is platform implementation, not a public API contract, and was
+not re-measured here. The hand-off itself has no emulator result yet. Whether the short-lived
+HOME instance is visible as a flicker during the transitional state is a device observation.
+
 ## Required Clock provider
 
 The Alpha overlay explicitly includes AOSP `DeskClock` alongside its launcher. Keep this module in the selected product even when generic upstream de-bloating changes. A missing Clock handler is not successful MVP alarm acceptance. Both standalone and launcher APKs use the installed provider and expose honest unavailable results; neither bundles Clock inside its APK or owns exact-alarm delivery.
