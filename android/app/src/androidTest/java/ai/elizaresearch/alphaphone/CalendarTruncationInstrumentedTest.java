@@ -42,7 +42,7 @@ public final class CalendarTruncationInstrumentedTest {
     assertNotNull("Actual provider instances required",actual);assertEquals("Owned distinct rows must exceed the app limit before checking UI",2002,actual.getCount());
    }
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-    AppNavigation.liveMode();js(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));until("document.querySelector('[aria-label=\"Retry calendar and reminders\"]')?.textContent.includes('Calendar results incomplete')");
+    AppNavigation.liveMode();js(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();until("document.querySelector('[aria-label=\"Retry calendar and reminders\"]')?.textContent.includes('Calendar results incomplete')");
     click("Month view");click(target.format(DateTimeFormatter.ofPattern("EEEE MMMM d",Locale.US)));
     until("document.body.textContent.includes('Calendar results incomplete. Some events may be missing.')");assertEquals("Incomplete provider result never claims free all day","false",js("document.body.textContent.includes('Free all day')"));
     assertEquals("Known later row is genuinely beyond the limit","false",js("document.body.textContent.includes("+JSONObject.quote(hidden)+")"));

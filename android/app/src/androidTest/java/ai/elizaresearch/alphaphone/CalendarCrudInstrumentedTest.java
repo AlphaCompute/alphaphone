@@ -80,7 +80,7 @@ public class CalendarCrudInstrumentedTest {
     resolver.update(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,created.get(0)),concurrent,null,null);
     click("Save event");until("document.querySelector('[data-screen]').textContent.includes('Nothing was overwritten')");
     assertEquals("Concurrent edit is preserved",created,ids(resolver,external));assertTrue(ids(resolver,updated).isEmpty());
-    scenario.recreate();until("document.documentElement.dataset.activeView==='home'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));until("document.querySelector('[data-screen]').textContent.includes("+JSONObject.quote(external)+")");
+    scenario.recreate();until("document.documentElement.dataset.activeView==='home'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();until("document.querySelector('[data-screen]').textContent.includes("+JSONObject.quote(external)+")");
     assertEquals(1,ids(resolver,external).size());
     tapVisibleEvent(external);until("document.querySelector('button[aria-label=\"Delete event\"]')");
     click("Delete event");nativeWait("Delete calendar event?");assertEquals("Review never deletes",1,ids(resolver,external).size());nativeClick("Cancel");assertEquals(1,ids(resolver,external).size());

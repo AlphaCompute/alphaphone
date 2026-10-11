@@ -116,7 +116,7 @@ public final class BrowserAutofillInstrumentedTest {
   try{
    shell("settings --user "+user+" put secure autofill_service "+component);
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-    AppNavigation.liveMode();host(AppNavigation.request("Browser"));waitHost(AppNavigation.selected("Browser"));
+    AppNavigation.liveMode();host(AppNavigation.request("Browser"));waitHost(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();
     // A fresh install opens the modal access panel a few seconds after launch, in the middle of the
     // real taps below. Answer it first, as an owner does ("Not now" grants nothing).
     AppNavigation.declineStartupAccess();

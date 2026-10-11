@@ -49,7 +49,7 @@ public class CalendarFlowInstrumentedTest {
   try {
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
     AppNavigation.liveMode();
-    until("document.documentElement.dataset.activeView");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));
+    until("document.documentElement.dataset.activeView");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();
     click("New event");until("document.querySelector('input[aria-label=Title]')");
     eval("(()=>{const e=document.querySelector('input[aria-label=Title]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(title)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
     until("document.querySelector('input[aria-label=Title]').value==="+JSONObject.quote(title));
@@ -70,7 +70,7 @@ public class CalendarFlowInstrumentedTest {
     resolver.update(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,created.get(0)),concurrent,null,null);
     click("Save event");until("document.querySelector('[data-screen]').textContent.includes('Nothing was overwritten')");
     assertEquals("Concurrent edit is preserved",created,ids(resolver,external));assertTrue(ids(resolver,updated).isEmpty());
-    scenario.recreate();until("document.documentElement.dataset.activeView==='home'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));until("document.querySelector('[data-screen]').textContent.includes("+JSONObject.quote(external)+")");
+    scenario.recreate();until("document.documentElement.dataset.activeView==='home'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();until("document.querySelector('[data-screen]').textContent.includes("+JSONObject.quote(external)+")");
     assertEquals(1,ids(resolver,external).size());
    }
   } finally {for(String fixture:new String[]{title,updated,external})for(long id:ids(resolver,fixture))resolver.delete(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id),null,null);}
@@ -118,7 +118,7 @@ public class CalendarFlowInstrumentedTest {
    fixture.event(title,today.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(),today.plusDays(2).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(),true);
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
     AppNavigation.liveMode();until("Intl.DateTimeFormat().resolvedOptions().timeZone==='America/Los_Angeles'");
-    eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));
+    eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();
     String label=title+", All day";
     until("document.querySelector('[data-alpha-calendar-all-day]')?.textContent.includes("+JSONObject.quote(title)+")");
     assertEquals("All-day record is not duplicated as a timed block","1",eval("[...document.querySelectorAll('button')].filter(b=>b.getAttribute('aria-label')?.startsWith("+JSONObject.quote(title+",")+")).length"));
@@ -127,9 +127,9 @@ public class CalendarFlowInstrumentedTest {
     click("Back to calendar");chooseDate(today.minusDays(1));
     assertEquals("UTC midnight must not shift to previous local date","false",eval("document.querySelector('[data-alpha-calendar-all-day]')?.textContent.includes("+JSONObject.quote(title)+")===true"));
     // Return through Home to make month navigation relative to Today again.
-    eval(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));scenario.recreate();until("document.documentElement.dataset.activeView==='home'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));chooseDate(today.plusDays(1));
+    eval(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));scenario.recreate();until("document.documentElement.dataset.activeView==='home'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();chooseDate(today.plusDays(1));
     until("document.querySelector('[data-alpha-calendar-all-day]')?.textContent.includes("+JSONObject.quote(title)+")");
-    eval(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));scenario.recreate();until("document.documentElement.dataset.activeView==='home'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));chooseDate(today.plusDays(2));
+    eval(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));scenario.recreate();until("document.documentElement.dataset.activeView==='home'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();chooseDate(today.plusDays(2));
     assertEquals("All-day end date is exclusive","false",eval("document.querySelector('[data-alpha-calendar-all-day]')?.textContent.includes("+JSONObject.quote(title)+")===true"));
    }
   }
@@ -148,7 +148,7 @@ public class CalendarFlowInstrumentedTest {
    fixture.event(seed,day.atTime(1,30).atZone(zone).toInstant().toEpochMilli(),day.atTime(3,30).atZone(zone).toInstant().toEpochMilli(),false);
    try {
     try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-     AppNavigation.liveMode();until("Intl.DateTimeFormat().resolvedOptions().timeZone==='America/Los_Angeles'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));chooseDate(day);
+     AppNavigation.liveMode();until("Intl.DateTimeFormat().resolvedOptions().timeZone==='America/Los_Angeles'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();chooseDate(day);
      // The loaded provider event retains its two-hour wall-clock span across the gap.
      until("[...document.querySelectorAll('button')].some(b=>b.getAttribute('aria-label')?.startsWith("+JSONObject.quote(seed+",")+"))");
      tapVisibleEvent(seed);
@@ -206,7 +206,7 @@ public class CalendarFlowInstrumentedTest {
    long equal=day.atTime(1,30).atZone(zone).withLaterOffsetAtOverlap().toInstant().toEpochMilli(),earlier=day.atTime(1,15).atZone(zone).withLaterOffsetAtOverlap().toInstant().toEpochMilli();
    String a="Alpha fold equal "+UUID.randomUUID(),b="Alpha fold backward "+UUID.randomUUID();long aId=fixture.event(a,begin,equal,false),bId=fixture.event(b,begin,earlier,false);
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-    AppNavigation.liveMode();until("Intl.DateTimeFormat().resolvedOptions().timeZone==='America/Los_Angeles'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));chooseDate(day);
+    AppNavigation.liveMode();until("Intl.DateTimeFormat().resolvedOptions().timeZone==='America/Los_Angeles'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();chooseDate(day);
     for(int index=0;index<2;index++){
      String title=index==0?a:b;long id=index==0?aId:bId,end=index==0?equal:earlier;
      tapVisibleEvent(title);until("document.querySelector('button[aria-label=\"Edit event\"]')");
@@ -224,7 +224,7 @@ public class CalendarFlowInstrumentedTest {
    long start=day.atTime(22,30).atZone(zone).toInstant().toEpochMilli(),nightEnd=day.plusDays(1).atTime(2,30).atZone(zone).toInstant().toEpochMilli(),multiEnd=day.plusDays(3).atTime(10,0).atZone(zone).toInstant().toEpochMilli();
    long nightId=fixture.event(overnight,start,nightEnd,false),multiId=fixture.event(multi,start,multiEnd,false);
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-    AppNavigation.liveMode();until("Intl.DateTimeFormat().resolvedOptions().timeZone==='America/Los_Angeles'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));
+    AppNavigation.liveMode();until("Intl.DateTimeFormat().resolvedOptions().timeZone==='America/Los_Angeles'");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();
     for(int offset=0;offset<=3;offset++){
      chooseDate(day.plusDays(offset));
      String title=offset<2?overnight:multi;long id=offset<2?nightId:multiId,end=offset<2?nightEnd:multiEnd;

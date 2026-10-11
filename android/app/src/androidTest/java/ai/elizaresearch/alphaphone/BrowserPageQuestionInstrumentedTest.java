@@ -383,7 +383,7 @@ public final class BrowserPageQuestionInstrumentedTest {
     recordNativeCalls();
     String openSource = "[..." + source + ".querySelectorAll('button')].find(b=>b.textContent.trim()==='Open source page'&&!b.disabled)";
     waitFor(openSource); js("(" + openSource + ").click()");
-    waitFor(AppNavigation.selected("Browser"));
+    waitFor(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();
     waitFor("window.__pageCalls.some(c=>c.plugin==='AlphaBrowser'&&c.method==='navigate'&&JSON.parse(c.body).url===" + JSONObject.quote(url) + ")");
    } catch (Exception | AssertionError failure) { primary = failure; throw failure; } finally {
     try {

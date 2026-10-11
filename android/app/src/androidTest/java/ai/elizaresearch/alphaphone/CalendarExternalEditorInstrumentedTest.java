@@ -181,11 +181,11 @@ public class CalendarExternalEditorInstrumentedTest {
    ContentValues v=new ContentValues();v.put(CalendarContract.Events.CALENDAR_ID,ContentUris.parseId(calendar));v.put(CalendarContract.Events.TITLE,title);v.put(CalendarContract.Events.DESCRIPTION,"Disposable external editor fixture");v.put(CalendarContract.Events.DTSTART,begin);v.put(CalendarContract.Events.DTEND,end);v.put(CalendarContract.Events.EVENT_TIMEZONE,zone);event=resolver.insert(CalendarContract.Events.CONTENT_URI,v);assertNotNull(event);JSONObject original=snapshot(resolver,event);
    Intent implicit=new Intent(Intent.ACTION_VIEW,event);assertEquals("Provider MIME", "vnd.android.cursor.item/event",resolver.getType(event));assertNotNull("Installed implicit Calendar handler required",context.getPackageManager().resolveActivity(implicit,PackageManager.MATCH_DEFAULT_ONLY));
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-    AppNavigation.liveMode();until("document.documentElement.dataset.activeView");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));
+    AppNavigation.liveMode();until("document.documentElement.dataset.activeView");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();
     String q="[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')?.startsWith("+JSONObject.quote(title+",") +"))";until(q);eval("("+q+").click()");click("Edit event");
     chooseEtarOnce();awaitNode(null,title);tap("info_action_edit");awaitNode("title",title);tap("action_cancel");
     assertEquals("Cancel does not mutate any recorded provider fields",original.toString(),snapshot(resolver,event).toString());returnToAlpha(context.getPackageName());
-    until(AppNavigation.selected("Calendar"));
+    until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();
     // A normal resume may show the grid instead of retaining the detail sheet.
     // Reopen only our uniquely titled provider fixture, never another event.
     if(!"true".equals(eval("!!document.querySelector('button[aria-label=\"Edit event\"]')"))){until(q);eval("("+q+").click()");}
@@ -194,7 +194,7 @@ public class CalendarExternalEditorInstrumentedTest {
     click("Edit event");chooseEtarOnce();awaitNode(null,title);tap("info_action_edit");setEditorTitle(title,updated);tap("action_done");
     long deadline=SystemClock.elapsedRealtime()+20000;while(SystemClock.elapsedRealtime()<deadline&&!updated.equals(snapshot(resolver,event).getString(CalendarContract.Events.TITLE)))SystemClock.sleep(100);
     JSONObject saved=snapshot(resolver,event);assertEquals(updated,saved.getString(CalendarContract.Events.TITLE));saved.put(CalendarContract.Events.TITLE,title);assertEquals("Title-only edit preserves identity, epochs and other fixture fields",original.toString(),saved.toString());
-    returnToAlpha(context.getPackageName());eval(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));until("[...document.querySelectorAll('button')].some(b=>b.getAttribute('aria-label')?.startsWith("+JSONObject.quote(updated+",")+"))");
+    returnToAlpha(context.getPackageName());eval(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();until("[...document.querySelectorAll('button')].some(b=>b.getAttribute('aria-label')?.startsWith("+JSONObject.quote(updated+",")+"))");
     assertEquals("Test never changes timezone",zone,TimeZone.getDefault().getID());completed=true;
    }
   }finally{

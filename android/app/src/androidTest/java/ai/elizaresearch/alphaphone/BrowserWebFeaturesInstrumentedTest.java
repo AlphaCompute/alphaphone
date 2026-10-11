@@ -303,7 +303,7 @@ public final class BrowserWebFeaturesInstrumentedTest {
    for(int i=0;i<100&&fullscreenActive();i++)SystemClock.sleep(100);
    assertFalse("Back leaves fullscreen first",fullscreenActive());
    childUntil("document.fullscreenElement===null");
-   ready(AppNavigation.selected("Browser"));
+   ready(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();
   }
  }
 }
