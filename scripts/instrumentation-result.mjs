@@ -106,6 +106,8 @@ export function writeInstrumentationRecord(file, record) {
     passed: record.classes.length > 0 && record.classes.every(row => row.status === 'passed')
       && (record.homeRole === undefined || (record.homeRole.restored === true && record.homeRole.coldHome?.resumed === true)),
   };
+  // A run that created a disposable secondary user passes only with every such user proven removed.
+  if (record.secondaryUsers !== undefined) body.passed = body.passed && Array.isArray(record.secondaryUsers) && record.secondaryUsers.every(row => row.removed === true && row.ownerRestored === true);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(body, null, 2)}\n`, { flag: 'wx' });
   return body;

@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.SystemClock;
 import android.service.notification.StatusBarNotification;
 
 /** Uses only this app's channels; private contents are hidden on the lock screen. Only pending approvals use a high-importance channel. */
@@ -50,11 +51,21 @@ final class WorkflowNoticePoster implements WorkflowNoticeDelivery.Poster {
  }
  public void post(String id,String title,String body)throws Exception{
   if(!allowed())throw new SecurityException("Notification delivery is disabled");
-  manager().notify(tag(id),0,step(title,body,tap(id)).build());
+  manager().notify(tag(id),0,step(title,body,tap(id)).build());awaitListed(id);
+ }
+ /** notify() hands the notice to the system asynchronously, so an immediate read of the active list
+  * can miss it and the receipt would record "unknown" for a notice Android is about to show. Wait
+  * briefly (callers are never on the main thread); a notice still missing afterwards stays "unknown". */
+ private void awaitListed(String id){
+  long end=SystemClock.elapsedRealtime()+2000;
+  while(SystemClock.elapsedRealtime()<end){
+   for(StatusBarNotification row:manager().getActiveNotifications())if(row.getId()==0&&tag(id).equals(row.getTag()))return;
+   try{Thread.sleep(20);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();return;}
+  }
  }
  @Override public void postApproval(String id,String title,String body,long timeoutMs)throws Exception{
   if(!WorkflowNoticeDelivery.approvalId(id)||!approvalsAllowed())throw new SecurityException("Approval notifications are disabled");
-  manager().notify(tag(id),0,approval(title,body,timeoutMs,tap(id)).build());
+  manager().notify(tag(id),0,approval(title,body,timeoutMs,tap(id)).build());awaitListed(id);
  }
  @Override public void cancel(String id){manager().cancel(tag(id),0);}
  public boolean matches(String id,String title,String body){for(StatusBarNotification row:manager().getActiveNotifications())if(row.getId()==0&&tag(id).equals(row.getTag())){Notification notice=row.getNotification();return channelFor(id).equals(notice.getChannelId())&&title.contentEquals(notice.extras.getCharSequence(Notification.EXTRA_TITLE,""))&&body.contentEquals(notice.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,notice.extras.getCharSequence(Notification.EXTRA_TEXT,"")));}return false;}

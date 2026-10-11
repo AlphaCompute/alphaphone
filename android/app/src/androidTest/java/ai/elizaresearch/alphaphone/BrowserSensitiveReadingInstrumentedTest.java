@@ -97,21 +97,24 @@ public final class BrowserSensitiveReadingInstrumentedTest {
  }
  @Test public void sensitivePagesRejectBeforeReviewTokenOrOutboundSpeech()throws Exception{
   org.junit.Assume.assumeTrue("Explicit browser reading synthetic HTTP fixture", "1".equals(InstrumentationRegistry.getArguments().getString("browserSensitiveReading")));
+  assertTrue("Run against a test-mocks app build: only that build admits this fixture's loopback HTTP route (any other build refuses it, correctly)",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   try(Server server=new Server();BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    String origin="http://127.0.0.1:"+server.socket.getLocalPort(),slot="remote:"+origin,key="__alphaReading"+UUID.randomUUID().toString().replace("-",""),article="Synthetic article for explicit reading.",secret="excluded-synthetic-marker";long expiry=System.currentTimeMillis()+600000;
    String binding="origin:"+JSONObject.quote(origin)+",ownerId:'synthetic-browser-owner',sessionId:'synthetic-browser-session',expiresAt:"+expiry;
    boolean installed=false;Throwable primary=null;
    try{
     AppNavigation.liveMode();js(AppNavigation.request("Browser"));waitFor(AppNavigation.selected("Browser"));waitFor("window.__alphaTestNavigation?.status==='complete'");
+    // The native page is withdrawn while the modal first-run access panel is open; answer it first, as an owner does.
+    AppNavigation.declineStartupAccess();
     js("window.__readingNative=Capacitor.nativePromise;Capacitor.nativePromise=function(p,m,a){if(p==='AlphaBrowser'&&m==='present'&&a.id)window.__readingTab={session:a.session,id:a.id};return window.__readingNative.apply(this,arguments);}");
     js("(()=>{const e=document.querySelector('input[aria-label=Address]');if(e){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'https://example.com/');e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}else [...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Edit address').click();})()");
     if("true".equals(js("!!document.querySelector('input[aria-label=Address]')")))js("(()=>{const e=document.querySelector('input[aria-label=Address]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'https://example.com/');e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));})()");
-    waitFor("window.__readingTab&&document.querySelector('svg[aria-label=\"Secure connection\"]')");
+    waitFor("window.__readingTab&&document.querySelector('[role=img][aria-label=\"Secure connection\"]')");
     assertEquals("true",child.child("typeof Capacitor==='undefined'&&location.origin==='https://example.com'"));
     assertFalse(call("Capacitor.Plugins.AlphaConnection.secureWrite({slot:"+JSONObject.quote(slot)+",value:JSON.stringify({origin:"+JSONObject.quote(origin)+",identityId:'synthetic-browser-owner',token:'browser-reading-synthetic',expiresAt:"+expiry+"})})").has("error"));
     urlVariants(binding,server);
     navigate("https://example.com/");
-    waitFor("document.querySelector('svg[aria-label=\"Secure connection\"]')");
+    waitFor("document.querySelector('[role=img][aria-label=\"Secure connection\"]')");
     for(int i=0;i<300&&!"true".equals(child.child("location.href==='https://example.com/'&&document.readyState==='complete'"));i++)SystemClock.sleep(100);
     assertEquals("true",child.child("location.href==='https://example.com/'&&document.readyState==='complete'"));
     String markup="<article><p>"+article+"</p><form><p>"+secret+"</p><input value='"+secret+"'></form><p hidden>"+secret+"</p><p style='opacity:0'>"+secret+"</p><p aria-hidden='true'>"+secret+"</p><div contenteditable>"+secret+"</div></article>";

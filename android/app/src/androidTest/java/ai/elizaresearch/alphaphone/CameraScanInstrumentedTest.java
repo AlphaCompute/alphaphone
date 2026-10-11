@@ -62,6 +62,8 @@ public class CameraScanInstrumentedTest {
   fail("DocumentsUI Save not exposed");
  }
  private String shell(String command)throws Exception{try(java.io.InputStream input=new android.os.ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command))){return new String(input.readAllBytes(),StandardCharsets.ISO_8859_1);}}
+ /** Reviewed PDF exports in Downloads, one path per line. `?` stands for the spaces in the product's file name. */
+ private String exports()throws Exception{return shell("find /sdcard/Download -maxdepth 1 -type f -name Alpha?searchable?document?*.pdf");}
  private void enterScanMode()throws Exception{
   eval(AppNavigation.request("Camera"));until(AppNavigation.selected("Camera"));until("document.querySelector('[data-alpha-camera-screen]')");
   click("Scan mode");until("document.querySelector('button[aria-label=\"Scan text\"]')");
@@ -78,8 +80,10 @@ public class CameraScanInstrumentedTest {
    clickText("Keep photo");until(dialog("Review scanned text")+".textContent.includes('Photo kept in Android Photos.')");
    created.addAll(ownedImages());created.removeAll(before);assertEquals("Keep photo publishes exactly one image",1,created.size());
    closeScan();until("!"+dialog("Review scanned text"));
-   Set<Long> afterKeep=ownedImages();
+   // The fixture is a PNG this process writes to Downloads, so MediaStore lists it as an image owned
+   // by this package. Take the baseline after it exists; only a copy made by the product may be new.
    fixture=new SelectedDocumentInstrumentedTest().fixtureBytes(resolver,name,"image/png",page("IMPORT"));
+   Set<Long> afterKeep=ownedImages();
    click("Choose image");new SelectedDocumentInstrumentedTest().selectDocument(name);
    until(dialog("Review scanned text")+"?.textContent.includes('not copied to Photos')",30000);
    assertEquals("A picked image is reviewed without a Photos copy",afterKeep,ownedImages());
@@ -94,10 +98,13 @@ public class CameraScanInstrumentedTest {
   * PDF and written through the real Storage Access Framework destination. */
  @Test public void nativeThreePageSearchablePdfExportsThroughSaf()throws Exception{
   InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context().getPackageName(),Manifest.permission.CAMERA);
-  ContentResolver resolver=context().getContentResolver();String run=UUID.randomUUID().toString().substring(0,8);List<Uri> fixtures=new ArrayList<>();Set<Long> before=ownedImages();long started=System.currentTimeMillis();
-  String listing="";
+  ContentResolver resolver=context().getContentResolver();String run=UUID.randomUUID().toString().substring(0,8);List<Uri> fixtures=new ArrayList<>();Set<Long> before=null;long started=System.currentTimeMillis();
+  String listing="";Set<String> earlier=new TreeSet<>(Arrays.asList(exports().split("\n")));
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    for(String text:new String[]{"PAGE TWO","PAGE THREE"})fixtures.add(new SelectedDocumentInstrumentedTest().fixtureBytes(resolver,"alpha-page-"+run+"-"+text.replace(' ','-')+".png","image/png",page(text)));
+   // The fixture pages are PNGs this process wrote to Downloads; MediaStore lists them as images owned
+   // by this package, so the baseline is taken once they exist.
+   before=ownedImages();
    AppNavigation.liveMode();until("document.documentElement.dataset.activeView");enterScanMode();
    click("Scan text");until(dialog("Review scanned text"));clickText("Build multi-page PDF");until(dialog("Review scan document")+"?.querySelectorAll('img').length===1");
    for(int i=0;i<2;i++){clickText("Add page");new SelectedDocumentInstrumentedTest().selectDocument("alpha-page-"+run+"-"+(i==0?"PAGE-TWO":"PAGE-THREE")+".png");until(dialog("Review scan document")+"?.querySelectorAll('img').length==="+(i+2),30000);}
@@ -110,16 +117,32 @@ public class CameraScanInstrumentedTest {
    // The loaded-draft status also says "saved"; wait for the provider's verified export receipt.
    until(dialog("Review scan document")+"?.textContent.includes('exact bytes verified')",60000);
    assertEquals("No page was published to Photos",before,ownedImages());
-   listing=shell("ls -1 /sdcard/Download/");
+   listing=exports();
   }finally{for(Uri uri:fixtures)resolver.delete(uri,null,null);}
-  String exported=null;for(String line:listing.split("\n"))if(line.trim().startsWith("Alpha searchable document ")&&line.trim().endsWith(".pdf"))exported=line.trim();
-  assertNotNull("SAF wrote the reviewed PDF to Downloads: "+listing,exported);
+  Set<String> created=new TreeSet<>(Arrays.asList(listing.split("\n")));created.removeAll(earlier);created.remove("");
+  assertEquals("SAF wrote exactly one reviewed PDF to Downloads: "+listing,1,created.size());
+  // The export's name contains spaces and executeShellCommand does not parse quotes, so the file is
+  // addressed through find with its unique timestamp suffix (no whitespace) as the pattern.
+  String exported=created.iterator().next(),stamp=exported.substring(exported.lastIndexOf(' ')+1);
+  assertTrue("Export name: "+exported,exported.startsWith("/sdcard/Download/Alpha searchable document ")&&stamp.matches("[0-9TZ-]+\\.pdf"));
+  String only="find /sdcard/Download -maxdepth 1 -type f -name *"+stamp;
   try{
-   String pdf=shell("cat '/sdcard/Download/"+exported+"'");assertTrue("Real PDF bytes",pdf.startsWith("%PDF-"));
-   Matcher pages=Pattern.compile("/Type\\s*/Page(?!s)").matcher(pdf);int count=0;while(pages.find())count++;
-   assertEquals("Exactly three pages exported",3,count);
-   assertTrue("Searchable PDF carries a text layer",pdf.contains("Tj")||pdf.contains("TJ"));
-   assertTrue("Export is recent",Long.parseLong(shell("stat -c %Y '/sdcard/Download/"+exported+"'").trim())*1000>=started-5000);
-  }finally{shell("rm -f '/sdcard/Download/"+exported+"'");}
+   String pdf=shell(only+" -exec cat {} ;");assertTrue("Real PDF bytes",pdf.startsWith("%PDF-"));
+   // The writer stores page objects and content in Flate streams, so the page count comes from
+   // Android's own PDF renderer and the text layer from the inflated content streams.
+   byte[] bytes=pdf.getBytes(StandardCharsets.ISO_8859_1);java.io.File copy=new java.io.File(context().getCacheDir(),"alpha-scan-export-"+run+".pdf");
+   try{
+    java.nio.file.Files.write(copy.toPath(),bytes);
+    try(android.os.ParcelFileDescriptor fd=android.os.ParcelFileDescriptor.open(copy,android.os.ParcelFileDescriptor.MODE_READ_ONLY);android.graphics.pdf.PdfRenderer renderer=new android.graphics.pdf.PdfRenderer(fd)){assertEquals("Exactly three pages exported",3,renderer.getPageCount());}
+   }finally{copy.delete();}
+   StringBuilder content=new StringBuilder();Matcher streams=Pattern.compile("stream\\r?\\n",Pattern.DOTALL).matcher(pdf);
+   while(streams.find()){
+    int start=streams.end(),end=pdf.indexOf("endstream",start);if(end<0)break;
+    java.util.zip.Inflater inflater=new java.util.zip.Inflater();inflater.setInput(bytes,start,end-start);byte[] buffer=new byte[65536];
+    try{int total=0,n;while(total<(8<<20)&&(n=inflater.inflate(buffer))>0){content.append(new String(buffer,0,n,StandardCharsets.ISO_8859_1));total+=n;}}catch(java.util.zip.DataFormatException notFlate){/* An image or uncompressed stream. */}finally{inflater.end();}
+   }
+   assertTrue("Searchable PDF carries a text layer",Pattern.compile("\\b(Tj|TJ)\\b").matcher(content).find()&&content.indexOf("BT")>=0);
+   assertTrue("Export is recent",Long.parseLong(shell(only+" -exec stat -c %Y {} ;").trim())*1000>=started-5000);
+  }finally{shell(only+" -delete");}
  }
 }

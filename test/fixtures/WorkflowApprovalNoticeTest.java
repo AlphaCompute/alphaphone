@@ -38,6 +38,16 @@ public final class WorkflowApprovalNoticeTest {
   delivery.withdrawApproval(first);taps.forget(first);require(poster.cancelled.contains(first)&&!poster.active.containsKey(first),"decision cancels the notice");
   require("withdrawn".equals(delivery.publishApproval(first,binding,now+10*minute,now))&&poster.posted.size()==1,"withdrawn approval never reposts");
   require(taps.token(first)==null,"withdrawn route released");
+  // The plugin's whole post prepares the route before the receipt answers; a repeated request for the
+  // decided approval must not leave that route behind (found on the emulator: "Route released").
+  require("withdrawn".equals(delivery.postApproval(taps,first,binding,route("run1"),now+10*minute,now))&&poster.posted.size()==1,"repeated post of a decided approval never reposts");
+  require(taps.token(first)==null,"repeated post of a decided approval keeps no route");
+  {Store s2=new Store();Poster p2=new Poster();WorkflowNoticeDelivery d2=new WorkflowNoticeDelivery(s2,p2);WorkflowNoticeTaps t2=new WorkflowNoticeTaps(s2);
+   String fifth="approval-"+"5".repeat(64),sixth="approval-"+"6".repeat(64),seventh="approval-"+"7".repeat(64);
+   require("succeeded".equals(d2.postApproval(t2,fifth,binding,route("run5"),now+10*minute,now))&&t2.token(fifth)!=null,"a live approval keeps its route");
+   require("succeeded".equals(d2.postApproval(t2,fifth,binding,route("run5"),now+10*minute,now))&&p2.posted.size()==1,"whole post is at most once");
+   require("expired".equals(d2.postApproval(t2,sixth,binding,route("run6"),now,now))&&t2.token(sixth)==null,"an expired approval prepares no route");
+   p2.approvals=false;require("failed".equals(d2.postApproval(t2,seventh,binding,route("run7"),now+minute,now))&&t2.token(seventh)==null&&p2.posted.size()==1,"a muted channel keeps no route");}
   // A captured tap whose approval was decided elsewhere is released instead of blocking later taps.
   String secondToken=taps.prepare(second,binding,route("run2"));require("succeeded".equals(delivery.publishApproval(second,binding,now+5*minute,now)),"second approval posts");
   taps.capture(secondToken);delivery.withdrawApproval(second);require(!new WorkflowNoticeTaps(store).pending().getBoolean("retained"),"withdrawn tap is not retained");taps.forget(second);require(taps.pending().length()==0,"stale captured tap released");

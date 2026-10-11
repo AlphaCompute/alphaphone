@@ -29,13 +29,19 @@ public class BrowserFlowInstrumentedTest {
  }
  private void collect(View view,List<WebView> result,WebView host){if(view instanceof WebView&&view!=host)result.add((WebView)view);if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)collect(group.getChildAt(i),result,host);}}
  String child(String js)throws Exception{
-  CountDownLatch done=new CountDownLatch(1);AtomicReference<String> answer=new AtomicReference<>("null");AtomicReference<Throwable> error=new AtomicReference<>();
+  CountDownLatch done=new CountDownLatch(1);AtomicReference<String> answer=new AtomicReference<>("null");AtomicReference<Throwable> error=new AtomicReference<>();java.util.concurrent.atomic.AtomicBoolean shown=new java.util.concurrent.atomic.AtomicBoolean();
   TestUiDispatch dispatch=TestUiDispatch.post(()->{try{
    for(Activity a:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))if(a instanceof MainActivity){MainActivity main=(MainActivity)a;List<WebView> views=new ArrayList<>();collect(main.getWindow().getDecorView(),views,main.getBridge().getWebView());
-    for(WebView web:views)if(web.isShown()){web.evaluateJavascript(js,v->{answer.set(v);done.countDown();});return;}}
+    for(WebView web:views)if(web.isShown()){shown.set(true);web.evaluateJavascript(js,v->{answer.set(v);done.countDown();});return;}}
    done.countDown();
   }catch(Throwable e){error.set(e);done.countDown();}});
-  dispatch.await(done,"Child browser callback");if(error.get()!=null)throw new AssertionError(error.get());return answer.get();
+  dispatch.await(done,"Child browser callback");if(error.get()!=null)throw new AssertionError(error.get());
+  // No page is shown while a modal host panel is open: the product withdraws the native page under
+  // it. On a fresh install that is the first-run access panel, which opens some seconds after
+  // launch; answer it with its own "Not now" (nothing is granted), as an owner would, so the next
+  // look finds the page. Callers poll, and a page that never shows still fails them.
+  if(!shown.get())WebViewTestDriver.evaluate("(()=>{const b=[...document.querySelectorAll('dialog.alpha-startup-permissions[open] button')].find(b=>b.textContent.trim()==='Not now');if(b)b.click();return !!b})()");
+  return answer.get();
  }
  /** Failure-only structural diagnostics: no page text, URLs, cookies or credentials. */
  String diagnostics(){
@@ -90,7 +96,7 @@ public class BrowserFlowInstrumentedTest {
   assertNotNull("Actual loaded child page",target.get());
   host(AppNavigation.request("Notes"));until(AppNavigation.selected("Notes"));until("window.__alphaTestNavigation?.status==='complete'");
   AtomicBoolean hidden=new AtomicBoolean();for(int i=0;i<100&&!hidden.get();i++){WebViewTestDriver.withActivity(MainActivity.class,a->hidden.set(!target.get().isShown()));if(!hidden.get())SystemClock.sleep(100);}assertTrue("Browser surface actually hidden",hidden.get());deniedChooserCallback(target.get());
-  host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));
+  host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();
   WebViewTestDriver.withActivity(MainActivity.class,a->a.startActivity(new android.content.Intent(android.provider.Settings.ACTION_SETTINGS)));
   try{
    AtomicBoolean paused=new AtomicBoolean();for(int i=0;i<100&&!paused.get();i++){
@@ -127,7 +133,7 @@ public class BrowserFlowInstrumentedTest {
    byte[] response=html.getBytes(java.nio.charset.StandardCharsets.UTF_8);socket.getOutputStream().write(("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: "+response.length+"\r\nConnection: close\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));socket.getOutputStream().write(response);socket.getOutputStream().flush();
   }catch(Exception error){if(server.isClosed())return;}}});
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));address("http://127.0.0.1:"+server.getLocalPort()+"/");
+   AppNavigation.liveMode();host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();address("http://127.0.0.1:"+server.getLocalPort()+"/");
    boolean ready=false;for(int i=0;i<150;i++){if("true".equals(child("document.title==='Upload fixture' && !!document.querySelector('input')"))){ready=true;break;}SystemClock.sleep(100);}if(!ready)fail("Upload fixture document missing; "+diagnostics());
    assertNull("Page cannot upload before explicit selection",uploaded.get());
    assertEquals("No native bridge in upload destination","true",child("typeof Capacitor==='undefined'"));
@@ -154,14 +160,14 @@ public class BrowserFlowInstrumentedTest {
    socket.getOutputStream().write(("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: "+body.length+"\r\nConnection: close\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));socket.getOutputStream().write(body);socket.getOutputStream().flush();
   }catch(Exception expectedOnCancellation){}});}catch(java.io.IOException stopped){break;}}});
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));
+   until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();
    address("http://127.0.0.1:"+server.getLocalPort()+"/slow");nativeText("Loading website…");
    click("Menu");click("Stop loading");nativeText("Loading stopped. Reload from the menu to try again.");
-   assertEquals("Cancelled page has no secure indicator","false",host("!!document.querySelector('svg[aria-label=\"Secure connection\"]')"));
+   assertEquals("Cancelled page has no secure indicator","false",host("!!document.querySelector('[role=img][aria-label=\"Secure connection\"]')"));
    release.countDown();click("Menu");click("Reload page");
    boolean recovered=false;for(int i=0;i<150;i++){if("true".equals(child("document.title==='Recovered page' && document.body.innerText.includes('reload succeeded')"))){recovered=true;break;}SystemClock.sleep(100);}
    assertTrue("Reload presents actual response bytes after cancellation",recovered);
-   assertEquals("HTTP fixture never has a secure indicator","false",host("!!document.querySelector('svg[aria-label=\"Secure connection\"]')"));
+   assertEquals("HTTP fixture never has a secure indicator","false",host("!!document.querySelector('[role=img][aria-label=\"Secure connection\"]')"));
   }finally{release.countDown();server.close();workers.shutdownNow();}
  }
  @Test public void httpErrorDocumentRetainsItsRetryLink()throws Exception{
@@ -176,7 +182,7 @@ public class BrowserFlowInstrumentedTest {
    socket.getOutputStream().write(("HTTP/1.1 "+(retry?"200 OK":"503 Service Unavailable")+"\r\nContent-Type: text/html\r\nContent-Length: "+body.length+"\r\nConnection: close\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));socket.getOutputStream().write(body);socket.getOutputStream().flush();
   }catch(java.io.IOException stopped){if(server.isClosed())break;}}});
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));
+   until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();
    address("http://127.0.0.1:"+server.getLocalPort()+"/unavailable");
    boolean visible=false;for(int i=0;i<150;i++){if("true".equals(child("document.title==='Unavailable' && !!document.querySelector('a[href=\"/retry\"]')"))){visible=true;break;}SystemClock.sleep(100);}
    if(!visible)fail("HTTP 503 preserves the actual website document; "+diagnostics());
@@ -190,14 +196,14 @@ public class BrowserFlowInstrumentedTest {
  @Test public void realHttpsHistoryMenuSharedNormalStorageAndPrivateTabIsolation()throws Exception{
   String token=UUID.randomUUID().toString(),one="?alpha_flow="+token+"-one",two="?alpha_flow="+token+"-two";
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));
+   until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();
    address("https://alpha-network-check.invalid/");
    // The address bar closes only after the native tab exists; typing the next
    // address before then races that close and loses the text.
    until("!document.querySelector('input[aria-label=Address]')");
-   assertEquals("Uncommitted navigation must not display a secure connection", "false", host("!!document.querySelector('svg[aria-label=\"Secure connection\"]')"));
+   assertEquals("Uncommitted navigation must not display a secure connection", "false", host("!!document.querySelector('[role=img][aria-label=\"Secure connection\"]')"));
    address("https://example.com/"+one);page(one);
-   until("document.querySelector('svg[aria-label=\"Secure connection\"]')");
+   until("document.querySelector('[role=img][aria-label=\"Secure connection\"]')");
    assertEquals("Remote page cannot call native app bridge","true",child("typeof Capacitor==='undefined' && typeof androidBridge==='undefined'"));
    child("localStorage.setItem('alpha_flow_marker',"+JSONObject.quote(token)+");true");
    address("https://example.com/"+two);page(two);click("Previous page");page(one);click("Next page");page(two);
@@ -224,7 +230,7 @@ public class BrowserFlowInstrumentedTest {
  }
  @Test public void submittedSearchUsesRealProviderAndRejectsExecutableAddress()throws Exception{
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));
+   until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();
    address("javascript:alert(1)");
    until("document.body.innerText.includes('valid HTTP or HTTPS address without credentials')");
    assertEquals("Rejected address cannot create a page","null",child("true"));

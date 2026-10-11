@@ -48,6 +48,13 @@ public class SettingsFlowInstrumentedTest {
   }
   until("!document.querySelector('button[aria-label=\"Back to Settings\"]')");
  }
+ private void aboutShowsThisDevice()throws Exception{
+  click("About");
+  until("document.querySelector('[data-screen]').textContent.includes("+JSONObject.quote(Build.MODEL)+") && document.querySelector('[data-screen]').textContent.includes("+JSONObject.quote(Build.DISPLAY)+")");
+  assertEquals("No prototype hardware attestation", "false",WebViewTestDriver.evaluate("document.querySelector('[data-screen]').textContent.includes('4.2 · attested')"));
+  assertEquals("No prototype local model", "false",WebViewTestDriver.evaluate("document.querySelector('[data-screen]').textContent.includes('Core 7B')"));
+  tapBack();
+ }
  @Test public void realBatteryAndDeviceInfoRefreshAfterNativeSettingsReturn()throws Exception{
   assertTrue("Battery fixtures are confined to an emulator",Build.FINGERPRINT.contains("generic")||Build.MODEL.contains("sdk")||Build.HARDWARE.contains("ranchu"));
   Instrumentation instrumentation=InstrumentationRegistry.getInstrumentation();
@@ -55,14 +62,24 @@ public class SettingsFlowInstrumentedTest {
   Instrumentation.ActivityMonitor monitor=new Instrumentation.ActivityMonitor(){
    @Override public Instrumentation.ActivityResult onStartActivity(Intent intent){action.set(intent.getAction());return null;}
   };
+  // Removing a monitor that was never added throws and would hide the first failure.
+  boolean monitored=false;
   try{
    shell("dumpsys battery set level 37");
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
     until("document.documentElement.dataset.activeView");
-    WebViewTestDriver.evaluate(AppNavigation.request("Settings"));until(AppNavigation.selected("Settings"));
+    WebViewTestDriver.evaluate(AppNavigation.request("Settings"));until(AppNavigation.selected("Settings"));AppNavigation.declineStartupAccess();
+    if(!BuildConfig.IS_LAUNCHER){
+     // The standalone app is not the phone's system shell: Settings lists no system-only rows
+     // (settings-adapter systemOnly), so the battery handoff exists in the launcher flavor only.
+     until("document.querySelector('button[aria-label=\"About\"]')");
+     for(String systemOnly:new String[]{"Wi-Fi","Bluetooth","Mobile data","Battery","Sound & vibration"})assertEquals("Standalone Settings omits "+systemOnly,"false",WebViewTestDriver.evaluate("Boolean(document.querySelector('button[aria-label='+"+JSONObject.quote(JSONObject.quote(systemOnly))+"+']'))"));
+     assertEquals("Standalone Settings shows no battery percentage","false",WebViewTestDriver.evaluate("document.querySelector('[data-screen]').textContent.includes('37%')"));
+     aboutShowsThisDevice();return;
+    }
     click("Battery");until("document.querySelector('[data-screen]').textContent.includes('37%')");
     assertEquals("No invented lifetime estimate", "false",WebViewTestDriver.evaluate("document.querySelector('[data-screen]').textContent.includes('About 1 day 6 hr')"));
-    instrumentation.addMonitor(monitor);
+    instrumentation.addMonitor(monitor);monitored=true;
     click("Manage battery in Android");
     long end=SystemClock.elapsedRealtime()+15000;boolean foreground=false;
     while(SystemClock.elapsedRealtime()<end){foreground=shell("dumpsys activity activities").lines().anyMatch(line->line.contains("topResumedActivity")&&line.contains("com.android.settings"));if(foreground)break;SystemClock.sleep(100);}
@@ -70,12 +87,8 @@ public class SettingsFlowInstrumentedTest {
     shell("dumpsys battery set level 62");
     instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
     until("document.querySelector('[data-screen]').textContent.includes('62%') && !document.querySelector('[data-screen]').textContent.includes('37%')");
-    tapBack();click("About");
-    until("document.querySelector('[data-screen]').textContent.includes("+JSONObject.quote(Build.MODEL)+") && document.querySelector('[data-screen]').textContent.includes("+JSONObject.quote(Build.DISPLAY)+")");
-    assertEquals("No prototype hardware attestation", "false",WebViewTestDriver.evaluate("document.querySelector('[data-screen]').textContent.includes('4.2 · attested')"));
-    assertEquals("No prototype local model", "false",WebViewTestDriver.evaluate("document.querySelector('[data-screen]').textContent.includes('Core 7B')"));
-    tapBack();
+    tapBack();aboutShowsThisDevice();
    }
-  }finally{instrumentation.removeMonitor(monitor);shell("dumpsys battery reset");}
+  }finally{if(monitored)instrumentation.removeMonitor(monitor);shell("dumpsys battery reset");}
  }
 }

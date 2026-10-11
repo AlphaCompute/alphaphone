@@ -70,10 +70,11 @@ outcomes, never credentials.
 
 ## 3. Emulator and CI campaigns
 
-Someone must run these and read the results. None has a result at the current source. A
-campaign is in progress on branch `claude/r3-packaging`; at `73b973a5` that branch has
-committed test and runner repairs and no result record, so nothing below can be ticked
-off from it yet. Results count only when committed with the commit they ran on.
+Someone must run these and read the results. None has a result at the current source. One
+campaign is summarized in [verification](verification.md#emulator-results-at-73b973a5-2026-10-10):
+it ran source `73b973a5` at the earlier pin `352d7a08` with developer-override APKs, its
+results are mixed, and the fixes made after it have no recorded run, so nothing below can
+be ticked off from it. Results count only when committed with the commit they ran on.
 
 Preparation, once per source revision (JDK 21, Android SDK, an owned disposable emulator;
 this host runs arm64 images only):
@@ -99,12 +100,12 @@ this host runs arm64 images only):
 
 | Order | Campaign | Command | Loops (steps) | Items |
 | --- | --- | --- | --- | --- |
-| 1 | Core-loop classes | `RUN --classes LocalAgentOfflineApps,NotesTrashBackstop,NotesStorageDurability,DailyApps,ReminderLifecycle,ClockHandoff,ClockRepeatDays,HostedResultNotice,HostedBackgroundWorker,WorkflowApprovalNotice,BrowserReading,BrowserSensitiveReading,BrowserIsolatedReading,BrowserReadingNavigation,PasswordBrowserFill,InboxOperationJournal,MailAttachment,Notifications,CameraScan,FilesTree` | B (B-9, B-10 native), C (C-3), E (E-8, E-9, E-16), F (F-7, F-15), J01 (J01-10) | MVP-11, 15, 25, 27, 28, 29, 30, 32, 36 |
+| 1 | Core-loop classes | `RUN --classes LocalAgentOfflineApps,NotesTrashBackstop,NotesStorageDurability,DailyApps,ReminderLifecycle,ClockHandoff,ClockRepeatDays,HostedResultNotice,WorkflowApprovalNotice,BrowserReadingNavigation,PasswordBrowserFill,InboxOperationJournal,MailAttachment,Notifications,CameraScan,FilesTree` | B (B-9, B-10 native), C (C-3), E (E-8 navigation class, E-16), F (F-7, F-15 reminder half), J01 (J01-10) | MVP-11, 15, 25, 27, 28, 29, 30, 32, 36 |
 | 2 | Hosted CI: resident process death and recovery | `gh workflow run resident-android.yml --ref <candidate>` (jobs `native` and `recovery-ui`; subject to the [CI cost policy](ci-cost-policy.md)) | A (A-23, A-27), C (C-7), D (D-15), F (F-16) | MVP-21, 27, 32, 33, 37, 38, 47 |
-| 3 | Default product-surface classes | `RUN` (NoMockProduct, Shell, StartupReadiness, TextScale, BrowserSignins, BrowserFlow, BrowserContinuity, HostedProcessRestart, BrowserDownload) | A (A-29), D (D-14), E (E-3, E-5) | MVP-08, 20, 22, 28, 32, 38 |
+| 3 | Default product-surface classes | `RUN` (NoMockProduct, Shell, StartupReadiness, TextScale, BrowserSignins, BrowserFlow, BrowserContinuity, BrowserDownload) | A (A-29), E (E-3, E-5) | MVP-08, 20, 22, 28, 32, 38 |
 | 4 | Calendar provider read-back | `ALPHA_CALENDAR_TEST_SERIAL=emulator-NNNN ALPHA_CALENDAR_TEST_AVD=<avd> ALPHA_CALENDAR_TEST_ABI=arm64-v8a node scripts/test-calendar-regression.mjs --case=CalendarCrudInstrumentedTest`, then `--case=CalendarAgentCrudInstrumentedTest` | B (B-15, B-25), J01 (J01-6, J01-7) | MVP-26, 49 |
 | 5 | Process restarts | `node scripts/test-native-restart.mjs notes APP.apk TEST.apk NEW_OUTPUT`, then `inbox`, `document`, `signin` (the last needs network on the emulator) | B (B-12), F (F-7), J03 (J03-7), E (E-10, E-11) | MVP-25, 28, 30, 36 |
-| 6 | Test-mocks pair | `RUN --test-mocks --classes BrowserAutofill,BrowserDownload,BrowserFlow,ConnectionChooser` | E (E-4, E-14), A (A-30) | MVP-28, 29, 37 |
+| 6 | Test-mocks pair | `RUN --test-mocks --classes BrowserAutofill,BrowserDownload,BrowserFlow,ConnectionChooser,HostedProcessRestart,HostedBackgroundWorker,BrowserReading,BrowserSensitiveReading,BrowserIsolatedReading` (a test-mocks app build, so not evidence for a distribution build) | E (E-4, E-8, E-9, E-14), A (A-30), D (D-14), F (F-15 hosted half) | MVP-28, 29, 37 |
 | 7 | Reminders | `node scripts/test-reminder-one-off.mjs APP.apk TEST.apk NEW_OUTPUT`; `node scripts/test-reminder-recovery.mjs APP.apk TEST.apk NEW_OUTPUT` (reboots the emulator) | B (B-20, B-22), F (F-15) | MVP-27 |
 | 8 | Permissions and notices | `node scripts/test-native-permissions.mjs channels APP.apk TEST.apk NEW_OUTPUT`, then `notice-denied`, `notice`, `voice`, `voice-revoke`, `settings`, `camera`, each with a new output directory | B (B-26), F (F-15, F-17), A (A-6) | MVP-30, 33 |
 | 9 | HOME role | `RUN --variants launcher --home-role --classes SettingsRoles,LauncherHome` (changes and restores the emulator's HOME role; if restoration cannot be proven it writes `home-role-recovery.json` and the emulator must not be reused until recovered) | A (A-1) | MVP-20, 33, 53 |
@@ -118,11 +119,15 @@ this host runs arm64 images only):
 | 17 | Workflows, upgrade and Maps | `node scripts/android-workflow-native.mjs` (environment in the [verification guide](verification.md)); `node scripts/test-installed-upgrade.mjs` from agreed baselines; `node scripts/maps/test-native-recovery.mjs permission` | J04 (J04-5 native) | MVP-18, 31, 32, 42 |
 | 18 | On-device speech, only if A-24 keeps it required | `LocalSpeechInstrumentedTest` on arm64-v8a and on an x86_64 emulator or device through the requalification tooling in `scripts/local-speech/README.md`. No workflow runs it, and this host cannot run x86_64. | B (B-7) | MVP-23, 39 |
 
-Known obstacle for campaigns 1 and 3: branch `claude/r3-packaging` records (commit
-`0c6c68b0`) that HostedProcessRestart and HostedBackgroundWorker assert a disposable
-secondary user the plain runner never creates, and refuses them there. That change is not
-on this base, so on this source those two classes are expected to fail, and D-14 and the
-background half of F-15 have no working runner until it lands.
+Campaign 6 and the hosted classes: HostedProcessRestart, HostedBackgroundWorker, BrowserReading,
+BrowserSensitiveReading and BrowserIsolatedReading use loopback HTTP fixtures that only a
+test-mocks app build admits (any other build answers "HTTPS required" or asks for a speech
+route), so the runner refuses them without `--test-mocks` and they are not default classes.
+The two hosted classes also assert a disposable secondary user; since round 7 the runner
+creates and removes that user itself:
+`npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --test-mocks --classes HostedProcessRestart,HostedBackgroundWorker`.
+No run of that phase is recorded, so D-14 and the hosted half of F-15 have a runner and
+no result.
 
 ## 4. Physical-device steps
 

@@ -105,7 +105,7 @@ public final class BrowserDownloadInstrumentedTest {
   }catch(Exception cancelled){}});}catch(IOException closed){break;}});
   android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();DownloadManager manager=context.getSystemService(DownloadManager.class);List<Long> cleanup=new ArrayList<>();
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();host(AppNavigation.request("Browser"));ready(AppNavigation.selected("Browser"));String url="http://127.0.0.1:"+server.getLocalPort()+"/";address(url);page();
+   AppNavigation.liveMode();host(AppNavigation.request("Browser"));ready(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();String url="http://127.0.0.1:"+server.getLocalPort()+"/";address(url);page();
    link("file");nativeVisible("127.0.0.1");nativeVisible(filename);nativeVisible("Advertised size: "+expected.length+" bytes");
    assertEquals("No DownloadManager side effect before consent",-1,find(manager,filename));nativeClick("Cancel");assertEquals("Denied review queues nothing",-1,find(manager,filename));
    address(url);link("file");

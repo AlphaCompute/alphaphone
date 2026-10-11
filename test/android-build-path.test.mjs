@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync, spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {checkoutProblems, preparedRuntimeProblems, SPEECH_AAR, SPEECH_MANIFEST} from '../scripts/android-build-preflight.mjs';
+import {checkoutProblems, embeddingHostProblems, preparedRuntimeProblems, SPEECH_AAR, SPEECH_MANIFEST} from '../scripts/android-build-preflight.mjs';
 import {TURBO_AGENT_DETECTION_ENV, preparedSourceEnv} from '../scripts/local-agent-source.mjs';
 import {ensurePreparedWorkflowWorker} from '../scripts/prepared-workflow-worker.mjs';
 import {workerHash} from '../scripts/workflow-worker-artifact.mjs';
@@ -66,15 +66,17 @@ test('preflight names the exact command for each missing build input', t => {
   assert.match(problems[0], /npm run agent:prepare before npm run android:build -- --allow-unpackaged-runtime/);
 
   f.write(path.relative(f.root, path.join(f.source, '.alpha-runtime-source.json')), '{"stamp":1}\n');
+  // The embedding host has its own test below; here it is staged.
+  const embeddingHost = () => ({});
   assert.deepEqual(preparedRuntimeProblems(f.root, f.source, {allowUnpackagedRuntime: true}), []);
-  assert.deepEqual(preparedRuntimeProblems(f.root, f.source, {testMocks: true}), []);
-  assert.match(preparedRuntimeProblems(f.root, f.source)[0], /not staged.*npm run agent:build-workflow-worker && npm run agent:stage-android/);
+  assert.deepEqual(preparedRuntimeProblems(f.root, f.source, {testMocks: true, embeddingHost}), []);
+  assert.match(preparedRuntimeProblems(f.root, f.source, {embeddingHost})[0], /not staged.*npm run agent:build-workflow-worker && npm run agent:stage-android/);
 
   f.write('android/app/src/main/assets/agent/workflow-worker/manifest.json', '{}');
   f.write('android/app/src/main/assets/agent/alpha-source.json', '{"stamp":0}\n');
-  assert.match(preparedRuntimeProblems(f.root, f.source)[0], /different prepared source/);
+  assert.match(preparedRuntimeProblems(f.root, f.source, {embeddingHost})[0], /different prepared source/);
   f.write('android/app/src/main/assets/agent/alpha-source.json', '{"stamp":1}\n');
-  assert.deepEqual(preparedRuntimeProblems(f.root, f.source), []);
+  assert.deepEqual(preparedRuntimeProblems(f.root, f.source, {embeddingHost}), []);
 });
 
 test('preflight rejects an unpinned checkout and android:build stops before sync and Gradle', t => {
@@ -82,7 +84,7 @@ test('preflight rejects an unpinned checkout and android:build stops before sync
   f.write('upstream.lock.json', JSON.stringify({commit: 'f'.repeat(40)}));
   assert.match(checkoutProblems(f.root)[0], /vendor\/eliza is at .*pins f{40}\. Run: git submodule update --init vendor\/eliza/);
   // The real entry point exits with status 2 and the guidance, without starting the build.
-  for (const file of ['build-android.mjs', 'android-build-preflight.mjs', 'toolchain.mjs', 'copy-file-clone.mjs'])
+  for (const file of ['build-android.mjs', 'android-build-preflight.mjs', 'stage-embedding-host.mjs', 'toolchain.mjs', 'copy-file-clone.mjs'])
     f.write('scripts/' + file, read('scripts/' + file));
   const result = spawnSync(process.execPath, ['scripts/build-android.mjs'], {cwd: f.root, encoding: 'utf8'});
   assert.equal(result.status, 2, result.stderr);
@@ -114,4 +116,54 @@ export async function buildWorkflowArtifact({sourceRoot,outputDir,sourceIdentity
   fs.writeFileSync(path.join(source, '.alpha-runtime-source.json'), 'stamp-b');
   await assert.rejects(ensurePreparedWorkflowWorker(root, source, output), /does not match the prepared runtime source .*ALPHA_WORKFLOW_WORKER_OUTPUT/);
   assert.equal(read(path.join(source, 'builds')), 'x');
+});
+
+test('android:build:local builds the workflow worker before staging and stages before the strict build', () => {
+  // The chain once stopped in agent:stage-android because nothing had built the worker artifact
+  // that staging verifies first. Each step consumes the previous step's output, so order matters.
+  const scripts = JSON.parse(read('package.json')).scripts;
+  const chain = scripts['android:build:local'].split('&&').map(step => step.trim());
+  assert.deepEqual(chain, [
+    'node scripts/android-build-preflight.mjs --before-prepare',
+    'npm run agent:prepare',
+    'npm run agent:build-workflow-worker',
+    'npm run agent:stage-android',
+    'npm run android:build',
+  ]);
+  for (const step of chain.slice(1)) assert.ok(scripts[step.replace('npm run ', '')], step);
+  // The chain ends in the strict build: no developer override may be baked into it.
+  assert.doesNotMatch(scripts['android:build:local'], /--allow-unpackaged-runtime|--allow-unqualified-runtime|--test-mocks|--skip-instrumentation/);
+  assert.equal(scripts['android:build'], 'node scripts/build-android.mjs');
+  // Staging itself refuses a missing or foreign worker artifact before the long mobile bundle build.
+  const stage = read('scripts/stage-local-agent-runtime.mjs');
+  assert.ok(stage.indexOf('verifyWorkerArtifact(workerArtifactDirectory(root)') > 0);
+  assert.ok(stage.indexOf('verifyWorkerArtifact(workerArtifactDirectory(root)') < stage.indexOf("'build:mobile'"));
+});
+
+test('preflight names the embedding host that no build step produces', t => {
+  // Gradle's :app:verifyEmbeddingHost failed a fully prepared and staged checkout 18 seconds into
+  // the first assemble task: the reviewed libraries are ignored by Git and staged from a receipt.
+  const f = fixture(t);
+  f.write(path.relative(f.root, path.join(f.source, '.alpha-runtime-source.json')), '{"stamp":1}\n');
+  f.write('android/app/src/main/assets/agent/workflow-worker/manifest.json', '{}');
+  f.write('android/app/src/main/assets/agent/alpha-source.json', '{"stamp":1}\n');
+  const missing = () => { throw new Error('Qualified embedding host library missing or changed: libelizainference.so'); };
+  let problems = preparedRuntimeProblems(f.root, f.source, {embeddingHost: missing});
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /qualified embedding host is not staged \(Qualified embedding host library missing or changed: libelizainference\.so; Gradle :app:verifyEmbeddingHost/);
+  assert.match(problems[0], /npm run android:build:local does not produce it/);
+  assert.match(problems[0], /node scripts\/stage-embedding-host\.mjs --receipt/);
+  // Test-mocks builds run the same strict Gradle check.
+  assert.equal(preparedRuntimeProblems(f.root, f.source, {testMocks: true, embeddingHost: missing}).length, 1);
+
+  // The real verifier: a staged resident payload is never admitted as "unpackaged", so the
+  // developer override does not help until the payload is removed or the host is staged.
+  f.write('android/embedding-host/qualified-host.json', JSON.stringify({qualificationReceiptSha256: 'not reviewed'}));
+  problems = preparedRuntimeProblems(f.root, f.source, {allowUnpackagedRuntime: true});
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /must have no resident payload at all/);
+  fs.rmSync(path.join(f.root, 'android/app/src/main/assets/agent'), {recursive: true});
+  assert.deepEqual(preparedRuntimeProblems(f.root, f.source, {allowUnpackagedRuntime: true}), []);
+  assert.deepEqual(embeddingHostProblems(f.root, {allowUnpackagedRuntime: true}), []);
+  assert.equal(embeddingHostProblems(f.root).length, 1);
 });

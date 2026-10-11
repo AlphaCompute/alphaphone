@@ -27,6 +27,16 @@ export function voiceFailure(reason: unknown, context: { transcribing: boolean; 
   return null;
 }
 
+/**
+ * The recorder's recovery control for a refused microphone. On the phone the denied message tells
+ * the owner to choose "Open app settings", so that control must exist; a browser's message names
+ * the browser's own site settings and gets none.
+ */
+export const DENIED_SETTINGS_LABEL = 'Open app settings';
+export function deniedSettingsChoice(input: { failure: string; stage: string; busy: boolean; native: boolean }): boolean {
+  return input.native && input.failure === 'denied' && input.stage === 'ready' && !input.busy;
+}
+
 const megabytes = (bytes: number) => Math.max(0, Math.round(bytes / 1_000_000));
 /** Status text for the in-browser recognizer: model download, model start-up, recognition. */
 export function speechProgressMessage(progress?: { phase: string; loaded?: number; total?: number }) {

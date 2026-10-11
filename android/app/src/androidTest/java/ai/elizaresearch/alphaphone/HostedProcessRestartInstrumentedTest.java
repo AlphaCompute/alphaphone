@@ -19,7 +19,7 @@ import java.util.concurrent.*;
 @RunWith(AndroidJUnit4.class)
 public final class HostedProcessRestartInstrumentedTest {
  private static final String STATE="hosted-restart-test:v1", SESSION="restart-fixture";
- private Context context(){org.junit.Assume.assumeTrue("Explicit isolated hosted campaign required", "true".equals(InstrumentationRegistry.getArguments().getString("alphaHostedProcessRestartFixture")));Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();assertFalse("Disposable secondary user required",c.getSystemService(UserManager.class).isSystemUser());return c;}
+ private Context context(){org.junit.Assume.assumeTrue("Explicit isolated hosted campaign required", "true".equals(InstrumentationRegistry.getArguments().getString("alphaHostedProcessRestartFixture")));Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();assertTrue("Run against a test-mocks app build: only that build admits this fixture's loopback HTTP route (any other build refuses it, correctly)",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);assertFalse("Disposable secondary user required",c.getSystemService(UserManager.class).isSystemUser());return c;}
  private static String cipher(AlphaCredentialStore s,String slot)throws Exception {try(InputStream in=new FileInputStream(s.slotFile(s.slotHash(slot)).getBaseFile())){return android.util.Base64.encodeToString(in.readAllBytes(),android.util.Base64.NO_WRAP);}}
  private static void retained(AlphaCredentialStore s,JSONObject state)throws Exception {
   String slot=state.getString("slot");assertTrue("Saved record ciphertext changed",state.getString("cipher").equals(cipher(s,slot+":worker-run")));

@@ -48,9 +48,7 @@ public class AlphaHostedResultsPlugin extends Plugin {
  @PluginMethod public void postWorkflowApprovalNotice(PluginCall call){submit(call,()->{try{
   String id=call.getString("id"),binding=call.getString("bindingHash");Long expiresAt=call.getLong("expiresAt");JSONObject route=call.getObject("route");
   if(!WorkflowNoticeDelivery.approvalId(id)||expiresAt==null||route==null)throw new IllegalArgumentException();
-  long now=System.currentTimeMillis();WorkflowNoticeTaps taps=WorkflowNoticeTapsFactory.create(getContext());WorkflowNoticeDelivery delivery=WorkflowNoticeTapsFactory.delivery(getContext());
-  for(String expired:delivery.expireApprovals(now))taps.forget(expired);
-  String status="expired";if(WorkflowNoticeDelivery.approvalTimeout(expiresAt,now)>0){taps.prepare(id,binding,route);status=delivery.publishApproval(id,binding,expiresAt,now);}
+  String status=WorkflowNoticeTapsFactory.delivery(getContext()).postApproval(WorkflowNoticeTapsFactory.create(getContext()),id,binding,route,expiresAt,System.currentTimeMillis());
   JSObject out=new JSObject();out.put("status",status);call.resolve(out);
  }catch(Exception error){call.reject("Approval notice unavailable; the step stays waiting in Workflows");}});}
  /** A decision (or an approval that is no longer pending) withdraws its notice; it is never reposted. */

@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test --test-concurrency=4 test/*.test.mjs && node --import=tsx scripts/test-notes-query-flow.ts",
     "verify": "npm run upstream:prepare-client && npm run browser-speech:prepare && npm run --ignore-scripts typecheck && npm --ignore-scripts test && npm run --ignore-scripts build && npm run audit:bundle",
-    "android:sync": "npm run build && cap sync android && node scripts/browser-speech-assets.mjs prune-android",
+    "android:sync": "npm run build && cap sync android && node scripts/browser-speech-assets.mjs prune-android && node scripts/android-gzip-assets.mjs protect",
     "android:build": "node scripts/build-android.mjs",
     "android:verify": "node scripts/verify-apks.mjs",
     "test:android:instrumentation": "node scripts/android-instrumentation.mjs",

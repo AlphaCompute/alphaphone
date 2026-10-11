@@ -20,7 +20,7 @@ Items carrying each class (an item can carry several): SOFTWARE 12 · EMULATOR 3
 
 MVP-12 to 16, 18, 19, 48 and 53 were implemented by PR #388, which **merged into main on October 10** (`042265c9`). Their Current and Remaining text below is that pull request's. Their "Blocked on" lines were rewritten when this refresh was merged with it: the software is on main, and what stays open is the emulator, owner and device parts and the software gaps each Remaining text names. None of the nine has run on an emulator or a device.
 
-No emulator, hosted CI, real-integration or device result exists at the current source. An emulator campaign is in progress on branch `claude/r3-packaging`; at `73b973a5` it has committed no result record. "No run is recorded" below means exactly that. What only the owner can do is listed in [owner actions](mvp-owner-actions.md); `test/docs-inventory-consistency.test.mjs` keeps this file and the JSON in agreement.
+No emulator, hosted CI, real-integration or device result exists at the current source. One emulator campaign is summarized in [verification](verification.md#emulator-results-at-73b973a5-2026-10-10): source `73b973a5` at the earlier pin `352d7a08`, developer-override APKs, mixed results, and no recorded run of the fixes made after it; it is not a result at the current source. "No run is recorded" below means exactly that. What only the owner can do is listed in [owner actions](mvp-owner-actions.md); `test/docs-inventory-consistency.test.mjs` keeps this file and the JSON in agreement.
 
 ## Scope retained and deferred
 
@@ -481,7 +481,7 @@ Evidence/source: [docs/maps-regional-validation.md](../docs/maps-regional-valida
 ### MVP-32 Qualify workflows approvals and result delivery
 
 **P1 · acceptance · AP-11, AP-12**
-Blocked on: EMULATOR: `scripts/android-workflow-native.mjs` and `--classes WorkflowApprovalNotice,HostedProcessRestart`; CI: ResidentWorkflowCrash and WorkflowNoticeProcessDeath in resident-android.yml; HUMAN: inference credential for generated-candidate quality; DEVICE.
+Blocked on: EMULATOR: `scripts/android-workflow-native.mjs`, `--classes WorkflowApprovalNotice` and `--test-mocks --classes HostedProcessRestart`; CI: ResidentWorkflowCrash and WorkflowNoticeProcessDeath in resident-android.yml; HUMAN: inference credential for generated-candidate quality; DEVICE.
 
 Current: Typed phone workflows are manual-triggered; digest scheduling and Automations have distinct contracts. Unknown outcomes are retained and never replayed; a lost Run or Save request can be resent once by the owner under its original identity (docs/agent-integration.md; test/browser/workflow-interruption-recovery.spec.ts, workflow-outcome-unknown.spec.ts). The phrase filter for calls, messages, payments, contacts and code refuses before generation and the typed catalog bounds the rest. WorkflowApprovalNotice and HostedProcessRestart are registered with the runner, the native workflow campaign exists, and the process-death classes run only in hosted CI; no run is recorded for any of them at the current source.
 
@@ -573,7 +573,7 @@ Evidence/source: [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-run
 ### MVP-38 Qualify digests under the approved execution policy
 
 **P1 · acceptance · AP-07, AP-11**
-Blocked on: HUMAN: decision A-09, then the Gmail grant (MVP-35) and an inference credential (MVP-34) for real sources and output; SOFTWARE: rerun `npm run agent:test-digest-restart` at the current pin; EMULATOR: `--classes HostedProcessRestart`; CI: WorkflowNoticeProcessDeath in resident-android.yml job recovery-ui; DEVICE: battery saver, Doze and lock.
+Blocked on: HUMAN: decision A-09, then the Gmail grant (MVP-35) and an inference credential (MVP-34) for real sources and output; SOFTWARE: rerun `npm run agent:test-digest-restart` at the current pin; EMULATOR: `--test-mocks --classes HostedProcessRestart`; CI: WorkflowNoticeProcessDeath in resident-android.yml job recovery-ui; DEVICE: battery saver, Doze and lock.
 
 Current: Local durable scheduling and hosted-result controls exist. The explicit missed record is implemented and tested: one missed occurrence, never run later, never replacing the last brief; morning and evening schedules, DST, overlap, revoke, edit and disable are covered with the development scheduler (test/browser/dev-digest-schedule.spec.ts, journey-d-digests.spec.ts). A resident worker killed at an admission or execution boundary created no duplicate result in one host run with a synthetic model at upstream 352d7a08 (npm run agent:test-digest-restart); it was not repeated at the current pin and is in no automated lane. A-09 is undecided.
 

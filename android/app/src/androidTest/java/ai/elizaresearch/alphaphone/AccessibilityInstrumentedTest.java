@@ -45,9 +45,17 @@ public final class AccessibilityInstrumentedTest {
  }
  private static void talkBackOrder(UiDevice device,String surface){
   device.waitForIdle(2000);
-  UiObject2 root=device.findObject(By.pkg(BuildConfig.APPLICATION_ID).depth(0));
+  // The WebView publishes a layer's accessibility nodes shortly after the layer appears; read the
+  // tree again until it holds a clickable control (five seconds at most). The checks below are unchanged.
+  UiObject2 root=null;List<UiObject2> nodes=new ArrayList<>();
+  for(int attempt=0;attempt<25;attempt++){
+   root=device.findObject(By.pkg(BuildConfig.APPLICATION_ID).depth(0));nodes=new ArrayList<>();
+   if(root!=null){try{collect(root,nodes);}catch(androidx.test.uiautomator.StaleObjectException changing){nodes.clear();}}
+   boolean clickable=false;try{for(UiObject2 node:nodes)if(node.isClickable()&&!node.getVisibleBounds().isEmpty())clickable=true;}catch(androidx.test.uiautomator.StaleObjectException changing){clickable=false;}
+   if(clickable)break;
+   SystemClock.sleep(200);
+  }
   assertNotNull(surface+": app window has an accessibility tree",root);
-  List<UiObject2> nodes=new ArrayList<>();collect(root,nodes);
   int width=device.getDisplayWidth();
   List<String> problems=new ArrayList<>();
   UiObject2 previous=null;
@@ -56,6 +64,8 @@ public final class AccessibilityInstrumentedTest {
    Rect r=node.getVisibleBounds();
    if(r.isEmpty())continue;
    String label=((node.getText()==null?"":node.getText())+" "+(node.getContentDescription()==null?"":node.getContentDescription())).trim();
+   // An empty text field has no text; Android carries its accessible name (aria-label/placeholder) as the hint, which TalkBack reads.
+   if(label.isEmpty()&&"android.widget.EditText".equals(node.getClassName())&&node.getHint()!=null)label=node.getHint().trim();
    if(node.isClickable()){actionable++;if(label.isEmpty()&&node.getChildren().stream().noneMatch(c->c.getText()!=null&&!c.getText().trim().isEmpty()))problems.add("unlabelled control at "+r.toShortString());}
    if(r.left<0||r.right>width)problems.add("clipped '"+label+"' at "+r.toShortString());
    if(previous!=null){
@@ -78,10 +88,14 @@ public final class AccessibilityInstrumentedTest {
     AppNavigation.liveMode();
     // Throws on any ATF error-level result for the native hierarchy (WebView host, system bars).
     AccessibilityChecks.enable().setRunChecksFromRootView(true);
-    open("Home");onView(isRoot()).check(AccessibilityChecks.accessibilityAssertion());talkBackOrder(device,"Home");
+    open("Home");AppNavigation.declineStartupAccess();onView(isRoot()).check(AccessibilityChecks.accessibilityAssertion());talkBackOrder(device,"Home");
     // The notification shade opens with a downward swipe from the top of the phone screen.
     Rect web=device.findObject(By.clazz("android.webkit.WebView")).getVisibleBounds();
-    device.swipe(web.centerX(),web.top+web.height()/40,web.centerX(),web.top+web.height()/2,20);
+    // The launcher flavor draws edge to edge under Android's status bar, where a swipe that starts
+    // on or just below the bar belongs to Android and opens its own shade (measured on the API 36
+    // emulator: 131 px opened Android's shade, a start further down opened Alpha's). Start 120 CSS px
+    // into the page: clear of the status bar in both flavors, and Home pulls the shade from there.
+    device.swipe(web.centerX(),web.top+Math.round(web.width()/412f*120),web.centerX(),web.top+web.height()/2,20);
     until("document.querySelector('[data-alpha-layer=\"shade\"]')?.getAttribute('aria-hidden')!=='true'");
     talkBackOrder(device,"Notification shade");
     device.pressBack();until("document.querySelector('[data-alpha-layer=\"shade\"]')?.getAttribute('aria-hidden')==='true'");

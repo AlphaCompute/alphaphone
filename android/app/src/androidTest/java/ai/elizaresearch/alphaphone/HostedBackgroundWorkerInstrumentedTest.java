@@ -21,6 +21,7 @@ public final class HostedBackgroundWorkerInstrumentedTest {
  @Test public void workerReceivesThenReplaysWithoutNewNoticeAndPreservesCiphertext()throws Exception {
   org.junit.Assume.assumeTrue("Explicit isolated hosted campaign required", "true".equals(InstrumentationRegistry.getArguments().getString("alphaHostedBackgroundFixture")));
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+  assertTrue("Run against a test-mocks app build: only that build admits this fixture's loopback HTTP route (any other build refuses it, correctly)",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   assertFalse("Run only in a disposable secondary user",context.getSystemService(UserManager.class).isSystemUser());
   AlphaCredentialStore storage=new AlphaCredentialStore(context);
   assertNull("Refuse to replace an existing delivery binding",storage.readCredentialSlot(HostedDelivery.ACTIVE));

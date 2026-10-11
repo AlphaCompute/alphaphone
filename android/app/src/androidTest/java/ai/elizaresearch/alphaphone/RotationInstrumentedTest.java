@@ -25,23 +25,36 @@ public final class RotationInstrumentedTest {
  private static void until(String code)throws Exception{for(int i=0;i<200;i++){if("true".equals(js("Boolean("+code+")")))return;SystemClock.sleep(100);}fail("Rotation flow condition: "+code);}
  private static int orientation()throws Exception{AtomicInteger value=new AtomicInteger();WebViewTestDriver.withActivity(MainActivity.class,a->value.set(a.getResources().getConfiguration().orientation));return value.get();}
  private static void awaitOrientation(int expected)throws Exception{for(int i=0;i<100;i++){if(orientation()==expected)return;SystemClock.sleep(100);}fail("Activity did not reach orientation "+expected+" (landscape layout required)");}
- /** Visible enabled buttons of the active view whose box leaves the viewport. */
- private static final String CLIPPED="JSON.stringify([...document.querySelectorAll('button,[role=button]')].filter(e=>!e.disabled&&e.getClientRects().length&&!e.closest('[inert],[aria-hidden=\"true\"]')).map(e=>({l:e.getAttribute('aria-label')||e.textContent.trim(),r:e.getBoundingClientRect()})).filter(x=>x.r.width>0&&(x.r.left<-1||x.r.top<-1||x.r.right>innerWidth+1||x.r.bottom>innerHeight+1)).map(x=>x.l))";
+ /**
+  * Visible enabled controls of the active view that are really clipped. Home scrolls (its card row
+  * sideways with mandatory snap points, its app grid down in landscape), so each control is first
+  * scrolled to, trying every alignment because a "nearest" request snaps back on the card row.
+  * After the best alignment the control's whole box (1px tolerance) must lie inside the viewport
+  * and inside every ancestor that clips. A part may stay outside only along an axis in which a
+  * scrolling ancestor is smaller than the control itself, where it is reachable piece by piece.
+  * The check waits for layout between scrolls, so it runs asynchronously and is polled.
+  */
+ private static final String CLIPPED="window.__rotationClipped=null;(async()=>{const frame=()=>new Promise(r=>requestAnimationFrame(()=>r())); const cut=e=>{const r=e.getBoundingClientRect(),why=[];if(!r.width||!r.height)return why; const check=(name,left,top,right,bottom,sx,sy)=>{if(Math.max(left-r.left,r.right-right)>1&&!(sx&&r.width>right-left))why.push(name+' x');if(Math.max(top-r.top,r.bottom-bottom)>1&&!(sy&&r.height>bottom-top))why.push(name+' y');}; let fixed=getComputedStyle(e).position==='fixed'; for(let p=e.parentElement;p&&!fixed;p=p.parentElement){const s=getComputedStyle(p),cx=s.overflowX!=='visible',cy=s.overflowY!=='visible';if(cx||cy){const b=p.getBoundingClientRect(),scrolls=v=>v==='auto'||v==='scroll';check((p.getAttribute('aria-label')||p.className||p.tagName).toString().slice(0,30),cx?b.left:-1e9,cy?b.top:-1e9,cx?b.right:1e9,cy?b.bottom:1e9,scrolls(s.overflowX)&&p.scrollWidth>p.clientWidth,scrolls(s.overflowY)&&p.scrollHeight>p.clientHeight);}if(s.position==='fixed')fixed=true;} check('viewport',0,0,innerWidth,innerHeight,false,false);return why;}; const out=[]; for(const e of [...document.querySelectorAll('button,[role=button]')].filter(e=>!e.disabled&&e.getClientRects().length&&!e.closest('[inert],[aria-hidden=\"true\"]'))){ let why=[]; for(const align of ['nearest','center','start','end']){e.scrollIntoView({block:align,inline:align,behavior:'instant'});await frame();await frame();why=cut(e);if(!why.length)break;} if(why.length)out.push((e.getAttribute('aria-label')||e.textContent.trim())+': '+why.join(', '));} return out;})().then(v=>window.__rotationClipped=JSON.stringify(v),e=>window.__rotationClipped=JSON.stringify(['check failed: '+e]))";
+ private static String clipped()throws Exception{
+  js(CLIPPED);
+  for(int i=0;i<200;i++){String value=js("window.__rotationClipped");if(!"null".equals(value))return (String)new org.json.JSONTokener(value).nextValue();SystemClock.sleep(100);}
+  fail("Clipping check did not finish");return null;
+ }
 
  private static void rotateAndCheck(UiDevice device,String view,String extra)throws Exception{
   device.setOrientationLeft();awaitOrientation(Configuration.ORIENTATION_LANDSCAPE);
   until(AppNavigation.selected(view));if(extra!=null)until(extra);
-  assertEquals("Primary actions clipped in landscape "+view,"[]",js(CLIPPED));
+  assertEquals("Primary actions clipped in landscape "+view,"[]",clipped());
   device.setOrientationNatural();awaitOrientation(Configuration.ORIENTATION_PORTRAIT);
   until(AppNavigation.selected(view));if(extra!=null)until(extra);
-  assertEquals("Primary actions clipped after returning to portrait "+view,"[]",js(CLIPPED));
+  assertEquals("Primary actions clipped after returning to portrait "+view,"[]",clipped());
  }
 
  @Test public void homeAndComposerDraftSurviveRotation()throws Exception{
   UiDevice device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    AppNavigation.liveMode();
-   js(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));
+   js(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));AppNavigation.declineStartupAccess();
    rotateAndCheck(device,"Home",null);
    js(AppNavigation.type());until(AppNavigation.composer());
    js("(()=>{const e="+AppNavigation.composer()+";Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,"+JSONObject.quote(DRAFT)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");

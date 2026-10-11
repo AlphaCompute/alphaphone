@@ -6,7 +6,7 @@ import {stripTypeScriptTypes} from 'node:module';
 import {loadPreparedBatchVoice} from './shared-batch-voice.mjs';
 
 function load(file,box,names){
- const source=fs.readFileSync('apps/app/src/'+file,'utf8').replace(/^import .*;\n/gm,'').replaceAll('export async function','async function').replaceAll('export function','function').replaceAll('export type','type');
+ const source=fs.readFileSync('apps/app/src/'+file,'utf8').replace(/^import .*;\n/gm,'').replaceAll('export async function','async function').replaceAll('export function','function').replaceAll('export const','const').replaceAll('export type','type');
  vm.runInNewContext('{'+stripTypeScriptTypes(source,{mode:'transform'})+'\n'+names.map(name=>'globalThis.'+name+'='+name+';').join('\n')+'}',box);
 }
 export function cloudVoiceViewFixture(options={}){
@@ -21,7 +21,7 @@ export function cloudVoiceViewFixture(options={}){
  load('local-speech-playback.ts',box,['playOwnedSpeech']);
  load('runtime/cloud-voice.ts',box,['cloudVoiceFailure','createCloudVoice']);
  load('prototype/local-speech-playback.ts',box,['installLocalSpeechPlayback','stopLocalSpeechPlayback','currentNoteReading','stopSpeaking','speakNote']);
- load('runtime/voice-states.ts',box,['voiceFailure','transcriptProvenance','speechProgressMessage']);
+ load('runtime/voice-states.ts',box,['voiceFailure','transcriptProvenance','speechProgressMessage','deniedSettingsChoice','DENIED_SETTINGS_LABEL']);
  load('prototype/voice-adapter.ts',box,['installPrototypeVoiceAdapter']);
  const icons={check:'check',mic:'official-mic-path',stop:'stop',play:'play',x:'close',cloud:'cloud',user:'account'};
  class Shell{
