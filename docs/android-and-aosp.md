@@ -194,7 +194,14 @@ kind it is (`MainActivity`, "One live MainActivity"):
   explicit component for a standard one) and finishes. A standard task created for the start is
   removed; Android's home task is left alone.
 - If that front start ever created another instance instead of reaching the live one, that
-  instance finishes without starting anything. The hand-off cannot loop.
+  instance finishes without starting anything, and the process stops handing starts off. The
+  same happens when the front start cannot be made, or when the live instance does not receive
+  three in a row. With the front start missing, the instance in the home task would finish and
+  leave it empty, Android would start HOME again and the hand-off would repeat without end.
+  From then on a new start keeps its own instance: two instances, which is what round 7
+  measured and is stable. logcat tag `AlphaInstance` says "Front start created an instance" or
+  "Front start is not reaching the live instance" when this happens; neither is expected and
+  either should be reported if seen.
 - Which kind the live instance is belongs to its task and is read from the start intent once,
   for the first instance in that task. Android hands a relaunched activity (renderer recovery,
   a system font-size change; `fontScale` is not in `configChanges`) the last intent given to

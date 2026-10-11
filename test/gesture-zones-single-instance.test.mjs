@@ -53,12 +53,19 @@ test('the launcher keeps one MainActivity and its kind belongs to the task', () 
   assert.match(read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java'), /getActivity\(\)\.setIntent\(intent\);delegationCallback=uri;/, 'the sign-in return is still kept with setIntent, which is why the kind is per task');
   // An exported activity reads its own marker extra without trusting the sender's parcel.
   assert.match(activity, /try \{ return intent\.getBooleanExtra\(EXTRA_FRONT_START, false\); \}\s*catch \(RuntimeException foreign\) \{ return false; \}/);
+  assert.doesNotMatch(activity, /isOwnFrontStart|frontStartAt/, 'the marker alone identifies a front start; no time window');
   // The live instance's own task is never removed by the instance that hands off.
   assert.match(activity, /if \(home \|\| sameTask\) finish\(\); else finishAndRemoveTask\(\);/);
-  // The bring-to-front start cannot loop: an instance it creates finishes without starting anything.
+  // The bring-to-front start cannot loop: an instance it creates finishes without starting anything,
+  // whenever it arrives, and from then on starts are not handed off (Android would otherwise start
+  // HOME again into the emptied home task and the hand-off would repeat).
   const handOff = activity.slice(activity.indexOf('private void handOff(MainActivity live)'), activity.indexOf('@Override public void onCreate(Bundle state)'));
   assert.equal(handOff.split('startActivity(').length - 1, 1, 'one start in the hand-off');
-  assert.match(handOff, /if \(isOwnFrontStart\(getIntent\(\)\)\) \{[\s\S]*?\} else \{[\s\S]*startActivity\(front\)/);
+  assert.match(handOff, /if \(hasFrontMarker\(getIntent\(\)\)\) \{[\s\S]*?handOffUnreliable = true;[\s\S]*?\} else \{[\s\S]*startActivity\(front\)/);
+  // So does a start that throws or that the live instance never receives three times in a row.
+  assert.match(handOff, /if \(!started \|\| \+\+unackedFrontStarts >= MAX_UNACKED_FRONT_STARTS\) \{\s*handOffUnreliable = true;/);
+  assert.match(activity, /if \(hasFrontMarker\(intent\)\) \{[\s\S]{0,400}?else unackedFrontStarts = 0;\s*return;/, 'the live instance acknowledges the front start and passes nothing of it to the page');
+  assert.match(activity, /if \(live != null && live != this && \(!handOffUnreliable \|\| hasFrontMarker\(getIntent\(\)\)\)\) \{/);
   // The instrumented classes that would show it on a device exist and name the behaviour.
   assert.match(read(path.join(ANDROID_TESTS, 'SettingsRolesInstrumentedTest.java')), /assertOneLiveInstance\("after the role is accepted",original\)/);
   assert.match(read(path.join(ANDROID_TESTS, 'LauncherHomeInstrumentedTest.java')), /aRelaunchHoldingAReplacedIntentKeepsOneInstanceThatLaterStartsBringToTheFront/);

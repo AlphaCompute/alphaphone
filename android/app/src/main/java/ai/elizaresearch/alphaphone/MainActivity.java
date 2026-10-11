@@ -79,7 +79,9 @@ public class MainActivity extends BridgeActivity {
   * The front start uses an intent of the live instance's own kind so Android resolves it to the
   * existing task: the implicit HOME intent for a home-type instance, the explicit component for a
   * standard one. If that start ever produced another instance instead, it finishes without
-  * starting anything, so this cannot loop.
+  * starting anything, and this process stops handing starts off: the home task would then be left
+  * empty, Android would start HOME again and the hand-off would repeat for as long as the front
+  * start kept missing. Two instances (what round 7 measured) are the stable fallback.
   *
   * The kind belongs to the task, not to whatever intent the instance holds later. Android hands a
   * relaunched activity (renderer recovery, a system font-size change) the last intent given to
@@ -89,9 +91,9 @@ public class MainActivity extends BridgeActivity {
   * sign-in return would be delivered without Alpha coming to the front.
   */
  private static java.lang.ref.WeakReference<MainActivity> liveInstance = new java.lang.ref.WeakReference<>(null);
- private static final long FRONT_START_WINDOW_MS = 5_000L;
- /** elapsedRealtime of this process's own bring-to-front start, 0 when none is outstanding. */
- private static long frontStartAt = 0L;
+ /** Bring-to-front starts the live instance has not yet received. It answers each within a frame or two. */
+ private static int unackedFrontStarts = 0;
+ private static final int MAX_UNACKED_FRONT_STARTS = 3;
  /** The task of the instance that owns the page, and whether that task has the home activity type. */
  private static int liveTaskId = -1;
  private static boolean liveTaskHome = false;
@@ -113,10 +115,15 @@ public class MainActivity extends BridgeActivity {
  }
  /** True for an instance that gave its start to the live one and is finishing without a page. */
  boolean wasHandedOff() { return handedOff; }
- /** Marks this process's own bring-to-front start. Honoured only while one is outstanding. */
+ /** Marks a bring-to-front start. It carries nothing else: the real intent is delivered before it. */
  private static final String EXTRA_FRONT_START = "alpha.frontStart";
- private static boolean isOwnFrontStart(Intent intent) {
-  if (intent == null || frontStartAt == 0L || SystemClock.elapsedRealtime() - frontStartAt >= FRONT_START_WINDOW_MS) return false;
+ /**
+  * Set once the bring-to-front start is seen not to work in this process: it made a new instance,
+  * it could not be started, or the live instance did not receive three in a row.
+  */
+ private static boolean handOffUnreliable = false;
+ private static boolean hasFrontMarker(Intent intent) {
+  if (intent == null) return false;
   // MainActivity is exported: another app's extras may not unparcel here. Such an intent is not ours.
   try { return intent.getBooleanExtra(EXTRA_FRONT_START, false); }
   catch (RuntimeException foreign) { return false; }
@@ -125,11 +132,12 @@ public class MainActivity extends BridgeActivity {
  private void handOff(MainActivity live) {
   boolean home = isHomeIntent(getIntent());
   boolean sameTask = live.getTaskId() == getTaskId();
-  if (isOwnFrontStart(getIntent())) {
-   // This instance was created by our own bring-to-front start: Android did not resolve it to the
-   // live task on this build. Stop here; the live instance already has the intent.
-   frontStartAt = 0L;
-   android.util.Log.w("AlphaInstance", "Front start created an instance; finishing it without another start");
+  if (hasFrontMarker(getIntent())) {
+   // This instance was created by a bring-to-front start (the marker alone decides, however late it
+   // arrives): Android did not resolve it to the live task on this build. Stop here; the live
+   // instance already has the intent. Later starts are not handed off (see handOffUnreliable).
+   handOffUnreliable = true;
+   android.util.Log.w("AlphaInstance", "Front start created an instance; finishing it without another start. Later starts keep their own instance.");
   } else {
    android.util.Log.i("AlphaInstance", "Second start handed to the live instance; home=" + home + " liveHome=" + live.startedAsHome);
    if (getIntent() != null) live.onNewIntent(new Intent(getIntent()));
@@ -138,9 +146,15 @@ public class MainActivity extends BridgeActivity {
       ? new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(getPackageName())
       : new Intent(this, MainActivity.class);
     front.putExtra(EXTRA_FRONT_START, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-    frontStartAt = SystemClock.elapsedRealtime();
-    try { startActivity(front); }
-    catch (RuntimeException failure) { frontStartAt = 0L; android.util.Log.w("AlphaInstance", "Live instance could not be brought to the front: " + failure.getClass().getSimpleName()); }
+    boolean started = false;
+    try { startActivity(front); started = true; }
+    catch (RuntimeException failure) { android.util.Log.w("AlphaInstance", "Live instance could not be brought to the front: " + failure.getClass().getSimpleName()); }
+    // A start that cannot be made, or that the live instance keeps not receiving, would leave the
+    // home task empty each time and Android would start HOME again without end.
+    if (!started || ++unackedFrontStarts >= MAX_UNACKED_FRONT_STARTS) {
+     handOffUnreliable = true;
+     android.util.Log.w("AlphaInstance", "Front start is not reaching the live instance. Later starts keep their own instance.");
+    }
    }
   }
   // The home task belongs to Android and keeps existing; a standard task made for this start does
@@ -151,7 +165,9 @@ public class MainActivity extends BridgeActivity {
  @Override public void onCreate(Bundle state) {
   SplashScreen.installSplashScreen(this);
   MainActivity live = BuildConfig.IS_LAUNCHER && !isAssistantSurface() ? liveInstance() : null;
-  if (live != null && live != this) {
+  // An instance our own front start made always finishes. Any other start is handed to the live
+  // instance, unless the front start has already been seen to miss it in this process.
+  if (live != null && live != this && (!handOffUnreliable || hasFrontMarker(getIntent()))) {
    handedOff = true;
    // No plugins, bridge or page: BridgeActivity.onCreate calls load(), which does nothing here.
    super.onCreate(null);
@@ -252,10 +268,10 @@ public class MainActivity extends BridgeActivity {
  @Override public void onNewIntent(Intent intent) {
   super.onNewIntent(intent);
   // Our own bring-to-front start (see handOff) carries nothing: the real intent was delivered first.
-  if (isOwnFrontStart(intent)) {
-   frontStartAt = 0L;
+  if (hasFrontMarker(intent)) {
    // Reached the instance that asked instead of the live one: the live task was not raised.
    if (handedOff) android.util.Log.w("AlphaInstance", "Front start returned to the handed-off instance; the live task was not brought to the front");
+   else unackedFrontStarts = 0;
    return;
   }
   if (getBridge() != null && !isAssistantSurface() && isHomeIntent(intent))
