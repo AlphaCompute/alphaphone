@@ -45,9 +45,17 @@ public final class AccessibilityInstrumentedTest {
  }
  private static void talkBackOrder(UiDevice device,String surface){
   device.waitForIdle(2000);
-  UiObject2 root=device.findObject(By.pkg(BuildConfig.APPLICATION_ID).depth(0));
+  // The WebView publishes a layer's accessibility nodes shortly after the layer appears; read the
+  // tree again until it holds a clickable control (five seconds at most). The checks below are unchanged.
+  UiObject2 root=null;List<UiObject2> nodes=new ArrayList<>();
+  for(int attempt=0;attempt<25;attempt++){
+   root=device.findObject(By.pkg(BuildConfig.APPLICATION_ID).depth(0));nodes=new ArrayList<>();
+   if(root!=null){try{collect(root,nodes);}catch(androidx.test.uiautomator.StaleObjectException changing){nodes.clear();}}
+   boolean clickable=false;try{for(UiObject2 node:nodes)if(node.isClickable()&&!node.getVisibleBounds().isEmpty())clickable=true;}catch(androidx.test.uiautomator.StaleObjectException changing){clickable=false;}
+   if(clickable)break;
+   SystemClock.sleep(200);
+  }
   assertNotNull(surface+": app window has an accessibility tree",root);
-  List<UiObject2> nodes=new ArrayList<>();collect(root,nodes);
   int width=device.getDisplayWidth();
   List<String> problems=new ArrayList<>();
   UiObject2 previous=null;
@@ -87,7 +95,7 @@ public final class AccessibilityInstrumentedTest {
     // on or just below the bar belongs to Android and opens its own shade (measured on the API 36
     // emulator: 131 px opened Android's shade, a start further down opened Alpha's). Start 120 CSS px
     // into the page: clear of the status bar in both flavors, and Home pulls the shade from there.
-    device.swipe(web.centerX(),web.top+Math.round(web.width()/412f*120),web.centerX(),web.top+web.height()*3/5,20);
+    device.swipe(web.centerX(),web.top+Math.round(web.width()/412f*120),web.centerX(),web.top+web.height()/2,20);
     until("document.querySelector('[data-alpha-layer=\"shade\"]')?.getAttribute('aria-hidden')!=='true'");
     talkBackOrder(device,"Notification shade");
     device.pressBack();until("document.querySelector('[data-alpha-layer=\"shade\"]')?.getAttribute('aria-hidden')==='true'");
