@@ -8,7 +8,7 @@
     "deferred": "Out of the MVP by recorded policy.",
     "blocked": "Cannot progress without an external decision, resource or artifact."
   },
-  "note": "Status is software state, not acceptance. Evidence lists source and test paths that implement or check the requirement; they are not passing results. Each gate names the next evidence class required. Refreshed 2026-10-10 against upstream pin 40dbe96bd1; no APK build, emulator run or device result exists at that pin (docs/mvp-current-status.md, Current qualification evidence).",
+  "note": "Status is software state, not acceptance. Evidence lists source and test paths that implement or check the requirement; they are not passing results. Each gate names the next evidence class required. Refreshed 2026-10-10 against upstream pin 40dbe96bd1; no APK build, emulator run or device result exists at that pin. The pin then moved to 13c9857598 (upstream pull request 34888, shared notification receipts) without a refresh of the entries below: an entry that says current pin means 40dbe96bd1, and at 13c9857598 only developer APK builds without the resident runtime exist, with no emulator run or device result (docs/mvp-current-status.md, Current qualification evidence).",
   "requirements": [
     {
       "id": "AP-01",

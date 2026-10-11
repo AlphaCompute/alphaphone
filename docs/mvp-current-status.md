@@ -12,13 +12,19 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
   host. The production Android Welcome dialog offers Cloud sign-in for the on-device
   agent or local apps without AI. Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The upstream pin in `upstream.lock.json` is `40dbe96bd1`, identical to elizaOS
-  `develop` when `scripts/ci/upstream-reachability.json` was recorded (2026-10-10). It
-  includes the shared password manager, password transfer and Keystore text frames; no
-  local source patch remains (the `patches` directory is gone). Results recorded at the
-  earlier pins `945209d3`, `4148a166` and `352d7a08` are historical. No APK build and no
-  emulator run is recorded at the current pin: see
-  [current qualification evidence](#current-qualification-evidence).
+- The upstream pin in `upstream.lock.json` is `13c9857598`, the merge commit of upstream
+  pull request 34888, reachable from elizaOS `develop` when
+  `scripts/ci/upstream-reachability.json` was recorded (2026-10-11 UTC). It adds the shared
+  notification receipt ledger, which `WorkflowNoticeDelivery` now configures with the
+  deployed slot names and record formats, to the shared password manager, password
+  transfer and Keystore text frames; no local source patch remains (the `patches`
+  directory is gone). Results recorded at the earlier pins `40dbe96bd1`, `945209d3`,
+  `4148a166` and `352d7a08` are historical, and that includes everything under
+  [current qualification evidence](#current-qualification-evidence), which was recorded at
+  `40dbe96bd1`. At the current pin a development machine prepared the runtime source and
+  built developer APKs without the resident runtime (not distributable, not installed);
+  no distribution APK build and no emulator or device run is recorded at the current pin:
+  see MVP-08 in the [remaining-work inventory](mvp-remaining-work-2026-10-09.md).
 - Local orchestration does not imply local inference. The configured text model
   uses hosted Cerebras; Whisper/Kokoro speech has separate host and Android paths.
 - A powered-off phone cannot run its resident agent. Acceptance of missed-occurrence
