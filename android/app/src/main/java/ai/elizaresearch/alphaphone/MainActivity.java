@@ -76,12 +76,16 @@ public class MainActivity extends BridgeActivity {
   * The first live instance is kept, whichever kind it is. A second instance never creates a bridge
   * or loads the page: it gives its intent to the live instance (the same onNewIntent path Android
   * uses for a reused singleTask activity), brings that instance's task to the front and finishes.
-  * The front start uses an intent of the live instance's own kind so Android resolves it to the
-  * existing task: the implicit HOME intent for a home-type instance, the explicit component for a
-  * standard one. If that start ever produced another instance instead, it finishes without
-  * starting anything, and this process stops handing starts off: the home task would then be left
-  * empty, Android would start HOME again and the hand-off would repeat for as long as the front
-  * start kept missing. Two instances (what round 7 measured) are the stable fallback.
+  * A standard live task is one of the app's own tasks and is moved to the front by its id
+  * (ActivityManager.AppTask). A home-type live instance is reached with the implicit HOME intent,
+  * the kind of start Android resolves to the home task. An explicit-component start is only the
+  * fallback for a standard task Android does not list: made from the instance in the home task it
+  * is matched to that home task first and comes back to the instance that asked (measured on the
+  * API 36 emulator in round 8). If a front start ever produced another instance instead, it
+  * finishes without starting anything, and this process stops handing starts off: the home task
+  * would then be left empty, Android would start HOME again and the hand-off would repeat for as
+  * long as the live instance kept not coming forward. Two instances (what round 7 measured) are
+  * the stable fallback. The live instance resuming is what shows a hand-off reached it.
   *
   * The kind belongs to the task, not to whatever intent the instance holds later. Android hands a
   * relaunched activity (renderer recovery, a system font-size change) the last intent given to
@@ -142,13 +146,18 @@ public class MainActivity extends BridgeActivity {
    android.util.Log.i("AlphaInstance", "Second start handed to the live instance; home=" + home + " liveHome=" + live.startedAsHome);
    if (getIntent() != null) live.onNewIntent(new Intent(getIntent()));
    if (!sameTask) {
-    Intent front = live.startedAsHome
-      ? new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(getPackageName())
-      : new Intent(this, MainActivity.class);
-    front.putExtra(EXTRA_FRONT_START, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-    boolean started = false;
-    try { startActivity(front); started = true; }
-    catch (RuntimeException failure) { android.util.Log.w("AlphaInstance", "Live instance could not be brought to the front: " + failure.getClass().getSimpleName()); }
+    // A standard task is one of this app's own tasks and is moved by its id. No intent can do it
+    // from here: a start made by the instance in the home task is matched to that home task first
+    // (measured on API 36: the explicit-component start came back to the instance that asked).
+    boolean started = !live.startedAsHome && moveLiveTaskToFront(live.getTaskId());
+    if (!started) {
+     Intent front = live.startedAsHome
+       ? new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(getPackageName())
+       : new Intent(this, MainActivity.class);
+     front.putExtra(EXTRA_FRONT_START, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+     try { startActivity(front); started = true; }
+     catch (RuntimeException failure) { android.util.Log.w("AlphaInstance", "Live instance could not be brought to the front: " + failure.getClass().getSimpleName()); }
+    }
     // A start that cannot be made, or that the live instance keeps not receiving, would leave the
     // home task empty each time and Android would start HOME again without end.
     if (!started || ++unackedFrontStarts >= MAX_UNACKED_FRONT_STARTS) {
@@ -161,6 +170,24 @@ public class MainActivity extends BridgeActivity {
   // not. A task this instance shares with the live one is never removed.
   if (home || sameTask) finish(); else finishAndRemoveTask();
   overridePendingTransition(0, 0);
+ }
+ /**
+  * Moves one of this app's own tasks to the front by id (ActivityManager.AppTask needs no
+  * permission). False when Android does not list the task, which is the case for the home task.
+  */
+ private boolean moveLiveTaskToFront(int taskId) {
+  try {
+   android.app.ActivityManager manager = getSystemService(android.app.ActivityManager.class);
+   if (manager == null || taskId == -1) return false;
+   for (android.app.ActivityManager.AppTask task : manager.getAppTasks()) {
+    if (task.getTaskInfo().taskId != taskId) continue;
+    task.moveToFront();
+    return true;
+   }
+  } catch (RuntimeException failure) {
+   android.util.Log.w("AlphaInstance", "Live task could not be moved to the front: " + failure.getClass().getSimpleName());
+  }
+  return false;
  }
  @Override public void onCreate(Bundle state) {
   SplashScreen.installSplashScreen(this);
@@ -291,6 +318,9 @@ public class MainActivity extends BridgeActivity {
   if(hasFocus&&getBridge()!=null&&getBridge().getWebView()!=null)
    getBridge().getWebView().evaluateJavascript("window.dispatchEvent(new Event('focus'))",null);
  }
- @Override public void onResume(){super.onResume();if(getBridge()!=null&&getBridge().getWebView()!=null)AlphaDevicePlugin.applyTextScale(this);}
+ @Override public void onResume(){super.onResume();
+  // The page owner is in front again: whatever brought it there (the task move or the front start) worked.
+  if(liveInstance.get()==this)unackedFrontStarts=0;
+  if(getBridge()!=null&&getBridge().getWebView()!=null)AlphaDevicePlugin.applyTextScale(this);}
  @Override public void onConfigurationChanged(android.content.res.Configuration configuration){super.onConfigurationChanged(configuration);if(getBridge()!=null&&getBridge().getWebView()!=null)AlphaDevicePlugin.applyTextScale(this);}
 }

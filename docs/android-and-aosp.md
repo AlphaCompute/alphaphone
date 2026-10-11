@@ -189,14 +189,22 @@ kind it is (`MainActivity`, "One live MainActivity"):
   the live instance through `onNewIntent`, the path Android itself uses for a reused
   `singleTask` activity, so a HOME start shows Alpha Home and a notice tap or sign-in return
   reaches the plugins that handle it.
-- It then brings the live instance's task to the front with an intent of that instance's own
-  kind (the implicit HOME intent restricted to this package for a home-type instance, the
-  explicit component for a standard one) and finishes. A standard task created for the start is
-  removed; Android's home task is left alone.
-- If that front start ever created another instance instead of reaching the live one, that
+- It then brings the live instance's task to the front and finishes. A standard live task is
+  one of the app's own tasks and is moved by its id (`ActivityManager.AppTask.moveToFront`, no
+  permission). A home-type live instance is reached with the implicit HOME intent restricted to
+  this package. An explicit-component start is kept only as the fallback for a standard task
+  Android does not list among the app's tasks; it is not the way to raise one. Measured on the
+  API 36 emulator in round 8: made by the instance Android had just created in the home task,
+  that start was matched to the home task itself and came back to the instance that asked, the
+  live task stayed behind, the home-type instance finished and the stock launcher was in front
+  (`SettingsRoles` and `LauncherHome` both failed on it; logcat "Front start returned to the
+  handed-off instance"). A standard task created for the start is removed; Android's home task
+  is left alone.
+- If a front start ever created another instance instead of reaching the live one, that
   instance finishes without starting anything, and the process stops handing starts off. The
-  same happens when the front start cannot be made, or when the live instance does not receive
-  three in a row. With the front start missing, the instance in the home task would finish and
+  same happens when the front start cannot be made, or when the live instance does not come
+  forward (resume, or receive the front start) three hand-offs in a row. With the live instance
+  not coming forward, the instance in the home task would finish and
   leave it empty, Android would start HOME again and the hand-off would repeat without end.
   From then on a new start keeps its own instance: two instances, which is what round 7
   measured and is stable. logcat tag `AlphaInstance` says "Front start created an instance" or

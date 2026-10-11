@@ -66,6 +66,14 @@ test('the launcher keeps one MainActivity and its kind belongs to the task', () 
   assert.match(handOff, /if \(!started \|\| \+\+unackedFrontStarts >= MAX_UNACKED_FRONT_STARTS\) \{\s*handOffUnreliable = true;/);
   assert.match(activity, /if \(hasFrontMarker\(intent\)\) \{[\s\S]{0,400}?else unackedFrontStarts = 0;\s*return;/, 'the live instance acknowledges the front start and passes nothing of it to the page');
   assert.match(activity, /if \(live != null && live != this && \(!handOffUnreliable \|\| hasFrontMarker\(getIntent\(\)\)\)\) \{/);
+  // A standard live task is moved to the front by its id. An intent cannot do it: measured on API 36
+  // (round 8), the explicit-component start made by the instance in the home task was matched to
+  // that home task and came back to the instance that asked. The intent stays for a home-type live
+  // instance, whose task Android does not list among the app's own.
+  assert.match(handOff, /boolean started = !live\.startedAsHome && moveLiveTaskToFront\(live\.getTaskId\(\)\);\s*if \(!started\) \{[\s\S]*?startActivity\(front\)/);
+  assert.match(activity, /for \(android\.app\.ActivityManager\.AppTask task : manager\.getAppTasks\(\)\) \{\s*if \(task\.getTaskInfo\(\)\.taskId != taskId\) continue;\s*task\.moveToFront\(\);\s*return true;/);
+  // The task move has no intent to acknowledge: the page owner resuming is the acknowledgement.
+  assert.match(activity, /public void onResume\(\)\{super\.onResume\(\);[\s\S]{0,200}?if\(liveInstance\.get\(\)==this\)unackedFrontStarts=0;/);
   // The instrumented classes that would show it on a device exist and name the behaviour.
   assert.match(read(path.join(ANDROID_TESTS, 'SettingsRolesInstrumentedTest.java')), /assertOneLiveInstance\("after the role is accepted",original\)/);
   assert.match(read(path.join(ANDROID_TESTS, 'LauncherHomeInstrumentedTest.java')), /aRelaunchHoldingAReplacedIntentKeepsOneInstanceThatLaterStartsBringToTheFront/);
