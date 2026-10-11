@@ -12,16 +12,18 @@ The [machine-readable inventory](mvp-remaining-work-2026-10-09.json) has stable 
 
 ## Ledger refresh of October 11, 2026 (after round 8)
 
-Written on branch `claude/r8-ledger-1` at main `2560eead` (pull request #392, the round 8 integration; upstream pin `13c9857598`). This section is the current one; the sections below it are the earlier refreshes, kept as written.
+Written on branch `claude/r8-ledger-1` at main `2560eead` (pull request #392, the round 8 integration; upstream pin `13c9857598`). The round 8 evidence in this section is historical. The item rows and counts also include the round 10 accessibility, native robustness, approval-notice and strict-build branches; their source changes require fresh qualification.
 
 Every item's Current, Remaining and "Blocked on" were re-read against source, tests and the dated emulator sections of [verification](verification.md). The item texts use two short names for those sections:
 
 - **the round 7 run**: "Emulator results at 6dcdde34" (2026-10-10), developer-override APKs at the earlier pin `40dbe96bd1`. It is not evidence for the current source; an item that rests on it says the run was not repeated at the current pin.
-- **the round 8 run**: "Emulator results at 2961bd9e" (2026-10-11), developer APKs at the current pin. The product source of main is the source of that run's final APKs (`9a1ca161`); the commits after it change documents only.
+- **the round 8 run**: "Emulator results at 2961bd9e" (2026-10-11), developer APKs at the current pin. That campaign qualified its final APKs at `9a1ca161`; the round 10 changes below are newer source.
 
-Both are class E: emulator instrumentation on developer APKs with no packaged resident runtime and an unqualified speech runtime, recorded as written summaries with no result files committed. Neither is a result for a distributable build, an AOSP image, a real account or a device. No item is closed by them: an acceptance item keeps its EMULATOR entry for the release candidate and says in brackets what already passed on developer APKs. No hosted emulator job has ever been dispatched (`resident-android.yml` and, since round 8, `android-emulator.yml`), no APK that packages the resident runtime has been built, and nothing has run with a real account or on a phone.
+Both are class E: emulator instrumentation on developer APKs with no packaged resident runtime and an unqualified speech runtime, recorded as written summaries with no result files committed. Neither is a result for a distributable build, an AOSP image, a real account or a device. No item is closed by them: an acceptance item keeps its EMULATOR entry for the release candidate and says in brackets what already passed on developer APKs. No hosted emulator job has ever been dispatched (`resident-android.yml` and, since round 8, `android-emulator.yml`), the strict-build branch records a local packaged-runtime build with unqualified embedding-host bytes in its dated round 10 record (not a distribution candidate), and nothing has run with a real account or on a phone.
 
 What changed class in this refresh: MVP-12 lost its SOFTWARE entry (the runner case it asked for exists and the class passed in the round 8 run); MVP-13 gained one (no instrumented test drives the folder or notification question on Android); MVP-08 and MVP-39 now start with HUMAN, because the strict build stops at the reviewed embedding host libraries, which only a person can supply; MVP-08, 23, 28, 39 and 49 gained a CI entry for a hosted job that round 8 added and nobody has dispatched. Decisions A-32 to A-35 were added to [decisions](decisions.md#new-decision-items) as pending and are named by MVP-06, 12, 14 and 33.
+
+Items by first blocker: SOFTWARE 3 · EMULATOR 19 · CI 3 · HUMAN 28 · DEVICE 0 · UPSTREAM 0.
 
 Items carrying each class (an item can carry several): SOFTWARE 6 · EMULATOR 32 · CI 12 · HUMAN 41 · DEVICE 32 · UPSTREAM 0.
 
