@@ -139,8 +139,8 @@ this host runs arm64 images only):
    `npm run android:build -- --allow-unpackaged-runtime`, and
    `npm run android:build -- --test-mocks` for the test-mocks pair. The distributable chain
    is `npm run android:build:local` (speech AAR first, see the README; it also needs the
-   reviewed embedding host libraries staged with
-   `node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json>`).
+   reviewed embedding host libraries, which only a person can supply:
+   `npm run android:build:inputs` says how, and the README explains the two ways).
 2. In the commands below, `APP.apk` and `TEST.apk` are a matching pair from that build, for
    example `artifacts/standalone-debug.apk` with
    `artifacts/instrumentation/standalone-androidTest.apk`; `NEW_OUTPUT` is a new directory.
@@ -225,3 +225,5 @@ account or key from group 2 says so.
 | All | TalkBack, Switch Access, physical large text, rotation, process death and full storage on every retained view. Context selection on a phone: folder grants and their revocation, MediaStore-backed Photos, the notification listener and the native Camera (no instrumented class drives the folder or notification question, so this is by hand until one is written). Signed update and recovery drill; upgrade from an install that saved mock state. Four complete unit manifests and target-user acceptance. | Execute on every unit; Upgrade from earlier mock state | MVP-13, 42, 47, 48, 50, 51 |
 
 Round 10 accessibility changes have Chromium coverage only: the measured Home dock clearance and stand-in screen reader instrumentation still need campaign 13 repeated on both Android flavors.
+
+Strict-build inputs: `npm run android:build:inputs` reports missing reviewed embedding-host libraries for MVP-08, 39 and 45. Group 2 action 13 requires their qualification receipt or a newly qualified candidate; see the round 10 strict-build record in verification.md.

@@ -20,8 +20,11 @@ strings alone.
 Gradle's `stageLocalAgentSources` step reads the prepared resident runtime source in
 `artifacts/local-agent-resident-<commit>`, and release verification requires the staged
 runtime payload (without it `scripts/verify-packaged-runtime.py` exits 3). On a clean
-checkout `npm run android:build:local` runs the whole chain: an input check, `agent:prepare`,
-`agent:build-workflow-worker`, `agent:stage-android` and `android:build`. Gradle's
+checkout `npm run android:build:local` runs the whole chain: an input check,
+`agent:build-embedding-host`, `agent:prepare`, `agent:build-workflow-worker`,
+`agent:stage-android`, `licenses:packaged-runtime` and `android:build`. It stops at the second
+step until a person supplies the reviewed embedding host libraries; `npm run
+android:build:inputs` lists every input and who supplies it (see the README). Gradle's
 `:local-speech:preBuild` also needs the speech AAR from
 [local speech setup](../scripts/local-speech/README.md). `npm run android:build` checks all of
 these first (`scripts/android-build-preflight.mjs`) and exits 2 with the command to run instead

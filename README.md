@@ -181,14 +181,20 @@ workflow-worker artifact (`artifacts/mobile-workflow-worker-<commit>`). On a cle
 checkout, after the speech AAR above, one command does all of it:
 
 ```sh
-# Distributable build: check inputs, prepare, build the worker, stage the runtime,
-# then build and verify all four APKs. Safe to rerun: preparation and the worker
-# artifact are reused only when they verify against the current source.
+# What the strict build needs, what is there, and whether a script or a person supplies
+# each missing input. Reads files only; always exits 0.
+npm run android:build:inputs
+# Strict distribution chain: check inputs, the embedding host, prepare, build the worker,
+# stage the runtime, regenerate the notices for it, then build and verify all four APKs.
+# Safe to rerun: preparation and the worker artifact are reused only when they verify
+# against the current source.
 npm run android:build:local
 # The same chain step by step:
+npm run agent:build-embedding-host
 npm run agent:prepare
 npm run agent:build-workflow-worker
 npm run agent:stage-android
+npm run licenses:packaged-runtime   # rewrites apps/app/public/licenses/* for this build; do not commit
 npm run android:build
 # Developer APKs without the runtime payload (releases recorded distributable:false):
 npm run agent:prepare -- --source-only
@@ -200,16 +206,49 @@ npm run android:build -- --allow-unpackaged-runtime
 `vendor/eliza` checkout, the installed speech AAR, the prepared runtime source or (for
 distribution builds) the staged runtime payload is missing or stale.
 
-One input has no build step: the reviewed ARM64 embedding host
-(`android/embedding-host/qualified-host.json`). Its three native libraries are ignored by
-Git and are staged byte for byte from a qualification receipt with
-`node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json>` (the receipt comes
-from `scripts/prepare-embedding-host.mjs --build`). Gradle's `:app:verifyEmbeddingHost`
-requires them for every distribution and test-mocks build, so `npm run android:build:local`
-stops at the preflight on a checkout that does not have them. The unpackaged developer
-build (`--allow-unpackaged-runtime`, which `--test-mocks` may be combined with) passes only
-while no resident payload is staged at all: once `agent:stage-android` has run, remove
-`android/app/src/main/assets/agent` and `android/app/src/main/jniLibs` or stage the host.
+Three inputs of a distributable build cannot come from a script, and
+`npm run android:build:inputs` names each with who supplies it:
+
+- **The reviewed ARM64 embedding host** (`android/embedding-host/qualified-host.json`). Its
+  three native libraries are ignored by Git. `npm run agent:build-embedding-host` passes
+  when they are staged and otherwise stops (exit 3) before any long step. The reviewed
+  bytes were built without a build-path remap, so they contain the absolute directory of
+  that build, which only the qualification receipt records; a rebuild elsewhere has the
+  same source and toolchain and different bytes
+  (`android/embedding-host/build-toolchain.json` records the measurement). A person
+  therefore has to either stage the reviewed libraries
+  (`node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json>`) or qualify a
+  rebuilt candidate: `node scripts/build-embedding-host.mjs --candidate` fetches the pinned
+  engine, builds with NDK `29.0.13113456` and CMake `4.0.3` using
+  `prepare-embedding-host.mjs --remap-build-path`, and never stages the result. The staging
+  command checks the staged embedding model, so run `agent:prepare`,
+  `agent:build-workflow-worker` and `agent:stage-android` before it; and it refuses to
+  replace a differing `qualified-host.json`, so a new qualification removes the old one in
+  the same reviewed change. Three remapped builds in three directories on one macOS arm64
+  host were byte-identical; no other host has been tried. Once a candidate is qualified and
+  `remapBuildPath` is set to `true` in the same commit, the step rebuilds the libraries and
+  stages them only when they are byte-identical to the reviewed ones, and stops (exit 3)
+  when they are not. Gradle's `:app:verifyEmbeddingHost` requires them for every
+  distribution and test-mocks build. The unpackaged developer build
+  (`--allow-unpackaged-runtime`, which `--test-mocks` may be combined with) passes only
+  while no resident payload is staged at all: once `agent:stage-android` has run, remove
+  `android/app/src/main/assets/agent` and `android/app/src/main/jniLibs` or stage the host.
+- **A qualified speech runtime** (decision A-24). A local rebuild installs only with
+  `--allow-unqualified-runtime`. The chain still completes with it; `verify-apks` records
+  the releases `distributable:false` and names the speech reasons.
+- **The release signer** (decision A-06). Without the `ELIZAOS_*` signing values and a
+  certificate digest in `android/release-signer.json` the chain completes with unsigned,
+  non-distributable releases.
+
+Gradle verifies every plugin and dependency artifact against
+`android/gradle/verification-metadata.xml` (SHA-256) in every build of the `android/`
+project; an artifact that is not listed fails the build. After changing an Android
+dependency or the Gradle plugins, run `npm run android:deps:write-verification` (a full
+build with network access), review the diff and the publisher groups in
+`android/gradle/verification-reviewed-groups.json`, and commit both.
+`npm run android:deps:check` and `npm test` read the committed file offline. A
+distribution build also writes `artifacts/sbom/alphaphone.cdx.json` beside its APKs
+(see [the dependency audit](docs/dependency-audit.md)).
 
 Preparation, worker build and staging run the upstream Turborepo build inside the
 immutable prepared checkout. Turborepo appends an agent-guidance block to a
