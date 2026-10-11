@@ -19,12 +19,13 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
   deployed slot names and record formats, to the shared password manager, password
   transfer and Keystore text frames; no local source patch remains (the `patches`
   directory is gone). Results recorded at the earlier pins `40dbe96bd1`, `945209d3`,
-  `4148a166` and `352d7a08` are historical, and that includes everything under
-  [current qualification evidence](#current-qualification-evidence), which was recorded at
-  `40dbe96bd1`. At the current pin a development machine prepared the runtime source and
-  built developer APKs without the resident runtime (not distributable, not installed);
-  no distribution APK build and no emulator or device run is recorded at the current pin:
-  see MVP-08 in the [remaining-work inventory](mvp-remaining-work-2026-10-09.md).
+  `4148a166` and `352d7a08` are historical, and that includes every entry under
+  [current qualification evidence](#current-qualification-evidence) except its first, the
+  round 9 integration, which is the only one at the current pin. At the current pin there
+  are source and browser test results and developer APK builds without the resident runtime
+  (not distributable, not installed); no distribution APK build and no emulator or device
+  run is recorded: see MVP-08 in the
+  [remaining-work inventory](mvp-remaining-work-2026-10-09.md).
 - Local orchestration does not imply local inference. The configured text model
   uses hosted Cerebras; Whisper/Kokoro speech has separate host and Android paths.
 - A powered-off phone cannot run its resident agent. Acceptance of missed-occurrence
@@ -85,7 +86,7 @@ class has no evidence of that kind for the current head.
 | Design and accessibility | Themed bounded dialogs, visible actions, keyboard-scrollable content and large-text checks across core flows. | Complete current-source subviews, error/empty states, Pixel geometry, physical accessibility and user task acceptance. Browser assertions alone are not design approval. | S |
 | Settings | Settings includes connection management, per-connection privacy disclosure, third-party licences and the password manager pages. Shade tiles and Settings rows show the Wi-Fi, Bluetooth, airplane mode, device location, mobile data and Do Not Disturb states that Android reports to an ordinary app, and each opens its own Android page (Wi-Fi, Bluetooth, mobile network, airplane mode, location, Do Not Disturb, display, sound, battery, app notifications, app permissions). Alpha changes none of them; the flashlight is the only direct control. To assistive technology a handoff tile is a button named with its reported state ("Wi-Fi, on, opens Android settings"), not a toggle; only the flashlight exposes a pressed state. A state Android does not report is labelled as a handoff, never as off. About shows the packaged version and Android's install time and states that Alpha does not check for updates. Settings offers no memory-erase control ([A-19](decisions.md#new-decision-items) is undecided). | Emulator and device qualification of each Android handoff and readback: the readable settings and the pages an image provides differ by Android version and vendor, and no run exists on the current APK. An update check waits on [A-06](decisions.md#pending-owner-decisions). | S; E historical only |
 | Privacy and outbound context | Approval/context binding, native secure storage, contact references and credential redaction contracts. The resident Android agent starts with the upstream `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED` switches on by default; the browser development host keeps both off unless both are set to `true` on qualified source. Privacy disclosure is per connection: hosted Cerebras inference is disclosed, and no connection claims that data stays local. Browser development storage is disclosed as unencrypted. | Re-run resident redaction on the current APK (emulator, then device, as separate gates) and broaden category/provider coverage. The host default stays off until its enablement campaign passes. Inspect the selected runtime's actual configuration; a past host snapshot does not prove present settings or that data stays local. | S; E historical only |
-| Release | Pinned upstream source, standalone/HOME packaging and source-admitted runtime staging. Distribution builds exclude mock/fixture/developer surfaces and debug-only native hooks; release signing and version come from `ELIZAOS_KEYSTORE_PATH`, `ELIZAOS_KEYSTORE_PASSWORD`, `ELIZAOS_KEY_ALIAS`, `ELIZAOS_KEY_PASSWORD`, `ELIZAOS_VERSION_CODE` and `ELIZAOS_VERSION_NAME` (unsigned `*-release-unsigned.apk` without all four signing values). | No APK build is recorded at the current pin `40dbe96bd1`. The last recorded builds of all four developer APKs, instrumentation APKs and lint are at product commit `1de85a13` (pin `4148a166`, PR #385) and at `d3dc9977` (pin `945209d3`); round 5 compiled the Java of both flavors and their instrumentation at pin `352d7a08` without assembling an APK. Each used the recorded unqualified speech candidate and `--allow-unpackaged-runtime`, so none is distributable. Whether the pinned Calendar plugin compiles at `40dbe96bd1` is not re-verified at this source. A distribution build requires qualified speech assets, the staged resident runtime and the reviewed embedding host; speech functional acceptance failed (see the Speech row). Provisioning, pilot update and AOSP staging refuse a release that `verify-apks` does not mark distributable (`scripts/release-blockers.mjs`). Then: controlled release key and signed artifacts, installed-data upgrade from earlier (including mock-state) installs, image/hardware qualification, App Links verification on a real domain, signed update/rollback (rollback is not offered by `scripts/pilot-update.mjs`), support and pilot acceptance. | S; B historical only (developer APKs at earlier pins) |
+| Release | Pinned upstream source, standalone/HOME packaging and source-admitted runtime staging. Distribution builds exclude mock/fixture/developer surfaces and debug-only native hooks; release signing and version come from `ELIZAOS_KEYSTORE_PATH`, `ELIZAOS_KEYSTORE_PASSWORD`, `ELIZAOS_KEY_ALIAS`, `ELIZAOS_KEY_PASSWORD`, `ELIZAOS_VERSION_CODE` and `ELIZAOS_VERSION_NAME` (unsigned `*-release-unsigned.apk` without all four signing values). | No distribution APK build exists at the current pin `13c9857598`; only developer builds do. Hosted Android foundation run 38118499272 assembled and verified the standalone and launcher debug and unsigned release APKs with the flag off at `c0b19147` (the round 9 integration; `npm run android:build -- --allow-unpackaged-runtime --skip-instrumentation`, so no instrumentation APKs), and a development machine built the same four with both instrumentation APKs and lint at `dc58b4b2` (MVP-08). Earlier developer builds: hosted run 38109307871 at main `dfacccb3` (pin `40dbe96bd1`; job and step conclusions read, not its log), `1de85a13` (pin `4148a166`, PR #385) and `d3dc9977` (pin `945209d3`); round 5 compiled the Java of both flavors and their instrumentation at pin `352d7a08` without assembling an APK. Every one of these used `--allow-unpackaged-runtime` and none had an admitted, accepted speech runtime, so none is distributable (`verify-apks` in the hosted run at the current pin: no packaged runtime, speech native bytes not admitted, speech functional acceptance pending or failed), and none was installed. The pinned Calendar plugin compiled in the hosted build at the current pin. A distribution build requires qualified speech assets, the staged resident runtime and the reviewed embedding host; speech functional acceptance failed (see the Speech row). Provisioning, pilot update and AOSP staging refuse a release that `verify-apks` does not mark distributable (`scripts/release-blockers.mjs`). Then: controlled release key and signed artifacts, installed-data upgrade from earlier (including mock-state) installs, image/hardware qualification, App Links verification on a real domain, signed update/rollback (rollback is not offered by `scripts/pilot-update.mjs`), support and pilot acceptance. | S; B historical only (developer APKs at earlier pins) |
 | Licenses | Settings renders `apps/app/public/licenses/third-party-notices.json` (name, version, license, source, text, flags and what each flag obliges) with an explicit unavailable fallback; `THIRD_PARTY_NOTICES.txt` accompanies it and lists every flagged entry at the top. Open-source licences are included and flagged, and never stop a build or block a release ([P-09](decisions.md#october-10-owner-product-decision)): the committed notices have 109 entries, 15 flagged, and a run on the staged resident runtime at pin `40dbe96bd1` produced 660 entries, 66 flagged, exit 0 ([dependency audit](dependency-audit.md#licence-flags-p-09)). The Denton typeface is proprietary; it is recorded on the owner's statement that the licence is held outside the repository, flagged `proprietary-licence-held-outside-repo`, and blocks nothing (A-21, closed). | Included and flagged is not legal review. Still open: review of the notices; meeting the obligations the flags name (corresponding source for the GPL, AGPL and LGPL components, a replaceable library for LGPL, network source offer for AGPL); the one resident-runtime package under non-commercial terms (`@metamask/sdk`); and the separate native-app/OS-image notices in [native-app distribution](native-app-distribution.md). The Denton licence document is not in the repository and was not seen; a reference to it would complete the record ([dependency audit](dependency-audit.md#denton-typeface-mvp-43)). | S |
 | Phone, SMS, Contacts and Wallet | Deferred by MVP policy. Source and design references are retained; app entries, `open_view` destinations and agent actions are disabled. Emergency calling stays with the system. | Restoring any of them needs a recorded scope change, then native role, permission, recipient and return-to-HOME acceptance; Wallet also needs provider, key custody and transaction-approval decisions ([A-08](decisions.md#open-decisions)). | not applicable |
 
@@ -156,6 +157,31 @@ never stands in for another.
 
 ### Current qualification evidence
 
+Round 9 integration, 2026-10-11 UTC: pull request #391 (branch `claude/r9-integration`),
+upstream pin `13c9857598`. Everything in this entry ran at commit `c0b19147`, which differs
+from the commit that carries this entry only in documentation. It is the only entry at the
+current pin.
+
+- Class S, hosted (Browser MVP run 38118499274): Repository verification passed with 644
+  tests, 640 passed, 0 failed, 0 skipped, 4 TODO, and the bundle audit passed (395 files,
+  `testMocks=false`). The three Chromium shards passed 955, 959 and 963 tests (2877) and
+  failed none; 12 were skipped because they need the host speech profile, and the one
+  disclosure spec among them ran in that profile on shard 1 (7 passed). The `production`
+  project passed 185. Resident preparation (`npm run agent:prepare`) passed in run
+  38118499310.
+- Class S, development machine: `npm run verify` exited 0 with the same counts.
+- Class B, hosted (Android foundation run 38118499272):
+  `npm run android:build -- --allow-unpackaged-runtime --skip-instrumentation` assembled the
+  standalone and launcher debug and unsigned release APKs with the flag off and
+  `verify-apks` passed them as developer builds. It records the releases as not
+  distributable (no packaged runtime, speech native bytes not admitted, speech functional
+  acceptance pending or failed) and they are unsigned; no instrumentation APK was built and
+  nothing was installed.
+- Classes E, I, R and D: none. The instrumentation sources changed by the integration
+  (`NotesTrashBackstopInstrumentedTest`) were not compiled at this commit.
+
+The entries below are earlier and are kept as recorded.
+
 Recorded for the ledger refresh of 2026-10-10 on branch `claude/r6-ledger`, based on
 `4ec513b1` (PR #389), upstream pin `40dbe96bd1`. That branch was then merged with main at
 `042265c9`, which contains PR #388; the results below predate that merge unless they say
@@ -170,10 +196,12 @@ otherwise.
   emulator run and 5 a hosted CI run; 23 further steps need a person and 13 a phone. That
   percentage measures class S evidence, not completion on a phone. The Playwright suites
   were not re-run for this refresh; PR #389 records its own runs.
-- Class B: none at the current pin. The last recorded developer APK builds are at
-  `1de85a13` (pin `4148a166`) and `d3dc9977` (pin `945209d3`). They used the explicit
-  unpackaged-runtime option and the recorded unqualified speech input; unsigned releases
-  are not distributable.
+- Class B: none at pin `40dbe96bd1` when this was recorded. Afterwards hosted Android
+  foundation run 38109307871 built four flag-off developer APKs at main `dfacccb3`, the
+  same pin (job and step conclusions read, not its log). The last recorded developer APK
+  builds before that are at `1de85a13` (pin `4148a166`) and `d3dc9977` (pin `945209d3`).
+  All used the explicit unpackaged-runtime option and an unqualified speech input;
+  unsigned releases are not distributable.
 - Class S on the merge with main `042265c9` (2026-10-10, before the merge commit): `npm run
   verify` exited 0 with 614 tests, 610 passed, 0 failed, 4 TODO, and the bundle audit passed
   (395 files, `testMocks=false`). Playwright, 4 workers: the Inbox, Gmail, Calendar, mail and

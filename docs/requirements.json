@@ -8,7 +8,7 @@
     "deferred": "Out of the MVP by recorded policy.",
     "blocked": "Cannot progress without an external decision, resource or artifact."
   },
-  "note": "Status is software state, not acceptance. Evidence lists source and test paths that implement or check the requirement; they are not passing results. Each gate names the next evidence class required. Refreshed 2026-10-10 against upstream pin 40dbe96bd1; no APK build, emulator run or device result exists at that pin. The pin then moved to 13c9857598 (upstream pull request 34888, shared notification receipts) without a refresh of the entries below: an entry that says current pin means 40dbe96bd1, and at 13c9857598 only developer APK builds without the resident runtime exist, with no emulator run or device result (docs/mvp-current-status.md, Current qualification evidence).",
+  "note": "Status is software state, not acceptance. Evidence lists source and test paths that implement or check the requirement; they are not passing results. Each gate names the next evidence class required. Refreshed 2026-10-10 against upstream pin 40dbe96bd1; no emulator run or device result exists at that pin. The pin then moved to 13c9857598 (upstream pull request 34888, shared notification receipts) in the round 9 integration, which rewrote the entries that named the pin or that its packages changed (AP-02, AP-07, AP-09) and did not re-read the others. At 13c9857598 there are source and browser test results and developer APK builds without the resident runtime, and no emulator run or device result (docs/mvp-current-status.md, Current qualification evidence).",
   "requirements": [
     {
       "id": "AP-01",
@@ -55,7 +55,7 @@
         "scripts/android-build-preflight.mjs",
         "scripts/release-blockers.mjs"
       ],
-      "remaining": "No APK build is recorded at the current pin (40dbe96bd1); the last recorded developer APK builds are at pins 4148a166 and 945209d3, and whether the pinned calendar plugin compiles at the current pin is not re-verified. A distribution build also needs the staged resident runtime, qualified speech assets and the reviewed embedding host. The Welcome dialog's local-apps entry is covered only by a stubbed-bridge browser test, not on a device."
+      "remaining": "No distribution APK build exists at the current pin (13c9857598). Developer APKs without the resident runtime were built there (hosted Android foundation run 38118499272 at c0b19147, and a development machine at dc58b4b2); none is distributable and none was installed. A distribution build also needs the staged resident runtime, qualified speech assets and the reviewed embedding host. The Welcome dialog's local-apps entry is covered only by a stubbed-bridge browser test, not on a device."
     },
     {
       "id": "AP-03",
@@ -196,7 +196,7 @@
         "scripts/test-calendar-regression.mjs",
         "docs/cloud-production-validation.md"
       ],
-      "remaining": "Gmail OAuth code exchange returns 401 (docs/cloud-production-validation.md), so no real mailbox has been used. Calendar shows only on-device calendars. Whether the native calendar plugin compiles at the current pin is not re-verified; it compiled in the recorded builds at earlier pins. Calendar availability and Use in email are implemented in source with synthetic agent and provider tests only; neither has run on an emulator, with a real account or on a device (MVP-12, MVP-14)."
+      "remaining": "Gmail OAuth code exchange returns 401 (docs/cloud-production-validation.md), so no real mailbox has been used. Calendar shows only on-device calendars. The native calendar plugin compiled in the hosted developer APK build at the current pin (13c9857598, run 38118499272); that is a build, not a run of it. Calendar availability and Use in email are implemented in source with synthetic agent and provider tests only; neither has run on an emulator, with a real account or on a device (MVP-12, MVP-14)."
     },
     {
       "id": "AP-10",

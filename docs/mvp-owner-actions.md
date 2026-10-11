@@ -3,7 +3,10 @@
 Everything on this page needs the owner, or a person with an account, a key, a hosted
 runner or hardware. Nothing here can be closed by more code in this repository, and
 nothing here is already done. It is written from source, tests and recorded evidence on
-2026-10-10 (branch `claude/r6-ledger`, based on `4ec513b1`, upstream pin `40dbe96bd1`).
+2026-10-10 (branch `claude/r6-ledger`, based on `4ec513b1`, upstream pin `40dbe96bd1`). The
+round 9 integration of 2026-10-11 (pull request #391) moved the pin to `13c9857598` and
+updated what it changed here: the state of evidence below, the pull-request table and the
+rotation row.
 
 Each entry says what it unblocks: loops A–F and J01–J05 with the step numbers of the
 [core loop audit](core-loop-audit.md), and items of the
@@ -12,17 +15,20 @@ entries are ordered by how much they unblock. Options are quoted from
 [decisions](decisions.md#pending-owner-decisions); listing an option is not a
 recommendation, and until a choice is recorded there the current behaviour stays.
 
-State of evidence today: source and browser tests only. No APK build, emulator run, hosted
-CI run, real-account use or device result exists at the current pin
+State of evidence today, at the current pin `13c9857598`: source and browser tests, and
+developer APK builds that carry no resident runtime, are not distributable and were not
+installed. No distribution APK build, emulator run, `resident-android.yml` run,
+real-account use or device result exists
 ([current status](mvp-current-status.md#current-qualification-evidence)).
 
-The software this page builds on came in two pull requests. Neither needs an owner action
+The software this page builds on came in three pull requests. None needs an owner action
 now; what they leave open is in the groups below.
 
 | Pull request | Holds | State |
 | --- | --- | --- |
 | #389 `claude/r5-loop-software` | The audit's remaining software work orders and the native-runner campaigns used in group 3. This page and the refreshed ledgers came with it. | This page reaches main with it. |
 | #388 `claude/r2-integration` | Calendar availability, context selection, Use in email, Trash recovery, resident reuse, runner phases, daily overview, the accessibility sweep and the app library: the software part of MVP-12, 13, 14, 15, 16, 18, 19, 48 and 53. | Merged into main on 2026-10-10 (`042265c9`). None of it has run on an emulator or a device. |
+| #391 `claude/r9-integration` | The upstream pin `13c9857598` with the shared notification receipt ledger (MVP-08); flag-off browser tests of Use in email and of a digest result reaching the Home brief card (MVP-14, 19); the startup and native backstop for an interrupted permanent voice deletion and the Trash byte-limit test (MVP-15); the reconciled browser review and completion plan (MVP-07). | This row reaches main with it. Browser-build and host evidence only: the instrumented notice tests against the shared ledger wait on campaigns 1 and 2 below (`WorkflowApprovalNotice`, and the tap and process-death phases of `recovery-ui`), the nine `NotesTrashBackstop` cases on campaign 1, and MVP-14 and 19 on the Gmail grant. |
 
 ## 1. Decisions
 
@@ -100,8 +106,8 @@ this host runs arm64 images only):
 
 | Order | Campaign | Command | Loops (steps) | Items |
 | --- | --- | --- | --- | --- |
-| 1 | Core-loop classes | `RUN --classes LocalAgentOfflineApps,NotesTrashBackstop,NotesStorageDurability,DailyApps,ReminderLifecycle,ClockHandoff,ClockRepeatDays,HostedResultNotice,WorkflowApprovalNotice,BrowserReadingNavigation,PasswordBrowserFill,InboxOperationJournal,MailAttachment,Notifications,CameraScan,FilesTree` | B (B-9, B-10 native), C (C-3), E (E-8 navigation class, E-16), F (F-7, F-15 reminder half), J01 (J01-10) | MVP-11, 15, 25, 27, 28, 29, 30, 32, 36 |
-| 2 | Hosted CI: resident process death and recovery | `gh workflow run resident-android.yml --ref <candidate>` (jobs `native` and `recovery-ui`; subject to the [CI cost policy](ci-cost-policy.md)) | A (A-23, A-27), C (C-7), D (D-15), F (F-16) | MVP-21, 27, 32, 33, 37, 38, 47 |
+| 1 | Core-loop classes | `RUN --classes LocalAgentOfflineApps,NotesTrashBackstop,NotesStorageDurability,DailyApps,ReminderLifecycle,ClockHandoff,ClockRepeatDays,HostedResultNotice,WorkflowApprovalNotice,BrowserReadingNavigation,PasswordBrowserFill,InboxOperationJournal,MailAttachment,Notifications,CameraScan,FilesTree` | B (B-9, B-10 native), C (C-3), E (E-8 navigation class, E-16), F (F-7, F-15 reminder half), J01 (J01-10) | MVP-08, 11, 15, 25, 27, 28, 29, 30, 32, 36 |
+| 2 | Hosted CI: resident process death and recovery | `gh workflow run resident-android.yml --ref <candidate>` (jobs `native` and `recovery-ui`; subject to the [CI cost policy](ci-cost-policy.md)) | A (A-23, A-27), C (C-7), D (D-15), F (F-16) | MVP-08, 21, 27, 32, 33, 37, 38, 47 |
 | 3 | Default product-surface classes | `RUN` (NoMockProduct, Shell, StartupReadiness, TextScale, BrowserSignins, BrowserFlow, BrowserContinuity, BrowserDownload) | A (A-29), E (E-3, E-5) | MVP-08, 20, 22, 28, 32, 38 |
 | 4 | Calendar provider read-back | `ALPHA_CALENDAR_TEST_SERIAL=emulator-NNNN ALPHA_CALENDAR_TEST_AVD=<avd> ALPHA_CALENDAR_TEST_ABI=arm64-v8a node scripts/test-calendar-regression.mjs --case=CalendarCrudInstrumentedTest`, then `--case=CalendarAgentCrudInstrumentedTest` | B (B-15, B-25), J01 (J01-6, J01-7) | MVP-26, 49 |
 | 5 | Process restarts | `node scripts/test-native-restart.mjs notes APP.apk TEST.apk NEW_OUTPUT`, then `inbox`, `document`, `signin` (the last needs network on the emulator) | B (B-12), F (F-7), J03 (J03-7), E (E-10, E-11) | MVP-25, 28, 30, 36 |
