@@ -36,7 +36,7 @@ test('the committed notices flag what the product ships today, in the JSON and a
   assert.deepEqual(flagged['OpenStreetMap data'], ['share-alike-data']);
   assert.deepEqual(flagged['pdf.js QuickJS sandbox'], ['licence-text-missing-from-package', 'unverified']);
   assert.deepEqual(flagged['Piper LJSpeech medium voice model (int8)'], ['unverified']);
-  assert.deepEqual(flagged['Denton typeface'], ['proprietary-no-licence-recorded']);
+  assert.deepEqual(flagged['Denton typeface'], ['proprietary-licence-held-outside-repo']);
   // Packages that ship no licence file carry the canonical text of their declared licence.
   const tr46 = fresh.entries.find(entry => entry.name === 'tr46');
   assert.deepEqual([tr46.license, tr46.textSource, tr46.flags], ['MIT', 'spdx-canonical', ['licence-text-missing-from-package']]);
@@ -63,7 +63,7 @@ test('the generator exits 0 with flagged entries and prints them as LICENCE FLAG
   const run = spawnSync(process.execPath, [path.join(ROOT, 'scripts/generate-licenses.mjs'), '--check'], {cwd: ROOT, encoding: 'utf8'});
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stderr, /^LICENCE FLAG copyleft-strong: pdf\.js standard fonts: Liberation@bundled with pdfjs-dist [^ ]+ \(GPL-2\.0-only WITH Font-exception-2\.0\)$/m);
-  assert.match(run.stderr, /^LICENCE FLAG proprietary-no-licence-recorded: Denton typeface@/m);
+  assert.match(run.stderr, /^LICENCE FLAG proprietary-licence-held-outside-repo: Denton typeface@[^\n]+ \(LicenseRef-Commercial-Font\)$/m);
   assert.match(run.stderr, /^Licence flags: \d+ of \d+ entries flagged .*not a failure and not legal review\.$/m);
   assert.match(run.stdout, /Third-party notices are complete and current/);
 });
@@ -157,30 +157,30 @@ test('generation fails when the shipped OCR cores or their pinned license copies
   assert.ok(errors.some(error => error.includes('tesseract-core-lstm.wasm.js differs from the core pinned')));
 });
 
-test('a font or item with no recorded reason is still listed and flagged; reason files gate nothing', t => {
+test('an item with no recorded reason is still listed and flagged; reason files gate nothing', t => {
   const dir = scratchRoot(t);
   const file = path.join(dir, ALLOWLIST);
   const allowlist = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const denton = result => result.entries.find(entry => entry.name === 'Denton typeface');
-  fs.writeFileSync(file, JSON.stringify({...allowlist, entries: allowlist.entries.filter(entry => entry.name !== 'Denton typeface')}));
+  const piper = result => result.entries.find(entry => entry.name === 'Piper LJSpeech medium voice model (int8)');
+  fs.writeFileSync(file, JSON.stringify({...allowlist, entries: allowlist.entries.filter(entry => !entry.name.startsWith('Piper'))}));
   let result = collectNotices(dir);
   assert.deepEqual(result.errors, []);
-  assert.ok(result.warnings.some(warning => warning.startsWith('Denton typeface') && warning.includes('no reason recorded')));
-  assert.deepEqual([denton(result).license, denton(result).flags], [NO_FONT_LICENCE, ['proprietary-no-licence-recorded']]);
+  assert.ok(result.warnings.some(warning => warning.startsWith('Piper LJSpeech') && warning.includes('no reason recorded')));
+  assert.deepEqual([piper(result).license, piper(result).flags], [UNVERIFIED, ['unverified']]);
+  assert.match(piper(fresh).obligations[0].note, /^The pinned voice model card lists the LJ Speech dataset as public domain/);
+  assert.doesNotMatch(piper(result).obligations[0].note, /LJ Speech/);
   fs.writeFileSync(file, JSON.stringify({...allowlist, entries: [...allowlist.entries, {name: 'Removed font', reason: 'no longer shipped anywhere in the product'}]}));
   result = collectNotices(dir);
   assert.deepEqual(result.errors, []);
   assert.ok(result.warnings.some(warning => warning.includes('stale entry Removed font')));
-  // A swapped Denton file (different hash) is not covered by the recorded reason, and stays flagged.
-  fs.writeFileSync(file, JSON.stringify({...allowlist, entries: allowlist.entries.map(entry => entry.sha256 ? {...entry, sha256: '0'.repeat(64)} : entry)}));
+  // A bundled font with no licence record is listed as proprietary with no licence recorded, flagged, and not an error.
+  fs.writeFileSync(path.join(dir, 'licenses/font-licenses.json'), JSON.stringify({entries: []}));
   result = collectNotices(dir);
   assert.deepEqual(result.errors, []);
-  assert.deepEqual(denton(result).flags, ['proprietary-no-licence-recorded']);
-  assert.doesNotMatch(denton(result).obligations[0].note, /Peregrin/);
-  // With its reason, the Denton entry states plainly what it is.
-  const committed = denton(fresh);
-  assert.match(committed.obligations[0].note, /Peregrin Studio.*'All rights reserved'.*proprietary item, not open-source software.*no licence to embed or redistribute it is recorded.*unresolved-font-licence/);
-  assert.match(committed.text, /The font file states: ".*All rights reserved.*"\. It names no license/i);
+  const denton = result.entries.find(entry => entry.name === 'Denton typeface');
+  assert.deepEqual([denton.license, denton.flags], [NO_FONT_LICENCE, ['proprietary-no-licence-recorded']]);
+  assert.match(denton.text, /The font file states: ".*All rights reserved.*"\. It names no license/i);
+  assert.match(denton.obligations[0].note, /proprietary item, not open-source software, and no licence to embed or redistribute it is recorded/);
 });
 
 test('a production dependency with a copyleft or unknown licence is listed and flagged, never an error', t => {

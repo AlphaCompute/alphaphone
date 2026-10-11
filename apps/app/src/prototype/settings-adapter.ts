@@ -27,7 +27,8 @@ export type LicenseNotice = { name: string; version: string; license: string; so
 const LICENSE_FLAG_LABELS: Record<string, string> = {
   'copyleft-strong': 'Copyleft (GPL family)', 'network-copyleft': 'Network copyleft (AGPL)', 'copyleft-weak': 'Weak copyleft (LGPL, MPL, EPL)',
   'share-alike-data': 'Share-alike data', 'unknown-licence': 'Unknown license', 'licence-text-missing-from-package': 'No license file in package',
-  unverified: 'License unverified', 'proprietary-no-licence-recorded': 'Proprietary, no license recorded',
+  unverified: 'License unverified', 'permissive-not-previously-listed': 'Permissive, newly listed', 'non-open-source-terms': 'Not open-source terms',
+  'proprietary-licence-held-outside-repo': 'Proprietary, license held by owner', 'proprietary-no-licence-recorded': 'Proprietary, no license recorded',
 };
 /** Rows for an entry's flags and what each obliges; none for an unflagged entry. */
 function licenseFlagRows(item: LicenseNotice): Bag[] {

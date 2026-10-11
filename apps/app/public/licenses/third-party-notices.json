@@ -267,16 +267,16 @@
   {
     "name": "Denton typeface",
     "version": "1.004;FEAKit 1.0",
-    "license": "proprietary, no licence recorded",
+    "license": "LicenseRef-Commercial-Font",
     "source": "Files shipped in the web bundle:\ndenton-300.woff2 (sha256 7e9341445b0bf2ec7f75e4a5d4dd4a677e9d2341f67ddcf766db92a21f310e05)",
-    "text": "The font file states: \"Copyright © 2022 PeregrinStudio LTD. All rights reserved.\". It names no license; manufacturer: Peregrin Studio.",
+    "text": "Copyright © 2022 PeregrinStudio LTD. All rights reserved.\n\nProprietary typeface. It is not open-source software and is not redistributable under an open-source licence.\n\nLicence holder: Alpha Compute (owner statement, 2026-10-10). Basis: owner states the licence is held; the licence document is kept outside this repository. Recorded 2026-10-10.\n\nEvidence: held outside this repository. The licence document is not in this repository and no reference to it is recorded here; no licence name, number, date, scope or terms are recorded.",
     "flags": [
-      "proprietary-no-licence-recorded"
+      "proprietary-licence-held-outside-repo"
     ],
     "obligations": [
       {
-        "flag": "proprietary-no-licence-recorded",
-        "note": "Commercial typeface by Peregrin Studio imported from the design prototype (apps/app/src/prototype/asset-manifest.json). The font states 'All rights reserved' and names no license. This is a proprietary item, not open-source software, and no licence to embed or redistribute it is recorded (licenses/font-licenses.json is where one is recorded). The open-source licence policy does not cover it; it is reported by the separately named check unresolved-font-licence."
+        "flag": "proprietary-licence-held-outside-repo",
+        "note": "Alpha Compute (owner statement, 2026-10-10): owner states the licence is held; the licence document is kept outside this repository. This is a proprietary item, not open-source software, and it is not redistributable under this repository's MIT licence or any open-source licence. The licence document is not in this repository and has not been seen here: no licence name, number, date, scope or terms are recorded. The open-source licence policy does not cover it; the separately named check unresolved-font-licence reports it as resolved-by-owner-statement."
       }
     ]
   },

@@ -32,10 +32,10 @@ import path from 'node:path';
 import {brotliDecompressSync} from 'node:zlib';
 import {fileURLToPath} from 'node:url';
 import {
-  COMMERCIAL_FONT, NO_FONT_LICENCE, UNKNOWN, UNVERIFIED, canonicalId, classifyLicence, flagSummary, licenceFlagLines, obligationNote,
+  COMMERCIAL_FONT, HELD_OUTSIDE_REPOSITORY, NO_FONT_LICENCE, UNKNOWN, UNVERIFIED, canonicalId, classifyLicence, flagSummary, licenceFlagLines, obligationNote,
 } from './licence-policy.mjs';
 
-export {COMMERCIAL_FONT, NO_FONT_LICENCE, UNKNOWN, UNVERIFIED};
+export {COMMERCIAL_FONT, HELD_OUTSIDE_REPOSITORY, NO_FONT_LICENCE, UNKNOWN, UNVERIFIED};
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const OUTPUT_DIR = 'apps/app/public/licenses';
 export const JSON_OUTPUT = `${OUTPUT_DIR}/third-party-notices.json`;
@@ -457,10 +457,24 @@ function fontEntries(root, templates, errors) {
       `The font file states: "${names.copyright || 'no copyright notice'}". It names no license${names.manufacturer ? `; manufacturer: ${names.manufacturer}` : ''}.`;
     // A recorded embedding licence covers exactly the reviewed bytes: every shipped file of the face.
     const record = license === NO_FONT_LICENCE ? licensed.find(item => item.name === name && files.every(file => item.sha256?.includes(file.sha256))) : null;
+    let heldOutside = false;
     if (record) {
       usedRecords.add(record);
-      const missing = ['licensor', 'licensee', 'scope', 'evidence', 'recordedOn'].filter(field => typeof record[field] !== 'string' || !record[field].trim());
+      // Two record states. A full record names licensor, licensee, scope and where the signed licence is held.
+      // "held-outside-repository" records only what the owner stated: who holds it and on what basis. It
+      // carries no licence name, number, scope or terms, and the entry says so and stays flagged.
+      heldOutside = record.evidence === HELD_OUTSIDE_REPOSITORY;
+      const missing = (heldOutside ? ['holder', 'basis', 'recordedOn'] : ['licensor', 'licensee', 'scope', 'evidence', 'recordedOn']).filter(field => typeof record[field] !== 'string' || !record[field].trim());
       if (record.license !== COMMERCIAL_FONT) errors.push(`${FONT_LICENSES}: ${name} must use license ${COMMERCIAL_FONT}`);
+      else if (heldOutside && !missing.length) {
+        license = COMMERCIAL_FONT;
+        body = [
+          names.copyright,
+          'Proprietary typeface. It is not open-source software and is not redistributable under an open-source licence.',
+          `Licence holder: ${record.holder}. Basis: ${record.basis}. Recorded ${record.recordedOn}.`,
+          record.reference ? `Reference to the licence document: ${record.reference}.` : 'Evidence: held outside this repository. The licence document is not in this repository and no reference to it is recorded here; no licence name, number, date, scope or terms are recorded.',
+        ].join('\n\n');
+      }
       else if (missing.length) errors.push(`${FONT_LICENSES}: ${name} is missing ${missing.join(', ')}`);
       else if (!/\bapp\b/i.test(record.scope) || !/\bweb\b/i.test(record.scope)) errors.push(`${FONT_LICENSES}: ${name} scope must cover app and web embedding`);
       else {
@@ -469,7 +483,8 @@ function fontEntries(root, templates, errors) {
       }
     }
     entries.push({name, version: names.version.replace(/^Version\s+/i, ''), license,
-      source: `Files shipped in the web bundle:\n${fileList}`, text: body, _unverifiedKey: files.map(file => file.sha256)});
+      source: `Files shipped in the web bundle:\n${fileList}`, text: body, _unverifiedKey: files.map(file => file.sha256),
+      ...(heldOutside && license === COMMERCIAL_FONT ? {_flags: ['proprietary-licence-held-outside-repo'], _reason: `${record.holder}: ${record.basis}.`} : {})});
   }
   for (const item of licensed) if (!usedRecords.has(item)) errors.push(`${FONT_LICENSES}: stale entry ${item.name}; no shipped font matches its name and sha256 list`);
   const pkg = readJson(root, 'package.json');

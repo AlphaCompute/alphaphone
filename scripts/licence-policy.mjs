@@ -7,31 +7,39 @@
  *
  * A flag is a statement of what was found. It is not legal review and not a clearance.
  *
- * One item is outside that decision: a bundled font that is proprietary and has no recorded
- * licence (today the Denton typeface). It is not open-source software, so it keeps one
- * separately named check, `unresolved-font-licence`. Whether that check withholds
- * `distributable` is the single switch below.
+ * One kind of item is outside that decision: a bundled proprietary font. It is not open-source
+ * software, so it keeps one separately named check, `unresolved-font-licence`, which is always
+ * run and recorded. The Denton typeface is recorded in licenses/font-licenses.json on the
+ * owner's statement that the licence is held outside this repository; it is flagged
+ * `proprietary-licence-held-outside-repo` and the check reports it resolved-by-owner-statement.
+ * A font with no record at all is flagged `proprietary-no-licence-recorded` and reported
+ * unresolved; whether an unresolved font withholds `distributable` is the single switch below.
  */
 
 /**
- * true  (default, the behaviour before P-09): a release whose packaged payload carries a
- *        proprietary font with no recorded licence is recorded distributable:false and the
- *        check is a named release blocker.
- * false: the check is still run, recorded (`fontLicenceCheck`) and printed as a LICENCE FLAG
- *        warning, but it no longer withholds `distributable` or blocks a gate.
- * This is an owner decision (docs/decisions.md A-21). Change it only on the owner's word.
+ * false (default, owner decision 2026-10-10 under P-09 / A-21: "flag only"): the check is still
+ *        run, recorded on every APK row (`fontLicenceCheck`) and printed as a LICENCE FLAG
+ *        warning, but an unresolved font does not withhold `distributable` and is not a
+ *        release blocker.
+ * true:  strict: a release whose packaged payload carries a proprietary font with no record
+ *        in licenses/font-licenses.json is recorded distributable:false and the check is a
+ *        named release blocker in every gate. A font recorded on the owner's statement
+ *        (resolved-by-owner-statement) is reported, not blocked, under either setting.
+ * Change it only on the owner's word.
  */
-export const UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION = true;
+export const UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION = false;
 
 export const UNKNOWN = 'UNKNOWN';
 export const UNVERIFIED = 'license unverified';
 export const COMMERCIAL_FONT = 'LicenseRef-Commercial-Font';
 /** Licence value of a bundled font that states no open licence and has no recorded one. */
 export const NO_FONT_LICENCE = 'proprietary, no licence recorded';
+/** font-licenses.json `evidence` state: the owner states the licence is held; its document is not in this repository. */
+export const HELD_OUTSIDE_REPOSITORY = 'held-outside-repository';
 
 export const FLAGS = [
   'copyleft-strong', 'network-copyleft', 'copyleft-weak', 'share-alike-data', 'unknown-licence', 'non-open-source-terms',
-  'licence-text-missing-from-package', 'unverified', 'permissive-not-previously-listed', 'proprietary-no-licence-recorded',
+  'licence-text-missing-from-package', 'unverified', 'permissive-not-previously-listed', 'proprietary-licence-held-outside-repo', 'proprietary-no-licence-recorded',
 ];
 
 /**
@@ -150,6 +158,8 @@ export function obligationNote(flag, entry) {
       return `${(entry.chosen ?? []).filter(id => PERMISSIVE_NOT_PREVIOUSLY_LISTED.has(canonicalId(id))).join(', ') || entry.license} is a permissive licence recognised from the SPDX list that was not on this project's earlier accepted list. It asks that its licence text and copyright notices stay with copies, which this entry does.`;
     case 'unverified':
       return `${entry.reason ? `${entry.reason.trim()} ` : ''}The licence has not been verified from shipped metadata. This flag is a record of that, not a clearance.`;
+    case 'proprietary-licence-held-outside-repo':
+      return `${entry.reason ? `${entry.reason.trim()} ` : ''}This is a proprietary item, not open-source software, and it is not redistributable under this repository's MIT licence or any open-source licence. The licence document is not in this repository and has not been seen here: no licence name, number, date, scope or terms are recorded. The open-source licence policy does not cover it; the separately named check unresolved-font-licence reports it as resolved-by-owner-statement.`;
     case 'proprietary-no-licence-recorded':
       return `${entry.reason ? `${entry.reason.trim()} ` : ''}This is a proprietary item, not open-source software, and no licence to embed or redistribute it is recorded (licenses/font-licenses.json is where one is recorded). The open-source licence policy does not cover it; it is reported by the separately named check unresolved-font-licence.`;
     default:

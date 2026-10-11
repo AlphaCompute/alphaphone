@@ -29,7 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {ANDROID_CLASSPATH, BROWSER_SPEECH_CONFIG, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, collectNotices, fontLicense, fontNames, productionLockPackages} from './generate-licenses.mjs';
+import {ANDROID_CLASSPATH, BROWSER_SPEECH_CONFIG, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, collectNotices, fontLicense, fontNames, productionLockPackages} from './generate-licenses.mjs';
 import {classifyLicence, flagSummary} from './licence-policy.mjs';
 
 export const LICENCE_NOT_RECORDED = 'not recorded in this inventory';
@@ -46,7 +46,7 @@ const property = (name, value) => ({name: `alphaphone:${name}`, value: String(va
 
 function licenses(expression) {
   if (!expression) return undefined;
-  if ([UNVERIFIED, NO_FONT_LICENCE, UNKNOWN].includes(expression)) return [{license: {name: expression}}];
+  if ([UNVERIFIED, NO_FONT_LICENCE, UNKNOWN, COMMERCIAL_FONT].includes(expression)) return [{license: {name: expression}}];
   if (KNOWN_LICENSES.has(expression) && !/\s/.test(expression)) return [{license: {id: expression}}];
   return [{expression}];
 }
@@ -78,12 +78,19 @@ function fontFiles(root, rel = 'apps/app/public', out = []) {
 }
 
 function fontComponents(root) {
+  const records = exists(root, FONT_LICENSES) ? readJson(root, FONT_LICENSES).entries : [];
   return fontFiles(root).map(rel => {
     const bytes = fs.readFileSync(path.join(root, rel));
     const names = fontNames(bytes);
+    const digest = sha256(bytes);
+    const stated = fontLicense(names);
+    // A font whose own metadata names no open licence is proprietary: recorded (LicenseRef-Commercial-Font) or not.
+    const record = stated === NO_FONT_LICENCE ? records.find(item => item.name === `${names.family} typeface` && item.sha256?.includes(digest) && item.license === COMMERCIAL_FONT) : null;
     return {type: 'file', 'bom-ref': `font:${rel}`, name: `${names.family} typeface (${names.fullName || path.basename(rel)})`, version: names.version.replace(/^Version\s+/i, ''),
-      hashes: [{alg: 'SHA-256', content: sha256(bytes)}], licenses: licenses(fontLicense(names)), copyright: names.copyright || undefined,
-      properties: [property('ships-in', 'web,apk'), property('path', rel.replace(/^apps\/app\/public\//, '')), property('source', rel)]};
+      hashes: [{alg: 'SHA-256', content: digest}], licenses: licenses(record ? COMMERCIAL_FONT : stated), copyright: names.copyright || undefined,
+      properties: [property('ships-in', 'web,apk'), property('path', rel.replace(/^apps\/app\/public\//, '')), property('source', rel),
+        ...(stated === NO_FONT_LICENCE ? [property('open-source', false), property('licence-evidence', !record ? `none recorded in ${FONT_LICENSES}`
+          : record.evidence === HELD_OUTSIDE_REPOSITORY ? `${HELD_OUTSIDE_REPOSITORY}: owner statement recorded in ${FONT_LICENSES}; the licence document is not in this repository` : `recorded in ${FONT_LICENSES}`)] : [])]};
   });
 }
 

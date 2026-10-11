@@ -56,10 +56,14 @@ test("a pilot or acceptance unit never gets a non-distributable release, and eve
   const admit = (row, extra) => admitUnitApk(build(t, { ...DISTRIBUTABLE, ...row }, extra), { variant: "launcher", build: "release" }, { descriptor: descriptor() });
   const refusal = (row, extra) => { try { admit(row, extra); } catch (error) { return error.message; } return assert.fail(`admitted ${JSON.stringify(row)}`); };
   const font = "unresolved-font-licence: Denton typeface (assets/denton.woff2) has no recorded embedding licence; license it or replace it before distribution (owner decision A-21, docs/dependency-audit.md#denton-typeface-mvp-43)";
-  // The round-3 gap: signed by the right key, versionCode advances, audit passed, yet a licence blocker is open.
-  assert.match(refusal({ distributable: false, licenceBlockers: [font] }), /not distributable[\s\S]*unresolved-font-licence: Denton typeface/);
-  // A row whose flag says distributable while its own facts disagree is still refused.
-  assert.match(refusal({ licenceBlockers: [font] }), /unresolved-font-licence/);
+  // Owner decision 2026-10-10 (P-09, A-21): the Denton font check is flag-only. It is recorded but is not a blocker,
+  // so a row that names it and is otherwise distributable is admitted, and a refused row does not cite it.
+  assert.equal(admit({ licenceBlockers: [font], fontLicenceCheck: { check: "unresolved-font-licence", blocksDistribution: false, items: [font] } }).distributable, true);
+  assert.doesNotMatch(refusal({ distributable: false, licenceBlockers: [font] }), /unresolved-font-licence/);
+  assert.match(refusal({ distributable: false, licenceBlockers: [font] }), /verify-apks did not record this release as distributable/);
+  // With the policy constant restored to blocking, the same recorded item is a named blocker again.
+  assert.deepEqual(releaseBlockers({ ...DISTRIBUTABLE, testMocks: false, bundleAudit: "passed", releaseAdmission: { failures: [], blockers: [], signerMatches: true }, licenceBlockers: [font] }, { fontLicenceBlocks: true }), [font]);
+  // The check must still have been run and recorded.
   assert.match(refusal({ licenceBlockers: undefined }), /font licence check was not recorded/);
   assert.match(refusal({ distributable: false, runtime: "NOT_PACKAGED", runtimeNotices: false }), /unpackaged runtime \(resident runtime NOT_PACKAGED\)/);
   assert.match(refusal({ runtime: undefined }), /unpackaged runtime \(resident runtime not recorded\)/);
@@ -75,7 +79,7 @@ test("a pilot or acceptance unit never gets a non-distributable release, and eve
   const all = refusal({ distributable: false, signed: false, signerSha256: null, runtime: "NOT_PACKAGED", licenceBlockers: [font, font],
     speechQualification: { byteMatch: true, functionalPassed: false, qualified: false } });
   const listed = all.split("\n").filter(line => line.startsWith("  - "));
-  assert.deepEqual(listed.map(line => line.slice(4).split(/[:(]/)[0].trim()), ["unsigned release", "unpackaged runtime", "unqualified speech", "unresolved-font-licence"]);
+  assert.deepEqual(listed.map(line => line.slice(4).split(/[:(]/)[0].trim()), ["unsigned release", "unpackaged runtime", "unqualified speech"]);
   assert.match(all, /--build debug rehearses the same steps on a disposable emulator/);
   // The documented rehearsal path is unchanged: a debug row is admitted, labelled, and never distributable.
   const rehearsal = admitUnitApk(build(t, { mode: "debug", signed: true }), { variant: "launcher", build: "debug" }, { descriptor: descriptor() });
@@ -136,8 +140,12 @@ test("release blockers are named for staging and head qualification", () => {
   assert.deepEqual(releaseBlockers({ ...row, releaseAdmission: { failures: [], blockers: [], signerMatches: false } }), ["release signer does not match android/release-signer.json"]);
   assert.deepEqual(releaseBlockers(row, { manifestTestMocks: true }), ["test-mocks build"]);
   assert.deepEqual(releaseBlockers({ ...row, signed: false, releaseAdmission: { failures: [], blockers: ["unsigned release"], signerMatches: false } }), ["unsigned release"]);
-  const blocked = { ...row, distributable: false, licenceBlockers: ["unresolved-font-licence: Denton typeface has no recorded embedding licence"] };
-  const apks = [{ mode: "debug" }, { mode: "release", distributable: true, distributionBlockers: [] }, { mode: "release", distributable: false, distributionBlockers: releaseBlockers(blocked) }];
+  // The font check is flag-only by default; it is a named blocker only when the policy constant says so.
+  const flagged = { ...row, licenceBlockers: ["unresolved-font-licence: Denton typeface has no recorded embedding licence"] };
+  assert.deepEqual(releaseBlockers(flagged), []);
+  assert.deepEqual(releaseBlockers({ ...flagged, licenceFlags: [{ name: "ffmpeg-static", version: "5.3.0", license: "GPL-3.0-or-later", flags: ["copyleft-strong"] }] }), [], "open-source licence flags are never blockers");
+  const blocked = { ...flagged, distributable: false };
+  const apks = [{ mode: "debug" }, { mode: "release", distributable: true, distributionBlockers: [] }, { mode: "release", distributable: false, distributionBlockers: releaseBlockers(blocked, { fontLicenceBlocks: true }) }];
   assert.deepEqual(releaseDistribution(apks), { releasesDistributable: false, releaseBlockers: ["unresolved-font-licence: Denton typeface has no recorded embedding licence"] });
   assert.deepEqual(releaseDistribution([apks[1], apks[1]]), { releasesDistributable: true, releaseBlockers: [] });
   // A flag without recorded blockers, a contradicting flag, and a run with no release are all not distributable.

@@ -592,7 +592,7 @@ Evidence/source: [docs/mvp-completion-plan.md](../docs/mvp-completion-plan.md), 
 **P0 · release · AP-02, AP-04**
 Blocked on: SOFTWARE: `npm run android:build:local` at the current pin with the embedding host staged; HUMAN: decision A-24 (the strict build needs qualified speech or the requirement retired); EMULATOR: speech qualification (MVP-23) if A-24 keeps it.
 
-Current: No build with the staged resident runtime is recorded at the current pin. `npm run android:build:local` chains the input check, agent:prepare, agent:build-workflow-worker, agent:stage-android and android:build; plain android:build stops before Gradle when an input is missing. Gradle's verifyEmbeddingHost requires the reviewed ARM64 embedding host libraries described by android/embedding-host/qualified-host.json, which are not in Git. A distribution build also requires qualified speech assets, which do not exist (MVP-23).
+Current: No build with the staged resident runtime is recorded at the current pin. `npm run android:build:local` chains the input check, agent:prepare, agent:build-workflow-worker, agent:stage-android and android:build; plain android:build stops before Gradle when an input is missing. Gradle's verifyEmbeddingHost requires the reviewed ARM64 embedding host libraries described by android/embedding-host/qualified-host.json, which are not in Git. A distribution build also requires qualified speech assets, which do not exist (MVP-23). Licences no longer stop this step (decision P-09): on 2026-10-10 the runtime was prepared, the workflow worker built and the payload staged at this pin, and `node scripts/generate-licenses.mjs --packaged-runtime` ran to completion on it with exit 0 (660 entries, every one of the 550 bundled agent and workflow-worker packages listed, 66 entries flagged). Before P-09 the same command stopped on 24 entries. That run is notice generation on a staged payload; it is not an APK build.
 
 Remaining: Stage the embedding host from its qualification receipt, build and stage the pinned resident runtime and workflow worker, generate packaged notices and source stamps, then run the strict build and verify-apks for both flavors with no unpackaged or unqualified override.
 
@@ -652,13 +652,13 @@ Evidence/source: [docs/pilot-acceptance-runbook.md](../docs/pilot-acceptance-run
 **P0 · release · AP-01, AP-14**
 Blocked on: HUMAN: decision A-21.
 
-Current: Denton (apps/app/public/denton-300.woff2) is an unlicensed commercial typeface listed in licenses/unverified-allowlist.json. The production bundle audit prints it as a named release blocker without failing developer builds, and the release gates refuse a release while it stands. docs/dependency-audit.md records where it is referenced, that Fraunces is not yet a complete fallback, and the steps for either choice.
+Current: Denton (apps/app/public/denton-300.woff2) is a proprietary commercial typeface marked "All rights reserved" with no licence recorded. It is not open-source software, so decision P-09 (open-source licences are flagged, never blocking) does not cover it. It stays listed in the notices, flagged proprietary-no-licence-recorded and printed as a LICENCE FLAG warning. One separately named check, unresolved-font-licence, remains: the production bundle audit prints it as a named release blocker without failing developer builds, and the release gates refuse a release while it stands. Whether that check keeps blocking is one constant, UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION in scripts/licence-policy.mjs (default: it blocks). docs/dependency-audit.md records where Denton is referenced, that Fraunces is not yet a complete fallback, and the steps for either choice.
 
-Remaining: The owner obtains app and web embedding rights and records the evidence, or approves replacing Denton with Fraunces; the replacement and layout recheck are then software work.
+Remaining: The owner obtains app and web embedding rights and records the evidence, or approves replacing Denton with Fraunces (the replacement and layout recheck are then software work), or decides that an unresolved Denton licence is reported without blocking (the constant above). Denton is the only open-source-policy exception in the app's own notices; the resident runtime payload also carries one package under non-commercial terms (@metamask/sdk, flagged non-open-source-terms), recorded in docs/dependency-audit.md.
 
 Done when: No unresolved commercial font rights in a distributable artifact; notice inventory matches final packaged bytes.
 
-Evidence/source: [licenses/unverified-allowlist.json](../licenses/unverified-allowlist.json), [scripts/generate-licenses.mjs](../scripts/generate-licenses.mjs), [docs/decisions.md](../docs/decisions.md).
+Evidence/source: [licenses/unverified-allowlist.json](../licenses/unverified-allowlist.json), [scripts/generate-licenses.mjs](../scripts/generate-licenses.mjs), [docs/decisions.md](../docs/decisions.md), [scripts/licence-policy.mjs](../scripts/licence-policy.mjs), [scripts/font-license-blockers.mjs](../scripts/font-license-blockers.mjs).
 
 ### MVP-44 Requalify privacy and outbound redaction
 

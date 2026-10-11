@@ -6,7 +6,7 @@
 import {readFileSync,readdirSync,statSync,existsSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {fontLicenseBlockers, fontLicenceLine} from './font-license-blockers.mjs';
+import {fontLicenceFindings, fontLicenceLine} from './font-license-blockers.mjs';
 import {licenceFlagLines} from './licence-policy.mjs';
 
 export const DENYLIST = Object.freeze([
@@ -102,7 +102,7 @@ function main(argv) {
   try { for (const line of licenceFlagLines(JSON.parse(readFileSync(path.join(dir, 'licenses', 'third-party-notices.json'), 'utf8')))) console.warn(line); }
   catch { /* a bundle without readable notices is reported by the APK checks, not here */ }
   // The one separately named font check. Reported, never failed here: a developer build may carry it.
-  if (existsSync(dir)) for (const blocker of fontLicenseBlockers(dir)) console.warn(fontLicenceLine(blocker.message));
+  if (existsSync(dir)) { const fonts = fontLicenceFindings(dir); for (const row of [...fonts.unresolved, ...fonts.resolved]) console.warn(fontLicenceLine(row.message)); }
   if (result.ok) console.log(`PASS ${path.relative(process.cwd(), dir) || '.'}: ${result.files} files, testMocks=${result.testMocks}${result.testMocks ? ' (denylist skipped for an explicit test-mocks bundle)' : ', no mock, fixture or developer surfaces found'}.`);
   else console.error(`FAIL ${result.findings.length} denylist hit(s), ${result.errors.length} error(s).`);
   return result.ok ? 0 : 1;

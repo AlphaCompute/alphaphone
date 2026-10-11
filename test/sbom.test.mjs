@@ -52,9 +52,12 @@ test('every shipped npm package is listed with its lockfile integrity, and no de
 
 test('fonts, OCR cores and web speech files carry the hashes of the pinned bytes', () => {
   const denton = byRef.get('font:apps/app/public/denton-300.woff2');
-  assert.deepEqual(denton.hashes, [{alg: 'SHA-256', content: read('licenses/unverified-allowlist.json').entries.find(entry => entry.name === 'Denton typeface').sha256}]);
-  assert.deepEqual(denton.licenses, [{license: {name: 'proprietary, no licence recorded'}}]);
-  assert.deepEqual([prop(denton, 'licence-expression'), prop(denton, 'licence-flags')], ['proprietary, no licence recorded', 'proprietary-no-licence-recorded']);
+  assert.deepEqual(denton.hashes, [{alg: 'SHA-256', content: read('licenses/font-licenses.json').entries.find(entry => entry.name === 'Denton typeface').sha256[0]}]);
+  // Proprietary, recorded on the owner's statement: never an open-source identifier, and flagged so nobody assumes it is redistributable.
+  assert.deepEqual(denton.licenses, [{license: {name: 'LicenseRef-Commercial-Font'}}]);
+  assert.deepEqual([prop(denton, 'licence-expression'), prop(denton, 'licence-flags')], ['LicenseRef-Commercial-Font', 'proprietary-licence-held-outside-repo']);
+  assert.equal(prop(denton, 'open-source'), 'false');
+  assert.equal(prop(denton, 'licence-evidence'), 'held-outside-repository: owner statement recorded in licenses/font-licenses.json; the licence document is not in this repository');
   const fraunces = sbom.components.filter(component => component.name.startsWith('Fraunces typeface'));
   assert.equal(fraunces.length, 2);
   for (const font of fraunces) {
@@ -124,5 +127,5 @@ test('every component carries its licence expression and flags, matching the not
   fs.rmSync(path.dirname(out), {recursive: true, force: true});
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stderr, /^LICENCE FLAG copyleft-weak: mediabunny@[^ ]+ \(MPL-2\.0\)$/m);
-  assert.match(run.stderr, /^LICENCE FLAG proprietary-no-licence-recorded: Denton typeface /m);
+  assert.match(run.stderr, /^LICENCE FLAG proprietary-licence-held-outside-repo: Denton typeface /m);
 });

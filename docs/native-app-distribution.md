@@ -83,7 +83,13 @@ App Links are prepared from `assetlinks.template.json` but inactive until a doma
 release signer exist. Alpha's in-app third-party notices
 (`apps/app/public/licenses/third-party-notices.json` and `THIRD_PARTY_NOTICES.txt`) cover
 the app's own dependencies only; the native apps staged here need their own notices in
-the image's license bundle.
+the image's license bundle. Under decision P-09 those in-app notices include every
+dependency's licence text and flag copyleft, unknown and unverified entries instead of
+stopping the build; verify-apks records the flags per APK (`licenceFlags`). A flag is not
+a release blocker and not legal review. The one licence item that can still keep a release
+`distributable: false` is the proprietary Denton typeface (`unresolved-font-licence`,
+decision A-21). P-09 concerns the app's own open-source dependencies: it does not change
+what the separately signed native apps on this page require.
 
 ## Required post-install tests
 

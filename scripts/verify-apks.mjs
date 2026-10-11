@@ -13,9 +13,11 @@
  * make a release distributable:false. Every flagged entry of the packaged notices
  * (copyleft, unknown, unverified, missing licence text, proprietary font) is
  * recorded per APK in `licenceFlags` and printed as a LICENCE FLAG warning. The one
- * separately named check, unresolved-font-licence (a proprietary font with no
- * recorded licence), is always recorded in `fontLicenceCheck`; its items are copied
- * to `licenceBlockers` and keep a release distributable:false only while
+ * separately named check, unresolved-font-licence (proprietary fonts), is always
+ * recorded in `fontLicenceCheck`: `resolved` lists fonts covered by the owner's
+ * statement in licenses/font-licenses.json (the Denton typeface), `items` lists
+ * fonts with no record. Unresolved items are copied to `licenceBlockers` and keep
+ * a release distributable:false only while
  * UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION (scripts/licence-policy.mjs) is true.
  * It never fails verification of a developer build.
  * --test-mocks: the separate artifacts/test-mocks/ build, which is never
@@ -83,7 +85,7 @@ for (const variant of ["standalone", "launcher"])
     // The font check is recorded in full; only its `blockers` (policy constant) affect distributable.
     let fontCheck;
     try { fontCheck = fontLicenceCheck(payload.public); }
-    catch (error) { const items = [`font licence check failed: ${error.message}`]; fontCheck = { ...fontLicenceCheck(path.join(payload.root, "absent")), items, blockers: items }; }
+    catch (error) { const items = [`font licence check failed: ${error.message}`]; fontCheck = { ...fontLicenceCheck(path.join(payload.root, "absent")), status: "unresolved", items, blockers: items }; }
     const licenceBlockers = fontCheck.blockers;
     // Flags are a record of the packaged notices. They are never a blocker.
     let licenceFlags = [];
@@ -124,7 +126,7 @@ for (const variant of ["standalone", "launcher"])
       bundleAudit: problems.length ? "failed" : "passed",
       runtimeNotices,
       licenceFlags,
-      fontLicenceCheck: { check: fontCheck.check, flag: fontCheck.flag, blocksDistribution: fontCheck.blocksDistribution, items: fontCheck.items },
+      fontLicenceCheck: { check: fontCheck.check, status: fontCheck.status, blocksDistribution: fontCheck.blocksDistribution, items: fontCheck.items, resolved: fontCheck.resolved },
       licenceBlockers,
     });
   }
@@ -238,7 +240,7 @@ if (undistributable.length)
   console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build", !row.speechQualification.byteMatch && "speech native bytes not admitted", !row.speechQualification.functionalPassed && "speech functional acceptance pending or failed", !row.runtimeNotices && "notices lack the packaged runtime (run node scripts/generate-licenses.mjs --packaged-runtime after staging)", ...row.releaseAdmission.blockers, ...row.licenceBlockers].filter(Boolean).join(", ")})`).join("; ")}`);
 // Licence flags are warnings: recorded per APK above, printed once here, never a failure.
 for (const line of flagLines) console.warn(line);
-const fontItems = new Map(release.flatMap(row => row.fontLicenceCheck.items.map(item => [item, row.fontLicenceCheck.blocksDistribution])));
+const fontItems = new Map(release.flatMap(row => [...row.fontLicenceCheck.items, ...row.fontLicenceCheck.resolved].map(item => [item, row.fontLicenceCheck.blocksDistribution])));
 for (const [item, blocks] of fontItems) console.warn(fontLicenceLine(item, blocks));
 const unsigned = release.filter(row => !row.signed);
 if (unsigned.length)
