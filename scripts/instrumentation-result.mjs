@@ -102,7 +102,9 @@ export function writeInstrumentationRecord(file, record) {
     evidence: 'emulator-instrumentation',
     notEvidenceFor: ['physical-device acceptance', 'user acceptance', 'AOSP image boot', 'real integrations'],
     ...record,
-    passed: record.classes.length > 0 && record.classes.every(row => row.status === 'passed'),
+    // A run that changed the HOME role passes only with the original holder proven restored.
+    passed: record.classes.length > 0 && record.classes.every(row => row.status === 'passed')
+      && (record.homeRole === undefined || (record.homeRole.restored === true && record.homeRole.coldHome?.resumed === true)),
   };
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(body, null, 2)}\n`, { flag: 'wx' });

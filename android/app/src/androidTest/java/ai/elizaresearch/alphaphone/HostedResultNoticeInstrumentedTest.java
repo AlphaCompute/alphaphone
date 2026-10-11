@@ -11,7 +11,8 @@ import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import static org.junit.Assert.*;
 
-/** Explicit campaign only. External runner owns permission state/restoration. */
+/** Explicit campaign only. The runner owns notification permission state in a temporary user:
+ * node scripts/test-native-permissions.mjs notice|notice-denied APP.apk TEST.apk NEW_OUTPUT. */
 public final class HostedResultNoticeInstrumentedTest {
  private JSONObject call(String expression)throws Exception {
   long ready=SystemClock.elapsedRealtime()+20000;while(SystemClock.elapsedRealtime()<ready&&!"true".equals(WebViewTestDriver.evaluate("Boolean(window.Capacitor?.Plugins?.AlphaHostedResults)")))SystemClock.sleep(50);
@@ -42,7 +43,16 @@ public final class HostedResultNoticeInstrumentedTest {
      JSONObject tap=null;for(int i=0;i<100;i++){tap=call("Capacitor.Plugins.AlphaHostedResults.pendingResult()");if(key.equals(tap.optString("key")))break;SystemClock.sleep(100);}assertNotNull(tap);assertEquals(key,tap.getString("key"));String token=tap.getString("token");
      activity.recreate();AppNavigation.liveMode();JSONObject restored=call("Capacitor.Plugins.AlphaHostedResults.pendingResult()");assertEquals(token,restored.getString("token"));assertEquals(run,restored.getString("runId"));assertTrue(restored.getBoolean("retained"));
      assertFalse(call("Capacitor.Plugins.AlphaHostedResults.consumeResult({token:"+JSONObject.quote(token)+"})").has("error"));assertEquals("opened",call("Capacitor.Plugins.AlphaHostedResults.publishResult("+route+")").getString("phase"));assertNull(notice(key));
-    }else assertNull(notice(key));
+    }else{
+     assertNull("No notice is posted while notifications are denied",notice(key));
+     // The result is still in encrypted history, where the in-app list reads it.
+     assertEquals(secret,read(slot+":"+run).getString("output"));assertEquals(run,read(slot).getJSONArray("ids").getString(0));
+     assertFalse("Stored result stays encrypted at rest",new String(Files.readAllBytes(file.toPath()),StandardCharsets.ISO_8859_1).contains(secret));
+     // Asking again neither posts a notice nor changes the retained result.
+     assertEquals("denied",call("Capacitor.Plugins.AlphaHostedResults.publishResult("+route+")").getString("phase"));assertNull(notice(key));
+     assertTrue("No tap is pending for a notice that was never posted",!key.equals(call("Capacitor.Plugins.AlphaHostedResults.pendingResult()").optString("key")));
+     assertEquals(secret,read(slot+":"+run).getString("output"));
+    }
    } finally {
     cleanNotice(key);
     InstrumentationRegistry.getInstrumentation().getTargetContext().getSystemService(NotificationManager.class).cancel(key,0);

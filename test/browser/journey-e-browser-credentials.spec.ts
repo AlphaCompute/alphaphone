@@ -26,6 +26,9 @@ import {test, expect, type Page} from '@playwright/test';
 const article = '<article><h1>Harbour notes</h1><p>The ferry leaves at nine.</p><script>window.injected=true</script><p hidden>Hidden text</p></article>';
 let server: Server, origin = '';
 const hits: string[] = [];
+// Held responses for /arrivals?held: the document a page is leaving for commits only when the test releases it.
+const held: Array<() => void> = [];
+const releaseArrivals = () => { for (const finish of held.splice(0)) finish(); };
 
 test.beforeAll(async () => {
   server = createServer((request, response) => {
@@ -34,6 +37,11 @@ test.beforeAll(async () => {
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.setHeader('Content-Type', 'text/html');
     if (path === '/article') response.end(article);
+    // A page that leaves for another document by itself. The destination is held by the server,
+    // so the old document stays on screen until the test lets the navigation commit.
+    else if (path === '/departures') response.end('<head><meta http-equiv="refresh" content="1;url=/arrivals?held"></head><article><h1>Departures</h1><p>Old page text.</p></article>');
+    else if (path === '/arrivals?held') held.push(() => response.end('<article><h1>Arrivals</h1><p>New page text.</p></article>'));
+    else if (path === '/arrivals') response.end('<article><h1>Arrivals</h1><p>New page text.</p></article>');
     else if (path === '/members') response.end('<article><h1>Members</h1><form><input type="password" aria-label="Member key"></form></article>');
     else response.end(`<article><h1>Page ${path.slice(1)}</h1></article>`);
   });
@@ -42,7 +50,7 @@ test.beforeAll(async () => {
   if (!address || typeof address === 'string') throw Error('Missing server address');
   origin = `http://127.0.0.1:${address.port}`;
 });
-test.afterAll(async () => { await new Promise<void>(resolve => server.close(() => resolve())); });
+test.afterAll(async () => { releaseArrivals(); await new Promise<void>(resolve => server.close(() => resolve())); });
 
 const button = (page: Page, name: string) => page.getByRole('button', {name, exact: true});
 const addressBox = (page: Page) => page.getByRole('textbox', {name: 'Address', exact: true});
@@ -122,6 +130,46 @@ test('browser navigation, tabs, private tab, reviewed reading and password manag
     await expect(review).toHaveCount(0);
   });
 
+  // Journey hardening (docs/core-loop-audit.md, work order 14): navigation during approval.
+  await test.step('a page that navigates while its excerpt is under review retires that review; nothing of the old page is read', async () => {
+    await enter(page, `${origin}/departures`);
+    await expect(heading(page, 'Departures')).toBeVisible();
+    await menu(page, 'Read aloud');
+    const review = page.getByRole('dialog', {name: 'Read page excerpt'});
+    await expect(review.getByRole('status', {name: 'Reading status'})).toHaveText('Public page text loaded. Review before reading.');
+    await expect(review.getByRole('textbox', {name: 'Excerpt to read'})).toHaveValue('Departures\n\nOld page text.');
+    await expect(review.getByRole('button', {name: 'Read locally', exact: true})).toBeEnabled();
+    // The page starts leaving on its own; the old document is still shown while the request is held.
+    await expect.poll(() => held.length).toBe(1);
+    await expect(heading(page, 'Departures')).toBeVisible();
+    await expect(review).toBeVisible();
+    // The navigation commits while the review is open: the review of the old target is withdrawn.
+    releaseArrivals();
+    await expect(heading(page, 'Arrivals')).toBeVisible();
+    await expect(review).toHaveCount(0);
+    await expect(page.getByRole('button', {name: 'Read locally', exact: true})).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).speechCalls)).toEqual(['The ferry leaves at nine.']);
+    // The host cannot see where a sandboxed page took itself, so it says so and offers no reading
+    // of that unknown document: Read aloud opens no review and nothing is spoken.
+    await expect(page.getByRole('status').filter({hasText: 'The website navigated inside'})).toBeVisible();
+    await menu(page, 'Read aloud');
+    await expect(page.getByText('Load a page before reading.', {exact: true}).first()).toBeVisible();
+    await expect(button(page, 'Close menu')).toHaveCount(0);
+    await expect(review).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).speechCalls)).toEqual(['The ferry leaves at nine.']);
+    // Going to the new address explicitly restores a reviewable page: the review is of that page.
+    await enter(page, `${origin}/arrivals`);
+    await expect(heading(page, 'Arrivals')).toBeVisible();
+    await menu(page, 'Read aloud');
+    await expect(review.getByRole('status', {name: 'Reading status'})).toHaveText('Public page text loaded. Review before reading.');
+    await expect(review.getByRole('textbox', {name: 'Excerpt to read'})).toHaveValue('Arrivals\n\nNew page text.');
+    await review.getByRole('button', {name: 'Read locally', exact: true}).click();
+    await expect(review.getByRole('status', {name: 'Reading status'})).toHaveText('Fixture terminal');
+    expect(await page.evaluate(() => (window as any).speechCalls)).toEqual(['The ferry leaves at nine.', 'Arrivals\n\nNew page text.']);
+    await review.getByRole('button', {name: 'Close', exact: true}).click();
+    await expect(review).toHaveCount(0);
+  });
+
   await test.step('a page with a credential field is refused for reading and for questions', async () => {
     await enter(page, `${origin}/members`);
     await expect(heading(page, 'Members')).toBeVisible();
@@ -132,7 +180,7 @@ test('browser navigation, tabs, private tab, reviewed reading and password manag
     await expect(review.getByRole('textbox', {name: 'Excerpt to read'})).toBeDisabled();
     await expect(review.getByRole('button', {name: 'Read locally', exact: true})).toBeDisabled();
     await review.getByRole('button', {name: 'Close', exact: true}).click();
-    expect(await page.evaluate(() => (window as any).speechCalls)).toHaveLength(1);
+    expect(await page.evaluate(() => (window as any).speechCalls)).toHaveLength(2);
     // A plain-HTTP local page is not an acceptable question source: honest refusal, no editor,
     // and the menu must not stay open over the refusal.
     await menu(page, 'Ask about page');

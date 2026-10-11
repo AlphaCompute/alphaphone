@@ -9,7 +9,30 @@ export interface InboxOperationRecord {
   /** The local draft a send was started from. Local only: it is never part of the proposal the
    * provider sees. A confirmed send clears only copies of this exact draft with the sent content. */
   source?: { draftId: string };
+  /** The composer email a send or draft review was made from. Local only. The review can be
+   * confirmed only while the composer holds that same email (same local draft, which belongs to
+   * one From account) with exactly the reviewed content. */
+  composer?: { draftId: string };
 }
+/** Operations reviewed from the composer. */
+export const composerKind = (kind: unknown) => kind === 'send' || kind === 'draft-create' || kind === 'draft-replace';
+/** Everything the person reviews in a composer proposal, as one comparable text. */
+export const composerContent = (proposal: Bag) => JSON.stringify(['mode','to','cc','bcc','subject','bodyText','attachments','forwardAttachments','replyMessageId'].map(field => proposal[field] ?? null));
+export interface ComposerEmail { draftId: string; proposal: Bag }
+/** How an unsent composer review relates to the email now in the composer:
+ * `bound` same email, same content; `edited` same email, content changed; `other` another email
+ * (or a review saved without its email's identity); `absent` no email is open in the composer. */
+export type ReviewBinding = 'bound' | 'edited' | 'other' | 'absent';
+export function reviewBinding(record: Pick<InboxOperationRecord, 'proposal' | 'composer'>, current: ComposerEmail | null): ReviewBinding {
+  if (!current) return 'absent';
+  if (!record.composer || !current.draftId || record.composer.draftId !== current.draftId) return 'other';
+  return composerContent(record.proposal) === composerContent(current.proposal) ? 'bound' : 'edited';
+}
+export const reviewBindingRefusal: Record<Exclude<ReviewBinding, 'bound'>, string> = {
+  edited: 'This email was edited after this review, so the review was discarded. Nothing was sent. Review the current email before sending.',
+  other: 'This review was made for a different email than the one now in the composer, so it was discarded. Nothing was sent. Review the current email before sending.',
+  absent: 'This review is for an email that is not open in the composer, so it cannot be confirmed. Nothing was sent. Open that email and choose Send to review it again, or cancel this review.',
+};
 export interface InboxOperationDependencies {
   owner: string; grantId: string; active(): boolean;
   store: { read<T>(key: string): Promise<T | null>; compareExchange(key: string, expected: unknown, value: unknown): Promise<{status: string}> };
@@ -67,13 +90,13 @@ export class InboxOperation {
   }
   async load() { return this.exclusive(async()=>{
     const value=await this.deps.store.read<InboxOperationRecord>(await this.key());this.check();
-    if(value && (value.version!==1||value.owner!==this.deps.owner||value.grantId!==this.deps.grantId||!value.requestId||!value.proposal||!['preparing','review','dispatching','observed'].includes(value.phase)||(value.source!==undefined&&(!value.source||typeof value.source.draftId!=='string'||!value.source.draftId))))throw new Error('Invalid saved Inbox operation');
+    if(value && (value.version!==1||value.owner!==this.deps.owner||value.grantId!==this.deps.grantId||!value.requestId||!value.proposal||!['preparing','review','dispatching','observed'].includes(value.phase)||(value.source!==undefined&&(!value.source||typeof value.source.draftId!=='string'||!value.source.draftId))||(value.composer!==undefined&&(!value.composer||typeof value.composer.draftId!=='string'||!value.composer.draftId))))throw new Error('Invalid saved Inbox operation');
     this.record=value;return this.snapshot();
   }); }
   async prepare(proposal: Bag, source?: { draftId: string }) { return this.exclusive(async()=>{
     if(this.record)throw new Error('Review the saved operation before starting another.');
     const clean=copy(proposal);if(new TextEncoder().encode(JSON.stringify(clean)).length>7.5*1024*1024)throw new Error('Message exceeds the supported review size');
-    await this.save({version:1,owner:this.deps.owner,grantId:this.deps.grantId,requestId:crypto.randomUUID(),proposal:clean,phase:'preparing',review:null,receipt:null,...(source&&proposal.kind==='send'&&typeof source.draftId==='string'&&source.draftId?{source:{draftId:source.draftId}}:{})});
+    await this.save({version:1,owner:this.deps.owner,grantId:this.deps.grantId,requestId:crypto.randomUUID(),proposal:clean,phase:'preparing',review:null,receipt:null,...(source&&proposal.kind==='send'&&typeof source.draftId==='string'&&source.draftId?{source:{draftId:source.draftId}}:{}),...(source&&composerKind(proposal.kind)&&typeof source.draftId==='string'&&source.draftId?{composer:{draftId:source.draftId}}:{})});
     await this.reviewCurrent();return this.snapshot();
   }); }
   /** Explicit review recovery is an idempotent prepare, never provider dispatch. */
@@ -102,8 +125,13 @@ export class InboxOperation {
     }else if(review.forwardedAttachments!==undefined&&JSON.stringify(review.forwardedAttachments)!=='[]')throw new Error('Server added forwarded attachments');
     await this.save({...record,review:copy(review),receipt:copy(result.receipt),phase:result.receipt.state==='prepared'?'review':'observed'});
   }
-  async confirm() { return this.exclusive(async()=>{
+  /** `current` is the email in the composer at the moment of the tap (null when none is open).
+   * When it is given, a send or draft review is dispatched only for that same email with exactly
+   * the reviewed content; the check and the durable `dispatching` write have no await between
+   * the caller's read of the composer and this comparison. */
+  async confirm(current?: ComposerEmail | null) { return this.exclusive(async()=>{
     const record=this.record;if(!record||record.phase!=='review'||!record.review||record.receipt?.state!=='prepared')throw new Error('A fresh exact review is required');
+    if(current!==undefined&&composerKind(record.proposal.kind)){const binding=reviewBinding(record,current);if(binding!=='bound')throw new Error(reviewBindingRefusal[binding]);}
     // Durable before the single network attempt. A lost write reply cannot cause dispatch.
     await this.save({...record,phase:'dispatching'});this.check();
     const receipt=await this.deps.client.gmailDispatchOperation(record.grantId,record.requestId,record.receipt.reviewDigest,record.proposal,this.controller.signal);this.check();

@@ -223,7 +223,9 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  await page.getByRole('button',{name:'New event',exact:true}).click();
  await expect.poll(async()=>(await phoneContext(page)).selectedObject?.kind).toBe('calendar-source');
  const source=(await phoneContext(page));
- const calendarCreate={type:'calendar_create',source:{sourceId:source.selectedObject.id,sourceRevision:source.selectedObject.revision},fields:{title:'Venue booking call',description:'From the venue meeting note',location:'Main hall',start:eventStart,end:eventEnd,timeZone:source.timeZone}};
+ // A zone that is not this phone's, so the review has to say which one the event is saved in.
+ const eventZone=source.timeZone==='Asia/Tokyo'?'Europe/Paris':'Asia/Tokyo';
+ const calendarCreate={type:'calendar_create',source:{sourceId:source.selectedObject.id,sourceRevision:source.selectedObject.revision},fields:{title:'Venue booking call',description:'From the venue meeting note',location:'Main hall',start:eventStart,end:eventEnd,timeZone:eventZone}};
  await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();
  await queueAction(page,calendarCreate);
  await page.getByRole('button',{name:'Calendar',exact:true}).click();
@@ -237,7 +239,22 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  expect(await eventTitles(page)).toEqual(['Venue walkthrough']);
  await approveEvent.click();
  const calendarReview=page.getByRole('dialog',{name:'Review calendar change'});
- await expect(calendarReview).toContainText('Venue booking call');
+ // B-13: the review states every consequence of Confirm, not only the title: the calendar and
+ // account written, the exact time in the event's zone, the zone itself (named against the
+ // phone's), the all-day state and what happens to attendees. The agent contract carries no
+ // attendees, so the honest statement is that none are added and nobody is invited.
+ const zoned=(iso:string)=>new Intl.DateTimeFormat('en-US',{timeZone:eventZone,year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(new Date(iso));
+ expect((await calendarReview.getByRole('paragraph').innerText()).split('\n')).toEqual([
+  'Create event',
+  '“Venue booking call”',
+  'Calendar: App calendar · Account: Alpha Phone',
+  `${zoned(eventStart)} – ${zoned(eventEnd)}`,
+  `Time zone: ${eventZone} (this phone is set to ${source.timeZone})`,
+  'All day: no. This is a timed event.',
+  'Attendees: none. This change adds no attendees and sends no invitations.',
+  'Location: Main hall',
+  'From the venue meeting note',
+ ]);
  expect(await eventTitles(page)).toEqual(['Venue walkthrough']);
  await calendarReview.getByRole('button',{name:'Confirm',exact:true}).click();
  await expect(page.getByRole('button',{name:/^Completed Created event “Venue booking call”/})).toBeVisible();
@@ -248,7 +265,10 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  expect(await eventTitles(page)).toEqual(['Venue booking call','Venue walkthrough']);
  expect(await liveReminders(page)).toEqual(['Book the venue','Email the caterer']);
  expect(await reminders(page)).toHaveLength(2);
- expect((await events(page)).find(e=>e.title==='Venue booking call')).toMatchObject({calendarId:'local',body:'From the venue meeting note',location:'Main hall',begin:Date.parse(eventStart),end:Date.parse(eventEnd)});
+ expect((await events(page)).find(e=>e.title==='Venue booking call')).toMatchObject({calendarId:'local',body:'From the venue meeting note',location:'Main hall',begin:Date.parse(eventStart),end:Date.parse(eventEnd),timeZone:eventZone});
+ // What was reviewed is what was saved: a timed event with no attendees.
+ expect((await events(page)).find(e=>e.title==='Venue booking call')).not.toHaveProperty('who');
+ expect((await events(page)).find(e=>e.title==='Venue booking call')).not.toHaveProperty('allDay');
  const recordedActions=await actions(page);
  expect(recordedActions.proposals.map((p:any)=>[p.payload.operation.type,p.state,p.receipt?.outcome])).toEqual([['create_reminder','completed','applied'],['calendar_create','completed','applied']]);
  expect(recordedActions.journal.map((j:any)=>[j.record.operation.type,j.phase,j.status])).toEqual([['create_reminder','terminal','succeeded'],['calendar_create','terminal','succeeded']]);
@@ -317,4 +337,63 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  expect(finalNotes).toHaveLength(1);
  expect(finalNotes[0]).toMatchObject({id:recorded.id,audio:recorded.audio,body:transcript,summary:[summary]});
  for(const message of dialogs)expect(message).toBe('Replace the retained unsaved form with a new event?');
+});
+
+// B-13 negative cases: a proposal that names a calendar source revision other than the one on
+// screen is refused before any review opens, and leaving a review that is open saves nothing.
+test('Journey B: a calendar proposal for a changed source is refused, and leaving an open review saves nothing',async({page})=>{
+ await page.goto('/?mode=dev');await ready(page);
+ await page.getByRole('button',{name:'Settings',exact:true}).click();
+ await page.getByRole('button',{name:'Agent connection',exact:true}).click();
+ await page.getByRole('button',{name:'Connect development profile'}).click();
+ await returnToApps(page);
+ const hour=Math.ceil(Date.now()/3_600_000)*3_600_000;
+ const fields=(title:string,timeZone:string)=>({title,description:'',location:'',start:new Date(hour+48*3_600_000).toISOString(),end:new Date(hour+49*3_600_000).toISOString(),timeZone});
+ const openSource=async()=>{
+  await returnToApps(page);
+  await page.getByRole('button',{name:'Calendar',exact:true}).click();
+  await page.getByRole('button',{name:'New event',exact:true}).click();
+  await expect.poll(async()=>(await phoneContext(page)).selectedObject?.kind).toBe('calendar-source');
+  return phoneContext(page);
+ };
+ const propose=async(operation:unknown,message:string)=>{
+  await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();
+  await queueAction(page,operation);
+  await openSource();
+  await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+  await page.getByRole('textbox',{name:'Message Alpha',exact:true}).fill(message);
+  await page.getByRole('textbox',{name:'Message Alpha',exact:true}).press('Enter');
+ };
+ const source=await openSource();
+ const review=page.getByRole('dialog',{name:'Review calendar change'});
+
+ // ---- A source revision that is not the one on screen ----
+ const stale=source.selectedObject.revision.split('').reverse().join('');
+ expect(stale).not.toBe(source.selectedObject.revision);
+ await propose({type:'calendar_create',source:{sourceId:source.selectedObject.id,sourceRevision:stale},fields:fields('Stale source event',source.timeZone)},'Review my stale calendar action');
+ // The reply arrives, and the proposal for another source revision is not offered for approval at all.
+ await expect(page.getByRole('button',{name:/^Message actions: Development reply/})).toHaveCount(1);
+ await expect(page.getByRole('button',{name:/^Approve: Create event/})).toHaveCount(0);
+ await expect(page.getByText('Stale source event',{exact:false})).toHaveCount(0);
+ await expect(review).toHaveCount(0);
+ expect(await eventTitles(page)).toEqual([]);
+ expect((await actions(page)).proposals.map((p:any)=>[p.payload.operation.fields.title,p.state])).toEqual([['Stale source event','pending']]);
+
+ // ---- A current proposal whose review is left open, then abandoned with Back ----
+ await page.getByRole('button',{name:'Minimize chat',exact:true}).click();
+ await propose({type:'calendar_create',source:{sourceId:source.selectedObject.id,sourceRevision:source.selectedObject.revision},fields:fields('Abandoned review event',source.timeZone)},'Review my calendar action');
+ const approve=page.getByRole('button',{name:/^Approve: Create event/});
+ await expect(approve).toHaveCount(1);
+ await approve.click();
+ await expect(review).toContainText('“Abandoned review event”');
+ // With the event in the phone's own zone the review does not repeat the zone as a difference.
+ await expect(review).toContainText(`Time zone: ${source.timeZone}\n`);
+ await expect(review).not.toContainText('this phone is set to');
+ await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));
+ await expect(review).toHaveCount(0);
+ expect(await eventTitles(page)).toEqual([]);
+ await page.reload();await ready(page);
+ expect(await eventTitles(page)).toEqual([]);
+ const recorded=await actions(page);
+ expect(recorded.journal.filter((j:any)=>j.status==='succeeded')).toEqual([]);
 });

@@ -16,14 +16,13 @@ import static org.junit.Assert.*;
  * "permission-denied" and the recorder shows the denied state with Open app settings.
  *
  * Revoking a runtime permission kills the target process, so the revoke step runs before
- * this instrumentation starts, on a disposable test device:
- *   adb shell pm revoke ai.elizaresearch.alphaphone android.permission.RECORD_AUDIO
- *   adb shell am instrument -w -e voicePermissionDenied 1 \
- *     -e class ai.elizaresearch.alphaphone.VoicePermissionDeniedInstrumentedTest \
- *     ai.elizaresearch.alphaphone.test/androidx.test.runner.AndroidJUnitRunner
+ * this instrumentation starts. The runner owns it, in a temporary emulator user it removes:
+ *   node scripts/test-native-permissions.mjs voice APP.apk TEST.apk NEW_OUTPUT
+ * (pm revoke RECORD_AUDIO, then this method with -e voicePermissionDenied 1). Revoking while a
+ * recording is running and granting again is VoicePermissionRevokeInstrumentedTest (voice-revoke).
  * The system permission prompt, if Android shows one, is dismissed with Back (a denial).
- * No audio is captured and nothing is uploaded. This proves the emulator/device renderer and
- * plugin path only, not a user's acceptance.
+ * No audio is captured and nothing is uploaded; typing in the conversation composer still works.
+ * This proves the emulator/device renderer and plugin path only, not a user's acceptance.
  */
 @RunWith(AndroidJUnit4.class)
 public final class VoicePermissionDeniedInstrumentedTest {
@@ -63,6 +62,18 @@ public final class VoicePermissionDeniedInstrumentedTest {
    WebViewTestDriver.pressBack();
    long back=SystemClock.elapsedRealtime()+10000;while(SystemClock.elapsedRealtime()<back&&!appFocused())SystemClock.sleep(200);
    assertTrue("Back returns to Alpha",appFocused());
+   // No capture started: the native recorder never created its raw audio file.
+   java.io.File[] captures=context.getCacheDir().listFiles((dir,name)->name.startsWith("alpha-cloud-voice-")&&name.endsWith(".m4a"));
+   assertEquals("A denied request records nothing",0,captures==null?0:captures.length);
+   // Typing stays usable: leave the recorder and write in the conversation composer.
+   WebViewTestDriver.evaluate(AppNavigation.request("Home"));until(AppNavigation.selected("Home"),30000);until("window.__alphaTestNavigation?.status==='complete'",30000);
+   WebViewTestDriver.evaluate(AppNavigation.type());until(AppNavigation.composer(),20000);
+   String typed="Typed while the microphone is denied";
+   WebViewTestDriver.evaluate("(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,"+JSONObject.quote(typed)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+   until("("+AppNavigation.composer()+")?.value==="+JSONObject.quote(typed),10000);
+   // Leave no draft behind for the next phase or user.
+   WebViewTestDriver.evaluate("(()=>{const e=("+AppNavigation.composer()+");if(!e)return;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'');e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+   assertEquals("Typing must not grant the permission",PackageManager.PERMISSION_DENIED,context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO));
   }
  }
 }

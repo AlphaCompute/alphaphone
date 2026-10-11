@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {verifySource} from './local-agent-source.mjs';
+import {spawnSync} from 'node:child_process';
+import {sourceDirectory,verifySource} from './local-agent-source.mjs';
 const product=path.resolve(import.meta.dirname,'..');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(check,timeout=90000){const deadline=Date.now()+timeout;while(Date.now()<deadline){const result=await check();if(result)return result;await sleep(100);}throw Error('Timed out waiting for isolated digest recovery');}
@@ -63,12 +64,26 @@ if(process.env.ALPHA_DIGEST_CRASH_CHILD==='1'){
  process.exit(0);
 }else{
  if(process.platform==='win32')throw Error('This fixture requires POSIX process groups');
- const source=process.env.ALPHA_ELIZA_SOURCE;if(!source||!path.isAbsolute(source))throw Error('Set ALPHA_ELIZA_SOURCE to the reproduced source with installed dependencies');
- const verify=()=>verifySource(source,JSON.parse(fs.readFileSync(path.join(product,'upstream.lock.json'))).commit);verify();
+ // Input: the pinned upstream source with its dependencies installed. ALPHA_ELIZA_SOURCE names one
+ // explicitly; otherwise the directory `npm run agent:prepare` creates for the current pin is used.
+ const commit=JSON.parse(fs.readFileSync(path.join(product,'upstream.lock.json'))).commit;
+ const supplied=process.env.ALPHA_ELIZA_SOURCE;
+ const prepare='  ALPHA_RUNTIME_GIT_CACHE="$PWD/vendor/eliza" npm run agent:prepare\n'
+  +`(creates artifacts/local-agent-resident-${commit} from the pinned commit and installs its dependencies with Bun; about 6 GB).\n`
+  +'Then run `npm run agent:test-digest-restart` again, or set ALPHA_ELIZA_SOURCE to the absolute path of another prepared checkout of that commit.\n'
+  +'See docs/local-agent-development.md, "Isolated digest process-recovery check".';
+ const refuse=reason=>{console.error(`agent:test-digest-restart cannot run: ${reason}\nPrepare the pinned runtime source first:\n${prepare}`);process.exit(2);};
+ if(supplied!==undefined&&!path.isAbsolute(supplied))refuse(`ALPHA_ELIZA_SOURCE must be an absolute path (got ${JSON.stringify(supplied)}).`);
+ const source=supplied||sourceDirectory(product);
+ if(!fs.existsSync(path.join(source,'.alpha-runtime-source.json'))&&!fs.existsSync(path.join(source,'package.json')))refuse(`no prepared runtime source at ${source}.`);
+ if(!fs.existsSync(path.join(source,'node_modules')))refuse(`the runtime source at ${source} has no installed dependencies (it was prepared with --source-only, or the install was removed).`);
+ const bun=process.env.ALPHA_BUN||'bun';
+ if(spawnSync(bun,['--version'],{stdio:'ignore'}).status!==0)refuse(`Bun is not available as ${JSON.stringify(bun)} (install Bun or set ALPHA_BUN).`);
+ const verify=()=>verifySource(source,commit);verify();
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-digest-crash-'));const children=new Set();
  const killOwned=child=>{assert.ok(Number.isSafeInteger(child.pid)&&child.pid>1);try{process.kill(-child.pid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')throw error;}};
  const cleanEnv=Object.fromEntries(['PATH','HOME','TMPDIR','LANG'].filter(k=>process.env[k]).map(k=>[k,process.env[k]]));
- const start=phase=>{const log=fs.openSync(path.join(dir,phase+'.log'),'a');const child=spawn(process.env.ALPHA_BUN||'bun',['--conditions=eliza-source',fileURLToPath(import.meta.url)],{cwd:dir,detached:true,env:{...cleanEnv,ALPHA_DIGEST_CRASH_CHILD:'1',ALPHA_DIGEST_SOURCE:source,ALPHA_DIGEST_FIXTURE:dir,ALPHA_DIGEST_PHASE:phase},stdio:['ignore',log,log]});fs.closeSync(log);children.add(child);child.once('exit',()=>children.delete(child));child.once('error',error=>{child.spawnError=error;children.delete(child);});return child;};
+ const start=phase=>{const log=fs.openSync(path.join(dir,phase+'.log'),'a');const child=spawn(bun,['--conditions=eliza-source',fileURLToPath(import.meta.url)],{cwd:dir,detached:true,env:{...cleanEnv,ALPHA_DIGEST_CRASH_CHILD:'1',ALPHA_DIGEST_SOURCE:source,ALPHA_DIGEST_FIXTURE:dir,ALPHA_DIGEST_PHASE:phase},stdio:['ignore',log,log]});fs.closeSync(log);children.add(child);child.once('exit',()=>children.delete(child));child.once('error',error=>{child.spawnError=error;children.delete(child);});return child;};
  const finish=child=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>{killOwned(child);reject(Error(`Fixture exceeded 120 seconds; evidence: ${dir}`));},120000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('exit',(code,signal)=>{clearTimeout(timer);code===0?resolve():reject(Error(`Fixture exited ${code}/${signal}; evidence: ${dir}`));});});
  try{
   const held=start('admit');
@@ -78,7 +93,7 @@ if(process.env.ALPHA_DIGEST_CRASH_CHILD==='1'){
   const calls=fs.readFileSync(path.join(dir,'model-calls.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
   assert.equal(calls.filter(c=>c.phase==='admit').length,1);assert.equal(calls.filter(c=>c.phase==='recover').length,0);assert.equal(calls.filter(c=>c.phase==='overdue').length,0);
   verify();
-  fs.writeFileSync(path.join(dir,'result.json'),JSON.stringify({crashDuringInference:true,scope:'owned-process-group',preservedSameRun:true,unknownOutcomeNotReplayed:true,noFabricatedResult:true,overdueSkippedWithoutInference:true,modelAttempts:calls.length},null,2));
+  fs.writeFileSync(path.join(dir,'result.json'),JSON.stringify({evidenceClass:'host-runtime',notEvidenceFor:['Android','emulator','device','real inference'],upstreamCommit:commit,crashDuringInference:true,scope:'owned-process-group',preservedSameRun:true,unknownOutcomeNotReplayed:true,noFabricatedResult:true,overdueSkippedWithoutInference:true,modelAttempts:calls.length},null,2));
   console.log(JSON.stringify({evidence:dir,result:JSON.parse(fs.readFileSync(path.join(dir,'result.json')))}));
  }finally{await Promise.all([...children].map(child=>new Promise(resolve=>{child.once('exit',resolve);killOwned(child);})));}
 }

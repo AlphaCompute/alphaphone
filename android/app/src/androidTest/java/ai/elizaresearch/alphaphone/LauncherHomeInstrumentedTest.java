@@ -24,9 +24,15 @@ import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
 
 /** The launcher APK as the device's HOME: Alpha Home's All-apps drawer lists installed apps, opens
- * Android Settings and the stock dialer through the user-visible controls, and Android's HOME key
- * returns to Alpha Home. Never changes the HOME role: it runs only where Alpha already holds it
- * (provisioning or the operator selected it). Emulator evidence, not device or user acceptance. */
+ * Android Settings, the stock dialer and three installed apps through the user-visible controls,
+ * Android's HOME key returns to Alpha Home each time, and Android Settings and the default-Home
+ * chooser (the way back to the stock launcher) stay reachable. Never changes the HOME role: it runs
+ * only where Alpha already holds it. On an owned emulator the runner selects and restores it:
+ *   npm run test:android:instrumentation -- --owned-emulator --avd NAME --serial emulator-NNNN \
+ *     --variants launcher --home-role --classes SettingsRoles,LauncherHome
+ * (SettingsRoles covers the role being removed, declined and accepted in Android's own dialog.)
+ * Emulator evidence, not device or user acceptance; boot-time HOME, the recovery partition and
+ * emergency calling need a phone. */
 @RunWith(AndroidJUnit4.class)
 public class LauncherHomeInstrumentedTest {
  private static final Pattern TOP = Pattern.compile("(?:topResumedActivity|mResumedActivity)[=:][^\\n]*?\\s([A-Za-z0-9_.]+)/");
@@ -88,6 +94,63 @@ public class LauncherHomeInstrumentedTest {
    tap("Open Settings");
    awaitForeground("com.android.settings", "Android Settings opens from the drawer");
    returnHome(context);
+  }
+ }
+
+ private static final String APPS = "[...document.querySelectorAll('[data-alpha-layer=\"drawer\"] .scr button')].filter(b=>/^Open ./.test(b.getAttribute('aria-label')||'')&&!b.disabled&&b.getAttribute('aria-busy')!=='true')";
+
+ /** Three different installed apps, each opened from the drawer by its listed name; HOME returns to Alpha every time. */
+ @Test public void threeInstalledAppsOpenFromTheDrawerAndHomeReturnsEachTime() throws Exception {
+  assumeAlphaIsHome();
+  Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
+   AppNavigation.liveMode();
+   eval(AppNavigation.request("Home"));
+   until(AppNavigation.selected("Home") + "&&!document.querySelector('.os')?.inert", "Home ready");
+   tap("All apps");
+   until(DRAWER + "&&" + APPS + ".length>=3", "The drawer lists at least three installed apps");
+   org.json.JSONArray labels = new org.json.JSONArray((String) new org.json.JSONTokener(eval("JSON.stringify([...new Set(" + APPS + ".map(b=>b.getAttribute('aria-label')))].slice(0,3))")).nextValue());
+   assertEquals("Three distinct installed apps", 3, labels.length());
+   java.util.Set<String> opened = new java.util.LinkedHashSet<>();
+   for (int i = 0; i < labels.length(); i++) {
+    String label = labels.getString(i);
+    if (!"true".equals(eval("!!" + DRAWER))) tap("All apps");
+    String entry = APPS + ".find(b=>b.getAttribute('aria-label')===" + JSONObject.quote(label) + ")";
+    until(DRAWER + "&&" + entry, "The drawer still lists " + label);
+    eval("(" + entry + ").click()");
+    String seen = null;
+    for (int attempt = 0; attempt < 100; attempt++) { seen = foreground(); if (seen != null && !context.getPackageName().equals(seen)) break; SystemClock.sleep(150); }
+    assertTrue(label + " opens another app (foreground: " + seen + ")", seen != null && !context.getPackageName().equals(seen));
+    assertEquals("No launch error is shown for " + label, "false", eval("!!document.querySelector('[data-alpha-layer=\"drawer\"] [role=alert]')"));
+    opened.add(label);
+    returnHome(context);
+   }
+   assertEquals(3, opened.size());
+  }
+ }
+
+ /** With Alpha as HOME the user can still reach Android Settings and Android's default-Home chooser,
+  * and a stock launcher is still installed to switch back to. */
+ @Test public void stockSettingsAndTheDefaultHomeChooserStayReachableWhileAlphaIsHome() throws Exception {
+  assumeAlphaIsHome();
+  Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+  PackageManager packages = context.getPackageManager();
+  boolean otherHome = false;
+  for (ResolveInfo candidate : packages.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY))
+   if (candidate.activityInfo != null && !context.getPackageName().equals(candidate.activityInfo.packageName)) otherHome = true;
+  assertTrue("A stock Home app remains installed to switch back to", otherHome);
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
+   AppNavigation.liveMode();
+   eval(AppNavigation.request("Home"));
+   until(AppNavigation.selected("Home") + "&&!document.querySelector('.os')?.inert", "Home ready");
+   UiAutomation ui = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+   for (String action : new String[]{android.provider.Settings.ACTION_SETTINGS, android.provider.Settings.ACTION_HOME_SETTINGS}) {
+    ResolveInfo handler = packages.resolveActivity(new Intent(action), PackageManager.MATCH_DEFAULT_ONLY);
+    assertTrue(action + " has a system handler", handler != null && handler.activityInfo != null && !context.getPackageName().equals(handler.activityInfo.packageName));
+    try (InputStream output = new ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand("am start -W -a " + action))) { output.readAllBytes(); }
+    awaitForeground(handler.activityInfo.packageName, action + " opens over Alpha Home");
+    returnHome(context);
+   }
   }
  }
 

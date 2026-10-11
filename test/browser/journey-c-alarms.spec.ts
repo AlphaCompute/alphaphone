@@ -147,3 +147,51 @@ test('journey C: agent-proposed alarm is reviewed, saved once, survives reload, 
  expect(state.proposals.map((p:any)=>[p.payload.operation.action,p.state,p.receipt.result.status])).toEqual([['set','completed','opened'],['show','completed','opened']]);
  expect(state.journal.map((j:any)=>[j.status,j.result.clockResult.status])).toEqual([['succeeded','opened'],['succeeded','opened']]);
 });
+
+// Journey hardening (docs/core-loop-audit.md, work order 14): Decline was rendered and never pressed.
+test('journey C: a declined alarm proposal hands nothing to Clock, before or after a reload',async({page})=>{
+ test.setTimeout(120_000);
+ await page.clock.setFixedTime(new Date('2027-06-01T06:00:00Z'));
+ await page.goto('/?mode=dev');
+ const ask=page.getByRole('textbox',{name:'Ask Alpha',exact:true}),conversation=page.locator('[data-alpha-layer="conversation"]');
+ await page.getByRole('button',{name:'Settings',exact:true}).click();
+ await page.getByRole('button',{name:'Agent connection',exact:true}).click();
+ await page.getByRole('button',{name:'Connect development profile'}).click();
+ await expect(page.getByRole('dialog',{name:'Development connections'})).toHaveCount(0);
+ await returnToApps(page);
+ await queue(page,{type:'clock_handoff',action:'set',hour:7,minute:15,label:LABEL,timeZone:'UTC'});
+ await ask.fill('Set an alarm for 07:15');await ask.press('Enter');
+ await expect(conversation.getByText('Ask Clock to set 07:15 in UTC named “Journey alarm”. Review the alarm in Clock; Alpha cannot confirm creation or ringing.',{exact:true}).first()).toBeVisible();
+ const decline=page.getByRole('button',{name:'Decline Reject this proposal. Nothing runs.',exact:true});
+ await expect(approve(page)).toHaveCount(1);
+ // A double press is one rejection.
+ await decline.dblclick();
+ await expect(conversation.getByText('Declined. No phone action was performed.',{exact:true})).toHaveCount(1);
+ // The declined card offers neither action again.
+ await expect(approve(page)).toHaveCount(0);
+ await expect(decline).toHaveCount(0);
+ // Nothing was handed off: no alarm, no journal entry, no receipt, and the proposal reads back as rejected.
+ expect(await alarms(page)).toEqual([]);
+ let state=await actions(page);
+ expect(state.proposals.map((p:any)=>[p.payload.operation.action,p.state,p.receipt??null])).toEqual([['set','rejected',null]]);
+ expect(state.journal).toEqual([]);
+ await expect(conversation).not.toContainText(/Alarm saved|Clock request sent|will ring/);
+ await returnToApps(page);
+ let dialog=await openClock(page);
+ await expect(dialog.getByText('No alarms',{exact:true})).toBeVisible();
+ await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+
+ // The alarm's time passes: nothing rings, because nothing was set.
+ await page.clock.setFixedTime(new Date('2027-06-01T07:15:02Z'));
+ await page.reload();
+ await expect(page.getByRole('region',{name:'Home'})).toBeVisible();
+ await expect(clock(page)).toHaveCount(0);
+ expect(await alarms(page)).toEqual([]);
+ // A later message does not bring the declined proposal back for approval.
+ await ask.fill('Anything pending?');await ask.press('Enter');
+ await expect(page.getByRole('button',{name:/^Message actions: Development reply/})).toHaveCount(1);
+ await expect(approve(page)).toHaveCount(0);
+ state=await actions(page);
+ expect(state.proposals.map((p:any)=>p.state)).toEqual(['rejected']);
+ expect(state.journal).toEqual([]);
+});

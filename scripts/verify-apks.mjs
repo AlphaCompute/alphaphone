@@ -7,10 +7,19 @@
  * (testMocks:false), pass the shared production bundle audit, carry no
  * development hooks, and releases must package the authenticated resident
  * runtime. --allow-unpackaged-runtime is a developer option that records such
- * releases as distributable:false instead of failing. A font without a recorded
- * embedding licence in the packaged payload is reported as a named release
- * blocker (licenceBlockers) and keeps a release distributable:false; it never
- * fails verification of a developer build.
+ * releases as distributable:false instead of failing.
+ *
+ * Licences (decision P-09): open-source licences never fail verification and never
+ * make a release distributable:false. Every flagged entry of the packaged notices
+ * (copyleft, unknown, unverified, missing licence text, proprietary font) is
+ * recorded per APK in `licenceFlags` and printed as a LICENCE FLAG warning. The one
+ * separately named check, unresolved-font-licence (proprietary fonts), is always
+ * recorded in `fontLicenceCheck`: `resolved` lists fonts covered by the owner's
+ * statement in licenses/font-licenses.json (the Denton typeface), `items` lists
+ * fonts with no record. Unresolved items are copied to `licenceBlockers` and keep
+ * a release distributable:false only while
+ * UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION (scripts/licence-policy.mjs) is true.
+ * It never fails verification of a developer build.
  * --test-mocks: the separate artifacts/test-mocks/ build, which is never
  * distributable. This is APK-build evidence only; it does not install or run
  * anything.
@@ -25,7 +34,8 @@ import {
 import { androidEnv, tool } from "./toolchain.mjs";
 import { readReleaseSigner, releaseAdmission, RELEASE_SIGNER_FILE } from "./build-android.mjs";
 import { BUN_ENTRY } from "./generate-licenses.mjs";
-import { fontLicenseBlockers } from "./font-license-blockers.mjs";
+import { fontLicenceCheck, fontLicenceLine } from "./font-license-blockers.mjs";
+import { licenceFlagLines, licenceFlagRecords } from "./licence-policy.mjs";
 
 const USAGE = "Usage: node scripts/verify-apks.mjs [--test-mocks] [--allow-unpackaged-runtime]";
 const args = process.argv.slice(2);
@@ -55,6 +65,7 @@ function releaseFile(dir, variant) {
 
 const results = [];
 const failures = [];
+const flagLines = new Set();
 for (const variant of ["standalone", "launcher"])
   for (const mode of ["debug", "release"]) {
     const { file, signed } = mode === "release"
@@ -71,12 +82,19 @@ for (const variant of ["standalone", "launcher"])
     // A PACKAGED distribution must ship notices regenerated with --packaged-runtime (Bun and
     // the bundled agent/worker packages); the committed notices carry only the umbrella entry.
     let runtimeNotices = false;
-    let licenceBlockers = [];
-    try { licenceBlockers = fontLicenseBlockers(payload.public).map(row => row.message); }
-    catch (error) { licenceBlockers = [`font licence check failed: ${error.message}`]; }
+    // The font check is recorded in full; only its `blockers` (policy constant) affect distributable.
+    let fontCheck;
+    try { fontCheck = fontLicenceCheck(payload.public); }
+    catch (error) { const items = [`font licence check failed: ${error.message}`]; fontCheck = { ...fontLicenceCheck(path.join(payload.root, "absent")), status: "unresolved", items, blockers: items }; }
+    const licenceBlockers = fontCheck.blockers;
+    // Flags are a record of the packaged notices. They are never a blocker.
+    let licenceFlags = [];
     try {
       const notices = path.join(payload.public, "licenses", "third-party-notices.json");
-      runtimeNotices = fs.existsSync(notices) && JSON.parse(fs.readFileSync(notices, "utf8")).some(entry => entry?.name === BUN_ENTRY);
+      const entries = fs.existsSync(notices) ? JSON.parse(fs.readFileSync(notices, "utf8")) : [];
+      runtimeNotices = Array.isArray(entries) && entries.some(entry => entry?.name === BUN_ENTRY);
+      licenceFlags = licenceFlagRecords(entries);
+      for (const line of licenceFlagLines(entries)) flagLines.add(line);
     } catch { runtimeNotices = false; }
     try {
       flags = readBuildFlags(payload.public);
@@ -107,6 +125,8 @@ for (const variant of ["standalone", "launcher"])
       testMocks: flags?.testMocks ?? null,
       bundleAudit: problems.length ? "failed" : "passed",
       runtimeNotices,
+      licenceFlags,
+      fontLicenceCheck: { check: fontCheck.check, status: fontCheck.status, blocksDistribution: fontCheck.blocksDistribution, items: fontCheck.items, resolved: fontCheck.resolved },
       licenceBlockers,
     });
   }
@@ -218,8 +238,10 @@ console.log(JSON.stringify(results, null, 2));
 const undistributable = release.filter(row => !row.distributable);
 if (undistributable.length)
   console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build", !row.speechQualification.byteMatch && "speech native bytes not admitted", !row.speechQualification.functionalPassed && "speech functional acceptance pending or failed", !row.runtimeNotices && "notices lack the packaged runtime (run node scripts/generate-licenses.mjs --packaged-runtime after staging)", ...row.releaseAdmission.blockers, ...row.licenceBlockers].filter(Boolean).join(", ")})`).join("; ")}`);
-const licenceBlocked = [...new Set(release.flatMap(row => row.licenceBlockers))];
-for (const blocker of licenceBlocked) console.warn(`RELEASE BLOCKER ${blocker}`);
+// Licence flags are warnings: recorded per APK above, printed once here, never a failure.
+for (const line of flagLines) console.warn(line);
+const fontItems = new Map(release.flatMap(row => [...row.fontLicenceCheck.items, ...row.fontLicenceCheck.resolved].map(item => [item, row.fontLicenceCheck.blocksDistribution])));
+for (const [item, blocks] of fontItems) console.warn(fontLicenceLine(item, blocks));
 const unsigned = release.filter(row => !row.signed);
 if (unsigned.length)
   console.warn(`Unsigned releases (set ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS and ELIZAOS_KEY_PASSWORD to sign): ${unsigned.map(row => row.file).join(", ")}`);
