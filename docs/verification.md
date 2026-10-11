@@ -140,6 +140,11 @@ own evidence; desktop screenshots cannot establish native isolation.
 
 Calendar CRUD cases run through `scripts/test-calendar-regression.mjs` with
 `--case=CalendarCrudInstrumentedTest` or `--case=CalendarAgentCrudInstrumentedTest`.
+`--case=` takes a class (every case of it) or `Class#method`. CalendarAgentCrud has two
+cases, each with its own gate and result folder: the reviewed create/read/update/delete
+method (`calendarAgent`) and `directSaveReadsBackAllDayChosenZoneAndRrule`
+(`calendarOptions`). `--case=CalendarAvailabilityInstrumentedTest` runs that whole class,
+which skips unless both calendar permissions are granted before it starts.
 Set `ALPHA_CALENDAR_TEST_SERIAL`, `ALPHA_CALENDAR_TEST_AVD`, and
 `ALPHA_CALENDAR_TEST_ABI` for the owned disposable emulator. Both distributions
 run by default; `--variant=standalone` or `--variant=launcher` selects one.
@@ -149,8 +154,15 @@ retained instrumentation and cleanup evidence.
 The native workflow campaign uses `node scripts/android-workflow-native.mjs` with
 `ANDROID_SERIAL`, `ALPHA_WORKFLOW_TEST_AVD`, `ALPHA_WORKFLOW_TEST_ABI`, and
 `ALPHA_BUILD_ARCHIVE`. The archive must contain both distributions' debug and
-instrumentation APKs plus their filename-to-SHA256 `apk-manifest.json`. Evidence
-is written to a new `ALPHA_CAMPAIGN_OUTPUT` directory beneath `test-results/`.
+instrumentation APKs plus their filename-to-SHA256 `apk-manifest.json`:
+`node scripts/build-archive.mjs test-results/<new>` makes it from the strict build, and
+`node scripts/developer-archive.mjs [--test-mocks] test-results/<new>` copies it from a
+developer build that verify-apks recorded in `artifacts/` (it admits each APK against
+`artifacts/apk-manifest.json` and writes `archive-source.json` saying it is a developer
+archive). Evidence is written to a new `ALPHA_CAMPAIGN_OUTPUT` directory beneath
+`test-results/`. `--variant=standalone|launcher` and `--phase=workflow|approval-notice`
+run part of the campaign after a failure stopped it; such a report carries `selection`
+and `selectionPassed`, and its `passed` stays false.
 Set `ALPHA_TEST_HOME_PACKAGE` when the image’s stock launcher differs from
 `com.android.launcher3` (for example, `com.google.android.apps.nexuslauncher` on
 Google APIs images). This also applies to Calendar and permission campaigns.
@@ -226,6 +238,44 @@ An SDK emulator test does not establish a custom AOSP image boot.
 Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
+
+## Round 8 (2026-10-11): runner cases, fixes and hosted jobs, none run
+
+Branch `claude/r8-runner-ci`. This section records source, compile and host-runtime checks
+only. No APK was assembled, no emulator was started and no workflow was dispatched, so
+nothing below is class B or class E evidence and the round 7 results that follow are still
+the latest emulator results. They do not carry forward to this source.
+
+- Compiled (JDK 21, `--offline`, staged agent sources, the speech AAR used as a compile
+  input): `./gradlew :app:compileStandaloneDebugJavaWithJavac :app:compileLauncherDebugJavaWithJavac
+  :app:compileStandaloneDebugAndroidTestJavaWithJavac :app:compileLauncherDebugAndroidTestJavaWithJavac
+  -x :local-speech:preBuild -x :app:stageLocalAgentSources -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1`
+  with `-PELIZA_DEV_ALLOW_TEST_MOCKS=0` and again with `=1`: BUILD SUCCESSFUL both times.
+- CalendarTruncation (failed in round 7, "not triaged"): product defect. `AlphaCalendar.list`
+  had returned every instance with `truncated:false` since the shared calendar plugin was
+  adopted (`ab780d04`), so the documented 2,000-instance bound no longer existed and the
+  warning the test waits for could not appear. `AlphaCalendarPlugin.list` reads through
+  `CalendarRangeReader` again. `test/calendar-range-reader.test.mjs` runs that reader on the
+  JVM against a stand-in provider (2,000 returned whole, 2,001 reported incomplete, reading
+  stops at the first row past the bound). The instrumentation is unchanged and not rerun.
+- PasswordBrowserFill, `test-native-restart.mjs notes` and FilesTree (each failed once or
+  twice in round 7, "cause not established"): each has a cause read from the saved result
+  files and the source, and a fix. The causes, the fixes and the repeat commands that would
+  show them hold are in the [core loop audit](core-loop-audit.md), "Repeat runs for the round 7
+  failures". One of them changes the product: a document receipt in Notes now waits until the
+  page is visible (`test/browser/notes-document-receipt.spec.ts`).
+- Runner cases, checked against the synthetic `adb` fixtures only:
+  `scripts/test-calendar-regression.mjs` runs `directSaveReadsBackAllDayChosenZoneAndRrule`
+  with `calendarOptions=1` and the whole `CalendarAvailabilityInstrumentedTest`;
+  `scripts/developer-archive.mjs` assembles the archive `scripts/android-workflow-native.mjs`
+  reads from a verify-apks developer build, and that campaign accepts `--variant=` and
+  `--phase=`; BrowserDownload left the default class list, because on a build without test
+  mocks it can only be skipped and a skipped class fails the run.
+- Hosted jobs, linted with `actionlint` and checked by `test/ci-emulator-evidence.test.mjs`,
+  never dispatched: `.github/workflows/android-emulator.yml`
+  ([CI cost policy](ci-cost-policy.md#emulator-evidence-android-emulatoryml)).
+- Host-runtime evidence, not Android: `npm run agent:test-digest-restart` at the current pin
+  `40dbe96b`, exit 0, one run ([record](local-agent-development.md#isolated-digest-process-recovery-check)).
 
 ## Emulator results at 6dcdde34 (2026-10-10, round 7)
 
