@@ -99,7 +99,8 @@ async function openSettings(page:Page){
 }
 async function openShade(page:Page){
  await start(page);
- await page.mouse.move(200,15);await page.mouse.down();await page.mouse.move(200,320,{steps:12});await page.mouse.up();
+ // Alpha's notifications open from their Home handle; the top-edge swipe is Android's (docs/gesture-zones.md).
+ await page.getByRole('button',{name:'Open notifications',exact:true}).click();
  const shade=page.locator('[data-alpha-layer="shade"]');
  await expect(shade).toHaveAttribute('aria-hidden','false');
  return shade;

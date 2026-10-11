@@ -54,7 +54,10 @@ public final class NotificationChannelsInstrumentedTest {
    until("document.body.textContent.includes('Channel blocked')&&document.body.textContent.includes('Some channels blocked')");assertTrue("Global app permission still allowed",manager.areNotificationsEnabled());assertEquals(NotificationManager.IMPORTANCE_NONE,manager.getNotificationChannel(id).getImportance());
    click("Manage "+name);toggle(true,name);channelState(manager,id,true);back();until("document.body.textContent.includes("+JSONObject.quote(name)+")&&document.body.textContent.includes('Channel allowed')");assertEquals(NotificationManager.IMPORTANCE_DEFAULT,manager.getNotificationChannel(id).getImportance());
    manager.notify(id,1,new Notification.Builder(context,id).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText("Synthetic channel recovery body").setContentIntent(tap).setAutoCancel(true).build());
-   WebViewTestDriver.evaluate("(()=>{const e=document.querySelector('[data-screen]'),r=e.getBoundingClientRect(),s=r.width/412;for(const [type,y] of [['pointerdown',50],['pointerup',200]])e.dispatchEvent(new PointerEvent(type,{bubbles:true,clientX:r.left+200*s,clientY:r.top+y*s,pointerId:1,pointerType:'touch'}));})()");
+   // Alpha's notifications open from the handle on Home, not from a swipe inside Settings (docs/gesture-zones.md).
+   WebViewTestDriver.evaluate(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));
+   for(int i=0;i<200&&!"true".equals(WebViewTestDriver.evaluate(AppNavigation.openNotifications()));i++)SystemClock.sleep(100);
+   until("document.querySelector('[data-alpha-layer=shade]')?.getAttribute('aria-hidden')==='false'");
    String notice="[...document.querySelectorAll('[data-alpha-layer=shade] button')].find(b=>b.getAttribute('aria-label')==="+JSONObject.quote("Open "+title)+")";until(notice);WebViewTestDriver.evaluate("("+notice+").click()");
    for(int i=0;i<100&&java.util.Arrays.stream(manager.getActiveNotifications()).anyMatch(n->id.equals(n.getTag()));i++)SystemClock.sleep(100);
    for(int i=0;i<100&&!delivered.get();i++)SystemClock.sleep(100);assertTrue("Exact owned synthetic notification target received real tap",delivered.get());

@@ -104,6 +104,11 @@ public final class InboxDraftInstrumentedTest {
    // offered as "Retry saved connection" (a local read) and is not restored without the owner asking.
    // Until then Inbox asks for Eliza Cloud and shows no draft from the signed-out state.
    nav("Inbox");until(button("Connect Eliza Cloud"));assertEquals("false",js("Boolean("+button("Restore local draft")+")"));
+   // The panel Inbox opens offers the saved sign-in as the same retry Settings offers, beside a new
+   // sign-in, and claims no account before the owner retries.
+   click("Connect Eliza Cloud");until(button("Retry saved connection"));until(button("Sign in with Eliza Cloud"));
+   assertEquals("No account is shown before the retry","false",js("Boolean(document.querySelector('.alpha-cloud-account-summary'))"));
+   click("Close Cloud account");until("!document.querySelector('.alpha-connection-scrim')");
    nav("Settings");click("Agent connection");click("Retry saved connection");
    until("document.querySelector('#connection-title')?.textContent==='Your Cloud account'&&"+button("Sign out"));click("Close connection settings");
    nav("Inbox");click("Restore local draft");until("document.querySelector('textarea[aria-label=Message]')?.value==='Exact native draft\\nSecond line'");assertEquals("\"Synthetic saved draft\"",js("document.querySelector('input[aria-label=Subject]').value"));

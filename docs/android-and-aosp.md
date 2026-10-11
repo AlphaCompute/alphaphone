@@ -167,6 +167,78 @@ A persistent cross-app helper and secure Chromium component require their explic
 native/OS integration and signer-admission work in the implementation plan. Managed
 kiosk is not enabled by default; preserve a recovery route and normal Android settings.
 
+## One live MainActivity on the launcher flavor
+
+`MainActivity` is `singleTask` and, on the launcher flavor, also answers `ACTION_MAIN` /
+`CATEGORY_HOME`. Android keeps the two kinds of start apart. A HOME start (the HOME key, the
+start Android makes when the role is granted, boot) has `ACTION_MAIN` with HOME as its only
+category, no data and no type, and either names no component or is made by the system itself;
+Android gives the activity the home activity type in the display's home task. Every other
+start (the app icon, a notification tap, the `alphaphone://cloud-delegation` sign-in return, an
+explicit component from another app) has the standard type. A task's activity type never
+changes, and the task lookup that makes `singleTask` reuse an instance only matches a task of a
+compatible type. So a HOME start cannot reuse a standard-type instance and the reverse, and
+Android creates a second `MainActivity`. Round 7 measured this on the API 36 emulator when the
+HOME role was accepted.
+
+Two instances mean two pages over one store, with the draft, the open conversation and pending
+approvals in whichever page is hidden. The product keeps the first live instance, whichever
+kind it is (`MainActivity`, "One live MainActivity"):
+
+- A second instance creates no Capacitor bridge and loads no page. It delivers its intent to
+  the live instance through `onNewIntent`, the path Android itself uses for a reused
+  `singleTask` activity, so a HOME start shows Alpha Home and a notice tap or sign-in return
+  reaches the plugins that handle it.
+- It then brings the live instance's task to the front with an intent of that instance's own
+  kind (the implicit HOME intent restricted to this package for a home-type instance, the
+  explicit component for a standard one) and finishes. A standard task created for the start is
+  removed; Android's home task is left alone.
+- If that front start ever created another instance instead of reaching the live one, that
+  instance finishes without starting anything, and the process stops handing starts off. The
+  same happens when the front start cannot be made, or when the live instance does not receive
+  three in a row. With the front start missing, the instance in the home task would finish and
+  leave it empty, Android would start HOME again and the hand-off would repeat without end.
+  From then on a new start keeps its own instance: two instances, which is what round 7
+  measured and is stable. logcat tag `AlphaInstance` says "Front start created an instance" or
+  "Front start is not reaching the live instance" when this happens; neither is expected and
+  either should be reported if seen.
+- Which kind the live instance is belongs to its task and is read from the start intent once,
+  for the first instance in that task. Android hands a relaunched activity (renderer recovery,
+  a system font-size change; `fontScale` is not in `configChanges`) the last intent given to
+  `setIntent`, and `AlphaConnectionPlugin` keeps the Cloud sign-in return there
+  (`CloudDelegationCallbackInstrumentedTest` relies on exactly that). Reading the kind again
+  after a relaunch would call a home-type instance standard; the front start would then come
+  back to the instance that asked, and a later notice tap or sign-in return would be delivered
+  without Alpha coming to the front. The round-8 review found this in the first version of the
+  hand-off and changed it to keep the kind per task id.
+- `MainActivity` is exported, so the marker extra of the front start is read inside a
+  `try`/`catch`: an intent whose extras do not unparcel in this process is treated as not ours.
+  The instance that hands off never removes a task it shares with the live instance.
+
+What follows from keeping the first instance:
+
+- When the role is granted to an Alpha that is already running, the running standard-type
+  instance stays the page owner until its task or the process ends. During that time each HOME
+  press creates and immediately finishes a home-type instance; the next cold start (after a
+  reboot, or after the task is removed) is a home-type instance from the beginning. On an
+  image where Alpha is HOME from boot this transitional state does not arise.
+- The standalone flavor has no HOME filter and is unchanged: `singleTask` already guarantees
+  one instance there.
+
+Evidence: `SettingsRolesInstrumentedTest` (one resumed instance, the same object and page with
+its unsent draft, and one `MainActivity` record in `dumpsys activity activities`, after the
+role is accepted, after three HOME presses and after an explicit start) and
+`LauncherHomeInstrumentedTest` (one resumed instance after every HOME return; and
+`aRelaunchHoldingAReplacedIntentKeepsOneInstanceThatLaterStartsBringToTheFront`: after a
+relaunch that holds an intent of the other kind, the kind is unchanged and an explicit start
+and the HOME key each bring the one instance to the front over Android Settings). Both were
+compiled at this source and not run. `test/gesture-zones-single-instance.test.mjs` holds the
+source shape (class S); it shows nothing about Android's behaviour. The second instance is what round 7 observed; the
+explanation by activity type is how AOSP assigns the home type to a HOME start and matches
+tasks for `singleTask`, which is platform implementation, not a public API contract, and was
+not re-measured here. The hand-off itself has no emulator result yet. Whether the short-lived
+HOME instance is visible as a flicker during the transitional state is a device observation.
+
 ## Required Clock provider
 
 The Alpha overlay explicitly includes AOSP `DeskClock` alongside its launcher. Keep this module in the selected product even when generic upstream de-bloating changes. A missing Clock handler is not successful MVP alarm acceptance. Both standalone and launcher APKs use the installed provider and expose honest unavailable results; neither bundles Clock inside its APK or owns exact-alarm delivery.

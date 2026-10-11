@@ -33,6 +33,7 @@ the required evidence rather than treating a successful APK build as acceptance.
 - [Cloud deployment and authentication findings](docs/cloud-production-validation.md)
 - [Browser autofill and Proton integration](docs/browser-autofill-integration.md)
 - [Calendar and reminder contracts](docs/calendar-reminder-contract.md)
+- [Gesture zones and the notifications panel](docs/gesture-zones.md)
 
 - [Working PRD](docs/prd.md)
 - [Detailed implementation plan](docs/implementation-plan.md)

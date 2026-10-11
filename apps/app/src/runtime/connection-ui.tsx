@@ -921,7 +921,12 @@ export const connectionController = {
     return true;
   },
   open() { update({ open: true, purpose:'agent', error: '' }); },
-  openCloudAccount(){update({open:true,purpose:'cloud-account',message:'',error:''});},
+  openCloudAccount(){
+    update({open:true,purpose:'cloud-account',message:'',error:''});
+    // Production Android: whether a Cloud sign-in is kept on this phone decides if the panel offers
+    // "Retry saved connection". A local keystore read; no Cloud request and nothing is restored.
+    if(isAndroid&&!testMocksEnabled&&!state.cloudAccount)void cloudCredentialStore.read('production').then(credential=>{if(state.open&&state.purpose==='cloud-account'&&!state.cloudAccount)update({residentSavedCredential:!!credential?.credentialId});}).catch(()=>{/* Sign-in stays available. */});
+  },
   close() { if(isAndroid && !testMocksEnabled && !state.session&&!localAppsSelected()){if(state.purpose==='cloud-account'&&!state.busy)update({purpose:'agent',message:'',error:''});return;} if (!state.busy) {if(state.purpose!=='cloud-account')clearPersonalSetup();update({ open: false,purpose:'agent' });} },
   cancel() { operation?.abort(new DOMException('Cancelled', 'AbortError')); cloud.cancelLogin(); },
   async initialize() {
@@ -1418,11 +1423,20 @@ export function ConnectionChooser() {
   if (!snapshot.open) return null;
   const actionReview=snapshot.session&&snapshot.phoneActionsAvailable&&<details open={snapshot.actionHistory.some(item=>item.state==='reconciliation_required')}><summary>Phone action history</summary><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory()}>Refresh actions</button><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory(true)}>Sync recorded receipts</button>{snapshot.actionHistory.map(item => <section key={item.id} className="alpha-connection-agent"><strong>{item.title}</strong>{item.detail&&<span>{item.detail}</span>}<span>{item.outcome}{item.timestamp&&` · ${item.timestamp}`}</span>{item.state === 'pending' && <button disabled={snapshot.busy} onClick={() => void connectionController.rejectAction(item.id)}>Reject proposal</button>}{['executing','reconciliation_required'].includes(item.state) && <><p>After checking this phone, confirm whether this exact action happened.</p><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'applied')}>I verified it happened</button><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'not_applied')}>I verified it did not happen</button></>}</section>)}</details>;
   const conversations=snapshot.session&&<details><summary>Conversation history</summary><p>Load from this agent only. Restoring replaces the visible chat and draft; it does not run past actions.</p><button disabled={snapshot.busy} onClick={() => void connectionController.newConversation()}>New conversation</button><button disabled={snapshot.busy} onClick={() => void connectionController.listHistory()}>Load conversations</button>{snapshot.conversations.map(item => <section key={item.id} className="alpha-connection-agent"><strong>{item.title}</strong><button disabled={snapshot.busy} onClick={() => void connectionController.restoreHistory(item.id)}>Restore conversation</button></section>)}</details>;
+  // The account panel Inbox opens ("Connect Eliza Cloud"). On production Android a sign-in kept on
+  // this phone is offered here exactly as Settings › Agent connection offers it: "Retry saved
+  // connection" starts the on-device agent with that sign-in (connectResident, never a remote or
+  // Cloud-hosted agent), only when the owner asks. Until that succeeds nothing says the phone is
+  // signed in or connected, a failure is shown as the error it was, and a sign-in Cloud rejected
+  // is no longer offered for retry.
+  const savedSignInRejected=snapshot.error===errorMessage({status:401});
+  const savedSignInOffered=isAndroid&&!testMocksEnabled&&!snapshot.cloudAccount&&snapshot.residentSavedCredential===true&&!savedSignInRejected;
   if(snapshot.purpose==='cloud-account')return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="cloud-account-title" tabIndex={-1} ref={panel}>
     <header><h1 id="cloud-account-title" className="serif">Eliza Cloud</h1><button aria-label="Close Cloud account" disabled={snapshot.busy} onClick={()=>connectionController.close()}><span aria-hidden="true" data-alpha-icon="/icons/lucide/x.svg" style={iconStyle("x")}/></button></header>
-    {!snapshot.cloudAccount&&<p>Sign in to use connected services such as Gmail.</p>}
+    {!snapshot.cloudAccount&&<p>{savedSignInOffered?'Retry your saved connection or sign in again to use connected services such as Gmail.':'Sign in to use connected services such as Gmail.'}</p>}
+    {savedSignInOffered&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Retry saved connection</button></div>}
     {cloudAccountControls}
-    {snapshot.message&&<p role="status">{snapshot.message}</p>}{snapshot.error&&<p role="alert" className="alpha-connection-error">{snapshot.error}</p>}
+    {snapshot.message&&<p role="status">{snapshot.message}</p>}{snapshot.error&&<p role="alert" className="alpha-connection-error">{isAndroid&&!testMocksEnabled&&savedSignInRejected?'Your saved Cloud sign-in is no longer valid.':snapshot.error}</p>}
     {snapshot.busy&&<button className="alpha-connection-cancel" onClick={()=>connectionController.cancel()}>Cancel</button>}
   </div></div>;
 

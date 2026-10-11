@@ -339,6 +339,76 @@ Result files: `test-results/r7-camp/<campaign>-<flavor>`, `test-results/calendar
 - Accepting the HOME role starts a second `MainActivity` in the home task while the first stays
   in its own task.
 
+### Round 8 follow-up to "Observed and left open" (source and browser tests only)
+
+Branch `claude/r8-ui-defects`. Nothing in this subsection was run on an emulator: the browser
+results are class S, and the instrumented tests named here were compiled
+(`:app:compileLauncherDebugJavaWithJavac`, `:app:compileLauncherDebugAndroidTestJavaWithJavac`,
+`:app:compileStandaloneDebugAndroidTestJavaWithJavac`) and not run. The four observations above
+stand as what the round-7 APKs do; this records what changed in source afterwards.
+
+| Round-7 observation | Classification | Change | Evidence at this source |
+| --- | --- | --- | --- |
+| Inbox's "Connect Eliza Cloud" panel offers only a new sign-in when a saved one exists | Plain defect, not an owner decision: the same saved sign-in was already offered in Settings | The Inbox panel offers "Retry saved connection" under the Settings panel's rules (`runtime/connection-ui.tsx`) | `saved-signin-retry.production.spec.ts` (flag-off bundle, stubbed Android bridge, both panels). `InboxDraftInstrumentedTest` restart phase asserts the Inbox offer; compiled, not run |
+| A top-edge swipe opens Android's shade, a swipe just below opens Alpha's | The zones are decided by the PRD and flow audit (the status shade is Android's); what stays with the owner is listed in [core loop status](core-loop-status.md#gesture-zones-and-the-notifications-panel-round-8) | Alpha's notifications open only from a visible handle on Home ([gesture zones](gesture-zones.md)) | `notifications-handle.spec.ts`, the accessibility sweeps. `AccessibilityInstrumentedTest` covers the zones; compiled, not run |
+| At 200% font the Home card title and app labels overlap or cut | Plain defect (PRD AP-15) | Home cards grow with their text, tile grids drop a column when labels stop fitting, both driven by the measured text scale (`runtime/text-scale.ts`, `phone.css`) | `large-text-overlap.spec.ts`; the overlap rules of `accessibility-audit.ts` over every retained view at 100% and 200% (`accessibility-sweep.spec.ts`, production sweep). `AccessibilityInstrumentedTest` reads the measured scale and checks Home overlap in the WebView; compiled, not run |
+| Accepting the HOME role starts a second `MainActivity` | Plain defect: two pages over one store, and the in-flight state stayed in the hidden one | The first live instance is kept and later starts are handed to it (`MainActivity`, "One live MainActivity") | `SettingsRolesInstrumentedTest`, `LauncherHomeInstrumentedTest`; compiled, not run |
+
+Other rows of the tables above, re-read for product defects:
+
+- `CalendarTruncation` ("Calendar results incomplete" never appears) is not a product defect at
+  this pin and not an owner decision. The class assumes "the actual native 2,000-instance cap".
+  The pinned upstream reader (`plugin-native-calendar`, `CalendarPlugin.list` at `40dbe96bd1`)
+  reads every instance in the requested range and always answers `truncated: false`, so the
+  2,002 fixture rows are all returned and nothing is hidden. The renderer's incomplete-result
+  notice (`calendar-adapter.ts`) is unreachable on Android until the reader bounds its result
+  again. The class needs either that upstream bound or retirement; it was left unchanged.
+- The first-run failures recorded as "cause not established" (the launcher `notes` restart
+  campaign, `PasswordBrowserFill`, `FilesTree`) did not recur and name no product behaviour that
+  can be checked from source. They stay open as recorded.
+- Found while checking large text: in the standalone app the app library left a 44px strip of
+  Home visible above it (the library kept the launcher's status-bar offset). Fixed in
+  `phone.css`; `large-text-overlap.spec.ts` asserts the library covers the screen.
+
+Independent review of the above (same branch, source and browser tests only; no emulator). It
+changed five things:
+
+- `NotificationsInstrumentedTest` and `NotificationChannelsInstrumentedTest` opened Alpha's
+  panel with a synthetic swipe from the top band, which the product no longer answers, so both
+  would have timed out on the next emulator run. They now go to Home and click the handle.
+- The launcher handle's margin below the status bar was computed in canvas pixels against an
+  inset in screen pixels. On a screen narrower than the 412px canvas the margin shrank (under
+  8px at 360px wide with a 48px bar) and a 100px bar overlapped the handle. The rule now divides
+  by the canvas scale; `notifications-handle.spec.ts` measures it on screen at three widths.
+- The hand-off read the live instance's kind (home or standard) from the intent the instance
+  held when it was created. A relaunch is handed the last intent given to `setIntent`, where the
+  Cloud sign-in return is kept, so after a sign-in and then a relaunch (a system font-size
+  change, renderer recovery) a home-type instance was treated as standard and a later notice tap
+  or sign-in return would have been delivered without Alpha coming to the front. The kind is
+  now kept per task id. `LauncherHomeInstrumentedTest` has a method for it; compiled, not run.
+- The hand-off could repeat without end. If the bring-to-front start missed the live instance,
+  the home-type instance still finished and left the home task empty, and Android would start
+  HOME again. The process now stops handing starts off when a front start makes a new instance,
+  cannot be made, or goes unreceived three times in a row; a new start then keeps its own
+  instance, which is the two-instance state round 7 measured. Whether the front start reaches
+  the live task on a given image is still an emulator question (logcat tag `AlphaInstance`).
+- Smaller: the front-start marker extra is read without trusting a foreign parcel, and the
+  instance that hands off never removes a task it shares with the live one.
+
+The Java at the reviewed head was compiled for both flavors (app and androidTest sources) with
+plain `javac` against the Gradle cache's dependency jars and the generated classes of an existing
+build of the same base commit, not with Gradle; no APK was assembled and no lint was run on the
+review's changes. Every native statement in this subsection is still class S.
+
+Run in review (class S): `npm run verify` exit 0 (647 node tests: 643 pass, 0 fail, 4 todo;
+bundle audit `PASS web-dist`); the production Playwright project, 183 passed; in the Chromium
+project the accessibility audit, resilience and sweep specs, `large-text-*`,
+`notifications-handle`, `home-*`, `root-view-states`, `fixtures-empty-runtime`,
+`standalone-shell`, `native-insets`, `compact-viewport` and `design`, 726 passed. The rest of
+the Chromium project was not rerun in review. With the fixed card height and the fixed four
+columns put back, `large-text-overlap.spec.ts` failed 5 of 11, so the spec does detect the
+round-7 defect.
+
 ## Emulator results at 73b973a5 (2026-10-10)
 
 Class E only (emulator instrumentation). Not physical-device, AOSP image, real-integration or
