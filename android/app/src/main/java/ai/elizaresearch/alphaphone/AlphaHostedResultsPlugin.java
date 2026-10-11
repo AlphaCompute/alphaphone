@@ -54,7 +54,7 @@ public class AlphaHostedResultsPlugin extends Plugin {
  /** A decision (or an approval that is no longer pending) withdraws its notice; it is never reposted. */
  @PluginMethod public void withdrawWorkflowApprovalNotice(PluginCall call){submit(call,()->{try{
   String id=call.getString("id");if(!WorkflowNoticeDelivery.approvalId(id))throw new IllegalArgumentException();
-  WorkflowNoticeTapsFactory.delivery(getContext()).withdrawApproval(id);WorkflowNoticeTapsFactory.create(getContext()).forget(id);call.resolve();
+  WorkflowNoticeTapsFactory.delivery(getContext()).withdrawApproval(WorkflowNoticeTapsFactory.create(getContext()),id,System.currentTimeMillis());call.resolve();
  }catch(Exception error){call.reject("Approval notice could not be withdrawn; it expires with the approval");}});}
  private static volatile String pendingRenewal;
  /** A Renew tap only opens the review for that source; it is consumed once and never renews by itself. */

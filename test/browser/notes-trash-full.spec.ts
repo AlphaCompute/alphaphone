@@ -4,7 +4,8 @@
 //
 // The refusal is the "Trash is full" dialog with Open Trash, Cancel and a separately confirmed
 // permanent delete (MVP-15, merged with PR 388). notes-trash-recovery.spec.ts covers the dialog's
-// choices; this spec only declines it.
+// choices; the entry-limit test here only declines it. The second test reaches the same refusal
+// through the byte limit (NOTES_TRASH_MAX_BYTES) rather than the entry limit.
 import {test,expect,type Page} from '@playwright/test';
 const savedRecords=(page:Page)=>page.evaluate(async()=>JSON.parse(await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw()).records as any[]);
 const trashEntries=(page:Page)=>page.evaluate(async()=>(await (await import('/src/runtime/notes-trash.ts')).readNotesTrash()).entries as any[]);
@@ -89,4 +90,96 @@ test('a deletion that would overfill Trash is refused: the note stays saved, Tra
  const everywhere=[...(await savedRecords(page)).map(note=>note.title),...(await trashEntries(page)).map(entry=>entry.note.title)].sort();
  expect(everywhere).toEqual(['Alpha','Bravo','Charlie','Delta']);
  expect((await savedRecords(page)).find(note=>note.title==='Alpha')).toEqual(full.find(entry=>entry.note.title==='Alpha').note);
+});
+
+/**
+ * The product byte limit is 30 MiB. As with the entry limit, the served policy module is the
+ * product module with only NOTES_TRASH_MAX_BYTES replaced; the entry limit stays at 10,000, so
+ * every refusal in the test below is the byte limit's. Test-only; no production seam changes it.
+ */
+async function lowerByteLimit(page:Page,limit:number){
+ let rewritten=0;
+ await page.route(/\/src\/runtime\/notes-trash-policy\.ts(\?.*)?$/,async route=>{
+  const response=await route.fetch(),source=await response.text();
+  const body=source.replace(/(NOTES_TRASH_MAX_BYTES\s*=\s*)[^;]+;/,`$1${limit};`);
+  if(body===source)throw Error('Notes Trash byte limit was not found in the served module');
+  rewritten++;await route.fulfill({response,body});
+ });
+ return ()=>rewritten;
+}
+const trashBytes=(page:Page)=>page.evaluate(async()=>new TextEncoder().encode(JSON.stringify(await (await import('/src/runtime/notes-trash.ts')).readNotesTrash())).length);
+
+test('a deletion that would push Trash past its byte limit is refused: the note stays saved, Trash is unchanged, and the confirmed choices still work',async({page})=>{
+ test.setTimeout(120_000);
+ const LIMIT=5000;
+ const rewritten=await lowerByteLimit(page,LIMIT);
+ await page.goto('/');await openNotes(page);
+ expect(rewritten()).toBeGreaterThan(0);
+ const limits=await page.evaluate(async()=>{const policy=await import('/src/runtime/notes-trash-policy.ts');return [policy.NOTES_TRASH_MAX_BYTES,policy.NOTES_TRASH_MAX_ENTRIES];});
+ expect(limits).toEqual([LIMIT,10000]);
+ // Multi-byte text: the limit counts encoded bytes, not characters.
+ const heavy='\u00e9'.repeat(1300);
+ await createNote(page,'Small','Fits in Trash.');
+ await createNote(page,'Heavy',heavy);
+ await createNote(page,'Second heavy',heavy);
+ await createNote(page,'Tiny','x');
+ await deleteNote(page,'Small');await deleteNote(page,'Heavy');
+ const full=await trashEntries(page),saved=await savedRecords(page),bytes=await trashBytes(page);
+ expect(full.map(entry=>entry.note.title).sort()).toEqual(['Heavy','Small']);
+ // Two entries of 10,000 allowed: only bytes can refuse the next one.
+ expect(bytes).toBeLessThanOrEqual(LIMIT);expect(bytes).toBeGreaterThan(LIMIT/2);
+ expect(heavy.length).toBeLessThan(LIMIT/2);expect(new TextEncoder().encode(heavy).length).toBeGreaterThan(LIMIT/2);
+
+ // A second heavy note does not fit: refused in words before anything is written.
+ await page.getByRole('button',{name:'Open Second heavy',exact:true}).click();
+ await page.getByRole('button',{name:'Delete note',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Trash is full'});
+ await expect(dialog).toBeVisible();
+ await expect(dialog).toContainText('was not deleted because Trash has no room for a restorable copy');
+ await expect(page.getByText('Second heavy moved to Trash',{exact:true})).toHaveCount(0);
+ expect(await savedRecords(page)).toEqual(saved);
+ expect(await trashEntries(page)).toEqual(full);
+ expect(await trashBytes(page)).toBe(bytes);
+ // The refusal is the typed byte-limit refusal for exactly this addition.
+ const refusal=await page.evaluate(async id=>{
+  const trash=await import('/src/runtime/notes-trash.ts');const store=await (await import('/src/runtime/browser-notes-document.ts')).openBrowserNotes();
+  const doc=await trash.readNotesTrash(),note=store.list.find((n:any)=>n.id===id) as any;
+  const entry={id:crypto.randomUUID(),note,target:await store.target(id),index:0,deletedAt:Date.now()} as any;
+  let code='',isFull=false;try{trash.addNotesTrashEntry(doc,entry);}catch(error){code=(error as any).code;isFull=trash.isNotesTrashFull(error);}
+  return {overflows:trash.notesTrashOverflows(doc,entry),code,isFull,entries:doc.entries.length+1,bytes:new TextEncoder().encode(JSON.stringify({version:1,entries:[entry,...doc.entries]})).length};
+ },saved.find(note=>note.title==='Second heavy').id);
+ expect(refusal.overflows).toBe(true);expect(refusal.code).toBe('notes-trash-full');expect(refusal.isFull).toBe(true);
+ expect(refusal.entries).toBe(3);expect(refusal.bytes).toBeGreaterThan(LIMIT);
+ await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await expect(dialog).toHaveCount(0);
+ await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Second heavy');
+ await page.getByRole('button',{name:'Back to notes',exact:true}).click();
+
+ // Bytes, not count: a small note still fits beside the same two entries.
+ await deleteNote(page,'Tiny');
+ const three=await trashEntries(page);
+ expect(three.map(entry=>entry.note.title).sort()).toEqual(['Heavy','Small','Tiny']);
+ expect(await trashBytes(page)).toBeLessThanOrEqual(LIMIT);
+
+ // A reload loses nothing, and the same deletion is refused again.
+ await page.reload();await openNotes(page);
+ expect(await trashEntries(page)).toEqual(three);
+ expect((await savedRecords(page)).map(note=>note.title)).toEqual(['Second heavy']);
+ await page.getByRole('button',{name:'Open Second heavy',exact:true}).click();
+ await page.getByRole('button',{name:'Delete note',exact:true}).click();
+ await expect(dialog).toBeVisible();
+ expect(await trashEntries(page)).toEqual(three);
+
+ // Make room the way the dialog offers: Open Trash, confirm Delete forever for the heavy entry.
+ await dialog.getByRole('button',{name:'Open Trash to make room',exact:true}).click();
+ const trash=page.locator('[data-alpha-subview="notes-trash"]');
+ await trash.getByRole('button',{name:'Delete Heavy forever',exact:true}).click();
+ await page.getByRole('button',{name:'Confirm delete forever',exact:true}).click();
+ await expect(page.getByText('Deleted forever',{exact:true})).toBeVisible();
+ await trash.getByRole('button',{name:'Close Trash',exact:true}).click();
+ await deleteNote(page,'Second heavy');
+ expect((await trashEntries(page)).map(entry=>entry.note.title).sort()).toEqual(['Second heavy','Small','Tiny']);
+ expect(await trashBytes(page)).toBeLessThanOrEqual(LIMIT);
+ expect(await savedRecords(page)).toEqual([]);
+ // The restorable copy is the exact record that was refused earlier.
+ expect((await trashEntries(page)).find(entry=>entry.note.title==='Second heavy').note).toEqual(saved.find(note=>note.title==='Second heavy'));
 });
