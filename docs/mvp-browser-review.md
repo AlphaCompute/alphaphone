@@ -31,9 +31,9 @@ A browser result is class S whatever it drives.
 
 | Class | What exists for main `dfacccb3` | What it does not show |
 | --- | --- | --- |
-| S, local | `npm run verify` exited 0 on 2026-10-10 at `53b53a0a` on branch `claude/r9-status-docs-reconcile`, which is main `dfacccb3` plus this reconciliation's documentation changes and differs from this record only by this paragraph: 643 tests, 639 passed, 0 failed, 0 skipped, 4 TODO; typecheck, the flag-off build and the production bundle audit passed (395 files, `testMocks=false`). A run started on `dfacccb3` before the documents were edited gave the same counts and exit 0. | Anything outside the repository's own tests and the flag-off web bundle. |
-| S, local Playwright | Run on 2026-10-10 on `dfacccb3` with only the documentation changes of this reconciliation in the tree, 4 workers. Chromium, 21 specs (the owning specs named in the feature sections below, `privacy-per-connection`, `accessibility-audit`, `accessibility-sweep`, `chat-voice-mode` and journeys A to F except `journey-f-hosted-result`): 595 passed, 0 failed. The whole `production` project: 174 passed and 1 failed (`accessibility-sweep.production.spec.ts`, "production landscape keeps every control on screen: live Calendar new event", a 30-second timeout on a Tab key press). That spec run again by itself passed 78 of 78. The cause of the one timeout is not established; other work was using the same host. It is recorded as a failure of the full lane, not as a pass. | The other Chromium specs, Firefox and WebKit, which were not run for this reconciliation; a real agent, account or provider. |
-| S, hosted | Browser MVP run `38107877246` on pull request #390 at `7e70ec01`, whose tree is identical to main `dfacccb3` (`git rev-parse` of both trees): Repository verification, Chromium shards 1/3, 2/3 and 3/3 and the flag-off production surface job concluded `success`; the Firefox/WebKit storage job was skipped by change detection. The push run `38109307907` at `dfacccb3` itself ran only Repository verification (`success`); its shard, storage and production jobs were skipped. Job conclusions were read through the GitHub API on 2026-10-10; test counts, logs and skipped cases inside the shards were not inspected. | Cross-engine storage at this source. Which cases a shard skipped. |
+| S, local | `npm run verify` exited 0 on 2026-10-10 at `53b53a0a` on branch `claude/r9-status-docs-reconcile`, which is main `dfacccb3` plus this reconciliation's documentation changes; later commits on that branch change these two documents and the MVP-07 ledger entry only: 643 tests, 639 passed, 0 failed, 0 skipped, 4 TODO; typecheck, the flag-off build and the production bundle audit passed (395 files, `testMocks=false`). A run started on `dfacccb3` before the documents were edited gave the same counts and exit 0. | Anything outside the repository's own tests and the flag-off web bundle. |
+| S, local Playwright | Two runs on 2026-10-10, each on `dfacccb3` with only documentation changes in the tree, 4 workers. First run (the reconciliation): the whole `production` project gave 174 passed and 1 failed (`accessibility-sweep.production.spec.ts`, "production landscape keeps every control on screen: live Calendar new event", a 30-second timeout on a Tab key press); that spec run again by itself passed 78 of 78. The same run reported 595 passed for the Chromium list below; that list has 592 cases, so the figure is not reproduced and is not relied on. Second run (the independent review of this reconciliation, at `c039780d` plus its documentation corrections): Chromium, 21 specs (the owning specs named in the feature sections below, `privacy-per-connection`, `accessibility-audit`, `accessibility-sweep`, `chat-voice-mode` and journeys A to F except `journey-f-hosted-result`): 592 cases, 591 passed, 0 failed, 1 skipped (`browser-host-disclosure.spec.ts`, which skips itself without `VITE_LOCAL_AGENT=1`). The whole `production` project: 175 passed, 0 failed. The timeout of the first run was not reproduced and its cause is not established; other work was using the same host both times. Both results of the full lane stand as recorded: one run with a failure and one without. | The other Chromium specs, Firefox and WebKit, which were not run for this reconciliation; a real agent, account or provider. |
+| S, hosted | Browser MVP run `38107877246` on pull request #390 at `7e70ec01`, whose tree is identical to main `dfacccb3` (`git rev-parse` of both trees): Repository verification, Chromium shards 1/3, 2/3 and 3/3 and the flag-off production surface job concluded `success`; the Firefox/WebKit storage job was skipped, because `browser.yml` runs it only on a manual dispatch with the cross-browser input. The push run `38109307907` at `dfacccb3` itself ran only Repository verification (`success`); its shard and production jobs were skipped because `browser.yml` does not run them on a push, and its storage job for the same reason as above. Job conclusions were read through the GitHub API on 2026-10-10; test counts, logs and skipped cases inside the shards were not inspected. | Cross-engine storage at this source. Which cases a shard skipped. |
 | B, hosted | Android foundation run `38109307871` at `dfacccb3`: the `build` job concluded `success`, including "Build flag-off distribution APKs" (`npm run android:build -- --allow-unpackaged-runtime --skip-instrumentation`) and "Require test-mock-free distribution" (four manifest rows, each with the flag-off bundle audit passed). It installs the speech runtime as explicitly unqualified and stages no resident runtime, so its releases are `distributable: false`. Step conclusions were read through the GitHub API; logs and artifacts were not inspected, and the artifacts expire after 3 days. [Current status](mvp-current-status.md) does not record this run. | A distributable build, a signed build, installation, or any behavior of an installed APK. |
 | E, I, R, D | None at the current source. | — |
 
@@ -54,7 +54,7 @@ the undated sections before this reconciliation, and what is true on main.
 | Workflows and digests: "schedules" | Phone-authored typed workflows have manual triggers only and are never scheduled. Scheduled execution exists for digests; a time that passes while the host is not running is recorded once as missed and never run later. | `apps/app/src/runtime/phone-workflow-authoring.ts`, `test/digest-occurrence-delivery.test.mjs` |
 | Notes: no Trash mentioned | Deleted text, checklist, link and voice notes go to a Trash that empties after 3 days (P-06). | `apps/app/src/prototype/notes-trash-adapter.ts` |
 | Browser: per-tab behavior without persistent sign-ins | Native tabs keep sign-ins in one persistent profile with an ephemeral private tab (P-04); an integrated password manager with an Android Autofill provider exists (P-05). The browser build renders sandboxed iframes and states that Autofill is unavailable. | [current status](mvp-current-status.md), `test/browser/journey-e-browser-credentials.spec.ts` |
-| Maps: a provider is assumed | No flag-off build has a Maps provider; the user reads "Connect a Maps provider to search places and plan routes." (A-23). | `apps/app/src/prototype/maps-adapter.ts`, `test/browser/journey-core-loops.production.spec.ts` |
+| Maps: a provider is assumed | No flag-off build has a Maps provider; the user reads "Connect a Maps provider to search places and plan routes." (A-23). | `apps/app/src/maps/regional-provider.ts` (provider configuration), `test/browser/journey-core-loops.production.spec.ts` (the sentence, which comes from the pinned Maps plugin) |
 | "Explicit agreement on ... messaging scope"; "Telegram/Discord scope conflicts require product disposition" | Decided on October 7 (P-02): Gmail/Email is in scope; Telegram and Discord are deferred. Powered-off scheduling (A-09) is still pending. | [decisions](decisions.md#october-7-owner-product-decisions) |
 | Axe-core 4.14.0 scans of 20, 86 and 102 states | axe-core is not a dependency of this repository (`git log -S axe-core -- package.json` finds no commit that added it), so those scans cannot be repeated from a clean checkout. The automated checks on main are the dependency-free rules in `test/browser/accessibility-audit.ts` and the accessibility specs that use them. | `test/browser/accessibility-audit.ts`, `accessibility-sweep.spec.ts`, `accessibility-sweep.production.spec.ts` |
 | "PR 317 remains unqualified", "the separate unmerged runtime upgrade in PR 317" | PR 317 merged on 2026-10-06 as `c5e11759`. The pin it adopted has since been replaced. | GitHub, `git log` |
@@ -119,8 +119,10 @@ Historical result (source revision not recorded): the authenticated browser-host
 ten then-existing per-connection privacy cases passed, along with type checking. The
 settled host Privacy screenshot was inspected at 412 × 915. Evidence was written to the
 `alpha-live-settings-review` checkout under `artifacts/settings-review/` (not in Git).
-On main the host regression (`browser-host-disclosure.spec.ts`) is still run by the
-"Exercise synthetic local-agent speech profile" step of `browser.yml`, whose transport is
+On main the host regression (`browser-host-disclosure.spec.ts`) is run by the
+"Exercise synthetic local-agent speech profile" step of `browser.yml`, on the first shard
+and only when the change gate selects the speech profile; without `VITE_LOCAL_AGENT=1` the
+spec skips itself, so an ordinary Chromium run does not exercise it. The step's transport is
 synthetic and cannot contact a real inference provider. Physical/native acceptance
 remains separate.
 
@@ -450,7 +452,9 @@ identities belong to those revisions. The evidence files it names were written t
 directories of local checkouts and are not in this repository. Where code has overtaken a
 statement, the correction is in [What the code has overtaken](#what-the-code-has-overtaken);
 the historical text itself is not edited, apart from the "(historical)" marker added to
-each heading on 2026-10-10. Checkpoints are in the order they stood in before, newest
+each heading on 2026-10-10 and one removal: the October 5 surface table that closed
+"Integrated source checkpoint" was replaced by the reconciled
+[surface inventory](#surface-inventory), as that checkpoint notes. Checkpoints are in the order they stood in before, newest
 first for the most part.
 
 ## Consolidated current checkpoint — 2026-10-06 (historical)
@@ -1023,7 +1027,8 @@ in the `alpha-live-settings-review` checkout. A fresh full Chromium campaign on
 follow-up below and do not qualify that later source.
 
 The surface table that followed this checkpoint was replaced on 2026-10-10 by the
-reconciled [surface inventory](#surface-inventory); its October 5 text is in Git history.
+reconciled [surface inventory](#surface-inventory); its October 5 text is in Git history
+(`docs/mvp-browser-review.md` at main `dfacccb3`).
 
 ## Subview accessibility follow-up — October 5 (historical)
 
