@@ -1,6 +1,7 @@
 import {readMediaCopyIntent,admitMediaCopyIntent,acknowledgeMediaCopyIntent,mediaCopyIntentDocument,type MediaCopyIntent} from '../runtime/media-copy-intent';
 import {createInlineModal} from '../runtime/inline-modal';
 import {reviewContentQuestion} from '../browser/content-question';
+import {createCaptureRevisions} from './context-selection';
 import {openScanDocument,pickNativeScanImage} from './scan-document';
 import {openVideoEditReview} from './video-edit-review';
 import {openCameraImageImport} from './browser-image-import';
@@ -111,6 +112,8 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   }:undefined;
   if(scanApi)prototype.api=scanApi;
   let closeQuestion:(()=>void)|undefined;
+  /** Agent-context identity of the open capture: its id and a session-local revision, never the library's own. */
+  const captureSelection=createCaptureRevisions();
   let closeScan:(()=>void)|undefined;
   const cancelScan=()=>{closeScan?.();closeScan=undefined;};
   let api: Bag | undefined;
@@ -342,7 +345,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       const updated = {...row,...result}; captures = captures.map(item=>item.id===row.id?updated:item);
       const stillSelected = owner.isActive() && owner.get('photos').open === row.id;
       if (stillSelected) preview = updated;
-      owner.set({...(stillSelected ? {nativePhotoSelection:{kind:updated.kind==='video'?'video':'photo',id:updated.id,revision:updated.revision}} : {}),nativeCaptureRevision:Date.now()});
+      owner.set({...(stillSelected ? {nativePhotoSelection:captureSelection(updated)} : {}),nativeCaptureRevision:Date.now()});
       owner.toast(updated.favorite?'Added to favorites':'Removed from favorites');
       albumKey='';++albumEpoch;void loadCounts(owner);
     } catch (error) { if (!disposed) owner.toast(error instanceof Error?error.message:'Favorite could not be changed.'); }
@@ -420,7 +423,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       const row = normalize(await library.read({ id: nativeId(id) }));
       if (disposed || currentApi.get('photos').open !== id) return;
       preview = row;
-      currentApi.set({ nativePhotoSelection: { kind: row.kind === 'video' ? 'video' : 'photo', id: row.id, revision: row.revision } });
+      currentApi.set({ nativePhotoSelection: captureSelection(row) });
     } catch {
       if (!disposed && currentApi.get('photos').open === id) {
         currentApi.set({ open: null, nativePhotoSelection: null });
@@ -637,9 +640,29 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     closeQuestion=reviewContentQuestion({name:'Camera frame',text:'',current:()=>token===epoch&&active(),compose:draft=>owner.composeContentQuestion(draft),image:async signal=>{const photo=await camera.capturePhoto({format:'jpeg',quality:85,saveToGallery:false});signal.throwIfAborted();if(!photo.base64)throw Error('Camera frame unavailable.');return new Blob([Uint8Array.from(atob(photo.base64),char=>char.charCodeAt(0))],{type:'image/jpeg'});}});
     return true;
   }
+  /** The reviewed item is still the listed one at the revision the review started with:
+   * an edited, replaced or removed capture ends its review instead of continuing under the same id. */
+  function sameCapture(selected:SavedPhoto):boolean{
+    const live=[preview,...captures,...albumRows].find(row=>row?.id===selected.id);
+    return !!live&&!live.trashed===!selected.trashed&&(selected.mutationRevision&&live.mutationRevision?live.mutationRevision===selected.mutationRevision:live.revision===selected.revision);
+  }
   function askCapture(selected:SavedPhoto,owner:Bag):boolean{
     closeQuestion?.();
-    closeQuestion=reviewContentQuestion({name:selected.kind==='video'?'Video preview frame':'Selected photo',text:'',current:()=>!disposed&&!document.hidden&&owner.isActive()&&owner.get('photos').open===selected.id,compose:draft=>owner.composeContentQuestion(draft),image:async signal=>{const row=await library.read({id:nativeId(selected.id)});signal.throwIfAborted();if(selected.mutationRevision?row.mutationRevision!==selected.mutationRevision:row.revision!==selected.revision)throw Error('Photo changed.');if(!/^(blob:|data:image\/)/.test(row.image))throw Error('Choose a local image.');return (await fetch(row.image,{signal})).blob();}});
+    const live=()=>!disposed&&!document.hidden&&owner.isActive()&&owner.get('photos').open===selected.id&&sameCapture(selected);
+    const unchanged=(row:SavedPhoto)=>!row.trashed===!selected.trashed&&(selected.mutationRevision?row.mutationRevision===selected.mutationRevision:row.revision===selected.revision);
+    closeQuestion=reviewContentQuestion({name:selected.kind==='video'?'Video preview frame':'Selected photo',text:'',current:live,compose:draft=>{void (async()=>{
+      // The library is read again before the draft is placed: an item trashed, edited or removed
+      // since the review started (here or by another app) adds nothing to the conversation.
+      let row:SavedPhoto|undefined;
+      try{row=await library.read({id:nativeId(selected.id)});}catch{/* removed or unreadable: handled as changed below */}
+      if(disposed||!owner.isActive())return;
+      if(owner.get('photos').open!==selected.id||document.hidden){owner.toast('The photo view changed. Nothing was added to your conversation.');return;}
+      if(row&&unchanged(row)&&live()){owner.composeContentQuestion(draft);return;}
+      owner.toast('This photo changed or is no longer available. Nothing was added to your conversation.');
+      // Leave the stale viewer so the changed item is neither shown nor shared as it was.
+      closeVideo();if(preview?.id===selected.id)preview=undefined;reading='';owner.set({open:null,nativePhotoSelection:null,sheet:null,nativeCaptureRevision:Date.now()});
+      void refresh();void loadTrash(owner);void loadCounts(owner);
+    })();},image:async signal=>{const row=await library.read({id:nativeId(selected.id)});signal.throwIfAborted();if(!unchanged(row))throw Error('Photo changed.');if(!/^(blob:|data:image\/)/.test(row.image))throw Error('Choose a local image.');return (await fetch(row.image,{signal})).blob();}});
     return true;
   }
   captureQuestion=item=>{
