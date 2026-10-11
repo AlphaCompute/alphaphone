@@ -86,7 +86,22 @@ VoicePermissionRevoke, LocalVoiceRecordingLimit, ResidentEgressRedaction) are re
 there with the command of the campaign that owns them; text-scale, bookmark and sign-in restart
 phases run through `scripts/test-native-restart.mjs`. Classes that assume a test-mocks app
 build (ConnectionChooser, BrowserWebFeatures, CloudVoice and the other loopback-fixture
-classes) are refused without `--test-mocks` instead of reporting `skipped`.
+classes) are refused without `--test-mocks` instead of reporting `skipped`. The reading
+classes that give the product a loopback HTTP speech route (BrowserReading,
+BrowserSensitiveReading, BrowserIsolatedReading, BrowserUnsupportedReading) are among them:
+a build without test mocks answers "Select an available speech route before reading" first,
+which is the correct refusal when no HTTPS route exists.
+
+Classes that assert a disposable secondary Android user (HostedProcessRestart,
+HostedBackgroundWorker; both also need `--test-mocks` for their loopback HTTP fixture) run in
+the runner's secondary-user phase. Per variant it creates a fresh user with the upstream
+lifecycle helper the permission, restart and Calendar campaigns use, makes the two installed
+packages available to it (`cmd package install-existing --user N`), runs each class and each
+of its phases there (`am instrument --user N`), removes the packages from that user and lets
+the helper switch back to the owner and remove the user. `results.json` lists each such user
+under `secondaryUsers`; a user that is not proven removed fails the run and the console names
+the recovery command. RealClock needs AOSP Clock's own notification permission, which the
+runner grants (`grantOther` in the registry); the fixture is qualified for API 35 only.
 
 `--home-role` is the runner's one phase that changes a device role, and it runs only with
 `--owned-emulator` on the launcher variant:

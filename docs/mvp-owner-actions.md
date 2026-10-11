@@ -119,8 +119,13 @@ this host runs arm64 images only):
 | 17 | Workflows, upgrade and Maps | `node scripts/android-workflow-native.mjs` (environment in the [verification guide](verification.md)); `node scripts/test-installed-upgrade.mjs` from agreed baselines; `node scripts/maps/test-native-recovery.mjs permission` | J04 (J04-5 native) | MVP-18, 31, 32, 42 |
 | 18 | On-device speech, only if A-24 keeps it required | `LocalSpeechInstrumentedTest` on arm64-v8a and on an x86_64 emulator or device through the requalification tooling in `scripts/local-speech/README.md`. No workflow runs it, and this host cannot run x86_64. | B (B-7) | MVP-23, 39 |
 
-Campaign 6 and the hosted classes:
-HostedProcessRestart, HostedBackgroundWorker, BrowserReading, BrowserSensitiveReading and BrowserIsolatedReading use loopback HTTP fixtures that only a test-mocks app build admits, so the runner refuses them without `--test-mocks`; the two hosted classes run in a disposable secondary user the runner creates and removes.
+Campaign 6 and the hosted classes: HostedProcessRestart, HostedBackgroundWorker, BrowserReading,
+BrowserSensitiveReading and BrowserIsolatedReading use loopback HTTP fixtures that only a
+test-mocks app build admits (any other build answers "HTTPS required" or asks for a speech
+route), so the runner refuses them without `--test-mocks` and they are not default classes.
+The two hosted classes also assert a disposable secondary user; since round 7 the runner
+creates and removes that user itself:
+`npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN --test-mocks --classes HostedProcessRestart,HostedBackgroundWorker`.
 No run of that phase is recorded, so D-14 and the hosted half of F-15 have a runner and
 no result.
 

@@ -171,7 +171,7 @@ public final class PasswordBrowserFillInstrumentedTest {
    assertEquals("Framework observed the selected provider",android.content.ComponentName.unflattenFromString(component),manager.getAutofillServiceComponentName());
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
     try{
-    AppNavigation.liveMode();host(AppNavigation.request("Browser"));waitHost(AppNavigation.selected("Browser"));
+    AppNavigation.liveMode();host(AppNavigation.request("Browser"));waitHost(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();
     // AlphaBrowser loads lazily and registers its callback when the first tab
     // opens. Observe only after that registration, preserving its callback.
     page("https://example.com/?alpha_password_save="+token);

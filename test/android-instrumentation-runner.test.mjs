@@ -263,6 +263,8 @@ function fakeEmulator({ stock = "com.android.launcher3", mode = "pass" } = {}) {
       const cls = args[args.indexOf("class") + 1].split("#")[0]; // A phase names one method of the class.
       // A role-requesting class that forgets to restore leaves Alpha as HOME.
       if (mode === "requests-leaves-home" && cls === C("SettingsRoles") && !args.includes("log")) { state.holder = PACKAGE; state.activity = `${PACKAGE}/.MainActivity`; }
+      // -3 is an assumption failure: every method of the class skipped by its own gate.
+      if (mode === "all-skipped" && cls === C("BrowserDownload")) return block(cls, "m", 1) + block(cls, "m", -3) + done();
       return block(cls, "m", 1) + block(cls, "m", 0) + done();
     }
     return "";
@@ -466,4 +468,18 @@ test("declared permissions are granted after isolation, and a failed listing is 
   assert.ok(body.indexOf("classIsolationCommands(user)") < body.indexOf("spec.grant"), "grants follow the data clear, which revokes them");
   assert.ok(body.indexOf("spec.grant") < body.indexOf("spec.grantOther"));
   assert.match(body, /-listing\.txt/);
+});
+
+test("a class whose every method is skipped by its gate is recorded as skipped, a skipped phase as failed", async () => {
+  // Round 7: BrowserDownload on a build without test mocks was recorded "failed" although the
+  // verification guide promises "skipped" for a class skipped by its own assumption gate.
+  const dir = apkDir(), emulator = fakeEmulator({ mode: "all-skipped" });
+  try {
+    const options = parseInstrumentationArgs(["--owned-emulator", "--avd", "fixture-avd", "--serial", "emulator-5554", "--variants", "standalone", "--classes", "Shell,BrowserDownload", "--apk-dir", dir, "--output", path.join(dir, "out")]);
+    const result = await runLeased({ options, serial: "emulator-5554", adb: emulator.adb, timing });
+    assert.deepEqual(result.classes.map(row => [row.class.split(".").at(-1), row.status]), [["ShellInstrumentedTest", "passed"], ["BrowserDownloadInstrumentedTest", "skipped"]]);
+    assert.equal(result.passed, false, "a skipped class is not a pass");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  const runner = fs.readFileSync("scripts/android-instrumentation.mjs", "utf8");
+  assert.match(runner, /row\.status === "passed" \? "passed" : spec\.phases \? "failed" : row\.status/);
 });
