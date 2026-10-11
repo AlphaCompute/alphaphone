@@ -239,6 +239,80 @@ Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
 
+## Round 10 (2026-10-11): the strict build chain at pin `13c98575987a`, on a development machine
+
+Build evidence only, from one macOS arm64 development machine at product source `2560eead`
+plus this round's changes. Nothing was installed or run on an emulator or device, no
+workflow was dispatched, and **no APK from these runs is distributable or was kept**: two
+inputs were local substitutes, as named below. Raw logs were not committed.
+
+What the strict chain (`npm run android:build:local`, no override) needs, and where it
+stops on a clean checkout:
+
+| Order | Input | Supplied by | State on a clean checkout |
+| --- | --- | --- | --- |
+| 1 | Pinned `vendor/eliza` | script (`git submodule update`) | present |
+| 2 | Speech AAR matching `runtime-manifest.json` | the reviewed AAR: a person (A-24, MVP-23). A local rebuild: scripts, with `--allow-unqualified-runtime` | missing; the preflight exits 2 here |
+| 3 | Reviewed ARM64 embedding host libraries | a person (see below) | missing; `agent:build-embedding-host` exits 3 here |
+| 4 | Prepared runtime source | script (`agent:prepare`) | produced |
+| 5 | Workflow worker artifact | script (`agent:build-workflow-worker`) | produced |
+| 6 | Staged runtime payload and embedding model | script (`agent:stage-android`) | produced |
+| 7 | Notices listing the packaged runtime | script (`licenses:packaged-runtime`, new in the chain) | produced |
+| 8 | Gradle verification metadata | committed | present |
+| 9 | Release signer and signing values | a person (A-06) | unset; the build completes unsigned |
+
+The first input that needs a person is the qualified speech AAR (step 2). With a locally
+built, unqualified speech runtime in place, the first step that stops is the embedding
+host (step 3), and it is the only one of the three that stops the chain: unqualified speech
+and an unset signer leave it running and make its releases `distributable:false`.
+
+The embedding host. `qualified-host.json` names three libraries by SHA-256; they are not in
+Git and were not found on this machine. Rebuilt here from the pinned engine
+(`elizaOS/llama.cpp` at `ea8b3f2d`, the gitlink of the pin) with NDK `29.0.13113456` and
+CMake 4.0.3: `libc++_shared.so` matched the reviewed bytes exactly (which identifies the
+NDK), `libelizainference.so` came out at 6,208,400 bytes against the reviewed 6,199,248
+and `libelizavoicejni.so` at 1,016,632 against 1,016,376. The rebuilt libraries contain the
+absolute build directory (183 source paths in the first, 5 in the second), and the size
+differences (9,152 and 256 bytes) are about 50 bytes per embedded path, which is what a
+shorter build directory would give. The
+reviewed build's directory is recorded only in its receipt, which is not in the
+repository, so no script can reproduce those bytes. With the new
+`prepare-embedding-host.mjs --remap-build-path`, two builds in different directories were
+byte-identical to each other (6,187,152 and 1,009,560 bytes; hashes in
+`android/embedding-host/build-toolchain.json` under `unqualifiedCandidateMeasurement`).
+Those bytes are not reviewed, not qualified and not staged by any script.
+
+How far the chain got. With an unqualified speech runtime copied from an earlier round's
+worktree and, for this run only, the unreviewed local rebuild admitted through an
+uncommitted edit of `qualified-host.json` (both reverted afterwards):
+
+- `npm run agent:prepare`, `npm run agent:build-workflow-worker` and
+  `npm run agent:stage-android` each exited 0 at the pin.
+- `npm run android:deps:write-verification` ran the ten tasks of `VERIFIED_TASKS` with
+  `-PELIZA_ALLOW_UNPACKAGED_RUNTIME=0`: `BUILD SUCCESSFUL`, 1,276 tasks executed.
+- `npm run android:build` with no option then exited 0 twice with dependency verification
+  enforced. Both flavors: debug and unsigned release APKs, both instrumentation APKs, lint,
+  and `verify-apks` with the resident runtime `PACKAGED` (1,120 verified entries per
+  release, 1,121 per debug APK, upstream commit `13c98575987a`), bundle audit passed.
+- The first of those two runs recorded the releases not distributable for five reasons. One
+  was a chain defect: "notices lack the packaged runtime", because nothing in
+  `android:build:local` ran `generate-licenses.mjs --packaged-runtime` (the hosted
+  resident job does). With that step added (660 entries, 66 flagged, exit 0) the second
+  run recorded `runtimeNotices: true` and four reasons, all of which need a person: speech
+  native bytes not admitted, speech functional acceptance pending or failed, unsigned
+  release, release signer unset.
+- The build wrote `artifacts/sbom/alphaphone.cdx.json` (1,878 components: 71 Gradle
+  coordinates with checksums, 1,154 staged files, Bun, 550 bundled packages, 4 APKs).
+
+Afterwards, on the restored checkout, `npm run android:build:local` exited 3 at
+`agent:build-embedding-host` in under a second with the message naming who is needed, and
+with the speech AAR removed the preflight exited 2 before it.
+
+Not done and not claimed: a strict build with the reviewed embedding host and a qualified
+speech runtime; any signed release; any Linux or hosted build with the verification
+metadata; any install. `resident-android.yml` (dispatch-only) stages no embedding host and
+so cannot pass `:app:verifyEmbeddingHost` either; it was not changed or dispatched.
+
 ## Round 8 (2026-10-11): runner cases, fixes and hosted jobs, none run
 
 Branch `claude/r8-runner-ci`. This section records source, compile and host-runtime checks

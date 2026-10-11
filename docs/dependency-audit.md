@@ -12,7 +12,10 @@ node scripts/dependency-audit.mjs            # network: npm audit against packag
 node scripts/dependency-audit.mjs --write    # network: also rewrite docs/dependency-audit.snapshot.json
 node scripts/dependency-audit.mjs --offline  # the committed snapshot only
 node --test test/dependency-audit.test.mjs   # offline; part of npm test
-node scripts/generate-sbom.mjs               # offline: artifacts/sbom/alphaphone.cdx.json
+node scripts/generate-sbom.mjs               # offline: artifacts/sbom/alphaphone.cdx.json (source pins)
+node scripts/generate-sbom.mjs --packaged-runtime --apks artifacts   # offline: the release-candidate document; npm run android:build writes it
+node scripts/gradle-verification.mjs --check # offline; part of npm test (npm run android:deps:check)
+node scripts/gradle-verification.mjs --write # network, full Gradle build: rewrite the verification metadata (npm run android:deps:write-verification)
 node scripts/ci/read-required-checks.mjs     # network, read-only: enforced rules on main vs the intended ruleset
 ```
 
@@ -90,21 +93,75 @@ commit always yields the same bytes (`test/sbom.test.mjs`).
 | Bundled font files | `apps/app/public` | SHA-256 of the committed bytes |
 | OCR WebAssembly cores | `licenses/tesseract-core/sources.json` | SHA-256 |
 | Web speech model and ONNX Runtime Web files | `config/browser-speech.json` | SHA-256 |
-| Android runtime classpath (71 coordinates) | `licenses/android-runtime-classpath.json` | **none** |
+| Android runtime classpath (71 coordinates) | `licenses/android-runtime-classpath.json` | SHA-256 from `android/gradle/verification-metadata.xml`: the archive for 60 coordinates, the metadata file for the 11 that publish no archive |
+| ARM64 embedding host libraries and embedding model | `android/embedding-host/qualified-host.json` | SHA-256 of the reviewed bytes (a pin; the libraries are not in Git) |
 | Speech AAR and native libraries per ABI | `android/local-speech/runtime-manifest.json` | SHA-256 |
 | Speech model and source archives, lexicon | pinned upstream `local-speech` manifests | SHA-256 |
 | elizaOS | `upstream.lock.json` | git commit |
 
-Gaps, stated in the document itself:
+### Release-candidate document
 
-- Gradle artifacts have no hashes. Gradle is not run by the generator and the build has no
-  dependency verification metadata (`android/gradle/verification-metadata.xml`). Enabling it
-  needs a network Gradle run and a review of every artifact; it was not done here.
-- The staged resident runtime (Bun, bundled agent and workflow-worker packages, PGlite, the
-  musl loader) exists only after `npm run agent:stage-android`. It is verified per APK by
-  `scripts/verify-packaged-runtime.py` and listed by `generate-licenses.mjs
-  --packaged-runtime`; the SBOM names it as not covered.
-- The SBOM is a source-pin inventory. It does not scan APK or web bundle bytes.
+The default document needs no build. Two options, both offline, extend it on the machine
+that built a candidate; `npm run android:build` passes them itself and writes
+`artifacts/sbom/alphaphone.cdx.json` beside the APKs it has just verified:
+
+- `--packaged-runtime` reads the staged resident runtime: every staged file under
+  `android/app/src/main/assets/agent` and `android/app/src/main/jniLibs` by SHA-256, Bun,
+  and every npm package bundled into the agent and the workflow worker with its version
+  and licence (the same list as `generate-licenses.mjs --packaged-runtime`). A bundled
+  package has no hash of its own: its bytes are inside the bundle files, which are hashed.
+  A staged embedding host library or model that differs from its pin is an error.
+- `--apks <dir>` reads `apk-manifest.json` from `scripts/verify-apks.mjs` and lists each
+  APK with its SHA-256, signer and the `distributable` verdict recorded there. It refuses an
+  APK that is missing or no longer matches. A debug APK is always listed as not
+  distributable.
+
+Measured on a development machine on 2026-10-11 at elizaOS `13c98575987a` (developer
+inputs: an unqualified local speech runtime and an unreviewed local rebuild of the
+embedding host, so the four APKs are not distributable): 1,878 components, of which 71
+Gradle coordinates, 1,154 staged files, Bun, 550 bundled packages and 4 APKs. That run is
+an inventory of one local build, not a release.
+
+What the document still does not do, stated in the document itself:
+
+- It lists an APK by its hash. It does not unpack one; `scripts/verify-apks.mjs` and
+  `scripts/verify-packaged-runtime.py` inspect APK contents.
+- The engine library, the JNI host and the embedding model carry no licence in this
+  inventory ("not recorded", flagged `unverified`).
+- Gradle plugin and build-tool artifacts are verified by Gradle but are not SBOM
+  components: the SBOM lists what ships.
+
+## Gradle dependency verification
+
+`android/gradle/verification-metadata.xml` holds a SHA-256 for every artifact the Android
+build resolves: 514 components and 902 artifacts, covering the 71 shipped coordinates, the
+Android Gradle plugin, Kotlin, lint, R8 and the instrumentation libraries. While the file
+exists Gradle fails any build of the `android/` project that resolves an artifact not
+listed or with a different checksum, so the existing build steps enforce it and no step
+was added to any workflow. Metadata files are verified too (`verify-metadata` true).
+Signatures are not used and no key server, trusted artifact or trusted key is configured.
+
+It was generated on 2026-10-11 by `npm run android:deps:write-verification`, which runs the
+tasks every script uses (the four APKs, both instrumentation APKs, `:app:lint` and the
+notification fixture; `VERIFIED_TASKS` in `scripts/gradle-verification.mjs`) with
+`--write-verification-metadata sha256`. `aapt2` is the only host-specific artifact; its
+Linux and Windows archives were fetched from Google's Maven repository and hashed by the
+same command. A second, ordinary strict build then passed with verification enforced on
+macOS. No hosted Linux build has run with this file: the first Android foundation run
+after it merges is that evidence, and a failure there names the artifact to add.
+
+Review of sources: the build declares `google()`, `mavenCentral()` and
+`gradlePluginPortal()` only, and `test/gradle-verification.test.mjs` fails when another
+repository is declared. The 130 publisher groups are listed in
+`android/gradle/verification-reviewed-groups.json`; they are Android, Google, JetBrains,
+Apache and the transitive libraries of the Android Gradle plugin, lint and the AndroidX
+test stack, and none was unfamiliar. A component in a group not on that list fails the
+check. This was an engineering reading of the list, not a security sign-off, and the
+metadata does not record which repository served an artifact.
+
+Not covered: the two side projects built with their own Gradle root
+(`android/private-peer-fixture`, and the calendar consumer fixture of
+`scripts/test-native-calendar-consumer.mjs`) have no verification metadata. Neither ships.
 
 ## Licence flags (P-09)
 

@@ -73,6 +73,7 @@ outcomes, never credentials.
 | 10 | Optional: give a reference to the Denton licence document (where it is held, or its register entry), to complete the record made on the owner's statement. Not the document itself. Nothing is blocked without it. | Owner | The `reference` field of the Denton record in `licenses/font-licenses.json` | The licence document, or anything secret | none | MVP-43 |
 | 11 | After A-01: buy four pilot units, and provide a Linux builder with the AOSP source for the image build. | Owner | Hardware and build host | Nothing secret | every DEVICE step | MVP-41, 50 |
 | 12 | Provide a real private remote host to pair with, only if A-02 keeps remote pairing as a supported route. | Owner | The web build's pairing dialog | The pairing code outside the session it is for | A (A-11) | MVP-17 |
+| 13 | Supply the reviewed ARM64 embedding host libraries named by `android/embedding-host/qualified-host.json`, or qualify a rebuilt candidate. No script can produce the reviewed bytes (they contain their build directory; [verification](verification.md#round-10-2026-10-11-the-strict-build-chain-at-pin-13c98575987a-on-a-development-machine)). Either stage them with `node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json>`, or run `node scripts/build-embedding-host.mjs --candidate`, record ARM64 execution evidence in its receipt, stage it the same way and commit the new `qualified-host.json` with `"remapBuildPath": true` in `android/embedding-host/build-toolchain.json`. This is an engineering qualification, not a product decision. | The engineer who qualified the current libraries (author of commit `4c3eb5c4`), or a reviewer with an ARM64 device | `android/app/src/main/jniLibs/arm64-v8a` on the build host (ignored by Git) and, for a new qualification, `android/embedding-host/` | Nothing secret | none | MVP-08, 39, 45 |
 
 ## 3. Emulator and CI campaigns
 
@@ -97,8 +98,8 @@ this host runs arm64 images only):
    `npm run android:build -- --allow-unpackaged-runtime`, and
    `npm run android:build -- --test-mocks` for the test-mocks pair. The distributable chain
    is `npm run android:build:local` (speech AAR first, see the README; it also needs the
-   reviewed embedding host libraries staged with
-   `node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json>`).
+   reviewed embedding host libraries, which only a person can supply:
+   `npm run android:build:inputs` says how, and the README explains the two ways).
 2. In the commands below, `APP.apk` and `TEST.apk` are a matching pair from that build, for
    example `artifacts/standalone-debug.apk` with
    `artifacts/instrumentation/standalone-androidTest.apk`; `NEW_OUTPUT` is a new directory.
