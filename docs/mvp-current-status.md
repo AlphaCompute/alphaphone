@@ -177,10 +177,16 @@ otherwise.
   journal/photo test cases across both variants on a disposable stock API 35 emulator at
   `d3dc9977` (encrypted journal persistence, Activity recreation, replay refusal, history
   redaction and seven photo filters); it is historical. Password save/fill was recorded
-  there as failing before save/unlock and has not been re-run. An emulator campaign is in
-  progress on branch `claude/r3-packaging`: at `73b973a5` that branch has committed test
-  and runner repairs made after its first runs and no result record, so it supplies no
-  evidence yet.
+  there as failing before save/unlock and has not been re-run. A campaign on an
+  API 36 arm64 emulator is summarized in [verification](verification.md#emulator-results-at-73b973a5-2026-10-10):
+  source `73b973a5` at the earlier pin `352d7a08`, developer-override APKs, results mixed
+  with several failures unresolved, and no raw result files committed. It is historical:
+  the fixes made after it were run in a second campaign (round 7), summarized in
+  [verification](verification.md#emulator-results-at-6dcdde34-2026-10-10-round-7): source
+  `6dcdde34` at the current pin, developer-override APKs on owned API 35 and 36 arm64
+  emulators, again a written summary with no raw result files committed. That section lists
+  what passed, what failed and what did not run; it is class E for those APKs only, not
+  for a distributable build and not for any later source.
 - CI: no passing run of the `native` or `recovery-ui` job of
   `.github/workflows/resident-android.yml` is recorded for the current source.
 - Classes I, R and D: none. No AOSP image has been booted, no real account or provider
