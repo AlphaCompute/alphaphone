@@ -56,6 +56,11 @@ public class AlphaHostedResultsPlugin extends Plugin {
   String id=call.getString("id");if(!WorkflowNoticeDelivery.approvalId(id))throw new IllegalArgumentException();
   WorkflowNoticeTapsFactory.delivery(getContext()).withdrawApproval(WorkflowNoticeTapsFactory.create(getContext()),id,System.currentTimeMillis());call.resolve();
  }catch(Exception error){call.reject("Approval notice could not be withdrawn; it expires with the approval");}});}
+ /** The connected owner changed: approval notices posted for any other owner are withdrawn and never reposted. Only the owner ID crosses the bridge. */
+ @PluginMethod public void withdrawOtherOwnerApprovalNotices(PluginCall call){submit(call,()->{try{
+  int withdrawn=WorkflowNoticeTapsFactory.delivery(getContext()).withdrawOtherOwners(WorkflowNoticeTapsFactory.create(getContext()),call.getString("ownerId"),System.currentTimeMillis());
+  JSObject out=new JSObject();out.put("withdrawn",withdrawn);call.resolve(out);
+ }catch(Exception error){call.reject("Another owner's approval notices could not be withdrawn; they expire with their approvals");}});}
  private static volatile String pendingRenewal;
  /** A Renew tap only opens the review for that source; it is consumed once and never renews by itself. */
  @PluginMethod public void pendingSourceRenewal(PluginCall call){String id=pendingRenewal;pendingRenewal=null;JSObject out=new JSObject();if(id!=null)out.put("sourceId",id);call.resolve(out);}

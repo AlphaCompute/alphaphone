@@ -75,6 +75,14 @@ final class WorkflowNoticeTaps {
    row.put("state","consumed");storage.write(SLOT,rows.toString());return;
   }throw new UnknownTap();
  }}
+ /** Approval routes prepared for an owner other than this one, in a stable order. Step notices are
+  * retained results and are never listed: only a pending approval is withdrawn on an owner change. */
+ List<String> approvalsOfOtherOwners(String ownerId)throws Exception{synchronized(LOCK){
+  if(ownerId==null||ownerId.isBlank()||ownerId.length()>128||ownerId.indexOf('\0')>=0)throw new IllegalArgumentException("Invalid owner");
+  JSONObject rows=ledger();List<String> result=new ArrayList<>();
+  for(String id:keys(rows))if(WorkflowNoticeDelivery.approvalId(id)&&!ownerId.equals(rows.getJSONObject(id).getJSONObject("route").getString("ownerId")))result.add(id);
+  Collections.sort(result);return result;
+ }}
  /** Frees a withdrawn or expired approval route. Its receipt is no longer posted, so even a captured tap could never open. */
  void forget(String id)throws Exception{synchronized(LOCK){
   if(!WorkflowNoticeDelivery.approvalId(id))throw new IllegalArgumentException("Only approval routes are released");

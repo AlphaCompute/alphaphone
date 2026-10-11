@@ -16,7 +16,7 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
     {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureCompareExchange','secureRemove','cancel','addListener','removeListener','pauseNotificationCollection'])},
     {name:'AlphaActionJournal',methods:methods(['list'])},
     {name:'DeviceApps',methods:methods(['buildInfo'])},
-    {name:'AlphaHostedResults',methods:methods(['beginBackground','cancelBackground','configureBackground','disableBackground','inboxHistory','syncInbox','status','setBackgroundPolling','enable','pendingResult','addListener','removeListener'])},
+    {name:'AlphaHostedResults',methods:methods(['beginBackground','cancelBackground','configureBackground','disableBackground','inboxHistory','syncInbox','status','setBackgroundPolling','enable','pendingResult','withdrawOtherOwnerApprovalNotices','addListener','removeListener'])},
    ],nativePromise:async(plugin:string,method:string,input:any)=>{
     if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
     if(plugin==='AlphaNotifications'){
@@ -73,11 +73,15 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
      if(method==='status')return {enabled:f.notifications,backgroundEnabled:f.enabled&&f.polling};
      if(method==='setBackgroundPolling'){f.polling=input.enabled;return {backgroundEnabled:f.enabled&&f.polling};}
      if(method==='enable'){f.notifications=true;return {enabled:true};}
+     // The owner-change withdrawal of approval notices: only the connected owner's ID crosses the bridge.
+     if(method==='withdrawOtherOwnerApprovalNotices'){f.ownerWithdrawals=(f.ownerWithdrawals||[]);f.ownerWithdrawals.push(input);if(w.__ownerWithdrawalFault&&f.ownerWithdrawals.length===1)throw Error('Synthetic withdrawal failure');return {withdrawn:0};}
      return {};
     }
     return {};
    }};
   },'ready');
+ // One scenario fails the first owner-change withdrawal, which the next connection change repeats.
+ await page.addInitScript(fault=>{(window as any).__ownerWithdrawalFault=fault;},scenario==='reconnect');
 
  await page.goto('/');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
  if(scenario==='builder-race'){await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));await page.getByRole('button',{name:'Workflows',exact:true}).click();}
@@ -126,6 +130,9 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
   expect(await page.evaluate(()=>(window as any).deliveryFixture.taps.length)).toBe(2);
   expect(await page.evaluate(()=>(window as any).deliveryFixture.consumed?.length||0)).toBe(0);
  }
+ // Connecting an owner withdraws the approval notices posted for any other owner, once per owner: the
+ // native ledger is asked with exactly the connected owner's ID, and a failed request is repeated.
+ await expect.poll(()=>page.evaluate(()=>(window as any).deliveryFixture.ownerWithdrawals||[])).toEqual(scenario==='reconnect'?[{ownerId:'fixture-owner'},{ownerId:'fixture-owner'}]:[{ownerId:'fixture-owner'}]);
  expect(errors).toEqual([]);
  });
 }
