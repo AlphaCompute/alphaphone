@@ -72,6 +72,17 @@ and it does not carry forward to later source. Seven steps stay EMULATOR: E-8, E
 live-search method), B-25 and J01-7 (WorkflowPhoneNative not run) and J01-6 (no runner passes
 `calendarOptions=1`). The percentages below this paragraph that describe rounds 4 and 5 are history.
 
+**Round 8 (2026-10-11, `claude/r8-ui-defects`).** No step changed class and the table is
+unchanged. The four behaviours round 7 recorded as "Observed and left open" were changed in
+source: the Inbox Cloud panel offers the saved sign-in, Alpha's notifications open only from a
+handle on Home ([gesture zones](gesture-zones.md)), Home and the tile grids hold at 200% text,
+and the launcher flavor keeps one `MainActivity` when the HOME role is granted (A-1; see
+[Android and AOSP](android-and-aosp.md#one-live-mainactivity-on-the-launcher-flavor)). The
+browser evidence is class S ([verification](verification.md), "Round 8 follow-up"). The
+instrumented tests that would show the native behaviour (`SettingsRoles`, `LauncherHome`,
+`Accessibility`, the `inbox` restart campaign) were extended and compiled but not run, so A-1 and
+the other rows that rest on the round-7 emulator run rest on APKs that predate these changes.
+
 The A, B, D, F, J03, J04 and All rows were recomputed in the round 5 review from the per-loop
 tables below, on the merge of `main` (rounds 3 and 4), the loop package and the runner package.
 The loop package (see "Round 5 changes") closed the rows marked "round 5" in B, F and J03. The

@@ -339,6 +339,37 @@ Result files: `test-results/r7-camp/<campaign>-<flavor>`, `test-results/calendar
 - Accepting the HOME role starts a second `MainActivity` in the home task while the first stays
   in its own task.
 
+### Round 8 follow-up to "Observed and left open" (source and browser tests only)
+
+Branch `claude/r8-ui-defects`. Nothing in this subsection was run on an emulator: the browser
+results are class S, and the instrumented tests named here were compiled
+(`:app:compileLauncherDebugJavaWithJavac`, `:app:compileLauncherDebugAndroidTestJavaWithJavac`,
+`:app:compileStandaloneDebugAndroidTestJavaWithJavac`) and not run. The four observations above
+stand as what the round-7 APKs do; this records what changed in source afterwards.
+
+| Round-7 observation | Classification | Change | Evidence at this source |
+| --- | --- | --- | --- |
+| Inbox's "Connect Eliza Cloud" panel offers only a new sign-in when a saved one exists | Plain defect, not an owner decision: the same saved sign-in was already offered in Settings | The Inbox panel offers "Retry saved connection" under the Settings panel's rules (`runtime/connection-ui.tsx`) | `saved-signin-retry.production.spec.ts` (flag-off bundle, stubbed Android bridge, both panels). `InboxDraftInstrumentedTest` restart phase asserts the Inbox offer; compiled, not run |
+| A top-edge swipe opens Android's shade, a swipe just below opens Alpha's | The zones are decided by the PRD and flow audit (the status shade is Android's); what stays with the owner is listed in [core loop status](core-loop-status.md#gesture-zones-and-the-notifications-panel-round-8) | Alpha's notifications open only from a visible handle on Home ([gesture zones](gesture-zones.md)) | `notifications-handle.spec.ts`, the accessibility sweeps. `AccessibilityInstrumentedTest` covers the zones; compiled, not run |
+| At 200% font the Home card title and app labels overlap or cut | Plain defect (PRD AP-15) | Home cards grow with their text, tile grids drop a column when labels stop fitting, both driven by the measured text scale (`runtime/text-scale.ts`, `phone.css`) | `large-text-overlap.spec.ts`; the overlap rules of `accessibility-audit.ts` over every retained view at 100% and 200% (`accessibility-sweep.spec.ts`, production sweep). `AccessibilityInstrumentedTest` reads the measured scale and checks Home overlap in the WebView; compiled, not run |
+| Accepting the HOME role starts a second `MainActivity` | Plain defect: two pages over one store, and the in-flight state stayed in the hidden one | The first live instance is kept and later starts are handed to it (`MainActivity`, "One live MainActivity") | `SettingsRolesInstrumentedTest`, `LauncherHomeInstrumentedTest`; compiled, not run |
+
+Other rows of the tables above, re-read for product defects:
+
+- `CalendarTruncation` ("Calendar results incomplete" never appears) is not a product defect at
+  this pin and not an owner decision. The class assumes "the actual native 2,000-instance cap".
+  The pinned upstream reader (`plugin-native-calendar`, `CalendarPlugin.list` at `40dbe96bd1`)
+  reads every instance in the requested range and always answers `truncated: false`, so the
+  2,002 fixture rows are all returned and nothing is hidden. The renderer's incomplete-result
+  notice (`calendar-adapter.ts`) is unreachable on Android until the reader bounds its result
+  again. The class needs either that upstream bound or retirement; it was left unchanged.
+- The first-run failures recorded as "cause not established" (the launcher `notes` restart
+  campaign, `PasswordBrowserFill`, `FilesTree`) did not recur and name no product behaviour that
+  can be checked from source. They stay open as recorded.
+- Found while checking large text: in the standalone app the app library left a 44px strip of
+  Home visible above it (the library kept the launcher's status-bar offset). Fixed in
+  `phone.css`; `large-text-overlap.spec.ts` asserts the library covers the screen.
+
 ## Emulator results at 73b973a5 (2026-10-10)
 
 Class E only (emulator instrumentation). Not physical-device, AOSP image, real-integration or
