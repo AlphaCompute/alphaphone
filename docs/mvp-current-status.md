@@ -158,8 +158,9 @@ never stands in for another.
 ### Current qualification evidence
 
 Round 9 integration, 2026-10-11 UTC: pull request #391 (branch `claude/r9-integration`),
-upstream pin `13c9857598`. Everything in this entry ran at commit `c0b19147`, which differs
-from the commit that carries this entry only in documentation. It is the only entry at the
+upstream pin `13c9857598`. The hosted runs and `npm run verify` ran at commit `c0b19147`,
+the other development-machine runs at `c0b19147` or `3aeb9f99`; those two commits and the
+one that carries this entry differ only in documentation. It is the only entry at the
 current pin.
 
 - Class S, hosted (Browser MVP run 38118499274): Repository verification passed with 644
@@ -169,7 +170,14 @@ current pin.
   disclosure spec among them ran in that profile on shard 1 (7 passed). The `production`
   project passed 185. Resident preparation (`npm run agent:prepare`) passed in run
   38118499310.
-- Class S, development machine: `npm run verify` exited 0 with the same counts.
+- Class S, development machine: `npm run verify` exited 0 with the same counts. All 2889
+  Chromium tests ran, in two invocations with 4 workers: the first was stopped after 2243
+  had passed, to free disk space, and the second ran the 74 spec files it had not
+  finished. 2877 passed, 12 were skipped (the same host-profile tests) and none failed;
+  the `production` project passed 185. Gradle compiled the app and instrumentation Java of
+  the standalone and launcher debug variants (the four `compile…JavaWithJavac` tasks only,
+  with the speech-runtime digest check excluded and a speech AAR that is not the qualified
+  one; no APK was assembled).
 - Class B, hosted (Android foundation run 38118499272):
   `npm run android:build -- --allow-unpackaged-runtime --skip-instrumentation` assembled the
   standalone and launcher debug and unsigned release APKs with the flag off and
@@ -177,8 +185,8 @@ current pin.
   distributable (no packaged runtime, speech native bytes not admitted, speech functional
   acceptance pending or failed) and they are unsigned; no instrumentation APK was built and
   nothing was installed.
-- Classes E, I, R and D: none. The instrumentation sources changed by the integration
-  (`NotesTrashBackstopInstrumentedTest`) were not compiled at this commit.
+- Classes E, I, R and D: none. The instrumentation sources were compiled, not built into
+  an APK, and none of them ran.
 
 The entries below are earlier and are kept as recorded.
 
