@@ -60,7 +60,7 @@ export const CLASS_REGISTRY = {
   StartupReadiness: { args: { startupReadiness: "1" } },
   TextScale: { note: "textScaleProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs text-scale" },
   BrowserSignins: { note: "signinProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs signin" },
-  BrowserFlow: { note: "loopback fixture methods need --test-mocks" },
+  BrowserFlow: { note: "loopback fixture methods need --test-mocks; the search method needs live HTTPS to www.google.com and records INSTRUMENTATION_STATUS browserFlowSearch=results or provider-check (the provider's own check page for that exact search)" },
   BrowserContinuity: { note: "bookmarkProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs bookmark" },
   BrowserDownload: { note: "needs --test-mocks (loopback HTTP fixtures); skipped on any other build, so it is not a default class" },
   // src/testMocks/androidTest: compiled only into the test-mocks instrumentation APK.
@@ -100,7 +100,7 @@ export const CLASS_REGISTRY = {
   BrowserReading: { args: { browserReading: "1" }, requiresTestMocksBuild: true, note: "needs a WebView provider with isolated-world injection" },
   BrowserSensitiveReading: { args: { browserSensitiveReading: "1" }, requiresTestMocksBuild: true },
   BrowserIsolatedReading: { args: { browserIsolatedReading: "1" }, requiresTestMocksBuild: true, note: "needs a WebView provider with isolated-world injection" },
-  BrowserReadingNavigation: { args: { browserIsolatedReading: "1" }, note: "needs a WebView provider with isolated-world injection" },
+  BrowserReadingNavigation: { args: { browserIsolatedReading: "1" }, note: "one method per provider: the stale-document method needs isolated-world injection; without it only the reading-unavailable method runs and the other is listed as skipped (INSTRUMENTATION_STATUS browserReadingProvider says which)" },
   PasswordBrowserFill: {},
   InboxOperationJournal: { args: { inboxOperationNative: "1" } },
   MailAttachment: { args: { mailAttachmentNative: "1" } },
