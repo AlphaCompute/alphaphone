@@ -39,8 +39,8 @@ async function open(page: Page, view: View, theme: 'light' | 'dark'): Promise<Lo
   const calendar = page.getByRole('button', { name: 'Calendar', exact: true });
   await calendar.waitFor({ state: 'visible' });
   if (view === 'Notifications') {
-    // The shade is the notification surface; it opens with a downward swipe from the status bar.
-    await page.mouse.move(200, 15); await page.mouse.down(); await page.mouse.move(200, 320, { steps: 12 }); await page.mouse.up();
+    // The shade is the notification surface; it opens from its handle on Home (docs/gesture-zones.md).
+    await page.getByRole('button', { name: 'Open notifications', exact: true }).click();
     const shade = page.locator('[data-alpha-layer="shade"]');
     await expect(shade).toHaveAttribute('aria-hidden', 'false');
     return shade;

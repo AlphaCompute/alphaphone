@@ -5068,6 +5068,7 @@ class Component extends DCLogic {
   }
   componentDidUpdate(prev) {
     if (prev && prev.initial !== this.props.initial) this.preset(this.props.initial || "boot");
+    this.syncShadeFocus();
     var list = document.querySelector("[data-alpha-transcript]"), saved = this.chatScrollSnapshot;
     if (!list || !["sheet", "full"].includes(this.S().chat)) return;
     if (this.chatScrollElement !== list && typeof ResizeObserver !== "undefined") {
@@ -5266,9 +5267,33 @@ class Component extends DCLogic {
     }
   }
 
+  /* ---- notifications panel ---- */
+  openShade() {
+    var S = this.S();
+    if (S.screen !== "home" || S.shade) return;
+    if (S.secure) return this.toast("Unlock to see notifications");
+    this.setState({ shade: true, heads: false });
+  }
+  /** Home is inert while the panel covers it: focus moves into the panel, and back to the handle when it closes. */
+  syncShadeFocus() {
+    var S = this.S(), open = S.screen === "home" && !!S.shade;
+    if (open === !!this.shadeFocusOpen) return;
+    this.shadeFocusOpen = open;
+    var active = document.activeElement;
+    if (open) {
+      var close = document.querySelector('[data-alpha-layer="shade"] [data-alpha-shade-close]');
+      if (close && !(active && active.closest && active.closest('[data-alpha-layer="shade"]'))) close.focus({ preventScroll: true });
+      return;
+    }
+    // Only when nothing else took focus: opening a notice or Settings from the panel moves on.
+    var handle = document.querySelector("[data-alpha-shade-handle]");
+    var lost = !active || active === document.body || !!(active.closest && active.closest('[data-alpha-layer="shade"]'));
+    if (handle && lost && !handle.closest("[inert]")) handle.focus({ preventScroll: true });
+  }
+
   /* ---- gestures ---- */
   scale(el) { var sc = el && el.closest ? el.closest("[data-screen]") : null; var r = (sc || el).getBoundingClientRect(); return { r: r, s: r.width / 412 || 1 }; }
-  gDown(e) { if (e.target.closest?.("[data-alpha-transcript]")) { this.g = null; return; } var o = this.scale(e.currentTarget); this.g = { x: (e.clientX - o.r.left) / o.s, y: (e.clientY - o.r.top) / o.s, cx: e.clientX, cy: e.clientY, s: o.s }; }
+  gDown(e) { if (e.target.closest?.("[data-alpha-transcript]")) { this.g = null; return; } var o = this.scale(e.currentTarget); this.g = { x: (e.clientX - o.r.left) / o.s, y: (e.clientY - o.r.top) / o.s, cx: e.clientX, cy: e.clientY, s: o.s, handle: !!e.target.closest?.("[data-alpha-shade-handle]") }; }
   gUp(e) { var g = this.g; this.g = null; if (!g || window.getSelection()?.isCollapsed === false) return; this.swipe(g, (e.clientX - g.cx) / g.s, (e.clientY - g.cy) / g.s); }
   swipe(g, dx, dy) {
     var S = this.S(); var T = 46; var ax = Math.abs(dx), ay = Math.abs(dy);
@@ -5277,12 +5302,15 @@ class Component extends DCLogic {
     if (S.screen !== "home") return;
     if (S.shade) { if (dy < -T && ay > ax) this.setState({ shade: false }); else if (ax > ay && ((g.x < 30 && dx > T) || (g.x > 382 && dx < -T))) this.back(); return; }
     if (ay > ax) {
-      if (dy > T && g.y < 90) { if (S.secure) return this.toast("Unlock to see notifications"); return this.setState({ shade: true, heads: false }); }
+      // Gesture zones (docs/gesture-zones.md). The top edge of the screen belongs to Android: a swipe
+      // from there opens Android's own shade, and Alpha does not answer it with a second panel.
+      // Alpha's notifications open only from their visible handle on Home: a tap, Enter or Space,
+      // an accessibility click, or a pull down that starts on the handle itself.
+      if (dy > T && g.handle) return this.openShade();
       if (this.props.systemShell !== false && dy < -T && g.y > 872) return this.goHome();
       if (S.chat === "sheet" && dy > T) return this.setState({ chat: this.rest() });
       if (!S.view && S.chat !== "sheet" && S.chat !== "full") {
         if (dy < -T) return this.setState({ chat: "sheet" });
-        if (dy > T) return this.setState({ shade: true, heads: false });
       }
     } else {
       if ((g.x < 30 && dx > T) || (g.x > 382 && dx < -T)) return this.back();
@@ -5549,7 +5577,8 @@ class Component extends DCLogic {
       goFlows: function () { self.openView("workflows", copy("shell").homeWorkflow || null); },
       goSettings: function () { self.openView("settings"); },
       tiles: tiles, bright: S.bright, brightHandoff: true, brightSlider: false, onBright: function () { self.openView("settings", { page: "display" }); }, shadeN: shadeN, shadeY: isOn && S.shade ? "0" : "-100%",
-      closeShade: function () { self.setState({ shade: false }); }, clearAll: function () { self.setState({ nGone: NOTIFS.map(function (n) { return n.id; }), shade: false }); },
+      closeShade: function () { self.setState({ shade: false }); }, openShade: function () { self.openShade(); },
+      shadeKey: function (event) { if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); self.setState({ shade: false }); } }, clearAll: function () { self.setState({ nGone: NOTIFS.map(function (n) { return n.id; }), shade: false }); },
       lockCamera: function () { self.setState({ screen: "home", secure: true }); self.openView("camera"); },
       msgs: msgs, typing: S.typing, sugg: sugg, showSugg: panelOpen && !S.draft && !S.typing && !voiceOn,
       panelComposer: panelOpen && !voiceOn,
