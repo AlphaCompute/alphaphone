@@ -269,7 +269,18 @@ public final class NotesTrashBackstopInstrumentedTest {
   assertEquals("{"+row+"}",pendingRaw());assertTrue(bytesExist("backstop-expired"));
   savedNotes("backstop",new JSONArray().put(tombstone("backstop-voice",REVISION,op)));
   for(String unrecognized:new String[]{"[]","{ "+row+"}","{"+row+",}","{\"a\":1}","{"+row+",\"b\":[]}"}){
-   store.writeCredentialSlot(AlphaNoteAudioPlugin.PENDING_AUDIO_SLOT,unrecognized);
+   // The secure store parses a slot value before it holds it, so text that is not JSON never
+   // reaches the slot on a phone (measured on the API 36 emulator: the write of "{row,}" throws).
+   // That refusal is the property for such a value; the slot keeps what it held and the pass still erases nothing.
+   String held=pendingRaw();
+   try{store.writeCredentialSlot(AlphaNoteAudioPlugin.PENDING_AUDIO_SLOT,unrecognized);}
+   catch(org.json.JSONException refused){
+    try{new org.json.JSONTokener(unrecognized).nextValue();fail("The store refused a value that parses: "+unrecognized);}catch(org.json.JSONException malformed){/* Expected: only unparseable text is refused. */}
+    assertEquals(unrecognized,held,pendingRaw());
+    assertEquals(unrecognized,0,AlphaNoteAudioPlugin.finishPermanentDeletions(context,now));
+    assertEquals(unrecognized,held,pendingRaw());assertTrue(bytesExist("backstop-expired"));
+    continue;
+   }
    assertEquals(unrecognized,0,AlphaNoteAudioPlugin.finishPermanentDeletions(context,now));
    assertEquals(unrecognized,pendingRaw());assertTrue(bytesExist("backstop-expired"));
   }
