@@ -241,14 +241,53 @@ Trash row still present for that saved note (the maintenance rule for a live not
 the erased note is not offered for restore afterwards. For a voice note the reviewed deletion
 protocol runs without a Trash row: the recovery row (marked `permanent`) holds the only
 copy until the tombstone commit, the move of this recording to the audio trash under the
-same operation id and its erase are all confirmed. An interruption leaves that row under
-review; the next deletion-status check finishes the erase only when this operation
-already owns the audio trash, and otherwise keeps the existing Restore control. An
+same operation id and its erase are all confirmed. An
 approved agent `notes_delete` never takes this path: it fails with "Trash is full" and
-nothing is deleted. A Trash document that already exceeds the limits (written by a host
+nothing is deleted.
+
+Interrupted permanent voice deletion. A failure inside the process that started the
+deletion leaves its row under review with the Restore control, and the next
+deletion-status check finishes the erase only when that operation already owns the audio
+trash; an effect that failed in a live process may still land, so nothing else is
+inferred there. A row left by an earlier process (process death) is settled by a backstop
+that is started with every Trash maintenance pass and takes the deletion-effects lock
+itself: at startup once saved Notes open, on resume, on the 15-minute timer and when Notes
+opens, so it never waits for Notes to be opened. With no recovery row it takes no lock and
+repaints nothing. `runtime/permanent-voice-deletion.ts` decides one
+step from authoritative readback of the saved note, the recording's metadata and this
+operation's own receipt:
+
+| Saved note | Recording | Step |
+| --- | --- | --- |
+| this operation's tombstone for the reviewed revision | never moved, no other deletion holds it | move to the audio trash under this operation, erase, retire the row |
+| this operation's tombstone | in the audio trash under this operation | erase, retire the row |
+| this operation's tombstone | already erased by this operation | retire the row |
+| exact reviewed revision still saved | untouched, or given back by a restore | retire the row (rollback: nothing was deleted) |
+| exact reviewed revision still saved | in the audio trash under this operation | restore the recording, retire the row (rollback) |
+| exact reviewed revision still saved | already erased by this operation | commit the tombstone for that exact revision, retire the row |
+
+Every other state keeps the row and the Restore control and changes nothing: a note that
+was edited, saved again as another revision or deleted by another operation, a reset
+collection, a recording whose metadata names another note, a recording another saved note
+references, a recording another deletion holds, a restore that was already started, and
+unreadable recording state. A step that cannot be confirmed by readback also keeps the row.
+On Android `AlphaNoteAudioPlugin.finishPermanentDeletions` applies the three tombstone rows
+of the table natively when the plugin loads and from the 6-hour
+`alpha-notes-trash-backstop` job, from the encrypted Notes, pending-deletion and
+recording-metadata slots, and retires the row by compare-and-exchange with the other rows
+copied byte for byte. It never writes the Notes document, so the three "still saved" rows
+are left to the renderer's startup pass. The native job cannot take the renderer's Web
+Lock: if it runs in the instant a live renderer is between its tombstone commit and its
+own recording steps, the deletion still completes exactly once but that view reports it as
+unconfirmed until its next status check. `notes-permanent-delete-backstop.spec.ts` covers
+the six rows and the refusals in the browser build with a writer that holds the lock until
+the reload; `scripts/test-notes-trash-flow.ts` enumerates the plan; four cases in
+`NotesTrashBackstopInstrumentedTest` cover the native pass and have been compiled, not run. A Trash document that already exceeds the limits (written by a host
 with larger limits) stays readable, restorable, purgeable and subject to expiry; only
 additions are refused until it is below the limits again. `notes-trash-recovery.spec.ts`
-and `scripts/test-notes-trash-flow.ts` cover this in the browser build and the policy;
+and `scripts/test-notes-trash-flow.ts` cover this in the browser build and the policy, and
+`notes-trash-full.spec.ts` reaches the refusal through the entry limit and, separately,
+through the byte limit (encoded bytes, with the entry limit left at 10,000);
 the Android slot cap itself is a hard read and write limit of the shared
 `JsonCredentialSlots`, so Alpha must not lower `notes-trash:v1:device` below 32 MiB
 until that store admits reads and reductions above its limit. Not yet qualified on a
