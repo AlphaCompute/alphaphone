@@ -95,7 +95,8 @@ Historical campaigns in Git and saved reports apply only to their recorded sourc
 not automatically to current main. Current hosted checks must be inspected
 separately from focused local runs.
 
-Run `npm run android:build` for both standalone and launcher distributions after
+Run `npm run android:build:local` (the chained build; plain `npm run android:build` stops
+before Gradle when an input is missing) for both standalone and launcher distributions after
 consumer changes. APK assembly, emulator bridge/HOME-role tests, full AOSP image
 boots, real provider integrations and physical-device/user acceptance remain
 separate gates. Never use one as evidence for another.
