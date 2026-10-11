@@ -20,6 +20,12 @@
  * HOME, and always puts the original HOME back. If that cannot be proven the run fails, the
  * installed packages are left in place and the emulator must not be reused until it is recovered.
  *
+ * Classes that assert a disposable secondary Android user (HostedProcessRestart,
+ * HostedBackgroundWorker) run in their own phase per variant: the runner creates a fresh user
+ * with the upstream lifecycle helper the other campaigns use, makes the two installed packages
+ * available to it, runs each class there, removes the packages from that user and lets the
+ * helper switch back to the owner and remove the user. A user that cannot be removed fails the run.
+ *
  * Results: <output>/results.json via scripts/instrumentation-result.mjs, bound to
  * the source commit and every installed APK's SHA-256, with raw output per class.
  * This is emulator-class evidence (class E). It is not physical-device, AOSP image,
@@ -59,12 +65,15 @@ export const CLASS_REGISTRY = {
   BrowserDownload: { note: "needs --test-mocks (loopback HTTP fixtures)" },
   // src/testMocks/androidTest: compiled only into the test-mocks instrumentation APK.
   BrowserAutofill: { testMocks: true },
+  // Both hosted classes serve results from a loopback HTTP fixture, which HostedTransport accepts
+  // only in a test-mocks app build (any other build answers "HTTPS required").
   HostedProcessRestart: {
-    secondaryUser: true,
+    secondaryUser: true, requiresTestMocksBuild: true,
     args: { alphaHostedProcessRestartFixture: "true" },
     phases: ["prepareCommittedResultWithLostAck", "resumeAfterProcessDeathRecoversAckOnce", "verifySecondRestartAndCleanup"],
   },
-  RealClock: { args: { realClock: "1", clockExclusive: "1" }, requires: "--clock-exclusive" },
+  RealClock: { args: { realClock: "1", clockExclusive: "1" }, requires: "--clock-exclusive", grantOther: { "com.android.deskclock": ["POST_NOTIFICATIONS"] },
+    note: "fixture qualified for API 35 only (it asserts the SDK level); the runner grants AOSP Clock its notification permission, which the class requires for real firing evidence" },
   Accessibility: {},
   SettingsSystemFacts: { note: "read-only comparison with this image's settings; not device acceptance of the Settings handoffs" },
   Rotation: {},
@@ -80,12 +89,15 @@ export const CLASS_REGISTRY = {
   ClockHandoff: { args: { clockHandoff: "1" }, note: "Clock intents are intercepted; not ringing evidence" },
   ClockRepeatDays: {},
   HostedResultNotice: { note: "builders only here; the posted and denied notices need the notification permission set first: node scripts/test-native-permissions.mjs notice|notice-denied APP.apk TEST.apk OUTPUT" },
-  HostedBackgroundWorker: { secondaryUser: true, args: { alphaHostedBackgroundFixture: "true" } },
+  HostedBackgroundWorker: { secondaryUser: true, requiresTestMocksBuild: true, args: { alphaHostedBackgroundFixture: "true" } },
   WorkflowApprovalNotice: { args: { workflowApprovalNotice: "1" }, grant: ["POST_NOTIFICATIONS"], note: "the runner grants the notification permission the class requires after clearing app data" },
-  BrowserReading: { args: { browserReading: "1" } },
-  BrowserSensitiveReading: { args: { browserSensitiveReading: "1" } },
-  BrowserIsolatedReading: { args: { browserIsolatedReading: "1" } },
-  BrowserReadingNavigation: { args: { browserIsolatedReading: "1" } },
+  // The reading classes below give the product a synthetic loopback HTTP speech route. Only a
+  // test-mocks app build admits that route; any other build answers "Select an available speech
+  // route before reading" first, which is the correct refusal for a phone without an HTTPS route.
+  BrowserReading: { args: { browserReading: "1" }, requiresTestMocksBuild: true, note: "needs a WebView provider with isolated-world injection" },
+  BrowserSensitiveReading: { args: { browserSensitiveReading: "1" }, requiresTestMocksBuild: true },
+  BrowserIsolatedReading: { args: { browserIsolatedReading: "1" }, requiresTestMocksBuild: true, note: "needs a WebView provider with isolated-world injection" },
+  BrowserReadingNavigation: { args: { browserIsolatedReading: "1" }, note: "needs a WebView provider with isolated-world injection" },
   PasswordBrowserFill: {},
   InboxOperationJournal: { args: { inboxOperationNative: "1" } },
   MailAttachment: { args: { mailAttachmentNative: "1" } },
@@ -106,7 +118,7 @@ export const CLASS_REGISTRY = {
   IsolatedPdf: { args: { isolatedPdfNative: "1" }, requiresTestMocksBuild: true },
   // Self-contained classes with an explicit gate. Registered so the gate is passed.
   BrowserShare: { args: { browserShareLive: "1" }, note: "opens a public HTTPS page and Android's chooser; the emulator needs network" },
-  BrowserUnsupportedReading: { args: { browserUnsupportedReading: "1" } },
+  BrowserUnsupportedReading: { args: { browserUnsupportedReading: "1" }, requiresTestMocksBuild: true, note: "the negative flow: needs a WebView provider WITHOUT isolated-world injection" },
   LargeInboxAttachment: { args: { largeInboxAttachmentNative: "1" } },
   NoteAudioMetadataEncrypted: { args: { notesAudioEncryption: "1" } },
   NotesSecureStorage: { args: { notesSecureStorage: "1" }, note: "the fresh-install migration method (notesSecureMigration=1) has no campaign and is skipped" },
@@ -243,9 +255,8 @@ export function parseInstrumentationArgs(argv) {
     for (const cls of requested) {
       const spec = CLASS_REGISTRY[short(cls)] ?? {};
       if (spec.campaign) throw new Error(`${short(cls)} needs its own campaign: ${spec.campaign}`);
-      // These classes assert a disposable secondary Android user; this runner installs for user 0
-      // and no campaign creates that user yet, so passing their gate could only fail.
-      if (spec.secondaryUser) throw new Error(`${short(cls)} asserts a disposable secondary Android user, which no runner provides yet; it cannot run here`);
+      // These classes assert a disposable secondary Android user, which the runner creates and removes.
+      if (spec.secondaryUser && !options.ownedEmulator) throw new Error(`${short(cls)} runs in a disposable secondary Android user; it requires --owned-emulator`);
       if (spec.requires === "--clock-exclusive" && !options.clockExclusive)
         throw new Error(`${short(cls)} changes real alarms; pass --clock-exclusive only on an exclusive, unlocked emulator with no other timers`);
       if (spec.testMocks && !options.testMocks) throw new Error(`${short(cls)} runs only on the --test-mocks variant`);
@@ -266,10 +277,10 @@ export function parseInstrumentationArgs(argv) {
 }
 
 /** `am instrument` arguments for one class (or one phase method), never through a shell. */
-export function instrumentArgs(cls, { method, log = false } = {}) {
+export function instrumentArgs(cls, { method, log = false, user } = {}) {
   const spec = CLASS_REGISTRY[short(cls)] ?? {};
   const extras = Object.entries(spec.args ?? {}).flatMap(([key, val]) => ["-e", key, val]);
-  return ["shell", "am", "instrument", "-w", "-r", ...(log ? ["-e", "log", "true"] : []), ...extras,
+  return ["shell", "am", "instrument", ...(user === undefined ? [] : ["--user", String(user)]), "-w", "-r", ...(log ? ["-e", "log", "true"] : []), ...extras,
     "-e", "class", method ? `${cls}#${method}` : cls, `${PACKAGE}.test/${RUNNER}`];
 }
 
@@ -279,11 +290,25 @@ export function instrumentArgs(cls, { method, log = false } = {}) {
  * granted permissions, a saved draft) or a left-open Android shade
  * decided whether a later class passed. Phases of one class keep their data.
  */
-export function classIsolationCommands() {
+export function classIsolationCommands(user) {
   return [
     ["shell", "cmd", "statusbar", "collapse"],
-    ["shell", "pm", "clear", PACKAGE],
+    ["shell", "pm", "clear", ...(user === undefined ? [] : ["--user", String(user)]), PACKAGE],
   ];
+}
+
+/**
+ * Creates the disposable secondary user for one variant's secondary-user classes with the upstream
+ * lifecycle helper (the one the permission, restart and Calendar campaigns use): fresh user, stock
+ * HOME, foreground switch, and afterwards owner restored, user stopped and removed. `lease` is this
+ * run's device lease, which the helper requires.
+ */
+export function secondaryUserLifecycle({ serial, lease, avd, adb, env = process.env }) {
+  return async ({ name, record, run }) => {
+    const { withIsolatedAndroidUser } = await import("../vendor/eliza/packages/app/scripts/lib/isolated-android-user.mjs");
+    return withIsolatedAndroidUser({ serial, deviceLease: lease, env, expectedAvdName: avd, homePackage: env.ALPHA_TEST_HOME_PACKAGE ?? "com.android.launcher3",
+      name, record, run, execute: args => adb(args) });
+  };
 }
 
 /** Locate a variant's app/test APK pair and bind the app to the verify-apks manifest. */
@@ -400,11 +425,11 @@ async function main() {
   // runner cannot install between the admission checks and this run's installs.
   const { acquireDeviceLease, deviceLeaseStateDir } = await import("../vendor/eliza/packages/app/scripts/lib/device-lease.ts");
   const lease = await acquireDeviceLease(`android:${serial}`, { waitMs: 0, ttlMs: Number.MAX_SAFE_INTEGER, stateDir: deviceLeaseStateDir(process.env) });
-  try { process.exitCode = (await runLeased({ options, serial, adb })).passed ? 0 : 1; } finally { lease.release(); }
+  try { process.exitCode = (await runLeased({ options, serial, adb, withSecondaryUser: secondaryUserLifecycle({ serial, lease, avd: options.avd, adb }) })).passed ? 0 : 1; } finally { lease.release(); }
 }
 
 /** One leased run. `timing` only shortens the HOME role polling in tests. */
-export async function runLeased({ options, serial, adb, timing = {} }) {
+export async function runLeased({ options, serial, adb, timing = {}, withSecondaryUser }) {
   // Admission before any installation.
   const avd = adb(["emu", "avd", "name"]).split(/\r?\n/)[0].trim();
   if (avd !== options.avd) throw new Error(`Serial ${serial} runs AVD ${JSON.stringify(avd)}, not ${options.avd}`);
@@ -416,6 +441,9 @@ export async function runLeased({ options, serial, adb, timing = {} }) {
     throw new Error("Alpha Phone or its test package is already installed; use a fresh emulator (never replaced)");
   const apks = options.variants.flatMap(variant => admitApks(options.apkDir, variant, options));
   const home = options.homeRole ? admitHome(adb) : null;
+  const inSecondaryUser = cls => CLASS_REGISTRY[short(cls)]?.secondaryUser === true;
+  if (!options.all && options.classes.some(inSecondaryUser) && typeof withSecondaryUser !== "function") throw new Error("Secondary-user classes need the disposable user lifecycle");
+  const secondaryUsers = [];
   const { commit, dirty } = sourceCommit();
   const runId = randomUUID();
   const output = path.resolve(options.output ?? path.join("test-results/android-instrumentation", `${new Date().toISOString().replace(/[:.]/g, "-")}-${runId.slice(0, 8)}`));
@@ -445,23 +473,26 @@ export async function runLeased({ options, serial, adb, timing = {} }) {
         fs.writeFileSync(path.join(dir, "all.txt"), raw);
         for (const row of instrumentationClassResults(raw).results) record(row.class, row);
       } else {
-        const runClass = cls => {
+        const runClass = (cls, { user } = {}) => {
           const spec = CLASS_REGISTRY[short(cls)] ?? {};
-          for (const command of classIsolationCommands()) adb(command, { allowFailure: true });
-          for (const permission of spec.grant ?? []) adb(["shell", "pm", "grant", PACKAGE, `android.permission.${permission}`]);
+          const inUser = user === undefined ? {} : { user: "secondary" };
+          for (const command of classIsolationCommands(user)) adb(command, { allowFailure: true });
+          for (const permission of spec.grant ?? []) adb(["shell", "pm", "grant", ...(user === undefined ? [] : ["--user", user]), PACKAGE, `android.permission.${permission}`]);
+          // A grant to another package the class needs (owned, disposable emulator only): never revoked here.
+          for (const [pkg, permissions] of Object.entries(spec.grantOther ?? {})) for (const permission of permissions) adb(["shell", "pm", "grant", pkg, `android.permission.${permission}`], { allowFailure: true });
           // A listing that names no test is retried once and kept: three classes that exist were
           // reported "missing" on a loaded emulator with nothing recorded to say why.
-          let listing = adb(instrumentArgs(cls, { log: true }), { allowFailure: true });
+          let listing = adb(instrumentArgs(cls, { log: true, user }), { allowFailure: true });
           let listed = listedInstrumentationTests(listing);
-          if (!listed.length) { listing = adb(instrumentArgs(cls, { log: true }), { allowFailure: true }); listed = listedInstrumentationTests(listing); }
+          if (!listed.length) { listing = adb(instrumentArgs(cls, { log: true, user }), { allowFailure: true }); listed = listedInstrumentationTests(listing); }
           if (!listed.length) {
             fs.writeFileSync(path.join(dir, `${short(cls)}-listing.txt`), listing);
-            record(cls, { started: 0, passed: 0, failed: [], ignored: [], status: "missing" }); return;
+            record(cls, { started: 0, passed: 0, failed: [], ignored: [], status: "missing" }, inUser); return;
           }
           const runs = spec.phases ? spec.phases : [null];
           let merged = { started: 0, passed: 0, failed: [], ignored: [], status: "passed" };
           for (const method of runs) {
-            const raw = adb(instrumentArgs(cls, { method }), { timeout: options.timeoutMs, allowFailure: true });
+            const raw = adb(instrumentArgs(cls, { method, user }), { timeout: options.timeoutMs, allowFailure: true });
             fs.writeFileSync(path.join(dir, `${short(cls)}${method ? `-${method}` : ""}.txt`), raw);
             const row = instrumentationClassResults(raw, [cls]).results.find(entry => entry.class === cls);
             merged = { started: merged.started + row.started, passed: merged.passed + row.passed,
@@ -470,11 +501,36 @@ export async function runLeased({ options, serial, adb, timing = {} }) {
               status: merged.status !== "passed" ? merged.status : row.status === "passed" ? "passed" : "failed" };
             if (row.status !== "passed") break; // Later phases depend on earlier ones.
           }
-          record(cls, merged, { listed: listed.length, ...(spec.note ? { note: spec.note } : {}) });
+          record(cls, merged, { listed: listed.length, ...inUser, ...(spec.note ? { note: spec.note } : {}) });
         };
         const phase = cls => CLASS_REGISTRY[short(cls)]?.homeRole;
         // HOME-role classes exist for the launcher variant only; elsewhere they are not run at all.
-        for (const cls of options.classes.filter(cls => !phase(cls))) runClass(cls);
+        for (const cls of options.classes.filter(cls => !phase(cls) && !inSecondaryUser(cls))) runClass(cls);
+        // Secondary-user phase: one fresh user per variant, removed again before anything else runs.
+        const secondary = options.classes.filter(inSecondaryUser);
+        if (secondary.length) {
+          const lifecycle = { variant, user: null, ownerRestored: false, removed: false };
+          secondaryUsers.push(lifecycle);
+          try {
+            const report = await withSecondaryUser({ name: `instrumentation-${variant}-${Date.now()}`, record: state => { Object.assign(lifecycle, state, { variant }); },
+              run: async ({ user }) => {
+                const id = String(user);
+                for (const pkg of [PACKAGE, `${PACKAGE}.test`]) adb(["shell", "cmd", "package", "install-existing", "--user", id, pkg]);
+                try { for (const cls of secondary) runClass(cls, { user: id }); }
+                finally { for (const pkg of [`${PACKAGE}.test`, PACKAGE]) adb(["shell", "pm", "uninstall", "--user", id, pkg], { allowFailure: true }); }
+                // The helper removes the user only with proof that it holds none of this run's packages.
+                const left = adb(["shell", "pm", "list", "packages", "--user", id]).split(/\r?\n/).map(row => row.trim());
+                return { cleaned: !left.some(row => row === `package:${PACKAGE}` || row === `package:${PACKAGE}.test`) };
+              } });
+            Object.assign(lifecycle, { user: report.user, ownerRestored: report.ownerRestored, removed: report.removed });
+          } catch (error) {
+            lifecycle.error = error.message;
+            for (const cls of secondary.filter(cls => !classes.some(row => row.variant === variant && row.class === cls)))
+              record(cls, { started: 0, passed: 0, failed: [], ignored: [], status: "missing" }, { user: "secondary", note: `secondary user phase failed: ${error.message}` });
+          }
+          // An unremoved user keeps this run's state on the emulator: stop, and keep the packages for recovery.
+          if (!lifecycle.removed) break;
+        }
         if (home && variant === "launcher") {
           for (const cls of options.classes.filter(cls => phase(cls) === "requests")) runClass(cls);
           const held = options.classes.filter(cls => phase(cls) === "held");
@@ -497,6 +553,10 @@ export async function runLeased({ options, serial, adb, timing = {} }) {
   } finally {
     // Always prove the original HOME, also after a failure part-way through the phase.
     if (home && !home.restoration) restoreHome(adb, home, timing);
+    if (secondaryUsers.some(row => !row.removed)) {
+      const kept = secondaryUsers.find(row => !row.removed);
+      console.error(`Secondary user ${kept.user ?? "(not created)"} of the ${kept.variant} variant was NOT proven removed on ${serial}${kept.error ? `: ${kept.error}` : ""}. Recover it before reusing this emulator:\n  adb -s ${serial} shell am switch-user 0 && adb -s ${serial} shell pm remove-user ${kept.user ?? "<id>"}`);
+    }
     if (home && !home.restoration.restored) {
       // Unproven restoration: keep the installation for recovery and say exactly what to do.
       const recovery = { serial, user: home.user, original: home.original, observed: home.restoration.after, retainedPackages: [...new Set(installed)],
@@ -514,9 +574,10 @@ export async function runLeased({ options, serial, adb, timing = {} }) {
     mode: options.all ? "all" : "classes",
     ...(home ? { homeRole: { user: home.user, original: home.original, selected: home.selected, coldHome: home.coldHome, restored: home.restoration.restored, after: home.restoration.after,
       ...(home.error ? { error: home.error } : {}), ...(home.restoration.errors ? { errors: home.restoration.errors } : {}) } } : {}),
+    ...(secondaryUsers.length ? { secondaryUsers } : {}),
     classes,
   });
-  for (const row of classes) console.log(`${row.status.padEnd(8)} ${row.variant.padEnd(10)} ${short(row.class)}${row.ignored.length ? ` (skipped by assumption: ${row.ignored.join(", ")})` : ""}`);
+  for (const row of classes) console.log(`${row.status.padEnd(8)} ${row.variant.padEnd(10)} ${short(row.class)}${row.user ? " (secondary user)" : ""}${row.ignored.length ? ` (skipped by assumption: ${row.ignored.join(", ")})` : ""}`);
   console.log(`${result.passed ? "PASSED" : "FAILED"}: ${path.relative(process.cwd(), path.join(output, "results.json"))} (emulator class E evidence only; not device acceptance)`);
   return result;
 }

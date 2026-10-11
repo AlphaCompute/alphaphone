@@ -39,6 +39,7 @@ public final class BrowserUnsupportedReadingInstrumentedTest {
  }
  @Test public void unsupportedProviderRejectsWithoutExtractionOrOutboundSpeech()throws Exception{
   org.junit.Assume.assumeTrue("Explicit browser reading synthetic HTTP fixture", "1".equals(InstrumentationRegistry.getArguments().getString("browserUnsupportedReading")));
+  assertTrue("Run against a test-mocks app build: only that build admits this fixture's loopback HTTP route (any other build refuses it, correctly)",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   assertFalse("Run this negative flow on a provider without isolated-world injection",androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.JS_INJECTION_IN_FRAME_AND_WORLD));
   try(Server server=new Server();BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    String origin="http://127.0.0.1:"+server.socket.getLocalPort(),slot="remote:"+origin,key="__alphaReading"+UUID.randomUUID().toString().replace("-",""),article="Synthetic article for explicit reading.",secret="excluded-synthetic-marker";long expiry=System.currentTimeMillis()+600000;

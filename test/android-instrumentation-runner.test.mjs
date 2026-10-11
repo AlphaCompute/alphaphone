@@ -226,7 +226,7 @@ test("permission scenarios name real classes, methods and gates", () => {
 
 /** A scripted emulator: role state, installs and instrumentation output, with every command recorded. */
 function fakeEmulator({ stock = "com.android.launcher3", mode = "pass" } = {}) {
-  const state = { holder: stock, activity: `${stock}/.Launcher`, installed: new Map(), commands: [] };
+  const state = { holder: stock, activity: `${stock}/.Launcher`, installed: new Map(), users: new Map(), commands: [] };
   const sha = file => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
   const adb = args => {
     state.commands.push(args.join(" "));
@@ -235,6 +235,14 @@ function fakeEmulator({ stock = "com.android.launcher3", mode = "pass" } = {}) {
     if (text.includes("getprop ro.product.cpu.abi")) return "arm64-v8a\n";
     if (text.includes("getprop ro.build.version.sdk")) return "35\n";
     if (text.includes("getprop")) return "1\n";
+    // Packages made available to a secondary user, tracked per user.
+    const perUser = /^shell (?:cmd package install-existing|pm uninstall|pm list packages) --user (\d+)(?: (\S+))?$/.exec(text);
+    if (perUser && perUser[1] !== "0" && !text.includes("--user all")) {
+      const held = state.users.get(perUser[1]) ?? state.users.set(perUser[1], new Set()).get(perUser[1]);
+      if (text.includes("install-existing")) { held.add(perUser[2]); return `Package ${perUser[2]} installed for user: ${perUser[1]}\n`; }
+      if (text.includes("pm uninstall")) { held.delete(perUser[2]); return "Success\n"; }
+      return [...held].map(name => `package:${name}`).join("\n");
+    }
     if (text.includes("pm list packages")) return [...state.installed.keys()].map(name => `package:${name}`).join("\n");
     if (text.includes("am get-current-user")) return mode === "secondary-user" ? "10\n" : "0\n";
     if (text.includes("get-role-holders")) return `${state.holder}\n`;
@@ -252,7 +260,7 @@ function fakeEmulator({ stock = "com.android.launcher3", mode = "pass" } = {}) {
     if (text.includes("add-role-holder")) { if (mode !== "restore-fails") { state.holder = args.at(-1); state.activity = `${state.holder}/.Launcher`; } return ""; }
     if (text.includes("dumpsys activity activities")) return `  topResumedActivity=ActivityRecord{1 u0 ${mode === "home-not-resumed" ? `${stock}/.Launcher` : state.activity} t1}\n`;
     if (text.includes("am instrument")) {
-      const cls = args[args.indexOf("class") + 1];
+      const cls = args[args.indexOf("class") + 1].split("#")[0]; // A phase names one method of the class.
       // A role-requesting class that forgets to restore leaves Alpha as HOME.
       if (mode === "requests-leaves-home" && cls === C("SettingsRoles") && !args.includes("log")) { state.holder = PACKAGE; state.activity = `${PACKAGE}/.MainActivity`; }
       return block(cls, "m", 1) + block(cls, "m", 0) + done();
@@ -381,25 +389,81 @@ test("each named class starts from cleared app data with Android's shade closed"
   // Only the app under test is cleared; the instrumentation package and other apps keep their data.
   assert.equal(commands.filter(command => command.includes("clear")).length, 1);
   const runner = fs.readFileSync("scripts/android-instrumentation.mjs", "utf8");
-  const loop = runner.slice(runner.indexOf("const runClass = cls =>"));
-  assert.ok(loop.indexOf("classIsolationCommands()") > 0 && loop.indexOf("classIsolationCommands()") < loop.indexOf("spec.phases"), "isolation runs once per class, before its phases");
+  const loop = runner.slice(runner.indexOf("const runClass = (cls, { user } = {}) =>"));
+  assert.ok(loop.indexOf("classIsolationCommands(user)") > 0 && loop.indexOf("classIsolationCommands(user)") < loop.indexOf("spec.phases"), "isolation runs once per class, before its phases");
+  // In the secondary-user phase the same isolation applies to that user only.
+  assert.ok(classIsolationCommands("10").some(command => command.join(" ") === `shell pm clear --user 10 ${PACKAGE}`));
 });
 
-test("classes that assert a secondary user are refused, and declared permissions are granted after isolation", () => {
+test("classes that assert a secondary user run in a disposable user the runner creates and removes", async () => {
   // First run: HostedProcessRestart (then a default class) and HostedBackgroundWorker received their
-  // gates and failed on "Disposable secondary user required"; WorkflowApprovalNotice failed to post
-  // because nothing had granted the notification permission its fixture requires.
+  // gates in user 0 and failed on "Disposable secondary user required". Run in that user (round 7)
+  // they answered "HTTPS required": their loopback HTTP fixture is admitted by a test-mocks app build only.
   for (const name of ["HostedProcessRestart", "HostedBackgroundWorker"]) {
     assert.equal(CLASS_REGISTRY[name].secondaryUser, true);
-    assert.throws(() => parseInstrumentationArgs(["--classes", name]), /secondary Android user/);
-    assert.ok(!DEFAULT_CLASSES.includes(name), `${name} cannot be a default class`);
+    assert.equal(CLASS_REGISTRY[name].requiresTestMocksBuild, true);
+    assert.throws(() => parseInstrumentationArgs(["--owned-emulator", "--classes", name]), /needs a test-mocks app build/);
+    assert.throws(() => parseInstrumentationArgs(["--test-mocks", "--classes", name]), /requires --owned-emulator/);
+    assert.ok(!DEFAULT_CLASSES.includes(name), `${name} needs a test-mocks build, so it cannot be a default class`);
     const source = fs.readFileSync(`android/app/src/androidTest/java/ai/elizaresearch/alphaphone/${name}InstrumentedTest.java`, "utf8");
     assert.match(source, /isSystemUser\(\)/, `${name} still asserts a secondary user`);
   }
   assert.doesNotThrow(() => parseInstrumentationArgs([]));
+  const run = async ({ lifecycle, classes = "Shell,HostedProcessRestart,HostedBackgroundWorker" }) => {
+    const dir = apkDir(), emulator = fakeEmulator();
+    // A test-mocks archive keeps both APKs beside the manifest.
+    for (const variant of ["standalone", "launcher"]) fs.copyFileSync(path.join(dir, `instrumentation/${variant}-androidTest.apk`), path.join(dir, `${variant}-androidTest.apk`));
+    fs.writeFileSync(path.join(dir, "apk-manifest.json"), JSON.stringify({ ...JSON.parse(fs.readFileSync(path.join(dir, "apk-manifest.json"), "utf8")), testMocks: true }));
+    try {
+      const options = parseInstrumentationArgs(["--owned-emulator", "--avd", "fixture-avd", "--serial", "emulator-5554", "--test-mocks", "--variants", "standalone", "--classes", classes, "--apk-dir", dir, "--output", path.join(dir, "out")]);
+      let result, error;
+      try { result = await runLeased({ options, serial: "emulator-5554", adb: emulator.adb, timing, withSecondaryUser: lifecycle }); } catch (failure) { error = failure; }
+      return { result, error, commands: emulator.state.commands };
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  };
+  // The lifecycle the upstream helper provides: a user, the callback, then removal only with cleanup proof.
+  const created = [];
+  const lifecycle = async ({ name, record, run: body }) => {
+    created.push(name); record({ user: 10, ownerRestored: false, removed: false });
+    const proof = await body({ user: 10 });
+    assert.equal(proof.cleaned, true, "the phase proves the user holds none of this run's packages");
+    return { user: 10, ownerRestored: true, removed: true };
+  };
+  const passed = await run({ lifecycle });
+  assert.equal(passed.error, undefined);
+  assert.equal(passed.result.passed, true, JSON.stringify([passed.result.secondaryUsers, passed.result.classes.map(row => [row.class, row.status, row.note])]));
+  assert.deepEqual(passed.result.secondaryUsers, [{ variant: "standalone", user: 10, ownerRestored: true, removed: true }]);
+  assert.match(created[0], /^instrumentation-standalone-\d+$/);
+  const rows = Object.fromEntries(passed.result.classes.map(row => [row.class.split(".").at(-1), row.user]));
+  assert.deepEqual(rows, { ShellInstrumentedTest: undefined, HostedProcessRestartInstrumentedTest: "secondary", HostedBackgroundWorkerInstrumentedTest: "secondary" });
+  const inUser = passed.commands.filter(command => command.includes("--user 10"));
+  assert.ok(inUser.indexOf(`shell cmd package install-existing --user 10 ${PACKAGE}`) < inUser.findIndex(command => command.includes("am instrument --user 10")), "packages reach the user before any class runs");
+  assert.ok(inUser.includes(`shell cmd package install-existing --user 10 ${PACKAGE}.test`));
+  assert.equal(inUser.filter(command => command.includes("am instrument --user 10") && !command.includes("-e log true") && command.includes("HostedProcessRestart")).length, 3, "each phase is its own instrumentation process in that user");
+  assert.ok(inUser.includes(`shell pm clear --user 10 ${PACKAGE}`));
+  assert.deepEqual(inUser.filter(command => command.startsWith("shell pm uninstall")), [`shell pm uninstall --user 10 ${PACKAGE}.test`, `shell pm uninstall --user 10 ${PACKAGE}`]);
+  // The class that runs in user 0 never receives the user argument.
+  assert.ok(passed.commands.filter(command => command.includes("Shell")).every(command => !command.includes("--user 10")));
+  // A user that is not proven removed fails the run and names the classes that did not run.
+  const kept = await run({ lifecycle: async ({ record }) => { record({ user: 11, ownerRestored: false, removed: false }); throw new Error("Owned user cleanup deferred; recover explicitly"); } });
+  assert.equal(kept.result.passed, false);
+  assert.equal(kept.result.secondaryUsers[0].removed, false);
+  assert.match(kept.result.secondaryUsers[0].error, /cleanup deferred/);
+  assert.ok(kept.result.classes.filter(row => row.user === "secondary").every(row => row.status === "missing" && /secondary user phase failed/.test(row.note)));
+  // Without the lifecycle (a caller that holds no lease) nothing is installed.
+  const none = await run({ lifecycle: undefined });
+  assert.match(none.error?.message ?? "", /disposable user lifecycle/);
+  assert.ok(!none.commands.some(command => command.startsWith("install")));
+});
+
+test("declared permissions are granted after isolation, and a failed listing is kept", () => {
+  // First run: WorkflowApprovalNotice failed to post because nothing had granted the notification
+  // permission its fixture requires. RealClock needs AOSP Clock's own notification permission.
   assert.deepEqual(CLASS_REGISTRY.WorkflowApprovalNotice.grant, ["POST_NOTIFICATIONS"]);
+  assert.deepEqual(CLASS_REGISTRY.RealClock.grantOther, { "com.android.deskclock": ["POST_NOTIFICATIONS"] });
   const runner = fs.readFileSync("scripts/android-instrumentation.mjs", "utf8");
-  const body = runner.slice(runner.indexOf("const runClass = cls =>"));
-  assert.ok(body.indexOf("classIsolationCommands()") < body.indexOf("spec.grant"), "grants follow the data clear, which revokes them");
+  const body = runner.slice(runner.indexOf("const runClass = (cls, { user } = {}) =>"));
+  assert.ok(body.indexOf("classIsolationCommands(user)") < body.indexOf("spec.grant"), "grants follow the data clear, which revokes them");
+  assert.ok(body.indexOf("spec.grant") < body.indexOf("spec.grantOther"));
   assert.match(body, /-listing\.txt/);
 });
