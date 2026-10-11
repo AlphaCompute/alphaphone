@@ -42,3 +42,39 @@ test('A visible page shows a document receipt at once', async ({ page }) => {
   await (await chooser).setFiles({ name: 'Receipt note.txt', mimeType: 'text/plain', buffer: Buffer.from('Receipt body\n') });
   await expect(page.locator('[data-alpha-toast]').getByText('Imported as a new note. Nothing uploaded.', { exact: true })).toBeVisible();
 });
+
+// A failure is a document outcome too, and the one a person most needs to see.
+test('A document failure that arrives while the page is hidden is shown once the page is visible', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Notes', exact: true }).click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Import text note', exact: true }).click();
+  await (await chooser).setFiles({ name: 'Failure note.txt', mimeType: 'text/plain', buffer: Buffer.from('Failure body\n') });
+  await expect(page.getByRole('textbox', { name: 'Note', exact: true })).toHaveValue('Failure body\n');
+  await page.getByRole('button', { name: 'Share note', exact: true }).click();
+  const exportButton = page.getByRole('button', { name: 'Export text file', exact: true });
+  await expect(exportButton).toBeVisible();
+  const failure = page.locator('[data-alpha-toast]').getByText('Document operation failed. No completed export or import is confirmed.', { exact: true });
+  // The export itself fails (no object URL can be made), and it fails while the page is hidden.
+  await page.evaluate(() => {
+    const state = window as unknown as { __receiptHidden: boolean; __exportAttempts: number };
+    state.__receiptHidden = true; state.__exportAttempts = 0;
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => state.__receiptHidden });
+    URL.createObjectURL = () => { state.__exportAttempts++; throw new Error('Synthetic export failure'); };
+  });
+  await exportButton.click();
+  await page.waitForFunction(() => (window as unknown as { __exportAttempts: number }).__exportAttempts === 1);
+  await expect(exportButton).toBeEnabled();
+  await page.waitForTimeout(2300); // Longer than a notice stays up.
+  await expect(failure).toHaveCount(0);
+  await page.evaluate(() => {
+    (window as unknown as { __receiptHidden: boolean }).__receiptHidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(failure).toBeVisible();
+  // Visible again: the next failure is reported at once.
+  await expect(failure).toHaveCount(0, { timeout: 5000 });
+  await exportButton.click();
+  await page.waitForFunction(() => (window as unknown as { __exportAttempts: number }).__exportAttempts === 2);
+  await expect(failure).toBeVisible();
+});
