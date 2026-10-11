@@ -117,6 +117,45 @@ test('the chooser and Settings offer only production connections', async ({ page
   await expect(settings.getByText(/License notices unavailable|MIT|Apache|BSD|ISC|MPL/).first()).toBeVisible();
 });
 
+test('Settings shows the flags and obligations of flagged license entries, and nothing extra on unflagged ones', async ({ page }) => {
+  const notices = [
+    { name: 'plain-package', version: '1.0.0', license: 'MIT', source: 'https://example.test/plain', text: 'MIT terms', flags: [] },
+    { name: 'copyleft-package', version: '2.0.0', license: 'AGPL-3.0-or-later', source: 'https://example.test/copyleft', text: 'AGPL terms',
+      flags: ['copyleft-strong', 'network-copyleft', 'future-flag'],
+      obligations: [{ flag: 'copyleft-strong', note: 'Corresponding source must be available at https://example.test/copyleft.' }, { flag: 'network-copyleft', note: 'The source offer extends to network use.' }] },
+    { name: 'legacy-entry', version: '3.0.0', license: 'ISC', source: 'https://example.test/legacy', text: 'ISC terms' },
+  ];
+  await page.route('**/licenses/third-party-notices.json', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(notices) }));
+  await page.goto('/?tools=1');
+  await page.locator('.alpha-connection').getByRole('button', { name: 'Continue offline', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const settings = page.locator('[data-screen]');
+  await page.getByText('About', { exact: true }).click();
+  await settings.getByText('Open source licenses', { exact: true }).click();
+  await expect(settings.getByText('copyleft-package', { exact: true })).toBeVisible();
+  // Known flags are labelled; a flag this build does not know is shown as written, never dropped.
+  await expect(settings.getByText('Copyleft (GPL family) · Network copyleft (AGPL) · future-flag', { exact: true })).toBeVisible();
+  await expect(settings.getByText('Corresponding source must be available at https://example.test/copyleft.', { exact: true })).toBeVisible();
+  await expect(settings.getByText('The source offer extends to network use.', { exact: true })).toBeVisible();
+  // One flagged entry only: unflagged and pre-flag entries get no flag row.
+  await expect(settings.getByText('Flagged', { exact: true })).toHaveCount(1);
+  await expect(settings.getByText('Obligation', { exact: true })).toHaveCount(2);
+  await expect(settings.getByText('plain-package', { exact: true })).toBeVisible();
+  await expect(settings.getByText('legacy-entry', { exact: true })).toBeVisible();
+});
+
+test('Settings keeps the unavailable fallback when the license notices cannot be read', async ({ page }) => {
+  await page.route('**/licenses/third-party-notices.json', route => route.fulfill({ status: 404, body: '' }));
+  await page.goto('/?tools=1');
+  await page.locator('.alpha-connection').getByRole('button', { name: 'Continue offline', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const settings = page.locator('[data-screen]');
+  await page.getByText('About', { exact: true }).click();
+  await settings.getByText('Open source licenses', { exact: true }).click();
+  await expect(settings.getByText('License notices unavailable', { exact: true })).toBeVisible();
+  await expect(settings.getByText('Flagged', { exact: true })).toHaveCount(0);
+});
+
 test('deferred apps are absent and root views show honest unconnected states', async ({ page }) => {
   await page.addInitScript(offline);
   await page.goto('/?tools=1');

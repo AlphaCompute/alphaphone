@@ -14,8 +14,10 @@
  *
  * Qualification is not a distribution decision, but it never hides one: a test-mocks
  * build cannot qualify, and the result names every release blocker verify-apks recorded
- * (releaseBlockers; unsigned, unpackaged runtime, unqualified speech, unresolved font
- * licence) and reports releasesDistributable:false while any remains.
+ * (releaseBlockers; unsigned, unpackaged runtime, unqualified speech, and the proprietary-font
+ * check unresolved-font-licence while its policy constant in scripts/licence-policy.mjs is true)
+ * and reports releasesDistributable:false while any remains. Open-source licence flags are
+ * recorded by verify-apks (licenceFlags) and are never a blocker here (decision P-09).
  *
  * Evidence scope: source tests, browser engines on a development server and APK
  * builds. It is not an emulator, AOSP image, real-integration or device result.
