@@ -37,7 +37,10 @@ smoke runners, their emulator CI jobs, the provider diagnostic job and smoke-onl
 are removed. Two emulator jobs remain, `native` and `recovery-ui` in
 `.github/workflows/resident-android.yml`; they run only on an explicit dispatch or when
 the repository variable `ELIZA_RESIDENT_QUALIFICATION` is `push` or `nightly`, and no
-passing run of either is recorded for the current source. Distribution APK builds, repository checks and browser regression tests remain.
+passing run of either is recorded for the current source. Round 8 added
+`.github/workflows/android-emulator.yml`, whose three emulator jobs have no trigger but
+`workflow_dispatch` and run only the suite the dispatch names (see "Explicit, expensive
+qualification"); none of them has been dispatched. Distribution APK builds, repository checks and browser regression tests remain.
 Main pushes run affected repository verification, including the production bundle
 audit, and the affected Android foundation build of both variants, so a merge that
 breaks packaging is visible on the exact main commit. They do not repeat PR browser
@@ -184,6 +187,43 @@ gh workflow run resident-android.yml --ref main
 gh workflow run resident-prepare.yml --ref main
 gh workflow run bun-spawn-seccomp.yml --ref main
 ```
+
+### Emulator evidence (`android-emulator.yml`)
+
+Dispatch only: no push, pull request, schedule or reusable-workflow trigger, and no
+other workflow starts it. `test/ci-emulator-evidence.test.mjs` fails if that changes, if
+an action in it is not pinned to an exact commit, or if an emulator job stops uploading
+its results. A change to the file itself selects no automatic lane. One `build` job
+(about the cost of an Android foundation build, plus a second Gradle build when the
+reading suite is selected) builds the speech runtime, records it as a requalification
+candidate and builds developer APKs; each selected suite then boots one API 35 x86_64
+emulator. A later dispatch of the same suite on the same ref cancels the earlier one.
+
+```sh
+# Default instrumentation classes on both distributions (flag-off developer APKs).
+gh workflow run android-emulator.yml --ref <branch> -f suite=instrumentation
+# Reading and page-question classes on the pinned Chromium 157 WebView; also builds the test-mocks pair.
+gh workflow run android-emulator.yml --ref <branch> -f suite=browser-reading
+# The unchanged LocalSpeechInstrumentedTest on x86_64 against the candidate built in that run.
+gh workflow run android-emulator.yml --ref <branch> -f suite=local-speech
+# All three after one build.
+gh workflow run android-emulator.yml --ref <branch> -f suite=all
+```
+
+| Suite | Job | Runs | Artifact (3 days) | Fails when |
+| --- | --- | --- | --- | --- |
+| `instrumentation` | `instrumentation` | `npm run test:android:instrumentation` with its default classes, standalone then launcher | `android-emulator-instrumentation-<sha>-<run>-<attempt>`: `test-results/android-instrumentation/ci-default/` (`results.json`, raw output per class), `test-results/emulator-suite/instrumentation.json` | any class is failed, skipped or missing |
+| `browser-reading` | `browser-reading` | `scripts/prepare-ci-webview.mjs` (WebView 157.0.8083.0), then BrowserReadingNavigation and BrowserPageQuestion on the flag-off pair and BrowserReading, BrowserSensitiveReading and BrowserIsolatedReading on the test-mocks pair | `android-emulator-browser-reading-…`: `ci-reading/`, `ci-reading-test-mocks/`, the provider provisioning evidence | the provider cannot be installed, or any class is failed, skipped or missing |
+| `local-speech` | `local-speech` | `scripts/local-speech/requalify-runtime.py run` with networking off | `local-speech-x86_64-…`: `test-results/local-speech-x86_64/` (candidate before and after, `x86_64/instrumentation.log`, `x86_64/local-speech-evidence/`, the APK pair, `result.json`) | the canonical run does not record an x86_64 pass |
+
+The suites are implemented in `scripts/ci/emulator-suite.mjs`, which refuses to run
+outside a GitHub-hosted runner. Results are emulator-class evidence for developer-override
+APKs built in that run (resident runtime not packaged, speech runtime unqualified) on an
+x86_64 SDK image. They are not evidence for a distributable build, an arm64 device, the
+AOSP image or acceptance. The speech job produces one ABI of one candidate: admission
+still needs the same candidate's arm64-v8a run (the artifact carries the APK pair for it)
+and `requalify-runtime.py admit --reviewer` with a reviewer named by a person. No job
+admits anything. Artifacts expire after three days; copy what a ledger cites.
 
 Before distributing a new runtime/APK, explicitly run resident qualification on
 the reviewed revision and inspect its terminal result. A green ordinary PR does

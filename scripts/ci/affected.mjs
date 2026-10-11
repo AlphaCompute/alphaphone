@@ -20,8 +20,9 @@ export function affected(paths) {
       result.android = true;
     } else if (path === '.github/workflows/resident-prepare.yml') {
       result.prepare = true;
-    } else if (/^\.github\/workflows\/(resident-android|bun-spawn-seccomp)\.yml$/.test(path)) {
-      // Explicit qualification/diagnostics; resident push/nightly runs are opt-in by repository variable.
+    } else if (/^\.github\/workflows\/(resident-android|bun-spawn-seccomp|android-emulator)\.yml$/.test(path)) {
+      // Explicit qualification/diagnostics; resident push/nightly runs are opt-in by repository variable,
+      // and the emulator evidence workflow has no trigger but a dispatch.
     } else if (/^android\//.test(path)) {
       result.android = true;
     } else if (/^apps\/app\//.test(path)) {

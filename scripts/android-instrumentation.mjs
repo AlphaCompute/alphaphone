@@ -62,7 +62,7 @@ export const CLASS_REGISTRY = {
   BrowserSignins: { note: "signinProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs signin" },
   BrowserFlow: { note: "loopback fixture methods need --test-mocks" },
   BrowserContinuity: { note: "bookmarkProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs bookmark" },
-  BrowserDownload: { note: "needs --test-mocks (loopback HTTP fixtures)" },
+  BrowserDownload: { note: "needs --test-mocks (loopback HTTP fixtures); skipped on any other build, so it is not a default class" },
   // src/testMocks/androidTest: compiled only into the test-mocks instrumentation APK.
   BrowserAutofill: { testMocks: true },
   // Both hosted classes serve results from a loopback HTTP fixture, which HostedTransport accepts
@@ -206,9 +206,15 @@ export const NOT_RUN_BY_A_RUNNER = {
   WorkflowSubmission: "needs the reviewed-workflow host and a response-dropping proxy (workflowSubmission=true); its runner was removed in 49b1bf4c",
 };
 
+/**
+ * What a run without --classes executes. Every one of these has at least one method that runs on a
+ * flag-off build, so a default run can pass. BrowserDownload left the list in round 8: its only
+ * method needs a test-mocks app build, so on the default build the class could only be recorded
+ * "skipped", which fails the run. It runs with `--test-mocks --classes BrowserDownload`.
+ */
 export const DEFAULT_CLASSES = [
   "NoMockProduct", "Shell", "StartupReadiness", "TextScale", "BrowserSignins", "BrowserFlow",
-  "BrowserContinuity", "BrowserDownload",
+  "BrowserContinuity",
 ];
 
 const short = name => name.replace(new RegExp(`^${PACKAGE.replace(/\./g, "\\.")}\\.`), "").replace(/InstrumentedTest$/, "");

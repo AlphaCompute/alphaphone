@@ -197,7 +197,22 @@ refused it. No APK was built and nothing ran on Android from this rebuild, so no
 changed. No AAR on the build machine matches the reviewed record (`4f7b23a6…`) or
 `runtime-manifest.json` (`d08bbbd9…`).
 
-**Where the x86_64 run can come from.** No workflow runs the canonical test.
+**Hosted x86_64 run (round 8, never dispatched).** `gh workflow run android-emulator.yml --ref
+<branch> -f suite=local-speech` builds the runtime for both ABIs on a hosted Linux runner,
+records it with `requalify-runtime.py record`, builds developer APKs from it
+(`--allow-unqualified-runtime`), boots an API 35 x86_64 emulator, turns networking off and runs
+`requalify-runtime.py run` there. Its artifact `local-speech-x86_64-<sha>-<run>-<attempt>` holds
+`candidate-before-run.json`, `candidate.json` (with the x86_64 result `run` recorded),
+`x86_64/instrumentation.log`, `x86_64/local-speech-evidence/`, the exact `standalone-debug.apk`
+and `standalone-androidTest.apk`, and `result.json` with the `ingest` command that reproduces the
+x86_64 record from the earlier candidate. The job fails unless the candidate records an x86_64
+pass. That is one ABI of that run's candidate, a Linux rebuild whose JNI bytes differ from every
+earlier build: the arm64-v8a run must use the same APK pair and `candidate.json` (`run --serial
+<arm64 emulator> --apk … --test-apk … --candidate …`), and `admit --reviewer` stays a person's
+step. No job admits. Artifacts expire after three days. The paragraph below describes the state
+before this job existed and the manual route, which still works.
+
+**Where the x86_64 run can come from.** No workflow ran the canonical test before round 8.
 `.github/workflows/android.yml` only builds. `resident-android.yml` (`workflow_dispatch`) boots an
 x86_64 API 35 emulator in its `native` job, but `scripts/ci/resident-native.py` runs four resident
 test methods only, and its speech runtime is a separate Linux build installed with
