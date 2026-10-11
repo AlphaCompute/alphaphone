@@ -2,7 +2,7 @@
 // Generates the third-party notices shipped in the web bundle and in every APK payload.
 //
 //   node scripts/generate-licenses.mjs                    write apps/app/public/licenses/*
-//   node scripts/generate-licenses.mjs --check            fail when outputs are stale or incomplete
+//   node scripts/generate-licenses.mjs --check            fail when outputs are stale or an input is broken
 //   node scripts/generate-licenses.mjs --refresh-android  re-resolve the Gradle release/debug runtime
 //                                                         classpath into licenses/android-runtime-classpath.json
 //
@@ -16,17 +16,26 @@
 // --packaged-runtime (resident-android.yml). Without a flag, --check and generate() use the mode
 // the shipped notices were generated in, and --check also lists the staged runtime when present.
 //
-// Every entry has exactly {name, version, license, source, text}. Any license expression outside
-// KNOWN_LICENSES fails generation. Fonts, models and payloads whose license cannot be established
-// from shipped metadata are emitted with license 'license unverified' and fail unless
-// licenses/unverified-allowlist.json names them with a reason. Allowlisting is not legal sign-off.
+// Licence policy (docs/decisions.md P-09, scripts/licence-policy.mjs): generation never fails on
+// what a licence is. Every entry has {name, version, license, source, text, flags}, plus
+// `obligations` ([{flag, note}]) when flagged and `textSource: "spdx-canonical"` when the package
+// ships no licence file and the canonical text of its declared licence is used instead. Copyleft,
+// unknown, unverified and text-less entries are flagged and printed as
+// `LICENCE FLAG <flag>: <package>@<version> (<spdx>)` warnings; the exit status stays 0.
+// Generation fails only on broken input: a package that is not installed or whose manifest
+// cannot be read, a pinned licence copy or core that drifted from its recorded hash, a stale
+// Android classpath snapshot, a malformed font licence record. A flag is not legal review.
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {brotliDecompressSync} from 'node:zlib';
 import {fileURLToPath} from 'node:url';
+import {
+  COMMERCIAL_FONT, HELD_OUTSIDE_REPOSITORY, NO_FONT_LICENCE, UNKNOWN, UNVERIFIED, canonicalId, classifyLicence, flagSummary, licenceFlagLines, obligationNote,
+} from './licence-policy.mjs';
 
+export {COMMERCIAL_FONT, HELD_OUTSIDE_REPOSITORY, NO_FONT_LICENCE, UNKNOWN, UNVERIFIED};
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const OUTPUT_DIR = 'apps/app/public/licenses';
 export const JSON_OUTPUT = `${OUTPUT_DIR}/third-party-notices.json`;
@@ -35,11 +44,9 @@ export const ALLOWLIST = 'licenses/unverified-allowlist.json';
 export const RUNTIME_ALLOWLIST = 'licenses/packaged-runtime-allowlist.json';
 /** Recorded embedding licences for fonts whose own metadata names none (owner decision A-21). */
 export const FONT_LICENSES = 'licenses/font-licenses.json';
-export const COMMERCIAL_FONT = 'LicenseRef-Commercial-Font';
 export const ANDROID_CLASSPATH = 'licenses/android-runtime-classpath.json';
-export const UNVERIFIED = 'license unverified';
 
-/** SPDX identifiers (and the one SPDX exception) accepted without legal escalation by this check. */
+/** SPDX identifiers the SBOM writes as a CycloneDX licence id. Not a gate: see scripts/licence-policy.mjs. */
 export const KNOWN_LICENSES = new Set([
   '0BSD', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'MIT', 'MPL-2.0', 'OFL-1.1', 'ODbL-1.0', 'Zlib',
   'GPL-2.0-only WITH Font-exception-2.0',
@@ -47,8 +54,8 @@ export const KNOWN_LICENSES = new Set([
   'IJG', 'libpng-2.0', 'libtiff', 'SunPro',
 ]);
 
-/** Maven group prefixes found on the resolved Android runtime classpath. Anything else fails. */
-const MAVEN_FAMILIES = [
+/** Maven group prefixes found on the resolved Android runtime classpath. Anything else is listed as UNKNOWN and flagged. */
+export const MAVEN_FAMILIES = [
   {prefix: 'androidx.', name: 'AndroidX (Android Jetpack) libraries, including CameraX', license: 'Apache-2.0', source: 'https://android.googlesource.com/platform/frameworks/support/'},
   {prefix: 'org.jetbrains.kotlinx', name: 'Kotlin coroutines', license: 'Apache-2.0', source: 'https://github.com/Kotlin/kotlinx.coroutines'},
   {prefix: 'org.jetbrains.kotlin', name: 'Kotlin standard library', license: 'Apache-2.0', source: 'https://github.com/JetBrains/kotlin'},
@@ -79,19 +86,6 @@ const readJson = (root, rel) => JSON.parse(read(root, rel));
 const exists = (root, rel) => fs.existsSync(path.join(root, rel));
 export const sha256 = data => createHash('sha256').update(data).digest('hex');
 const normalizeText = text => text.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/^\n+|\n+$/g, '');
-
-/** Validate an SPDX-style expression. Returns the identifiers that are not known. */
-export function unknownLicenseTerms(expression) {
-  if (expression === UNVERIFIED) return [];
-  if (typeof expression !== 'string' || !expression.trim()) return [String(expression)];
-  if (KNOWN_LICENSES.has(expression)) return [];
-  const bad = [];
-  for (const term of expression.replace(/[()]/g, ' ').split(/\s+(?:AND|OR)\s+/)) {
-    const id = term.trim();
-    if (!KNOWN_LICENSES.has(id)) bad.push(id);
-  }
-  return bad;
-}
 
 /**
  * True when an installed package holds only TypeScript declarations and package metadata, so
@@ -136,6 +130,144 @@ function licenseFilesText(dir) {
   if (!fs.existsSync(dir)) return '';
   const names = fs.readdirSync(dir).filter(name => LICENSE_FILE.test(name) && fs.statSync(path.join(dir, name)).isFile()).sort();
   return names.map(name => normalizeText(fs.readFileSync(path.join(dir, name), 'utf8'))).join('\n\n');
+}
+
+/** Canonical licence texts held in licenses/<SPDX id>.txt, for packages that ship no licence file. */
+export function loadTemplates(root) {
+  const text = id => normalizeText(read(root, `licenses/${id}.txt`));
+  return {
+    mit: text('MIT'), isc: text('ISC'), apache: text('Apache-2.0'), ofl: text('OFL-1.1'),
+    /** Canonical text for every identifier of an expression, or '' when any one is not held. */
+    canonical(expression) {
+      const {identifiers} = classifyLicence(expression);
+      if (!identifiers.length) return '';
+      const ids = [...new Set(identifiers.map(canonicalId))];
+      // The LGPL is a set of additional permissions on top of the GPL of the same version, so both texts go together.
+      for (const id of [...ids]) if (/^LGPL-3\.0$/.test(id) && !ids.includes('GPL-3.0')) ids.push('GPL-3.0');
+      if (ids.some(id => !/^[A-Za-z0-9.+-]+$/.test(id) || !exists(root, `licenses/${id}.txt`))) return '';
+      return ids.map(id => (ids.length > 1 ? `${id}:\n\n` : '') + text(id)).join('\n\n');
+    },
+  };
+}
+
+/** Identify a licence from the text of a licence file. Returns '' when it is not one of these. */
+export function detectLicenceFromText(text) {
+  const t = String(text).replace(/\s+/g, ' ');
+  if (/GNU AFFERO GENERAL PUBLIC LICENSE Version 3/i.test(t)) return 'AGPL-3.0';
+  if (/GNU LESSER GENERAL PUBLIC LICENSE Version 3/i.test(t)) return 'LGPL-3.0';
+  if (/GNU LESSER GENERAL PUBLIC LICENSE Version 2\.1/i.test(t)) return 'LGPL-2.1';
+  if (/GNU GENERAL PUBLIC LICENSE Version 3/i.test(t)) return 'GPL-3.0';
+  if (/GNU GENERAL PUBLIC LICENSE Version 2/i.test(t)) return 'GPL-2.0';
+  if (/Mozilla Public License,? Version 2\.0/i.test(t)) return 'MPL-2.0';
+  if (/Apache License,? Version 2\.0/i.test(t)) return 'Apache-2.0';
+  if (/Blue Oak Model License/i.test(t)) return 'BlueOak-1.0.0';
+  if (/Permission is hereby granted, free of charge, to any person obtaining a copy/i.test(t)) return 'MIT';
+  if (/Permission to use, copy, modify, and\/or distribute this software for any purpose with or without fee is hereby granted/i.test(t))
+    return /provided that the above copyright notice/i.test(t) ? 'ISC' : '0BSD';
+  if (/Redistribution and use in source and binary forms/i.test(t)) return /Neither the name/i.test(t) ? 'BSD-3-Clause' : 'BSD-2-Clause';
+  if (/This is free and unencumbered software released into the public domain/i.test(t)) return 'Unlicense';
+  if (/CC0 1\.0 Universal/i.test(t)) return 'CC0-1.0';
+  return '';
+}
+
+/** True when `text` holds the body of the copyleft licence `id`, not just a sentence naming it. */
+function holdsLicenceBody(text, id) {
+  const t = String(text).replace(/\s+/g, ' ');
+  const title = /^AGPL-3/.test(id) ? /GNU AFFERO GENERAL PUBLIC LICENSE Version 3/i
+    : /^LGPL-3/.test(id) ? /GNU LESSER GENERAL PUBLIC LICENSE Version 3/i
+      : /^LGPL-2\.1/.test(id) ? /GNU LESSER GENERAL PUBLIC LICENSE Version 2\.1/i
+        : /^GPL-3/.test(id) ? /GNU GENERAL PUBLIC LICENSE Version 3/i
+          : /^GPL-2/.test(id) ? /GNU GENERAL PUBLIC LICENSE Version 2/i
+            : /^MPL-2/.test(id) ? /Mozilla Public License,? Version 2\.0/i : null;
+  return !title || (title.test(t) && t.length > 4000);
+}
+
+/** Terms that are plainly not an open-source licence: rights reserved with no recognised licence, or a use restriction. */
+export function restrictedTerms(text) {
+  const t = String(text).replace(/\s+/g, ' ');
+  if (/\bnon-?commercial\b/i.test(t)) return 'The package\'s own licence file limits use to non-commercial use.';
+  if (/\ball rights reserved\b/i.test(t) && !detectLicenceFromText(t)) return 'The package\'s own licence file reserves all rights and grants no recognised open-source licence.';
+  return '';
+}
+
+/** A licence named under a "License" heading of the package README, or ''. */
+function readmeLicence(dir) {
+  if (!fs.existsSync(dir)) return '';
+  const name = fs.readdirSync(dir).find(entry => /^readme(\.(md|markdown|txt))?$/i.test(entry));
+  if (!name) return '';
+  const readme = fs.readFileSync(path.join(dir, name), 'utf8');
+  const section = /^#{1,6}\s*licen[cs]e\b[^\n]*\n([\s\S]{0,400})/im.exec(readme)?.[1] ?? '';
+  const found = /\b(MIT|ISC|Apache[- ]2\.0|BSD-[23]-Clause|MPL-2\.0|Unlicense|CC0-1\.0|0BSD|(?:A|L)?GPL-[23]\.[01](?:-only|-or-later)?)\b/.exec(section)?.[1] ?? '';
+  return found.replace(/^Apache 2\.0$/, 'Apache-2.0');
+}
+
+function repositoryUrl(manifest) {
+  const repository = typeof manifest.repository === 'string' ? manifest.repository : manifest.repository?.url;
+  if (typeof repository !== 'string' || !repository.trim()) return '';
+  return repository.trim().replace(/^git\+/, '').replace(/^git:\/\//, 'https://').replace(/^github:/, 'https://github.com/').replace(/\.git$/, '');
+}
+
+export function manifestLicense(manifest) {
+  if (typeof manifest.license === 'string') return manifest.license;
+  if (manifest.license && typeof manifest.license.type === 'string') return manifest.license.type;
+  if (Array.isArray(manifest.licenses) && manifest.licenses.length)
+    return manifest.licenses.map(item => (typeof item === 'string' ? item : item?.type)).filter(Boolean).join(' OR ');
+  return '';
+}
+
+/**
+ * Licence, text and flags for one package. Never fails on what the licence is: an undeclared
+ * licence is identified from the package's own licence file or README (and flagged unverified),
+ * or recorded as UNKNOWN; a missing licence file is replaced by the canonical text of the
+ * declared licence (textSource "spdx-canonical") and flagged.
+ * @param {{declared?: string, text?: string, dir?: string, manifest?: object, templates: object, shippedBy?: string}} input
+ */
+export function packageNotice({declared = '', text = '', dir = '', manifest = {}, templates, shippedBy = 'npm package'}) {
+  const flags = [];
+  let reason = '', textSource;
+  const stated = typeof declared === 'string' ? declared.trim() : '';
+  let license = /^(SEE LICEN[CS]E IN\b|UNLICENSED$)/i.test(stated) ? '' : stated;
+  if (!license) {
+    const fromText = text ? detectLicenceFromText(text) : '';
+    const fromReadme = fromText || !dir ? '' : readmeLicence(dir);
+    const manifestSays = stated ? `The package manifest says "${stated}" instead of naming a licence.` : 'The package manifest declares no licence.';
+    if (fromText) { license = fromText; flags.push('unverified'); reason = `${manifestSays} ${fromText} was identified from the text of the package's own licence file.`; }
+    else if (fromReadme) { license = fromReadme; flags.push('unverified'); reason = `${manifestSays} ${fromReadme} is the licence named in the package's README.`; }
+    else license = stated || UNKNOWN;
+  }
+  // "UNLICENSED" is npm's word for proprietary; a licence file can also say so in its own terms.
+  const restricted = /^UNLICENSED$/i.test(stated) ? 'The package manifest says "UNLICENSED", which npm uses for packages that grant no licence.'
+    : classifyLicence(license).flags.includes('unknown-licence') && text ? restrictedTerms(text) : '';
+  if (restricted) { flags.push('non-open-source-terms'); reason = restricted; }
+  // A copyleft package whose licence file only names the licence still ships the licence text itself.
+  const named = text ? (classifyLicence(license).chosen ?? []).map(canonicalId).filter(id => !holdsLicenceBody(text, id)) : [];
+  if (named.length) {
+    flags.push('licence-text-missing-from-package');
+    const canonical = templates.canonical(named.join(' AND '));
+    if (canonical) {
+      textSource = 'package-and-spdx-canonical';
+      text = `${text}\n\nThe package's licence file names ${named.join(' and ')} without including the licence text. The canonical text follows.\n\n${canonical}`;
+    }
+  }
+  if (!text) {
+    flags.push('licence-text-missing-from-package');
+    const canonical = license === UNKNOWN ? '' : templates.canonical(license);
+    const author = packageAuthor(manifest);
+    if (canonical) {
+      textSource = 'spdx-canonical';
+      text = `The ${shippedBy} ships no license file. Its package.json declares the ${license} License${author ? `; author: ${author}` : ''}. The standard ${license} terms follow.\n\n${canonical}`;
+    } else if (license === UNKNOWN) text = `The ${shippedBy} ships no licence file and no licence could be established for it.`;
+    else text = `The ${shippedBy} ships no licence file. It declares ${license}${author ? `; author: ${author}` : ''}. No canonical text for that licence is held in licenses/.`;
+  }
+  return {license, text, textSource, repository: repositoryUrl(manifest), _flags: flags, _reason: reason};
+}
+
+function readManifest(dir, label, errors) {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('not an object');
+    return manifest;
+  } catch (error) { errors.push(`${label}: unreadable or corrupted package.json (${error.message})`); return null; }
 }
 
 function packageAuthor(pkg) {
@@ -220,7 +352,7 @@ export function fontNames(buf) {
 export function fontLicense(names) {
   const haystack = `${names.licenseDescription}\n${names.licenseUrl}`;
   if (/SIL Open Font License,? Version 1\.1|scripts\.sil\.org\/(cms\/scripts\/page\.php\?.*id=)?OFL|openfontlicense\.org/i.test(haystack)) return 'OFL-1.1';
-  return UNVERIFIED;
+  return NO_FONT_LICENCE;
 }
 
 function listFonts(root, dir) {
@@ -243,17 +375,11 @@ function npmEntries(root, templates, errors) {
   for (const pkg of productionLockPackages(lock, root)) {
     const dir = path.join(root, pkg.key);
     if (!fs.existsSync(path.join(dir, 'package.json'))) { errors.push(`${pkg.name}@${pkg.version}: not installed at ${pkg.key}; run npm ci`); continue; }
-    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const manifest = readManifest(dir, `${pkg.name}@${pkg.version}`, errors);
+    if (!manifest) continue;
     if (manifest.version !== pkg.version) errors.push(`${pkg.name}: installed ${manifest.version} differs from package-lock ${pkg.version}`);
-    const license = pkg.license || (typeof manifest.license === 'string' ? manifest.license : '');
-    let text = licenseFilesText(dir);
-    if (!text) {
-      const template = license === 'MIT' ? templates.mit : license === 'ISC' ? templates.isc : '';
-      if (!template) { errors.push(`${pkg.name}@${pkg.version}: no license file shipped for ${license || 'undeclared license'}`); continue; }
-      const author = packageAuthor(manifest);
-      text = `The npm package ships no license file. Its package.json declares the ${license} License${author ? `; author: ${author}` : ''}. The standard ${license} terms follow.\n\n${template}`;
-    }
-    entries.push({name: pkg.name, version: pkg.version, license, source: pkg.resolved || `https://www.npmjs.com/package/${pkg.name}/v/${pkg.version}`, text});
+    const notice = packageNotice({declared: pkg.license || manifestLicense(manifest), text: licenseFilesText(dir), dir, manifest, templates});
+    entries.push({name: pkg.name, version: pkg.version, source: pkg.resolved || `https://www.npmjs.com/package/${pkg.name}/v/${pkg.version}`, ...notice});
   }
   return entries;
 }
@@ -267,7 +393,7 @@ function pdfjsEntries(root, errors) {
     for (const file of files) if (!exists(root, `${dir}/${file}`)) errors.push(`${component.name}: missing ${dir}/${file}`);
     const text = files.filter(file => exists(root, `${dir}/${file}`)).map(file => normalizeText(read(root, `${dir}/${file}`))).join('\n\n');
     return {name: component.name, version: `bundled with pdfjs-dist ${version}`, license: component.license, source: component.source,
-      text: text || 'pdfjs-dist ships this component without a license file.'};
+      text: text || 'pdfjs-dist ships this component without a license file.', _flags: text ? [] : ['licence-text-missing-from-package']};
   });
 }
 
@@ -330,11 +456,25 @@ function fontEntries(root, templates, errors) {
     let body = license === 'OFL-1.1' ? `${names.copyright}\n\n${templates.ofl}` :
       `The font file states: "${names.copyright || 'no copyright notice'}". It names no license${names.manufacturer ? `; manufacturer: ${names.manufacturer}` : ''}.`;
     // A recorded embedding licence covers exactly the reviewed bytes: every shipped file of the face.
-    const record = license === UNVERIFIED ? licensed.find(item => item.name === name && files.every(file => item.sha256?.includes(file.sha256))) : null;
+    const record = license === NO_FONT_LICENCE ? licensed.find(item => item.name === name && files.every(file => item.sha256?.includes(file.sha256))) : null;
+    let heldOutside = false;
     if (record) {
       usedRecords.add(record);
-      const missing = ['licensor', 'licensee', 'scope', 'evidence', 'recordedOn'].filter(field => typeof record[field] !== 'string' || !record[field].trim());
+      // Two record states. A full record names licensor, licensee, scope and where the signed licence is held.
+      // "held-outside-repository" records only what the owner stated: who holds it and on what basis. It
+      // carries no licence name, number, scope or terms, and the entry says so and stays flagged.
+      heldOutside = record.evidence === HELD_OUTSIDE_REPOSITORY;
+      const missing = (heldOutside ? ['holder', 'basis', 'recordedOn'] : ['licensor', 'licensee', 'scope', 'evidence', 'recordedOn']).filter(field => typeof record[field] !== 'string' || !record[field].trim());
       if (record.license !== COMMERCIAL_FONT) errors.push(`${FONT_LICENSES}: ${name} must use license ${COMMERCIAL_FONT}`);
+      else if (heldOutside && !missing.length) {
+        license = COMMERCIAL_FONT;
+        body = [
+          names.copyright,
+          'Proprietary typeface. It is not open-source software and is not redistributable under an open-source licence.',
+          `Licence holder: ${record.holder}. Basis: ${record.basis}. Recorded ${record.recordedOn}.`,
+          record.reference ? `Reference to the licence document: ${record.reference}.` : 'Evidence: held outside this repository. The licence document is not in this repository and no reference to it is recorded here; no licence name, number, date, scope or terms are recorded.',
+        ].join('\n\n');
+      }
       else if (missing.length) errors.push(`${FONT_LICENSES}: ${name} is missing ${missing.join(', ')}`);
       else if (!/\bapp\b/i.test(record.scope) || !/\bweb\b/i.test(record.scope)) errors.push(`${FONT_LICENSES}: ${name} scope must cover app and web embedding`);
       else {
@@ -343,7 +483,8 @@ function fontEntries(root, templates, errors) {
       }
     }
     entries.push({name, version: names.version.replace(/^Version\s+/i, ''), license,
-      source: `Files shipped in the web bundle:\n${fileList}`, text: body, _unverifiedKey: files.map(file => file.sha256), _licensedFont: license === COMMERCIAL_FONT});
+      source: `Files shipped in the web bundle:\n${fileList}`, text: body, _unverifiedKey: files.map(file => file.sha256),
+      ...(heldOutside && license === COMMERCIAL_FONT ? {_flags: ['proprietary-licence-held-outside-repo'], _reason: `${record.holder}: ${record.basis}.`} : {})});
   }
   for (const item of licensed) if (!usedRecords.has(item)) errors.push(`${FONT_LICENSES}: stale entry ${item.name}; no shipped font matches its name and sha256 list`);
   const pkg = readJson(root, 'package.json');
@@ -351,10 +492,10 @@ function fontEntries(root, templates, errors) {
   for (const name of fontsource) {
     const dir = `node_modules/${name}`;
     if (!exists(root, `${dir}/package.json`)) { errors.push(`${name}: not installed; run npm ci`); continue; }
-    const manifest = readJson(root, `${dir}/package.json`);
-    const text = licenseFilesText(path.join(root, dir));
-    if (!text) errors.push(`${name}: no license file`);
-    entries.push({name, version: manifest.version, license: manifest.license, source: `https://www.npmjs.com/package/${name}/v/${manifest.version}`, text});
+    const manifest = readManifest(path.join(root, dir), name, errors);
+    if (!manifest) continue;
+    const notice = packageNotice({declared: manifestLicense(manifest), text: licenseFilesText(path.join(root, dir)), dir: path.join(root, dir), manifest, templates});
+    entries.push({name, version: manifest.version, source: `https://www.npmjs.com/package/${name}/v/${manifest.version}`, ...notice});
   }
   return entries;
 }
@@ -419,20 +560,29 @@ function androidEntries(root, templates, errors) {
   if (snapshot.inputFingerprint !== androidDependencyFingerprint(root))
     errors.push(`${ANDROID_CLASSPATH} is stale: Android dependency declarations changed; run node scripts/generate-licenses.mjs --refresh-android`);
   const families = new Map();
+  const unknown = [];
   for (const coord of snapshot.coordinates) {
     const [group] = coord.split(':');
     const family = MAVEN_FAMILIES.find(f => f.exact ? group === f.prefix : group.startsWith(f.prefix));
-    if (!family) { errors.push(`Android dependency ${coord}: unknown license (add its group to MAVEN_FAMILIES after review)`); continue; }
+    if (!family) { unknown.push(coord); continue; }
     if (!families.has(family)) families.set(family, []);
     families.get(family).push(coord);
   }
-  return [...families].map(([family, coords]) => ({name: family.name, version: coords.join('\n'), license: family.license, source: family.source, text: templates.apache}));
+  return [
+    ...[...families].map(([family, coords]) => ({name: family.name, version: coords.join('\n'), license: family.license, source: family.source, text: templates.apache})),
+    // A Maven group with no recorded licence is listed and flagged, never dropped.
+    ...unknown.map(coord => {
+      const [group, artifact, version] = coord.split(':');
+      return {name: `Android dependency ${group}:${artifact}`, version, license: UNKNOWN, source: `https://mvnrepository.com/artifact/${group}/${artifact}/${version}`,
+        text: `No licence is recorded for the Maven group ${group} in MAVEN_FAMILIES (scripts/generate-licenses.mjs). The artifact's own POM and licence file are not read by this generator.`,
+        _flags: ['licence-text-missing-from-package']};
+    }),
+  ];
 }
 
 function speechEntries(root, templates, errors) {
   if (!exists(root, 'android/local-speech/runtime-manifest.json')) return [];
   const manifest = readJson(root, 'android/local-speech/runtime-manifest.json');
-  if (manifest.noEspeak !== true) errors.push('android/local-speech/runtime-manifest.json: runtime is not the qualified no-eSpeak build (GPL eSpeak would need separate review)');
   const scripts = 'vendor/eliza/packages/app/scripts/local-speech';
   const consumer = exists(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle') ? read(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle') : '';
   const sherpaVersion = consumer.match(/sherpa-onnx-([\d.]+)-no-espeak\.aar/)?.[1];
@@ -449,7 +599,12 @@ function speechEntries(root, templates, errors) {
     return normalizeText(text);
   };
   const abis = manifest.qualifiedAbis.map(q => q.abi).join(', ');
+  // The qualified runtime is the no-eSpeak build. Any other build links eSpeak NG (GPL), which is listed and flagged.
+  const espeak = manifest.noEspeak === true ? [] : [{name: 'eSpeak NG (linked into the Sherpa-ONNX speech runtime)', version: `built with Sherpa-ONNX ${sherpaVersion}`, license: 'GPL-3.0-or-later',
+    source: 'https://github.com/espeak-ng/espeak-ng', text: templates.canonical('GPL-3.0-or-later') || 'android/local-speech/runtime-manifest.json does not record the no-eSpeak build, so eSpeak NG is linked. Its licence text is not held in licenses/.',
+    ...(templates.canonical('GPL-3.0-or-later') ? {textSource: 'spdx-canonical'} : {}), _flags: ['licence-text-missing-from-package']}];
   return [
+    ...espeak,
     {name: 'Sherpa-ONNX (no-eSpeak Android build)', version: `${sherpaVersion} (AAR sha256 ${manifest.aarSha256}; ABIs ${abis})`, license: 'Apache-2.0',
       source: `https://github.com/k2-fsa/sherpa-onnx/tree/v${sherpaVersion}`, text: templates.apache},
     {name: 'ONNX Runtime', version: ortVersions.join(', '), license: 'MIT', source: `https://github.com/microsoft/onnxruntime/tree/v${ortVersions[0]}`,
@@ -511,32 +666,19 @@ export function agentBundlePackageDirs(bundleText) {
   return [...dirs].sort();
 }
 
-function manifestLicense(manifest) {
-  if (typeof manifest.license === 'string') return manifest.license;
-  if (manifest.license && typeof manifest.license.type === 'string') return manifest.license.type;
-  if (Array.isArray(manifest.licenses) && manifest.licenses.length)
-    return manifest.licenses.map(item => (typeof item === 'string' ? item : item?.type)).filter(Boolean).join(' OR ');
-  return '';
-}
-
 function runtimePackageEntry(dir, bundle, templates, errors) {
   if (!fs.existsSync(path.join(dir, 'package.json'))) { errors.push(`${bundle}: ${dir} is not in the prepared runtime source; run npm run agent:prepare`); return null; }
-  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
-  const license = manifestLicense(manifest);
-  let text = licenseFilesText(dir);
-  if (!text) {
-    const template = license === 'MIT' ? templates.mit : license === 'ISC' ? templates.isc : license === 'Apache-2.0' ? templates.apache : '';
-    if (!template) { errors.push(`${manifest.name}@${manifest.version} (${bundle}): no license file shipped for ${license || 'undeclared license'}`); return null; }
-    const author = packageAuthor(manifest);
-    text = `The npm package ships no license file. Its package.json declares the ${license} License${author ? `; author: ${author}` : ''}. The standard ${license} terms follow.\n\n${template}`;
-  }
-  return {name: manifest.name, version: manifest.version, license, source: `https://www.npmjs.com/package/${manifest.name}/v/${manifest.version}`, text, _bundles: [bundle]};
+  const manifest = readManifest(dir, `${bundle}: ${dir}`, errors);
+  if (!manifest) return null;
+  if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') { errors.push(`${bundle}: ${dir}/package.json has no name and version`); return null; }
+  const notice = packageNotice({declared: manifestLicense(manifest), text: licenseFilesText(dir), dir, manifest, templates});
+  return {name: manifest.name, version: manifest.version, source: `https://www.npmjs.com/package/${manifest.name}/v/${manifest.version}`, ...notice, _bundles: [bundle]};
 }
 
 function bunEntry(provenance, templates) {
   const {version, revision} = provenance.bun ?? {};
   return {name: BUN_ENTRY, version: `${version} (oven-sh/bun ${revision})`, license: UNVERIFIED,
-    source: `https://github.com/oven-sh/bun/tree/${revision}`,
+    source: `https://github.com/oven-sh/bun/tree/${revision}`, _flags: ['copyleft-weak'],
     text: [
       `Bun ${version}, built from oven-sh/bun revision ${revision}, is packaged as libeliza_bun.so for ${(provenance.bun?.architectures ?? []).join(' and ')} and runs the on-device agent.`,
       'Bun is distributed under the MIT License:',
@@ -580,16 +722,14 @@ export function runtimeEntries(root, templates, errors, {agentDir = path.join(ro
       const missing = notices.filter(file => !fs.existsSync(file));
       if (missing.length) errors.push(`workflow-worker ${dep.name}@${dep.version}: missing notice ${missing.map(file => path.relative(workerDir, file)).join(', ')}`);
       let license = typeof dep.license === 'string' ? dep.license : '';
-      const shipped = path.join(workerDir, dep.sourcePath ?? '', 'package.json');
-      if (!license && fs.existsSync(shipped)) license = manifestLicense(JSON.parse(fs.readFileSync(shipped, 'utf8')));
-      let text = notices.filter(file => fs.existsSync(file)).map(file => normalizeText(fs.readFileSync(file, 'utf8'))).join('\n\n');
-      if (!text) {
-        // The artifact records no notice file; use the standard terms of its declared license.
-        const template = license === 'MIT' ? templates.mit : license === 'ISC' ? templates.isc : license === 'Apache-2.0' ? templates.apache : '';
-        if (!template) { errors.push(`workflow-worker ${dep.name}@${dep.version}: no license notice for ${license || 'undeclared license'}`); continue; }
-        text = `The workflow-worker artifact ships no license file for this package. Its package.json declares the ${license} License. The standard ${license} terms follow.\n\n${template}`;
-      }
-      add({name: dep.name, version: dep.version, license: license || UNVERIFIED, source: `https://www.npmjs.com/package/${dep.name}/v/${dep.version}`, text, _bundles: ['workflow worker']});
+      const shippedDir = path.join(workerDir, dep.sourcePath ?? '');
+      let manifest = {};
+      if (dep.sourcePath && fs.existsSync(path.join(shippedDir, 'package.json'))) manifest = readManifest(shippedDir, `workflow-worker ${dep.name}@${dep.version}`, errors) ?? {};
+      if (!license) license = manifestLicense(manifest);
+      const text = notices.filter(file => fs.existsSync(file)).map(file => normalizeText(fs.readFileSync(file, 'utf8'))).join('\n\n');
+      // No recorded notice file: the canonical terms of the declared licence are used and the entry is flagged.
+      const notice = packageNotice({declared: license, text, dir: dep.sourcePath ? shippedDir : '', manifest, templates, shippedBy: 'workflow-worker artifact'});
+      add({name: dep.name, version: dep.version, source: `https://www.npmjs.com/package/${dep.name}/v/${dep.version}`, ...notice, _bundles: ['workflow worker']});
     }
   } else errors.push(`${workerDir}/dependencies.json is missing from the staged runtime`);
   for (const entry of byId.values()) {
@@ -624,35 +764,33 @@ function mapDataEntries(root) {
 
 // ---------------------------------------------------------------- assembly
 
-function applyAllowlist(root, entries, errors, packagedRuntime) {
+/**
+ * Attach the recorded reason to each unverified or proprietary entry. The two reason files do
+ * not gate anything: an item with no recorded reason is still listed and flagged.
+ */
+function applyReasons(root, entries, warnings, packagedRuntime) {
   const allowlist = exists(root, ALLOWLIST) ? readJson(root, ALLOWLIST) : {entries: []};
-  // Items that exist only in a staged runtime are reviewed in their own list, read only then.
+  // Items that exist only in a staged runtime have their reasons in their own list, read only then.
   if (packagedRuntime && exists(root, RUNTIME_ALLOWLIST))
     allowlist.entries = [...allowlist.entries, ...readJson(root, RUNTIME_ALLOWLIST).entries];
   const used = new Set();
   for (const entry of entries) {
-    if (entry.license !== UNVERIFIED) continue;
+    if (entry.license !== UNVERIFIED && entry.license !== NO_FONT_LICENCE) continue;
     const keys = entry._unverifiedKey || [];
-    // File-backed entries (fonts) are allowlisted per exact file hash, so a swapped file is re-reviewed.
+    // File-backed entries (fonts) are matched per exact file hash, so a swapped file is not covered by an old reason.
     const match = allowlist.entries.find(item => item.name === entry.name && (keys.length ? keys.includes(item.sha256) : !item.sha256));
-    if (!match) { errors.push(`${entry.name} ${entry.version}: ${UNVERIFIED} and not in ${ALLOWLIST}`); continue; }
-    if (typeof match.reason !== 'string' || match.reason.trim().length < 20) { errors.push(`${ALLOWLIST}: ${entry.name} needs a reason`); continue; }
+    if (!match || typeof match.reason !== 'string' || match.reason.trim().length < 20) { warnings.push(`${entry.name} ${entry.version}: ${entry.license}, with no reason recorded in ${ALLOWLIST}`); continue; }
     used.add(match);
-    entry.text = `LICENSE UNVERIFIED. ${match.reason.trim()}\n\n${entry.text}`;
+    entry._reason = match.reason.trim();
   }
-  for (const item of allowlist.entries) if (!used.has(item)) errors.push(`${ALLOWLIST}: stale entry ${item.name}${item.sha256 ? ` (${item.sha256})` : ''}`);
+  for (const item of allowlist.entries) if (!used.has(item)) warnings.push(`${ALLOWLIST}: stale entry ${item.name}${item.sha256 ? ` (${item.sha256})` : ''}`);
 }
 
 export function collectNotices(root = ROOT, {packagedRuntime = shippedPackagedRuntime(root)} = {}) {
-  const errors = [];
+  const errors = [], warnings = [];
   if (packagedRuntime && !packagedRuntimePresent(root))
     errors.push(`--packaged-runtime needs a staged runtime in ${AGENT_ASSETS}; run npm run agent:stage-android first`);
-  const templates = {
-    mit: normalizeText(read(root, 'licenses/MIT.txt')),
-    isc: normalizeText(read(root, 'licenses/ISC.txt')),
-    apache: normalizeText(read(root, 'licenses/Apache-2.0.txt')),
-    ofl: normalizeText(read(root, 'licenses/OFL-1.1.txt')),
-  };
+  const templates = loadTemplates(root);
   const entries = [
     ...npmEntries(root, templates, errors),
     ...pdfjsEntries(root, errors),
@@ -667,30 +805,51 @@ export function collectNotices(root = ROOT, {packagedRuntime = shippedPackagedRu
     ...(packagedRuntime ? runtimeEntries(root, templates, errors) : []),
     ...mapDataEntries(root),
   ];
-  for (const entry of entries) {
-    const bad = entry._licensedFont ? [] : unknownLicenseTerms(entry.license);
-    if (bad.length) errors.push(`${entry.name}@${entry.version}: unknown license ${bad.join(', ')}`);
-    if (!entry.text || !entry.text.trim()) errors.push(`${entry.name}@${entry.version}: empty notice text`);
-  }
-  applyAllowlist(root, entries, errors, packagedRuntime);
-  const clean = entries.map(({name, version, license, source, text}) => ({name, version, license, source, text: normalizeText(text)}))
-    .sort((a, b) => a.name.localeCompare(b.name, 'en') || a.version.localeCompare(b.version, 'en'));
-  return {entries: clean, errors};
+  applyReasons(root, entries, warnings, packagedRuntime);
+  const clean = entries.map(finishEntry).sort((a, b) => a.name.localeCompare(b.name, 'en') || a.version.localeCompare(b.version, 'en'));
+  return {entries: clean, errors, warnings};
 }
+
+/** Public form of an entry: classify its licence, order its flags and state what each obliges. */
+export function finishEntry(entry) {
+  const {flags: classified, chosen} = classifyLicence(entry.license);
+  const flags = flagSummaryOrder([...(entry._flags ?? []), ...classified]);
+  const text = normalizeText(entry.text ?? '') || 'No licence text is available for this entry.';
+  if (!normalizeText(entry.text ?? '') && !flags.includes('licence-text-missing-from-package')) flags.splice(0, flags.length, ...flagSummaryOrder([...flags, 'licence-text-missing-from-package']));
+  const context = {license: entry.license, source: entry.source, repository: entry.repository, reason: entry._reason, textSource: entry.textSource, chosen};
+  return {
+    name: entry.name, version: entry.version, license: entry.license, source: entry.source, text,
+    ...(entry.textSource ? {textSource: entry.textSource} : {}),
+    flags,
+    ...(flags.length ? {obligations: flags.map(flag => ({flag, note: obligationNote(flag, context)}))} : {}),
+  };
+}
+
+const flagSummaryOrder = flags => flagSummary([{flags}]).map(group => group.flag);
 
 export function renderJson(entries) {
   return JSON.stringify(entries, null, 2) + '\n';
 }
 
+const display = entry => `${entry.name}@${entry.version.split('\n')[0]} (${entry.license})`;
+
 export function renderText(entries) {
-  const unverified = entries.filter(entry => entry.license === UNVERIFIED);
+  const flagged = entries.filter(entry => entry.flags?.length);
+  const summary = flagSummary(entries).flatMap(group => [`${group.flag} (${group.entries.length}):`, ...group.entries.map(entry => `  - ${display(entry)}`)]);
   const header = [
     'Alpha Phone third-party notices',
     '',
     'This product includes the third-party software, fonts, models and data listed below.',
     'Generated by scripts/generate-licenses.mjs from package-lock.json, bundled font files,',
     'the resolved Android runtime classpath, the pinned speech runtime manifests and elizaOS.',
-    `Entries: ${entries.length}. Entries marked "${UNVERIFIED}": ${unverified.length} (pending legal review).`,
+    `Entries: ${entries.length}. Flagged entries: ${flagged.length}.`,
+    '',
+    'FLAGGED ENTRIES',
+    'A flag records what was found about an entry: a copyleft licence, a licence that is unknown or',
+    'unverified, a package that ships no licence file, or a proprietary item with no recorded licence.',
+    'Each flagged entry below states what its flags oblige. A flag is not legal review and not a clearance.',
+    '',
+    ...(summary.length ? summary : ['None.']),
   ].join('\n');
   const blocks = entries.map(entry => [
     '='.repeat(78),
@@ -698,6 +857,8 @@ export function renderText(entries) {
     `Version: ${entry.version.replace(/\n/g, '\n         ')}`,
     `License: ${entry.license}`,
     `Source: ${entry.source.replace(/\n/g, '\n        ')}`,
+    ...(entry.textSource ? [`License text: ${entry.textSource === 'spdx-canonical' ? 'canonical SPDX text (the package ships no licence file)' : entry.textSource === 'package-and-spdx-canonical' ? 'the package\'s licence file followed by the canonical SPDX text it names' : entry.textSource}`] : []),
+    ...(entry.flags?.length ? [`Flags: ${entry.flags.join(', ')}`, ...entry.obligations.map(item => `Obligation (${item.flag}): ${item.note}`)] : []),
     '',
     entry.text,
   ].join('\n'));
@@ -705,8 +866,8 @@ export function renderText(entries) {
 }
 
 export function generate(root = ROOT, options = {}) {
-  const {entries, errors} = collectNotices(root, options);
-  return {entries, errors, json: renderJson(entries), text: renderText(entries)};
+  const {entries, errors, warnings} = collectNotices(root, options);
+  return {entries, errors, warnings, flagLines: licenceFlagLines(entries), json: renderJson(entries), text: renderText(entries)};
 }
 
 async function main(argv) {
@@ -718,7 +879,7 @@ async function main(argv) {
   }
   // Writing defaults to the committed (no runtime) form; --check follows the shipped form.
   const packagedRuntime = argv.includes('--packaged-runtime') || (check && shippedPackagedRuntime(ROOT));
-  const {entries, errors, json, text} = generate(ROOT, {packagedRuntime});
+  const {entries, errors, warnings, flagLines, json, text} = generate(ROOT, {packagedRuntime});
   const summarize = (rows, label) => {
     const bundled = rows.filter(entry => /^Bundled in the on-device /.test(entry.text));
     const bun = rows.find(entry => entry.name === BUN_ENTRY);
@@ -732,8 +893,15 @@ async function main(argv) {
     summarize(staged.entries, 'Staged runtime (not in the committed notices; use --packaged-runtime for a distribution)');
     for (const error of staged.errors) console.warn(`Staged runtime notice problem: ${error}`);
   }
+  // Flags are warnings. Only broken input (errors) stops generation.
+  for (const line of flagLines) console.warn(line);
+  for (const warning of warnings) console.warn(`LICENCE NOTE ${warning}`);
+  if (flagLines.length) {
+    const counts = flagSummary(entries).map(group => `${group.flag} ${group.entries.length}`).join(', ');
+    console.warn(`Licence flags: ${entries.filter(entry => entry.flags.length).length} of ${entries.length} entries flagged (${counts}). Flagged entries are included with their licence texts; a flag is not a failure and not legal review.`);
+  }
   if (errors.length) {
-    console.error(`Third-party notice generation failed:\n- ${errors.join('\n- ')}`);
+    console.error(`Third-party notice generation failed on broken input:\n- ${errors.join('\n- ')}`);
     process.exit(1);
   }
   const outputs = [[JSON_OUTPUT, json], [TEXT_OUTPUT, text]];

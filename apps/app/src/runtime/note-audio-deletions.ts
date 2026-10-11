@@ -6,14 +6,15 @@ import {secureConnectionStore} from './native-connection';
 import {NotesStore,NOTES_KEY,type NoteRecord} from './notes-store';
 import {SECURE_NOTES_SLOT} from './notes-secure-store';
 import {notesTarget,type NotesTarget} from './notes-contract';
-export type AudioDeletion={id:string;target:NotesTarget;note:NoteRecord;audioId:string;audioRequested?:true};
+/** `permanent` marks a separately confirmed deletion that skipped a full Trash: recovery finishes the erase instead of leaving a Trash entry. */
+export type AudioDeletion={id:string;target:NotesTarget;note:NoteRecord;audioId:string;audioRequested?:true;permanent?:true};
 const slot='notes-audio-deletions:v1:device',key='alpha.browser.notes-audio-deletions.v1';
 type Pending=Record<string,AudioDeletion>;
 const android=()=>Capacitor.getPlatform()==='android';
 function validate(value:any):Pending {
  if(value===null)return {};
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length>100||new TextEncoder().encode(JSON.stringify(value)).length>1024*1024)throw Error('Invalid audio deletion recovery store');
- for(const [id,row]of Object.entries(value) as [string,AudioDeletion][]){notesTarget(row.target);if(row.id!==id||!/^[-\w]{1,128}$/.test(id)||row.note.id!==row.target.noteId||row.note.kind!=='voice'||(row.note.audio as any)?.audioId!==row.audioId||(row.note.audio as any)?.noteId!==row.note.id||!row.audioId||(row.audioRequested!==undefined&&row.audioRequested!==true))throw Error('Invalid audio deletion binding');}
+ for(const [id,row]of Object.entries(value) as [string,AudioDeletion][]){notesTarget(row.target);if(row.id!==id||!/^[-\w]{1,128}$/.test(id)||row.note.id!==row.target.noteId||row.note.kind!=='voice'||(row.note.audio as any)?.audioId!==row.audioId||(row.note.audio as any)?.noteId!==row.note.id||!row.audioId||(row.audioRequested!==undefined&&row.audioRequested!==true)||(row.permanent!==undefined&&row.permanent!==true))throw Error('Invalid audio deletion binding');}
  return value;
 }
 let document:Promise<BrowserJsonDomainDocument>|undefined;

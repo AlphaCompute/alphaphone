@@ -82,7 +82,7 @@ const nativeRemoteRequest=async input=>{
 const remoteSaved=new Map(),deviceSlots=new Map();
 const remoteCredentialStore={read:async origin=>remoteSaved.get(origin)??null,write:async record=>{remoteSaved.set(record.origin,record);},remove:async origin=>{remoteSaved.delete(origin);}};
 let actionEntries=[];const reconciled=[];
-class DeviceActions{constructor(_session,credential,scope){this.credential=credential;this.scope=scope;}async pending(){return [];}async history(){return actionEntries;}async reject(id){actionEntries=actionEntries.map(entry=>entry.id===id?{...entry,state:'rejected'}:entry);}async reconcile(id,outcome){reconciled.push([id,outcome]);actionEntries=actionEntries.filter(entry=>entry.id!==id);}async syncReceipts(){}}
+class DeviceActions{constructor(_session,credential,scope){this.credential=credential;this.scope=scope;}async pending(){return [];}async pendingReview(){return [];}async history(){return actionEntries;}async reject(id){actionEntries=actionEntries.map(entry=>entry.id===id?{...entry,state:'rejected'}:entry);}async reconcile(id,outcome){reconciled.push([id,outcome]);actionEntries=actionEntries.filter(entry=>entry.id!==id);}async syncReceipts(){}}
 const memory = new Map();
 const nativeCloudRequest = async input => {
   const url = new URL(input.url);

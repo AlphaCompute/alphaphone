@@ -189,4 +189,128 @@ deq(t.prepared.at(-1).attachments.map(a=>a.name),['c.txt','a.txt']);assert.equal
  deq(JSON.parse(JSON.stringify(t.views.inbox.suggestions(t.shell.st))),['Help me write this email']);
  t.shell.componentWillUnmount();
 }
-console.log('PASS: Inbox attention (not-connected/ready/error/stale), no background mail fetch, openInbox, reviewed HTTPS links in Browser, clip/time rows, Archive/Trash/Drafts folders, provider draft editing, three-attachment add/remove, forwarded source attachments, opaque Save to Files and Use in email. Fixture only; zero dispatches.');
+// 7. Reviewed "Use in email" (MVP-14): the destination named in the review is the only one that can be
+// filled. A changed account, session, message or draft refuses the insert; existing text is never replaced.
+{
+ const two=[{connectionId:'grant-a',label:'a@example.invalid',connected:true,grantedCapabilities:['google.gmail.triage']},{connectionId:'grant-b',label:'b@example.invalid',connected:true,grantedCapabilities:['google.gmail.triage']}];
+ const t=await boot({accounts:two});t.mount();t.setActive(true);t.render();await t.tick();
+ const inbox=t.views.inbox,target=()=>JSON.parse(JSON.stringify(inbox.emailTarget()));
+ // List view: a new email under the selected account.
+ const fresh=target();deq({ready:fresh.ready,kind:fresh.kind,append:fresh.append,room:fresh.room,account:fresh.account,accountId:fresh.accountId},{ready:true,kind:'new',append:false,room:64000,account:'a@example.invalid',accountId:'grant-a'});
+ // Open message: an exact reply target naming the sender's literal address and subject.
+ t.render().rows[1].open();await t.tick();
+ const reply=target();deq({kind:reply.kind,to:reply.to,subject:reply.subject,from:reply.from,reply:reply.reply},{kind:'reply',to:['sender@example.invalid'],subject:'Re: Fixture m2',from:'Sender',reply:true});
+ assert.notEqual(reply.token,fresh.token,'the open message is part of the reviewed destination');
+ assert.equal(inbox.useInEmail('Stale list review',{token:fresh.token}),false,'a review made before the message was opened cannot fill a reply');
+ assert.equal(t.render().composing,false);
+ // The message changes after review: another message is opened.
+ t.shell.st.open=null;t.render().rows[0].open();await t.tick();
+ assert.equal(inbox.useInEmail('For m2 only',{token:reply.token}),false,'a different open message refuses the reviewed text');
+ assert.equal(t.render().composing,false,'no draft was created for the wrong message');
+ // Current review inserts into exactly that reply.
+ const m1=target();assert.equal(m1.subject,'Re: Fixture m1');
+ assert.equal(inbox.useInEmail('Thanks, reviewed.',{token:m1.token}),true);
+ let c=t.render().c;assert.equal(c.body,'Thanks, reviewed.');assert.equal(c.subject,'Re: Fixture m1');assert.equal(c.from,'From a@example.invalid');assert.match(c.status,/nothing has been sent/);
+ // The open draft is now the destination and already has text: append only, and only when reviewed as append.
+ const open=target();deq({kind:open.kind,append:open.append,reply:open.reply,subject:open.subject},{kind:'draft',append:true,reply:true,subject:'Re: Fixture m1'});
+ assert.equal(inbox.useInEmail('Replace?',{token:open.token}),false,'text is never replaced without the reviewed append');
+ assert.equal(t.render().c.body,'Thanks, reviewed.');
+ // The user edits the draft after the review opened: the stale review cannot touch it.
+ c.onBody({target:{value:'Thanks, reviewed. My own edit.'}});
+ assert.equal(inbox.useInEmail('Second paragraph.',{token:open.token,append:true}),false,'an edited draft is not changed by a stale review');
+ assert.equal(t.render().c.body,'Thanks, reviewed. My own edit.');
+ const edited=target();assert.notEqual(edited.token,open.token);
+ assert.equal(inbox.useInEmail('Second paragraph.',{token:edited.token,append:true}),true);
+ c=t.render().c;assert.equal(c.body,'Thanks, reviewed. My own edit.\n\nSecond paragraph.');assert.match(c.status,/added below your text/);
+ // Capacity: the review is told how much room is left, and an append that would exceed it changes nothing.
+ const full=target();assert.equal(full.room,64000-'Thanks, reviewed. My own edit.\n\nSecond paragraph.'.length-2);
+ assert.equal(inbox.useInEmail('x'.repeat(64000),{token:full.token,append:true}),false);assert.match(t.toasts.at(-1),/too long/);
+ assert.equal(t.render().c.body,'Thanks, reviewed. My own edit.\n\nSecond paragraph.');
+ // Account identity: after switching account the reviewed token for the first account is refused.
+ t.render().c.confirmDiscard?.();await t.tick();
+ t.shell.st.open=null;inbox.back(t.shell.st,t.api);const before=target();assert.equal(before.accountId,'grant-a');
+ t.chip('b@example.invalid').pick();await t.tick();
+ assert.equal(inbox.useInEmail('For account A',{token:before.token}),false,'the suggestion is not placed under another account');
+ assert.equal(t.render().composing,false);
+ const other=target();deq({account:other.account,accountId:other.accountId,kind:other.kind},{account:'b@example.invalid',accountId:'grant-b',kind:'new'});
+ assert.equal(inbox.useInEmail('For account B',{token:other.token}),true);assert.equal(t.render().c.from,'From b@example.invalid');assert.equal(t.render().c.body,'For account B');
+ // An empty open draft is filled, not appended.
+ t.render().c.onBody({target:{value:''}});const empty=target();deq({kind:empty.kind,append:empty.append},{kind:'draft',append:false});
+ assert.equal(inbox.useInEmail('Fills the empty draft',{token:empty.token}),true);assert.equal(t.render().c.body,'Fills the empty draft');
+ // The Cloud session ends: no destination, and the old token is refused.
+ const held=target();t.setSession(null);await t.tick();
+ deq({ready:target().ready},{ready:false});assert.equal(inbox.useInEmail('After sign-out',{token:held.token}),false);
+ assert.equal(t.prepared.length,0);assert.equal(t.dispatched.length,0,'Use in email never prepares or sends mail');
+ t.shell.componentWillUnmount();
+}
+// 7b. A saved local draft that is not open blocks the review instead of being replaced or bypassed.
+{
+ const t=await boot();t.mount();t.setActive(true);t.render();await t.tick();
+ const inbox=t.views.inbox;
+ t.render().compose();t.render().c.onBody({target:{value:'Saved words'}});t.render().c.save();await t.tick();
+ // Signing out and back in reloads the account's saved draft without opening it.
+ t.setSession(null);await t.tick();t.setSession('session-a');await t.tick();t.render();await t.tick();
+ const saved=JSON.parse(JSON.stringify(inbox.emailTarget()));
+ deq({ready:saved.ready},{ready:false});assert.match(saved.reason,/saved local draft/);
+ assert.equal(inbox.useInEmail('Not placed',{token:saved.token}),false);assert.equal(t.render().composing,false);
+ assert.equal(JSON.stringify([...t.slots.values()]).includes('Saved words'),true,'the saved draft is intact');
+ assert.equal(JSON.stringify([...t.slots.values()]).includes('Not placed'),false);
+ assert.equal(t.dispatched.length,0);
+ t.shell.componentWillUnmount();
+}
+// 7c. While a mail operation review is on screen the reviewed proposal cannot drift: suggestions are blocked.
+{
+ const t=await boot();t.mount();t.setActive(true);t.render();await t.tick();
+ const inbox=t.views.inbox;
+ t.render().rows[1].open();await t.tick();
+ const ready=JSON.parse(JSON.stringify(inbox.emailTarget()));assert.equal(inbox.useInEmail('Reviewed reply',{token:ready.token}),true);
+ const open=JSON.parse(JSON.stringify(inbox.emailTarget()));
+ t.render().c.send();await t.tick();assert.equal(t.render().providerReview,true);assert.equal(t.prepared.length,1,'only the user\'s own Send prepared a review');
+ const during=JSON.parse(JSON.stringify(inbox.emailTarget()));deq({ready:during.ready},{ready:false});assert.match(during.reason,/review that is open in Inbox/);
+ assert.equal(inbox.useInEmail('Late addition',{token:open.token,append:true}),false);assert.equal(t.render().c.body,'Reviewed reply');
+ assert.equal(t.dispatched.length,0);
+ t.shell.componentWillUnmount();
+}
+// 7d. The reviewed recipients are the ones the reply draft really gets. A message from the account's own
+// address (for example one opened from Sent) has no other reply address, so the review names none.
+{
+ const original=inboxPage[2].fromEmail;inboxPage[2].fromEmail='Owner@Example.invalid';
+ try{
+  const t=await boot();t.mount();t.setActive(true);t.render();await t.tick();
+  const inbox=t.views.inbox;
+  t.render().rows[2].open();await t.tick();
+  const own=JSON.parse(JSON.stringify(inbox.emailTarget()));
+  deq({ready:own.ready,kind:own.kind,to:own.to,subject:own.subject},{ready:true,kind:'reply',to:[],subject:'Re: Fixture m3'});
+  assert.equal(inbox.useInEmail('Note to self',{token:own.token}),true);
+  deq(t.render().c.chips.map(r=>r.name),own.to,'the draft holds exactly the reviewed recipients');
+  assert.equal(t.prepared.length,0);assert.equal(t.dispatched.length,0);
+  t.shell.componentWillUnmount();
+ }finally{inboxPage[2].fromEmail=original;}
+}
+// 7e. One draft exists per account. A draft that was set aside is still the destination, so the review
+// is told it is not on screen and, with another message open, that it is not a reply to that message.
+// A reviewed suggestion is inserted whole or not at all.
+{
+ const t=await boot();t.mount();t.setActive(true);t.render();await t.tick();
+ const inbox=t.views.inbox,target=()=>JSON.parse(JSON.stringify(inbox.emailTarget()));
+ const fresh=target();assert.equal(inbox.useInEmail('x'.repeat(64001),{token:fresh.token}),false,'an over-long reviewed suggestion is refused, never shortened');
+ assert.equal(t.render().composing,false);assert.equal(inbox.useInEmail('x'.repeat(64000),{token:fresh.token}),true);assert.equal(t.render().c.body.length,64000);
+ t.render().c.confirmDiscard();await t.tick();assert.equal(t.render().composing,false);
+ t.render().rows[1].open();await t.tick();
+ const m2=target();assert.equal(inbox.useInEmail('For m2.',{token:m2.token}),true);
+ const shown=target();deq({kind:shown.kind,aside:shown.aside,elsewhere:shown.elsewhere},{kind:'draft',aside:false,elsewhere:false});
+ // The composer is closed: the draft stays, off screen, still over its own message.
+ assert.equal(inbox.back(t.shell.st,t.api),true);assert.equal(t.render().composing,false);
+ const aside=target();deq({kind:aside.kind,aside:aside.aside,elsewhere:aside.elsewhere,subject:aside.subject},{kind:'draft',aside:true,elsewhere:false,subject:'Re: Fixture m2'});
+ assert.equal(inbox.useInEmail('Reviewed while the composer was open',{token:shown.token,append:true}),false,'closing the composer makes the earlier review stale');
+ // Another message is opened: the destination is still the m2 draft, and the review is told so.
+ t.shell.st.open=null;t.render().rows[0].open();await t.tick();
+ const other=target();deq({kind:other.kind,aside:other.aside,elsewhere:other.elsewhere,subject:other.subject,to:other.to},{kind:'draft',aside:true,elsewhere:true,subject:'Re: Fixture m2',to:['sender@example.invalid']});
+ assert.equal(inbox.useInEmail('Meant for m1',{token:aside.token,append:true}),false,'a review made over the draft\'s own message does not cover another open message');
+ assert.equal(t.render().composing,false);
+ assert.equal(inbox.useInEmail('Second paragraph.',{token:other.token,append:true}),true);
+ const c=t.render().c;assert.equal(t.render().composing,true);assert.equal(c.subject,'Re: Fixture m2');assert.equal(c.body,'For m2.\n\nSecond paragraph.');
+ assert.equal(t.prepared.length,0);assert.equal(t.dispatched.length,0);
+ t.shell.componentWillUnmount();
+}
+console.log('PASS: Inbox attention (not-connected/ready/error/stale), no background mail fetch, openInbox, reviewed HTTPS links in Browser, clip/time rows, Archive/Trash/Drafts folders, provider draft editing, three-attachment add/remove, forwarded source attachments, opaque Save to Files, Use in email and its reviewed destination binding. Fixture only; zero dispatches.');

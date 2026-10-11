@@ -74,6 +74,45 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
    JSObject out=status("ready");out.put("allDay",row.getInt(0)==1);out.put("timeZone",row.getString(1));out.put("rrule",row.isNull(2)?"":row.getString(2));out.put("duration",row.isNull(3)?"":row.getString(3));c.resolve(out);
   }catch(Exception unavailable){c.reject("Calendar event could not be read");}
  }
+ private boolean readGranted(){return androidx.core.content.ContextCompat.checkSelfPermission(getContext(),Manifest.permission.READ_CALENDAR)==android.content.pm.PackageManager.PERMISSION_GRANTED;}
+ private boolean unlocked(){android.app.KeyguardManager keyguard=(android.app.KeyguardManager)getContext().getSystemService(android.content.Context.KEYGUARD_SERVICE);return keyguard!=null&&!keyguard.isDeviceLocked();}
+ /**
+  * Calendars the owner may choose for one foreground free/busy check. Read permission, the
+  * unlocked foreground Activity and the requested time zone are all required; names and
+  * accounts are for the on-phone picker. Statuses: ready, permission-required,
+  * timezone-changed, unavailable.
+  */
+ @PluginMethod public void availabilitySources(PluginCall c){
+  if(!readGranted()){c.resolve(status("permission-required"));return;}
+  if(!foreground()||!unlocked()){c.resolve(status("unavailable"));return;}
+  String zone=c.getString("timeZone");
+  if(!CalendarAvailabilityReader.sameZone(zone,java.time.ZoneId.systemDefault())){c.resolve(status("timezone-changed"));return;}
+  try{
+   org.json.JSONArray calendars=CalendarAvailabilityReader.sources(getContext().getContentResolver());
+   if(!readGranted()||!foreground()||!unlocked())throw new IllegalStateException();
+   JSObject out=status("ready");out.put("timeZone",zone);out.put("calendars",calendars);c.resolve(out);
+  }catch(Exception unavailable){c.resolve(status("unavailable"));}
+ }
+ /**
+  * Free/busy rows of exactly the calendars the owner chose, bound to the source revisions
+  * they reviewed. Returns intervals and availability only, never event content. Statuses:
+  * ready, permission-required, timezone-changed, changed, too-many, unavailable.
+  */
+ @PluginMethod public void readAvailability(PluginCall c){
+  if(!readGranted()){c.resolve(status("permission-required"));return;}
+  if(!foreground()||!unlocked()){c.resolve(status("unavailable"));return;}
+  java.time.ZoneId zone=java.time.ZoneId.systemDefault();
+  if(!CalendarAvailabilityReader.sameZone(c.getString("timeZone"),zone)){c.resolve(status("timezone-changed"));return;}
+  try{
+   JSArray chosen=c.getArray("calendars");
+   org.json.JSONArray events=CalendarAvailabilityReader.read(getContext().getContentResolver(),chosen==null?null:new org.json.JSONArray(chosen.toString()),c.getString("start"),c.getString("end"),zone);
+   if(!readGranted()||!foreground()||!unlocked())throw new IllegalStateException();
+   if(!java.time.ZoneId.systemDefault().equals(zone)){c.resolve(status("timezone-changed"));return;}
+   JSObject out=status("ready");out.put("events",events);c.resolve(out);
+  }catch(CalendarAvailabilityReader.SourceChanged changed){c.resolve(status("changed"));}
+  catch(CalendarAvailabilityReader.TooMany bound){c.resolve(status("too-many"));}
+  catch(Exception unavailable){c.resolve(status("unavailable"));}
+ }
  /**
   * One-tap ACTION_INSERT handoff to an installed Calendar editor, prefilled from the draft.
   * The editor owns the save: "opened" is not a save receipt. Alerts have no standard extra.

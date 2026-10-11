@@ -15,6 +15,8 @@ export interface LocalAgentBridge {
   providerStatus?():Promise<{provider?:unknown;configured?:unknown;model?:unknown}>;
   clearProvider?():Promise<{configured?:unknown}>;
   launchSurface?():Promise<{assistant?:unknown}>;
+  /** Read-only native query; see residentAttachable. */
+  residentAttachment?(input:{credentialId?:string}):Promise<{attachable?:unknown;reason?:unknown}>;
   configureCloudProvider?(input:{credentialId:string;model:string}):Promise<unknown>;
   request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: AutomationsMethod; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
   stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void,onReplyReady?:(results:readonly unknown[]|undefined)=>void):Promise<RemoteChatReply>;
@@ -61,6 +63,11 @@ function record(value:unknown):Record<string,any> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid local agent response.');
   return value as Record<string,any>;
 }
+// Set when this surface attached to the running resident but the attach did not yield a verified
+// owner session. The surface then stops asking to attach: its next resident admission takes the
+// ordinary stop → bind → start path, so a listening but unusable runtime is still restarted by a
+// retry. Cleared by the next verified connection.
+let attachDistrusted=false;
 function identifier(value:unknown):string {
   if (typeof value !== 'string' || !value || value.length>512) throw new Error('Invalid local agent identity.');
   return value;
@@ -95,7 +102,7 @@ export class LocalAgentProtocol {
     signal.throwIfAborted();
     const generation=this.generation,requestId=crypto.randomUUID();
     let cancel:()=>void=()=>{};
-    let dispatched=false,cancellationSent=false;
+    let dispatched=false,cancellationSent=false,attached=false;
     const cancelOwned=()=>{if(dispatched&&!cancellationSent){cancellationSent=true;void this.bridge.cancelStart?.({requestId}).catch(()=>{});}};
     const cancelled=new Promise<never>((_,reject)=>{cancel=()=>{cancelOwned();reject(signal.reason||new DOMException('Cancelled','AbortError'));};});
     signal.addEventListener('abort',cancel,{once:true});
@@ -103,7 +110,10 @@ export class LocalAgentProtocol {
     dispatched=true;
     const started=this.bridge.start({requestId});
     if(signal.aborted)cancel();
-    await Promise.race([started,cancelled]);
+    const startup=await Promise.race([started,cancelled]);
+    // Native reports when it attached this surface to the already admitted running resident
+    // instead of starting it: no epoch change, no new enrollment, other surfaces' work untouched.
+    attached=Boolean(startup)&&typeof startup==='object'&&(startup as {attached?:unknown}).attached===true;
     signal.throwIfAborted();
     if(generation!==this.generation)throw Error('Local agent connection changed.');
     const who=record(await this.request('/api/auth/me',undefined,signal));
@@ -118,8 +128,15 @@ export class LocalAgentProtocol {
     if(agent.status!=='running')throw Error('The local agent is still starting. Try again when it is ready.');
     if(generation!==this.generation)throw Error('Local agent connection changed.');
     this.session={ownerId:identifier(identity.id),agentId:identifier(agent.id),sessionId:crypto.randomUUID(),origin:this.origin};
-    return {session:this.session,name:typeof agent.name==='string'?agent.name:'Local agent'};
-    }catch(error){cancelOwned();throw error;}
+    attachDistrusted=false;
+    return {session:this.session,name:typeof agent.name==='string'?agent.name:'Local agent',attached};
+    }catch(error){
+      // The runtime answered the attach but not as a usable owner session. A cancelled or
+      // superseded connect says nothing about the runtime and changes nothing; neither does a
+      // lifecycle change made by another surface, which native reports on the next attach query.
+      if(attached&&!signal.aborted&&generation===this.generation&&(error as {code?:unknown}|null)?.code!=='LOCAL_AGENT_EPOCH_CHANGED')attachDistrusted=true;
+      cancelOwned();throw error;
+    }
     finally{signal.removeEventListener('abort',cancel);}
   }
   get browserSpeechAvailable(){return browserLocalAgentEnabled&&browserBridge!==null&&this.bridge===browserBridge;}
@@ -277,6 +294,26 @@ export async function clearLocalProvider():Promise<LocalProviderStatus> {
 export async function launchedAsAssistant():Promise<boolean> {
   if(!Capacitor.isNativePlatform()||!Capacitor.isPluginAvailable('Agent')||!native.launchSurface)return false;
   try{return (await native.launchSurface()).assistant===true;}catch{return false;}
+}
+
+/** True only when native confirms an admitted, running, enrolled resident whose stored provider
+ * admission is this Cloud credential and is the one the running process launched with. Read-only:
+ * it never starts, stops, pairs or rebinds. Any error or doubt reports false, which keeps the
+ * ordinary stop → bind → start path; so does an earlier attach by this surface that failed its
+ * owner-session verification. */
+export async function residentAttachable(credentialId:string,bridge:Pick<LocalAgentBridge,'residentAttachment'>=native,nativePlatform:boolean=Capacitor.isNativePlatform()):Promise<boolean> {
+  if(attachDistrusted||!nativePlatform||typeof credentialId!=='string'||!credentialId||!bridge.residentAttachment)return false;
+  try{return (await bridge.residentAttachment({credentialId}))?.attachable===true;}catch{return false;}
+}
+/** Bind the resident's Cloud provider for one surface. A surface that can attach (the assistant
+ * opening beside Home, or either surface reconnecting while the other keeps the enrollment)
+ * reuses the running agent: rebinding would stop it, retiring another surface's in-flight work
+ * and restarting inference. When the last surface is destroyed native clears the enrollment, so
+ * a lone recreated surface is not attachable and takes the ordinary path. */
+export async function bindResidentCloudProvider(credentialId:string,ports:{attachable:(credentialId:string)=>Promise<boolean>;configure:(credentialId:string)=>Promise<void>}={attachable:residentAttachable,configure:configureLocalCloudProvider}):Promise<'attached'|'configured'> {
+  if(await ports.attachable(credentialId))return 'attached';
+  await ports.configure(credentialId);
+  return 'configured';
 }
 
 export async function configureLocalCloudProvider(credentialId:string) {

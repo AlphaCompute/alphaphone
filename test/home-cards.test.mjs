@@ -64,6 +64,23 @@ test('calendar: denied, error and retry copy replace neutral copy, and reads nam
   assert.equal(H.presentHomeCalendar({...base, state: 'ready', agenda: {title: 'Pay rent', begin: at(9), allDay: false, video: false, people: [], overdue: true}}).time, 'Overdue');
   assert.equal(H.presentHomeCalendar({...base, state: 'ready', agenda: {title: 'Trip', begin: at(0, 0, 9), allDay: true, video: true, people: []}}).time, 'Fri, Oct 9');
 });
+test('calendar empty title: every state the card can show without an item', () => {
+  const T = H.homeCalendarEmptyTitle;
+  for (const source of [null, undefined, {loading: true, ready: true, status: 'Loading calendars…'}]) assert.equal(T(source), 'Loading events…');
+  assert.equal(T({ready: true, status: 'Device calendar access allowed'}), 'No upcoming events');
+  assert.equal(T({ready: true, truncated: true}), 'Results limited');
+  assert.equal(T({ready: true, truncated: true}, true), 'No visible events', 'a hidden app calendar is not reported as empty');
+  assert.equal(T({error: true, native: true, status: 'Calendar range could not be loaded. Open device calendars to retry.'}), 'Calendar unavailable');
+  assert.equal(T({error: true, status: 'Calendar access denied'}), 'Calendar unavailable', 'a failed read is reported as a failure even after an earlier refusal');
+  // A refusal and a calendar that was never connected are not failures and say what they are.
+  assert.equal(T({native: true, status: 'Calendar access denied'}), 'Calendar access is off');
+  assert.equal(T({native: true, status: 'Connect device calendars'}), 'Connect your calendar');
+  assert.equal(T({native: true, status: 'Not connected'}), 'Connect your calendar');
+  // A browser build without a calendar cannot offer a connection.
+  assert.equal(T({native: false, status: 'Device calendars are available in the Android app.'}), 'Calendar unavailable');
+  assert.equal(T({native: false, status: 'Connect device calendars'}), 'Calendar unavailable');
+  assert.doesNotMatch(readFileSync(new URL('../apps/app/src/prototype/data-adapter.ts', import.meta.url), 'utf8'), /'No upcoming events'|'Calendar access is off'/, 'the Home adapter takes the title from this helper');
+});
 test('attendee initials come only from event names, capped with an overflow count', () => {
   assert.deepEqual(H.attendeeInitials([]), []);
   assert.deepEqual(H.attendeeInitials(['Ada Lovelace', 'grace hopper', 42, '']), ['AL', 'GH']);
@@ -72,4 +89,81 @@ test('attendee initials come only from event names, capped with an overflow coun
   assert.doesNotMatch(template, />(MC|JP|\+2)<\/span>/, 'no hard-coded avatar initials');
   assert.doesNotMatch(template, /\{\{lockSum\}\}|\{\{showHeads\}\}/, 'no fixture lock summary or heads-up banner');
   assert.match(template, /<sc-if value="\{\{homeCalendarVideo\}\}"[^>]*><svg[^>]*><path d="\{\{ic\.video\}\}">/, 'video icon only with a meeting link');
+});
+test('brief card: shown only for a retained result, with agent, run time and failure state', () => {
+  assert.deepEqual(H.presentHomeBriefCard(null, now), {has: false, title: '', status: '', failed: false, label: ''});
+  assert.equal(H.presentHomeBriefCard({summary: '  ', ranAt: at(7), agent: 'Alpha', status: 'succeeded'}, now).has, false);
+  assert.equal(H.presentHomeBriefCard({summary: 'Ready', ranAt: 'not a time', agent: 'Alpha', status: 'succeeded'}, now).has, false, 'a result without a run time is not presented as a brief');
+  const card = H.presentHomeBriefCard({summary: 'Two meetings today\nand one reply to send.', ranAt: new Date(at(7, 2)).toISOString(), agent: 'Alpha', status: 'succeeded'}, now);
+  assert.deepEqual(card, {has: true, title: 'Two meetings today and one reply to send.', failed: false, status: 'Alpha · Ran 7:02 AM',
+    label: 'Open scheduled digests. Latest brief from Alpha, ran 7:02 AM: Two meetings today and one reply to send.'});
+  const failed = H.presentHomeBriefCard({summary: 'Source expired. ' + 'x'.repeat(200), ranAt: at(22, 30, 6), agent: '', status: 'failed'}, now);
+  assert.equal(failed.failed, true); assert.equal(failed.status, 'Your agent · Failed Tue, Oct 6 10:30 PM');
+  assert.ok(failed.title.length <= 96 && failed.title.endsWith('…'));
+  assert.match(failed.label, /^Open scheduled digests\. Latest brief from Your agent, failed Tue, Oct 6 10:30 PM: Source expired\./);
+  // The agent also retains occurrences it skipped. Those are never presented as a run.
+  for (const status of ['missed', 'overlap', 'unavailable']) {
+    const skipped = H.presentHomeBriefCard({summary: 'The scheduled time was missed. No backlog was executed.', ranAt: at(8), agent: 'Alpha', status}, now);
+    assert.equal(skipped.status, 'Alpha · Did not run 8:00 AM', status); assert.equal(skipped.failed, false);
+    assert.match(skipped.label, /^Open scheduled digests\. Latest brief from Alpha, did not run 8:00 AM: The scheduled time was missed\./);
+    assert.doesNotMatch(skipped.status + skipped.label, /\bran\b/i);
+    assert.equal(H.presentHomeBrief({summary: 'x', ranAt: at(8), agent: 'Alpha', status}, now).time, 'Did not run 8:00 AM');
+  }
+  assert.deepEqual(['finished', 'succeeded', 'completed', '', undefined].map(H.briefOutcome), ['ran', 'ran', 'ran', 'ran', 'ran']);
+  assert.deepEqual(['failed', 'cancelled', 'error'].map(H.briefOutcome), ['failed', 'failed', 'failed']);
+});
+test('calendar source: names where and when the item was read; no time is claimed without a read', () => {
+  const base = {overdue: false, readAt: at(15, 4), now, native: true};
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', calendar: 'Work'}), {origin: 'Work', read: 'Read 3:04 PM', description: 'Work. Read 3:04 PM from calendars on this device'});
+  assert.equal(H.presentHomeCalendarSource({...base, state: 'ready'}).origin, 'Device');
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', native: false, truncated: true}), {origin: 'This app', read: 'Read 3:04 PM', description: 'Read 3:04 PM from the calendar saved in this browser; only the first 2,000 events were read'});
+  const old = H.presentHomeCalendarSource({...base, state: 'ready', readAt: at(8, 15, 6)});
+  assert.deepEqual([old.read, old.description], ['Read Tue, Oct 6', 'Read Tue, Oct 6 8:15 AM from calendars on this device'], 'an old read shows its date');
+  for (const state of ['loading', 'other']) assert.deepEqual(H.presentHomeCalendarSource({...base, state}), {origin: '', read: '', description: ''});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', readAt: null}), {origin: '', read: '', description: ''});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'error'}), {origin: '', read: 'Open Calendar to retry', description: 'Calendar could not be read. Open Calendar to retry.'});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'error', overdue: true}), {origin: '', read: '', description: 'Overdue reminder saved on this device'}, 'an overdue reminder keeps its own source when the calendar read failed');
+  // A reminder is attributed to the reminder store and that store's read time, never the calendar's.
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', calendar: 'Work', reminder: true, reminderReadAt: at(14, 50)}), {origin: 'Reminder', read: 'Read 2:50 PM', description: 'Reminder saved on this device, read 2:50 PM'});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'loading', native: false, reminder: true, reminderReadAt: at(8, 15, 6)}), {origin: 'Reminder', read: 'Read Tue, Oct 6', description: 'Reminder saved on this browser, read Tue, Oct 6 8:15 AM'});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', reminder: true, reminderReadAt: null}), {origin: 'Reminder', read: '', description: 'Reminder saved on this device'}, 'no read time is claimed for a reminder without a recorded read');
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', overdue: true, reminderReadAt: at(14, 50)}), {origin: '', read: 'Read 2:50 PM', description: 'Overdue reminder saved on this device, read 2:50 PM'});
+  assert.equal(H.presentHomeCalendarSource({...base, state: 'error', reminder: true, reminderReadAt: at(14, 50)}).read, 'Open Calendar to retry', 'a failed calendar read stays visible above an upcoming reminder');
+  assert.equal(H.homeAgendaHeader('Mon, Oct 5', 0), 'Mon, Oct 5');
+  assert.equal(H.homeAgendaHeader('Mon, Oct 5', 1), 'Overdue reminder');
+  assert.equal(H.homeAgendaHeader('Mon, Oct 5', 3), '3 overdue reminders');
+  assert.equal(H.overdueDueLabel(at(9), now), 'Due 9:00 AM');
+  assert.equal(H.overdueDueLabel(at(9, 0, 5), now), 'Due Mon, Oct 5 9:00 AM');
+});
+test('inbox status: account and read time of the loaded page, and every non-ready state', () => {
+  const base = {failure: false, pending: false, cached: null, connected: false, unchecked: false, now};
+  assert.equal(H.presentHomeInboxStatus({...base, cached: {more: false, label: 'work@example.test', readAt: at(15, 4)}}), 'work@example.test · Read 3:04 PM');
+  assert.equal(H.presentHomeInboxStatus({...base, cached: {more: true, label: 'work@example.test', readAt: at(8, 15, 6)}}), 'From loaded messages · Read Tue, Oct 6 8:15 AM');
+  assert.equal(H.presentHomeInboxStatus({...base, cached: {more: false, label: '', readAt: null}}), '');
+  assert.equal(H.presentHomeInboxStatus({...base, failure: true, cached: {more: false, label: 'a', readAt: at(15, 4)}}), 'Open to retry · last read 3:04 PM');
+  assert.equal(H.presentHomeInboxStatus({...base, failure: true}), 'Open to retry');
+  assert.equal(H.presentHomeInboxStatus({...base, pending: true, cached: {more: false, label: 'a', readAt: at(15, 4)}}), 'Updating email…');
+  assert.equal(H.presentHomeInboxStatus({...base, connected: true}), 'Open to load email');
+  assert.equal(H.presentHomeInboxStatus({...base, unchecked: true}), 'Open to check email');
+  assert.equal(H.presentHomeInboxStatus(base), '');
+});
+test('workflow freshness: a load time only after a list was actually loaded', () => {
+  for (const loadedAt of [null, undefined, 0, NaN]) assert.deepEqual(H.presentHomeWorkflowFreshness({loadedAt, now, unified: true}), {visible: '', description: ''});
+  assert.deepEqual(H.presentHomeWorkflowFreshness({loadedAt: at(15, 4), now, unified: false}), {visible: 'Loaded 3:04 PM', description: 'Workflows from your agent, loaded 3:04 PM'});
+  assert.deepEqual(H.presentHomeWorkflowFreshness({loadedAt: at(8, 15, 6), now, unified: true}), {visible: 'Loaded Tue, Oct 6 8:15 AM', description: 'Automations from your agent and reminders on this phone, loaded Tue, Oct 6 8:15 AM'});
+  assert.deepEqual(H.presentHomeWorkflowFreshness({loadedAt: at(15, 4), now, unified: true, agent: false}), {visible: 'Loaded 3:04 PM', description: 'Reminders on this phone, loaded 3:04 PM'}, 'no agent is named when none is connected');
+});
+test('Home template renders source, freshness and the brief card only from live values', () => {
+  const template = readFileSync(new URL('../apps/app/src/prototype/template.html', import.meta.url), 'utf8');
+  const home = template.slice(template.indexOf('data-alpha-home-layout'), template.indexOf('{{apps}}'));
+  assert.match(home, /data-alpha-home-calendar-source>\{\{homeCalendarSource\}\}</);
+  assert.match(home, /data-alpha-home-calendar-origin>\{\{homeCalendarOrigin\}\}</);
+  assert.match(home, /aria-description="\{\{homeCalendarDescription\}\}"/);
+  assert.match(home, /aria-description="\{\{homeInboxDescription\}\}"/);
+  assert.match(home, /aria-description="\{\{homeWorkflowDescription\}\}"/);
+  assert.match(home, /<sc-if value="\{\{homeWorkflowFreshness\}\}"><span data-alpha-home-workflow-freshness>/);
+  assert.match(home, /<sc-if value="\{\{homeBriefHas\}\}"><button[^>]*data-alpha-home-brief[^>]*aria-label="\{\{homeBriefLabel\}\}"/, 'no brief card without a retained brief');
+  assert.doesNotMatch(home, /Morning brief|Design review|7:02 AM/, 'no fixture brief or agenda text in the template');
+  const adapter = readFileSync(new URL('../apps/app/src/prototype/data-adapter.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(adapter, /gmailSearch|gmailThread|\.sync\(|fetch\(/, 'the Home adapter starts no mail read, digest sync or network request');
 });
