@@ -156,9 +156,10 @@
         "test/home-cards.test.mjs",
         "apps/app/src/prototype/home-cards.ts",
         "test/browser/home-daily-overview.spec.ts",
-        "test/browser/home-daily-overview.production.spec.ts"
+        "test/browser/home-daily-overview.production.spec.ts",
+        "test/browser/home-brief-result.production.spec.ts"
       ],
-      "remaining": "Agenda comes from on-device calendars only, and schedules are digest-only. A missed occurrence is recorded once and never replaces the last brief. The Home cards name their source and when it was read, and the latest retained brief has its own card, with synthetic provider data only; no test runs from an agent digest result to that card (MVP-19)."
+      "remaining": "Agenda comes from on-device calendars only, and schedules are digest-only. A missed occurrence is recorded once and never replaces the last brief. The Home cards name their source and when it was read, and the latest retained brief has its own card, with synthetic provider data only. Browser tests run from a digest result to that card with a stubbed agent and Android bridge; no real scheduled digest, native delivery or device calendar read is behind it (MVP-19)."
     },
     {
       "id": "AP-08",
@@ -191,6 +192,7 @@
         "vendor/eliza/plugins/plugin-inbox/src/inbox/google-gmail-seam.ts",
         "test/browser/journey-f-reviewed-send.spec.ts",
         "test/browser/journey-f-email-notifications.spec.ts",
+        "test/browser/use-in-email.production.spec.ts",
         "scripts/test-calendar-regression.mjs",
         "docs/cloud-production-validation.md"
       ],
