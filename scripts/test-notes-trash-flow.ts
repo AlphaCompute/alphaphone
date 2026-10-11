@@ -3,7 +3,9 @@ import {NotesStore} from '../apps/app/src/runtime/notes-store';
 import {
  NOTES_TRASH_RETENTION_MS,addNotesTrashEntry,emptyNotesTrash,notesTrashDaysLabel,notesTrashDaysLeft,notesTrashExpired,
  planNotesTrash,removeNotesTrashEntries,restoreNotesTrashEntry,sortedNotesTrash,validateNotesTrash,type NotesTrashDocument,type NotesTrashEntry,
+ NOTES_TRASH_FULL_CODE,NOTES_TRASH_MAX_BYTES,NOTES_TRASH_MAX_ENTRIES,NotesTrashFull,notesTrashOverflows,
 } from '../apps/app/src/runtime/notes-trash-policy';
+import {createNotesTrashPolicy} from '../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-policy.ts';
 
 const DAY=24*60*60*1000,t0=Date.UTC(2026,9,7,12);
 assert.equal(NOTES_TRASH_RETENTION_MS,3*DAY);
@@ -103,5 +105,74 @@ assert.throws(()=>restoreNotesTrashEntry([text],entry(text,'op',t0)),/already ex
  store.replace(restoreNotesTrashEntry(store.list,trashDoc.entries[0]));
  assert.deepEqual(await store.target('text-1'),target);
  assert.deepEqual(planNotesTrash(trashDoc,new Set(store.list.map(n=>n.id)),t0+DAY).stale.map(e=>e.id),['agent-op'],'restored note makes its row stale');
+}
+{
+ // Capacity (MVP-15). A definite refusal is typed, computed from the product limits and never
+ // confused with a malformed or duplicate entry; the refused document is unchanged.
+ const small=(i:number)=>entry({id:`n${i}`,kind:'text',title:`T${i}`},`op-${i}`,t0+i,0);
+ const atLimit:NotesTrashDocument={version:1,entries:Array.from({length:NOTES_TRASH_MAX_ENTRIES},(_,i)=>small(i))};
+ const before=JSON.stringify(atLimit);
+ assert.equal(notesTrashOverflows(atLimit,small(NOTES_TRASH_MAX_ENTRIES)),true);
+ assert.throws(()=>addNotesTrashEntry(atLimit,small(NOTES_TRASH_MAX_ENTRIES)),(error:any)=>error instanceof NotesTrashFull&&error.code===NOTES_TRASH_FULL_CODE);
+ assert.equal(JSON.stringify(atLimit),before,'a refused addition changes nothing');
+ // Replacing the stale row of the same note does not grow Trash, so it is admitted at the limit.
+ assert.equal(notesTrashOverflows(atLimit,entry({id:'n0',kind:'text',title:'Again'},'op-new',t0)),false);
+ assert.equal(addNotesTrashEntry(atLimit,entry({id:'n0',kind:'text',title:'Again'},'op-new',t0)).entries.length,NOTES_TRASH_MAX_ENTRIES);
+ // A duplicate operation or an invalid entry is not a capacity refusal.
+ assert.equal(notesTrashOverflows(atLimit,small(1)),false);
+ assert.throws(()=>addNotesTrashEntry(atLimit,small(1)),(error:any)=>!(error instanceof NotesTrashFull)&&/already recorded/.test(error.message));
+ assert.throws(()=>addNotesTrashEntry(atLimit,entry({id:'x',kind:'unknown',title:''},'op-x',t0)),(error:any)=>!(error instanceof NotesTrashFull));
+ // Byte limit: one oversized body is refused with the same typed error.
+ const huge=entry({id:'huge',kind:'text',title:'Huge',body:'x'.repeat(NOTES_TRASH_MAX_BYTES)},'op-huge',t0);
+ assert.equal(notesTrashOverflows(emptyNotesTrash(),huge),true);
+ assert.throws(()=>addNotesTrashEntry(emptyNotesTrash(),huge),NotesTrashFull);
+
+ // A document that already exceeds the product limits (written by a host with larger limits)
+ // stays readable, plannable, restorable and reducible through the product functions.
+ const over:NotesTrashDocument={version:1,entries:[...atLimit.entries,small(NOTES_TRASH_MAX_ENTRIES),small(NOTES_TRASH_MAX_ENTRIES+1)]};
+ assert.equal(validateNotesTrash(over).entries.length,NOTES_TRASH_MAX_ENTRIES+2);
+ assert.equal(sortedNotesTrash(over)[0].id,`op-${NOTES_TRASH_MAX_ENTRIES+1}`);
+ assert.deepEqual(restoreNotesTrashEntry([],over.entries[0]),[over.entries[0].note]);
+ assert.throws(()=>addNotesTrashEntry(over,small(NOTES_TRASH_MAX_ENTRIES+2)),NotesTrashFull);
+ const reducedOver=removeNotesTrashEntries(over,['op-0']);
+ assert.equal(reducedOver.entries.length,NOTES_TRASH_MAX_ENTRIES+1,'a reduction that is still above the limit is accepted');
+ const expiredPlan=planNotesTrash(over,new Set(['n1']),t0+3*DAY+5);
+ assert.deepEqual([expiredPlan.stale.map(e=>e.id),expiredPlan.expired.length,expiredPlan.kept.length],[['op-1'],5,NOTES_TRASH_MAX_ENTRIES+2-6],'expiry is planned above the limit');
+ const purged=removeNotesTrashEntries(over,[...expiredPlan.stale,...expiredPlan.expired].map(e=>e.id));
+ assert.equal(purged.entries.length,NOTES_TRASH_MAX_ENTRIES-4);
+ assert.equal(addNotesTrashEntry(purged,small(NOTES_TRASH_MAX_ENTRIES+2)).entries.length,NOTES_TRASH_MAX_ENTRIES-3,'additions resume once below the limit');
+}
+{
+ // The consumed upstream capacity fix (elizaOS PR 34649, in the pin): the same stored bytes,
+ // read by a later host whose entry and byte limits are both lower than the stored document.
+ const options={retentionMs:NOTES_TRASH_RETENTION_MS,kinds:['text','list','voice','link'],recordingKind:'voice'};
+ const larger=createNotesTrashPolicy({...options,maxEntries:100,maxBytes:1024*1024});
+ let stored=larger.empty();
+ const notes=[text,list,voice,{id:'link-1',kind:'link',title:'Link',url:'https://example.test/a'},{id:'text-2',kind:'text',title:'Long',body:'y'.repeat(4000)}];
+ notes.forEach((note,i)=>{stored=larger.add(stored,entry(note,`big-${i}`,t0+i*1000,i,note.id==='voice-1'?{audio:{audioId:'audio-1'}}:{}));});
+ const bytes=JSON.stringify(stored);
+ const smaller=createNotesTrashPolicy({...options,maxEntries:2,maxBytes:512});
+ assert.ok(new TextEncoder().encode(bytes).length>512&&stored.entries.length>2);
+ // Readable: every entry, exact content, byte-identical.
+ const reread=smaller.validate(JSON.parse(bytes));
+ assert.equal(JSON.stringify(reread),bytes);
+ assert.deepEqual(smaller.sorted(reread).map(e=>e.id),['big-4','big-3','big-2','big-1','big-0']);
+ // Restorable: the exact text record and the voice record with its recording binding.
+ assert.deepEqual(smaller.restore([],reread.entries.find(e=>e.id==='big-0')!),[text]);
+ assert.deepEqual(smaller.restore([text],reread.entries.find(e=>e.id==='big-2')!),[text,voice]);
+ assert.deepEqual(reread.entries.find(e=>e.id==='big-2')!.audio,{audioId:'audio-1'});
+ // Only new additions enforce capacity.
+ assert.throws(()=>smaller.add(reread,entry({id:'new',kind:'text',title:'New'},'new-op',t0)),/full/);
+ // Purgeable one entry at a time while still above both limits, and by expiry.
+ let reduced=smaller.remove(reread,['big-4']);
+ assert.equal(reduced.entries.length,4);
+ assert.ok(new TextEncoder().encode(JSON.stringify(reduced)).length>512,'still above the lowered byte limit after one removal');
+ const due=smaller.plan(reduced,new Set(),t0+3*DAY+1000);
+ assert.deepEqual(due.expired.map(e=>e.id),['big-1','big-0']);
+ reduced=smaller.remove(reduced,due.expired.map(e=>e.id));
+ assert.deepEqual(reduced.entries.map(e=>e.id),['big-3','big-2']);
+ assert.throws(()=>smaller.add(reduced,entry({id:'new',kind:'text',title:'New'},'new-op',t0)),/full/,'two entries are at the lowered entry limit');
+ reduced=smaller.remove(reduced,['big-2','big-3']);
+ assert.deepEqual(smaller.add(reduced,entry({id:'new',kind:'text',title:'New'},'new-op',t0)).entries.map(e=>e.id),['new-op']);
 }
 console.log('notes trash flow ok');

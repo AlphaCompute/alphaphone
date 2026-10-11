@@ -23,6 +23,7 @@ import {installNoteSourceAdapter} from './prototype/note-source-adapter';
 import { installNotesDocumentAdapter } from './prototype/notes-document-adapter';
 import { installPrototypeMapsAdapter } from './prototype/maps-adapter';
 import { installNotificationsAdapter } from './prototype/notifications-adapter';
+import { installContextSelection } from './prototype/context-selection';
 import { installWorkflowAdapter } from './prototype/workflow-adapter';
 import { installAutomationsAdapter } from './prototype/automations-adapter';
 import { useEffect, useState, useSyncExternalStore } from 'react';
@@ -37,7 +38,7 @@ import { installPrototypeNativeAdapters } from './prototype/native-adapter';
 import { installSelectedDocumentAdapter } from './prototype/selection-adapter';
 import { installPrototypeCameraAdapter } from './prototype/camera-adapter';
 import { installPrototypeHomeBindings, installPrototypeDataAdapter, setHomeSources, HOME_SOURCES_CHANGED } from './prototype/data-adapter';
-import { isAndroid, DeviceApps } from './native';
+import { isAndroid, DeviceApps, deviceAppsListens } from './native';
 import { DailyApps } from './daily';
 import { installPrototypeVoiceAdapter } from './prototype/voice-adapter';
 import { installPrototypeBrowserAdapter } from './prototype/browser-adapter';
@@ -46,6 +47,7 @@ import { installSettingsAdapter } from './prototype/settings-adapter';
 import { ConnectionChooser, connectionController } from './runtime/connection-ui';
 import { installNotesTrashAdapter } from './prototype/notes-trash-adapter';
 import { installInboxCloudAdapter, inboxAttention, subscribeInboxAttention } from './prototype/inbox-cloud-adapter';
+import { installUseInEmailReview } from './prototype/use-in-email-review';
 import { latestRetainedDigest, subscribeRetainedDigest } from './runtime/hosted-digests';
 import { installHomeLauncher } from './prototype/home-launcher';
 import { setLocalePreferences } from './prototype/locale-time';
@@ -56,7 +58,7 @@ installGlobalErrorRecovery();
 const browserDevProfile=devSurfacesEnabled&&devProfileQuery;
 const developmentAgentWorkflows=devSurfacesEnabled&&devAgentWorkflowsQuery;
 const BrowserDeviceControls=devSurfacesEnabled?DevDeviceControls:null;
-const MOCK_BANNER_STYLE=".mock-mode-banner{position:fixed;top:0;left:0;right:0;z-index:2000;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 10px;background:#0000ff;color:white;font:11px 'Public Sans',sans-serif}.mock-mode-banner button{border:1px solid white;border-radius:14px;background:transparent;color:white;padding:4px 8px;font:inherit}.native-phone .mock-mode-banner{top:var(--native-top-inset,24px)}";
+const MOCK_BANNER_STYLE=".mock-mode-banner{position:fixed;top:0;left:0;right:0;z-index:2000;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 10px;background:#0000ff;color:white;font:11px 'Public Sans',sans-serif}.mock-mode-banner button{border:1px solid white;border-radius:14px;background:transparent;color:white;min-height:24px;padding:4px 8px;font:inherit}.native-phone .mock-mode-banner{top:var(--native-top-inset,24px)}";
 if(!isAndroid)bindBrowserSpeechConnection(connectionController);
 const query = new URLSearchParams(location.search);
 document.documentElement.classList.toggle('native-phone', isAndroid);
@@ -91,6 +93,7 @@ if (!fixture) {
   installNoteOriginAdapter(Component, VIEWS);
   installPrototypeDataAdapter(Component, VIEWS);
   installNotificationsAdapter(Component);
+  installContextSelection(Component);
   installPrototypeVoiceAdapter(Component, VIEWS);
   installNotesDocumentAdapter(Component, VIEWS);
   installNotesTrashAdapter(Component, VIEWS);
@@ -99,7 +102,7 @@ if (!fixture) {
   installPrototypeBrowserAdapter(Component, VIEWS);
   installSettingsAdapter(Component, VIEWS);
   if(!isAndroid){if(devSurfacesEnabled)installBrowserDeviceAdapter(Component);else installBrowserCapabilityTiles(Component);}
-  if(!browserDevProfile) installInboxCloudAdapter(Component, VIEWS);
+  if(!browserDevProfile) {installInboxCloudAdapter(Component, VIEWS);installUseInEmailReview(Component, VIEWS);}
   // Home cards read only the provider summaries: unread count, account label and read time for
   // mail, and the latest retained brief. Nothing here starts a read or a run.
   if(!browserDevProfile){
@@ -123,7 +126,7 @@ installChatOverlayMotion(Component);
 installClockAdapter(Component, VIEWS, { simulated: testMocksEnabled && fixture, browser: !isAndroid });
 // Installed apps come from Android (or the browser device's app list); outermost so its drawer
 // state composes with every Home binding above.
-installHomeLauncher(Component, DeviceApps, { icons: isAndroid });
+installHomeLauncher(Component, DeviceApps, { icons: isAndroid, follow: deviceAppsListens });
 /** A browser cannot read or change radios and sensors; show that instead of fixture toggles. */
 function installBrowserCapabilityTiles(Component:any){
   const p=Component.prototype,render=p.renderVals;

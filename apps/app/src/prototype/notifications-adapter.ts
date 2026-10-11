@@ -1,5 +1,8 @@
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
+import { reviewContentQuestion } from '../browser/content-question';
+import { sensitiveReadingText } from '../browser/reading-sensitive';
+import { noticeCurrent, noticeExcerpt, noticeReviewable } from './context-selection';
 type Bag = Record<string, any>;
 const opaque=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 /** Agent-context identity for one of Alpha Phone's own notifications. Other apps' and
@@ -15,28 +18,56 @@ export function installNotificationsAdapter(Component: any) {
  p.componentDidMount=function(){mount?.call(this);this.alphaNotices=[];this.alphaNoticesLive=true;this.alphaNoticeEpoch=0;
   this.alphaNoticeVisibility=()=>{this.alphaNoticeEpoch++;if(document.hidden){this.alphaNotices=[];this.alphaNoticeSelection=undefined;}else{this.setState({nativeNoticeRevision:Date.now()});if(this.S().shade)void this.refreshAlphaNotices();}};
   document.addEventListener('visibilitychange',this.alphaNoticeVisibility);
-  this.alphaNoticeDeviceState=()=>{this.alphaNoticeEpoch++;this.alphaNotices=[];this.alphaNoticeSelection=undefined;this.setState({nativeNoticeRevision:Date.now()});};
+  this.alphaNoticeDeviceState=()=>{this.alphaNoticeEpoch++;this.alphaNoticeQuestion?.();this.alphaNotices=[];this.alphaNoticeSelection=undefined;this.setState({nativeNoticeRevision:Date.now()});};
   if(!Capacitor.isNativePlatform())window.addEventListener('alpha:device-state',this.alphaNoticeDeviceState);
-  this.alphaNoticeTimer=window.setInterval(()=>{if(this.alphaNoticesLive&&this.S().shade&&!document.hidden)void this.refreshAlphaNotices();},1000);
+  this.alphaNoticeTimer=window.setInterval(()=>{if(this.alphaNoticesLive&&this.S().shade&&!document.hidden){this.publishAlphaNoticeSelection();void this.refreshAlphaNotices();}},1000);
  };
- p.componentWillUnmount=function(){this.alphaNoticesLive=false;this.alphaNoticeSelection=undefined;this.alphaNoticeEpoch++;document.removeEventListener('visibilitychange',this.alphaNoticeVisibility);window.removeEventListener('alpha:device-state',this.alphaNoticeDeviceState);clearInterval(this.alphaNoticeTimer);unmount?.call(this);};
+ p.componentWillUnmount=function(){this.alphaNoticesLive=false;this.alphaNoticeQuestion?.();this.alphaNoticeSelection=undefined;this.alphaNoticeEpoch++;document.removeEventListener('visibilitychange',this.alphaNoticeVisibility);window.removeEventListener('alpha:device-state',this.alphaNoticeDeviceState);clearInterval(this.alphaNoticeTimer);unmount?.call(this);};
  p.refreshAlphaNotices=async function(){
   if(this.alphaNoticesBusy||!this.alphaNoticesLive||document.hidden)return;this.alphaNoticesBusy=true;const epoch=this.alphaNoticeEpoch;
   try{const result=await native.list();if(!this.alphaNoticesLive||document.hidden||epoch!==this.alphaNoticeEpoch)return;if(result.calendarStatus==='unavailable'){if(!this.alphaCalendarAlertError)this.toast('Calendar alerts could not load. Open Calendar to review the problem.');this.alphaCalendarAlertError=true;}else this.alphaCalendarAlertError=false;const next=result.items;const chosen=this.alphaNoticeSelection;if(chosen&&!next.some((n:Notice)=>n.id===chosen.id&&n.revision===chosen.revision&&n.source==='own'))this.alphaNoticeSelection=undefined;if(JSON.stringify(next)!==JSON.stringify(this.alphaNotices)){this.alphaNotices=next;this.setState({nativeNoticeRevision:Date.now()});}this.alphaNoticeError=false;}
   catch{if(this.alphaNoticesLive&&!document.hidden&&epoch===this.alphaNoticeEpoch&&!this.alphaNoticeError){this.alphaNoticeError=true;this.alphaNotices=[];this.alphaNoticeSelection=undefined;this.setState({nativeNoticeRevision:Date.now()});this.toast('Alpha Phone notifications are unavailable.');}}
   finally{this.alphaNoticesBusy=false;}
  };
+ /** A press records the selection without rendering, so a swipe or tap in progress is never
+  * interrupted. This renders once afterwards so the agent context carries the pressed
+  * notification (or drops a replaced one) instead of waiting for an unrelated render. */
+ p.publishAlphaNoticeSelection=function(){if(!this.alphaNoticesLive||JSON.stringify(this.alphaNoticeSelection??null)===this.alphaNoticeSelectionRendered)return;this.setState({nativeNoticeRevision:Date.now()});};
  /** The own notification the owner last pressed while the shade is open, for agent context. */
  p.notificationSelection=function(){if(!this.S().shade||document.hidden){this.alphaNoticeSelection=undefined;return undefined;}const chosen=this.alphaNoticeSelection;return chosen?{...chosen}:undefined;};
  p.renderVals=function(){
   const out=render.call(this),self=this;
   // A press from an earlier shade session never becomes context for a later one.
   if(!this.S().shade)this.alphaNoticeSelection=undefined;
+  // A notification review never outlives the shade it was opened from (Home, lock, another view).
+  const reviewEnded=()=>{const now=self.S();return !now.shade||now.screen==='lock'||now.screen==='off';};
+  if(this.alphaNoticeQuestion&&reviewEnded())queueMicrotask(()=>{if(reviewEnded())self.alphaNoticeQuestion?.();});
+  this.alphaNoticeSelectionRendered=JSON.stringify(this.alphaNoticeSelection??null);
   const action=async(task:()=>Promise<void>)=>{try{await task();await self.refreshAlphaNotices();}catch{if(self.alphaNoticesLive&&!document.hidden){self.toast('The notification changed or could not be updated.');await self.refreshAlphaNotices();}}};
   const shadeN=(this.alphaNotices||[]).map((n:Notice)=>{
    const swipe=this.sw(()=>{if(n.clearable)void action(()=>native.dismiss({id:n.id,revision:n.revision,source:n.source}));else this.toast('This is an ongoing notification.');},{axis:'x'});
    const select=()=>{this.alphaNoticeSelection=ownNotificationSelection(n);};
-   return {id:n.id,d:out.ic.bell,who:n.source==='external'?n.appLabel:n.title||'Alpha Phone',text:n.source==='external'&&n.title!==n.appLabel?[n.title,n.text].filter(Boolean).join(' · '):n.text,time:new Date(n.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),tx:0,op:1,down:(event:unknown)=>{select();return swipe.down(event);},up:swipe.up,open:()=>{if(this.swallowed())return;if(!n.canOpen){this.toast('This notification has no available action.');return;}void action(()=>native.open({id:n.id,revision:n.revision,source:n.source}));}};
+   /** Review scope: this one Alpha Phone notification's shown title and text, editable before
+    * anything reaches the conversation draft. Other apps' and hosted rows offer no question.
+    * The list is read again when the owner continues, so a dismissed, replaced or updated
+    * notification (or one hidden by a lock) adds nothing and never becomes its neighbor. */
+   const ask=()=>{
+    if(this.swallowed()||!noticeReviewable(n))return;
+    self.alphaNoticeQuestion?.();select();self.publishAlphaNoticeSelection();
+    const reviewed={id:n.id,revision:n.revision,source:n.source},excerpt=noticeExcerpt(n);
+    const live=()=>self.alphaNoticesLive&&!document.hidden&&!!self.S().shade&&noticeCurrent(reviewed,self.alphaNotices);
+    const refused=()=>{self.toast('This notification changed or is no longer shown. Nothing was added to your conversation.');void self.refreshAlphaNotices();};
+    self.alphaNoticeQuestion=reviewContentQuestion({name:(n.appLabel||'Alpha Phone')+' notification',text:excerpt,question:'Help me with this notification.',current:live,validate:text=>!sensitiveReadingText(text),closed:()=>{self.alphaNoticeQuestion=undefined;},compose:draft=>{void (async()=>{
+     if(!live()){refused();return;}
+     const epoch=self.alphaNoticeEpoch;
+     try{
+      const fresh=(await native.list()).items,same=fresh.find((row:Notice)=>row.id===reviewed.id&&row.source===reviewed.source);
+      if(epoch!==self.alphaNoticeEpoch||!live()||!noticeCurrent(reviewed,fresh)||!same||noticeExcerpt(same)!==excerpt){refused();return;}
+      self.api(self.S().view).composeContentQuestion(draft);
+     }catch{if(self.alphaNoticesLive)self.toast('This notification could not be checked. Nothing was added to your conversation.');}
+    })();}});
+   };
+   return {canAsk:noticeReviewable(n),ask,askLabel:'Ask Alpha about this '+(n.appLabel||'Alpha Phone')+' notification',id:n.id,d:out.ic.bell,who:n.source==='external'?n.appLabel:n.title||'Alpha Phone',text:n.source==='external'&&n.title!==n.appLabel?[n.title,n.text].filter(Boolean).join(' · '):n.text,time:new Date(n.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),tx:0,op:1,down:(event:unknown)=>{select();return swipe.down(event);},up:(event:unknown)=>{window.setTimeout(()=>self.publishAlphaNoticeSelection(),0);return swipe.up(event);},open:()=>{if(this.swallowed())return;if(!n.canOpen){this.toast('This notification has no available action.');return;}void action(()=>native.open({id:n.id,revision:n.revision,source:n.source}));}};
   });
   return {...out,shadeN,clearAll:()=>{const items=(this.alphaNotices||[]).filter((n:Notice)=>n.clearable).map((n:Notice)=>({id:n.id,revision:n.revision,source:n.source}));void action(async()=>{const result=await native.clear({items});if(result.outcomes.some(row=>row.status==='unavailable'))self.toast('Some notifications changed. Review the refreshed list.');});}};
  };

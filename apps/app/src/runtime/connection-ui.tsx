@@ -25,7 +25,7 @@ import { PersonalProtocolError, type CloudPersonalProtocol, type PersonalView, t
 import { holdPhoneInert } from './modal-inert';
 import { pauseHostedBackground } from './hosted-background';
 import {developmentDeviceStore,developmentActionJournal} from './local-agent-storage';
-import { stopLocalAgent, configureLocalProvider, configureLocalCloudProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled, localProviderStatus, clearLocalProvider, providerStatusLabel, LOCAL_PROVIDER_MODEL, type LocalProviderStatus } from './local-agent';
+import { stopLocalAgent, configureLocalProvider, bindResidentCloudProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled, localProviderStatus, clearLocalProvider, providerStatusLabel, LOCAL_PROVIDER_MODEL, type LocalProviderStatus } from './local-agent';
 import { presentDeviceRecordOperation } from './device-record-presentation';
 import type { MessagePage } from './remote-protocol';
 import type {DeviceRecovery} from "./device-actions";
@@ -33,7 +33,7 @@ import type { WorkflowPhoneReview } from './workflow-device-contract';
 import { AlphaClientError } from './alpha-client';
 import { WorkflowProtocol, WorkflowHttpError } from './workflow-protocol';
 import { registerPlugin } from '../platform-plugins';
-import { DeviceActions, actionScope, type DeviceCredential, type DeviceExecutor, type ActionJournal } from './device-actions';
+import { DeviceActions, actionScope, type DeviceCredential, type DeviceExecutor, type ForegroundReviewExecutor, type ActionJournal } from './device-actions';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isAndroid } from '../native';
 import type { ActionProposal, OperationReceipt, ContextEnvelope, VerifiedSession } from './alpha-client';
@@ -97,6 +97,14 @@ function retireReadReplies(){for(const binding of [...readReplyOwners.keys()])vo
 let navigationContext:(()=>ContextEnvelope|null)|undefined;
 let deviceRecovery: DeviceRecovery | undefined;
 let deviceExecutor: DeviceExecutor = async () => ({ status: 'failed', summary: 'Device action executor is unavailable.' });
+/** Foreground local reviews (free/busy over owner-chosen calendars). The phone shell supplies the
+ * executor; a restored connection may negotiate first, so a missing executor fails closed. */
+let foregroundExecutor: ForegroundReviewExecutor | undefined;
+const runForegroundReview: ForegroundReviewExecutor = (op, id, context, signal, bindingHash, journalIdentity) => foregroundExecutor ? foregroundExecutor(op, id, context, signal, bindingHash, journalIdentity) : Promise.resolve({ status: 'failed', summary: 'This review is unavailable on this phone. Nothing was shared.' });
+/** The shared contract's free/busy capability name (kept equal by test-calendar-availability-flow). */
+export const CALENDAR_AVAILABILITY_CAPABILITY = 'calendar.availability-read.v1';
+/** Free/busy is negotiated only when the agent offers it. */
+const availabilityNegotiated = (offered: unknown) => Array.isArray(offered) && offered.includes(CALENDAR_AVAILABILITY_CAPABILITY);
 let deviceReadReview:((proposal:ActionProposal,context:ContextEnvelope,signal:AbortSignal)=>Promise<void>)|undefined;
 const actionJournal = registerPlugin<ActionJournal>('AlphaActionJournal');
 let cloud = makeCloud('production');
@@ -307,13 +315,14 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.create.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.create.v1';
     if(Capacitor.getPlatform()==='android')for(const capability of ['calendar.create.v1','calendar.next-read.v1'])if(registered.capabilities?.includes(capability))headers['X-Eliza-Device-Capabilities']+=','+capability;
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("maps.selected-read.v1"))headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
+    if(availabilityNegotiated(registered.capabilities))headers["X-Eliza-Device-Capabilities"]+=","+CALENDAR_AVAILABILITY_CAPABILITY;
     if(Capacitor.getPlatform()==='android'&&registered.capabilities?.includes("clock.handoff.v1"))headers["X-Eliza-Device-Capabilities"]+=",clock.handoff.v1";
     credential.enrollmentId = registered.enrollmentId;
     await secureConnectionStore.write(slot, credential); signal.throwIfAborted();
     deviceHeaders = headers;
     enrollment.deviceHeaders = headers;
     credential.capabilities=headers["X-Eliza-Device-Capabilities"].split(",");
-    actions = new DeviceActions(session, credential, await actionScope(JSON.stringify([baseScope, credential.installationId])), request, actionJournal, (op, id, context, effectSignal, bindingHash, workflowRoute, journalIdentity) => deviceExecutor(op, id, context, effectSignal, bindingHash, workflowRoute, journalIdentity),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:"unknown"}),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.create.v1"));
+    actions = new DeviceActions(session, credential, await actionScope(JSON.stringify([baseScope, credential.installationId])), request, actionJournal, (op, id, context, effectSignal, bindingHash, workflowRoute, journalIdentity) => deviceExecutor(op, id, context, effectSignal, bindingHash, workflowRoute, journalIdentity),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:"unknown"}),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.create.v1"),runForegroundReview);
     deviceRequest=request;
   } catch { signal.throwIfAborted(); reason = "Chat connected. Phone action enrollment was not confirmed. Reconnect to review its status."; }
   save({ kind, origin: remote.origin });
@@ -337,7 +346,9 @@ async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
   if(!account || service!==account || credits.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
   update({residentBalance:credits.balance});
   if(credits.balance<=0){await stopLocalAgent();await retire();update({open:true,message:'Add credits to use your agent. Your saved data stays on this device.'});return false;}
-  await configureLocalCloudProvider(credits.credentialId);
+  // An admitted running resident under this same Cloud admission is reused, not stopped and rebound:
+  // opening the assistant, or reconnecting one surface, must not retire the other surface's work.
+  await bindResidentCloudProvider(credits.credentialId);
   signal.throwIfAborted();
   if(service!==account || (await cloudCredentialStore.read('production'))?.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
   return true;
@@ -375,11 +386,12 @@ async function connectResident(signal: AbortSignal) {
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.create.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.create.v1';
     if(Capacitor.getPlatform()==='android')for(const capability of ['calendar.create.v1','calendar.next-read.v1'])if(registered.capabilities?.includes(capability))headers['X-Eliza-Device-Capabilities']+=','+capability;
     if(registered.capabilities?.includes('maps.selected-read.v1'))headers['X-Eliza-Device-Capabilities']+=',maps.selected-read.v1';
+    if(availabilityNegotiated(registered.capabilities))headers['X-Eliza-Device-Capabilities']+=','+CALENDAR_AVAILABILITY_CAPABILITY;
     if(Capacitor.getPlatform()==='android'&&registered.capabilities?.includes("clock.handoff.v1"))headers["X-Eliza-Device-Capabilities"]+=",clock.handoff.v1";
     credential.enrollmentId=registered.enrollmentId;await store.write(slot,credential);signal.throwIfAborted();
     client.deviceHeaders=headers;
     credential.capabilities=headers["X-Eliza-Device-Capabilities"].split(",");
-    actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,journal,(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity),(op,id,binding,recoverySignal)=>deviceRecovery?deviceRecovery(op,id,binding,recoverySignal):Promise.resolve({status:'unknown'}),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.create.v1"));
+    actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,journal,(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity),(op,id,binding,recoverySignal)=>deviceRecovery?deviceRecovery(op,id,binding,recoverySignal):Promise.resolve({status:'unknown'}),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.create.v1"),runForegroundReview);
     deviceRequest=request;
   } catch(error) {signal.throwIfAborted();reason='Local chat connected. Device actions are unavailable: '+(error instanceof Error?error.message:'Enrollment failed.');}
   save({kind:'resident'});
@@ -434,6 +446,7 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
     if(Array.isArray(device?.capabilities)&&device.capabilities.includes('reminders.create.v1'))target.headers['X-Eliza-Device-Capabilities']+=',reminders.create.v1';
     if(Capacitor.getPlatform()==='android')for(const capability of ['calendar.create.v1','calendar.next-read.v1'])if(device.capabilities.includes(capability))target.headers['X-Eliza-Device-Capabilities']+=','+capability;
     if(Array.isArray(device?.capabilities)&&device.capabilities.includes("maps.selected-read.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
+    if(availabilityNegotiated(device?.capabilities))target.headers["X-Eliza-Device-Capabilities"]+=","+CALENDAR_AVAILABILITY_CAPABILITY;
     session.ownerId=capability.identityId;
     const registered=await request('/api/client-devices/register',{label:'Alpha Phone',workflowProtocol},signal);
     if (registered.installationId!==credential.installationId || typeof registered.enrollmentId!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Cloud device registration was not verified');
@@ -441,7 +454,7 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
 
     credential.enrollmentId=registered.enrollmentId; await secureConnectionStore.write(slot,credential); signal.throwIfAborted();
     credential.capabilities=target.headers["X-Eliza-Device-Capabilities"].split(",");
-    next.actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,actionJournal,(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:"unknown"}),target.headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"),target.headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.create.v1"));
+    next.actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,actionJournal,(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:"unknown"}),target.headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"),target.headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.create.v1"),runForegroundReview);
     next.revokeDevice=async revokeSignal=>{try{await client.phoneRequest(target,'/api/client-devices/revoke',revokeSignal,{});return true;}catch{revokeSignal.throwIfAborted();return false;}};
     next.request=request;
     next.phoneTarget=target; next.voiceExpiresAt=Math.min(auth.expiresAt ?? Infinity,Date.now()+30*60*1000);
@@ -718,6 +731,7 @@ export const connectionController = {
   setNavigationContext(read:()=>ContextEnvelope|null){navigationContext=read;},
   captureViewNavigation(context:ContextEnvelope){const client=boundNavigation();return client?{client,attempt:client.capture(context)}:undefined;},
   setDeviceExecutor(executor: DeviceExecutor) { deviceExecutor = executor; },
+  setForegroundExecutor(executor: ForegroundReviewExecutor) { foregroundExecutor = executor; },
   setDeviceReadReview(review:(proposal:ActionProposal,context:ContextEnvelope,signal:AbortSignal)=>Promise<void>){deviceReadReview=review;},
   async execute(proposal: ActionProposal, context: ContextEnvelope, signal: AbortSignal): Promise<OperationReceipt> {
     const selected = active;
@@ -1263,9 +1277,11 @@ export const connectionController = {
       }
       for(const key of ['messageId','userMessageId'] as const)if(reply[key]!==undefined&&!validateUuid(reply[key]))throw Error('The agent returned an invalid message identity.');
       if (typeof reply.text !== 'string') throw new Error('The agent returned an invalid response.');
-      let proposals: ActionProposal[] | undefined;
+      let proposals: ActionProposal[] | undefined, notices: string[] = [];
       if (selected.actions) {
-        try { proposals = await selected.actions.pending(message.context, requestSignal); }
+        // A pending action that does not fit this screen, time zone or negotiated support is
+        // named to the owner instead of being dropped; it stays unapprovable.
+        try { const items = await selected.actions.pendingReview(message.context, requestSignal); proposals = items.flatMap(item => item.proposal ? [item.proposal] : []); notices = items.flatMap(item => item.notice ? [item.notice.slice(0, 500)] : []).slice(0, 5); }
         catch { update({ message: 'Reply received. Phone action proposals could not be checked; use action history.' }); }
       }
       requestSignal.throwIfAborted();
@@ -1275,7 +1291,7 @@ export const connectionController = {
       if (responseFailure && !proposals?.length) throw responseFailure;
       return { text: responseFailure
         ? `${responseFailure.message} Pending phone actions are available for separate review. Nothing has been approved or performed automatically.`
-        : reply.text, ...(!responseFailure?{...(typeof reply.messageId==='string'?{messageId:reply.messageId}:{}),...(typeof reply.userMessageId==='string'?{userMessageId:reply.userMessageId}:{}),messageBinding:{conversationId:id,session:{...session}}}:{}), ...(proposals ? { proposals } : {}), ...(!responseFailure&&Array.isArray(reply.actionResults)?{actionResults:reply.actionResults}:{}) };
+        : reply.text, ...(notices.length ? { notices } : {}), ...(!responseFailure?{...(typeof reply.messageId==='string'?{messageId:reply.messageId}:{}),...(typeof reply.userMessageId==='string'?{userMessageId:reply.userMessageId}:{}),messageBinding:{conversationId:id,session:{...session}}}:{}), ...(proposals ? { proposals } : {}), ...(!responseFailure&&Array.isArray(reply.actionResults)?{actionResults:reply.actionResults}:{}) };
     } catch (error) {
       // Nothing carrying the message left this phone (no conversation, offline, changed owner, or a
       // Stop before the post): the composer keeps the text instead of reporting an unknown outcome.
@@ -1371,7 +1387,9 @@ export function ConnectionChooser() {
 
     if (phone && panel.current) {
       const theme = getComputedStyle(phone);
-      for (const key of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.current.style.setProperty(`--connection-${key}`, theme.getPropertyValue(`--${key}`));
+      // The dialog's accent colours text and focus rings, so it takes the theme's text accent
+      // (--acct): the fill accent (--acc) is 2.4:1 against the dark background.
+      for (const key of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.current.style.setProperty(`--connection-${key}`, theme.getPropertyValue(key === 'acc' ? '--acct' : `--${key}`));
     }
     panel.current?.focus();
     const back = (event: Event) => { if(document.querySelector("dialog[open]"))return; event.preventDefault(); event.stopImmediatePropagation(); if (snapshot.busy) connectionController.cancel(); else connectionController.close(); };

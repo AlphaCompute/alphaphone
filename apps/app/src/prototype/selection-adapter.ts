@@ -11,7 +11,7 @@ import { filesIndex } from './files-index';
 const selectedFiles=registerPlugin<{describeSelected(input:{selectionId:string}):Promise<NativeResult>}>('DailyApps');
 
 type Bag = Record<string, any>;
-type Selection = { result: NativeResult; status: string; text?: string; pdf?: {page:number;count:number;image:string}; epoch: number };
+type Selection = { result: NativeResult; status: string; text?: string; pdf?: {page:number;count:number;image:string}; epoch: number; renames?: number };
 
 /** Install after installPrototypeNativeAdapters so real previews override fixture
  * action guards. Forward its returned callback through the onSelection option. Selections are restored only from native picker grants, never renderer-supplied URIs.
@@ -42,6 +42,8 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
     if (forget || !filesIndex.has(id)) release(id);
   };
   const refresh = () => selectedApi?.setView('files', { nativeSelectionEpoch: epoch });
+  /** The open selection's exact identity: its picker capability, the epoch it was accepted at and its rename count. */
+  const publish = () => window.dispatchEvent(new CustomEvent('alpha-selected-context', { detail: current?.result.selectionId && current.result.status === 'selected' ? { kind: 'document', id: current.result.selectionId, revision: String(current.epoch) + (current.renames ? '.' + current.renames : '') } : null }));
   const open = async (api: Bag) => {
     const selectionId = current?.result.selectionId;
     if (!selectionId) return;
@@ -88,7 +90,9 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
         api.set({renaming:false});refresh();return;
       }
       if(response.status !== 'selected'){api.toast(response.message || 'Rename unavailable');return;}
-      current={...selected,result:response,pdf:undefined};api.set({renaming:false});refresh();
+      // A rename changes the selected object: publish it as a new revision so a turn or
+      // approval prepared for the old name cannot be dispatched against the renamed file.
+      current={...selected,result:response,pdf:undefined,renames:(selected.renames||0)+1};api.set({renaming:false});publish();refresh();
       if(response.mimeType==='application/pdf')await pdfPage(selected.pdf?.page || 0,api);
     } catch {if(current === selected)api.toast('Rename could not be confirmed. Refresh or reselect before retrying.');}
     finally {renameBusy=false;}
@@ -153,7 +157,7 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
     filesIndex.setOpen(result.selectionId);
     const requestEpoch = epoch;
     current = { result, status: 'Reading selected document…', epoch: requestEpoch };
-    window.dispatchEvent(new CustomEvent('alpha-selected-context', { detail: { kind: 'document', id: result.selectionId, revision: String(requestEpoch) } }));
+    publish();
     selectedApi = api;
     const target = result.mimeType?.startsWith('image/') && (module === 'photos' || result.action === 'photos') ? 'photos' : 'files';
     api.open(target, { open: marker });
