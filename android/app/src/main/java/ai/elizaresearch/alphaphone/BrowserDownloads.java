@@ -102,14 +102,27 @@ final class BrowserDownloads {
  static boolean cookieAllowed(String download,String pageOrigin){String target=origin(download);return target!=null&&pageOrigin!=null&&target.equals(pageOrigin);}
  /** blob:https://host/uuid belongs to its embedded origin. */
  static String blobOrigin(String raw){if(raw==null||!raw.regionMatches(true,0,"blob:",0,5))return null;return origin(raw.substring(5));}
- private void message(String text){new AlertDialog.Builder(context).setTitle("Download").setMessage(text).setPositiveButton("Close",null).show();}
+ /** Set by destroy(): the activity is gone, so no dialog may be shown and no worker accepts work. */
+ private volatile boolean closed;
+ /**
+  * Runs download work on a worker that destroy() stops. A review answered, or a completion posted,
+  * around activity destruction must not throw on the main thread; the work is dropped and the
+  * caller's cleanup runs instead.
+  */
+ private void work(ExecutorService worker,Runnable task,Runnable dropped){
+  try{worker.execute(task);}
+  catch(java.util.concurrent.RejectedExecutionException stopped){dropped.run();}
+ }
+ private void message(String text){if(closed)return;new AlertDialog.Builder(context).setTitle("Download").setMessage(text).setPositiveButton("Close",null).show();}
  private static String privateNote(boolean priv){return priv?"\n\nPrivate tab: the file stays in Downloads after you close this tab, but it is not kept in the browser's download list.":"";}
  private boolean reviewable(){
+  if(closed)return false;
   if(pending!=null){message("Finish the current download review first.");return false;}
   if(owned.size()>=MAX_ENTRIES){message("Download history is full. Remove an entry from Downloads first.");return false;}
   return true;
  }
  private void review(String tab,String title,String details,Runnable confirm){
+  if(closed)return;
   pendingTab=tab;
   pending=new AlertDialog.Builder(context).setTitle(title).setMessage(details).setNegativeButton("Cancel",null).setPositiveButton("Download",(dialog,which)->confirm.run()).create();
   AlertDialog review=pending;review.setOnDismissListener(dialog->{if(pending==review){pending=null;pendingTab=null;}});review.show();
@@ -167,7 +180,7 @@ final class BrowserDownloads {
   review(source.tab,"Download file?",details,()->{
    used[0]=true;
    if(!current.getAsBoolean()){file.delete();message("The source page changed. Start the download again.");return;}
-   io.execute(()->{
+   work(io,()->{
     Uri saved=null;String failure=null;
     try{saved=publish(file,name,mime);}catch(Exception error){failure="The file could not be saved to Downloads. Check Android storage and try again.";}
     finally{file.delete();}
@@ -176,7 +189,7 @@ final class BrowserDownloads {
      if(result==null){message(error);return;}
      try{long id=--localSequence;JSONObject item=entry(id,name,origin,source);item.put("uri",result.toString());owned.put(id,item);persist();show();}catch(Exception ignored){message("Saved to Downloads.");}
     });
-   });
+   },file::delete);
   });
   AlertDialog review=pending;if(review!=null)review.setOnDismissListener(dialog->{if(pending==review){pending=null;pendingTab=null;}if(!used[0])file.delete();});
  }
@@ -191,7 +204,7 @@ final class BrowserDownloads {
   * which the system removes. */
  private void fetchSignedIn(String start,String name,String mime,String origin,Source source,String cookie)throws Exception{
   long id=--localSequence;JSONObject item=entry(id,name,origin,source);item.put("running",true);owned.put(id,item);received.put(id,0L);
-  network.execute(()->{
+  work(network,()->{
    Uri saved=null;String failure=null;boolean stopped=false;
    try{saved=fetch(id,start,source.pageOrigin,cookie,source.userAgent,name,mime);}
    catch(Cancelled cancel){stopped=true;}
@@ -207,7 +220,7 @@ final class BrowserDownloads {
     persist();if(update!=null)update.run();
     if(result==null&&error!=null)message(error);
    });
-  });
+  },()->{owned.remove(id);received.remove(id);});
  }
  private Uri fetch(long id,String start,String pageOrigin,String cookie,String agent,String name,String mime)throws Exception{
   java.net.URL url=new java.net.URL(start);
@@ -278,6 +291,7 @@ final class BrowserDownloads {
   if(changed&&update!=null)update.run();
  }
  void show(){
+  if(closed)return;
   if(listing!=null){listing.dismiss();listing=null;}
   LinearLayout rows=new LinearLayout(context);rows.setOrientation(LinearLayout.VERTICAL);int padding=(int)(16*context.getResources().getDisplayMetrics().density);rows.setPadding(padding,padding,padding,padding);
   android.widget.ScrollView scroll=new android.widget.ScrollView(context);scroll.addView(rows);
@@ -321,7 +335,7 @@ final class BrowserDownloads {
   AlertDialog review=pending,list=listing;pending=null;pendingTab=null;listing=null;
   if(review!=null)review.dismiss();if(list!=null)list.dismiss();
  }
- void destroy(){dismissDialogs();cancelled.addAll(received.keySet());io.shutdown();network.shutdown();}
+ void destroy(){closed=true;dismissDialogs();cancelled.addAll(received.keySet());io.shutdown();network.shutdown();}
 
  /** Captures a page-created blob: download into an app-owned file. The script
   * runs in a dedicated isolated JavaScript world: page scripts cannot see its

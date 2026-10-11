@@ -60,8 +60,17 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
   JSObject out=new JSObject();out.put("result",clock!=null&&clock.has("result")?clock.getJSONObject("result"):ClockAgentReview.result(action,"unknown"));return out;
  }
  private JSONObject clockMarker(JSONObject entry,String phase)throws Exception{return new JSONObject().put("phase",phase).put("attemptId",entry.getString("attemptId")).put("operationHash",entry.getString("operationHash"));}
+ /**
+  * The shared plugin stops its worker in handleOnDestroy. A Clock call the page made just before
+  * that can arrive afterwards; the stopped executor then throws on the bridge thread, which ends
+  * the process. Such a call is rejected: nothing was reviewed, approved or handed to Clock.
+  */
+ private void clockWork(PluginCall call,Runnable task){
+  try{worker().execute(task);}
+  catch(java.util.concurrent.RejectedExecutionException retired){call.reject("Clock review closed before this step started; nothing was sent to Clock");}
+ }
  @PluginMethod public void reviewClock(PluginCall call){
-  worker().execute(()->{try{
+  clockWork(call,()->{try{
    String scope=field(call.getString("scope"),"[a-f0-9]{64}"),id=field(call.getString("proposalId"),"[A-Za-z0-9_-]{1,128}"),operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");
    ActionJournal store=journal();JSONObject approved;
    synchronized(store.lock()){JSONObject entry=clockEntry(store,scope,id,operationId);approved=entry.getJSONObject("record").getJSONObject("operation");if(!sameJson(approved,call.getObject("operation")))throw new IllegalStateException();
@@ -89,7 +98,7 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
  @PluginMethod public void confirmClock(PluginCall call){
   // Serialize exact approval and durable dispatch intent on the journal worker.
   // Only the foreground check and Android handoff run on the Activity thread.
-  worker().execute(()->{try{ActionJournal store=journal();synchronized(store.lock()){
+  clockWork(call,()->{try{ActionJournal store=journal();synchronized(store.lock()){
    if(destroyed())throw new IllegalStateException();
    String scope=field(call.getString("scope"),"[a-f0-9]{64}"),id=field(call.getString("proposalId"),"[A-Za-z0-9_-]{1,128}"),operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");
    JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview"),operation=entry.getJSONObject("record").getJSONObject("operation");

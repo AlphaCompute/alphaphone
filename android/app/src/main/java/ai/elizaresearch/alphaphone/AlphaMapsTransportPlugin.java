@@ -72,9 +72,16 @@ public final class AlphaMapsTransportPlugin extends Plugin {
   if(session==null||!session.matches(AlphaNavigationService.SESSION_PATTERN)){call.reject("Invalid navigation session");return;}
   if(!AlphaNavigationService.declared(getContext())){call.reject("Background navigation is unavailable in this build","unavailable");return;}
   if(!AlphaNavigationService.locationGranted(getContext())){call.reject("Location permission is required for background navigation","permission-denied");return;}
+  // A Start delivered after this renderer closed has no guidance behind it and nothing left to stop it.
+  if(destroyed){call.reject("Background navigation is unavailable: Alpha closed","unavailable");return;}
   // One session at a time: a new explicit Start retires the previous one first.
   String previous=AlphaNavigationService.activeSession();if(previous!=null)AlphaNavigationService.stop(getContext(),previous,"replaced");
-  try{AlphaNavigationService.start(getContext(),session,text(call,"title"),text(call,"text"));call.resolve();}
+  try{
+   AlphaNavigationService.start(getContext(),session,text(call,"title"),text(call,"text"));
+   // Destruction may have passed the check above while this ran; it sets the flag before it stops the active session, so one of the two stops this one.
+   if(destroyed){AlphaNavigationService.stop(getContext(),session,"renderer-closed");call.reject("Background navigation is unavailable: Alpha closed","unavailable");return;}
+   call.resolve();
+  }
   catch(RuntimeException refused){AlphaNavigationService.stop(getContext(),session,"refused");call.reject("Background navigation could not start","unavailable");}
  }
  @PluginMethod public void updateNavigation(PluginCall call){
@@ -88,6 +95,8 @@ public final class AlphaMapsTransportPlugin extends Plugin {
  }
  @Override protected void handleOnDestroy(){
   // Guidance lives in this renderer; without it the session must not keep a stale notification.
+  // The flag comes first: a Start still running on the bridge thread sees it and retires its own session.
+  destroyed=true;
   AlphaNavigationService.clearStopListener(navigationStops);String active=AlphaNavigationService.activeSession();if(active!=null)AlphaNavigationService.stop(getContext(),active,"renderer-closed");
-  destroyed=true;for(Pending job:pending.values())job.cancel("Regional transport closed");workers.shutdownNow();deadlines.shutdownNow();closers.shutdown();pending.clear();earlyCancelled.clear();}
+  for(Pending job:pending.values())job.cancel("Regional transport closed");workers.shutdownNow();deadlines.shutdownNow();closers.shutdown();pending.clear();earlyCancelled.clear();}
 }

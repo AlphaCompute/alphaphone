@@ -239,6 +239,113 @@ Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
 
+## Round 10 (2026-10-11): native teardown, live search and reading availability, none run
+
+Branch `claude/r10-native-robustness`. Source, compile and browser checks only (class S). No
+APK was assembled, no emulator was started and no workflow was dispatched, so nothing here is
+class B or class E evidence, and no fix below has been shown to hold on Android.
+
+- **Calls that arrive after a plugin is destroyed.** Round 8 fixed one plugin
+  (`AlphaDevicePlugin`) after a `RejectedExecutionException` on Capacitor's bridge thread killed
+  the process. Every Java source under `android/app/src/main/java` was read for the same class.
+  Found and changed: `AlphaMailAttachmentsPlugin` (`readSelected`, `openReviewed`,
+  `retainSourceReference`, `openSourceReference` handed work to the stopped worker with no
+  catch) and `AlphaActionJournalPlugin` (`reviewClock`, `confirmClock` used the shared plugin's
+  worker, which that plugin stops on destroy); both now reject the call. `BrowserDownloads`
+  handed work to two workers that `destroy()` stops and showed its dialogs from completions
+  posted by those workers; after `destroy()` it now shows nothing and drops the work.
+  `AlphaBrowserPlugin` accepted `create`, `downloads` and the other main-thread methods after
+  destroy (its session is cleared then, so `create` built a WebView on the dead activity and
+  `downloads` opened a dialog on it); every such call is now rejected as "Browser closed".
+  Two smaller ones: `AlphaDevicePlugin.setTextScale` also refuses a destroyed activity, and
+  `AlphaHostedResultsPlugin.enable` rejects when Android has no channel-settings page instead
+  of throwing on the bridge thread. Already answering a stopped worker before this round:
+  `AlphaDevicePlugin` (problem log), `AlphaHostedResultsPlugin`, `AlphaNotificationsPlugin`,
+  `AlphaMapsTransportPlugin`, `AlphaVoiceCloudPlugin`, `AlphaLocalAgentPlugin`,
+  `AlphaConnectionPlugin`, `AlphaFilesPlugin`, `AlphaNoteDocumentsPlugin`,
+  `AlphaNoteAudioPlugin`, `AlphaPhotosPlugin`. Receivers and callbacks (`DeviceAppsPlugin`,
+  the browser's autofill callback and WebView listener, the voice plugin's memory callbacks,
+  the Maps stop listener) were already released on destroy. `test/native-plugin-teardown.test.mjs`
+  scans every source for an executor hand-off outside a `try` that answers the rejection, and
+  it fails on the pre-change sources at the eight places named above. It is a source-shape
+  guard: no late call was delivered to a destroyed plugin on a device. Three hand-offs are
+  listed in the test as reviewed exceptions with the reason for each.
+- **Requests that launch through the activity** (found in review of this branch; same class,
+  not an executor). A permission request or an activity-result request has no launcher once
+  the activity is destroyed: androidx unregisters it then and `launch()` throws
+  `IllegalStateException`, on Capacitor's bridge thread (read from the `androidx.activity`
+  1.10.1 classes this build resolves; not reproduced on a device). Unguarded before:
+  `AlphaHostedResultsPlugin.enable`, `AlphaVoiceCloudPlugin.startRecording`,
+  `DailyAppsPlugin.perform` (a selection), Capacitor's own `requestPermissions` on the four
+  plugins that declare permissions (the startup access panel calls it on `DailyApps` and
+  `AlphaVoiceCloud`), and three plugin methods the app's plugins inherit from shared ones
+  (`CalendarPlugin.requestAccess`, `requestWorkflowReadAccess`, `ReminderPlugin.scheduleReminder`).
+  Each is now the body of `LateLaunch.ask`, which rejects the call; the inherited ones are
+  overridden in the app's subclass, and the shared sources are unchanged. The guard test scans
+  every app source for such a request outside `LateLaunch.ask` or a `try` that answers it, and
+  reads the shared parent classes so a new inherited request needs its override. **Not
+  covered:** the shared camera and location plugins, which the app registers without
+  subclassing, make the same permission requests unguarded (`vendor/eliza/plugins`); that
+  needs an upstream change, not an edit here. Also changed: `AlphaMapsTransportPlugin.startNavigation`
+  refuses after destroy and retires a session it started while destruction ran, so a late
+  call cannot leave a navigation notification with no renderer behind it; and the native
+  reading review now gives the unavailable answer before it asks for a speech route.
+- **BrowserFlow live search** (failed in rounds 7 and 8). The product request is correct:
+  search words become `https://www.google.com/search?q=<words>`. The saved result files
+  (`f-default/*/BrowserFlow.txt`) show a complete HTTPS page with a body that was not that
+  address, and deliberately carry no URL, so which page loaded was **not observed**. The
+  likely cause, not confirmed, is Google answering the emulator's network with its own check
+  page (`www.google.com/sorry/…`) or consent page (`consent.google.com`), both of which carry
+  the interrupted search in `continue`. The method now accepts either the results page as
+  before, or one of those two pages when it is HTTPS, on that host, and `continue` is this
+  exact search; and in both cases it asserts the product's own request from the page's history
+  entry (HTTPS, `www.google.com`, `/search`, `q` equal to the typed words) and the missing
+  bridge. A pass records `INSTRUMENTATION_STATUS: browserFlowSearch=results` or
+  `=provider-check`, so a campaign can say which it saw; a pass with `provider-check` is not
+  evidence that a results page renders. Any other page still fails, now with the host and path
+  class of what loaded. If the next campaign fails with `host: other`, the hypothesis is wrong
+  and the method needs another look; a failure that reports `www.google.com`, `/search` and a
+  short `textLength` would instead mean the results address answered with a page that never
+  filled in (a script check that did not complete), which this method does not accept. Not run.
+- **Page reading without isolated-world injection** (WebView 133 on the SDK emulator).
+  Nothing was injected into a page's own world before this round and nothing is now; the
+  refusal was a toast after a speech route had been prepared, with advice to reload that could
+  not help. Now `AlphaBrowser.readingSupport` reports the provider's capability, the browser
+  menu carries a note when it is absent, Read aloud and Ask about page say so before doing
+  anything else, and the native review refuses with the same sentence (code
+  `reading-unsupported`), separately from a page that is merely not ready. The wording is an
+  engineering default. `BrowserReadingNavigationInstrumentedTest` has two methods and exactly
+  one runs on a given provider: the stale-document method (its assertions unchanged) with the
+  capability, and `providerWithoutIsolatedWorldSaysReadingIsUnavailableAndInjectsNothing`
+  without it. The other is skipped by assumption and listed as such; the class no longer
+  proves stale-document rejection by passing, so read the `ignored` list or
+  `browserReadingProvider=isolated-world|no-isolated-world`. Not run.
+- Compiled (JDK 21, `--offline`, `npm run agent:prepare -- --source-only`, staged agent
+  sources, a locally built unqualified speech AAR as a compile input):
+  `./gradlew :app:compileStandaloneDebugJavaWithJavac :app:compileLauncherDebugJavaWithJavac
+  :app:compileStandaloneDebugAndroidTestJavaWithJavac :app:compileLauncherDebugAndroidTestJavaWithJavac
+  -x :local-speech:preBuild -x :app:stageLocalAgentSources -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1`
+  with `-PELIZA_DEV_ALLOW_TEST_MOCKS=0` and again with `=1`: BUILD SUCCESSFUL both times.
+  Compilation only.
+- Run on a development machine at the reviewed source (after the review additions above; the
+  Gradle compile was repeated then too): `npm run verify` exit 0 (695 tests, 691 passed,
+  0 failed, 4 todo; bundle audit passed, 395 files, `testMocks=false`);
+  `ALPHA_BROWSER_TEST_PORT=7053 npx playwright test --project=chromium --workers=4` on
+  `reading-capability`, `browser-navigation`, `reading-review`, `reading-source`,
+  `reading-sensitive`, `journey-e-browser-credentials`, `web-summary-note` and
+  `browser-signins`: 67 passed. The Chromium specs run the web build, which never asks the
+  native capability question; the production project was not run.
+- Emulator commands for the integrator (developer APKs; class E when run), with
+  `RUN` = `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN`:
+  `RUN --classes BrowserFlow,BrowserReadingNavigation,BrowserSignins,BrowserContinuity,MailAttachment,ClockHandoff`
+  (network needed for BrowserFlow); `RUN --test-mocks --classes BrowserDownload,BrowserFlow,BrowserDialogLifecycle,BrowserWebFeatures`;
+  `RUN --variants launcher --home-role --classes SettingsRoles,LauncherHome`, repeated, since
+  the crash it found appeared once in 22 runs; and, for the plugin methods now routed through
+  `LateLaunch`, `RUN --classes DailyApps,ReminderLifecycle,HostedResultsLifecycle,StartupReadiness`
+  with the voice permission campaigns of `scripts/test-native-permissions.mjs`. These exercise
+  the changed plugins while the activity is alive, and LauncherHome destroys it; none delivers
+  a call to a destroyed plugin on purpose, so a pass is regression evidence only.
+
 ## Round 8 (2026-10-11): runner cases, fixes and hosted jobs, none run
 
 Branch `claude/r8-runner-ci`. This section records source, compile and host-runtime checks
