@@ -193,7 +193,11 @@ gh workflow run bun-spawn-seccomp.yml --ref main
 Dispatch only: no push, pull request, schedule or reusable-workflow trigger, and no
 other workflow starts it. `test/ci-emulator-evidence.test.mjs` fails if that changes, if
 an action in it is not pinned to an exact commit, or if an emulator job stops uploading
-its results. A change to the file itself selects no automatic lane. One `build` job
+its results. The same test requires every action in every workflow file to name an exact
+commit with its release: round 8 replaced the four major-tag references the older
+workflows still had (`android-actions/setup-android`, `gradle/actions/setup-gradle`,
+`reactivecircus/android-emulator-runner`, `oven-sh/setup-bun`) with the commits those tags
+resolved to on 2026-10-10, so no workflow's behaviour changed. A change to the file itself selects no automatic lane. One `build` job
 repeats the Android foundation build's speech and APK steps with the instrumentation
 APKs (and a second Gradle build for the test-mocks pair when the reading suite is
 selected), and records the speech runtime as a requalification candidate; each selected

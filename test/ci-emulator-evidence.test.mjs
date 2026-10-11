@@ -89,6 +89,27 @@ test('every action in the emulator evidence workflow is pinned to an exact commi
  assert.deepEqual([...pins.keys()].filter(name=>!name.startsWith('actions/')).sort(),['android-actions/setup-android','gradle/actions/setup-gradle','reactivecircus/android-emulator-runner']);
 });
 
+test('every action in every workflow is pinned to an exact commit, one commit per action',()=>{
+ // A tag can be moved to other code after review; a commit cannot. Before round 8 four
+ // third-party actions in the older workflows were referenced by their major tag.
+ const pins=new Map(),files=fs.readdirSync('.github/workflows').filter(name=>/\.ya?ml$/.test(name)).sort();
+ assert.ok(files.length>=7);
+ for(const file of files){
+  const uses=[...read(path.join('.github/workflows',file)).matchAll(/^\s+(?:- )?uses:\s*(\S+)(.*)$/gm)];
+  assert.ok(uses.length>0,file);
+  for(const [line,target,rest] of uses){
+   // A reusable workflow of this repository runs at the calling commit.
+   if(target.startsWith('./')){assert.match(target,/^\.\/\.github\/workflows\/[a-z0-9-]+\.yml$/,`${file}: ${line.trim()}`);assert.ok(fs.existsSync(target),target);continue;}
+   assert.match(target,/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.\/-]+@[0-9a-f]{40}$/,`${file}: ${line.trim()} must name a 40-character commit`);
+   assert.match(rest,/^ # v\d+\.\d+\.\d+$/,`${file}: ${line.trim()} must name the release that commit is`);
+   const [name,commit]=target.split('@');assert.equal(pins.get(name)??commit,commit,`${name} is pinned to two different commits (${file})`);pins.set(name,commit);
+  }
+ }
+ assert.deepEqual([...pins.keys()].filter(name=>!name.startsWith('actions/')).sort(),['android-actions/setup-android','gradle/actions/setup-gradle','oven-sh/setup-bun','reactivecircus/android-emulator-runner'],'a new third-party action needs its own review');
+ // No step runs from a container image reference (which a commit pin does not cover), and no workflow grants a write permission.
+ for(const file of files){const text=read(path.join('.github/workflows',file));assert.doesNotMatch(text,/\bdocker:\/\//,file);assert.doesNotMatch(text,/^\s+[a-z-]+: write\s*$/m,`${file} grants a write permission`);}
+});
+
 test('a change to the emulator evidence workflow selects no automatic lane of its own',()=>{
  assert.deepEqual(affected([WORKFLOW]),{verify:true,browser:false,android:false,prepare:false});
  const policy=read('docs/ci-cost-policy.md');
