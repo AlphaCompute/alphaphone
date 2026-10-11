@@ -61,10 +61,11 @@ public class MainActivity extends BridgeActivity {
   * One live MainActivity (launcher flavor).
   *
   * MainActivity is singleTask, but Android keeps home and ordinary activities apart: an intent with
-  * ACTION_MAIN and only CATEGORY_HOME and no component (what the system sends for the HOME key and
-  * when the role is granted) starts the activity with the home activity type in the display's home
-  * task, and every other start (the app icon, a notification tap, the alphaphone:// sign-in return,
-  * an explicit component) has the standard type. A task's activity type never changes and task
+  * ACTION_MAIN and CATEGORY_HOME as its only category, no data and no type, that either names no
+  * component or is started by the system itself (the HOME key, the start when the role is granted,
+  * boot) starts the activity with the home activity type in the display's home task, and every
+  * other start (the app icon, a notification tap, the alphaphone:// sign-in return, an explicit
+  * component from another app) has the standard type. A task's activity type never changes and task
   * lookup for singleTask only matches a task of a compatible type, so each kind of start finds or
   * creates its own task. Granting the HOME role to a running Alpha, or tapping an Alpha notice while
   * Alpha is the home activity, therefore created a second MainActivity with a second page, while
@@ -79,16 +80,32 @@ public class MainActivity extends BridgeActivity {
   * existing task: the implicit HOME intent for a home-type instance, the explicit component for a
   * standard one. If that start ever produced another instance instead, it finishes without
   * starting anything, so this cannot loop.
+  *
+  * The kind belongs to the task, not to whatever intent the instance holds later. Android hands a
+  * relaunched activity (renderer recovery, a system font-size change) the last intent given to
+  * setIntent, and AlphaConnectionPlugin keeps the Cloud sign-in return there. The kind is therefore
+  * read from the intent once, for the first instance in a task, and kept for that task id; reading
+  * it again after a relaunch would call a home-type instance standard, and the next notice tap or
+  * sign-in return would be delivered without Alpha coming to the front.
   */
  private static java.lang.ref.WeakReference<MainActivity> liveInstance = new java.lang.ref.WeakReference<>(null);
  private static final long FRONT_START_WINDOW_MS = 5_000L;
  /** elapsedRealtime of this process's own bring-to-front start, 0 when none is outstanding. */
  private static long frontStartAt = 0L;
+ /** The task of the instance that owns the page, and whether that task has the home activity type. */
+ private static int liveTaskId = -1;
+ private static boolean liveTaskHome = false;
  private boolean handedOff = false;
  private boolean startedAsHome = false;
  static boolean isHomeIntent(Intent intent) {
   return intent != null && Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_HOME);
  }
+ /** The intent shape AOSP gives the home activity type: HOME is the only category, with no data or type. */
+ static boolean isHomeTypeStart(Intent intent) {
+  return isHomeIntent(intent) && intent.getCategories() != null && intent.getCategories().size() == 1 && intent.getData() == null && intent.getType() == null;
+ }
+ /** Whether the page owner's task was started as the home activity. Fixed for the life of the task. */
+ boolean startedAsHome() { return startedAsHome; }
  /** The instance that owns the page, or null. Main thread only. */
  static MainActivity liveInstance() {
   MainActivity live = liveInstance.get();
@@ -99,12 +116,15 @@ public class MainActivity extends BridgeActivity {
  /** Marks this process's own bring-to-front start. Honoured only while one is outstanding. */
  private static final String EXTRA_FRONT_START = "alpha.frontStart";
  private static boolean isOwnFrontStart(Intent intent) {
-  return intent != null && intent.getBooleanExtra(EXTRA_FRONT_START, false)
-    && frontStartAt != 0L && SystemClock.elapsedRealtime() - frontStartAt < FRONT_START_WINDOW_MS;
+  if (intent == null || frontStartAt == 0L || SystemClock.elapsedRealtime() - frontStartAt >= FRONT_START_WINDOW_MS) return false;
+  // MainActivity is exported: another app's extras may not unparcel here. Such an intent is not ours.
+  try { return intent.getBooleanExtra(EXTRA_FRONT_START, false); }
+  catch (RuntimeException foreign) { return false; }
  }
  @Override protected void load() { if (!handedOff) super.load(); }
  private void handOff(MainActivity live) {
   boolean home = isHomeIntent(getIntent());
+  boolean sameTask = live.getTaskId() == getTaskId();
   if (isOwnFrontStart(getIntent())) {
    // This instance was created by our own bring-to-front start: Android did not resolve it to the
    // live task on this build. Stop here; the live instance already has the intent.
@@ -113,7 +133,7 @@ public class MainActivity extends BridgeActivity {
   } else {
    android.util.Log.i("AlphaInstance", "Second start handed to the live instance; home=" + home + " liveHome=" + live.startedAsHome);
    if (getIntent() != null) live.onNewIntent(new Intent(getIntent()));
-   if (live.getTaskId() != getTaskId()) {
+   if (!sameTask) {
     Intent front = live.startedAsHome
       ? new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(getPackageName())
       : new Intent(this, MainActivity.class);
@@ -123,8 +143,9 @@ public class MainActivity extends BridgeActivity {
     catch (RuntimeException failure) { frontStartAt = 0L; android.util.Log.w("AlphaInstance", "Live instance could not be brought to the front: " + failure.getClass().getSimpleName()); }
    }
   }
-  // The home task belongs to Android and keeps existing; a standard task made for this start does not.
-  if (home) finish(); else finishAndRemoveTask();
+  // The home task belongs to Android and keeps existing; a standard task made for this start does
+  // not. A task this instance shares with the live one is never removed.
+  if (home || sameTask) finish(); else finishAndRemoveTask();
   overridePendingTransition(0, 0);
  }
  @Override public void onCreate(Bundle state) {
@@ -143,7 +164,14 @@ public class MainActivity extends BridgeActivity {
    handOff(live);
    return;
   }
-  if (BuildConfig.IS_LAUNCHER && !isAssistantSurface()) { liveInstance = new java.lang.ref.WeakReference<>(this); startedAsHome = isHomeIntent(getIntent()); }
+  if (BuildConfig.IS_LAUNCHER && !isAssistantSurface()) {
+   liveInstance = new java.lang.ref.WeakReference<>(this);
+   // First instance in this task: its start intent says which kind of task Android made. A relaunch
+   // in the same task keeps that answer whatever intent it was handed (see "One live MainActivity").
+   int task = getTaskId();
+   if (task == -1 || task != liveTaskId) { liveTaskId = task; liveTaskHome = isHomeTypeStart(getIntent()); }
+   startedAsHome = liveTaskHome;
+  }
   registerPlugin(SystemPlugin.class);
   registerPlugin(DeviceAppsPlugin.class);
   registerPlugin(DailyAppsPlugin.class);
@@ -224,7 +252,12 @@ public class MainActivity extends BridgeActivity {
  @Override public void onNewIntent(Intent intent) {
   super.onNewIntent(intent);
   // Our own bring-to-front start (see handOff) carries nothing: the real intent was delivered first.
-  if (isOwnFrontStart(intent)) { frontStartAt = 0L; return; }
+  if (isOwnFrontStart(intent)) {
+   frontStartAt = 0L;
+   // Reached the instance that asked instead of the live one: the live task was not raised.
+   if (handedOff) android.util.Log.w("AlphaInstance", "Front start returned to the handed-off instance; the live task was not brought to the front");
+   return;
+  }
   if (getBridge() != null && !isAssistantSurface() && isHomeIntent(intent))
    getBridge().getWebView().evaluateJavascript("window.dispatchEvent(new Event('launcher-home'))", null);
  }

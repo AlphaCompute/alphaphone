@@ -172,6 +172,52 @@ public class LauncherHomeInstrumentedTest {
   }
  }
 
+ /** A relaunch (renderer recovery, a system font-size change) hands the new instance the last intent
+  * given to setIntent, and the Cloud sign-in return is kept there. The page owner's kind belongs to
+  * its task and must survive that: a later start that is not a HOME start, and the HOME key, still
+  * reach the one instance and bring Alpha to the front (MainActivity "One live MainActivity"). */
+ @Test public void aRelaunchHoldingAReplacedIntentKeepsOneInstanceThatLaterStartsBringToTheFront() throws Exception {
+  assumeAlphaIsHome();
+  Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+  ResolveInfo settings = context.getPackageManager().resolveActivity(new Intent(android.provider.Settings.ACTION_SETTINGS), PackageManager.MATCH_DEFAULT_ONLY);
+  Assume.assumeTrue("Android Settings is available to cover Alpha", settings != null && settings.activityInfo != null && !context.getPackageName().equals(settings.activityInfo.packageName));
+  UiAutomation ui = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
+   AppNavigation.liveMode();
+   eval(AppNavigation.request("Home"));
+   until(AppNavigation.selected("Home") + "&&!document.querySelector('.os')?.inert", "Home ready");
+   boolean[] kind = new boolean[2];
+   BoundedActivityScenario.main(() -> {
+    MainActivity live = MainActivity.liveInstance();
+    assertNotNull("A page owner exists", live);
+    kind[0] = live.startedAsHome();
+    // An intent of the other kind, held the way AlphaConnectionPlugin holds the sign-in return.
+    live.setIntent(kind[0] ? new Intent(Intent.ACTION_VIEW) : new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME));
+   });
+   scenario.recreate();
+   BoundedActivityScenario.main(() -> {
+    MainActivity live = MainActivity.liveInstance();
+    assertNotNull("The relaunched instance owns the page", live);
+    kind[1] = live.startedAsHome();
+   });
+   assertEquals("The relaunched instance keeps the kind of its task", kind[0], kind[1]);
+   AppNavigation.liveMode();
+   eval(AppNavigation.request("Home"));
+   until(AppNavigation.selected("Home") + "&&!document.querySelector('.os')?.inert", "Home ready after the relaunch");
+   // A start that is not a HOME start (the app icon, a notice tap, the sign-in return), with another app in front.
+   try (InputStream output = new ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand("am start -W -a " + android.provider.Settings.ACTION_SETTINGS))) { output.readAllBytes(); }
+   awaitForeground(settings.activityInfo.packageName, "Android Settings covers Alpha");
+   // No -W: on a home-type page owner the instance Android creates for this start finishes at once.
+   try (InputStream output = new ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand("am start -n " + context.getPackageName() + "/" + MainActivity.class.getName()))) { output.readAllBytes(); }
+   awaitForeground(context.getPackageName(), "An explicit start brings the one instance to the front after the relaunch");
+   assertOneMainActivity("after an explicit start that follows a relaunch");
+   // And the HOME key.
+   try (InputStream output = new ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand("am start -W -a " + android.provider.Settings.ACTION_SETTINGS))) { output.readAllBytes(); }
+   awaitForeground(settings.activityInfo.packageName, "Android Settings covers Alpha again");
+   returnHome(context);
+  }
+ }
+
  @Test public void phoneShortcutOpensTheStockDialerWithinTwoTapsAndHomeReturns() throws Exception {
   assumeAlphaIsHome();
   Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
