@@ -1424,6 +1424,7 @@
       <sc-if value="{{browser.openFind}}"><button class="tap" aria-label="Find in page" onClick="{{browser.openFind}}" style="min-height:50px;border-radius:18px;display:flex;align-items:center;gap:14px;padding:0 14px;text-align:left;font-size:15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.search}}"></path></svg>Find in page</button></sc-if>
       <sc-if value="{{browser.nativeControls}}"><button class="tap" aria-label="Ask about page" onClick="{{browser.askPage}}" style="min-height:50px;border-radius:18px;padding:0 14px;text-align:left;font-size:15px">Ask about page</button></sc-if>
       <button class="tap" aria-label="Read aloud" onClick="{{browser.readAloud}}" style="height: 50px; border-radius: 18px; display: flex; align-items: center; gap: 14px; padding: 0 14px; font-size: 15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.wave}}"></path></svg>Read aloud</button>
+      <sc-if value="{{browser.readingUnavailable}}"><p role="note" aria-label="Page reading unavailable" data-alpha-reading-unavailable style="margin: 0; padding: 6px 14px 12px; font-size: 13px; line-height: 1.4; color: var(--mut)">{{browser.readingNote}}</p></sc-if>
     </div>
     </div>
   </sc-if>
