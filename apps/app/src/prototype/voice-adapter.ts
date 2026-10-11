@@ -12,7 +12,7 @@ import { installLocalSpeechPlayback, stopLocalSpeechPlayback, currentNoteReading
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { createOnDeviceVoice, type SpeechProgressEvent } from '../runtime/local-voice';
-import { voiceFailure, transcriptProvenance, speechProgressMessage, type VoiceFailure, type TranscriptProvenance } from '../runtime/voice-states';
+import { voiceFailure, transcriptProvenance, speechProgressMessage, deniedSettingsChoice, DENIED_SETTINGS_LABEL, type VoiceFailure, type TranscriptProvenance } from '../runtime/voice-states';
 import { createPairedVoice } from '../runtime/paired-voice';
 import { createCloudVoice, cloudVoiceFailure } from '../runtime/cloud-voice';
 import { selectVoiceRoute } from '../runtime/voice-selection';
@@ -28,6 +28,7 @@ const voice = registerPlugin<{
   addListener(event: 'recordingStopped', callback: (clip: Clip) => void): Promise<PluginListenerHandle>;
 }>('DevelopmentAgent');
 const deviceVoice = registerPlugin<typeof voice>('AlphaVoiceCloud');
+const appSettings = registerPlugin<{ openSettings(input: { page: 'privacy' }): Promise<unknown> }>('AlphaDevice');
 
 type SavedAudio = { audioId: string; noteId: string; durationMs: number; transcript: string };
 const cloudRecorder = registerPlugin<{ saveRecording(input: { recordingId: string; noteId: string; transcript: string }): Promise<SavedAudio> }>('AlphaVoiceCloud');
@@ -779,15 +780,18 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       messages.review='Review the transcript, listen using the local agent on this computer, or save it with the recording. No chat message has been sent.';
     }
     const canType = stage === 'recorded' && !!clip && !busy && (failure === 'no-speech' || failure === 'model' || failure === 'recognition');
+    // A refused microphone uses the route slot for its recovery: Android's app settings for Alpha.
+    const settingsChoice = deniedSettingsChoice({ failure, stage, busy, native: Capacitor.isNativePlatform() });
+    const openSettings = () => { void appSettings.openSettings({ page: 'privacy' }).catch(() => api?.toast('Android app settings are unavailable. Allow the microphone for Alpha in Settings, then try again.')); };
     return {
       state: failure || stage,
       typeChoice: canType,
       typeInstead: () => { if (!owned()||stage !== 'recorded' || !clip || busy) return; draft = ''; recognized = undefined; error = ''; failure = ''; stage = 'review'; refresh(); },
       manualChoice: !cloudMode && stage === 'ready' && !busy && !preparingLocal && selectedRoute !== 'manual',
       recordOnly: () => { if(!owned())return;const target = destination, chat = chatDestination; enter(target, undefined, 'manual',chat); refresh(); },
-      routeChoice: !cloudMode && stage === 'ready' && !busy && document.documentElement.dataset.connectionMode !== 'mock' && (!!connectionController.getPairedVoiceBinding() || connectionController.getCloudEnvironment() !== null),
-      routeLabel: browserDevProfile ? (selectedRoute === 'device' ? 'Use development voice' : 'Use browser voice') : selectedRoute === 'device' ? (connectionController.getCloudEnvironment() !== null ? 'Use Eliza Cloud voice' : 'Use selected agent voice') : 'Use on-device voice',
-      changeRoute: () => { if (!owned()||stage !== 'ready' || busy) return; const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute === 'device' ? 'agent' : 'device',chat); refresh(); },
+      routeChoice: settingsChoice || !cloudMode && stage === 'ready' && !busy && document.documentElement.dataset.connectionMode !== 'mock' && (!!connectionController.getPairedVoiceBinding() || connectionController.getCloudEnvironment() !== null),
+      routeLabel: settingsChoice ? DENIED_SETTINGS_LABEL : browserDevProfile ? (selectedRoute === 'device' ? 'Use development voice' : 'Use browser voice') : selectedRoute === 'device' ? (connectionController.getCloudEnvironment() !== null ? 'Use Eliza Cloud voice' : 'Use selected agent voice') : 'Use on-device voice',
+      changeRoute: () => { if (!owned()||stage !== 'ready' || busy) return; if (settingsChoice) { openSettings(); return; } const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute === 'device' ? 'agent' : 'device',chat); refresh(); },
       clock: `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`, clockCss: '', live: stage === 'recording', paused: stage !== 'recording', dotCss: `background:${stage === 'recording' ? '#E53935' : 'var(--mut)'}`,
       levels: !Capacitor.isNativePlatform()&&stage==='recording'?recordingLevels(recordingId):Array.from({ length: 44 }, () => ({ h: 4 })),
       lines: [{ ini: '', statusIcon:icons.info, t: error || messages[stage], chip: 'background:var(--s2);color:var(--fg)', css: '' }],
