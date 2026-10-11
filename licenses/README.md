@@ -35,8 +35,8 @@ anything copyleft, unknown or unverified is flagged with what it obliges. The po
   a stale Android classpath snapshot, a malformed `font-licenses.json` record.
 - A flag is a record of what was found. It is not legal review and not a clearance.
 
-The one exception is a proprietary font with no recorded licence (the Denton typeface). It is
-not open-source software, so P-09 does not cover it; see `font-licenses.json` below.
+Proprietary fonts are outside the open-source policy. The Denton typeface is one: it is recorded
+in `font-licenses.json` on the owner's statement and stays flagged; see below.
 
 Inputs:
 
@@ -79,19 +79,32 @@ sources for the existing mediabunny and OCR notices.
 
 `unverified-allowlist.json` and `packaged-runtime-allowlist.json` (items that exist only in a
 staged runtime) record the reason for each item whose licence could not be established from
-shipped metadata, and for the Denton typeface. They gate nothing: an item is listed and flagged
+shipped metadata. They gate nothing: an item is listed and flagged
 `unverified` whether or not it has an entry, and the reason is printed as its obligation note.
-A missing or stale entry is printed as a `LICENCE NOTE`. A reason is not legal sign-off. Font
-entries carry the exact file hash, which the `unresolved-font-licence` check uses to find the
-font in a built payload.
+A missing or stale entry is printed as a `LICENCE NOTE`. A reason is not legal sign-off. A font
+entry there carries an exact file hash; the `unresolved-font-licence` check reports a payload
+file with those bytes as an unresolved font. No font is listed there today.
 
-`font-licenses.json` records an obtained embedding licence for a font whose own metadata names
-none (licensor, licensee, scope, evidence, exact file hashes). It is empty until the owner
-obtains one. Until then the Denton typeface is listed as `proprietary, no licence recorded`,
-flagged `proprietary-no-licence-recorded`, and reported by the one separately named check
-`unresolved-font-licence`. Whether that check keeps a release `distributable: false` is the
-constant `UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION` in `scripts/licence-policy.mjs`
-(default `true`); see `docs/dependency-audit.md` and decision A-21.
+`font-licenses.json` records the licence of a bundled proprietary font whose own metadata names
+none, for exact file hashes. It has two record states:
+
+- Owner statement: `evidence: "held-outside-repository"`, with `holder`, `basis` and
+  `recordedOn`, and optionally `reference` (a reference to the licence document, never the
+  document or a secret). It records only what the owner stated. The notice entry says the face is
+  proprietary, prints the holder and basis, says the licence document is not in the repository,
+  and stays flagged `proprietary-licence-held-outside-repo`. The Denton typeface is recorded this
+  way (decision A-21, closed by P-09): no licence name, number, scope or terms is recorded
+  because none was supplied.
+- Full: `licensor`, `licensee`, `scope` (must name app and web embedding), `evidence` (where the
+  signed licence is held) and `recordedOn`. The entry is then unflagged.
+
+Either way the licence value is `LicenseRef-Commercial-Font`; a proprietary font is never recorded
+under an open-source identifier. A font with no record is listed as `proprietary, no licence
+recorded` and flagged `proprietary-no-licence-recorded`. The separately named check
+`unresolved-font-licence` reports recorded fonts as resolved-by-owner-statement and unrecorded
+ones as unresolved; whether an unresolved font keeps a release `distributable: false` is the
+constant `UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION` in `scripts/licence-policy.mjs` (default
+`false`). See `docs/dependency-audit.md`.
 
 Prototype design images are not part of production builds; their licensing is recorded in
 `apps/app/src/prototype/README.md`.

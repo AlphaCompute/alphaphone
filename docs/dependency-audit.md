@@ -128,7 +128,8 @@ the obligation notes. `scripts/generate-licenses.mjs` applies them.
 | `licence-text-missing-from-package` | A package with no licence file, or a copyleft package whose file only names its licence | The canonical text held in `licenses/<SPDX id>.txt` is used (`textSource: "spdx-canonical"`) or appended (`"package-and-spdx-canonical"`). |
 | `unverified` | Items whose licence is not established from shipped metadata, and packages whose licence was identified from their licence file or README because the manifest declares none | The recorded reason. |
 | `permissive-not-previously-listed` | A permissive licence recognised from the SPDX list that was not on the project's earlier accepted list (for example BlueOak-1.0.0, Unlicense) | Its text and notices stay with copies. |
-| `proprietary-no-licence-recorded` | A bundled font that states no open licence and has no recorded one (Denton) | Proprietary; no licence recorded; reported by `unresolved-font-licence`. |
+| `proprietary-licence-held-outside-repo` | A bundled proprietary font recorded on the owner's statement that the licence is held outside the repository (Denton) | Proprietary, not open source, not redistributable under an open-source licence; the licence document was not seen; `unresolved-font-licence` reports it resolved-by-owner-statement. |
+| `proprietary-no-licence-recorded` | A bundled font that states no open licence and has no record in `licenses/font-licenses.json` (none today) | Proprietary; no licence recorded; reported unresolved by `unresolved-font-licence`. |
 
 With alternatives (`A OR B`) the least encumbered alternative is the one reported. OFL-1.1
 fonts are listed without a flag: they ship unmodified.
@@ -177,6 +178,11 @@ notices were not committed: the committed notices are the form without a staged 
 | `permissive-not-previously-listed` | 2 |
 | `proprietary-no-licence-recorded` | 1 |
 
+That run predates the Denton record below: Denton was then the one
+`proprietary-no-licence-recorded` entry. With the record it is the one
+`proprietary-licence-held-outside-repo` entry instead; the totals do not change. The run
+was not repeated after the record was added.
+
 An entry can carry more than one flag, so the column adds up to more than 66.
 
 The 24 entries that used to stop the command, as they are now listed:
@@ -208,12 +214,38 @@ Liberation fonts, GPL-2.0-only with the font exception) are in the committed not
 
 `apps/app/public/denton-300.woff2` (SHA-256 `7e9341445b0bf2ec7f75e4a5d4dd4a677e9d2341f67ddcf766db92a21f310e05`)
 is a commercial face imported from the design prototype. Its metadata says "All rights
-reserved" and names no licence. It is proprietary, not open-source software, so decision
-P-09 does not cover it and it is not waved through: it stays in the product, listed in the
-notices with the licence value `proprietary, no licence recorded` and the flag
-`proprietary-no-licence-recorded`. Whether to license it or replace it, and whether an
-unresolved licence keeps blocking a release, is owner decision A-21 in
-[decisions.md](decisions.md). None of those choices has been made here.
+reserved" and names no licence. It is proprietary, not open-source software, so the
+open-source part of decision P-09 does not cover it.
+
+Decision A-21 is closed. On 2026-10-10 the owner stated that Alpha Compute owns the Denton
+font and that the licence is not in this repository, and that the font check is flag-only
+([P-09](decisions.md#october-10-owner-product-decision)). The font was not replaced.
+
+What is recorded is that statement, in `licenses/font-licenses.json`:
+
+```json
+{"name": "Denton typeface", "sha256": ["7e93…0e05"], "license": "LicenseRef-Commercial-Font",
+ "evidence": "held-outside-repository", "holder": "Alpha Compute (owner statement, 2026-10-10)",
+ "basis": "owner states the licence is held; the licence document is kept outside this repository",
+ "recordedOn": "2026-10-10"}
+```
+
+No licence document, name, number, date, scope or terms is in the repository, and none was
+seen in this work. The record has no field for them and none was invented. Consequences:
+
+- The notice entry has the licence `LicenseRef-Commercial-Font`, says the face is
+  proprietary and not redistributable under an open-source licence, prints the holder, the
+  basis and "Evidence: held outside this repository", and is flagged
+  `proprietary-licence-held-outside-repo`. It prints as a `LICENCE FLAG` line.
+- The SBOM component carries the same licence and flag, `alphaphone:open-source` `false`
+  and `alphaphone:licence-evidence`.
+- The record covers only the listed bytes. Another font file, or a changed Denton file, is
+  not covered by it.
+
+The one follow-up that would complete the record: a reference to the licence document
+(where it is held or its register entry; never the document itself, and no secrets) in a
+`reference` field of the record. The notice then prints it. This is optional and blocks
+nothing.
 
 ### Where Denton is referenced
 
@@ -223,8 +255,8 @@ unresolved licence keeps blocking a release, is owner decision A-21 in
 | `apps/app/src/prototype/prototype.css` line 8 | `.serif{font-family:'Denton','Fraunces',Georgia,serif;font-weight:300}`; `.serif` is used 89 times in `template.html` |
 | `apps/app/src/prototype/template.html` | 36 inline `Denton, Fraunces, Georgia, serif` stacks, and one `Denton, Georgia, serif` (line 1275) |
 | `apps/app/src/prototype/asset-manifest.json` | Source URL, size and hash of the file |
-| `licenses/unverified-allowlist.json` | "Denton typeface", by exact hash, with the recorded reason |
-| `apps/app/public/licenses/` | Generated notice entry flagged `proprietary-no-licence-recorded` |
+| `licenses/font-licenses.json` | The owner-statement record for "Denton typeface", by exact hash |
+| `apps/app/public/licenses/` | Generated notice entry flagged `proprietary-licence-held-outside-repo` |
 | `scripts/generate-licenses.mjs` | Reads every font under `apps/app/public`; no Denton-specific code |
 | `scripts/prototype-capture.mjs` line 111 | Records `document.fonts.check('300 30px Denton')` in capture output |
 | `test/licenses.test.mjs`, `test/font-license.test.mjs` | Use Denton as the proprietary-font example |
@@ -251,63 +283,53 @@ For this reason there is no build-time switch. A switch would also make the comm
 notices disagree with the packaged bytes, and the notices are checked byte for byte
 against `apps/app/public`.
 
-### Choice (a): licence obtained
+### If the font is ever replaced
 
-1. Add one record to `licenses/font-licenses.json`:
-   `{"name": "Denton typeface", "sha256": ["7e93…0e05"], "license": "LicenseRef-Commercial-Font",
-   "licensor": "…", "licensee": "…", "scope": "app and web embedding", "evidence": "…", "recordedOn": "…"}`.
-   The scope must name app and web embedding; the record covers only the listed bytes.
-2. Delete the "Denton typeface" entry from `licenses/unverified-allowlist.json`. Its hash
-   is what `unresolved-font-licence` matches against packaged bytes, so the check keeps
-   reporting the file until the entry is gone.
-3. Run `node scripts/generate-licenses.mjs`, and update the Denton expectations in
-   `test/licenses.test.mjs`, `test/font-license.test.mjs` and `test/sbom.test.mjs`.
+Replacing Denton with Fraunces was the alternative under A-21. It was not chosen. The facts
+above about Fraunces stand if it is revisited: an upright Fraunces 300 face would have to be
+added (`apps/app/public/fonts/`, `prototype.css`, `asset-manifest.json`), line 7 of
+`prototype.css` and the font file removed, the Denton record deleted from
+`licenses/font-licenses.json`, the notices regenerated, and heading layout and the visual
+baselines rechecked.
 
-No application code changes. The entry then has the licence `LicenseRef-Commercial-Font` and
-no flag.
+### The font check
 
-### Choice (b): replace with Fraunces
+`scripts/font-license-blockers.mjs` runs the one separately named licence check,
+`unresolved-font-licence`, on a built payload. It sorts proprietary fonts into two lists:
 
-1. Add an upright Fraunces 300 face under `apps/app/public/fonts/` with its `@font-face`
-   in `prototype.css` (same family name, `font-style: normal`), and record it in
-   `asset-manifest.json`.
-2. Delete line 7 of `prototype.css` and `apps/app/public/denton-300.woff2`, and the
-   file's `asset-manifest.json` entry. The font stacks can stay; they fall through to
-   Fraunces (line 1275 of `template.html` falls through to Georgia).
-3. Delete the "Denton typeface" entry from `licenses/unverified-allowlist.json` and run
-   `node scripts/generate-licenses.mjs`.
-4. Update `scripts/prototype-capture.mjs` line 111, `test/licenses.test.mjs` and
-   `test/font-license.test.mjs`, then recheck heading layout and the visual baselines.
+- Resolved by owner statement: a file with the bytes recorded in `licenses/font-licenses.json`
+  under evidence `held-outside-repository`, wherever it sits and whatever the notices say; or
+  a typeface the payload's notices flag `proprietary-licence-held-outside-repo`, when the
+  listed file still has the listed hash.
+- Unresolved: a typeface the notices flag `proprietary-no-licence-recorded` (or carry the
+  earlier `license unverified` marking), a listed font file whose bytes no longer match the
+  hash its notice lists, or a file with the bytes of a font listed by hash in
+  `licenses/unverified-allowlist.json`. A different or swapped font file is therefore
+  reported as unrecorded.
 
-### The one remaining licence check
+Open-source licence flags are never part of this check.
 
-`scripts/font-license-blockers.mjs` reports `unresolved-font-licence` for a built payload
-when its notices flag a typeface `proprietary-no-licence-recorded` (or carry the earlier
-`license unverified` marking), or when any file in it has the bytes of a font listed by hash
-in `licenses/unverified-allowlist.json`. Stale notices or a renamed file do not hide it.
-It is the only licence item that can affect a release. Open-source licence flags cannot.
+Whether an unresolved font blocks is one constant, `UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION`
+in `scripts/licence-policy.mjs`. Its default is `false` (the owner's "flag only"). Setting it
+to `true` makes the check strict again.
 
-Whether it blocks is one constant, `UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION` in
-`scripts/licence-policy.mjs`. Its default is `true`, the behaviour before P-09; changing it
-is the owner's decision under A-21.
-
-| | `true` (default) | `false` |
+| | `false` (default) | `true` |
 | --- | --- | --- |
-| Check runs and is recorded on each APK row (`fontLicenceCheck.items`) | yes | yes |
-| `LICENCE FLAG proprietary-no-licence-recorded: Denton typeface@…` printed | yes | yes |
-| Line printed for the check | `RELEASE BLOCKER unresolved-font-licence: …` | `LICENCE FLAG (reported, not blocking) unresolved-font-licence: …` |
-| Row `licenceBlockers` | the check's items | empty |
-| Release `distributable` | `false` while the item stands | not affected by the font |
-| `scripts/release-blockers.mjs` (provisioning, pilot update, AOSP staging, head qualification) | names it and refuses the release | does not name it |
+| Check runs and is recorded on each APK row (`fontLicenceCheck`: `status`, `items`, `resolved`) | yes | yes |
+| Denton as recorded: `LICENCE FLAG (reported, not blocking) unresolved-font-licence: resolved-by-owner-statement: …` | printed, not blocking | printed, not blocking |
+| A font with no record: line printed | `LICENCE FLAG (reported, not blocking) unresolved-font-licence: …` | `RELEASE BLOCKER unresolved-font-licence: …` |
+| A font with no record: row `licenceBlockers` | empty | the unresolved items |
+| A font with no record: release `distributable` | not affected | `false` |
+| A font with no record: `scripts/release-blockers.mjs` (provisioning, pilot update, AOSP staging, head qualification) | does not name it | names it and refuses the release |
 
-- `scripts/verify-apks.mjs` never fails verification because of it, so developer and CI
-  builds are unaffected under either setting.
+- `scripts/verify-apks.mjs` never fails verification because of the check, under either
+  setting.
 - `scripts/audit-production-bundle.mjs` prints the same lines for `web-dist` and still
   passes.
 
-With the default, the blocker clears with either choice above. Both settings are covered by
-unit tests of the shared functions (`test/font-license.test.mjs`) and the verify-apks wiring
-by source assertions; neither has been run against built APKs in this change.
+Both settings are covered by unit tests of the shared functions
+(`test/font-license.test.mjs`) and the verify-apks wiring by source assertions; neither has
+been run against built APKs in this change.
 
 Five other entries of the committed notices are `license unverified` (the Piper voice model,
 Sherpa-ONNX native build dependencies, the resident runtime payload, the pdf.js QuickJS

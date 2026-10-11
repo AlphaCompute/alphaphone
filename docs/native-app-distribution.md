@@ -86,9 +86,10 @@ the app's own dependencies only; the native apps staged here need their own noti
 the image's license bundle. Under decision P-09 those in-app notices include every
 dependency's licence text and flag copyleft, unknown and unverified entries instead of
 stopping the build; verify-apks records the flags per APK (`licenceFlags`). A flag is not
-a release blocker and not legal review. The one licence item that can still keep a release
-`distributable: false` is the proprietary Denton typeface (`unresolved-font-licence`,
-decision A-21). P-09 concerns the app's own open-source dependencies: it does not change
+a release blocker and not legal review. The proprietary Denton typeface is recorded on the
+owner's statement that its licence is held outside the repository; the check
+`unresolved-font-licence` reports it on each release row and blocks nothing (decision
+A-21, closed). P-09 concerns the app's own open-source dependencies: it does not change
 what the separately signed native apps on this page require.
 
 ## Required post-install tests
