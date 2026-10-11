@@ -7,6 +7,7 @@ import {browserDevProfile} from '../browser/dev-profile';
 import {pendingAudioDeletions,withAudioDeletionLock,changeAudioDeletion,audioDeletionNoteState,type AudioDeletion} from '../runtime/note-audio-deletions';
 import {addNotesTrashEntry,editNotesTrash,isNotesTrashFull,notesTrashExpired,readNotesTrash,removeNotesTrashEntries,savedNotes,type NotesTrashEntry} from '../runtime/notes-trash';
 import type {NotesTarget} from '../runtime/notes-contract';
+import {planInterruptedPermanentDeletion,type PermanentDeletionEvidence} from '../runtime/permanent-voice-deletion';
 const audioOperation=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 import { installLocalSpeechPlayback, stopLocalSpeechPlayback, currentNoteReading, stopSpeaking, speakNote } from './local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
@@ -73,6 +74,9 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       value.trashVoiceNoteWithRecording=<T,>(note:Bag,target:NotesTarget,operationId:string,index:number,commit:()=>Promise<T>)=>trashVoiceNoteWithRecording(note,target,operationId,index,commit);
       // Offered only after a full Trash refused this exact voice note, and confirmed separately.
       value.deleteVoiceNoteForever=(noteId:string)=>{const note=refusedVoice;if(note&&note.id===noteId)void deleteVoiceNote(value,note,true);};
+      // Startup, resume and timer backstop (run by Trash maintenance): settles interrupted deletions without opening Notes.
+      // Nothing pending: no lock, no repaint.
+      value.recoverVoiceDeletions=async()=>{if(Object.keys(await pendingAudioDeletions()).length)await refreshDeletionStatus(value);};
       value.commitAudioNoteDeletion=async(row:AudioDeletion,authorized:()=>void)=>{
         if(this.notesStorageFailed||this.notesPending)throw Error('Notes needs recovery');
         await this.notesStore.execute({type:'notes_delete',target:row.target},row.id,new AbortController().signal,authorized);
@@ -81,7 +85,13 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     }
     return value;
   };
-  let deletionBusy=false,deletionRefresh=false,noteHandoffBusy=false;
+  let deletionBusy=false,noteHandoffBusy=false;
+  let deletionRefresh:Promise<void>|null=null;
+  /**
+   * Permanent deletions this process started. An effect of theirs that failed here may still
+   * land, so they keep the review path. Only rows an earlier process left are settled outright.
+   */
+  const sessionDeletions=new Set<string>();
   /** The reviewed voice note a full Trash refused. Memory only; a restart simply asks again. */
   let refusedVoice:Bag|null=null;
   let api: Bag | undefined, stage = 'closed', generation = 0, busy = false;
@@ -638,6 +648,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
             const stale=(await readNotesTrash()).entries.filter(entry=>entry.note.id===reviewed.id).map(entry=>entry.id);
             if(stale.length)await editNotesTrash(doc=>removeNotesTrashEntries(doc,stale));
           }
+          sessionDeletions.add(row.id);
           await changeAudioDeletion(row,true);
           const authorized=()=>{if(!active())throw Error('Review changed');};
           try{await current.commitAudioNoteDeletion(row,authorized);}catch{
@@ -667,21 +678,74 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
           void refreshDeletionStatus(current);
         }
   }
-  async function refreshDeletionStatus(current:Bag){
-    if(deletionRefresh)return;deletionRefresh=true;
+  /**
+   * Backstop for a permanent voice deletion that process death interrupted (the row was written by
+   * an earlier process, so none of its effects is in flight). Caller holds the deletion-effects
+   * lock. Every input is read back from authoritative storage; the plan either finishes the
+   * confirmed deletion for exactly this note and recording or returns to the state before it.
+   * Anything else, and any step that cannot be confirmed, leaves the row under review.
+   */
+  async function settleInterruptedPermanentDeletion(row:AudioDeletion,current:Bag){
+    const note=await audioDeletionNoteState(row);
+    let recording:PermanentDeletionEvidence['recording']=null,receipt:PermanentDeletionEvidence['receipt']=null;
+    try{
+      const metadata=await noteAudio.describe({audioId:row.audioId});
+      recording={ownedByNote:metadata.audioId===row.audioId&&metadata.noteId===row.note.id,inAudioTrash:!!metadata.deletedAt};
+      const status=await noteAudio.deletionStatus({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
+      if(status.audioId===row.audioId&&status.noteId===row.note.id&&status.operationId===row.id&&['unknown','removed','restored','purged'].includes(status.status))receipt=status.status as PermanentDeletionEvidence['receipt'];
+    }catch{/* Unreadable recording state: the plan keeps the row under review. */}
+    const referencedElsewhere=(await savedNotes()).some(n=>n.id!==row.note.id&&n.audio?.audioId===row.audioId);
+    const step=planInterruptedPermanentDeletion({note,recording,receipt,referencedElsewhere});
+    if(step==='review')return;
+    if(step==='erase')await eraseForever(row);
+    else if(step==='trash-then-erase'){
+      // Same order and receipts as the uninterrupted deletion: dispatch mark, audio trash under this operation, erase.
+      if(!row.audioRequested){const dispatched={...row,audioRequested:true as const};await changeAudioDeletion(row,false,dispatched);row=dispatched;}
+      await noteAudio.remove({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
+      const removed=await noteAudio.describe({audioId:row.audioId});
+      if(removed.noteId!==row.note.id||!removed.deletedAt||await audioDeletionNoteState(row)!=='deleted')throw Error('Deletion unconfirmed');
+      await deletionReceipt(row,'removed');
+      await eraseForever(row);
+    }else if(step==='restore-recording'){
+      await noteAudio.restore({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
+      await deletionReceipt(row,'restored');
+      const restored=await noteAudio.describe({audioId:row.audioId});
+      if(restored.deletedAt||restored.noteId!==row.note.id||await audioDeletionNoteState(row)!=='original')throw Error('Rollback unconfirmed');
+    }else if(step==='delete-note'){
+      // The recording is already erased under this operation; the tombstone is for the exact reviewed revision only.
+      await current.commitAudioNoteDeletion(row,()=>{});
+      if(await audioDeletionNoteState(row)!=='deleted')throw Error('Deletion unconfirmed');
+    }
+    await changeAudioDeletion(row,false);
+    window.dispatchEvent(new Event('alpha:notes-trash-changed'));
+  }
+  /**
+   * One pass at a time; a caller that arrives during a pass waits for that pass. Every caller first
+   * shows the rows as they are now, without the lock, so a pass queued behind another view's
+   * deletion never hides the review rows from a view that opens meanwhile.
+   */
+  function refreshDeletionStatus(current:Bag):Promise<void>{
+    const running=deletionRefresh;
+    if(running){
+      void pendingAudioDeletions().then(rows=>{current.setView('notes',{audioDeletionPending:Object.values(rows),audioDeletionChecked:true});}).catch(()=>{/* The running pass reports the failure. */});
+      return running;
+    }
+    return deletionRefresh=(async()=>{
     try{
       current.setView('notes',{audioDeletionPending:Object.values(await pendingAudioDeletions()),audioDeletionChecked:true});
       await withAudioDeletionLock(async()=>{const rows=Object.values(await pendingAudioDeletions());
       for(const row of rows){try{
+        if(row.permanent&&!sessionDeletions.has(row.id)){await settleInterruptedPermanentDeletion(row,current);continue;}
         const metadata=await noteAudio.describe({audioId:row.audioId});
         if(metadata.audioId===row.audioId&&metadata.noteId===row.note.id&&metadata.deletedAt&&await audioDeletionNoteState(row)==='deleted'){
-          // An interrupted permanent deletion finishes its erase here; a Trash deletion only confirms its receipt.
+          // A permanent deletion this process started finishes its erase here; a Trash deletion only confirms its receipt.
           if(row.permanent)await eraseForever(row);else await deletionReceipt(row,'removed');
           await changeAudioDeletion(row,false);
         }
       }catch{/* Readback only. Preserve unknown operations. */}}
       current.setView('notes',{audioDeletionPending:Object.values(await pendingAudioDeletions()),audioDeletionChecked:true});
-    });}catch{current.setView('notes',{audioDeletionRecoveryFailed:true,audioDeletionChecked:true});}finally{deletionRefresh=false;}
+    });}catch{current.setView('notes',{audioDeletionRecoveryFailed:true,audioDeletionChecked:true});}finally{deletionRefresh=null;}
+    })();
   }
   notes.render = (state: Bag, current: Bag) => {
     api = current;
