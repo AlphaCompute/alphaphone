@@ -68,26 +68,77 @@ test('every subview of a retained view is opened by a state that asserts it is t
 });
 
 test('the sweep applies every dimension and cannot be narrowed silently', () => {
-  assert.match(sweep, /const STATES = \[\.\.\.LIVE_STATES, \.\.\.DEVELOPMENT_STATES, \.\.\.MOCK_STATES, \.\.\.FAILURE_STATES\];/);
+  assert.match(sweep, /const STATES = \[\.\.\.LIVE_STATES, \.\.\.DEVELOPMENT_STATES, \.\.\.MOCK_STATES, \.\.\.CONNECTED_STATES, \.\.\.FAILURE_STATES\];/);
   assert.match(sweep, /for \(const theme of \['light', 'dark'\] as const\)/);
   assert.match(sweep, /auditTree\(page\)/);
-  assert.match(sweep, /auditPage\(page, \{ contrast: true, targetSize: 24, clipping: true, overlap: true \}\)/);
+  // Round 10: every lane also applies the dock and toast rules (nothing on Home under the
+  // composer, an app's content scrollable clear of it, no toast under a dialog).
+  assert.match(sweep, /auditPage\(page, \{ contrast: true, targetSize: 24, clipping: true, overlap: true, dock: true \}\)/);
   assert.match(sweep, /auditTabOrder\(page\)/);
+  assert.doesNotMatch(sweep, /auditPage\(page, \{[^}]*overlap: true \}\)/, 'no lane of the sweep runs without the dock rules');
+  assert.doesNotMatch(production, /auditPage\(page, \{[^}]*overlap: true \}\)/, 'no lane of the production sweep runs without the dock rules');
   assert.match(sweep, /setTextScale\(page, 2\)/);
   // 200% text is checked for overlap as well as clipping (text printed over text, a label split
   // mid-word, a control on or cut by another box): the round-7 Home defect was not a clipping defect.
-  assert.match(sweep, /setTextScale\(page, 2\);[\s\S]{0,400}auditPage\(page, \{ clipping: true, overlap: true \}\)/);
+  assert.match(sweep, /setTextScale\(page, 2\);[\s\S]{0,400}auditPage\(page, \{ clipping: true, overlap: true, dock: true \}\)/);
+  // At 200% the tab order is walked too (a stop left under the composer is a focus-obscured finding).
+  assert.match(sweep, /200% text is not clipped[\s\S]*?auditTabOrder\(page\)[\s\S]*?test\.describe\('landscape'/);
+  // Landscape and 200% text together is a lane of its own.
+  assert.match(sweep, /landscape at 200% text keeps every control on screen[\s\S]*?toHaveClass\(\/alpha-landscape\/\);\s*await setTextScale\(page, 2\);[\s\S]{0,200}auditPage\(page, \{ clipping: true, overlap: true, dock: true \}\), \.\.\.await auditTree\(page\), \.\.\.await auditTabOrder\(page\)/);
   assert.match(sweep, /viewport: \{ width: 915, height: 412 \}/);
   for (const spec of [sweep, production]) assert.match(spec, /toHaveClass\(\/alpha-landscape\/\)/, 'the landscape lane asserts the landscape layout is active');
   // Only deliberate truncation is tolerated; nothing else is filtered out of the results.
   assert.equal([...sweep.matchAll(/\.filter\(/g)].length, 2);
+  assert.doesNotMatch(sweep, /process\.env/);
   assert.match(sweep, /lines\.filter\(line => !line\.startsWith\('text-truncated:'\)\)/);
   // No state is skipped, marked fixme or exempted from a dimension.
   assert.doesNotMatch(sweep, /test\.skip|test\.fixme|\.only\(/);
   assert.doesNotMatch(production, /test\.skip|test\.fixme|\.only\(/);
   assert.doesNotMatch(states, /fixme|largeTextOpen/);
   assert.match(production, /for \(const state of LIVE_STATES\)/);
-  assert.match(production, /auditPage\(page, \{ contrast: true, targetSize: 24, clipping: true, overlap: true \}\)/);
+  assert.match(production, /auditPage\(page, \{ contrast: true, targetSize: 24, clipping: true, overlap: true, dock: true \}\)/);
+});
+
+test('provider-connected screens are swept, against a synthetic mailbox only', () => {
+  const block = states.slice(states.indexOf('export const CONNECTED_STATES'), states.indexOf('export const DEVELOPMENT_STATES'));
+  for (const state of ["connected('Home'", "connected('Inbox')", "connected('Inbox sent (empty)'", "connected('Inbox search'", "connected('Inbox message'", "connected('Inbox long subject'", "connected('Inbox compose'", "connected('Settings',", "connected('Settings accounts'", "connected('Settings connections'"])
+    assert.ok(block.includes(state), `${state} is swept`);
+  assert.doesNotMatch(block, /fixme|skip/);
+  // The provider boundary is replaced in the page; nothing is fetched and no real address is used.
+  const fixture = states.slice(states.indexOf('async function connectMailbox'), states.indexOf('const connected ='));
+  assert.match(fixture, /controller\.getCloudClient = \(\) => \(\{ client,/);
+  assert.match(fixture, /initiateGmail: async \(\) => \{ throw Error\('No live OAuth in fixture'\); \}/);
+  assert.doesNotMatch(fixture, /fetch\(|https?:\/\//);
+  for (const address of fixture.matchAll(/[\w.-]+@[\w.-]+/g)) assert.match(address[0], /@example\.test$/, `${address[0]} is a reserved test address`);
+});
+
+test('the dock, title and toast fixes the sweep depends on stay in the source', () => {
+  const css = read('apps/app/src/prototype/phone.css');
+  const main = read('apps/app/src/main.tsx');
+  // Home and the app library end above the measured dock; 108px stays the minimum.
+  assert.match(css, /--alpha-dock-reserve:max\(108px,calc\(var\(--alpha-dock-clearance,102px\) \+ 6px\)\)/);
+  assert.match(css, /html:not\(\.alpha-landscape\) \.alpha-phone \[data-alpha-layer="home"\] \{ bottom:var\(--alpha-dock-reserve\)!important;/);
+  assert.match(css, /html:not\(\.alpha-landscape\) \.alpha-phone \[data-alpha-layer="drawer"\] \{ padding-bottom:var\(--alpha-dock-reserve\)!important; \}/);
+  assert.match(css, /\[data-alpha-home-layout\] \{ padding-bottom:0!important; min-height:calc\(100% \+ var\(--alpha-dock-reserve\) - var\(--alpha-dock-rest-reserve\)\)!important; \}/);
+  assert.match(css, /:is\(\[data-alpha-app-scroll\],\.calendar-timeline,\.calendar-draft-fields\) \{ scroll-padding-bottom:calc\(var\(--alpha-dock-clearance,102px\) \+ 16px\); \}/);
+  assert.match(css, /\.inbox-compose-fields \{[^}]*padding-bottom:max\(64px,calc\(var\(--alpha-dock-clearance,102px\) \+ 8px\)\)!important/);
+  assert.match(main, /installDockClearance\(\)/);
+  const dock = read('apps/app/src/runtime/dock-clearance.ts');
+  assert.match(dock, /'--alpha-dock-clearance'/);
+  assert.match(dock, /'--alpha-dock-rest'/);
+  // The dock moves without resizing when Android's insets arrive on the root element.
+  assert.match(dock, /root\.observe\(document\.documentElement, \{ attributes: true, attributeFilter: \['class', 'style'\] \}\)/);
+  // Focus under the dock is scrolled clear, but never focus that came from a pointer.
+  assert.match(read('apps/app/src/prototype/chat-overlay-motion-adapter.ts'), /if \(!sheet && !target\.matches\(":focus-visible"\)\) return;/);
+  // A screen title is not shortened with a large system font: it takes its own row.
+  assert.match(read('apps/app/src/runtime/text-scale.ts'), /classList\.toggle\(TEXT_XL_CLASS, scale > TEXT_XL_ABOVE\)/);
+  assert.match(css, /\.alpha-text-xl\.standalone-app \[data-alpha-app-header\] \[data-alpha-app-title\] \{[^}]*flex:1 0 100%;[^}]*white-space:normal!important;[^}]*text-overflow:clip!important/);
+  // A toast under a top-layer dialog is shown and announced inside that dialog.
+  assert.match(main, /installToastLayer\(\)/);
+  const toast = read('apps/app/src/runtime/toast-layer.ts');
+  assert.match(toast, /region\.setAttribute\('aria-live', 'polite'\)/);
+  assert.match(toast, /region\.setAttribute\('popover', 'manual'\)/);
+  assert.match(toast, /dialog\.matches\(':modal'\)/);
 });
 
 test('the layout fixes the sweep depends on stay in the stylesheet and template', () => {

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { auditPage, auditTabOrder, auditTree, format } from './accessibility-audit';
-import { DEVELOPMENT_STATES, FAILURE_STATES, LIVE_STATES, MOCK_STATES, setTextScale } from './accessibility-states';
+import { CONNECTED_STATES, DEVELOPMENT_STATES, FAILURE_STATES, LIVE_STATES, MOCK_STATES, setTextScale } from './accessibility-states';
 
 // MVP-48, renderer part. Every retained primary view, subview and failure screen is checked for
 // accessible names and roles, keyboard reachability, focus order and traps, contrast, pointer
@@ -8,7 +8,7 @@ import { DEVELOPMENT_STATES, FAILURE_STATES, LIVE_STATES, MOCK_STATES, setTextSc
 // TalkBack, Switch Access, physical large-font, rotation or device pass; those remain open.
 test.describe.configure({ mode: 'parallel' });
 
-const STATES = [...LIVE_STATES, ...DEVELOPMENT_STATES, ...MOCK_STATES, ...FAILURE_STATES];
+const STATES = [...LIVE_STATES, ...DEVELOPMENT_STATES, ...MOCK_STATES, ...CONNECTED_STATES, ...FAILURE_STATES];
 // Deliberate single-line ellipsis and line clamps on previews of user content are allowed: the
 // full text is one tap away and is exposed whole to assistive technology. Hard clipping is not.
 const blocking = (lines: string[]) => lines.filter(line => !line.startsWith('text-truncated:'));
@@ -19,7 +19,7 @@ for (const theme of ['light', 'dark'] as const) {
       await state.open(page, theme);
       const found = format([
         ...await auditTree(page),
-        ...await auditPage(page, { contrast: true, targetSize: 24, clipping: true, overlap: true }),
+        ...await auditPage(page, { contrast: true, targetSize: 24, clipping: true, overlap: true, dock: true }),
         ...await auditTabOrder(page),
       ]);
       expect(blocking(found), blocking(found).join('\n')).toEqual([]);
@@ -33,12 +33,16 @@ for (const state of STATES) {
     await setTextScale(page, 2);
     // Clipping and overlap: nothing is cut, nothing is printed over anything else, no label is
     // split mid-word and no control sits on or is cut by another box (accessibility-audit.ts rule 7).
-    const found = format(await auditPage(page, { clipping: true, overlap: true }));
+    // Nothing on Home is under the composer, and whatever an app scrolls under it can be scrolled clear.
+    const found = format(await auditPage(page, { clipping: true, overlap: true, dock: true }));
     await info.attach('truncated', { body: found.filter(line => line.startsWith('text-truncated:')).join('\n') || 'none', contentType: 'text/plain' });
     expect(blocking(found), blocking(found).join('\n')).toEqual([]);
     // Names and focusability must survive the reflow too.
     const tree = format(await auditTree(page));
     expect(tree, tree.join('\n')).toEqual([]);
+    // The tab order survives it as well, and no stop is left partly under the composer.
+    const focus = format(await auditTabOrder(page));
+    expect(focus, focus.join('\n')).toEqual([]);
   });
 }
 
@@ -50,8 +54,18 @@ test.describe('landscape', () => {
       await state.open(page, 'light');
       // The landscape layout is what is being checked, not a scaled-down portrait canvas.
       await expect(page.locator('html')).toHaveClass(/alpha-landscape/);
-      const found = blocking(format([...await auditPage(page, { clipping: true, overlap: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
+      const found = blocking(format([...await auditPage(page, { clipping: true, overlap: true, dock: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
       expect(blocking(found), blocking(found).join('\n')).toEqual([]);
+    });
+  }
+  // The two together: a phone on its side with the system's largest font (round 10).
+  for (const state of STATES) {
+    test(`landscape at 200% text keeps every control on screen: ${state.name}`, async ({ page }) => {
+      await state.open(page, 'light');
+      await expect(page.locator('html')).toHaveClass(/alpha-landscape/);
+      await setTextScale(page, 2);
+      const found = blocking(format([...await auditPage(page, { clipping: true, overlap: true, dock: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
+      expect(found, found.join('\n')).toEqual([]);
     });
   }
 });

@@ -223,3 +223,5 @@ account or key from group 2 says so.
 | J04 | GPS navigation and turn-by-turn (J04-9), after a Maps provider exists (A-23). | Files, capture, photos and Maps | MVP-31, 49 |
 | J05 | No step needs only the phone. With the inference credential: a real agent answers from the reviewed excerpt and the note is saved (J05-9). | Browser and passwords | MVP-49 |
 | All | TalkBack, Switch Access, physical large text, rotation, process death and full storage on every retained view. Context selection on a phone: folder grants and their revocation, MediaStore-backed Photos, the notification listener and the native Camera (no instrumented class drives the folder or notification question, so this is by hand until one is written). Signed update and recovery drill; upgrade from an install that saved mock state. Four complete unit manifests and target-user acceptance. | Execute on every unit; Upgrade from earlier mock state | MVP-13, 42, 47, 48, 50, 51 |
+
+Round 10 accessibility changes have Chromium coverage only: the measured Home dock clearance and stand-in screen reader instrumentation still need campaign 13 repeated on both Android flavors.
