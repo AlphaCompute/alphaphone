@@ -275,11 +275,22 @@ Class S only. Nothing in this section ran on an emulator or a device, and no APK
   component, gates, grants, report, selection, failure propagation),
   `test/android-instrumentation-runner.test.mjs`, and
   `test/browser/workflow-notice-taps.spec.ts` (the renderer sends exactly the connected owner's
-  ID once and repeats a failed request). The touched Java (three main and three androidTest
+  ID once, repeats a failed request, and in the `owner-change` scenario asks again with the next
+  owner's ID after a different owner connects, whose session never opens the first owner's
+  retained tap). The touched Java (three main and three androidTest
   files) was compiled with `javac` against the SDK 36 `android.jar`, Capacitor's sources and the
   Gradle cache's dependency jars with stub `R` and `BuildConfig` classes; the errors that
   remained were all in untouched files that need generated or unstaged inputs. It was not
   compiled by Gradle and no lint ran.
+- Review follow-up (same date): the renderer now reads an approval notice's route when the
+  request is queued, not when the queue reaches it (`queueApprovalNotices` in
+  `workflow-adapter.ts`). A request that waited behind an earlier one while the owner changed
+  used to take the next owner's identity, so its notice would have been posted for that owner
+  and kept by the withdrawal; a decision's withdrawal likewise keeps the route of the session
+  that made it. No browser spec drives the renderer's approval post or withdrawal calls (the
+  phone-step specs run without a native platform), so this is covered by the type check only.
+  The owner-change instrumented case also refuses to start with an approval route left by an
+  earlier test and releases its own routes when it fails.
 - Ledger check (MVP-12): the inventory still said no runner grants the Calendar permissions to
   `CalendarAvailabilityInstrumentedTest`. `scripts/test-calendar-regression.mjs` has done so
   since round 8 and the class passed on both flavors in the run recorded below; the entry was

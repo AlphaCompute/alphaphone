@@ -74,6 +74,8 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
   org.junit.Assume.assumeTrue("Dedicated workflow approval notice campaign","1".equals(InstrumentationRegistry.getArguments().getString("workflowApprovalNotice")));
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();NotificationManager manager=context.getSystemService(NotificationManager.class);AlphaCredentialStore store=new AlphaCredentialStore(context);
   assertNull("Fresh approval fixture required",store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT));
+  // A route another test left behind would be counted by the withdrawal below and misattribute its failure.
+  assertTrue("No approval route may be left from an earlier test",WorkflowNoticeTapsFactory.create(context).approvalsOfOtherOwners("fixture-no-owner").isEmpty());
   String oldId=approvalId('e'),nextId=approvalId('f'),oldRun="fixture-old-"+java.util.UUID.randomUUID(),nextRun="fixture-next-"+java.util.UUID.randomUUID();long expiresAt=System.currentTimeMillis()+10*60000L;
   JSONObject oldInput=new JSONObject().put("id",oldId).put("bindingHash","b".repeat(64)).put("expiresAt",expiresAt).put("route",route("fixture-owner",oldRun));
   JSONObject nextInput=new JSONObject().put("id",nextId).put("bindingHash","c".repeat(64)).put("expiresAt",expiresAt).put("route",route("fixture-next-owner",nextRun));
@@ -113,6 +115,10 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
    awaitGone(manager,nextId,"Opening the next owner's notice cancels it");
    assertFalse(call("Capacitor.Plugins.AlphaHostedResults.withdrawWorkflowApprovalNotice({id:"+JSONObject.quote(nextId)+"})").has("error"));
    assertNull("Route released",WorkflowNoticeTapsFactory.create(context).token(nextId));
-  }finally{manager.cancel("alpha-workflow-"+oldId,0);manager.cancel("alpha-workflow-"+nextId,0);store.removeCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT);}
+  }finally{
+   manager.cancel("alpha-workflow-"+oldId,0);manager.cancel("alpha-workflow-"+nextId,0);store.removeCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT);
+   // With their receipts gone the routes are unconfirmed and can be released; a failure above must not leave them for the next test.
+   for(String id:new String[]{oldId,nextId})try{WorkflowNoticeTapsFactory.create(context).forget(id);}catch(Exception retained){/* The runner removes this user. */}
+  }
  }
 }
