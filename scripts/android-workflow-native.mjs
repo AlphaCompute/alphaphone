@@ -2,6 +2,11 @@
  * Phases: `workflow` (phone-step reads and drafts) and `approval-notice` (phone-step approval
  * notice builders, OS posting, tap route and withdrawal). Every case runs on both distributions
  * from one hash-admitted archive pair; any failed, skipped or missing case fails the campaign.
+ * `--variant=standalone|launcher` and `--phase=workflow|approval-notice` run part of it, for the
+ * cases left after a failure stopped an earlier run: the report then carries `selection` and
+ * `selectionPassed`, and `passed` (the whole campaign) stays false.
+ * The archive is `node scripts/build-archive.mjs` output, or for developer APKs the folder
+ * `node scripts/developer-archive.mjs` assembles from a verified `artifacts/` build.
  * Emulator-class evidence only: no paired host, live workflow, account or device acceptance. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -16,6 +21,10 @@ verifyPinnedUpstream(repository);
 const {runIsolatedAndroidTest}=await import('../vendor/eliza/packages/app/scripts/lib/isolated-android-test.mjs');
 const {withIsolatedAndroidUser}=await import('../vendor/eliza/packages/app/scripts/lib/isolated-android-user.mjs');
 const {acquireDeviceLease}=await import('../vendor/eliza/packages/app/scripts/lib/device-lease.ts');
+const options=process.argv.slice(2);
+assert.ok(options.every(arg=>/^--(?:variant|phase)=.+$/.test(arg)),'Unknown workflow campaign option');assert.equal(new Set(options.map(arg=>arg.split('=')[0])).size,options.length,'Duplicate workflow campaign option');
+const requestedVariant=options.find(arg=>arg.startsWith('--variant='))?.slice(10),requestedPhase=options.find(arg=>arg.startsWith('--phase='))?.slice(8);
+assert.ok(!requestedVariant||['standalone','launcher'].includes(requestedVariant),'Unknown variant');assert.ok(!requestedPhase||['workflow','approval-notice'].includes(requestedPhase),'Unknown phase');
 const serial=process.env.ANDROID_SERIAL,avd=process.env.ALPHA_WORKFLOW_TEST_AVD,abi=process.env.ALPHA_WORKFLOW_TEST_ABI;
 assert.match(serial??'',/^emulator-\d+$/);assert.match(avd??'',/^[A-Za-z0-9_.-]+$/);assert.ok(['x86_64','arm64-v8a'].includes(abi),'Explicit owned emulator ABI required');
 assert.ok(process.env.ALPHA_BUILD_ARCHIVE,'Set ALPHA_BUILD_ARCHIVE');
@@ -41,13 +50,16 @@ const variants=['standalone','launcher'];
 // The exact pair every case installs: each case's preflight binds upstream's pinned bytes to these
 // hashes, and upstream re-checks the installed bytes before each instrumentation.
 const apks=Object.fromEntries(variants.map(variant=>[variant,{appSha256:manifest[`${variant}-debug.apk`],testSha256:manifest[`${variant}-androidTest.apk`]}]));
-const report={serial,avd,abi,archive,apks,nativeOnly:true,pairedHostTested:false,allWorkflowFlowsAccepted:false,passed:false,phases:{},results:[]};
+// A selection runs fewer cases; the report always lists the whole campaign, so the rest read not-run.
+const selectedVariants=variants.filter(variant=>!requestedVariant||variant===requestedVariant),selectedCases=cases.filter(test=>!requestedPhase||phaseOf(test)===requestedPhase);
+const selection=requestedVariant||requestedPhase?{variants:selectedVariants,phases:[...new Set(selectedCases.map(phaseOf))]}:null;
+const report={serial,avd,abi,archive,apks,nativeOnly:true,pairedHostTested:false,allWorkflowFlowsAccepted:false,passed:false,...(selection?{selection,selectionPassed:false}:{}),phases:{},results:[]};
 const summarize=()=>{report.phases={};for(const test of cases){const name=phaseOf(test),phase=report.phases[name]??={expected:0,passed:0,cases:[]};for(const variant of variants){const method=test.class+'#'+test.method,row=report.results.find(item=>item.variant===variant&&item.method===method);phase.expected++;if(row?.passed)phase.passed++;phase.cases.push({variant,method,status:row?(row.passed?'passed':'failed'):'not-run'});}}for(const phase of Object.values(report.phases))phase.complete=phase.passed===phase.expected;report.passed=Object.values(report.phases).every(phase=>phase.complete);};
 const persist=()=>{summarize();fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(report,null,2)+'\n');};
 process.once('SIGINT',cancel);process.once('SIGTERM',cancel);
 try{
  fs.mkdirSync(output,{recursive:true});
- for(const variant of variants)for(const test of cases){
+ for(const variant of selectedVariants)for(const test of selectedCases){
   cancellation.signal.throwIfAborted();
   const directory=path.join(output,variant+'-'+test.method);fs.mkdirSync(directory);
   const record={variant,phase:phaseOf(test),method:test.class+'#'+test.method,...apks[variant],passed:false};report.results.push(record);let failure;
@@ -76,7 +88,8 @@ try{
  }
  summarize();
  // A campaign that returns without every case of every phase on both distributions is not a pass.
- assert.ok(report.passed&&report.results.length===variants.length*cases.length,'Workflow native campaign is incomplete');
+ if(selection){report.selectionPassed=report.results.length===selectedVariants.length*selectedCases.length&&report.results.every(row=>row.passed);persist();assert.ok(report.selectionPassed,'Selected workflow native cases are incomplete');}
+ else assert.ok(report.passed&&report.results.length===variants.length*cases.length,'Workflow native campaign is incomplete');
  persist();
  console.log(output);
 }finally{process.removeListener('SIGINT',cancel);process.removeListener('SIGTERM',cancel);lease.release();}
