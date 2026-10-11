@@ -240,11 +240,20 @@ role is accepted, after three HOME presses and after an explicit start) and
 `aRelaunchHoldingAReplacedIntentKeepsOneInstanceThatLaterStartsBringToTheFront`: after a
 relaunch that holds an intent of the other kind, the kind is unchanged and an explicit start
 and the HOME key each bring the one instance to the front over Android Settings). Both were
-compiled at this source and not run. `test/gesture-zones-single-instance.test.mjs` holds the
+compiled when this was written and then run once on an API 36 emulator with developer APKs
+([verification](verification.md#emulator-results-at-2961bd9e-2026-10-11-round-8-merged-with-round-9),
+class E). SettingsRoles first passed in 2 of 7 runs; the cause was in the test (a HOME key
+injected before the page owner's window had input focus again starts nothing, and the
+navigation helper's pending step reopened Settings after a HOME start), not in the hand-off.
+With both awaited and every press required to reach the page as a HOME start, SettingsRoles
+passed in 8 of 8 runs and both classes in 3 of 3 on the final APKs. LauncherHome crashed the
+process once in 25 runs, through a problem-log call that arrived after its worker had
+stopped; that call is now rejected. `test/gesture-zones-single-instance.test.mjs` holds the
 source shape (class S); it shows nothing about Android's behaviour. The second instance is what round 7 observed; the
 explanation by activity type is how AOSP assigns the home type to a HOME start and matches
 tasks for `singleTask`, which is platform implementation, not a public API contract, and was
-not re-measured here. The hand-off itself has no emulator result yet. Whether the short-lived
+not re-measured here. The hand-off itself therefore has an emulator result on one API 36 image
+and no device result. Whether the short-lived
 HOME instance is visible as a flicker during the transitional state is a device observation.
 
 ## Required Clock provider

@@ -15,10 +15,10 @@ entries are ordered by how much they unblock. Options are quoted from
 [decisions](decisions.md#pending-owner-decisions); listing an option is not a
 recommendation, and until a choice is recorded there the current behaviour stays.
 
-State of evidence today, at the current pin `13c9857598`: source and browser tests, and
-developer APK builds that carry no resident runtime, are not distributable and were not
-installed. No distribution APK build, emulator run, `resident-android.yml` run,
-real-account use or device result exists
+State of evidence today, at the current pin `13c9857598`: source and browser tests,
+developer APK builds that carry no resident runtime and are not distributable, and one
+partial emulator campaign on such builds (round 8, below). No distribution APK build,
+`resident-android.yml` or `android-emulator.yml` run, real-account use or device result exists
 ([current status](mvp-current-status.md#current-qualification-evidence)).
 
 The software this page builds on came in three pull requests. None needs an owner action
@@ -77,12 +77,15 @@ outcomes, never credentials.
 ## 3. Emulator and CI campaigns
 
 Someone must run these and read the results. None has a result on a distributable build.
-Two campaigns on developer-override APKs are summarized in [verification](verification.md):
+Three campaigns on developer-override APKs are summarized in [verification](verification.md):
 the first ran source `73b973a5` at the earlier pin `352d7a08` with mixed results
 ([section](verification.md#emulator-results-at-73b973a5-2026-10-10)); the second (round 7)
-ran the fixes made after it at source `6dcdde34` and the current pin
+ran the fixes made after it at source `6dcdde34` and pin `40dbe96bd1`
 ([section](verification.md#emulator-results-at-6dcdde34-2026-10-10-round-7)), and the
-[core loop audit](core-loop-audit.md) names the steps it moved. Both are written summaries
+[core loop audit](core-loop-audit.md) names the steps it moved; the third (round 8, at
+the current pin) ran the classes and campaigns round 8 changed or added at source `2961bd9e`
+([section](verification.md#emulator-results-at-2961bd9e-2026-10-11-round-8-merged-with-round-9)).
+All three are written summaries
 with no raw result files committed, class E for those APKs only, so a campaign below still
 has to be run on the strict packaged build of the candidate before it is ticked off.
 Results count only when committed with the commit they ran on.
@@ -110,10 +113,16 @@ this host runs arm64 images only):
 `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN`.
 
 Round 8 (2026-10-11, branch `claude/r8-runner-ci`) wrote the missing runner cases and three
-dispatch-only hosted jobs, and ran none of them: no emulator was started and no workflow was
-dispatched. It changed campaigns 2, 3, 4, 11, 16, 17 and 18 below and added 19 and 20. The
-commands that would show its four fixes hold are in the [core loop audit](core-loop-audit.md)
-under "Repeat runs for the round 7 failures". A hosted run is evidence only for the commit it
+dispatch-only hosted jobs. It changed campaigns 2, 3, 4, 11, 16, 17 and 18 below and added 19
+and 20. Its integration then ran campaigns 1 (without the reading class's WebView), 3, 4, 9
+and parts of 5, 8, 13 and 17 once on developer APKs; no workflow was dispatched. What is
+still open from that run, for whoever runs the campaigns next: Accessibility fails on both
+flavors (campaign 13: at 200% text the last Home row is drawn under the floating composer,
+and on this image's WebView an accessibility click reaches no page control) and BrowserFlow
+fails on its live-search method (campaign 3). Campaigns 9 and 17 passed after test defects
+were corrected. The repeat
+commands for the round 7 failures are in the [core loop audit](core-loop-audit.md)
+under "Repeat runs for the round 7 failures"; they were repeated 3 or 4 times here, not 10. A hosted run is evidence only for the commit it
 was dispatched on; its artifacts expire after three days, so copy what the ledger cites.
 
 | Order | Campaign | Command | Loops (steps) | Items |
