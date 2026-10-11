@@ -12,13 +12,13 @@ The [machine-readable inventory](mvp-remaining-work-2026-10-09.json) has stable 
 
 ## Ledger refresh of October 10, 2026
 
-Branch `claude/r6-ledger`, based on `4ec513b1` (open PR #389, which contains main at `d9a081e3`), upstream pin `40dbe96bd1`. The pin, PR head and main commits named under "Reviewed inputs" above are the inputs of the original October 9 audit and are kept as history.
+Written on branch `claude/r6-ledger`, based on `4ec513b1` (PR #389), and then merged with main at `042265c9`, which contains PR #388; upstream pin `40dbe96bd1`. The pin, PR head and main commits named under "Reviewed inputs" above are the inputs of the original October 9 audit and are kept as history.
 
 Every item's Current and Remaining were checked against source, tests and recorded evidence and rewritten where they no longer held, and each item now has a "Blocked on" line. Its classes are those of the [core loop audit](core-loop-audit.md): **SOFTWARE** (can be implemented, built or tested from this repository now), **EMULATOR** (needs a disposable-emulator run on APKs built from the source), **CI** (needs a GitHub-hosted runner, `resident-android.yml`), **HUMAN** (a named decision, account, key, deployment or other owner action), **DEVICE** (physical hardware) and **UPSTREAM** (a named elizaOS change). The first class listed is the first blocker. No item is blocked on an upstream change.
 
-Items carrying each class (an item can carry several): SOFTWARE 15 · EMULATOR 32 · CI 7 · HUMAN 38 · DEVICE 31 · UPSTREAM 0. Items by first blocker: SOFTWARE 13 · EMULATOR 14 · CI 2 · HUMAN 24 · DEVICE 0 · UPSTREAM 0.
+Items carrying each class (an item can carry several): SOFTWARE 12 · EMULATOR 32 · CI 7 · HUMAN 38 · DEVICE 32 · UPSTREAM 0. Items by first blocker: SOFTWARE 10 · EMULATOR 17 · CI 2 · HUMAN 24 · DEVICE 0 · UPSTREAM 0.
 
-MVP-12 to 16, 18, 19, 48 and 53 are **implemented on open PR #388, not on main**. Their Current and Remaining text below is the pre-PR-388 text and is rewritten by that pull request; only the "Blocked on" line was added here. Until it merges, none of them is current on main.
+MVP-12 to 16, 18, 19, 48 and 53 were implemented by PR #388, which **merged into main on October 10** (`042265c9`). Their Current and Remaining text below is that pull request's. Their "Blocked on" lines were rewritten when this refresh was merged with it: the software is on main, and what stays open is the emulator, owner and device parts and the software gaps each Remaining text names. None of the nine has run on an emulator or a device.
 
 No emulator, hosted CI, real-integration or device result exists at the current source. An emulator campaign is in progress on branch `claude/r3-packaging`; at `73b973a5` it has committed no result record. "No run is recorded" below means exactly that. What only the owner can do is listed in [owner actions](mvp-owner-actions.md); `test/docs-inventory-consistency.test.mjs` keeps this file and the JSON in agreement.
 
@@ -120,11 +120,11 @@ Evidence/source: [docs/decisions.md](../docs/decisions.md), [docs/flow-audit-and
 ### MVP-07 Refresh the requirement and evidence ledger
 
 **P1 · documentation · AP-01, AP-02, AP-04, AP-05, AP-07**
-Blocked on: SOFTWARE: reconcile docs/mvp-browser-review.md and docs/mvp-completion-plan.md, and take PR #388's inventory entries when it merges; HUMAN: voice policy decision (MVP-01) before the A-04, A-10 and AP-06 wording is final.
+Blocked on: SOFTWARE: reconcile docs/mvp-browser-review.md and docs/mvp-completion-plan.md; HUMAN: voice policy decision (MVP-01) before the A-04, A-10 and AP-06 wording is final.
 
-Current: Refreshed on 2026-10-10 against upstream pin 40dbe96bd1 from source, tests and recorded evidence: docs/mvp-current-status.md, docs/requirements.json, this inventory, the evidence statements in docs/decisions.md, and the false statements in README.md, docs/ci-cost-policy.md and docs/prd.md. docs/mvp-owner-actions.md lists what only the owner can do. test/docs-requirements-consistency.test.mjs and test/docs-inventory-consistency.test.mjs keep the ledgers and the two inventory files in agreement.
+Current: Refreshed on 2026-10-10 against upstream pin 40dbe96bd1 from source, tests and recorded evidence: docs/mvp-current-status.md, docs/requirements.json, this inventory, the evidence statements in docs/decisions.md, and the false statements in README.md, docs/ci-cost-policy.md and docs/prd.md. docs/mvp-owner-actions.md lists what only the owner can do. test/docs-requirements-consistency.test.mjs and test/docs-inventory-consistency.test.mjs keep the ledgers and the two inventory files in agreement. The entries for MVP-12 to 16, 18, 19, 48 and 53 carry the Current and Remaining text of PR #388 (merged into main on 2026-10-10); their "Blocked on" lines were rewritten when the two were merged.
 
-Remaining: docs/mvp-browser-review.md and docs/mvp-completion-plan.md were not reconciled in this refresh. The A-04, A-10 and PRD AP-06 wording cannot be made final until the voice policy is settled (MVP-01). The entries for MVP-12 to 16, 18, 19, 48 and 53 keep their pre-PR-388 text here and are rewritten by that pull request.
+Remaining: docs/mvp-browser-review.md and docs/mvp-completion-plan.md were not reconciled in this refresh. The A-04, A-10 and PRD AP-06 wording cannot be made final until the voice policy is settled (MVP-01).
 
 Done when: Every AP and retained F/J journey has current implementation, test class, exact source/artifact, remaining gate and owner; no old failure is called current without reproduction.
 
@@ -195,11 +195,11 @@ Evidence/source: [android/settings.gradle](../android/settings.gradle), [shared 
 ### MVP-12 Finish foreground Calendar availability
 
 **P1 · implementation · AP-09**
-Blocked on: SOFTWARE: implemented on open PR #388, not on main; EMULATOR: CalendarAvailabilityInstrumentedTest (on that pull request) has never run; HUMAN: owner confirms the two busy defaults named in PR #388 (cancelled and declined events are not busy, and free/busy-level calendars are offered).
+Blocked on: SOFTWARE: no runner grants READ_CALENDAR and WRITE_CALENDAR to CalendarAvailabilityInstrumentedTest, so scripts/android-instrumentation.mjs lists it as run by no runner; EMULATOR: CalendarAvailabilityInstrumentedTest, the permission prompt and the review inside the WebView have never run; HUMAN: owner confirms the two busy defaults (cancelled and declined events are not busy, and free/busy-level calendars are offered); DEVICE.
 
 Current: Software path implemented; no Android run. A foreground executor is registered and `calendar.availability-read.v1` is negotiated on paired, Cloud and resident connections (not the browser development profile). The owner picks 1 to 16 calendars with none preselected, sees the exact free/busy result and shares it; the same read repeats before sharing and any difference fails with no result. Android reads only the chosen calendars from CalendarProvider with a projection limited to start, end, all-day, availability and status (`CalendarAvailabilityReader.java`), and the action journal has its own bounded policy for the answer; the browser build reads the in-app calendar. Free events are excluded, all-day events follow the owner's civil day, and a time-zone disagreement, denied permission, stale context or changed calendar fails closed. No title, calendar name or account enters the journal, receipt or chat. A proposal that cannot be reviewed from the current screen is named in chat instead of dropped. Evidence: Node, JVM (SQLite stand-in for CalendarProvider) and browser tests against synthetic agent routes. Android sources and `CalendarAvailabilityInstrumentedTest`: compiled by Gradle for both variants (developer and instrumentation APKs without the runtime payload); not run on an emulator or device. See [calendar availability](calendar-availability.md).
 
-Remaining: Run the Android path on an emulator and a device: the instrumented reader test, the permission prompt (including WebView visibility while it shows), the review inside the WebView, synced and multi-account calendars, a declined invitation and a time-zone change mid-review. Produce and consume one availability receipt with a real agent. Owner to confirm two engineering defaults: cancelled events and declined invitations are not busy, and calendars at free/busy access level are offered. NEEDS upstream: an availability-carrying selected-calendar read in `plugin-native-calendar` so the Alpha-side reader can be removed, and a journal result bound that fits the 200-interval contract. The notes_search, notes_named, calendar_named and reminder_named reviews stay un-negotiated and fail closed.
+Remaining: Add a runner case that grants the calendar permissions to `CalendarAvailabilityInstrumentedTest` (no runner does). Run the Android path on an emulator and a device: the instrumented reader test, the permission prompt (including WebView visibility while it shows), the review inside the WebView, synced and multi-account calendars, a declined invitation and a time-zone change mid-review. Produce and consume one availability receipt with a real agent. Owner to confirm two engineering defaults: cancelled events and declined invitations are not busy, and calendars at free/busy access level are offered. NEEDS upstream: an availability-carrying selected-calendar read in `plugin-native-calendar` so the Alpha-side reader can be removed, and a journal result bound that fits the 200-interval contract. The notes_search, notes_named, calendar_named and reminder_named reviews stay un-negotiated and fail closed.
 
 Done when: Actual selected-provider result and exact receipt; free events excluded, all-day busy, no unrelated calendars or titles disclosed.
 
@@ -208,7 +208,7 @@ Evidence/source: [apps/app/src/runtime/device-actions.ts](../apps/app/src/runtim
 ### MVP-13 Finish folder notification and capture context selection
 
 **P1 · implementation · AP-04, AP-10**
-Blocked on: SOFTWARE: implemented on open PR #388, not on main; EMULATOR: folder grants, MediaStore Photos, notification listener and native Camera paths have never run; DEVICE.
+Blocked on: EMULATOR: folder grants, MediaStore Photos, notification listener and native Camera paths have never run; DEVICE.
 
 Current: Implemented in the renderer; no Android run. Folder identity is published as an opaque tree id with a session-local listing revision (never the provider string that embeds name and size), only while that folder is the visible Files subview. `Ask Alpha about this folder` reviews the loaded entry names and types of that one folder and reads it again before use, so a deleted, added, renamed or replaced entry or revoked access adds nothing. Own, unredacted notifications offer a reviewed question whose row is re-listed before the draft is placed; mirrored rows from other apps and lock-redacted rows offer none. Capture routing is corrected: Camera asks about the live frame, the Photos viewer about the exact open item (id and revision re-checked), and a typed Photos search is not treated as a capture. A saved photo or video is identified by a session-local revision instead of the library's added time and size; a renamed selected document gets a new revision. Evidence: Node and browser tests (`test/context-selection.test.mjs`, `test/browser/context-selection.spec.ts`); the folder revoke and withheld-notification cases are stubbed at the plugin boundary. See [context selection](context-selection.md).
 
@@ -221,7 +221,7 @@ Evidence/source: [apps/app/src/prototype/native-adapter.ts](../apps/app/src/prot
 ### MVP-14 Expose Use in email through the actual assistant UI
 
 **P1 · implementation · AP-09**
-Blocked on: SOFTWARE: implemented on open PR #388, not on main; HUMAN: Gmail grant (MVP-35) and the attachment question under A-15; DEVICE.
+Blocked on: SOFTWARE: no flag-off browser spec drives Use in email; HUMAN: Gmail grant (MVP-35) and the attachment question related to A-15; DEVICE.
 
 Current: Implemented in the renderer; fixture evidence only. A finished plain agent reply offers `Use in email` in its message-actions menu while Inbox is the app behind the conversation. A review dialog shows the From account, the exact destination (reply, open draft or new email), the effect and the exact text. The destination is bound by a renderer-only token over the Cloud session, account, open message and its history id, and the draft's identity and content; a stale token, a changed reply or session, a locked phone or another app in front inserts nothing. Draft text is never replaced: an open draft that already has text only offers `Add below existing text`. Nothing is prepared or dispatched to the provider; sending still goes through the composer and the provider review. Selected Files and Photos are not attached (the documented picker-only policy, stated in the dialog). Evidence: `test/use-in-email-review.test.mjs`, sections 7 to 7c of `scripts/test-inbox-attention-flow.mjs` and `test/browser/use-in-email.spec.ts`, all with a synthetic Cloud client and agent.
 
@@ -234,7 +234,7 @@ Evidence/source: [apps/app/src/prototype/inbox-cloud-adapter.ts](../apps/app/src
 ### MVP-15 Complete full Trash recovery
 
 **P1 · implementation · AP-10, AP-15**
-Blocked on: SOFTWARE: implemented on open PR #388, not on main; EMULATOR: NotesTrashBackstop and NotesStorageDurability have never run; DEVICE.
+Blocked on: SOFTWARE: an interrupted permanent voice deletion has no startup or native backstop, and the byte-limit refusal is covered only in Node; EMULATOR: NotesTrashBackstop and NotesStorageDurability have never run; DEVICE.
 
 Current: Implemented; browser and policy evidence, no Android run. Trash preserves notes and voice recordings for three days. A full Trash (policy limits or the native slot cap) refuses a deletion before any effect with a typed refusal and opens `Trash is full` with Cancel, Open Trash and a separately confirmed `Delete forever without Trash`. The permanent path removes only the exact refused record found in saved storage, under the deletion lock, with no Undo; a note changed since the refusal is left alone and another view's Trash copy is kept. A voice note's recording is erased only by the operation that owns its audio trash, and an interrupted permanent voice deletion stays under review and finishes once when Notes next renders. An approved agent notes_delete reports the refusal and never takes the permanent path. Lowered limits: an over-limit Trash stays readable, restorable and purgeable and only additions are refused (policy tests against the pinned upstream policy and a browser test). Expiry holds across a backwards clock, restarts and process death at the write-ahead and erase steps in the browser build. Three native backstop cases were added to `NotesTrashBackstopInstrumentedTest.java`: compiled by Gradle for both variants (developer and instrumentation APKs without the runtime payload); not run on an emulator or device.
 
@@ -249,7 +249,7 @@ Evidence/source: [apps/app/src/prototype/notes-trash-adapter.ts](../apps/app/src
 ### MVP-16 Reuse the resident agent from the assistant surface
 
 **P1 · implementation · AP-04, AP-05**
-Blocked on: SOFTWARE: implemented on open PR #388, not on main; EMULATOR: AssistantResidentReuseInstrumentedTest (on that pull request) has never run; DEVICE.
+Blocked on: EMULATOR: AssistantResidentReuseInstrumentedTest has never run; DEVICE.
 
 Current: Implemented in source; no Android run. `ResidentAttachment.java` decides whether a surface attaches to the running resident: only when the runtime is listening, nothing is retiring, the enrollment belongs to it and is not expiring, and the stored provider admission generation is the one the process launched with. An attach does not advance the epoch, clear the enrollment, pair, start the service or change launch ownership; it supersedes only the calling surface's own work, and any doubt falls back to the ordinary start. The renderer no longer stops and rebinds an unchanged Cloud provider when the assistant opens; the credit gate still runs first. Evidence: a JVM contract of the real class, a renderer contract and source guards (`test/resident-attachment.test.mjs`). `AssistantResidentReuseInstrumentedTest`: compiled by Gradle for both variants (developer and instrumentation APKs without the runtime payload); not run on an emulator or device.
 
@@ -277,11 +277,11 @@ Evidence/source: [apps/app/src/runtime/native-connection.ts](../apps/app/src/run
 ### MVP-18 Wire missing native runner phases
 
 **P1 · integration · AP-11**
-Blocked on: SOFTWARE: implemented on open PR #388, not on main (on main WorkflowApprovalNotice has a runner registry entry and WorkflowLegacyReminderUpgrade is listed as run by no runner); EMULATOR: neither runner has run on an emulator.
+Blocked on: SOFTWARE: no native phase covers approval notices across process death and account change; EMULATOR: neither runner has run on an emulator.
 
 Current: Runner phases wired; exercised only against a synthetic adb. `scripts/test-installed-upgrade.mjs` runs `WorkflowLegacyReminderUpgradeInstrumentedTest` on both distributions after the candidate verify phase and admits the candidate app and instrumentation APK as one verified pair from `artifacts/apk-manifest.json` before the device is leased. `scripts/android-workflow-native.mjs` runs both `WorkflowApprovalNoticeInstrumentedTest` methods on both distributions. Both runners re-check before any install that the archived bytes are still the admitted pair; receipts record the candidate hashes and the failed phase, and a skipped, failed or incomplete campaign exits non-zero. Evidence: `test/installed-upgrade-runner.test.mjs` and `test/native-campaign-evidence.test.mjs`. See [verification](verification.md).
 
-Remaining: Run both runners on an emulator for both variants; no emulator run of either exists. Add a native phase for approval notices across process death and account change: only the JVM contract and the renderer's other-account routing cover them. The baseline pair is hash-pinned only for the duration of a run, and `scripts/android-instrumentation.mjs` has no registry entry for the two classes.
+Remaining: Run both runners on an emulator for both variants; no emulator run of either exists. Add a native phase for approval notices across process death and account change: only the JVM contract and the renderer's other-account routing cover them. The baseline pair is hash-pinned only for the duration of a run. In `scripts/android-instrumentation.mjs` `WorkflowApprovalNotice` has a registry entry and `WorkflowLegacyReminderUpgrade` has none: it runs only through `scripts/test-installed-upgrade.mjs`.
 
 Done when: Runner executes both classes on both flavors; verifies exact scheduled item/approval across upgrade, process death, account change and notification tap.
 
@@ -290,7 +290,7 @@ Evidence/source: [scripts/test-installed-upgrade.mjs](../scripts/test-installed-
 ### MVP-19 Complete the daily overview contract
 
 **P1 · implementation · AP-07**
-Blocked on: SOFTWARE: implemented on open PR #388, not on main; HUMAN: Gmail grant (MVP-35) for real Inbox data; DEVICE.
+Blocked on: SOFTWARE: no single test runs from an agent digest result to the Home brief card, and the device calendar name lookup has no test; HUMAN: Gmail grant (MVP-35) for real Inbox data; DEVICE.
 
 Current: Implemented in the renderer; synthetic provider data only. The Calendar card names its source and when this app read it, distinguishes a failed read, access off and not connected, leaves out calendars hidden in Calendar, and marks overdue reminders, which stay first. The Workflows card shows when its list loaded. The Inbox card shows the account and the last completed provider read, and Home still reads no mail. A fourth card shows the latest retained scheduled-digest result only when one is retained for the current connection; an occurrence recorded as missed, overlapping or unavailable is never shown as a brief, and showing or opening the card runs nothing. The flag-off build shows no fixture avatar or fake brief. Evidence: `test/home-cards.test.mjs`, `test/browser/home-daily-overview.spec.ts` and its production spec. See [daily overview](daily-overview.md).
 
@@ -721,7 +721,7 @@ Evidence/source: [docs/mvp-current-status.md](../docs/mvp-current-status.md), [d
 ### MVP-48 Complete accessibility and resilience acceptance
 
 **P0 · acceptance · AP-15**
-Blocked on: SOFTWARE: implemented on open PR #388, not on main (software part); EMULATOR: Accessibility, TextScale and Rotation instrumentation have no recorded run; HUMAN: decision A-22; DEVICE: TalkBack, Switch Access and physical large text.
+Blocked on: SOFTWARE: the known gaps of the renderer sweep (titles shortened at 200% text, a focused control partly under the composer, a toast under a top-layer dialog, landscape with 200% text and provider-connected states); EMULATOR: Accessibility, TextScale and Rotation instrumentation have no recorded run; HUMAN: decision A-22; DEVICE: TalkBack, Switch Access and physical large text.
 
 Current: Renderer software pass done in Chromium; no device campaign is recorded. A dependency-free audit (`test/browser/accessibility-audit.ts`) checks names, roles, focus, contrast, 24px targets, clipping and tab order over the live, fixture and subview states of every retained view in light and dark, at an emulated 200% text size and in 915x412 landscape, and over the flag-off bundle; a coverage guard fails if a retained view or scrim popup leaves the sweep. Fixed from it: Camera controls in landscape, Maps sheets, the Browser find bar, dark-theme connection buttons, the recovery screen (it scrolls, dismisses orphan dialogs and focuses Reload), ten menus and sheets that left the page in the tab order, an unannounced toast, and clipping at 200% text. Supported sizes and limits are in [renderer accessibility checks](accessibility-renderer-checks.md).
 
@@ -798,7 +798,7 @@ Evidence/source: [docs/decisions.md](../docs/decisions.md), [docs/market-researc
 ### MVP-53 Close the complete installed-app library behavior
 
 **P1 · implementation and acceptance · AP-01, AP-02, AP-15**
-Blocked on: SOFTWARE: implemented on open PR #388, not on main; EMULATOR: the HOME-role campaign and LauncherLibraryInstrumentedTest (on that pull request) have never run; HUMAN: decision A-22; DEVICE: physical HOME role, work profiles, real install and remove.
+Blocked on: EMULATOR: the HOME-role campaign and LauncherLibraryInstrumentedTest have never run; HUMAN: decision A-22; DEVICE: physical HOME role, work profiles, real install and remove.
 
 Current: Implemented in source; no Android run. Entries are launcher activities identified by package, activity and Android user (`LauncherLibrary.java`), and a launch re-resolves that exact component and is refused with a reason when the row is stale, after which the drawer re-reads the device. Entries from other profiles are listed with their profile and locked state and are refused while paused or locked. An open drawer re-reads on package and profile changes and when Alpha returns to the foreground. Rows that share a label show their package, activity or profile. Favorites and their order persist in WebView storage and are shown only for entries the device lists now. Evidence: `test/home-launcher.test.mjs` and `test/browser/home-app-library.spec.ts` against a native stub. Android sources and `LauncherLibraryInstrumentedTest`: compiled by Gradle for both variants (developer and instrumentation APKs without the runtime payload); not run on an emulator or device. Details are in the MVP-53 software status section at the end of this document.
 

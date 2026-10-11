@@ -73,6 +73,9 @@ export const CLASS_REGISTRY = {
   LauncherHome: { homeRole: "held", note: "launcher variant with Alpha selected as HOME by --home-role; not boot-time HOME or device acceptance" },
   SettingsRoles: { homeRole: "requests", note: "removes, declines and accepts the HOME role in Android's dialog and restores the previous holder; --home-role proves the restoration" },
   NotesTrashBackstop: {},
+  // Added by the round-2 integration (PR 388); no recorded run.
+  AssistantResidentReuse: { note: "synthetic runtime observation, enrollment and streams; not evidence that a live resident stream survives" },
+  LauncherLibrary: { note: "resolves against this image's package manager only; two methods skip when the image has no other launchable app" },
   NotesStorageDurability: { args: { notesStorage: "1" } },
   DailyApps: {},
   ReminderLifecycle: { note: "the re-post method skips unless notifications are enabled for the app" },
@@ -169,6 +172,7 @@ export const CAMPAIGN_RUNNERS = [
  */
 export const NOT_RUN_BY_A_RUNNER = {
   AllViewAgentContext: "needs a real local agent with inference and a forwarding observer on the host (agentContext=true); its runner was removed with the smoke suites in 49b1bf4c",
+  CalendarAvailability: "skips unless READ_CALENDAR and WRITE_CALENDAR are granted before it starts; this runner grants no permission and scripts/test-native-permissions.mjs has no calendar case",
   CombinedAgent: "needs the combined host runtime with a provider key at 10.0.2.2:47859 (scripts/start-combined-agent.mjs); no Android runner starts or pairs it",
   CombinedAgentRestart: "same combined host runtime, in prepare/verify/cleanup phases around a host restart; recorded as never compiled into a run",
   ContactsFlow: "@Ignore: Contacts is deferred from the MVP and the campaign mutates the ContactsProvider",

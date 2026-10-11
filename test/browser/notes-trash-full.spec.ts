@@ -2,14 +2,9 @@
 // Browser build only; source/test evidence. The native slot cap ("storage-full" from
 // AlphaConnectionPlugin) and NotesStorageDurabilityInstrumentedTest are separate gates.
 //
-// Written to hold on two sources:
-//  - this branch, where a Trash at its entry or byte limit refuses with the toast
-//    "Could not move this note to Trash. Nothing was deleted." (the "Trash is full. Empty Trash in
-//    Notes…" toast is reached only by the native slot cap, which the browser build never raises);
-//  - origin/claude/r2-trash-recovery (MVP-15, not merged), where the same refusal opens the
-//    "Trash is full" dialog with Open Trash, Cancel and a separately confirmed permanent delete.
-// When that branch merges, tighten `refusal` below to the dialog alone; nothing else changes.
-// Its own notes-trash-recovery.spec.ts covers the dialog's choices.
+// The refusal is the "Trash is full" dialog with Open Trash, Cancel and a separately confirmed
+// permanent delete (MVP-15, merged with PR 388). notes-trash-recovery.spec.ts covers the dialog's
+// choices; this spec only declines it.
 import {test,expect,type Page} from '@playwright/test';
 const savedRecords=(page:Page)=>page.evaluate(async()=>JSON.parse(await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw()).records as any[]);
 const trashEntries=(page:Page)=>page.evaluate(async()=>(await (await import('/src/runtime/notes-trash.ts')).readNotesTrash()).entries as any[]);
@@ -60,21 +55,20 @@ test('a deletion that would overfill Trash is refused: the note stays saved, Tra
  await page.getByRole('button',{name:'Open Charlie',exact:true}).click();
  await page.getByRole('button',{name:'Delete note',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Trash is full'});
- const refusal=dialog.or(page.getByText('Could not move this note to Trash. Nothing was deleted.',{exact:true})).or(page.getByText('Trash is full. Empty Trash in Notes, then delete again. Nothing was deleted.',{exact:true}));
- await expect(refusal.first()).toBeVisible();
+ await expect(dialog).toBeVisible();
  await expect(page.getByText('Charlie moved to Trash',{exact:true})).toHaveCount(0);
  // The note is still saved, byte for byte, and Trash holds exactly what it held.
  expect(await savedRecords(page)).toEqual(saved);
  expect(await trashEntries(page)).toEqual(full);
- // Declining the dialog (where there is one) leaves the same note open in the editor.
- if(await dialog.count())await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+ // Declining the dialog leaves the same note open in the editor.
+ await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await expect(dialog).toHaveCount(0);
  await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Charlie');
  // Pressing Delete again is refused again; a second press never forces the deletion through.
  await page.getByRole('button',{name:'Delete note',exact:true}).click();
- await expect(refusal.first()).toBeVisible();
+ await expect(dialog).toBeVisible();
  expect(await savedRecords(page)).toEqual(saved);
  expect(await trashEntries(page)).toEqual(full);
- if(await dialog.count())await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+ await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await expect(dialog).toHaveCount(0);
 
  // A reload loses nothing on either side of the refusal.
  await page.reload();await openNotes(page);

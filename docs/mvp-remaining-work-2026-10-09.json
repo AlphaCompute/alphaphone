@@ -10,8 +10,8 @@
   "ledger_refresh": {
     "date": "2026-10-10",
     "branch": "claude/r6-ledger",
-    "base": "4ec513b1 (open PR #389, containing main d9a081e3)",
-    "note": "current and remaining were checked against source, tests and recorded evidence and rewritten where they no longer held; blocked_on was added to every item. Items MVP-12 to 16, 18, 19, 48 and 53 are implemented on open PR #388, not on main; their current and remaining text is left for that pull request and only blocked_on was added."
+    "base": "4ec513b1 (PR #389 before it was merged with main), then merged with main 042265c9, which contains PR #388",
+    "note": "current and remaining were checked against source, tests and recorded evidence and rewritten where they no longer held; blocked_on was added to every item. Items MVP-12 to 16, 18, 19, 48 and 53 were implemented by PR #388, merged into main on 2026-10-10: their current and remaining text is that pull request's, and their blocked_on was rewritten in the merge to name what is still open (emulator, owner and device parts, and the software gaps their remaining text lists)."
   },
   "blocked_on_classes": {
     "SOFTWARE": "can be implemented, built or tested from this repository now",
@@ -176,7 +176,7 @@
       "priority": "P1",
       "kind": "documentation",
       "blocked_on": [
-        "SOFTWARE: reconcile docs/mvp-browser-review.md and docs/mvp-completion-plan.md, and take PR #388's inventory entries when it merges",
+        "SOFTWARE: reconcile docs/mvp-browser-review.md and docs/mvp-completion-plan.md",
         "HUMAN: voice policy decision (MVP-01) before the A-04, A-10 and AP-06 wording is final"
       ],
       "requirements": [
@@ -187,8 +187,8 @@
         "AP-07"
       ],
       "title": "Refresh the requirement and evidence ledger",
-      "current": "Refreshed on 2026-10-10 against upstream pin 40dbe96bd1 from source, tests and recorded evidence: docs/mvp-current-status.md, docs/requirements.json, this inventory, the evidence statements in docs/decisions.md, and the false statements in README.md, docs/ci-cost-policy.md and docs/prd.md. docs/mvp-owner-actions.md lists what only the owner can do. test/docs-requirements-consistency.test.mjs and test/docs-inventory-consistency.test.mjs keep the ledgers and the two inventory files in agreement.",
-      "remaining": "docs/mvp-browser-review.md and docs/mvp-completion-plan.md were not reconciled in this refresh. The A-04, A-10 and PRD AP-06 wording cannot be made final until the voice policy is settled (MVP-01). The entries for MVP-12 to 16, 18, 19, 48 and 53 keep their pre-PR-388 text here and are rewritten by that pull request.",
+      "current": "Refreshed on 2026-10-10 against upstream pin 40dbe96bd1 from source, tests and recorded evidence: docs/mvp-current-status.md, docs/requirements.json, this inventory, the evidence statements in docs/decisions.md, and the false statements in README.md, docs/ci-cost-policy.md and docs/prd.md. docs/mvp-owner-actions.md lists what only the owner can do. test/docs-requirements-consistency.test.mjs and test/docs-inventory-consistency.test.mjs keep the ledgers and the two inventory files in agreement. The entries for MVP-12 to 16, 18, 19, 48 and 53 carry the Current and Remaining text of PR #388 (merged into main on 2026-10-10); their \"Blocked on\" lines were rewritten when the two were merged.",
+      "remaining": "docs/mvp-browser-review.md and docs/mvp-completion-plan.md were not reconciled in this refresh. The A-04, A-10 and PRD AP-06 wording cannot be made final until the voice policy is settled (MVP-01).",
       "acceptance": "Every AP and retained F/J journey has current implementation, test class, exact source/artifact, remaining gate and owner; no old failure is called current without reproduction.",
       "depends_on": [
         "MVP-01"
@@ -303,16 +303,17 @@
       "priority": "P1",
       "kind": "implementation",
       "blocked_on": [
-        "SOFTWARE: implemented on open PR #388, not on main",
-        "EMULATOR: CalendarAvailabilityInstrumentedTest (on that pull request) has never run",
-        "HUMAN: owner confirms the two busy defaults named in PR #388 (cancelled and declined events are not busy, and free/busy-level calendars are offered)"
+        "SOFTWARE: no runner grants READ_CALENDAR and WRITE_CALENDAR to CalendarAvailabilityInstrumentedTest, so scripts/android-instrumentation.mjs lists it as run by no runner",
+        "EMULATOR: CalendarAvailabilityInstrumentedTest, the permission prompt and the review inside the WebView have never run",
+        "HUMAN: owner confirms the two busy defaults (cancelled and declined events are not busy, and free/busy-level calendars are offered)",
+        "DEVICE"
       ],
       "requirements": [
         "AP-09"
       ],
       "title": "Finish foreground Calendar availability",
       "current": "Software path implemented; no Android run. A foreground executor is registered and calendar.availability-read.v1 is negotiated on paired, Cloud and resident connections (not the browser development profile). The owner picks 1 to 16 calendars with none preselected, sees the exact free/busy result and shares it; the same read repeats before sharing and any difference fails with no result. Android reads only the chosen calendars from CalendarProvider with a projection limited to start, end, all-day, availability and status (CalendarAvailabilityReader.java), and the action journal has its own bounded policy for the answer; the browser build reads the in-app calendar. Free events are excluded, all-day events follow the owner's civil day, and a time-zone disagreement, denied permission, stale context or changed calendar fails closed. No title, calendar name or account enters the journal, receipt or chat. A proposal that cannot be reviewed from the current screen is named in chat instead of dropped. Evidence: Node, JVM (SQLite stand-in for CalendarProvider) and browser tests against synthetic agent routes. Android sources and CalendarAvailabilityInstrumentedTest: compiled by Gradle for both variants (developer and instrumentation APKs without the runtime payload); not run on an emulator or device. See calendar availability (docs/calendar-availability.md).",
-      "remaining": "Run the Android path on an emulator and a device: the instrumented reader test, the permission prompt (including WebView visibility while it shows), the review inside the WebView, synced and multi-account calendars, a declined invitation and a time-zone change mid-review. Produce and consume one availability receipt with a real agent. Owner to confirm two engineering defaults: cancelled events and declined invitations are not busy, and calendars at free/busy access level are offered. NEEDS upstream: an availability-carrying selected-calendar read in plugin-native-calendar so the Alpha-side reader can be removed, and a journal result bound that fits the 200-interval contract. The notes_search, notes_named, calendar_named and reminder_named reviews stay un-negotiated and fail closed.",
+      "remaining": "Add a runner case that grants the calendar permissions to `CalendarAvailabilityInstrumentedTest` (no runner does). Run the Android path on an emulator and a device: the instrumented reader test, the permission prompt (including WebView visibility while it shows), the review inside the WebView, synced and multi-account calendars, a declined invitation and a time-zone change mid-review. Produce and consume one availability receipt with a real agent. Owner to confirm two engineering defaults: cancelled events and declined invitations are not busy, and calendars at free/busy access level are offered. NEEDS upstream: an availability-carrying selected-calendar read in plugin-native-calendar so the Alpha-side reader can be removed, and a journal result bound that fits the 200-interval contract. The notes_search, notes_named, calendar_named and reminder_named reviews stay un-negotiated and fail closed.",
       "acceptance": "Actual selected-provider result and exact receipt; free events excluded, all-day busy, no unrelated calendars or titles disclosed.",
       "depends_on": [],
       "sources": [
@@ -329,7 +330,6 @@
       "priority": "P1",
       "kind": "implementation",
       "blocked_on": [
-        "SOFTWARE: implemented on open PR #388, not on main",
         "EMULATOR: folder grants, MediaStore Photos, notification listener and native Camera paths have never run",
         "DEVICE"
       ],
@@ -356,8 +356,8 @@
       "priority": "P1",
       "kind": "implementation",
       "blocked_on": [
-        "SOFTWARE: implemented on open PR #388, not on main",
-        "HUMAN: Gmail grant (MVP-35) and the attachment question under A-15",
+        "SOFTWARE: no flag-off browser spec drives Use in email",
+        "HUMAN: Gmail grant (MVP-35) and the attachment question related to A-15",
         "DEVICE"
       ],
       "requirements": [
@@ -382,7 +382,7 @@
       "priority": "P1",
       "kind": "implementation",
       "blocked_on": [
-        "SOFTWARE: implemented on open PR #388, not on main",
+        "SOFTWARE: an interrupted permanent voice deletion has no startup or native backstop, and the byte-limit refusal is covered only in Node",
         "EMULATOR: NotesTrashBackstop and NotesStorageDurability have never run",
         "DEVICE"
       ],
@@ -413,8 +413,7 @@
       "priority": "P1",
       "kind": "implementation",
       "blocked_on": [
-        "SOFTWARE: implemented on open PR #388, not on main",
-        "EMULATOR: AssistantResidentReuseInstrumentedTest (on that pull request) has never run",
+        "EMULATOR: AssistantResidentReuseInstrumentedTest has never run",
         "DEVICE"
       ],
       "requirements": [
@@ -467,7 +466,7 @@
       "priority": "P1",
       "kind": "integration",
       "blocked_on": [
-        "SOFTWARE: implemented on open PR #388, not on main (on main WorkflowApprovalNotice has a runner registry entry and WorkflowLegacyReminderUpgrade is listed as run by no runner)",
+        "SOFTWARE: no native phase covers approval notices across process death and account change",
         "EMULATOR: neither runner has run on an emulator"
       ],
       "requirements": [
@@ -475,7 +474,7 @@
       ],
       "title": "Wire missing native runner phases",
       "current": "Runner phases wired; exercised only against a synthetic adb. scripts/test-installed-upgrade.mjs runs WorkflowLegacyReminderUpgradeInstrumentedTest on both distributions after the candidate verify phase and admits the candidate app and instrumentation APK as one verified pair from artifacts/apk-manifest.json before the device is leased. scripts/android-workflow-native.mjs runs both WorkflowApprovalNoticeInstrumentedTest methods on both distributions. Both runners re-check before any install that the archived bytes are still the admitted pair; receipts record the candidate hashes and the failed phase, and a skipped, failed or incomplete campaign exits non-zero. Evidence: test/installed-upgrade-runner.test.mjs and test/native-campaign-evidence.test.mjs. See verification (docs/verification.md).",
-      "remaining": "Run both runners on an emulator for both variants; no emulator run of either exists. Add a native phase for approval notices across process death and account change: only the JVM contract and the renderer's other-account routing cover them. The baseline pair is hash-pinned only for the duration of a run, and scripts/android-instrumentation.mjs has no registry entry for the two classes.",
+      "remaining": "Run both runners on an emulator for both variants; no emulator run of either exists. Add a native phase for approval notices across process death and account change: only the JVM contract and the renderer's other-account routing cover them. The baseline pair is hash-pinned only for the duration of a run. In scripts/android-instrumentation.mjs WorkflowApprovalNotice has a registry entry and WorkflowLegacyReminderUpgrade has none: it runs only through scripts/test-installed-upgrade.mjs.",
       "acceptance": "Runner executes both classes on both flavors; verifies exact scheduled item/approval across upgrade, process death, account change and notification tap.",
       "depends_on": [],
       "sources": [
@@ -491,7 +490,7 @@
       "priority": "P1",
       "kind": "implementation",
       "blocked_on": [
-        "SOFTWARE: implemented on open PR #388, not on main",
+        "SOFTWARE: no single test runs from an agent digest result to the Home brief card, and the device calendar name lookup has no test",
         "HUMAN: Gmail grant (MVP-35) for real Inbox data",
         "DEVICE"
       ],
@@ -1262,7 +1261,7 @@
       "priority": "P0",
       "kind": "acceptance",
       "blocked_on": [
-        "SOFTWARE: implemented on open PR #388, not on main (software part)",
+        "SOFTWARE: the known gaps of the renderer sweep (titles shortened at 200% text, a focused control partly under the composer, a toast under a top-layer dialog, landscape with 200% text and provider-connected states)",
         "EMULATOR: Accessibility, TextScale and Rotation instrumentation have no recorded run",
         "HUMAN: decision A-22",
         "DEVICE: TalkBack, Switch Access and physical large text"
@@ -1405,8 +1404,7 @@
       "priority": "P1",
       "kind": "implementation and acceptance",
       "blocked_on": [
-        "SOFTWARE: implemented on open PR #388, not on main",
-        "EMULATOR: the HOME-role campaign and LauncherLibraryInstrumentedTest (on that pull request) have never run",
+        "EMULATOR: the HOME-role campaign and LauncherLibraryInstrumentedTest have never run",
         "HUMAN: decision A-22",
         "DEVICE: physical HOME role, work profiles, real install and remove"
       ],

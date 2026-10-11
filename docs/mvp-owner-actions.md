@@ -16,13 +16,13 @@ State of evidence today: source and browser tests only. No APK build, emulator r
 CI run, real-account use or device result exists at the current pin
 ([current status](mvp-current-status.md#current-qualification-evidence)).
 
-Two open pull requests hold finished software that is not on main. Reviewing and merging
-them is also an owner action, and it comes first because later steps build on them:
+The software this page builds on came in two pull requests. Neither needs an owner action
+now; what they leave open is in the groups below.
 
-| Pull request | Holds | Unblocks |
+| Pull request | Holds | State |
 | --- | --- | --- |
-| #389 `claude/r5-loop-software` | The audit's remaining software work orders and the native-runner campaigns used in group 3. This page and the refreshed ledgers are based on it. | Every campaign in group 3 that says "round 5": loops A, B, F, J05 |
-| #388 `claude/r2-integration` | Calendar availability, context selection, Use in email, Trash recovery, resident reuse, runner phases, daily overview, the accessibility sweep and the app library. It also rewrites those entries in the inventory. | MVP-12, 13, 14, 15, 16, 18, 19, 48, 53 (their software part); loop D step D-17 in the product profile |
+| #389 `claude/r5-loop-software` | The audit's remaining software work orders and the native-runner campaigns used in group 3. This page and the refreshed ledgers came with it. | This page reaches main with it. |
+| #388 `claude/r2-integration` | Calendar availability, context selection, Use in email, Trash recovery, resident reuse, runner phases, daily overview, the accessibility sweep and the app library: the software part of MVP-12, 13, 14, 15, 16, 18, 19, 48 and 53. | Merged into main on 2026-10-10 (`042265c9`). None of it has run on an emulator or a device. |
 
 ## 1. Decisions
 
@@ -41,7 +41,7 @@ them is also an owner action, and it comes first because later steps build on th
 | 11 | A-05 | Background notification and reconnect policy | (a) Check only on resume and app start. (b) Periodic background work. (c) A persistent connection held by a foreground service. | New-mail notifications are not implemented. Hosted results use background delivery work. | New-mail notifications. | F (F-21) | MVP-06 |
 | 12 | A-12, A-14, A-13 | Passkeys; which browsers the password manager trusts; third-party cookies | A-12: (a) no passkeys in the MVP. (b) WebAuthn through the system credential provider. (c) the integrated manager becomes a passkey provider. A-14: (a) only the Alpha browser. (b) also recognized browsers. A-13: (a) keep third-party cookies blocked. (b) allow per site. (c) allow in normal tabs only. | Passkeys are not implemented; only the Alpha browser is trusted; third-party cookies are blocked. | The password acceptance scope. | E (E-19) | MVP-06, 29 |
 | 13 | A-25 | Recoverability of deleted Calendar events and reminders | (a) Keep deletion irreversible behind one review. (b) Add a short Undo. (c) Add a Trash with a retention period. Reminders: (i) no review, (ii) the same review as events. | (a): one review, then nothing can be restored. | Whether loop B needs a recovery step. | B | MVP-06 |
-| 14 | Two calendar busy defaults (PR #388) | Are cancelled and declined events busy; are free/busy-level calendars offered | Confirm or change the engineering defaults in that pull request. | On that pull request: cancelled and declined events are not busy; free/busy-level calendars are offered. Not on main. | Acceptance of calendar availability. | B | MVP-12 |
+| 14 | Two calendar busy defaults (from PR #388) | Are cancelled and declined events busy; are free/busy-level calendars offered | Confirm or change the engineering defaults ([calendar availability](calendar-availability.md)). | On main as engineering defaults, not an owner choice: cancelled and declined events are not busy; free/busy-level calendars are offered. | Acceptance of calendar availability. | B | MVP-12 |
 | 15 | A-19, A-17, A-18 | Backup and erase; lock-screen camera; Photos scope | See [decisions](decisions.md#new-decision-items). | No backup and no in-app erase; no lock-screen camera; Photos shows only media Alpha captured. | Nothing in the ten loops. | none | MVP-06 |
 | 16 | Listening scope (MVP-52) | Is always-on listening or a hardware key in this release | Confirm the scope and approve the listener ADR that foundation decision 8 requires, or defer it. | Not implemented. A microphone button and an assist Activity exist; neither is always-on listening. | The listener implementation and its image work. | none | MVP-52 |
 | 17 | A-03, A-08 | MVP views and default roles; Wallet | Open in the first decisions table. | Phone, SMS, Contacts and Wallet are deferred and disabled. | Nothing unless the scope changes. | none | none |
