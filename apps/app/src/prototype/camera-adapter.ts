@@ -29,6 +29,23 @@ const nativeCamera = registerPlugin<{
   setSettings(options: { settings: { flash: 'off' | 'on' } }): Promise<void>;
   setFocusPoint(options: { x: number; y: number }): Promise<void>;
 }>('ElizaCamera');
+/** A read of the current grant; it never shows Android's permission dialog. */
+const cameraAccess = registerPlugin<{ checkPermissions(): Promise<{ camera?: string }> }>('ElizaCamera');
+// camera-resume:begin
+/**
+ * Whether a resume may restart a preview that stopped on a camera denial. Closing Android's own
+ * permission dialog resumes the app too, so restarting on every resume asked for the camera again
+ * straight after "Don't allow". Only an actual grant (made in Android settings) restarts the preview;
+ * the read never prompts, and an unreadable state restarts nothing.
+ */
+export async function restartAfterResume(state: () => { denied?: string; phase: string; disposed: boolean }, check: () => Promise<{ camera?: string }>): Promise<boolean> {
+  const stopped = () => { const now = state(); return now.denied === 'camera' && now.phase === 'error' && !now.disposed; };
+  if (!stopped()) return false;
+  let granted = false;
+  try { granted = (await check()).camera === 'granted'; } catch { /* Unknown access never restarts. */ }
+  return granted && stopped();
+}
+// camera-resume:end
 type SavedPhoto = { kind?: 'image' | 'video'; duration?: number; path?: string; id: string; image: string; width: number; height: number; date: number; revision: string; mutationRevision?: string; trashed?: boolean; expiresAt?: number; favorite?: boolean };
 const nativeLibrary = registerPlugin<{
   beginEdit(options:{id:string;revision:string}):Promise<EditPreview>;
@@ -797,7 +814,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   const pageHide=()=>{cancelEdit();closeVideo();void stop();};
   document.addEventListener('visibilitychange', visibility); window.addEventListener('pagehide', pageHide); window.addEventListener('resize', resize); schedule();
   // Returning from Android settings: a camera grant restarts the preview without another tap.
-  const resumed=()=>{if(denied==='camera'&&phase==='error'&&!disposed){phase='off';schedule();}};
+  const resumed=()=>{void restartAfterResume(()=>({denied,phase,disposed}),()=>cameraAccess.checkPermissions()).then(restart=>{if(restart){phase='off';schedule();}});};
   let resumeHandle:{remove():Promise<void>}|undefined;
   void DailyApps.addListener('appResumed',resumed).then(handle=>{if(disposed)void handle.remove();else resumeHandle=handle;}).catch(()=>{});
   return () => { captureQuestion=undefined;hideAccess();void resumeHandle?.remove();window.removeEventListener('alpha:albums-document-changed',albumsChanged);if(scanApi&&prototype.api===scanApi)prototype.api=originalApi;disposed = true;cancelEdit();endHold();selection=undefined; clearInterval(timer); closeVideo(); observer.disconnect(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', pageHide); window.removeEventListener('resize', resize); void stop(); style.remove(); captures = []; module.render = render; module.onLeave = leave; module.back = cameraBack; if (views.photos) { views.photos.render = photosRender; views.photos.back = photosBack; views.photos.onLeave = photosLeave; } };
