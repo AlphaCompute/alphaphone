@@ -176,7 +176,7 @@
       "priority": "P1",
       "kind": "documentation",
       "blocked_on": [
-        "SOFTWARE: reconcile docs/mvp-browser-review.md and docs/mvp-completion-plan.md",
+        "SOFTWARE: correct the stale statements named under Remaining, which are in documents the round-9 reconciliation could not edit",
         "HUMAN: voice policy decision (MVP-01) before the A-04, A-10 and AP-06 wording is final"
       ],
       "requirements": [
@@ -187,8 +187,8 @@
         "AP-07"
       ],
       "title": "Refresh the requirement and evidence ledger",
-      "current": "Refreshed on 2026-10-10 against upstream pin 40dbe96bd1 from source, tests and recorded evidence: docs/mvp-current-status.md, docs/requirements.json, this inventory, the evidence statements in docs/decisions.md, and the false statements in README.md, docs/ci-cost-policy.md and docs/prd.md. docs/mvp-owner-actions.md lists what only the owner can do. test/docs-requirements-consistency.test.mjs and test/docs-inventory-consistency.test.mjs keep the ledgers and the two inventory files in agreement. The entries for MVP-12 to 16, 18, 19, 48 and 53 carry the Current and Remaining text of PR #388 (merged into main on 2026-10-10); their \"Blocked on\" lines were rewritten when the two were merged.",
-      "remaining": "docs/mvp-browser-review.md and docs/mvp-completion-plan.md were not reconciled in this refresh. The A-04, A-10 and PRD AP-06 wording cannot be made final until the voice policy is settled (MVP-01).",
+      "current": "Refreshed on 2026-10-10 against upstream pin 40dbe96bd1 from source, tests and recorded evidence: docs/mvp-current-status.md, docs/requirements.json, this inventory, the evidence statements in docs/decisions.md, and the false statements in README.md, docs/ci-cost-policy.md and docs/prd.md. docs/mvp-owner-actions.md lists what only the owner can do. test/docs-requirements-consistency.test.mjs and test/docs-inventory-consistency.test.mjs keep the ledgers and the two inventory files in agreement. The entries for MVP-12 to 16, 18, 19, 48 and 53 carry the Current and Remaining text of PR #388 (merged into main on 2026-10-10); their \"Blocked on\" lines were rewritten when the two were merged. docs/mvp-browser-review.md and docs/mvp-completion-plan.md were reconciled on 2026-10-10 against main dfacccb3 (branch claude/r9-status-docs-reconcile), from source, tests, workflow files and recorded evidence. The browser review now opens with a reconciled part (evidence at the current source by class, a table of the statements code has overtaken, a rewritten surface inventory and a dated state note on each feature section) and keeps every October 5 and 6 checkpoint under \"Historical checkpoints\", each heading marked historical and its text unchanged. The completion plan states that it is a plan and not a status record, corrects the statements source has overtaken (journey A step 2, the build command, the reminder DST rule, the proposed interface names that do not exist as types) and carries a dated state note on every journey and implementation step. Both mark the voice wording as pending MVP-01 and list the other pending decisions their wording waits on. The evidence behind the reconciliation is class S, plus job and step conclusions of hosted runs read through the GitHub API; no emulator, real-integration or device evidence was produced.",
+      "remaining": "The voice wording in docs/mvp-browser-review.md, docs/mvp-completion-plan.md and the PRD's AP-06 row is marked pending and cannot be made final until the voice policy is settled (MVP-01, with A-04 and A-10). Stale statements found during the reconciliation and left uncorrected because they are outside the two reconciled documents: (1) docs/mvp-current-status.md and docs/mvp-owner-actions.md say no APK build exists at the current pin, but hosted Android foundation run 38109307871 assembled four flag-off developer APKs at main dfacccb3 with the unpackaged-runtime option and an unqualified speech runtime (class B build evidence, not distributable, nothing installed; step conclusions read through the GitHub API, logs and artifacts not inspected). (2) docs/decisions.md A-22 and docs/mvp-owner-actions.md say the landscape sweep of the views other than Home is on open PR #388 and not on main; PR #388 is merged and test/browser/accessibility-sweep.spec.ts on main contains that sweep. (3) docs/calendar-reminder-contract.md, docs/local-agent-voice-validation.md and docs/standalone-paired-asr.md cite files under patches/, a directory that no longer exists. (4) docs/browser-dev-parity.md names plain npm run android:build as the build to run, where the chained build is android:build:local.",
       "acceptance": "Every AP and retained F/J journey has current implementation, test class, exact source/artifact, remaining gate and owner; no old failure is called current without reproduction.",
       "depends_on": [
         "MVP-01"
@@ -196,7 +196,8 @@
       "sources": [
         "docs/mvp-current-status.md",
         "docs/requirements.json",
-        "docs/mvp-browser-review.md"
+        "docs/mvp-browser-review.md",
+        "docs/mvp-completion-plan.md"
       ]
     },
     {
