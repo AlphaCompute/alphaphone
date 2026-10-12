@@ -1,85 +1,88 @@
 #!/usr/bin/env node
 /**
- * Hosted half of on-device speech requalification (.github/workflows/android-emulator.yml,
- * job `local-speech`). The decisions stay in scripts/local-speech/requalify-runtime.py; this
- * only checks its candidate before the run and packages what its `ingest` reads afterwards.
+ * Hosted half of on-device speech qualification (.github/workflows/android-emulator.yml, job
+ * `fused-speech`). The engine is the fused libelizainference (ASR, Kokoro TTS, Silero VAD) recorded
+ * in android/voice-host/qualified-voice-host.json; this script checks the APK before the run and
+ * packages what the run produced afterwards.
  *
- *   node scripts/ci/speech-candidate.mjs check <candidate.json>
- *   node scripts/ci/speech-candidate.mjs package <workspace> <new-output-directory>
+ *   node scripts/ci/speech-candidate.mjs check <app.apk>
+ *   node scripts/ci/speech-candidate.mjs package <results-directory> <new-output-directory>
  *
- * `check` refuses a candidate that was recorded against another canonical test, another
- * upstream pin, or that has no x86_64 rebuild still waiting to run.
- * `package` copies the candidate (with whatever `requalify-runtime.py run` recorded for
- * x86_64), the raw `am instrument -r` log, the pulled evidence folder and the exact APK pair
- * into one folder, with the candidate as it was before the run, `result.json`, and the `ingest`
- * command that reproduces the record from that earlier candidate.
- * A run that failed or never started is packaged as that: nothing is filled in.
+ * `check` refuses an APK whose voice bundle (assets/voice/v1) or x86_64 engine is not the exact
+ * qualified bytes, or that carries no voice bundle at all (the emulator would only prove that
+ * local speech is unavailable). `package` copies the instrumentation record, the raw class logs and
+ * the exact APK pair into one folder and writes result.json. Nothing is inferred: a run that
+ * failed or never started is packaged as that.
  *
- * An x86_64 pass here is one ABI of one candidate. `admit` still needs every rebuilt ABI
- * passed on its own ABI and a reviewer named by a person.
+ * An x86_64 pass here is one ABI on an emulator (evidence class E). Admission still needs the
+ * arm64-v8a engine on hardware (class D) and a reviewer named by a person; the result never edits
+ * qualified-voice-host.json.
  */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { FUSED_SPEECH_CLASSES } from "./emulator-suite.mjs";
 
-export const CANONICAL_TEST = "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LocalSpeechInstrumentedTest.java";
+export const CANONICAL_TEST = "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/FusedSpeechInstrumentedTest.java";
 export const ABI = "x86_64";
-const sha = file => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 
-/** Problems that make a candidate unusable for this run; empty when it can run. */
-export function candidateProblems(candidate, { canonicalTestSha256, upstreamCommit }) {
+/** Problems that make an APK unusable for the hosted run; empty when it can run. `read(entry)` returns bytes or null. */
+export function candidateProblems({ names, read }, host) {
   const problems = [];
-  if (candidate?.admission !== "requalification-candidate") problems.push("not a requalification candidate");
-  if (candidate?.provenance?.canonicalTestSha256 !== canonicalTestSha256) problems.push("the canonical test differs from the one the candidate was recorded against");
-  if (candidate?.provenance?.upstreamCommit !== upstreamCommit) problems.push("the candidate was recorded at another upstream pin");
-  const rebuilt = (candidate?.qualifiedAbis ?? []).find(abi => abi.abi === ABI);
-  if (!rebuilt || !Array.isArray(rebuilt.native) || !rebuilt.native.length) problems.push(`${ABI} is not part of this rebuild`);
-  const state = candidate?.functionalAcceptance?.abis?.[ABI]?.state;
-  if (state !== "not-executed") problems.push(`${ABI} is already recorded as ${state ?? "missing"}; a hosted run starts from a fresh candidate`);
-  if (candidate?.functionalAcceptance?.passed !== false) problems.push("a candidate cannot arrive already passed");
+  const manifestBytes = read("assets/voice/v1/manifest.json");
+  if (!manifestBytes) return ["the APK carries no on-device voice bundle (assets/voice/v1)"];
+  let bundle;
+  try { bundle = JSON.parse(manifestBytes.toString("utf8")); } catch { return ["assets/voice/v1/manifest.json is not JSON"]; }
+  const pinned = new Map([...host.models.filter(row => row.sha256 !== null), ...(host.lexicon.sha256 !== null ? [host.lexicon] : [])].map(row => [row.path, row]));
+  for (const row of bundle.files ?? []) {
+    const expected = pinned.get(row.path), bytes = read(`assets/voice/v1/${row.path}`);
+    if (!expected || !bytes || bytes.length !== expected.bytes || sha(bytes) !== expected.sha256) problems.push(`assets/voice/v1/${row.path} is not a qualified voice file`);
+  }
+  const record = host.abis.find(row => row.abi === ABI);
+  if (!record?.voiceSymbolsVerified) problems.push(`${ABI} has no voice-symbol qualification in android/voice-host/qualified-voice-host.json`);
+  else for (const library of record.libraries) {
+    const bytes = read(`lib/${ABI}/${library.name}`);
+    if (!bytes || bytes.length !== library.bytes || sha(bytes) !== library.sha256) problems.push(`lib/${ABI}/${library.name} differs from the voice-qualified bytes`);
+  }
+  if (!names.some(name => name === `lib/${ABI}/libelizavoicejni.so`)) problems.push(`lib/${ABI}/libelizavoicejni.so is not packaged`);
+  if (!(bundle.files ?? []).some(row => row.role === "asr-model")) problems.push("no ASR pair is packaged; FusedSpeech transcription cannot run (no product-qualified mobile ASR pair exists upstream)");
   return problems;
 }
 
-/** Copies the ingest inputs into a new folder and says what the candidate records for x86_64. */
-export function packageSpeechRun({ workspace, output, repository = process.cwd(), environment = process.env }) {
+function apkReader(file) {
+  const names = execFileSync("unzip", ["-Z1", file], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\n").filter(Boolean);
+  return { names, read: entry => names.includes(entry) ? execFileSync("unzip", ["-p", file, entry], { maxBuffer: 512 * 1024 * 1024 }) : null };
+}
+
+/** Copies the run's record and APK pair into a new folder and says what the record shows. */
+export function packageSpeechRun({ results, output, repository = process.cwd(), environment = process.env }) {
   const target = path.resolve(repository, output);
   if (fs.existsSync(target)) throw new Error(`${output} already exists; evidence is never replaced`);
   fs.mkdirSync(target, { recursive: true });
-  const from = (...parts) => path.resolve(repository, ...parts);
   const missing = [], files = {};
   const copy = (source, name) => {
     if (!fs.existsSync(source)) { missing.push(name); return false; }
-    fs.mkdirSync(path.dirname(path.join(target, name)), { recursive: true });
     if (fs.statSync(source).isDirectory()) fs.cpSync(source, path.join(target, name), { recursive: true });
-    else { fs.copyFileSync(source, path.join(target, name)); files[name] = sha(path.join(target, name)); }
+    else { fs.mkdirSync(path.dirname(path.join(target, name)), { recursive: true }); fs.copyFileSync(source, path.join(target, name)); files[name] = sha(fs.readFileSync(path.join(target, name))); }
     return true;
   };
-  copy(from(workspace, "requalification/candidate.json"), "candidate.json");
-  copy(from(workspace, "candidate-before-run.json"), "candidate-before-run.json");
-  copy(from(workspace, "requalification", ABI, "instrumentation.log"), `${ABI}/instrumentation.log`);
-  if (copy(from(workspace, "requalification", ABI, "local-speech-evidence"), `${ABI}/local-speech-evidence`))
-    for (const name of fs.readdirSync(path.join(target, ABI, "local-speech-evidence")).sort()) {
-      const file = path.join(target, ABI, "local-speech-evidence", name);
-      if (fs.statSync(file).isFile()) files[`${ABI}/local-speech-evidence/${name}`] = sha(file);
-    }
-  // The same APK pair runs the other ABI of this candidate on an arm64 host.
-  copy(from("artifacts/standalone-debug.apk"), "standalone-debug.apk");
-  copy(from("artifacts/instrumentation/standalone-androidTest.apk"), "standalone-androidTest.apk");
-  const candidate = fs.existsSync(path.join(target, "candidate.json")) ? JSON.parse(fs.readFileSync(path.join(target, "candidate.json"), "utf8")) : null;
-  const recorded = candidate?.functionalAcceptance?.abis?.[ABI] ?? null;
+  copy(path.resolve(repository, results), "instrumentation");
+  copy(path.resolve(repository, "artifacts/standalone-debug.apk"), "standalone-debug.apk");
+  copy(path.resolve(repository, "artifacts/instrumentation/standalone-androidTest.apk"), "standalone-androidTest.apk");
+  const record = fs.existsSync(path.join(target, "instrumentation/results.json")) ? JSON.parse(fs.readFileSync(path.join(target, "instrumentation/results.json"), "utf8")) : null;
+  const classes = (record?.classes ?? []).map(row => ({ class: row.class.split(".").at(-1).replace(/InstrumentedTest$/, ""), status: row.status }));
+  const ran = new Set(classes.filter(row => row.status === "passed").map(row => row.class));
   const result = {
-    abi: ABI, commit: environment.GITHUB_SHA ?? null, runId: environment.GITHUB_RUN_ID ?? null,
-    // Exactly what requalify-runtime.py recorded; `passed` is never inferred here.
-    passed: recorded?.passed === true && recorded?.state === "passed" && missing.length === 0,
-    state: recorded?.state ?? "no-candidate", recorded, missing, files,
-    candidateAarSha256: candidate?.aarSha256 ?? null, upstreamCommit: candidate?.provenance?.upstreamCommit ?? null,
-    otherAbis: Object.fromEntries(Object.entries(candidate?.functionalAcceptance?.abis ?? {}).filter(([abi]) => abi !== ABI).map(([abi, value]) => [abi, value.state])),
-    admission: "not admitted: every rebuilt ABI must pass on its own ABI and `requalify-runtime.py admit --reviewer` needs a reviewer named by a person",
-    // From the repository root at this commit, with DIR the downloaded artifact folder.
-    ingest: `cp DIR/candidate-before-run.json DIR/candidate-ingest.json && python3 scripts/local-speech/requalify-runtime.py ingest --abi ${ABI} --device-abi ${ABI} --apk DIR/standalone-debug.apk --log DIR/${ABI}/instrumentation.log --evidence DIR/${ABI}/local-speech-evidence --candidate DIR/candidate-ingest.json`,
-    otherAbi: "python3 scripts/local-speech/requalify-runtime.py run --serial <arm64 emulator or device, networking off> --apk DIR/standalone-debug.apk --test-apk DIR/standalone-androidTest.apk --candidate DIR/candidate.json",
-    notEvidenceFor: ["speech runtime admission", "arm64-v8a", "microphone, speaker or perceptual quality", "physical-device acceptance"],
+    abi: ABI, commit: environment.GITHUB_SHA ?? null, runId: environment.GITHUB_RUN_ID ?? null, evidenceClass: "E",
+    canonicalTestSha256: fs.existsSync(path.resolve(repository, CANONICAL_TEST)) ? sha(fs.readFileSync(path.resolve(repository, CANONICAL_TEST))) : null,
+    // Exactly what the instrumentation record says; `passed` is never inferred here.
+    passed: record?.passed === true && FUSED_SPEECH_CLASSES.every(name => ran.has(name)) && missing.length === 0,
+    classes, missing, files,
+    admission: "not admitted: arm64-v8a on hardware (class D) and a reviewer named by a person are still required; qualified-voice-host.json evidence is edited only by that review",
+    notEvidenceFor: ["arm64-v8a", "microphone, speaker or perceptual quality", "Kokoro intelligibility", "physical-device acceptance"],
   };
   fs.writeFileSync(path.join(target, "result.json"), `${JSON.stringify(result, null, 2)}\n`, { flag: "wx" });
   return result;
@@ -88,15 +91,15 @@ export function packageSpeechRun({ workspace, output, repository = process.cwd()
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [command, first, second] = process.argv.slice(2);
   if (command === "check" && first && !second) {
-    const problems = candidateProblems(JSON.parse(fs.readFileSync(first, "utf8")), {
-      canonicalTestSha256: sha(CANONICAL_TEST), upstreamCommit: JSON.parse(fs.readFileSync("upstream.lock.json", "utf8")).commit });
+    const host = JSON.parse(fs.readFileSync("android/voice-host/qualified-voice-host.json", "utf8"));
+    const problems = candidateProblems(apkReader(first), host);
     if (problems.length) { console.error(`Speech candidate refused:\n  - ${problems.join("\n  - ")}`); process.exit(1); }
-    console.log(`Speech candidate admitted for the ${ABI} run`);
+    console.log(`Speech candidate admitted for the ${ABI} emulator run`);
   } else if (command === "package" && first && second) {
-    const result = packageSpeechRun({ workspace: first, output: second });
-    console.log(JSON.stringify({ abi: result.abi, passed: result.passed, state: result.state, missing: result.missing }, null, 2));
+    const result = packageSpeechRun({ results: first, output: second });
+    console.log(JSON.stringify({ abi: result.abi, passed: result.passed, classes: result.classes, missing: result.missing }, null, 2));
   } else {
-    console.error("Use: node scripts/ci/speech-candidate.mjs check <candidate.json> | package <workspace> <new-output-directory>");
+    console.error("Use: node scripts/ci/speech-candidate.mjs check <app.apk> | package <results-directory> <new-output-directory>");
     process.exit(2);
   }
 }

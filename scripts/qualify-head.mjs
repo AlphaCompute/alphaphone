@@ -91,10 +91,10 @@ export function verdict(result) {
 export const CAMPAIGNS = Object.freeze([
   { id: "emulator-suite:instrumentation", kind: "emulator-suite", file: "test-results/emulator-suite/instrumentation.json" },
   { id: "emulator-suite:browser-reading", kind: "emulator-suite", file: "test-results/emulator-suite/browser-reading.json" },
-  { id: "emulator-suite:local-speech", kind: "emulator-suite", file: "test-results/emulator-suite/local-speech.json" },
+  { id: "emulator-suite:fused-speech", kind: "emulator-suite", file: "test-results/emulator-suite/fused-speech.json" },
   // android-resident-instrumentation.mjs output saved with the installed APK's hash (apkSha256 or apks[]).
-  // Neither that script nor the local-speech candidate.json records an APK hash yet, so those two
-  // campaigns read as mismatched (unbound) until their producers do; that keeps the candidate unqualified.
+  // That script does not record an APK hash yet, so that campaign reads as mismatched (unbound)
+  // until its producer does; that keeps the candidate unqualified.
   { id: "resident-instrumentation", kind: "record-dir", dir: "test-results/resident-instrumentation" },
   // resident-android.yml artifacts: the archive's apk-manifest.json (file name -> SHA-256) and the native proofs.
   { id: "resident-android", kind: "resident-ci", manifest: "test-results/resident-ci-archive/apk-manifest.json", dir: "test-results/resident-ci-native" },

@@ -5,22 +5,19 @@
  *   node scripts/android-build-preflight.mjs [--before-prepare] [--allow-unpackaged-runtime] [--test-mocks]
  *
  * build-android.mjs runs the full check. `--before-prepare` checks only inputs that
- * android:build:local does not produce (the pinned checkout and the speech AAR), so
+ * android:build:local does not produce (the pinned checkout and the on-device voice bundle), so
  * that chain stops before the long runtime preparation instead of after it.
  */
 import {execFileSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {verifyEmbeddingHost} from './stage-embedding-host.mjs';
+import {VOICE_ASSET_ROOT, VOICE_HOST_MANIFEST, verifyEmbeddingHost, verifyVoiceHost} from './stage-embedding-host.mjs';
 
-export const SPEECH_AAR = 'android/local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar';
-export const SPEECH_MANIFEST = 'android/local-speech/runtime-manifest.json';
+export {VOICE_ASSET_ROOT, VOICE_HOST_MANIFEST};
 const FULL_CHAIN = 'npm run android:build:local';
-const SPEECH_GUIDE = 'scripts/local-speech/README.md';
+const VOICE_GUIDE = 'docs/fused-speech.md';
 
-const sha256 = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 function readHead(directory) {
   try {
     return execFileSync('git', ['-C', directory, 'rev-parse', 'HEAD'], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']}).trim();
@@ -29,22 +26,29 @@ function readHead(directory) {
   }
 }
 
-/** Inputs no preparation step produces: the pinned checkout and the speech AAR. */
-export function checkoutProblems(root) {
+/** Inputs no preparation step produces: the pinned checkout and the on-device voice bundle. */
+export function checkoutProblems(root, {voiceHost = verifyVoiceHost} = {}) {
   const problems = [];
   const pin = JSON.parse(fs.readFileSync(path.join(root, 'upstream.lock.json'), 'utf8')).commit;
   const head = readHead(path.join(root, 'vendor/eliza'));
   if (head !== pin)
     problems.push(`vendor/eliza is ${head ? `at ${head}` : 'not checked out'}; upstream.lock.json pins ${pin}. Run: git submodule update --init vendor/eliza`);
-  const aar = path.join(root, SPEECH_AAR);
-  if (!fs.existsSync(aar)) {
-    problems.push(`Speech runtime ${SPEECH_AAR} is missing (Gradle :local-speech:preBuild needs it). Build and install it with the commands in ${SPEECH_GUIDE}.`);
-  } else {
-    const approved = JSON.parse(fs.readFileSync(path.join(root, SPEECH_MANIFEST), 'utf8')).aarSha256;
-    if (sha256(aar) !== approved)
-      problems.push(`Speech runtime ${SPEECH_AAR} does not match ${SPEECH_MANIFEST} (Gradle :local-speech:preBuild rejects it). Rebuild and install it with the commands in ${SPEECH_GUIDE}.`);
-  }
+  problems.push(...voiceHostProblems(root, {voiceHost}));
   return problems;
+}
+
+/**
+ * The on-device voice bundle (fused libelizainference ASR, Kokoro TTS, Silero VAD). An APK without
+ * one is valid: local speech reports unavailable and Cloud voice is unchanged. A staged bundle must
+ * match android/voice-host/qualified-voice-host.json byte for byte (Gradle :app:verifyVoiceHost).
+ */
+export function voiceHostProblems(root, {allowUnpackagedRuntime = true, voiceHost = verifyVoiceHost} = {}) {
+  try {
+    voiceHost(root, {allowAbsentRuntime: allowUnpackagedRuntime});
+    return [];
+  } catch (error) {
+    return [`The on-device voice bundle in ${VOICE_ASSET_ROOT} is not admitted by ${VOICE_HOST_MANIFEST} (${error.message}; Gradle :app:verifyVoiceHost rejects the build). ${FULL_CHAIN} does not produce it: restage it with node scripts/android-stage-voice-models.mjs --from <directory of pinned voice models> (see ${VOICE_GUIDE}), or remove android/app/src/main/assets/voice to build without on-device voice.`];
+  }
 }
 
 /**
@@ -97,10 +101,10 @@ async function main() {
   if (!problems.length && !args.includes('--before-prepare')) {
     // The source guard imports the pinned checkout, so load it only once that is verified.
     const {sourceDirectory} = await import('./local-agent-source.mjs');
-    problems = preparedRuntimeProblems(root, sourceDirectory(root), {
+    problems = [...preparedRuntimeProblems(root, sourceDirectory(root), {
       allowUnpackagedRuntime: args.includes('--allow-unpackaged-runtime'),
       testMocks: args.includes('--test-mocks'),
-    });
+    }), ...voiceHostProblems(root, {allowUnpackagedRuntime: args.includes('--allow-unpackaged-runtime')})];
   }
   if (problems.length) {
     console.error(formatProblems(problems));
