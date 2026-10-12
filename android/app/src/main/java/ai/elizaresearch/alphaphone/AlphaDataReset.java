@@ -15,7 +15,7 @@ final class AlphaDataReset {
  static void record(Context context)throws Exception{
   AtomicFile file=marker(context);FileOutputStream out=null;
   try{out=file.startWrite();out.write(new byte[]{1});out.getFD().sync();file.finishWrite(out);out=null;
-   java.io.FileDescriptor directory=android.system.Os.open(file.getBaseFile().getParent(),android.system.OsConstants.O_RDONLY|android.system.OsConstants.O_DIRECTORY,0);
+   java.io.FileDescriptor directory=android.system.Os.open(file.getBaseFile().getParent(),android.system.OsConstants.O_RDONLY,0);
    try{android.system.Os.fsync(directory);}finally{android.system.Os.close(directory);}
   }finally{if(out!=null)file.failWrite(out);}
  }
