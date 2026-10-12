@@ -216,6 +216,7 @@ public class MainActivity extends BridgeActivity {
    startedAsHome = liveTaskHome;
   }
   registerPlugin(SystemPlugin.class);
+  registerPlugin(AlphaResetPlugin.class);
   registerPlugin(DeviceAppsPlugin.class);
   registerPlugin(DailyAppsPlugin.class);
   registerPlugin(AlphaMapsTransportPlugin.class);
@@ -236,9 +237,8 @@ public class MainActivity extends BridgeActivity {
   registerPlugin(AlphaNotificationsPlugin.class);
   registerPlugin(AlphaHostedResultsPlugin.class);
   registerPlugin(ai.eliza.plugins.passwords.PasswordsPlugin.class);
-  registerPlugin(ai.eliza.plugins.passwords.PasswordTransferPlugin.class);
-  // Phone, Contacts and SMS exist only on the verified Alpha AOSP image (P-36). Elsewhere the plugin is
-  // never registered, so neither the page nor an agent request can reach it.
+  if(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)registerPlugin(ai.eliza.plugins.passwords.PasswordTransferPlugin.class);
+  // The native image gate is checked again by every telephony operation.
   if (AlphaImageCapability.verified(this)) registerPlugin(AlphaTelephonyPlugin.class);
   if (BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS) {
    // Present only in debug builds made with -PELIZA_DEV_ALLOW_TEST_MOCKS=1 (src/testMocks).

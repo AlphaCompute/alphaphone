@@ -26,6 +26,28 @@ Photos offers full permitted library access to the local agent; resets erase Alp
 private state without implying remote/provider or device-wide media deletion.
 No app-data backup/import/export/transfer feature is planned.
 
+Reset Alpha data uses a native disclosure followed by fresh Android device-credential
+confirmation. The renderer cannot supply reset authority. Before dispatch, Alpha
+persists a device-protected request and retries it before runtime callbacks or upkeep
+on a subsequent launch. Android's own `clearApplicationUserData()` scopes deletion
+to this package/user, force-stops package processes, cancels its jobs/alarms and
+notifications, clears private app data and its UID Keystore namespace. Alpha does
+not enumerate or delete shared media, another app's storage, remote Gmail/Cloud
+data or subscriptions. It does not report a returned request as completed deletion.
+The pending marker covers interruption before dispatch; it is itself app data and
+is not a guarantee of atomic filesystem deletion or recovery from power loss midway
+through Android's clear operation. Installed self-clear acceptance must be observed
+externally on a disposable package/user, since the reset kills its own instrumentation.
+The future separate AOSP listener package requires its own reviewed reset contract
+before that package ships; clearing Alpha cannot clear a different package's state.
+
+Production Notes and vault migration controls are disabled, including their native
+entry points. Damaged-data notices retain saved bytes and drafts without backup or
+per-store reset controls; fitting Notes edits still recover through the existing
+merge path. Explicit test-mocks builds retain migration fixtures. Ordinary Files,
+Gmail attachments and PDF file creation remain available.
+
+
 ## Source boundaries
 
 | Path | Responsibility |
