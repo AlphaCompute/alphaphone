@@ -116,7 +116,7 @@ Bind remote speech to the selected service identity; retire late capture/upload/
 playback results after cancellation or account changes. Do not upload hidden
 context or history as an implicit side effect of read-aloud. Local speech setup
 and its evidence are documented in [local agent development](local-agent-development.md)
-and [local speech build instructions](../scripts/local-speech/README.md).
+and [fused speech](fused-speech.md) (the libelizainference engine used on the phone and by the local agent).
 
 ## Development runtime
 

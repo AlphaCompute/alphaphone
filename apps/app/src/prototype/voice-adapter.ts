@@ -12,8 +12,8 @@ const audioOperation=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 import { installLocalSpeechPlayback, stopLocalSpeechPlayback, currentNoteReading, stopSpeaking, speakNote } from './local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
-import { createOnDeviceVoice, type SpeechProgressEvent } from '../runtime/local-voice';
-import { voiceFailure, transcriptProvenance, speechProgressMessage, deniedSettingsChoice, DENIED_SETTINGS_LABEL, type VoiceFailure, type TranscriptProvenance } from '../runtime/voice-states';
+import { createOnDeviceVoice } from '../runtime/local-voice';
+import { voiceFailure, transcriptProvenance, deniedSettingsChoice, DENIED_SETTINGS_LABEL, type VoiceFailure, type TranscriptProvenance } from '../runtime/voice-states';
 import { createPairedVoice } from '../runtime/paired-voice';
 import { createCloudVoice, cloudVoiceFailure } from '../runtime/cloud-voice';
 import { selectVoiceRoute, voiceSendPolicy } from '../runtime/voice-selection';
@@ -98,8 +98,8 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   let api: Bag | undefined, stage = 'closed', generation = 0, busy = false;
   let clip: Clip | undefined, recordingId: string | undefined, started = 0;
   let error = '', draft = '', requestId: string | undefined, saveId = '';
-  // Distinct failure kinds keep their own guidance; progress belongs to the current transcription.
-  let failure: VoiceFailure | '' = '', progress: SpeechProgressEvent | undefined;
+  // Distinct failure kinds keep their own guidance.
+  let failure: VoiceFailure | '' = '';
   let recognized: { text: string; provenance: TranscriptProvenance } | undefined;
   let savedStarting:Promise<void>|undefined;
   let savedPlaying: string | undefined, savedPosition = 0, savedEpoch = 0, savedTick: ReturnType<typeof setInterval> | undefined;
@@ -176,7 +176,6 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       void stopping.then(()=>{if(retirement!==held)return;retirement=undefined;if(chatShell.live!==false)chatShell.setState((state:any)=>({...(composerBinding()===held.binding&&(state.view||null)===held.view&&state.chat===held.panelChat?{chat:held.returnChat}:{})}));},()=>{if(retirement!==held)return;held.phase='error';if(chatShell.live!==false)chatShell.setState({});});
     }
     clip = undefined; recordingId = undefined;
-    progress = undefined;
     if (close) { stage = 'closed'; draft = ''; destination = undefined; chatDestination = undefined; failure = ''; recognized = undefined; }
     if(publish){if(chatShell)chatShell.setState({});else refresh();}
   }
@@ -203,7 +202,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       }).then(ready => {
         if (token !== generation || controller.signal.aborted) return;
         preparingLocal = false;
-        if (!ready || stage !== 'ready') { if (!ready) error = 'On-device speech is unavailable. Choose another voice service explicitly or use the keyboard.'; refresh(); return; }
+        if (!ready || stage !== 'ready') { if (!ready) error = Capacitor.isNativePlatform() ? 'On-device speech is unavailable. Choose another voice service explicitly or use the keyboard.' : 'Local speech needs the local agent on this computer. Connect it, choose another voice service explicitly, or use the keyboard.'; refresh(); return; }
         onDeviceReady = true; cloudMode = false; deviceOnly = true; driver = deviceVoice;
         pairedReady = false; pairedAsrReady = false; refresh();
       }).catch(() => { if (token === generation) { preparingLocal = false; error = 'On-device speech is unavailable. Choose another voice service explicitly or use the keyboard.'; refresh(); } });
@@ -237,7 +236,6 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     busy = true; error = ''; failure = ''; const token = generation; refresh();
     try { await task(token); }
     catch (reason) { if (token === generation) {
-      progress = undefined;
       const kind = voiceFailure(reason, { transcribing: stage === 'transcribing', browser: !Capacitor.isNativePlatform(), cloud: cloudMode });
       if (kind) { failure = kind.kind; error = kind.message; stage = stage === 'review' ? 'review' : clip ? 'recorded' : 'ready'; stopClock(); return; }
       error = (cloudMode && cloudVoiceFailure(reason)) || (onDeviceReady ? 'On-device speech unavailable. Keep recordings under 30 seconds and use English text under 500 characters for playback. Your recording is retained.' : pairedAsrReady ? 'Agent Whisper transcription unavailable. Your recording is retained; check the selected agent and retry explicitly.' : deviceOnly ? 'Recording unavailable. Check microphone access and available device storage, then retry.' : cloudMode ? 'Cloud voice unavailable. Check microphone access, your Cloud account and the connection, then retry.' : 'Voice unavailable. Check microphone access and the local development service, then retry.'); stage = stage === 'review' ? 'review' : clip ? 'recorded' : 'ready'; stopClock(); } }
@@ -339,15 +337,14 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       }
       if (stage === 'recorded' && clip) {
         if(deviceOnly && !pairedAsrReady && !onDeviceReady) {draft = ''; stage = 'review'; return;}
-        stage = 'transcribing'; requestId = crypto.randomUUID(); progress = undefined; recognized = undefined; refresh();
+        stage = 'transcribing'; requestId = crypto.randomUUID(); recognized = undefined; refresh();
         transcription = new AbortController();
-        const onProgress = (value: SpeechProgressEvent) => { if (token === generation && stage === 'transcribing') { progress = value; refresh(); } };
-        const result = onDeviceReady && onDeviceVoice ? await onDeviceVoice.transcribe(clip.recordingId, transcription.signal, onProgress) : pairedAsrReady && pairedVoice ? await pairedVoice.transcribe(clip.recordingId, transcription.signal) : await driver.transcribeRecording({ recordingId: clip.recordingId, requestId });
+        const result = onDeviceReady && onDeviceVoice ? await onDeviceVoice.transcribe(clip.recordingId, transcription.signal) : pairedAsrReady && pairedVoice ? await pairedVoice.transcribe(clip.recordingId, transcription.signal) : await driver.transcribeRecording({ recordingId: clip.recordingId, requestId });
         transcription = undefined;
         if (token !== generation) return;
         requestId = undefined;
         if (typeof result.text !== 'string' || !result.text.trim() || result.local !== !cloudMode) throw new Error('Invalid transcript');
-        draft = result.text; stage = 'review'; progress = undefined; markVoiceTiming('transcript-ready');
+        draft = result.text; stage = 'review'; markVoiceTiming('transcript-ready');
         recognized = { text: result.text, provenance: transcriptProvenance(result, { onDevice: onDeviceReady, native: Capacitor.isNativePlatform(), paired: pairedAsrReady, cloud: cloudMode }) };
       }
     });
@@ -922,15 +919,9 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (preparingPaired && stage === 'ready') { labels.ready = 'Checking selected agent voice'; messages.ready = 'Checking transcription and playback on your selected agent. No audio is uploaded.'; }
     if (preparingLocal && stage === 'ready') { labels.ready = 'Preparing on-device speech'; messages.ready = 'Loading and checking speech models on this phone. Nothing is uploaded.'; }
     if(!Capacitor.isNativePlatform() && !cloudMode) {
-      if (onDeviceReady) {
-        // Whisper tiny.en runs in this browser; English only, matching the OCR language policy.
-        labels.recorded='Transcribe on this device';
-        messages.ready='Record up to 29 seconds. English-only speech recognition runs on this device; audio is not uploaded. The first transcription loads a speech model of about 56 MB from this app.';
-        messages.recording='Recording. Stop does not transcribe or upload audio.';
-        messages.recorded='Microphone is off. Transcribe on this device turns this recording into English text. Nothing is uploaded.';
-        messages.transcribing=speechProgressMessage(progress);
-        if(!destination)messages.review=chatDestination?'Review and edit the transcript, then use it in the conversation. Press Send there to send it to your agent.':'Review and edit the transcript, then save the recording and transcript in this app. Nothing is uploaded or sent to an agent.';
-      } else {
+      // The browser has no speech engine of its own: on-device speech here means the local
+      // agent on this computer (libelizainference), worded in the block below.
+      if (!onDeviceReady) {
         labels.recorded='Review transcript';
         messages.recording='Recording. Stop to review the audio.';
         messages.ready='Record audio in this app. You can add a transcript manually and save without signing in.';
@@ -948,7 +939,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       messages.review='Review the transcript, listen using the local agent on this computer, or save it with the recording. No chat message has been sent.';
     }
     // The Cloud route offers no typing choice (MVP-01 decides whether it should); its failure wording names none.
-    const canType = !cloudMode && stage === 'recorded' && !!clip && !busy && (failure === 'no-speech' || failure === 'model' || failure === 'recognition');
+    const canType = !cloudMode && stage === 'recorded' && !!clip && !busy && (failure === 'no-speech' || failure === 'local-agent' || failure === 'recognition');
     // A refused microphone uses the route slot for its recovery: Android's app settings for Alpha.
     const settingsChoice = deniedSettingsChoice({ failure, stage, busy, native: Capacitor.isNativePlatform() });
     const openSettings = () => { void appSettings.openSettings({ page: 'privacy' }).catch(() => api?.toast('Android app settings are unavailable. Allow the microphone for Alpha in Settings, then try again.')); };

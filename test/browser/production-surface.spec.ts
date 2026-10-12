@@ -1,4 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { FORBIDDEN_ENGINE_PATH, engineFindings } from '../../scripts/audit-production-bundle.mjs';
 // Runs only in the `production` project: a flag-off `vite build` served by `vite preview`.
 // It proves the shipped web bundle exposes no mock, fixture or developer surface.
 // It does not prove Android packaging, which is audited separately per APK.
@@ -15,6 +18,21 @@ async function trackCsp(page: Page) {
   });
   return async () => [...violations, ...await page.evaluate(() => (window as any).cspViolations as string[])];
 }
+
+// Owner rule: speech runs only on the native libelizainference stack (on the phone, or the local
+// agent on a computer). The built web bundle carries no speech model, worker or inference runtime.
+test('the built bundle ships no in-browser speech engine, model or inference runtime', async ({ request }) => {
+  const dir = path.resolve('test-results/production-web');
+  const walk = (current: string): string[] => readdirSync(current, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(path.join(current, entry.name)) : [path.relative(dir, path.join(current, entry.name)).split(path.sep).join('/')]);
+  const files = walk(dir);
+  expect(files.length).toBeGreaterThan(10);
+  expect(files.filter(file => file.startsWith('browser-speech/'))).toEqual([]);
+  const findings = files.flatMap(file => engineFindings(file, /\.(?:html?|js|mjs|css|json|txt)$/i.test(file) ? readFileSync(path.join(dir, file), 'utf8') : undefined));
+  expect(findings).toEqual([]);
+  // The removed model manifest is not served (the preview's SPA fallback answers with HTML, never JSON).
+  const manifest = await request.get('/browser-speech/manifest.json');
+  expect(manifest.headers()['content-type'] ?? '').not.toContain('application/json');
+});
 
 test('the bundle records production flags and ships a CSP', async ({ page, request }) => {
   expect(await (await request.get('/build-flags.json')).json()).toEqual({ testMocks: false });
@@ -253,7 +271,7 @@ test('production signed-out voice requires Cloud without capture, upload or loca
     const request=route.request(),url=new URL(request.url());
     if (!['127.0.0.1','localhost'].includes(url.hostname) && !['data:','blob:'].includes(url.protocol)) { foreign.push(request.url()); await route.abort(); return; }
     if (['POST','PUT','PATCH'].includes(request.method())) { uploads.push(request.url()); await route.abort(); return; }
-    if (url.pathname.startsWith('/browser-speech/') || /\.(onnx|wasm)$/.test(url.pathname)) engines.push(url.pathname);
+    if (FORBIDDEN_ENGINE_PATH.test(url.pathname) || /\.wasm$/.test(url.pathname)) engines.push(url.pathname);
     await route.continue();
   });
   await page.addInitScript(offline);

@@ -35,7 +35,6 @@ test('the committed notices flag what the product ships today, in the JSON and a
   assert.deepEqual(flagged.mediabunny, ['copyleft-weak']);
   assert.deepEqual(flagged['OpenStreetMap data'], ['share-alike-data']);
   assert.deepEqual(flagged['pdf.js QuickJS sandbox'], ['licence-text-missing-from-package', 'unverified']);
-  assert.deepEqual(flagged['Piper LJSpeech medium voice model (int8)'], ['unverified']);
   assert.deepEqual(flagged['Denton typeface'], ['proprietary-licence-held-outside-repo']);
   // Packages that ship no licence file carry the canonical text of their declared licence.
   const tr46 = fresh.entries.find(entry => entry.name === 'tr46');
@@ -161,14 +160,15 @@ test('an item with no recorded reason is still listed and flagged; reason files 
   const dir = scratchRoot(t);
   const file = path.join(dir, ALLOWLIST);
   const allowlist = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const piper = result => result.entries.find(entry => entry.name === 'Piper LJSpeech medium voice model (int8)');
-  fs.writeFileSync(file, JSON.stringify({...allowlist, entries: allowlist.entries.filter(entry => !entry.name.startsWith('Piper'))}));
+  const quickjs = result => result.entries.find(entry => entry.name === 'pdf.js QuickJS sandbox');
+  fs.writeFileSync(file, JSON.stringify({...allowlist, entries: allowlist.entries.filter(entry => entry.name !== 'pdf.js QuickJS sandbox')}));
   let result = collectNotices(dir);
   assert.deepEqual(result.errors, []);
-  assert.ok(result.warnings.some(warning => warning.startsWith('Piper LJSpeech') && warning.includes('no reason recorded')));
-  assert.deepEqual([piper(result).license, piper(result).flags], [UNVERIFIED, ['unverified']]);
-  assert.match(piper(fresh).obligations[0].note, /^The pinned voice model card lists the LJ Speech dataset as public domain/);
-  assert.doesNotMatch(piper(result).obligations[0].note, /LJ Speech/);
+  assert.ok(result.warnings.some(warning => warning.startsWith('pdf.js QuickJS sandbox') && warning.includes('no reason recorded')));
+  assert.deepEqual([quickjs(result).license, quickjs(result).flags.includes('unverified')], [UNVERIFIED, true]);
+  const unverified = item => item.obligations.find(obligation => obligation.flag === 'unverified').note;
+  assert.match(unverified(quickjs(fresh)), /^pdfjs-dist ships quickjs-eval\.js\/\.wasm without a license file/);
+  assert.doesNotMatch(unverified(quickjs(result)), /quickjs-eval/);
   fs.writeFileSync(file, JSON.stringify({...allowlist, entries: [...allowlist.entries, {name: 'Removed font', reason: 'no longer shipped anywhere in the product'}]}));
   result = collectNotices(dir);
   assert.deepEqual(result.errors, []);
@@ -231,10 +231,10 @@ test('broken input still fails: a corrupted or missing package manifest is an er
   assert.equal(result.errors.length, 2);
 });
 
-test('generation fails when pinned speech license copies drift from the upstream reference manifest', t => {
-  const dir = scratchRoot(t);
-  fs.appendFileSync(path.join(dir, 'licenses/whisper-MIT.txt'), '\nmodified');
-  assert.ok(collectNotices(dir).errors.some(error => error.includes('licenses/whisper-MIT.txt does not match')));
+test('the notices carry no entries for the removed speech runtimes or models', () => {
+  // Spelled in pieces so the repository-wide search (test/llama-cpp-only.test.mjs) stays clean.
+  const banned = new RegExp(['on' + 'nx', 'sher' + 'pa', 'k2' + 'fsa', 'pi' + 'per-voices'].join('|'), 'i');
+  assert.deepEqual(fresh.entries.filter(entry => banned.test(`${entry.name}\n${entry.version}\n${entry.source}`)).map(entry => entry.name), []);
 });
 
 function scratchRoot(t, {ownNodeModules = false} = {}) {

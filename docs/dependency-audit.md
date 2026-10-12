@@ -134,10 +134,8 @@ commit always yields the same bytes (`test/sbom.test.mjs`).
 | npm production packages (web bundle, and the same bundle inside each APK) | `package-lock.json` | registry tarball SHA-512 |
 | Bundled font files | `apps/app/public` | SHA-256 of the committed bytes |
 | OCR WebAssembly cores | `licenses/tesseract-core/sources.json` | SHA-256 |
-| Web speech model and ONNX Runtime Web files | `config/browser-speech.json` | SHA-256 |
 | Android runtime classpath (71 coordinates) | `licenses/android-runtime-classpath.json`, hashes from `android/gradle/verification-metadata.xml` | SHA-256 of the .aar or .jar (Gradle module metadata or POM for a multiplatform or BOM root) |
-| Speech AAR and native libraries per ABI | `android/local-speech/runtime-manifest.json` | SHA-256 |
-| Speech model and source archives, lexicon | pinned upstream `local-speech` manifests | SHA-256 |
+| libelizainference voice-host libraries per ABI and GGUF speech models (when qualified) | `android/voice-host/qualified-voice-host.json` ([fused speech](fused-speech.md)) | SHA-256 and bytes |
 | elizaOS | `upstream.lock.json` | git commit |
 | Staged resident runtime, with `--packaged-runtime` only: Bun, every bundled agent and workflow-worker npm package, every staged payload file (musl loader, C++ runtime libraries, PGlite) | the staged `assets/agent` payload, its `android-agent-runtime-provenance.json` and `generate-licenses.mjs --packaged-runtime` | SHA-256 of each staged file, checked against the provenance; a bundled package carries the hash of the bundle or the staged `package.json` that holds it |
 
@@ -390,9 +388,10 @@ Both settings are covered by unit tests of the shared functions
 (`test/font-license.test.mjs`) and the verify-apks wiring by source assertions; neither has
 been run against built APKs in this change.
 
-Five other entries of the committed notices are `license unverified` (the Piper voice model,
-Sherpa-ONNX native build dependencies, the resident runtime payload, the pdf.js QuickJS
-sandbox and the ONNX Runtime Web linked components). They are flagged `unverified`, are not
+Two other entries of the committed notices are `license unverified` (the resident runtime
+payload and the pdf.js QuickJS sandbox; the retired speech engines' entries were removed with
+those engines under P-10). Once the voice-host record exists, the elizaOS voice sources fused
+into libelizainference and any model without a verified licence are also `unverified`. They are flagged `unverified`, are not
 fonts and are not reported by this check. Under P-09 they block nothing; they have not been
 reviewed.
 

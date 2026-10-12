@@ -9,14 +9,24 @@ test('a profile without saved speech settings retains the supplied environment',
  const env={PATH:'/usr/bin',ALPHA_LOCAL_TTS:'off'};assert.deepEqual(developmentSpeechEnvironment(profile(t),env),env);
 });
 test('saved speech paths survive an ordinary restart without shell overrides',t=>{
- const saved={ALPHA_LOCAL_ASR:'required',ALPHA_LOCAL_TTS:'required',ALPHA_WHISPER_BACKEND:'auto',ALPHA_WHISPER_BIN:'/tools/whisper',ALPHA_ASR_MODEL:'/models/asr.bin',ALPHA_TTS_LIBRARY:'/tools/libinference.dylib',ALPHA_TTS_MODEL_DIR:'/models/kokoro'};
+ const saved={ALPHA_LOCAL_ASR:'required',ALPHA_LOCAL_TTS:'required',ALPHA_WHISPER_BACKEND:'auto',ALPHA_WHISPER_BIN:'/tools/whisper',ALPHA_ASR_MODEL:'/models/asr.bin',ALPHA_TTS_LIBRARY:'/tools/libinference.dylib',ELIZA_KOKORO_MODEL_DIR:'/models/kokoro'};
  const directory=profile(t,saved);assert.deepEqual(developmentSpeechEnvironment(directory,{PATH:'/usr/bin'}),{...saved,PATH:'/usr/bin'});assert.deepEqual(developmentSpeechEnvironment(directory,{}),saved);
+});
+test('a saved file with the retired model-directory key is read as the upstream ELIZA_KOKORO_MODEL_DIR',t=>{
+ const warn=console.warn,warnings=[];console.warn=message=>warnings.push(message);
+ try{
+  assert.deepEqual(developmentSpeechEnvironment(profile(t,{ALPHA_LOCAL_TTS:'required',ALPHA_TTS_MODEL_DIR:'/models/kokoro'}),{}),{ALPHA_LOCAL_TTS:'required',ELIZA_KOKORO_MODEL_DIR:'/models/kokoro'});
+  // The upstream key wins over a stale retired one.
+  assert.deepEqual(developmentSpeechEnvironment(profile(t,{ALPHA_TTS_MODEL_DIR:'/old',ELIZA_KOKORO_MODEL_DIR:'/new'}),{}),{ELIZA_KOKORO_MODEL_DIR:'/new'});
+  assert.throws(()=>developmentSpeechEnvironment(profile(t,{ALPHA_TTS_MODEL_DIR:'relative'}),{}),/absolute asset paths/);
+ }finally{console.warn=warn;}
+ assert.ok(warnings.every(message=>/ALPHA_TTS_MODEL_DIR is read as ELIZA_KOKORO_MODEL_DIR/.test(message))&&warnings.length===3);
 });
 test('explicit environment choices including voice off override saved defaults without mutation',t=>{
  const directory=profile(t,{ALPHA_LOCAL_TTS:'required',ALPHA_TTS_LIBRARY:'/saved/library'}),env={ALPHA_LOCAL_TTS:'off',ALPHA_TTS_LIBRARY:'/override/library'};
  assert.deepEqual(developmentSpeechEnvironment(directory,env),env);assert.equal(developmentSpeechEnvironment(directory,{}).ALPHA_LOCAL_TTS,'required');
 });
-for(const raw of ['{broken',null,[],{ALPHA_LOCAL_TTS:'silent'},{ALPHA_TTS_LIBRARY:'relative/library'},{ALPHA_TTS_MODEL_DIR:'/path\0bad'},{CEREBRAS_API_KEY:'synthetic-do-not-echo'},{NODE_OPTIONS:'--inspect'}])test(`invalid saved speech settings fail closed: ${JSON.stringify(raw)}`,t=>{
+for(const raw of ['{broken',null,[],{ALPHA_LOCAL_TTS:'silent'},{ALPHA_TTS_LIBRARY:'relative/library'},{ELIZA_KOKORO_MODEL_DIR:'/path\0bad'},{CEREBRAS_API_KEY:'synthetic-do-not-echo'},{NODE_OPTIONS:'--inspect'}])test(`invalid saved speech settings fail closed: ${JSON.stringify(raw)}`,t=>{
  assert.throws(()=>developmentSpeechEnvironment(profile(t,raw),{}),error=>!error.message.includes('synthetic-do-not-echo'));
 });
 test('saved settings reject shared access and symlinks instead of reading an alternate file',t=>{

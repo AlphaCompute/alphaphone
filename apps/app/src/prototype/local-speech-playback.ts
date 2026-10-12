@@ -66,7 +66,7 @@ async function readNote(text: string, owner: { noteId?: string }): Promise<'fini
   const signal = reading.controller.signal;
   try {
     await retirement;
-    if ('ready' in voice && !await voice.ready(signal)) { if (noteReading === reading) { noteReading = undefined; noteReadingChanged(); } return 'unavailable'; }
+    if ('playbackReady' in voice && !await voice.playbackReady(signal)) { if (noteReading === reading) { noteReading = undefined; noteReadingChanged(); } return 'unavailable'; }
     if (noteReading !== reading || signal.aborted) return 'stopped';
     const pending=reading.pending=speakOnDevice(passage, signal, () => { if (noteReading === reading) { reading.state = 'reading'; noteReadingChanged(); } });await pending;
     return noteReading === reading && !signal.aborted ? 'finished' : 'stopped';
@@ -141,9 +141,9 @@ export function installLocalSpeechPlayback(Component: Shell) {
       if (cloud && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId)) { stop(shell);connectionController.openCloudAccount();return; }
       const voice = cloud ? createCloudVoice() : createOnDeviceVoice(); if (!voice) {stop(shell);return;}
       state.message=cloud?'Preparing audio…':'Preparing audio on this phone…';refresh(shell);
-      if ('ready' in voice) {
+      if ('playbackReady' in voice) {
         planLocalSpeech(text);
-        if (!await voice.ready(controller.signal)) throw new Error('On-device speech models are unavailable. The written message is still available.');
+        if (!await voice.playbackReady(controller.signal)) throw new Error('On-device speech models are unavailable. The written message is still available.');
       }
       if (!current()) return;
       state.message = 'Reading aloud…'; refresh(shell);

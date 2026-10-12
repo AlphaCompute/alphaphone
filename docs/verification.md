@@ -8,7 +8,7 @@ and [pilot runbook](pilot-acceptance-runbook.md) for remaining product acceptanc
 ## Source and packaging
 
 Run `npm ci` and `npm run verify` with the toolchain documented in the README.
-Prepare the pinned speech assets using [local speech setup](../scripts/local-speech/README.md),
+Build and stage the libelizainference voice host as described in [fused speech](fused-speech.md),
 then run `npm run agent:prepare`, `npm run agent:build-workflow-worker`,
 `npm run agent:stage-android` and `npm run android:build` with JDK 21 and the configured Android SDK. Plain
 `npm run android:build` requires an earlier `npm run agent:prepare` and, for release
@@ -42,6 +42,19 @@ build type, packaged runtime or signing certificate contradicts the row that adm
 `apk-manifest.json` is an unsigned record: speech qualification and licence blockers cannot be
 re-derived from the APK, so for those the manifest written by `verify-apks` is the evidence and
 must come from the build being installed.
+
+### Speech engine (decision P-10)
+
+On-device and local speech run only on libelizainference ([fused speech](fused-speech.md)).
+Each kind of evidence proves only its own class:
+
+| Check | Class | What it does not prove |
+| --- | --- | --- |
+| `node --test test/llama-cpp-only.test.mjs test/voice-host-record.test.mjs`, `npm run audit:bundle` | S | That any voice-host binary exists or works |
+| `test/browser/browser-speech.spec.ts` (stub agent), `production-surface.spec.ts` | S (browser) | Real agent speech quality |
+| An APK whose staged voice-host libraries match `android/voice-host/qualified-voice-host.json` | B | That speech runs |
+| Voice-host instrumentation on an emulator (x86_64 needs a qualified x86_64 host) | E | A phone, an AOSP image or intelligibility on hardware |
+| The same on a physical phone, with a person judging transcripts and playback | D | Other devices or ABIs |
 
 ## Browser behavior
 
@@ -247,15 +260,15 @@ results](mvp-audit-2026-10-11.md#implementation-results)). No APK was assembled,
 started and no workflow was dispatched, so nothing here is class B (beyond a compile), E, I, R
 or D. The latest emulator record is still round 8, below.
 
-- `npm run verify` stops at `browser-speech:prepare` because `onnxruntime-web` is not
-  installed in the shared `node_modules`. With a lockfile-identical `node_modules` that has it:
-  `browser-speech:prepare` OK, `tsc --noEmit` clean, the nine node test files that had failed
+- `npm run verify` stopped at the since-removed browser speech asset step because that
+  engine's runtime package was not installed in the shared `node_modules`. With a
+  lockfile-identical `node_modules` that had it: the asset step OK, `tsc --noEmit` clean, the nine node test files that had failed
   for that reason 46 of 46, `scripts/test-notes-query-flow.ts` PASS, `npm run build` exit 0 and
   `npm run audit:bundle` PASS (395 files, `testMocks=false`).
 - `npm --ignore-scripts test` at load average 130 to 300: 449 passed, 70 failed. 57 failures
   were spawn timeouts of about 120 s in five native runner suites, which passed 101 of 101
-  rerun at `--test-concurrency=2` under lower load; 13 came from the missing
-  `onnxruntime-web`.
+  rerun at `--test-concurrency=2` under lower load; 13 came from the missing in-browser
+  speech runtime package (removed since, P-10).
 - Playwright `chromium` and `production` projects on the 46 spec files the packages changed:
   972 passed, 6 failed. Two are the mock calendar block clipped at 200% text
   (`accessibility-sweep.spec.ts` and the landscape-200 case; they also fail at `2560eead`), one

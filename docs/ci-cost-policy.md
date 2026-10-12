@@ -216,7 +216,7 @@ the `build` job is limited to 150 minutes and the emulator jobs to 90, 90 and 60
 gh workflow run android-emulator.yml --ref <branch> -f suite=instrumentation
 # Reading and page-question classes on the pinned Chromium 157 WebView; also builds the test-mocks pair.
 gh workflow run android-emulator.yml --ref <branch> -f suite=browser-reading
-# The unchanged LocalSpeechInstrumentedTest on x86_64 against the candidate built in that run.
+# Retired (P-10): the Sherpa speech candidate suite, kept only until the Android voice-host change removes it.
 gh workflow run android-emulator.yml --ref <branch> -f suite=local-speech
 # All three after one build.
 gh workflow run android-emulator.yml --ref <branch> -f suite=all
@@ -226,7 +226,10 @@ gh workflow run android-emulator.yml --ref <branch> -f suite=all
 | --- | --- | --- | --- | --- |
 | `instrumentation` | `instrumentation` | `npm run test:android:instrumentation` with its default classes, standalone then launcher | `android-emulator-instrumentation-<sha>-<run>-<attempt>`: `test-results/android-instrumentation/ci-default/` (`results.json`, raw output per class), `test-results/emulator-suite/instrumentation.json` | any class is failed, skipped or missing |
 | `browser-reading` | `browser-reading` | `scripts/prepare-ci-webview.mjs` (WebView 157.0.8083.0), then BrowserReadingNavigation and BrowserPageQuestion on the flag-off pair and BrowserReading, BrowserSensitiveReading and BrowserIsolatedReading on the test-mocks pair | `android-emulator-browser-reading-…`: `ci-reading/`, `ci-reading-test-mocks/`, the provider provisioning evidence | the provider cannot be installed, or any class is failed, skipped or missing |
-| `local-speech` | `local-speech` | `scripts/local-speech/requalify-runtime.py run` with networking off | `local-speech-x86_64-…`: `test-results/local-speech-x86_64/` (candidate before and after, `x86_64/instrumentation.log`, `x86_64/local-speech-evidence/`, the APK pair, `result.json`) | the canonical run does not record an x86_64 pass |
+
+The former `local-speech` suite qualified the retired Sherpa speech engine and is removed under
+decision P-10. Emulator evidence for on-device speech on libelizainference needs an x86_64
+voice host first ([fused speech](fused-speech.md)); the Android voice-host work defines that suite.
 
 The suites are implemented in `scripts/ci/emulator-suite.mjs`, which refuses to run
 outside a GitHub-hosted runner. Results are emulator-class evidence for developer-override

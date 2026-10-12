@@ -6,7 +6,10 @@ const modes = {
   ALPHA_LOCAL_TTS: ['auto', 'off', 'required'],
   ALPHA_WHISPER_BACKEND: ['auto', 'cpu'],
 };
-const paths = new Set(['ALPHA_WHISPER_BIN', 'ALPHA_ASR_MODEL', 'ALPHA_TTS_LIBRARY', 'ALPHA_TTS_MODEL_DIR']);
+const paths = new Set(['ALPHA_WHISPER_BIN', 'ALPHA_ASR_MODEL', 'ALPHA_TTS_LIBRARY', 'ELIZA_KOKORO_MODEL_DIR']);
+// Saved files written before the upstream name was adopted keep working: the retired key is read
+// as its upstream replacement (never written back), and the upstream key wins when both exist.
+const retired = {ALPHA_TTS_MODEL_DIR: 'ELIZA_KOKORO_MODEL_DIR'};
 
 /** Host-only, nonsecret asset selection. Existing asset admission still runs at startup. */
 export function developmentSpeechEnvironment(profile, inherited = process.env) {
@@ -28,6 +31,11 @@ export function developmentSpeechEnvironment(profile, inherited = process.env) {
     try { saved = JSON.parse(text); } catch { throw Error('Local speech settings must contain valid JSON.'); }
   } finally { closeSync(fd); }
   if (!saved || typeof saved !== 'object' || Array.isArray(saved)) throw Error('Local speech settings must be an object.');
+  for (const [old, replacement] of Object.entries(retired)) if (Object.hasOwn(saved, old)) {
+    if (!Object.hasOwn(saved, replacement)) saved[replacement] = saved[old];
+    delete saved[old];
+    console.warn(`local-speech.json: ${old} is read as ${replacement}; rename it there.`);
+  }
   for (const [key, value] of Object.entries(saved)) {
     if (!Object.hasOwn(modes, key) && !paths.has(key)) throw Error('Unsupported local speech setting. Store credentials separately.');
     if (typeof value !== 'string' || (Object.hasOwn(modes, key) ? !modes[key].includes(value) : !isAbsolute(value) || value.includes('\0'))) {

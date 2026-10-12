@@ -21,9 +21,9 @@ Gradle's `stageLocalAgentSources` step reads the prepared resident runtime sourc
 `artifacts/local-agent-resident-<commit>`, and release verification requires the staged
 runtime payload (without it `scripts/verify-packaged-runtime.py` exits 3). On a clean
 checkout `npm run android:build:local` runs the whole chain: an input check, `agent:prepare`,
-`agent:build-workflow-worker`, `agent:stage-android` and `android:build`. Gradle's
-`:local-speech:preBuild` also needs the speech AAR from
-[local speech setup](../scripts/local-speech/README.md). `npm run android:build` checks all of
+`agent:build-workflow-worker`, `agent:stage-android` and `android:build`. On-device speech
+uses only the libelizainference voice host ([fused speech](fused-speech.md), decision P-10).
+`npm run android:build` checks all of
 these first (`scripts/android-build-preflight.mjs`) and exits 2 with the command to run instead
 of failing inside Gradle. `npm run android:build -- --allow-unpackaged-runtime` is the developer
 path: it needs only `agent:prepare` and records release APKs without the payload as

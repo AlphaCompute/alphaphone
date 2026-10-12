@@ -6,7 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import os from 'node:os';
 import {spawnSync} from 'node:child_process';
-import {BUN_ENTRY, ROOT, collectNotices, loadTemplates, productionLockPackages, runtimeEntries} from '../scripts/generate-licenses.mjs';
+import {BUN_ENTRY, ROOT, VOICE_HOST, collectNotices, loadTemplates, productionLockPackages, runtimeEntries} from '../scripts/generate-licenses.mjs';
 import {GRADLE_VERIFICATION, LICENCE_NOT_RECORDED, buildSbom, gradleArtifactHash, gradleVerificationHashes, integrityHash, renderSbom} from '../scripts/generate-sbom.mjs';
 import {FLAGS} from '../scripts/licence-policy.mjs';
 
@@ -50,7 +50,7 @@ test('every shipped npm package is listed with its lockfile integrity, and no de
   assert.equal(prop(sbom.metadata, 'package-lock-sha256'), createHash('sha256').update(fs.readFileSync(path.join(ROOT, 'package-lock.json'))).digest('hex'));
 });
 
-test('fonts, OCR cores and web speech files carry the hashes of the pinned bytes', () => {
+test('fonts and OCR cores carry the hashes of the pinned bytes, and no web speech files ship', () => {
   const denton = byRef.get('font:apps/app/public/denton-300.woff2');
   assert.deepEqual(denton.hashes, [{alg: 'SHA-256', content: read('licenses/font-licenses.json').entries.find(entry => entry.name === 'Denton typeface').sha256[0]}]);
   // Proprietary, recorded on the owner's statement: never an open-source identifier, and flagged so nobody assumes it is redistributable.
@@ -66,17 +66,11 @@ test('fonts, OCR cores and web speech files carry the hashes of the pinned bytes
     assert.equal(font.hashes[0].content, createHash('sha256').update(fs.readFileSync(path.join(ROOT, prop(font, 'source')))).digest('hex'));
   }
   for (const [file, digest] of Object.entries(read('licenses/tesseract-core/sources.json').cores)) assert.equal(byRef.get(`ocr-core:${file}`).hashes[0].content, digest);
-  const speech = read('config/browser-speech.json');
-  for (const file of speech.files) {
-    const component = byRef.get(`browser-speech:${file.path}`);
-    assert.equal(component.hashes[0].content, file.sha256);
-    assert.equal(component.version, speech.source.revision);
-    assert.equal(prop(component, 'ships-in'), 'web', 'Android APKs omit the web speech model');
-  }
-  for (const file of speech.runtime.files) assert.equal(byRef.get(`browser-speech-runtime:${file.path}`).hashes[0].content, file.sha256);
+  // The web build ships no speech model or inference runtime: local speech runs on the agent's libelizainference.
+  assert.deepEqual(sbom.components.filter(component => /^browser-speech/.test(component['bom-ref']) || prop(component, 'ships-in') === 'web').map(component => component['bom-ref']), []);
 });
 
-test('Android coordinates, speech natives and the upstream pin match their manifests', () => {
+test('Android coordinates, the voice host and the upstream pin match their records', () => {
   const classpath = read('licenses/android-runtime-classpath.json');
   const maven = sbom.components.filter(component => component.purl?.startsWith('pkg:maven/'));
   assert.deepEqual(maven.map(component => `${component.group}:${component.name}:${component.version}`).sort(), [...classpath.coordinates].sort());
@@ -91,15 +85,14 @@ test('Android coordinates, speech natives and the upstream pin match their manif
     const [artifact] = prop(component, 'hash-of').split(' ');
     assert.ok(verified.get(coordinate).some(row => row.artifact === artifact && row.sha256 === component.hashes[0].content), coordinate);
   }
-  const manifest = read('android/local-speech/runtime-manifest.json');
-  assert.equal(byRef.get('speech:sherpa-onnx-no-espeak.aar').hashes[0].content, manifest.aarSha256);
-  for (const abi of manifest.qualifiedAbis)
-    for (const native of abi.native) {
-      const component = byRef.get(`speech-native:${abi.abi}/${native.file}`);
-      assert.equal(component.hashes[0].content, native.sha256);
-      assert.equal(prop(component, 'bytes'), String(native.bytes));
-    }
-  assert.ok(sbom.components.some(component => component.type === 'machine-learning-model' && component['bom-ref'].startsWith('speech-input:')));
+  // Speech is the libelizainference voice host only (fixture coverage: test/voice-host-record.test.mjs).
+  const banned = new RegExp(['on' + 'nx', 'sher' + 'pa', 'k2' + 'fsa', 'ort-' + 'wasm'].join('|'), 'i');
+  assert.deepEqual(sbom.components.filter(component => banned.test(JSON.stringify(component))).map(component => component['bom-ref']), []);
+  if (fs.existsSync(path.join(ROOT, VOICE_HOST))) {
+    const record = read(VOICE_HOST);
+    for (const abi of record.abis) for (const library of abi.libraries) assert.equal(byRef.get(`voice-host:${abi.abi}/${library.name}`).hashes[0].content, library.sha256);
+    for (const model of record.models) assert.equal(byRef.get(`voice-model:${model.role}/${model.name}`).hashes[0].content, model.sha256);
+  } else assert.deepEqual(sbom.components.filter(component => /^voice-(host|model):/.test(component['bom-ref'])), []);
   const upstream = read('upstream.lock.json');
   assert.equal(sbom.components.find(component => component.name === 'elizaOS').version, upstream.commit);
   assert.match(prop(sbom.metadata, 'not-covered'), /resident runtime payload/);
@@ -124,8 +117,8 @@ test('every component carries its licence expression and flags, matching the not
   assert.deepEqual([prop(npm('react'), 'licence-expression'), prop(npm('react'), 'licence-flags')], ['MIT', 'none']);
   for (const component of sbom.components.filter(item => item.purl?.startsWith('pkg:maven/'))) assert.deepEqual([prop(component, 'licence-expression'), prop(component, 'licence-flags')], ['Apache-2.0', 'none'], component.name);
   // A component whose licence this inventory does not record says so and is flagged, never left blank.
+  // (Voice-host libraries are such components; test/voice-host-record.test.mjs covers them with a fixture record.)
   const unrecorded = sbom.components.filter(component => prop(component, 'licence-expression') === LICENCE_NOT_RECORDED);
-  assert.ok(unrecorded.length > 0);
   for (const component of unrecorded) assert.equal(prop(component, 'licence-flags'), 'unverified', component['bom-ref']);
   // Flags never fail the SBOM: the script exits 0 and prints them as warnings.
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-sbom-')), 'sbom.json');

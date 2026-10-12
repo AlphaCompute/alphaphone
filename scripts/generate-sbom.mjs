@@ -12,12 +12,11 @@
  *   - package-lock.json production packages: registry tarball SHA-512 (lock integrity).
  *   - apps/app/public font files: SHA-256 of the committed bytes.
  *   - licenses/tesseract-core/sources.json: SHA-256 of the shipped OCR WebAssembly cores.
- *   - config/browser-speech.json: SHA-256 of the web build's speech model and ONNX Runtime files.
  *   - licenses/android-runtime-classpath.json: resolved Gradle runtime coordinates, each with the
  *     SHA-256 Gradle dependency verification enforces (android/gradle/verification-metadata.xml).
  *     A coordinate with no recorded hash fails generation.
- *   - android/local-speech/runtime-manifest.json and the pinned upstream local-speech manifests:
- *     SHA-256 of the speech AAR, its native libraries per ABI, and the acquired model inputs.
+ *   - android/voice-host/qualified-voice-host.json (when the voice host is qualified): SHA-256 and
+ *     size of each libelizainference voice-host library per ABI, and of each GGUF speech model.
  *   - upstream.lock.json: the pinned elizaOS commit.
  * Licences (decision P-09): every component carries `alphaphone:licence-expression` (the declared
  * expression, or "not recorded in this inventory") and `alphaphone:licence-flags` (the flags of
@@ -34,14 +33,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {AGENT_ASSETS, ANDROID_CLASSPATH, BROWSER_SPEECH_CONFIG, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, collectNotices, finishEntry, fontLicense, fontNames, loadTemplates, packagedRuntimePresent, productionLockPackages, runtimeEntries} from './generate-licenses.mjs';
+import {AGENT_ASSETS, ANDROID_CLASSPATH, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, VOICE_HOST, collectNotices, finishEntry, fontLicense, fontNames, loadTemplates, packagedRuntimePresent, productionLockPackages, runtimeEntries, voiceHostProblems} from './generate-licenses.mjs';
 import {classifyLicence, flagSummary} from './licence-policy.mjs';
 
 export const LICENCE_NOT_RECORDED = 'not recorded in this inventory';
 
 export const DEFAULT_OUTPUT = 'artifacts/sbom/alphaphone.cdx.json';
-const SPEECH_RUNTIME = 'android/local-speech/runtime-manifest.json';
-const UPSTREAM_SPEECH = 'vendor/eliza/packages/app/scripts/local-speech';
 export const GRADLE_VERIFICATION = 'android/gradle/verification-metadata.xml';
 const NOT_COVERED = 'Staged resident runtime payload (Bun, bundled agent and workflow-worker packages, PGlite, musl loader): present only after agent:stage-android; listed by generate-sbom.mjs --packaged-runtime and verified per APK by scripts/verify-packaged-runtime.py.';
 const RUNTIME_COVERED = 'Staged resident runtime payload listed from the staged files and their provenance (Bun, bundled agent and workflow-worker packages, PGlite, musl loader); a staged payload, not the bytes of a built APK.';
@@ -109,21 +106,6 @@ function ocrComponents(root) {
     properties: [property('ships-in', 'web,apk'), property('source', TESSERACT_CORE_SOURCES),
       property('statically-linked', pinned.components.map(component => `${component.name} ${component.version} (${component.license})`).join('; '))],
   }));
-}
-
-function browserSpeechComponents(root) {
-  const config = readJson(root, BROWSER_SPEECH_CONFIG);
-  const model = config.files.map(file => ({
-    type: file.role === 'encoder' || file.role === 'decoder' ? 'machine-learning-model' : 'data', 'bom-ref': `browser-speech:${file.path}`,
-    name: `${config.source.repository} ${file.path}`, version: config.source.revision, hashes: [{alg: 'SHA-256', content: file.sha256}], licenses: licenses('MIT'),
-    properties: [property('ships-in', 'web'), property('bytes', file.bytes), property('source', `${BROWSER_SPEECH_CONFIG} (${config.source.url}${file.path})`)],
-  }));
-  const runtime = config.runtime.files.map(file => ({
-    type: 'file', 'bom-ref': `browser-speech-runtime:${file.path}`, name: `${config.runtime.package} ${file.path}`, version: config.runtime.version,
-    hashes: [{alg: 'SHA-256', content: file.sha256}], licenses: licenses('MIT'),
-    properties: [property('ships-in', 'web'), property('bytes', file.bytes), property('source', BROWSER_SPEECH_CONFIG)],
-  }));
-  return [...model, ...runtime];
 }
 
 /** {"group:name:version": [{artifact, sha256}]} from Gradle dependency verification metadata. */
@@ -235,46 +217,24 @@ export function runtimeComponents(root, {agentDir = path.join(root, AGENT_ASSETS
   return out;
 }
 
-function speechComponents(root) {
-  if (!exists(root, SPEECH_RUNTIME)) return [];
-  const manifest = readJson(root, SPEECH_RUNTIME);
-  const consumer = exists(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle')
-    ? fs.readFileSync(path.join(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle'), 'utf8') : '';
-  const sherpa = consumer.match(/sherpa-onnx-([\d.]+)-no-espeak\.aar/)?.[1] ?? 'unknown';
-  const ort = exists(root, `${UPSTREAM_SPEECH}/onnxruntime-provenance.json`) ? readJson(root, `${UPSTREAM_SPEECH}/onnxruntime-provenance.json`) : [];
-  const out = [{
-    type: 'library', 'bom-ref': 'speech:sherpa-onnx-no-espeak.aar', name: 'Sherpa-ONNX (no-eSpeak Android build)', version: sherpa,
-    hashes: [{alg: 'SHA-256', content: manifest.aarSha256}], licenses: licenses('Apache-2.0'),
-    properties: [property('ships-in', 'apk'), property('source', SPEECH_RUNTIME), property('no-espeak', manifest.noEspeak === true)],
-  }];
-  for (const abi of manifest.qualifiedAbis)
-    for (const native of abi.native) {
-      const runtime = ort.find(item => item.sha256 === native.sha256);
-      out.push({
-        type: 'library', 'bom-ref': `speech-native:${abi.abi}/${native.file}`, name: `${native.file} (${abi.abi})`, version: runtime ? `ONNX Runtime ${runtime.version}` : `Sherpa-ONNX ${sherpa}`,
-        hashes: [{alg: 'SHA-256', content: native.sha256}], licenses: licenses(runtime ? runtime.license : 'Apache-2.0'),
-        properties: [property('ships-in', 'apk'), property('abi', abi.abi), property('bytes', native.bytes), property('source', SPEECH_RUNTIME),
-          ...(runtime ? [property('origin', runtime.origin)] : [property('source-archive-sha256', abi.sourceArchiveSha256), property('patch-sha256', abi.patchSha256)])],
-      });
-    }
-  const downloads = exists(root, `${UPSTREAM_SPEECH}/download-manifest.json`) ? readJson(root, `${UPSTREAM_SPEECH}/download-manifest.json`) : [];
-  for (const item of downloads) {
-    const digest = item.observedSha256 || /^sha256:([0-9a-f]{64})$/.exec(item.digest || '')?.[1];
-    if (!digest) throw new Error(`${UPSTREAM_SPEECH}/download-manifest.json: ${item.name} has no SHA-256`);
-    out.push({
-      type: /\.aar$/.test(item.name) ? 'library' : 'machine-learning-model', 'bom-ref': `speech-input:${item.name}`, name: item.name, hashes: [{alg: 'SHA-256', content: digest}],
-      externalReferences: [{type: 'distribution', url: item.browser_download_url}],
-      properties: [property('ships-in', item.archiveDistributed === false ? 'build-input (archive not distributed; see role)' : 'apk'), property('bytes', item.size), property('role', item.distributionRole ?? 'speech build input'),
-        property('source', `${UPSTREAM_SPEECH}/download-manifest.json`)],
-    });
-  }
-  const reference = exists(root, `${UPSTREAM_SPEECH}/reference-manifest.json`) ? readJson(root, `${UPSTREAM_SPEECH}/reference-manifest.json`) : [];
-  for (const item of reference.filter(entry => !entry.path.startsWith('onnxruntime-headers/') && !/LICENSE|MODEL_CARD|README/.test(entry.path)))
-    out.push({
-      type: 'data', 'bom-ref': `speech-reference:${item.path}`, name: item.path, hashes: [{alg: 'SHA-256', content: item.sha256}],
-      externalReferences: [{type: 'distribution', url: item.url}],
-      properties: [property('ships-in', 'build-input'), property('bytes', item.bytes), property('source', `${UPSTREAM_SPEECH}/reference-manifest.json`)],
-    });
+/** The libelizainference voice host: its libraries per ABI and its GGUF speech models. */
+function voiceHostComponents(root) {
+  if (!exists(root, VOICE_HOST)) return [];
+  const record = readJson(root, VOICE_HOST);
+  const problems = voiceHostProblems(record);
+  if (problems.length) throw new Error(problems.join('\n'));
+  const out = [];
+  for (const abi of record.abis)
+    for (const library of abi.libraries)
+      out.push({type: 'library', 'bom-ref': `voice-host:${abi.abi}/${library.name}`, name: `${library.name} (${abi.abi})`, version: `elizaOS fused fork ${record.forkPin}`,
+        hashes: [{alg: 'SHA-256', content: library.sha256}],
+        properties: [property('ships-in', 'apk'), property('abi', abi.abi), property('bytes', library.bytes), property('source', VOICE_HOST), property('eliza-pin', record.pin)]});
+  for (const model of record.models)
+    out.push({type: 'machine-learning-model', 'bom-ref': `voice-model:${model.role}/${model.name}`, name: model.name, version: model.revision,
+      hashes: [{alg: 'SHA-256', content: model.sha256}], licenses: licenses(model.license || UNVERIFIED),
+      externalReferences: [{type: 'distribution', url: model.source}],
+      properties: [property('ships-in', 'apk'), property('role', model.role), property('bytes', model.bytes), property('source-revision', model.revision),
+        ...(model.path ? [property('path', model.path)] : []), property('source', VOICE_HOST)]});
   return out;
 }
 
@@ -319,8 +279,8 @@ export function buildSbom(root = ROOT, {packagedRuntime = false, agentDir, sourc
   const lockText = fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8');
   const lock = JSON.parse(lockText);
   const components = strip([...withLicenceFlags(root, [
-    ...npmComponents(root, lock), ...fontComponents(root), ...ocrComponents(root), ...browserSpeechComponents(root),
-    ...gradleComponents(root), ...speechComponents(root), upstreamComponent(root),
+    ...npmComponents(root, lock), ...fontComponents(root), ...ocrComponents(root),
+    ...gradleComponents(root), ...voiceHostComponents(root), upstreamComponent(root),
   ]), ...(packagedRuntime ? runtimeComponents(root, {agentDir, sourceDir}) : [])]).sort((a, b) => a['bom-ref'].localeCompare(b['bom-ref']));
   const refs = new Set();
   for (const component of components) {
