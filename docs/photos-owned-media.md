@@ -1,8 +1,9 @@
 # Owned Photos collections and trash
 
-The production Photos adapter uses Android MediaStore for this package's published
+The owned-media adapter below uses Android MediaStore for this package's published
 images and videos only. Selected external images continue through explicit picker
-grants. These collection operations add no broad photo-library permission.
+grants. These owned collection operations need no broad photo-library permission;
+the separate [device library](#device-library-source-for-issue-408) does.
 
 Favorites (Android 11+) sets `IS_FAVORITE` on an active owned row and verifies the
 returned generation and value. Videos and Favorites are native query predicates
@@ -120,3 +121,39 @@ of the neighboring fixture. It also changes one selected row's real generation
 and requires sharing to reject before opening another chooser. The existing
 single-item receiver behavior remains supported. Typecheck passed; native build
 and both-variant execution are pending.
+
+## Device library (source for issue 408)
+
+Policy P-24 gives the local agent the full photo/video library Android permits.
+`AlphaPhotoLibraryPlugin` requests `READ_MEDIA_IMAGES`/`READ_MEDIA_VIDEO` on Android
+13+, adds `READ_MEDIA_VISUAL_USER_SELECTED` on Android 14+ (Allow all / Select photos /
+Don't allow in one dialog) and `READ_EXTERNAL_STORAGE` (manifest-capped at API 32)
+below 13. Photos > Device library shows the actual grant: Full access, Selected
+items, Not allowed or Locked. Grants are re-read on every call and on resume; a
+downgrade or revoke clears the in-memory catalog and selection.
+
+The catalog is paged newest first by MediaStore id (keyset cursor), at most 100 rows
+per read and 30 thumbnailed rows; the renderer keeps at most 2,000 rows and 240
+thumbnails. Nothing indexes in the background: a debounced ContentObserver only
+tells an open Device library to revalidate. Identities are `lib:<i|v>:<row id>:<add
+generation>` (add time below Android 11), so a reused row id is a different item;
+revisions change with bytes, size or MediaStore generation. External edits are
+reported as changed, deletes/trash as missing, and a MediaStore version change resets
+the catalog. Reads refuse while the device is locked. Locked Folder, other users and
+work-profile media are not visible through MediaStore and are not claimed.
+
+Share, favorite, trash, restore and delete of media Alpha does not own require an
+in-app review bound to exact revisions (two-minute expiry), then Android's own
+`MediaStore.create*Request` dialog or share chooser. Results report only what a fresh
+read verifies. One selected item becomes the assistant's selected object by identity
+and a local counter revision. The model-facing metadata contract excludes file and
+album names, location and pixels. Exposing search/inspect/select/review as resident
+agent actions needs an upstream Eliza assistant-plugin change; the Alpha contract is
+`apps/app/src/runtime/photo-library.ts`.
+
+Validation for this source: `test/photo-library.test.mjs` (source and contract) and
+`npm run verify`. `PhotoLibraryInstrumentedTest` (gated `photoLibrary=1`) pages 60
+fixtures and checks stable ids, search, inspect and external edit/delete/change
+detection; it has not yet been executed. Permission revoke/downgrade (kills the app
+process), Android 14 selected-only grants, reboot, real large personal libraries and
+device acceptance are separate pending gates.
