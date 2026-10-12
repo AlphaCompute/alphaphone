@@ -17,7 +17,8 @@ export const javaBinary=name=>{const home=javaHome();return home?join(home,'bin'
 const cache=join(homedir(),'.gradle/caches/modules-2/files-2.1/org.json/json/20250517');
 const cached=existsSync(cache)?readdirSync(cache).flatMap(hash=>readdirSync(join(cache,hash)).filter(name=>name==='json-20250517.jar').map(name=>join(cache,hash,name)))[0]:undefined;
 export const jsonJar=process.env.ALPHA_JSON_JAR||cached;
-export const jsonJarSkip=jsonJar?false:'Set ALPHA_JSON_JAR or install the pinned Gradle JSON test dependency';
+/** Skip reason when org.json is missing. On CI a missing jar is a failure, never a skip. */
+export const jsonJarSkip=jsonJar||process.env.CI?false:'Set ALPHA_JSON_JAR or install the pinned Gradle JSON test dependency';
 
 /** Compiles the sources (plus org.json when needed) and returns the main class's stdout. */
 export function runJvm(sources,mainClass,{json=false,args=[]}={}){
