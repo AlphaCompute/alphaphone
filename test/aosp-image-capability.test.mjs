@@ -117,8 +117,14 @@ test("permissions: standalone has none, the launcher declares read access only, 
   assert.doesNotMatch(main, /<intent><action android:name="android\.intent\.action\.SENDTO"\/><data android:scheme="smsto"\/><\/intent>/, "only the image-capable flavor can see SMS handlers");
 });
 
-test("the upstream contacts reader is included from the reviewed pin, not copied", () => {
+test("the shared contacts module stays pinned while the product limits its own read surface", () => {
   assert.match(read("android/settings.gradle"), /project\(':eliza-contacts'\)\.projectDir = new File\('\.\.\/vendor\/eliza\/plugins\/plugin-native-contacts\/android'\)/);
   assert.match(read("android/app/build.gradle"), /implementation project\(':eliza-contacts'\)/);
-  assert.match(read(`${JAVA}/AlphaTelephonyPlugin.java`), /import ai\.eliza\.plugins\.contacts\.ContactsReader;/);
+  assert.match(read(`${JAVA}/AlphaTelephonyPlugin.java`), /new TelephonyContactsCatalog\(getContext\(\)\)\.list\(query, limit, cancel\)/);
+  const catalog=read(`${JAVA}/TelephonyContactsCatalog.java`);
+  assert.match(catalog,/CONTENT_FILTER_URI/);
+  assert.match(catalog,/main\.postDelayed\(timeout,5000\)/);
+  assert.match(catalog,/records\.length\(\)==limit/);
+  assert.match(catalog,/signal\)/);
+  assert.doesNotMatch(catalog,/insert\(|update\(|delete\(/);
 });

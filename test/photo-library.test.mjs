@@ -214,7 +214,7 @@ test('native fixes: generation read before rows, trash verified only by IS_TRASH
  const watch=java.slice(java.indexOf('@PluginMethod public void watch('),java.indexOf('private void unwatch()'));
  assert.match(watch,/if \(active && observer == null && !"denied"\.equals\(scopeName\(\)\)\)/);
  assert.match(java,/if \("denied"\.equals\(now\)\) unwatch\(\);/);
- assert.match(java,/handleOnDestroy\(\) \{\s*destroyed = true;\s*unwatch\(\);/);
+ assert.match(java,/handleOnDestroy\(\) \{\s*destroyed = true;[\s\S]{0,400}?unwatch\(\);/);
  // The renderer starts the observer from the album view and stops it on close, leave and dispose.
  assert.match(adapter,/watch\(!!scope && scope\.scope !== 'denied' && !scope\.locked\);/);
  for(const where of ['close: () => { selection.clear(); review = undefined; watch(false);','reloadOnOpen = true; watch(false); }','dispose() { disposed = true; epoch++; watch(false);'])assert.ok(adapter.includes(where),where);
