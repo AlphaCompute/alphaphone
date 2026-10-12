@@ -3,6 +3,7 @@ import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from
 import { CloudPersonalProtocol, PersonalProtocolError } from './cloud-personal-protocol.ts';
 import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
 import { reviewOpaqueAttachment, type OpaqueMailAttachment } from './inbox-operation.ts';
+import { gmailCapabilitiesFor } from './gmail-grants.ts';
 /** Narrow Alpha adapter for Eliza Cloud. Contracts inspected in v3's
  * cloud/api/auth/cli-session, cloud/api/v1/eliza/{agents,google}, and
  * ui/src/api/client-cloud.ts. Native composition owns HTTP and secure storage.
@@ -438,9 +439,14 @@ export class CloudProtocol {
       ...(response.interrupted === true ? { interrupted: true } : {}),
       ...(response.noResponseReason === "ignored" ? { noResponseReason: "ignored" as const } : {}) };
   }
-  async initiateGmail(signal: AbortSignal, permission: 'read'|'send'|'drafts'|'mailbox' = 'read'): Promise<string> {
+  /** Starts Google consent. `read` asks for read access only; `modify` is the one incremental step
+   * for approved mailbox changes (gmail-grants.ts). The single-capability values remain for callers
+   * that ask for one change capability. */
+  async initiateGmail(signal: AbortSignal, permission: 'read'|'modify'|'send'|'drafts'|'mailbox' = 'read'): Promise<string> {
+    const capabilities = permission === "read" || permission === "modify" ? gmailCapabilitiesFor(permission)
+      : ["google.basic_identity", "google.gmail.triage", permission === "send" ? "google.gmail.send" : permission === "drafts" ? "google.gmail.drafts" : "google.gmail.mailbox"];
     const response = await this.call("/api/v1/eliza/google/connect/initiate", signal, { authenticated: true,
-      body: { side: "owner", capabilities: ["google.basic_identity", "google.gmail.triage", ...(permission === "read" ? [] : [permission === "send" ? "google.gmail.send" : permission === "drafts" ? "google.gmail.drafts" : "google.gmail.mailbox"])] } });
+      body: { side: "owner", capabilities } });
     let url: URL;
     try { url = new URL(string(response.authUrl)); } catch { throw new CloudProtocolError("invalid-response"); }
     if (url.origin !== "https://accounts.google.com" || url.username || url.password || url.hash) throw new CloudProtocolError("invalid-response");

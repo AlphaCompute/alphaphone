@@ -7,6 +7,8 @@ import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-a
 import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
 // Register browser implementations before any runtime module claims plugin identity.
 import './browser/register';
+import { installContactsAdapter } from './prototype/contacts-adapter';
+import { admitImageContacts } from './prototype/mvp-features';
 import {bindBrowserSpeechConnection} from './browser/agent-speech';
 import { testMocksEnabled, devSurfacesEnabled } from './build-flags';
 import { RootErrorBoundary, installGlobalErrorRecovery } from './runtime/error-boundary';
@@ -30,7 +32,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { StartupPermissions } from './startup-permissions';
 import { reopenStartupPermissions } from './startup-permission-flow';
 import { createRoot } from 'react-dom/client';
-import { Component, VIEWS } from './prototype/model.js';
+import { Component, VIEWS, ORDER } from './prototype/model.js';
 import { installReminderAdapter } from './prototype/reminder-adapter';
 import { installNoteOriginAdapter } from './prototype/note-origin-adapter';
 import { installAgentAdapter } from './prototype/agent-adapter';
@@ -91,6 +93,7 @@ if (!fixture) {
   installAgentAdapter(Component, VIEWS);
   installReminderAdapter(Component, VIEWS);
   installCalendarAdapter(Component, VIEWS);
+  if(isAndroid)installContactsAdapter(Component,VIEWS);
   installCalendarFormDraftAdapter(Component, VIEWS);
   installCalendarEditDraftAdapter(Component, VIEWS);
   installNoteOriginAdapter(Component, VIEWS);
@@ -230,8 +233,10 @@ async function mountPhone() {
       DeviceApps.launchInfo().then(info => info.assistant === true).catch(() => false),
     ]);
     assistantSurface = surface || launch;
+    const refreshImage=async()=>{const image=await DeviceApps.platformCapabilities().catch(()=>({aospImage:false,contacts:false}));const admitted=image.aospImage===true&&image.contacts===true;admitImageContacts(admitted);const index=ORDER.indexOf('contacts');if(admitted&&index<0)ORDER.push('contacts');else if(!admitted&&index>=0)ORDER.splice(index,1);if(!admitted&&shell?.S().view==='contacts')shell.goHome();};
+    await refreshImage();
     await applyDeviceLocale();
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) void applyDeviceLocale().then(() => shell?.setState({ localeRevision: Date.now() })); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) void refreshImage().then(()=>applyDeviceLocale()).then(() => shell?.setState({ localeRevision: Date.now() })); });
   } else if (devSurfacesEnabled && query.get('surface') === 'assistant') {
     // Development server only: preview the ACTION_ASSIST surface without an Android host.
     assistantSurface = true;

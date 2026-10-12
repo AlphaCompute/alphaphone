@@ -142,6 +142,17 @@ permissions. OS staging admits the product APK separately from Eliza's full app;
 release provisioning owns default roles, signing, update compatibility and
 recovery policy.
 
+Phone, Contacts and SMS exist only on the Alpha AOSP image (decision P-36). The image
+capability is decided natively by `AlphaImageCapability`: the launcher build without test
+mocks, installed from a system partition (`FLAG_SYSTEM`), with the `<package>.aosp_image`
+system feature that `scripts/stage-aosp.mjs` declares in the image product. The launcher
+flavor, test mocks, URLs and saved state never establish it. Only then does `MainActivity`
+register `AlphaTelephonyPlugin` (read-only contacts through upstream `ContactsReader`, role
+and SIM status, dialer and SMS handoffs); the renderer reads its presence from the injected
+plugin headers (`apps/app/src/runtime/aosp-image.ts`). Standalone APKs declare no contacts or
+phone-state permission. Gmail is available in both distributions through Eliza Cloud, with
+read access first and one incremental change grant (`apps/app/src/runtime/gmail-grants.ts`).
+
 Native reminders use the shared `plugin-native-reminders` engine and bridge.
 `AlphaReminders` supplies the product's existing encrypted store, preference and
 channel names, receiver/Activity identities and intent routes. `DailyApps` keeps
@@ -163,3 +174,10 @@ APK builds, emulator bridge/HOME tests, full AOSP image boot, real integrations,
 and physical-device/user acceptance are separate gates. See
 [mvp-current-status.md](mvp-current-status.md) for their current limits. A source
 pin rollback does not by itself establish APK or OS rollback compatibility.
+
+The AOSP telephony contract additionally requires the canonical production image admission
+(`AlphaImageCapabilities`): release launcher, system install and the product-partition RRO.
+The feature XML is an additional telephony contract marker, never an alternative admission path.
+Contacts uses the bounded AlphaContacts adapter and its native capability response; Phone and SMS
+views remain deferred. Telephony contact reads recheck permission, unlock and lifecycle state
+before and after asynchronous provider reads.

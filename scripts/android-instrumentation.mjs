@@ -79,6 +79,8 @@ export const CLASS_REGISTRY = {
   RealClock: { args: { realClock: "1", clockExclusive: "1" }, requires: "--clock-exclusive", grantOther: { "com.android.deskclock": ["POST_NOTIFICATIONS"] },
     note: "fixture qualified for API 35 only (it asserts the SDK level); the runner grants AOSP Clock its notification permission, which the class requires for real firing evidence" },
   Accessibility: {},
+  ContactsCatalog: { note: "Owned disposable-profile ContactsProvider fixture only; no image admission or contacts activity" },
+  ImageCapabilities: { note: "ordinary APK denial only; no AOSP image or real telephony acceptance" },
   SettingsSystemFacts: { note: "read-only comparison with this image's settings; not device acceptance of the Settings handoffs" },
   Rotation: {},
   // Core-loop classes (docs/core-loop-audit.md). Registered so their opt-in gates are passed; none
