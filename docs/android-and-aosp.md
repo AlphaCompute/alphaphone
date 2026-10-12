@@ -344,3 +344,12 @@ checkout remains pristine. `ImageCapabilitiesInstrumentedTest` exercises
 ordinary-APK denials without performing a call, message or role selection.
 Positive image admission and real Contacts/Telecom/SMS behavior remain open in
 #420, including roles, owned endpoints, carrier identity and unknown-send recovery.
+
+Contacts adapter work adds same-profile, permission-gated bounded provider reads only
+inside the admitted image. Contact rows remain in renderer memory. Creation and editing
+use a pinned system Contacts editor with account selection and save handled by Android;
+Alpha has no WRITE_CONTACTS permission or import/export path. Native selection checks bind
+provider ID, lookup key and last-update revision before edit handoff. Phone and SMS adapters
+remain disabled. The ContactsCatalog instrumentation class creates and cleans only its
+own synthetic contacts in a disposable profile; this provider test is not image admission,
+real address-book acceptance, or a Telecom/SMS result.

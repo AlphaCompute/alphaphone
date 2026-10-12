@@ -18,5 +18,9 @@ export const DEFERRED_MVP_VIEWS = new Set(["phone", "messages", "contacts", "wal
 if(browserDevProfile){for(const view of DEFERRED_MVP_VIEWS)ENABLED_MVP_VIEWS.add(view);DEFERRED_MVP_VIEWS.clear();}
 export function isMvpView(view: string) { return ENABLED_MVP_VIEWS.has(view); }
 export function deferredMvpPrompt(text: unknown) {
+  if(isMvpView("contacts")&&/^(?:open|show|go to|launch)\s+(?:the\s+)?contacts\b/i.test(String(text).trim()))return false;
   return /^(?:(?:open|show|go to|launch)\s+(?:the\s+)?(?:phone|dialer|sms|messages|contacts|wallet)(?:\b)|(?:call|dial|text|sms|pay)\b|(?:send|write)\s+(?:an?\s+)?(?:sms|text message)\b)/i.test(String(text).trim());
 }
+
+/** Native image admission enables only implemented adapters; Phone/SMS remain unavailable. */
+export function admitImageContacts(admitted:boolean){if(browserDevProfile)return;if(admitted){ENABLED_MVP_VIEWS.add("contacts");DEFERRED_MVP_VIEWS.delete("contacts");}else{ENABLED_MVP_VIEWS.delete("contacts");DEFERRED_MVP_VIEWS.add("contacts");}}
