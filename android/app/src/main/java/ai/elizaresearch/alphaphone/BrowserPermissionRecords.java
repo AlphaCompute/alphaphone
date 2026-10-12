@@ -44,7 +44,7 @@ final class BrowserPermissionRecords {
    if(next!=',')throw new IllegalArgumentException();
   }
  }
- private static Map<String,Map<String,Boolean>> endOfRecord(JSONTokener tokens,Map<String,Map<String,Boolean>> sites){
+ private static Map<String,Map<String,Boolean>> endOfRecord(JSONTokener tokens,Map<String,Map<String,Boolean>> sites)throws Exception{
   if(tokens.nextClean()!=0)throw new IllegalArgumentException();
   return sites;
  }
