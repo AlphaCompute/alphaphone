@@ -38,22 +38,28 @@ async function fenceNetwork(page: Page, allowed: string[] = []) {
 
 /** Production Android as the renderer sees it: funded Cloud account, packaged resident agent that
  * keeps its conversations across a page reload, an intercepted Clock handoff and a native browser
- * whose pages are synthetic (no WebView loads anything). */
-async function android(page: Page, options: { clock?: 'opened' | 'unavailable' | 'unknown' } = {}) {
+ * whose pages are synthetic (no WebView loads anything). `voice` adds the native recorder whose
+ * Cloud transcription returns that text, retained note audio, native reminders and one writable
+ * device calendar; `signedOut` starts with no Cloud sign-in. */
+async function android(page: Page, options: { clock?: 'opened' | 'unavailable' | 'unknown'; voice?: string; signedOut?: boolean } = {}) {
   await page.addInitScript(({ options }) => {
     const w = window as any; w.androidBridge = {};
     const id = '9f1dc45a-4011-4e44-947a-30d999d24fa5', agentId = '6f1d3c3e-8c55-4c1b-9d1f-2b6f0b0d3a11';
     const kept = (key: string, initial: unknown) => { try { return JSON.parse(sessionStorage.getItem(key) || 'null') ?? initial; } catch { return initial; } };
     // Keystore-backed slots and the resident agent's own store both survive a reload of the page.
-    const slots: Record<string, string> = kept('core-loops-slots', { 'cloud:production': JSON.stringify({ token: 'synthetic-cloud-key', credentialId: id, expiresAt: Date.now() + 86_400_000 }) });
+    const slots: Record<string, string> = kept('core-loops-slots', options.signedOut ? {} : { 'cloud:production': JSON.stringify({ token: 'synthetic-cloud-key', credentialId: id, expiresAt: Date.now() + 86_400_000 }) });
+    // What the native side keeps across a reload: scheduled reminders and device calendar rows.
+    const device: { reminders: any[]; events: any[] } = kept('core-loops-device', { reminders: [], events: [] });
     const agent: { conversations: { id: string; title: string }[]; history: Record<string, any[]> } = kept('core-loops-agent', { conversations: [], history: {} });
-    const persist = () => { sessionStorage.setItem('core-loops-slots', JSON.stringify(slots)); sessionStorage.setItem('core-loops-agent', JSON.stringify(agent)); };
+    const persist = () => { sessionStorage.setItem('core-loops-slots', JSON.stringify(slots)); sessionStorage.setItem('core-loops-agent', JSON.stringify(agent)); sessionStorage.setItem('core-loops-device', JSON.stringify(device)); };
     const f = w.coreLoops = { calls: [] as string[], posts: [] as string[], views: [] as string[], conversations: [] as string[], bodies: [] as string[], replies: [] as string[], streams: 0, cancelled: 0, aborts: 0, clock: [] as unknown[], hold: false, release: null as null | (() => void), unexpected: [] as string[],
       // AlphaBrowser: tabs the renderer created, with the address and navigation number each one
       // committed; `excerpt` is what reviewQuestion returns, and `questions` records its arguments.
       browser: { tabs: {} as Record<string, { session: string; url: string; navigation: number }>, sequence: 0, created: [] as string[], navigations: [] as string[], questions: [] as unknown[], excerpt: '', title: 'Harbour report' },
       // Commits a navigation of a tab, as WebView does after it loads a page (or the page navigates itself).
-      commit: (tab: string, url: string) => {}, slots };
+      commit: (tab: string, url: string) => {}, slots, device,
+      // The native recorder and Cloud transcription, and every reminder or calendar write this page asked for.
+      voice: { starts: 0, stops: 0, transcriptions: [] as any[], saved: [] as any[] }, writes: { reminders: [] as any[], events: [] as any[] } };
     const listeners: Array<{ plugin: string; event: string; callback: (value: unknown) => void }> = [];
     const emit = (streamId: string, event: unknown) => listeners.filter(l => l.plugin === 'Agent' && l.event === 'alphaAgentStream').forEach(l => l.callback({ streamId, event }));
     f.commit = (tab: string, url: string) => {
@@ -81,12 +87,14 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
     w.Capacitor = {
       PluginHeaders: [
         { name: 'DeviceApps', methods: promise(['buildInfo']) },
-        { name: 'DailyApps', methods: withListeners(['surfaceInfo', 'clockHandoff']) },
+        { name: 'DailyApps', methods: withListeners(['surfaceInfo', 'clockHandoff', ...(options.voice ? ['listReminders', 'scheduleReminder', 'pendingReminderTap'] : [])]) },
         { name: 'Agent', methods: withListeners(['getStatus', 'start', 'stop', 'configureCloudProvider', 'request', 'providerStatus', 'requestStream', 'cancelStream']) },
         { name: 'AlphaConnection', methods: promise(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
         { name: 'AlphaActionJournal', methods: promise(['list', 'get']) },
         { name: 'AlphaNotifications', methods: promise(['status', 'crossAppStatus']) },
-        { name: 'AlphaVoiceCloud', methods: promise(['checkPermissions']) },
+        { name: 'AlphaVoiceCloud', methods: options.voice || options.signedOut ? withListeners(['checkPermissions', 'startRecording', 'stopRecording', 'getRecordingMetrics', 'cancelRecording', 'transcribeRecording', 'saveRecording', 'cancel', 'synthesize', 'play', 'stopPlayback']) : promise(['checkPermissions']) },
+        ...(options.voice ? [{ name: 'AlphaNoteAudio', methods: promise(['play', 'stop', 'state', 'describe']) },
+          { name: 'AlphaCalendar', methods: withListeners(['list', 'requestAccess', 'pendingCreations', 'listAlerts', 'save', 'acknowledgeCreation']) }] : []),
         { name: 'AlphaBrowser', methods: withListeners(['create', 'navigate', 'present', 'close', 'command', 'bookmarks', 'setBookmark', 'browsingState', 'saveBrowsingState', 'cancelReading', 'reviewQuestion']) },
       ],
       nativeCallback: (plugin: string, method: string, input: any, callback: (value: unknown) => void) => { if (method === 'addListener') listeners.push({ plugin, event: input?.eventName, callback }); return String(listeners.length); },
@@ -94,10 +102,44 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
         f.calls.push(plugin + '.' + method);
         if (plugin === 'DeviceApps') return { launcher: true, version: 'core-loops' };
         if (plugin === 'AlphaNotifications') return { permissionGranted: true, appEnabled: true };
-        if (plugin === 'AlphaVoiceCloud') return { microphone: 'granted' };
+        if (plugin === 'AlphaVoiceCloud') {
+          const v = f.voice;
+          if (method === 'checkPermissions') return { microphone: 'granted' };
+          if (method === 'startRecording') { v.starts++; return { recordingId: 'recording-' + v.starts, maxDurationMs: 59000 }; }
+          if (method === 'getRecordingMetrics') return { recordingId: input.recordingId, peak: 0.4, rms: 0.2 };
+          if (method === 'stopRecording') { v.stops++; return { recordingId: 'recording-' + v.starts, durationMs: 3000 }; }
+          // Eliza Cloud transcription, answered for the signed-in account only.
+          if (method === 'transcribeRecording') { v.transcriptions.push(structuredClone(input)); if (input.environment !== 'production' || input.credentialId !== id) throw Error('Wrong synthetic Cloud account'); return { text: options.voice, local: false }; }
+          if (method === 'saveRecording') { const audio = { audioId: input.recordingId, noteId: input.noteId, durationMs: 3000, transcript: input.transcript }; v.saved.push(audio); return audio; }
+          if (['cancelRecording', 'cancel', 'stopPlayback'].includes(method)) return {};
+        }
+        if (plugin === 'AlphaNoteAudio') {
+          if (method === 'describe') return f.voice.saved.find((audio: any) => audio.audioId === input.audioId) ?? { audioId: input.audioId, noteId: '', durationMs: 3000, transcript: '' };
+          if (method === 'state') return { playing: false, positionMs: 0 };
+          return {};
+        }
+        if (plugin === 'AlphaCalendar') {
+          // One writable device calendar; rows are what CalendarProvider holds after a save.
+          if (method === 'requestAccess') return { status: 'granted' };
+          if (method === 'list') return { status: 'ready', calendars: [{ id: '7', name: 'Personal', writable: true, account: 'owner@example.invalid', local: false }],
+            events: device.events.filter((row: any) => row.end > input.begin && row.begin < input.end), truncated: false };
+          if (method === 'pendingCreations') return { status: 'ready', creations: [] };
+          if (method === 'listAlerts') return { items: [] };
+          if (method === 'save') { f.writes.events.push(structuredClone(input)); const row = { id: String(100 + device.events.length), calendarId: input.calendarId, title: input.title, body: input.body, location: input.location, begin: input.begin, end: input.end, allDay: false, recurring: false }; device.events.push(row); persist(); return { status: 'saved', id: row.id, creationId: input.creationId }; }
+          if (method === 'acknowledgeCreation') return { status: 'acknowledged' };
+        }
         if (plugin === 'AlphaActionJournal') return method === 'list' ? { entries: [] } : { entry: null };
         if (plugin === 'DailyApps') {
-          if (method === 'surfaceInfo') return { developmentBuild: false, assistant: false };
+          if (method === 'surfaceInfo') return { developmentBuild: false, assistant: false, ...(options.voice ? { reminderTimingVersion: 2 } : {}) };
+          if (method === 'listReminders') return { reminders: structuredClone(device.reminders) };
+          if (method === 'pendingReminderTap') return {};
+          // Android keeps the reminder and schedules its alert inexactly; one with no alert stays pending.
+          if (method === 'scheduleReminder') {
+            f.writes.reminders.push(structuredClone(input));
+            const silent = input.alertMinutes === null, status = silent ? 'pending' : 'scheduled', mode = silent ? 'none' : 'inexact';
+            device.reminders.push({ id: input.id, title: input.title, body: input.body ?? '', at: input.at, dueAt: input.dueAt, alertMinutes: input.alertMinutes, ...(input.recurrence ? { recurrence: input.recurrence } : {}), status, mode, occurrenceId: input.id + ':' + input.at, createdAt: Date.now() }); persist();
+            return { status, id: input.id, mode };
+          }
           f.clock.push(input);
           if (options.clock === 'unknown') return { action: input.action, status: 'unknown', message: 'Clock result is unknown. Check Clock before repeating the request.' };
           return options.clock === 'unavailable' ? { action: input.action, status: 'unavailable', message: 'No Clock app can handle this request.' }
@@ -717,6 +759,126 @@ test('loop J05 on Android: a page navigation closes the open review, and an agen
   await expect(page.getByRole('dialog', { name: 'Save reviewed summary note' })).toHaveCount(0);
   expect(await savedNotes(page)).toEqual([]);
   expect(await native(page, f => f.unexpected)).toEqual([]);
+});
+
+const TRANSCRIPT = 'Meeting: we agreed to book the venue for Friday and email the caterer.';
+const SUMMARY = 'The team agreed to book the venue.';
+const ACTIONS = 'Book the venue\nEmail the caterer';
+
+test('loop B / J02 on Android: a recorded note, a resident summary and reviewed hand-offs save one reminder and one device event, each only on Save', async ({ page }) => {
+  test.setTimeout(240_000);
+  const foreign = await fenceNetwork(page);
+  await android(page, { voice: TRANSCRIPT });
+  await residentHome(page);
+  const writes = () => native(page, f => ({ reminders: f.writes.reminders.length, events: f.writes.events.length }));
+
+  // 1. Record with the native recorder, transcribe with Eliza Cloud, review and save the note.
+  await button(page, 'Notes').click();
+  await button(page, 'Record and transcribe').click();
+  await button(page, 'Start recording').click();
+  await expect(button(page, 'Stop recording')).toBeVisible();
+  await button(page, 'Stop recording').click();
+  await button(page, 'Transcribe with Eliza Cloud').click();
+  await expect(page.getByRole('textbox', { name: 'Review transcript', exact: true })).toHaveValue(TRANSCRIPT);
+  // One upload, bound to the signed-in Cloud account; nothing is saved before Save note.
+  expect(await native(page, f => f.voice.transcriptions.map((row: any) => [row.environment, row.credentialId]))).toEqual([['production', '9f1dc45a-4011-4e44-947a-30d999d24fa5']]);
+  expect(await savedNotes(page)).toEqual([]);
+  await button(page, 'Save note').click();
+  await expect(button(page, 'Play recording')).toBeVisible();
+  await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Venue meeting');
+  await expect.poll(async () => (await savedNotes(page)).filter(n => n.kind === 'voice' && n.title === 'Venue meeting' && n.body === TRANSCRIPT && !!n.audio?.audioId).length).toBe(1);
+  const recorded = (await savedNotes(page))[0];
+
+  // 2. Review the transcript with the resident agent; its answer is a summary and action items.
+  await page.evaluate(reply => { (window as any).coreLoops.replies = [reply]; }, JSON.stringify({ summary: SUMMARY, actions: ACTIONS.split('\n') }));
+  await button(page, 'Review transcript with Alpha').click();
+  const question = page.getByRole('dialog', { name: 'Ask about selected content' });
+  await expect(question.getByRole('textbox', { name: 'Content excerpt' })).toHaveValue(TRANSCRIPT);
+  await question.getByRole('button', { name: 'Use in conversation', exact: true }).click();
+  await button(page, 'Send').click();
+  const card = page.getByRole('button', { name: /^Review summary note/ });
+  await expect(card).toHaveCount(1, { timeout: 20_000 });
+  expect(await native(page, f => f.posts.length)).toBe(1);
+  expect(await native(page, f => f.posts[0])).toContain(TRANSCRIPT);
+  await card.click();
+  const summary = page.getByRole('dialog', { name: 'Save reviewed summary note' });
+  await expect(summary.getByRole('textbox', { name: 'Summary note text' })).toHaveValue(SUMMARY);
+  await expect(summary.getByRole('textbox', { name: 'Action items, one per line' })).toHaveValue(ACTIONS);
+  expect((await savedNotes(page))[0]).toEqual(recorded);
+  await summary.getByRole('button', { name: 'Save recording summary', exact: true }).click();
+  await expect(summary).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Recording summary saved/ })).toHaveCount(1);
+  expect((await savedNotes(page))[0]).toMatchObject({ id: recorded.id, audio: recorded.audio, body: TRANSCRIPT, summary: [SUMMARY], actions: [{ t: 'Book the venue', done: false }, { t: 'Email the caterer', done: false }] });
+  // Saving the summary schedules nothing.
+  expect(await writes()).toEqual({ reminders: 0, events: 0 });
+
+  // 3. Reminder draft from the note: reviewed in Calendar, written once on Save.
+  await button(page, 'Minimize chat').click();
+  await button(page, 'Review reminder draft').click();
+  await expect(page.getByRole('textbox', { name: 'Notes', exact: true })).toHaveValue(ACTIONS);
+  expect(await writes()).toEqual({ reminders: 0, events: 0 });
+  await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Book the venue');
+  await button(page, 'Save event').click();
+  await expect.poll(writes).toEqual({ reminders: 1, events: 0 });
+  const reminder = (await native(page, f => f.writes.reminders))[0];
+  expect(reminder).toMatchObject({ title: 'Book the venue', body: ACTIONS });
+  await page.getByRole('button', { name: /^Book the venue,/ }).click();
+  await expect(page.getByText('From note: Venue meeting', { exact: true })).toBeVisible();
+
+  // 4. Calendar event draft from the note: written once to the device calendar on Save.
+  await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
+  await button(page, 'Notes').click();
+  await button(page, 'Open Venue meeting').click();
+  await button(page, 'Review calendar event draft').click();
+  await expect(page.getByRole('textbox', { name: 'Notes', exact: true })).toHaveValue(ACTIONS);
+  expect(await writes()).toEqual({ reminders: 1, events: 0 });
+  await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Venue walkthrough');
+  await button(page, 'Save event').click();
+  await expect(page.getByRole('heading', { name: 'Venue walkthrough', level: 1 })).toBeVisible();
+  await expect.poll(writes).toEqual({ reminders: 1, events: 1 });
+  const event = (await native(page, f => f.writes.events))[0];
+  // The note draft targets the phone's own local calendar (form calendar 'native:local').
+  expect(event).toMatchObject({ calendarId: 'local', title: 'Venue walkthrough', body: ACTIONS, begin: reminder.dueAt, end: reminder.dueAt + 3_600_000 });
+  // Device calendar rows are not linked to notes, and the event does not claim one.
+  await expect(page.getByText(/From note/)).toHaveCount(0);
+
+  // 5. Reload once: both records are still there, exactly once, and nothing is written again.
+  await page.reload();
+  await expect.poll(() => native(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
+  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
+  // Home's agenda card opens the next item; Back shows that item's day.
+  await page.getByRole('button', { name: /^Open calendar event: (Book the venue|Venue walkthrough),/ }).click();
+  await button(page, 'Back to calendar').last().click();
+  await expect(page.getByRole('button', { name: /^Book the venue,/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /^Venue walkthrough,/ })).toHaveCount(1);
+  await page.getByRole('button', { name: /^Book the venue,/ }).click();
+  await expect(page.getByText('From note: Venue meeting', { exact: true })).toBeVisible();
+  expect(await writes()).toEqual({ reminders: 0, events: 0 });
+  expect(await native(page, f => [f.device.reminders.length, f.device.events.length])).toEqual([1, 1]);
+  expect(Object.keys(await native(page, f => JSON.parse(f.slots['note-origins:v1:device']).links))).toEqual(['reminder:' + reminder.id]);
+  await expectNoDevelopmentSurface(page);
+  expect(await native(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
+});
+
+test('loop B / J02 on Android signed out: voice asks for an Eliza Cloud sign-in and nothing is captured', async ({ page }) => {
+  test.setTimeout(120_000);
+  const foreign = await fenceNetwork(page);
+  await android(page, { signedOut: true });
+  await page.goto('/');
+  await page.locator('.alpha-connection').getByRole('button', { name: 'Use local apps without AI', exact: true }).click();
+  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
+  await button(page, 'Notes').click();
+  await button(page, 'Record and transcribe').click();
+  // The recorder states the missing sign-in and offers no way to start capturing.
+  await expect(page.getByText('Sign in to Eliza Cloud to use voice.', { exact: true })).toBeVisible();
+  await expect(button(page, 'Start recording')).toHaveCount(0);
+  expect(await native(page, f => [f.voice.starts, f.voice.transcriptions.length])).toEqual([0, 0]);
+  expect(await native(page, f => f.calls.filter((call: string) => call.startsWith('AlphaVoiceCloud.') && call !== 'AlphaVoiceCloud.checkPermissions'))).toEqual([]);
+  expect(await savedNotes(page)).toEqual([]);
+  await expectNoDevelopmentSurface(page);
+  expect(await native(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
 });
 
 test('loops D and F on Android: schedules are stated as phone-bound, and mail without a Gmail grant asks for one instead of showing a mailbox', async ({ page }) => {
