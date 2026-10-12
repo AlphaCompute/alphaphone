@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { auditPage, auditTabOrder, auditTree, format } from './accessibility-audit';
-import { DEVELOPMENT_STATES, FAILURE_STATES, LIVE_STATES, MOCK_STATES, setTextScale } from './accessibility-states';
+import { CONNECTED_STATES, DEVELOPMENT_STATES, FAILURE_STATES, FIXTURE_STATES, LAUNCHER_STATES, LIVE_STATES, MOCK_STATES, setTextScale } from './accessibility-states';
 
 // MVP-48, renderer part. Every retained primary view, subview and failure screen is checked for
 // accessible names and roles, keyboard reachability, focus order and traps, contrast, pointer
@@ -57,3 +57,35 @@ test.describe('landscape', () => {
     });
   }
 });
+
+test.describe('landscape at 200% text', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 915, height: 412 } });
+  for (const state of [...LIVE_STATES, ...MOCK_STATES]) {
+    test(`landscape at 200% text keeps every control on screen, named and uncut: ${state.name}`, async ({ page }) => {
+      await state.open(page, 'light');
+      await expect(page.locator('html')).toHaveClass(/alpha-landscape/);
+      await setTextScale(page, 2);
+      await expect(page.locator('html')).toHaveClass(/alpha-large-text/);
+      // Clipping covers control-off-screen and control-unreachable; the tree covers names.
+      const found = blocking(format([...await auditPage(page, { clipping: true, overlap: true }), ...await auditTree(page)]));
+      expect(found, found.join('\n')).toEqual([]);
+    });
+  }
+});
+
+// Screens the states above do not reach: the fixture lock screen and photos-empty viewer, the
+// Android HOME (launcher) presentation, and states with a synthetic provider connected.
+for (const state of [...FIXTURE_STATES, ...LAUNCHER_STATES, ...CONNECTED_STATES]) {
+  for (const scale of [1, 2]) {
+    test(`${scale * 100}% text, names, focus and contrast: ${state.name}`, async ({ page }) => {
+      await state.open(page, 'light');
+      if (scale !== 1) await setTextScale(page, scale);
+      const found = blocking(format([
+        ...await auditTree(page),
+        ...await auditPage(page, scale === 1 ? { contrast: true, targetSize: 24, clipping: true, overlap: true } : { clipping: true, overlap: true }),
+        ...await auditTabOrder(page),
+      ]));
+      expect(found, found.join('\n')).toEqual([]);
+    });
+  }
+}
