@@ -39,7 +39,7 @@ include ':eliza-notifications'
 project(':eliza-notifications').projectDir = new File(nativePatchSource.root, 'plugins/plugin-native-notifications/android')
 
 include ':eliza-owned-media'
-project(':eliza-owned-media').projectDir = new File('../vendor/eliza/plugins/plugin-native-media/android')
+project(':eliza-owned-media').projectDir = new File(nativePatchSource.root, 'plugins/plugin-native-media/android')
 
 // Read-only contact records for the Alpha AOSP image (AlphaTelephonyPlugin). The upstream Capacitor
 // plugin class is not registered; only its ContactsReader is used.
