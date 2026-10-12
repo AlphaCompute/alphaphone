@@ -5,6 +5,27 @@ navigation, presentation, capability policy and storage configuration. Shared
 runtime, browser features, native plugins and OS tooling come from the exact
 revision in `upstream.lock.json` and `vendor/eliza`.
 
+## October 12 approved runtime and distribution policy
+
+[Owner decisions](decisions.md#october-12-owner-decisions) and the
+[implementation plan](implementation-plan.md) govern pending changes. Only a local
+resident agent is allowed; no hosted-agent connection, creation, pairing or fallback.
+Eliza Cloud supplies text inference, subscriptions, Gmail and shared Maps services.
+All STT/TTS is on-device through native Eliza inference/llama.cpp integration;
+Cloud speech is retired policy and its current code must be migrated, not claimed local.
+
+AOSP targets Pixel 10a / Android 17. Phone, Contacts and SMS are AOSP-only and need
+an image capability distinct from the launcher flavor. Wallet is outside MVP.
+The isolated always-on listener is an AOSP MVP requirement and the narrowly scoped
+exception to nonprivileged packaging; the main app stays nonprivileged. Shared
+engine/JNI work goes upstream; product policy remains in Alpha.
+
+Subscription authorization is asynchronously refreshed and cached, with server-side
+bounded quotas on existing service requests. Local speech has no billing dependency.
+Photos offers full permitted library access to the local agent; resets erase Alpha
+private state without implying remote/provider or device-wide media deletion.
+No app-data backup/import/export/transfer feature is planned.
+
 ## Source boundaries
 
 | Path | Responsibility |
@@ -20,8 +41,11 @@ revision in `upstream.lock.json` and `vendor/eliza`.
 
 Maps, Files and Notes implementations are copied from authenticated upstream
 source into a generated cache outside the submodule. Gradle includes the shared
-password manager and secure store directly from the reviewed pin. No source
-patch is applied during client, worker or resident-runtime builds. Photo edits, capture publication, the opt-in notification mirror and the delivery-receipt
+password manager directly from the reviewed pin. The secure store uses the explicit
+reviewed patch in `patches/eliza/native-manifest.json`: admission authenticates the pin,
+patch digest, target before/after hashes and complete staged module inventory. Gradle
+compiles the generated copy under `.eliza/patched-native`, never a modified submodule.
+No source patch is applied during client, worker or resident-runtime builds. Photo edits, capture publication, the opt-in notification mirror and the delivery-receipt
 ledger for Alpha's own workflow and approval notices (`NoticeDelivery`, configured by
 `WorkflowNoticeDelivery`) also use shared native modules. Alpha wrappers retain installed storage names, media paths and Android components.
 Browser policy helpers are staged from the same authenticated pin. Gradle writes shared
@@ -85,8 +109,7 @@ Alpha owns the installed alias, directory, per-slot byte limits and renderer
 namespace restrictions. Saved passwords use the separate authentication-bound vault of
 the shared password plugin; see [password-provider-setup.md](password-provider-setup.md). The ciphertext frame, hashed filename and slot AAD remain
 unchanged; writers in separate Android processes are outside this contract. Renderer preferences
-hold nonsecret selections and identifiers. Backup remains disabled until its
-key and retention policy is defined.
+hold nonsecret selections and identifiers. Backup remains disabled by the reset-only policy; no app-data transfer is planned.
 
 Standalone and launcher APKs share `ai.elizaresearch.alphaphone` and replace one
 another. Only the launcher variant declares HOME. Release outputs require
