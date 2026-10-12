@@ -13,6 +13,9 @@ for(const scope of ['occurrence','series'] as const)test(`native Calendar ${scop
   prototype.remove=async()=>{fixture.legacy++;throw Error('Legacy deletion must not be used for native scopes');};
   prototype.removeScoped=async(input:any)=>{fixture.staged.push(structuredClone(input));return {status:'queued'};};
   (window as any).Capacitor.isNativePlatform=()=>true;
+  // Direct fixture insertion does not emit the UI save-completion event. Refresh the
+  // mounted Calendar range after installing the native routing port.
+  window.dispatchEvent(new Event('alpha:calendar-committed'));
  });
  await page.getByRole('button',{name:'Calendar',exact:true}).click();await page.getByRole('button',{name:/^Scoped native fixture,/}).click();
  await page.getByRole('button',{name:scope==='series'?'Delete series':'Delete event',exact:true}).click();
