@@ -243,7 +243,7 @@ test("Capacitor's own permission request, and the shared plugins' requests an ap
   const guardedOverride = (source, method) => new RegExp(`@Override @PluginMethod public void ${method}\\(PluginCall call\\)\\{LateLaunch\\.ask\\(call,\\(\\)->super\\.${method}\\(call\\)\\);\\}`).test(source);
   // Plugin.requestPermissions is a plugin method of every plugin and launches for one that declares permissions.
   const declaring = files.filter(name => /@CapacitorPlugin\([^\n]*\bpermissions\s*=/.test(read(name)));
-  assert.deepEqual(declaring, ["AlphaCalendarPlugin.java", "AlphaHostedResultsPlugin.java", "AlphaVoiceCloudPlugin.java", "DailyAppsPlugin.java"], "the plugins that declare permissions");
+  assert.deepEqual(declaring, ["AlphaCalendarPlugin.java", "AlphaHostedResultsPlugin.java", "AlphaTelephonyPlugin.java", "AlphaVoiceCloudPlugin.java", "DailyAppsPlugin.java"], "the plugins that declare permissions");
   for (const name of declaring) assert.ok(guardedOverride(read(name), "requestPermissions"), `${name}: requestPermissions is overridden with the guard`);
 
   // A plugin that extends a shared (vendored) plugin inherits its plugin methods. The shared

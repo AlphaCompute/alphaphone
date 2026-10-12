@@ -62,6 +62,9 @@ public class AlphaTelephonyPlugin extends Plugin {
   return text.length() > MAX_TEXT ? text.substring(0, MAX_TEXT) : text;
  }
 
+ // Capacitor's inherited permission request launches through the activity; answer a late call instead of throwing.
+ @Override @PluginMethod public void requestPermissions(PluginCall call){LateLaunch.ask(call,()->super.requestPermissions(call));}
+
  @PluginMethod public void imageCapability(PluginCall call) {
   if (refused(call)) return;
   JSObject value = new JSObject();
