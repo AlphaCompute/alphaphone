@@ -24,6 +24,16 @@ public final class ResetExternalFixtureInstrumentedTest {
  private static byte[] bytes(String run){return ("Alpha reset fixture "+run).getBytes(StandardCharsets.UTF_8);}
  private static String sha(byte[] value)throws Exception{StringBuilder out=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(value))out.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return out.toString();}
  private static void write(File file,byte[] data)throws Exception{try(FileOutputStream out=new FileOutputStream(file)){out.write(data);out.getFD().sync();}}
+ private static org.json.JSONObject note(String id,String body)throws Exception{return new org.json.JSONObject().put("id",id).put("kind","text").put("title","Reset fixture").put("body",body).put("pinned",false).put("when","Saved on this device");}
+ private static String notes(String run)throws Exception{
+  String collection=run.substring(0,8)+"-"+run.substring(8,12)+"-"+run.substring(12,16)+"-"+run.substring(16,20)+"-"+run.substring(20);
+  String inner=new org.json.JSONObject().put("version",2).put("collectionId",collection).put("records",new org.json.JSONArray().put(note(run,"Saved reset sentinel"))).put("deleted",new org.json.JSONArray()).toString();
+  return new org.json.JSONObject().put("version",1).put("currentRaw",inner).put("archive",new org.json.JSONObject().put("v1",org.json.JSONObject.NULL).put("v2",org.json.JSONObject.NULL).put("daily",org.json.JSONObject.NULL)).toString();
+ }
+ private static String draft(String run)throws Exception{
+  String current=new org.json.JSONObject(notes(run)).getString("currentRaw"),id=run+"_draft";
+  return new org.json.JSONObject().put("version",1).put("savedAt",1).put("base",sha(current.getBytes(StandardCharsets.UTF_8))).put("reason","failed").put("records",new org.json.JSONArray().put(note(id,"Unsaved reset sentinel"))).put("added",new org.json.JSONArray().put(id)).put("removed",new org.json.JSONArray()).put("before",new org.json.JSONObject()).toString();
+ }
  private static KeyStore keys()throws Exception{KeyStore keys=KeyStore.getInstance("AndroidKeyStore");keys.load(null);return keys;}
  @Test public void externalFixturePhase()throws Exception{
   Bundle args=InstrumentationRegistry.getArguments();String phase=args.getString("resetFixturePhase"),run=args.getString("resetFixtureRun");
@@ -43,7 +53,7 @@ public final class ResetExternalFixtureInstrumentedTest {
    assertNull("Only fresh synthetic draft",store.readCredentialSlot(AlphaCredentialStore.NOTES_DRAFT));assertNull(store.readCredentialSlot(SLOT));
    assertNull(jobs.getPendingJob(JOB));
    write(file,bytes(run));write(cache,bytes(run));assertTrue(c.getSharedPreferences(name,0).edit().putString("value",run).commit());
-   store.writeCredentialSlot(AlphaCredentialStore.NOTES_RECORDS,payload);store.writeCredentialSlot(AlphaCredentialStore.NOTES_DRAFT,payload);store.writeCredentialSlot(SLOT,payload);
+   store.writeCredentialSlot(AlphaCredentialStore.NOTES_RECORDS,notes(run));store.writeCredentialSlot(AlphaCredentialStore.NOTES_DRAFT,draft(run));store.writeCredentialSlot(SLOT,payload);
    KeyGenerator generator=KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");generator.init(new KeyGenParameterSpec.Builder(alias,KeyProperties.PURPOSE_ENCRYPT|KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());generator.generateKey();assertTrue(keys().containsAlias(alias));
    assertEquals(JobScheduler.RESULT_SUCCESS,jobs.schedule(new JobInfo.Builder(JOB,new ComponentName(c,"androidx.work.impl.background.systemjob.SystemJobService")).setMinimumLatency(86400000L).build()));
    notices.createNotificationChannel(new NotificationChannel(CHANNEL,"Reset fixture",NotificationManager.IMPORTANCE_LOW));
@@ -54,6 +64,10 @@ public final class ResetExternalFixtureInstrumentedTest {
    try(OutputStream out=c.getContentResolver().openOutputStream(uri)){assertNotNull(out);out.write(bytes(run));}
    Bundle result=new Bundle();result.putString("resetFixtureRun",run);result.putString("resetFixtureMediaUri",uri.toString());result.putString("resetFixtureMediaName",name+".txt");result.putString("resetFixtureMediaSha256",sha(bytes(run)));result.putString("resetFixtureKeystoreAlias",alias);result.putInt("resetFixtureUser",user);
    InstrumentationRegistry.getInstrumentation().sendStatus(0,result);
+  }else if("verify-preserved".equals(phase)){
+   assertArrayEquals("Private file retained",bytes(run),java.nio.file.Files.readAllBytes(file.toPath()));assertArrayEquals("Cache retained",bytes(run),java.nio.file.Files.readAllBytes(cache.toPath()));assertEquals("Preferences retained",run,c.getSharedPreferences(name,0).getString("value",null));
+   assertEquals("Saved Notes retained",notes(run),store.readCredentialSlot(AlphaCredentialStore.NOTES_RECORDS));assertEquals("Unsaved draft retained",draft(run),store.readCredentialSlot(AlphaCredentialStore.NOTES_DRAFT));assertEquals("Runtime fixture retained",payload,store.readCredentialSlot(SLOT));
+   assertTrue("UID key retained",keys().containsAlias(alias));assertNotNull("Job retained",jobs.getPendingJob(JOB));assertTrue("Notification retained",java.util.Arrays.stream(notices.getActiveNotifications()).anyMatch(n->n.getId()==NOTICE));assertFalse("No reset authority recorded",AlphaDataReset.pending(c));
   }else if("verify".equals(phase)){
    assertFalse("Private file erased",file.exists());assertFalse("Cache erased",cache.exists());assertFalse("Preferences erased",c.getSharedPreferences(name,0).contains("value"));
    assertNull("Notes erased",store.readCredentialSlot(AlphaCredentialStore.NOTES_RECORDS));assertNull("Draft erased",store.readCredentialSlot(AlphaCredentialStore.NOTES_DRAFT));assertNull("Runtime fixture erased",store.readCredentialSlot(SLOT));
