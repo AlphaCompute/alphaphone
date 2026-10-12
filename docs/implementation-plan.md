@@ -132,7 +132,7 @@ planning change.
 
 ### Validation of this policy reconciliation
 
-On 2026-10-12, `npm run verify` passed (717 tests: 713 passed, four skipped,
+On 2026-10-12, `npm run verify` passed (717 tests: 713 passed, four TODO,
 zero failed; production bundle audit passed). The focused documentation checks
 passed 20/20 and `git diff --check` passed. Existing license flags remain reported
 by verification; this policy change does not resolve artifact licensing.
