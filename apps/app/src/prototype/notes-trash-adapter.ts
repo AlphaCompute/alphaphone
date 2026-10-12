@@ -6,6 +6,7 @@ import {notesTrashPolicy} from '../runtime/notes-trash-policy';
 import {maintainNotesTrash} from '../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-maintenance.ts';
 import {scheduleNotesTrashMaintenance} from '../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-schedule.ts';
 import {DailyApps} from '../daily';
+import {releaseUnusedSourceReferences} from './note-source-adapter';
 type Bag=Record<string,any>;
 type Shell=any;
 const kindLabel:Record<string,string>={text:'Note',list:'Checklist',voice:'Voice note',link:'Link'};
@@ -48,6 +49,9 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
   // awaited: it queues for the deletion-effects lock on its own and never delays Trash upkeep.
   try{const recover=voice(shell).recoverVoiceDeletions;if(typeof recover==='function')void Promise.resolve(recover()).catch(()=>{/* The row stays under review. */});}catch{/* Unavailable. */}
   const result=await maintainNotesTrash({policy:notesTrashPolicy,read:readNotesTrash,edit:editNotesTrash,liveNoteIds:savedNoteIds,withLock:work=>withNotesDeletionLock(work),purge:entry=>purge(shell,entry)},now);
+  // Source links of notes that are neither saved nor restorable from Trash give up their grants.
+  // Best effort: a failure keeps every reference and retries on the next pass.
+  try{await withNotesDeletionLock(async()=>releaseUnusedSourceReferences([...await savedNotes(),...(await readNotesTrash()).entries.map(entry=>entry.note)]));}catch{/* Retried. */}
   // A background pass repaints only when it changed Trash; an open Notes view re-reads every time.
   if(!background||result.removed.length)await load(shell);
  }

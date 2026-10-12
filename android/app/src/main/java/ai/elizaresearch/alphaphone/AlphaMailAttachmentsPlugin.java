@@ -58,15 +58,34 @@ public final class AlphaMailAttachmentsPlugin extends Plugin {
  private byte[] sourceBytes(Uri uri)throws Exception{try(InputStream in=getContext().getContentResolver().openInputStream(uri)){if(in==null)throw new IOException();return read(in);}}
  @PluginMethod public void retainSourceReference(PluginCall call){int token=generation.get();PluginWorkers.submit(worker,()->{try{
   Uri uri=SelectedDocumentAccess.resolve(call.getString("selectionId"));if(uri==null)throw new SecurityException();byte[] bytes=sourceBytes(uri);if(!hash(bytes).equals(call.getString("sha256"))||token!=generation.get())throw new SecurityException();JSObject result=new JSObject();
-  if(retainedSourceAccess(uri)&&uri.toString().length()<=4096){String reference="a1:"+hash(uri.toString().getBytes(StandardCharsets.UTF_8));android.content.SharedPreferences refs=getContext().getSharedPreferences("note-source-references",0);if(refs.contains(reference)||refs.getAll().size()<128){if(!refs.edit().putString(reference,uri.toString()).commit())throw new IOException();result.put("reference",reference);}}
+  if(retainedSourceAccess(uri)&&uri.toString().length()<=4096){String reference="a1:"+hash(uri.toString().getBytes(StandardCharsets.UTF_8));android.content.SharedPreferences refs=getContext().getSharedPreferences(NoteSourceReferences.PREFERENCES,0);if(refs.contains(reference)||refs.getAll().size()<NoteSourceReferences.LIMIT){retainedAt.put(reference,System.currentTimeMillis());if(!refs.edit().putString(reference,uri.toString()).commit())throw new IOException();result.put("reference",reference);}}
   call.resolve(result);
  }catch(Exception error){call.reject("Source changed or reference storage is unavailable. Select the source again.");}},()->call.reject("Attachment service closed."));}
  @PluginMethod public void openSourceReference(PluginCall call){int token=generation.get();PluginWorkers.submit(worker,()->{try{
-  String reference=call.getString("reference");if(reference==null||!reference.matches("a1:[a-f0-9]{64}"))throw new SecurityException();String stored=getContext().getSharedPreferences("note-source-references",0).getString(reference,null);if(stored==null)throw new IOException();Uri uri=Uri.parse(stored);if(!"content".equals(uri.getScheme())||!retainedSourceAccess(uri))throw new SecurityException();
+  String reference=call.getString("reference");if(reference==null||!reference.matches("a1:[a-f0-9]{64}"))throw new SecurityException();String stored=getContext().getSharedPreferences(NoteSourceReferences.PREFERENCES,0).getString(reference,null);if(stored==null)throw new IOException();Uri uri=Uri.parse(stored);if(!"content".equals(uri.getScheme())||!retainedSourceAccess(uri))throw new SecurityException();
   String name;try(android.database.Cursor row=getContext().getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(row==null||!row.moveToFirst())throw new IOException();name=row.getString(0);}String mime=getContext().getContentResolver().getType(uri);byte[] bytes=sourceBytes(uri);validate(name,mime,bytes);
   if(token!=generation.get()||!hash(bytes).equals(call.getString("sha256"))||bytes.length!=call.getInt("size",-1)||!mime.equals(call.getString("mimeType")))throw new SecurityException();
   call.getData().put("name",name);call.getData().put("dataBase64",android.util.Base64.encodeToString(bytes,android.util.Base64.NO_WRAP));call.getData().put("reviewed",true);openReviewedAt(call,token);
  }catch(Exception error){call.reject("Linked source changed or access is unavailable. Choose the matching source again.");}},()->call.reject("Attachment service closed."));}
+ /** When a reference was retained in this process; a link not yet saved in its note is never pruned. */
+ private static final Map<String,Long> retainedAt=new ConcurrentHashMap<>();
+ /**
+  * Notes reconcile their source links: keep lists every a1: reference a saved or restorable (Trash)
+  * note still names. Other references are removed, and the persisted grant of a document that no
+  * reference and no picker selection names any more is released (NoteSourceReferences).
+  */
+ @PluginMethod public void releaseSourceReferences(PluginCall call){
+  final Set<String> keep=new HashSet<>();
+  try{org.json.JSONArray values=call.getArray("keep");if(values==null||values.length()>20000)throw new IllegalArgumentException();for(int i=0;i<values.length();i++){String value=values.getString(i);if(!NoteSourceReferences.valid(value))throw new IllegalArgumentException();keep.add(value);}}
+  catch(Exception invalid){call.reject("Note source references could not be reconciled.");return;}
+  PluginWorkers.submit(worker,()->{try{
+   android.content.SharedPreferences refs=getContext().getSharedPreferences(NoteSourceReferences.PREFERENCES,0);Map<String,?> all=refs.getAll();
+   List<String> drop=NoteSourceReferences.unreferenced(all,keep,retainedAt,System.currentTimeMillis());int released=0;
+   if(!drop.isEmpty()){android.content.SharedPreferences.Editor edit=refs.edit();for(String key:drop)edit.remove(key);if(!edit.commit())throw new IOException();}
+   for(String uri:NoteSourceReferences.orphaned(all,drop))if(SelectedDocumentAccess.releaseUnreferenced(getContext(),Uri.parse(uri)))released++;
+   JSObject result=new JSObject();result.put("removed",drop.size());result.put("released",released);result.put("remaining",refs.getAll().size());call.resolve(result);
+  }catch(Exception error){call.reject("Note source references could not be reconciled.");}},()->call.reject("Attachment service closed."));
+ }
  private JSObject saveResult(String status,String message){JSObject result=new JSObject();result.put("status",status);result.put("message",message);return result;}
  private byte[] reviewedBytes(PluginCall call)throws Exception{
   String encoded=call.getString("dataBase64");if(encoded==null||encoded.length()>7*1024*1024||!Boolean.TRUE.equals(call.getBoolean("reviewed")))throw new IllegalArgumentException();
