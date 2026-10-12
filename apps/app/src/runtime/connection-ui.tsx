@@ -778,6 +778,12 @@ export const connectionController = {
   },
   getWorkflowPresentationProtocol():1|2 { return active?.actions ? active.workflowProtocol ?? 1 : 1; },
   getWorkflowDeviceTarget(){const selected=active;if(!selected||!selected.actions||!selected.actions.credential.enrollmentId)return null;return {installationId:selected.actions.credential.installationId,enrollmentId:selected.actions.credential.enrollmentId};},
+  async workflowNoticeActions(review:WorkflowPhoneReview,signal:AbortSignal){
+    const selected=active,generation=epoch,sessionId=state.session?.sessionId;
+    if(!selected?.actions||state.open||document.hidden)throw new Error('Connection unavailable for notice validation');
+    const result=await selected.actions.pendingWorkflowNotice(review,signal);signal.throwIfAborted();
+    if(generation!==epoch||sessionId!==state.session?.sessionId||state.open||document.hidden)throw new Error('Workflow owner changed');return result;
+  },
   async workflowPhoneActions(review:WorkflowPhoneReview,context:ContextEnvelope,signal:AbortSignal){
     const selected=active,generation=epoch,sessionId=state.session?.sessionId;
     if(!selected||!selected.actions||state.open||document.hidden||context.sensitive)throw new Error('Open this workflow on the selected phone agent');

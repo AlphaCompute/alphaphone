@@ -262,6 +262,12 @@ export class DeviceActions {
     if (!proposals.length && failures.length) throw failures[0];
     return proposals;
   }
+  /** Notice restoration validates pending metadata without creating an executable foreground review. */
+  async pendingWorkflowNotice(review:WorkflowPhoneReview,signal:AbortSignal):Promise<Array<{id:string;expiresAt:number}>> {
+    if(review.finished||review.cancellationRequestedAt)return [];
+    const pending=(await this.list(signal)).filter(p=>p.workflow?.runId===review.runId&&p.state==='pending'&&p.expiresAt>Date.now());signal.throwIfAborted();
+    return pending.map(p=>{assertWorkflowOperation(review,p.workflow!,{installationId:this.credential.installationId,enrollmentId:this.credential.enrollmentId!},p.operation);return {id:p.id,expiresAt:p.expiresAt};});
+  }
   async pendingForWorkflow(review:WorkflowPhoneReview,context:ContextEnvelope,signal:AbortSignal):Promise<ActionProposal[]> {
     if(context.view!=='workflows'||context.sensitive||context.selectedObject?.kind!=='workflow-run'||context.selectedObject.id!==review.runId||context.selectedObject.revision!==review.versionId)throw new Error('Open this exact workflow execution before reviewing phone steps');
     const pending=(await this.list(signal)).filter(p=>p.workflow?.runId===review.runId&&p.state==='pending'&&p.expiresAt>Date.now());signal.throwIfAborted();this.proposals.clear();

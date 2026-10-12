@@ -40,8 +40,8 @@ No app-data backup/import/export/transfer feature is planned.
 
 Maps, Files and Notes implementations are copied from authenticated upstream
 source into a generated cache outside the submodule. Gradle includes the shared
-password manager directly from the reviewed pin. The secure store uses the explicit
-reviewed patch in `patches/eliza/native-manifest.json`: admission authenticates the pin,
+password manager directly from the reviewed pin. The secure store and notification ledger use explicit
+reviewed patches in `patches/eliza/native-manifest.json`: admission authenticates the pin,
 patch digest, target before/after hashes and complete staged module inventory. Gradle
 compiles the generated copy under `.eliza/patched-native`, never a modified submodule.
 No source patch is applied during client, worker or resident-runtime builds. Photo edits, capture publication, the opt-in notification mirror and the delivery-receipt

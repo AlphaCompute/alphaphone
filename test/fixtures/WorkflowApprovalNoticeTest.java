@@ -7,10 +7,11 @@ public final class WorkflowApprovalNoticeTest {
  static void rejects(Work work,String message)throws Exception{try{work.run();}catch(Exception expected){return;}throw new AssertionError(message);}
  static class Store implements WorkflowNoticeDelivery.Storage {Map<String,String> values=new HashMap<>();public String read(String slot){return values.get(slot);}public void write(String slot,String value){values.put(slot,value);}}
  static class Poster implements WorkflowNoticeDelivery.Poster {
-  boolean steps=true,approvals=true;List<String> posted=new ArrayList<>(),cancelled=new ArrayList<>();Map<String,String> active=new HashMap<>();Map<String,Long> timeouts=new HashMap<>();
+  int quiet=0;boolean steps=true,approvals=true;List<String> posted=new ArrayList<>(),cancelled=new ArrayList<>();Map<String,String> active=new HashMap<>();Map<String,Long> timeouts=new HashMap<>();
   public boolean allowed(){return steps;}public boolean approvalsAllowed(){return approvals;}
   public void post(String id,String title,String body){throw new AssertionError("Approval notices never use the step channel");}
   public void postApproval(String id,String title,String body,long timeout){posted.add(id);active.put(id,title+"\n"+body);timeouts.put(id,timeout);}
+  public void postApprovalQuiet(String id,String title,String body,long timeout){quiet++;postApproval(id,title,body,timeout);}
   public void cancel(String id){cancelled.add(id);active.remove(id);}
   public boolean matches(String id,String title,String body){return Objects.equals(active.get(id),title+"\n"+body);}
  }
@@ -119,40 +120,25 @@ public final class WorkflowApprovalNoticeTest {
    deny[0]=true;rejects(()->d5.withdrawApproval(t5,live,now+minute),"a storage fault refuses the withdrawal");
    require(t5.token(live)!=null&&p5.active.containsKey(live)&&!p5.cancelled.contains(live),"an unrecorded withdrawal keeps the posted notice and its route");
    deny[0]=false;d5.withdrawApproval(t5,live,now+minute);require(t5.token(live)==null&&p5.cancelled.contains(live)&&"withdrawn".equals(d5.publishApproval(live,binding,now+10*minute,now+minute))&&p5.posted.size()==1,"the repeated withdrawal is recorded, cancels and releases");}
-  // Owner change: every approval notice posted for another owner is withdrawn and released, the new
-  // owner's own notice and every step notice are untouched, and the old approval is never posted again.
+  // A -> B -> A keeps encrypted metadata, fences old taps, and only an explicit revalidation can resume quietly.
   {Store s6=new Store();Poster p6=new Poster(){public void post(String id,String title,String body){posted.add(id);active.put(id,title+"\n"+body);}};
-   WorkflowNoticeDelivery d6=new WorkflowNoticeDelivery(s6,p6);WorkflowNoticeTaps t6=new WorkflowNoticeTaps(s6);
-   String old1="approval-"+"1".repeat(64),old2="approval-"+"2".repeat(64),mine="approval-"+"3".repeat(64);
-   JSONObject oldRoute1=route("run1"),oldRoute2=route("run2"),mineRoute=route("run3").put("ownerId","next-owner"),stepRoute=route("run4");
-   require("succeeded".equals(d6.postApproval(t6,old1,binding,oldRoute1,now+10*minute,now))&&"succeeded".equals(d6.postApproval(t6,old2,binding,oldRoute2,now+10*minute,now))&&"succeeded".equals(d6.postApproval(t6,mine,binding,mineRoute,now+10*minute,now)),"three approvals post");
-   t6.prepare("step1",binding,stepRoute);require("succeeded".equals(d6.publish("step1",binding,"Step title","Step body")),"old owner's step notice posts");
-   // The old owner's tap was captured before the change and is waiting to be opened.
-   String oldToken=t6.token(old1);t6.capture(oldToken);require(old1.equals(t6.pending().getString("operationId")),"old owner's tap is pending before the change");
-   require(t6.approvalsOfOtherOwners("owner").equals(List.of(mine))&&t6.approvalsOfOtherOwners("next-owner").equals(List.of(old1,old2)),"approvals are listed by owner, steps never");
-   String stepReceipts=s6.values.get(WorkflowNoticeDelivery.SLOT);
-   require(d6.withdrawOtherOwners(t6,"next-owner",now+minute)==2,"both approvals of the old owner are withdrawn");
-   require(p6.cancelled.equals(List.of(old1,old2))&&!p6.active.containsKey(old1)&&!p6.active.containsKey(old2)&&p6.active.containsKey(mine)&&p6.active.containsKey("step1"),"only the old owner's approval notices leave the shade");
-   require(t6.token(old1)==null&&t6.token(old2)==null&&t6.token(mine)!=null&&t6.token("step1")!=null,"only the old owner's approval routes are released");
-   require(t6.pending().length()==0,"the old owner's captured tap opens nothing under the new owner");
-   rejects(()->t6.capture(oldToken),"a late tap on the withdrawn notice is unknown");rejects(()->t6.consume(oldToken),"a withdrawn tap cannot be consumed");
-   JSONObject receipts=new JSONObject(s6.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT));
-   require("withdrawn".equals(receipts.getJSONObject(old1).getString("status"))&&"withdrawn".equals(receipts.getJSONObject(old2).getString("status"))&&"succeeded".equals(receipts.getJSONObject(mine).getString("status"))&&receipts.length()==3,"receipts record the withdrawal and keep the new owner's post");
-   require(receipts.getJSONObject(old1).getLong("expiresAt")==now+10*minute&&stepReceipts.equals(s6.values.get(WorkflowNoticeDelivery.SLOT)),"the withdrawal keeps the approval's expiry and rewrites no step receipt");
-   int posts=p6.posted.size();
-   require("withdrawn".equals(d6.postApproval(t6,old1,binding,oldRoute1,now+10*minute,now+2*minute))&&t6.token(old1)==null&&p6.posted.size()==posts,"the old owner's approval is never posted again, also when that owner returns");
-   require(d6.withdrawOtherOwners(t6,"next-owner",now+2*minute)==0&&p6.cancelled.size()==2,"a repeated owner change withdraws nothing more");
-   require("succeeded".equals(d6.postApproval(t6,mine,binding,mineRoute,now+10*minute,now+2*minute))&&p6.posted.size()==posts,"the new owner's notice stays posted once");
-   String mineToken=t6.token(mine);t6.capture(mineToken);JSONObject opened=t6.pending();require("run3".equals(opened.getString("runId"))&&"next-owner".equals(opened.getString("ownerId"))&&opened.getBoolean("retained"),"the new owner's tap still opens its exact run");
-   for(String invalid:new String[]{null,""," ","x".repeat(129),"a\0b"})rejects(()->d6.withdrawOtherOwners(t6,invalid,now),"invalid owner refused");
-   // A withdrawal that cannot be recorded keeps that notice and its route; the others are still withdrawn.
-   boolean[] deny={false};String[] poisoned={null};
-   Store s7=new Store(){public void write(String slot,String value){if(deny[0]&&WorkflowNoticeDelivery.APPROVAL_SLOT.equals(slot)&&poisoned[0]!=null&&value.contains("\"withdrawn\"")&&!poisoned[0].equals("done")){poisoned[0]="done";throw new IllegalStateException("Disk");}super.write(slot,value);}};
-   Poster p7=new Poster();WorkflowNoticeDelivery d7=new WorkflowNoticeDelivery(s7,p7);WorkflowNoticeTaps t7=new WorkflowNoticeTaps(s7);
-   require("succeeded".equals(d7.postApproval(t7,old1,binding,oldRoute1,now+10*minute,now))&&"succeeded".equals(d7.postApproval(t7,old2,binding,oldRoute2,now+10*minute,now)),"posted before the storage fault");
-   deny[0]=true;poisoned[0]="armed";rejects(()->d7.withdrawOtherOwners(t7,"next-owner",now+minute),"a storage fault is reported");
-   require(t7.token(old1)!=null&&p7.active.containsKey(old1)&&t7.token(old2)==null&&!p7.active.containsKey(old2),"the unrecorded withdrawal keeps its notice and route; the next approval is still withdrawn");
-   require(d7.withdrawOtherOwners(t7,"next-owner",now+2*minute)==1&&t7.token(old1)==null&&!p7.active.containsKey(old1),"the next owner change finishes the withdrawal");}
+   WorkflowNoticeDelivery d6=new WorkflowNoticeDelivery(s6,p6);WorkflowNoticeTaps t6=new WorkflowNoticeTaps(s6);String id="approval-"+"1".repeat(64);JSONObject own=route("run1");
+   d6.withdrawOtherOwners(t6,"owner",now);require("succeeded".equals(d6.postApproval(t6,id,binding,own,now+10*minute,now)),"owner A posts");
+   t6.prepare("step1",binding,own);d6.publish("step1",binding,"Private","Body");String oldTap=t6.token(id);t6.capture(oldTap);
+   require(d6.withdrawOtherOwners(t6,"B",now+minute)==2,"approval and result withdrawn on owner change");
+   require(p6.active.isEmpty()&&t6.pending().length()==0,"no cross-owner notice or pending tap");final WorkflowNoticeTaps beforeRestart=t6;rejects(()->beforeRestart.capture(oldTap),"old tap rejected under B");
+   require("owner-changed".equals(d6.postApproval(t6,id,binding,own,now+10*minute,now+minute)),"queued A post refused under B");
+   require(t6.suspendedApprovals("owner",now+minute).length()==1,"suspended route survives");
+   d6=new WorkflowNoticeDelivery(s6,p6);t6=new WorkflowNoticeTaps(s6);d6.withdrawOtherOwners(t6,"owner",now+2*minute);
+   require(p6.posted.size()==2,"return alone does not post without revalidation");
+   require("succeeded".equals(d6.resumeApproval(t6,id,binding,own,now+10*minute,now+2*minute))&&p6.quiet==1,"explicit exact return posts quietly");
+   String fresh=t6.token(id);require(!fresh.equals(oldTap),"fresh tap binding after restart");final WorkflowNoticeTaps current=t6;rejects(()->current.capture(oldTap),"old PendingIntent oldTap remains invalid");t6.capture(fresh);require(t6.pending().getBoolean("retained"),"fresh tap opens matching owner");
+   require("not-suspended".equals(d6.resumeApproval(t6,id,binding,own,now+10*minute,now+2*minute))&&p6.quiet==1,"duplicate resume does not repost or rotate");
+   d6.withdrawOtherOwners(t6,"B",now+3*minute);d6.withdrawApproval(t6,id,now+3*minute);d6.withdrawOtherOwners(t6,"owner",now+4*minute);
+   require(t6.suspendedApprovals("owner",now+4*minute).length()==0&&"not-suspended".equals(d6.resumeApproval(t6,id,binding,own,now+10*minute,now+4*minute)),"decided while away never resumes");
+   String expiredApproval="approval-"+"2".repeat(64);d6.postApproval(t6,expiredApproval,binding,route("run2"),now+5*minute,now+4*minute);d6.withdrawOtherOwners(t6,"B",now+4*minute);d6.withdrawOtherOwners(t6,"owner",now+6*minute);require(t6.suspendedApprovals("owner",now+6*minute).length()==0,"expiredApproval approval never resumes");
+   String dismissed="approval-"+"3".repeat(64);d6.postApproval(t6,dismissed,binding,route("run3"),now+10*minute,now+6*minute);p6.active.remove(dismissed);d6.withdrawOtherOwners(t6,"B",now+6*minute);require(t6.suspendedApprovals("owner",now+6*minute).length()==0,"dismissed approval remains terminal");
+  }
   // Bounds.
   rejects(()->delivery.publishApproval("op1",binding,now+minute,now),"only approval IDs");
   rejects(()->delivery.publishApproval(fourth,binding,now+8*86400000L,now),"over-long approval refused");

@@ -13,6 +13,18 @@
           "afterSha256": "8983ea3d6570ade2340f21c289751af5ab5aa9ae2db1e192e147c71af805d5be"
         }
       ]
+    },
+    {
+      "file": "notice-owner-suspension.patch",
+      "sha256": "fbc9a4f1846fc2bae8c2b455297f4c27171abe30cb64dd17a312187fab360764",
+      "module": "plugins/plugin-native-notifications/android",
+      "targets": [
+        {
+          "path": "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NoticeDelivery.java",
+          "beforeSha256": "a6944a6f823bc2db1c05fb99cc16cb00e015d99e4ee7a2ccd349e9e397bc4e53",
+          "afterSha256": "4fb3b7c8a9a56ceb3c51c5990b4e41439d031c729f5db221bd19d4a53b7b3bce"
+        }
+      ]
     }
   ]
 }
