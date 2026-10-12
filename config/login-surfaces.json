@@ -67,30 +67,32 @@
     {
       "id": "browser-http-auth-prompt",
       "kind": "alpha-owned-native",
-      "eligible": true,
+      "eligible": false,
       "file": "android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserHttpAuthAutofill.java",
       "pattern": "TYPE_TEXT_VARIATION_PASSWORD|setAutofillHints|AUTOFILL_HINT_(?:PASSWORD|USERNAME)",
       "count": 4,
       "owner": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaBrowserPlugin.java (httpAuth)",
       "binding": "websiteBinding",
-      "fillRoute": "Native username/password fields report the exact HTTPS origin of a pending main-frame load as web domain/scheme, PasswordFormPolicy.TOP_ORIGIN_EXTRA and PasswordAutofillPolicy.FIELD_ORIGIN. A challenge while a page is committed with no other main-frame load pending, or for a host on which any frame or resource of the tab used another origin (for example another port), gets no origin and the fields are IMPORTANT_FOR_AUTOFILL_NO. No browser tab is fillable while the prompt is open (overlay). Sign in keeps the prompt open; the Autofill session is committed (the provider may offer Save) only when that load commits at the bound origin, and is cancelled on a repeated challenge, failure, navigation or Cancel.",
+      "fillRoute": "Disabled: no origin is reported, and native fields are IMPORTANT_FOR_AUTOFILL_NO. Manual entry remains available; every browser tab is excluded from Autofill while the prompt is open.",
       "providers": {
         "integrated": {
-          "status": "source",
-          "detail": "Satisfies the shared policy's host-browser contract (one domain, HTTPS, top-level origin, per-field origin). Not yet exercised against the real service on a device."
+          "status": "blocked-origin",
+          "detail": "Disabled until the browser engine supplies an authenticated challenge-origin binding."
         },
         "proton": {
-          "status": "framework-source",
-          "detail": "Proton sees a web domain from an unrecognized browser package and keeps its warning."
+          "status": "blocked-origin",
+          "detail": "Disabled until the browser engine supplies an authenticated challenge-origin binding."
         }
       },
       "remainingGates": [
+        "reviewed engine-authenticated HTTP challenge request origin, including redirected resources and frame identity",
         "integrated vault fill and save on a device against an HTTPS Basic-auth fixture",
         "Proton warning and fill on a device",
         "port, redirect and same-host frame cases on a device",
         "Save offered only after the site accepts the credentials, on a device",
         "release-signed APK"
-      ]
+      ],
+      "reason": "WebView reports no authenticated request URL, port or frame for an HTTP-auth challenge. Observed navigation and resource history cannot safely bind provider fill/save."
     },
     {
       "id": "password-entry-editor",
