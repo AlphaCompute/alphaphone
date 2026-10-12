@@ -139,7 +139,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   function release(cancelIntent=true) {
     sharing?.abort.abort();sharing=undefined;navigationVoice.pause();
     lifecycle.releases++;lifecycle.lastRelease=cancelIntent?'leave-or-background':'provider-switch';message='';
-    if(cancelIntent){++searchIntent;discardHandoff();eventQuery='';}
+    if(cancelIntent){++searchIntent;discardHandoff();eventQuery='';mapsApp=undefined;}
     ++mapGeneration;mapObserver?.disconnect();mapObserver=undefined;mapFailed=false;    plane?.destroy(); plane=undefined; planeElement=undefined; directions=false; originMode=false; void stopGuidance().catch(()=>{});
     clearMapsSelection(); ++revision; locating = false; unsubscribe?.(); unsubscribe = undefined;
     const old = controller; controller = undefined; state = undefined;

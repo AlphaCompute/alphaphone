@@ -76,6 +76,8 @@ test('an event location opens unconfigured Maps, hands off to an installed map a
   // Opening Maps again from the same event and reloading performs nothing more.
   await button(page, LOCATION).click();
   await expect(handoff).toBeVisible();
+  expect((await j04(page)).performs).toHaveLength(1);
+  // The record is per page load: after the reload nothing may perform the hand-off again.
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-active-view', /.+/);
   await expect(handoff).toHaveCount(0);
@@ -84,5 +86,44 @@ test('an event location opens unconfigured Maps, hands off to an installed map a
   await expectNoDevelopmentSurface(page);
   expect(await harness(page, f => f.unexpected)).toEqual([]);
   expect(foreign.filter(request => request.includes('10.0.2.2'))).toEqual([]);
+  expect(foreign).toEqual([]);
+});
+
+// LOOP-B: a Calendar event drafted from a note cannot keep its link to the note on Android, because
+// device calendar ids are provider-assigned and reused (noteOriginSupported('event') is false). The
+// draft says so before Save. The draft is placed in the Calendar view's state as the note hand-off
+// (voice-adapter draftFromNote) leaves it; the Keystore-encrypted note and retained audio that lead
+// there are not stubbed here. Renderer evidence only.
+test('an Android event draft from a note says it will not link back; a draft without a note says nothing', async ({ page }) => {
+  test.setTimeout(120_000);
+  const foreign = await fenceNetwork(page);
+  await flagOffAndroid(page, { calendar: { access: 'granted', calendars: [{ id: '7', name: 'Harbour team', account: 'owner@example.invalid' }], events: [] } });
+  await residentHome(page);
+  await button(page, 'Calendar').click();
+  await expect(page.locator('html')).toHaveAttribute('data-active-view', 'calendar');
+  const draft = (origin: boolean) => page.evaluate(origin => {
+    const root = document.getElementById('root') as any, key = Object.keys(root).find(name => name.startsWith('__reactContainer$'))!;
+    const pending = [root[key]];
+    const form = { id: null, title: 'Synthetic follow-up', off: 1, t: 9, d: 1, where: '', video: false, who: [], repeat: 'none', notes: 'Synthetic action item', creationId: crypto.randomUUID(), separateCreation: false, cal: 'native:local', alert: null,
+      ...(origin ? { origin: { version: 1, noteId: 'synthetic-note', audioId: 'synthetic-audio', revision: 'a'.repeat(64) } } : {}) };
+    while (pending.length) {
+      const fiber = pending.pop();
+      if (typeof fiber?.stateNode?.vset === 'function') { fiber.stateNode.vset('calendar', { form, open: null, month: null, day: 1 }); return; }
+      if (fiber?.sibling) pending.push(fiber.sibling);
+      if (fiber?.child) pending.push(fiber.child);
+    }
+    throw Error('No phone shell');
+  }, origin);
+  const notice = page.locator('[data-alpha-note-link-notice]');
+  await draft(false);
+  await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Synthetic follow-up');
+  await expect(notice).toHaveCount(0);
+  await draft(true);
+  await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Synthetic follow-up');
+  await expect(notice).toHaveText('This event will not link back to the note on this phone.');
+  // Showing the notice saves nothing and links nothing.
+  expect(await harness(page, f => f.calls.filter((call: string) => /AlphaCalendar\.save|compareExchange/.test(call)))).toEqual([]);
+  await expectNoDevelopmentSurface(page);
+  expect(await harness(page, f => f.unexpected)).toEqual([]);
   expect(foreign).toEqual([]);
 });
