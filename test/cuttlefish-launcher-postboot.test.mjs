@@ -57,3 +57,9 @@ test('requires bounded explicit inputs and refuses ambiguous flags',()=>{
  assert.throws(()=>parseArgs(['--serial','device']));
  assert.throws(()=>parseArgs(['--serial','127.0.0.1:6520','--serial','localhost:6520']),/duplicate/);
 });
+
+test('Settings FallbackHome alone does not qualify as a recovery launcher',()=>{
+ const key='shell cmd package query-activities --brief --components --user 0 -a android.intent.action.MAIN -c android.intent.category.HOME';
+ const f=fixture({[key]:`${pkg}/.MainActivity\ncom.android.settings/.FallbackHome`});
+ assert.throws(()=>verifyCuttlefishLauncher(f.run,expected,'0'),/recovery HOME/);
+});

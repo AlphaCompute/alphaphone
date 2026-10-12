@@ -52,7 +52,9 @@ export function verifyCuttlefishLauncher(run, expected, user) {
   const home = components(shell('cmd', 'package', 'resolve-activity', '--brief', ...homeArgs));
   requireThat(home.length === 1 && home[0] === `${PACKAGE}/${PACKAGE}.MainActivity`, 'Alpha is not the resolved HOME');
   const candidates = components(shell('cmd', 'package', 'query-activities', '--brief', '--components', ...homeArgs));
-  const recovery = [...new Set(candidates.filter(row => !row.startsWith(`${PACKAGE}/`)))].filter(row => {
+  // Settings FallbackHome only waits for a real HOME; it is not a recovery launcher.
+  const recovery = [...new Set(candidates.filter(row => !row.startsWith(`${PACKAGE}/`) &&
+    row !== 'com.android.settings/com.android.settings.FallbackHome'))].filter(row => {
     const pkg = row.split('/')[0];
     return shell('pm', 'list', 'packages', '--user', user, '-s', '-e', pkg).split(/\r?\n/).includes(`package:${pkg}`);
   });
