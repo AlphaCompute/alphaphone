@@ -12,7 +12,7 @@ export const STORAGE_SPECS = Object.freeze([
   "test/browser/calendar-modal-draft.spec.ts",
   "test/browser/inbox-unsaved-recovery.spec.ts",
   "test/browser/calendar-edit-draft.spec.ts",
-  "test/browser/calendar-backup-restore.spec.ts",
+  "test/browser/calendar-no-restore.spec.ts",
   "test/browser/calendar-recovery.spec.ts",
   "test/browser/preference-storage-migration.spec.ts",
   "test/browser/reminder-storage-migration.spec.ts",
