@@ -44,7 +44,11 @@ public final class ResetExternalFixtureInstrumentedTest {
   @Override public Result doWork(){return Result.failure();} // The disposable test must finish before its one-day delay.
  }
  private static String workId(String run){return run.substring(0,8)+"-"+run.substring(8,12)+"-"+run.substring(12,16)+"-"+run.substring(16,20)+"-"+run.substring(20);}
- private static boolean pendingJob(JobScheduler jobs,String run){return jobs.getAllPendingJobs().stream().anyMatch(job->workId(run).equals(job.getExtras().getString("EXTRA_WORK_SPEC_ID")));}
+ private static boolean pendingJob(JobScheduler jobs,String run){
+  // WorkManager 2.11 uses its own JobScheduler namespace on Android 14+.
+  java.util.stream.Stream<JobInfo> pending=android.os.Build.VERSION.SDK_INT>=34?jobs.getPendingJobsInAllNamespaces().values().stream().flatMap(java.util.Collection::stream):jobs.getAllPendingJobs().stream();
+  return pending.anyMatch(job->workId(run).equals(job.getExtras().getString("EXTRA_WORK_SPEC_ID")));
+ }
  private static KeyStore keys()throws Exception{KeyStore keys=KeyStore.getInstance("AndroidKeyStore");keys.load(null);return keys;}
  @Test public void externalFixturePhase()throws Exception{
   Bundle args=InstrumentationRegistry.getArguments();String phase=args.getString("resetFixturePhase"),run=args.getString("resetFixtureRun");
