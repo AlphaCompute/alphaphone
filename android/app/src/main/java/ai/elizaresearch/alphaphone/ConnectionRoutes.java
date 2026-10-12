@@ -22,8 +22,9 @@ final class ConnectionRoutes {
   * Origins this transport may contact. A production phone talks to its resident agent over the
   * separate in-process Agent bridge, never through this transport, and does not pair with, restore
   * or connect a remote or Cloud agent (the controller returns before any saved selection is used and
-  * the production dialog offers only Cloud sign-in for inference credits). Every request a flag-off
-  * build legitimately sends here (sign-in, identity, balance, key self-revocation, the connected
+  * the production dialog offers only Cloud sign-in for the subscription plan). Every request a flag-off
+  * build legitimately sends here (sign-in, identity, subscription entitlement and its public keys,
+  * the transitional balance check, key self-revocation, the connected
   * services under /api/v1/eliza/) goes to the Cloud API, so the only admitted origin is exactly
   * https://api.eliza.app on the default port. A dedicated Cloud agent runtime
   * (https://&lt;agent-uuid&gt;.cloud.eliza.app) is refused with every other host; admit it here only
