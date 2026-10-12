@@ -1,14 +1,20 @@
 #!/usr/bin/env node
-// Runs the patched upstream host with explicit local voice assets in an isolated profile.
+// Runs the pinned upstream host with explicit local voice assets in an isolated profile.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawn, execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {parseArgs} from 'node:util';
 import {AGENT_MODEL,agentModelEnvironment} from './agent-model.mjs';
-const source = path.resolve(process.env.ALPHA_ELIZA_SOURCE || path.join(os.homedir(), 'eliza-workspace/milady/eliza'));
-const profile = path.resolve(process.env.ALPHA_REMOTE_PROFILE || path.join(os.homedir(), '.local/share/alphaphone/local-voice'));
-const port = Number(process.env.ALPHA_REMOTE_PORT || 47844);
+// Inputs are flags, not product-specific environment names. The default source is
+// this repository's pinned vendor/eliza; --source selects another prepared tree.
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const {values:options} = parseArgs({options:{source:{type:'string'}, profile:{type:'string'}, port:{type:'string'}, bun:{type:'string'}}, strict:true});
+const source = path.resolve(options.source || path.join(root, 'vendor/eliza'));
+const profile = path.resolve(options.profile || path.join(os.homedir(), '.local/share/alphaphone/local-voice'));
+const port = Number(options.port || 47844);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
 const keyPath = path.join(os.homedir(), '.config/alphaphone/cerebras-key');
 if ((fs.statSync(keyPath).mode & 0o077) !== 0) throw new Error('Provider key must be owner-only');
@@ -39,7 +45,7 @@ if (process.env.ELIZA_WHISPER_ENABLED === '1') {
   env.ELIZA_WHISPER_ENABLED = '1';
 }
 for (const key of ['ELIZAOS_CLOUD_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY']) delete env[key];
-const child = spawn(process.env.ALPHA_BUN || 'bun', ['--conditions=eliza-source', entry], {cwd:profile, env, stdio:['ignore',log,log]});
+const child = spawn(options.bun || 'bun', ['--conditions=eliza-source', entry], {cwd:profile, env, stdio:['ignore',log,log]});
 const metadata = {pid:child.pid, port, profile, source, revision:execFileSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'}).trim(), startedAt:new Date().toISOString()};
 fs.writeFileSync(path.join(profile,'process.json'), JSON.stringify(metadata,null,2), {mode:0o600});
 console.log(JSON.stringify({...metadata, log:path.join(profile,'server.log')}));
