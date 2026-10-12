@@ -344,7 +344,9 @@ public class AlphaBrowserPlugin extends Plugin {
    // navigation has committed rather than rejecting an unstarted WebView.
    if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROCESS) || !WebViewCompat.isMultiProcessEnabled()) throw new IllegalStateException();
    WebSettings settings = t.web.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true); settings.setAllowFileAccess(false); settings.setAllowContentAccess(false); settings.setAllowFileAccessFromFileURLs(false); settings.setAllowUniversalAccessFromFileURLs(false); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW); settings.setJavaScriptCanOpenWindowsAutomatically(false); settings.setSupportMultipleWindows(true); settings.setSaveFormData(false); settings.setSafeBrowsingEnabled(true); t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
-   CookieManager.getInstance().setAcceptThirdPartyCookies(t.web, false);
+   // P-19: embedded sign-ins may use third-party cookies in normal tabs only.
+   // This per-WebView setting never changes the privileged host cookie policy.
+   CookieManager.getInstance().setAcceptThirdPartyCookies(t.web, !priv);
    // Passkeys are outside the MVP (#402): never opt into browser-mode WebAuthn until the
    // system credential provider follow-up is qualified. Pin NONE explicitly so a provider
    // default cannot silently advertise passkeys.
