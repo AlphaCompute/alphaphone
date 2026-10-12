@@ -132,8 +132,11 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  /** One Android dialog. On Android 14+ it offers Allow all, Select photos and Don't allow. */
  @PluginMethod public void requestAccess(PluginCall call) {
   if ("full".equals(scopeName())) { call.resolve(scopeResult()); return; }
-  requestPermissionForAliases(PhotoLibraryAccess.requestAliases(Build.VERSION.SDK_INT), call, "accessResult");
+  LateLaunch.ask(call, () -> requestPermissionForAliases(PhotoLibraryAccess.requestAliases(Build.VERSION.SDK_INT), call, "accessResult"));
  }
+
+ /** Capacitor's own permission request launches through the activity; see {@link LateLaunch}. */
+ @Override @PluginMethod public void requestPermissions(PluginCall call){LateLaunch.ask(call,()->super.requestPermissions(call));}
 
  @PermissionCallback private void accessResult(PluginCall call) {
   JSObject out = scopeResult();
