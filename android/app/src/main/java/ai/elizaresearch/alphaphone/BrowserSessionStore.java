@@ -1,5 +1,7 @@
 package ai.elizaresearch.alphaphone;
 import ai.eliza.plugins.browsersurface.BrowserSessionPolicy;
+import ai.eliza.plugins.browsersurface.BrowserSitePermissions;
+import ai.eliza.plugins.browsersurface.BrowserWebOrigin;
 
 import ai.eliza.plugins.securestore.nativeonly.KeystoreTextFrame;
 import android.content.Context;
@@ -48,40 +50,38 @@ final class BrowserSessionStore {
  }
  synchronized void clear(){if(!preferences.edit().remove("sealed").commit())throw new IllegalStateException();}
 
- /* Website permission decisions for the persistent normal-tab profile only:
-  * {"https://host[:port]":{"camera":true,"microphone":false,"location":true}}.
-  * Private tabs never read or write them. Origins reveal visited sites, so the
-  * record is sealed with the same Keystore key. Bounded to MAX_PERMISSION_ORIGINS. */
- static final int MAX_PERMISSION_ORIGINS=200;
- static final java.util.Set<String> PERMISSION_KINDS=java.util.Set.of("camera","microphone","location");
- static boolean validOrigin(String origin){return origin!=null&&origin.length()<=300&&origin.matches("https?://[a-z0-9.\\-\\[\\]:]+");}
- synchronized JSONObject permissions(){
+ /* Website permission decisions for the persistent normal-tab profile only, decided by upstream
+  * BrowserSitePermissions (BrowserPermissionRecords): {"https://host[:port]":{"camera":true,
+  * "microphone":false,"location":true}}, the format earlier builds stored, oldest origin first.
+  * Private tabs never read or write them. Origins reveal visited sites, so the record is sealed
+  * with the same Keystore key. Bounded to MAX_PERMISSION_ORIGINS. Alpha's own rules stay in
+  * AlphaBrowserPlugin.sitePermission: only the selected, shown page is prompted, and an Allow is
+  * chained to Android's runtime permission. See docs/browser-storage.md. */
+ static final int MAX_PERMISSION_ORIGINS=BrowserSitePermissions.MAX_ORIGINS;
+ static final java.util.Set<String> PERMISSION_KINDS=BrowserSitePermissions.KINDS;
+ static boolean validOrigin(String origin){return origin!=null&&origin.length()<=300&&origin.equals(BrowserWebOrigin.of(origin));}
+ private BrowserSitePermissions decisions(){
   String packed=preferences.getString("permissions",null);
-  if(packed==null)return new JSONObject();
+  if(packed==null)return BrowserPermissionRecords.read(null);
   // A damaged record grants nothing: every site is asked again.
-  try{return open(packed);}catch(Exception damaged){return new JSONObject();}
+  try{return BrowserPermissionRecords.read(frame.open(packed));}catch(Exception damaged){return BrowserPermissionRecords.read(null);}
+ }
+ private void save(BrowserSitePermissions decisions)throws Exception{
+  if(!preferences.edit().putString("permissions",frame.seal(BrowserPermissionRecords.write(decisions))).commit())throw new IllegalStateException();
  }
  /** Stored decision, or null when the site must be asked. */
- synchronized Boolean permission(String origin,String kind){
-  JSONObject site=permissions().optJSONObject(origin);
-  return site==null||!site.has(kind)?null:site.optBoolean(kind,false);
- }
+ synchronized Boolean permission(String origin,String kind){return decisions().decision(origin,kind,false);}
  synchronized void setPermission(String origin,String kind,boolean allowed)throws Exception{
   if(!validOrigin(origin)||!PERMISSION_KINDS.contains(kind))throw new IllegalArgumentException();
-  JSONObject all=permissions(),site=all.optJSONObject(origin);if(site==null)site=new JSONObject();
-  site.put(kind,allowed);all.remove(origin);
-  // Insertion order is oldest first; drop the oldest origins beyond the bound.
-  JSONObject bounded=new JSONObject();java.util.ArrayList<String> names=new java.util.ArrayList<>();java.util.Iterator<String> keys=all.keys();while(keys.hasNext())names.add(keys.next());
-  for(int i=Math.max(0,names.size()-(MAX_PERMISSION_ORIGINS-1));i<names.size();i++)bounded.put(names.get(i),all.get(names.get(i)));
-  bounded.put(origin,site);
-  if(!preferences.edit().putString("permissions",seal(bounded)).commit())throw new IllegalStateException();
+  BrowserSitePermissions all=decisions();
+  if(!all.record(origin,kind,allowed,false))throw new IllegalArgumentException();
+  save(all);
  }
  synchronized void clearPermissions(){if(!preferences.edit().remove("permissions").commit())throw new IllegalStateException();}
  /** Remove decisions for a registrable domain and its subdomains (Clear data for this site). */
  synchronized void clearPermissionsForSite(String site)throws Exception{
-  if(site==null||site.isEmpty())return;String domain=site.toLowerCase(java.util.Locale.ROOT);
-  JSONObject all=permissions(),kept=new JSONObject();java.util.Iterator<String> keys=all.keys();
-  while(keys.hasNext()){String origin=keys.next();String host=Uri.parse(origin).getHost();if(host!=null&&(host.equals(domain)||host.endsWith("."+domain)))continue;kept.put(origin,all.get(origin));}
-  if(!preferences.edit().putString("permissions",seal(kept)).commit())throw new IllegalStateException();
+  if(site==null||site.isEmpty())return;
+  BrowserSitePermissions all=decisions();
+  if(all.clearSite(site))save(all);
  }
 }
