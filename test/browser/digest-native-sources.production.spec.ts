@@ -139,6 +139,7 @@ test('phone sources on Android: reviewed consent within the calendar and expiry 
 
 test('phone sources on Android: without the evening advertisement only a morning brief is offered; the dossier is reviewed and Cancel dispatches nothing', async ({ page }) => {
   test.setTimeout(120_000);
+  const foreign = await fenceNetwork(page);
   await flagOffAndroid(page, { digests: 'native', schedules: { native: { calendars: calendars.slice(0, 2) }, dossier: true } });
   await openDigests(page);
   const digests = panel(page);
@@ -169,4 +170,5 @@ test('phone sources on Android: without the evening advertisement only a morning
   expect(await harness(page, f => f.digests.dossiers[0])).toEqual({ sourceId: source.id, sourceRevision: source.revision, mutationId: expect.stringMatching(/^[0-9a-f-]{36}$/), confirmed: true });
   await expectNoDevelopmentSurface(page);
   expect(await harness(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
 });

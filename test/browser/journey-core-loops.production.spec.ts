@@ -705,6 +705,7 @@ test('loop J05 on Android: a reviewed native page excerpt, a resident answer and
 for (const [name, text] of [['too long', 'Harbour '.repeat(626)], ['sensitive', 'Enter the verification code 123456 to continue.'], ['empty', '  ']] as const) {
   test(`loop J05 on Android: a native page excerpt that is ${name} is refused before any review opens`, async ({ page }) => {
     test.setTimeout(120_000);
+    const foreign = await fenceNetwork(page);
     await android(page);
     await residentHome(page);
     await openHarbour(page);
@@ -714,12 +715,15 @@ for (const [name, text] of [['too long', 'Harbour '.repeat(626)], ['sensitive', 
     await expect(page.getByRole('dialog', { name: 'Ask about selected content' })).toHaveCount(0);
     expect(await native(page, f => f.browser.questions.length)).toBe(1);
     expect(await native(page, f => f.streams)).toBe(0);
+    await expectNoDevelopmentSurface(page);
     expect(await native(page, f => f.unexpected)).toEqual([]);
+    expect(foreign).toEqual([]);
   });
 }
 
 test('loop J05 on Android: a page navigation closes the open review, and an agent reconnect before Save refuses the summary', async ({ page }) => {
   test.setTimeout(180_000);
+  const foreign = await fenceNetwork(page);
   await android(page);
   await residentHome(page);
   const tab = await openHarbour(page);
@@ -758,7 +762,9 @@ test('loop J05 on Android: a page navigation closes the open review, and an agen
   await expect(page.getByRole('button', { name: /^Summary note saved/ })).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'Save reviewed summary note' })).toHaveCount(0);
   expect(await savedNotes(page)).toEqual([]);
+  await expectNoDevelopmentSurface(page);
   expect(await native(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
 });
 
 const TRANSCRIPT = 'Meeting: we agreed to book the venue for Friday and email the caterer.';

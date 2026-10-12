@@ -110,6 +110,7 @@ test('J03 on Android: a picked document, a trimmed question and the resident ans
 
 test('J03 on Android: a resident session that changes before Save withdraws the summary and saves nothing', async ({ page }) => {
   test.setTimeout(180_000);
+  const foreign = await fenceNetwork(page);
   await flagOffAndroid(page, { document: garden });
   await residentHome(page);
   await askAboutDocument(page);
@@ -129,4 +130,5 @@ test('J03 on Android: a resident session that changes before Save withdraws the 
   expect(await savedNotes(page)).toEqual([]);
   await expectNoDevelopmentSurface(page);
   expect(await harness(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
 });

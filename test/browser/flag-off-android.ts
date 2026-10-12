@@ -43,8 +43,8 @@ export interface FlagOffSchedules {
    * the AlphaHostedResults consent port and AlphaCalendar's workflow calendars. */
   native?: { evening?: boolean; calendars: { id: string; name: string; account: string }[] };
   /** Serve POST /hosted/dossier and advertise it as `hostedDossierProtocol: 1`. The agent pinned in
-   * upstream.lock.json does not register that route, so a renderer may offer the dossier only to
-   * an agent that advertises it. */
+   * upstream.lock.json registers that route but does not advertise this flag; the stub advertises
+   * it so a renderer that gates the dossier on the advertisement still offers it here. */
   dossier?: boolean;
 }
 export const AGENT_NAME = 'Alpha';
@@ -136,17 +136,18 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
         const fields = { id: body.id, kind: body.kind, label: body.label, text: live ? 'Fresh selected-account read is resolved only at the scheduled occurrence.' : body.text, ...(live ? { live } : {}), observedAt: body.observedAt, expiresAt: body.expiresAt };
         const source = { ...fields, revision: await sha(JSON.stringify(fields)), revoked: false };
         const prior = d.sources.find(s => s.id === body.id);
-        if (prior) return prior.revision === source.revision ? lost(ok({ source: listed(prior) })) : refuse(409, 'Snapshot identity conflict');
+        // The pinned agent answers a save with the whole stored source (text included); only GET lists strip it.
+        if (prior) return prior.revision === source.revision ? lost(ok({ source: structuredClone(prior) })) : refuse(409, 'Snapshot identity conflict');
         if (live) { const grant = d.grants[live.sourceId]; if (!grant || grant.revoked || grant.revision !== live.revision || Object.entries(enrollment()).some(([key, value]) => live[key] !== value)) return refuse(409, 'Selected source permission changed before saving', { code: 'HOSTED_SOURCE_NOT_SAVED', mutationId: body.id }); }
         const observed = Date.parse(body.observedAt), expires = Date.parse(body.expiresAt), now = Date.now();
         if (!Number.isFinite(observed) || !Number.isFinite(expires) || observed > now + 60000 || observed < now - 7 * 86400000 || expires <= now || expires > observed + 7 * 86400000) return refuse(400, 'Source must have a valid explicit freshness window of at most seven days', { code: 'HOSTED_SOURCE_NOT_SAVED', mutationId: body.id });
         d.sources.push(source);
-        return lost(ok({ source: listed(source) }));
+        return lost(ok({ source: structuredClone(source) }));
       }
       if (route === 'sources/revoke') {
         if (!keys(['id', 'confirmed']) || body.confirmed !== true) return refuse(400, 'Confirm source revocation');
         const source = d.sources.find(s => s.id === body.id);
-        if (!source) return refuse(404, 'Source not found');
+        if (!source) return refuse(404, 'Digest source not found');
         source.revoked = true;
         return lost(ok({ id: source.id, revoked: true }));
       }
@@ -162,7 +163,7 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
         const spec = body.spec;
         if (!spec || spec.version !== 1 || !['morning', 'evening'].includes(spec.template) || typeof spec.enabled !== 'boolean' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(spec.localTime) || Object.keys(spec).some(key => !['version', 'template', 'sourceId', 'sourceRevision', 'timeZone', 'localTime', 'enabled'].includes(key))) return refuse(400, 'Invalid digest specification');
         const source = d.sources.find(s => s.id === spec.sourceId);
-        if (!source) return refuse(404, 'Source not found');
+        if (!source) return refuse(404, 'Digest source not found');
         if (source.revision !== spec.sourceRevision) return refuse(409, 'Reviewed snapshot revision changed');
         if (source.live?.provider === 'native' && spec.enabled) {
           if (state(source) !== 'current') return refuse(409, 'Native source grant expired or revoked');

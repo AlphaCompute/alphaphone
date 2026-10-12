@@ -101,7 +101,7 @@ test('loop D on Android: a reviewed snapshot, morning and evening schedules, a l
   await expect(digests.getByRole('button', { name: 'Renew Errands', exact: true })).toHaveCount(0);
 
   expect((await posts(page)).map(post => post.path)).toEqual(['sources', 'loops', 'loops', 'loops', 'loops', 'sources/revoke']);
-  // No development scheduler copy, no snapshot text echoed back and no foreign request.
+  // No development scheduler copy and no foreign request.
   await expect(digests.getByText(/Schedules run while this app is open|development reply/)).toHaveCount(0);
   await expectNoDevelopmentSurface(page);
   expect(await harness(page, f => f.unexpected)).toEqual([]);
@@ -110,6 +110,7 @@ test('loop D on Android: a reviewed snapshot, morning and evening schedules, a l
 
 test('loop D on Android: a schedule edit made against an older version is refused and nothing is changed', async ({ page }) => {
   test.setTimeout(120_000);
+  const foreign = await fenceNetwork(page);
   await flagOffAndroid(page, { digests: 'native', schedules: {} });
   await residentHome(page);
   await button(page, 'Settings').click();
@@ -131,5 +132,9 @@ test('loop D on Android: a schedule edit made against an older version is refuse
   await expect(digests.getByRole('status')).toHaveText('Save outcome is unconfirmed. Retry the same saved request to recover it safely.');
   expect(await harness(page, f => [f.digests.loops[0].spec.enabled, f.digests.loops[0].versionId])).toEqual([true, 'changed-elsewhere']);
   expect(Object.keys(await harness(page, f => f.digests.receipts))).toHaveLength(1);
+  // The refused edit was sent once and applied nothing.
+  expect((await posts(page)).map(post => post.path)).toEqual(['sources', 'loops', 'loops']);
   await expectNoDevelopmentSurface(page);
+  expect(await harness(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
 });
