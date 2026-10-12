@@ -33,7 +33,13 @@ final class DeferredDeletionJournal {
   for(int i=0;i<terminal.size()-127;i++)records.remove(terminal.get(i));
   if(records.length()>=500)throw new IllegalStateException("Pending deletion history requires review");
   JSONObject row=new JSONObject().put("version",1).put("id",id).put("owner",copy(owner)).put("target",copy(target)).put("phase","queued").put("deadline",new JSONObject().put("continuity",deadline.continuity).put("createdElapsed",deadline.createdElapsed).put("expiresElapsed",deadline.expiresElapsed).put("expiresAt",deadline.expiresAt));
-  records.put(id,row);store.save(data.toString());return copy(row);
+  records.put(id,row);
+  // Reserve space for later dispatch/outcome metadata within the 4 MiB native slot.
+  // Count alone is insufficient when a retained event has a large description.
+  String encoded=data.toString();int retired=0;
+  while(encoded.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>3*1024*1024&&retired<terminal.size()){records.remove(terminal.get(retired++));encoded=data.toString();}
+  if(encoded.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>3*1024*1024)throw new IllegalStateException("Active deletion history requires review");
+  store.save(encoded);return copy(row);
  }
  synchronized JSONArray list(String continuity,long elapsed)throws Exception{
   JSONObject records=read().getJSONObject("records");JSONArray rows=new JSONArray();for(java.util.Iterator<String> i=records.keys();i.hasNext();){JSONObject row=copy(records.getJSONObject(i.next()));if("queued".equals(row.getString("phase")))row.put("window",window(row,continuity,elapsed));else if("dispatching".equals(row.getString("phase")))row.put("phase","unknown");rows.put(row);}return rows;

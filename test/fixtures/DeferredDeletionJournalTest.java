@@ -37,6 +37,10 @@ public final class DeferredDeletionJournalTest {
   bounded.stage("uncertain",owner,target,new DeletionDeadline("boot",1,1));bounded.expire("uncertain","boot",10001,(a,b)->null,t->{throw new IllegalStateException("lost response");});
   for(int n=0;n<600;n++){String id="terminal_"+n;bounded.stage(id,owner,target,new DeletionDeadline("boot",n+10,n+10));bounded.undo(id,owner,"boot",n+11);}
   JSONArray history=bounded.list("boot",100000);check(history.length()<=129);boolean kept=false;for(int i=0;i<history.length();i++)kept|=history.getJSONObject(i).getString("id").equals("uncertain");check(kept);
+  Store largeStore=new Store();DeferredDeletionJournal large=new DeferredDeletionJournal(largeStore);JSONObject largeTarget=object("large").put("description","x".repeat(256*1024));
+  large.stage("keep_unknown",owner,target,new DeletionDeadline("boot",1,1));large.expire("keep_unknown","boot",10001,(a,b)->null,t->{throw new IllegalStateException("lost response");});
+  for(int n=0;n<20;n++){String id="large_"+n;large.stage(id,owner,largeTarget,new DeletionDeadline("boot",n+10,n+10));large.undo(id,owner,"boot",n+11);check(largeStore.saved.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=3*1024*1024);}
+  JSONArray largeRows=large.list("boot",99999);boolean retainedUnknown=false;for(int n=0;n<largeRows.length();n++)retainedUnknown|=largeRows.getJSONObject(n).getString("id").equals("keep_unknown");check(retainedUnknown);check(largeRows.length()<20);
   System.out.println("PASS durable deletion claims, recovery and no replay");
  }
 }
