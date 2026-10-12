@@ -155,7 +155,6 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
 
  private android.app.AlertDialog deletionDialog;
  private final java.util.concurrent.atomic.AtomicBoolean reviewingDeletion=new java.util.concurrent.atomic.AtomicBoolean();
- private boolean unlocked(){android.app.KeyguardManager keyguard=(android.app.KeyguardManager)getContext().getSystemService(android.content.Context.KEYGUARD_SERVICE);return keyguard!=null&&!keyguard.isDeviceLocked();}
  /**
   * Policy P-30: the single native review for a deletion with a ten-second Undo. Nothing is
   * deleted here; a confirmed review returns a single-use grant for the exact provider revision.
