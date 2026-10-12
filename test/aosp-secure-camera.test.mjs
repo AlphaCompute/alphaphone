@@ -24,7 +24,7 @@ function device(overrides={}){
  const calls=[];const run=(...args)=>{calls.push(args);const c=args.join(" ");
   if(c.includes("getprop"))return overrides.fingerprint??"fixture/image";
   if(c.includes("list packages"))return overrides.packages??"package:com.android.camera2\n";
-  if(c.includes("query-activities"))return overrides.handler??secureCameraComponent;
+  if(c.includes("query-activities"))return (!args.includes("-p")?overrides.globalHandler:undefined)??overrides.handler??secureCameraComponent;
   if(c.includes("bool/config"))return overrides.gesture??"true";
   if(c.includes("string/config"))return overrides.target??"com.android.camera2";
   if(c.includes("settings"))return overrides.disabled??"null";
@@ -34,12 +34,13 @@ function device(overrides={}){
 }
 test("image checks bind explicit user/fingerprint and only read system routing",()=>{
  const {run,calls}=device();const result=verifySecureCameraImage(run,"10","fixture/image");assert.equal(result.imageContractVerified,true);assert.equal(result.lockedCaptureVerified,false);assert.equal(result.unlockPrivacyVerified,false);
- assert.ok(calls.some(c=>c.includes("-s")&&c.includes("-e")));assert.equal(calls.filter(c=>c.includes("query-activities")).length,2);
+ assert.ok(calls.some(c=>c.includes("-s")&&c.includes("-e")));assert.equal(calls.filter(c=>c.includes("query-activities")).length,4);
  for(const c of calls)assert.ok(!c.some(v=>["start","grant","put","delete","install","uninstall"].includes(v)));
  assert.throws(()=>verifySecureCameraImage(run,"","fixture/image"),/user required/);assert.throws(()=>verifySecureCameraImage(run,"10",null),/fingerprint required/);
 });
 for(const [name,override,error] of [
  ["wrong image",{fingerprint:"other"},/fingerprint differs/],["missing or disabled system camera",{packages:"package:com.other.camera"},/not enabled/],
+ ["Alpha secure handler",{globalHandler:"ai.elizaresearch.alphaphone/.Camera"},/Alpha must not handle/],
  ["wrong secure handler",{handler:"com.android.camera2/com.android.camera.CameraActivity"},/handler missing/],
  ["disabled power gesture",{gesture:"false"},/not enabled/],["wrong system target",{target:"ai.elizaresearch.alphaphone"},/does not target/],
  ["user opt out",{disabled:"1"},/user disabled/],["no camera",{features:""},/no camera feature/]

@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { manifestComponents } from "./aosp-provisioning-overlay.mjs";
 
 const reviewed = JSON.parse(fs.readFileSync(new URL("../docs/aosp-secure-camera-source.json", import.meta.url)));
+const alphaPackage = JSON.parse(fs.readFileSync(new URL("../app.config.json", import.meta.url))).appId;
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 export const secureCameraPackage = "com.android.camera2";
 export const secureCameraComponent = `${secureCameraPackage}/com.android.camera.SecureCameraActivity`;
@@ -37,6 +38,7 @@ export function writeSecureCameraOverlay(output, evidence) {
   const files = {
     "secure-camera/overlay/frameworks/base/core/res/res/values/config.xml": '<?xml version="1.0" encoding="utf-8"?>\n<resources><bool name="config_cameraDoubleTapPowerGestureEnabled">true</bool></resources>\n',
     "secure-camera/overlay/frameworks/base/packages/SystemUI/res/values/config.xml": '<?xml version="1.0" encoding="utf-8"?>\n<resources><string name="config_cameraGesturePackage" translatable="false">com.android.camera2</string></resources>\n',
+    "secure-camera/README.md": "# System secure camera\n\nCamera2 and the standard SystemUI power gesture are staged here. See source-evidence.json for the exact source verification result. Staging does not prove image consumption, locked capture isolation, unlock return or physical device acceptance.\n",
     "secure-camera/source-evidence.json": JSON.stringify(evidence, null, 2) + "\n",
   };
   for (const [name, contents] of Object.entries(files)) {
@@ -57,6 +59,8 @@ export function verifySecureCameraImage(run, user, expectedFingerprint) {
   for (const action of secureCameraActions) {
     const rows = run("shell", "cmd", "package", "query-activities", "--brief", "--components", "--user", user, "-a", `android.media.action.${action}`, "-c", "android.intent.category.DEFAULT", "-p", secureCameraPackage).trim().split(/\r?\n/).map(row => row.trim());
     if (!rows.includes(secureCameraComponent)) throw Error(`Required secure camera handler missing: ${action}`);
+    const global = run("shell", "cmd", "package", "query-activities", "--brief", "--components", "--user", user, "-a", `android.media.action.${action}`, "-c", "android.intent.category.DEFAULT").trim().split(/\r?\n/);
+    if (global.some(row => row.trim().startsWith(`${alphaPackage}/`))) throw Error(`Alpha must not handle secure camera action: ${action}`);
     handlers[action] = secureCameraComponent;
   }
   const lookup = (pkg, resource) => run("shell", "cmd", "overlay", "lookup", "--user", user, pkg, `${pkg}:${resource}`).trim();
