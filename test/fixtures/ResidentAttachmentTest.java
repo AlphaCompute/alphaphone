@@ -56,6 +56,17 @@ public final class ResidentAttachmentTest {
   for(int index=0;index<ResidentAttachment.Requests.LIMIT+8;index++)requests.add("request-"+index);
   require(requests.size()==ResidentAttachment.Requests.LIMIT,"attached start memory is bounded");
   require(!requests.remove("request-0")&&requests.remove("request-"+(ResidentAttachment.Requests.LIMIT+7)),"oldest attached starts are forgotten first");
+  // MVP-16 accepted limit: two surfaces that start before enrollment do not share the pending
+  // pairing. While the first surface is still pairing against a running runtime, the second is
+  // refused attachment and takes the ordinary start path; once the first enrollment is stored,
+  // later surfaces attach to it.
+  ResidentAttachment.Facts pairing=admitted(now);pairing.enrolledRoot=null;pairing.ownerToken=null;pairing.ownerIdentity=null;
+  require("not-enrolled".equals(ResidentAttachment.refusal(running(),pairing)),"a pending enrollment is not shared");
+  pairing.enrolledRoot="root-1";
+  require("not-enrolled".equals(ResidentAttachment.refusal(running(),pairing)),"a half-written enrollment is not shared");
+  pairing.ownerToken="owner-session";pairing.ownerIdentity="owner";
+  require(ResidentAttachment.refusal(running(),pairing)==null,"a completed enrollment is attached to");
+  System.out.println("PASS pre-enrollment: a second surface before enrollment starts on its own (accepted limit)");
   System.out.println("PASS resident attachment: admitted running resident attaches; retirement, runtime, enrollment and provider changes restart; bounded cancellation memory");
  }
 }

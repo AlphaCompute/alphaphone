@@ -1,7 +1,7 @@
 import {readMediaCopyIntent,admitMediaCopyIntent,acknowledgeMediaCopyIntent,mediaCopyIntentDocument,type MediaCopyIntent} from '../runtime/media-copy-intent';
 import {createInlineModal} from '../runtime/inline-modal';
 import {reviewContentQuestion} from '../browser/content-question';
-import {createCaptureRevisions} from './context-selection';
+import {createCaptureRevisions,captureUnchanged} from './context-selection';
 import {openScanDocument,pickNativeScanImage} from './scan-document';
 import {openVideoEditReview} from './video-edit-review';
 import {openCameraImageImport} from './browser-image-import';
@@ -47,7 +47,7 @@ export async function restartAfterResume(state: () => { denied?: string; phase: 
   return granted && stopped();
 }
 // camera-resume:end
-type SavedPhoto = { kind?: 'image' | 'video'; duration?: number; path?: string; id: string; image: string; width: number; height: number; date: number; revision: string; mutationRevision?: string; trashed?: boolean; expiresAt?: number; favorite?: boolean };
+type SavedPhoto = { kind?: 'image' | 'video'; duration?: number; path?: string; id: string; image: string; width: number; height: number; date: number; revision: string; mutationRevision?: string; contentRevision?: string; trashed?: boolean; expiresAt?: number; favorite?: boolean };
 const nativeLibrary = registerPlugin<{
   beginEdit(options:{id:string;revision:string}):Promise<EditPreview>;
   previewEdit(options:{sessionId:string;rotation:number;crop:boolean;filter:string}):Promise<EditPreview>;
@@ -661,12 +661,13 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
    * an edited, replaced or removed capture ends its review instead of continuing under the same id. */
   function sameCapture(selected:SavedPhoto):boolean{
     const live=[preview,...captures,...albumRows].find(row=>row?.id===selected.id);
-    return !!live&&!live.trashed===!selected.trashed&&(selected.mutationRevision&&live.mutationRevision?live.mutationRevision===selected.mutationRevision:live.revision===selected.revision);
+    return !!live&&!live.trashed===!selected.trashed&&(selected.mutationRevision&&live.mutationRevision?live.mutationRevision===selected.mutationRevision:live.revision===selected.revision)&&(selected.contentRevision===undefined||live.contentRevision===selected.contentRevision);
   }
   function askCapture(selected:SavedPhoto,owner:Bag):boolean{
     closeQuestion?.();
     const live=()=>!disposed&&!document.hidden&&owner.isActive()&&owner.get('photos').open===selected.id&&sameCapture(selected);
-    const unchanged=(row:SavedPhoto)=>!row.trashed===!selected.trashed&&(selected.mutationRevision?row.mutationRevision===selected.mutationRevision:row.revision===selected.revision);
+    // The library row is read again at send time; a photo another app rewrote in place differs in contentRevision.
+    const unchanged=(row:SavedPhoto)=>captureUnchanged(selected,row);
     closeQuestion=reviewContentQuestion({name:selected.kind==='video'?'Video preview frame':'Selected photo',text:'',current:live,compose:draft=>{void (async()=>{
       // The library is read again before the draft is placed: an item trashed, edited or removed
       // since the review started (here or by another app) adds nothing to the conversation.

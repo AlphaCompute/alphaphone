@@ -6,9 +6,140 @@ import java.util.UUID;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Private saved-binding identity. It grants no reminder permission or authenticated owner role. */
+/**
+ * Private saved-binding identity and the pure provider admission rules: which hosted provider a
+ * launch selects, its environment, the Cloud credential checks and the rollback of a Cloud binding.
+ * It grants no reminder permission or authenticated owner role. No Capacitor or Android types, so
+ * test/local-agent-provider-admission.test.mjs runs it on the host JVM. Inference stays Qwen
+ * (qwen-3.8-27b) on Cerebras, directly or through Eliza Cloud.
+ */
 final class LocalAgentProviderAdmission {
  static final String PROVIDER_SLOT="local-agent-provider:v1";
+ static final String CEREBRAS_PROVIDER_MODEL="qwen-3.8-27b";
+ static final String CLOUD_PROVIDER_MODEL="cerebras/qwen-3.8-27b";
+ static final String CLOUD_PROVIDER_BASE="https://api.eliza.app/api/v1";
+ static final String PROVIDER_MODEL_PATTERN="[A-Za-z0-9][A-Za-z0-9._/-]{0,127}";
+ static boolean validProviderToken(String token,int maximumLength) {
+  if(token==null||token.length()<8||token.length()>maximumLength)return false;
+  // HTTP bearer credentials are visible ASCII; reject all whitespace/control characters, including CR/LF runs.
+  for(int i=0;i<token.length();i++)if(token.charAt(i)<=0x20||token.charAt(i)>=0x7f)return false;
+  return true;
+ }
+ /** The saved Cloud sign-in token for exactly this credential id, refused when malformed or expired. */
+ static String cloudProviderToken(String saved,String credentialId,long now) throws Exception {
+  if(credentialId==null||!UUID.fromString(credentialId).toString().equalsIgnoreCase(credentialId)||saved==null)throw new IllegalArgumentException();
+  JSONObject credential=new JSONObject(saved);
+  if(!credentialId.equals(credential.opt("credentialId")))throw new IllegalArgumentException();
+  Object token=credential.opt("token");
+  if(!(token instanceof String)||!validProviderToken((String)token,16384))throw new IllegalArgumentException();
+  if(credential.has("expiresAt")){
+   Object expiry=credential.opt("expiresAt");
+   if(!(expiry instanceof Number)||!Double.isFinite(((Number)expiry).doubleValue())||((Number)expiry).doubleValue()<=now)throw new IllegalArgumentException();
+  }
+  return (String)token;
+ }
+ /** Select exactly one billing authority at process launch; never accept UI balance as authorization. */
+ static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {
+  String kind=provider.optString("provider","cerebras"),model=provider.getString("model");
+  // Retirement context only: reuse protected selection identity, never a credential or renderer value.
+  Object selectedRevision=provider.opt("revision");
+  String hostRevision;
+  if(provider.has("revision")){
+   if(!(selectedRevision instanceof String))throw new IllegalArgumentException();
+   String revision=UUID.fromString((String)selectedRevision).toString();
+   if(!revision.equalsIgnoreCase((String)selectedRevision))throw new IllegalArgumentException();
+   hostRevision="provider:"+kind+":"+revision;
+  }else{
+   // Legacy selections cannot carry an unfinished read across a process restart.
+   hostRevision="boot:"+UUID.randomUUID().toString();
+  }
+  if("elizacloud".equals(kind)){
+   if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
+   String token=cloudProviderToken(cloudSaved,provider.getString("credentialId"),now);
+   for(String key:new String[]{"CEREBRAS_API_KEY","CEREBRAS_BASE_URL","CEREBRAS_MODEL","CEREBRAS_SMALL_MODEL","CEREBRAS_LARGE_MODEL","OPENAI_API_KEY","OPENAI_BASE_URL","ELIZA_PROVIDER"})env.remove(key);
+   env.put("ELIZAOS_CLOUD_API_KEY",token);
+   env.put("ELIZAOS_CLOUD_BASE_URL",CLOUD_PROVIDER_BASE);
+   env.put("ELIZAOS_CLOUD_USE_INFERENCE","true");
+   env.put("ELIZAOS_CLOUD_USE_EMBEDDINGS","true");
+   env.put("ELIZAOS_CLOUD_EMBEDDING_MODEL","bge-small-en-v1.5");
+   env.put("ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS","384");
+   env.put("ELIZA_DISABLE_LOCAL_EMBEDDINGS","true");
+   env.put("ELIZA_LOCAL_EMBEDDING_ENABLED","0");
+   env.remove("ELIZA_LOCAL_EMBEDDING_MODEL_PATH");env.remove("ELIZA_LOCAL_EMBEDDING_DIMENSIONS");
+   env.put("ELIZAOS_CLOUD_SMALL_MODEL",model);
+   env.put("ELIZAOS_CLOUD_LARGE_MODEL",model);
+  }else if("cerebras".equals(kind)){
+   String key=provider.getString("key");
+   if(!model.matches(PROVIDER_MODEL_PATTERN)||!validProviderToken(key,1024))throw new IllegalArgumentException();
+   // Earlier builds accepted any model name; launch always uses the pinned model.
+   model=CEREBRAS_PROVIDER_MODEL;
+   for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL","ELIZAOS_CLOUD_USE_EMBEDDINGS","ELIZAOS_CLOUD_EMBEDDING_MODEL","ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS","ELIZA_DISABLE_LOCAL_EMBEDDINGS","ELIZA_LOCAL_EMBEDDING_ENABLED"})env.remove(name);
+   env.put("CEREBRAS_API_KEY",key);
+   env.put("CEREBRAS_MODEL",model);
+   env.put("CEREBRAS_SMALL_MODEL",model);
+   env.put("CEREBRAS_LARGE_MODEL",model);
+   env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
+  }else throw new IllegalArgumentException();
+  env.put("ELIZA_HOST_CONTEXT_REVISION",hostRevision);
+ }
+ /** Settings may show which hosted provider and model are configured; the key never leaves native storage. */
+ static JSONObject providerIdentity(String saved) {
+  JSONObject result=new JSONObject();
+  try{
+   result.put("provider","cerebras").put("configured",false);
+   if(saved==null)return result;
+   try{
+    JSONObject provider=new JSONObject(saved);
+    String model=provider.optString("model",""),kind=provider.optString("provider","cerebras");
+    if("elizacloud".equals(kind)){result.put("provider","elizacloud");if(CLOUD_PROVIDER_MODEL.equals(model))result.put("configured",true).put("model",model);}
+    else if("cerebras".equals(kind)&&model.matches(PROVIDER_MODEL_PATTERN))result.put("configured",true).put("model",CEREBRAS_PROVIDER_MODEL);
+   }catch(org.json.JSONException malformed){/* Report unconfigured, never the stored value. */}
+  }catch(org.json.JSONException impossible){throw new IllegalStateException(impossible);}
+  return result;
+ }
+ /** providerIdentity, reported unconfigured when a Cloud selection's credential is missing, expired or another account's. */
+ static JSONObject providerStatus(String saved,String cloudSaved,long now) {
+  JSONObject status=providerIdentity(saved);
+  if("elizacloud".equals(status.optString("provider"))&&status.optBoolean("configured")){
+   try{cloudProviderToken(cloudSaved,new JSONObject(saved).optString("credentialId"),now);}
+   catch(Exception unavailable){try{status.put("configured",false);}catch(org.json.JSONException impossible){throw new IllegalStateException(impossible);}}
+  }
+  return status;
+ }
+ /** The credential store and identity lookup a Cloud binding needs; AlphaCredentialStore in the app. */
+ interface CloudBindingStore {
+  String readProvider()throws Exception;
+  String readCloud()throws Exception;
+  void assertCurrent()throws Exception;
+  /** Verified account identity for the token (GET /api/v1/user); throws when unavailable. */
+  JSONObject identity(String token)throws Exception;
+  /** Admission compare-exchange; returns the stored binding, or null on conflict. */
+  String admit(String previous,String selection,String cloud,JSONObject identity)throws Exception;
+  void rollback(String binding,String previous)throws Exception;
+ }
+ /** Preserve the previous selection when admission loses its account, without replacing a newer selection. */
+ static String bindCloudProvider(CloudBindingStore store,String credentialId,String model,java.util.function.LongSupplier clock) throws Exception {
+  if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
+  String previous=store.readProvider();
+  String cloud=store.readCloud();
+  store.assertCurrent();
+  String token=cloudProviderToken(cloud,credentialId,clock.getAsLong());
+  JSONObject identity=store.identity(token);
+  store.assertCurrent();
+  // A unique revision distinguishes two concurrent admissions for the same account/model.
+  String selection=new JSONObject().put("provider","elizacloud").put("credentialId",credentialId).put("model",model)
+   .put("revision",UUID.randomUUID().toString()).toString();
+  String binding=store.admit(previous,selection,cloud,identity);
+  if(binding==null)throw new IllegalStateException();
+  try{
+   cloudProviderToken(store.readCloud(),credentialId,clock.getAsLong());
+   if(!binding.equals(store.readProvider()))throw new IllegalStateException();
+  }catch(Exception unavailable){
+   store.rollback(binding,previous);
+   throw unavailable;
+  }
+  return binding;
+ }
  private static final String GENERATION="admissionGeneration",FINGERPRINT="admissionFingerprint",CLOUD_IDENTITY="verifiedCloudIdentity";
  private static String uuid(Object value)throws Exception {
   if(!(value instanceof String))throw new IllegalArgumentException();
@@ -42,7 +173,7 @@ final class LocalAgentProviderAdmission {
   return new JSONArray().put("cloud").put("production").put(identity.getString("userId")).put(identity.opt("organizationId")).toString();
  }
  private static JSONArray cloudIdentity(String saved,String expectedId)throws Exception {
-  String token=AlphaLocalAgentPlugin.cloudProviderToken(saved,expectedId,System.currentTimeMillis());
+  String token=cloudProviderToken(saved,expectedId,System.currentTimeMillis());
   JSONObject credential=new JSONObject(saved);
   return new JSONArray().put("production").put(expectedId).put(credential.opt("userId")).put(credential.opt("organizationId")).put(token);
  }
@@ -57,7 +188,7 @@ final class LocalAgentProviderAdmission {
   String kind=selected.optString("provider","cerebras"),model=selected.getString("model");
   JSONArray identity=new JSONArray().put(1).put(kind).put(model);
   if("elizacloud".equals(kind)){
-   if(!AlphaLocalAgentPlugin.CLOUD_PROVIDER_MODEL.equals(model)||!"production".equals(selected.optString("environment","production")))throw new IllegalArgumentException();
+   if(!CLOUD_PROVIDER_MODEL.equals(model)||!"production".equals(selected.optString("environment","production")))throw new IllegalArgumentException();
    String id=selected.getString("credentialId");
    JSONArray credentialIdentity=cloudIdentity(cloud,id);
    for(int index=0;index<credentialIdentity.length();index++)identity.put(credentialIdentity.get(index));
@@ -65,7 +196,7 @@ final class LocalAgentProviderAdmission {
    identity.put(verified.getString("userId")).put(verified.opt("organizationId"));
   }else if("cerebras".equals(kind)){
    String key=selected.getString("key");
-   if(!model.matches(AlphaLocalAgentPlugin.PROVIDER_MODEL_PATTERN)||!AlphaLocalAgentPlugin.validProviderToken(key,1024))throw new IllegalArgumentException();
+   if(!model.matches(PROVIDER_MODEL_PATTERN)||!validProviderToken(key,1024))throw new IllegalArgumentException();
    String environment=selected.optString("environment","production");
    if(!"production".equals(environment))throw new IllegalArgumentException();
    identity.put(environment).put(key);

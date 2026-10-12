@@ -26,8 +26,7 @@ public class AlphaNotificationsPlugin extends Plugin {
   if(!admitted.get()||noticeDestroyed)throw new IllegalStateException("Activity inactive");
  }
  private void noticeWork(PluginCall call,String failure,NoticeWork work){
-  try{NOTICE_IO.execute(()->{try{requireNoticeForeground();work.run();}catch(InterruptedException interrupted){Thread.currentThread().interrupt();call.reject(failure);}catch(Exception unavailable){call.reject(failure);}});}
-  catch(java.util.concurrent.RejectedExecutionException full){call.reject(failure);}
+  PluginWorkers.submit(NOTICE_IO,()->{try{requireNoticeForeground();work.run();}catch(InterruptedException interrupted){Thread.currentThread().interrupt();call.reject(failure);}catch(Exception unavailable){call.reject(failure);}},()->call.reject(failure));
  }
  private void noticeChanged(){noticeMain.post(()->{if(!noticeDestroyed)notifyListeners("pendingWorkflowTap",new JSObject(),true);});}
  private void clearCapturedIntent(android.content.Intent intent,String token){noticeMain.post(()->{if((WorkflowNoticeTaps.PREFIX+token).equals(intent.getDataString()))intent.setData(null);});}
@@ -35,7 +34,7 @@ public class AlphaNotificationsPlugin extends Plugin {
  private WorkflowNoticeTaps workflowTaps(){return WorkflowNoticeTapsFactory.create(getContext());}
  @Override public void load(){captureWorkflowTap(getActivity().getIntent());}
  @Override protected void handleOnNewIntent(android.content.Intent intent){captureWorkflowTap(intent);}
- @Override protected void handleOnResume(){try{NOTICE_IO.execute(()->{drainWorkflowTaps();noticeChanged();});}catch(java.util.concurrent.RejectedExecutionException full){/* Intents remain retained for retry. */}}
+ @Override protected void handleOnResume(){PluginWorkers.submit(NOTICE_IO,()->{drainWorkflowTaps();noticeChanged();},()->{/* Intents remain retained for retry. */});}
  private int drainWorkflowTaps(){
   int failed=0;Iterator<Map.Entry<String,android.content.Intent>> entries=uncapturedWorkflowTaps.entrySet().iterator();
   while(entries.hasNext()){
@@ -54,8 +53,7 @@ public class AlphaNotificationsPlugin extends Plugin {
   // intent until its encrypted capture commits. OS notices do not auto-cancel,
   // so failed persistence plus process death still leaves an explicit retry.
   getActivity().setIntent(intent);
-  try{NOTICE_IO.execute(()->{if(!uncapturedWorkflowTaps.containsKey(token)&&uncapturedWorkflowTaps.size()<512)uncapturedWorkflowTaps.put(token,intent);drainWorkflowTaps();noticeChanged();});}
-  catch(java.util.concurrent.RejectedExecutionException full){/* Intent and OS notice remain available for explicit retry. */}
+  PluginWorkers.submit(NOTICE_IO,()->{if(!uncapturedWorkflowTaps.containsKey(token)&&uncapturedWorkflowTaps.size()<512)uncapturedWorkflowTaps.put(token,intent);drainWorkflowTaps();noticeChanged();},()->{/* Intent and OS notice remain available for explicit retry. */});
  }
  @PluginMethod public void pendingWorkflowTap(PluginCall call){noticeMain.post(()->{try{foreground();captureWorkflowTap(getActivity().getIntent());noticeWork(call,"Workflow notification link unavailable; retry after unlocking.",()->{int failed=drainWorkflowTaps();org.json.JSONObject pending=workflowTaps().pending();if(failed>0&&!pending.has("token"))throw new IllegalStateException("Uncaptured workflow notice retained");call.resolve(new JSObject(pending.toString()));});}catch(Exception unavailable){call.reject("Workflow notification link unavailable; retry after unlocking.");}});}
  @PluginMethod public void consumeWorkflowTap(PluginCall call){noticeWork(call,"Workflow notification link was retained; retry.",()->consumePendingWorkflowTap(call));}
@@ -103,12 +101,26 @@ public class AlphaNotificationsPlugin extends Plugin {
  @PluginMethod public void notificationHistory(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("items",NotificationAccess.history(getContext()));call.resolve(out);}catch(Exception failure){call.reject("Local notification history is unavailable");}}
  @PluginMethod public void clearNotificationHistory(PluginCall call){try{foreground();NotificationAccess.clearHistoryBoundary(getContext());call.resolve();}catch(Exception failure){call.reject("Local notification history could not be cleared");}}
  @Override protected void handleOnPause(){ids.clear();NotificationAccess.redact();super.handleOnPause();}
+ /**
+  * The kind of one of Alpha's own notices, from its channel. Hosted results and scheduled digests
+  * (alpha-hosted-results) and workflow notices can carry mail-derived text, so the renderer offers
+  * a question only for reminder and navigation rows (context-selection.ts noticeReviewable). An
+  * unrecognized channel is "other" and is not offered either.
+  */
+ static String noticeKind(String channel){
+  if(channel==null)return "other";
+  if(AlphaHostedResultsPlugin.CHANNEL.equals(channel))return "hosted-result";
+  if(WorkflowNoticePoster.CHANNEL.equals(channel)||WorkflowNoticePoster.APPROVAL_CHANNEL.equals(channel))return "workflow";
+  if(AlphaReminders.CONFIGURATION.channelId.equals(channel)||AlphaReminders.CONFIGURATION.dueChannelId().equals(channel))return "reminder";
+  if(AlphaNavigationService.CHANNEL.equals(channel))return "navigation";
+  return "other";
+ }
  @PluginMethod public void list(PluginCall call){try{
   JSArray items=new JSArray();Set<String> current=new HashSet<>();boolean locked=locked();
   StatusBarNotification[] rows=manager().getActiveNotifications();Arrays.sort(rows,Comparator.comparingLong(StatusBarNotification::getPostTime).reversed());
   for(StatusBarNotification row:rows){current.add(identity(row));if(items.length()>=100)continue;Notification n=row.getNotification();JSObject item=new JSObject();
    boolean hidden=locked||n.visibility==Notification.VISIBILITY_SECRET;
-   item.put("id",id(identity(row)));item.put("revision",id(identity(row)));item.put("source","own");item.put("appLabel","Alpha Phone");item.put("title",hidden?"Alpha Phone notification":bounded(n.extras.getCharSequence(Notification.EXTRA_TITLE),200));
+   item.put("id",id(identity(row)));item.put("revision",id(identity(row)));item.put("source","own");item.put("kind",noticeKind(n.getChannelId()));item.put("appLabel","Alpha Phone");item.put("title",hidden?"Alpha Phone notification":bounded(n.extras.getCharSequence(Notification.EXTRA_TITLE),200));
    item.put("text",hidden?(locked?"Unlock to view":"Content hidden"):bounded(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,n.extras.getCharSequence(Notification.EXTRA_TEXT)),2000));
    item.put("at",row.getPostTime());item.put("clearable",row.isClearable());item.put("canOpen",!hidden&&n.contentIntent!=null);items.put(item);
   }

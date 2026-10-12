@@ -115,6 +115,24 @@ delete changed or unobserved records. Those fixtures require current-source
 native execution; host tests and APK compilation alone do not qualify Android
 Keystore, process death or real Clock behavior.
 
+## Android browser site permissions
+
+The Android browser's camera, microphone and location decisions are decided by
+upstream `BrowserSitePermissions` at the pin: the persistent profile only (a private
+tab asks every time and stores nothing), at most 200 origins with the oldest dropped
+first, and decisions cleared with the site's data or all browsing data. Alpha keeps
+its own sealed storage: `BrowserSessionStore` seals the record with the session
+Keystore key under the `permissions` preference, and `BrowserPermissionRecords` reads
+and writes it through the upstream class. The stored format did not change
+(`{"https://host[:port]":{"camera":true,...}}`, oldest origin first), so records
+written by earlier builds are read as they are; an origin or kind the upstream class
+does not recognize, or a damaged record, grants nothing and the site is asked again.
+Two Alpha rules stay in `AlphaBrowserPlugin.sitePermission`: only the selected,
+shown page may prompt or use a stored Allow, and an Allow is chained to Android's
+runtime permission. `test/browser-site-permissions.test.mjs` reads old-format records
+(allow, deny, a damaged store, the 200-origin bound) through the new path on the
+host JVM; it does not exercise WebView prompts or the Keystore.
+
 ## Storage and recovery rules
 
 - Preserve the exact legacy bytes, including malformed or empty values. Never

@@ -43,6 +43,8 @@ public class DailyAppsPlugin extends ai.eliza.plugins.reminders.ReminderPlugin {
  @PluginMethod public void surfaceInfo(PluginCall call) {
   JSObject value = new JSObject(); value.put("assistant", getActivity() instanceof AlphaAssistActivity); value.put("developmentBuild", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   addReminderCapabilities(value);
+  // Repeat days reach Clock (clock.handoff.v2): clockHandoff accepts days.
+  value.put("clockRepeatDaysVersion", 1);
   value.put("topInset", getActivity() instanceof MainActivity ? ((MainActivity)getActivity()).getTopInsetDp() : 0);
   value.put("bottomInset", getActivity() instanceof MainActivity ? ((MainActivity)getActivity()).getBottomInsetDp() : 0); call.resolve(value);
  }
@@ -76,10 +78,10 @@ public class DailyAppsPlugin extends ai.eliza.plugins.reminders.ReminderPlugin {
  @PluginMethod public void clockHandoff(PluginCall call) {
   try {
    JSObject data=call.getData();java.util.Iterator<String> keys=data.keys();
-   while(keys.hasNext()){String key=keys.next();if(!java.util.Arrays.asList("action","hour","minute","label","snoozeMinutes","reviewed","timeZone").contains(key))throw new IllegalArgumentException("Unexpected Clock option");}
+   while(keys.hasNext()){String key=keys.next();if(!java.util.Arrays.asList("action","hour","minute","label","snoozeMinutes","reviewed","timeZone","days").contains(key))throw new IllegalArgumentException("Unexpected Clock option");}
    if(data.has("timeZone")&&(!(data.opt("timeZone") instanceof String)||((String)data.opt("timeZone")).length()>100))throw new IllegalArgumentException("Invalid Clock time zone");
    Object label=data.opt("label");if(label!=null&&label!=org.json.JSONObject.NULL&&!(label instanceof String))throw new IllegalArgumentException("Invalid Clock label");
-   call.resolve(ClockHandoff.launch(getActivity(),call.getString("action"),clockInteger(data,"hour"),clockInteger(data,"minute"),label instanceof String?(String)label:null,clockInteger(data,"snoozeMinutes"),Boolean.TRUE.equals(data.opt("reviewed")),call.getString("timeZone")));
+   call.resolve(ClockHandoff.launch(getActivity(),call.getString("action"),clockInteger(data,"hour"),clockInteger(data,"minute"),label instanceof String?(String)label:null,clockInteger(data,"snoozeMinutes"),Boolean.TRUE.equals(data.opt("reviewed")),call.getString("timeZone"),ClockHandoff.days(data.opt("days"))));
   }catch(IllegalArgumentException invalid){call.resolve(ClockHandoff.result(call.getString("action"),"failed",invalid.getMessage()));}
  }
  @PluginMethod public void capabilities(PluginCall call) {

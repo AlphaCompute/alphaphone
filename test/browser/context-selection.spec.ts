@@ -138,6 +138,102 @@ test.describe('notification',()=>{
   if(await dialog.count())await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
   await expect(page.getByText('Neighbor reminder',{exact:true})).toBeVisible();await expect(page.getByText('Ask about Tuesday',{exact:true})).toHaveCount(0);
  });
+ test('hosted-result, digest and workflow notices offer no question; reminder rows still do',async({page})=>{
+  // Stand in for both list shapes at the plugin boundary: Android's own rows carry a kind
+  // (AlphaNotificationsPlugin.noticeKind); the browser build's workflow notices have 'workflow:' ids.
+  await page.evaluate(async()=>{
+   const {BrowserNotifications}=await import('/src/browser/notifications.ts');const at=Date.now();
+   const own={source:'own',appLabel:'Alpha Phone',clearable:true,canOpen:true};
+   (BrowserNotifications.prototype as any).list=async()=>({scope:'alpha-phone',items:[
+    {...own,id:'android-result',revision:'r1',kind:'hosted-result',title:'Digest ready',text:'Mail from Dana: the contract is attached',at},
+    {...own,id:'android-workflow',revision:'r2',kind:'workflow',title:'Workflow step',text:'Forwarded mail summary',at:at-1},
+    {...own,id:'android-other',revision:'r3',kind:'other',title:'Local agent',text:'Running',at:at-2},
+    {...own,id:'workflow:browser-run',revision:'r4',title:'Workflow notice',text:'Mail triage finished',at:at-3},
+    {...own,id:'android-reminder',revision:'r5',kind:'reminder',title:'Stand up',text:'In five minutes',at:at-4},
+    {...own,id:'browser-reminder',revision:'r6',title:'Water the plants',text:'Neighbor reminder',at:at-5}]});
+  });
+  await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('dialog',{name:'Development device controls'}).getByRole('button',{name:'Notifications',exact:true}).click();
+  await expect(page.getByText('Mail from Dana: the contract is attached',{exact:false})).toBeVisible();
+  for(const text of ['Digest ready','Workflow step','Local agent','Workflow notice'])
+   await expect(page.locator('.alpha-shade-list > div',{hasText:text}).getByRole('button',{name:/^Ask Alpha/})).toHaveCount(0);
+  for(const text of ['Stand up','Water the plants'])
+   await expect(page.locator('.alpha-shade-list > div',{hasText:text}).getByRole('button',{name:/^Ask Alpha/})).toHaveCount(1);
+  await expect(ask(page)).toHaveCount(2);
+ });
+});
+
+test.describe('mail',()=>{
+ // MVP-13 re-audit of Inbox mail context. The mailbox is a synthetic provider at the Cloud client
+ // boundary and the agent a fixed session; nothing is sent anywhere. Browser renderer only.
+ const sent=(page:Page)=>page.evaluate(()=>(window as any).mailFixture.sent as string[]);
+ async function setup(page:Page){
+  await page.goto('/');
+  await page.evaluate(async()=>{
+   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
+   const {secureConnectionStore:s}=await import('/src/runtime/native-connection.ts');
+   s.read=async()=>null;s.compareExchange=async()=>({status:'saved'});
+   const f=(window as any).mailFixture={sent:[] as string[]};
+   const mail=(id:string,subject:string)=>({id,threadId:'thread',from:'Fixture sender',fromEmail:'sender@example.invalid',to:['reader@example.invalid'],cc:[],replyTo:null,subject,snippet:subject,receivedAt:'2026-10-04T12:00:00Z',unread:false});
+   const first=mail('first','Reviewed message'),neighbor=mail('neighbor','Neighbor message');
+   const read=(message:any)=>({message,bodyText:message.id==='first'?'REVIEWED_BODY':'NEIGHBOR_BODY_CANARY',historyId:'h-'+message.id,links:[],attachments:[]});
+   const client={
+    gmailAccounts:async()=>[{connectionId:'fixture-grant',label:'Fixture mailbox',configured:true,connected:true,reason:'connected',grantedCapabilities:['google.gmail.triage']}],
+    gmailInboxCapabilities:async()=>({version:1,from:'reader@example.invalid',threads:true,send:false,providerDrafts:false,mailboxMutations:false,attachments:false,providerExactlyOnce:false,atomicDraftReplacement:false,readState:false,opaqueAttachments:false}),
+    gmailSearch:async()=>({messages:[first,neighbor],syncedAt:'1',nextPageToken:null}),
+    gmailRead:async(_grant:string,id:string)=>read(id==='first'?first:neighbor),
+    gmailThread:async()=>({messages:[read(first),read(neighbor)],total:2,offset:0,historyId:'thread-history',nextOffset:null}),
+    gmailPrepareOperation:async()=>{throw Error('No provider writes');},
+   };
+   c.getCloudClient=()=>({client,sessionId:'fixture-session',credentialId:'fixture'} as any);
+   const agent={sessionId:'agent-session',agentId:'agent-1',ownerId:'fixture-owner',origin:'https://agent.example.invalid'};
+   const snapshot={...c.getSnapshot(),cloudAccount:{environment:'production',userId:'fixture-owner',sessionId:'fixture-session',credentialId:'fixture'},session:agent} as any;
+   c.getSnapshot=()=>snapshot;(window as any).mailSnapshot=snapshot;
+   // Anything that would reach the agent is recorded here instead.
+   const {alphaClient}=await import('/src/runtime/alpha-client.ts');
+   (alphaClient as any).send=async(text:string)=>{f.sent.push(text);throw Error("Fixture agent");};
+  });
+  await page.getByRole('button',{name:'Inbox',exact:true}).click();
+  await page.getByText('Reviewed message',{exact:true}).first().click();
+  await expect(page.getByRole('region',{name:'Email message'})).toContainText('REVIEWED_BODY');
+  await page.getByRole('button',{name:'Review email with agent',exact:true}).click();
+  const sharing=page.getByRole('dialog',{name:'Review email sharing'});
+  await expect(sharing).toContainText('REVIEWED_BODY');
+  return sharing;
+ }
+ test('an unchanged review hands exactly the reviewed message to the agent (control)',async({page})=>{
+  const sharing=await setup(page);
+  await sharing.getByRole('button',{name:'Send reviewed email to agent',exact:true}).click();
+  await expect.poll(()=>sent(page)).toHaveLength(1);
+  const [text]=await sent(page);expect(text).toContain('REVIEWED_BODY');expect(text).not.toContain('NEIGHBOR_BODY_CANARY');
+ });
+ test('a message switched under the open review is refused and the neighbor is never sent',async({page})=>{
+  const sharing=await setup(page);
+  // The thread's other message replaces the open one while the review is showing (the chip sits
+  // under the modal, so the switch is delivered to its handler directly).
+  await page.getByText('Fixture sender: Neighbor message',{exact:true}).dispatchEvent('click');
+  // The message under the modal is now the neighbor (inert, so read from the DOM); the review still shows the reviewed text.
+  await expect.poll(()=>page.evaluate(()=>document.body.textContent?.includes('NEIGHBOR_BODY_CANARY'))).toBe(true);
+  await expect(sharing).toContainText('REVIEWED_BODY');
+  await sharing.getByRole('button',{name:'Send reviewed email to agent',exact:true}).click();
+  await expect(page.getByText('Message or destination changed. Review again; nothing was sent.',{exact:true})).toBeVisible();
+  expect(await sent(page)).toEqual([]);
+  await expect(page.getByText(/Summarize the following user-selected email/)).toHaveCount(0);
+ });
+ test('an agent switched under the open review is refused',async({page})=>{
+  const sharing=await setup(page);
+  await page.evaluate(()=>{(window as any).mailSnapshot.session={sessionId:'other-session',agentId:'agent-2',ownerId:'fixture-owner',origin:'https://agent.example.invalid'};});
+  await sharing.getByRole('button',{name:'Send reviewed email to agent',exact:true}).click();
+  await expect(page.getByText('Message or destination changed. Review again; nothing was sent.',{exact:true})).toBeVisible();
+  expect(await sent(page)).toEqual([]);
+ });
+ test('a review left open past two minutes is refused',async({page})=>{
+  await page.clock.install({time:Date.UTC(2026,9,11,12)});
+  const sharing=await setup(page);
+  await page.clock.fastForward(121_000);
+  await sharing.getByRole('button',{name:'Send reviewed email to agent',exact:true}).click();
+  await expect(page.getByText('Message or destination changed. Review again; nothing was sent.',{exact:true})).toBeVisible();
+  expect(await sent(page)).toEqual([]);
+ });
 });
 
 test('Settings pages publish only their section slug; the root and other views publish none',async({page})=>{

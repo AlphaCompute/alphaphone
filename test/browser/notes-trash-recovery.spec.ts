@@ -382,3 +382,81 @@ test('process death between the write-ahead Trash row and the deletion commit ke
  // The saved note from part 1 was never touched by any of this.
  expect((await savedRecords(page)).find((n:any)=>n.id===live.id)).toEqual(live);
 });
+
+// AP-10: two open views of one origin (two tabs). Browser build only; the Android lease is the
+// separate native gate (test/notes-deletion-lease.test.mjs).
+test('two views: a move to Trash from a stale view keeps the newer Trash row the other view wrote',async({browser})=>{
+ const context=await browser.newContext();
+ try{
+  const first=await context.newPage(),second=await context.newPage();
+  await first.goto('/');await openNotes(first);
+  await createNote(first,'Kilo','Older text');
+  // The second view opens now and keeps this revision in its view; nothing refreshes it from the other tab.
+  await second.goto('/');await openNotes(second);
+  await expect(second.getByRole('button',{name:'Open Kilo',exact:true})).toBeVisible();
+  // The first view edits the note and moves that newer revision to Trash.
+  await first.getByRole('button',{name:'Open Kilo',exact:true}).click();
+  await first.getByRole('textbox',{name:'Note',exact:true}).fill('Newer text, only in Trash');
+  await first.getByRole('button',{name:'Back to notes',exact:true}).click();
+  await expect.poll(async()=>(await savedRecords(first)).find((n:any)=>n.title==='Kilo')?.body).toBe('Newer text, only in Trash');
+  await deleteNote(first,'Kilo');
+  const newer=await trashEntries(first);
+  expect(newer.map((e:any)=>e.note.body)).toEqual(['Newer text, only in Trash']);
+  // The stale view still shows the older revision and tries to move it to Trash.
+  await second.getByRole('button',{name:'Open Kilo',exact:true}).click();
+  await second.getByRole('button',{name:'Delete note',exact:true}).click();
+  await expect(second.getByText('This note changed in another view. Nothing was deleted.',{exact:true})).toBeVisible();
+  // The newer row is exactly as the first view wrote it; the older revision never replaced it.
+  expect(await trashEntries(second)).toEqual(newer);
+  expect((await savedRecords(second)).some((n:any)=>n.title==='Kilo')).toBe(false);
+ }finally{await context.close();}
+});
+
+test('two views: a second tab never settles a permanent deletion the first open tab still shows under review',async({browser})=>{
+ test.setTimeout(60_000);
+ const context=await browser.newContext();
+ try{
+  await context.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+  const first=await context.newPage();
+  await lowerEntryLimit(first,1);
+  await first.goto('/');
+  await seedVoice(first,'held-voice','held-audio','Held memo','Held words');
+  await first.reload();await openNotes(first);
+  await createNote(first,'Filler','Occupies Trash');await deleteNote(first,'Filler');
+  // The tombstone commit fails in the first tab, so its permanent deletion stays there under review.
+  await first.evaluate(async()=>{
+   const {DocumentNotesStore}=await import('/src/runtime/browser-notes-document.ts');
+   const execute=DocumentNotesStore.prototype.execute;
+   DocumentNotesStore.prototype.execute=async function(...args:any[]){if(args[0]?.type==='notes_delete')throw Error('Notes reply lost');return execute.apply(this,args as any);};
+  });
+  await first.getByRole('button',{name:'Open Held memo',exact:true}).click();
+  await first.getByRole('button',{name:'Delete note',exact:true}).click();
+  await first.getByRole('dialog',{name:'Trash is full'}).getByRole('button',{name:'Delete forever without Trash',exact:true}).click();
+  await expect(first.getByText(/Deletion is unconfirmed/).first()).toBeVisible();
+  const held=await pendingDeletions(first);
+  expect(held.map((row:any)=>[row.note.id,row.permanent])).toEqual([['held-voice',true]]);
+  expect(held[0].lease.until).toBeGreaterThan(Date.now());
+  await first.getByRole('button',{name:'Back to notes',exact:true}).click();
+  await expect(first.getByRole('button',{name:'Check deletion status',exact:true})).toBeVisible();
+
+  // A second tab starts. To it the row looks like one an earlier, closed view left ("death before
+  // the tombstone commit"), which a start rolls back by retiring the row. The first tab still holds it.
+  const second=await context.newPage();
+  await second.goto('/');await openNotes(second);
+  await second.getByRole('button',{name:'Check deletion status',exact:true}).click();
+  await expect.poll(()=>second.evaluate(async()=>{const locks=await navigator.locks.query();return [...(locks.held||[]),...(locks.pending||[])].filter(lock=>lock.name==='alpha.notes-audio-effects.v1').length;})).toBe(0);
+  expect((await pendingDeletions(second)).map((row:any)=>row.id)).toEqual(held.map((row:any)=>row.id));
+  const untouched=await describeAudio(second,'held-audio');
+  expect(untouched.transcript).toBe('Held words');expect(untouched.deletedAt).toBeUndefined();
+  expect((await savedRecords(second)).some((n:any)=>n.id==='held-voice')).toBe(true);
+  await expect(first.getByRole('button',{name:'Check deletion status',exact:true})).toBeVisible();
+
+  // Once the first tab is gone its claim goes with it, and the second tab settles the row (rollback).
+  await first.close();
+  await expect.poll(()=>second.evaluate(async()=>{const locks=await navigator.locks.query();return [...(locks.held||[]),...(locks.pending||[])].some(lock=>lock.name?.startsWith('alpha.notes-deletion-claim.v1:'));})).toBe(false);
+  await second.getByRole('button',{name:'Check deletion status',exact:true}).click();
+  await expect.poll(()=>pendingDeletions(second)).toEqual([]);
+  expect((await savedRecords(second)).some((n:any)=>n.id==='held-voice')).toBe(true);
+  expect((await describeAudio(second,'held-audio')).deletedAt).toBeUndefined();
+ }finally{await context.close();}
+});

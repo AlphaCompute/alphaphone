@@ -16,6 +16,8 @@ final class AlphaCredentialStore {
  static final String NOTES_TRASH="notes-trash:v1:device";
  /** Encrypted copy of Notes edits whose collection commit failed or is uncertain. */
  static final String NOTES_DRAFT="notes-draft:v1:device";
+ /** Reminder-to-note back-references: identity only, at most 200 links (runtime/note-origin.ts). */
+ static final String NOTE_ORIGINS="note-origins:v1:device";
  private final JsonCredentialSlots slots;
  private final Context context;
  private final Runnable assertOwner;
@@ -31,6 +33,8 @@ final class AlphaCredentialStore {
   // Restorable copies of deleted notes, purged three days after deletion.
   if(NOTES_TRASH.equals(name))return 32*1024*1024;
   if(NOTES_DRAFT.equals(name))return 32*1024*1024;
+  // 200 links of bounded ids and a hash stay well under this; a larger value is not a valid index.
+  if(NOTE_ORIGINS.equals(name))return 512*1024;
   if(name!=null&&(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")))return 8*1024*1024;
   return 256*1024;
  }
