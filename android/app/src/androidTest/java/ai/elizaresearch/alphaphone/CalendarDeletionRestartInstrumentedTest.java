@@ -15,6 +15,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import ai.eliza.plugins.calendar.CalendarEventGuard;
 import java.io.File;
 import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import org.json.JSONObject;
 import org.junit.Test;
 import static org.junit.Assert.*;
@@ -48,9 +49,9 @@ public final class CalendarDeletionRestartInstrumentedTest {
    JSONObject row=coordinator.stageCalendar(target,coordinator.manualOwner(),"restart-"+run),deadline=row.getJSONObject("deadline");
    assertEquals("queued",row.getString("phase"));assertEquals(10000,deadline.getLong("expiresElapsed")-deadline.getLong("createdElapsed"));assertTrue(present(context,eventId));
    fixture=new JSONObject().put("run",run).put("mode",mode).put("account",account).put("calendarId",calendarId).put("eventId",eventId).put("operationId",row.getString("id")).put("deadline",deadline).put("preparePid",Process.myPid());
-   Files.writeString(file.toPath(),fixture.toString());
+   Files.write(file.toPath(),fixture.toString().getBytes(StandardCharsets.UTF_8));
   }else{
-   fixture=new JSONObject(Files.readString(file.toPath()));assertEquals(run,fixture.getString("run"));assertEquals(mode,fixture.getString("mode"));assertNotEquals("A fresh process must verify",fixture.getInt("preparePid"),Process.myPid());
+   fixture=new JSONObject(new String(Files.readAllBytes(file.toPath()),StandardCharsets.UTF_8));assertEquals(run,fixture.getString("run"));assertEquals(mode,fixture.getString("mode"));assertNotEquals("A fresh process must verify",fixture.getInt("preparePid"),Process.myPid());
    String id=fixture.getString("operationId");long expiry=fixture.getJSONObject("deadline").getLong("expiresElapsed"),eventId=fixture.getLong("eventId");
    JSONObject row=coordinator.receipt("calendar",id);assertNotNull("Durable intent survived process stop",row);assertTrue("Original deadline survives unchanged",DeferredDeletionJournal.same(fixture.getJSONObject("deadline"),row.getJSONObject("deadline")));
    if(phase.equals("verify")){
@@ -64,7 +65,7 @@ public final class CalendarDeletionRestartInstrumentedTest {
      while(!"deleted".equals(row.optString("phase"))&&SystemClock.elapsedRealtime()<limit){SystemClock.sleep(100);row=coordinator.receipt("calendar",id);assertNotNull(row);}
     }
     row=coordinator.receipt("calendar",id);assertEquals(mode.equals("undo")?"undone":"deleted",row.getString("phase"));assertEquals("Only the reviewed event changes",mode.equals("undo"),present(context,eventId));
-    fixture.put("terminal",row).put("verifyPid",Process.myPid());Files.writeString(file.toPath(),fixture.toString());
+    fixture.put("terminal",row).put("verifyPid",Process.myPid());Files.write(file.toPath(),fixture.toString().getBytes(StandardCharsets.UTF_8));
    }else{
     assertNotEquals("Replay observation uses another process",fixture.getInt("verifyPid"),Process.myPid());coordinator.reconcile();row=coordinator.receipt("calendar",id);
     assertTrue("Terminal receipt remains unchanged",DeferredDeletionJournal.same(fixture.getJSONObject("terminal"),row));assertEquals(mode.equals("undo"),present(context,eventId));
