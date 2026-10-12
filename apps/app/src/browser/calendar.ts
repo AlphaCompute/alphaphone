@@ -12,7 +12,8 @@ import { revision } from './revision';
 import {calendarDocument} from './calendar-store';
 type EventRow=CalendarRecord;
 type CreationReceipt={binding:string;result:{status:"saved";id:string;calendarId:string;creationId:string};acknowledged:boolean};
-type State={creations?:Record<string,CreationReceipt>;alertDismissed?:Record<string,number>;preferences?:{visible:boolean;color:'acc'|'fg'|'mut'};sourceRevision:string;events:EventRow[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
+type DeletionGrant={id:string;calendarId:string;revision:string;scope:'event'|'occurrence'|'series';seriesId?:string;expected:Partial<EventRow>;issuedAt:number};
+type State={deletionGrants?:Record<string,DeletionGrant>;creations?:Record<string,CreationReceipt>;alertDismissed?:Record<string,number>;preferences?:{visible:boolean;color:'acc'|'fg'|'mut'};sourceRevision:string;events:EventRow[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
 const initial=():State=>({sourceRevision:revision(),events:[]});
 const source={id:'local',name:'App calendar',account:'Alpha Phone',local:true,writable:true};
 const matches=(row:EventRow,expected:Partial<EventRow>|undefined)=>!!expected&&(!expected.revision||expected.revision===row.revision)&&(['title','body','location','begin','end'] as const).every(k=>row[k]===expected[k]);
@@ -203,6 +204,69 @@ export class BrowserCalendar extends WebPlugin {
     const when=reviewed.allDay?new Date(reviewed.begin).toLocaleDateString(undefined,{timeZone:'UTC',weekday:'short',year:'numeric',month:'short',day:'numeric'})+' · All day':`${new Date(reviewed.begin).toLocaleString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})} – ${new Date(reviewed.end).toLocaleString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`;
     if(!await this.reviews.confirm('delete-event','Delete calendar event?',`${reviewed.title||'Untitled event'}\n${source.name}\n${when}\n\n${reviewed.seriesId?'Delete this one occurrence? Other dates in the series stay.':'Delete this one event?'} This cannot be undone.`,'Delete event'))return {status:'cancelled'};
     return calendarDocument.edit(initial,data=>{const row=calendarRecord(data.events,input.id);if(!row||row.calendarId!==input.calendarId||row.revision!==input.revision||!matches(row,input.expected))return {status:'conflict'};data.events=deleteCalendarRecord(data.events,row,revision());return {status:'deleted'};});}
+  /**
+   * Policy P-30: the single review for a deletion with a ten-second Undo. Nothing is deleted here.
+   * A confirmed review stores a single-use grant bound to the exact reviewed revision and scope;
+   * commitDeletion consumes it after the Undo window, and revokeDeletion discards it on Undo.
+   */
+  async reviewDeletion(input:{id:string;calendarId:string;expected:Partial<EventRow>;revision:string;scope?:'event'|'occurrence'|'series';reviewText:string}) {
+    const state=await this.presentationState();if(!state)return {status:'cancelled'};
+    const reviewed=calendarRecord(state.events,input.id);
+    if(!reviewed||reviewed.calendarId!==input.calendarId||reviewed.revision!==input.revision||!matches(reviewed,input.expected))return {status:'conflict'};
+    const scope=input.scope==='series'?'series':reviewed.seriesId?'occurrence':'event';
+    if(input.scope==='series'&&!reviewed.seriesId)return {status:'conflict'};
+    const series=scope==='series'?state.events.find(row=>row.id===reviewed.seriesId&&!row.seriesId):undefined;
+    if(scope==='series'&&!series)return {status:'conflict'};
+    const subject=series||reviewed,invitation=!!subject.who?.length;
+    const when=reviewed.allDay?new Date(reviewed.begin).toLocaleDateString(undefined,{timeZone:'UTC',weekday:'short',year:'numeric',month:'short',day:'numeric'})+' · All day':`${new Date(reviewed.begin).toLocaleString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})} – ${new Date(reviewed.end).toLocaleString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`;
+    const reviewText=String(input.reviewText||'').slice(0,1000);
+    if(!(scope==='series'?await this.reviews.confirm('delete-series-'+series!.id,'Delete repeating series',`${series!.title}\n${source.name}\n\n${reviewText}`):await this.reviews.confirm('delete-event','Delete calendar event?',`${subject.title||'Untitled event'}\n${source.name}\n${when}\n\n${reviewText}`,'Delete event')))return {status:'cancelled'};
+    const grant=crypto.randomUUID();
+    const result=await calendarDocument.edit(initial,data=>{
+      const row=calendarRecord(data.events,input.id);
+      if(!row||row.revision!==input.revision||!matches(row,input.expected))return {status:'conflict' as const};
+      const grants=data.deletionGrants||={};if(Object.keys(grants).length>=100)return {status:'unavailable' as const};
+      grants[grant]={id:input.id,calendarId:input.calendarId,revision:scope==='series'?series!.revision:input.revision,scope,...(scope==='event'?{}:{seriesId:reviewed.seriesId}),expected:{title:row.title,body:row.body,location:row.location,begin:row.begin,end:row.end},issuedAt:Date.now()};
+      return {status:'reviewed' as const};
+    });
+    if(result.status!=='reviewed')return result;
+    return {status:'reviewed',grant,scope,invitation,revision:scope==='series'?series!.revision:input.revision,...(scope==='event'?{}:{seriesId:reviewed.seriesId}),...(scope==='occurrence'?{occurrenceBegin:reviewed.occurrenceBegin}:{})};
+  }
+  /**
+   * Revision-guarded deletion without a second dialog; only an unrevoked review grant allows it.
+   * A missing grant (already used, revoked) is 'unknown', settled by readback, never 'conflict'.
+   */
+  async commitDeletion(input:{grant:string}) {
+    return calendarDocument.edit(initial,data=>{
+      const grant=data.deletionGrants?.[input.grant];if(!grant)return {status:'unknown'};
+      delete data.deletionGrants![input.grant];
+      const state=this.deletionState(data.events,grant);
+      if(state==='absent')return {status:'deleted'};
+      if(state==='changed')return {status:'conflict'};
+      const row=grant.scope==='series'?data.events.find(row=>row.id===grant.seriesId&&!row.seriesId)!:calendarRecord(data.events,grant.id)!;
+      data.events=deleteCalendarRecord(data.events,row,revision());
+      return {status:'deleted'};
+    });
+  }
+  async revokeDeletion(input:{grant:string}) {
+    await calendarDocument.edit(initial,data=>{if(data.deletionGrants?.[input.grant])delete data.deletionGrants[input.grant];});
+    return {status:'revoked'};
+  }
+  /** Final provider readback of the exact reviewed target. Never mutates. */
+  async deletionReadback(input:{id:string;calendarId:string;revision:string;scope:'event'|'occurrence'|'series';seriesId?:string;expected:Partial<EventRow>}) {
+    const data=await calendarDocument.read(initial);
+    return {status:this.deletionState(data.events,{...input,issuedAt:0})};
+  }
+  private deletionState(events:EventRow[],grant:DeletionGrant):'absent'|'present'|'changed'{
+    if(grant.scope==='series'){const series=events.find(row=>row.id===grant.seriesId&&!row.seriesId);return !series?'absent':series.revision===grant.revision?'present':'changed';}
+    const row=calendarRecord(events,grant.id);
+    if(!row)return 'absent';
+    // Moved to another calendar: the event still exists, so it was kept, not deleted.
+    if(row.calendarId!==grant.calendarId)return 'changed';
+    // Another occurrence's deletion changes the series revision; an occurrence is matched by its own fields.
+    if(grant.scope==='occurrence')return matches(row,{...grant.expected,revision:undefined})?'present':'changed';
+    return row.revision===grant.revision?'present':'changed';
+  }
   async readWorkflowRange(input:{calendarIds:string[];start:string;end:string;maximumEvents:number}) {const {events}=await this.list({begin:Date.parse(input.start),end:Date.parse(input.end)});return {status:'ready',events:events.filter(e=>input.calendarIds.includes(e.calendarId)).slice(0,input.maximumEvents).map(e=>({...e,start:new Date(e.begin).toISOString(),end:new Date(e.end).toISOString(),allDay:!!e.allDay}))};}
   async open(input?:{id?:string}){
     const state=input?.id?await this.presentationState():undefined;if(state===null)return {status:'cancelled'};

@@ -8,8 +8,9 @@ import type { Reminder, ClockRequest } from '../daily';
 import { revision } from './revision';
 import {notificationState} from './notification-store';
 import {reminderDocument} from './reminder-store';
+import {BrowserReviews} from './review';
 type Row=Reminder & {revision:string};
-type State={sourceRevision:string;reminders:Row[];receipts?:Record<string,{binding:string;result:ReminderResult|ReminderCreateResult}>};
+type State={sourceRevision:string;reminders:Row[];deliveryHolds?:Record<string,string>;receipts?:Record<string,{binding:string;result:ReminderResult|ReminderCreateResult}>};
 const initial=():State=>({sourceRevision:revision(),reminders:[]});
 async function notificationsAllowed(){const state=await notificationState();return state.appEnabled&&state.channels.reminders!==false;}
 async function scheduledStatus():Promise<'scheduled'|'permission-denied'>{return await notificationsAllowed()?'scheduled':'permission-denied';}
@@ -48,15 +49,34 @@ export class BrowserDaily extends WebPlugin {
     return reminderDocument.edit(initial,async data=>{const status=input.alertMinutes===null?'pending':await scheduledStatus();const previous=data.reminders.find(r=>r.id===input.id);if(previous?.alertMinutes!==undefined&&input.alertMinutes===undefined)throw Error('Explicit reminder timing cannot be discarded');data.reminders=data.reminders.filter(r=>r.id!==input.id);data.reminders.push({...input,body:input.body||'',mode,createdAt:previous?.createdAt||Date.now(),status,occurrenceId:crypto.randomUUID(),dueAt,history:previous?.history||[],revision:revision()});return {status,id:input.id,mode};});
   }
   async listReminders(){
-    const due=(data:State)=>data.reminders.some(row=>row.status==='scheduled'&&row.at<=Date.now());
+    // A reminder whose reviewed deletion is pending Undo is not delivered (policy P-30).
+    const held=(data:State,row:Row)=>!!data.deliveryHolds?.[row.id];
+    const due=(data:State)=>data.reminders.some(row=>row.status==='scheduled'&&row.at<=Date.now()&&!held(data,row));
     const result=async(data:State)=>({reminders:data.reminders.filter(row=>row.status!=='cancelled').map(row=>({...row,target:target(data,row)})),notificationsEnabled:await notificationsAllowed()});
     const data=await reminderDocument.read(initial);
     // Polling an unchanged schedule must not mint new reset/recovery revisions.
     if(!due(data))return result(data);
-    return reminderDocument.edit(initial,async data=>{for(const row of data.reminders)if(row.status==='scheduled'&&row.at<=Date.now()){row.status=await notificationsAllowed()?'posted':'permission-denied';if(row.status==='posted')row.postedAt=Date.now();row.revision=revision();}return result(data);});
+    return reminderDocument.edit(initial,async data=>{for(const row of data.reminders)if(row.status==='scheduled'&&row.at<=Date.now()&&!held(data,row)){row.status=await notificationsAllowed()?'posted':'permission-denied';if(row.status==='posted')row.postedAt=Date.now();row.revision=revision();}return result(data);});
   }
 
   async cancelReminder(input:{id:string;target:ReminderTarget;operationId:string;bindingHash:string}){if(input.target?.reminderId!==input.id)throw Error('Reviewed reminder target required.');const response=await this.operateReminder({...input,operation:{type:'reminder_cancel',target:input.target}});return {status:response.status==='succeeded'?'cancelled':'unknown',id:input.id};}
+  private reviews=new BrowserReviews();
+  /** Policy P-30: the same owned review dialog Calendar events use. Deletes nothing. */
+  async reviewReminderDeletion(input:{id:string;title:string;details:string}){
+    const title=String(input.title||'Reminder').slice(0,200),details=String(input.details||'').slice(0,1000);
+    return {status:await this.reviews.confirm('delete-reminder-'+String(input.id).slice(0,200),'Delete reminder?',`${title}\n\n${details}`,'Delete reminder')?'reviewed' as const:'cancelled' as const};
+  }
+  /** Suspend delivery while a reviewed deletion can still be undone. A held alert is delivered late on release. */
+  async holdReminderDelivery(input:{id:string;holdId:string}){
+    if(!/^[A-Za-z0-9_:.-]{1,200}$/.test(input.holdId)||typeof input.id!=='string'||!input.id)throw Error('Invalid reminder hold.');
+    await reminderDocument.edit(initial,data=>{const holds=data.deliveryHolds||={};if(holds[input.id]!==input.holdId){if(Object.keys(holds).length>=100)throw Error('Too many reminder holds.');holds[input.id]=input.holdId;}});
+    return {status:'held'};
+  }
+  async releaseReminderDelivery(input:{id:string;holdId:string;redeliver:boolean}){
+    await reminderDocument.edit(initial,data=>{if(data.deliveryHolds?.[input.id]===input.holdId){delete data.deliveryHolds[input.id];if(!Object.keys(data.deliveryHolds).length)delete data.deliveryHolds;}});
+    return {status:'released'};
+  }
+  async reminderDeliveryHolds(){const data=await reminderDocument.read(initial);return {holds:Object.entries(data.deliveryHolds||{}).map(([reminderId,id])=>({id,reminderId}))};}
   async selectedReminder(input:{id:string}):Promise<ReminderTarget>{const data=await reminderDocument.read(initial),row=data.reminders.find(r=>r.id===input.id);if(!row)throw Error('Reminder no longer exists.');return target(data,row);}
   async reminderOperationReceipt(input:{operationId:string;bindingHash:string;operation:ReminderOperation|ReminderCreateOperation}) {
     const operation=isReminderCreate(input.operation)?validateReminderCreate(input.operation):validateReminderOperation(input.operation),binding=operationBinding(input,operation),receipt=(await reminderDocument.read(initial)).receipts?.[input.operationId];

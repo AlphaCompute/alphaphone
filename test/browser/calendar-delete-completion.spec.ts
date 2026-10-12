@@ -11,9 +11,10 @@ for(const next of ['event','home','new-draft'] as const)test(`late Calendar dele
   if(title==='Keep event B')await page.getByRole('button',{name:'Back to calendar',exact:true}).click();
  }
  await page.evaluate(async()=>{
-  const {BrowserCalendar}=await import('/src/browser/calendar.ts');const remove=BrowserCalendar.prototype.remove;
+  // A late review result (policy P-30 deferred deletion) must not close newer UI.
+  const {BrowserCalendar}=await import('/src/browser/calendar.ts');const review=BrowserCalendar.prototype.reviewDeletion;
   const f=(window as any).deleteCompletion={calls:0,release:null,done:false};
-  BrowserCalendar.prototype.remove=async function(input){f.calls++;const result=await remove.call(this,input);await new Promise<void>(resolve=>f.release=resolve);f.done=true;return result;};
+  BrowserCalendar.prototype.reviewDeletion=async function(input){f.calls++;const result=await review.call(this,input);await new Promise<void>(resolve=>f.release=resolve);f.done=true;return result;};
  });
  await page.getByRole('button',{name:'Delete event',exact:true}).click();
  await page.getByRole('dialog',{name:'Delete calendar event?'}).getByRole('button',{name:'Delete event',exact:true}).click();
@@ -27,6 +28,6 @@ for(const next of ['event','home','new-draft'] as const)test(`late Calendar dele
  if(next==='event')await expect(page.getByRole('heading',{name:'Keep event B',exact:true})).toBeVisible();
  if(next==='home')await expect(page.locator('html')).toHaveAttribute('data-active-view','home');
  if(next==='new-draft')await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('New unsaved event');
- const result=await page.evaluate(async ()=>({calls:(window as any).deleteCompletion.calls,events:JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events}));
- expect(result.calls).toBe(1);expect(result.events.map((event:any)=>event.title)).toEqual(['Keep event B']);
+ const result=async()=>page.evaluate(async ()=>({calls:(window as any).deleteCompletion.calls,events:JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events.map((event:any)=>event.title)}));
+ await expect.poll(result,{timeout:20_000}).toEqual({calls:1,events:['Keep event B']});
 });
