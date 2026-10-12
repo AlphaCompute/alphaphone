@@ -117,8 +117,18 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       let text='';
       if(Capacitor.isNativePlatform()){
         await new Promise(resolve=>setTimeout(resolve,150));if(!current())return;lastGeometry='';await update();
-        const result=await Browser.reviewQuestion({session,id,url:info.url,navigation:info.navigation});
-        if(typeof result.text!=='string'||!result.text.trim()||result.text.length>5000||sensitiveReadingText(result.text))throw Error('Page excerpt unavailable.');text=result.text;
+        // Android may be unable to read the page in its isolated world (an old System WebView) or return
+        // nothing usable. Then the review opens with an empty excerpt, as the web CORS-denied path does,
+        // and Continue stays disabled until the user pastes text. A sensitive page never opens a review.
+        const result=await Browser.reviewQuestion({session,id,url:info.url,navigation:info.navigation}).catch((error:unknown)=>{
+          const {code,message}=(error||{}) as {code?:unknown;message?:unknown};
+          if(code==='sensitive-page')throw error;
+          if(code==='isolated-world-unavailable'||/^Isolated page reading is unavailable/.test(String(message||'')))return null;
+          throw error;
+        });
+        const excerpt=typeof result?.text==='string'?result.text:'';
+        if(excerpt&&sensitiveReadingText(excerpt))throw Error('This page may contain credentials or verification codes. Open a different page.');
+        text=excerpt.trim()&&excerpt.length<=5000?excerpt:'';
       }else{
         const result=await browserReadingSource(source.url,controller.signal);if(result?.blocked)throw Error('This page may contain credentials or verification codes. Open a different page.');text=result?.text||'';
       }
@@ -323,7 +333,9 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     return { ...out, isNews:false,isEnc:false,isBook:false,isSearch:false,isGeneric:false,isNew:!info,
       isPrivate:priv,openPrivate:()=>openNew(true),clearData:()=>void clearBrowsingData(),clearSite:()=>void clearSiteData(),canClearSite:!!info?.committed&&!info?.error&&!!url,
       recents:[],sugg:[],people:[],agOn:false,confirm:false,
-      openFind:()=>openFind(),canFind:!!info?.committed&&!info?.error,finding:!!s.finding&&s.findTab===s.cur,
+      // Find in page is native findAllAsync. A web build's page is an opaque-origin sandboxed frame the host
+      // cannot search, so the menu offers no Find there (the template keys on openFind).
+      openFind:Capacitor.isNativePlatform()?()=>openFind():undefined,canFind:Capacitor.isNativePlatform()&&!!info?.committed&&!info?.error,finding:!!s.finding&&s.findTab===s.cur,
       find:{query:s.findQuery||'',count:s.findCount||0,index:s.findIndex||0,
         label:!s.findQuery?'':s.findCount?`${s.findIndex||1} of ${s.findCount}`:(s.findDone===false?'Searching…':'No matches'),
         onInput:(e:Event)=>findQuery((e.target as HTMLInputElement).value),
