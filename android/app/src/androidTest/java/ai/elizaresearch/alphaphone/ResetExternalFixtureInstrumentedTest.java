@@ -30,6 +30,11 @@ public final class ResetExternalFixtureInstrumentedTest {
   String inner=new org.json.JSONObject().put("version",2).put("collectionId",collection).put("records",new org.json.JSONArray().put(note(run,"Saved reset sentinel"))).put("deleted",new org.json.JSONArray()).toString();
   return new org.json.JSONObject().put("version",1).put("currentRaw",inner).put("archive",new org.json.JSONObject().put("v1",org.json.JSONObject.NULL).put("v2",org.json.JSONObject.NULL).put("daily",org.json.JSONObject.NULL)).toString();
  }
+ private static String recoveredNotes(String run)throws Exception{
+  org.json.JSONObject envelope=new org.json.JSONObject(notes(run)),current=new org.json.JSONObject(envelope.getString("currentRaw"));
+  current.put("records",new org.json.JSONArray().put(note(run+"_draft","Unsaved reset sentinel")).put(note(run,"Saved reset sentinel")));
+  return envelope.put("currentRaw",current.toString()).toString();
+ }
  private static String draft(String run)throws Exception{
   String current=new org.json.JSONObject(notes(run)).getString("currentRaw"),id=run+"_draft";
   return new org.json.JSONObject().put("version",1).put("savedAt",1).put("base",sha(current.getBytes(StandardCharsets.UTF_8))).put("reason","failed").put("records",new org.json.JSONArray().put(note(id,"Unsaved reset sentinel"))).put("added",new org.json.JSONArray().put(id)).put("removed",new org.json.JSONArray()).put("before",new org.json.JSONObject()).toString();
@@ -71,7 +76,12 @@ public final class ResetExternalFixtureInstrumentedTest {
    InstrumentationRegistry.getInstrumentation().addResults(result);
   }else if("verify-preserved".equals(phase)){
    assertArrayEquals("Private file retained",bytes(run),java.nio.file.Files.readAllBytes(file.toPath()));assertArrayEquals("Cache retained",bytes(run),java.nio.file.Files.readAllBytes(cache.toPath()));assertEquals("Preferences retained",run,c.getSharedPreferences(name,0).getString("value",null));
-   assertEquals("Saved Notes retained",notes(run),store.readCredentialSlot(AlphaCredentialStore.NOTES_RECORDS));assertEquals("Unsaved draft retained",draft(run),store.readCredentialSlot(AlphaCredentialStore.NOTES_DRAFT));assertEquals("Runtime fixture retained",payload,store.readCredentialSlot(SLOT));
+   // Launch normally recovers a valid unsaved draft. Both exact sentinels must
+   // survive, either in their original slots or in the exact recovered collection.
+   String saved=store.readCredentialSlot(AlphaCredentialStore.NOTES_RECORDS),keptDraft=store.readCredentialSlot(AlphaCredentialStore.NOTES_DRAFT);
+   if(notes(run).equals(saved))assertEquals("Unmerged draft retained",draft(run),keptDraft);
+   else{assertEquals("Saved and drafted Notes retained after normal startup recovery",recoveredNotes(run),saved);assertTrue("Recovered draft is either retained exactly or cleared after saving",keptDraft==null||draft(run).equals(keptDraft));}
+   assertEquals("Runtime fixture retained",payload,store.readCredentialSlot(SLOT));
    assertTrue("UID key retained",keys().containsAlias(alias));assertNotNull("Job retained",jobs.getPendingJob(JOB));assertTrue("Notification retained",java.util.Arrays.stream(notices.getActiveNotifications()).anyMatch(n->n.getId()==NOTICE));assertFalse("No reset authority recorded",AlphaDataReset.pending(c));
   }else if("verify".equals(phase)){
    assertFalse("Private file erased",file.exists());assertFalse("Cache erased",cache.exists());assertFalse("Preferences erased",c.getSharedPreferences(name,0).contains("value"));
