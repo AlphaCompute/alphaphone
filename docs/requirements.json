@@ -167,7 +167,7 @@
     {
       "id": "AP-08",
       "title": "AOSP-only Phone, SMS/MMS and Contacts",
-      "priority": "deferred",
+      "priority": "P0 AOSP",
       "status": "partial",
       "statusRows": [
         "Phone, SMS, Contacts and Wallet"

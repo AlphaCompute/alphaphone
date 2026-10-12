@@ -458,4 +458,3 @@ Withdraw owner-specific approval notices on owner change. Repost quietly when th
 - [ ] Test A-to-B-to-A, process death, lock previews, expired/decided approvals and result notices without cross-owner disclosure
 
 [Implementation issue](https://github.com/AlphaCompute/alphaphone/issues/425)
-
