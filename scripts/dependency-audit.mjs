@@ -215,8 +215,10 @@ const splitIdent = ident => { const at = ident.lastIndexOf('@'); return [ident.s
  * review instead of silently dropped.
  */
 export function inRange(version, range) {
-  const parse = text => /^v?(\d+)\.(\d+)\.(\d+)/.exec(text)?.slice(1).map(Number);
-  const compare = (a, b) => { for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
+  // A prerelease sorts just below its release (1.0.0-beta < 1.0.0), so "<1.0.0" covers it; its own
+  // identifiers are not compared, which can only count more versions as affected.
+  const parse = text => { const match = /^v?(\d+)\.(\d+)\.(\d+)(-)?/.exec(text); return match && [...match.slice(1, 4).map(Number), match[4] ? -1 : 0]; };
+  const compare = (a, b) => { for (let i = 0; i < 4; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
   const target = parse(version);
   if (!target) return false;
   return String(range).split('||').some(alternative => {

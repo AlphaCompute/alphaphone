@@ -96,7 +96,7 @@ same exception fields and 120-day limit. `test/dependency-audit.test.mjs` fails 
 the upstream commit or the upstream lock changes without a refreshed resident snapshot
 (`node scripts/dependency-audit.mjs --resident --write`).
 
-Audited 2026-10-11 at upstream `13c98575987a`, from the upstream lock (3689 package
+Audited 2026-10-12 at upstream `13c98575987a`, from the upstream lock (3689 package
 versions): 103 advisory findings in 34 packages, 3 critical, 42 high, 43 moderate and 15 low.
 The critical ones are `handlebars` 4.7.9 (GHSA-8r5x-fm3f-whwj, GHSA-p8wg-vrv2-v86f) and
 `shell-quote` 1.10.0 (GHSA-pqg4-j6r4-53mv); the high ones include `undici`, `axios`,

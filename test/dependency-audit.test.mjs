@@ -201,6 +201,8 @@ test('resident input comes from the upstream Bun lock or packaged-runtime notice
   for (const [version, range, expected] of [['5.29.0', '<5.29.1', true], ['5.29.1', '<5.29.1', false], ['7.28.0', '>=7.0.0 <7.30.0 || >=8.0.0 <8.2.0', true],
     ['8.10.0', '>=7.0.0 <7.30.0 || >=8.0.0 <8.2.0', false], ['1.0.0', '*', true], ['2.0.0', '<=2.0.0', true], ['2.0.1', '=2.0.0', false],
     ['1.5.0', '>= 1.2.0 < 1.6.0', true], ['1.6.0', '>= 1.2.0 < 1.6.0', false], ['1.5.0', '1.0.0 - 2.0.0', true], ['2.0.1', '1.0.0 - 2.0.0', false],
+    // A prerelease of a fixed version is still before the fix.
+    ['1.6.0-beta.1', '<1.6.0', true], ['1.6.0-beta.1', '>=1.6.0', false], ['1.6.1-rc.0', '<1.6.0', false],
     // An unreadable comparator is shown for review rather than dropped.
     ['1.0.0', '<unknown', true]])
     assert.equal(inRange(version, range), expected, `${version} ${range}`);
