@@ -31,7 +31,8 @@ public class PhotosForeignLibraryInstrumentedTest {
   int user=android.os.Process.myUid()/100000;assertTrue(user>0);assertEquals(user,Integer.parseInt(args.getString("photosForeignUser","-1")));assertTrue(Build.VERSION.SDK_INT>=34);
   String run=args.getString("photosForeignRun");assertEquals(run,UUID.fromString(run).toString());
   String scope=args.getString("photosForeignScope");assertTrue(Set.of("full","partial","denied").contains(scope));
-  JSONArray expectedArray=new JSONArray(args.getString("photosForeignIds"));assertTrue(expectedArray.length()>24&&expectedArray.length()<=320);
+  JSONArray expectedArray=new JSONArray(args.getString("photosForeignIds"));assertTrue(expectedArray.length()<=320);
+  boolean initial="1".equals(args.getString("photosForeignInitial"));if(initial){assertEquals("denied",scope);assertEquals(0,expectedArray.length());}else assertTrue(expectedArray.length()>24);
   Set<String> expected=new HashSet<>();for(int i=0;i<expectedArray.length();i++){String id=expectedArray.getString(i);MediaLibraryKey.parse(id);assertTrue(expected.add(id));}
   int count=Integer.parseInt(args.getString("photosForeignCount"));assertTrue(count>=0&&count<=expected.size());
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
