@@ -68,7 +68,7 @@ final class PermittedMediaCatalog implements AutoCloseable {
  private String version(String volume){String value=Build.VERSION.SDK_INT>=30?MediaStore.getVersion(context,volume):MediaStore.getVersion(context);if(value==null||value.isEmpty())throw new IllegalStateException("Media version unavailable");return value;}
  private String snapshot(List<String> volumes){
   unlocked();StringBuilder value=new StringBuilder(access().toString()).append('|').append(epoch.get());
-  for(String volume:volumes)value.append('|').append(volume).append('=').append(version(volume));return value.toString();
+  for(String volume:volumes){value.append('|').append(volume).append('=').append(version(volume));if(Build.VERSION.SDK_INT>=30)value.append(':').append(MediaStore.getGeneration(context,volume));}return value.toString();
  }
  private void current(String expected,List<String> volumes){if(!expected.equals(snapshot(volumes))||!volumes.equals(volumes()))throw new IllegalStateException("Photo access or library changed; refresh Photos");}
  static final class Fence {

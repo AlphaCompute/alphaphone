@@ -128,6 +128,7 @@ export const CLASS_REGISTRY = {
   NotesSecureStorage: { args: { notesSecureStorage: "1" }, note: "the fresh-install migration method (notesSecureMigration=1) has no campaign and is skipped" },
   PdfViewer: { args: { isolatedPdfNative: "1" } },
   PhotosBatch: { args: { photosBatch: "1" } },
+  PhotosLibrary: { args: { photosLibrary: "1" }, note: "requires an owned disposable secondary user; synthetic generation fence only, not foreign-media permission acceptance" },
   UiDispatch: { args: { uiDispatch: "1" } },
   LocalSpeech: { args: { localSpeech: "1" }, note: "needs the packaged on-device speech models; recorded as failing functional acceptance on arm64-v8a" },
   LocalSpeechBridge: { args: { localSpeechBridge: "1" }, note: "needs the packaged on-device speech models" },

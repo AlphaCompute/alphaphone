@@ -18,7 +18,11 @@ saved copies remain owned PNGs with the existing operation receipt journal.
 The permitted-library branch also queries Favorites, Videos and Recently deleted
 through typed collections. Custom album membership retains volume-qualified identities
 and withholds inaccessible members. Album responses recheck the whole access/version
-snapshot; subsequent pages bind that snapshot as well as the album revision.
+snapshot, including the live provider generation on Android 11+; subsequent pages
+bind that snapshot as well as the album revision. This detects ordinary mutations
+before the asynchronous observer callback runs. A new native fixture exercises
+that case with one exact owned synthetic image while main-thread callbacks are
+blocked; it is registered for execution, not yet claimed as passing.
 
 Favorite, trash and restore requests over permitted rows require a native review
 and Android's write-access prompt. Approval is consumed once; the provider update
@@ -33,8 +37,9 @@ large-catalog, foreign-media, permission-downgrade, reboot and reviewed-mutation
 campaigns remain required. The initial catalog checkpoint built all four developer
 APKs and passed lint; subsequent organization code has SDK compilation and renderer
 checks but still needs new exact-source APK and native qualification. Repository
-verification passed 755 tests (751 passed, four existing TODOs) before the final
-album-response snapshot tightening. Existing browser album/batch/delete journeys
+verification passed 755 tests (751 passed, four existing TODOs) at organization checkpoint `07570e62`, including the final
+album-response snapshot tightening; the provider-generation follow-up is pending
+full verification. Existing browser album/batch/delete journeys
 passed all 12 cases. These checks do not prove native provider outcomes. Android's permission
 contract is documented in [selected photo/video access](https://developer.android.com/about/versions/14/changes/partial-photo-video-access).
 
