@@ -55,7 +55,7 @@ public final class ResetExternalFixtureInstrumentedTest {
   try(java.io.InputStream input=new android.os.ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("dumpsys alarm"))){
    byte[] bytes=input.readNBytes(8*1024*1024+1);assertTrue("Bounded AlarmManager observation",bytes.length<=8*1024*1024);
    String dump=new String(bytes,java.nio.charset.StandardCharsets.UTF_8);int history=dump.indexOf("App Alarm history:");
-   assertTrue("Recognized active AlarmManager queues",history>0&&dump.indexOf("Pending alarms per uid:")<history&&dump.contains("Pending user blocked background alarms:"));
+   assertTrue("Recognized active AlarmManager queues",history>0&&dump.indexOf("Pending alarms per uid:")>0&&dump.indexOf("Pending alarms per uid:")<history&&dump.contains("Pending user blocked background alarms:"));
    return dump.substring(0,history).contains("ai.elizaresearch.alphaphone.RESET_FIXTURE_ALARM."+run);
   }
  }
