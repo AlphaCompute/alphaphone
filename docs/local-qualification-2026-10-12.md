@@ -56,6 +56,16 @@ The `notes-heap-fixture-build` archive retains identical app bytes and only repl
 instrumentation with the corrected snapshot fixture (`142623df`). Each native run
 records the exact app and instrumentation hashes independently.
 
+The subsequent `secure-store-streamed-build` (`7a1c367f`) has the final streamed
+secure-store fix. Its developer artifacts retain the same distribution limitations.
+
+| APK | SHA-256 |
+| --- | --- |
+| standalone debug | `53392b770088e33b2c3f44aa7c3410d94835375f9a89557bc9859520f52bbda5` |
+| standalone release | `cb7b20515e9b5ebc2df502368187a698a41434f67308b81ab57ea7130f2831ef` |
+| launcher debug | `761a325c609379fce19b2b60223bd6df3da910538d47204693dfbf27783aec13` |
+| launcher release | `b304c9d9b50037b697d1cda082806cf6ff85f258158c6cb9731819a52dde838e` |
+
 ## Source verification
 
 The integrated `npm run verify` at `d8313c5f` passed: 737 tests, 733 passing, four existing
@@ -196,7 +206,24 @@ reached a second heap failure while Capacitor serialized the collection. The fix
 retained an extra 32 MiB expected String; a private digest/file snapshot now releases
 that copy before opening the renderer. The corrected standalone rerun still exhausted the 192 MiB Java heap, now in
 Android Keystore authenticated decryption (`notes-snapshot-fixed-001`). A further
-product memory fix is needed; capacity is not counted as passing.
+product memory fix was required; that intermediate build is not counted as passing.
+
+The follow-up at `cf3c282a` streams the same v1 ciphertext into AES/GCM in
+16 KiB chunks and serializes renderer storage work through response serialization.
+Authentication, format, limits and CAS semantics remain unchanged. Independent
+host checks passed with a real 32 MiB record plus 24 MiB additional live allocation
+under a 192 MiB heap. The complete source verification passed 751 tests: 747 passing,
+four TODOs, followed by Notes flow and the 395-file production audit
+(`integrated-streamed-store-verify.log`).
+
+The matching developer build `7a1c367f` passed all four APK variants, instrumentation,
+lint and APK receipt checks. **Both native variants then passed all four Notes
+methods (eight total) on the original stock Google WebView 124 and 192 MiB Java
+heap.** This includes real 32 MiB capacity refusal after a small edit, retained
+recovery draft, unchanged saved collection and exact cleanup, plus draft recreation,
+large bridge refusal and exact-cap/CAS/multibyte checks. Receipt:
+`notes-streamed-stock-001`, with raw failures from earlier builds preserved. Installed
+APKs were removed and the newer test provider restored afterward.
 
 ## Accessibility traversal
 
@@ -226,8 +253,22 @@ normal tabs allow it; private tabs retain blocking. Both variants passed the nat
 synthetic HTTPS cross-site iframe cookie test at `e03b8875`, including normal-profile
 sharing and unchanged privileged-host policy/isolation. The private cases were
 explicitly skipped on stock WebView 124 because scoped deletion is unavailable.
-Newer-provider private tests, restart/clearing and live identity-provider acceptance
-remain separate. No live sign-in was performed.
+On the owned emulator with verified WebView `145.0.7632.218`, the rebuilt
+`7011c8ba` apps passed all four normal/private cookie-policy methods and ten
+sign-in storage methods across both variants, including tab close, popup profile
+isolation and explicit Clear browsing data cancellation/confirmation. Dedicated
+restart campaigns then passed prepare, real force-stop/new-PID verification and
+cleanup for both variants: normal cookies/storage survived, and the exact previous
+private profile was removed. The provider was explicitly installed into each owned
+disposable user and its actual selection recorded before/after. Earlier runs that
+fell back to stock 124 remain separately annotated and are not private-profile proof.
+
+Receipts: `browser-webview145-001` and
+`browser-signin-owned145-{standalone,launcher}-001`, including exact product and
+`142623df` instrumentation hashes. These complete the local synthetic behavior
+checks for #403. No live sign-in was performed. WebView 145 still lacked isolated-world
+reading injection; supported-path reading checks were explicitly skipped, with the
+unavailable path checked instead.
 
 ## Pending results in this run
 
