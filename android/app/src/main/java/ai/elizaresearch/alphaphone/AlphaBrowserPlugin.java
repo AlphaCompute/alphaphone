@@ -156,7 +156,7 @@ public class AlphaBrowserPlugin extends Plugin {
   }
  }); }
 
- private static class Tab { BrowserReadingWorld readingWorld; BrowserDownloads.BlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
+ private static class Tab { BrowserReadingWorld readingWorld; BrowserDownloads.BlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; int authAttempts; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
  /** Credentials stay in the framework/provider and the remote document. No bridge API
   * reads fields or replaces Chromium's frame-specific webDomain metadata. The only addition
   * is the committed top-level origin, which the password provider requires to equal the
@@ -302,7 +302,7 @@ public class AlphaBrowserPlugin extends Plugin {
   try { Uri u = Uri.parse(value); return ("https".equalsIgnoreCase(u.getScheme()) || "http".equalsIgnoreCase(u.getScheme())) && u.getHost() != null && u.getUserInfo() == null && !value.contains("\n") && !value.contains("\r"); } catch (Exception e) { return false; }
  }
  private void fail(Tab t, String message) { disableAutofill(t); clearTimeout(t); t.error = message; t.loading = false; t.committed = false; t.web.stopLoading(); t.web.setVisibility(View.INVISIBLE); t.message.setText(message); t.message.setVisibility(View.VISIBLE); emit(t); }
- private JSObject state(Tab t) { JSObject s = new JSObject(); s.put("session", session); s.put("id", t.id); s.put("sequence", ++sequence); s.put("navigation", String.valueOf(t.navigation)); s.put("url", t.url); s.put("title", t.dead ? "" : t.web.getTitle()); s.put("loading", t.loading); s.put("committed", t.committed); s.put("httpStatus", t.httpStatus); s.put("progress", t.dead ? 0 : t.web.getProgress()); s.put("canBack", !t.dead && t.web.canGoBack()); s.put("canForward", !t.dead && t.web.canGoForward()); s.put("error", t.error); s.put("private", t.priv); s.put("passkeys", t.passkeys); return s; }
+ private JSObject state(Tab t) { JSObject s = new JSObject(); s.put("session", session); s.put("id", t.id); s.put("sequence", ++sequence); s.put("navigation", String.valueOf(t.navigation)); s.put("url", t.url); s.put("title", t.dead ? "" : t.web.getTitle()); s.put("loading", t.loading); s.put("committed", t.committed); s.put("httpStatus", t.httpStatus); s.put("progress", t.dead ? 0 : t.web.getProgress()); s.put("canBack", !t.dead && t.web.canGoBack()); s.put("canForward", !t.dead && t.web.canGoForward()); s.put("error", t.error); s.put("private", t.priv); return s; }
  private void emit(Tab t) { if (tabs.get(t.id) == t) notifyListeners("stateChanged", state(t)); }
  /**
   * Capacitor can deliver a call the page made just before the activity was destroyed after
@@ -341,8 +341,10 @@ public class AlphaBrowserPlugin extends Plugin {
    if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROCESS) || !WebViewCompat.isMultiProcessEnabled()) throw new IllegalStateException();
    WebSettings settings = t.web.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true); settings.setAllowFileAccess(false); settings.setAllowContentAccess(false); settings.setAllowFileAccessFromFileURLs(false); settings.setAllowUniversalAccessFromFileURLs(false); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW); settings.setJavaScriptCanOpenWindowsAutomatically(false); settings.setSupportMultipleWindows(true); settings.setSaveFormData(false); settings.setSafeBrowsingEnabled(true); t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
    CookieManager.getInstance().setAcceptThirdPartyCookies(t.web, false);
-   // Passkeys through Android Credential Manager, where this WebView provider supports browser mode.
-   if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_AUTHENTICATION)){try{WebSettingsCompat.setWebAuthenticationSupport(settings,WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER);t.passkeys=WebSettingsCompat.getWebAuthenticationSupport(settings)==WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER;}catch(RuntimeException unsupported){t.passkeys=false;}}
+   // Passkeys are outside the MVP (#402): never opt into browser-mode WebAuthn until the
+   // system credential provider follow-up is qualified. Pin NONE explicitly so a provider
+   // default cannot silently advertise passkeys.
+   if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_AUTHENTICATION)){try{WebSettingsCompat.setWebAuthenticationSupport(settings,BrowserPasskeyPolicy.requestBrowserWebAuthentication()?WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER:WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_NONE);}catch(RuntimeException unsupported){/* Provider default: no browser-mode WebAuthn. */}}
    t.readingWorld=new BrowserReadingWorld(t.web);
    t.capture=new BrowserDownloads.BlobCapture(t.web,downloads.captureDirectory());
    t.web.setFindListener((ordinal,count,done)->findResult(t,ordinal,count,done));
@@ -644,13 +646,13 @@ public class AlphaBrowserPlugin extends Plugin {
  }); }
  @PluginMethod public void findNext(PluginCall call) { run(call,t->{ if(t.findQuery!=null)t.web.findNext(!Boolean.FALSE.equals(call.getBoolean("forward",true))); }); }
  @PluginMethod public void clearFind(PluginCall call) { run(call,this::clearFind); }
- /** Once per install: say plainly when this WebView provider cannot offer passkeys. */
+ /** Once per install: say plainly that passkeys are unsupported and what to use instead. */
  private void passkeyNotice(Tab t){
-  if(t.passkeys)return;
+  if(BrowserPasskeyPolicy.SYSTEM_PROVIDER_QUALIFIED)return;
   android.content.SharedPreferences notices=getContext().getSharedPreferences("alpha-browser-notices",0);
-  if(notices.getBoolean("passkeys-unavailable",false))return;
-  notices.edit().putBoolean("passkeys-unavailable",true).apply();
-  notice(t,"Passkeys are not available in this browser on this device. Sign in with a password or another method.");
+  if(notices.getBoolean("passkeys-unsupported-mvp",false))return;
+  notices.edit().putBoolean("passkeys-unsupported-mvp",true).apply();
+  notice(t,BrowserPasskeyPolicy.UNSUPPORTED_NOTICE);
  }
  private void notice(Tab t,String message) { if(tabs.get(t.id)!=t)return; JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("message",message); notifyListeners("notice",event); }
  /** target=_blank links and window.open open a new tab in the opener's profile.
@@ -804,6 +806,26 @@ public class AlphaBrowserPlugin extends Plugin {
   Intent send=new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,t.url).putExtra(Intent.EXTRA_SUBJECT,title).putExtra(Intent.EXTRA_TITLE,title);
   for(Tab tab:tabs.values())disableAutofill(tab);
   shareOutstanding=true;try{pageShare.launch(Intent.createChooser(send,"Share page"));}catch(RuntimeException failure){shareOutstanding=false;throw failure;}
+ }); }
+ /** Continue the current page in another installed browser (passkey-only sign-ins, #402).
+  * Only the committed URL of the presented tab leaves Alpha: no cookies, form data,
+  * credentials or page script. Alpha's own activities are excluded from the chooser and
+  * Android owns the choice; nothing is reported as opened unless an activity started. */
+ @PluginMethod public void openExternally(PluginCall call) { run(call,t->{
+  if(paused||destroyed||shareOutstanding||pickerOutstanding||!Objects.equals(presentedId,t.id)||!t.web.isShown()||!t.committed||t.loading||!t.error.isEmpty()
+    ||!Objects.equals(call.getString("navigation"),String.valueOf(t.navigation))||!Objects.equals(call.getString("url"),t.url)||!Objects.equals(t.web.getUrl(),t.url)||!safe(t.url)||t.url.length()>4096||t.url.chars().anyMatch(c->c<32||c==127))throw new IllegalStateException("Current page changed");
+  Intent view=new Intent(Intent.ACTION_VIEW,Uri.parse(t.url)).addCategory(Intent.CATEGORY_BROWSABLE);
+  String own=getContext().getPackageName();
+  java.util.ArrayList<android.content.ComponentName> exclude=new java.util.ArrayList<>();
+  // Package visibility can hide other browsers from this query, so it is used only to find
+  // Alpha's own handlers to exclude. Android's chooser lists the rest and owns the choice.
+  for(android.content.pm.ResolveInfo info:getContext().getPackageManager().queryIntentActivities(view,0))
+   if(info.activityInfo!=null&&own.equals(info.activityInfo.packageName))exclude.add(new android.content.ComponentName(info.activityInfo.packageName,info.activityInfo.name));
+  Intent chooser=Intent.createChooser(view,"Open in another browser");
+  if(!exclude.isEmpty())chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS,exclude.toArray(new android.os.Parcelable[0]));
+  for(Tab tab:tabs.values())disableAutofill(tab);
+  try{getActivity().startActivity(chooser);}
+  catch(android.content.ActivityNotFoundException missing){notice(t,"No other browser on this device can open this page.");}
  }); }
  @PluginMethod public void downloads(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;String requested=call.getString("session");if(requested==null||(session!=null&&!Objects.equals(session,requested))){call.reject("Expired browser session");return;}session=requested;for(Tab tab:tabs.values())disableAutofill(tab);downloads.show();call.resolve();}); }
  @PluginMethod public void close(PluginCall call) { getActivity().runOnUiThread(() -> {if(closed(call))return; if (!Objects.equals(session,call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t=tabs.remove(call.getString("id")); if(t!=null) dispose(t); call.resolve(); }); }
