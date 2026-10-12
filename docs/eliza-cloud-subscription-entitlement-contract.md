@@ -115,8 +115,8 @@ retry and reset times only for direct HTTP refusals.
 | Condition | Phone result | Agent admitted |
 |---|---|---|
 | Valid entitlement, plan `active`, `trialing` or `past_due` | Plan name and the Cloud allowance. For `past_due`, also a link to manage the plan | yes |
-| Valid entitlement, plan `canceled` or `none` | "No active plan" or "<plan> has ended", with a link to manage the plan in Eliza Cloud. Local apps stay available without AI | no |
-| Route not deployed (404) and the transitional account check fails (section 5) | "AI is unavailable for this Eliza Cloud account", with "Open Eliza Cloud billing". No plan wording | no |
+| Valid entitlement, plan `canceled` or `none` | "No active plan" or "<plan> has ended", with a link to manage the plan in Eliza Cloud. Local orchestration and schedules stay running; Cloud enforces AI access | yes |
+| Route not deployed (404) and the transitional account check fails (section 5) | "AI is unavailable for this Eliza Cloud account", with "Open Eliza Cloud billing". No plan wording; local orchestration stays running | yes |
 | Billing outage (5xx, timeout, offline) | "Plan status unavailable"; Cloud still decides each request | yes |
 | Bad signature, unknown key or bad claims | Reported as unavailable (`invalid`) and never trusted | yes |
 | Entitlement issued for another account, at admission | An error asking the owner to sign in again | no |
@@ -133,9 +133,9 @@ rejected sign-in or account mismatch, or when Cloud returns 404 for the route.
 ## 5. Transitional account check
 
 Until Cloud deploys section 1, a `404` sends the phone to the existing
-`GET /api/v1/credits/balance` endpoint. A balance of zero or less refuses the resident agent with
+`GET /api/v1/credits/balance` endpoint. A balance of zero or less displays
 the neutral account copy in section 4; the phone never shows the balance. Against deployed Cloud
-this means the admission gate is still the credit balance, and the billing link opens Cloud's
+this account status does not gate the resident runtime, and the billing link opens Cloud's
 existing credit billing page. The plan copy applies only once Cloud issues entitlements. Remove
 this path once the entitlement route ships.
 
