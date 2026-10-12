@@ -152,4 +152,65 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
   catch(android.content.ActivityNotFoundException missing){c.resolve(status("unavailable"));}
   catch(Exception unknown){c.resolve(status("unknown"));}
  }
+
+ private android.app.AlertDialog deletionDialog;
+ private final java.util.concurrent.atomic.AtomicBoolean reviewingDeletion=new java.util.concurrent.atomic.AtomicBoolean();
+ private boolean unlocked(){android.app.KeyguardManager keyguard=(android.app.KeyguardManager)getContext().getSystemService(android.content.Context.KEYGUARD_SERVICE);return keyguard!=null&&!keyguard.isDeviceLocked();}
+ /**
+  * Policy P-30: the single native review for a deletion with a ten-second Undo. Nothing is
+  * deleted here; a confirmed review returns a single-use grant for the exact provider revision.
+  * Statuses: reviewed, cancelled, conflict, external, permission-required, unavailable, busy.
+  */
+ @PluginMethod public void reviewDeletion(PluginCall c){
+  if(!granted()){c.resolve(status("permission-required"));return;}if(!foreground()||!unlocked()){c.resolve(status("unavailable"));return;}
+  if(!"event".equals(c.getString("scope","event"))){c.resolve(status("external"));return;}
+  if(!reviewingDeletion.compareAndSet(false,true)){c.resolve(status("busy"));return;}
+  try{
+   final CalendarDeferredDeletion.Snapshot snapshot=CalendarDeferredDeletion.read(getContext().getContentResolver(),Long.parseLong(c.getString("id","")),Long.parseLong(c.getString("calendarId","")));
+   if(snapshot==null||!snapshot.visible(c.getObject("expected"))||!snapshot.revision.equals(c.getString("revision",""))){reviewingDeletion.set(false);c.resolve(status("conflict"));return;}
+   if(!snapshot.direct(CONFIGURATION)){reviewingDeletion.set(false);c.resolve(status("external"));return;}
+   String reviewText=c.getString("reviewText","");if(reviewText==null||reviewText.length()>1000)reviewText="";
+   final String details=reviewText;
+   getActivity().runOnUiThread(()->{
+    final java.util.concurrent.atomic.AtomicBoolean delivered=new java.util.concurrent.atomic.AtomicBoolean();
+    final android.app.AlertDialog[] owned={null};final JSObject[] outcome={null};
+    try{
+     if(!foreground()||!granted()||!unlocked()){reviewingDeletion.set(false);c.resolve(status("unavailable"));return;}
+     String title=snapshot.event.getAsString("title"),zone=snapshot.event.getAsString("eventTimezone");
+     java.text.DateFormat format=java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM,java.text.DateFormat.SHORT);format.setTimeZone(java.util.TimeZone.getTimeZone(zone==null?"UTC":zone));
+     String message=(title==null||title.isEmpty()?"Untitled event":title)+"\n"+CONFIGURATION.displayName+"\n"+format.format(new java.util.Date(snapshot.event.getAsLong("dtstart")))+" – "+format.format(new java.util.Date(snapshot.event.getAsLong("dtend")))+"\n\n"+(details.isEmpty()?"Delete this one event? You can undo for 10 seconds.":details);
+     deletionDialog=new android.app.AlertDialog.Builder(getActivity()).setTitle("Delete calendar event?").setMessage(message).setNegativeButton("Cancel",(dialog,which)->{}).setPositiveButton("Delete event",(dialog,which)->{
+      if(!granted()||!unlocked()){outcome[0]=status("permission-required");return;}
+      try{
+       // Recheck the reviewed revision at confirmation; the grant is bound to it.
+       CalendarDeferredDeletion.Snapshot current=CalendarDeferredDeletion.read(getContext().getContentResolver(),snapshot.id,snapshot.calendarId);
+       if(current==null||!current.revision.equals(snapshot.revision)){outcome[0]=status("conflict");return;}
+       JSObject value=status("reviewed");value.put("grant",CalendarDeferredDeletion.grant(getContext(),snapshot,System.currentTimeMillis()));value.put("scope","event");value.put("invitation",false);value.put("revision",snapshot.revision);outcome[0]=value;
+      }catch(Exception unavailable){outcome[0]=status("unavailable");}
+     }).create();
+     owned[0]=deletionDialog;
+     deletionDialog.setOnDismissListener(dialog->{if(deletionDialog==owned[0]){deletionDialog=null;reviewingDeletion.set(false);}if(delivered.compareAndSet(false,true))c.resolve(outcome[0]!=null?outcome[0]:status("cancelled"));});
+     deletionDialog.show();
+    }catch(Exception unavailable){if(deletionDialog==owned[0]){deletionDialog=null;reviewingDeletion.set(false);}if(delivered.compareAndSet(false,true))c.resolve(outcome[0]!=null?outcome[0]:status("unavailable"));}
+   });
+  }catch(Exception unavailable){reviewingDeletion.set(false);c.resolve(status("unavailable"));}
+ }
+ /** Consumes the grant before the provider call. Statuses: deleted, conflict, permission-required, unknown. */
+ @PluginMethod public void commitDeletion(PluginCall c){
+  if(!granted()){c.resolve(status("permission-required"));return;}
+  org.json.JSONObject grant=CalendarDeferredDeletion.consume(getContext(),c.getString("grant",""));
+  if(grant==null){c.resolve(status("conflict"));return;}
+  c.resolve(status(CalendarDeferredDeletion.commit(getContext(),grant)));
+ }
+ /** Undo inside the window: the provider event was never touched. */
+ @PluginMethod public void revokeDeletion(PluginCall c){CalendarDeferredDeletion.revoke(getContext(),c.getString("grant",""));c.resolve(status("revoked"));}
+ /** Final provider readback. Statuses: absent, present, changed, permission-required, unavailable. */
+ @PluginMethod public void deletionReadback(PluginCall c){
+  if(!granted()){c.resolve(status("permission-required"));return;}
+  if(!"event".equals(c.getString("scope","event"))){c.resolve(status("unavailable"));return;}
+  try{c.resolve(status(CalendarDeferredDeletion.readback(getContext(),Long.parseLong(c.getString("id","")),Long.parseLong(c.getString("calendarId","")),c.getString("revision",""))));}
+  catch(NumberFormatException invalid){c.resolve(status("unavailable"));}
+ }
+ @Override protected void handleOnPause(){super.handleOnPause();if(deletionDialog!=null)deletionDialog.dismiss();}
+ @Override protected void handleOnDestroy(){if(deletionDialog!=null)deletionDialog.dismiss();super.handleOnDestroy();}
 }

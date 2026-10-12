@@ -50,6 +50,26 @@ public class DailyAppsPlugin extends ai.eliza.plugins.reminders.ReminderPlugin {
   value.put("topInset", getActivity() instanceof MainActivity ? ((MainActivity)getActivity()).getTopInsetDp() : 0);
   value.put("bottomInset", getActivity() instanceof MainActivity ? ((MainActivity)getActivity()).getBottomInsetDp() : 0); call.resolve(value);
  }
+ /** Policy P-30: suspend delivery while a reviewed reminder deletion can be undone. */
+ @PluginMethod public void holdReminderDelivery(PluginCall call) {
+  try { ReminderDeliveryHolds.hold(getContext(), call.getString("id"), call.getString("holdId")); JSObject value = new JSObject(); value.put("status", "held"); call.resolve(value); }
+  catch (IllegalArgumentException invalid) { call.reject("Invalid reminder hold"); }
+  catch (Exception failed) { call.reject("Reminder delivery could not be paused"); }
+ }
+ /** Release a hold; with redeliver, an alert absorbed during the hold is delivered late now. */
+ @PluginMethod public void releaseReminderDelivery(PluginCall call) {
+  try {
+   String id = call.getString("id");
+   org.json.JSONArray late = ReminderDeliveryHolds.release(getContext(), id, call.getString("holdId"), Boolean.TRUE.equals(call.getBoolean("redeliver", false)));
+   ReminderDeliveryHolds.redeliver(getContext(), id, late);
+   JSObject value = new JSObject(); value.put("status", "released"); value.put("redelivered", late.length()); call.resolve(value);
+  } catch (IllegalArgumentException invalid) { call.reject("Invalid reminder hold"); }
+  catch (Exception failed) { call.reject("Reminder delivery could not be resumed"); }
+ }
+ @PluginMethod public void reminderDeliveryHolds(PluginCall call) {
+  try { JSObject value = new JSObject(); value.put("holds", ReminderDeliveryHolds.list(getContext())); call.resolve(value); }
+  catch (Exception failed) { call.reject("Reminder holds are unavailable"); }
+ }
  @PluginMethod public void closeAssistant(PluginCall call) {
   boolean assistant = getActivity() instanceof AlphaAssistActivity;
   JSObject value = new JSObject(); value.put("closed", assistant); call.resolve(value);
