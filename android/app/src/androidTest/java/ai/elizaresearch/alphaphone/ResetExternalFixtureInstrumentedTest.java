@@ -49,7 +49,17 @@ public final class ResetExternalFixtureInstrumentedTest {
   java.util.stream.Stream<JobInfo> pending=android.os.Build.VERSION.SDK_INT>=34?jobs.getPendingJobsInAllNamespaces().values().stream().flatMap(java.util.Collection::stream):jobs.getAllPendingJobs().stream();
   return pending.anyMatch(job->workId(run).equals(job.getExtras().getString("EXTRA_WORK_SPEC_ID")));
  }
- private static PendingIntent alarm(Context context,String run,int flags){return PendingIntent.getBroadcast(context,0,new Intent(context,ReminderReceiver.class).setAction("ai.elizaresearch.alphaphone.RESET_FIXTURE_ALARM").setData(Uri.parse("alpha-reset-fixture:"+run)),flags|PendingIntent.FLAG_IMMUTABLE);}
+ // An alarm cancellation does not promise to cancel the reusable PendingIntent.
+ // Observe AlarmManager's active queues, excluding historical removal records.
+ private static boolean scheduledAlarm(String run)throws Exception{
+  try(java.io.InputStream input=new android.os.ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("dumpsys alarm"))){
+   byte[] bytes=input.readNBytes(8*1024*1024+1);assertTrue("Bounded AlarmManager observation",bytes.length<=8*1024*1024);
+   String dump=new String(bytes,java.nio.charset.StandardCharsets.UTF_8);int history=dump.indexOf("App Alarm history:");
+   assertTrue("Recognized active AlarmManager queues",history>0&&dump.indexOf("Pending alarms per uid:")<history&&dump.contains("Pending user blocked background alarms:"));
+   return dump.substring(0,history).contains("ai.elizaresearch.alphaphone.RESET_FIXTURE_ALARM."+run);
+  }
+ }
+ private static PendingIntent alarm(Context context,String run,int flags){return PendingIntent.getBroadcast(context,0,new Intent(context,ReminderReceiver.class).setAction("ai.elizaresearch.alphaphone.RESET_FIXTURE_ALARM."+run).setData(Uri.parse("alpha-reset-fixture:"+run)),flags|PendingIntent.FLAG_IMMUTABLE);}
  private static KeyStore keys()throws Exception{KeyStore keys=KeyStore.getInstance("AndroidKeyStore");keys.load(null);return keys;}
  @Test public void externalFixturePhase()throws Exception{
   Bundle args=InstrumentationRegistry.getArguments();String phase=args.getString("resetFixturePhase"),run=args.getString("resetFixtureRun");
@@ -78,7 +88,7 @@ public final class ResetExternalFixtureInstrumentedTest {
    long jobDeadline=android.os.SystemClock.elapsedRealtime()+5000;while(!pendingJob(jobs,run)&&android.os.SystemClock.elapsedRealtime()<jobDeadline)android.os.SystemClock.sleep(100);
    assertTrue("Owned delayed work is scheduled",pendingJob(jobs,run));
    c.getSystemService(AlarmManager.class).set(AlarmManager.ELAPSED_REALTIME_WAKEUP,android.os.SystemClock.elapsedRealtime()+86400000L,alarm(c,run,PendingIntent.FLAG_UPDATE_CURRENT));
-   assertNotNull("Owned delayed alarm token exists",alarm(c,run,PendingIntent.FLAG_NO_CREATE));
+   assertNotNull("Owned delayed alarm token exists",alarm(c,run,PendingIntent.FLAG_NO_CREATE));assertTrue("Owned alarm is scheduled",scheduledAlarm(run));
    notices.createNotificationChannel(new NotificationChannel(CHANNEL,"Reset fixture",NotificationManager.IMPORTANCE_LOW));
    assertTrue("Notification permission must be granted by disposable runner",notices.areNotificationsEnabled());
    notices.notify(NOTICE,new Notification.Builder(c,CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(name).setContentText("Synthetic reset sentinel").build());
@@ -100,11 +110,11 @@ public final class ResetExternalFixtureInstrumentedTest {
    if(notes(run).equals(saved))assertEquals("Unmerged draft retained",draft(run),keptDraft);
    else{assertEquals("Saved and drafted Notes retained after normal startup recovery",recoveredNotes(run),saved);assertTrue("Recovered draft is either retained exactly or cleared after saving",keptDraft==null||draft(run).equals(keptDraft));}
    assertEquals("Runtime fixture retained",payload,store.readCredentialSlot(SLOT));
-   assertTrue("UID key retained",keys().containsAlias(alias));assertTrue("Owned job retained",pendingJob(jobs,run));assertNotNull("Owned alarm retained",alarm(c,run,PendingIntent.FLAG_NO_CREATE));assertTrue("Notification retained",java.util.Arrays.stream(notices.getActiveNotifications()).anyMatch(n->n.getId()==NOTICE));assertFalse("No reset authority recorded",AlphaDataReset.pending(c));
+   assertTrue("UID key retained",keys().containsAlias(alias));assertTrue("Owned job retained",pendingJob(jobs,run));assertTrue("Owned alarm remains scheduled",scheduledAlarm(run));assertTrue("Notification retained",java.util.Arrays.stream(notices.getActiveNotifications()).anyMatch(n->n.getId()==NOTICE));assertFalse("No reset authority recorded",AlphaDataReset.pending(c));
   }else if("verify".equals(phase)){
    assertFalse("Private file erased",file.exists());assertFalse("Cache erased",cache.exists());assertFalse("Preferences erased",c.getSharedPreferences(name,0).contains("value"));
    assertNull("Notes erased",store.readCredentialSlot(AlphaCredentialStore.NOTES_RECORDS));assertNull("Draft erased",store.readCredentialSlot(AlphaCredentialStore.NOTES_DRAFT));assertNull("Runtime fixture erased",store.readCredentialSlot(SLOT));
-   assertFalse("UID Keystore fixture erased",keys().containsAlias(alias));assertFalse("Owned job cancelled",pendingJob(jobs,run));assertNull("Owned alarm PendingIntent cancelled",alarm(c,run,PendingIntent.FLAG_NO_CREATE));assertTrue("Owned WorkManager record erased",androidx.work.WorkManager.getInstance(c).getWorkInfosByTag(name).get(10,java.util.concurrent.TimeUnit.SECONDS).isEmpty());
+   assertFalse("UID Keystore fixture erased",keys().containsAlias(alias));assertFalse("Owned job cancelled",pendingJob(jobs,run));long alarmDeadline=android.os.SystemClock.elapsedRealtime()+10000;while(scheduledAlarm(run)&&android.os.SystemClock.elapsedRealtime()<alarmDeadline)android.os.SystemClock.sleep(100);assertFalse("Owned scheduled alarm cancelled",scheduledAlarm(run));assertTrue("Owned WorkManager record erased",androidx.work.WorkManager.getInstance(c).getWorkInfosByTag(name).get(10,java.util.concurrent.TimeUnit.SECONDS).isEmpty());
    assertFalse("Owned notification cancelled",java.util.Arrays.stream(notices.getActiveNotifications()).anyMatch(n->n.getId()==NOTICE));assertFalse("Reset marker erased",AlphaDataReset.pending(c));
    // Shared-media permissions may be revoked by reset. The external runner owns
    // URI/name/hash verification and cleanup; never infer deletion from denied access.
