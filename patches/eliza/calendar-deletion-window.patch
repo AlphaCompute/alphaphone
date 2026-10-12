@@ -62,7 +62,7 @@
         dispatched=true;android.content.ContentProviderResult[] result=getContext().getContentResolver().applyBatch(CalendarContract.AUTHORITY,operations);if(create)eventId=ContentUris.parseId(result[result.length-1].uri);
 --- a/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java
 +++ b/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java
-@@ -49,4 +49,113 @@
+@@ -49,4 +49,117 @@
    if(event==null||number(event,"calendar_id")!=calendarId)return null;ContentValues calendar=read(resolver,ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,calendarId),CALENDAR);if(calendar==null)return null;
    return new Snapshot(id,calendarId,event,calendar);
   }
@@ -146,6 +146,10 @@
 +    ContentValues cancelled=new ContentValues();cancelled.put(CalendarContract.Events.STATUS,CalendarContract.Events.STATUS_CANCELED);
 +    if(exception!=null)operations.add(ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,number(exception,"_id"))).withValues(cancelled).withExpectedCount(1).build());
 +    else{cancelled.put(CalendarContract.Events.ORIGINAL_INSTANCE_TIME,originalInstanceTime);operations.add(ContentProviderOperation.newInsert(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_EXCEPTION_URI,eventId)).withValues(cancelled).build());}
++    // Unsynced local exceptions expose a provider expansion bug: the exception
++    // row replaces the cached parent instances. Re-expand the same reviewed
++    // parent inside this transaction without changing its recurrence or time.
++    if(local()&&empty(parent,"_sync_id"))operations.add(ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,eventId)).withValue(CalendarContract.Events.DTSTART,number(parent,"dtstart")).withExpectedCount(1).build());
 +   }
 +   resolver.applyBatch(CalendarContract.AUTHORITY,operations);
 +  }
