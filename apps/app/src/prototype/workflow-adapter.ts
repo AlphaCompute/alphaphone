@@ -1,3 +1,4 @@
+import {NoticeOwnerCoordinator} from '../runtime/notice-owner-coordinator';
 import {revalidateApprovalNotice} from '../runtime/workflow-notice-return';
 import {WorkflowIntentStore,workflowIntentKey} from '../runtime/workflow-intents';
 import {Capacitor} from '@capacitor/core';
@@ -185,34 +186,28 @@ export function installWorkflowAdapter(Component:any,views:Bag){
  let approvalNotices:Promise<void>=Promise.resolve();
  const queueApprovalNotices=(route:WorkflowNoticeRoute|null,pending:ActionProposal[],resolved:string[])=>{if(!route)return;approvalNotices=approvalNotices.then(()=>syncApprovalNotices(route,pending,resolved)).catch(()=>{});};
  // A return restores only exact pending metadata, never an executable approval context.
- let noticeOwner:string|undefined;
+ const ownerNotices=new NoticeOwnerCoordinator({
+  transition:(snapshot)=>approvalNative().withdrawOtherOwnerApprovalNotices({ownerId:snapshot.ownerId}),
+  enqueue:(work)=>{approvalNotices=approvalNotices.then(work).catch(()=>{});},
+  available:(snapshot)=>connectionController.getSnapshot().session?.sessionId===snapshot.identity&&!connectionController.getSnapshot().open&&!document.hidden,
+  restore:async(result,snapshot,valid)=>{
+   const session=connectionController.getSnapshot().session,client=connectionController.getWorkflowClient();
+   if(!session||session.sessionId!==snapshot.identity||!client)throw Error('Notice session unavailable');
+   const native=approvalNative(),signal=new AbortController().signal;
+   for(const suspended of result.suspended??[]){
+    if(!valid())return;const route=suspended.route;
+    if(route.ownerId!==session.ownerId||route.origin!==session.origin||route.agentId!==session.agentId||route.scope!==client.scope)continue;
+    const decision=await revalidateApprovalNotice(suspended,client.client,(review,signal)=>connectionController.workflowNoticeActions(review,signal),valid,signal);
+    if(decision==='stale')return;
+    if(decision==='resume')await native.resumeWorkflowApprovalNotice(suspended);
+    else await native.withdrawWorkflowApprovalNotice({id:suspended.id});
+   }
+  },
+ });
  const retireOtherOwnerNotices=()=>{
-  const session=connectionController.getSnapshot().session,ownerId=session?.ownerId??'',identity=session?.sessionId??'';
   if(!Capacitor.isNativePlatform())return;
-  // Initial session restoration is not a sign-out; retain the persisted native fence until it resolves.
-  if(!session&&noticeOwner===undefined){noticeOwner='';return;}
-  if(identity===noticeOwner)return;
-  noticeOwner=identity;
-  const native=approvalNative(),transition=native.withdrawOtherOwnerApprovalNotices({ownerId}).then(result=>({result,error:null}),error=>({result:null,error}));
-  approvalNotices=approvalNotices.then(async()=>{
-   try{
-    const completed=await transition;if(completed.error||!completed.result)throw completed.error;const result=completed.result;
-    const client=connectionController.getWorkflowClient();
-    const valid=()=>noticeOwner===identity&&connectionController.getSnapshot().session?.sessionId===session?.sessionId&&!connectionController.getSnapshot().open&&!document.hidden;
-    if(!session||!client||!valid()){if(session&&noticeOwner===identity)noticeOwner=undefined;return;}
-    const signal=new AbortController().signal;
-    for(const suspended of result.suspended??[]){
-     if(!valid())return;const route=suspended.route;
-     if(route.ownerId!==session.ownerId||route.origin!==session.origin||route.agentId!==session.agentId||route.scope!==client.scope)continue;
-     try{
-      const decision=await revalidateApprovalNotice(suspended,client.client,(review,signal)=>connectionController.workflowNoticeActions(review,signal),valid,signal);
-      if(decision==='stale')return;
-      if(decision==='resume')await native.resumeWorkflowApprovalNotice(suspended);
-      else await native.withdrawWorkflowApprovalNotice({id:suspended.id});
-     }catch{if(noticeOwner===identity)noticeOwner=undefined;/* Unverifiable stays suspended. */}
-    }
-   }catch{if(noticeOwner===identity)noticeOwner=undefined;}
-  }).catch(()=>{});
+  const session=connectionController.getSnapshot().session;
+  ownerNotices.update({identity:session?.sessionId??'',ownerId:session?.ownerId??'',hasSession:!!session});
  };
  const reviewPhone=()=>{if(!receipt||operation)return;const selected=receipt,previous=phoneReview?.runId===selected.id?phoneSteps.map(step=>step.id):[];phoneSteps=[];phoneConfirm=null;void work(async(client,signal,valid)=>{const context=phoneContext(selected),review=await client.phoneReview(selected,signal);if(!valid())return;phoneContext(selected);const steps=review.finished||review.cancellationRequestedAt?[]:await connectionController.workflowPhoneActions(review,context,signal);if(valid()){phoneContext(selected);queueApprovalNotices(noticeRoute(selected),steps,previous.filter(id=>!steps.some(step=>step.id===id)));phoneReview=review;phoneSteps=steps;phoneStatus=steps.length?'Review the exact destination, sources and operation. Each step needs separate approval.':'No pending phone steps in this execution. Refresh explicitly if its next step becomes ready.';}});};
  const decidePhone=(proposal:ActionProposal,approved:boolean)=>{

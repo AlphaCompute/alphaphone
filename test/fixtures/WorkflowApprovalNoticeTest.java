@@ -139,6 +139,20 @@ public final class WorkflowApprovalNoticeTest {
    String expiredApproval="approval-"+"2".repeat(64);d6.postApproval(t6,expiredApproval,binding,route("run2"),now+5*minute,now+4*minute);d6.withdrawOtherOwners(t6,"B",now+4*minute);d6.withdrawOtherOwners(t6,"owner",now+6*minute);require(t6.suspendedApprovals("owner",now+6*minute).length()==0,"expiredApproval approval never resumes");
    String dismissed="approval-"+"3".repeat(64);d6.postApproval(t6,dismissed,binding,route("run3"),now+10*minute,now+6*minute);p6.active.remove(dismissed);d6.withdrawOtherOwners(t6,"B",now+6*minute);require(t6.suspendedApprovals("owner",now+6*minute).length()==0,"dismissed approval remains terminal");
   }
+  // A failed receipt write does not cancel that notice, but the persisted fence blocks its tap and
+  // other old-owner notices are still attempted. Retry completes without touching the matching owner.
+  {boolean[] failReceipt={false},failFence={false};Store fault=new Store(){public void write(String slot,String value){if(failFence[0]&&WorkflowNoticeTaps.OWNER_SLOT.equals(slot))throw new IllegalStateException("Fence disk fault");if(failReceipt[0]&&WorkflowNoticeDelivery.APPROVAL_SLOT.equals(slot)&&value.contains("suspended")){failReceipt[0]=false;throw new IllegalStateException("Receipt disk fault");}super.write(slot,value);}};
+   Poster p=new Poster();WorkflowNoticeDelivery d=new WorkflowNoticeDelivery(fault,p);WorkflowNoticeTaps t=new WorkflowNoticeTaps(fault);
+   String a1="approval-"+"4".repeat(64),a2="approval-"+"5".repeat(64),b="approval-"+"6".repeat(64);JSONObject ar=route("fault-a"),br=route("fault-b").put("ownerId","B");
+   d.postApproval(t,a1,binding,ar,now+10*minute,now);d.postApproval(t,a2,binding,ar,now+10*minute,now);d.postApproval(t,b,binding,br,now+10*minute,now);String prior=t.token(a1),matching=t.token(b);
+   failFence[0]=true;rejects(()->d.withdrawOtherOwners(t,"B",now+minute),"fence write failure reported");require(p.active.size()==3,"uncommitted fence cancels no notice");failFence[0]=false;
+   failReceipt[0]=true;rejects(()->d.withdrawOtherOwners(t,"B",now+minute),"one receipt write failure reported");
+   require(p.active.containsKey(a1)&&!p.active.containsKey(a2)&&p.active.containsKey(b),"other old-owner notice still attempted, matching owner untouched");rejects(()->t.capture(prior),"persisted fence refuses tap even if OS cancellation failed");
+   d.withdrawOtherOwners(t,"B",now+2*minute);require(!p.active.containsKey(a1)&&p.active.containsKey(b)&&matching.equals(t.token(b))&&p.posted.size()==3,"retry completes without repost or matching-owner token changes");
+   d.withdrawOtherOwners(t,"B",now+2*minute);require(p.active.containsKey(b)&&matching.equals(t.token(b))&&p.posted.size()==3,"repeated fence preserves unrelated owner's notice");
+   d.withdrawOtherOwners(t,"owner",now+3*minute);d.resumeApproval(t,a1,binding,ar,now+10*minute,now+3*minute);d.resumeApproval(t,a2,binding,ar,now+10*minute,now+3*minute);require(p.quiet==2,"both successfully suspended approvals resume once quietly");
+   d.resumeApproval(t,a1,binding,ar,now+10*minute,now+3*minute);require(p.quiet==2,"retry never duplicates quiet posts");
+  }
   // Bounds.
   rejects(()->delivery.publishApproval("op1",binding,now+minute,now),"only approval IDs");
   rejects(()->delivery.publishApproval(fourth,binding,now+8*86400000L,now),"over-long approval refused");
