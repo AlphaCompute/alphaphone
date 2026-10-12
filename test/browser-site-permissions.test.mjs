@@ -17,7 +17,7 @@ test('the sealed store delegates decisions upstream and Alpha keeps its prompt a
  const store=readFileSync(nativeSource('BrowserSessionStore.java'),'utf8');
  assert.match(store,/MAX_PERMISSION_ORIGINS=BrowserSitePermissions\.MAX_ORIGINS/);
  assert.match(store,/BrowserPermissionRecords\.read\(frame\.open\(packed\)\)/,'the record is unsealed before it is read');
- assert.match(store,/frame\.seal\(BrowserPermissionRecords\.write\(/,'the record is sealed before it is stored');
+ assert.match(store,/String bounded=BrowserPermissionRecords\.write\(decisions\);\n  if\(!preferences\.edit\(\)\.putString\("permissions",frame\.seal\(bounded\)\)/,'the record is sealed before it is stored');
  assert.match(store,/preferences\.getString\("permissions",null\)/,'the stored preference key is unchanged');
  assert.ok(!/origin\.matches\(/.test(store),'no local origin grammar remains');
  const plugin=readFileSync(nativeSource('AlphaBrowserPlugin.java'),'utf8');

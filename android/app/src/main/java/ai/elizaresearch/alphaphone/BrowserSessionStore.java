@@ -66,8 +66,10 @@ final class BrowserSessionStore {
   // A damaged record grants nothing: every site is asked again.
   try{return BrowserPermissionRecords.read(frame.open(packed));}catch(Exception damaged){return BrowserPermissionRecords.read(null);}
  }
+ /** The bounded record (at most MAX_PERMISSION_ORIGINS), sealed with the Keystore key. */
  private void save(BrowserSitePermissions decisions)throws Exception{
-  if(!preferences.edit().putString("permissions",frame.seal(BrowserPermissionRecords.write(decisions))).commit())throw new IllegalStateException();
+  String bounded=BrowserPermissionRecords.write(decisions);
+  if(!preferences.edit().putString("permissions",frame.seal(bounded)).commit())throw new IllegalStateException();
  }
  /** Stored decision, or null when the site must be asked. */
  synchronized Boolean permission(String origin,String kind){return decisions().decision(origin,kind,false);}
