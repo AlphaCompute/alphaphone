@@ -330,9 +330,12 @@ test('only admission and its background refresher read the entitlement; turns an
   }
 });
 
- test('expired entitlement is an unavailable plan, never expired sign-in', async () => {
+test('expired signed entitlement is unavailable billing, never expired sign-in', async () => {
+  clearEntitlementKeyCache();
   assert.equal(isEntitlementSignInFailure(new EntitlementError('expired')), false);
-  const source = {issuer: 'https://api.eliza.app', entitlement: async () => {throw new EntitlementError('expired');}, entitlementKeys: async () => []};
-  const result = await checkEntitlement(source, {userId: 'synthetic'}, new AbortController().signal);
-  assert.equal(result.view.kind, 'unavailable');
- });
+  assert.equal(isEntitlementSignInFailure({code: 'expired'}), true);
+  const {jwk, sign} = await keyPair();
+  const token = await sign(claims({iat: NOW / 1000 - 600, exp: NOW / 1000 - 1}));
+  const result = await checkEntitlement(source({token, keys: [jwk]}), exp, signal(), () => NOW);
+  assert.deepEqual(result.view, {kind: 'unavailable', reason: 'invalid'});
+});
