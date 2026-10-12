@@ -15,6 +15,8 @@ test("source admission rejects missing path, unreviewed revisions, dirty sources
  assert.throws(()=>verifySecureCameraSource(null),/explicit --aosp-source/);assert.equal(verifySecureCameraSource(root,contract).sourceVerified,true);
  const wrong=structuredClone(contract);wrong.modules[0].commit="0".repeat(40);assert.throws(()=>verifySecureCameraSource(root,wrong),/Unreviewed/);
  wrong.modules[0].commit=contract.modules[0].commit;wrong.modules[0].files["Android.bp"]="0".repeat(64);assert.throws(()=>verifySecureCameraSource(root,wrong),/bytes differ/);
+ for(const flag of ["assume-unchanged","skip-worktree"]){git("update-index",`--${flag}`,"Android.bp");assert.throws(()=>verifySecureCameraSource(root,contract),/index hides changes/);git("update-index",`--no-${flag}`,"Android.bp");}
+ fs.appendFileSync(path.join(dir,".git/info/exclude"),"\nIgnored.java\n");fs.writeFileSync(path.join(dir,"Ignored.java"),"ignored input");assert.throws(()=>verifySecureCameraSource(root,contract),/Ignored source inputs/);fs.unlinkSync(path.join(dir,"Ignored.java"));
  fs.writeFileSync(path.join(dir,"Injected.java"),"untracked");assert.throws(()=>verifySecureCameraSource(root,contract),/not clean/);fs.unlinkSync(path.join(dir,"Injected.java"));
  fs.appendFileSync(path.join(dir,"Android.bp"),"dirty");assert.throws(()=>verifySecureCameraSource(root,contract),/not clean/);
 });

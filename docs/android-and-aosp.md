@@ -317,8 +317,8 @@ still disable the gesture.
 All non-development staging requires `--aosp-source PATH` in addition to the
 existing distributable APK and reviewed descriptor gates. The source verifier
 checks the exact module revisions and selected file hashes in
-`docs/aosp-secure-camera-source.json`, and rejects dirty or untracked module
-sources. Linked module roots in repo shadow workspaces are supported; files
+`docs/aosp-secure-camera-source.json`, and rejects dirty, untracked or ignored module
+inputs and index flags that can hide tracked edits. Linked module roots in repo shadow workspaces are supported; files
 must remain inside each resolved module. Source revisions and byte checks are
 recorded in the staged `secure-camera/source-evidence.json`. Development
 staging without a source path records `sourceVerified: false` explicitly.

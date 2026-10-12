@@ -17,8 +17,11 @@ export function verifySecureCameraSource(root, contract = reviewed) {
   const modules = contract.modules.map(module => {
     const directory = fs.realpathSync(path.join(base, module.path));
     // Repo shadow workspaces may link module roots; authenticate their actual Git tree and bytes.
-    const git = (...args) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8", timeout: 60_000, maxBuffer: 4 << 20 }).trim();
+    const git = (...args) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8", env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" }, timeout: 60_000, maxBuffer: 4 << 20 }).trim();
     if (git("rev-parse", "HEAD") !== module.commit) throw Error(`Unreviewed source revision: ${module.path}`);
+    // Index hints can hide tracked changes from status; ignored Java files also enter src/**/*.java.
+    if (git("ls-files", "-v").split("\n").some(row => row && !row.startsWith("H "))) throw Error(`Source index hides changes: ${module.path}`);
+    if (git("ls-files", "--others", "--ignored", "--exclude-standard")) throw Error(`Ignored source inputs present: ${module.path}`);
     // Includes untracked sources because Camera2 compiles src/**/*.java.
     if (git("status", "--porcelain", "--untracked-files=all")) throw Error(`Source module is not clean: ${module.path}`);
     for (const [relative, expected] of Object.entries(module.files)) {
@@ -72,7 +75,7 @@ export function assertNoAlphaLockScreenSurface(xmltree) {
   for (const row of manifestComponents(xmltree)) {
     if (row.tag === "service") continue;
     for (const attr of ["showWhenLocked", "showOnLockScreen", "turnScreenOn"])
-      if (row.attrs[attr] === "0xffffffff") problems.push(`${row.name} sets android:${attr}`);
+      if (row.attrs[attr] !== undefined && row.attrs[attr] !== "0x0") problems.push(`${row.name} sets android:${attr}`);
     for (const filter of row.filters)
       for (const action of filter.actions)
         if (secureCameraActions.some(name => `android.media.action.${name}` === action)) problems.push(`${row.name} handles ${action}`);

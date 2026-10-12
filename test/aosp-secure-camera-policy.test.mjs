@@ -26,6 +26,7 @@ test("an Alpha APK with a lock-screen surface or secure-camera handler is refuse
   for (const attr of ["showWhenLocked", "showOnLockScreen", "turnScreenOn"])
     assert.throws(() => assertNoAlphaLockScreenSurface(tree({ mainAttrs: { [attr]: TRUE } })), new RegExp(`MainActivity sets android:${attr}`));
   assert.equal(assertNoAlphaLockScreenSurface(tree({ mainAttrs: { showWhenLocked: "(type 0x12)0x0" } })), true);
+  assert.throws(() => assertNoAlphaLockScreenSurface(tree({ mainAttrs: { showWhenLocked: "(type 0x1)0x7f010001" } })), /showWhenLocked/);
   for (const action of secureCameraActions) {
     const extra = [...element(6, "activity", { name: `${PKG}.LockCamera` }), ...filter(8, action, ["android.intent.category.DEFAULT"])];
     assert.throws(() => assertNoAlphaLockScreenSurface(tree({ extra })), new RegExp(`LockCamera handles ${action.replaceAll(".", "\\.")}`));
