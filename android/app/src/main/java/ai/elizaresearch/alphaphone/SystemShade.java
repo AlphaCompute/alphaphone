@@ -44,6 +44,8 @@ final class SystemShade {
  static String expand(Context context, boolean launcher) {
   return expand(new Platform() {
    @Override public boolean granted(String permission) { return context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED; }
+   // The service name is a hidden Android constant; absence is handled as unsupported.
+   @android.annotation.SuppressLint("WrongConstant")
    @Override public Object statusBar() { return context.getSystemService(STATUS_BAR_SERVICE); }
   }, launcher);
  }
