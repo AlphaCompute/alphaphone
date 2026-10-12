@@ -478,10 +478,15 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if (dialog) { event.preventDefault(); event.stopImmediatePropagation(); if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close(); return; }
       const inlineModal=Array.from(document.querySelectorAll<HTMLElement>('.os [role="dialog"][aria-modal="true"]:not([data-alpha-layer="drawer"])')).some(dialog=>!dialog.closest('[inert],[hidden]')&&dialog.getAttribute('aria-hidden')!=='true'&&dialog.getClientRects().length>0&&getComputedStyle(dialog).visibility!=='hidden');
       if (inlineModal||document.querySelector<HTMLElement>('.os')?.inert) return;
-      connectionController.cancelViewNavigation();alphaClient.cancel(); this.back();
+      // Back that only collapses the chat or a sheet keeps a reply streaming; it arrives in the
+      // transcript. Back that changes the view retires the request through the view context, which
+      // the connection reports with the Stop reconciliation (one cancel, one later history check).
+      connectionController.cancelViewNavigation(); this.back();
     };
     window.addEventListener('alpha-back', this.backHandler);
-    this.homeHandler = () => { connectionController.cancelViewNavigation();alphaClient.cancel(); this.goHome(); };
+    // HOME behaves the same way: from Home itself only the chat collapses; from another app the view
+    // change is an explicit Stop with its reconciliation statement. Nothing is resent.
+    this.homeHandler = () => { connectionController.cancelViewNavigation(); this.goHome(); };
     window.addEventListener('launcher-home', this.homeHandler);
     this.selectionHandler = (event: CustomEvent) => { this.selectedContext = event.detail; context(this); };
     window.addEventListener('alpha-selected-context', this.selectionHandler);

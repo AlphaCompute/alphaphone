@@ -5059,11 +5059,17 @@ class Component extends DCLogic {
     var anchor = rows.find(function (row) { return row.getBoundingClientRect().bottom >= bounds.top; });
     var oldUser = (previous.msgs || []).filter(function (m) { return m.from === "user"; }).at(-1);
     var newUser = state.msgs.filter(function (m) { return m.from === "user"; }).at(-1);
-    var opened = !["sheet", "full"].includes(previous.chat) && ["sheet", "full"].includes(state.chat);
+    var wasOpen = ["sheet", "full"].includes(previous.chat), isOpen = ["sheet", "full"].includes(state.chat);
     var newTurn = state.typing && newUser && newUser.id !== oldUser?.id;
-    this.chatScrollSnapshot = { list: list, top: list.scrollTop,
-      follow: opened || newTurn || (list.scrollHeight - list.scrollTop - list.clientHeight < 80 && window.getSelection()?.isCollapsed !== false),
-      anchor: anchor?.getAttribute("data-alpha-message-id"), offset: anchor ? (anchor.getBoundingClientRect().top - bounds.top) / scale : 0 };
+    var atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80 && window.getSelection()?.isCollapsed !== false;
+    var reading = { anchor: anchor?.getAttribute("data-alpha-message-id"), offset: anchor ? (anchor.getBoundingClientRect().top - bounds.top) / scale : 0 };
+    // Closing the chat (Back, HOME) remembers where the owner was reading older history; reopening
+    // returns there. Opening at the bottom, or for a new user turn, follows the newest message.
+    if (wasOpen && !isOpen) this.chatReading = atBottom ? null : reading;
+    var remembered = !wasOpen && isOpen && !newTurn ? this.chatReading : null;
+    if (isOpen) this.chatReading = null;
+    this.chatScrollSnapshot = remembered ? { list: list, top: list.scrollTop, follow: false, anchor: remembered.anchor, offset: remembered.offset }
+      : { list: list, top: list.scrollTop, follow: (!wasOpen && isOpen) || newTurn || atBottom, anchor: reading.anchor, offset: reading.offset };
     return null;
   }
   componentDidUpdate(prev) {
