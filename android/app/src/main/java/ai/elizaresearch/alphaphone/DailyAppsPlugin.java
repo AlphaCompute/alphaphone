@@ -29,6 +29,9 @@ public class DailyAppsPlugin extends ai.eliza.plugins.reminders.ReminderPlugin {
  private boolean selectionPending;
  public DailyAppsPlugin() { super(AlphaReminders.CONFIGURATION, AlphaReminders.STORAGE); }
 
+ /** Cancellation uses AlphaDeletions' native review and durable ten-second window. */
+ @Override @PluginMethod public void operateReminder(PluginCall call){JSObject operation=call.getObject("operation");if(operation!=null&&"reminder_cancel".equals(operation.optString("type"))){call.reject("Use the reviewed deletion window");return;}super.operateReminder(call);}
+ @Override @PluginMethod public void cancelReminder(PluginCall call){call.reject("Use the reviewed deletion window");}
  @Override public void load() {
   SelectedDocumentAccess.initialize(getContext());
   super.load();
@@ -49,61 +52,6 @@ public class DailyAppsPlugin extends ai.eliza.plugins.reminders.ReminderPlugin {
   addReminderCapabilities(value);
   value.put("topInset", getActivity() instanceof MainActivity ? ((MainActivity)getActivity()).getTopInsetDp() : 0);
   value.put("bottomInset", getActivity() instanceof MainActivity ? ((MainActivity)getActivity()).getBottomInsetDp() : 0); call.resolve(value);
- }
- private android.app.AlertDialog reminderDeletionDialog;
- private final java.util.concurrent.atomic.AtomicBoolean reviewingReminderDeletion = new java.util.concurrent.atomic.AtomicBoolean();
- /**
-  * Policy P-30: the single native review for a reminder deletion with a ten-second Undo. Deletes
-  * nothing. The dialog is owned by this plugin and dismissed (as cancelled) when the app pauses.
-  * Statuses: reviewed, cancelled, unavailable, busy.
-  */
- @PluginMethod public void reviewReminderDeletion(PluginCall call) {
-  final Activity activity = getActivity();
-  if (activity == null || activity.isFinishing() || activity.isDestroyed() || !activity.hasWindowFocus()) { JSObject value = new JSObject(); value.put("status", "unavailable"); call.resolve(value); return; }
-  if (!reviewingReminderDeletion.compareAndSet(false, true)) { JSObject value = new JSObject(); value.put("status", "busy"); call.resolve(value); return; }
-  String title = call.getString("title", ""), details = call.getString("details", "");
-  final String heading = title == null || title.isEmpty() ? "Reminder" : title.length() > 200 ? title.substring(0, 200) : title;
-  final String body = details == null ? "" : details.length() > 1000 ? details.substring(0, 1000) : details;
-  activity.runOnUiThread(() -> {
-   final java.util.concurrent.atomic.AtomicBoolean delivered = new java.util.concurrent.atomic.AtomicBoolean();
-   final boolean[] confirmed = {false};
-   final android.app.AlertDialog[] owned = {null};
-   try {
-    owned[0] = new android.app.AlertDialog.Builder(activity).setTitle("Delete reminder?").setMessage(heading + "\n\n" + body)
-     .setNegativeButton("Cancel", (dialog, which) -> {}).setPositiveButton("Delete reminder", (dialog, which) -> confirmed[0] = true).create();
-    reminderDeletionDialog = owned[0];
-    owned[0].setOnDismissListener(dialog -> {
-     if (reminderDeletionDialog == owned[0]) { reminderDeletionDialog = null; reviewingReminderDeletion.set(false); }
-     if (delivered.compareAndSet(false, true)) { JSObject value = new JSObject(); value.put("status", confirmed[0] ? "reviewed" : "cancelled"); call.resolve(value); }
-    });
-    owned[0].show();
-   } catch (RuntimeException unavailable) {
-    if (reminderDeletionDialog == owned[0]) { reminderDeletionDialog = null; reviewingReminderDeletion.set(false); }
-    if (delivered.compareAndSet(false, true)) { JSObject value = new JSObject(); value.put("status", "unavailable"); call.resolve(value); }
-   }
-  });
- }
- @Override protected void handleOnPause() { super.handleOnPause(); if (reminderDeletionDialog != null) reminderDeletionDialog.dismiss(); }
- @Override protected void handleOnDestroy() { if (reminderDeletionDialog != null) reminderDeletionDialog.dismiss(); super.handleOnDestroy(); }
- /** Policy P-30: suspend delivery while a reviewed reminder deletion can be undone. */
- @PluginMethod public void holdReminderDelivery(PluginCall call) {
-  try { ReminderDeliveryHolds.hold(getContext(), call.getString("id"), call.getString("holdId")); JSObject value = new JSObject(); value.put("status", "held"); call.resolve(value); }
-  catch (IllegalArgumentException invalid) { call.reject("Invalid reminder hold"); }
-  catch (Exception failed) { call.reject("Reminder delivery could not be paused"); }
- }
- /** Release a hold; with redeliver, an alert absorbed during the hold is delivered late now. */
- @PluginMethod public void releaseReminderDelivery(PluginCall call) {
-  try {
-   String id = call.getString("id");
-   org.json.JSONArray late = ReminderDeliveryHolds.release(getContext(), id, call.getString("holdId"), Boolean.TRUE.equals(call.getBoolean("redeliver", false)));
-   ReminderDeliveryHolds.redeliver(getContext(), id, late);
-   JSObject value = new JSObject(); value.put("status", "released"); value.put("redelivered", late.length()); call.resolve(value);
-  } catch (IllegalArgumentException invalid) { call.reject("Invalid reminder hold"); }
-  catch (Exception failed) { call.reject("Reminder delivery could not be resumed"); }
- }
- @PluginMethod public void reminderDeliveryHolds(PluginCall call) {
-  try { JSObject value = new JSObject(); value.put("holds", ReminderDeliveryHolds.list(getContext())); call.resolve(value); }
-  catch (Exception failed) { call.reject("Reminder holds are unavailable"); }
  }
  @PluginMethod public void closeAssistant(PluginCall call) {
   boolean assistant = getActivity() instanceof AlphaAssistActivity;

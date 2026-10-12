@@ -1,3 +1,4 @@
+import {deletions,refreshDeletionViews} from '../runtime/deletions';
 import { alphaClient } from '../runtime/alpha-client';
 import { connectionController } from '../runtime/connection-ui';
 import {reminderCreations,retainReminderCreation,discardUndispatchedCreation,checkReminderCreation,reconcileReminderCreations,retireRefusedCreation,isReminderRefusal,reminderWallTime,reminderEvents,overdueReminders,undatedTodos,reminderRefusalMessage,reopenSchedule,isUndatedReminder,reminderDueAt as dueOf,type ReminderCreation,type ReminderRefusal} from '../runtime/reminder-creations';
@@ -5,9 +6,7 @@ import {reminderCreations,retainReminderCreation,discardUndispatchedCreation,che
 import { DailyApps, type Reminder } from '../daily';
 import { pendingReminderDeletions,retainReminderDeletion,acknowledgeReminderDeletion,reconcileReminderDeletions,discardUndispatchedReminderDeletion } from '../runtime/reminder-deletions';
 import { Capacitor } from '@capacitor/core';
-import {rememberNoteOrigin} from './note-origin-adapter';
-import {deletionUndo} from '../runtime/deletion-undo';
-import {deletionReviewText,hiddenDeletionTargets} from '../runtime/pending-deletions';
+import {rememberNoteOrigin,forgetNoteOrigin} from './note-origin-adapter';
 type Bag = any;
 type TodoBridge={saveTodo(options:{id:string;title:string;body?:string}):Promise<{status:string;id:string;message?:string}>;todoDecision(options:{target:NonNullable<Reminder['target']>;action:'done'|'reopen'|'cancel'}):Promise<{status:string;id:string}>};
 const todoBridge=()=>DailyApps as unknown as TodoBridge;
@@ -46,14 +45,11 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
       if(!pending.retained||!pending.target){if(explicit)shell.toast('The original reminder changed. Its notification link is retained without opening a replacement.');return;}
       const result=await DailyApps.listReminders();
       if(!current())return;
-      // A reminder whose reviewed deletion is pending Undo is not reopened from its notification.
-      const hidden=hiddenDeletionTargets(deletionUndo().records());
-      const visibleReminders=result.reminders.filter(row=>!hidden.reminders.has(row.id));
-      const selected=visibleReminders.find(row=>sameTarget(row.target,pending.target));
+      const selected=result.reminders.find(row=>sameTarget(row.target,pending.target));
       if(!selected){if(explicit)shell.toast('The exact reminder is unavailable. Its notification link is retained.');return;}
       const confirmation=await DailyApps.pendingReminderTap();
       if(!current()||confirmation.token!==pending.token||!confirmation.retained||!sameTarget(confirmation.target,pending.target))return;
-      const rows=[...(shell.nativeCalendarRows||[]),...events(visibleReminders)];
+      const rows=[...(shell.nativeCalendarRows||[]),...events(result.reminders)];
       const target=rows.find(row=>row.alphaReminderId===selected.id&&sameTarget(row.reminderTarget,pending.target));
       if(!target)return;
       shell.openView('calendar',{open:target.id,day:target.off,openDay:target.off,events:rows});
@@ -89,12 +85,9 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
       if(this.reminderTodoVersion===undefined)try{this.reminderTodoVersion=(await DailyApps.surfaceInfo() as {reminderTodoVersion?:number}).reminderTodoVersion??0;}catch{/* Unknown native support hides to-dos. */}
       const result = await DailyApps.listReminders();
       if (!this.live || generation !== this.reminderRefreshGeneration) return;
-      // Policy P-30: a reviewed deletion hides its event or reminder at once, while Undo is possible.
-      const hidden=hiddenDeletionTargets(deletionUndo().records());
-      const reminders=result.reminders.filter(r=>!hidden.reminders.has(r.id));
-      this.reminderTargets=new Map(reminders.map(r=>[r.id,r.target]));
-      this.reminderRows=reminders;
-      const rows = [...(this.nativeCalendarRows || []).filter((e:Bag)=>!e.nativeEvent||!hidden.event(String(e.nativeEvent.id),e.nativeEvent.seriesId)), ...events(reminders)];
+      this.reminderTargets=new Map(result.reminders.map(r=>[r.id,r.target]));
+      this.reminderRows=result.reminders;
+      const rows = [...(this.nativeCalendarRows || []), ...events(result.reminders)];
       this.reminderRefreshFailed = false;
       this.vset('calendar', { events: rows, reminderStale:false, reminderDeleteUnknown });
       const pendingOpenId = this.pendingReminderOpenId;
@@ -431,23 +424,28 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         if(!stillSelected())return;
         deleteOwner.reminderSaving=true;
         try {
-          const unconfirmed=Object.values(await pendingReminderDeletions()).find(input=>Object.keys(renderedTarget).every(key=>input.operation.target[key as keyof typeof input.operation.target]===renderedTarget[key]));
-          if(unconfirmed){api.set({reminderDeleteUnknown:Object.keys(await pendingReminderDeletions()).length});api.toast('Another action on this reminder is unconfirmed. Check action status in Calendar first.');return;}
-          const current=await DailyApps.selectedReminder({id:event.alphaReminderId});
-          if(Object.keys(renderedTarget).some(key=>current[key as keyof typeof current]!==renderedTarget[key])){await deleteOwner.refreshReminders();api.toast('This reminder changed. Review it again before deleting.');return;}
-          if(!stillSelected())return;
-          // Policy P-30: one review, then a ten-second Undo. Its alert is paused at once.
-          const scope=event.reminderRecurrence?'series' as const:'reminder' as const;
-          const reviewed=await DailyApps.reviewReminderDeletion({id:event.alphaReminderId,title:event.title||'Reminder',details:deletionReviewText({kind:'reminder',scope})});
-          if(reviewed.status!=='reviewed'){if(reviewed.status!=='cancelled'&&owner===deleteOwner&&deleteOwner.live)api.toast('Reminder review unavailable. Nothing was deleted.');return;}
-          if(!stillSelected())return;
-          const held=await deletionUndo().request({label:event.title||'Reminder',target:{kind:'reminder',target:structuredClone(renderedTarget),scope,operationId:crypto.randomUUID()}});
-          if(held.status!=='pending'){api.toast(held.status==='duplicate'?'This reminder is already waiting to be deleted.':'Too many deletions are waiting. Try again in a few seconds.');return;}
+          const pending=Object.values(await pendingReminderDeletions()).find(input=>Object.keys(renderedTarget).every(key=>input.operation.target[key as keyof typeof input.operation.target]===renderedTarget[key]));
+          if(pending&&pending.operation.type!=='reminder_cancel')throw Error('Another action on this revision is unconfirmed');
+          if(!pending){
+            const reviewed=await deletions.reviewReminder({target:renderedTarget});
+            if(reviewed.status==='queued'){if(stillSelected())api.set({open:null});refreshDeletionViews();api.toast('Reminder alert paused. Undo is available for 10 seconds.');return;}
+            if(reviewed.status==='cancelled')return;
+            throw Error('Deletion outcome requires review.');
+          }
+          // Older uncertain operations retain their original receipt-only reconciliation.
+          const input=pending,result=await DailyApps.reminderOperationReceipt(input);
+          if(result.status!=='succeeded'||!result.result)throw Error('Unconfirmed reminder cancellation');
+          await acknowledgeReminderDeletion(input,result.result);
+          void forgetNoteOrigin('reminder',event.alphaReminderId);
           if(stillSelected())api.set({open:null});
-          if(owner===deleteOwner&&deleteOwner.live){await deleteOwner.refreshReminders();deleteOwner.offerDeletionUndo?.(held.record);}
+          if(owner===deleteOwner&&deleteOwner.live){await deleteOwner.refreshReminders();api.toast('Reminder cancelled');}
         }catch{
-          if(owner===deleteOwner&&deleteOwner.live)api.toast('Deletion could not be saved. Nothing was deleted.');
+          if(owner===deleteOwner&&deleteOwner.live){
+            api.set({reminderDeleteUnknown:Object.keys(await pendingReminderDeletions()).length});
+            api.toast('Deletion is unconfirmed. Check action status in Calendar; no cancellation will be repeated.');
+          }
         }finally{
+          if(owner===deleteOwner&&deleteOwner.live)try{deleteOwner.reminderDeleteUnknown=Object.keys(await pendingReminderDeletions()).length;api.set({reminderDeleteUnknown:deleteOwner.reminderDeleteUnknown});}catch{}
           deleteOwner.reminderSaving=false;
         }
       };

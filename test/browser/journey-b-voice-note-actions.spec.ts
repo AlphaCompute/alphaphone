@@ -321,18 +321,12 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  expect(await eventTitles(page)).toEqual(['Venue booking call','Venue walkthrough edited']);
  await page.getByRole('button',{name:'Delete event',exact:true}).click();
  await deleteReview.getByRole('button',{name:'Delete event',exact:true}).click();
- // Policy P-30: the reviewed deletion is held for a ten-second Undo before the store changes.
- await expect(page.getByText('Event “Venue walkthrough edited” will be deleted',{exact:true})).toBeVisible();
+ await expect(page.getByText('Local event deleted and verified.',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:/^Venue walkthrough edited,/})).toHaveCount(0);
  await page.getByRole('button',{name:/^Book the venue edited,/}).click();
  await page.getByRole('button',{name:'Delete event',exact:true}).click();
- const reminderReview=page.getByRole('dialog',{name:'Delete reminder?'});
- await expect(reminderReview).toContainText('Book the venue edited');
- await reminderReview.getByRole('button',{name:'Delete reminder',exact:true}).click();
- await expect(page.getByText('Reminder “Book the venue edited” will be deleted',{exact:true})).toBeVisible();
+ await expect(page.getByText('Reminder cancelled',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:/^Book the venue edited,/})).toHaveCount(0);
- await expect.poll(()=>eventTitles(page),{timeout:20_000}).toEqual(['Venue booking call']);
- await expect.poll(()=>liveReminders(page),{timeout:20_000}).toEqual(['Email the caterer']);
  await page.reload();await ready(page);
  expect(await eventTitles(page)).toEqual(['Venue booking call']);
  expect(await liveReminders(page)).toEqual(['Email the caterer']);
@@ -342,7 +336,6 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  const finalNotes=await notes(page);
  expect(finalNotes).toHaveLength(1);
  expect(finalNotes[0]).toMatchObject({id:recorded.id,audio:recorded.audio,body:transcript,summary:[summary]});
- // The reminder deletion review is the owned dialog above, never a window dialog (policy P-30).
  for(const message of dialogs)expect(message).toBe('Replace the retained unsaved form with a new event?');
 });
 

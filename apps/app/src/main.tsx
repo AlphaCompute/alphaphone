@@ -1,3 +1,4 @@
+import {bindBrowserDeletionOwner} from './runtime/deletion-owner';
 import {DEFAULT_PULL_DISTANCE,DEFAULT_PULL_VELOCITY} from "../../../.eliza/client-features/packages/ui/src/gestures/constants";
 import {usePullGesture} from "../../../.eliza/client-features/packages/ui/src/components/shell/use-pull-gesture";
 import {installChatOverlayMotion} from './prototype/chat-overlay-motion-adapter';
@@ -7,6 +8,7 @@ import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-a
 import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
 // Register browser implementations before any runtime module claims plugin identity.
 import './browser/register';
+import {DeletionUndo} from './runtime/deletion-undo';
 import {bindBrowserSpeechConnection} from './browser/agent-speech';
 import { testMocksEnabled, devSurfacesEnabled } from './build-flags';
 import { RootErrorBoundary, installGlobalErrorRecovery } from './runtime/error-boundary';
@@ -63,6 +65,7 @@ const developmentAgentWorkflows=devSurfacesEnabled&&devAgentWorkflowsQuery;
 const BrowserDeviceControls=devSurfacesEnabled?DevDeviceControls:null;
 const MOCK_BANNER_STYLE=".mock-mode-banner{position:fixed;top:0;left:0;right:0;z-index:2000;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 10px;background:#0000ff;color:white;font:11px 'Public Sans',sans-serif}.mock-mode-banner button{border:1px solid white;border-radius:14px;background:transparent;color:white;min-height:24px;padding:4px 8px;font:inherit}.native-phone .mock-mode-banner{top:var(--native-top-inset,24px)}";
 if(!isAndroid)bindBrowserSpeechConnection(connectionController);
+if(!isAndroid)bindBrowserDeletionOwner(()=>{const session=connectionController.getSnapshot().session,device=connectionController.getWorkflowDeviceTarget();return session&&device?'agent:'+JSON.stringify([session.origin,session.ownerId,session.agentId,session.sessionId,device.installationId,device.enrollmentId]):null;});
 const query = new URLSearchParams(location.search);
 document.documentElement.classList.toggle('native-phone', isAndroid);
 const savedMock = testMocksEnabled && (() => {
@@ -198,7 +201,7 @@ function Phone() {
     size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size);
     return () => { bannerObserver.disconnect(); window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); };
   }, []);
-  return <>{BrowserDeviceControls&&!isAndroid&&!mock&&query.get('tools')==='1'&&<BrowserDeviceControls command={action=>{
+  return <>{!mock&&<DeletionUndo/>}{BrowserDeviceControls&&!isAndroid&&!mock&&query.get('tools')==='1'&&<BrowserDeviceControls command={action=>{
     if(!shell)return;
     if(action==='home')window.dispatchEvent(new Event('launcher-home'));
     else if(action==='back')window.dispatchEvent(new Event('alpha-back',{cancelable:true}));

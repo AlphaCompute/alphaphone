@@ -27,6 +27,41 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
  /** Patch 0041: all-day, zoned and recurring direct saves use their own creation journal. */
  static final CalendarOptionCreationStore OPTION_CREATIONS=new CalendarOptionCreationStore(CONFIGURATION);
  public AlphaCalendarPlugin(){super(CONFIGURATION);}
+ private final java.util.concurrent.ExecutorService deleteOwnerWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
+ private static final class DeleteOwner{org.json.JSONObject owner,identity,operation;}
+ private final java.util.concurrent.ConcurrentHashMap<String,DeleteOwner> deleteOwners=new java.util.concurrent.ConcurrentHashMap<>();
+ private volatile boolean deletionRetired;
+ private CalendarScopedDeletionReview scopedDeletion;
+ private synchronized CalendarScopedDeletionReview scopedDeletion(){if(scopedDeletion==null)scopedDeletion=new CalendarScopedDeletionReview(this);return scopedDeletion;}
+ @PluginMethod public void inspectDeletion(PluginCall call){scopedDeletion().inspect(call);}
+ @PluginMethod public void removeScoped(PluginCall call){scopedDeletion().review(call,null);}
+ @Override protected boolean deferReviewedDeletion(){return true;}
+ @Override protected JSObject enqueueReviewedDeletion(org.json.JSONObject target,String operationId)throws Exception{
+  NativeDeletionCoordinator coordinator=NativeDeletionCoordinator.get(getContext());DeleteOwner captured=operationId==null?null:deleteOwners.remove(operationId);
+  if(operationId!=null&&(captured==null||captured.owner==null))throw new SecurityException("Agent deletion review expired");
+  org.json.JSONObject owner=captured==null?coordinator.manualOwner():captured.owner;
+  if(captured!=null){NativeDeletionClaim.check(AlphaActionJournal.get(getContext()),captured.identity,operationId,captured.operation,owner,true);target.put("journalBinding",NativeDeletionClaim.binding(AlphaActionJournal.get(getContext()),captured.identity));}
+  return JSObject.fromJSONObject(new org.json.JSONObject().put("status","queued").put("deletion",coordinator.stageCalendar(target,owner,operationId)));
+ }
+ @Override @PluginMethod public void executeAgent(PluginCall call){
+  JSObject operation=call.getObject("operation");if(operation==null||!"calendar_delete".equals(operation.optString("type"))){super.executeAgent(call);return;}
+  String id=call.getString("operationId","");if(!id.matches("[A-Za-z0-9_-]{1,128}")||deleteOwners.size()>=32){call.reject("Deletion review unavailable");return;}
+  DeleteOwner ticket=new DeleteOwner();if(deleteOwners.putIfAbsent(id,ticket)!=null){call.resolve(status("busy"));return;}
+  PluginCall owned=new PluginCall(null,call.getPluginId(),call.getCallbackId(),call.getMethodName(),call.getData()){
+   @Override public void resolve(JSObject value){deleteOwners.remove(id,ticket);call.resolve(value);}
+   @Override public void resolve(){deleteOwners.remove(id,ticket);call.resolve();}
+   @Override public void reject(String message){deleteOwners.remove(id,ticket);call.reject(message);}
+  };
+  try{deleteOwnerWorker.execute(()->{try{
+   ticket.owner=NativeDeletionCoordinator.get(getContext()).agentOwner();ticket.identity=call.getObject("journalIdentity");ticket.operation=new org.json.JSONObject(operation.toString());
+   NativeDeletionClaim.check(AlphaActionJournal.get(getContext()),ticket.identity,id,ticket.operation,ticket.owner,false);
+   getActivity().runOnUiThread(()->{if(deletionRetired||deleteOwners.get(id)!=ticket||!foreground()){deleteOwners.remove(id,ticket);call.resolve(status("cancelled"));return;}if(operation.optJSONObject("target").optString("eventId").startsWith("delete2:"))scopedDeletion().review(owned,operation);else super.executeAgent(owned);});
+  }catch(Exception unavailable){deleteOwners.remove(id,ticket);call.reject("Authenticated local agent is unavailable for deletion review.");}});}catch(java.util.concurrent.RejectedExecutionException retired){deleteOwners.remove(id,ticket);call.resolve(status("cancelled"));}
+ }
+ @Override @PluginMethod public void cancelAgent(PluginCall call){deleteOwners.remove(call.getString("operationId",""));super.cancelAgent(call);}
+ @Override protected void handleOnPause(){if(scopedDeletion!=null)scopedDeletion.pause();super.handleOnPause();}
+ @Override protected void handleOnDestroy(){if(scopedDeletion!=null)scopedDeletion.destroy();deletionRetired=true;deleteOwners.clear();deleteOwnerWorker.shutdown();super.handleOnDestroy();}
+
  private boolean granted(){return getPermissionState("calendar")==PermissionState.GRANTED;}
  /** Capacitor's own permission request launches through the activity; see {@link LateLaunch}. */
  @Override @PluginMethod public void requestPermissions(PluginCall call){LateLaunch.ask(call,()->super.requestPermissions(call));}
@@ -152,68 +187,4 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
   catch(android.content.ActivityNotFoundException missing){c.resolve(status("unavailable"));}
   catch(Exception unknown){c.resolve(status("unknown"));}
  }
-
- private android.app.AlertDialog deletionDialog;
- private final java.util.concurrent.atomic.AtomicBoolean reviewingDeletion=new java.util.concurrent.atomic.AtomicBoolean();
- /**
-  * Policy P-30: the single native review for a deletion with a ten-second Undo. Nothing is
-  * deleted here; a confirmed review returns a single-use grant for the exact provider revision.
-  * Statuses: reviewed, cancelled, conflict, external, permission-required, unavailable, busy.
-  */
- @PluginMethod public void reviewDeletion(PluginCall c){
-  if(!granted()){c.resolve(status("permission-required"));return;}if(!foreground()||!unlocked()){c.resolve(status("unavailable"));return;}
-  if(!"event".equals(c.getString("scope","event"))){c.resolve(status("external"));return;}
-  if(!reviewingDeletion.compareAndSet(false,true)){c.resolve(status("busy"));return;}
-  try{
-   final CalendarDeferredDeletion.Snapshot snapshot=CalendarDeferredDeletion.read(getContext().getContentResolver(),Long.parseLong(c.getString("id","")),Long.parseLong(c.getString("calendarId","")));
-   if(snapshot==null||!snapshot.visible(c.getObject("expected"))||!snapshot.revision.equals(c.getString("revision",""))){reviewingDeletion.set(false);c.resolve(status("conflict"));return;}
-   if(!snapshot.direct(CONFIGURATION)){reviewingDeletion.set(false);c.resolve(status("external"));return;}
-   String reviewText=c.getString("reviewText","");if(reviewText==null||reviewText.length()>1000)reviewText="";
-   final String details=reviewText;
-   getActivity().runOnUiThread(()->{
-    final java.util.concurrent.atomic.AtomicBoolean delivered=new java.util.concurrent.atomic.AtomicBoolean();
-    final android.app.AlertDialog[] owned={null};final JSObject[] outcome={null};
-    try{
-     if(!foreground()||!granted()||!unlocked()){reviewingDeletion.set(false);c.resolve(status("unavailable"));return;}
-     String title=snapshot.event.getAsString("title"),zone=snapshot.event.getAsString("eventTimezone");
-     java.text.DateFormat format=java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM,java.text.DateFormat.SHORT);format.setTimeZone(java.util.TimeZone.getTimeZone(zone==null?"UTC":zone));
-     String message=(title==null||title.isEmpty()?"Untitled event":title)+"\n"+CONFIGURATION.displayName+"\n"+format.format(new java.util.Date(snapshot.event.getAsLong("dtstart")))+" – "+format.format(new java.util.Date(snapshot.event.getAsLong("dtend")))+"\n\n"+(details.isEmpty()?"Delete this one event? You can undo for 10 seconds.":details);
-     deletionDialog=new android.app.AlertDialog.Builder(getActivity()).setTitle("Delete calendar event?").setMessage(message).setNegativeButton("Cancel",(dialog,which)->{}).setPositiveButton("Delete event",(dialog,which)->{
-      if(!granted()||!unlocked()){outcome[0]=status("permission-required");return;}
-      try{
-       // Recheck the reviewed revision at confirmation; the grant is bound to it.
-       CalendarDeferredDeletion.Snapshot current=CalendarDeferredDeletion.read(getContext().getContentResolver(),snapshot.id,snapshot.calendarId);
-       if(current==null||!current.revision.equals(snapshot.revision)){outcome[0]=status("conflict");return;}
-       JSObject value=status("reviewed");value.put("grant",CalendarDeferredDeletion.grant(getContext(),snapshot,System.currentTimeMillis()));value.put("scope","event");value.put("invitation",false);value.put("revision",snapshot.revision);outcome[0]=value;
-      }catch(Exception unavailable){outcome[0]=status("unavailable");}
-     }).create();
-     owned[0]=deletionDialog;
-     deletionDialog.setOnDismissListener(dialog->{if(deletionDialog==owned[0]){deletionDialog=null;reviewingDeletion.set(false);}if(delivered.compareAndSet(false,true))c.resolve(outcome[0]!=null?outcome[0]:status("cancelled"));});
-     deletionDialog.show();
-    }catch(Exception unavailable){if(deletionDialog==owned[0]){deletionDialog=null;reviewingDeletion.set(false);}if(delivered.compareAndSet(false,true))c.resolve(outcome[0]!=null?outcome[0]:status("unavailable"));}
-   });
-  }catch(Exception unavailable){reviewingDeletion.set(false);c.resolve(status("unavailable"));}
- }
- /**
-  * Consumes the grant only after the provider was read, right before the provider call.
-  * Statuses: deleted, conflict, permission-required, unavailable (locked, not in the foreground or
-  * provider unreadable: nothing dispatched and the grant kept, so the renderer retries later), unknown.
-  */
- @PluginMethod public void commitDeletion(PluginCall c){
-  if(!granted()){c.resolve(status("permission-required"));return;}
-  if(!foreground()||!unlocked()){c.resolve(status("unavailable"));return;}
-  try{c.resolve(status(CalendarDeferredDeletion.commit(getContext(),c.getString("grant",""))));}
-  catch(RuntimeException uncertain){c.resolve(status("unknown"));}
- }
- /** Undo inside the window: the provider event was never touched. */
- @PluginMethod public void revokeDeletion(PluginCall c){CalendarDeferredDeletion.revoke(getContext(),c.getString("grant",""));c.resolve(status("revoked"));}
- /** Final provider readback. Statuses: absent, present, changed, permission-required, unavailable. */
- @PluginMethod public void deletionReadback(PluginCall c){
-  if(!granted()){c.resolve(status("permission-required"));return;}
-  if(!"event".equals(c.getString("scope","event"))){c.resolve(status("unavailable"));return;}
-  try{c.resolve(status(CalendarDeferredDeletion.readback(getContext(),Long.parseLong(c.getString("id","")),Long.parseLong(c.getString("calendarId","")),c.getString("revision",""))));}
-  catch(NumberFormatException invalid){c.resolve(status("unavailable"));}
- }
- @Override protected void handleOnPause(){super.handleOnPause();if(deletionDialog!=null)deletionDialog.dismiss();}
- @Override protected void handleOnDestroy(){if(deletionDialog!=null)deletionDialog.dismiss();super.handleOnDestroy();}
 }

@@ -1,7 +1,6 @@
 // Real renderer adapter -> native bridge boundary, under a controlled DST timezone.
 // No Android/provider acceptance is implied by this host fixture.
 import assert from 'node:assert/strict';
-import {deletionReviewText,hiddenDeletionTargets} from '../apps/app/src/runtime/pending-deletions.ts';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
@@ -15,7 +14,7 @@ const source=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/proto
 // Exercise the actual durable creation/readback module as well as the renderer.
 const creationSource=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/runtime/reminder-creations.ts',import.meta.url),'utf8').replace(/^import .*?;\n/gm,'').replace(/export /g,''));
 const contractSource=stripTypeScriptTypes(fs.readFileSync(new URL('../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts',import.meta.url),'utf8').replace(/^import .*?;\n/gm,'').replace(/export /g,''));
-const context={Capacitor:{getPlatform:()=> 'android',isNativePlatform:()=>true},DailyApps,Shell,views,Date,crypto,console,TextEncoder,connectionController:{getSnapshot:()=>({open:true}),subscribe:()=>{subscriptions++;return()=>{unsubscriptions++;};}},document:{hidden:false,addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},secureConnectionStore:{read:async key=>stored[key]??null,compareExchange:async(key,expected,value)=>{if(JSON.stringify(stored[key]??null)!==JSON.stringify(expected))return{status:'conflict'};stored[key]=value;return{status:'saved'};}},reconcileReminderDeletions:async()=>0,rememberNoteOrigin:async()=>true,forgetNoteOrigin:async()=>{},deletionReviewText,hiddenDeletionTargets,deletionUndo:()=>({subscribe:()=>()=>{},records:()=>[],unconfirmed:()=>[],reconcile:async()=>[],remaining:()=>0})};
+const context={Capacitor:{getPlatform:()=> 'android',isNativePlatform:()=>true},DailyApps,Shell,views,Date,crypto,console,TextEncoder,connectionController:{getSnapshot:()=>({open:true}),subscribe:()=>{subscriptions++;return()=>{unsubscriptions++;};}},document:{hidden:false,addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},secureConnectionStore:{read:async key=>stored[key]??null,compareExchange:async(key,expected,value)=>{if(JSON.stringify(stored[key]??null)!==JSON.stringify(expected))return{status:'conflict'};stored[key]=value;return{status:'saved'};}},reconcileReminderDeletions:async()=>0,rememberNoteOrigin:async()=>true,forgetNoteOrigin:async()=>{}};
 vm.runInNewContext(contractSource+'\n'+creationSource+'\n'+source+'\ninstallReminderAdapter(Shell,views);',context);
 const owner=new Shell();owner.live=true;owner.componentDidMount();
 const api={isActive:()=>true,get:()=>state,set:patch=>Object.assign(state,patch),toast:value=>toasts.push(value)};

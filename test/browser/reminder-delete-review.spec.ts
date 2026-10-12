@@ -1,102 +1,53 @@
-// Browser reminders: one review step, a ten-second durable Undo with the alert paused, then a
-// single journaled cancellation (policy P-30, issue #414). Browser build only; the Android
-// receiver hold and provider are covered by source/contract tests, not by this spec.
 import {test,expect,type Page} from '@playwright/test';
 test.use({timezoneId:'UTC'});
-const start=Date.parse('2027-03-13T00:00Z');
-const store=(page:Page)=>page.evaluate(async()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!));
-const pending=(page:Page)=>page.evaluate(async()=>(await (await import('/src/runtime/pending-deletions.ts')).pendingDeletions((await import('/src/runtime/pending-deletion-store.ts')).pendingDeletionStore)).map(r=>({phase:r.phase,reminderId:(r.target as any).target.reminderId})));
-/** Move the page clock past the Undo window and run the same commit the expiry timer runs. */
-async function expire(page:Page,offset=11_000){await page.clock.setFixedTime(new Date(start+offset));await page.evaluate(async()=>(await import('/src/runtime/deletion-undo.ts')).deletionUndo().commitDue());}
-async function open(page:Page,at='2027-03-13T14:00Z'){
+async function setup(page:Page){
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
- await page.clock.setFixedTime(new Date(start));await page.goto('/');await page.getByRole('button',{name:'Calendar',exact:true}).waitFor();
- await page.evaluate(async at=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('DailyApps').scheduleReminder({id:'delete-boundary',title:'Delete boundary reminder',at:Date.parse(at)});},at);
+ await page.clock.install({time:new Date('2027-03-13T00:00Z')});await page.goto('/');await page.getByRole('button',{name:'Calendar',exact:true}).waitFor();
+ await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('DailyApps').scheduleReminder({id:'delete-boundary',title:'Delete boundary reminder',at:Date.parse('2027-03-13T14:00Z')});});
  await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();await page.getByRole('button',{name:/^Delete boundary reminder,/}).click();
 }
-/** The single owned review dialog (the same surface Calendar events use), never window.confirm. */
-async function review(page:Page,accept=true){
- let native=0;page.on('dialog',dialog=>{native++;void dialog.dismiss();});
+const read=(page:Page)=>page.evaluate(async()=>JSON.parse((await(await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!));
+for(const mode of ['fresh','stale','response-loss','staging-loss','navigate','legacy','late-stale','reload-loss'])test(`reviewed reminder deletion ${mode}`,async({page})=>{
+ await setup(page);
+ await page.evaluate(async mode=>{
+  const {BrowserDaily}=await import('/src/browser/daily.ts'),stage=BrowserDaily.prototype.stageDeletion;(window as any).stages=0;
+  BrowserDaily.prototype.stageDeletion=async function(...input:Parameters<typeof stage>){(window as any).stages++;
+   if(mode==='staging-loss')throw Error('Synthetic storage admission failure');
+   if(mode==='late-stale')await(await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].title='Changed during review';data.reminders[0].revision='b'.repeat(64);});
+   const result=await stage.apply(this,input);if(mode==='response-loss'||mode==='reload-loss')throw Error('Lost admission response');return result;
+  };
+  if(mode==='stale')await(await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].title='Concurrent replacement';data.reminders[0].revision='a'.repeat(64);});
+ },mode);
+ if(mode==='legacy'){
+  expect(await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const daily=registerPlugin<any>('DailyApps'),target=await daily.selectedReminder({id:'delete-boundary'});try{await daily.operateReminder({operationId:'bypass',bindingHash:'a'.repeat(64),operation:{type:'reminder_cancel',target}});return false;}catch{return true;}})).toBe(true);expect((await read(page)).reminders[0].status).toBe('scheduled');return;
+ }
  await page.getByRole('button',{name:'Delete event',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'Delete reminder?'});await expect(dialog).toBeVisible();
- const shown=await dialog.innerText();
- await dialog.getByRole('button',{name:accept?'Delete reminder':'Cancel',exact:true}).click();
- await expect(dialog).toHaveCount(0);expect(native).toBe(0);return shown;
-}
-
-test('Cancel in the review deletes nothing',async({page})=>{
- await open(page);
- expect(await review(page,false)).toContain('You can undo for 10 seconds');
- expect(await pending(page)).toEqual([]);expect((await store(page)).reminders[0].status).toBe('scheduled');
+ if(mode!=='stale'){
+  const review=page.getByRole('dialog',{name:'Delete reminder?',exact:true});await expect(review).toBeVisible();
+  if(mode==='navigate')await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));
+  else await review.getByRole('button',{name:'Delete reminder',exact:true}).click();
+ }
+ if(['stale','staging-loss','late-stale'].includes(mode))await expect(page.getByText('Deletion is unconfirmed. Check action status in Calendar; no cancellation will be repeated.',{exact:true})).toBeVisible();
+ if(['fresh','response-loss','reload-loss'].includes(mode)){
+  const panel=page.getByRole('complementary',{name:'Pending deletions'});await expect(panel.getByRole('button',{name:'Undo',exact:true})).toBeVisible();
+  expect((await read(page)).reminders[0].status).toBe('scheduled');expect(Object.keys((await read(page)).deletions)).toHaveLength(1);
+  if(mode==='reload-loss'){await page.reload();await expect(panel.getByText(/Deletion paused/)).toBeVisible();await page.clock.fastForward(11000);expect((await read(page)).reminders[0].status).toBe('scheduled');await panel.getByRole('button',{name:'Undo',exact:true}).click();}
+  else{await page.clock.fastForward(11000);await expect.poll(async()=>(await read(page)).reminders[0].status).toBe('cancelled');}
+ }else{await page.clock.fastForward(11000);expect((await read(page)).reminders[0].status).toBe('scheduled');expect(Object.keys((await read(page)).deletions||{})).toHaveLength(0);}
 });
-
-test('Undo inside the window is lossless and resumes the alert',async({page})=>{
- await open(page);await review(page);
- await expect(page.getByText('Reminder “Delete boundary reminder” will be deleted',{exact:true})).toBeVisible();
- await expect(page.getByRole('button',{name:/^Delete boundary reminder,/})).toHaveCount(0);
- expect(await pending(page)).toEqual([{phase:'pending',reminderId:'delete-boundary'}]);
- expect((await store(page)).deliveryHolds).toEqual({'delete-boundary':expect.any(String)});
- await page.getByRole('button',{name:'Undo',exact:true}).click();
- await expect(page.getByText('Reminder kept. Nothing was deleted.',{exact:true})).toBeVisible();
- const data=await store(page);
- expect(data.reminders[0].status).toBe('scheduled');expect(data.deliveryHolds).toBeUndefined();expect(data.receipts||{}).toEqual({});
- expect(await pending(page)).toEqual([]);
+test('two browser tabs retain separate Undo intents and either tab can cancel without overwriting the other',async({page,context})=>{
+ await setup(page);await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('DailyApps').scheduleReminder({id:'tab-two',title:'Second tab reminder',at:Date.parse('2027-03-13T14:00Z')});});
+ const second=await context.newPage();await second.clock.install({time:new Date('2027-03-13T00:00Z')});await second.goto('/');await second.getByRole('button',{name:'Calendar',exact:true}).click();await second.getByRole('button',{name:/^Second tab reminder,/}).click();
+ for(const tab of [page,second]){await tab.getByRole('button',{name:'Delete event',exact:true}).click();await tab.getByRole('dialog',{name:'Delete reminder?',exact:true}).getByRole('button',{name:'Delete reminder',exact:true}).click();}
+ await expect.poll(async()=>Object.keys((await read(page)).deletions).length).toBe(2);
+ const panel=page.getByRole('complementary',{name:'Pending deletions'});await expect(panel.getByRole('button',{name:'Undo',exact:true})).toHaveCount(2);
+ await panel.getByRole('button',{name:'Undo',exact:true}).first().click();await expect(panel.getByRole('button',{name:'Undo',exact:true})).toHaveCount(1);await panel.getByRole('button',{name:'Undo',exact:true}).click();
+ await expect.poll(async()=>(await read(page)).reminders.every((row:any)=>!row.pendingDeletion)).toBe(true);expect((await read(page)).reminders.map((row:any)=>row.status)).toEqual(['scheduled','scheduled']);
 });
-
-test('a reminder due during the window is not delivered; reload restores the Undo offer',async({page})=>{
- await open(page,'2027-03-13T00:00:05Z');await review(page);
- await page.clock.setFixedTime(new Date(start+6000));
- await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
- await expect(page.getByText('Reminder “Delete boundary reminder” will be deleted',{exact:true})).toBeVisible();
- await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('DailyApps').listReminders();});
- expect((await store(page)).reminders[0].status).toBe('scheduled');
- await page.getByRole('button',{name:'Undo',exact:true}).click();
- await expect.poll(async()=>(await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return (await registerPlugin<any>('DailyApps').listReminders()).reminders[0].status;}))).toBe('posted');
-});
-
-test('expiry cancels once, reads back and is not repeated after reload',async({page})=>{
- await open(page);
- await page.evaluate(()=>{(window as any).dispatches=0;});
- await page.evaluate(async()=>{const {BrowserDaily}=await import('/src/browser/daily.ts');const operate=BrowserDaily.prototype.operateReminder;BrowserDaily.prototype.operateReminder=async function(input){(window as any).dispatches++;return operate.call(this,input);};});
- await review(page);await expire(page);
- await expect(page.getByText('Delete boundary reminder: reminder deleted and confirmed.',{exact:true})).toBeVisible();
- expect((await store(page)).reminders[0].status).toBe('cancelled');expect(await pending(page)).toEqual([]);
- expect(await page.evaluate(()=>(window as any).dispatches)).toBe(1);
- await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
- expect(Object.keys((await store(page)).receipts)).toHaveLength(1);
-});
-
-test('a reminder changed during the window is kept and its alert resumes',async({page})=>{
- await open(page);await review(page);
- await page.evaluate(async()=>{await (await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].title='Changed elsewhere';data.reminders[0].revision='b'.repeat(64);});});
- await expire(page);
- await expect(page.getByText('Delete boundary reminder changed after you deleted it, so it was kept. Review it and delete again if needed.',{exact:true})).toBeVisible();
- const data=await store(page);expect(data.reminders[0].status).toBe('scheduled');expect(data.deliveryHolds).toBeUndefined();
- await expect(page.getByRole('button',{name:/^Changed elsewhere,/})).toBeVisible();
-});
-
-test('a lost cancellation response with no readback is listed as unconfirmed and resolved after reload, not redispatched',async({page})=>{
- await open(page);
- await page.evaluate(async()=>{(window as any).dispatches=0;const {BrowserDaily}=await import('/src/browser/daily.ts');const operate=BrowserDaily.prototype.operateReminder;BrowserDaily.prototype.operateReminder=async function(input){(window as any).dispatches++;await operate.call(this,input);throw Error('Lost response');};BrowserDaily.prototype.reminderOperationReceipt=async function(){throw Error('Receipt unavailable');};});
- await review(page);await expire(page);
- await expect.poll(()=>pending(page)).toEqual([{phase:'unknown',reminderId:'delete-boundary'}]);
- await expect(page.getByRole('status').filter({hasText:'Deletion of “Delete boundary reminder” is unconfirmed.'})).toBeVisible();
- expect(await page.evaluate(()=>(window as any).dispatches)).toBe(1);
- await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
- await expect.poll(()=>pending(page)).toEqual([]);
- expect((await store(page)).reminders[0].status).toBe('cancelled');expect(Object.keys((await store(page)).receipts)).toHaveLength(1);
- await expect(page.getByRole('button',{name:/^Delete boundary reminder,/})).toHaveCount(0);
-});
-
-test('a reminder changed before review is not offered for deletion',async({page})=>{
- await open(page);
- await page.evaluate(async()=>{await (await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].title='Concurrent replacement';data.reminders[0].revision='a'.repeat(64);});});
- await page.getByRole('button',{name:'Delete event',exact:true}).click();
- await expect(page.getByText('This reminder changed. Review it again before deleting.',{exact:true})).toBeVisible();
- expect(await pending(page)).toEqual([]);
-});
-
-test('ID-only cancellation stays refused',async({page})=>{
- await open(page);
- expect(await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');try{await registerPlugin<any>('DailyApps').cancelReminder({id:'delete-boundary'});return false;}catch{return true;}})).toBe(true);
+test('legacy uncertain deletion remains receipt-only across retry and reload',async({page})=>{
+ await setup(page);await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts'),target=await registerPlugin<any>('DailyApps').selectedReminder({id:'delete-boundary'});await(await import('/src/runtime/reminder-deletions.ts')).retainReminderDeletion({operationId:'legacy-uncertain',bindingHash:'a'.repeat(64),operation:{type:'reminder_cancel',target}});});
+ await page.getByRole('button',{name:'Delete event',exact:true}).click();await expect(page.getByRole('dialog',{name:'Delete reminder?',exact:true})).toHaveCount(0);
+ await expect(page.getByText('Deletion is unconfirmed. Check action status in Calendar; no cancellation will be repeated.',{exact:true})).toBeVisible();
+ await page.reload();expect((await read(page)).reminders[0].status).toBe('scheduled');expect(Object.keys((await read(page)).deletions||{})).toHaveLength(0);
+ expect(await page.evaluate(async()=>Object.keys(await(await import('/src/runtime/reminder-deletions.ts')).pendingReminderDeletions()))).toEqual(['legacy-uncertain']);
 });

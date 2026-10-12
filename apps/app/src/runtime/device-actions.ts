@@ -59,6 +59,7 @@ export interface ActionJournal {
   markApplying(input: { scope: string; proposalId: string; attemptId: string }): Promise<unknown>;
   finish(input: { scope: string; proposalId: string; status: NonNullable<JournalEntry['status']>; summary: string; result?: Record<string, unknown> }): Promise<unknown>;
   recoverNotification?(input:{scope:string;proposalId:string;bindingHash:string}):Promise<{entry:JournalEntry|null}>;
+  recoverDeletion?(input:{scope:string;proposalId:string}):Promise<{entry:JournalEntry|null}>;
   recoverReminder?(input:{scope:string;proposalId:string;bindingHash:string}):Promise<{entry:JournalEntry|null}>;
   get(input: { scope: string; proposalId: string }): Promise<{ entry: JournalEntry | null }>;
   list(input: { scope: string }): Promise<{ entries: JournalEntry[] }>;
@@ -375,6 +376,17 @@ export class DeviceActions {
     if(next.status==='succeeded'&&(next.phase!=='terminal'||next.result?.operationId!==entry.operationId))throw Error('Recovered notification result changed');
     return next;
   }
+  private async recoverDeletion(p:Proposal,entry:JournalEntry,signal:AbortSignal):Promise<JournalEntry>{
+    if(!this.journal.recoverDeletion||!['calendar_delete','reminder_cancel'].includes(p.operation.type)||entry.status==='succeeded'||entry.status==='failed'||!entry.attemptId||entry.record.digest!==p.digest||entry.record.ownerId!==this.session.ownerId||entry.record.agentId!==this.session.agentId||entry.record.origin!==this.session.origin||entry.record.installationId!==this.credential.installationId||entry.record.enrollmentId!==this.credential.enrollmentId)return entry;
+    signal.throwIfAborted();const {entry:next}=await this.journal.recoverDeletion({scope:this.scope,proposalId:p.id});signal.throwIfAborted();if(!next)return entry;
+    if(next.operationId!==entry.operationId||next.operationHash!==entry.operationHash||next.attemptId!==entry.attemptId||JSON.stringify(next.record)!==JSON.stringify(entry.record))throw Error('Recovered deletion identity changed');
+    if(next.status==='succeeded'){
+      if(next.phase!=='terminal'||next.result?.operationId!==entry.operationId)throw Error('Recovered deletion result changed');
+      if(isReminderOperation(p.operation))validateReminderResult(p.operation,next.result?.reminderResult);
+      else if(isCalendarOperation(p.operation))validateCalendarResult(p.operation,next.result?.calendarResult);
+    }
+    return next;
+  }
   private async recoverReminder(p:Proposal,entry:JournalEntry,signal:AbortSignal):Promise<JournalEntry>{
     if(!this.recover||!(isReminderOperation(p.operation)||isReminderCreate(p.operation))||entry.status==='succeeded'||!entry.attemptId||entry.record.digest!==p.digest||entry.record.ownerId!==this.session.ownerId||entry.record.agentId!==this.session.agentId||entry.record.origin!==this.session.origin||entry.record.installationId!==this.credential.installationId||entry.record.enrollmentId!==this.credential.enrollmentId||typeof entry.record.sessionId!=='string')return entry;
     const bindingHash=await actionScope(JSON.stringify([this.scope,this.session.ownerId,this.session.agentId,entry.record.sessionId,this.session.origin,this.credential.installationId,this.credential.enrollmentId,p.id,p.digest,entry.operationId]));
@@ -391,7 +403,7 @@ export class DeviceActions {
     for (let entry of local.entries) {
       signal.throwIfAborted();
       const p = proposals.find(item => item.id === entry.proposalId);
-      if(p){if(p.workflow&&(!workflow||p.workflow.runId!==workflow.runId||p.workflow.versionId!==workflow.versionId||p.workflow.specDigest!==workflow.specDigest))continue;entry=await this.recoverNotification(p,entry,signal);entry=await this.recoverReminder(p,entry,signal);}
+      if(p){if(p.workflow&&(!workflow||p.workflow.runId!==workflow.runId||p.workflow.versionId!==workflow.versionId||p.workflow.specDigest!==workflow.specDigest))continue;entry=await this.recoverDeletion(p,entry,signal);entry=await this.recoverNotification(p,entry,signal);entry=await this.recoverReminder(p,entry,signal);}
       if (!p || entry.phase !== 'terminal' || !entry.attemptId || entry.record.digest !== p.digest || !entry.status) continue;
       if(p.workflow&&(!workflow||p.workflow.runId!==workflow.runId||p.workflow.versionId!==workflow.versionId||p.workflow.specDigest!==workflow.specDigest))continue;
       const clockResult=await this.savedClockResult(p,entry);
@@ -457,7 +469,7 @@ export class DeviceActions {
     const p = (await this.list(signal)).find(item => item.id === proposalId);
     if (!p?.attemptId) throw new Error('No dispatched action to reconcile');
     let { entry } = await this.journal.get({ scope: this.scope, proposalId });
-    if(entry&&outcome==='applied'){entry=await this.recoverNotification(p,entry,signal);entry=await this.recoverReminder(p,entry,signal);}
+    if(entry&&outcome==='applied'){entry=await this.recoverDeletion(p,entry,signal);entry=await this.recoverNotification(p,entry,signal);entry=await this.recoverReminder(p,entry,signal);}
     if(outcome==='applied'&&p.operation.type==='post_notification'&&(!entry||entry.phase!=='terminal'||entry.status!=='succeeded'))throw Error('Applied notification reconciliation requires its exact saved delivery receipt');
     const clockResult=entry?await this.savedClockResult(p,entry):undefined;
     if(isClockOperation(p.operation)&&(!clockResult||clockResult.status==='unknown'||(outcome==='applied')!==(clockResult.status==='opened')))throw Error('Clock reconciliation requires the exact saved handoff result; alarm state cannot be inferred');
