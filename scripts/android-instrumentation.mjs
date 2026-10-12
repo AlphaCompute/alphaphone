@@ -127,6 +127,7 @@ export const CLASS_REGISTRY = {
   NotesSecureStorage: { args: { notesSecureStorage: "1" }, note: "the fresh-install migration method (notesSecureMigration=1) has no campaign and is skipped" },
   PdfViewer: { args: { isolatedPdfNative: "1" } },
   PhotosBatch: { args: { photosBatch: "1" } },
+  PhotoLibrary: { args: { photoLibrary: "1" }, note: "grants READ_MEDIA_IMAGES/VIDEO (Android 13+), creates and deletes only its own uniquely named fixtures; permission revoke, selected-only grants and reboot need separate campaigns" },
   UiDispatch: { args: { uiDispatch: "1" } },
   LocalSpeech: { args: { localSpeech: "1" }, note: "needs the packaged on-device speech models; recorded as failing functional acceptance on arm64-v8a" },
   LocalSpeechBridge: { args: { localSpeechBridge: "1" }, note: "needs the packaged on-device speech models" },
