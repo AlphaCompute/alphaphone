@@ -41,12 +41,12 @@ test('the test binds it for the click only, does not suspend it, and restores wh
   assert.match(source, /configurator\.setUiAutomationFlags\(previousFlags\)/);
   // No connection without the flag: it would suspend the stand-in for as long as it lasted.
   assert.doesNotMatch(source, /getUiAutomation\(\)/);
-  const step = source.slice(source.indexOf('String previousServices='), source.indexOf('// 4. A pull down'));
+  const step = source.slice(source.indexOf('String previousServices='), source.indexOf('// 3. A pull down'));
   assert.match(step, /secure\("put","enabled_accessibility_services"/);
   assert.match(step, /assertTrue\("The stand-in screen reader is bound/);
-  assert.match(step, /finally\{\s*restoreSecure\("enabled_accessibility_services",previousServices\);restoreSecure\("accessibility_enabled",previousEnabled\);/);
-  // The click is still required to open the panel, and once more with a single attempt.
-  assert.match(step, /assertTrue\("The accessibility click action opens the panel/);
-  assert.match(step, /assertTrue\("A single accessibility click opens the panel/);
+  assert.match(step, /finally\{\s*if\(AndroidShade\.isOpen\(\)\)AndroidShade\.collapse\(\);\s*restoreSecure\("enabled_accessibility_services",previousServices\);restoreSecure\("accessibility_enabled",previousEnabled\);/);
+  // The click on launcher Home's Notifications button is still required to open Android's shade (#416, #417), and once more with a single attempt.
+  assert.match(step, /assertTrue\("The accessibility click action opens Android's shade/);
+  assert.match(step, /assertTrue\("A single accessibility click opens Android's shade/);
   assert.equal(step.match(/performAction\(android\.view\.accessibility\.AccessibilityNodeInfo\.ACTION_CLICK\)/g).length, 2);
 });
