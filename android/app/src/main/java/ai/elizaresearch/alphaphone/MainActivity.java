@@ -255,6 +255,8 @@ public class MainActivity extends BridgeActivity {
   getBridge().addWebViewListener(rendererRecovery);
   WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
   getBridge().getWebView().getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+  // The privileged app host never participates in third-party browser sessions.
+  android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(getBridge().getWebView(),false);
   AlphaDevicePlugin.applyTextScale(this);
   // Launcher reference layouts include system-bar space. Standalone and assist
   // content must fit inside the real bars/cutout, including enforced edge-to-edge.

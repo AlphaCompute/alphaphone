@@ -5,8 +5,8 @@ reference. The current renderer includes native browser, camera,
 calendar, reminders, selected files and local notes. Phone, SMS, Contacts and Wallet
 entry points are disabled by the documented MVP profile. Production Android onboarding signs into an Eliza Cloud account, checks account
 credits, then offers microphone and notification setup. The agent runs on the phone;
-Cloud supplies the configured inference and voice services. Phone pairing is retired in production Android. Browser and test-mocks tooling
-retain remote connections for development. Mock mode, prototype
+Cloud supplies the configured inference and voice services. Remote pairing and hosted agents are unavailable in every production build. Explicit test-mocks tooling
+retains remote connections as non-product development infrastructure. Mock mode, prototype
 fixture data, developer device controls and the local development endpoint are
 development surfaces that exist only when the build-time switch
 `ELIZA_DEV_ALLOW_TEST_MOCKS=1` is set (see [build-time switch](#build-time-test-mock-switch)).
@@ -41,6 +41,19 @@ the required evidence rather than treating a successful APK build as acceptance.
 - [Requirements and open decisions](docs/decisions.md)
 - [Verification gates and evidence](docs/verification.md)
 - [Source/design provenance](docs/sources.md)
+
+## Approved MVP direction — October 12
+
+The [implementation plan](docs/implementation-plan.md) and
+[32 implementation TODOs](docs/owner-approved-mvp-plan-2026-10-12.md) supersede older
+scope wording above. Agent execution is local only; Eliza Cloud provides inference,
+subscription billing, Gmail and shared Maps. All STT/TTS must move to the native
+on-device route. Dictation and interruptible voice assistant are separate controls.
+Always-on listening is required in the Pixel 10a / Android 17 AOSP MVP. Phone,
+Contacts and SMS are AOSP-only; Wallet is removed. Full permitted Photos access and
+reset-only data management are planned. These are requirements, not claims that the
+current Cloud voice/credit UI or other source already implements them.
+See [speech research](docs/local-speech-research-2026-10-12.md) for native candidates.
 
 ## Setup
 

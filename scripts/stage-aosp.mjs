@@ -3,6 +3,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { androidEnv, tool } from "./toolchain.mjs";
+import { verifySecureCameraSource, writeSecureCameraOverlay, assertNoAlphaLockScreenSurface } from "./aosp-secure-camera-contract.mjs";
 import { clockProductRequirement } from "./aosp-clock-contract.mjs";
 import { provisioningComponents, writeProvisioningOverlay } from "./aosp-provisioning-overlay.mjs";
 import { writeImageCapability } from "./aosp-image-capability.mjs";
@@ -65,12 +66,12 @@ const get = (key) => {
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--development" || args[i] === "--production") continue;
   if (
-    !["--apk", "--output", "--descriptor", "--apk-manifest"].includes(args[i]) ||
+    !["--apk", "--output", "--descriptor", "--apk-manifest", "--aosp-source"].includes(args[i]) ||
     !args[i + 1] ||
     args[i + 1].startsWith("--")
   )
     throw new Error(
-      "Use --apk FILE --output NEW_DIR [--descriptor FILE [--production] | --development] [--apk-manifest FILE]",
+      "Use --apk FILE --output NEW_DIR [--descriptor FILE [--production] | --development] [--apk-manifest FILE] [--aosp-source PATH]",
     );
   i++;
 }
@@ -91,7 +92,12 @@ admitApk({
   development,
   manifestFile: get("--apk-manifest") || "artifacts/apk-manifest.json",
 });
+const cameraSource = get("--aosp-source") || !development
+  ? verifySecureCameraSource(get("--aosp-source"))
+  : { sourceVerified: false, imageVerified: false, lockedCaptureVerified: false, deviceAcceptanceVerified: false, reason: "Development staging without reviewed AOSP source" };
 const env = androidEnv();
+const tree = execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 });
+assertNoAlphaLockScreenSurface(tree);
 if (!descriptor) {
   if (!development)
     throw new Error(
@@ -156,8 +162,8 @@ fs.appendFileSync(path.join(output, "product.mk"), clockProductRequirement);
 // were refused above, and a sideloaded APK never has the system-partition install.
 const capability = writeImageCapability(output, identity.appId);
 console.log(`Image capability: ${Object.keys(capability).find(name => name !== "productMakefile")}.`);
+writeSecureCameraOverlay(output, cameraSource);
 if (production) {
-  const tree = execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 });
   const components = provisioningComponents(tree, identity.appId);
   writeProvisioningOverlay(output, identity.appId, components);
   console.log(`Provisioning overlay: HOME ${components.home}, assistant ${identity.appId}, Autofill ${components.autofill}.`);

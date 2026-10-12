@@ -1,20 +1,20 @@
 import { browserDevProfile } from '../browser/dev-profile';
 import { admittedAospViews, aospImage } from '../runtime/aosp-image';
-// Scope decision: docs/mvp-scope-and-gap-report.md; Wallet: docs/implementation-plan.md AP9.
+// Approved October 12 scope: docs/implementation-plan.md and issue #422.
+// Wallet is removed from MVP, including AOSP: no payment/provider activation.
 // Phone, Contacts and SMS: owner decision P-36 (issue #420). They exist only on the Alpha AOSP
 // image, never in a standalone APK or another non-image install; the launcher flavor alone is not
 // proof of the image (runtime/aosp-image.ts). On the image an app view opens only once its in-app
 // surface is backed by a reviewed native adapter, so no simulated call, message or address book is
-// reachable anywhere. Wallet remains outside the supplied core MVP definition.
-// Restore Wallet only after AP9 provider/security decisions and payment acceptance.
-// Reference definitions, template, assets and saved user data are deliberately retained.
+// reachable anywhere.
+// Reference definitions and saved user data are retained; development fixtures are non-product.
 export const ENABLED_MVP_VIEWS = new Set([
   // "phone", // Alpha AOSP image only, once its adapter is admitted (runtime/aosp-image.ts).
   // "messages", // SMS UI: Alpha AOSP image only. This does not defer email.
   "inbox", "calendar", "browser", "camera", "photos", "maps", "notes",
   // "contacts", // Alpha AOSP image only, once its adapter is admitted.
   "files",
-  // "wallet", // Deferred: not in the authoritative core MVP; no payment flow.
+  // "wallet", // Removed from MVP in both distributions and AOSP; no payment flow.
   "workflows", "settings",
 ]);
 /** Views limited to the Alpha AOSP image (P-36). */
