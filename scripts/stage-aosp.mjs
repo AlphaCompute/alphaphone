@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { androidEnv, tool } from "./toolchain.mjs";
 import { clockProductRequirement } from "./aosp-clock-contract.mjs";
 import { provisioningComponents, writeProvisioningOverlay } from "./aosp-provisioning-overlay.mjs";
+import { assertNoAlphaLockScreenSurface, writeSecureCameraOverlay } from "./aosp-secure-camera-contract.mjs";
 import { releaseBlockers } from "./release-blockers.mjs";
 
 /**
@@ -91,6 +92,10 @@ admitApk({
   manifestFile: get("--apk-manifest") || "artifacts/apk-manifest.json",
 });
 const env = androidEnv();
+// Both modes: the APK's manifest is read once and checked before anything is staged.
+const tree = execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 });
+// Policy P-23: locked capture belongs to the system secure camera; no Alpha surface over Keyguard.
+assertNoAlphaLockScreenSurface(tree);
 if (!descriptor) {
   if (!development)
     throw new Error(
@@ -150,12 +155,13 @@ execFileSync(
   { stdio: "inherit", env },
 );
 fs.appendFileSync(path.join(output, "product.mk"), clockProductRequirement);
+writeSecureCameraOverlay(output);
 if (production) {
-  const tree = execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 });
   const components = provisioningComponents(tree, identity.appId);
   writeProvisioningOverlay(output, identity.appId, components);
   console.log(`Provisioning overlay: HOME ${components.home}, assistant ${identity.appId}, Autofill ${components.autofill}.`);
 }
+console.log("Secure camera: system Camera2 and the power-key gesture are required; Alpha declares no lock-screen surface.");
 console.log(
   `Add under vendor/${identity.slug.replaceAll("-", "_")} and inherit product.mk from the selected AOSP product. This is staging evidence, not an image boot.`,
 );
