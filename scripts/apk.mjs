@@ -23,6 +23,8 @@ export const EXPORTED_COMPONENTS = Object.freeze({
   "androidx.work.impl.background.systemjob.SystemJobService": "android.permission.BIND_JOB_SERVICE",
   "androidx.work.impl.diagnostics.DiagnosticsReceiver": "android.permission.DUMP",
   "androidx.profileinstaller.ProfileInstallReceiver": "android.permission.DUMP",
+  // Read-only release data integrity export for pilot updates (adb shell holds DUMP).
+  "ai.elizaresearch.alphaphone.release.DataIntegrityProvider": "android.permission.DUMP",
 });
 import { manifestFacts } from "../vendor/eliza/packages/app/scripts/lib/android-manifest-facts.mjs";
 export { manifestFacts, parseXmlTree } from "../vendor/eliza/packages/app/scripts/lib/android-manifest-facts.mjs";
