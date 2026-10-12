@@ -42,6 +42,10 @@ export interface FlagOffSchedules {
   /** Advertise phone sources (`hostedNativeSourceProtocol`) and accept native selections; stubs
    * the AlphaHostedResults consent port and AlphaCalendar's workflow calendars. */
   native?: { evening?: boolean; calendars: { id: string; name: string; account: string }[] };
+  /** Serve POST /hosted/dossier and advertise it as `hostedDossierProtocol: 1`. The agent pinned in
+   * upstream.lock.json does not register that route, so a renderer may offer the dossier only to
+   * an agent that advertises it. */
+  dossier?: boolean;
 }
 export const AGENT_NAME = 'Alpha';
 
@@ -87,7 +91,7 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
       if (path === '/api/client-devices/proposals') return ok({ proposals: [] });
       // The agent advertises scheduled digests only; the workflow engine itself is not offered here.
       if (path === '/api/workflow/status') return ok(!options.digests ? { status: 'unavailable' } : !options.schedules ? { status: 'unavailable', hostedDigestProtocol: 1 }
-        : { status: 'unavailable', hostedDigestProtocol: 1, hostedDigestSourcePauseProtocol: 1, ...(options.schedules.native ? { hostedNativeSourceProtocol: 1, ...(options.schedules.native.evening ? { hostedNativeEveningProtocol: 1 } : {}) } : {}) });
+        : { status: 'unavailable', hostedDigestProtocol: 1, hostedDigestSourcePauseProtocol: 1, ...(options.schedules.native ? { hostedNativeSourceProtocol: 1, ...(options.schedules.native.evening ? { hostedNativeEveningProtocol: 1 } : {}) } : {}), ...(options.schedules.dossier ? { hostedDossierProtocol: 1 } : {}) });
       if (options.digests && options.schedules && path.startsWith('/api/workflow/hosted/') && path !== '/api/workflow/hosted/cloud-delegation/revocations' && !path.startsWith('/api/workflow/hosted/results')) return hosted(method, path.slice('/api/workflow/hosted/'.length), body);
       if (options.digests) {
         if (path === '/api/workflow/hosted/sources') return ok({ sources: [] });
@@ -146,7 +150,7 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
         source.revoked = true;
         return lost(ok({ id: source.id, revoked: true }));
       }
-      if (route === 'dossier') {
+      if (route === 'dossier' && options.schedules!.dossier) {
         if (!keys(['sourceId', 'sourceRevision', 'mutationId', 'confirmed']) || body.confirmed !== true) return refuse(400, 'Confirm this on-demand model execution');
         const source = d.sources.find(s => s.id === body.sourceId);
         if (!source || source.revision !== body.sourceRevision || source.live?.provider !== 'native' || state(source) !== 'current') return refuse(409, 'Dossier source binding changed');
