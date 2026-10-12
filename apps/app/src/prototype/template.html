@@ -1052,6 +1052,7 @@
         <sc-if value="{{calendar.editDraftConflict}}"><div style="padding:12px 24px;overflow-wrap:anywhere">Another saved edit: {{calendar.editDraftSavedTitle}}<button onClick="{{calendar.restoreEditDraft}}" style="padding:12px">Restore saved edits</button><button onClick="{{calendar.replaceEditDraft}}" style="padding:12px">Replace saved edits</button></div></sc-if>
         <div style="padding: 0 24px"><input value="{{calendar.f.title}}" onChange="{{calendar.f.onTitle}}" placeholder="Title" aria-label="Title" class="serif" style="width: 100%; font-size: 34px; border: none; outline: none; background: transparent; color: var(--fg); padding: 6px 0; letter-spacing: -.01em"></div>
 
+        <sc-if value="{{calendar.f.noteLinkNotice}}"><p data-alpha-note-link-notice style="margin: 8px 24px 0; font-size: 14px; color: var(--mut)">{{calendar.f.noteLinkNotice}}</p></sc-if>
         <sc-if value="{{calendar.f.nativeReviewDate}}"><div aria-label="Selected event date" aria-live="polite" style="padding: 8px 24px 0; font-size: 14px; color: var(--mut)">{{calendar.f.nativeReviewDate}}</div></sc-if>
         <div class="scr" style="display: flex; gap: 8px; overflow-x: auto; padding: 14px 20px 4px; touch-action: pan-x">
           <sc-for list="{{calendar.f.days}}" as="d">
