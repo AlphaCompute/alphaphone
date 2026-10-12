@@ -209,19 +209,25 @@ export function noticePackages(entries) {
 
 const splitIdent = ident => { const at = ident.lastIndexOf('@'); return [ident.slice(0, at), ident.slice(at + 1)]; };
 
-/** True when `version` satisfies an advisory range of the form npm publishes (comparators, spaces, ||, *). */
+/**
+ * True when `version` satisfies an advisory range of the form npm publishes (comparators, spaces,
+ * "a - b", ||, *). A comparator this cannot read counts as affected: the finding is then shown for
+ * review instead of silently dropped.
+ */
 export function inRange(version, range) {
   const parse = text => /^v?(\d+)\.(\d+)\.(\d+)/.exec(text)?.slice(1).map(Number);
   const compare = (a, b) => { for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
   const target = parse(version);
   if (!target) return false;
   return String(range).split('||').some(alternative => {
-    const comparators = alternative.trim().split(/\s+/).filter(Boolean);
+    // ">= 1.2.0" is one comparator; "1.0.0 - 2.0.0" is ">=1.0.0 <=2.0.0".
+    const normalized = alternative.trim().replace(/(<=|>=|<|>|=)\s+/g, '$1').replace(/^(\S+)\s+-\s+(\S+)$/, '>=$1 <=$2');
+    const comparators = normalized.split(/\s+/).filter(Boolean);
     return comparators.every(comparator => {
       if (comparator === '*' || comparator === '') return true;
       const match = /^(<=|>=|<|>|=)?(.+)$/.exec(comparator);
       const bound = parse(match[2]);
-      if (!bound) return false;
+      if (!bound) return true;
       const order = compare(target, bound);
       return {'<': order < 0, '<=': order <= 0, '>': order > 0, '>=': order >= 0, '=': order === 0, undefined: order === 0}[match[1]];
     });

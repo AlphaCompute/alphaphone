@@ -93,6 +93,8 @@ export const CAMPAIGNS = Object.freeze([
   { id: "emulator-suite:browser-reading", kind: "emulator-suite", file: "test-results/emulator-suite/browser-reading.json" },
   { id: "emulator-suite:local-speech", kind: "emulator-suite", file: "test-results/emulator-suite/local-speech.json" },
   // android-resident-instrumentation.mjs output saved with the installed APK's hash (apkSha256 or apks[]).
+  // Neither that script nor the local-speech candidate.json records an APK hash yet, so those two
+  // campaigns read as mismatched (unbound) until their producers do; that keeps the candidate unqualified.
   { id: "resident-instrumentation", kind: "record-dir", dir: "test-results/resident-instrumentation" },
   // resident-android.yml artifacts: the archive's apk-manifest.json (file name -> SHA-256) and the native proofs.
   { id: "resident-android", kind: "resident-ci", manifest: "test-results/resident-ci-archive/apk-manifest.json", dir: "test-results/resident-ci-native" },
@@ -100,10 +102,12 @@ export const CAMPAIGNS = Object.freeze([
 
 const readJsonFile = file => { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return undefined; } };
 const jsonFiles = dir => fs.existsSync(dir) ? fs.readdirSync(dir).filter(name => name.endsWith(".json")).sort().map(name => path.join(dir, name)) : [];
+// App APKs a record installed. A separate test-mocks build is never the candidate, so its rows bind nothing.
 const appHashes = record => [
-  ...(Array.isArray(record?.apks) ? record.apks.filter(apk => !apk.role || apk.role === "app").map(apk => apk.sha256) : []),
+  ...(Array.isArray(record?.apks) ? record.apks.filter(apk => (!apk.role || apk.role === "app") && apk.testMocks !== true).map(apk => apk.sha256) : []),
   ...(typeof record?.apkSha256 === "string" ? [record.apkSha256] : []),
 ];
+const testMocksOnly = record => Array.isArray(record?.apks) && record.apks.some(apk => apk.testMocks === true) && !appHashes(record).length;
 
 /**
  * Read each campaign's evidence as {id, present, passed, apkSha256[], records[]}. Pure apart from
@@ -116,9 +120,13 @@ export function readCampaigns(root = process.cwd(), campaigns = CAMPAIGNS) {
       const report = readJsonFile(at(campaign.file));
       if (!report) return { id: campaign.id, present: false, passed: false, apkSha256: [], records: [] };
       // The suite report names each instrumentation record; those bind the installed APKs.
+      // A test-mocks step (browser-reading) is recorded but cannot bind; every other record must name a flag-off app APK.
       const records = (report.steps ?? []).filter(step => step.results).map(step => step.results);
-      const hashes = records.flatMap(rel => appHashes(readJsonFile(at(rel))));
-      return { id: campaign.id, present: true, passed: report.passed === true, apkSha256: [...new Set(hashes)], records: [campaign.file, ...records] };
+      const rows = records.map(rel => readJsonFile(at(rel)));
+      const bound = rows.filter(row => !testMocksOnly(row));
+      const hashes = bound.flatMap(appHashes);
+      return { id: campaign.id, present: true, passed: report.passed === true, apkSha256: [...new Set(hashes)], records: [campaign.file, ...records],
+        unbound: !bound.length || bound.some(row => !appHashes(row).length) };
     }
     if (campaign.kind === "record-dir") {
       const files = jsonFiles(at(campaign.dir));

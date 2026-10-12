@@ -150,6 +150,8 @@ test('Gradle hashes come from verification metadata, and a coordinate without on
   assert.deepEqual(gradleArtifactHash('androidx.collection:collection:1.4.2', hashes.get('androidx.collection:collection:1.4.2')),
     {artifact: 'collection-1.4.2.module', sha256: 'c'.repeat(64)}, 'a multiplatform root is hashed by its module metadata');
   assert.equal(gradleArtifactHash('androidx.missing:missing:1.0.0', hashes.get('androidx.missing:missing:1.0.0')), null);
+  assert.deepEqual(gradleArtifactHash('g:lib:2.0', [{artifact: 'lib-2.0-sources.jar', sha256: 'd'.repeat(64)}, {artifact: 'lib-2.0.pom', sha256: 'e'.repeat(64)}]),
+    {artifact: 'lib-2.0.pom', sha256: 'e'.repeat(64)}, 'a sources jar never stands for the runtime artifact');
   // A copy of the repository whose metadata lost one runtime coordinate refuses to write an SBOM.
   const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-sbom-gradle-'));
   t.after(() => fs.rmSync(copy, {recursive: true, force: true}));

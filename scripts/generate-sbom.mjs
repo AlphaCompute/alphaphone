@@ -144,7 +144,8 @@ export function gradleVerificationHashes(xml) {
 export function gradleArtifactHash(coordinate, artifacts = []) {
   const [, name, version] = coordinate.split(':');
   const base = `${name}-${version}`;
-  for (const pattern of [new RegExp(`^${base.replace(/[.+]/g, '\\$&')}\\.(aar|jar)$`), /\.(aar|jar)$/, /\.module$/, /\.pom$/]) {
+  // A sources or javadoc jar never stands for the runtime artifact.
+  for (const pattern of [new RegExp(`^${base.replace(/[.+]/g, '\\$&')}\\.(aar|jar)$`), /^(?!.*-(sources|javadoc)\.jar$).*\.(aar|jar)$/, /\.module$/, /\.pom$/]) {
     const match = artifacts.find(item => pattern.test(item.artifact));
     if (match) return match;
   }

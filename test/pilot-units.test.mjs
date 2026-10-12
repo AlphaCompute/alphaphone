@@ -266,6 +266,18 @@ test("campaign records are read from emulator-suite, resident proofs and residen
   write("test-results/emulator-suite/local-speech.json", { suite: "local-speech", passed: true, steps: [{ name: "speech", results: "test-results/android-instrumentation/ci-default/results.json" }] });
   write("test-results/android-instrumentation/ci-reading/results.json", { passed: true, apks: [{ variant: "launcher", role: "app", sha256: app }] });
   assert.equal(recordCandidate({ qualified: true, androidBuild: { apks: [{ sha256: app }] } }, root).candidateQualified, true);
+  // A test-mocks step in the suite is recorded but binds nothing; it does not make the campaign foreign.
+  write("test-results/emulator-suite/browser-reading.json", { suite: "browser-reading", passed: true, steps: [
+    { name: "ci-reading", results: "test-results/android-instrumentation/ci-reading/results.json" },
+    { name: "ci-reading-test-mocks", results: "test-results/android-instrumentation/ci-reading-test-mocks/results.json" }] });
+  write("test-results/android-instrumentation/ci-reading-test-mocks/results.json", { passed: true, apks: [{ variant: "launcher", role: "app", sha256: "7".repeat(64), testMocks: true }] });
+  const reading = () => recordCandidate({ qualified: true, androidBuild: { apks: [{ sha256: app }] } }, root).candidate.campaigns.find(row => row.id === "emulator-suite:browser-reading");
+  assert.equal(reading().status, "passed");
+  assert.deepEqual(reading().apkSha256, [app]);
+  // A suite step whose record is missing, or names no APK, leaves the campaign unbound.
+  fs.rmSync(path.join(root, "test-results/android-instrumentation/ci-reading/results.json"));
+  assert.equal(reading().status, "mismatched");
+  write("test-results/android-instrumentation/ci-reading/results.json", { passed: true, apks: [{ variant: "launcher", role: "app", sha256: app }] });
   assert.equal(recordCandidate({ qualified: false, androidBuild: { apks: [{ sha256: app }] } }, root).candidateQualified, false, "campaigns never replace the S/B verdict");
   // A resident proof without the hash of the APK it ran on is not admitted.
   write("test-results/resident-instrumentation/unbound.json", { passed: true });
