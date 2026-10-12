@@ -79,15 +79,12 @@ fixture behavior, not integrated Alpha, biometric or physical-device acceptance.
 
 ### Passkeys
 
-Passkeys are outside the MVP (owner decision 2026-10-12, issue #402). Alpha's browser keeps
-WebView WebAuthn off and tells the user once, when the first tab opens, that passkeys are not
-supported. That notice is informational: the browser does not detect a passkey-only sign-in
-(with WebAuthn off WebView reports none, and Alpha never scripts the page's own world). The
-browser menu's **Open in another browser** is labelled for passkey sign-in, offers only installed
-browsers, and says so when there is none. Password save and fill are unchanged.
-The integrated password manager does not provide passkeys or store TOTP secrets. A later
-release may route WebAuthn to Android's system credential provider after real browser and
-image qualification; that is a separate follow-up, not current support.
+Passkeys are outside MVP under the approved #402 policy. Alpha's browser disables
+WebAuthn even where the installed provider supports it. Use a password or the
+explicit Open in another browser action; private tabs ask before handing over
+the address. Alpha does not detect passkey-only pages. Future system-provider
+support requires separate browser/image qualification.
+The integrated password manager does not provide passkeys or store TOTP secrets.
 
 ### Evidence boundary
 
@@ -124,7 +121,7 @@ Choose password provider opens Android's public provider picker when the verifie
 
 Browser-only builds explain that the browser/OS manages passwords, offer no fake native installation/selection controls, and cannot report Android provider state. Mock mode, which exists only in `ELIZA_DEV_ALLOW_TEST_MOCKS=1` builds, keeps its simulated UI and does not install the live setup adapter. The development sample password provider is likewise flag-only; production builds and distribution APKs show only the real Android provider status.
 
-This is onboarding, not official-provider acceptance. The embedded Alpha browser is distinct from a browser on Proton's recognized-browser list. Preserve any provider warning. Setup does not establish password saving/filling, cross-origin matching, unlock/resume, passkeys or release-signed/physical-device compatibility; those remain the acceptance gates in `browser-autofill-integration.md` and the MVP completion plan. Alpha neither restyles nor bypasses provider-owned vault/security UI.
+This is onboarding, not official-provider acceptance. The embedded Alpha browser is distinct from a browser on Proton's recognized-browser list. Preserve any provider warning. Setup does not establish password saving/filling, cross-origin matching, unlock/resume or release-signed/physical-device compatibility; those remain the password acceptance gates in `browser-autofill-integration.md` and the MVP completion plan. Alpha neither restyles nor bypasses provider-owned vault/security UI.
 
 Primary references:
 
