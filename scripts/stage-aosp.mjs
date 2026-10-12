@@ -14,7 +14,7 @@ import { releaseBlockers } from "./release-blockers.mjs";
  * and releases verify-apks recorded as non-distributable. Production staging
  * additionally requires a verified distributable release from apk-manifest.json.
  */
-function admitApk({ apk, hash, development, manifestFile }) {
+function admitApk({ apk, hash, development, manifestFile, readManifest }) {
   const testMocksDir = path.resolve("artifacts/test-mocks");
   const real = fs.realpathSync(apk);
   for (const candidate of [path.resolve(apk), real]) {
@@ -49,12 +49,20 @@ function admitApk({ apk, hash, development, manifestFile }) {
   if (development && entry?.mode !== "release") {
     let debuggable;
     try {
-      debuggable = /android:debuggable[^\n]*0xffffffff/.test(execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env: androidEnv(), maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "ignore"] }));
+      debuggable = /android:debuggable[^\n]*0xffffffff/.test(readManifest());
     } catch {
       throw new Error(`Refusing ${apk}: --development stages debug builds only, and this APK's build type could not be read.`);
     }
     if (!debuggable)
       throw new Error(`Refusing ${apk}: --development stages debug builds only. This is a release build that ${manifestFile} does not record as distributable.`);
+  }
+}
+/** Concatenated classes*.dex bytes of an APK; an APK without dex cannot be checked and is refused. */
+function readApkDex(apk) {
+  try {
+    return execFileSync("unzip", ["-p", apk, "classes*.dex"], { maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    throw new Error(`Refusing ${apk}: its classes*.dex could not be read, so its lock-screen API use is unverified.`);
   }
 }
 const args = process.argv.slice(2);
@@ -85,17 +93,22 @@ if (!apk) throw new Error("Supply --apk PATH to a signed launcher APK.");
 const identity = JSON.parse(fs.readFileSync("app.config.json"));
 let descriptor = get("--descriptor");
 const hash = createHash("sha256").update(fs.readFileSync(apk)).digest("hex");
+// The APK's manifest is dumped at most once; admission and every later check share it.
+let manifestTree = null;
+const readManifest = () => (manifestTree ??= execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env: androidEnv(), maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "pipe"] }));
 admitApk({
   apk,
   hash,
   development,
   manifestFile: get("--apk-manifest") || "artifacts/apk-manifest.json",
+  readManifest,
 });
 const env = androidEnv();
-// Both modes: the APK's manifest is read once and checked before anything is staged.
-const tree = execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 });
-// Policy P-23: locked capture belongs to the system secure camera; no Alpha surface over Keyguard.
-assertNoAlphaLockScreenSurface(tree);
+const tree = readManifest();
+// Policy P-23, both modes, before anything is staged: locked capture belongs to the system
+// secure camera, so no Alpha manifest attribute, secure-camera filter or dex reference to the
+// runtime Keyguard APIs may put an Alpha surface over the lock screen.
+assertNoAlphaLockScreenSurface(tree, readApkDex(apk));
 if (!descriptor) {
   if (!development)
     throw new Error(

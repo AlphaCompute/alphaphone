@@ -5102,8 +5102,12 @@ class Component extends DCLogic {
     // The ACTION_ASSIST surface is the conversation itself: it never rests on Home's composer or grid.
     if (this.props && this.props.assistantSurface && !value.view && (value.chat === "input" || value.chat === "hidden")) value.chat = "full";
     if (this.props && this.props.assistantSurface) value.drawer = false;
+    // Policy P-23: with native system chrome the OS lock screen owns locked capture and
+    // payment; the prototype's locked "secure" camera and wallet state is never entered.
+    if (this.props && this.props.nativeSystemChrome) value.secure = false;
     return value;
   }
+  lockedUnderSystemChrome() { var S = this.S(); return !!(this.props && this.props.nativeSystemChrome) && (S.screen === "lock" || S.screen === "off"); }
   closeAssistant() { this.leave(); if (this.props && this.props.onCloseAssistant) this.props.onCloseAssistant(); }
   later(fn, ms, grp) { grp = grp || "g"; this.G = this.G || {}; var id = setTimeout(fn, ms); (this.G[grp] = this.G[grp] || []).push(id); return id; }
   clear(grp) { this.G = this.G || {}; (this.G[grp] || []).forEach(clearTimeout); this.G[grp] = []; }
@@ -5579,10 +5583,13 @@ class Component extends DCLogic {
       tiles: tiles, bright: S.bright, brightHandoff: true, brightSlider: false, onBright: function () { self.openView("settings", { page: "display" }); }, shadeN: shadeN, shadeY: isOn && S.shade ? "0" : "-100%",
       closeShade: function () { self.setState({ shade: false }); }, openShade: function () { self.openShade(); },
       shadeKey: function (event) { if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); self.setState({ shade: false }); } }, clearAll: function () { self.setState({ nGone: NOTIFS.map(function (n) { return n.id; }), shade: false }); },
-      // Policy P-23: on Android the system Keyguard owns the secure camera; Alpha never
-      // opens its own camera, gallery or agent from a locked state. Only the simulated
-      // phone frame (no OS lock screen) keeps the prototype's lock-screen camera.
+      // Policy P-23: under nativeSystemChrome (the Android WebView, and the browser outside
+      // the launcher presentation) the OS lock screen owns locked capture. The prototype lock
+      // screen then offers no camera and no agent, and S() keeps the secure state off, so no
+      // Alpha camera, wallet, gallery or agent opens from a locked state. Only the simulated
+      // launcher frame keeps the prototype's lock-screen camera and voice entry.
       lockCameraOffered: !P.nativeSystemChrome, noLockCamera: !!P.nativeSystemChrome,
+      lockAgentOffered: !P.nativeSystemChrome, noLockAgent: !!P.nativeSystemChrome,
       lockCamera: function () { if (P.nativeSystemChrome) return; self.setState({ screen: "home", secure: true }); self.openView("camera"); },
       msgs: msgs, typing: S.typing, sugg: sugg, showSugg: panelOpen && !S.draft && !S.typing && !voiceOn,
       panelComposer: panelOpen && !voiceOn,
@@ -5615,11 +5622,11 @@ class Component extends DCLogic {
       headsReply: function () { self.setState({ heads: false }); if (HEADS) self.agentSay("Here's a reply to " + HEADS.who.split(" ")[0] + ".", { type: "draft", to: HEADS.who, body: HEADS.reply, act: { mod: "messages", fn: "sendDraft" }, pid: HEADS.pid }); },
       fireHeads: function () { var S2 = self.S(); if (S2.screen !== "home") self.unlock(); self.later(function () { self.showHeads(); }, 80); },
       unlock: function () { self.unlock(); }, wake: function () { self.setState({ screen: "lock" }); },
-      pDown: function (e) { e.stopPropagation(); self.pLong = false; clearTimeout(self.pT); self.pT = setTimeout(function () { self.pLong = true; self.startVoice(); }, 550); },
+      pDown: function (e) { e.stopPropagation(); self.pLong = false; clearTimeout(self.pT); self.pT = setTimeout(function () { self.pLong = true; if (self.lockedUnderSystemChrome()) return; self.startVoice(); }, 550); },
       pUp: function (e) {
         e.stopPropagation(); clearTimeout(self.pT); if (self.pLong) return; self.pLong = true;
         var now = Date.now();
-        if (self.lastTap && now - self.lastTap < 380 && isMvpView("wallet")) { self.lastTap = 0; clearTimeout(self.tapT); var S2 = self.S(); if (S2.screen !== "home") self.setState({ screen: "home", secure: true }); self.openView("wallet", { pay: true }); return; }
+        if (self.lastTap && now - self.lastTap < 380 && isMvpView("wallet") && !self.lockedUnderSystemChrome()) { self.lastTap = 0; clearTimeout(self.tapT); var S2 = self.S(); if (S2.screen !== "home") self.setState({ screen: "home", secure: true }); self.openView("wallet", { pay: true }); return; }
         self.lastTap = now; clearTimeout(self.tapT); self.tapT = setTimeout(function () { self.lastTap = 0; self.power(); }, 380);
       },
       pCancel: function () { clearTimeout(self.pT); },

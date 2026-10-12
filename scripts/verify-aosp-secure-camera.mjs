@@ -1,7 +1,8 @@
 // Read-only secure-camera admission of a booted Alpha AOSP image (policy P-23, issue #407).
 // Usage: ANDROID_SERIAL=<serial> node scripts/verify-aosp-secure-camera.mjs --user <id>
-// Proves handler routing and settings only; locked capture, isolation and unlock/return
-// behaviour remain device acceptance by a person.
+// Reports secure-intent routing, camera presence and grant, and the power-gesture settings
+// only. It does not read what Keyguard or the gesture launch; locked capture, isolation and
+// unlock/return behaviour remain device acceptance by a person.
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -17,6 +18,6 @@ const identity = JSON.parse(fs.readFileSync("app.config.json", "utf8"));
 const env = androidEnv();
 const adb = path.join(env.ANDROID_HOME, "platform-tools/adb");
 const run = (...cmd) => execFileSync(adb, ["-s", serial, ...cmd], {
-  encoding: "utf8", env, timeout: 10_000, maxBuffer: 128 * 1024,
+  encoding: "utf8", env, timeout: 10_000, maxBuffer: 16 << 20,
 });
 console.log(JSON.stringify(verifyAospSecureCamera(run, args[userIndex + 1], identity.appId), null, 2));

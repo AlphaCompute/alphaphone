@@ -52,6 +52,8 @@ test("the overlay sets default HOME, assistant and Autofill offer additively", t
 test("stage-aosp gates the overlay behind --production, never with --development", () => {
   const source = fs.readFileSync("scripts/stage-aosp.mjs", "utf8");
   assert.match(source, /if \(production && development\) throw/);
-  assert.match(source, /const tree = execFileSync\(tool\("aapt"\), \["dump", "xmltree", apk, "AndroidManifest\.xml"\]/);
-  assert.match(source, /if \(production\) \{\n  const components = provisioningComponents\(tree, identity\.appId\);/);
+  // The provisioning overlay is the only --production branch; it reuses the shared manifest dump.
+  const gate = source.indexOf("if (production) {");
+  assert.ok(gate > 0 && source.indexOf("provisioningComponents(tree, identity.appId)", gate) > gate);
+  assert.ok(source.indexOf("writeProvisioningOverlay(") > gate);
 });
