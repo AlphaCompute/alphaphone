@@ -270,6 +270,21 @@ checks for #403. No live sign-in was performed. WebView 145 still lacked isolate
 reading injection; supported-path reading checks were explicitly skipped, with the
 unavailable path checked instead.
 
+## Calendar large-text CI follow-up
+
+The full Chromium shard at `a425759e` exposed two reproducible failures: the
+24px half-hour Calendar block clipped its title at 200% text in portrait and
+landscape. The timeline now scales event heights and positions, hour labels,
+current-time line and total scroll height together using the measured text scale.
+This preserves time alignment while giving short events room for the title.
+
+The unchanged accessibility sweep reproduced both failures before the fix
+(14 other selected cases passed). After the fix, all 40 Calendar view/subview
+checks passed across light/dark, portrait/landscape and 200% text. Repository
+verification passed 751 tests (747 pass, four existing TODOs), Notes query flow,
+production build and 395-file bundle audit. Refreshed Android builds and CI are
+pending; this renderer result does not replace the earlier APK-bound native proof.
+
 ## Pending results in this run
 
 Further native UI, permissions, provider and restart campaigns are still running. No
