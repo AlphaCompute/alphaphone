@@ -20,7 +20,7 @@ public final class ScopedCalendarDeletionInstrumentedTest {
  @Test public void localRecurrenceUndoAndExpiryPreserveOtherOccurrences()throws Exception{exercise(false);}
  @Test public void syntheticSyncedRecurrenceUsesAppDeletionAndExactReadback()throws Exception{exercise(true);}
  private void exercise(boolean synced)throws Exception{
-  assertEquals("Explicit disposable Calendar deletion fixture required","1",InstrumentationRegistry.getArguments().getString("scopedCalendarDeletion"));
+  assertTrue("Explicit disposable Calendar deletion fixture required","1".equals(InstrumentationRegistry.getArguments().getString("scopedCalendarDeletion")));
   assertTrue("Never mutate providers as user 0",Process.myUid()/100000>0);
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();ContentResolver resolver=context.getContentResolver();
   for(String permission:new String[]{Manifest.permission.READ_CALENDAR,Manifest.permission.WRITE_CALENDAR})assertEquals(PackageManager.PERMISSION_GRANTED,context.checkSelfPermission(permission));
