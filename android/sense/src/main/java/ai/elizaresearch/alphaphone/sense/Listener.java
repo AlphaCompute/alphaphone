@@ -40,7 +40,11 @@ final class Listener {
 
  static ListenerPolicy.State state(Context context){return ListenerPolicy.decide(inputs(context),System.currentTimeMillis());}
 
+ static final ListeningEpoch epoch=new ListeningEpoch();
+
  static synchronized void refresh(Context context){
+  // Invalidate synchronously with the control, before Android delivers service lifecycle events.
+  epoch.invalidate();
   Context app=context.getApplicationContext();
   ListenerPolicy.State state=state(app);
   Intent service=new Intent(app,ListeningService.class);

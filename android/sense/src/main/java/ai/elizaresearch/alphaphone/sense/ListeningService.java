@@ -118,6 +118,7 @@ public final class ListeningService extends Service {
 
  /** Re-evaluates policy and converges the service, notification and microphone on it. */
  private void apply(){
+  Listener.epoch.invalidate();
   main.removeCallbacks(reapply);
   ListenerPolicy.State state=Listener.state(this);
   if(!ListenerPolicy.foreground(state)){
@@ -139,6 +140,7 @@ public final class ListeningService extends Service {
   if(ListenerPolicy.holdsMicrophone(state))startCapture();else stopCapture();
   long until=new ListenerStore(this).pausedUntil(),now=System.currentTimeMillis();
   if(state==ListenerPolicy.State.PAUSED_USER&&until!=ListenerPolicy.PAUSE_UNTIL_RESUMED)main.postDelayed(reapply,Math.max(1000,until-now));
+  Listener.epoch.renew(analyse);
   if(analyse)recognizer.execute(this::loadEngine);
  }
 
@@ -180,6 +182,7 @@ public final class ListeningService extends Service {
  }
 
  private synchronized void stopCapture(){
+  Listener.epoch.invalidate();
   Thread thread=capture;
   capture=null;analyse=false;
   AudioRecord current=record;record=null;
@@ -193,10 +196,12 @@ public final class ListeningService extends Service {
 
  private void captureLoop(AudioRecord source){
   short[] frame=new short[SpeechGate.FRAME_SAMPLES];
-  SpeechGate gate=new SpeechGate(this::onUtterance);
+  long[] frameTicket={-1};
+  SpeechGate gate=new SpeechGate(samples->onUtterance(samples,frameTicket[0]));
   try{
    source.startRecording();
    while(capture==Thread.currentThread()&&!Thread.currentThread().isInterrupted()){
+    long ticket=Listener.epoch.ticket();
     int filled=0;
     while(filled<frame.length){
      int read=source.read(frame,filled,frame.length-filled,AudioRecord.READ_BLOCKING);
@@ -204,12 +209,14 @@ public final class ListeningService extends Service {
      filled+=read;
      if(capture!=Thread.currentThread())break;
     }
-    if(filled==frame.length&&analyse)gate.accept(frame);else gate.reset();
+    if(ticket!=frameTicket[0]){gate.reset();frameTicket[0]=ticket;}
+    if(filled==frame.length&&analyse&&Listener.epoch.current(ticket)&&SystemClock.elapsedRealtime()>=playbackQuietSince+ECHO_GUARD_MS)gate.accept(frame);else gate.reset();
     Arrays.fill(frame,(short)0);
    }
   }catch(RuntimeException failed){
    Log.w(TAG,"Capture stopped: "+failed.getClass().getSimpleName());
-   main.post(()->{if(capture==null)return;stopCapture();main.postDelayed(reapply,5000);});
+   Thread failedThread=Thread.currentThread();
+   main.post(()->{if(capture!=failedThread||record!=source)return;stopCapture();main.postDelayed(reapply,5000);});
   }finally{
    gate.reset();
    Arrays.fill(frame,(short)0);
@@ -218,27 +225,28 @@ public final class ListeningService extends Service {
  }
 
  /** Called on the capture thread with a fresh array this method now owns. */
- private void onUtterance(float[] samples){
-  if(!analyse||SystemClock.elapsedRealtime()<playbackQuietSince+ECHO_GUARD_MS||!recognizing.compareAndSet(false,true)){Arrays.fill(samples,0f);return;}
+ private void onUtterance(float[] samples,long ticket){
+  if(!Listener.epoch.current(ticket)||!analyse||SystemClock.elapsedRealtime()<playbackQuietSince+ECHO_GUARD_MS||!recognizing.compareAndSet(false,true)){Arrays.fill(samples,0f);return;}
   try{
    recognizer.execute(()->{
     String text=null;
     try{
      ai.eliza.speech.LocalSpeechEngine local;
      synchronized(engineLock){local=engine;}
-     if(local==null||!analyse)return;
+     if(local==null||!analyse||!Listener.epoch.current(ticket))return;
      text=local.transcribe(samples);
      WakePhrase.Action action=WakePhrase.classify(text);
      text=null;
-     if(action==WakePhrase.Action.IGNORE||!analyse)return;
-     main.post(()->act(action));
+     if(action==WakePhrase.Action.IGNORE||!analyse||!Listener.epoch.current(ticket))return;
+     main.post(()->act(action,ticket));
     }catch(RuntimeException failed){Log.w(TAG,"Recognition failed: "+failed.getClass().getSimpleName());}
     finally{Arrays.fill(samples,0f);recognizing.set(false);}
    });
   }catch(RuntimeException rejected){Arrays.fill(samples,0f);recognizing.set(false);}
  }
 
- private void act(WakePhrase.Action action){
+ private void act(WakePhrase.Action action,long ticket){
+  if(!Listener.epoch.current(ticket))return;
   if(Listener.state(this)!=ListenerPolicy.State.LISTENING)return;
   if(action==WakePhrase.Action.PAUSE_LISTENING){
    new ListenerStore(this).pause(ListenerPolicy.PAUSE_UNTIL_RESUMED);
@@ -256,7 +264,7 @@ public final class ListeningService extends Service {
    int usage=config.getAudioAttributes().getUsage();
    if(usage==AudioAttributes.USAGE_ASSISTANT||usage==AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY||usage==AudioAttributes.USAGE_VOICE_COMMUNICATION)speaking=true;
   }
-  if(speaking)playbackQuietSince=Long.MAX_VALUE-ECHO_GUARD_MS;
-  else if(playbackQuietSince==Long.MAX_VALUE-ECHO_GUARD_MS)playbackQuietSince=SystemClock.elapsedRealtime();
+  if(speaking){Listener.epoch.invalidate();playbackQuietSince=Long.MAX_VALUE-ECHO_GUARD_MS;}
+  else if(playbackQuietSince==Long.MAX_VALUE-ECHO_GUARD_MS){playbackQuietSince=SystemClock.elapsedRealtime();main.post(reapply);}
  }
 }
