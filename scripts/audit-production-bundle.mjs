@@ -8,6 +8,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {fontLicenceFindings, fontLicenceLine} from './font-license-blockers.mjs';
 import {licenceFlagLines} from './licence-policy.mjs';
+import {assetLinksProblems} from './render-assetlinks.mjs';
 
 export const DENYLIST = Object.freeze([
   'alpha:force-render-error', 'alpha:render-error-check', 'Forced render failure',
@@ -57,7 +58,7 @@ export function readBuildFlags(dir) {
 
 /**
  * @param {string} dir bundle root
- * @param {{testMocks?: boolean}} [options] expected flag state; defaults to the recorded state
+ * @param {{testMocks?: boolean, debugFingerprints?: string[]}} [options] expected flag state; debug certificates an assetlinks.json must not name
  * @returns {{ok: boolean, testMocks: boolean, files: number, findings: Array<{file: string, rule: string}>, errors: string[]}}
  */
 export function auditWebBundle(dir, options = {}) {
@@ -80,6 +81,9 @@ export function auditWebBundle(dir, options = {}) {
       const text = readFileSync(path.join(dir, file), 'utf8');
       for (const entry of DENYLIST) if (text.includes(entry)) findings.push({file, rule: entry});
       for (const initials of avatarInitials(text)) findings.push({file, rule: `hard-coded avatar initials "${initials}"`});
+      // A shipped or staged assetlinks.json must carry a release certificate, never a placeholder or debug key.
+      if (path.posix.basename(file) === 'assetlinks.json')
+        for (const problem of assetLinksProblems(text, {debugFingerprints: options.debugFingerprints ?? []})) findings.push({file, rule: problem});
     }
   }
   return {ok: errors.length === 0 && findings.length === 0, testMocks: flags.testMocks, files: files.length, findings, errors};

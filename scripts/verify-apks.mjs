@@ -20,6 +20,8 @@
  * a release distributable:false only while
  * UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION (scripts/licence-policy.mjs) is true.
  * It never fails verification of a developer build.
+ * App Links: each row records `appLinks` ({present, hosts}), the https autoVerify filters in
+ * the packaged manifest. A default build has none; ELIZAOS_APP_LINK_HOST adds one.
  * --test-mocks: the separate artifacts/test-mocks/ build, which is never
  * distributable. This is APK-build evidence only; it does not install or run
  * anything.
@@ -37,6 +39,7 @@ import { BUN_ENTRY } from "./generate-licenses.mjs";
 import { fontLicenceCheck, fontLicenceLine } from "./font-license-blockers.mjs";
 import { licenceFlagLines, licenceFlagRecords } from "./licence-policy.mjs";
 import { packagedGzipProblems } from "./android-gzip-assets.mjs";
+import { appLinkFilters } from "./render-assetlinks.mjs";
 
 const USAGE = "Usage: node scripts/verify-apks.mjs [--test-mocks] [--allow-unpackaged-runtime]";
 const args = process.argv.slice(2);
@@ -125,6 +128,7 @@ for (const variant of ["standalone", "launcher"])
       signed,
       signerSha256,
       exportedComponents: facts.exported.map(component => component.name).sort(),
+      appLinks: appLinkFilters(xml),
       testMocks: flags?.testMocks ?? null,
       bundleAudit: problems.length ? "failed" : "passed",
       runtimeNotices,
