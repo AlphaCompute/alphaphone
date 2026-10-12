@@ -2,12 +2,13 @@ import { test, expect } from '@playwright/test';
 // Rendered provider section over a synthetic native Agent bridge. No key reaches Cerebras: the
 // native check is simulated here and covered by LocalAgentProviderInstrumentedTest on Android.
 
-test('provider status, pinned model, verified save and confirmed key removal', async ({ page }) => {
-  await page.addInitScript(() => {
+async function stubAgent(page: import('@playwright/test').Page, cloud = false) {
+  await page.addInitScript((cloud: boolean) => {
     const w = window as any; w.androidBridge = {};
     const f = w.providerFixture = { saved: null as null | { model: string }, configures: [] as any[], clears: 0, stops: 0, reject: '' };
     const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
-    const status = () => f.saved ? { provider: 'cerebras', configured: true, model: 'qwen-3.8-27b' } : { provider: 'cerebras', configured: false };
+    // Eliza Cloud reports the same Qwen model with its Cerebras vendor prefix.
+    const status = () => cloud ? { provider: 'elizacloud', configured: true, model: 'cerebras/qwen-3.8-27b' } : f.saved ? { provider: 'cerebras', configured: true, model: 'qwen-3.8-27b' } : { provider: 'cerebras', configured: false };
     w.Capacitor = {
       PluginHeaders: [
         { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'request', 'configureProvider', 'providerStatus', 'clearProvider']) },
@@ -31,7 +32,11 @@ test('provider status, pinned model, verified save and confirmed key removal', a
         throw new Error(`Unexpected native call ${plugin}.${method}`);
       },
     };
-  });
+  }, cloud);
+}
+
+test('provider status, pinned model, verified save and confirmed key removal', async ({ page }) => {
+  await stubAgent(page);
   await page.goto('/');
   const chooser = page.locator('.alpha-connection');
   await expect(chooser).toBeVisible();
@@ -50,7 +55,7 @@ test('provider status, pinned model, verified save and confirmed key removal', a
   await page.evaluate(() => { (window as any).providerFixture.reject = ''; });
   await chooser.getByLabel('Cerebras API key').fill('synthetic-accepted-key');
   await chooser.getByRole('button', { name: 'Save provider', exact: true }).click();
-  await expect(chooser.getByText('Configured · cerebras · qwen-3.8-27b', { exact: true })).toBeVisible();
+  await expect(chooser.getByText('Configured · Cerebras · qwen-3.8-27b', { exact: true })).toBeVisible();
   await expect(chooser.getByLabel('Cerebras API key')).toHaveValue('');
   const configures = await page.evaluate(() => (window as any).providerFixture.configures);
   expect(configures.map((item: any) => item.model)).toEqual(['qwen-3.8-27b', 'qwen-3.8-27b']);
@@ -67,4 +72,13 @@ test('provider status, pinned model, verified save and confirmed key removal', a
   await expect(chooser.getByRole('button', { name: 'Remove key…', exact: true })).toHaveCount(0);
   // Nothing in the page carries the key.
   expect(await page.content()).not.toContain('synthetic-accepted-key');
+});
+
+test('the chooser names the Eliza Cloud model as Settings does', async ({ page }) => {
+  await stubAgent(page, true);
+  await page.goto('/');
+  const chooser = page.locator('.alpha-connection');
+  await expect(chooser).toBeVisible();
+  await chooser.getByText('Model provider', { exact: true }).click();
+  await expect(chooser.getByText('Configured · Eliza Cloud · qwen-3.8-27b (Cerebras)', { exact: true })).toBeVisible();
 });

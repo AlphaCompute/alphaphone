@@ -255,17 +255,29 @@ export class LocalAgentProtocol {
 /** Hosted inference stays on Qwen through Cerebras; the model is not user-selectable. */
 export const LOCAL_PROVIDER_MODEL='qwen-3.8-27b';
 export interface LocalProviderStatus { configured:boolean; provider:'cerebras'|'elizacloud'; model?:string }
+const modelVendors:Record<string,string>={cerebras:'Cerebras'};
+/** One label for a configured route and model, shared by the chooser and Settings: Eliza Cloud
+ * reports `cerebras/qwen-3.8-27b`, shown as `Eliza Cloud · qwen-3.8-27b (Cerebras)`; a direct
+ * route shows the model alone. */
+export function modelLabel(providerLabel:string,model:string):string {
+  const slash=model.indexOf('/');
+  if(slash<0)return providerLabel+' · '+model;
+  const vendor=model.slice(0,slash),name=model.slice(slash+1);
+  return providerLabel+' · '+name+' ('+(modelVendors[vendor.toLowerCase()]??vendor)+')';
+}
 export function providerStatusLabel(status:LocalProviderStatus|null|undefined):string {
   if(!status)return 'Provider status unavailable';
   if(!status.configured)return status.provider==='elizacloud'?'Not configured · Eliza Cloud sign-in required':'Not configured';
-  return `Configured · ${status.provider==='elizacloud'?'Eliza Cloud':'cerebras'} · ${status.model||LOCAL_PROVIDER_MODEL}`;
+  // Eliza Cloud serves the same Qwen model through Cerebras.
+  const model=status.model||(status.provider==='elizacloud'?'cerebras/'+LOCAL_PROVIDER_MODEL:LOCAL_PROVIDER_MODEL);
+  return 'Configured · '+modelLabel(status.provider==='elizacloud'?'Eliza Cloud':'Cerebras',model);
 }
 function parseProviderStatus(value:unknown):LocalProviderStatus {
   const row=record(value);
   const provider=row.provider==='elizacloud'?'elizacloud':row.provider==='cerebras'?'cerebras':null;
   if(!provider||typeof row.configured!=='boolean'||(row.model!==undefined&&typeof row.model!=='string'))throw Error('Invalid provider status.');
-  // Native reports `cerebras/qwen-3.8-27b` for Cloud billing; show the model name only.
-  const model=typeof row.model==='string'?row.model.replace(/^cerebras\//,''):undefined;
+  // Native reports `cerebras/qwen-3.8-27b` for Cloud billing; modelLabel names the vendor.
+  const model=typeof row.model==='string'?row.model:undefined;
   return {configured:row.configured,provider,...(model?{model}:{})};
 }
 /** The native bridge verifies the key against Cerebras before it reports success; the key itself

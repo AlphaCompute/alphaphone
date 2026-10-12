@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { DailyApps, type Action, type NativeResult } from '../daily';
 import { registerPlugin } from '../platform-plugins';
 import { connectionController, type ConnectionSnapshot } from '../runtime/connection-ui';
+import { modelLabel } from '../runtime/local-agent';
 import { askAboutCapture } from './camera-adapter';
 import { captureQuestion, locationMimeTypes } from './context-selection';
 
@@ -30,15 +31,6 @@ export function egressPrivacy(connection: Pick<ConnectionSnapshot, 'kind' | 'ses
     return { big: 'Identifier swap only', sub: 'Secret and contact identifiers are swapped before hosted inference; names and free text are not covered' };
   if (connection.session || connection.cloudAccount) return { big: 'Not reported', sub: 'Depends on the selected agent; not reported' };
   return { big: 'Offline', sub: 'No agent connected; no hosted inference requests' };
-}
-const modelVendors: Record<string, string> = { cerebras: 'Cerebras' };
-/** One label for a configured route and model: Eliza Cloud reports `cerebras/qwen-3.8-27b`,
- * shown as `Eliza Cloud · qwen-3.8-27b (Cerebras)`; a direct route shows the model alone. */
-export function modelLabel(providerLabel: string, model: string): string {
-  const slash = model.indexOf('/');
-  if (slash < 0) return providerLabel + ' · ' + model;
-  const vendor = model.slice(0, slash), name = model.slice(slash + 1);
-  return providerLabel + ' · ' + name + ' (' + (modelVendors[vendor.toLowerCase()] ?? vendor) + ')';
 }
 /** Only a verified resident session on Android reports its configured hosted model.
  * Exported for the Settings rows that show it (About and Models). */
