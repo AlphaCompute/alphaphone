@@ -76,7 +76,8 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
   try(BoundedActivityScenario<MainActivity> activity=BoundedActivityScenario.launch(MainActivity.class)){
    AppNavigation.liveMode();call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-owner\",agentId:\"fixture-agent\"}})");
    assertEquals("succeeded",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+input+")").getString("status"));
-   StatusBarNotification original=row(manager,id);assertNotNull(original);PendingIntent stale=original.getNotification().contentIntent;String token=WorkflowNoticeTapsFactory.create(context).token(id);
+   assertTrue(call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:\"bad\"})").has("error"));
+   StatusBarNotification original=row(manager,id);assertNotNull("Malformed owner must not sign out or remove the matching notice",original);PendingIntent stale=original.getNotification().contentIntent;String token=WorkflowNoticeTapsFactory.create(context).token(id);
    call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-next-owner\",agentId:\"fixture-agent\"}})");awaitGone(manager,id,"Other owner's notice removed");
    assertThrows(PendingIntent.CanceledException.class,()->stale.send());assertEquals(0,WorkflowNoticeTapsFactory.create(context).pending().length());
    assertEquals("owner-changed",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+input+")").getString("status"));
