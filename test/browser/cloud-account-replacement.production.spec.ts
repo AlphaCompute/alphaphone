@@ -94,7 +94,10 @@ test('signing out of account A and into account B stops the resident first and u
   expect(afterSignOut.filter(row => row.auth === 'Bearer ' + A.token)).toEqual([]);
   expect(await page.evaluate(() => (window as any).personalReads)).toEqual([]);
   expect(await page.evaluate(key => localStorage.getItem(key), PERSONAL_A)).not.toBeNull();
+  // Neither the native delegation callback, a Cloud delegation route, nor (via f.unexpected below) the
+  // agent's cloud-delegation route was used.
   expect(await harness(page, f => f.calls.filter((call: string) => /Delegation/.test(call)))).toEqual([]);
+  expect(cloud.filter(row => /delegation/i.test(row.path))).toEqual([]);
   expect(await page.locator('body').innerText()).not.toContain('personal-a');
 
   // Current behaviour: the resident's conversation lives on this phone under the local owner, not the

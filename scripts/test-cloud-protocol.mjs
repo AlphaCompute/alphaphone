@@ -171,6 +171,10 @@ try {
   mode = 'ok'; replacement.length = 0; saved = null;
   assert.deepEqual(await replacing.login(signal()), {});
   assert.deepEqual(replacement, ['write ' + token]);
+  // Cloud handing back the key already saved replaces nothing, so the live key is never revoked.
+  replacement.length = 0; saved = { token, credentialId: 'same-credential' };
+  assert.deepEqual(await replacing.login(signal()), {});
+  assert.deepEqual(replacement, ['write ' + token]);
   saved = null;
   mode = 'ok'; await make('staging').login(signal());
   assert.equal(opened.at(-1), `https://staging.eliza.app/auth/cli-login?session=${sessionId}`);

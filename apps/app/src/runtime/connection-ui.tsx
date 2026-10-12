@@ -596,7 +596,8 @@ let stoppedReply: { timer: ReturnType<typeof setTimeout>; controller: AbortContr
 function cancelStoppedReply() { if (!stoppedReply) return; clearTimeout(stoppedReply.timer); stoppedReply.controller.abort(); stoppedReply = null; }
 /** A restart can land while the resident still holds the reply to the last message: the stop-check
  * timer died with the old process. A restored conversation ending in that recent user turn gets the
- * same single later read (no cancel attempt); nothing is sent. Older unanswered turns are left alone. */
+ * same single later read (no cancel attempt); nothing is sent. Only the restore that follows a
+ * connection does this (not a message edit's re-read). Older unanswered turns are left alone. */
 const RESTORED_REPLY_WINDOW_MS = 10 * 60_000;
 function scheduleStoppedReply(selected: Active, session: VerifiedSession, conversationId: string, text: string, sentAt: number, delay = STOPPED_REPLY_CHECK_MS, cancelTurn = true) {
   cancelStoppedReply();
@@ -637,7 +638,7 @@ async function conversationList(selected: Active, signal: AbortSignal) {
   return list.map(item => ({ id: item.id, title: typeof item.title === 'string' && item.title ? item.title : 'Conversation' }));
 }
 
-async function restoreConversationHistory(id:string,signal:AbortSignal,automatic:boolean) {
+async function restoreConversationHistory(id:string,signal:AbortSignal,automatic:boolean,afterConnect=false) {
   const selected=active,session=state.session,generation=epoch;
   if(!selected||!session)throw Error('Connect an agent first.');
   const account=selected.kind==='resident'&&isAndroid&&!testMocksEnabled?service:null;
@@ -670,7 +671,7 @@ async function restoreConversationHistory(id:string,signal:AbortSignal,automatic
   if(!automatic)cancelStoppedReply();
   update({history:{sessionId:session.sessionId,conversationId:id,revision:(state.history?.revision||0)+1,messages,automatic},historyError:'',historyPartial:result.partial,...(automatic?{}:{open:false,replyNotice:''}),message:(automatic?'Saved conversation restored.':saved?'Conversation restored.':'History restored for this session; restart selection could not be saved.')+older});
   const last=result.messages.at(-1);
-  if(automatic&&selected.kind==='resident'&&last?.role==='user'&&typeof last.text==='string'&&typeof last.timestamp==='number'&&last.timestamp>Date.now()-RESTORED_REPLY_WINDOW_MS)
+  if(afterConnect&&selected.kind==='resident'&&last?.role==='user'&&typeof last.text==='string'&&typeof last.timestamp==='number'&&last.timestamp>Date.now()-RESTORED_REPLY_WINDOW_MS)
     scheduleStoppedReply(selected,session,id,restoredText(last.text,last.userTextFormat),last.timestamp,STOPPED_REPLY_CHECK_MS,false);
 }
 /** Restored chats are bounded; anything older stays on the agent and is reported as partial. */
@@ -715,7 +716,7 @@ async function restoreSavedHistory(signal:AbortSignal) {
   try{
     const saved=await captureConversationChoice(conversationKey(session),signal);signal.throwIfAborted();
     if(generation!==epoch||selected!==active||state.session!==session)return;
-    if(saved)await restoreConversationHistory(saved.id,signal,true);
+    if(saved)await restoreConversationHistory(saved.id,signal,true,true);
   }catch(error){
     signal.throwIfAborted();
     if(generation!==epoch||selected!==active||state.session!==session)return;

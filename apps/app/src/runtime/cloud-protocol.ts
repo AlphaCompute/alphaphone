@@ -324,7 +324,7 @@ export class CloudProtocol {
           // The new key replaces a saved one. Revoke the old key first, once and best effort: a
           // failed or unconfirmed revocation never blocks this sign-in. The write below replaces the
           // old key in place (stores that bind a claim to the key it replaces stay atomic).
-          const previousSignIn = await this.revokeReplaced(controller.signal);
+          const previousSignIn = await this.revokeReplaced(controller.signal, credential);
           controller.signal.throwIfAborted();
           if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
           await this.credentials.write(this.environment, credential, controller.signal);
@@ -352,10 +352,11 @@ export class CloudProtocol {
     return this.revokeStored(credential, signal);
   }
   /** One revocation of the saved key a new login is about to replace. Never retried or thrown. */
-  private async revokeReplaced(signal: AbortSignal): Promise<"revoked" | "unconfirmed" | undefined> {
+  private async revokeReplaced(signal: AbortSignal, issued: CloudCredential): Promise<"revoked" | "unconfirmed" | undefined> {
     let previous: CloudCredential | null;
     try { previous = await this.credentials.read(this.environment); } catch { return "unconfirmed"; }
-    if (!previous) return undefined;
+    // Nothing saved, or Cloud handed back the key already saved: there is nothing to replace.
+    if (!previous || (issued.token !== undefined && previous.token === issued.token) || (issued.credentialReference !== undefined && previous.credentialReference === issued.credentialReference)) return undefined;
     try { const result = await this.revokeStored(previous, signal, false); return result.supported && result.revoked ? "revoked" : "unconfirmed"; }
     catch { return "unconfirmed"; }
   }
