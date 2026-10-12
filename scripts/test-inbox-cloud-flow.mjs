@@ -14,7 +14,7 @@ import { formatTime } from '../apps/app/src/prototype/locale-time.ts';
 let session='account-a',agent='remote-a',releaseSearch,delay=false,failNext=null,connected=true,confirmAnswer=true;
 const slots=new Map(),searches=[],disconnects=[],toasts=[],events=[],initiates=[],handoffs=[];
 // Authorization handoff: off until the reconnect section turns it on. `handoff` holds the browser open.
-let oauthUrl=null,handoff=null;
+let oauthUrl=null,handoff=null,inboxActive=true;
 const mail=(id,extra={})=>({id,threadId:'thread-'+id,subject:'Fixture '+id,from:'Sender',fromEmail:'sender@example.invalid',to:['fixture@example.invalid'],snippet:'Preview',receivedAt:'2026-09-30T00:00:00Z',unread:false,...extra});
 const pages={'in:inbox':[[mail('mail-1',{unread:true}),mail('mail-2')],[mail('mail-2'),mail('mail-3')]],'in:sent':[[mail('sent-1',{to:['friend@example.invalid']})]],'from:fixture':[[mail('mail-1')]]};
 const client={
@@ -39,12 +39,13 @@ vm.createContext(sandbox);
 for(const [file,name] of [['inbox-provider-controls.ts','inboxProviderControls'],['inbox-drafts.ts','inboxDrafts'],['inbox-cloud-adapter.ts',['installInboxCloudAdapter','inboxAttention','openInbox','linkifyMailText','linkTextMismatch']]])vm.runInContext(await strip(file,name),sandbox);
 sandbox.installInboxCloudAdapter(Shell,views);
 const shell=new Shell();shell.componentDidMount();
-const swipes=new Map();const api={sw:fn=>{const handlers={down(){},up(){}};swipes.set(handlers,fn);return handlers;},swallowed:()=>false,get:()=>shell.st,isActive:()=>true,set:p=>shell.vset('inbox',p),toast:text=>toasts.push(text)};
+const swipes=new Map();const api={sw:fn=>{const handlers={down(){},up(){}};swipes.set(handlers,fn);return handlers;},swallowed:()=>false,get:()=>shell.st,isActive:()=>inboxActive,set:p=>shell.vset('inbox',p),toast:text=>toasts.push(text)};
 const render=()=>views.inbox.render(shell.st,api);const tick=async()=>{for(let i=0;i<6;i++)await new Promise(r=>setTimeout(r,0));};
 const local=value=>JSON.parse(JSON.stringify(value));// vm-realm arrays compare by value
 const chip=label=>{const found=render().chips.find(c=>c.label===label);assert.ok(found,`chip ${label} in ${render().chips.map(c=>c.label)}`);return found;};
 
 assert.equal(shell.renderVals().homeInboxTitle,'Inbox');assert.equal(searches.length,0,'Home does not discover accounts or read mail');
+assert.equal(sandbox.inboxAttention().unread,undefined,'no count is claimed before any read');
 // Home's read time is the completed first-page read; a later page or a local recount never moves it.
 const realNow=Date.now,noon=new Date();noon.setHours(12,0,0,0);const clock=minutes=>{const value=noon.getTime()+minutes*60000;Date.now=()=>value;return formatTime(new Date(value));};
 const firstRead=clock(0);
@@ -136,6 +137,11 @@ views.inbox.back(shell.st,api);render().c.discard();render().c.confirmDiscard();
 // Only a complete successful empty page can claim no unread mail.
 pages['in:inbox']=[[]];chip('Refresh').pick();await tick();assert.equal(shell.renderVals().homeInboxTitle,'No unread email');assert.equal(shell.renderVals().homeInboxHasRows,false);
 views.inbox.onLeave();const leftSearches=searches.length;assert.equal(shell.renderVals().homeInboxTitle,'No unread email','Home retains metadata after full messages are retired');assert.equal(searches.length,leftSearches,'returning Home never fetches mail');render();await tick();
+// Accounts changed elsewhere while Inbox is closed: stale, with the count and time of the last real read.
+views.inbox.onLeave();const lastRead=local(sandbox.inboxAttention());assert.equal(lastRead.state,'stale');assert.equal(lastRead.unread,0);assert.ok(lastRead.updatedAt,'the last read time is kept');
+inboxActive=false;events.find(e=>e.name==='alpha:gmail-accounts-changed').fn(new CustomEvent('alpha:gmail-accounts-changed',{detail:{source:'settings'}}));
+assert.deepEqual(local(sandbox.inboxAttention()),{...lastRead,state:'stale'},'stale keeps the last real read, never a new zero');
+inboxActive=true;render();await tick();
 
 // Disconnect requires confirmation and reports the read-back state.
 confirmAnswer=false;chip('Disconnect Gmail').pick();await tick();assert.deepEqual(disconnects,[],'cancelled confirmation sends nothing');
