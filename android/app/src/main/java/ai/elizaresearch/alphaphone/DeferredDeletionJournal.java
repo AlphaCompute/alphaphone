@@ -23,6 +23,10 @@ final class DeferredDeletionJournal {
   return elapsed<expiry?"open":"expired";
  }
  // Acknowledgement hides the notice only; its unknown receipt and no-replay state remain intact.
+ synchronized java.util.Set<String> acknowledgements()throws Exception{
+  JSONObject marks=read().optJSONObject("acknowledgements");java.util.Set<String> keys=new java.util.HashSet<>();
+  if(marks!=null)for(java.util.Iterator<String> i=marks.keys();i.hasNext();){String key=i.next();if(marks.optBoolean(key,false))keys.add(key);}return keys;
+ }
  synchronized boolean acknowledged(String kind,String id)throws Exception{
   JSONObject marks=read().optJSONObject("acknowledgements");return marks!=null&&marks.optBoolean(kind+":"+id,false);
  }

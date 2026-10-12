@@ -35,9 +35,10 @@ final class NativeDeletionCoordinator {
   for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(id.equals(row.getString("id")))return row;}return null;
  }
  JSONArray pending()throws Exception{
+  java.util.Set<String> acknowledged=calendar.acknowledgements();
   JSONObject time=clock();JSONArray result=new JSONArray(),events=calendar.list(time.getString("continuity"),time.getLong("elapsed"));
-  for(int i=0;i<events.length();i++){JSONObject row=events.getJSONObject(i);if(pendingPhase(row)&&!calendar.acknowledged("calendar",row.getString("id"))&&visible(row.getJSONObject("owner")))result.put(row.put("kind","calendar"));}
-  JSONArray reminders=AlphaReminders.engine(context).pendingDeletions();for(int i=0;i<reminders.length();i++){JSONObject row=reminders.getJSONObject(i);if(!pendingPhase(row)||calendar.acknowledged("reminder",row.getString("id"))||!visible(new JSONObject(row.getString("owner"))))continue;
+  for(int i=0;i<events.length();i++){JSONObject row=events.getJSONObject(i);if(pendingPhase(row)&&!acknowledged.contains("calendar:"+row.getString("id"))&&visible(row.getJSONObject("owner")))result.put(row.put("kind","calendar"));}
+  JSONArray reminders=AlphaReminders.engine(context).pendingDeletions();for(int i=0;i<reminders.length();i++){JSONObject row=reminders.getJSONObject(i);if(!pendingPhase(row)||acknowledged.contains("reminder:"+row.getString("id"))||!visible(new JSONObject(row.getString("owner"))))continue;
    if("queued".equals(row.getString("phase"))){String state=!time.getString("continuity").equals(row.getString("continuity"))||time.getLong("elapsed")<row.getLong("createdElapsed")?"clock-changed":time.getLong("elapsed")<row.getLong("expiresElapsed")?"open":"expired";row.put("window",state);}
    result.put(row.put("kind","reminder"));}
   return result;
