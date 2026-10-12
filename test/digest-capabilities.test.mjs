@@ -12,6 +12,8 @@ const signal=new AbortController().signal,out={};
 out.old=await status({hostedDigestProtocol:1,hostedNativeSourceProtocol:1}).capabilities(signal);
 out.patched=await status({hostedDigestProtocol:1,hostedDigestSourcePauseProtocol:1,hostedNativeSourceProtocol:1,hostedNativeEveningProtocol:1}).capabilities(signal);
 out.eveningWithoutNative=await status({hostedDigestProtocol:1,hostedNativeEveningProtocol:1}).capabilities(signal);
+out.dossier=await status({hostedDigestProtocol:1,hostedNativeSourceProtocol:1,hostedDossierProtocol:1}).capabilities(signal);
+out.dossierOther=await status({hostedDigestProtocol:1,hostedNativeSourceProtocol:1,hostedDossierProtocol:true}).capabilities(signal);
 const now=Date.parse('2026-10-08T12:00:00Z'),source={id:'s',revision:'r',kind:'tasks',label:'Phone',observedAt:'2026-10-01T12:00:00Z',expiresAt:'2026-10-08T11:00:00Z',revoked:false};
 const loop={id:'l',versionId:'v',name:'Morning digest',active:true,removed:false,spec:{version:1,template:'morning',sourceId:'s',sourceRevision:'r',timeZone:'UTC',localTime:'08:00',enabled:true}};
 out.oldState=d.digestLoopState(loop,[source],now,false);
@@ -20,14 +22,24 @@ out.revoked=d.digestLoopState(loop,[{...source,revoked:true}],now,true);
 out.current=d.digestLoopState(loop,[{...source,expiresAt:'2026-10-10T12:00:00Z'}],now,false);
 out.renewals=d.digestRenewals([source,{...source,id:'soon',expiresAt:'2026-10-09T06:00:00Z'},{...source,id:'later',expiresAt:'2026-10-12T12:00:00Z'}],[loop,{...loop,id:'l2',spec:{...loop.spec,sourceId:'soon'}},{...loop,id:'l3',spec:{...loop.spec,sourceId:'later'}}],now).map(r=>[r.source.id,r.state]);
 console.log(JSON.stringify(out));`;
-test('native evening and source pausing follow what the agent advertises',()=>{
+test('native evening, source pausing and the dossier follow what the agent advertises',()=>{
  const out=JSON.parse(execFileSync(process.execPath,['--import=tsx','--input-type=module','-e',script],{cwd:root,encoding:'utf8',timeout:60000}));
- assert.deepEqual(out.old,{digests:true,nativeSources:true,nativeEvening:false,sourcePause:false});
- assert.deepEqual(out.patched,{digests:true,nativeSources:true,nativeEvening:true,sourcePause:true});
+ assert.deepEqual(out.old,{digests:true,nativeSources:true,nativeEvening:false,sourcePause:false,dossier:false});
+ assert.deepEqual(out.patched,{digests:true,nativeSources:true,nativeEvening:true,sourcePause:true,dossier:false});
  assert.equal(out.eveningWithoutNative.nativeEvening,false);
+ // The on-demand dossier route is not registered at the pin; only an agent that says it serves it gets the button.
+ assert.equal(out.dossier.dossier,true);assert.equal(out.dossierOther.dossier,false);
  assert.equal(out.oldState,'Source expired — renew to resume');
  assert.equal(out.pausedState,'Source expired — paused');
  assert.equal(out.revoked,'Source revoked — paused');
  assert.equal(out.current,'On');
  assert.deepEqual(out.renewals,[['s','expired'],['soon','expiring']]);
+});
+test('the dossier button is offered only for an advertised dossier capability',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const ui=await readFile(resolve(root,'apps/app/src/runtime/hosted-digest-ui.tsx'),'utf8');
+ const button=ui.split('\n').find(line=>line.includes('Review on-demand dossier'));
+ assert.ok(button,'the dossier review button exists');
+ assert.match(button,/^\{features\.dossier&&/,'it renders only when the agent advertises the dossier');
+ assert.match(ui,/dossier:nativeSupported&&advertised\.dossier/,'and only with native phone sources');
 });

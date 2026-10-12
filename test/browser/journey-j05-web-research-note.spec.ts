@@ -158,3 +158,31 @@ test('when cross-origin reading is denied, pasted text is reviewed instead and s
   await expectOneLinkedNoteAfterReload(page, 'Pasted harbour summary', answer);
   expect(external).toEqual([]);
 });
+
+// J05-6: the tab navigates after the question review is already open (the fetch has finished). The
+// review belongs to the page it was made from, so it closes and leaves nothing behind.
+test('navigating after the question review opens closes it: no draft, no message and no note', async ({page}) => {
+  test.setTimeout(240_000);
+  const external: string[] = [];
+  await begin(page, external, true);
+  await page.route('https://public-fixture.test/elsewhere', route => route.fulfill({contentType: 'text/html', body: '<h1>Another page</h1>'}));
+  await page.evaluate(async () => { const {registerPlugin} = await import('/src/platform-plugins.ts'); await registerPlugin<any>('AlphaBrowser').addListener('stateChanged', (event: any) => { (window as any).webNavigation = event; }); });
+  await button(page, 'Menu').click();
+  await button(page, 'Reload page').click();
+  await expect(sourceHeading(page)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => !!(window as any).webNavigation)).toBe(true);
+
+  const review = await askAboutPage(page);
+  await expect(review.getByRole('textbox', {name: 'Content excerpt'})).toHaveValue(/The ferry leaves at nine/);
+  await review.getByRole('textbox', {name: 'Question about content'}).fill('When does the ferry leave?');
+  await page.evaluate(async () => { const {registerPlugin} = await import('/src/platform-plugins.ts'); const event = (window as any).webNavigation; await registerPlugin<any>('AlphaBrowser').navigate({session: event.session, id: event.id, url: 'https://public-fixture.test/elsewhere'}); });
+  await expect(page.locator('iframe[title="Website"]:visible').contentFrame().getByRole('heading', {name: 'Another page', exact: true})).toBeVisible();
+  await expect(review).toHaveCount(0);
+  // Nothing was placed in the conversation: opening it shows an empty composer.
+  await expect(page.getByRole('textbox', {name: 'Message Alpha', exact: true})).toHaveCount(0);
+  await button(page, 'Open conversation').click();
+  await expect(page.getByRole('textbox', {name: 'Message Alpha', exact: true})).toHaveValue('');
+  expect((await agentMessages(page)).filter(message => message.role === 'user')).toEqual([]);
+  expect(await notes(page)).toEqual([]);
+  expect(external).toEqual([]);
+});

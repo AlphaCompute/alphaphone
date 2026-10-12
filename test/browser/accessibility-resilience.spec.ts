@@ -225,9 +225,10 @@ test.describe('toast status messages', () => {
     await page.getByRole('button', { name: 'Browser', exact: true }).click();
     await page.getByRole('button', { name: 'Menu', exact: true }).click();
     const menu = page.getByRole('dialog', { name: 'Browser menu', exact: true });
-    await menu.getByRole('button', { name: 'Find in page', exact: true }).click();
+    // Find in page is native-only, so the web build's menu refuses through Bookmark instead.
+    await menu.getByRole('button', { name: 'Bookmark', exact: true }).click();
     const region = page.locator('[data-alpha-toast]');
-    await expect(region).toContainText('Load a page before finding text in it.');
+    await expect(region).toContainText('Load an HTTPS page before bookmarking it.');
     // The menu is still open and holds the page inert; the status region is not part of what it retired.
     await expect(menu).toBeVisible();
     expect(await region.evaluate(el => !!el.closest('[inert],[aria-hidden="true"]'))).toBe(false);

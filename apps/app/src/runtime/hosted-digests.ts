@@ -98,6 +98,10 @@ export interface DigestCapabilities {
 	nativeEvening: boolean;
 	/** Agent pauses a loop whose source lapsed (no daily failure briefs) and reports sourceState. */
 	sourcePause: boolean;
+	/** Agent serves POST /api/workflow/hosted/dossier. The pinned plugin-workflow handles that path in
+	 * handleWorkflowRoutes but registers no route for it (test/digest-route-registration.test.mjs), so
+	 * the request would not reach the handler; the app offers it only when /status says it is served. */
+	dossier: boolean;
 }
 export interface DigestLoop {
 	id: string;
@@ -283,7 +287,7 @@ export class HostedDigestProtocol {
 		) => Promise<unknown>,
 	) {}
  /** What this agent advertises. Older agents omit the pause and native evening flags, so the app neither offers nor claims them. */
- async capabilities(signal:AbortSignal):Promise<DigestCapabilities>{const v=object(await this.request('/api/workflow/status',undefined,signal));return {digests:v.hostedDigestProtocol===1,nativeSources:v.hostedNativeSourceProtocol===1,nativeEvening:v.hostedNativeSourceProtocol===1&&v.hostedNativeEveningProtocol===1,sourcePause:v.hostedDigestSourcePauseProtocol===1};}
+ async capabilities(signal:AbortSignal):Promise<DigestCapabilities>{const v=object(await this.request('/api/workflow/status',undefined,signal));return {digests:v.hostedDigestProtocol===1,nativeSources:v.hostedNativeSourceProtocol===1,nativeEvening:v.hostedNativeSourceProtocol===1&&v.hostedNativeEveningProtocol===1,sourcePause:v.hostedDigestSourcePauseProtocol===1,dossier:v.hostedDossierProtocol===1};}
 	async available(signal: AbortSignal) {
 		return (
 			object(await this.request("/api/workflow/status", undefined, signal))
