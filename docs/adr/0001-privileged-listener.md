@@ -72,3 +72,5 @@ plus `PERMISSION_REQUIRED`, `SPEECH_UNAVAILABLE` and `STOPPED_AFTER_ERRORS`. The
 
 APK builds, image staging, an image boot, real integrations and device/user acceptance are separate
 gates; none of them proves another.
+
+Persistence failures latch listening off and stop the service. Capturing starts only after the open-session marker saves successfully. A fresh listener process requires explicit opt-in again, even when disk contains older consent, so a failed stop save cannot resurrect capture after restart. The consent screen discloses this restart behavior.

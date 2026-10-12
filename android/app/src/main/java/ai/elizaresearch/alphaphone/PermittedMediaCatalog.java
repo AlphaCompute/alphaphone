@@ -39,7 +39,9 @@ final class PermittedMediaCatalog implements AutoCloseable {
  private final Handler main=new Handler(Looper.getMainLooper());
  private final AtomicLong epoch=new AtomicLong();
  private final Runnable changed;
- private volatile boolean closed;
+ private volatile boolean closed,foreground=true;
+ private final android.content.pm.PackageManager.OnPermissionsChangedListener permissionsChanged=uid->{if(uid==android.os.Process.myUid())invalidate();};
+ private final android.content.BroadcastReceiver screenOff=new android.content.BroadcastReceiver(){@Override public void onReceive(Context c,android.content.Intent intent){invalidate();}};
  private final LinkedHashMap<String,Page> pages=new LinkedHashMap<>();
  private final ContentObserver observer=new ContentObserver(main){@Override public void onChange(boolean selfChange){invalidate();changed.run();}};
  private static final class Page {
@@ -48,8 +50,14 @@ final class PermittedMediaCatalog implements AutoCloseable {
  }
  private boolean observing;
  PermittedMediaCatalog(Context context,Runnable changed){this(context,true,changed);}
- PermittedMediaCatalog(Context context,boolean active,Runnable changed){this.context=context;this.changed=changed;resolver=context.getContentResolver();watch(active);}
+ PermittedMediaCatalog(Context context,boolean active,Runnable changed){this.context=context;this.changed=changed;resolver=context.getContentResolver();
+  context.getPackageManager().addOnPermissionsChangeListener(permissionsChanged);
+  androidx.core.content.ContextCompat.registerReceiver(context,screenOff,new android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF),androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);watch(active);}
  synchronized void watch(boolean active){if(active&&!observing&&!closed){resolver.registerContentObserver(MediaStore.AUTHORITY_URI,true,observer);observing=true;}else if(!active&&observing){resolver.unregisterContentObserver(observer);observing=false;}}
+ void foreground(boolean value){foreground=value;invalidate();}
+ long readTicket(){unlocked();return epoch.get();}
+ void requireReadTicket(long ticket){unlocked();if(ticket!=epoch.get())throw new SecurityException("Media access changed");}
+ void publish(com.getcapacitor.PluginCall call,JSObject value,long ticket){main.post(()->{try{requireReadTicket(ticket);call.resolve(value);}catch(Exception changed){call.reject("Media access changed. Reopen Photos and reload.");}});}
  void invalidate(){epoch.incrementAndGet();synchronized(pages){pages.clear();}}
  private boolean granted(String permission){return context.checkSelfPermission(permission)==PackageManager.PERMISSION_GRANTED;}
  JSObject access(){
@@ -62,7 +70,7 @@ final class PermittedMediaCatalog implements AutoCloseable {
  }
  private void unlocked(){
   KeyguardManager keyguard=context.getSystemService(KeyguardManager.class);UserManager users=context.getSystemService(UserManager.class);
-  if(closed||keyguard==null||users==null||keyguard.isDeviceLocked()||!users.isUserUnlocked())throw new SecurityException("Unlock this profile to use Photos");
+  if(closed||!foreground||keyguard==null||users==null||keyguard.isDeviceLocked()||!users.isUserUnlocked()||(Build.VERSION.SDK_INT>=31&&!users.isUserForeground()))throw new SecurityException("Unlock this profile to use Photos");
  }
  private List<String> volumes(){
   List<String> result=new ArrayList<>(MediaStore.getExternalVolumeNames(context));Collections.sort(result);
@@ -108,7 +116,7 @@ final class PermittedMediaCatalog implements AutoCloseable {
    // Typed collections are required for other apps' media under scoped storage.
    Uri collection=video?MediaStore.Video.Media.getContentUri(volume):MediaStore.Images.Media.getContentUri(volume);
    Cursor cursor=resolver.query(collection,projection,args,cancellation);
-   if(cursor==null){main.removeCallbacks(timeout);return null;}
+   if(cursor==null)throw new IllegalStateException("Media provider unavailable");
    return new android.database.CursorWrapper(cursor){@Override public void close(){try{super.close();}finally{main.removeCallbacks(timeout);}}};
   }catch(RuntimeException failure){main.removeCallbacks(timeout);throw failure;}
  }
@@ -203,5 +211,5 @@ final class PermittedMediaCatalog implements AutoCloseable {
   JSObject after=inspect(key,true);if(Boolean.TRUE.equals(after.getBoolean(favorite?"favorite":"trashed"))!=desired||!before.getString("identity").equals(after.getString("identity")))throw new IllegalStateException("unverified");
   after.put("status",favorite?(desired?"favorited":"unfavorited"):(desired?"trashed":"restored"));invalidate();return after;
  }
- @Override public void close(){closed=true;invalidate();watch(false);}
+ @Override public void close(){closed=true;invalidate();watch(false);context.getPackageManager().removeOnPermissionsChangeListener(permissionsChanged);context.unregisterReceiver(screenOff);}
 }

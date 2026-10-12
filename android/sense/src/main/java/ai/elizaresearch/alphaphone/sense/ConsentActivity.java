@@ -31,7 +31,7 @@ public final class ConsentActivity extends Activity {
   +"• Pause or turn off at any time from the notification, the Quick Settings tile, the microphone privacy toggle or by saying “Alpha, stop listening”.\n"
   +"• Listening pauses while the phone rings, during calls, while sound or speech is playing (wake word only), whenever another app uses the microphone and while another user is using the phone. Calls are never recorded.\n"
   +"• Saying “Alpha” while the phone is locked does nothing; unlock first.\n"
-  +"• After a restart, listening waits until you unlock the phone.\n\n"
+  +"• After a process or phone restart, unlock and turn listening on here again.\n\n"
   +"People near you may be heard. Only turn this on where that is lawful and appropriate.";
 
  private LinearLayout column;
@@ -79,6 +79,8 @@ public final class ConsentActivity extends Activity {
   TextView status=text(ListenerPolicy.label(state),22);
   status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
   text(EXPLANATION,16);
+  text("After the listening process restarts, turn listening on here again.",16);
+  if (ListenerStore.storageFailed()) text("Listening is off. Your change could not be saved. Restart the listener and opt in again after fixing storage.",16);
   if(!consented||!store.enabled()||state==ListenerPolicy.State.PERMISSION_REQUIRED||state==ListenerPolicy.State.STOPPED_AFTER_ERRORS
    ||(state==ListenerPolicy.State.NOTIFICATIONS_REQUIRED&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)){
    button(consented?"Turn on listening":"I understand — turn on listening",view->requestMicrophone());

@@ -62,10 +62,15 @@ public class AlphaPhotosPlugin extends Plugin {
  }
  @PermissionCallback private void libraryPermissionResult(PluginCall call){permitted.invalidate();libraryAccess(call);}
  @Override @PluginMethod public void requestPermissions(PluginCall call){requestLibraryAccess(call);}
- @PluginMethod public void listPermitted(PluginCall call){submit(call,()->{try{call.resolve(permitted.list(call.getString("before",""),call.getString("query",""),call.getString("kind","all"),call.getBoolean("thumbnails",true),call.getString("filter","all")));}catch(Exception failure){call.reject("Photo library changed or is unavailable. Refresh Photos and check its access.");}});}
- @PluginMethod public void readPermitted(PluginCall call){submit(call,()->{try{call.resolve(permitted.read(call.getString("id"),call.getString("revision"),call.getBoolean("pixels",true)));}catch(Exception failure){call.reject("Selected media changed or is no longer permitted.");}});}
- @Override protected void handleOnPause(){if(permitted!=null)permitted.invalidate();if(playback!=null)playback.clear();}
- @Override protected void handleOnResume(){if(permitted!=null)permitted.invalidate();notifyListeners("libraryChanged",new JSObject());}
+ private interface ReadAction {JSObject run()throws Exception;}
+ private void submitRead(PluginCall call,ReadAction action){
+  try{long ticket=permitted.readTicket();submit(call,()->{try{permitted.requireReadTicket(ticket);JSObject value=action.run();permitted.publish(call,value,ticket);}catch(Exception changed){call.reject("Photo library changed or is unavailable. Refresh Photos and check its access.");}});}
+  catch(Exception unavailable){call.reject("Unlock and reopen Photos before reading the library.");}
+ }
+ @PluginMethod public void listPermitted(PluginCall call){submitRead(call,()->permitted.list(call.getString("before",""),call.getString("query",""),call.getString("kind","all"),call.getBoolean("thumbnails",true),call.getString("filter","all")));}
+ @PluginMethod public void readPermitted(PluginCall call){submitRead(call,()->permitted.read(call.getString("id"),call.getString("revision"),call.getBoolean("pixels",true)));}
+ @Override protected void handleOnPause(){if(permitted!=null)permitted.foreground(false);if(playback!=null)playback.clear();}
+ @Override protected void handleOnResume(){if(permitted!=null)permitted.foreground(true);notifyListeners("libraryChanged",new JSObject());}
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
  private String owned(){return owned(false);}
  private String owned(boolean trashed){return MediaStore.MediaColumns.OWNER_PACKAGE_NAME+"=? AND "+MediaStore.MediaColumns.IS_PENDING+"=0"+(Build.VERSION.SDK_INT>=30?" AND "+MediaStore.MediaColumns.IS_TRASHED+"="+(trashed?1:0):"");}

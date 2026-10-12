@@ -67,14 +67,14 @@ public final class LoginBindingTest {
   // --- Origin rule for the challenge ---
   // forChallenge(reportedHost, pendingMain, documentUrl, committed, otherRequestOrigins)
   Set<String> none = Set.of();
-  eq("https://example.com", BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/login", "https://example.com/login", false, none), "first load, not committed");
-  eq("https://example.com:8443", BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com:8443/a", "https://example.com:8443/a", false, none), "port taken from the main-frame load, not the challenge");
-  eq("https://example.com", BrowserHttpAuthOrigin.forChallenge("example.com:443", "https://Example.com/a", "https://Example.com/a", false, none), "default port normalised");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/login", "https://example.com/login", false, none), "first load, not committed");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com:8443/a", "https://example.com:8443/a", false, none), "port taken from the main-frame load, not the challenge");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com:443", "https://Example.com/a", "https://Example.com/a", false, none), "default port normalised");
   eq(null, BrowserHttpAuthOrigin.forChallenge("example.com:8443", "https://example.com/a", "https://example.com/a", false, none), "reported port contradicts the load");
   eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com:8443/b", "https://example.com/a", false, none), "redirect to another port before commit");
   eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "http://example.com/a", "http://example.com/a", false, none), "cleartext load");
   eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "http://example.com/b", "https://example.com/a", false, none), "redirect to cleartext");
-  eq("https://example.com", BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/b", "https://other.example/a", true, none), "page-initiated load from another site");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/b", "https://other.example/a", true, none), "page-initiated load from another site");
   eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://other.example/a", "https://other.example/a", true, none), "no pending load for this host");
   eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://user:pw@example.com/a", "https://user:pw@example.com/a", false, none), "user info");
   eq(null, BrowserHttpAuthOrigin.forChallenge("", "https://example.com/", "https://example.com/", false, none), "missing host");
@@ -89,7 +89,7 @@ public final class LoginBindingTest {
      "pending same-host load while a frame on another port is live");
   eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/", "https://other.example/", true, Set.of("http://example.com")),
      "a cleartext request to the host is a different origin");
-  eq("https://example.com", BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/admin", "https://example.com/", true, Set.of("https://example.com", "https://cdn.example:8443")),
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/admin", "https://example.com/", true, Set.of("https://example.com", "https://cdn.example:8443")),
      "same-origin resources and other hosts do not block the pending main-frame load");
   eq("https://example.com:8443", BrowserHttpAuthOrigin.requestOrigin("https://EXAMPLE.com:8443/x?y"), "request origin keeps a non-default port");
   eq("http://example.com", BrowserHttpAuthOrigin.requestOrigin("http://example.com:80/"), "http default port omitted");

@@ -118,17 +118,16 @@ test("permissions: standalone has none, the launcher declares read access only, 
   assert.doesNotMatch(main, /<intent><action android:name="android\.intent\.action\.SENDTO"\/><data android:scheme="smsto"\/><\/intent>/, "only the image-capable flavor can see SMS handlers");
 });
 
-test("the upstream contacts reader is included from the reviewed pin, not copied", () => {
-  assert.match(read("android/settings.gradle"), /project\(':eliza-contacts'\)\.projectDir = new File\('\.\.\/vendor\/eliza\/plugins\/plugin-native-contacts\/android'\)/);
-  assert.match(read("android/app/build.gradle"), /implementation project\(':eliza-contacts'\)/);
-  assert.match(read(`${JAVA}/AlphaTelephonyPlugin.java`), /import ai\.eliza\.plugins\.contacts\.ContactsReader;/);
+test("telephony shares the bounded Contacts provider adapter", () => {
+  const plugin=read(`${JAVA}/AlphaTelephonyPlugin.java`);
+  assert.match(plugin,/new AlphaContactsCatalog\(getContext\(\)\)\.list\(query, limit, cancel\)/);
+  assert.doesNotMatch(plugin,/ContactsReader/);
 });
-
 test("queued contacts cannot return data after access or lifecycle changes", () => {
-  const plugin = read(`${JAVA}/AlphaTelephonyPlugin.java`);
-  assert.match(plugin, /return !closed && AlphaImageCapability\.verified\(getContext\(\)\) && unlocked\(\) && getPermissionState\("contacts"\) == PermissionState\.GRANTED/);
-  const search = plugin.slice(plugin.indexOf("@PluginMethod public void searchContacts"), plugin.indexOf("private JSObject handoff"));
-  assert.equal((search.match(/if \(!readable\(\)\) throw new SecurityException\(\);/g) || []).length, 2);
-  assert.ok(search.lastIndexOf("if (!readable())") > search.indexOf("new ContactsReader"));
-  assert.match(plugin, /handleOnDestroy\(\) \{ closed = true; reader\.shutdownNow\(\); super\.handleOnDestroy\(\); \}/);
+  for(const name of ['AlphaTelephonyPlugin','AlphaContactsPlugin']) {
+   const plugin=read(`${JAVA}/${name}.java`);
+   assert.match(plugin,/OnPermissionsChangedListener/);assert.match(plugin,/ACTION_SCREEN_OFF/);
+   assert.match(plugin,/handleOnPause/);assert.match(plugin,/handleOnDestroy/);
+   assert.match(plugin,/runOnUiThread/);assert.match(plugin,/generation\.current/);
+  }
 });
