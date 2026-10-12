@@ -223,7 +223,8 @@ export class LocalAgentProtocol {
         valid();return result;
       }catch(error){
         valid();
-        if(!options.clientMessageId||(error&&typeof error==='object'&&'status' in error&&typeof error.status==='number'&&error.status<500))throw error;
+        // A refusal, an undispatched stream or a terminal failure frame is the outcome: nothing is re-read.
+        if(!options.clientMessageId||(error&&typeof error==='object'&&(('status' in error&&typeof error.status==='number'&&error.status<500)||'beforeDispatch' in error||'failureKind' in error)))throw error;
         this.recoveries++;
         const recovered=await this.json(path,body,signal);valid();
         if(typeof recovered.text!=='string'||typeof recovered.agentName!=='string')throw new Error('Invalid local agent reply.');

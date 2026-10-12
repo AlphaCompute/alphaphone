@@ -25,7 +25,7 @@ async function fenceNetwork(page: Page, serve?: (route: Route) => Promise<unknow
 
 type RevokeMode = 'revoked' | 'unsupported' | 'failed' | 'refused-in-body' | 'not-revoked-status' | 'no-content' | 'unauthorized' | 'server-error' | 'cancelled';
 interface NativeCall { plugin: string; method: string; slot?: string; url?: string; http?: string; authorization?: string; path?: string }
-interface AndroidOptions { selection?: unknown; remoteCredential?: boolean; cloudCredential?: boolean; balance?: number; revoke?: RevokeMode; packaged?: boolean }
+interface AndroidOptions { selection?: unknown; remoteCredential?: boolean; cloudCredential?: boolean; balance?: number; revoke?: RevokeMode; packaged?: boolean; start?: 'reject' | 'starting' }
 /** Production Android as the renderer sees it: resident Agent plugin plus AlphaConnection storage and transport. */
 async function android(page: Page, options: AndroidOptions) {
   await page.addInitScript(({ options, SELECTION, origin, owner, token }) => {
@@ -55,9 +55,11 @@ async function android(page: Page, options: AndroidOptions) {
         if (method === 'getStatus') return { packaged: options.packaged !== false, state: 'stopped', serviceActive: false, socketListening: false };
         // A held stop lets a test cancel sign-out before any revocation request is issued.
         if (method === 'stop' && w.holdStop) await new Promise<void>(resolve => { w.releaseStop = resolve; });
+        // A packaged runtime whose start fails, or that answers but is not running yet.
+        if (method === 'start' && options.start === 'reject') throw Error('Local agent failed to start.');
         if (method === 'request') {
           const body = input.path === '/api/auth/me' ? { identity: { id, kind: 'owner' }, access: { role: 'OWNER', mode: 'local' } }
-            : input.path === '/api/agents' ? { agents: [{ id, name: 'Alpha', status: 'running' }] }
+            : input.path === '/api/agents' ? { agents: [{ id, name: 'Alpha', status: options.start === 'starting' ? 'starting' : 'running' }] }
             : input.path === '/api/conversations' ? { conversations: [] } : {};
           return { status: 200, body: JSON.stringify(body) };
         }
@@ -160,6 +162,32 @@ test('production Android without a packaged agent says so and does not advertise
   await expect(page.getByRole('button', { name: 'Use local apps without AI', exact: true })).toBeVisible();
   expect((await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).not.toContain('start');
 });
+
+for (const [start, text] of [['reject', 'Local agent failed to start.'], ['starting', 'The local agent is still starting. Try again when it is ready.']] as const) {
+  test(`production Android with credits whose resident ${start === 'reject' ? 'fails to start' : 'is still starting'} offers a retry and keeps the selection`, async ({ page }) => {
+    const foreign = await fenceNetwork(page);
+    await android(page, { cloudCredential: true, balance: 5, start });
+    await page.goto('/');
+    const dialog = page.getByRole('dialog', { name: 'Your Cloud account' });
+    await expect(dialog.getByRole('alert')).toContainText(text);
+    await expect(dialog.getByRole('alert')).not.toContainText(/pair/i);
+    await expect(dialog.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
+    await expect(dialog.getByRole('button', { name: 'Use local apps without AI', exact: true })).toBeEnabled();
+    const calls = await nativeCalls(page);
+    expect(calls.filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
+    // Not written as resident, and no conversation was created or read.
+    expect(await page.evaluate(key => localStorage.getItem(key), SELECTION)).toBeNull();
+    expect(calls.filter(call => call.path?.startsWith('/api/conversations'))).toEqual([]);
+    // Continue retries once, on the owner's tap; it fails the same way and still writes nothing.
+    const starts = calls.filter(call => call.plugin === 'Agent' && call.method === 'start').length;
+    await dialog.getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent' && call.method === 'start').length).toBe(starts + 1);
+    await expect(dialog.getByRole('alert')).toContainText(text);
+    expect(await page.evaluate(key => localStorage.getItem(key), SELECTION)).toBeNull();
+    expect((await nativeCalls(page)).filter(call => call.path?.startsWith('/api/conversations'))).toEqual([]);
+    expect(foreign).toEqual([]);
+  });
+}
 
 for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-revoked-status', 'no-content', 'unauthorized', 'server-error', 'cancelled'] as const) {
   test(`production Android Cloud sign-out states only the revocation that happened: ${mode}`, async ({ page }) => {

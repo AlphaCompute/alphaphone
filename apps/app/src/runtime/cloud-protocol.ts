@@ -52,6 +52,9 @@ export type CloudSessionRevocation =
   | { supported: true; revoked: true; credentialId: string | null; revokedAt: string | null }
   | { supported: false; reason: "transport" | "server" | "no-credential" };
 export interface CloudLoginAttempt { sessionId: string; expiresAt: number; browserUrl: string }
+/** What happened to a sign-in this login replaced: absent when none was saved. Only a confirmed
+ * server-side revocation is `revoked`; anything else is reported as unconfirmed. */
+export interface CloudLoginResult { previousSignIn?: "revoked" | "unconfirmed" }
 export interface CloudAgent {
   id: string; name: string | null; status: string; executionTier: string | null;
   /** Only validated REST targets, never internal bridge URLs. Null until available. */
@@ -153,6 +156,7 @@ export interface CloudPhoneTarget {
   agentId: string; origin: string; userId: string; organizationId: string;
   credentialId: string; headers: Record<string,string>;
 }
+const GMAIL_CAPABILITIES: readonly string[] = ["google.basic_identity", "google.gmail.triage", "google.gmail.send", "google.gmail.drafts", "google.gmail.mailbox"];
 export class CloudProtocol {
   private phoneTarget: CloudPhoneTarget | null = null;
   setPhoneTarget(target: CloudPhoneTarget | null) { this.phoneTarget = target; }
@@ -274,7 +278,7 @@ export class CloudProtocol {
   cancelLogin(): void { this.activeLogin?.abort(new DOMException("Login cancelled", "AbortError")); }
   /** Only one poller may claim the server's single-consumption credential. A
    * cancelled/lost claim is not retried automatically; start a fresh login. */
-  async login(signal: AbortSignal, onWaiting?: (attempt: CloudLoginAttempt) => void): Promise<void> {
+  async login(signal: AbortSignal, onWaiting?: (attempt: CloudLoginAttempt) => void): Promise<CloudLoginResult> {
     if (this.activeLogin) throw new CloudProtocolError("login-active");
     signal.throwIfAborted();
     const controller = new AbortController();
@@ -317,8 +321,14 @@ export class CloudProtocol {
           if (data.organizationId != null) credential.organizationId = string(data.organizationId);
           controller.signal.throwIfAborted();
           if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
+          // The new key replaces a saved one. Revoke the old key first, once and best effort: a
+          // failed or unconfirmed revocation never blocks this sign-in. The write below replaces the
+          // old key in place (stores that bind a claim to the key it replaces stay atomic).
+          const previousSignIn = await this.revokeReplaced(controller.signal, credential);
+          controller.signal.throwIfAborted();
+          if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
           await this.credentials.write(this.environment, credential, controller.signal);
-          return;
+          return previousSignIn ? { previousSignIn } : {};
         }
         if (data.status === "expired") throw new CloudProtocolError("expired");
         if (data.status !== "pending") throw new CloudProtocolError("invalid-response");
@@ -339,6 +349,18 @@ export class CloudProtocol {
     const credential = await this.credentials.read(this.environment);
     signal.throwIfAborted();
     if (!credential) return { supported: false, reason: "no-credential" };
+    return this.revokeStored(credential, signal);
+  }
+  /** One revocation of the saved key a new login is about to replace. Never retried or thrown. */
+  private async revokeReplaced(signal: AbortSignal, issued: CloudCredential): Promise<"revoked" | "unconfirmed" | undefined> {
+    let previous: CloudCredential | null;
+    try { previous = await this.credentials.read(this.environment); } catch { return "unconfirmed"; }
+    // Nothing saved, or Cloud handed back the key already saved: there is nothing to replace.
+    if (!previous || (issued.token !== undefined && previous.token === issued.token) || (issued.credentialReference !== undefined && previous.credentialReference === issued.credentialReference)) return undefined;
+    try { const result = await this.revokeStored(previous, signal, false); return result.supported && result.revoked ? "revoked" : "unconfirmed"; }
+    catch { return "unconfirmed"; }
+  }
+  private async revokeStored(credential: CloudCredential, signal: AbortSignal, clearLocal = true): Promise<CloudSessionRevocation> {
     try {
       if (!this.options.deleteRequests) return { supported: false, reason: "transport" };
       let data: unknown;
@@ -353,7 +375,7 @@ export class CloudProtocol {
       if (result.success !== true || (result.status !== undefined && result.status !== "revoked")) throw new CloudProtocolError("invalid-response");
       return { supported: true, revoked: true, credentialId: typeof result.credentialId === "string" ? result.credentialId : null, revokedAt: typeof result.revokedAt === "string" ? result.revokedAt : null };
     } finally {
-      const current = await this.credentials.read(this.environment);
+      const current = clearLocal ? await this.credentials.read(this.environment) : null;
       if (current?.credentialId === credential.credentialId && current?.token === credential.token) await this.credentials.clear(this.environment);
     }
   }
@@ -438,9 +460,16 @@ export class CloudProtocol {
       ...(response.interrupted === true ? { interrupted: true } : {}),
       ...(response.noResponseReason === "ignored" ? { noResponseReason: "ignored" as const } : {}) };
   }
-  async initiateGmail(signal: AbortSignal, permission: 'read'|'send'|'drafts'|'mailbox' = 'read'): Promise<string> {
+  /** Cloud maps exactly the requested capabilities to Google scopes, so authorizing one more
+   * permission also names what the account already holds (`grantedCapabilities` of the selected
+   * account); otherwise the new grant could drop an earlier one. Only known Gmail capabilities are
+   * carried over. Callers that pass no grants keep the previous request. */
+  async initiateGmail(signal: AbortSignal, permission: 'read'|'send'|'drafts'|'mailbox' = 'read', grantedCapabilities: readonly string[] = []): Promise<string> {
+    const added = permission === "read" ? [] : [permission === "send" ? "google.gmail.send" : permission === "drafts" ? "google.gmail.drafts" : "google.gmail.mailbox"];
+    const kept = grantedCapabilities.filter(capability => GMAIL_CAPABILITIES.includes(capability));
+    const capabilities = [...new Set(["google.basic_identity", "google.gmail.triage", ...kept, ...added])];
     const response = await this.call("/api/v1/eliza/google/connect/initiate", signal, { authenticated: true,
-      body: { side: "owner", capabilities: ["google.basic_identity", "google.gmail.triage", ...(permission === "read" ? [] : [permission === "send" ? "google.gmail.send" : permission === "drafts" ? "google.gmail.drafts" : "google.gmail.mailbox"])] } });
+      body: { side: "owner", capabilities } });
     let url: URL;
     try { url = new URL(string(response.authUrl)); } catch { throw new CloudProtocolError("invalid-response"); }
     if (url.origin !== "https://accounts.google.com" || url.username || url.password || url.hash) throw new CloudProtocolError("invalid-response");
