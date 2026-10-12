@@ -400,7 +400,7 @@ export function retryDuration(ms: number): string {
 export function serviceLimitMessage(limit: ServiceLimit | null, now: number = Date.now()): string {
   if (!limit || limit.kind === 'rate-limited') {
     const wait = limit?.retryAfterMs != null ? `Try again in ${retryDuration(limit.retryAfterMs)}.` : limit?.resetsAt != null && limit.resetsAt > now ? `Try again in ${retryDuration(limit.resetsAt - now)}.` : 'Wait a moment before sending again.';
-    return `Your plan's request rate limit was reached. ${wait} Alpha Phone did not retry your message.`;
+    return `The AI request rate limit was reached. ${wait} Alpha Phone did not retry your message.`;
   }
   if (limit.kind === 'allowance-exhausted') {
     const reset = limit.resetsAt != null && limit.resetsAt > now ? ` It resets ${clock(limit.resetsAt)}.` : limit.retryAfterMs != null ? ` It resets in ${retryDuration(limit.retryAfterMs)}.` : '';

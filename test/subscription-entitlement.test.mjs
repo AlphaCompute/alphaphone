@@ -240,9 +240,9 @@ test('revocation to no plan stops refreshing, and a rejected sign-in stops the r
 test('Cloud limit refusals carry retry information and never imply a purchase or an automatic retry', () => {
   const rate = readServiceLimit({code: 'http', status: 429, data: {error: 'rate_limited', retryAfterSeconds: 42}}, NOW);
   assert.deepEqual(rate, {kind: 'rate-limited', retryAfterMs: 42000, resetsAt: null});
-  assert.equal(serviceLimitMessage(rate, NOW), "Your plan's request rate limit was reached. Try again in about 42 seconds. Alpha Phone did not retry your message.");
-  assert.equal(serviceLimitMessage(readServiceLimit({status: 429}, NOW), NOW), "Your plan's request rate limit was reached. Wait a moment before sending again. Alpha Phone did not retry your message.");
-  assert.equal(serviceLimitMessage(null, NOW), "Your plan's request rate limit was reached. Wait a moment before sending again. Alpha Phone did not retry your message.");
+  assert.equal(serviceLimitMessage(rate, NOW), "The AI request rate limit was reached. Try again in about 42 seconds. Alpha Phone did not retry your message.");
+  assert.equal(serviceLimitMessage(readServiceLimit({status: 429}, NOW), NOW), "The AI request rate limit was reached. Wait a moment before sending again. Alpha Phone did not retry your message.");
+  assert.equal(serviceLimitMessage(null, NOW), "The AI request rate limit was reached. Wait a moment before sending again. Alpha Phone did not retry your message.");
   const terminal = readServiceLimit({failureKind: 'rate_limited', terminalFailure: {kind: 'rate_limited', retryAfterMs: 180000}}, NOW);
   assert.deepEqual(terminal, {kind: 'rate-limited', retryAfterMs: 180000, resetsAt: null});
   assert.match(serviceLimitMessage(terminal, NOW), /about 3 minutes/);
