@@ -168,6 +168,7 @@ export const CLASS_REGISTRY = {
  * them counts as reachable; test/android-instrumentation-runner.test.mjs checks it.
  */
 export const CAMPAIGN_RUNNERS = [
+  "scripts/test-native-calendar-deletion-restart.mjs",
   "scripts/test-native-permissions.mjs", "scripts/test-native-restart.mjs", "scripts/test-calendar-regression.mjs",
   "scripts/test-installed-upgrade.mjs", "scripts/test-reminder-one-off.mjs", "scripts/test-reminder-recurrence.mjs",
   "scripts/reminder-recovery-fixture.mjs", "scripts/test-cross-app-notifications.mjs", "scripts/test-cross-app-notifications-restart.mjs",
