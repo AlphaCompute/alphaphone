@@ -19,7 +19,7 @@ import static org.junit.Assert.*;
  * No method clears app data or authenticates: the runner must use the actual native review.
  * Supply the returned metadata again after clear; no surviving app-private oracle is used. */
 public final class ResetExternalFixtureInstrumentedTest {
- private static final int JOB=1940931, NOTICE=1940932;
+ private static final int NOTICE=1940932;
  private static final String CHANNEL="reset-fixture", SLOT="reset-fixture:v1:runtime";
  private static byte[] bytes(String run){return ("Alpha reset fixture "+run).getBytes(StandardCharsets.UTF_8);}
  private static String sha(byte[] value)throws Exception{StringBuilder out=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(value))out.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return out.toString();}
@@ -39,6 +39,12 @@ public final class ResetExternalFixtureInstrumentedTest {
   String current=new org.json.JSONObject(notes(run)).getString("currentRaw"),id=run+"_draft";
   return new org.json.JSONObject().put("version",1).put("savedAt",1).put("base",sha(current.getBytes(StandardCharsets.UTF_8))).put("reason","failed").put("records",new org.json.JSONArray().put(note(id,"Unsaved reset sentinel"))).put("added",new org.json.JSONArray().put(id)).put("removed",new org.json.JSONArray()).put("before",new org.json.JSONObject()).toString();
  }
+ public static final class ResetSentinelWorker extends androidx.work.Worker {
+  public ResetSentinelWorker(Context context,androidx.work.WorkerParameters parameters){super(context,parameters);}
+  @Override public Result doWork(){return Result.failure();} // The disposable test must finish before its one-day delay.
+ }
+ private static String workId(String run){return run.substring(0,8)+"-"+run.substring(8,12)+"-"+run.substring(12,16)+"-"+run.substring(16,20)+"-"+run.substring(20);}
+ private static boolean pendingJob(JobScheduler jobs,String run){return jobs.getAllPendingJobs().stream().anyMatch(job->workId(run).equals(job.getExtras().getString("EXTRA_WORK_SPEC_ID")));}
  private static KeyStore keys()throws Exception{KeyStore keys=KeyStore.getInstance("AndroidKeyStore");keys.load(null);return keys;}
  @Test public void externalFixturePhase()throws Exception{
   Bundle args=InstrumentationRegistry.getArguments();String phase=args.getString("resetFixturePhase"),run=args.getString("resetFixtureRun");
@@ -56,11 +62,16 @@ public final class ResetExternalFixtureInstrumentedTest {
    assertFalse("No pending real reset",AlphaDataReset.pending(c));assertFalse(file.exists());assertFalse(keys().containsAlias(alias));
    assertNull("Only fresh synthetic Notes",store.readCredentialSlot(AlphaCredentialStore.NOTES_RECORDS));
    assertNull("Only fresh synthetic draft",store.readCredentialSlot(AlphaCredentialStore.NOTES_DRAFT));assertNull(store.readCredentialSlot(SLOT));
-   assertNull(jobs.getPendingJob(JOB));
+   assertFalse(pendingJob(jobs,run));
    write(file,bytes(run));write(cache,bytes(run));assertTrue(c.getSharedPreferences(name,0).edit().putString("value",run).commit());
    store.writeCredentialSlot(AlphaCredentialStore.NOTES_RECORDS,notes(run));store.writeCredentialSlot(AlphaCredentialStore.NOTES_DRAFT,draft(run));store.writeCredentialSlot(SLOT,payload);
    KeyGenerator generator=KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");generator.init(new KeyGenParameterSpec.Builder(alias,KeyProperties.PURPOSE_ENCRYPT|KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());generator.generateKey();assertTrue(keys().containsAlias(alias));
-   assertEquals(JobScheduler.RESULT_SUCCESS,jobs.schedule(new JobInfo.Builder(JOB,new ComponentName(c,"androidx.work.impl.background.systemjob.SystemJobService")).setMinimumLatency(86400000L).build()));
+   // Register real WorkManager metadata. An invented SystemJobService job is
+   // correctly discarded by WorkManager startup reconciliation, independently of reset.
+   androidx.work.WorkManager work=androidx.work.WorkManager.getInstance(c);
+   work.enqueue(new androidx.work.OneTimeWorkRequest.Builder(ResetSentinelWorker.class).setId(java.util.UUID.fromString(workId(run))).setInitialDelay(1,java.util.concurrent.TimeUnit.DAYS).addTag(name).build()).getResult().get(10,java.util.concurrent.TimeUnit.SECONDS);
+   long jobDeadline=android.os.SystemClock.elapsedRealtime()+5000;while(!pendingJob(jobs,run)&&android.os.SystemClock.elapsedRealtime()<jobDeadline)android.os.SystemClock.sleep(100);
+   assertTrue("Owned delayed work is scheduled",pendingJob(jobs,run));
    notices.createNotificationChannel(new NotificationChannel(CHANNEL,"Reset fixture",NotificationManager.IMPORTANCE_LOW));
    assertTrue("Notification permission must be granted by disposable runner",notices.areNotificationsEnabled());
    notices.notify(NOTICE,new Notification.Builder(c,CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(name).setContentText("Synthetic reset sentinel").build());
@@ -82,11 +93,11 @@ public final class ResetExternalFixtureInstrumentedTest {
    if(notes(run).equals(saved))assertEquals("Unmerged draft retained",draft(run),keptDraft);
    else{assertEquals("Saved and drafted Notes retained after normal startup recovery",recoveredNotes(run),saved);assertTrue("Recovered draft is either retained exactly or cleared after saving",keptDraft==null||draft(run).equals(keptDraft));}
    assertEquals("Runtime fixture retained",payload,store.readCredentialSlot(SLOT));
-   assertTrue("UID key retained",keys().containsAlias(alias));assertNotNull("Job retained",jobs.getPendingJob(JOB));assertTrue("Notification retained",java.util.Arrays.stream(notices.getActiveNotifications()).anyMatch(n->n.getId()==NOTICE));assertFalse("No reset authority recorded",AlphaDataReset.pending(c));
+   assertTrue("UID key retained",keys().containsAlias(alias));assertTrue("Owned job retained",pendingJob(jobs,run));assertTrue("Notification retained",java.util.Arrays.stream(notices.getActiveNotifications()).anyMatch(n->n.getId()==NOTICE));assertFalse("No reset authority recorded",AlphaDataReset.pending(c));
   }else if("verify".equals(phase)){
    assertFalse("Private file erased",file.exists());assertFalse("Cache erased",cache.exists());assertFalse("Preferences erased",c.getSharedPreferences(name,0).contains("value"));
    assertNull("Notes erased",store.readCredentialSlot(AlphaCredentialStore.NOTES_RECORDS));assertNull("Draft erased",store.readCredentialSlot(AlphaCredentialStore.NOTES_DRAFT));assertNull("Runtime fixture erased",store.readCredentialSlot(SLOT));
-   assertFalse("UID Keystore fixture erased",keys().containsAlias(alias));assertNull("Owned job cancelled",jobs.getPendingJob(JOB));
+   assertFalse("UID Keystore fixture erased",keys().containsAlias(alias));assertFalse("Owned job cancelled",pendingJob(jobs,run));assertTrue("Owned WorkManager record erased",androidx.work.WorkManager.getInstance(c).getWorkInfosByTag(name).get(10,java.util.concurrent.TimeUnit.SECONDS).isEmpty());
    assertFalse("Owned notification cancelled",java.util.Arrays.stream(notices.getActiveNotifications()).anyMatch(n->n.getId()==NOTICE));assertFalse("Reset marker erased",AlphaDataReset.pending(c));
    // Shared-media permissions may be revoked by reset. The external runner owns
    // URI/name/hash verification and cleanup; never infer deletion from denied access.
