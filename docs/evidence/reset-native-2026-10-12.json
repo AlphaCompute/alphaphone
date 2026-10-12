@@ -166,22 +166,98 @@
         "verification.json": "5ac6a5aaa9e28a147edc7300e3d9a6ee92a079b6922204c2f7d736fae6b48bd9",
         "window-before-touch-2.txt": "2c8b352043fd8f787f11bf451e7c4690044f8e7d1500988af98bbffb3e26f1e0"
       }
+    },
+    {
+      "variant": "standalone",
+      "mode": "marker",
+      "passed": true,
+      "directory": "/home/shaw/.codex/worktrees/native-qualification/alphaphone/test-results/native-qualification/reset431-marker-standalone-024",
+      "applicationSha256": "92d20ec1ab3e37cda9a4f85d2d6c54544d245adcc37571e4a5cee4c0ce590e9c",
+      "instrumentationSha256": "bbf3dc8aaa5f5f3c84fef158834c25b527db81f664b415287fdf5f53f4fad2fa",
+      "harnessSha256": "296be0a089908dec62c38f725c249d0de389a2de99c8d508aece63963658c39b",
+      "userLifecycle": {
+        "user": 10,
+        "ownerRestored": true,
+        "cleanupDeferred": false,
+        "removed": true
+      },
+      "events": [
+        "prepared-owned-user-credential-and-companion",
+        "baseline-sentinels",
+        "stopped-after-marker-before-dispatch",
+        "resumed-pending-native-reset",
+        "private-clear-observed",
+        "after-reset",
+        "main-window-and-input-focused",
+        "actual-first-run-screen-observed",
+        "owned-media-cleanup"
+      ],
+      "sha256": {
+        "2-first-run-after-reset.png": "07fba5cb54cee285bc27c06655c8ef2b3341e690e84f4ba1f81964ae00478623",
+        "2-first-run-after-reset.xml": "c48ed42e68dd938dd2cb46f75403a6179d4429fc5f173ee9690892f3f6808ff8",
+        "apk-provenance.json": "c43dc672ac2c653475c10e2b92b7a7b9c9e13387e230a2cb122a51a1205a7fdd",
+        "build-source.json": "03d67c2f27af543e8facfc8725f53a4ff7ebab85ca13bfe04cb87883c1e4ac5f",
+        "external-result.json": "83176005eec269559af88615682d67ea8478b5a70552e92b5ab0da7722775bf0",
+        "power-before-launch-1.txt": "9b300cb8414e1f51c71a3f6cfa9cf9036b7bc051d079f1bd5349a50e0e35bbfa",
+        "standalone-phase-marker.log": "8d80395799886e11f1bd159a8cfd2a73c3fc393586dddff63f2965ee5fa7a380",
+        "standalone-phase-verify.log": "7e5259e777c6d0ea20537e1b837842bbb1113d600b00e0865d88906eab0cac58",
+        "standalone.log": "c2f44af106a47c43c926b0219aa04210983a27e44a08413eca717b4d9c5f6a95",
+        "verification.json": "18a9192630e5a488d2267a53246c3c89af186060b52df1d6fa4252f71de7426c"
+      }
+    },
+    {
+      "variant": "launcher",
+      "mode": "marker",
+      "passed": true,
+      "directory": "/home/shaw/.codex/worktrees/native-qualification/alphaphone/test-results/native-qualification/reset431-marker-launcher-025",
+      "applicationSha256": "3b60b497cb701f80a21149591ad49120bcd2da699f48e6e67c95290a1275050d",
+      "instrumentationSha256": "dbb14c0773579497e4f9b6f09f4f3d69f1fed1c5c894a1c2ecf9b714b0402719",
+      "harnessSha256": "296be0a089908dec62c38f725c249d0de389a2de99c8d508aece63963658c39b",
+      "userLifecycle": {
+        "user": 10,
+        "ownerRestored": true,
+        "cleanupDeferred": false,
+        "removed": true
+      },
+      "events": [
+        "prepared-owned-user-credential-and-companion",
+        "baseline-sentinels",
+        "stopped-after-marker-before-dispatch",
+        "resumed-pending-native-reset",
+        "private-clear-observed",
+        "after-reset",
+        "main-window-and-input-focused",
+        "actual-first-run-screen-observed",
+        "owned-media-cleanup"
+      ],
+      "sha256": {
+        "2-first-run-after-reset.png": "2f58e83be0f96e9565305279f22fd09c40d713a47d4dd80aa4cd80563984a369",
+        "2-first-run-after-reset.xml": "7957a988b1a30d2fffa33bfd0d08f9860cf0a18102313b1de6cd928abf0bea2b",
+        "apk-provenance.json": "c43dc672ac2c653475c10e2b92b7a7b9c9e13387e230a2cb122a51a1205a7fdd",
+        "build-source.json": "03d67c2f27af543e8facfc8725f53a4ff7ebab85ca13bfe04cb87883c1e4ac5f",
+        "external-result.json": "35472a90fba532ff11939e131119ae31f4ad38324d7d3d9cb5d64b79f7287efa",
+        "launcher-phase-marker.log": "3b1032e28033e3d85720ad60f7d9d4ea23700480a4c7898165d32703e6363973",
+        "launcher-phase-verify.log": "4ba91672e5b1ee1e4642cd5395076d082e148117740d307d95125cd8c370e97e",
+        "launcher.log": "39217b52c91b337ba87768a49ae7f0c1cf1781b67e22d89b2f9ca7bfb1a4f8ee",
+        "power-before-launch-1.txt": "ec5bc933325f689e2e51ff21dad1a47be48d8d65e87c69048cc7c8fe0650cb37",
+        "verification.json": "358014c63d34a5017815132b0c11e4ebfa085ed44a3c68cd96b4be7c69b248af"
+      }
     }
   ],
-  "pending": [
-    "Interrupted-before-dispatch marker recovery in both distributions."
-  ],
+  "pending": [],
   "limitations": [
     "Synthetic disposable Android users only; no real user data or credential.",
     "Developer APKs use an unqualified speech candidate and omit the packaged resident runtime.",
     "Not release, full AOSP-image, physical-device or live-service acceptance.",
-    "Standalone native UI campaign required a guarded reboot of the owned emulator because earlier secondary-user input surfaces were missing."
+    "Standalone native UI campaign required a guarded reboot of the owned emulator because earlier secondary-user input surfaces were missing.",
+    "Marker recovery uses process interruption, not a power-loss or full-device reboot during reset. The later delayed-alarm fixture is not covered by these campaigns."
   ],
   "verified": [
     "Native Cancel and credential denial preserve both exact Notes sentinels (including normal draft recovery), private file/cache/preferences, UID key, notification and delayed namespaced WorkManager job.",
     "A real native confirmation using the disposable user credential triggers Android clearApplicationUserData.",
     "A fresh instrumentation process confirms private sentinels, UID key, WorkManager record/job and notification were erased.",
     "Exact shared-media bytes and the separate companion-app private sentinel survive reset.",
-    "Actual first-run UI is visible after reset; package/media/user cleanup completed."
+    "Actual first-run UI is visible after reset; package/media/user cleanup completed.",
+    "Both distributions recover a persisted reset marker after an explicit process stop before dispatch, clear private sentinels, preserve exact external sentinels and show first-run UI."
   ]
 }
