@@ -54,6 +54,11 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 .home-calendar-meta .home-calendar-footer { flex:0 1 auto; }
 .home-calendar-source { flex:1 1 0; min-width:0; font-size:12px; font-weight:500; line-height:1.25; color:rgba(255,255,255,.85); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; }
 .home-calendar-meta > .home-calendar-source:first-child { text-align:left; }
+/* Under an overdue reminder: the next item and its own source, on one more row. */
+.home-calendar-card[data-alpha-home-calendar-next="true"] { grid-template-rows:auto minmax(0,1fr) auto auto; }
+.home-calendar-meta.home-calendar-next { flex-direction:column; align-items:flex-start; gap:2px; }
+.home-calendar-next-text { max-width:100%; font-size:14px; font-weight:500; line-height:1.25; overflow-wrap:anywhere; }
+.home-calendar-next .home-calendar-source { flex:0 0 auto; max-width:100%; text-align:left; }
 /* Which calendar the item came from, beside the date. */
 .home-calendar-origin { flex:1 1 0; min-width:0; margin:0 8px; font-size:12px; font-weight:500; line-height:1.25; color:rgba(255,255,255,.85); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; }
 /* Latest retained brief: present only when a result is retained for this connection. */
