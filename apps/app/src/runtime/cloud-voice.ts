@@ -44,7 +44,9 @@ export function createCloudVoice() {
     async stopRecording() { check(); const result = await native.stopRecording(); check(); return result; },
     async transcribeRecording(input: { recordingId: string; requestId: string }) {
       check(); const result = await native.transcribeRecording({ ...input, environment, credentialId }); check();
-      if (typeof result.text !== 'string' || !result.text.trim() || result.local !== false) throw new Error('Eliza Cloud returned no usable transcript.');
+      if (typeof result.text !== 'string' || result.local !== false) throw new Error('Eliza Cloud returned no usable transcript.');
+      // An empty transcript is silence, not a microphone, account or connection failure.
+      if (!result.text.trim()) throw Object.assign(new Error('Eliza Cloud heard no speech in this recording.'), { code: 'no-speech' });
       return result;
     },
     cancel: (input: { requestId: string }) => native.cancel(input),

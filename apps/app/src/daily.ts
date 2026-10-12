@@ -2,6 +2,7 @@ import type {ReminderCreateOperation,ReminderCreateResult} from '../../../.eliza
 import type {ReminderOperation,ReminderTarget,ReminderResult} from '../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import { registerPlugin } from './platform-plugins';
 import { type PluginListenerHandle } from '@capacitor/core';
+import type { ClockDay } from './runtime/clock-contract';
 export type Action =
   | "camera"
   | "photos"
@@ -49,11 +50,12 @@ export type NativeResult = {
   mimeType?: string;
   transcript?: string;
 };
-export type ClockRequest = {action:'set';hour:number;minute:number;label:string;timeZone?:string;reviewed:true} | {action:'show'|'dismiss';reviewed:true} | {action:'snooze';snoozeMinutes:number;reviewed:true};
+/** `days` (Sunday=1 … Saturday=7, ascending) is sent only when surfaceInfo reports clockRepeatDaysVersion >= 1. */
+export type ClockRequest = {action:'set';hour:number;minute:number;label:string;timeZone?:string;reviewed:true;days?:ClockDay[]} | {action:'show'|'dismiss';reviewed:true} | {action:'snooze';snoozeMinutes:number;reviewed:true};
 export type ClockResult = {action:ClockRequest['action'];status:'opened'|'unavailable'|'denied'|'failed'|'unknown';message:string};
 export const DailyApps = registerPlugin<{
   clockHandoff(options:ClockRequest):Promise<ClockResult>;
-  surfaceInfo(): Promise<{ developmentBuild: boolean; assistant: boolean; reminderCreationVersion?:1; reminderTapVersion?:1; reminderTimingVersion?: 2; bottomInset?: number; topInset?: number }>;
+  surfaceInfo(): Promise<{ developmentBuild: boolean; assistant: boolean; reminderCreationVersion?:1; reminderTapVersion?:1; reminderTimingVersion?: 2; clockRepeatDaysVersion?: number; bottomInset?: number; topInset?: number }>;
   pendingReminderTap():Promise<{token?:string;target?:ReminderTarget;retained?:boolean}>;
   consumeReminderTap(options:{token:string}):Promise<void>;
   dismissReminderTap(options:{token:string}):Promise<void>;

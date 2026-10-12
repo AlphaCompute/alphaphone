@@ -1,6 +1,7 @@
 export type ScanEventRepeat='none'|'daily'|'weekdays'|'weekly';
 export type ScanEventFields={title:string;date:string;time:string;minutes:number;location:string};
-export type ScanEventDraft={id:null;title:string;off:number;t:number;d:number;where:string;notes:string;cal:'native:local';who:never[];repeat:ScanEventRepeat;alert:null;video:false;allDay?:true};
+/** `creationId` makes Calendar retain the form under review (calendar-form-draft-adapter) and binds its one Save. */
+export type ScanEventDraft={id:null;creationId:string;separateCreation:false;title:string;off:number;t:number;d:number;where:string;notes:string;cal:'native:local';who:never[];repeat:ScanEventRepeat;alert:null;video:false;allDay?:true};
 /** Reference instant and device zone for inference. Without it, suggestions stay strictly explicit. */
 export type ScanEventContext={now:Date;timeZone?:string};
 /** Suggestions plus what was inferred. Every inference is disclosed; nothing here authorizes saving. */
@@ -179,6 +180,9 @@ function analyze(text:string,context?:ScanEventContext):ScanEventSuggestion{
  }
  const timeClear=time!=='';
  const timeLike=/\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?(?![a-z])|\b\d{1,2}:\d{2}\b|\b(?:noon|midnight)\b|\bat\s+\d/i.test(text);
+ // A printed time left blank for another reason (e.g. an unclear date) still names an ambiguous zone.
+ const zoneNote=zones.ambiguous.length?`Time zone “${zones.ambiguous[0]}” is ambiguous. Enter the local start time yourself.`:'';
+ if(context&&!timeClear&&timeLike&&zoneNote&&!disclosures.includes(zoneNote))disclosures.push(zoneNote);
  const allDay=!!context&&dateClear&&!timeLike&&!timeLines.length;
  if(allDay)disclosures.push('No time is printed, so an all-day event is suggested.');
  const recurrence=context?recurrenceHint(text,disclosures):null;
@@ -197,7 +201,7 @@ export function scanAllDayEventDraft(fields:Pick<ScanEventFields,'title'|'date'|
  const date=/^(\d{4})-(\d{2})-(\d{2})$/.exec(fields.date);if(!date)throw Error('Choose the event date.');
  const [year,month,day]=date.slice(1).map(Number);if(year<1970||year>2100)throw Error('Choose a year from 1970 through 2100.');
  const civil=new Date(Date.UTC(year,month-1,day));if(civil.getUTCFullYear()!==year||civil.getUTCMonth()!==month-1||civil.getUTCDate()!==day)throw Error('Choose a valid date.');
- return {id:null,title:fields.title.trim(),off:(civil.getTime()-Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()))/86400000,t:0,d:24,where:fields.location.trim(),notes:text,cal:'native:local',who:[],repeat,alert:null,video:false,allDay:true};
+ return {id:null,creationId:crypto.randomUUID(),separateCreation:false,title:fields.title.trim(),off:(civil.getTime()-Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()))/86400000,t:0,d:24,where:fields.location.trim(),notes:text,cal:'native:local',who:[],repeat,alert:null,video:false,allDay:true};
 }
 /** Builds a Calendar draft from reviewed fields. It never saves: Calendar's own Save remains the only write. */
 export function scanEventDraft(fields:ScanEventFields&{allDay?:boolean;repeat?:ScanEventRepeat},text:string,now=new Date()):ScanEventDraft{
@@ -212,5 +216,5 @@ export function scanEventDraft(fields:ScanEventFields&{allDay?:boolean;repeat?:S
  if(!Number.isInteger(fields.minutes)||fields.minutes<15||fields.minutes>1440)throw Error('Choose a duration from 15 to 1440 minutes.');
  const hour=Number(time[1]),minute=Number(time[2]),local=new Date(year,month-1,day,hour,minute);
  if(local.getFullYear()!==year||local.getMonth()!==month-1||local.getDate()!==day||local.getHours()!==hour||local.getMinutes()!==minute)throw Error('That local time does not exist because the clocks change. Choose another time.');
- return {id:null,title:fields.title.trim(),off:(civil.getTime()-Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()))/86400000,t:hour+minute/60,d:fields.minutes/60,where:fields.location.trim(),notes:text,cal:'native:local',who:[],repeat,alert:null,video:false};
+ return {id:null,creationId:crypto.randomUUID(),separateCreation:false,title:fields.title.trim(),off:(civil.getTime()-Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()))/86400000,t:hour+minute/60,d:fields.minutes/60,where:fields.location.trim(),notes:text,cal:'native:local',who:[],repeat,alert:null,video:false};
 }
