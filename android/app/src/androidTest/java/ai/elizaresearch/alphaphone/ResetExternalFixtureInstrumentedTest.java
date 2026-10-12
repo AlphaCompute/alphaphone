@@ -80,7 +80,7 @@ public final class ResetExternalFixtureInstrumentedTest {
    assertFalse("Owned notification cancelled",java.util.Arrays.stream(notices.getActiveNotifications()).anyMatch(n->n.getId()==NOTICE));assertFalse("Reset marker erased",AlphaDataReset.pending(c));
    // Shared-media permissions may be revoked by reset. The external runner owns
    // URI/name/hash verification and cleanup; never infer deletion from denied access.
-   assertNotNull("External media oracle must survive outside app data",args.getString("resetFixtureMediaUri"));
+   assertTrue("External media oracle identifier must survive outside app data",args.getString("resetFixtureMediaId", "").matches("[1-9][0-9]*"));
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
     AppNavigation.liveMode();assertEquals("null",WebViewTestDriver.evaluate("localStorage.getItem('alpha.connection.selection.v1')"));
    }
