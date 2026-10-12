@@ -4,28 +4,28 @@ import {exercise} from './fixtures/isolated-native-campaign.mjs';
 const run=mode=>exercise(mode,'workflow');
 const approvalClass='ai.elizaresearch.alphaphone.WorkflowApprovalNoticeInstrumentedTest';
 test('workflow campaign runs every exact case of both phases in disposable users and scopes permissions',()=>{
- const r=run('pass');assert.equal(r.code,0,r.stderr);assert.equal(r.record.results.length,14);
+ const r=run('pass');assert.equal(r.code,0,r.stderr);assert.equal(r.record.results.length,16);
  assert.ok(r.record.results.every(row=>row.passed&&row.userLifecycle.removed));
  assert.equal(r.state.user,'0');assert.equal(r.state.created,false);assert.deepEqual(r.state.files,{});
- const calls=r.commands.filter(a=>a.includes('instrument'));assert.equal(calls.length,14);
- assert.equal(new Set(calls.map(a=>a[a.indexOf('class')+1])).size,7);
+ const calls=r.commands.filter(a=>a.includes('instrument'));assert.equal(calls.length,16);
+ assert.equal(new Set(calls.map(a=>a[a.indexOf('class')+1])).size,8);
  const permissions=r.commands.filter(a=>a.includes('grant')||a.includes('revoke')||a.includes('clear-permission-flags'));
- // Ten workflow cases and four approval-notice cases scope Calendar (4 commands each); the two OS-posting cases also grant notifications.
- assert.equal(permissions.length,60);assert.ok(permissions.every(a=>a[a.indexOf('--user')+1]==='10'));
+ // Ten workflow cases and six approval-notice cases scope Calendar (4 commands each); the four OS-posting cases also grant notifications.
+ assert.equal(permissions.length,72);assert.ok(permissions.every(a=>a[a.indexOf('--user')+1]==='10'));
  approvalNoticePhase(r);
 });
 // Same full campaign run as above: the approval-notice phase, its gate, grant and report.
 function approvalNoticePhase(r){
  const calls=r.commands.filter(a=>a.includes('instrument')&&a[a.indexOf('class')+1].startsWith(approvalClass+'#'));
- assert.deepEqual(calls.map(a=>a[a.indexOf('class')+1].split('#')[1]),['approvalAndStepBuildersAreRedactedAndExpire','approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision','approvalAndStepBuildersAreRedactedAndExpire','approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision']);
+ assert.deepEqual(calls.map(a=>a[a.indexOf('class')+1].split('#')[1]),['approvalAndStepBuildersAreRedactedAndExpire','approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision','approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval','approvalAndStepBuildersAreRedactedAndExpire','approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision','approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval']);
  assert.ok(calls.every(a=>a[a.indexOf('workflowApprovalNotice')+1]==='1'&&a[a.indexOf('--user')+1]==='10'));
- // Only the OS-posting tap case receives POST_NOTIFICATIONS, once per distribution, before its instrumentation.
+ // Only the two OS-posting tap cases receive POST_NOTIFICATIONS, once each per distribution, before their instrumentation.
  const grants=r.commands.map((a,index)=>({a,index})).filter(({a})=>a.includes('grant')&&a.includes('android.permission.POST_NOTIFICATIONS'));
- assert.equal(grants.length,2);assert.ok(!r.commands.some(a=>a.includes('revoke')&&a.includes('android.permission.POST_NOTIFICATIONS')));
- for(const {index} of grants){const next=r.commands.slice(index).find(a=>a.includes('instrument'));assert.equal(next[next.indexOf('class')+1],approvalClass+'#approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision');}
+ assert.equal(grants.length,4);assert.ok(!r.commands.some(a=>a.includes('revoke')&&a.includes('android.permission.POST_NOTIFICATIONS')));
+ assert.deepEqual(grants.map(({index})=>{const next=r.commands.slice(index).find(a=>a.includes('instrument'));return next[next.indexOf('class')+1].split('#')[1];}),['approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision','approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval','approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision','approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval']);
  // The report names each phase, its coverage on both distributions and the exact archived pair.
  const phase=r.record.phases['approval-notice'];
- assert.deepEqual([phase.expected,phase.passed,phase.complete],[4,4,true]);
+ assert.deepEqual([phase.expected,phase.passed,phase.complete],[6,6,true]);
  assert.deepEqual([...new Set(phase.cases.map(row=>row.variant))],['standalone','launcher']);assert.ok(phase.cases.every(row=>row.status==='passed'));
  assert.deepEqual([r.record.phases.workflow.expected,r.record.phases.workflow.passed,r.record.phases.workflow.complete],[10,10,true]);
  assert.equal(r.record.passed,true);assert.equal(r.record.failure,undefined);
