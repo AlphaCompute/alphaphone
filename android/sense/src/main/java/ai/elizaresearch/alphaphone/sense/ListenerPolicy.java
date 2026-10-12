@@ -24,7 +24,7 @@ public final class ListenerPolicy {
   PERMISSION_REQUIRED,
   /**
    * The listener's own indicator could not be shown (notification permission denied, the app's
-   * notifications or the listening channel blocked or minimised, or hidden from the lock screen).
+   * notifications or the listening channel blocked, lowered to silent or minimised, or hidden from the lock screen).
    * Listening is never armed without its visible indicator.
    */
   NOTIFICATIONS_REQUIRED,
@@ -150,16 +150,18 @@ public final class ListenerPolicy {
  }
 
  /** Android NotificationManager importance values (copied so this class stays Android-free). */
- public static final int IMPORTANCE_NONE=0,IMPORTANCE_MIN=1,IMPORTANCE_LOW=2;
+ public static final int IMPORTANCE_NONE=0,IMPORTANCE_MIN=1,IMPORTANCE_LOW=2,IMPORTANCE_DEFAULT=3;
 
  /**
   * Whether the listener's indicator notification can be seen in the shade and on the lock screen:
   * POST_NOTIFICATIONS granted, the app's notifications enabled, the listening channel at least
-  * LOW importance (MIN is collapsed and not shown on the lock screen) and not set to hide on the
-  * lock screen. Anything else holds listening in {@link State#NOTIFICATIONS_REQUIRED}.
+  * DEFAULT importance and not set to hide on the lock screen. A channel the user lowered to LOW is
+  * a "silent" notification, which the lock screen hides when silent notifications are hidden, and
+  * MIN is collapsed, so both count as not visible. Anything else holds listening in
+  * {@link State#NOTIFICATIONS_REQUIRED}.
   */
  public static boolean notificationsVisible(boolean postGranted,boolean appEnabled,int channelImportance,boolean channelHiddenOnLockScreen){
-  return postGranted&&appEnabled&&channelImportance>=IMPORTANCE_LOW&&!channelHiddenOnLockScreen;
+  return postGranted&&appEnabled&&channelImportance>=IMPORTANCE_DEFAULT&&!channelHiddenOnLockScreen;
  }
 
  /** The consent screen records consent only when both the microphone and the indicator are allowed. */
