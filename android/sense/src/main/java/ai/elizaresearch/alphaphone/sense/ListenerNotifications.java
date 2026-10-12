@@ -1,11 +1,13 @@
 package ai.elizaresearch.alphaphone.sense;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.drawable.Icon;
 
 /**
@@ -17,13 +19,21 @@ import android.graphics.drawable.Icon;
  */
 final class ListenerNotifications {
  private ListenerNotifications(){}
- static final String CHANNEL_ACTIVE="listening",CHANNEL_STATUS="listener-status";
+ /**
+  * The indicator channel is DEFAULT importance without sound or vibration: LOW counts as a silent
+  * notification, which the lock screen hides when "hide silent notifications" is on. Channel
+  * importance cannot be raised after creation, so the earlier LOW "listening" channel is replaced.
+  */
+ static final String CHANNEL_ACTIVE="listening-indicator",CHANNEL_STATUS="listener-status",CHANNEL_RETIRED="listening";
  static final int ACTIVE_ID=1,STATUS_ID=2;
 
  static void channels(Context context){
   NotificationManager manager=context.getSystemService(NotificationManager.class);
-  NotificationChannel active=new NotificationChannel(CHANNEL_ACTIVE,"Always-on listening",NotificationManager.IMPORTANCE_LOW);
-  active.setDescription("Shown whenever always-on listening is on or paused.");
+  manager.deleteNotificationChannel(CHANNEL_RETIRED);
+  NotificationChannel active=new NotificationChannel(CHANNEL_ACTIVE,"Always-on listening",NotificationManager.IMPORTANCE_DEFAULT);
+  active.setDescription("Shown whenever always-on listening is on or paused. Blocking it turns listening off.");
+  active.setSound(null,null);
+  active.enableVibration(false);
   active.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
   active.setShowBadge(false);
   NotificationChannel status=new NotificationChannel(CHANNEL_STATUS,"Listening status",NotificationManager.IMPORTANCE_LOW);
@@ -60,11 +70,28 @@ final class ListenerNotifications {
    .setOnlyAlertOnce(true)
    .setShowWhen(false)
    .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-   .setContentIntent(settings(context));
+   .setContentIntent(settings(context))
+   .setDeleteIntent(action(context,ListenerActionReceiver.DISMISSED,4));
   if(state==ListenerPolicy.State.PAUSED_USER)builder.addAction(button(context,"Resume",ListenerActionReceiver.RESUME,3,ListenerPolicy.resumeRequiresUnlock()));
   else builder.addAction(button(context,"Pause",ListenerActionReceiver.PAUSE,1,false));
   builder.addAction(button(context,"Turn off",ListenerActionReceiver.STOP,2,false));
   return builder.build();
+ }
+
+ /**
+  * Whether the listening indicator would be visible in the shade and on the lock screen. Creates
+  * the channels first so a fresh install is judged on the channel it will post to.
+  */
+ static boolean indicatorVisible(Context context){
+  NotificationManager manager=context.getSystemService(NotificationManager.class);
+  if(manager==null)return false;
+  try{
+   channels(context);
+   NotificationChannel channel=manager.getNotificationChannel(CHANNEL_ACTIVE);
+   return ListenerPolicy.notificationsVisible(context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED,
+    manager.areNotificationsEnabled(),channel==null?NotificationManager.IMPORTANCE_NONE:channel.getImportance(),
+    channel!=null&&channel.getLockscreenVisibility()==Notification.VISIBILITY_SECRET);
+  }catch(RuntimeException unavailable){return false;}
  }
 
  /** Posts or clears the attention notification for states that capture nothing. */
@@ -76,7 +103,8 @@ final class ListenerNotifications {
   Notification.Builder builder=new Notification.Builder(context,CHANNEL_STATUS)
    .setSmallIcon(R.drawable.ic_listening)
    .setContentTitle(ListenerPolicy.label(state))
-   .setContentText(state==ListenerPolicy.State.WAITING_FOR_UNLOCK?"The microphone stays off until you unlock this phone.":"The microphone is off. Open listening settings to turn it back on.")
+   .setContentText(state==ListenerPolicy.State.NOTIFICATIONS_REQUIRED?"Listening is off until its notification is allowed. Open listening settings."
+    :state==ListenerPolicy.State.WAITING_FOR_UNLOCK?"The microphone stays off until you unlock this phone.":"The microphone is off. Open listening settings to turn it back on.")
    .setVisibility(Notification.VISIBILITY_PUBLIC)
    .setOnlyAlertOnce(true)
    .setContentIntent(settings(context));

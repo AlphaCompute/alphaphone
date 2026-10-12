@@ -9,11 +9,15 @@ public final class ListenerActionReceiver extends BroadcastReceiver {
  static final String PAUSE="ai.elizaresearch.alphaphone.sense.action.PAUSE";
  static final String RESUME="ai.elizaresearch.alphaphone.sense.action.RESUME";
  static final String STOP="ai.elizaresearch.alphaphone.sense.action.STOP";
+ /** The user dismissed the listening notification (possible for foreground services since Android 14). */
+ static final String DISMISSED="ai.elizaresearch.alphaphone.sense.action.DISMISSED";
 
  @Override public void onReceive(Context context,Intent intent){
   String action=intent==null?null:intent.getAction();
   ListenerStore store=new ListenerStore(context);
-  if(PAUSE.equals(action))store.pause(ListenerPolicy.PAUSE_UNTIL_RESUMED);
+  // Dismissing the indicator is treated as a pause: listening never continues without it. The
+  // paused service re-posts its notification, so Resume stays one tap away.
+  if(PAUSE.equals(action)||DISMISSED.equals(action))store.pause(ListenerPolicy.PAUSE_UNTIL_RESUMED);
   else if(RESUME.equals(action))store.resume();
   else if(STOP.equals(action))store.setEnabled(false);
   else return;

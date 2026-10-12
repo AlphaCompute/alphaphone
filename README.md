@@ -397,8 +397,10 @@ and inherit its `product.mk` from the selected product. See [build instructions]
 for signing, default-home policy and the full image verification boundary.
 
 The opt-in always-on listener ships only in the image. Build it with `./gradlew :sense:assembleRelease`
-(in `android/`, same signing variables as the APKs) and pass it with `--listener-apk FILE`; production
-staging requires it. `node scripts/verify-aosp-listener.mjs --serial SERIAL --user 0` is a read-only
+(in `android/`, same signing variables as the APKs, after the speech model bundle is prepared) and pass
+it with `--listener-apk FILE`. Production staging requires it together with `--listener-descriptor FILE`, an
+independently reviewed JSON record of `packageName`, `apkSha256` and `certificateSha256`, and refuses a
+listener APK without the qualified speech bundle. `node scripts/verify-aosp-listener.mjs --serial SERIAL --user 0` is a read-only
 check of a booted image. See [ADR 0001](docs/adr/0001-privileged-listener.md) for the privilege
 boundary and the remaining device gates.
 

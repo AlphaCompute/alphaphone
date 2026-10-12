@@ -72,6 +72,21 @@ test('audio and transcripts stay in RAM and invocation carries no content',()=>{
  assert.match(notifications,/VISIBILITY_PUBLIC/);
  assert.match(notifications,/"Pause",ListenerActionReceiver\.PAUSE,1,false/,'pause works on the lock screen');
  assert.match(notifications,/"Resume",ListenerActionReceiver\.RESUME,3,ListenerPolicy\.resumeRequiresUnlock\(\)/,'resume needs unlock');
+ assert.match(notifications,/setDeleteIntent\(action\(context,ListenerActionReceiver\.DISMISSED/,'dismissing the indicator is handled');
+ assert.match(notifications,/IMPORTANCE_DEFAULT\);/,'the indicator channel is not a silent (LOW) channel the lock screen can hide');
+ assert.match(readFileSync(join(source,'ListenerActionReceiver.java'),'utf8'),/PAUSE\.equals\(action\)\|\|DISMISSED\.equals\(action\)/,'dismissal pauses');
+ const listener=readFileSync(join(source,'Listener.java'),'utf8');
+ assert.match(listener,/in\.notificationsVisible=ListenerNotifications\.indicatorVisible\(context\)/);
+ assert.match(listener,/in\.userForeground=/);
+ assert.match(listener,/SystemClock\.elapsedRealtime\(\)/,'pauses use the monotonic clock');
+ const consent=readFileSync(join(source,'ConsentActivity.java'),'utf8');
+ assert.match(consent,/consentPermissionsGranted\(/,'consent needs microphone and notifications');
+ assert.doesNotMatch(consent,/System\.currentTimeMillis\(\),(15|60)/,'no wall-clock pauses');
+ const app=readFileSync(join(source,'SenseApplication.java'),'utf8');
+ for(const action of ['ACTION_USER_FOREGROUND','ACTION_USER_BACKGROUND','ACTION_SHUTDOWN','ACTION_APP_BLOCK_STATE_CHANGED','ACTION_NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED'])assert.match(app,new RegExp(action),action);
+ assert.match(service,/ListenerPolicy\.callMode\(mode\)/,'ringing pauses');
+ assert.match(service,/ListenerPolicy\.playbackSuppressesWake\(/,'speech-capable playback suppresses wake');
+ assert.match(service,/ListenerPolicy\.mayInvokeAssistant\(keyguard==null\|\|keyguard\.isKeyguardLocked\(\)\)/,'never invokes behind the keyguard');
 });
 
 test('the listener is an image-only APK, never part of the standalone or launcher APK',()=>{
@@ -97,6 +112,11 @@ test('Alpha reports the invocation origin only from Android caller identity and 
  assert.match(activity,/getLaunchedFromPackage\(\)/);
  assert.match(activity,/caller\.getPackage\(\)/);
  assert.match(activity,/checkSignatures\(getPackageName\(\), caller\)/);
+ assert.match(activity,/state == null && Build\.VERSION\.SDK_INT/,'a recreated activity is not a new invocation');
+ assert.match(activity,/invocation = AssistInvocation\.ASSIST;\s*return origin;/,'the listener origin is consumed on read');
+ const agentPlugin=read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java');
+ assert.match(agentPlugin,/@PluginMethod public void takeInvocation/);
+ assert.doesNotMatch(agentPlugin.slice(agentPlugin.indexOf('void launchSurface'),agentPlugin.indexOf('/** How this assistant surface')),/takeInvocation\(\)/,'launchSurface does not consume the origin');
  assert.doesNotMatch(activity,/getStringExtra|getExtras|getData\(\)|getClipData/,'caller content is never read');
  const plugin=read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaListenerPlugin.java');
  assert.match(plugin,/@CapacitorPlugin\(name="AlphaListener"\)/);

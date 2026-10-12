@@ -6,7 +6,7 @@ export type { AssistantInvocation, ListenerState, ListenerStatus } from './alway
 
 type Reply = Promise<Record<string, unknown>>;
 const listener = registerPlugin<{ status(): Reply; pause(): Reply; turnOff(): Reply; openSettings(): Promise<{ opened?: unknown }> }>('AlphaListener');
-const agent = registerPlugin<{ launchSurface?(): Reply }>('Agent');
+const agent = registerPlugin<{ takeInvocation?(): Reply }>('Agent');
 
 const nativeListener = () => Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('AlphaListener');
 async function ask(method: 'status' | 'pause' | 'turnOff'): Promise<ListenerStatus> {
@@ -27,8 +27,12 @@ export async function openListenerSettings(): Promise<boolean> {
   try { return (await listener.openSettings()).opened === true; } catch { return false; }
 }
 
-/** 'listener' when the wake phrase opened the assistant surface, 'assist' for other assist entries, otherwise null. */
+/**
+ * 'listener' when the wake phrase opened the assistant surface, 'assist' for other assist entries,
+ * otherwise null. One-shot: the native side clears the listener origin when it is read, so later
+ * calls for the same launch return 'assist'.
+ */
 export async function assistantInvocation(): Promise<AssistantInvocation> {
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('Agent')) return null;
-  try { return parseAssistantInvocation(await agent.launchSurface?.()); } catch { return null; }
+  try { return parseAssistantInvocation(await agent.takeInvocation?.()); } catch { return null; }
 }

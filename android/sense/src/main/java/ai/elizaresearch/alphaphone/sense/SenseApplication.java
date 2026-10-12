@@ -2,6 +2,7 @@ package ai.elizaresearch.alphaphone.sense;
 
 import android.Manifest;
 import android.app.Application;
+import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -10,8 +11,9 @@ import android.content.pm.PackageManager;
 
 /**
  * The image starts this persistent, direct-boot-aware process at boot and restarts it after a
- * crash. Each start counts an unclean exit when a capture session was left open (the crash-loop
- * breaker), then converges on policy: off without consent, waiting before first unlock, and
+ * crash. Each start counts an unclean exit when a capture session was left open in this boot by
+ * this install (the crash-loop breaker; shutdowns, reboots and package updates do not count), then
+ * converges on policy: off without consent, waiting before first unlock, and
  * listening only after unlock with consent and permission.
  */
 public final class SenseApplication extends Application {
@@ -19,9 +21,21 @@ public final class SenseApplication extends Application {
   super.onCreate();
   boolean granted=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
   new ListenerStore(this).recordProcessStart(System.currentTimeMillis(),granted);
+  IntentFilter changes=new IntentFilter(Intent.ACTION_USER_UNLOCKED);
+  // User switches: capture stops while another user is in the foreground.
+  changes.addAction(Intent.ACTION_USER_FOREGROUND);
+  changes.addAction(Intent.ACTION_USER_BACKGROUND);
+  // The listening notification is the indicator; blocking it turns listening off at once.
+  changes.addAction(NotificationManager.ACTION_APP_BLOCK_STATE_CHANGED);
+  changes.addAction(NotificationManager.ACTION_NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED);
+  changes.addAction(Intent.ACTION_SHUTDOWN);
   registerReceiver(new BroadcastReceiver(){
-   @Override public void onReceive(Context context,Intent intent){Listener.refresh(context);}
-  },new IntentFilter(Intent.ACTION_USER_UNLOCKED),Context.RECEIVER_NOT_EXPORTED);
+   @Override public void onReceive(Context context,Intent intent){
+    // A clean shutdown is not a crash: close the open-session marker before the process is killed.
+    if(Intent.ACTION_SHUTDOWN.equals(intent.getAction())){new ListenerStore(context).setSessionOpen(false);return;}
+    Listener.refresh(context);
+   }
+  },changes,Context.RECEIVER_NOT_EXPORTED);
   Listener.refresh(this);
  }
 }

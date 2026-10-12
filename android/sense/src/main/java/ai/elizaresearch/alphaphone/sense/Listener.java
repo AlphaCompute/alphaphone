@@ -5,6 +5,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.os.SystemClock;
 import android.os.UserManager;
 import android.service.quicksettings.TileService;
 
@@ -27,9 +28,11 @@ final class Listener {
   in.consentVersion=store.consentVersion();
   in.enabled=store.enabled();
   in.recordAudioGranted=context.checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
+  in.notificationsVisible=ListenerNotifications.indicatorVisible(context);
   in.crashLoopTripped=store.crashLoopTripped();
   UserManager users=context.getSystemService(UserManager.class);
   in.userUnlocked=users!=null&&users.isUserUnlocked();
+  in.userForeground=userForeground(users);
   in.speechUnavailable=speechUnavailable;
   in.pausedUntilMs=store.pausedUntil();
   in.inCall=inCall;
@@ -38,7 +41,13 @@ final class Listener {
   return in;
  }
 
- static ListenerPolicy.State state(Context context){return ListenerPolicy.decide(inputs(context),System.currentTimeMillis());}
+ /** The listener's user (the primary user) is the one using the phone. Unknown counts as not. */
+ private static boolean userForeground(UserManager users){
+  try{return users!=null&&users.isUserForeground();}catch(RuntimeException unavailable){return false;}
+ }
+
+ /** Pause deadlines are on the monotonic clock, so a wall-clock change cannot end a pause early. */
+ static ListenerPolicy.State state(Context context){return ListenerPolicy.decide(inputs(context),SystemClock.elapsedRealtime());}
 
  static synchronized void refresh(Context context){
   Context app=context.getApplicationContext();

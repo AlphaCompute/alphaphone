@@ -2,6 +2,7 @@ package ai.elizaresearch.alphaphone.sense;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.KeyguardManager;
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -32,9 +33,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * audio buffer is zeroed after use and transcripts are dropped after classification. Nothing is
  * written to storage and this package has no network permission.
  *
- * Calls (audio mode), another app taking the microphone and the microphone privacy toggle (both
- * reported as a silenced recording) pause analysis. Assistant/voice playback suppresses wake
- * detection so the assistant's own speech does not invoke it.
+ * Ringing and calls (audio mode), another app taking the microphone and the microphone privacy
+ * toggle (both reported as a silenced recording) pause analysis. Speech-capable playback
+ * suppresses wake detection so the assistant's own speech or media does not invoke it, and the
+ * wake phrase never opens Alpha while the phone is locked.
  */
 public final class ListeningService extends Service {
  private static final String TAG="AlphaListener";
@@ -55,8 +57,8 @@ public final class ListeningService extends Service {
  private final Runnable reapply=this::apply;
 
  private final AudioManager.OnModeChangedListener modes=mode->{
-  Listener.inCall=mode==AudioManager.MODE_IN_CALL||mode==AudioManager.MODE_IN_COMMUNICATION||mode==AudioManager.MODE_CALL_SCREENING
-   ||mode==AudioManager.MODE_CALL_REDIRECT||mode==AudioManager.MODE_COMMUNICATION_REDIRECT;
+  // Ringing counts: the listener stops transcribing as soon as the phone rings (see ListenerPolicy.callMode).
+  Listener.inCall=ListenerPolicy.callMode(mode);
   main.post(reapply);
  };
 
@@ -137,7 +139,7 @@ public final class ListeningService extends Service {
   ListenerNotifications.showStatus(this,state);
   analyse=ListenerPolicy.processesAudio(state);
   if(ListenerPolicy.holdsMicrophone(state))startCapture();else stopCapture();
-  long until=new ListenerStore(this).pausedUntil(),now=System.currentTimeMillis();
+  long until=new ListenerStore(this).pausedUntil(),now=SystemClock.elapsedRealtime();
   if(state==ListenerPolicy.State.PAUSED_USER&&until!=ListenerPolicy.PAUSE_UNTIL_RESUMED)main.postDelayed(reapply,Math.max(1000,until-now));
   if(analyse)recognizer.execute(this::loadEngine);
  }
@@ -243,18 +245,25 @@ public final class ListeningService extends Service {
   if(action==WakePhrase.Action.PAUSE_LISTENING){
    new ListenerStore(this).pause(ListenerPolicy.PAUSE_UNTIL_RESUMED);
    Listener.refresh(this);
-  }else if(action==WakePhrase.Action.INVOKE&&!AssistantInvocation.start(this))Log.w(TAG,"Assistant invocation refused");
+  }else if(action==WakePhrase.Action.INVOKE){
+   KeyguardManager keyguard=getSystemService(KeyguardManager.class);
+   // Never open Alpha behind the keyguard; unknown keyguard state counts as locked.
+   if(!ListenerPolicy.mayInvokeAssistant(keyguard==null||keyguard.isKeyguardLocked()))Log.i(TAG,"Wake phrase ignored while locked");
+   else if(!AssistantInvocation.start(this))Log.w(TAG,"Assistant invocation refused");
+  }
  }
 
  /**
-  * Assistant speech, voice calls and accessibility speech suppress wake detection while they play
-  * and briefly afterwards (the guard timestamp is the last moment such playback was active).
+  * Any playback that can carry speech (media, which includes Alpha's own WebView voice, assistant,
+  * accessibility, navigation, games, calls or an unknown usage) suppresses wake detection while it
+  * plays and briefly afterwards, so a speaker saying "Alpha" cannot invoke the assistant. Only
+  * short non-speech system sounds do not (see {@link ListenerPolicy#playbackSuppressesWake}).
   */
  private void updatePlayback(List<AudioPlaybackConfiguration> configs){
   boolean speaking=false;
   for(AudioPlaybackConfiguration config:configs){
-   int usage=config.getAudioAttributes().getUsage();
-   if(usage==AudioAttributes.USAGE_ASSISTANT||usage==AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY||usage==AudioAttributes.USAGE_VOICE_COMMUNICATION)speaking=true;
+   AudioAttributes attributes=config.getAudioAttributes();
+   if(attributes==null||ListenerPolicy.playbackSuppressesWake(attributes.getUsage()))speaking=true;
   }
   if(speaking)playbackQuietSince=Long.MAX_VALUE-ECHO_GUARD_MS;
   else if(playbackQuietSince==Long.MAX_VALUE-ECHO_GUARD_MS)playbackQuietSince=SystemClock.elapsedRealtime();
