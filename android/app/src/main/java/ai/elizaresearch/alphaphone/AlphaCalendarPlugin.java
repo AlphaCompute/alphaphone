@@ -31,6 +31,10 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
  private static final class DeleteOwner{org.json.JSONObject owner,identity,operation;}
  private final java.util.concurrent.ConcurrentHashMap<String,DeleteOwner> deleteOwners=new java.util.concurrent.ConcurrentHashMap<>();
  private volatile boolean deletionRetired;
+ private CalendarScopedDeletionReview scopedDeletion;
+ private synchronized CalendarScopedDeletionReview scopedDeletion(){if(scopedDeletion==null)scopedDeletion=new CalendarScopedDeletionReview(this);return scopedDeletion;}
+ @PluginMethod public void inspectDeletion(PluginCall call){scopedDeletion().inspect(call);}
+ @PluginMethod public void removeScoped(PluginCall call){scopedDeletion().review(call,null);}
  @Override protected boolean deferReviewedDeletion(){return true;}
  @Override protected JSObject enqueueReviewedDeletion(org.json.JSONObject target,String operationId)throws Exception{
   NativeDeletionCoordinator coordinator=NativeDeletionCoordinator.get(getContext());DeleteOwner captured=operationId==null?null:deleteOwners.remove(operationId);
@@ -51,11 +55,12 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
   try{deleteOwnerWorker.execute(()->{try{
    ticket.owner=NativeDeletionCoordinator.get(getContext()).agentOwner();ticket.identity=call.getObject("journalIdentity");ticket.operation=new org.json.JSONObject(operation.toString());
    NativeDeletionClaim.check(AlphaActionJournal.get(getContext()),ticket.identity,id,ticket.operation,ticket.owner,false);
-   getActivity().runOnUiThread(()->{if(deletionRetired||deleteOwners.get(id)!=ticket||!foreground()){deleteOwners.remove(id,ticket);call.resolve(status("cancelled"));return;}super.executeAgent(owned);});
+   getActivity().runOnUiThread(()->{if(deletionRetired||deleteOwners.get(id)!=ticket||!foreground()){deleteOwners.remove(id,ticket);call.resolve(status("cancelled"));return;}if(operation.optJSONObject("target").optString("eventId").startsWith("delete2:"))scopedDeletion().review(owned,operation);else super.executeAgent(owned);});
   }catch(Exception unavailable){deleteOwners.remove(id,ticket);call.reject("Authenticated local agent is unavailable for deletion review.");}});}catch(java.util.concurrent.RejectedExecutionException retired){deleteOwners.remove(id,ticket);call.resolve(status("cancelled"));}
  }
  @Override @PluginMethod public void cancelAgent(PluginCall call){deleteOwners.remove(call.getString("operationId",""));super.cancelAgent(call);}
- @Override protected void handleOnDestroy(){deletionRetired=true;deleteOwners.clear();deleteOwnerWorker.shutdown();super.handleOnDestroy();}
+ @Override protected void handleOnPause(){if(scopedDeletion!=null)scopedDeletion.pause();super.handleOnPause();}
+ @Override protected void handleOnDestroy(){if(scopedDeletion!=null)scopedDeletion.destroy();deletionRetired=true;deleteOwners.clear();deleteOwnerWorker.shutdown();super.handleOnDestroy();}
 
  private boolean granted(){return getPermissionState("calendar")==PermissionState.GRANTED;}
  /** Capacitor's own permission request launches through the activity; see {@link LateLaunch}. */

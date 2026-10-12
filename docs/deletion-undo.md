@@ -39,10 +39,15 @@ installation slots are denied to renderer credential APIs.
 
 The browser supports local events and series through the existing recurrence
 model, and reminders. Native reminders use the shared persisted scheduler. Native
-Calendar admission currently retains the existing safe direct-write boundary:
-one local timed event without recurrence or attendees. Synced and recurring native
-events still use Android Calendar handoff; Alpha cannot promise an Undo window for
-an action performed by that external app. That portion of #414 remains open.
+Calendar has a scoped follow-up under qualification: explicit version-two identities
+bind one event, one original recurrence instance, or an entire series. The native
+review states scope and potential calendar-service/guest propagation. Source,
+family, attendee and reminder snapshots are asserted together before dispatch.
+Old numeric agent targets retain the previous local nonrecurring boundary. RRULE
+occurrences use Android's exception API; RDATE-only occurrence cancellation remains
+unavailable rather than widening to series deletion. Remote service completion,
+installed review/process-death behavior, and provider-specific recurrence behavior
+remain acceptance work; this is not a claim that #414 is complete.
 
 Focused host tests cover monotonic deadlines, process-restored journals, Undo/expiry
 races, original reminder occurrence retention, revision/owner refusal, immutable

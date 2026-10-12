@@ -67,7 +67,7 @@ final class NativeDeletionCoordinator {
   JSONObject time=clock();long elapsed=time.getLong("elapsed"),next=Long.MAX_VALUE;String continuity=time.getString("continuity");JSONArray events=calendar.list(continuity,elapsed);
   for(int i=0;i<events.length();i++){JSONObject row=events.getJSONObject(i);if(!"queued".equals(row.getString("phase")))continue;
    if("open".equals(row.getString("window")))next=Math.min(next,row.getJSONObject("deadline").getLong("expiresElapsed")-elapsed);
-   else if("expired".equals(row.getString("window")))calendar.expire(row.getString("id"),continuity,elapsed,(owner,target)->current(owner)?null:"owner-changed",target->ai.eliza.plugins.calendar.CalendarPlugin.deleteReviewedExact(context,AlphaCalendarPlugin.CONFIGURATION,target));
+   else if("expired".equals(row.getString("window")))calendar.expire(row.getString("id"),continuity,elapsed,(owner,target)->current(owner)?null:"owner-changed",target->target.optInt("version")==2?CalendarScopedDeletionReview.dispatch(context,target):ai.eliza.plugins.calendar.CalendarPlugin.deleteReviewedExact(context,AlphaCalendarPlugin.CONFIGURATION,target));
   }
   JSONArray reminders=AlphaReminders.engine(context).pendingDeletions();for(int i=0;i<reminders.length();i++){JSONObject row=reminders.getJSONObject(i);String phase=row.getString("phase");
    if(!"queued".equals(phase)){if("pending".equals(row.optString("effects"))&&current(new JSONObject(row.getString("owner"))))AlphaReminders.engine(context).settleDeletion(row.getString("id"),row.getString("owner"),time,"undone".equals(phase));continue;}
