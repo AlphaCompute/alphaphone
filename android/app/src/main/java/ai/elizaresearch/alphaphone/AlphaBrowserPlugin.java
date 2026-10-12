@@ -343,7 +343,7 @@ public class AlphaBrowserPlugin extends Plugin {
    // P-19: embedded sign-ins may use third-party cookies in normal tabs only.
    // Apply through the isolated profile and refuse a provider that ignores it.
    CookieManager tabCookies=WebViewCompat.getProfile(t.web).getCookieManager();
-   tabCookies.setAcceptThirdPartyCookies(t.web,!priv);
+   tabCookies.setAcceptThirdPartyCookies(t.web, !priv);
    if(tabCookies.acceptThirdPartyCookies(t.web)!=!priv)throw new IllegalStateException("Browser cookie isolation is unavailable");
    // Passkeys through Android Credential Manager, where this WebView provider supports browser mode.
    if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_AUTHENTICATION)){try{WebSettingsCompat.setWebAuthenticationSupport(settings,WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER);t.passkeys=WebSettingsCompat.getWebAuthenticationSupport(settings)==WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER;}catch(RuntimeException unsupported){t.passkeys=false;}}
