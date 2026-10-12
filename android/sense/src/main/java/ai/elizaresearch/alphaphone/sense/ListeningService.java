@@ -48,6 +48,7 @@ public final class ListeningService extends Service {
  private final ExecutorService recognizer=Executors.newSingleThreadExecutor(runnable->new Thread(runnable,"listener-asr"));
  private final AtomicBoolean recognizing=new AtomicBoolean();
  private volatile boolean analyse;
+ private volatile boolean destroyed;
  private volatile long playbackQuietSince=0;
  private volatile Thread capture;
  private volatile AudioRecord record;
@@ -107,6 +108,7 @@ public final class ListeningService extends Service {
  @Override public IBinder onBind(Intent intent){return null;}
 
  @Override public void onDestroy(){
+  destroyed=true;
   main.removeCallbacks(reapply);
   stopCapture();
   audio.removeOnModeChangedListener(modes);
@@ -120,6 +122,7 @@ public final class ListeningService extends Service {
 
  /** Re-evaluates policy and converges the service, notification and microphone on it. */
  private void apply(){
+  if(destroyed)return;
   Listener.epoch.invalidate();
   main.removeCallbacks(reapply);
   ListenerPolicy.State state=Listener.state(this);
@@ -148,9 +151,9 @@ public final class ListeningService extends Service {
 
  private void loadEngine(){
   synchronized(engineLock){
-   if(engine!=null)return;
-   try{engine=new ai.eliza.speech.LocalSpeechEngine(ai.eliza.speech.SpeechAssets.install(this));Listener.speechUnavailable=false;}
-   catch(Throwable failed){Log.w(TAG,"Local speech model unavailable: "+failed.getClass().getSimpleName());Listener.speechUnavailable=true;main.post(reapply);}
+   if(destroyed||engine!=null)return;
+   try{engine=new ai.eliza.speech.LocalSpeechEngine(ai.eliza.speech.SpeechAssets.install(this));if(!destroyed)Listener.speechUnavailable=false;}
+   catch(Throwable failed){Log.w(TAG,"Local speech model unavailable: "+failed.getClass().getSimpleName());if(!destroyed){Listener.speechUnavailable=true;main.post(reapply);}}
   }
  }
 
