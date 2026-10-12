@@ -180,3 +180,22 @@ test('a focus trap and focus inside hidden content are reported; a bounded order
   await load(page, `<div role="dialog" aria-label="Alarm"><input type="time" aria-label="Alarm time" value="07:00"><button>Save</button></div>`);
   expect(format(await auditTabOrder(page))).toEqual([]);
 });
+
+test('a focused control left under the floating composer is reported', async ({ page }) => {
+  await page.setViewportSize({ width: 400, height: 300 });
+  // A long page in a scroller that runs under the composer: focus scrolls the last row just into
+  // the scroller's own view, which is behind the composer.
+  const screen = (scroller: string) => `<div class="os" style="position:relative;width:400px;height:300px">
+    <div style="height:300px;overflow-y:auto;${scroller}"><div style="height:400px"></div><button>Delete account</button><div style="height:${scroller?68:4}px"></div></div>
+    <div data-alpha-layer="composer" style="position:absolute;left:0;right:0;bottom:0;height:60px;background:#eee"><button aria-label="Open conversation">A</button></div></div>`;
+  await load(page, screen(''));
+  const found = format(await auditTabOrder(page));
+  expect(rules(found)).toEqual(['focus-under-composer']);
+  expect(found.join()).toContain('Delete account');
+  // Scroll padding the height of the composer brings the focused control above it.
+  await load(page, screen('scroll-padding-bottom:64px'));
+  expect(format(await auditTabOrder(page))).toEqual([]);
+  // A composer that is retired (inert, under a dialog or sheet) covers nothing the user can reach.
+  await load(page, screen('').replace('data-alpha-layer="composer"', 'data-alpha-layer="composer" inert'));
+  expect(format(await auditTabOrder(page))).toEqual([]);
+});

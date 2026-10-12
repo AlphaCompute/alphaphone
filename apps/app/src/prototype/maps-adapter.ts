@@ -54,10 +54,13 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   async function returnToEvent(currentApi:Bag,origin:MapsEventOrigin,raw:unknown){
     if(returningToEvent)return;returningToEvent=true;
     try{
-      let exists=false;
-      try{const result=await calendarPlugin.list({begin:origin.begin-1,end:origin.begin+1});exists=result.status==='ready'&&mapsEventStillThere(origin,result.events);}catch{/* Unknown is treated as missing. */}
+      // Only a ready read without the event withdraws the control; a refused or failed read keeps it.
+      let outcome:'found'|'missing'|'permission'|'unknown'='unknown';
+      try{const result=await calendarPlugin.list({begin:origin.begin-1,end:origin.begin+1});outcome=result.status==='ready'?(mapsEventStillThere(origin,result.events)?'found':'missing'):result.status==='permission-required'?'permission':'unknown';}catch{/* A thrown read says nothing about the event. */}
       if(disposed||document.hidden||!currentApi.isActive()||currentApi.get('maps').fromEvent!==raw||!mapsEventReturnOffered(raw,api?.S.stack,navigating))return;
-      if(!exists){currentApi.set({fromEvent:null});currentApi.toast('That event was deleted or moved. Maps stays open; nothing else changed.');return;}
+      if(outcome==='permission'){currentApi.toast('Calendar access is needed to check this event. Allow calendar access, then try again.');return;}
+      if(outcome==='unknown'){currentApi.toast('The event could not be checked. Maps stays open; try again.');return;}
+      if(outcome==='missing'){currentApi.set({fromEvent:null});currentApi.toast('That event was deleted or moved. Maps stays open; nothing else changed.');return;}
       const stack=(api?.S.stack||[]).slice(0,-1);
       // Unwind this visit's Maps layers (route, place, results, search text) as system Back would, so
       // nothing of the hand-off is left to show or replay when Maps is opened again.
@@ -65,6 +68,18 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
       currentApi.setView('calendar',{open:origin.rowId,openDay:origin.day,day:origin.day,month:null,form:null});
       currentApi.open('calendar',{keepState:true});currentApi.shell({stack});
     }finally{returningToEvent=false;}
+  }
+  // With no Maps provider on Android, an event's location can be handed to an installed map app,
+  // only when the user taps for it. The exact hand-off text is sent; no route or ETA is shown here.
+  let eventQuery='',mapsApp:boolean|undefined,mapsAppReading=false,mapsAppOpening=false;
+  function readMapsApp(){
+    if(mapsApp!==undefined||mapsAppReading)return;mapsAppReading=true;
+    void DailyApps.capabilities().then(result=>{mapsApp=result.actions.some(row=>row.action==='maps'&&row.available);},()=>{mapsApp=false;}).finally(()=>{mapsAppReading=false;invalidate();});
+  }
+  function openInMapsApp(text:string){
+    if(mapsAppOpening||disposed||document.hidden||!api?.isActive())return;mapsAppOpening=true;
+    void DailyApps.perform({action:'maps',query:text}).then(result=>{message=result.status==='opened'?'Opened in your maps app. Review the place there.':result.message||'No installed app can complete this action.';},()=>{message='No installed app can complete this action.';})
+      .finally(()=>{mapsAppOpening=false;invalidate();});
   }
   let sharing: {abort:AbortController;current:()=>boolean}|undefined;
   function share(data:MapShare,current:()=>boolean){
@@ -124,7 +139,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   function release(cancelIntent=true) {
     sharing?.abort.abort();sharing=undefined;navigationVoice.pause();
     lifecycle.releases++;lifecycle.lastRelease=cancelIntent?'leave-or-background':'provider-switch';message='';
-    if(cancelIntent){++searchIntent;discardHandoff();}
+    if(cancelIntent){++searchIntent;discardHandoff();eventQuery='';mapsApp=undefined;}
     ++mapGeneration;mapObserver?.disconnect();mapObserver=undefined;mapFailed=false;    plane?.destroy(); plane=undefined; planeElement=undefined; directions=false; originMode=false; void stopGuidance().catch(()=>{});
     clearMapsSelection(); ++revision; locating = false; unsubscribe?.(); unsubscribe = undefined;
     const old = controller; controller = undefined; state = undefined;
@@ -197,7 +212,8 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
       queueMicrotask(()=>{
         if(pendingHandoff!==handoff)return;pendingHandoff=undefined;
         if(disposed||!currentApi.isActive()||currentApi.get('maps').query!==handoff.query||handoff.intent!==searchIntent)return;
-        currentApi.set({query:null});release();query=handoff.query.trim();submit();invalidate();
+        const fromEvent=!!currentApi.get('maps').fromEvent;
+        currentApi.set({query:null});release();query=handoff.query.trim();eventQuery=fromEvent?query:'';submit();invalidate();
       });
     }
     // Calling the original with neutral state retains visual tokens without
@@ -358,8 +374,14 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     data.eventReturnFloating=!!eventOrigin&&!!data.showSearch;data.eventReturnInline=!!eventOrigin&&!!data.isDir;
     data.backToEvent=eventOrigin?()=>void returnToEvent(currentApi,eventOrigin,st.fromEvent):undefined;
     data.backToEventTitle=eventOrigin?.title||'';
+    // Offered only while the search still holds the event's text; editing or Back retires it.
+    const handoffText=isAndroid&&unconfiguredNow()&&!!eventQuery&&query===eventQuery&&!navigating?eventQuery:'';
+    if(handoffText)readMapsApp();
+    data.nativeMapsHandoff=!!handoffText&&mapsApp===true;
+    data.openInMapsApp=()=>{if(handoffText&&query===handoffText)openInMapsApp(handoffText);};
     return data;
   };
+  function unconfiguredNow(){return state?.provider.status==='unconfigured';}
   const changed = onMapsConnectionChange(() => {
     const connection=mapsConnection();
     if(controller&&state?.provider.status==='unconfigured'&&connection.config.status==='configured'&&regionalMap()){lifecycle.providerActivations++;controller.activateProvider(connection.config,connection.provider);}

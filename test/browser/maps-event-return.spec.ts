@@ -156,3 +156,27 @@ test('double activation returns once; a reload in Maps drops the return and repl
   await expect(back(page)).toHaveCount(0);
   expect((await requests(page)).queries).toEqual([address, address, address]);
 });
+
+test('a refused or failed calendar read keeps Back to event and never claims the event is gone', async ({page}) => {
+  await setup(page);
+  await handOff(page, 'Harbour meeting');
+  for (const outcome of ['permission-required', 'rejected'] as const) {
+    await page.evaluate(async outcome => {
+      const {BrowserCalendar} = await import('/src/browser/calendar.ts');
+      const w = window as any; w.realCalendarList ??= BrowserCalendar.prototype.list; w.calendarListCalls = [];
+      BrowserCalendar.prototype.list = async function (input: any) { w.calendarListCalls.push(input); if (outcome === 'rejected') throw Error('Calendar provider failed'); return {status: 'permission-required'}; } as any;
+    }, outcome);
+    await back(page).click();
+    await expect(page.getByText(outcome === 'rejected' ? 'The event could not be checked. Maps stays open; try again.' : 'Calendar access is needed to check this event. Allow calendar access, then try again.', {exact: true})).toBeVisible();
+    await expect(page.getByText('That event was deleted or moved. Maps stays open; nothing else changed.', {exact: true})).toHaveCount(0);
+    await expect(view(page)).toHaveAttribute('data-active-view', 'maps');
+    await expect(back(page)).toHaveCount(1);
+    // One read of the event's own instant per tap; Calendar's own refreshes may read other windows.
+    expect(await page.evaluate(() => (window as any).calendarListCalls.filter((input: any) => input?.end - input?.begin === 2).length)).toBe(1);
+  }
+  // Once the read works again, the same control returns to the event.
+  await page.evaluate(async () => { const {BrowserCalendar} = await import('/src/browser/calendar.ts'); BrowserCalendar.prototype.list = (window as any).realCalendarList; });
+  await back(page).click();
+  await expect(page.getByRole('heading', {name: 'Harbour meeting', exact: true})).toBeVisible();
+  await expect(view(page)).toHaveAttribute('data-active-view', 'calendar');
+});

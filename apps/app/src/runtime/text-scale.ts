@@ -11,6 +11,7 @@
  * declared sizes (browser/display.ts), which the same probe measures.
  */
 export const TEXT_SCALE_PROPERTY = '--alpha-text-scale';
+export const LARGE_TEXT_CLASS = 'alpha-large-text';
 
 export function installTextScale(): () => void {
   const probe = document.createElement('div');
@@ -28,9 +29,11 @@ export function installTextScale(): () => void {
     if (scale === published) return;
     published = scale;
     document.documentElement.style.setProperty(TEXT_SCALE_PROPERTY, String(scale));
+    // CSS cannot compare a custom property, so large text also gets a class: app titles wrap from here.
+    document.documentElement.classList.toggle(LARGE_TEXT_CLASS, scale >= 1.5);
   };
   read();
   const observer = new ResizeObserver(read);
   observer.observe(probe);
-  return () => { observer.disconnect(); probe.remove(); document.documentElement.style.removeProperty(TEXT_SCALE_PROPERTY); };
+  return () => { observer.disconnect(); probe.remove(); document.documentElement.style.removeProperty(TEXT_SCALE_PROPERTY); document.documentElement.classList.remove(LARGE_TEXT_CLASS); };
 }

@@ -4,6 +4,7 @@ import { registerPlugin } from '../platform-plugins';
 import { DailyApps, type NativeResult } from '../daily';
 import { filesIndex, compareFilesEntries, matchesFileQuery, sortLabel, typeLabel, type RecentFile, type SortMode } from './files-index';
 import { reviewContentQuestion } from '../browser/content-question';
+import { sensitiveReadingText } from '../browser/reading-sensitive';
 import { FOLDER_CONTEXT_EVENT, createFolderRevisions, folderExcerpt, folderScope, folderScopeCurrent } from './context-selection';
 type Bag=Record<string,any>;
 type Entry={id:string;parentId?:string;name:string;mimeType:string;directory:boolean;size:number;modified?:number;modifiedAt?:number;revision:string;canCreate:boolean;canRename:boolean;canDelete:boolean;canMove:boolean};
@@ -60,7 +61,7 @@ export function installFilesTreeAdapter(views:Bag,accept:(module:string,result:N
   if(!scope){owner.toast('This folder cannot be reviewed right now. Refresh it and try again.');return;}
   closeFolderQuestion?.();
   const live=()=>listing===reviewed&&visible()&&!owner.get('files').open&&owner.isActive()&&!document.hidden;
-  closeFolderQuestion=reviewContentQuestion({name:'folder '+scope.folder.name,text:folderExcerpt(scope,typeLabel),question:'What is in this folder?',current:live,closed:()=>{closeFolderQuestion=undefined;},compose:draft=>{void (async()=>{
+  closeFolderQuestion=reviewContentQuestion({name:'folder '+scope.folder.name,text:folderExcerpt(scope,typeLabel),question:'What is in this folder?',current:live,validate:text=>!sensitiveReadingText(text),closed:()=>{closeFolderQuestion=undefined;},compose:draft=>{void (async()=>{
    if(busy||!live()){owner.toast('The folder view changed. Nothing was added to your conversation.');return;}
    busy=true;repaint();
    try{

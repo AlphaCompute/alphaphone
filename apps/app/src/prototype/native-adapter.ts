@@ -31,6 +31,15 @@ export function egressPrivacy(connection: Pick<ConnectionSnapshot, 'kind' | 'ses
   if (connection.session || connection.cloudAccount) return { big: 'Not reported', sub: 'Depends on the selected agent; not reported' };
   return { big: 'Offline', sub: 'No agent connected; no hosted inference requests' };
 }
+const modelVendors: Record<string, string> = { cerebras: 'Cerebras' };
+/** One label for a configured route and model: Eliza Cloud reports `cerebras/qwen-3.8-27b`,
+ * shown as `Eliza Cloud · qwen-3.8-27b (Cerebras)`; a direct route shows the model alone. */
+export function modelLabel(providerLabel: string, model: string): string {
+  const slash = model.indexOf('/');
+  if (slash < 0) return providerLabel + ' · ' + model;
+  const vendor = model.slice(0, slash), name = model.slice(slash + 1);
+  return providerLabel + ' · ' + name + ' (' + (modelVendors[vendor.toLowerCase()] ?? vendor) + ')';
+}
 /** Only a verified resident session on Android reports its configured hosted model.
  * Exported for the Settings rows that show it (About and Models). */
 export function residentModelLabel(connection: ConnectionSnapshot, refresh: () => void): string | null {
@@ -43,7 +52,7 @@ export function residentModelLabel(connection: ConnectionSnapshot, refresh: () =
       const provider = status?.provider, model = status?.model;
       // Copy only the two identity fields; ignore anything else a bridge might return.
       const providerLabel = provider === 'elizacloud' ? 'Eliza Cloud' : provider === 'cerebras' ? 'Cerebras' : null;
-      const label = status?.configured === true && providerLabel && typeof model === 'string' && providerModelPattern.test(model) ? providerLabel + ' · ' + model : null;
+      const label = status?.configured === true && providerLabel && typeof model === 'string' && providerModelPattern.test(model) ? modelLabel(providerLabel, model) : null;
       if (providerReading === sessionId) providerStatus = { sessionId, label };
     }).catch(() => { if (providerReading === sessionId) providerStatus = { sessionId, label: null }; })
       .finally(() => { if (providerReading === sessionId) { providerReading = null; refresh(); } });
@@ -209,7 +218,7 @@ export function installPrototypeNativeAdapters(
       const open = api.get(module).open;
       if (open !== capture.id || !askAboutCapture({ id: capture.id })) notify(api, 'Open a saved photo or video, then ask again. Nothing has been sent.');
     };
-    if (['camera', 'photos', 'files'].includes(module) && ['ask', 'askQ', 'askSearch', 'saveSum'].includes(key)) return unavailable(api, 'Content analysis is not connected. No photo or document content has been sent.');
+    if (['camera', 'photos', 'files'].includes(module) && ['ask', 'askQ', 'askSearch'].includes(key)) return unavailable(api, 'Content analysis is not connected. No photo or document content has been sent.');
     if (module === 'workflows' && ['run', 'again', 'toggle', 'save'].includes(key)) return unavailable(api, 'Workflow execution is not connected. No automation has been activated or run.');
     const native = (action: Action, payload: Bag = {}) => () => perform(module, api, action, payload);
     if (module === 'phone') {
@@ -258,8 +267,7 @@ export function installPrototypeNativeAdapters(
       if (key === 'send' || key === 'selShare') return unavailable(api, 'Choose and share the real photo in your Android photo app.');
     }
     if (module === 'maps') {
-      if (key === 'qKey') return (e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); void perform(module, api, 'maps', { query: text(api.get(module).query) }); } };
-      if (key === 'start') return native('maps', { query: text(row.name || st.query) });
+      // Search, Start and Directions belong to maps-adapter; its 'Open in maps app' is the only Maps handoff.
       if (key === 'call') return native('phone');
       if (key === 'web') return unavailable(api, 'Open the real place website from the Android map app.');
       if (['shareEta', 'voice', 'end'].includes(key)) return unavailable(api, 'Live navigation and ETA are managed by the Android map app.');
@@ -269,7 +277,6 @@ export function installPrototypeNativeAdapters(
         if (text(row.label).startsWith('Call ')) return native('phone');
         if (text(row.label).startsWith('Message ')) return native('messages');
         if (text(row.label).startsWith('Email ')) return native('email');
-        if (text(row.label).startsWith('Directions ')) return native('maps');
       }
       if (['save', 'del', 'toggleFav'].includes(key)) return native('contacts');
     }
@@ -281,11 +288,9 @@ export function installPrototypeNativeAdapters(
       if (key === 'go' && path.startsWith('moveTo.')) return native('files');
       if (['play', 'del', 'saveRn', 'selDel', 'move', 'selMove', 'transcribe'].includes(key)) return native('files');
       if (['shareMsg', 'shareMail', 'selShare'].includes(key)) return unavailable(api, 'Choose and share the real file in the Android Files app.');
-      if (key === 'saveSum') return unavailable(api, 'Select a real file before summarizing it.');
     }
     if (module === 'wallet') {
       if (key === 'addCal') return native('calendar');
-      if (key === 'dirs') return native('maps');
       if (['onNum', 'onCvv', 'onExp', 'onCode', 'onName'].includes(key)) return unavailable(api, 'Payment credentials are not collected by this app.');
       if (['pay', 'auth', 'verify', 'next', 'scan', 'reload', 'remove', 'setDef', 'startPay'].includes(key)) return unavailable(api, 'Wallet payments and verification are not connected. Nothing has been charged or verified.');
     }

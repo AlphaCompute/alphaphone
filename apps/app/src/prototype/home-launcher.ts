@@ -204,11 +204,42 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
 }
 export type Launcher = ReturnType<typeof createLauncher>;
 
+export const COMPOSER_RESERVE_PROPERTY = '--alpha-composer-reserve';
+/** Publishes how much of the screen's bottom edge the floating composer covers, in layout pixels,
+ * as `--alpha-composer-reserve` on the root element. Home's scroller ends above it, so no app tile
+ * is drawn under the composer at any text size and the visual order matches the DOM (and TalkBack)
+ * order; long pages use it as their scroll padding. Zero while no composer is shown. */
+export function composerReserve(composer: HTMLElement | null): number {
+  const screen = composer?.offsetParent as HTMLElement | null;
+  if (!composer || !screen || !composer.offsetHeight) return 0;
+  return Math.max(0, Math.ceil(screen.clientHeight - composer.offsetTop));
+}
+function trackComposerReserve() {
+  let observed: HTMLElement | null = null, published = -1;
+  const publish = () => {
+    const value = composerReserve(observed?.isConnected ? observed : null);
+    if (value === published) return;
+    published = value;
+    document.documentElement.style.setProperty(COMPOSER_RESERVE_PROPERTY, `${value}px`);
+  };
+  // The composer grows with large text and a multi-line draft without a render of its own.
+  const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(publish) : null;
+  return {
+    update() {
+      const composer = document.querySelector<HTMLElement>('[data-alpha-layer="composer"]');
+      if (composer !== observed) { if (observed) resize?.unobserve(observed); observed = composer; if (composer) resize?.observe(composer); }
+      publish();
+    },
+    stop() { resize?.disconnect(); observed = null; published = -1; document.documentElement.style.removeProperty(COMPOSER_RESERVE_PROPERTY); },
+  };
+}
+
 /** Home's All-apps drawer. Shell state (open, query) lives in the model so Back and Home close
  * it; the installed list lives here. */
 export function installHomeLauncher(Component: any, bridge: LauncherBridge, options: {icons?: boolean; favorites?: FavoritesStore; /** False when the bridge cannot report package changes; the drawer still re-reads on open and on resume. */ follow?: boolean} = {}) {
-  const p = Component.prototype, mount = p.componentDidMount, unmount = p.componentWillUnmount, render = p.renderVals;
+  const p = Component.prototype, mount = p.componentDidMount, unmount = p.componentWillUnmount, update = p.componentDidUpdate, render = p.renderVals;
   let owner: any = null;
+  const reserve = trackComposerReserve();
   const launcher = createLauncher(bridge, () => owner?.setState({launcherRevision: Date.now()}), {...options, favorites: options.favorites || localFavorites()});
   // An open drawer follows the device: package changes, and anything that happened while Alpha was away.
   // Android reports one install or update as several changes; they are read once, shortly after.
@@ -223,13 +254,20 @@ export function installHomeLauncher(Component: any, bridge: LauncherBridge, opti
     owner = this;
     document.addEventListener('visibilitychange', visible); document.addEventListener('resume', refresh);
     try { subscription = options.follow !== false && bridge.addListener ? Promise.resolve(bridge.addListener('appsChanged', refresh)).catch(() => null) : null; } catch { subscription = null; }
-    return mount?.apply(this, args);
+    const result = mount?.apply(this, args);
+    reserve.update();
+    return result;
+  };
+  p.componentDidUpdate = function (...args: any[]) {
+    const result = update?.apply(this, args);
+    if (owner === this) reserve.update();
+    return result;
   };
   p.componentWillUnmount = function (...args: any[]) {
     document.removeEventListener('visibilitychange', visible); document.removeEventListener('resume', refresh);
     if (pending) { clearTimeout(pending); pending = null; }
     void Promise.resolve(subscription).then((handle: any) => handle?.remove?.()).catch(() => {});
-    subscription = null; if (owner === this) owner = null;
+    subscription = null; if (owner === this) { owner = null; reserve.stop(); }
     return unmount?.apply(this, args);
   };
   p.openAllApps = function () { this.setState({drawer: true, drawerQ: ''}); void launcher.load(); };

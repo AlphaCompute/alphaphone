@@ -403,9 +403,20 @@ export async function auditPage(page: Page, options: PageAuditOptions = {}): Pro
 export async function auditTabOrder(page: Page, limit = 120): Promise<Violation[]> {
   const read = () => page.evaluate(() => {
     const el = document.activeElement;
-    if (!el || el === document.body || el === document.documentElement) return { key: 'body', hidden: false, visible: true, behind: false, modal: false, stops: 0, segmented: false, text: 'body' };
+    if (!el || el === document.body || el === document.documentElement) return { key: 'body', hidden: false, visible: true, behind: false, composer: false, modal: false, stops: 0, segmented: false, text: 'body' };
     const anyEl = el as any; anyEl.__alphaTabId ||= Math.random().toString(36).slice(2);
+    // Focus scrolls the control into view, but only within its scroller: the floating composer is
+    // laid over the bottom of the screen and can still cover it.
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     const rect = el.getBoundingClientRect();
+    const composerLayer = document.querySelector('[data-alpha-layer="composer"]');
+    let composer = false;
+    if (composerLayer && !composerLayer.contains(el) && !composerLayer.closest('[inert],[aria-hidden="true"]') && composerLayer.getClientRects().length) {
+      const c = composerLayer.getBoundingClientRect(), left = Math.max(rect.left, c.left), top = Math.max(rect.top, c.top);
+      const width = Math.min(rect.right, c.right) - left, height = Math.min(rect.bottom, c.bottom) - top;
+      // More than a few pixels of the focused control, and the composer is what is painted there.
+      if (width > 4 && height > 4) { const hit = document.elementFromPoint(left + width / 2, top + height / 2); composer = !!hit && composerLayer.contains(hit); }
+    }
     const dialog = el.closest('dialog,[role=dialog],[role=alertdialog]');
     const stops = dialog ? Array.from(dialog.querySelectorAll('button,a[href],input:not([type=hidden]),select,textarea,summary,[tabindex]'))
       .filter(item => !item.matches(':disabled,[tabindex="-1"]') && !item.closest('[inert]') && item.getClientRects().length > 0).length : 0;
@@ -422,7 +433,7 @@ export async function auditTabOrder(page: Page, limit = 120): Promise<Violation[
     const behind = !!scrim && !!hit && hit !== el && !el.contains(hit) && !hit.contains(el) && (hit === scrim || !!(scrim.compareDocumentPosition(hit) & Node.DOCUMENT_POSITION_FOLLOWING));
     return {
       key: anyEl.__alphaTabId as string, hidden: !!el.closest('[inert],[aria-hidden="true"]'),
-      visible: rect.width > 0 && rect.height > 0, behind, modal: !!dialog, stops,
+      visible: rect.width > 0 && rect.height > 0, behind, composer, modal: !!dialog, stops,
       // Tab steps through the hour, minute and period fields of a native date or time input before leaving it.
       segmented: el.matches('input[type=time],input[type=date],input[type=datetime-local],input[type=month],input[type=week]'), text: el.outerHTML.replace(/\s+/g, ' ').replace(/ style="[^"]*"/g, '').slice(0, 140),
     };
@@ -439,6 +450,7 @@ export async function auditTabOrder(page: Page, limit = 120): Promise<Violation[
     if (current.hidden) out.push({ rule: 'focus-in-hidden-content', target: current.text });
     if (!current.visible && current.key !== 'body') out.push({ rule: 'focus-not-visible', target: current.text });
     if (current.behind) out.push({ rule: 'focus-behind-scrim', target: current.text });
+    if (current.composer) out.push({ rule: 'focus-under-composer', target: current.text });
     if (current.key === previous && current.key !== 'body') { if (++stuck >= (current.segmented ? 8 : 2)) { if (!current.modal || current.stops > 1) out.push({ rule: 'focus-trap', target: current.text }); break; } } else stuck = 0;
     previous = current.key;
     if (stuck) continue;

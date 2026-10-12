@@ -91,7 +91,6 @@ const device = registerPlugin<{
 }>('AlphaDevice');
 const deviceApps = registerPlugin<{ buildInfo(): Promise<{ launcher?: boolean; version?: string }> }>('DeviceApps');
 const notifications = registerPlugin<{status():Promise<Bag>;openAppSettings():Promise<Bag>;openChannelSettings(input:{id:string}):Promise<{status:string}>;crossAppStatus():Promise<Bag>;notificationApps():Promise<{apps:Bag[]}>;setNotificationPolicy(input:Bag):Promise<Bag>;resumeCrossApp(input:{expectedRevision:string}):Promise<Bag>;openNotificationAccess():Promise<Bag>;notificationHistory():Promise<{items:Bag[]}>;clearNotificationHistory():Promise<void>}>('AlphaNotifications');
-const speech = registerPlugin<{localSpeechStatus(input:{requestId:string}):Promise<{ready:boolean;execution:string}>}>('AlphaVoiceCloud');
 const system = registerPlugin<{ getDeviceSettings(): Promise<Bag>; getStatus(): Promise<{ roles?: Bag[] }>; requestRole(input: { role: string }): Promise<{ role: string; held: boolean; resultCode: number }> }>('ElizaSystem');
 type RoleRow = { role: string; held: boolean; available: boolean; holders: string[] };
 /** Android role state exactly as ElizaSystem.getStatus() reports it; malformed rows are dropped. */
@@ -126,6 +125,18 @@ export function updateRows(updatedAt: unknown, format: (at: number) => string = 
   return rows;
 }
 // settings-facts:end
+/** Saved appearance choice. 'system' follows prefers-color-scheme, which Android WebView also reports. */
+export type AppearanceChoice = 'system' | 'light' | 'dark';
+export const APPEARANCE_KEY = 'alpha.appearance.v1';
+export function readAppearanceChoice(): AppearanceChoice {
+  try { const value = localStorage.getItem(APPEARANCE_KEY); return value === 'dark' || value === 'system' ? value : 'light'; }
+  catch { return 'light'; }
+}
+const systemScheme = () => { try { return matchMedia('(prefers-color-scheme: dark)'); } catch { return null; } };
+/** The theme a choice draws now; an unreadable system preference draws light. */
+export function resolveAppearance(choice: AppearanceChoice): 'light' | 'dark' {
+  return choice === 'system' ? (systemScheme()?.matches ? 'dark' : 'light') : choice;
+}
 
 /** Keep the reference settings components; never present fixture device facts. */
 export function installSettingsAdapter(Component: any, views: Bag) {
@@ -138,14 +149,14 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   let gmailAccounts: GmailAccount[] = [], gmailBusy = '', gmailNotice = '', settingsApi: Bag | undefined;
   let roles: Record<string, RoleRow> | null = null, launcher: boolean | null = null, roleBusy = false, roleNotice = '';
   let crashLog: CrashLog | null = null, crashBusy = false, diagnosticsBusy = false;
-  let gmail = 'Not checked', digests = 'Not checked', localSpeech = 'Not checked', speechChecking = false, speechGeneration = 0;
+  let gmail = 'Not checked', digests = 'Not checked';
   const changed = () => owner?.vset('settings', { capabilityReadAt: Date.now() });
   async function refreshCapabilities() {
     capabilityAbort?.abort(); const abort = capabilityAbort = new AbortController();
     const cloud = connectionController.getCloudClient(), workflow = connectionController.getWorkflowClient(), instance = owner;
     gmail = cloud ? 'Checking authorization…' : 'Cloud sign-in required'; gmailAccounts = [];
     digests = workflow ? 'Checking agent support…' : 'Connect an agent';
-    localSpeech = 'Not checked'; speechChecking = false; ++speechGeneration; changed();
+    changed();
     const timeout = setTimeout(() => { abort.abort(); if (owner === instance && capabilityAbort === abort) { if (gmail === 'Checking authorization…') gmail = 'Authorization not verified'; if (digests === 'Checking agent support…') digests = 'Agent support not verified'; changed(); } }, 10000);
     try {
       await Promise.allSettled([
@@ -185,16 +196,6 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       window.dispatchEvent(new CustomEvent(GMAIL_ACCOUNTS_CHANGED, { detail: { source: 'settings' } }));
     } catch { if (owner === instance) { gmailNotice = disconnectMessage('unconfirmed', account.label); gmail = 'Authorization not verified'; } }
     finally { gmailBusy = ''; if (owner === instance) changed(); }
-  }
-  async function checkSpeech() {
-    if (speechChecking) return;
-    const instance = owner, token = ++speechGeneration;
-    speechChecking = true; localSpeech = 'Checking on this phone…'; changed();
-    try {
-      const status = await speech.localSpeechStatus({requestId:crypto.randomUUID()});
-      if (owner === instance && token === speechGeneration) localSpeech = status.ready === true && status.execution === (Capacitor.isNativePlatform()?'device':'browser') ? (Capacitor.isNativePlatform()?'Last check: ready on this phone':'Browser audio ready') : 'Last check: not ready';
-    } catch { if (owner === instance && token === speechGeneration) localSpeech = 'Not ready; try again'; }
-    finally { if (owner === instance && token === speechGeneration) { speechChecking = false; changed(); } }
   }
   /** Android shows its own role dialog; the result is read back from getStatus, never assumed. */
   async function requestHome(api: Bag) {
@@ -273,13 +274,19 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   p.componentDidMount = function () {
     mount.call(this); owner = this; void refresh(); void refreshCapabilities();
     this.passwordLifecycle = passwordManagerLifecycle(changed);
-    if(!Capacitor.isNativePlatform()&&!new URLSearchParams(location.search).has('theme')){
-      const apply=()=>{try{const theme=localStorage.getItem('alpha.appearance.v1')==='dark'?'dark':'light';this.setState({theme,appearanceStorageRead:{theme}});}catch{/* Keep the current session theme if storage is unavailable. */}};
-      this.appearanceStorageListener=(event:StorageEvent)=>{if(event.key==='alpha.appearance.v1'||event.key===null)apply();};
-      this.appearanceResumeListener=apply;
-      window.addEventListener('storage',this.appearanceStorageListener);
-      window.addEventListener('pageshow',apply);
-      apply();
+    if(!new URLSearchParams(location.search).has('theme')){
+      // A read from storage or the system scheme carries a marker, so componentDidUpdate never writes it back.
+      const apply=()=>{const theme=resolveAppearance(readAppearanceChoice());this.setState({theme,appearanceStorageRead:{theme}});};
+      if(!Capacitor.isNativePlatform()){
+        this.appearanceStorageListener=(event:StorageEvent)=>{if(event.key===APPEARANCE_KEY||event.key===null)apply();};
+        this.appearanceResumeListener=apply;
+        window.addEventListener('storage',this.appearanceStorageListener);
+        window.addEventListener('pageshow',apply);
+        apply();
+      }
+      this.appearanceScheme=systemScheme();
+      this.appearanceSchemeListener=()=>{if(readAppearanceChoice()==='system')apply();};
+      this.appearanceScheme?.addEventListener?.('change',this.appearanceSchemeListener);
     }
 
     let lastBinding = JSON.stringify([connectionController.getSnapshot().session?.sessionId, connectionController.getCloudClient()?.sessionId]);
@@ -299,14 +306,15 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const external=this.state?.appearanceStorageRead;
     const fromStorage=external!==previousState?.appearanceStorageRead&&external?.theme===theme;
     if (!fromStorage&&(theme === 'light' || theme === 'dark') && theme !== previousState?.theme) {
-      try { localStorage.setItem('alpha.appearance.v1', theme); }
+      try { localStorage.setItem(APPEARANCE_KEY, theme); }
       catch { this.toast('Theme changed for this session, but could not be saved.'); }
     }
   };
   p.componentWillUnmount = function () {
-    if (owner === this) { capabilityAbort?.abort(); capabilityAbort = null; ++speechGeneration; owner = null; ++generation; facts = {}; controls = {}; delivery = {}; cross={}; choices=null; history=null; roles=null; crashLog=null; roleNotice=''; }
+    if (owner === this) { capabilityAbort?.abort(); capabilityAbort = null; owner = null; ++generation; facts = {}; controls = {}; delivery = {}; cross={}; choices=null; history=null; roles=null; crashLog=null; roleNotice=''; }
     window.removeEventListener('storage',this.appearanceStorageListener);
     window.removeEventListener('pageshow',this.appearanceResumeListener);
+    this.appearanceScheme?.removeEventListener?.('change',this.appearanceSchemeListener);
     this.settingsConnectionUnsubscribe?.();
     this.passwordLifecycle?.();
     void this.deviceResume?.then((listener: any) => listener?.remove()); unmount.call(this);
@@ -435,7 +443,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           { kNav:true, label:'Open Inbox', lbl:'Open Inbox', chev:true, noAB:true, go:()=>api.open('inbox') },
           ...connected.map(a => { const label = `Disconnect ${a.label}`; return { kNav:true, label, lbl:gmailBusy === a.connectionId ? 'Disconnecting…' : label, chev:true, noAB:true, go:()=>void disconnectGmail(a) }; }),
           { kNav:true, label:'Check Gmail connection', lbl:'Check Gmail connection', chev:true, noAB:true, go:()=>{ gmailNotice = ''; void refreshCapabilities(); } },
-          info('Other connectors', 'Not connected')])];
+          info('Other connectors', 'Not available in this version')])];
       } else if (state.page === 'character' && page.hero?.kChar === true) {
         // The reference character page deliberately has no visible title.
         page.groups = browserDevProfile?[group([
@@ -525,6 +533,18 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Display') {
         page.hero={...page.hero,sub:Capacitor.isNativePlatform()?'Alpha app text · Android accessibility scale also applies':'Alpha app text size',subCss:'font-size:13px;color:var(--fg)'};
         for (const g of page.groups) g.rows = g.rows.map((row: Bag) => {
+          if(row.label==='Theme'&&row.kSeg){
+            // A voice command or a ?theme preview can draw an explicit theme the saved choice does not.
+            const stored=readAppearanceChoice(),choice:AppearanceChoice=resolveAppearance(stored)===api.theme?stored:api.theme==='dark'?'dark':'light';
+            const pick=(next:AppearanceChoice)=>()=>{
+              const theme=resolveAppearance(next);
+              try{localStorage.setItem(APPEARANCE_KEY,next);}
+              catch{api.toast('Theme changed for this session, but could not be saved.');}
+              // The choice is already saved, so the theme change carries the storage marker.
+              owner?.setState({theme,appearanceStorageRead:{theme}});
+            };
+            return {...row,opts:([['system','System'],['light','Light'],['dark','Dark']] as Array<[AppearanceChoice,string]>).map(([value,label])=>{const on=value===choice;return {label,on,aria:`Theme: ${label}`,css:on?'background:var(--acc);color:#fff':'color:var(--mut)',pick:pick(value)};})};
+          }
           if(row.label==='Brightness')return {...nav('Manage brightness in Android','display'),...(typeof facts.adaptiveBrightness==='boolean'?{val:facts.adaptiveBrightness?'Adaptive brightness on':'Adaptive brightness off',hasVal:true}:{})};
           if(row.label!=='Text size')return row;
           if(!Number.isInteger(facts.textScalePercent))return info('Text size','Native setting unavailable');

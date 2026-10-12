@@ -85,11 +85,14 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       owner.vset('calendar',{nativeCalendarStatus:status});return;
     }
     agentSelection=undefined;agentSelectionKey='';agentSelectionEpoch++;
+    // When the provider read completed: Home's calendar card shows this, not when it first drew the rows.
+    let readAt:number|null=null;
     const currentOwner=owner,range=desired||rangeFor(owner.vget('calendar')), token=++generation;desired=range;attemptedKey=range.key;runningToken=token;loading=true;loadFailed=false;status='Loading calendars…';currentOwner.vset('calendar',{nativeCalendarStatus:status});
     try {
       if(request) {const permission=await calendar.requestAccess();if(owner!==currentOwner||token!==generation)return;if(permission.status!=='granted'){loadedKey='';status='Calendar access denied';calendars=[];currentOwner.nativeCalendarRows=[];await currentOwner.refreshReminders();return;}}
       const result=await calendar.list({begin:range.begin,end:range.end});
       if(owner!==currentOwner||token!==generation)return;
+      if(result.status==='ready')readAt=Date.now();
       if(result.status!=='ready'){loadedKey='';status='Connect device calendars';calendars=[];currentOwner.nativeCalendarRows=[];await currentOwner.refreshReminders();return;}
       try{await readCreations();}catch{if(owner===currentOwner&&token===generation){creationPending=null;creationRecoveryFailed=true;}}
       if(owner!==currentOwner||token!==generation)return;
@@ -98,7 +101,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       await currentOwner.refreshReminders();
       if(request)currentOwner.calendarWriteUncertain=false;
     }catch{if(owner===currentOwner&&token===generation){loadedKey='';loadFailed=true;status=Capacitor.isNativePlatform()?'Calendar range could not be loaded. Open device calendars to retry.':'App calendar could not be loaded. Retry or open Calendar recovery.';}}
-    finally{if(runningToken===token){loading=false;if(token!==generation&&attemptedKey===range.key)attemptedKey='';}if(owner===currentOwner){currentOwner.vset('calendar',{nativeCalendarStatus:status});if(desired?.key!==attemptedKey)schedule();}}
+    finally{if(runningToken===token){loading=false;if(token!==generation&&attemptedKey===range.key)attemptedKey='';}if(owner===currentOwner){currentOwner.vset('calendar',{nativeCalendarStatus:status,...(token===generation?{nativeCalendarReadAt:loadedKey===range.key?readAt:null}:{})});if(desired?.key!==attemptedKey)schedule();}}
   }
   // One presentation seam over the existing display sources/preferences. These
   // controls never create native agent read grants or change source identities.
@@ -224,6 +227,8 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     if(out.f&&state.form){
       const f=state.form;
       const reviewedDate=wallTime(Number(f.off||0),12);
+      // Android events have no stable identity for a note link yet, so say so before Save rather than drop it silently.
+      out.f.noteLinkNotice=f.origin&&!f.alphaReminderId&&f.cal!=='alpha-reminders'&&!noteOriginSupported('event')?'This event will not link back to the note on this phone.':'';
       out.f.nativeReviewDate=reviewedDate?reviewedDate.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'Choose a valid local date';
       const destinations=[{id:'local',name:(Capacitor.isNativePlatform()?'On this phone':'In this app')},...calendars.filter(c=>c.writable&&!c.local).map(c=>({id:c.id,name:c.name}))];
       out.f.cals=f.alphaCalendarId ? [{name:(Capacitor.isNativePlatform()?'On this phone':'In this app'),dot:'var(--acc)',css:'background:var(--fg);color:var(--bg)',pick:()=>{}}] : [...out.f.cals.filter((c:Bag)=>c.name==='Reminders'),...destinations.map(c=>({name:c.name,dot:'var(--acc)',css:f.cal===`native:${c.id}`?'background:var(--fg);color:var(--bg)':'background:var(--bg)',pick:()=>api.set({form:{...api.get('calendar').form,cal:`native:${c.id}`,alert:null}})}))];

@@ -16,14 +16,14 @@
 <sc-if value="{{isOn}}">
 <sc-if value="{{showAppBack}}"><button data-alpha-app-back-fallback aria-label="Back to apps" onClick="{{backToApps}}" style="position:absolute;top:0;left:12px;z-index:44;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--fg);font-size:14px"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="{{ic.back}}"></path></svg>Apps</button></sc-if>
 
-<div data-alpha-layer="home" onFocusCapture="{{focusAppContent}}" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
-<div data-alpha-home-layout style="min-height:100%;display:flex;flex-direction:column;padding:20px 0 108px;box-sizing:border-box">
+<div data-alpha-layer="home" onFocusCapture="{{focusAppContent}}" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 var(--alpha-composer-reserve, 0px); z-index: 10; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:max(8px, calc(110px - var(--alpha-composer-reserve, 0px)))">
+<div data-alpha-home-layout style="min-height:100%;display:flex;flex-direction:column;padding:20px 0 max(6px, calc(108px - var(--alpha-composer-reserve, 0px)));box-sizing:border-box">
 <sc-if value="{{storageAccessWarning}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
   <!-- The only way into Alpha's notifications (docs/gesture-zones.md): a visible control below
        Android's status bar. The top-edge swipe is Android's and opens Android's own shade. -->
   <div class="alpha-shade-row"><button class="alpha-shade-handle" data-alpha-shade-handle aria-label="Open notifications" aria-controls="alpha-notifications" aria-expanded="false" onClick="{{openShade}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bell}}"></path></svg><span>Notifications</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.down}}"></path></svg></button></div>
   <div class="scr" style="display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px; scroll-padding-left: 24px; touch-action: pan-x; flex-shrink: 0">
-    <button class="home-calendar-card" data-alpha-home-calendar data-alpha-home-calendar-event="{{homeCalendarHasEvent}}" data-alpha-home-calendar-meta="{{homeCalendarHasMeta}}" data-alpha-home-calendar-overdue="{{homeCalendarOverdue}}" onClick="{{goCalendar}}" aria-label="{{homeCalendarLabel}}" aria-description="{{homeCalendarDescription}}" style="flex-shrink: 0; scroll-snap-align: start; border-radius: 30px; background: var(--acc); color: #ffffff; padding: 22px; box-sizing: border-box">
+    <button class="home-calendar-card" data-alpha-home-calendar data-alpha-home-calendar-event="{{homeCalendarHasEvent}}" data-alpha-home-calendar-meta="{{homeCalendarHasMeta}}" data-alpha-home-calendar-overdue="{{homeCalendarOverdue}}" data-alpha-home-calendar-next="{{homeCalendarHasNext}}" onClick="{{goCalendar}}" aria-label="{{homeCalendarLabel}}" aria-description="{{homeCalendarDescription}}" style="flex-shrink: 0; scroll-snap-align: start; border-radius: 30px; background: var(--acc); color: #ffffff; padding: 22px; box-sizing: border-box">
       <div class="home-calendar-head">
         <span class="home-calendar-time">{{homeCalendarTime}}</span>
         <span class="home-calendar-origin" data-alpha-home-calendar-origin>{{homeCalendarOrigin}}</span>
@@ -32,6 +32,7 @@
       <sc-if value="{{homeCalendarVideo}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="{{ic.video}}"></path></svg></sc-if>
       <div class="serif home-calendar-title">{{homeCalendarTitle}}</div>
       <sc-if value="{{homeCalendarHasMeta}}"><span class="home-calendar-meta"><sc-if value="{{homeCalendarHasEvent}}"><span class="home-calendar-footer">{{homeCalendarFooter}}</span></sc-if><sc-if value="{{homeCalendarSource}}"><span class="home-calendar-source" data-alpha-home-calendar-source>{{homeCalendarSource}}</span></sc-if></span></sc-if>
+      <sc-if value="{{homeCalendarHasNext}}"><span class="home-calendar-meta home-calendar-next" data-alpha-home-calendar-next-line><span class="home-calendar-next-text">{{homeCalendarNext}}</span><sc-if value="{{homeCalendarNextSource}}"><span class="home-calendar-source" data-alpha-home-calendar-next-source>{{homeCalendarNextSource}}</span></sc-if></span></sc-if>
     </button>
     <button data-alpha-home-workflows onClick="{{goFlows}}" aria-label="{{homeWorkflowLabel}}" aria-description="{{homeWorkflowDescription}}" class="home-card" style="flex-shrink: 0; scroll-snap-align: start; width: max-content; min-width: 172px; max-width: calc(100% - 48px); border-radius: 30px; background: var(--s2); padding: 22px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
       <div style="display:flex;justify-content:flex-end;width:100%"><span aria-hidden="true" style="display:block;flex-shrink:0;width:24px;height:24px;background:var(--acct);mask:url('/icons/lucide/workflow.svg') center/contain no-repeat;-webkit-mask:url('/icons/lucide/workflow.svg') center/contain no-repeat"></span></div>
@@ -824,8 +825,8 @@
   <div data-alpha-subview="calendar-list" inert="{{calendar.listCovered}}" aria-hidden="{{calendar.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
     <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
-    <button onClick="{{calendar.toggleMonth}}" aria-label="Month view" aria-expanded="{{calendar.monthOpen}}" style="display: flex; align-items: center; gap: 6px; height: 48px; flex-grow: 1; min-width: 0">
-      <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; letter-spacing: -.01em; white-space: nowrap">{{calendar.month}}</h1>
+    <button onClick="{{calendar.toggleMonth}}" aria-label="Month view" aria-expanded="{{calendar.monthOpen}}" style="display: flex; align-items: center; gap: 6px; min-height: 48px; flex-grow: 1; min-width: 0">
+      <h1 data-alpha-app-title class="serif" style="margin: 0; min-width: 0; font-size: 32px; letter-spacing: -.01em; white-space: nowrap">{{calendar.month}}</h1>
       <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut); margin-top: 4px"><path d="{{calendar.chevron}}"></path></svg>
     </button>
     <button class="ib" aria-label="Clock alarms" onClick="{{calendar.openClock}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.clock}}"></path></svg></button>
@@ -1052,6 +1053,7 @@
         <sc-if value="{{calendar.editDraftConflict}}"><div style="padding:12px 24px;overflow-wrap:anywhere">Another saved edit: {{calendar.editDraftSavedTitle}}<button onClick="{{calendar.restoreEditDraft}}" style="padding:12px">Restore saved edits</button><button onClick="{{calendar.replaceEditDraft}}" style="padding:12px">Replace saved edits</button></div></sc-if>
         <div style="padding: 0 24px"><input value="{{calendar.f.title}}" onChange="{{calendar.f.onTitle}}" placeholder="Title" aria-label="Title" class="serif" style="width: 100%; font-size: 34px; border: none; outline: none; background: transparent; color: var(--fg); padding: 6px 0; letter-spacing: -.01em"></div>
 
+        <sc-if value="{{calendar.f.noteLinkNotice}}"><p data-alpha-note-link-notice style="margin: 8px 24px 0; font-size: 14px; color: var(--mut)">{{calendar.f.noteLinkNotice}}</p></sc-if>
         <sc-if value="{{calendar.f.nativeReviewDate}}"><div aria-label="Selected event date" aria-live="polite" style="padding: 8px 24px 0; font-size: 14px; color: var(--mut)">{{calendar.f.nativeReviewDate}}</div></sc-if>
         <div class="scr" style="display: flex; gap: 8px; overflow-x: auto; padding: 14px 20px 4px; touch-action: pan-x">
           <sc-for list="{{calendar.f.days}}" as="d">
@@ -2006,6 +2008,7 @@
   <sc-if value="{{maps.native}}">
     <div data-alpha-maps-status data-location-state="{{maps.nativeLocationState}}" data-map-state="{{maps.nativeMapState}}" style="position: absolute; left: 20px; right: 20px; top: {{maps.nativeStatusTop}}px; max-height:calc(100% - {{maps.nativeStatusTop}}px - 110px); overflow-y:auto; box-sizing:border-box; z-index: 2; padding: 16px; border-radius: 22px; background: var(--bg); color: var(--mut); font-size: 14px; line-height: 1.45; box-shadow: 0 0 0 1px var(--line)">
       <p role="status" style="margin:0">{{maps.nativeStatus}}</p>
+      <sc-if value="{{maps.nativeMapsHandoff}}"><button class="tap" data-alpha-maps-app-handoff aria-label="Open in maps app" onClick="{{maps.openInMapsApp}}" style="min-height:52px;margin-top:8px;padding:0 16px;border-radius:26px;background:var(--acc);color:#fff;font:inherit">Open in maps app</button></sc-if>
       <sc-if value="{{maps.nativeStatusControls}}"><sc-if value="{{maps.nativeMapStatus}}"><p style="margin:6px 0">{{maps.nativeMapStatus}}</p></sc-if><p style="margin:6px 0">{{maps.nativeLocationHelp}}</p><div style="display:flex;flex-wrap:wrap;gap:8px">
         <button class="tap" aria-label="{{maps.nativeLocationLabel}}" disabled="{{maps.nativeLocationBusy}}" onClick="{{maps.nativeLocation}}" style="min-height:52px;padding:0 16px;border-radius:26px;background:var(--acc);color:#fff;font:inherit">{{maps.nativeLocationLabel}}</button>
         <button class="tap" aria-label="Enter coordinates" onClick="{{maps.nativeManualLocation}}" style="min-height:52px;padding:0 12px;border-radius:26px;background:var(--s2);color:var(--fg);font:inherit">Enter coordinates</button>
@@ -2180,7 +2183,7 @@
 
 <sc-if value="{{is.notes}}">
 <div onFocusCapture="{{notes.captureSubviewFocus}}" class="notes-layout" style="display: flex; flex-direction: column; height: 100%; position: relative; padding-top: 44px; box-sizing: border-box">
-  <sc-if value="{{notes.audioDeletionUnknown}}"><div role="status" style="padding:8px 24px;font-size:13px">Voice note deletion needs review. No deletion will be repeated.<button class="tap" onClick="{{notes.checkAudioDeletion}}">Check deletion status</button><sc-for list="{{notes.audioDeletionPending}}" as="pending"><div>{{pending.title}} <button class="tap" onClick="{{pending.restore}}">Restore note and recording</button></div></sc-for></div></sc-if>
+  <sc-if value="{{notes.audioDeletionUnknown}}"><div role="status" style="padding:8px 24px;font-size:13px">Voice note deletion needs review. No deletion will be repeated.<button class="tap" onClick="{{notes.checkAudioDeletion}}" style="display:block;min-height:44px;padding:0 4px;color:var(--acct);font-weight:600;text-align:left">Check deletion status</button><sc-for list="{{notes.audioDeletionPending}}" as="pending"><div>{{pending.title}} <button class="tap" onClick="{{pending.restore}}" style="min-height:44px;padding:0 4px;color:var(--acct);font-weight:600;text-align:left">Restore note and recording</button></div></sc-for></div></sc-if>
   <sc-if value="{{notes.browserRecovery}}"><div style="display:flex;gap:8px;padding:0 24px 6px;flex-wrap:wrap"><button aria-label="Recover browser Notes" onClick="{{notes.openBrowserRecovery}}" style="min-height:44px;padding:10px;border-radius:12px;background:var(--s2);color:var(--fg)">Notes recovery</button><button aria-label="Recover note audio deletion history" onClick="{{notes.openAudioRecovery}}" style="min-height:44px;padding:10px;border-radius:12px;background:var(--s2);color:var(--fg)">Audio deletion recovery</button></div></sc-if>
   <sc-if value="{{notes.storageStatus}}"><div class="notes-storage-status" role="status" aria-live="polite" style="flex-shrink:0;padding:0 24px 6px;font-size:12px;line-height:1.34;color:var(--mut);overflow-wrap:anywhere">{{notes.storageStatus}}</div></sc-if>
   <div class="notes-workspace" style="position:relative;display:flex;flex-direction:column;flex:1;min-height:0">
@@ -2831,17 +2834,6 @@
             <span class="dot" style="display: block"><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex-shrink:0;color:var(--acct)"><span class="alpha-compute-mark" aria-hidden="true" style="width:100%;height:100%"></span></span></span>
             <div class="dot" style="height: 12px; width: 86%; border-radius: 6px; background: var(--s3)"></div>
             <div class="dot" style="height: 12px; width: 62%; border-radius: 6px; background: var(--s3)"></div>
-          </div>
-        </sc-if>
-        <sc-if value="{{files.pv.asked}}">
-          <div class="enter" style="display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 24px; background: var(--s2); margin-top: 20px">
-            <div style="display: flex; align-items: center; justify-content: space-between">
-              <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex-shrink:0;color:var(--acct)"><span class="alpha-compute-mark" aria-hidden="true" style="width:100%;height:100%"></span></span>
-              <button class="ib" aria-label="Save to Notes" onClick="{{files.pv.saveSum}}" style="margin: -10px -10px -10px 0; color: var(--acct)"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.bookmark}}"></path></svg></button>
-            </div>
-            <sc-for list="{{files.pv.sum}}" as="b">
-              <div style="display: flex; gap: 12px"><span style="width: 6px; height: 6px; border-radius: 3px; background: var(--acct); margin-top: 8px; flex-shrink: 0"></span><span style="font-size: 15px; line-height: 1.45">{{b}}</span></div>
-            </sc-for>
           </div>
         </sc-if>
 
@@ -4185,7 +4177,7 @@
 <sc-if value="{{isLock}}">
 <div class="fadein" style="position: absolute; inset: 0; z-index: 80; background: var(--bg); display: flex; flex-direction: column; align-items: center">
   <svg class="i" viewBox="0 0 24 24" style="margin-top: 62px; width: 18px; height: 18px; color: var(--mut)"><path d="{{ic.lock}}"></path></svg>
-  <div class="serif" style="font-size: 132px; line-height: .9; margin-top: 44px; letter-spacing: -.035em">{{clock}}</div>
+  <div data-alpha-lock-clock class="serif" style="font-size: 132px; line-height: .9; margin-top: 44px; letter-spacing: -.035em">{{clock}}</div>
   <div style="margin-top: 16px; color: var(--mut); font-size: 15px">{{dateStr}}</div>
   <div style="position: absolute; bottom: 58px; left: 34px; right: 34px; display: flex; justify-content: space-between; align-items: center">
     <button aria-label="Talk to {{name}}" onClick="{{startVoice}}" style="width: 58px; height: 58px; border-radius: 29px; background: var(--s2); display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.mic}}"></path></svg></button>
