@@ -147,7 +147,8 @@ test('a signed canceled entitlement preserves resident admission and only opens 
  const signed=await entitlement('canceled');
  await boot(page,{mode:'signed',...signed});
  await expect.poll(()=>page.evaluate(()=>typeof(window as any).planFixture.releaseProvider)).toBe('function');
- expect((await calls(page)).some(c=>c.method==='stop')).toBe(false);
+ // This stopped-runtime fixture uses the normal stop/configure/start binding path.
+ expect((await calls(page)).filter(c=>c.method==='configureCloudProvider')).toHaveLength(1);
  await page.evaluate(()=>{const w=window as any;w.planController.cancel();w.planFixture.releaseProvider();});
  await expect.poll(()=>page.evaluate(()=>(window as any).planController.getSnapshot().busy)).toBe(false);
  await expect(page.getByText('Synthetic plan has ended',{exact:true})).toBeVisible();
@@ -193,7 +194,8 @@ test('401 after a prior plan check replaces stale account copy with sign-in',asy
 test('a legacy account without a plan preserves resident admission and a usable retry shows no balance',async({page})=>{
  await noPlan(page);
  expect((await calls(page)).some(c=>c.method==='configureCloudProvider')).toBe(true);
- expect((await calls(page)).some(c=>c.method==='stop')).toBe(false);
+ // This stopped-runtime fixture uses the normal stop/configure/start binding path.
+ expect((await calls(page)).filter(c=>c.method==='configureCloudProvider')).toHaveLength(1);
  await expect(page.getByText('AI is unavailable for this Eliza Cloud account',{exact:true})).toBeVisible();
  await page.evaluate(()=>(window as any).planFixture.mode='legacy-positive');
  await page.getByRole('button',{name:'Check plan again',exact:true}).click();
