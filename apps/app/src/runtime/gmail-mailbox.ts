@@ -1,7 +1,10 @@
 import { CloudProtocolError, type GmailAccount, type GmailInboxReceipt } from './cloud-protocol.ts';
+import { AttachmentRefusedError, attachmentRefused } from './inbox-attachment.ts';
 
 /** Mailbox helpers shared by Inbox and Settings. No provider content is stored here. */
-export type GmailFailureKind = 'offline' | 'revoked' | 'stale' | 'unavailable';
+/** `refused` is this app's own refusal of an attachment's bytes, name or size: Gmail answered, and a
+ * retry would get the same file. */
+export type GmailFailureKind = 'offline' | 'revoked' | 'stale' | 'unavailable' | 'refused';
 export interface GmailFailure { kind: GmailFailureKind; message: string }
 
 const messages: Record<GmailFailureKind, Record<'read' | 'operation', string>> = {
@@ -18,6 +21,10 @@ const messages: Record<GmailFailureKind, Record<'read' | 'operation', string>> =
     read: 'This message changed in Gmail. Retry to load its current version.',
     operation: 'This message changed in Gmail since it was loaded. Retry to reload it; nothing was changed.',
   },
+  refused: {
+    read: 'This attachment does not match its type or is too large. It was not opened or saved.',
+    operation: 'An attachment does not match its type or is too large, so this review was refused. Nothing was sent or changed.',
+  },
   unavailable: {
     read: 'Gmail is unavailable right now. Retry, or check the connection.',
     operation: 'Mail operation unavailable. Check its receipt before trying again.',
@@ -33,6 +40,8 @@ function online(): boolean {
  * review uses it for a message or draft that changed after it was loaded. */
 export function classifyGmailFailure(error: unknown, context: 'read' | 'operation', isOnline = online()): GmailFailure {
   const result = (kind: GmailFailureKind): GmailFailure => ({ kind, message: messages[kind][context] });
+  // A refusal is decided on this device from bytes already received, so it holds offline too.
+  if (attachmentRefused(error)) return result('refused');
   if (!isOnline) return result('offline');
   // Duck-typed so errors from another module instance (tests, sandboxes) classify the same way.
   if (error instanceof CloudProtocolError || (!!error && typeof error === 'object' && (error as { name?: unknown }).name === 'CloudProtocolError')) {
@@ -46,6 +55,14 @@ export function classifyGmailFailure(error: unknown, context: 'read' | 'operatio
   // Transport failures only; a TypeError from a programming fault is not reported as offline.
   if (error instanceof Error && /network|offline|timed out|failed to fetch|load failed|internet/i.test(error.message)) return result('offline');
   return result('unavailable');
+}
+
+/** CloudProtocol reports its own checks of a returned attachment (bytes against the declared type,
+ * size, hash and name) as an invalid response. For an attachment download that response is the file
+ * itself failing those checks, so it is rethrown as a refusal; every other failure is unchanged. */
+export function attachmentReadFailure(error: unknown): unknown {
+  const invalid = !!error && typeof error === 'object' && (error as { name?: unknown }).name === 'CloudProtocolError' && (error as { code?: unknown }).code === 'invalid-response';
+  return invalid ? new AttachmentRefusedError() : error;
 }
 
 export function gmailReadable(account: GmailAccount): boolean {

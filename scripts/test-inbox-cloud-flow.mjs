@@ -12,7 +12,9 @@ import * as mailbox from '../apps/app/src/runtime/gmail-mailbox.ts';
 import { presentHomeInboxStatus } from '../apps/app/src/prototype/home-cards.ts';
 import { formatTime } from '../apps/app/src/prototype/locale-time.ts';
 let session='account-a',agent='remote-a',releaseSearch,delay=false,failNext=null,connected=true,confirmAnswer=true;
-const slots=new Map(),searches=[],disconnects=[],toasts=[],events=[];
+const slots=new Map(),searches=[],disconnects=[],toasts=[],events=[],initiates=[],handoffs=[];
+// Authorization handoff: off until the reconnect section turns it on. `handoff` holds the browser open.
+let oauthUrl=null,handoff=null;
 const mail=(id,extra={})=>({id,threadId:'thread-'+id,subject:'Fixture '+id,from:'Sender',fromEmail:'sender@example.invalid',to:['fixture@example.invalid'],snippet:'Preview',receivedAt:'2026-09-30T00:00:00Z',unread:false,...extra});
 const pages={'in:inbox':[[mail('mail-1',{unread:true}),mail('mail-2')],[mail('mail-2'),mail('mail-3')]],'in:sent':[[mail('sent-1',{to:['friend@example.invalid']})]],'from:fixture':[[mail('mail-1')]]};
 const client={
@@ -22,7 +24,7 @@ const client={
   if(delay)return new Promise(resolve=>{releaseSearch=()=>resolve(result);});return result;},
  gmailRead:async(_grant,id)=>({message:Object.values(pages).flat(2).find(m=>m.id===id),bodyText:'Fixture body'}),
  disconnectGmail:async(id)=>{disconnects.push(id);connected=false;},
- initiateGmail:async()=>{throw new Error('No automatic OAuth');},
+ initiateGmail:async(...args)=>{initiates.push(args.slice(1));if(!oauthUrl)throw new Error('No automatic OAuth');return oauthUrl;},
 };
 const listeners=new Set();
 const controller={getCloudClient:()=>session?{client,sessionId:session}:null,getSnapshot:()=>({session:{sessionId:agent},cloudAccount:session?{environment:'production',userId:'fixture-owner',sessionId:session}:null}),subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},rejectCloudSession:()=>false,open:()=>{}};
@@ -32,7 +34,7 @@ const strip=async(file,name)=>{let source=await readFile(new URL(`../apps/app/sr
 const windowFixture={addEventListener:(name,fn)=>events.push({name,fn}),removeEventListener:()=>{},dispatchEvent:event=>{events.push({dispatched:event.type,detail:event.detail});return true;},confirm:()=>confirmAnswer};
 class CustomEvent{constructor(type,init){this.type=type;this.detail=init?.detail;}}
 const inboxUnsaved=()=>({ready:Promise.resolve(),available:false,conflict:false,error:false,status:'',edit(){},clear:async()=>{},retire(){},resume(){}});
-const sandbox={URL,presentHomeInboxStatus,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,safeMailLink,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits,reviewMailAttachment,reviewMailContext,validateMailContext,...mailbox,registerPlugin:()=>({cancel:async()=>{}}),crypto:globalThis.crypto,TextEncoder,structuredClone,secureConnectionStore:{read:async key=>slots.get(key)??null,compareExchange:async(key,prior,next)=>{if(JSON.stringify(slots.get(key)??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)slots.delete(key);else slots.set(key,next);return {status:'saved'};}},connectionController:controller,DailyApps:{addListener:async()=>({remove:async()=>{}})},openConnectionBrowser:async()=>{throw new Error('No automatic OAuth');},queueMicrotask,setTimeout,AbortController,DOMException,Date,console,window:windowFixture,CustomEvent,document:{documentElement:{dataset:{connectionMode:'live'}}}};
+const sandbox={URL,presentHomeInboxStatus,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,safeMailLink,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits,reviewMailAttachment,reviewMailContext,validateMailContext,...mailbox,registerPlugin:()=>({cancel:async()=>{}}),crypto:globalThis.crypto,TextEncoder,structuredClone,secureConnectionStore:{read:async key=>slots.get(key)??null,compareExchange:async(key,prior,next)=>{if(JSON.stringify(slots.get(key)??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)slots.delete(key);else slots.set(key,next);return {status:'saved'};}},connectionController:controller,DailyApps:{addListener:async()=>({remove:async()=>{}})},openConnectionBrowser:async(url,signal)=>{handoffs.push(url);if(!oauthUrl)throw new Error('No automatic OAuth');if(handoff)await new Promise((resolve,reject)=>{handoff.resolve=resolve;signal.addEventListener('abort',()=>reject(signal.reason),{once:true});});},queueMicrotask,setTimeout,AbortController,DOMException,Date,console,window:windowFixture,CustomEvent,document:{documentElement:{dataset:{connectionMode:'live'}}}};
 vm.createContext(sandbox);
 for(const [file,name] of [['inbox-provider-controls.ts','inboxProviderControls'],['inbox-drafts.ts','inboxDrafts'],['inbox-cloud-adapter.ts',['installInboxCloudAdapter','inboxAttention','openInbox','linkifyMailText','linkTextMismatch']]])vm.runInContext(await strip(file,name),sandbox);
 sandbox.installInboxCloudAdapter(Shell,views);
@@ -84,6 +86,33 @@ for(const [error,kind,text] of [[new TypeError('Failed to fetch'),'offline',/off
  if(kind==='revoked')chip('Reconnect Gmail');
  chip('Retry').pick();await tick();assert.equal(searches.length,before+2,'Retry is the explicit second attempt');assert.equal(render().rows.length,2);
 }
+
+// Reconnect and Authorize hand off to the system browser once per tap with the selected account's
+// grants, then wait for Check connection. No mailbox read happens until then. Synthetic URL only.
+oauthUrl='https://accounts.google.com/o/oauth2/v2/auth?client_id=fixture&state=synthetic';
+const handoffReads=()=>searches.length;
+failNext=new CloudProtocolError('http',409);chip('Refresh').pick();await tick();
+for(const [label,permission] of [['Reconnect Gmail','read'],['Authorize Gmail sending','send'],['Authorize Gmail drafts','drafts'],['Authorize mailbox changes','mailbox']]){
+ const before=initiates.length,reads=handoffReads();
+ chip(label).pick();await tick();
+ assert.deepEqual(local(initiates.slice(before)),[[permission,['google.gmail.triage']]],`${label}: one initiate with the permission and the selected account's grants`);
+ assert.deepEqual(handoffs.slice(before),[oauthUrl],`${label}: the exact authorization URL opens once`);
+ assert.equal(render().emptyText,'After authorizing Gmail, tap Check connection.',`${label}: the next step is named`);
+ assert.equal(handoffReads(),reads,`${label}: nothing is read until Check connection`);
+ if(label==='Reconnect Gmail'){chip('Check connection').pick();await tick();assert.equal(handoffReads(),reads+1,'Check connection reads the mailbox again');}
+}
+// A handoff the user cancels reports the cancellation, not a pending authorization.
+handoff={};const cancelledAt=initiates.length;chip('Authorize Gmail sending').pick();await tick();
+assert.equal(handoffs.length,cancelledAt+1);chip('Cancel').pick();await tick();
+assert.equal(render().emptyText,'Gmail request cancelled');assert.notEqual(render().emptyText,'After authorizing Gmail, tap Check connection.');
+// The Cloud account changes while the browser is open: the late result is not applied to the new one.
+const switchedReads=handoffReads();chip('Authorize Gmail drafts').pick();await tick();
+session='account-b';for(const fn of listeners)fn();handoff.resolve();await tick();
+assert.notEqual(render().emptyText,'After authorizing Gmail, tap Check connection.','a handoff from the previous account is not applied');
+assert.equal(handoffReads(),switchedReads,'nothing is read for the previous account');
+handoff=null;oauthUrl=null;session='account-a';for(const fn of listeners)fn();render();await tick();
+assert.equal(render().rows.length,2,'the account loads again after the switch back');
+
 assert.equal(mailbox.classifyGmailFailure(new CloudProtocolError('http',409),'operation').kind,'stale','operation 409 is a stale review');
 assert.equal(mailbox.classifyGmailFailure(new CloudProtocolError('http',500),'read',false).kind,'offline','browser offline wins');
 
@@ -114,4 +143,4 @@ confirmAnswer=true;chip('Disconnect Gmail').pick();await tick();
 assert.deepEqual(disconnects,['grant-a']);assert.match(render().emptyText,/is disconnected/);assert.equal(render().rows.length,0);
 assert.equal(shell.renderVals().homeInboxTitle,'Connect email');assert.equal(render().chips.some(c=>c.label==='Disconnect Gmail'),false);assert.ok(events.some(e=>e.dispatched==='alpha:gmail-accounts-changed'&&e.detail.source==='inbox'));
 shell.componentWillUnmount();
-console.log('PASS: Inbox auto-load, Refresh, provider paging, Sent folder, unread badge, account/query fences, classified errors with explicit Retry, shared compose prefill, honest chips and confirmed disconnect. Provider fixture only.');
+console.log('PASS: Inbox auto-load, Refresh, provider paging, Sent folder, unread badge, account/query fences, classified errors with explicit Retry, Reconnect/Authorize handoff with the selected grants, shared compose prefill, honest chips and confirmed disconnect. Provider fixture only.');
