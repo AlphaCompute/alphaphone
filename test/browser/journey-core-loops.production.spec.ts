@@ -130,6 +130,20 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
     };
   }, { options });
 }
+/** READ-ONLY: the web build's saved calendar document (the browser document store in IndexedDB). */
+const storedEvents = (page: Page) => page.evaluate(async () => !(await indexedDB.databases()).some(row => row.name === 'alpha.browser.documents.v1') ? [] : new Promise<any[]>((resolve, reject) => {
+  // Opened only once it exists: opening first would create it without the store's own upgrade.
+  const open = indexedDB.open('alpha.browser.documents.v1');
+  open.onerror = () => reject(open.error);
+  open.onsuccess = () => {
+    const db = open.result;
+    if (!db.objectStoreNames.contains('documents')) { db.close(); resolve([]); return; }
+    const read = db.transaction('documents', 'readonly').objectStore('documents').get('alpha.browser.calendar.v1');
+    // The record holds the domain envelope, whose value is the calendar document's own bytes.
+    read.onsuccess = () => { db.close(); const value = read.result?.raw ? JSON.parse(read.result.raw).value : null; resolve(value ? JSON.parse(value).events : []); };
+    read.onerror = () => { db.close(); reject(read.error); };
+  };
+}));
 const native = <T>(page: Page, read: (f: any) => T) => page.evaluate(`(${read.toString()})(window.coreLoops)`) as Promise<T>;
 const bubble = (page: Page, text: string) => page.getByRole('button', { name: 'Message actions: ' + text, exact: true });
 /** A funded resident account connects by itself; no Welcome dialog and no chooser remain. */
@@ -359,8 +373,21 @@ test('loops B, C and J04 in the web build: local calendar and alarm records are 
   await expect(clock.getByText('Flag-off web alarm', { exact: true })).toHaveCount(1);
   await clock.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: /^Flag-off meeting,/ }).click();
+  expect((await storedEvents(page)).map(row => row.title)).toEqual(['Flag-off meeting']);
   await button(page, 'Delete event').click();
+  // Delete is reviewed first: the dialog names the event, and nothing is removed until it is confirmed.
+  const review = page.getByRole('dialog', { name: 'Delete calendar event?' });
+  await expect(review).toContainText('Flag-off meeting');
+  await expect(review).toContainText('This cannot be undone.');
+  expect((await storedEvents(page)).map(row => row.title)).toEqual(['Flag-off meeting']);
+  await review.getByRole('button', { name: 'Delete event', exact: true }).click();
+  await expect(review).toHaveCount(0);
+  await expect.poll(() => storedEvents(page)).toEqual([]);
+  // After a restart the event is gone from the list and from the saved calendar document.
+  await page.reload();
+  await button(page, 'Calendar').click();
   await expect(page.getByRole('button', { name: /^Flag-off meeting,/ })).toHaveCount(0);
+  expect(await storedEvents(page)).toEqual([]);
   await expectNoDevelopmentSurface(page);
   expect(foreign).toEqual([]);
 });
@@ -433,7 +460,7 @@ test('loops E and J05 in the web build: browsing and page review work, an unconn
 
 test('loop J01 in the web build: a scanned poster becomes exactly one reviewed calendar event with no development profile', async ({ page }) => {
   test.setTimeout(300_000);
-  const poster = 'Open studio\nOctober 10, 2026\nTime: 6:30 PM - 8:00 PM\nVenue: Main hall';
+  const foreign = await fenceNetwork(page);
   await page.clock.setFixedTime(new Date('2026-10-09T15:00:00Z'));
   await page.addInitScript(offline);
   await page.addInitScript(() => {
@@ -450,22 +477,40 @@ test('loop J01 in the web build: a scanned poster becomes exactly one reviewed c
   const dialog = page.getByRole('dialog', { name: 'Review scanned text' }), text = dialog.getByRole('textbox', { name: 'Scanned text' });
   await expect(text).toBeEnabled({ timeout: 120_000 });
   await expect(text).toHaveValue(/October 10, 2026/);
-  await text.fill(poster);
+  // The suggestions come from the local OCR result as recognized; the text is not corrected first.
+  const recognized = await text.inputValue();
   await dialog.locator('summary').filter({ hasText: 'Create event draft' }).click();
   await expect(dialog.getByLabel('Event title', { exact: true })).toHaveValue('Open studio');
   await expect(dialog.getByLabel('Event date', { exact: true })).toHaveValue('2026-10-10');
   await expect(dialog.getByLabel('Event start time', { exact: true })).toHaveValue('18:30');
+  await expect(dialog.getByLabel('Event location', { exact: true })).toHaveValue('Main hall');
   await dialog.getByLabel('Event title', { exact: true }).fill('Reviewed studio visit');
   await dialog.getByRole('button', { name: 'Review in Calendar', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Reviewed studio visit');
+  // Suggesting and handing off saved nothing; only the Calendar form's Save writes.
+  expect(await storedEvents(page)).toEqual([]);
   await button(page, 'Save event').click();
   await expect(page.getByRole('heading', { name: 'Reviewed studio visit', level: 1 })).toBeVisible();
   await page.reload();
   await expect(button(page, 'Settings')).toBeVisible();
-  await button(page, 'Calendar').click();
+  const saved = await storedEvents(page);
+  expect(saved).toHaveLength(1);
+  // 18:30 to 20:00 on October 10 in the phone's own zone.
+  const [begin, end] = await page.evaluate(() => [new Date(2026, 9, 10, 18, 30).getTime(), new Date(2026, 9, 10, 20, 0).getTime()]);
+  expect(saved[0]).toMatchObject({ calendarId: 'local', title: 'Reviewed studio visit', location: 'Main hall', body: recognized, begin, end });
+  // Home's agenda card names the saved event and opens that same event.
+  const card = page.getByRole('button', { name: /^Open calendar event: Reviewed studio visit,/ });
+  await expect(card).toHaveCount(1);
+  await card.click();
+  await expect(page.getByRole('heading', { name: 'Reviewed studio visit', level: 1 })).toBeVisible();
+  await expect(button(page, 'Main hall')).toBeVisible();
+  await button(page, 'Back to calendar').last().click();
   await button(page, 'Day 10').click();
   await expect(page.getByRole('button', { name: /^Reviewed studio visit,/ })).toHaveCount(1);
+  expect(await storedEvents(page)).toHaveLength(1);
   await expectNoDevelopmentSurface(page);
+  // Capture, OCR and the calendar are all local: nothing left the preview server.
+  expect(foreign).toEqual([]);
 });
 
 test('loop J03 in the web build: a chosen document can be reviewed for a question, and with no agent nothing is sent or saved', async ({ page }) => {
