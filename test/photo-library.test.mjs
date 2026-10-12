@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
+import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync,mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';import {execFileSync} from 'node:child_process';
 // Device photo/video library rules (issue 408). Source-level: this proves the renderer contract and
 // the native source shape, not Android behaviour (see PhotoLibraryInstrumentedTest for that).
 const m=await import('../apps/app/src/runtime/photo-library.ts');
@@ -158,23 +158,107 @@ test('destructive and share actions are reviewed against exact revisions and exp
 });
 
 test('agent operations: search/inspect/select read locally; every change or share is a review',()=>{
- assert.deepEqual(m.validateLibraryOperation({type:'photo_library_search',query:'beach',kind:'image',from:1,to:2,limit:10}),{type:'photo_library_search',query:'beach',kind:'image',from:1,to:2,limit:10});
- for(const bad of [{type:'photo_library_search',limit:51},{type:'photo_library_search',query:'x'.repeat(81)},{type:'photo_library_search',from:5,to:1},{type:'photo_library_search',extra:1},{type:'photo_library_delete',ids:['lib:i:1:1']},{type:'photo_library_inspect',id:'content://media/external/images/1'},{type:'photo_library_select',ids:[]}])assert.throws(()=>m.validateLibraryOperation(bad));
+ assert.deepEqual(m.validateLibraryOperation({type:'photo_library_search',kind:'image',from:1,to:2,limit:10}),{type:'photo_library_search',kind:'image',from:1,to:2,limit:10});
+ // No search text: names are never matched for the agent, so hit/miss cannot probe them.
+ for(const bad of [{type:'photo_library_search',query:'beach'},{type:'photo_library_search',limit:51},{type:'photo_library_search',from:5,to:1},{type:'photo_library_search',extra:1},{type:'photo_library_delete',ids:['lib:i:1:1']},{type:'photo_library_inspect',id:'content://media/external/images/1'},{type:'photo_library_select',ids:[]}])assert.throws(()=>m.validateLibraryOperation(bad));
  assert.deepEqual(m.validateLibraryOperation({type:'photo_library_select',ids:['lib:v:4:9']}),{type:'photo_library_select',ids:['lib:v:4:9']});
- assert.deepEqual(m.validateLibraryOperation({type:'photo_library_review',action:'delete',items:[{id:'lib:i:1:1',revision:'1:2:3'}]}),{type:'photo_library_review',action:'delete',items:[{id:'lib:i:1:1',revision:'1:2:3'}]});
+ assert.deepEqual(m.validateLibraryOperation({type:'photo_library_review',action:'delete',items:[{id:'lib:i:1:1',revision:'rev-ab12-3'}]}),{type:'photo_library_review',action:'delete',items:[{id:'lib:i:1:1',revision:'rev-ab12-3'}]});
+ // A native revision (modification time, size, generation) is refused at the agent boundary.
+ assert.throws(()=>m.validateLibraryOperation({type:'photo_library_review',action:'delete',items:[{id:'lib:i:1:1',revision:'1:2:3'}]}),/Invalid reviewed item/);
+ assert.throws(()=>m.validateLibraryOperation({type:'photo_library_review',action:'restore',items:[{id:'lib:i:1:1',revision:'rev-ab12-3'}]}),/Unsupported/);
+ assert.equal(m.REVIEWED_LIBRARY_ACTIONS.includes('restore'),false,'restore is not offered: trashed rows are never paged');
+ assert.match(m.describeLibraryOperation({type:'photo_library_review',action:'delete',items:[{id:'lib:i:1:1',revision:'rev-ab12-3'}]}).description,/You confirm it there and then in Android/);
+ // Results: exact shape, opaque revisions only.
+ const search={type:'photo_library_search',limit:2};
+ assert.throws(()=>m.validateLibraryResult(search,{kind:'photo_library_search',scope:'full',more:false,items:[{id:'lib:i:1:1',revision:'1:2:3',kind:'image',takenAt:1,width:1,height:1}]}),/Invalid library result item/);
+ assert.throws(()=>m.validateLibraryResult(search,{kind:'photo_library_search',scope:'full',more:false,items:[{id:'lib:i:1:1',revision:'rev-a-1',kind:'image',takenAt:1,width:1,height:1,name:'x'}]}),/Unexpected/);
+ assert.throws(()=>m.validateLibraryResult({type:'photo_library_select',ids:['lib:i:1:1']},{kind:'photo_library_select',selected:2,missing:0}));
 });
 
-test('selected outbound model context carries no names, album names or pixels',()=>{
- const parsed=m.parsePage(page([item(7,{name:'PRIVATE_NAME.jpg',album:'PRIVATE_ALBUM',favorite:true}),item(6,{id:'lib:v:6:60',kind:'video',duration:12.4})],'6'));
- const result=m.modelSearchResult(parsed,10);
+test('opaque model revisions resolve locally and change when the item changes',()=>{
+ const revisions=new m.LibraryRevisions('s1',3);
+ const a=revisions.model('lib:i:1:1','10:20:30');
+ assert.match(a,m.MODEL_REVISION);assert.equal(revisions.model('lib:i:1:1','10:20:30'),a,'stable while unchanged');
+ assert.equal(revisions.native('lib:i:1:1',a),'10:20:30');
+ const b=revisions.model('lib:i:1:1','11:20:31');assert.notEqual(b,a);
+ assert.equal(revisions.native('lib:i:1:1',a),undefined,'a superseded revision no longer resolves');
+ assert.equal(revisions.native('lib:i:2:2',b),undefined,'bound to its id');
+ for(const id of ['lib:i:2:2','lib:i:3:3','lib:i:4:4'])revisions.model(id,'1:1:1');
+ assert.equal(revisions.native('lib:i:1:1',b),undefined,'bounded');
+ assert.throws(()=>new m.LibraryRevisions('Bad Session'));
+});
+
+test('selected outbound model context carries no names, album names, sizes, modification times or pixels',()=>{
+ const parsed=m.parsePage(page([item(7,{name:'PRIVATE_NAME.jpg',album:'PRIVATE_ALBUM',favorite:true,size:987654,revision:'1699999999:987654:7'}),item(6,{id:'lib:v:6:60',kind:'video',duration:12.4})],'6'));
+ const result=m.modelSearchResult(parsed,new m.LibraryRevisions('s1'),10);
  assert.equal(result.more,true);
  const wire=JSON.stringify(result);
- assert.doesNotMatch(wire,/PRIVATE_NAME|PRIVATE_ALBUM|base64|image\/jpeg/);
- assert.deepEqual(result.items[0],{id:'lib:i:7:70',revision:parsed.items[0].revision,kind:'image',takenAt:parsed.items[0].takenAt,width:4000,height:3000,favorite:true});
+ assert.doesNotMatch(wire,/PRIVATE_NAME|PRIVATE_ALBUM|base64|image\/jpeg|987654|1699999999|1700000000:/);
+ assert.deepEqual(result.items[0],{id:'lib:i:7:70',revision:'rev-s1-1',kind:'image',takenAt:parsed.items[0].takenAt,width:4000,height:3000,favorite:true});
  assert.equal(result.items[1].duration,12);
  // The assistant's selected object is one item's identity and a local counter revision.
  assert.match(adapter,/if \(selection\.size !== 1 \|\| !visible\(\)\) return null;/);
  assert.match(adapter,/revisions\(\{ kind: item\.kind, id: item\.id, revision: item\.revision \}\)/);
  const agent=readFileSync('apps/app/src/prototype/agent-adapter.ts','utf8');
  assert.match(agent,/state\.album === 'device' && !state\.open && state\.nativeLibrarySelection\) providerSelection = state\.nativeLibrarySelection;/);
+});
+
+test('native fixes: generation read before rows, trash verified only by IS_TRASHED, observer scoped to the open album, no restore',()=>{
+ const page=java.slice(java.indexOf('@PluginMethod public void page('),java.indexOf('private long maxGeneration()'));
+ assert.ok(page.indexOf('long snapshot = maxGeneration();')>0&&page.indexOf('long snapshot = maxGeneration();')<page.indexOf('getContentResolver().query('),'generation snapshot precedes the row read');
+ assert.match(page,/out\.put\("generation", snapshot\);/);
+ assert.match(java,/case "trash": ok = now != null && now\.getBoolean\("trashed", false\); break;/);
+ assert.doesNotMatch(java,/"restore"|createTrashRequest\(resolver, uris, false\)/);
+ const load=java.slice(java.indexOf('@Override public void load()'),java.indexOf('@PluginMethod public void watch('));
+ assert.doesNotMatch(load,/registerContentObserver/,'nothing observes MediaStore at plugin load');
+ const watch=java.slice(java.indexOf('@PluginMethod public void watch('),java.indexOf('private void unwatch()'));
+ assert.match(watch,/if \(active && observer == null && !"denied"\.equals\(scopeName\(\)\)\)/);
+ assert.match(java,/if \("denied"\.equals\(now\)\) unwatch\(\);/);
+ assert.match(java,/handleOnDestroy\(\) \{\s*destroyed = true;\s*unwatch\(\);/);
+ // The renderer starts the observer from the album view and stops it on close, leave and dispose.
+ assert.match(adapter,/watch\(!!scope && scope\.scope !== 'denied' && !scope\.locked\);/);
+ for(const where of ['close: () => { selection.clear(); review = undefined; watch(false);','reloadOnOpen = true; watch(false); }','dispose() { disposed = true; epoch++; watch(false);'])assert.ok(adapter.includes(where),where);
+ // The agent never sends search text to the native name/album LIKE.
+ const agent=adapter.slice(adapter.indexOf('const agent: LibraryAgent'),adapter.indexOf('mountedAgent = agent;'));
+ assert.doesNotMatch(agent,/query/);
+});
+
+test('PhotoLibraryAccess runs on a plain JVM: scope per SDK, id round trip, LIKE escaping and bounds',()=>{
+ const root=resolve(import.meta.dirname,'..'),temporary=mkdtempSync(join(tmpdir(),'photo-library-access-'));
+ const home=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');const binary=name=>home?join(home,'bin',name):name;
+ try{
+  execFileSync(binary('javac'),['--release','11','-d',temporary,join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/PhotoLibraryAccess.java'),join(root,'test/fixtures/PhotoLibraryAccessTest.java')],{timeout:60000,stdio:'pipe'});
+  assert.match(execFileSync(binary('java'),['-cp',temporary,'ai.elizaresearch.alphaphone.PhotoLibraryAccessTest'],{encoding:'utf8',timeout:60000}),/^PASS photo library access/);
+ }finally{rmSync(temporary,{recursive:true,force:true});}
+});
+
+test('adapter: new items and widened grants reload a fresh first page; agent reads are identity-only',()=>{
+ const root=resolve(import.meta.dirname,'..');
+ assert.match(execFileSync(process.execPath,['--import=tsx',join(root,'test/fixtures/photo-library-adapter.mjs')],{cwd:root,encoding:'utf8',timeout:120000}),/PASS photo library adapter/);
+});
+
+test('library operations are registered in Alpha device actions: Photos-only, negotiated, journaled and receipted',()=>{
+ const root=resolve(import.meta.dirname,'..');
+ const script=`const d=await import(${JSON.stringify(join(root,'apps/app/src/runtime/device-actions.ts'))});
+ const out={};
+ out.search=d.validateDeviceOperation({type:'photo_library_search',limit:5});
+ try{d.validateDeviceOperation({type:'photo_library_search',query:'x'});out.query='accepted';}catch{out.query='refused';}
+ out.home=d.proposalContextNotice({type:'photo_library_search'},{view:'home',revision:'1',sensitive:false});
+ out.locked=d.proposalContextNotice({type:'photo_library_search'},{view:'photos',revision:'1',sensitive:true});
+ out.photos=d.proposalContextNotice({type:'photo_library_search'},{view:'photos',revision:'1',sensitive:false})??null;
+ console.log(JSON.stringify(out));`;
+ const out=JSON.parse(execFileSync(process.execPath,['--import=tsx','--input-type=module','-e',script],{cwd:root,encoding:'utf8',timeout:120000}));
+ assert.deepEqual(out.search,{type:'photo_library_search',limit:5});
+ assert.equal(out.query,'refused');
+ assert.equal(out.home,'Open Photos > Device library to review this action.');
+ assert.equal(out.locked,'Unlock the phone to review this action.');
+ assert.equal(out.photos,null);
+ const actions=readFileSync('apps/app/src/runtime/device-actions.ts','utf8');
+ assert.match(actions,/if\(isLibraryOperation\(op\)&&!this\.credential\.capabilities\?\.includes\(PHOTO_LIBRARY_CAPABILITY\)\)throw/);
+ assert.match(actions,/photoLibraryResult=validateLibraryResult\(p\.operation,result\.photoLibraryResult\)/);
+ assert.equal((actions.match(/photoLibraryResult\?\{result:photoLibraryResult\}/g)||[]).length,3,'approve, sync and reconcile receipts');
+ const executor=readFileSync('apps/app/src/prototype/agent-adapter.ts','utf8');
+ assert.match(executor,/if\(isLibraryOperation\(operation\)\)\{[\s\S]*deviceLibraryAgent\(\)[\s\S]*expectedContext\.view!=='photos'/);
+ const journal=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaActionJournal.java','utf8');
+ assert.match(journal,/"photo_library_search","photo_library_inspect","photo_library_select","photo_library_review"\)\.contains\(type\)\)\{/);
 });

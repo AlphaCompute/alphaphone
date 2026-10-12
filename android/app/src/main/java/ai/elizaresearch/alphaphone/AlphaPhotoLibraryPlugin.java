@@ -69,7 +69,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  private String lastScope = "";
  private ContentObserver observer;
  private final Runnable changed = () -> {
-  if (destroyed) return;
+  if (destroyed || observer == null) return;
   JSObject event = new JSObject();
   event.put("at", System.currentTimeMillis());
   notifyListeners("libraryChanged", event);
@@ -77,15 +77,36 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
 
  @Override public void load() {
   review = getActivity().registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), this::reviewed);
-  observer = new ContentObserver(main) {
-   // Debounced: a burst of external edits produces one event; the renderer decides
-   // whether to revalidate (only while Photos is visible).
-   @Override public void onChange(boolean self) { main.removeCallbacks(changed); main.postDelayed(changed, 1500); }
-  };
-  ContentResolver resolver = getContext().getContentResolver();
-  resolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, observer);
-  resolver.registerContentObserver(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, observer);
   lastScope = scopeName();
+ }
+
+ /**
+  * The MediaStore observer exists only while Photos shows the device library and a grant is
+  * held: the renderer calls watch(true) on entering that album and watch(false) on leaving it.
+  * Alpha is the HOME app, so an always-registered observer would wake the bridge for every
+  * camera or download burst on the phone.
+  */
+ @PluginMethod public void watch(PluginCall call) {
+  boolean active = call.getBoolean("active", false);
+  main.post(() -> {
+   if (destroyed) { call.reject("Device library closed"); return; }
+   if (active && observer == null && !"denied".equals(scopeName())) {
+    observer = new ContentObserver(main) {
+     // Debounced: a burst of external edits produces one event.
+     @Override public void onChange(boolean self) { main.removeCallbacks(changed); main.postDelayed(changed, 1500); }
+    };
+    ContentResolver resolver = getContext().getContentResolver();
+    resolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, observer);
+    resolver.registerContentObserver(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, observer);
+   } else if (!active) unwatch();
+   JSObject out = new JSObject(); out.put("active", observer != null); call.resolve(out);
+  });
+ }
+
+ private void unwatch() {
+  main.removeCallbacks(changed);
+  if (observer != null) getContext().getContentResolver().unregisterContentObserver(observer);
+  observer = null;
  }
 
  private void submit(PluginCall call, Runnable action) {
@@ -154,6 +175,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
   super.handleOnResume();
   // Grants can be downgraded or revoked in Settings while Alpha is in the background.
   String now = scopeName();
+  if ("denied".equals(now)) unwatch();
   if (!now.equals(lastScope)) {
    String previous = lastScope;
    lastScope = now;
@@ -288,6 +310,9 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
     query.putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, new String[] {MediaStore.MediaColumns._ID});
     query.putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING);
     query.putInt(ContentResolver.QUERY_ARG_LIMIT, limit + 1);
+    // Read the generation before the rows: a change committed between the two reads then has a
+    // generation above the snapshot and is reported by the next changes() call, never skipped.
+    long snapshot = maxGeneration();
     JSArray items = new JSArray();
     String next = "";
     long last = 0;
@@ -305,7 +330,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
     JSObject out = scopeResult();
     out.put("items", items);
     out.put("next", next);
-    out.put("generation", maxGeneration());
+    out.put("generation", snapshot);
     call.resolve(out);
    } catch (IllegalArgumentException invalid) {
     call.reject("Invalid library query");
@@ -435,7 +460,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  }
 
  /**
-  * Favorite, unfavorite, trash, restore or delete through Android's confirmation dialog.
+  * Favorite, unfavorite, trash or delete through Android's confirmation dialog.
   * The result reports only what a fresh read verifies afterwards.
   */
  @PluginMethod public void requestChange(PluginCall call) {
@@ -453,7 +478,6 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
      case "favorite": intent = MediaStore.createFavoriteRequest(resolver, uris, true); break;
      case "unfavorite": intent = MediaStore.createFavoriteRequest(resolver, uris, false); break;
      case "trash": intent = MediaStore.createTrashRequest(resolver, uris, true); break;
-     case "restore": intent = MediaStore.createTrashRequest(resolver, uris, false); break;
      default: intent = MediaStore.createDeleteRequest(resolver, uris); break;
     }
     getActivity().runOnUiThread(() -> {
@@ -491,8 +515,9 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
      switch (operation) {
       case "favorite": ok = now != null && now.getBoolean("favorite", false); break;
       case "unfavorite": ok = now != null && !now.getBoolean("favorite", true); break;
-      case "trash": ok = now == null || now.getBoolean("trashed", false); break;
-      case "restore": ok = now != null && !now.getBoolean("trashed", true); break;
+      // Trash is verified only by a row that still exists with IS_TRASHED=1. A row that is gone
+      // (hard-deleted elsewhere, or no longer readable under a narrowed grant) is unverified.
+      case "trash": ok = now != null && now.getBoolean("trashed", false); break;
       default: ok = now == null; break;
      }
      JSObject outcome = new JSObject();
@@ -551,8 +576,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
 
  @Override protected void handleOnDestroy() {
   destroyed = true;
-  main.removeCallbacks(changed);
-  if (observer != null) getContext().getContentResolver().unregisterContentObserver(observer);
+  unwatch();
   PluginCall call = pendingReview;
   pendingReview = null;
   if (call != null) call.reject("Photos closed before Android's review finished. Reload the library to see the current state.");

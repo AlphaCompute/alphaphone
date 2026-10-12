@@ -84,7 +84,8 @@ final class PhotoLibraryAccess {
   return "trash".equals(operation) || "delete".equals(operation);
  }
 
+ /** Restore is not offered: trashed rows are never paged, so nothing can select one. */
  static boolean supportedChange(String operation) {
-  return "favorite".equals(operation) || "unfavorite".equals(operation) || "trash".equals(operation) || "restore".equals(operation) || "delete".equals(operation);
+  return "favorite".equals(operation) || "unfavorite".equals(operation) || "trash".equals(operation) || "delete".equals(operation);
  }
 }

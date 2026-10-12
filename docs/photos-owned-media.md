@@ -134,26 +134,50 @@ downgrade or revoke clears the in-memory catalog and selection.
 
 The catalog is paged newest first by MediaStore id (keyset cursor), at most 100 rows
 per read and 30 thumbnailed rows; the renderer keeps at most 2,000 rows and 240
-thumbnails. Nothing indexes in the background: a debounced ContentObserver only
-tells an open Device library to revalidate. Identities are `lib:<i|v>:<row id>:<add
-generation>` (add time below Android 11), so a reused row id is a different item;
-revisions change with bytes, size or MediaStore generation. External edits are
-reported as changed, deletes/trash as missing, and a MediaStore version change resets
-the catalog. Reads refuse while the device is locked. Locked Folder, other users and
-work-profile media are not visible through MediaStore and are not claimed.
+thumbnails. Nothing indexes in the background. A debounced ContentObserver is
+registered only while Photos > Device library is open and a grant is held (`watch`
+on album enter/leave, dropped on revoke); it tells the open album to revalidate.
+Battery and wake cost have not been measured. Identities are `lib:<i|v>:<row
+id>:<add generation>` (add time below Android 11), so a reused row id is a different
+item; native revisions change with bytes, size or MediaStore generation. A page
+records the MediaStore generation before reading rows, so a change committed during
+the read is reported by the next change read. External edits are reported as changed,
+deletes/trash as missing, new items or a widened grant reload from a fresh first page
+(also on every new visit to the album), and a MediaStore version change resets the
+catalog. When no older page is left, the album offers Reload. Reads refuse while the
+device is locked. Locked Folder, other users and work-profile media are not visible
+through MediaStore and are not claimed.
 
-Share, favorite, trash, restore and delete of media Alpha does not own require an
-in-app review bound to exact revisions (two-minute expiry), then Android's own
-`MediaStore.create*Request` dialog or share chooser. Results report only what a fresh
-read verifies. One selected item becomes the assistant's selected object by identity
-and a local counter revision. The model-facing metadata contract excludes file and
-album names, location and pixels. Exposing search/inspect/select/review as resident
-agent actions needs an upstream Eliza assistant-plugin change; the Alpha contract is
-`apps/app/src/runtime/photo-library.ts`.
+Share, favorite, trash and delete of media Alpha does not own require an in-app
+review bound to exact revisions (two-minute expiry), then Android's own
+`MediaStore.create*Request` dialog or share chooser. Restore is not offered: trashed
+rows are never paged, so nothing can select one. Results report only what a fresh read
+verifies; trash counts as verified only when the row still exists with
+`IS_TRASHED=1`, never because it is gone. One selected item becomes the assistant's
+selected object by identity and a local counter revision.
 
-Validation for this source: `test/photo-library.test.mjs` (source and contract) and
-`npm run verify`. `PhotoLibraryInstrumentedTest` (gated `photoLibrary=1`) pages 60
-fixtures and checks stable ids, search, inspect and external edit/delete/change
-detection; it has not yet been executed. Permission revoke/downgrade (kills the app
-process), Android 14 selected-only grants, reboot, real large personal libraries and
-device acceptance are separate pending gates.
+Agent actions: `photo_library_search`, `photo_library_inspect`,
+`photo_library_select` and `photo_library_review` are validated in
+`apps/app/src/runtime/photo-library.ts`, registered in Alpha's device-action path
+(`device-actions.ts`: validation, Photos-only context, journal, receipts) and
+executed by the renderer (`agent-adapter.ts` through `deviceLibraryAgent()`). A
+proposal is accepted only when the agent negotiated `photos.library.v1`. Search and
+inspect return id, kind, taken date, pixel dimensions, duration and favorite only,
+with a session-local opaque revision (`rev-<session>-<n>`); the native revision
+(modification time, byte size, generation) never leaves the phone and is resolved
+locally when the model echoes a revision back. Search takes no text, so file and
+album names cannot be probed through hit/miss results. Select marks items in the
+open Device library; review opens the same in-app review the owner confirms, then
+Android's dialog. The upstream Eliza assistant plugin does not emit these operations
+or negotiate the capability yet, so the agent cannot use the library until that
+upstream change lands.
+
+Validation for this source: `test/photo-library.test.mjs` (contract, adapter
+reload/agent behaviour with a fake port, device-action registration, and a plain-JVM
+run of `PhotoLibraryAccess`) and `npm run verify`. `PhotoLibraryInstrumentedTest`
+(gated `photoLibrary=1`) pages 60 fixtures and checks stable ids, search, inspect and
+change detection; its fixtures are inserted by Alpha itself, so they are Alpha-owned
+and prove nothing about third-party media visibility under a grant. It has not been
+executed. Third-party fixtures with and without the grant, permission
+revoke/downgrade (kills the app process), Android 14 selected-only grants, reboot,
+real large personal libraries and device acceptance are separate pending gates.

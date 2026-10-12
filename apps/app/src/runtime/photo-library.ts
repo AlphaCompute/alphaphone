@@ -197,11 +197,12 @@ export class LibrarySelection {
   }
 }
 
-export type LibraryChange = 'favorite' | 'unfavorite' | 'trash' | 'restore' | 'delete';
+export type LibraryChange = 'favorite' | 'unfavorite' | 'trash' | 'delete';
 export type LibraryAction = LibraryChange | 'share';
 /** Actions that remove media or send it out of Alpha. Each one is reviewed by the owner in
- * Alpha and then in Android's own confirmation or chooser. */
-export const REVIEWED_LIBRARY_ACTIONS: readonly LibraryAction[] = ['trash', 'delete', 'share', 'restore', 'favorite', 'unfavorite'];
+ * Alpha and then in Android's own confirmation or chooser. Restore is not offered: trashed rows
+ * are never paged, so no UI or agent path can select one. */
+export const REVIEWED_LIBRARY_ACTIONS: readonly LibraryAction[] = ['trash', 'delete', 'share', 'favorite', 'unfavorite'];
 export const DESTRUCTIVE_LIBRARY_ACTIONS: readonly LibraryAction[] = ['trash', 'delete'];
 
 export type LibraryReview = { id: string; action: LibraryAction; items: { id: string; revision: string }[]; expiresAt: number; title: string; detail: string };
@@ -213,7 +214,6 @@ export function reviewText(action: LibraryAction, count: number): { title: strin
     case 'trash': return { title: `Move ${n} to trash?`, detail: 'Android asks you to confirm. Items stay in Android trash until it empties them; other apps see them removed.' };
     case 'delete': return { title: `Delete ${n} permanently?`, detail: 'Android asks you to confirm. This removes the media from the device for every app and cannot be undone by Alpha.' };
     case 'share': return { title: `Share ${n}?`, detail: 'Android opens its share sheet with read-only access to exactly these items. Nothing is sent until you choose an app there.' };
-    case 'restore': return { title: `Restore ${n}?`, detail: 'Android asks you to confirm restoring these items from trash.' };
     case 'favorite': return { title: `Favorite ${n}?`, detail: 'Android asks you to confirm marking these items as favorites for every gallery app.' };
     default: return { title: `Remove ${n} from favorites?`, detail: 'Android asks you to confirm.' };
   }
@@ -236,26 +236,65 @@ export function reviewCurrent(review: LibraryReview | undefined, catalog: Librar
   return review.items.every(reviewed => catalog.items.some(item => item.id === reviewed.id && item.revision === reviewed.revision));
 }
 
+/** Session-local opaque revisions for model-facing identities. The native revision embeds the
+ * file's modification time and byte size; it never leaves the phone. A model sees
+ * `rev-<session>-<n>` and echoes it back; only this map resolves it to the native revision. */
+export const MODEL_REVISION = /^rev-[a-z0-9]{1,16}-[1-9][0-9]{0,9}$/;
+export class LibraryRevisions {
+  private readonly toOpaque = new Map<string, { native: string; opaque: string }>();
+  private counter = 0;
+  private readonly session: string;
+  private readonly kept: number;
+  constructor(session: string, kept: number = LIBRARY_LIMITS.kept) {
+    if (!/^[a-z0-9]{1,16}$/.test(session)) throw Error('Invalid revision session');
+    this.session = session; this.kept = kept;
+  }
+  /** The opaque revision for this exact native revision; a changed item gets a new one. */
+  model(id: string, native: string): string {
+    if (!isLibraryId(id) || !REVISION.test(native)) throw Error('Invalid library revision');
+    const previous = this.toOpaque.get(id);
+    const opaque = previous?.native === native ? previous.opaque : `rev-${this.session}-${++this.counter}`;
+    this.toOpaque.delete(id); this.toOpaque.set(id, { native, opaque });
+    if (this.toOpaque.size > this.kept) this.toOpaque.delete(this.toOpaque.keys().next().value as string);
+    return opaque;
+  }
+  /** The native revision behind an opaque one, or undefined when it is unknown or superseded. */
+  native(id: string, opaque: string): string | undefined {
+    const known = this.toOpaque.get(id);
+    return known && known.opaque === opaque ? known.native : undefined;
+  }
+}
+
 /** Operations the local agent may ask for. Search/inspect/select read locally; every change and
- * every share becomes a review the owner confirms, never a direct effect. */
+ * every share becomes a review the owner confirms in Alpha and then in Android, never a direct
+ * effect. Search takes no text: file and album names are matched only by the owner, so hit/miss
+ * results cannot be used to probe names the model is not given. */
 export type LibraryAgentOperation =
-  | { type: 'photo_library_search'; query?: string; kind?: LibraryKind | 'all'; from?: number; to?: number; favorites?: boolean; limit?: number }
+  | { type: 'photo_library_search'; kind?: LibraryKind | 'all'; from?: number; to?: number; favorites?: boolean; limit?: number }
   | { type: 'photo_library_inspect'; id: string }
   | { type: 'photo_library_select'; ids: string[] }
   | { type: 'photo_library_review'; action: LibraryAction; items: { id: string; revision: string }[] };
+/** Negotiated with the agent before any library proposal is accepted. */
+export const PHOTO_LIBRARY_CAPABILITY = 'photos.library.v1';
+export const LIBRARY_OPERATION_TYPES: readonly string[] = ['photo_library_search', 'photo_library_inspect', 'photo_library_select', 'photo_library_review'];
+export function isLibraryOperation(value: unknown): value is LibraryAgentOperation {
+  return !!value && typeof value === 'object' && LIBRARY_OPERATION_TYPES.includes(String((value as Bag).type));
+}
 
 export function validateLibraryOperation(value: unknown): LibraryAgentOperation {
   const op = bag(value);
   const allowed = (keys: string[]) => { for (const key of Object.keys(op)) if (!keys.includes(key)) throw Error('Unexpected library operation field'); };
   if (op.type === 'photo_library_search') {
-    allowed(['type', 'query', 'kind', 'from', 'to', 'favorites', 'limit']);
-    if (op.query !== undefined && (typeof op.query !== 'string' || op.query.length > LIBRARY_LIMITS.query || /[\u0000-\u001f]/.test(op.query))) throw Error('Invalid library search text');
+    allowed(['type', 'kind', 'from', 'to', 'favorites', 'limit']);
     if (op.kind !== undefined && !['image', 'video', 'all'].includes(String(op.kind))) throw Error('Invalid library kind');
     for (const key of ['from', 'to'] as const) if (op[key] !== undefined && !(Number.isSafeInteger(op[key]) && (op[key] as number) >= 0)) throw Error('Invalid library date');
     if (op.from !== undefined && op.to !== undefined && (op.from as number) > (op.to as number)) throw Error('Invalid library date range');
     if (op.favorites !== undefined && typeof op.favorites !== 'boolean') throw Error('Invalid favorites filter');
     if (op.limit !== undefined && !(Number.isInteger(op.limit) && (op.limit as number) >= 1 && (op.limit as number) <= 50)) throw Error('Invalid library limit');
-    return op as LibraryAgentOperation;
+    return {
+      type: op.type, ...(op.kind !== undefined ? { kind: op.kind as LibraryKind | 'all' } : {}), ...(op.from !== undefined ? { from: op.from as number } : {}),
+      ...(op.to !== undefined ? { to: op.to as number } : {}), ...(op.favorites !== undefined ? { favorites: op.favorites as boolean } : {}), ...(op.limit !== undefined ? { limit: op.limit as number } : {}),
+    };
   }
   if (op.type === 'photo_library_inspect') { allowed(['type', 'id']); if (!isLibraryId(op.id)) throw Error('Invalid library id'); return { type: op.type, id: op.id }; }
   if (op.type === 'photo_library_select') {
@@ -265,21 +304,78 @@ export function validateLibraryOperation(value: unknown): LibraryAgentOperation 
   }
   if (op.type === 'photo_library_review') {
     allowed(['type', 'action', 'items']);
-    const review = prepareReview(op.action as LibraryAction, Array.isArray(op.items) ? op.items.map(entry => { const item = bag(entry); return { id: String(item.id), revision: String(item.revision) }; }) : [], 0, () => 'validation');
-    return { type: op.type, action: review.action, items: review.items };
+    if (!REVIEWED_LIBRARY_ACTIONS.includes(op.action as LibraryAction)) throw Error('Unsupported library action');
+    if (!Array.isArray(op.items) || !op.items.length || op.items.length > LIBRARY_LIMITS.action) throw Error('Select 1–20 items');
+    const unique = new Set<string>(), items = op.items.map(entry => {
+      const item = bag(entry);
+      if (Object.keys(item).some(key => key !== 'id' && key !== 'revision')) throw Error('Unexpected reviewed item field');
+      // The model only ever holds opaque revisions; a native revision here is refused.
+      if (!isLibraryId(item.id) || typeof item.revision !== 'string' || !MODEL_REVISION.test(item.revision) || unique.has(item.id)) throw Error('Invalid reviewed item');
+      unique.add(item.id);
+      return { id: item.id, revision: item.revision };
+    });
+    return { type: op.type, action: op.action as LibraryAction, items };
   }
   throw Error('Unsupported library operation');
 }
 
-/** What a model may receive about library items: identity, kind, dates and shape. No file or
- * album names, no location, no pixels. */
+/** Owner-facing text for an agent library proposal. */
+export function describeLibraryOperation(op: LibraryAgentOperation): { title: string; description: string } {
+  if (op.type === 'photo_library_search') {
+    const what = op.kind === 'image' ? 'photos' : op.kind === 'video' ? 'videos' : 'photos and videos';
+    return { title: 'Search device library', description: `List up to ${op.limit ?? 20} ${op.favorites ? 'favorite ' : ''}${what} Android lets Alpha read${op.from !== undefined || op.to !== undefined ? ' in the requested date range' : ''}. The agent receives ids, kind, dates, dimensions and duration only: no file or album names, no location, no pixels.` };
+  }
+  if (op.type === 'photo_library_inspect') return { title: 'Inspect one library item', description: 'Share one item\'s id, kind, dates, dimensions and duration with the agent. No file or album name, location or pixels.' };
+  if (op.type === 'photo_library_select') return { title: `Select ${op.ids.length === 1 ? '1 item' : `${op.ids.length} items`} in Photos`, description: 'Mark these items as selected in Photos > Device library on this phone. Nothing is changed or shared.' };
+  const text = reviewText(op.action, op.items.length);
+  return { title: text.title, description: `Open this review in Photos > Device library. You confirm it there and then in Android's own dialog or share sheet before anything changes or leaves the phone. ${text.detail}` };
+}
+
+/** What a model may receive about library items: identity, an opaque session revision, kind,
+ * dates and shape. No file or album names, no size or modification time, no location, no pixels. */
 export type LibraryModelItem = { id: string; revision: string; kind: LibraryKind; takenAt: number; width: number; height: number; duration?: number; favorite?: true };
-export function modelItem(item: LibraryItem): LibraryModelItem {
+export function modelItem(item: LibraryItem, revisions: LibraryRevisions): LibraryModelItem {
   return {
-    id: item.id, revision: item.revision, kind: item.kind, takenAt: item.takenAt, width: item.width, height: item.height,
+    id: item.id, revision: revisions.model(item.id, item.revision), kind: item.kind, takenAt: item.takenAt, width: item.width, height: item.height,
     ...(item.kind === 'video' && item.duration ? { duration: Math.round(item.duration) } : {}), ...(item.favorite ? { favorite: true as const } : {}),
   };
 }
-export function modelSearchResult(page: LibraryPage, limit = 50): { scope: LibraryScope; items: LibraryModelItem[]; more: boolean } {
-  return { scope: page.scope.scope, items: page.items.slice(0, limit).map(modelItem), more: !!page.next || page.items.length > limit };
+export function modelSearchResult(page: LibraryPage, revisions: LibraryRevisions, limit = 50): { scope: LibraryScope; items: LibraryModelItem[]; more: boolean } {
+  return { scope: page.scope.scope, items: page.items.slice(0, limit).map(item => modelItem(item, revisions)), more: !!page.next || page.items.length > limit };
+}
+
+/** The structured result an approved library operation returns to the agent. */
+export type LibraryAgentResult =
+  | { kind: 'photo_library_search'; scope: LibraryScope; items: LibraryModelItem[]; more: boolean }
+  | { kind: 'photo_library_inspect'; item: LibraryModelItem }
+  | { kind: 'photo_library_select'; selected: number; missing: number }
+  | { kind: 'photo_library_review'; status: 'review_opened'; action: LibraryAction; count: number };
+const MODEL_KEYS = ['id', 'revision', 'kind', 'takenAt', 'width', 'height', 'duration', 'favorite'];
+function validateModelItem(value: unknown): LibraryModelItem {
+  const row = bag(value);
+  if (Object.keys(row).some(key => !MODEL_KEYS.includes(key))) throw Error('Unexpected library result field');
+  if (!isLibraryId(row.id) || typeof row.revision !== 'string' || !MODEL_REVISION.test(row.revision) || row.kind !== libraryKindOf(row.id)) throw Error('Invalid library result item');
+  for (const key of ['takenAt', 'width', 'height'] as const) if (!(typeof row[key] === 'number' && Number.isFinite(row[key]) && (row[key] as number) >= 0)) throw Error('Invalid library result item');
+  if (row.duration !== undefined && !(Number.isInteger(row.duration) && (row.duration as number) >= 0)) throw Error('Invalid library result item');
+  if (row.favorite !== undefined && row.favorite !== true) throw Error('Invalid library result item');
+  return row as LibraryModelItem;
+}
+export function validateLibraryResult(op: LibraryAgentOperation, value: unknown): LibraryAgentResult {
+  const row = bag(value);
+  if (row.kind !== op.type) throw Error('Library result kind mismatch');
+  const keys = (list: string[]) => { if (Object.keys(row).some(key => !list.includes(key))) throw Error('Unexpected library result field'); };
+  if (op.type === 'photo_library_search') {
+    keys(['kind', 'scope', 'items', 'more']);
+    if (!['full', 'selected'].includes(String(row.scope)) || !Array.isArray(row.items) || row.items.length > (op.limit ?? 50) || typeof row.more !== 'boolean') throw Error('Invalid library search result');
+    return { kind: op.type, scope: row.scope as LibraryScope, items: row.items.map(validateModelItem), more: row.more };
+  }
+  if (op.type === 'photo_library_inspect') { keys(['kind', 'item']); const item = validateModelItem(row.item); if (item.id !== op.id) throw Error('Library result id mismatch'); return { kind: op.type, item }; }
+  if (op.type === 'photo_library_select') {
+    keys(['kind', 'selected', 'missing']);
+    if (!Number.isInteger(row.selected) || !Number.isInteger(row.missing) || (row.selected as number) < 0 || (row.missing as number) < 0 || (row.selected as number) + (row.missing as number) !== op.ids.length) throw Error('Invalid library selection result');
+    return { kind: op.type, selected: row.selected as number, missing: row.missing as number };
+  }
+  keys(['kind', 'status', 'action', 'count']);
+  if (row.status !== 'review_opened' || row.action !== op.action || row.count !== op.items.length) throw Error('Invalid library review result');
+  return { kind: op.type, status: 'review_opened', action: op.action, count: op.items.length };
 }
