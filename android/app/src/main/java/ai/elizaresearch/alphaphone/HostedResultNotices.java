@@ -42,7 +42,8 @@ final class HostedResultNotices {
  synchronized void withdrawOtherOwners(String ownerId)throws Exception {
   if(ownerId==null||ownerId.length()>128||ownerId.indexOf('\0')>=0)throw new IllegalArgumentException("Invalid owner");
   write(OWNER,new JSONObject().put("ownerId",ownerId));JSONObject ledger=read(LEDGER),pending=read(PENDING);
-  for(String key:ledger.keySet()){JSONObject record=ledger.getJSONObject(key);if(ownerMatches(record))continue;record.put("phase","owner-withdrawn");write(LEDGER,ledger);poster.cancel(key);if(key.equals(pending.optString("key")))write(PENDING,new JSONObject());}
+  ArrayList<String> keys=new ArrayList<>();ledger.keys().forEachRemaining(keys::add);
+  for(String key:keys){JSONObject record=ledger.getJSONObject(key);if(ownerMatches(record))continue;record.put("phase","owner-withdrawn");write(LEDGER,ledger);poster.cancel(key);if(key.equals(pending.optString("key")))write(PENDING,new JSONObject());}
  }
  synchronized String publish(JSONObject requested)throws Exception {
   if(!ownerMatches(requested))return "owner-changed";
