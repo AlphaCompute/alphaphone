@@ -331,7 +331,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const info = (label: string, val: string): Bag => ({ kInfo: true, label, val, hasVal: true, noAB: true });
     const nav = (label: string, page: string): Bag => ({ kNav: true, label, lbl: label, chev: true, noAB: true, go: manage(page) });
     const group = (rows: Bag[]) => ({ css: 'background:var(--s2);padding:4px 0', rows });
-    const speechRows = (): Bag[] => [info('Speech', 'Eliza Cloud (uses credits)')];
+    const speechRows = (): Bag[] => [info('Speech', 'Eliza Cloud (counts toward your plan)')];
     const problemCount = crashLog ? crashLog.entries.length : null;
     const problemsRow = (): Bag => ({ kNav:true, label:'Problem log', lbl:'Problem log', val: problemCount === null ? 'Unavailable' : problemCount ? `${problemCount} recorded` : 'None recorded', hasVal:true, chev:true, noAB:true, go:()=>{ api.set({ page:'problems' }); void refresh(); } });
     const diagnosticsRow = (): Bag => ({ kNav:true, label:'Export diagnostics', lbl: diagnosticsBusy ? 'Preparing diagnostics…' : 'Export diagnostics', chev:true, noAB:true, go:()=>void exportDiagnostics(api) });
