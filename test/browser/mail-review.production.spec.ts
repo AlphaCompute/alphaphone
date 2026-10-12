@@ -196,3 +196,27 @@ test('Android: the send review shows Cc and Bcc, an edit after review is reviewe
   expect(state.sent).toEqual(['Flag-off reviewed send | Second body']);
   expect(state.unexpected).toEqual([]);
 });
+
+test('Android: after an account change elsewhere, the Home Inbox card says when it last updated', async ({ page }) => {
+  test.setTimeout(120_000);
+  await androidWithMailbox(page);
+  await connected(page);
+  await button(page, 'Inbox').click();
+  await expect(button(page, 'Synthetic sender, Harbour schedule')).toBeVisible({ timeout: 30_000 });
+  await button(page, 'Back to apps').click();
+  const card = page.locator('[data-alpha-layer="home"] [data-alpha-home-inbox]');
+  await expect(card).toContainText(/Read \d{1,2}:\d{2}/);
+  await expect(card).not.toContainText('Not updated since');
+  // Settings announces a Gmail account change this way after a disconnect; Home reads no mail.
+  const searches = (await fixture(page)).searches;
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('alpha:gmail-accounts-changed', { detail: { source: 'settings' } })));
+  await expect(card).toContainText(/Not updated since .*\d{1,2}:\d{2}/);
+  await expect(card).not.toContainText(/Read \d|unread/);
+  await expect(card).toHaveAccessibleName(/^Open Inbox: .+ has not updated since .*\d{1,2}:\d{2} (AM|PM); 0 unread emails when last read$/);
+  await expect(card).toHaveAttribute('aria-description', /^Not updated since /);
+  expect((await fixture(page)).searches).toBe(searches);
+  // Opening it from the stale card reads the account again.
+  await card.click();
+  await expect(button(page, 'Synthetic sender, Harbour schedule')).toBeVisible({ timeout: 30_000 });
+  expect((await fixture(page)).unexpected).toEqual([]);
+});

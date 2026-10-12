@@ -2,7 +2,7 @@ import { registerPlugin } from '../platform-plugins';
 const attachmentNative=registerPlugin<{openReviewed(input:Record<string,unknown>):Promise<{message:string}>;saveReviewed(input:Record<string,unknown>):Promise<{status:string;message:string}>;cancel():Promise<void>}>('AlphaMailAttachments');
 import {reviewMailContext,validateMailContext,type ReviewedMailContext,type MailContextSource} from '../runtime/reviewed-mail-context';
 import { inboxProviderControls } from './inbox-provider-controls';
-import { presentHomeInboxStatus } from './home-cards';
+import { presentHomeAttention, presentHomeInboxStatus } from './home-cards';
 import { inboxDrafts, type ComposePrefill, type SuggestionTarget } from './inbox-drafts';
 import { attachmentReadFailure, classifyGmailFailure, disconnectGmailAccount, disconnectMessage, gmailReadable, setGmailReadState, GMAIL_ACCOUNTS_CHANGED, type GmailFailureKind } from '../runtime/gmail-mailbox';
 import { connectionController } from '../runtime/connection-ui';
@@ -464,6 +464,10 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     const count=unread.length?`${unread.length}${cached?.more?'+':''} unread`:'';
     // Account and read time of the page the user loaded in Inbox; Home never reads mail to refresh it.
     const homeInboxStatus=presentHomeInboxStatus({failure:!!homeFailure,pending,cached:cached?{more:cached.more,label:accounts.find(a=>a.connectionId===selected)?.label||'',readAt:cached.readAt}:null,connected,unchecked:!!binding&&!accountsChecked,now:Date.now()});
+    // The loaded page was dropped (an account change or disconnect elsewhere) after a real read:
+    // the card says when it last updated, with the last count only in the accessible name.
+    const stale=binding&&!cached&&!homeFailure&&!pending&&attention.state==='stale'&&attention.updatedAt?presentHomeAttention({state:'stale',unread:attention.unread,...(attention.source?{source:attention.source}:{}),updatedAt:attention.updatedAt},Date.now()):null;
+    if(stale)return {...out,homeAttentionLabel:stale.label,homeInboxCount:'',homeInboxRows:[],homeInboxHasRows:false,homeInboxTitle:'Inbox',homeInboxStatus:stale.text,homeInboxDescription:stale.text};
     return {...out,homeAttentionLabel:count?`Open Inbox: ${count} email${unread.length===1?'':'s'}`:!binding||accountsChecked&&!connected?'Connect email':'Open Inbox',
       homeInboxCount:count,homeInboxRows:unread.slice(0,2).map(m=>({subject:m.subject||'(no subject)',from:m.from})),homeInboxHasRows:unread.length>0,
       homeInboxTitle:unread.length?'':homeFailure==='revoked'?'Reconnect email':homeFailure?'Email unavailable':pending?'Loading email…':cached&&!cached.more?'No unread email':!binding||accountsChecked&&!connected?'Connect email':'Inbox',
