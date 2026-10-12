@@ -555,3 +555,23 @@ test("restart runner wires the migration, crash-log, theme and source-reference 
     for (const phase of phases) assert.ok(java.includes(`"${phase}"`), `${cls} handles ${phase}`);
   }
 });
+
+test("round-9 journeys and links: J01, J05, the note link and the Maps return are registered offline", () => {
+  for (const [name, gate] of [["PosterCalendarJourney", "posterJourney"], ["JourneyJ05", "journeyJ05"], ["Maps", "mapsEventReturn"]]) {
+    assert.equal(CLASS_REGISTRY[name].args[gate], "1", `${name} passes ${gate}`);
+    assert.ok(gateRead(sourceOf(name), gate, "1"), `${name} reads ${gate}`);
+    assert.ok(!DEFAULT_CLASSES.includes(name), `${name} is not a default class`);
+  }
+  // Maps gained a runner entry, so it is no longer listed as unreachable.
+  assert.ok(!Object.hasOwn(NOT_RUN_BY_A_RUNNER, "Maps"));
+  assert.equal(parseInstrumentationArgs(["--classes", "Maps"]).classes[0], C("Maps"));
+  // J05 composes the flag-off journey: a test-mocks build is refused.
+  assert.equal(CLASS_REGISTRY.JourneyJ05.flagOffOnly, true);
+  assert.throws(() => parseInstrumentationArgs(["--test-mocks", "--classes", "JourneyJ05"]), /flag-off policy/);
+  // The note link needs no gate or provider.
+  assert.equal(CLASS_REGISTRY.NoteOrigin.args, undefined);
+  assert.match(sourceOf("NoteOrigin"), /"note-origins:v1:device"/);
+  // BrowserPageQuestion and the journey built on it name no public host.
+  for (const name of ["BrowserPageQuestion", "JourneyJ05"]) assert.ok(!/example\.com|www\.google\.com/.test(sourceOf(name)), `${name} contacts no public host`);
+  assert.doesNotMatch(CLASS_REGISTRY.BrowserPageQuestion.note, /needs network|example\.com/);
+});

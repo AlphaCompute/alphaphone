@@ -113,7 +113,7 @@ export const CLASS_REGISTRY = {
   CameraScan: {},
   FilesTree: {},
   // J05-2: native page excerpt -> reviewed question -> composer; a note's web source across recreation.
-  BrowserPageQuestion: { args: { browserPageQuestion: "1" }, note: "needs network for the first tab (example.com) and a WebView provider with isolated-world injection; the agent's answer and the summary-note save that follows it need a connected agent and are not covered" },
+  BrowserPageQuestion: { args: { browserPageQuestion: "1" }, note: "offline: every page is served from memory to the tab's WebView (the first tab opens on https://reading.invalid/start, which never resolves); needs a WebView provider with isolated-world injection; the agent's answer and the summary-note save that follows it need a connected agent and are not covered" },
   // Mock mode and loopback fixtures exist only in a test-mocks app build.
   ConnectionChooser: { requiresTestMocksBuild: true },
   BrowserDialogLifecycle: { requiresTestMocksBuild: true },
@@ -131,6 +131,11 @@ export const CLASS_REGISTRY = {
   SelectedDocument: { note: "documentProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs document" },
   PasswordVaultSettings: { args: { passwordVault: "1" }, note: "sets and clears a fixture screen-lock PIN: an owned emulator with no screen lock of its own; the inactivity step waits out the 60 s unlock window" },
   PasswordVaultFill: { args: { passwordVaultFill: "1" }, note: "sets and clears a fixture screen-lock PIN and selects Alpha as the Autofill service, restoring the previous service; the other package is Alpha's own (the instrumentation APK holds one package)" },
+  // Round-9 journeys and links (WP2, second pass). Compiled into both instrumentation APKs; no recorded run.
+  PosterCalendarJourney: { args: { posterJourney: "1" }, note: "J01: a picked poster PNG through DocumentsUI, on-device OCR, the event draft, the Calendar form and Save into the real CalendarProvider (Alpha's own local calendar), then the Home card; the cancel method leaves no row. Calendar access is granted by the class" },
+  JourneyJ05: { args: { journeyJ05: "1" }, flagOffOnly: true, note: "J05 on the flag-off pair, offline: page -> Ask about page -> native review -> composer -> Send with no agent (nothing dispatched) -> a source note for that page across recreation; needs a WebView provider with isolated-world injection; no agent answer" },
+  NoteOrigin: { note: "storage level: a reminder's note link in note-origins:v1:device, read back exactly and across recreation; needs the slot admitted for compare-and-exchange (WP1). The Calendar 'From note' line is not driven" },
+  Maps: { args: { mapsEventReturn: "1" }, note: "calendarLocationReturnsToTheSameEventAndFailsClosed owns a local calendar and grants itself Calendar access; explicitRecenterUsesInjectedNativeLocationAndStopsWatch is skipped without host GPS injection (mapsLatitude/mapsLongitude)" },
   // Self-contained classes with an explicit gate. Registered so the gate is passed.
   BrowserShare: { args: { browserShareLive: "1" }, note: "opens a public HTTPS page and Android's chooser; the emulator needs network" },
   BrowserUnsupportedReading: { args: { browserUnsupportedReading: "1" }, requiresTestMocksBuild: true, note: "the negative flow: needs a WebView provider WITHOUT isolated-world injection" },
@@ -201,7 +206,6 @@ export const NOT_RUN_BY_A_RUNNER = {
   ContactsFlow: "@Ignore: Contacts is deferred from the MVP and the campaign mutates the ContactsProvider",
   DeviceAction: "needs the device-action backend host and adb reverse (deviceActions=true); its runner was removed in 49b1bf4c",
   LiveAgent: "needs a running loopback host with a real provider key, adb reverse and a provisioned bearer (liveAgent=true)",
-  Maps: "needs continuing emulator GPS injection coordinated from the host and mapsLatitude/mapsLongitude; the scripts/maps runners cover MapsRegional and MapsBackgroundNavigation only",
   PairedMaps: "needs a real paired host and an external Maps fixture (pairedMaps=1); no runner pairs one",
   PairedReminder: "needs a real paired host (pairedReminder=1); no runner pairs one",
   PhotosFixtureRecovery: "operator tool that inventories or deletes stranded test-owned media (alphaPhotoRecovery=inventory|delete); never part of a campaign",
