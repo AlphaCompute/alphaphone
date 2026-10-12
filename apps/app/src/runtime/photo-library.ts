@@ -23,6 +23,9 @@ export type LibraryValidation = { id: string; status: 'current' | 'changed' | 'm
 /** Native bounds (PhotoLibraryAccess.java). */
 export const LIBRARY_LIMITS = Object.freeze({ page: 100, thumbnailRows: 30, validate: 200, changes: 200, action: 20, query: 80, kept: 2000, thumbnailsKept: 240 });
 export const LIBRARY_ID = /^lib:([iv]):([1-9][0-9]{0,18}):([0-9]{1,19})$/;
+const PERMITTED_ID = /^m:([a-zA-Z0-9_-]{1,80}):([iv]):([1-9][0-9]{0,18})$/;
+const PERMITTED_REVISION = /^[a-zA-Z0-9_-]{1,128}(?::[0-9]{1,19}){3,5}$/;
+const validRevision = (value: string) => REVISION.test(value) || PERMITTED_REVISION.test(value);
 const REVISION = /^[0-9]{1,19}:[0-9]{1,19}(?::[0-9]{1,19})?$/;
 
 type Bag = Record<string, unknown>;
@@ -30,8 +33,8 @@ const bag = (value: unknown): Bag => { if (!value || typeof value !== 'object' |
 const finite = (value: unknown, fallback = 0) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
 const short = (value: unknown, max = 255) => typeof value === 'string' ? value.slice(0, max) : '';
 
-export function isLibraryId(value: unknown): value is string { return typeof value === 'string' && LIBRARY_ID.test(value); }
-export function libraryKindOf(id: string): LibraryKind { const match = LIBRARY_ID.exec(id); if (!match) throw Error('Invalid library id'); return match[1] === 'v' ? 'video' : 'image'; }
+export function isLibraryId(value: unknown): value is string { return typeof value === 'string' && (LIBRARY_ID.test(value) || PERMITTED_ID.test(value) && !/^m:(external|internal):/.test(value)); }
+export function libraryKindOf(id: string): LibraryKind { const permitted = PERMITTED_ID.exec(id); if (permitted && isLibraryId(id)) return permitted[2] === 'v' ? 'video' : 'image'; const match = LIBRARY_ID.exec(id); if (!match) throw Error('Invalid library id'); return match[1] === 'v' ? 'video' : 'image'; }
 
 export function parseScope(value: unknown): LibraryScopeState {
   const row = bag(value);
@@ -46,7 +49,7 @@ export function parseScope(value: unknown): LibraryScopeState {
 
 export function parseItem(value: unknown): LibraryItem {
   const row = bag(value);
-  if (!isLibraryId(row.id) || typeof row.revision !== 'string' || !REVISION.test(row.revision)) throw Error('Invalid library item');
+  if (!isLibraryId(row.id) || typeof row.revision !== 'string' || !validRevision(row.revision)) throw Error('Invalid library item');
   const kind = libraryKindOf(row.id);
   if (row.kind !== kind) throw Error('Library item kind mismatch');
   const image = typeof row.image === 'string' && (row.image === '' || row.image.startsWith('data:image/jpeg;base64,')) ? row.image : undefined;
@@ -61,7 +64,7 @@ export function parseItem(value: unknown): LibraryItem {
 export function parsePage(value: unknown): LibraryPage {
   const row = bag(value);
   if (!Array.isArray(row.items) || row.items.length > LIBRARY_LIMITS.page) throw Error('Invalid library page');
-  const next = typeof row.next === 'string' && (row.next === '' || /^[1-9][0-9]{0,18}$/.test(row.next)) ? row.next : undefined;
+  const next = typeof row.next === 'string' && (row.next === '' || /^[1-9][0-9]{0,18}$/.test(row.next) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(row.next)) ? row.next : undefined;
   if (next === undefined) throw Error('Invalid library cursor');
   const items = row.items.map(parseItem);
   if (new Set(items.map(item => item.id)).size !== items.length) throw Error('Duplicate library item');
@@ -82,7 +85,7 @@ export function parseValidation(value: unknown): LibraryValidation[] {
 
 /** Honest copy for what Android granted. Nothing here claims more than the scope. */
 export function scopePresentation(state: LibraryScopeState | undefined): { label: string; detail: string; action: string; actionKind: 'request' | 'settings' | 'none' } {
-  const boundary = 'Nothing is uploaded automatically: the assistant receives only items you select, without file or album names. Locked Folder, other profiles and work-profile media are not visible to Alpha.';
+  const boundary = 'Nothing is uploaded automatically: the assistant receives only reviewed search or inspection results, without file or album names. Locked Folder, other profiles and work-profile media are not visible to Alpha.';
   if (!state || state.scope === 'unavailable') return { label: 'Unavailable', detail: 'The device library is available only in the Android app.', action: '', actionKind: 'none' };
   if (state.locked) return { label: 'Locked', detail: 'Unlock the phone to use the device library.', action: '', actionKind: 'none' };
   if (state.scope === 'full') {
@@ -112,7 +115,7 @@ export class LibraryCatalog {
     const narrowed = this.scope !== state.scope && this.scope !== 'unavailable' && (state.scope !== 'full' || this.scope === 'denied');
     const versionChanged = !!this.version && !!state.version && this.version !== state.version;
     this.scope = state.scope;
-    if (state.scope === 'denied' || narrowed || versionChanged) { this.reset(); return true; }
+    if (state.scope === 'denied' || state.locked || narrowed || versionChanged) { this.reset(); return true; }
     return false;
   }
 
@@ -202,8 +205,8 @@ export type LibraryAction = LibraryChange | 'share';
 /** Actions that remove media or send it out of Alpha. Each one is reviewed by the owner in
  * Alpha and then in Android's own confirmation or chooser. Restore is not offered: trashed rows
  * are never paged, so no UI or agent path can select one. */
-export const REVIEWED_LIBRARY_ACTIONS: readonly LibraryAction[] = ['trash', 'delete', 'share', 'favorite', 'unfavorite'];
-export const DESTRUCTIVE_LIBRARY_ACTIONS: readonly LibraryAction[] = ['trash', 'delete'];
+export const REVIEWED_LIBRARY_ACTIONS: readonly LibraryAction[] = ['trash', 'share', 'favorite', 'unfavorite'];
+export const DESTRUCTIVE_LIBRARY_ACTIONS: readonly LibraryAction[] = ['trash'];
 
 export type LibraryReview = { id: string; action: LibraryAction; items: { id: string; revision: string }[]; expiresAt: number; title: string; detail: string };
 const REVIEW_TTL = 120_000;
@@ -225,7 +228,7 @@ export function prepareReview(action: LibraryAction, items: { id: string; revisi
   if (!items.length || items.length > LIBRARY_LIMITS.action) throw Error('Select 1–20 items');
   const unique = new Set<string>();
   for (const item of items) {
-    if (!isLibraryId(item.id) || !REVISION.test(item.revision) || unique.has(item.id)) throw Error('Invalid reviewed item');
+    if (!isLibraryId(item.id) || !validRevision(item.revision) || unique.has(item.id)) throw Error('Invalid reviewed item');
     unique.add(item.id);
   }
   return { id: random(), action, items: items.map(item => ({ id: item.id, revision: item.revision })), expiresAt: now + REVIEW_TTL, ...reviewText(action, items.length) };
@@ -251,7 +254,7 @@ export class LibraryRevisions {
   }
   /** The opaque revision for this exact native revision; a changed item gets a new one. */
   model(id: string, native: string): string {
-    if (!isLibraryId(id) || !REVISION.test(native)) throw Error('Invalid library revision');
+    if (!isLibraryId(id) || !validRevision(native)) throw Error('Invalid library revision');
     const previous = this.toOpaque.get(id);
     const opaque = previous?.native === native ? previous.opaque : `rev-${this.session}-${++this.counter}`;
     this.toOpaque.delete(id); this.toOpaque.set(id, { native, opaque });

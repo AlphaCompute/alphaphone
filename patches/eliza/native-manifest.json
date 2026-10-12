@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "baseCommit": "13c98575987a121decc45b161b0c8a4ee698554e",
+  "patches": [
+    {
+      "file": "secure-store-bounded-memory.patch",
+      "sha256": "379c522387e338312c211cd3ef47d49885eb82a54edea804213cc4392b88162e",
+      "module": "plugins/plugin-native-secure-store/android",
+      "targets": [
+        {
+          "path": "plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java",
+          "beforeSha256": "776e98942aa9db5a57cedc0b070e855a2c8dc176341fa9a390c298a1ead9daeb",
+          "afterSha256": "f301f177f5172cbd5ee41e8b8eb3883447e7054d6f1df292630f8b2a6176add1"
+        }
+      ]
+    },
+    {
+      "file": "permitted-photo-copy-source.patch",
+      "sha256": "613ce22e76b9dd383d0a091d4f3065054d5f637faf7dcfe7cc0bec1761f7db91",
+      "module": "plugins/plugin-native-media/android",
+      "targets": [
+        {
+          "path": "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedPhotoEdits.java",
+          "beforeSha256": "adcaba3a54f600bcf9906260ffee605158f0119eb70738f24c68af7c757764c7",
+          "afterSha256": "3f09d9455d95e8bec27699133ecb976466ca6af690f3563a466399bb282e4d48"
+        }
+      ]
+    }
+  ]
+}

@@ -35,20 +35,13 @@ test('native scope mirrors the renderer: full, Android 14 selected, or denied',(
  assert.equal(m.LIBRARY_ID.source,'^lib:([iv]):([1-9][0-9]{0,18}):([0-9]{1,19})$');
 });
 
-test('reads refuse without a grant or while the device is locked; changes use Android review dialogs',()=>{
- assert.match(java,/"denied"\.equals\(scopeName\(\)\)\) \{ call\.reject\("Photo library access is not allowed", "LIBRARY_DENIED"\)/);
- assert.match(java,/if \(locked\(\)\) \{ call\.reject\("Unlock the phone to use the device library", "LIBRARY_LOCKED"\)/);
- for(const request of ['createFavoriteRequest','createTrashRequest','createDeleteRequest'])assert.match(java,new RegExp(`MediaStore\\.${request}\\(`));
- // Media the app does not own is never updated or deleted directly.
- assert.doesNotMatch(java,/getContentResolver\(\)\.(update|delete)\(/);
- assert.doesNotMatch(java,/resolver\.(update|delete)\(/);
- // Pending rows are excluded; trashed rows are excluded from pages and count as missing on validate.
- assert.match(java,/BASE = "media_type IN \(1,3\) AND " \+ MediaStore\.MediaColumns\.IS_PENDING \+ "=0"/);
- // Grants are re-read on resume and reported as a scope change.
- assert.match(java,/handleOnResume\(\)[\s\S]*notifyListeners\("scopeChanged"/);
- // No background indexer: the observer only notifies, debounced.
- assert.match(java,/main\.postDelayed\(changed, 1500\)/);
- assert.doesNotMatch(java,/WorkManager|JobScheduler|startForegroundService/);
+test('agent album delegates reads and reviewed mutations to the canonical catalog',()=>{
+ assert.match(java,/catalog\.list\(/);assert.match(java,/catalog\.read\(/);assert.match(java,/review\.request\(/);
+ assert.doesNotMatch(java,/MediaStore\.Files|createDeleteRequest|createTrashRequest|createFavoriteRequest/);
+ assert.match(java,/LIBRARY_LOCKED/);assert.match(java,/LIBRARY_DENIED/);
+ const catalog=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/PermittedMediaCatalog.java','utf8');
+ assert.match(catalog,/generation_modified=\? AND generation_added=\?/);
+ assert.match(catalog,/date_added>=\?/);assert.match(catalog,/date_added<=\?/);
 });
 
 test('scope parsing and honest scope copy',()=>{
@@ -162,9 +155,9 @@ test('agent operations: search/inspect/select read locally; every change or shar
  // No search text: names are never matched for the agent, so hit/miss cannot probe them.
  for(const bad of [{type:'photo_library_search',query:'beach'},{type:'photo_library_search',limit:51},{type:'photo_library_search',from:5,to:1},{type:'photo_library_search',extra:1},{type:'photo_library_delete',ids:['lib:i:1:1']},{type:'photo_library_inspect',id:'content://media/external/images/1'},{type:'photo_library_select',ids:[]}])assert.throws(()=>m.validateLibraryOperation(bad));
  assert.deepEqual(m.validateLibraryOperation({type:'photo_library_select',ids:['lib:v:4:9']}),{type:'photo_library_select',ids:['lib:v:4:9']});
- assert.deepEqual(m.validateLibraryOperation({type:'photo_library_review',action:'delete',items:[{id:'lib:i:1:1',revision:'rev-ab12-3'}]}),{type:'photo_library_review',action:'delete',items:[{id:'lib:i:1:1',revision:'rev-ab12-3'}]});
+ assert.throws(()=>m.validateLibraryOperation({type:'photo_library_review',action:'delete',items:[{id:'lib:i:1:1',revision:'rev-ab12-3'}]}),/Unsupported/);
  // A native revision (modification time, size, generation) is refused at the agent boundary.
- assert.throws(()=>m.validateLibraryOperation({type:'photo_library_review',action:'delete',items:[{id:'lib:i:1:1',revision:'1:2:3'}]}),/Invalid reviewed item/);
+ assert.throws(()=>m.validateLibraryOperation({type:'photo_library_review',action:'trash',items:[{id:'lib:i:1:1',revision:'1:2:3'}]}),/Invalid reviewed item/);
  assert.throws(()=>m.validateLibraryOperation({type:'photo_library_review',action:'restore',items:[{id:'lib:i:1:1',revision:'rev-ab12-3'}]}),/Unsupported/);
  assert.equal(m.REVIEWED_LIBRARY_ACTIONS.includes('restore'),false,'restore is not offered: trashed rows are never paged');
  assert.match(m.describeLibraryOperation({type:'photo_library_review',action:'delete',items:[{id:'lib:i:1:1',revision:'rev-ab12-3'}]}).description,/You confirm it there and then in Android/);
@@ -203,22 +196,11 @@ test('selected outbound model context carries no names, album names, sizes, modi
  assert.match(agent,/state\.album === 'device' && !state\.open && state\.nativeLibrarySelection\) providerSelection = state\.nativeLibrarySelection;/);
 });
 
-test('native fixes: generation read before rows, trash verified only by IS_TRASHED, observer scoped to the open album, no restore',()=>{
- const page=java.slice(java.indexOf('@PluginMethod public void page('),java.indexOf('private long maxGeneration()'));
- assert.ok(page.indexOf('long snapshot = maxGeneration();')>0&&page.indexOf('long snapshot = maxGeneration();')<page.indexOf('getContentResolver().query('),'generation snapshot precedes the row read');
- assert.match(page,/out\.put\("generation", snapshot\);/);
- assert.match(java,/case "trash": ok = now != null && now\.getBoolean\("trashed", false\); break;/);
- assert.doesNotMatch(java,/"restore"|createTrashRequest\(resolver, uris, false\)/);
- const load=java.slice(java.indexOf('@Override public void load()'),java.indexOf('@PluginMethod public void watch('));
- assert.doesNotMatch(load,/registerContentObserver/,'nothing observes MediaStore at plugin load');
- const watch=java.slice(java.indexOf('@PluginMethod public void watch('),java.indexOf('private void unwatch()'));
- assert.match(watch,/if \(active && observer == null && !"denied"\.equals\(scopeName\(\)\)\)/);
- assert.match(java,/if \("denied"\.equals\(now\)\) unwatch\(\);/);
- assert.match(java,/handleOnDestroy\(\) \{\s*destroyed = true;\s*unwatch\(\);/);
- // The renderer starts the observer from the album view and stops it on close, leave and dispose.
- assert.match(adapter,/watch\(!!scope && scope\.scope !== 'denied' && !scope\.locked\);/);
- for(const where of ['close: () => { selection.clear(); review = undefined; watch(false);','reloadOnOpen = true; watch(false); }','dispose() { disposed = true; epoch++; watch(false);'])assert.ok(adapter.includes(where),where);
- // The agent never sends search text to the native name/album LIKE.
+test('agent album observes only while open and falls back to a bounded fresh catalog',()=>{
+ assert.match(java,/new PermittedMediaCatalog\(getContext\(\),false,/);
+ assert.match(java,/catalog\.watch\(watching\)/);
+ assert.match(java,/out\.put\("reset",true\)/);
+ assert.match(adapter,/watch\(!!scope && scope.scope !== 'denied' && !scope.locked\)/);
  const agent=adapter.slice(adapter.indexOf('const agent: LibraryAgent'),adapter.indexOf('mountedAgent = agent;'));
  assert.doesNotMatch(agent,/query/);
 });
@@ -261,4 +243,16 @@ test('library operations are registered in Alpha device actions: Photos-only, ne
  assert.match(executor,/if\(isLibraryOperation\(operation\)\)\{[\s\S]*deviceLibraryAgent\(\)[\s\S]*expectedContext\.view!=='photos'/);
  const journal=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaActionJournal.java','utf8');
  assert.match(journal,/"photo_library_search","photo_library_inspect","photo_library_select","photo_library_review"\)\.contains\(type\)\)\{/);
+});
+
+test('volume-qualified media identities and provider revisions survive the agent contract',()=>{
+ const native=item(1,{id:'m:external_primary:i:12',revision:'db-v1:100:200:300:400:500'});
+ assert.equal(m.parseItem(native).id,native.id);
+ assert.equal(m.libraryKindOf('m:1234-abcd:v:12'),'video');
+ assert.equal(m.isLibraryId('m:external:i:12'),false);
+ const revisions=new m.LibraryRevisions('test'); const model=m.modelItem(native,revisions);
+ assert.equal(revisions.native(model.id,model.revision),native.revision);
+ assert.doesNotMatch(JSON.stringify(model),/db-v1/);
+ assert.equal(m.parsePage({...page([]),items:[native],next:'12345678-1234-1234-1234-123456789012'}).items.length,1);
+ const catalog=new m.LibraryCatalog();catalog.apply(page([1]),true);catalog.observeScope(scope({locked:true}));assert.equal(catalog.items.length,0);
 });

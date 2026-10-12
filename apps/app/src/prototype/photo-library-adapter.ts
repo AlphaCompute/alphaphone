@@ -15,7 +15,7 @@ export type PhotoLibraryPort = {
   scope(): Promise<unknown>;
   requestAccess(): Promise<unknown>;
   page(options: { before?: string; limit?: number; thumbnails?: boolean; thumbnailSize?: number; kind?: string; from?: number; to?: number; favorites?: boolean }): Promise<unknown>;
-  inspect(options: { id: string; size?: number }): Promise<unknown>;
+  inspect(options: { id: string; size?: number; pixels?: boolean }): Promise<unknown>;
   validate(options: Items): Promise<unknown>;
   changes(options: { version: string; generation: number }): Promise<Bag>;
   requestChange(options: Items & { operation: LibraryChange }): Promise<{ status: string; operation?: string; outcomes?: { id: string; status: string }[] }>;
@@ -123,7 +123,7 @@ export function createDeviceLibrary(port: PhotoLibraryPort = nativePort, availab
       refresh(); return;
     }
     acting = true; refresh();
-    try { scope = parseScope(await port.requestAccess()); if (catalog.observeScope(scope)) selection.clear(); }
+    try { await port.requestAccess(); scope = parseScope(await port.scope()); if (catalog.observeScope(scope)) selection.clear(); }
     catch { error = 'Android did not open the access dialog.'; }
     finally { acting = false; }
     await load();
@@ -148,8 +148,8 @@ export function createDeviceLibrary(port: PhotoLibraryPort = nativePort, availab
         status = result.status === 'opened' ? `Android share sheet opened for ${result.count} ${result.count === 1 ? 'item' : 'items'}. Nothing is sent until you pick an app.` : 'Sharing did not open.';
       } else {
         const result = await port.requestChange({ operation: pending.action, items: pending.items });
-        const verified = result.outcomes?.filter(row => row.status === 'verified').length ?? 0;
-        status = result.status === 'declined' ? 'Android review was cancelled. Nothing changed.' : result.status === 'applied' ? `${verified} ${verified === 1 ? 'item' : 'items'} changed and verified.` : `${verified} of ${pending.items.length} changes verified. Reload to see the current library.`;
+        const verified = result.outcomes?.filter(row => ['verified','favorited','unfavorited','trashed','unchanged'].includes(row.status)).length ?? 0;
+        status = result.status === 'declined' ? 'Android review was cancelled. Nothing changed.' : ['applied','complete'].includes(result.status) ? `${verified} ${verified === 1 ? 'item' : 'items'} changed and verified.` : `${verified} of ${pending.items.length} changes verified. Reload to see the current library.`;
         if (result.status !== 'declined') { selection.clear(); await revalidate(); }
       }
     } catch (failure) {
@@ -192,7 +192,7 @@ export function createDeviceLibrary(port: PhotoLibraryPort = nativePort, availab
       }
       if (operation.type === 'photo_library_inspect') {
         let row: LibraryItem;
-        try { row = parseItem(await port.inspect({ id: operation.id, size: 64 })); }
+        try { row = parseItem(await port.inspect({ id: operation.id, size: 64, pixels: false })); }
         catch (failure) { if ((failure as { code?: string })?.code === 'LIBRARY_MISSING') throw new LibraryAgentRefusal('That item is no longer in the library.'); throw failure; }
         signal.throwIfAborted();
         return { kind: operation.type, item: modelItem(row, modelRevisions) };
@@ -249,7 +249,7 @@ export function createDeviceLibrary(port: PhotoLibraryPort = nativePort, availab
         dev: {
           accessLabel: presentation.action, hasAccess: presentation.actionKind !== 'none' && !acting, access: () => { void requestAccess(); },
           canAct: selection.size > 0 && !acting && !reviewOpen, canEdit: selection.size > 0 && !acting && !reviewOpen && !!scope?.canEditOthers,
-          share: () => startReview('share'), favorite: () => startReview('favorite'), trash: () => startReview('trash'), delete: () => startReview('delete'),
+          share: () => startReview('share'), favorite: () => startReview('favorite'), trash: () => startReview('trash'),
           clear: () => { selection.clear(); refresh(); },
           reviewing: reviewOpen, reviewTitle: review?.title || '', reviewDetail: review?.detail || '',
           confirm: () => { void confirmReview(); }, cancel: () => { review = undefined; status = 'Review cancelled. Nothing changed.'; refresh(); },
