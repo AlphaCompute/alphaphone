@@ -25,7 +25,7 @@ public final class CalendarDeletionReviewInstrumentedTest {
   for(int i=0;i<150;i++){
    assertEquals("Operation cannot settle before review", "null",eval("window.__calendarDeletionReviewResult"));
    AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();
-   if(root!=null&&"ai.elizaresearch.alphaphone".contentEquals(root.getPackageName())){
+   if(root!=null&&root.getPackageName()!=null&&"ai.elizaresearch.alphaphone".contentEquals(root.getPackageName())){
     boolean titleShown=false,detailsShown=false;AccessibilityNodeInfo button=null;
     java.util.ArrayDeque<AccessibilityNodeInfo> queue=new java.util.ArrayDeque<>();queue.add(root);
     while(!queue.isEmpty()){
@@ -45,7 +45,7 @@ public final class CalendarDeletionReviewInstrumentedTest {
  }
  private boolean present(ContentResolver resolver,long id){try(Cursor row=resolver.query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id),new String[]{"deleted"},null,null,null)){assertNotNull(row);return row.moveToFirst()&&row.getInt(0)==0;}}
  @Test public void nativeReviewCancelUndoAndExpiry()throws Exception{
-  assertEquals("1",InstrumentationRegistry.getArguments().getString("calendarDeletionReview"));assertTrue("Disposable secondary user required",Process.myUid()/100000>0);
+  assertTrue("Explicit Calendar review gate", "1".equals(InstrumentationRegistry.getArguments().getString("calendarDeletionReview")));assertTrue("Disposable secondary user required",Process.myUid()/100000>0);
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();ContentResolver resolver=context.getContentResolver();
   for(String permission:new String[]{Manifest.permission.READ_CALENDAR,Manifest.permission.WRITE_CALENDAR})assertEquals(PackageManager.PERMISSION_GRANTED,context.checkSelfPermission(permission));
   String account="alpha-review-"+java.util.UUID.randomUUID(),title="Owned Calendar review";
