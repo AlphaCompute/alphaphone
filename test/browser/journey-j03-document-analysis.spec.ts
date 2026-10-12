@@ -135,6 +135,12 @@ test('J03: an Inbox attachment is saved to Files, analysed, and kept as a review
  await review.getByRole('button',{name:'Save reviewed note',exact:true}).click();
  await expect(review).toHaveCount(0);
  await expect(page.getByText('Summary note saved',{exact:true})).toBeVisible();
+ // The saved card stays saved: it does not revert to a review, and choosing it is not a second Save.
+ await expect(page.getByText('Review summary note',{exact:true})).toHaveCount(0);
+ await page.getByText('Summary note saved',{exact:true}).click();
+ await expect(review).toHaveCount(0);
+ await expect(page.getByText('Summary note saved',{exact:true})).toHaveCount(1);
+ await expect(page.getByText('Review summary note',{exact:true})).toHaveCount(0);
  const retained=await notes(page);
  expect(retained).toHaveLength(1);
  expect(retained[0]).toMatchObject({title:'Garden summary',body:'There are twelve raised beds.'});
@@ -143,6 +149,12 @@ test('J03: an Inbox attachment is saved to Files, analysed, and kept as a review
 
  // ---- 4. Reload: note persists once; its verified source reference opens the source ----
  await page.reload();await ready(page);
+ // Rendered first: the Notes list shows the summary exactly once.
+ await returnToApps(page);
+ await page.getByRole('button',{name:'Notes',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Open Garden summary',exact:true})).toHaveCount(1);
+ await expect(page.getByRole('region',{name:'Notes'}).getByRole('button',{name:/^Open (?!Trash$)/})).toHaveCount(1);
+ // Storage agrees (secondary check).
  expect(await notes(page)).toEqual(retained);
  expect((await files(page)).map(e=>e.name)).toEqual(['garden-report.txt']);
  let source=await openLinkedSource(page);
