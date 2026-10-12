@@ -6,11 +6,11 @@
  * not an upload: the catalog stays on the phone, metadata sent to a model excludes file and
  * album names, and pixels leave only through an owner-reviewed Android share. */
 
-export type LibraryScope = 'full' | 'selected' | 'denied' | 'unavailable';
+export type LibraryScope = 'full' | 'partial' | 'selected' | 'denied' | 'unavailable';
 export type LibraryKind = 'image' | 'video';
 export type LibraryScopeState = {
   scope: LibraryScope; images: boolean; videos: boolean; canSelectMore: boolean; canEditOthers: boolean;
-  locked: boolean; version: string; settingsRequired?: boolean;
+  locked: boolean; version: string; settingsRequired?: boolean; imageAccess?: 'full' | 'selected' | 'denied'; videoAccess?: 'full' | 'selected' | 'denied';
 };
 export type LibraryItem = {
   id: string; revision: string; kind: LibraryKind; mime: string; name: string; album: string;
@@ -38,10 +38,10 @@ export function libraryKindOf(id: string): LibraryKind { const permitted = PERMI
 
 export function parseScope(value: unknown): LibraryScopeState {
   const row = bag(value);
-  const scope = row.scope === 'full' || row.scope === 'selected' || row.scope === 'denied' ? row.scope : undefined;
+  const scope = row.scope === 'full' || row.scope === 'partial' || row.scope === 'selected' || row.scope === 'denied' ? row.scope : undefined;
   if (!scope) throw Error('Invalid library scope');
   return {
-    scope, images: row.images === true, videos: row.videos === true, canSelectMore: row.canSelectMore === true,
+    scope, ...(typeof row.imageAccess === 'string' && ['full','selected','denied'].includes(row.imageAccess) ? {imageAccess: row.imageAccess as 'full' | 'selected' | 'denied'} : {}), ...(typeof row.videoAccess === 'string' && ['full','selected','denied'].includes(row.videoAccess) ? {videoAccess: row.videoAccess as 'full' | 'selected' | 'denied'} : {}), images: row.images === true, videos: row.videos === true, canSelectMore: row.canSelectMore === true,
     canEditOthers: row.canEditOthers === true, locked: row.locked === true, version: short(row.version, 128),
     ...(row.settingsRequired === true ? { settingsRequired: true } : {}),
   };
@@ -88,6 +88,7 @@ export function scopePresentation(state: LibraryScopeState | undefined): { label
   const boundary = 'Nothing is uploaded automatically: the assistant receives only reviewed search or inspection results, without file or album names. Locked Folder, other profiles and work-profile media are not visible to Alpha.';
   if (!state || state.scope === 'unavailable') return { label: 'Unavailable', detail: 'The device library is available only in the Android app.', action: '', actionKind: 'none' };
   if (state.locked) return { label: 'Locked', detail: 'Unlock the phone to use the device library.', action: '', actionKind: 'none' };
+  if (state.scope === 'partial') return { label: 'Mixed access', detail: `Photos: ${state.imageAccess || (state.images ? 'full' : 'denied')}. Videos: ${state.videoAccess || (state.videos ? 'full' : 'denied')}. ${boundary}`, action: 'Change in Android Settings', actionKind: 'settings' };
   if (state.scope === 'full') {
     const partial = state.images !== state.videos ? (state.images ? ' Videos are not allowed.' : ' Photos are not allowed.') : '';
     return { label: 'Full access', detail: 'Alpha can read the photos and videos Android shows for this profile.' + partial + ' ' + boundary, action: 'Change in Android Settings', actionKind: 'settings' };
@@ -369,7 +370,7 @@ export function validateLibraryResult(op: LibraryAgentOperation, value: unknown)
   const keys = (list: string[]) => { if (Object.keys(row).some(key => !list.includes(key))) throw Error('Unexpected library result field'); };
   if (op.type === 'photo_library_search') {
     keys(['kind', 'scope', 'items', 'more']);
-    if (!['full', 'selected'].includes(String(row.scope)) || !Array.isArray(row.items) || row.items.length > (op.limit ?? 50) || typeof row.more !== 'boolean') throw Error('Invalid library search result');
+    if (!['full', 'partial', 'selected'].includes(String(row.scope)) || !Array.isArray(row.items) || row.items.length > (op.limit ?? 50) || typeof row.more !== 'boolean') throw Error('Invalid library search result');
     return { kind: op.type, scope: row.scope as LibraryScope, items: row.items.map(validateModelItem), more: row.more };
   }
   if (op.type === 'photo_library_inspect') { keys(['kind', 'item']); const item = validateModelItem(row.item); if (item.id !== op.id) throw Error('Library result id mismatch'); return { kind: op.type, item }; }
