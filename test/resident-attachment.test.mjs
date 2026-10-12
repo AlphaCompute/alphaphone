@@ -15,7 +15,10 @@ test('an admitted running resident is attached to; any change in runtime, enroll
  const java=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');const binary=name=>java?join(java,'bin',name):name;
  try{
   execFileSync(binary('javac'),['--release','11','-cp',jsonJar,'-d',temporary,join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/ResidentAttachment.java'),join(root,'test/fixtures/ResidentAttachmentTest.java')],{timeout:120000});
-  assert.match(execFileSync(binary('java'),['-cp',temporary+':'+jsonJar,'ai.elizaresearch.alphaphone.ResidentAttachmentTest'],{encoding:'utf8',timeout:120000}),/^PASS resident attachment/);
+  const output=execFileSync(binary('java'),['-cp',temporary+':'+jsonJar,'ai.elizaresearch.alphaphone.ResidentAttachmentTest'],{encoding:'utf8',timeout:120000});
+  // Two surfaces before enrollment (MVP-16): the pending pairing is not shared; accepted limit.
+  assert.match(output,/^PASS pre-enrollment: a second surface before enrollment starts on its own/m);
+  assert.match(output,/^PASS resident attachment/m);
  }finally{rmSync(temporary,{recursive:true,force:true});}
 });
 test('renderer attaches without rebinding the provider and keeps one identity across assistant invocations',()=>{
