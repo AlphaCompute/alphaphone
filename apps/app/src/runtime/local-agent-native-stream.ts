@@ -29,6 +29,10 @@ export async function streamNativeAgent(port:NativeStreamPort,input:{path:string
    if(!event||typeof event!=='object')throw Error('Invalid native stream frame');
    if(terminal)return;
    if(event.type==='response'){
+    // Upstream answers 429 only when the room refuses admission, before the turn is recorded or run:
+    // that message was provably not accepted. Other statuses keep the unknown outcome.
+    if(!responded&&event.status===429)throw Object.assign(Error('The agent is busy and did not accept this message.'),{status:429,beforeDispatch:true});
+    if(!responded&&event.status===401)throw Object.assign(Error('Native stream unavailable. Check history before retrying.'),{status:401});
     if(responded||event.status!==200)throw Error('Native stream unavailable. Check history before retrying.');
     const headers=new Headers(event.headers);
     if(!headers.get('content-type')?.startsWith('text/event-stream'))throw Error('Invalid native stream content type');
@@ -54,7 +58,9 @@ export async function streamNativeAgent(port:NativeStreamPort,input:{path:string
   bounded.throwIfAborted();started=true;
   // Do not wait for dispatch acknowledgement to consume events or honour abort.
   const dispatch=port.requestStream({...input,streamId});
-  void dispatch.then(result=>{if(result.streamId!==streamId)fail(Error('Native stream identity changed'));if(!active||bounded.aborted)void port.cancelStream({streamId}).catch(()=>{});},()=>fail(Error('Response interrupted. Outcome unknown; check history before retrying.')));
+  // Native rejects requestStream only before it sends anything to the runtime, so a rejection is
+  // provably not dispatched; it resolves first and reports later failures as stream events.
+  void dispatch.then(result=>{if(result.streamId!==streamId)fail(Error('Native stream identity changed'));if(!active||bounded.aborted)void port.cancelStream({streamId}).catch(()=>{});},()=>fail(Object.assign(Error('The on-device agent did not accept this message.'),{beforeDispatch:true})));
   const result=await readLocalAgentStream(await response,bounded,onText,onReplyReady);
   await completed;bounded.throwIfAborted();return result;
  }finally{

@@ -40,7 +40,7 @@ import { DailyApps } from '../daily';
 import { isAndroid } from '../native';
 import { registerPlugin } from '../platform-plugins';
 import { SystemBars, SystemBarsStyle } from '@capacitor/core';
-import { connectionController, STOPPED_REPLY_NOTICE, STOPPED_CANCELLED_NOTICE, STOPPED_CONFIRMED_NOTICE } from '../runtime/connection-ui';
+import { connectionController, STOPPED_REPLY_NOTICE, STOPPED_CANCELLED_NOTICE, STOPPED_CONFIRMED_NOTICE, INFERENCE_OFFLINE_NOTICE } from '../runtime/connection-ui';
 import { broaderPageNotice, honestTiles, handoffGate, watchReturnToApp, tileFactsFromSnapshot, tileSettingsPages, type TileFacts, type TileKey } from './native-adapter';
 const alphaDevice = registerPlugin<{ snapshot(): Promise<Record<string, unknown>>; openSettings(input: { page: string }): Promise<{ status: string; specific?: boolean }> }>('AlphaDevice');
 const elizaSystem = registerPlugin<{ setFlashlight(input: { enabled: boolean }): Promise<{ available: boolean; enabled: boolean }> }>('ElizaSystem');
@@ -428,6 +428,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, messageBinding:{conversationId:history.conversationId,session:connectionController.getSnapshot().session}, card: null })), typing: false, ...(history.automatic?{}:{draft:'',chat:'full'}) });
       }
       syncStoppedReplyNotice(this,session!==undefined&&history?.sessionId===session?history:null);
+      const offline=!!connectionController.getSnapshot().inferenceOffline;
+      if(offline!==!!this.inferenceOffline){this.inferenceOffline=offline;if(this.live)this.setState({});}
       if (this.live) {context(this);this.refreshDraftBinding();}
     });
     this.notesStorageFailed = true;
@@ -880,7 +882,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     const draft=this.composerDraft?.state;
     out.draftRecovery=!!draft?.error&&!!this.composerDraft?.recovery();
     out.recoverDraft=()=>{const recovery=this.composerDraft?.recovery();if(!recovery)return;this.draftRecoveryAbort?.abort();const controller=this.draftRecoveryAbort=new AbortController();openDomainRecovery({capture:async signal=>{const captured=await recovery.capture(signal);return {...captured,raw:JSON.stringify({saved:captured.raw,currentDraft:String(this.S().draft||'')})};},reset:recovery.reset},'assistant draft','Assistant draft recovery','Download the saved bytes and current text before resetting this conversation’s draft. Reset does not delete messages or send anything. Reloading discards the current unsaved text.',controller.signal,undefined,Capacitor.getPlatform()==='android'?'device':'browser');};
-    out.draftRetry=!!draft?.error;out.draftStatus=draft?.message||'';out.draftConflict=!!draft?.conflict;out.draftSavedText=draft?.savedText||'(Empty saved draft)';out.draftOpening=!!draft?.consuming;
+    // The resident's hosted inference needs a network; local apps keep working without one.
+    const connection=connectionController.getSnapshot(),offline=connection.inferenceOffline&&connection.kind==='resident'&&!!connection.session;
+    out.draftRetry=!!draft?.error;out.draftStatus=[draft?.message,offline?INFERENCE_OFFLINE_NOTICE:''].filter(Boolean).join(' ');out.draftConflict=!!draft?.conflict;out.draftSavedText=draft?.savedText||'(Empty saved draft)';out.draftOpening=!!draft?.consuming;
     out.restoreSavedDraft=()=>this.composerDraft?.restoreSaved();out.keepCurrentDraft=()=>this.composerDraft?.keepCurrent();out.retryDraft=()=>{this.composerDraft?.retire();this.refreshDraftBinding();};
     out.composerPointer=(event:PointerEvent)=>event.stopPropagation();
     out.onKey=(event:KeyboardEvent&{nativeEvent?:KeyboardEvent})=>{
@@ -1065,7 +1069,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       await transportSettled(attempt);
       if(!dispatched(attempt,e)){
         // Nothing reached the agent: put the text back and drop the unsent bubble. Never resend.
-        if(this.live){this.setState((previous:Shell)=>({msgs:previous.msgs.filter((item:Shell)=>item.id!==userId)}));this.composerDraft?.release();if(reviewedSource&&!this.reviewedSourceDraft)this.reviewedSourceDraft=reviewedSource;this.toast(e instanceof NotDispatched?message:e instanceof AlphaClientError&&['unconfigured','sensitive','busy'].includes(e.code)?'Not sent. '+message:'Not sent. Your message is back in the composer.');}
+        if(this.live){this.setState((previous:Shell)=>({msgs:previous.msgs.filter((item:Shell)=>item.id!==userId)}));this.composerDraft?.release();if(reviewedSource&&!this.reviewedSourceDraft)this.reviewedSourceDraft=reviewedSource;this.toast(e instanceof NotDispatched?message:e instanceof AlphaClientError&&(['unconfigured','sensitive','busy'].includes(e.code)||(e as {refusedBeforeTurn?:unknown}).refusedBeforeTurn===true)?'Not sent. '+message:'Not sent. Your message is back in the composer.');}
         else this.composerDraft?.release();
       }else{
         await this.composerDraft?.commit();
@@ -1074,6 +1078,15 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         // The owner changed mid-turn: say it was interrupted, but never show the previous agent's partial
         // reply or offer a history check that could only read a different agent.
         if(this.live&&!sameChat())this.setState((previous:Shell)=>({...(!opened?{chat:previous.chat==='full'?'full':'sheet'}:{}),msgs:[...(previous.msgs||[]),{id:crypto.randomUUID(),from:'agent',text:message+' Your message may have reached the previous agent connection. Check its saved conversations before sending it again.',card:null,interrupted:true}]}));
+        else if(this.live&&e instanceof AlphaClientError&&typeof (e as {failureKind?:unknown}).failureKind==='string'){
+          // The agent recorded the turn and reported why it failed: say so and offer the next step.
+          // Nothing is resent, so no history check is offered.
+          const kind=(e as {failureKind?:unknown}).failureKind;
+          if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\n${message}`}:item)}));
+          else this.setState((previous:Shell)=>({chat:previous.chat==='full'?'full':'sheet',msgs:[...(previous.msgs||[]),{id:crypto.randomUUID(),from:'agent',text:message,card:null,interrupted:true}]}));
+          if(kind==='insufficient_credits'&&connectionController.getSnapshot().kind==='resident')this.agentSay('Credits are needed before your agent can answer.',{type:'generic',icon:'info',title:'Add credits in Eliza Cloud',sub:'Opens Eliza Cloud billing in your browser. Nothing is sent.',topUp:true});
+          else if(kind==='no_provider'&&connectionController.getSnapshot().kind==='resident')this.agentSay('Hosted inference needs your Eliza Cloud sign-in.',{type:'generic',icon:'info',title:'Set up AI',sub:'Opens Agent connection. Nothing is sent.',connectionSetup:true});
+        }
         else if(this.live&&reconciling){if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nStopped.`}:item)}));}
         else if (this.live) {
           // The agent may have received this message. Offer a history check, never a blind resend.
@@ -1115,6 +1128,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.cardAct = async function (message: Shell) {
     const card = message.card || {};
     if(card.systemNotice)return;
+    if(card.topUp){void connectionController.residentTopUp();return;}
+    if(card.connectionSetup){connectionController.open();return;}
     if(card.checkReply&&!card.done){
       const session=connectionController.getSnapshot().session;
       if(!session||session.sessionId!==card.checkReply.sessionId){this.toast('The agent changed. Open its saved conversations in Settings instead. Nothing was sent.');return;}

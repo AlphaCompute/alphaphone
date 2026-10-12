@@ -33,6 +33,7 @@ import type { WorkflowPhoneReview } from './workflow-device-contract';
 import { AlphaClientError } from './alpha-client';
 import { WorkflowProtocol, WorkflowHttpError } from './workflow-protocol';
 import { registerPlugin } from '../platform-plugins';
+import { DailyApps } from '../daily';
 import { DeviceActions, actionScope, type DeviceCredential, type DeviceExecutor, type ForegroundReviewExecutor, type ActionJournal } from './device-actions';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isAndroid } from '../native';
@@ -62,6 +63,8 @@ export interface ConnectionSnapshot {
   replyNotice?: string;
   /** Older messages beyond the restored window remain on the agent. */
   historyPartial?: boolean;
+  /** The phone reports no network. The resident's hosted inference needs it; local apps do not. */
+  inferenceOffline?: boolean;
   cloudAccount: CloudServiceSession | null;
   purpose?:'agent'|'cloud-account';
   open: boolean; busy: boolean; message: string; error: string;
@@ -84,7 +87,7 @@ const webCloudUnavailable = () => !testMocksEnabled && !isAndroid && !browserLoc
 const CLOUD_SERVICE = 'alpha.connection.cloud-service.v1';
 const listeners = new Set<() => void>();
 let developmentPageSuspended = false;
-let state: ConnectionSnapshot = { phoneActionsAvailable:false, phoneCapabilityReason:'', actionHistory: [], conversations: [], history: null, cloudAccount: null, open: false, busy: false, message: '', error: '', kind: 'offline', name: 'Offline', session: null, agents: [] };
+let state: ConnectionSnapshot = { inferenceOffline: typeof navigator !== 'undefined' && navigator.onLine === false, phoneActionsAvailable:false, phoneCapabilityReason:'', actionHistory: [], conversations: [], history: null, cloudAccount: null, open: false, busy: false, message: '', error: '', kind: 'offline', name: 'Offline', session: null, agents: [] };
 let active: Active | null = null, operation: AbortController | null = null;
 let startup: Promise<void> | null = null, epoch = 0;
 let sending: AbortController | null = null;
@@ -105,6 +108,24 @@ const runForegroundReview: ForegroundReviewExecutor = (op, id, context, signal, 
 export const CALENDAR_AVAILABILITY_CAPABILITY = 'calendar.availability-read.v1';
 /** Free/busy is negotiated only when the agent offers it. */
 const availabilityNegotiated = (offered: unknown) => Array.isArray(offered) && offered.includes(CALENDAR_AVAILABILITY_CAPABILITY);
+/** Native Clock can carry repeat days (EXTRA_DAYS) once surfaceInfo reports clockRepeatDaysVersion 1. */
+async function clockRepeatDaysSupported():Promise<boolean>{
+  if(Capacitor.getPlatform()!=='android')return false;
+  try{const info=await DailyApps.surfaceInfo() as {clockRepeatDaysVersion?:unknown};return typeof info.clockRepeatDaysVersion==='number'&&info.clockRepeatDaysVersion>=1;}catch{return false;}
+}
+/** The X-Eliza-Device-Capabilities value for every runtime (remote, resident, Cloud): the base
+ * local-record contracts plus each capability the agent offers that this phone supports. Clock
+ * handoffs are Android-only; v2 (repeat days) also needs the native repeat-days support. */
+async function deviceCapabilities(offered:unknown):Promise<string>{
+  const agent:unknown[]=Array.isArray(offered)?offered:[],android=Capacitor.getPlatform()==='android';
+  const capabilities=['calendar.local-event.v1','notes.local-record.v1'];
+  if(agent.includes('reminders.local-record.v2'))capabilities.push('reminders.local-record.v2');else if(agent.includes('reminders.local-record.v1'))capabilities.push('reminders.local-record.v1');
+  for(const capability of ['notes.query.v1','reminders.create.v1',...(android?['calendar.create.v1','calendar.next-read.v1']:[]),'maps.selected-read.v1'])if(agent.includes(capability))capabilities.push(capability);
+  if(availabilityNegotiated(agent))capabilities.push(CALENDAR_AVAILABILITY_CAPABILITY);
+  if(android&&agent.includes('clock.handoff.v1'))capabilities.push('clock.handoff.v1');
+  if(android&&agent.includes('clock.handoff.v2')&&await clockRepeatDaysSupported())capabilities.push('clock.handoff.v2');
+  return capabilities.join(',');
+}
 let deviceReadReview:((proposal:ActionProposal,context:ContextEnvelope,signal:AbortSignal)=>Promise<void>)|undefined;
 const actionJournal = registerPlugin<ActionJournal>('AlphaActionJournal');
 let cloud = makeCloud('production');
@@ -228,7 +249,8 @@ function errorMessage(error: unknown): string {
     if (error.code === 'credentials-missing') return 'Sign in with Eliza Cloud to reconnect your account.';
   }
   if (error instanceof DOMException && error.name === 'AbortError') return 'Connection cancelled.';
-  if (error && typeof error === 'object' && 'status' in error && error.status === 401) return 'Your session has expired. Sign in or pair again.';
+  // Production phones have no pairing to fall back on: an expired session is a Cloud sign-in.
+  if (error && typeof error === 'object' && 'status' in error && error.status === 401) return remotePairingRetired ? RESIDENT_SIGN_IN_EXPIRED : 'Your session has expired. Sign in or pair again.';
   if (error && typeof error === 'object' && 'status' in error && error.status === 503) return 'The agent is starting or temporarily unavailable. Try again shortly.';
   return error instanceof Error ? error.message : 'The connection could not be completed.';
 }
@@ -256,7 +278,7 @@ function activate(next: Active, session: VerifiedSession, name: string) {
   cancelStoppedReply();
   for(const request of automationsRequests)request.abort(new DOMException('The connection changed','AbortError'));
   epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
-  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, historyError: '', historyPartial:false, replyNotice:'', actionHistory: [], kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
+  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, historyError: '', historyPartial:false, replyNotice:'', actionHistory: [], kind: next.kind, name, session, open: false, message: next.kind === 'resident' && state.inferenceOffline ? '' : 'Connected', error: '' });
 }
 async function remoteIdentity(remote: RemoteProtocol, signal: AbortSignal) {
   const credential = await remoteCredentialStore.read(remote.origin);
@@ -310,13 +332,7 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
     const registered = await request('/api/client-devices/register', { label: 'Alpha Phone', workflowProtocol }, signal) as { installationId: string; enrollmentId: string; capabilities?: string[]; viewProfileVersion?: unknown };
     if (registered.installationId !== credential.installationId || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Device registration was not verified');
     reason = await negotiateEnabledViews(registered.viewProfileVersion, request, signal);
-    if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("reminders.local-record.v2"))headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v2";else if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("reminders.local-record.v1"))headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v1";
-    if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('notes.query.v1'))headers['X-Eliza-Device-Capabilities']+=',notes.query.v1';
-    if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.create.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.create.v1';
-    if(Capacitor.getPlatform()==='android')for(const capability of ['calendar.create.v1','calendar.next-read.v1'])if(registered.capabilities?.includes(capability))headers['X-Eliza-Device-Capabilities']+=','+capability;
-    if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("maps.selected-read.v1"))headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
-    if(availabilityNegotiated(registered.capabilities))headers["X-Eliza-Device-Capabilities"]+=","+CALENDAR_AVAILABILITY_CAPABILITY;
-    if(Capacitor.getPlatform()==='android'&&registered.capabilities?.includes("clock.handoff.v1"))headers["X-Eliza-Device-Capabilities"]+=",clock.handoff.v1";
+    headers["X-Eliza-Device-Capabilities"]=await deviceCapabilities(registered.capabilities);
     credential.enrollmentId = registered.enrollmentId;
     await secureConnectionStore.write(slot, credential); signal.throwIfAborted();
     deviceHeaders = headers;
@@ -381,13 +397,7 @@ async function connectResident(signal: AbortSignal) {
     if(registered.installationId!==credential.installationId||typeof registered.enrollmentId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId))throw Error('Device registration was not verified');
     if(registered.userTextFormatVersion===1)userTextFormatVersion=1;
     reason = await negotiateEnabledViews(registered.viewProfileVersion, request, signal);
-    if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.local-record.v2'))headers['X-Eliza-Device-Capabilities']+=',reminders.local-record.v2';else if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.local-record.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.local-record.v1';
-    if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('notes.query.v1'))headers['X-Eliza-Device-Capabilities']+=',notes.query.v1';
-    if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.create.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.create.v1';
-    if(Capacitor.getPlatform()==='android')for(const capability of ['calendar.create.v1','calendar.next-read.v1'])if(registered.capabilities?.includes(capability))headers['X-Eliza-Device-Capabilities']+=','+capability;
-    if(registered.capabilities?.includes('maps.selected-read.v1'))headers['X-Eliza-Device-Capabilities']+=',maps.selected-read.v1';
-    if(availabilityNegotiated(registered.capabilities))headers['X-Eliza-Device-Capabilities']+=','+CALENDAR_AVAILABILITY_CAPABILITY;
-    if(Capacitor.getPlatform()==='android'&&registered.capabilities?.includes("clock.handoff.v1"))headers["X-Eliza-Device-Capabilities"]+=",clock.handoff.v1";
+    headers['X-Eliza-Device-Capabilities']=await deviceCapabilities(registered.capabilities);
     credential.enrollmentId=registered.enrollmentId;await store.write(slot,credential);signal.throwIfAborted();
     client.deviceHeaders=headers;
     credential.capabilities=headers["X-Eliza-Device-Capabilities"].split(",");
@@ -440,13 +450,7 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
     const capability = await request('/api/client-devices/capabilities',undefined,signal);
     const external=capability.externalIdentity as Record<string,unknown>|undefined,device=capability.deviceActions as Record<string,unknown>|undefined;
     if (capability.protocol!==1 || capability.agentId!==agentId || typeof capability.identityId!=='string' || !/^[a-f0-9-]{36}$/.test(capability.identityId) || external?.subject!==identity.userId || external?.organizationId!==identity.organizationId || typeof external?.issuer!=='string' || !external.issuer.startsWith('https://') || device?.protocol!==1 || !Array.isArray(device.capabilities) || !device.capabilities.includes('calendar.local-event.v1')) throw new Error('Cloud runtime owner capability was not verified');
-    if(Array.isArray(device?.capabilities)&&device.capabilities.includes("reminders.local-record.v2"))target.headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v2";else if(Array.isArray(device?.capabilities)&&device.capabilities.includes("reminders.local-record.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v1";
-    if(Capacitor.getPlatform()==='android'&&device?.capabilities?.includes("clock.handoff.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",clock.handoff.v1";
-    if(Array.isArray(device?.capabilities)&&device.capabilities.includes('notes.query.v1'))target.headers['X-Eliza-Device-Capabilities']+=',notes.query.v1';
-    if(Array.isArray(device?.capabilities)&&device.capabilities.includes('reminders.create.v1'))target.headers['X-Eliza-Device-Capabilities']+=',reminders.create.v1';
-    if(Capacitor.getPlatform()==='android')for(const capability of ['calendar.create.v1','calendar.next-read.v1'])if(device.capabilities.includes(capability))target.headers['X-Eliza-Device-Capabilities']+=','+capability;
-    if(Array.isArray(device?.capabilities)&&device.capabilities.includes("maps.selected-read.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
-    if(availabilityNegotiated(device?.capabilities))target.headers["X-Eliza-Device-Capabilities"]+=","+CALENDAR_AVAILABILITY_CAPABILITY;
+    target.headers["X-Eliza-Device-Capabilities"]=await deviceCapabilities(device?.capabilities);
     session.ownerId=capability.identityId;
     const registered=await request('/api/client-devices/register',{label:'Alpha Phone',workflowProtocol},signal);
     if (registered.installationId!==credential.installationId || typeof registered.enrollmentId!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Cloud device registration was not verified');
@@ -535,6 +539,50 @@ function pairingError(error: unknown, withCode: boolean): unknown {
   return new Error(text, { cause: error });
 }
 const PAIRING_RETIRED = 'Pairing is unavailable. Your agent runs on this phone; sign in to Eliza Cloud for inference.';
+const RESIDENT_SIGN_IN_EXPIRED = 'Your Eliza Cloud sign-in has expired. Sign in with Eliza Cloud again.';
+/** Shown beside the composer while the resident is connected and the phone has no network. */
+export const INFERENCE_OFFLINE_NOTICE = 'AI needs a connection. Local apps keep working; nothing is sent until this phone is back online.';
+const RATE_LIMITED = 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.';
+/** Owner-facing states for upstream's CHAT_FAILURE_KINDS (pinned contracts `chat.ts`). Each says
+ * what happened and what to do next; none retries the message. Unlisted kinds keep the generic text. */
+export const REPLY_FAILURES = {
+  insufficient_credits: 'Your Eliza Cloud credits are used up. Add credits in Eliza Cloud, then send again. Nothing was retried.',
+  hosted_unreachable: 'Hosted inference (Eliza Cloud / Cerebras) could not be reached; nothing was retried.',
+  provider_unreachable: 'The agent’s model provider could not be reached; nothing was retried.',
+  no_provider_resident: 'AI is not set up for your agent. Sign in with Eliza Cloud to set up hosted inference; nothing was retried.',
+  no_provider: 'The agent has no model provider configured. Set one up on the agent; nothing was retried.',
+  credits_other: 'The agent’s model provider reports no remaining credits. Add credits for that provider, then send again. Nothing was retried.',
+} as const;
+/** The upstream failure kind a reply or a stream error frame carried, if any. */
+function failureKindOf(value:unknown):string|undefined {
+  if(!value||typeof value!=='object')return undefined;
+  const {failureKind,terminalFailure}=value as {failureKind?:unknown;terminalFailure?:unknown};
+  if(typeof failureKind==='string')return failureKind;
+  const kind=terminalFailure&&typeof terminalFailure==='object'?(terminalFailure as {kind?:unknown}).kind:undefined;
+  return typeof kind==='string'?kind:undefined;
+}
+/** The error a failed reply surfaces. Mapped kinds carry `failureKind` so the chat can offer the next
+ * step (credits, sign-in); the rest keep the generic text. Nothing here sends or retries. */
+function replyFailure(kind:string|undefined,selected:Active):Error {
+  if(kind==='rate_limited')return new AlphaClientError('transport-failed',RATE_LIMITED);
+  const resident=selected.kind==='resident'&&isAndroid;
+  const text=kind==='insufficient_credits'?(resident?REPLY_FAILURES.insufficient_credits:REPLY_FAILURES.credits_other)
+    :kind==='provider_issue'||kind==='generation_timeout'?(resident?REPLY_FAILURES.hosted_unreachable:REPLY_FAILURES.provider_unreachable)
+    :kind==='no_provider'?(resident?REPLY_FAILURES.no_provider_resident:REPLY_FAILURES.no_provider):undefined;
+  return text?Object.assign(new AlphaClientError('transport-failed',text),{failureKind:kind}):new Error('The agent could not complete this response.');
+}
+/** After a failed reply or a lost network, "Connected" is no longer a true statement; only a later
+ * connection (which reads credits) sets it again. */
+function retractReadiness(){if(state.message==='Connected')update({message:''});}
+/** One credit read after Cloud reported exhausted credits. "Credits unavailable" shows until it
+ * answers, and a failed read leaves it so. Never retried. */
+async function refreshResidentCredits(){
+  const account=service,selected=active;
+  if(!remotePairingRetired||!account||selected?.kind!=='resident')return;
+  update({residentBalance:null});
+  try{const credits=await account.client.creditBalance(new AbortController().signal);if(service===account&&active===selected&&credits.credentialId===account.identity.credentialId)update({residentBalance:credits.balance});}
+  catch{/* Credits stay unavailable until the owner checks again. */}
+}
 export const WEB_CLOUD_UNAVAILABLE = 'Eliza Cloud sign-in is available in the Alpha Phone Android app. Eliza Cloud does not accept sign-in requests from this web page.';
 /** Stop closes the transport and asks the agent to cancel through upstream's
  * `POST /api/turns/:roomId/abort` (resident, remote and local agents). Cloud agents and agents that
@@ -546,7 +594,11 @@ export const STOPPED_CONFIRMED_NOTICE = 'The agent stopped this reply.';
 export const STOPPED_CANCELLED_NOTICE = 'The agent cancelled this reply. Alpha Phone will check once in case it had already finished.';
 let stoppedReply: { timer: ReturnType<typeof setTimeout>; controller: AbortController } | null = null;
 function cancelStoppedReply() { if (!stoppedReply) return; clearTimeout(stoppedReply.timer); stoppedReply.controller.abort(); stoppedReply = null; }
-function scheduleStoppedReply(selected: Active, session: VerifiedSession, conversationId: string, text: string, sentAt: number, delay = STOPPED_REPLY_CHECK_MS) {
+/** A restart can land while the resident still holds the reply to the last message: the stop-check
+ * timer died with the old process. A restored conversation ending in that recent user turn gets the
+ * same single later read (no cancel attempt); nothing is sent. Older unanswered turns are left alone. */
+const RESTORED_REPLY_WINDOW_MS = 10 * 60_000;
+function scheduleStoppedReply(selected: Active, session: VerifiedSession, conversationId: string, text: string, sentAt: number, delay = STOPPED_REPLY_CHECK_MS, cancelTurn = true) {
   cancelStoppedReply();
   const generation = epoch, controller = new AbortController();
   // The check belongs to the stopped conversation: selecting another one retires it.
@@ -555,7 +607,7 @@ function scheduleStoppedReply(selected: Active, session: VerifiedSession, conver
   update({ replyNotice: STOPPED_REPLY_NOTICE, ...(state.message === STOPPED_CONFIRMED_NOTICE ? { message: '' } : {}) });
   let cancelled = false;
   // The single reconciliation read waits for the cancel attempt, so it reports the settled outcome.
-  const cancelAttempt = selected.kind === 'cloud' ? Promise.resolve() : selected.remote.abortTurn(conversationId, controller.signal).then(outcome => {
+  const cancelAttempt = selected.kind === 'cloud' || !cancelTurn ? Promise.resolve() : selected.remote.abortTurn(conversationId, controller.signal).then(outcome => {
     if (outcome !== 'aborted' || !current() || stoppedReply?.controller !== controller) return;
     cancelled = true; update({ replyNotice: STOPPED_CANCELLED_NOTICE });
   }, () => {});
@@ -617,6 +669,9 @@ async function restoreConversationHistory(id:string,signal:AbortSignal,automatic
   // An explicit reload already shows whether a stopped reply finished; the pending check is retired.
   if(!automatic)cancelStoppedReply();
   update({history:{sessionId:session.sessionId,conversationId:id,revision:(state.history?.revision||0)+1,messages,automatic},historyError:'',historyPartial:result.partial,...(automatic?{}:{open:false,replyNotice:''}),message:(automatic?'Saved conversation restored.':saved?'Conversation restored.':'History restored for this session; restart selection could not be saved.')+older});
+  const last=result.messages.at(-1);
+  if(automatic&&selected.kind==='resident'&&last?.role==='user'&&typeof last.text==='string'&&typeof last.timestamp==='number'&&last.timestamp>Date.now()-RESTORED_REPLY_WINDOW_MS)
+    scheduleStoppedReply(selected,session,id,restoredText(last.text,last.userTextFormat),last.timestamp,STOPPED_REPLY_CHECK_MS,false);
 }
 /** Restored chats are bounded; anything older stays on the agent and is reported as partial. */
 const HISTORY_LIMIT=2000, HISTORY_PAGE=200;
@@ -921,6 +976,13 @@ export const connectionController = {
     return true;
   },
   open() { update({ open: true, purpose:'agent', error: '' }); },
+  /** Window online/offline events. Offline retracts readiness and refuses sends to the resident;
+   * local apps are untouched. Coming back online clears only the notice. */
+  networkChanged(online: boolean) {
+    if (online === !state.inferenceOffline) return;
+    update({ inferenceOffline: !online });
+    if (!online) retractReadiness();
+  },
   openCloudAccount(){
     update({open:true,purpose:'cloud-account',message:'',error:''});
     // Production Android: whether a Cloud sign-in is kept on this phone decides if the panel offers
@@ -1065,8 +1127,16 @@ export const connectionController = {
       // A running process retains its environment; stop it before replacing credentials.
       await stopLocalAgent(); await retire(); detachService();
       update({residentBalance:null}); cloud=makeCloud('production');
-      await cloud.login(signal,()=>update({message:'Finish signing in to Eliza Cloud in your browser, then return here.'}));
-      await connectResident(signal);
+      // A login over a saved key revokes that key first (best effort); see CloudProtocol.login.
+      const login=await cloud.login(signal,()=>update({message:'Finish signing in to Eliza Cloud in your browser, then return here.'}));
+      const issued=(await cloudCredentialStore.read('production'))?.credentialId;
+      try{await connectResident(signal);}
+      catch(error){
+        // Cloud refused the key it just issued. It is removed rather than kept for a retry that cannot work.
+        if(expired(error)&&issued&&(await cloudCredentialStore.read('production').catch(()=>null))?.credentialId===issued){detachService();await cloudCredentialStore.clear('production');update({residentSavedCredential:false});}
+        throw error;
+      }
+      if(login.previousSignIn==='unconfirmed')update({message:'Signed in. Eliza Cloud did not confirm revoking the sign-in this phone used before.'});
     });
   },
   async residentTopUp() {
@@ -1082,10 +1152,10 @@ export const connectionController = {
       const replacingCloud = active?.kind === 'cloud' || selection()?.kind === 'cloud';
       detachCloudTarget(); detachService(); if (replacingCloud) save({ kind: 'none' }); update({ agents: [] });
       cloud = makeCloud(environment);
-      await cloud.login(signal, () => update({ message: accountOnly?'Finish signing in to Eliza Cloud in your browser, then return here. If the link expires, cancel and sign in again.':'Use the newly opened browser tab to sign in and approve this phone. If the link expires, cancel here and start a fresh sign-in.' }));
+      const login = await cloud.login(signal, () => update({ message: accountOnly?'Finish signing in to Eliza Cloud in your browser, then return here. If the link expires, cancel and sign in again.':'Use the newly opened browser tab to sign in and approve this phone. If the link expires, cancel here and start a fresh sign-in.' }));
       await verifyService(cloud, signal);
       if (!active) save({ kind: 'none' });
-      if(accountOnly)update({message:'Signed in to Eliza Cloud.'});else await inspectPersonal(signal);
+      if(accountOnly)update({message:login.previousSignIn==='unconfirmed'?'Signed in to Eliza Cloud. Eliza Cloud did not confirm revoking the previous sign-in.':'Signed in to Eliza Cloud.'});else await inspectPersonal(signal);
     });
   },
   async cloudList(environment: CloudEnvironment) {
@@ -1251,6 +1321,8 @@ export const connectionController = {
     cancelStoppedReply();
     try {
       requestSignal.throwIfAborted();
+      // Hosted inference needs the network. Nothing leaves the phone while it reports none.
+      if (selected.kind === 'resident' && isAndroid && (state.inferenceOffline || navigator.onLine === false)) throw new Error(INFERENCE_OFFLINE_NOTICE);
       if (selected.kind === 'remote' || selected.kind === 'local') {
         if (!selected.remote.session || selected.remote.session.expiresAt <= Date.now()) throw Object.assign(new Error('Your session has expired. Pair again.'), { code: 'session_expired' });
       }
@@ -1273,12 +1345,9 @@ export const connectionController = {
       if(channelType==='VOICE_DM' && (('interrupted' in reply && reply.interrupted===true)||('noResponseReason' in reply && reply.noResponseReason==='ignored')))throw Error('The voice response did not complete. Check conversation history before speaking again.');
       let responseFailure: Error | undefined;
       if (('failureKind' in reply && reply.failureKind) || ('terminalFailure' in reply && reply.terminalFailure)) {
-        const terminal = 'terminalFailure' in reply && reply.terminalFailure;
-        const rateLimited = ('failureKind' in reply && reply.failureKind === 'rate_limited') ||
-          (terminal && typeof terminal === 'object' && 'kind' in terminal && terminal.kind === 'rate_limited');
-        responseFailure = rateLimited
-          ? new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.')
-          : new Error('The agent could not complete this response.');
+        const kind = failureKindOf(reply);
+        responseFailure = replyFailure(kind, selected);
+        if ('failureKind' in responseFailure) { retractReadiness(); if (kind === 'insufficient_credits') void refreshResidentCredits(); }
       }
       for(const key of ['messageId','userMessageId'] as const)if(reply[key]!==undefined&&!validateUuid(reply[key]))throw Error('The agent returned an invalid message identity.');
       if (typeof reply.text !== 'string') throw new Error('The agent returned an invalid response.');
@@ -1301,18 +1370,28 @@ export const connectionController = {
       // Nothing carrying the message left this phone (no conversation, offline, changed owner, or a
       // Stop before the post): the composer keeps the text instead of reporting an unknown outcome.
       // The marker is set per failure: an error object seen after the post never keeps an earlier mark.
-      const mark = (target: unknown) => { if (target && typeof target === 'object' && (!dispatched || 'notDispatched' in target)) try { Object.defineProperty(target, 'notDispatched', { value: !dispatched, configurable: true }); } catch { /* An unmarkable error stays an unknown outcome. */ } };
+      // A transport that proves its request was refused before the turn was accepted (native IPC
+      // rejection, an agent's 429 admission refusal) marks it `beforeDispatch`: still provably unsent.
+      const refused = !!error && typeof error === 'object' && (error as { beforeDispatch?: unknown }).beforeDispatch === true;
+      const mark = (target: unknown) => { if (target && typeof target === 'object' && (!dispatched || refused || 'notDispatched' in target)) try { Object.defineProperty(target, 'notDispatched', { value: !dispatched || refused, configurable: true }); } catch { /* An unmarkable error stays an unknown outcome. */ } };
       mark(error);
       // Stop (or leaving the chat) after dispatch: the turn may still complete on the agent.
       if (signal.aborted && dispatched && generation === epoch && selected === active && state.session?.sessionId === session.sessionId) scheduleStoppedReply(selected, session, dispatched.conversationId, text, dispatched.at);
       if (error && typeof error === 'object' && 'status' in error && error.status === 429) {
-        const limited = new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.');
+        const limited = refused ? Object.assign(new AlphaClientError('transport-failed', 'The agent is busy and did not accept this message. Wait, then send it again.'), { refusedBeforeTurn: true }) : new AlphaClientError('transport-failed', RATE_LIMITED);
         // Rate-limited before the post (creating or reading the conversation): still provably unsent.
         mark(limited); throw limited;
       }
+      // A stream that ended on a terminal failure frame carries its kind: the turn failed on the agent.
+      const kind = dispatched && !signal.aborted && !(error instanceof AlphaClientError) ? failureKindOf(error) : undefined;
+      if (kind && generation === epoch && selected === active) {
+        const failure = replyFailure(kind, selected);
+        if ('failureKind' in failure) { retractReadiness(); if (kind === 'insufficient_credits') void refreshResidentCredits(); }
+        mark(failure); throw failure;
+      }
       if (expired(error) && generation === epoch) {
         retire('Sign-in required');
-        update({ error: 'Sign in or pair again.', open: true });
+        update({ error: remotePairingRetired ? errorMessage({ status: 401 }) : 'Sign in or pair again.', open: true });
         try {
           if (selected.kind === 'cloud') { detachService(); await selected.cloud.disconnect(); }
           else await selected.remote.disconnect();
@@ -1345,6 +1424,7 @@ export function ConnectionChooser() {
   const localOrigin = useRef<HTMLInputElement>(null), localCode = useRef<HTMLInputElement>(null);
   const environment = useRef<HTMLSelectElement>(null);
   useEffect(() => { void connectionController.initialize(); }, []);
+  useEffect(()=>{const offline=()=>connectionController.networkChanged(false),online=()=>connectionController.networkChanged(true);window.addEventListener('offline',offline);window.addEventListener('online',online);return()=>{window.removeEventListener('offline',offline);window.removeEventListener('online',online);};},[]);
   useEffect(()=>{
     if(isAndroid)return;
     const changed=(event:StorageEvent)=>{

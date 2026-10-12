@@ -11,7 +11,7 @@ const token = 'synthetic-machine-session';
 // The development chromium lane also matches this file; it asserts the flag-off bundle only.
 test.beforeEach(({}, testInfo) => { test.skip(testInfo.project.name !== 'production', 'Production bundle only'); });
 
-interface AgentFixture { requests: Array<{ method: string; path: string; authorization?: string; body?: any }>; revoked: boolean; messages: Array<Record<string, unknown>> }
+interface AgentFixture { requests: Array<{ method: string; path: string; authorization?: string; body?: any }>; revoked: boolean; messages: Array<Record<string, unknown>>; failure?: string }
 
 async function serveAgent(route: Route, fixture: AgentFixture, page: import('@playwright/test').Page) {
   const request = route.request(), url = new URL(request.url());
@@ -31,6 +31,11 @@ async function serveAgent(route: Route, fixture: AgentFixture, page: import('@pl
   if (url.pathname === '/api/client-devices/proposals') return json(200, { proposals: [] });
   if (url.pathname === '/api/conversations') return request.method() === 'POST' ? json(200, { conversation: { id: conversation, title: 'Alpha Phone' } }) : json(200, { conversations: fixture.messages.length ? [{ id: conversation, title: 'Alpha Phone' }] : [] });
   if (url.pathname === `/api/conversations/${conversation}/messages` && request.method() === 'GET') return json(200, { messages: fixture.messages });
+  if (url.pathname === `/api/conversations/${conversation}/messages` && request.method() === 'POST' && fixture.failure) {
+    // The agent records the turn, then answers in JSON with an upstream terminal failure kind.
+    fixture.messages.push({ id: '9a8b7c6d-0000-4000-8000-000000000003', role: 'user', text: body.text, timestamp: Date.now() });
+    return json(200, { text: 'PRIVATE_PROVIDER_ERROR_CANARY', agentName: 'Synthetic remote', failureKind: fixture.failure, terminalFailure: { kind: fixture.failure, message: 'PRIVATE_PROVIDER_ERROR_CANARY', transient: false } });
+  }
   if (url.pathname === `/api/conversations/${conversation}/messages` && request.method() === 'POST') {
     const now = Date.now();
     fixture.messages.push({ id: '9a8b7c6d-0000-4000-8000-000000000001', role: 'user', text: body.text, timestamp: now }, { id: '9a8b7c6d-0000-4000-8000-000000000002', role: 'assistant', text: 'Synthetic remote reply', timestamp: now + 1 });
@@ -118,3 +123,46 @@ test('the web build offers no Eliza Cloud sign-in that Cloud would refuse; the a
   // No Cloud API request is made from the web page.
   expect(external).toEqual(['https://cloud.eliza.app/cloud/agents']);
 });
+
+// A remote agent answers in JSON; its failure kinds get the same honest states as the resident's
+// streamed ones, in wording that does not assume Eliza Cloud is that agent's provider.
+const JSON_FAILURES = {
+  insufficient_credits: 'The agent’s model provider reports no remaining credits. Add credits for that provider, then send again. Nothing was retried.',
+  provider_issue: 'The agent’s model provider could not be reached; nothing was retried.',
+  generation_timeout: 'The agent’s model provider could not be reached; nothing was retried.',
+  no_provider: 'The agent has no model provider configured. Set one up on the agent; nothing was retried.',
+} as const;
+for (const [kind, text] of Object.entries(JSON_FAILURES)) {
+  test(`the web build shows a JSON ${kind} reply as its own state, posts once and no longer says Connected`, async ({ page }) => {
+    const fixture: AgentFixture = { requests: [], revoked: false, messages: [], failure: kind };
+    const foreign: string[] = [];
+    await page.route('**/*', route => {
+      const url = new URL(route.request().url());
+      if (url.origin === origin) return serveAgent(route, fixture, page);
+      if (url.hostname === '127.0.0.1') return route.continue();
+      foreign.push(url.href); return route.abort();
+    });
+    await page.goto('/');
+    const chooser = page.locator('.alpha-connection');
+    await chooser.getByText('Remote agent', { exact: true }).click();
+    await chooser.getByLabel('Agent HTTPS address').fill(origin);
+    await chooser.getByLabel('Pairing code').fill('SYNTH-CODE');
+    await chooser.getByRole('button', { name: 'Connect remote agent', exact: true }).click();
+    await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+    const input = page.getByRole('textbox', { name: 'Ask Alpha' });
+    await input.fill(`JSON ${kind}`); await input.press('Enter');
+    await expect(page.locator('[data-alpha-layer="conversation"]').getByText(text, { exact: true })).toHaveCount(1);
+    await expect(page.getByText(/PRIVATE_PROVIDER_ERROR_CANARY/)).toHaveCount(0);
+    // The resident's Cloud-only next steps are not offered for another agent's provider.
+    await expect(page.getByRole('button', { name: /^(Add credits in Eliza Cloud|Set up AI)/ })).toHaveCount(0);
+    await page.waitForTimeout(1500);
+    expect(fixture.requests.filter(item => item.method === 'POST' && item.path === `/api/conversations/${conversation}/messages`)).toHaveLength(1);
+    await page.getByRole('button', { name: 'Minimize chat', exact: true }).click();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: /Agent connection/ }).click();
+    // The pairing itself still works ("Connected · Remote agent" names the transport), but the
+    // connection status no longer reports the agent as ready.
+    await expect(page.locator('.alpha-connection div[role="status"][aria-live="polite"]')).not.toHaveText('Connected');
+    expect(foreign).toEqual([]);
+  });
+}

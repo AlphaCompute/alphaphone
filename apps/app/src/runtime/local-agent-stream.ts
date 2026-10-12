@@ -26,7 +26,12 @@ export async function readLocalAgentStream(response:Response, signal:AbortSignal
   if(!data)return;
   let value;try{value=JSON.parse(data);}catch{return invalid('Invalid stream event');}
   if(!value||typeof value!=='object'||Array.isArray(value))return invalid('Invalid stream event');
-  if(value.type==='error'){if(value.terminalFailure||value.failureKind||value.actionResults!==undefined)onReplyReady?.(undefined);throw Error('Local agent response interrupted. Check conversation and action history before retrying.');}
+  if(value.type==='error'){
+   if(value.terminalFailure||value.failureKind||value.actionResults!==undefined)onReplyReady?.(undefined);
+   // The upstream failure kind (CHAT_FAILURE_KINDS) travels with the error; its prose never does.
+   const kind=typeof value.failureKind==='string'?value.failureKind:value.terminalFailure&&typeof value.terminalFailure==='object'&&typeof value.terminalFailure.kind==='string'?value.terminalFailure.kind:undefined;
+   throw Object.assign(Error('Local agent response interrupted. Check conversation and action history before retrying.'),kind&&kind.length<=64?{failureKind:kind}:{});
+  }
   if(value.type==='reply_ready'){
    if(value.terminalFailure!==undefined||value.failureKind!==undefined)return invalid('Reply-ready snapshot is not successful');
    if(typeof value.fullText!=='string'||value.fullText.length>200000||(value.actionResults!==undefined&&!Array.isArray(value.actionResults)))return invalid('Invalid reply-ready snapshot');
