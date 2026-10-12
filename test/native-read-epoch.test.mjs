@@ -12,7 +12,7 @@ test('delayed provider results cannot cross a lifecycle or permission boundary',
   assert.match(execFileSync(java('java'),['-cp',dir,'ai.elizaresearch.alphaphone.NativeReadEpochTest'],{encoding:'utf8',timeout:15000}),/PASS native read publication fences/);
   const catalog=readFileSync(join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/PermittedMediaCatalog.java'),'utf8');
   assert.match(catalog,/main\.post\(\(\)->\{try\{requireReadTicket\(ticket\);call\.resolve/);
-  assert.match(catalog,/OnPermissionsChangedListener/);assert.match(catalog,/ACTION_SCREEN_OFF/);
+  assert.match(catalog,/checkReadAccess/);assert.match(catalog,/ACTION_SCREEN_OFF/);
   const photos=readFileSync(join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaPhotosPlugin.java'),'utf8');
   assert.match(photos,/permitted\.publish\(call,value,ticket\)/);
   const facade=readFileSync(join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaPhotoLibraryPlugin.java'),'utf8');

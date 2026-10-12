@@ -597,9 +597,8 @@ public class AlphaBrowserPlugin extends Plugin {
   if(++t.authAttempts>3){handler.cancel();fail(t,"Sign-in failed. Reload to try again.");return;}
   float density=getContext().getResources().getDisplayMetrics().density;int pad=Math.round(20*density);
   android.widget.LinearLayout form=new android.widget.LinearLayout(getActivity());form.setOrientation(android.widget.LinearLayout.VERTICAL);form.setPadding(pad,pad/2,pad,0);
-  // Password-manager fill (#404) binds only a challenge to a pending main-frame load, to that
-  // load's exact HTTPS origin, and only when no frame or resource of this tab used another
-  // origin on the same host. Otherwise no origin is reported and Autofill is excluded.
+  // WebView does not authenticate the challenge URL, port or frame. The origin policy
+  // returns null, excluding provider fill/save until the engine supplies that binding.
   String authOrigin=BrowserHttpAuthAutofill.origin(host,t.pendingMain,t.url,t.committed,t.requestOriginsOverflow?null:t.requestOrigins);
   android.widget.EditText user=BrowserHttpAuthAutofill.field(getActivity(),authOrigin,false);
   android.widget.EditText pass=BrowserHttpAuthAutofill.field(getActivity(),authOrigin,true);

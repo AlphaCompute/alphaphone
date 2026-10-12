@@ -14,7 +14,8 @@ import android.widget.EditText;
  * Origin-bound password-manager fill for the browser's native HTTP authentication prompt
  * (issue #404). The prompt is Alpha-owned native UI, so without an origin a provider would
  * see only Alpha's package and could save or fill a site password against the app identity.
- * Each field therefore reports the exact HTTPS origin Alpha already verified for the
+ * Provider fill/save is currently disabled by BrowserHttpAuthOrigin. If a future engine
+ * supplies authenticated origins, each field would report the exact HTTPS origin of the
  * challenge: web domain and scheme, the committed top-level origin extra and the per-field
  * origin extra required by the shared password policy. When no single secure origin can be
  * established the fields are excluded from Autofill instead of guessing.

@@ -69,7 +69,7 @@ test('no Alpha-owned login form is eligible until it has a provider-owned native
   }
   // A native Alpha-owned surface is eligible only when every field reports an authoritative origin.
   const native = inventory.surfaces.filter(s => s.kind === 'alpha-owned-native' && s.eligible);
-  assert.ok(native.length >= 1);
+  assert.equal(inventory.surfaces.find(s => s.id === 'browser-http-auth-prompt').eligible, false);
   for (const surface of native) {
     const source = read(surface.file);
     assert.ok(surface.fillRoute, surface.id);
@@ -80,13 +80,13 @@ test('no Alpha-owned login form is eligible until it has a provider-owned native
   }
 });
 
-test('the HTTP authentication prompt binds fills to the single verified HTTPS origin', () => {
+test('the HTTP authentication prompt excludes provider fill without authenticated origin', () => {
   const auth = read('android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserHttpAuthAutofill.java');
   // The origin rule itself is executed on the JVM below.
   assert.match(auth, /static String origin\(String reportedHost,String pendingMain,String documentUrl,boolean committed,java\.util\.Collection<String> otherRequests\)\{ return BrowserHttpAuthOrigin\.forChallenge\(reportedHost,pendingMain,documentUrl,committed,otherRequests\); \}/);
   assert.match(auth, /InputType\.TYPE_CLASS_TEXT\|\(password\?InputType\.TYPE_TEXT_VARIATION_PASSWORD:InputType\.TYPE_TEXT_FLAG_NO_SUGGESTIONS\)/, 'exactly one password-typed field');
   assert.doesNotMatch(auth, /getAutofillValue|getText\(\)/, 'Alpha never reads provider values back');
-  // Bound only to a pending main-frame load, and refused when a same-host frame/resource used another origin.
+  // Observed request history is supplied for compatibility, but cannot authenticate a challenge.
   assert.match(plugin, /String authOrigin=BrowserHttpAuthAutofill\.origin\(host,t\.pendingMain,t\.url,t\.committed,t\.requestOriginsOverflow\?null:t\.requestOrigins\);/);
   assert.match(plugin, /if \(r\.isForMainFrame\(\)\) t\.pendingMain=r\.getUrl\(\)\.toString\(\); else recordRequestOrigin\(t,r\.getUrl\(\)\.toString\(\)\);/, 'every frame and resource origin is recorded');
   assert.match(plugin, /if\(t\.requestOrigins\.size\(\)>=MAX_REQUEST_ORIGINS\)t\.requestOriginsOverflow=true;/, 'an overflowed record refuses binding');

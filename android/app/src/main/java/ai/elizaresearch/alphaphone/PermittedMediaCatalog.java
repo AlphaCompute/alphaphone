@@ -40,7 +40,6 @@ final class PermittedMediaCatalog implements AutoCloseable {
  private final AtomicLong epoch=new AtomicLong();
  private final Runnable changed;
  private volatile boolean closed,foreground=true;
- private final android.content.pm.PackageManager.OnPermissionsChangedListener permissionsChanged=uid->{if(uid==android.os.Process.myUid())invalidate();};
  private final android.content.BroadcastReceiver screenOff=new android.content.BroadcastReceiver(){@Override public void onReceive(Context c,android.content.Intent intent){invalidate();}};
  private final LinkedHashMap<String,Page> pages=new LinkedHashMap<>();
  private final ContentObserver observer=new ContentObserver(main){@Override public void onChange(boolean selfChange){invalidate();changed.run();}};
@@ -51,12 +50,14 @@ final class PermittedMediaCatalog implements AutoCloseable {
  private boolean observing;
  PermittedMediaCatalog(Context context,Runnable changed){this(context,true,changed);}
  PermittedMediaCatalog(Context context,boolean active,Runnable changed){this.context=context;this.changed=changed;resolver=context.getContentResolver();
-  context.getPackageManager().addOnPermissionsChangeListener(permissionsChanged);
+
   androidx.core.content.ContextCompat.registerReceiver(context,screenOff,new android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF),androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);watch(active);}
  synchronized void watch(boolean active){if(active&&!observing&&!closed){resolver.registerContentObserver(MediaStore.AUTHORITY_URI,true,observer);observing=true;}else if(!active&&observing){resolver.unregisterContentObserver(observer);observing=false;}}
  void foreground(boolean value){foreground=value;invalidate();}
- long readTicket(){unlocked();return epoch.get();}
- void requireReadTicket(long ticket){unlocked();if(ticket!=epoch.get())throw new SecurityException("Media access changed");}
+ private String lastReadAccess="";
+ private synchronized void checkReadAccess(){String current=access().toString();if(!current.equals(lastReadAccess)){lastReadAccess=current;invalidate();}}
+ long readTicket(){unlocked();checkReadAccess();return epoch.get();}
+ void requireReadTicket(long ticket){unlocked();checkReadAccess();if(ticket!=epoch.get())throw new SecurityException("Media access changed");}
  void publish(com.getcapacitor.PluginCall call,JSObject value,long ticket){main.post(()->{try{requireReadTicket(ticket);call.resolve(value);}catch(Exception changed){call.reject("Media access changed. Reopen Photos and reload.");}});}
  void invalidate(){epoch.incrementAndGet();synchronized(pages){pages.clear();}}
  private boolean granted(String permission){return context.checkSelfPermission(permission)==PackageManager.PERMISSION_GRANTED;}
@@ -211,5 +212,5 @@ final class PermittedMediaCatalog implements AutoCloseable {
   JSObject after=inspect(key,true);if(Boolean.TRUE.equals(after.getBoolean(favorite?"favorite":"trashed"))!=desired||!before.getString("identity").equals(after.getString("identity")))throw new IllegalStateException("unverified");
   after.put("status",favorite?(desired?"favorited":"unfavorited"):(desired?"trashed":"restored"));invalidate();return after;
  }
- @Override public void close(){closed=true;invalidate();watch(false);context.getPackageManager().removeOnPermissionsChangeListener(permissionsChanged);context.unregisterReceiver(screenOff);}
+ @Override public void close(){closed=true;invalidate();watch(false);context.unregisterReceiver(screenOff);}
 }

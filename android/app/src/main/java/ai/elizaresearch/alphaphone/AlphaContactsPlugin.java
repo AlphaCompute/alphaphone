@@ -16,10 +16,9 @@ public final class AlphaContactsPlugin extends Plugin {
  private volatile boolean closed,resumed=true;
  private final NativeReadEpoch generation=new NativeReadEpoch();
  private final java.util.Set<android.os.CancellationSignal> reads=java.util.concurrent.ConcurrentHashMap.newKeySet();
- private final android.content.pm.PackageManager.OnPermissionsChangedListener permissionsChanged=uid->{if(uid==android.os.Process.myUid())invalidateReads();};
  private final android.content.BroadcastReceiver screenOff=new android.content.BroadcastReceiver(){@Override public void onReceive(android.content.Context context,Intent intent){invalidateReads();}};
  private void invalidateReads(){generation.incrementAndGet();for(android.os.CancellationSignal signal:reads)signal.cancel();}
- @Override public void load(){getContext().getPackageManager().addOnPermissionsChangeListener(permissionsChanged);androidx.core.content.ContextCompat.registerReceiver(getContext(),screenOff,new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF),androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);}
+ @Override public void load(){androidx.core.content.ContextCompat.registerReceiver(getContext(),screenOff,new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF),androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);}
  @Override protected void handleOnPause(){resumed=false;invalidateReads();super.handleOnPause();}
  @Override protected void handleOnResume(){resumed=true;invalidateReads();super.handleOnResume();}
  private boolean admitted(){return !closed&&AlphaImageCapabilities.aospImage(getContext());}
@@ -31,7 +30,7 @@ public final class AlphaContactsPlugin extends Plugin {
   if(!foreground()){call.reject("Contacts is available only in the unlocked Alpha image");return;}
   LateLaunch.ask(call,()->requestPermissionForAlias("contacts",call,"permissionResult"));
  }
- @PermissionCallback private void permissionResult(PluginCall call){status(call);}
+ @PermissionCallback private void permissionResult(PluginCall call){invalidateReads();status(call);}
  @PluginMethod public void list(PluginCall call){
   if(!readable()){call.reject("Contacts access is unavailable");return;}
   long ticket=generation.get();android.os.CancellationSignal cancel=new android.os.CancellationSignal();reads.add(cancel);
@@ -62,5 +61,5 @@ public final class AlphaContactsPlugin extends Plugin {
   LateLaunch.ask(call,()->startActivityForResult(call,intent,"editorResult"));
  }
  @ActivityCallback private void editorResult(PluginCall call,ActivityResult result){if(call==null)return;JSObject out=new JSObject();out.put("status","returned");call.resolve(out);}
- @Override protected void handleOnDestroy(){closed=true;invalidateReads();getContext().getPackageManager().removeOnPermissionsChangeListener(permissionsChanged);getContext().unregisterReceiver(screenOff);worker.shutdown();super.handleOnDestroy();}
+ @Override protected void handleOnDestroy(){closed=true;invalidateReads();getContext().unregisterReceiver(screenOff);worker.shutdown();super.handleOnDestroy();}
 }

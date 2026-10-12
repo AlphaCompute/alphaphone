@@ -126,7 +126,7 @@ test("telephony shares the bounded Contacts provider adapter", () => {
 test("queued contacts cannot return data after access or lifecycle changes", () => {
   for(const name of ['AlphaTelephonyPlugin','AlphaContactsPlugin']) {
    const plugin=read(`${JAVA}/${name}.java`);
-   assert.match(plugin,/OnPermissionsChangedListener/);assert.match(plugin,/ACTION_SCREEN_OFF/);
+   assert.match(plugin,/handleOnResume/);assert.match(plugin,/ACTION_SCREEN_OFF/);
    assert.match(plugin,/handleOnPause/);assert.match(plugin,/handleOnDestroy/);
    assert.match(plugin,/runOnUiThread/);assert.match(plugin,/generation\.current/);
   }
