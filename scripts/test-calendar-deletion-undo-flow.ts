@@ -8,7 +8,7 @@ import {
   hiddenDeletionTargets, deletionReviewText, undoRemaining, targetKey, validatePendingDeletions,
   type PendingDeletionDocument, type PendingDeletionStore, type DeletionProvider, type PendingDeletion, type EventDeletionTarget, type ReminderDeletionTarget, type DeliveryHold,
 } from '../apps/app/src/runtime/pending-deletions.ts';
-import { createDeletionUndo, deletionProvider } from '../apps/app/src/runtime/deletion-undo-core.ts';
+import { createDeletionUndo, deletionProvider, RETRY_LATER_MS } from '../apps/app/src/runtime/deletion-undo-core.ts';
 
 /** Durable store: survives "process death" because tests create new providers/controllers over it. */
 class MemoryStore implements PendingDeletionStore {
@@ -139,8 +139,9 @@ const T0 = 1_700_000_000_000;
   const store = new MemoryStore(), world = new World();
   world.rows.set('71', { revision: 'r1', deleted: false });
   await requestDeletion(store, world.provider(), { id: 'd1', label: 'Dentist', target: event() }, T0);
-  world.nextCommit = 'die-after-effect';
+  world.nextCommit = 'die-after-effect'; world.readbackFails = true;
   assert.deepEqual((await commitDueDeletions(store, world.provider(), T0 + UNDO_WINDOW_MS)).map(r => r.status), ['unconfirmed']);
+  world.readbackFails = false;
   assert.equal((await pendingDeletions(store))[0].phase, 'unknown');
   assert.deepEqual(await commitDueDeletions(store, world.provider(), T0 + 60_000), [], 'An unknown outcome is never redispatched blindly');
   const reports = await reconcileDeletions(store, world.provider(), T0 + 120_000);
@@ -180,6 +181,12 @@ const T0 = 1_700_000_000_000;
   assert.match(reports[0].message, /changed after you deleted it, so it was kept/);
   assert.deepEqual(world.effects, []); assert.deepEqual(world.deliveries, ['rem1/occ1'], 'A kept reminder gets its suppressed alert');
   assert.deepEqual(world.revoked, ['grant-71']);
+  // An uncertain dispatch whose target then reads back as changed is reported as kept at once.
+  const raced = new MemoryStore(), racing = new World(); racing.rows.set('73', { revision: 'r1', deleted: false });
+  const racer = racing.provider(); racer.commit = async () => { racing.rows.get('73')!.revision = 'r9'; return 'unknown'; };
+  await requestDeletion(raced, racer, { id: 'd5', label: 'Raced', target: event('73') }, T0);
+  assert.deepEqual((await commitDueDeletions(raced, racer, T0 + UNDO_WINDOW_MS)).map(r => r.status), ['kept-changed']);
+  assert.equal(raced.raw, null);
   const lost = new MemoryStore(), denied = new World(); denied.rows.set('71', { revision: 'r1', deleted: false });
   await requestDeletion(lost, denied.provider(), { id: 'd1', label: 'Dentist', target: event() }, T0);
   denied.permission = false;
@@ -233,9 +240,9 @@ const T0 = 1_700_000_000_000;
   store.failWrites = 0;
   assert.equal((await pendingDeletions(store))[0].phase, 'pending', 'The intent is unchanged after a failed Undo save');
   assert.deepEqual(world.revoked, [], 'No revoke until the Undo is saved');
-  world.nextCommit = 'die-after-effect';
+  world.nextCommit = 'die-after-effect'; world.readbackFails = true;
   await commitDueDeletions(store, world.provider(), T0 + UNDO_WINDOW_MS);
-  assert.equal((await undoDeletion(store, world.provider(), 'd1', T0 + UNDO_WINDOW_MS + 1)).status, 'too-late');
+  assert.equal((await undoDeletion(store, world.provider(), 'd1', T0 + UNDO_WINDOW_MS + 1)).status, 'too-late', 'A dispatched deletion is never offered as restorable');
   assert.equal((await undoDeletion(store, world.provider(), 'missing', T0)).status, 'missing');
 }
 
@@ -304,6 +311,19 @@ const T0 = 1_700_000_000_000;
   mono = UNDO_WINDOW_MS + 1; assert.equal(controller.remaining(held.record.id), 0);
   assert.equal((await controller.undo(held.record.id)).status, 'expired', 'Undo ends with the observed window even if the wall clock stalls');
   await controller.commitDue();
+  assert.deepEqual(world.effects, ['71']);
+}
+
+// 13c. "Retry later" pauses before the next attempt instead of spinning on the expiry timer.
+{
+  const store = new MemoryStore(), world = new World();
+  world.rows.set('71', { revision: 'r1', deleted: false }); world.available = false;
+  let now = T0; const delays: number[] = [];
+  const controller = createDeletionUndo(store, world.provider(), { now: () => now, setTimeout: (fn, ms) => { delays.push(ms); return fn; }, clearTimeout: () => undefined });
+  await controller.request({ label: 'Dentist', target: event() });
+  now = T0 + UNDO_WINDOW_MS; await controller.commitDue();
+  assert.ok(delays.at(-1)! >= RETRY_LATER_MS, 'The next attempt waits RETRY_LATER_MS');
+  world.available = true; now += RETRY_LATER_MS; await controller.commitDue();
   assert.deepEqual(world.effects, ['71']);
 }
 

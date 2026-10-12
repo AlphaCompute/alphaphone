@@ -68,6 +68,8 @@ export type DeletionUndoListener=(event:{type:'changed'}|{type:'reports';reports
  * One controller per renderer: it owns the expiry timer, runs reconciliation on start and resume,
  * and tells Calendar which targets to hide and which Undo is still available.
  */
+/** Pause before another dispatch attempt after the provider reported it could not act yet. */
+export const RETRY_LATER_MS=30_000;
 type Clock={now():number;monotonic?():number;setTimeout(fn:()=>void,ms:number):unknown;clearTimeout(id:unknown):void};
 const systemClock:Clock={now:()=>Date.now(),monotonic:()=>performance.now(),setTimeout:(fn,ms)=>setTimeout(fn,ms),clearTimeout:id=>clearTimeout(id as ReturnType<typeof setTimeout>)};
 export function createDeletionUndo(store:PendingDeletionStore,provider:DeletionProvider,clock:Clock=systemClock){
@@ -84,11 +86,13 @@ export function createDeletionUndo(store:PendingDeletionStore,provider:DeletionP
   async function refresh(){records=await pendingDeletions(store);observe();emit({type:'changed'});arm();}
   function arm(){
     if(timer!==undefined)clock.clearTimeout(timer);timer=undefined;
-    const now=clock.now(),mono=monotonic(),waiting=records.filter(row=>row.phase==='pending').map(row=>{const wall=undoRemaining(row,now),at=deadlines.get(row.id);return at!==undefined&&mono!==undefined?Math.min(wall,Math.max(0,at-mono)):wall;});
+    const now=clock.now(),mono=monotonic(),waiting=records.filter(row=>row.phase==='pending').map(row=>{const wall=undoRemaining(row,now),at=deadlines.get(row.id);const due=at!==undefined&&mono!==undefined?Math.min(wall,Math.max(0,at-mono)):wall;return Math.max(due,(retryAt.get(row.id)??0)-now);});
     if(!waiting.length)return;
     timer=clock.setTimeout(()=>{timer=undefined;void controller.commitDue();},Math.max(0,Math.min(...waiting))+50);
   }
-  const done=async(reports:DeletionReport[])=>{await refresh();if(reports.length)emit({type:'reports',reports});return reports;};
+  // A provider that cannot act yet (locked, not foreground) is retried after a pause, not in a loop.
+  const retryAt=new Map<string,number>();
+  const done=async(reports:DeletionReport[])=>{for(const report of reports)if(report.status==='retry-later')retryAt.set(report.id,clock.now()+RETRY_LATER_MS);else retryAt.delete(report.id);await refresh();if(reports.length)emit({type:'reports',reports});return reports;};
   const controller={
     subscribe(listener:DeletionUndoListener){listeners.add(listener);return ()=>{listeners.delete(listener);};},
     records:()=>records,

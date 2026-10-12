@@ -292,7 +292,12 @@ export async function commitDueDeletions(store: PendingDeletionStore, provider: 
       // Known not dispatched (locked, not foreground). Keep the intent and the hold; retry later.
       await setPhase(store, record.id, 'committing', 'pending'); reports.push(report(record, 'retry-later'));
     } else {
-      await setPhase(store, record.id, 'committing', 'unknown'); reports.push(report(record, 'unconfirmed'));
+      // Read back at once: a vanished target is confirmed and a changed one was never deleted
+      // (the dispatch is bound to the exact revision). An exact match stays unknown, not redispatched.
+      let readback: ReadbackOutcome;
+      try { readback = await provider.readback(record); } catch { readback = 'unavailable'; }
+      const resolved = await resolveReadback(store, provider, record, readback === 'present' ? 'unavailable' : readback);
+      if (resolved) reports.push(resolved);
     }
   }
   return reports;
