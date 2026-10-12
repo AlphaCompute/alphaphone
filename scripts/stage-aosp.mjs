@@ -2,10 +2,81 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { androidEnv, tool } from "./toolchain.mjs";
 import { clockProductRequirement } from "./aosp-clock-contract.mjs";
 import { provisioningComponents, writeProvisioningOverlay } from "./aosp-provisioning-overlay.mjs";
 import { releaseBlockers } from "./release-blockers.mjs";
+import { loadProfile } from "../vendor/eliza/packages/os/scripts/android/verify-source-lock.ts";
+import { loadBrandConfig } from "../vendor/eliza/packages/os/scripts/android/brand-config.ts";
+
+export const PRODUCT_DESCRIPTOR = "android/aosp/product.json";
+export const AOSP_TARGETS = Object.freeze(["cuttlefish_x86_64", "cuttlefish_arm64"]);
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/** JSON paths whose string value is unset or a placeholder. */
+function placeholders(value, at = "") {
+  if (typeof value === "string") return /^(unset|todo|tbd)$/i.test(value.trim()) || /placeholder/i.test(value) ? [at || "(value)"] : [];
+  if (Array.isArray(value)) return value.flatMap((item, index) => placeholders(item, `${at}[${index}]`));
+  if (value && typeof value === "object") return Object.entries(value).filter(([key]) => key !== "description").flatMap(([key, item]) => placeholders(item, at ? `${at}.${key}` : key));
+  return [];
+}
+
+/**
+ * Problems that keep the Alpha AOSP product from production staging, read from `root`: the
+ * product descriptor, its brand config (upstream brand-config schema), its source-lock profile
+ * (upstream verify-source-lock schema), the Cuttlefish host package hashes and the reviewed
+ * signer. An empty list means the lock is complete; it says nothing about an image build or boot.
+ */
+export function aospProductLockProblems(root = process.cwd()) {
+  const at = rel => path.join(root, rel);
+  const read = rel => JSON.parse(fs.readFileSync(at(rel), "utf8"));
+  if (!fs.existsSync(at(PRODUCT_DESCRIPTOR))) return [`${PRODUCT_DESCRIPTOR} is missing`];
+  const problems = [];
+  let product;
+  try { product = read(PRODUCT_DESCRIPTOR); } catch (error) { return [`${PRODUCT_DESCRIPTOR} is unreadable: ${error.message}`]; }
+  if (product.schema !== 1) problems.push(`${PRODUCT_DESCRIPTOR}: schema must be 1`);
+  for (const field of placeholders(product)) problems.push(`${PRODUCT_DESCRIPTOR}: ${field} is unset or a placeholder`);
+  if (!AOSP_TARGETS.includes(product.target)) problems.push(`${PRODUCT_DESCRIPTOR}: target must be one of ${AOSP_TARGETS.join(", ")}`);
+  const identity = read("app.config.json");
+  // Brand config through the pinned upstream loader (required fields, architecture, lock path).
+  let brand = null;
+  if (typeof product.brandConfig !== "string" || !product.brandConfig.startsWith("android/aosp/")) problems.push(`${PRODUCT_DESCRIPTOR}: brandConfig must name a file under android/aosp/`);
+  else {
+    try { brand = loadBrandConfig(at(product.brandConfig)); } catch (error) { problems.push(`${product.brandConfig}: ${error.message}`); }
+    if (brand) {
+      for (const field of placeholders(brand)) problems.push(`${product.brandConfig}: ${field} is unset or a placeholder`);
+      if (brand.packageName !== identity.appId) problems.push(`${product.brandConfig}: packageName ${brand.packageName} is not ${identity.appId}`);
+      if (brand.productName !== product.product) problems.push(`${product.brandConfig}: productName ${brand.productName} is not ${product.product}`);
+      if (brand.aospLockProfile !== product.sourceLock?.profile) problems.push(`${product.brandConfig}: aospLockProfile is not the descriptor's source-lock profile`);
+      if (brand.aospLockPath !== product.sourceLock?.file) problems.push(`${product.brandConfig}: aospLockPath is not the descriptor's source lock`);
+    }
+  }
+  // Source lock through the pinned upstream loader (manifest url, tag and full object IDs).
+  const lockFile = product.sourceLock?.file, profileName = product.sourceLock?.profile;
+  if (typeof lockFile !== "string" || !lockFile.startsWith("android/aosp/") || !fs.existsSync(at(lockFile))) problems.push(`${PRODUCT_DESCRIPTOR}: sourceLock.file must name an existing lock under android/aosp/`);
+  else if (Object.values(product.notAdmitted ?? {}).includes(lockFile)) problems.push(`${lockFile} is a separate lock that is not admitted`);
+  else {
+    const lock = read(lockFile);
+    if (lock.admitted === false) problems.push(`${lockFile} is not admitted`);
+    let profile = null;
+    try { profile = loadProfile(profileName, at(lockFile)); } catch (error) { problems.push(`${lockFile}: ${error.message}`); }
+    for (const field of placeholders(lock.profiles?.[profileName] ?? {})) problems.push(`${lockFile}: profiles.${profileName}.${field} is unset or a placeholder`);
+    if (profile && profile.kind !== "virtual") problems.push(`${lockFile}: profile ${profileName} is a ${profile.kind} device; only the Cuttlefish product is admitted`);
+    if (profile && !(profile.supportedProducts ?? []).includes(product.product)) problems.push(`${lockFile}: profile ${profileName} does not list ${product.product}`);
+  }
+  const hosts = Array.isArray(product.hostPackages) ? product.hostPackages : [];
+  if (!hosts.length) problems.push(`${PRODUCT_DESCRIPTOR}: hostPackages lists no Cuttlefish host package`);
+  for (const pkg of hosts) if (!pkg?.name || !pkg?.version || !HEX64.test(pkg?.sha256 ?? "")) problems.push(`${PRODUCT_DESCRIPTOR}: host package ${pkg?.name ?? "(unnamed)"} needs a version and a SHA-256`);
+  // The reviewed signer: the APK release signer descriptor and the image platform certificate.
+  if (product.signer?.apkDescriptor !== "android/release-signer.json") problems.push(`${PRODUCT_DESCRIPTOR}: signer.apkDescriptor must be android/release-signer.json`);
+  else {
+    const signer = read(product.signer.apkDescriptor).signerSha256;
+    if (!HEX64.test(signer ?? "")) problems.push(`android/release-signer.json signerSha256 is ${JSON.stringify(signer)}, not a reviewed release certificate`);
+  }
+  if (!HEX64.test(product.signer?.platformCertificateSha256 ?? "")) problems.push(`${PRODUCT_DESCRIPTOR}: signer.platformCertificateSha256 must be a SHA-256`);
+  return [...new Set(problems)];
+}
 
 /**
  * Refuse inputs that must never reach an image: anything from the separate
@@ -56,7 +127,7 @@ function admitApk({ apk, hash, development, manifestFile }) {
       throw new Error(`Refusing ${apk}: --development stages debug builds only. This is a release build that ${manifestFile} does not record as distributable.`);
   }
 }
-const args = process.argv.slice(2);
+function main(args) {
 const get = (key) => {
   const i = args.indexOf(key);
   return i < 0 ? null : args[i + 1];
@@ -79,10 +150,20 @@ const development = args.includes("--development");
 // refused until a signed, PACKAGED, qualified release APK exists.
 const production = args.includes("--production");
 if (production && development) throw new Error("--production and --development are exclusive");
-const apk = get("--apk");
-if (!apk) throw new Error("Supply --apk PATH to a signed launcher APK.");
-const identity = JSON.parse(fs.readFileSync("app.config.json"));
 let descriptor = get("--descriptor");
+if (production && !descriptor)
+  throw new Error("--production requires --descriptor FILE: an independently reviewed descriptor with pinned hash and signer.");
+const apk = get("--apk");
+if (!apk)
+  throw new Error(development
+    ? "Development staging: supply --apk PATH to a flag-off debug launcher APK."
+    : "Production staging: supply --apk PATH to the signed launcher release APK that verify-apks recorded as distributable.");
+const identity = JSON.parse(fs.readFileSync("app.config.json"));
+// The product lock is checked before any APK is read: production never stages into an unset product.
+if (production) {
+  const problems = aospProductLockProblems(process.cwd());
+  if (problems.length) throw new Error(`Refusing production staging: the Alpha AOSP product lock is incomplete.\n${problems.map(item => `  - ${item}`).join("\n")}`);
+}
 const hash = createHash("sha256").update(fs.readFileSync(apk)).digest("hex");
 admitApk({
   apk,
@@ -90,6 +171,11 @@ admitApk({
   development,
   manifestFile: get("--apk-manifest") || "artifacts/apk-manifest.json",
 });
+if (descriptor) {
+  const supplied = JSON.parse(fs.readFileSync(descriptor));
+  if (supplied.packageName !== identity.appId || supplied.moduleName !== identity.moduleName)
+    throw new Error(`Descriptor does not belong to this product: packageName ${supplied.packageName} and moduleName ${supplied.moduleName} must be ${identity.appId} and ${identity.moduleName} (app.config.json).`);
+}
 const env = androidEnv();
 if (!descriptor) {
   if (!development)
@@ -159,3 +245,6 @@ if (production) {
 console.log(
   `Add under vendor/${identity.slug.replaceAll("-", "_")} and inherit product.mk from the selected AOSP product. This is staging evidence, not an image boot.`,
 );
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));

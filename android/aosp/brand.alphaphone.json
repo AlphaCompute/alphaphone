@@ -1,0 +1,21 @@
+{
+  "brand": "alphaphone",
+  "appName": "Alpha Phone",
+  "distroName": "Alpha Phone",
+  "packageName": "ai.elizaresearch.alphaphone",
+  "classPrefix": "Alpha",
+  "productName": "alphaphone_cf_x86_64_phone",
+  "lunchTarget": "alphaphone_cf_x86_64_phone-trunk_staging-user",
+  "architecture": "x86_64",
+  "aospLockProfile": "cuttlefish",
+  "aospLockPath": "android/aosp/aosp.lock.json",
+  "aospDeviceTreePaths": [
+    "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk"
+  ],
+  "envPrefix": "ELIZA",
+  "propertyPrefix": "alphaphone",
+  "vendorDir": "vendor/alphaphone",
+  "initRcName": "init.alphaphone.rc",
+  "commonMakefile": "alphaphone_common.mk",
+  "cuttlefishMakefile": "alphaphone_cf_x86_64_phone.mk"
+}
