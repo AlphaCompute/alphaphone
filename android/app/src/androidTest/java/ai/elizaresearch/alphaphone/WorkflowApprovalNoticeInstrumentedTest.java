@@ -82,7 +82,10 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
    Notification notice=active(manager,id);assertNotNull("Approval notice posted",notice);
    String token=taps.token(id);assertNotNull(token);
    // The account changes: the phone now runs local-only, with no agent for this notice's scope.
+   // The saved selection is restored before the activity closes, so later classes see the original.
+   String prior=WebViewTestDriver.evaluate("localStorage.getItem('alpha.connection.selection.v1')");
    WebViewTestDriver.evaluate("localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}))");
+   try{
    activity.recreate();AppNavigation.liveMode();
    notice.contentIntent.send();
    long end=SystemClock.elapsedRealtime()+15000;String shown="false";
@@ -93,6 +96,7 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
    JSONObject pending=taps.pending();
    assertEquals("The route stays pending for its own account, not consumed",token,pending.optString("token"));
    assertTrue(pending.optBoolean("retained"));
+   }finally{WebViewTestDriver.evaluate("null".equals(prior)?"localStorage.removeItem('alpha.connection.selection.v1')":"localStorage.setItem('alpha.connection.selection.v1',"+prior+")");}
   }finally{manager.cancel("alpha-workflow-"+id,0);store.removeCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT);taps.forget(id);}
  }
 }

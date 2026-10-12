@@ -19,8 +19,10 @@ import static org.junit.Assert.*;
 /** Settings > Password manager on a real emulator (MVP-29, LOOP-E): a fixture screen-lock PIN,
  * unlock through Android's device-credential prompt, a typed and a generated synthetic entry,
  * list and search, Show (Android's own surface) and Copy, Lock, the inactivity lock and the lock
- * on leaving. No secret may appear in the page DOM, in logcat or in what the agent may observe
- * (the page marks password pages sensitive, so the agent view context is withheld).
+ * on leaving. No secret may appear in the page DOM (markup, input values, local and session
+ * storage) or in logcat. The agent view context is not read directly: it is built from page state,
+ * which this test shows never holds the secret, and passwordSurfaceOpen withholds it on these pages
+ * (a renderer unit, not checked here).
  *   npm run test:android:instrumentation -- --owned-emulator --avd NAME --classes PasswordVaultSettings
  * passwordVault=1 is the runner's gate: the class sets and clears a screen-lock PIN, so it runs only
  * on an owned, disposable emulator with no screen lock of its own. Synthetic values only. */
@@ -59,11 +61,13 @@ public class PasswordVaultSettingsInstrumentedTest {
   PasswordVaultFixture.confirmDeviceCredential();
   until(control("Lock passwords"), "Unlocked through the device credential");
  }
- private static void addEntry(String name, String username, String typedPassword) throws Exception {
+ private static void addEntry(String name, String username, String website, String typedPassword) throws Exception {
   press("Add password");
   until("document.body.innerText.includes('New password')", "The new-password page opens");
   type("Name", name);
   type("Username", username);
+  // The page refuses an entry with no website ("Add at least one website."); .invalid never resolves.
+  type("Add website", website);
   if (typedPassword == null) press("Generate a strong password");
   else type("Password", typedPassword);
   press("Save");
@@ -86,9 +90,9 @@ public class PasswordVaultSettingsInstrumentedTest {
    unlock();
 
    // A typed entry and a generated one.
-   addEntry(typedName, "fixture@example.invalid", typedSecret);
+   addEntry(typedName, "fixture@example.invalid", "typed-" + suffix + ".example.invalid", typedSecret);
    assertNotInDom(typedSecret, "after saving the typed entry");
-   addEntry(generatedName, "", null);
+   addEntry(generatedName, "", "generated-" + suffix + ".example.invalid", null);
 
    // List and search: metadata only.
    until(control("Open " + typedName) + "&&" + control("Open " + generatedName), "Both entries are listed");

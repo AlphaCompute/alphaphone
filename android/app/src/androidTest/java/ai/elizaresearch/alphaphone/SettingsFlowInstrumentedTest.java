@@ -119,6 +119,12 @@ public class SettingsFlowInstrumentedTest {
    scenario.recreate();
    AppNavigation.liveMode();
    assertDark("after the activity was recreated");
+  }finally{
+   // The saved appearance outlives this method; later methods and classes expect the default Light.
+   try(BoundedActivityScenario<MainActivity> reset=BoundedActivityScenario.launch(MainActivity.class)){
+    until("document.documentElement.dataset.activeView");
+    WebViewTestDriver.evaluate("localStorage.setItem('alpha.appearance.v1','light')");
+   }
   }
  }
 

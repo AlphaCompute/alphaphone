@@ -30,7 +30,9 @@ final class PasswordVaultFixture implements AutoCloseable {
   assertTrue("The emulator already has a screen lock this test does not own: " + existing, existing.contains("verified successfully"));
   String result = shell("locksettings set-pin " + PIN);
   set = true;
-  assertTrue("Fixture PIN set: " + result, shell("locksettings verify --old " + PIN).contains("verified successfully"));
+  // A constructor that throws is never closed by try-with-resources: clear the PIN here.
+  try { assertTrue("Fixture PIN set: " + result, shell("locksettings verify --old " + PIN).contains("verified successfully")); }
+  catch (Throwable failed) { close(); throw failed; }
  }
  /** Answers Android's device-credential prompt with the fixture PIN. */
  static void confirmDeviceCredential() throws Exception {

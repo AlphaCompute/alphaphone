@@ -536,6 +536,12 @@ test("round-9 registrations: new classes, campaigns and removed reasons", () => 
   }
   // The vault classes change device security state, so they are gated and never default.
   for (const name of ["PasswordVaultSettings", "PasswordVaultFill"]) assert.ok(CLASS_REGISTRY[name].args && !DEFAULT_CLASSES.includes(name), name);
+  // The page refuses an entry without a website, so each synthetic entry names one (.invalid only).
+  assert.match(sourceOf("PasswordVaultSettings"), /type\("Add website", website\)/);
+  assert.equal((sourceOf("PasswordVaultSettings").match(/\.example\.invalid", (typedSecret|null)\)/g) ?? []).length, 2);
+  // A fixture PIN that was set is cleared even when its own verification fails (no close() follows a throwing constructor).
+  const fixture = fs.readFileSync(ROOTS.map(root => path.join(root, "ai/elizaresearch/alphaphone/PasswordVaultFixture.java")).find(file => fs.existsSync(file)), "utf8");
+  assert.match(fixture, /set = true;[\s\S]*catch \(Throwable failed\) \{ close\(\); throw failed; \}/);
 });
 
 test("restart runner wires the migration, crash-log, theme and source-reference phases to real methods and gates", () => {
