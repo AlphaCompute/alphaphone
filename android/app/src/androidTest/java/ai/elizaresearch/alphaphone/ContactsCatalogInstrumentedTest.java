@@ -11,6 +11,15 @@ import static org.junit.Assert.*;
 
 /** Owned disposable-profile provider test only; it does not admit a production image. */
 public final class ContactsCatalogInstrumentedTest {
+ @Test public void literalSearchIsOneSegmentAndPageBudgetIsCheckedBeforeAppend(){
+  for(String query:new String[]{"A/B","A#B","A%B","A?B","A B"}){
+   Uri uri=AlphaContactsCatalog.searchUri(query);assertEquals(query,uri.getLastPathSegment());
+   assertEquals(ContactsContract.Contacts.CONTENT_FILTER_URI.getPathSegments().size()+1,uri.getPathSegments().size());assertNull(uri.getQuery());assertNull(uri.getFragment());
+  }
+  String record="é".repeat(32768);int used=64,count=0;
+  while(used+record.getBytes(java.nio.charset.StandardCharsets.UTF_8).length+1<=1024*1024){used=AlphaContactsCatalog.admitRecordBytes(used,record);count++;}
+  assertEquals(15,count);final int full=used;assertThrows(IllegalStateException.class,()->AlphaContactsCatalog.admitRecordBytes(full,record));
+ }
  @Test public void ownedContactsHaveBoundedSearchAndExactEditSelection()throws Exception{
   android.app.Instrumentation inst=InstrumentationRegistry.getInstrumentation();Context context=inst.getTargetContext();
   String name="Alpha catalog fixture "+java.util.UUID.randomUUID();java.util.List<Uri> created=new java.util.ArrayList<>();
