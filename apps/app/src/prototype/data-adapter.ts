@@ -208,7 +208,7 @@ export function installPrototypeHomeBindings(Component: any) {
     return {
       ...NEUTRAL_HOME,
       ...(HOME_DEFAULTS || {}),
-      homeAttentionLabel: attention.length ? `${attention.length} ${attention.length === 1 ? 'item needs' : 'items need'} your attention` : 'Nothing needs your attention', homeAttentionCount: String(attention.length), homeAttentionPeople: attention,
+      homeAttentionLabel: attention.length ? `${attention.length} ${attention.length === 1 ? 'item needs' : 'items need'} your attention` : 'Nothing needs your attention', homeAttentionPeople: attention,
       homeAttentionPeopleVisibility: attention.length ? 'visible' : 'hidden',
       ...out,
       activeViewLabel: activeView[0].toUpperCase()+activeView.slice(1), storageAccessWarning,
