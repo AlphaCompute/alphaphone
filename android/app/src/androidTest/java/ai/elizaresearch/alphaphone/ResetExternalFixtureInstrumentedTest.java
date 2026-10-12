@@ -63,7 +63,7 @@ public final class ResetExternalFixtureInstrumentedTest {
    Uri uri=c.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,media);assertNotNull(uri);
    try(OutputStream out=c.getContentResolver().openOutputStream(uri)){assertNotNull(out);out.write(bytes(run));}
    Bundle result=new Bundle();result.putString("resetFixtureRun",run);result.putString("resetFixtureMediaUri",uri.toString());result.putString("resetFixtureMediaName",name+".txt");result.putString("resetFixtureMediaSha256",sha(bytes(run)));result.putString("resetFixtureKeystoreAlias",alias);result.putInt("resetFixtureUser",user);
-   InstrumentationRegistry.getInstrumentation().sendStatus(0,result);
+   InstrumentationRegistry.getInstrumentation().addResults(result);
   }else if("verify-preserved".equals(phase)){
    assertArrayEquals("Private file retained",bytes(run),java.nio.file.Files.readAllBytes(file.toPath()));assertArrayEquals("Cache retained",bytes(run),java.nio.file.Files.readAllBytes(cache.toPath()));assertEquals("Preferences retained",run,c.getSharedPreferences(name,0).getString("value",null));
    assertEquals("Saved Notes retained",notes(run),store.readCredentialSlot(AlphaCredentialStore.NOTES_RECORDS));assertEquals("Unsaved draft retained",draft(run),store.readCredentialSlot(AlphaCredentialStore.NOTES_DRAFT));assertEquals("Runtime fixture retained",payload,store.readCredentialSlot(SLOT));
