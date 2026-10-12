@@ -13,6 +13,7 @@ node scripts/dependency-audit.mjs --write    # network: also rewrite docs/depend
 node scripts/dependency-audit.mjs --offline  # the committed snapshot only
 node --test test/dependency-audit.test.mjs   # offline; part of npm test
 node scripts/generate-sbom.mjs               # offline: artifacts/sbom/alphaphone.cdx.json
+node scripts/generate-sbom.mjs --packaged-runtime  # offline: also the staged resident runtime payload
 node scripts/ci/read-required-checks.mjs     # network, read-only: enforced rules on main vs the intended ruleset
 ```
 
@@ -30,7 +31,7 @@ non-dev packages).
 | Advisory | Severity | Package and exact path | Ships? | Vulnerable code reachable? | Disposition |
 | --- | --- | --- | --- | --- | --- |
 | GHSA-68fv-2mgg-jv7q, event-loop denial of service through indexed source-map section offsets | high | `source-map-js` 1.2.1 via `vite > postcss > source-map-js` and `@vitejs/plugin-react > vite > postcss > source-map-js` | No. Build tool only. | Only at build time: PostCSS parses a source map that accompanies CSS it processes. Production builds set `sourcemap: false`. A hostile map in a CSS dependency could hang a developer or CI build; it cannot affect a user. | **Fixed.** Lockfile-only bump to 1.2.2, inside PostCSS's declared `^1.2.1`. |
-| GHSA-w5hq-g745-h8pq, uuid missing buffer bounds check in v3/v5/v6 when `buf` is provided | moderate | `uuid` 7.0.3 via `@capacitor/cli > xcode > uuid` | No. CLI tool only. | No. `xcode` calls only `uuid.v4()` with no arguments (`lib/pbxProject.js`). | **Exception until 2027-01-08.** |
+| GHSA-w5hq-g745-h8pq, uuid missing buffer bounds check in v3/v5/v6 when `buf` is provided | moderate | `uuid` 7.0.3 via `@capacitor/cli > xcode > uuid` | No. CLI tool only. | No. `xcode` calls only `uuid.v4()` with no arguments (`lib/pbxProject.js`). | **Exception until 2027-02-08** (re-reviewed 2026-10-11). |
 | same advisory, reported on the parent | moderate | `xcode` 3.0.1 via `@capacitor/cli > xcode` | No | No. `@capacitor/cli` loads `xcode` only in its iOS `migrate uiscene` task. There is no iOS project; the only CLI use is `cap sync android`. | Same exception. |
 | same advisory, reported on the direct dependency | moderate | `@capacitor/cli` 8.5.2 (direct devDependency) | No | No, as above. | Same exception. |
 
@@ -62,16 +63,60 @@ Remove the exception when `@capacitor/cli` drops `xcode` or `xcode` moves to `uu
   - a recorded fix regressed in the lockfile.
 
 Any change to `package-lock.json` therefore needs a fresh `node scripts/dependency-audit.mjs
---write` in the same change. The first date on which the test fails by itself is 2027-01-09,
-when the uuid exception expires.
+--write` in the same change. The first date on which the test fails by itself is 2027-02-09,
+when the uuid exception expires. It was re-reviewed on 2026-10-11: the registry still has no
+`@capacitor/cli` release without `xcode` (latest 8.5.3; 8.5.4 nightly and 9.0.0-alpha.8 are
+prereleases), `xcode` 3.0.1 is still the newest and depends on `uuid ^7.0.3`, the installed
+`xcode` still calls only `uuid.v4()` without a buffer, and `@capacitor/cli` loads it only from
+`dist/tasks/migrate-uiscene.js`. The review date moved by 120 days, the maximum.
 
 `source-map-js` 1.2.2 was exercised with PostCSS 8.5.28 (generate, then consume a previous
 map) in an isolated install. `npm run verify` in the working tree used the shared
 `node_modules`, which still held 1.2.1; a clean `npm ci` installs 1.2.2.
 
-The pinned platform (`vendor/eliza`, `upstream.lock.json`) is outside this audit and was not
-changed. Its own dependencies are resolved by the upstream workspace when the agent runtime
-is prepared; they are not in this repository's lockfile.
+The pinned platform (`vendor/eliza`, `upstream.lock.json`) is outside the root audit and was
+not changed. Its own dependencies are resolved by the upstream workspace when the agent runtime
+is prepared; they are not in this repository's lockfile. The resident audit below covers them.
+
+### Resident runtime advisories
+
+About 550 npm packages reach the APK inside the agent bundle and the workflow worker. The
+root audit does not see them. `node scripts/dependency-audit.mjs --resident` builds its input
+as `name@version` and queries the npm bulk advisory endpoint:
+
+- by default from the pinned upstream lock (`vendor/eliza/bun.lock`): every registry package
+  version of the upstream workspace, a superset of what ships;
+- with `--notices <third-party-notices.json>`, from the npm entries of
+  `generate-licenses.mjs --packaged-runtime` notices, exactly what one staged payload ships.
+
+The result is stored under `resident` in `docs/dependency-audit.snapshot.json`, bound to the
+`upstream.lock.json` commit and to a hash of the input. Its dispositions go under `resident`
+in `docs/dependency-audit.dispositions.json` with the commit they were reviewed at, using the
+same exception fields and 120-day limit. `test/dependency-audit.test.mjs` fails offline when
+the upstream commit or the upstream lock changes without a refreshed resident snapshot
+(`node scripts/dependency-audit.mjs --resident --write`).
+
+Audited 2026-10-12 at upstream `13c98575987a`, from the upstream lock (3689 package
+versions): 103 advisory findings in 34 packages, 3 critical, 42 high, 43 moderate and 15 low.
+The critical ones are `handlebars` 4.7.9 (GHSA-8r5x-fm3f-whwj, GHSA-p8wg-vrv2-v86f) and
+`shell-quote` 1.10.0 (GHSA-pqg4-j6r4-53mv); the high ones include `undici`, `axios`,
+`node-forge`, `@modelcontextprotocol/sdk`, `sharp`, `pacote` and `basic-ftp`. **None is
+dispositioned yet.** The input is the whole upstream workspace, so some of these packages are
+not in the agent bundle or the worker at all; that reachability review, against a staged
+payload's notices, is the outstanding work. Until it is done, `--resident` exits 1 and the
+offline test only checks that every remaining problem is an unrecorded advisory or the missing
+review at this commit (it does not fail `npm test` on them). This is source and registry
+evidence only.
+
+### Scheduled advisory audit
+
+`.github/workflows/dependency-audit.yml` runs weekly (Mondays 06:17 UTC) and on manual
+dispatch, with `contents: read`, SHA-pinned actions and no secrets. It runs
+`node scripts/dependency-audit.mjs` against the registry, which fails on any advisory path
+without a reviewed disposition, and then the resident audit on the pinned upstream lock
+(fetched by commit). It is not a required check and never runs on a pull request or push
+(`test/ci-required-checks.test.mjs`). The resident step fails until the resident review above
+is recorded.
 
 ## Release SBOM
 
@@ -90,21 +135,35 @@ commit always yields the same bytes (`test/sbom.test.mjs`).
 | Bundled font files | `apps/app/public` | SHA-256 of the committed bytes |
 | OCR WebAssembly cores | `licenses/tesseract-core/sources.json` | SHA-256 |
 | Web speech model and ONNX Runtime Web files | `config/browser-speech.json` | SHA-256 |
-| Android runtime classpath (71 coordinates) | `licenses/android-runtime-classpath.json` | **none** |
+| Android runtime classpath (71 coordinates) | `licenses/android-runtime-classpath.json`, hashes from `android/gradle/verification-metadata.xml` | SHA-256 of the .aar or .jar (Gradle module metadata or POM for a multiplatform or BOM root) |
 | Speech AAR and native libraries per ABI | `android/local-speech/runtime-manifest.json` | SHA-256 |
 | Speech model and source archives, lexicon | pinned upstream `local-speech` manifests | SHA-256 |
 | elizaOS | `upstream.lock.json` | git commit |
+| Staged resident runtime, with `--packaged-runtime` only: Bun, every bundled agent and workflow-worker npm package, every staged payload file (musl loader, C++ runtime libraries, PGlite) | the staged `assets/agent` payload, its `android-agent-runtime-provenance.json` and `generate-licenses.mjs --packaged-runtime` | SHA-256 of each staged file, checked against the provenance; a bundled package carries the hash of the bundle or the staged `package.json` that holds it |
 
 Gaps, stated in the document itself:
 
-- Gradle artifacts have no hashes. Gradle is not run by the generator and the build has no
-  dependency verification metadata (`android/gradle/verification-metadata.xml`). Enabling it
-  needs a network Gradle run and a review of every artifact; it was not done here.
 - The staged resident runtime (Bun, bundled agent and workflow-worker packages, PGlite, the
-  musl loader) exists only after `npm run agent:stage-android`. It is verified per APK by
-  `scripts/verify-packaged-runtime.py` and listed by `generate-licenses.mjs
-  --packaged-runtime`; the SBOM names it as not covered.
+  musl loader) exists only after `npm run agent:stage-android`. Without `--packaged-runtime`
+  the SBOM names it as not covered; with it, the SBOM lists it from the staged payload. It is
+  verified per APK by `scripts/verify-packaged-runtime.py`. The packaged mode has been run
+  only on the offline fixture in `test/sbom.test.mjs`, not on a real staged payload.
 - The SBOM is a source-pin inventory. It does not scan APK or web bundle bytes.
+
+Gradle dependency verification (`android/gradle/verification-metadata.xml`, SHA-256, metadata
+verification on, signatures off) was written on macOS by `./gradlew --write-verification-metadata
+sha256` over `help` (which resolves every configuration, including androidTest), the debug Java
+compilation of both flavors, `lintAnalyzeStandaloneDebug` and `assembleStandaloneRelease`. Gradle
+then refuses any artifact whose hash is not recorded. `aapt2` is resolved per operating system:
+the Linux jar CI uses was hashed from Google Maven and recorded beside the macOS one. A strict
+run (no write flag) of both debug compilations, `assembleLauncherRelease`,
+`assembleStandaloneDebugAndroidTest` and `lintAnalyzeLauncherDebug` passed on macOS. Those runs
+used `-PELIZA_ALLOW_UNPACKAGED_RUNTIME=1` and `-x :local-speech:preBuild` (the local speech AAR
+was not the qualified one), which skip input checks but not dependency resolution. The full
+`:app:lint` report task and a Linux build were not run with verification on. A build that
+resolves an artifact these runs did not (a new dependency, another tool) fails until the
+metadata is regenerated and the new entries reviewed: `cd android && ./gradlew
+--write-verification-metadata sha256 <tasks>`.
 
 ## Licence flags (P-09)
 

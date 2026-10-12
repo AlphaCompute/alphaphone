@@ -6,30 +6,35 @@
  *   node scripts/generate-sbom.mjs                 # writes artifacts/sbom/alphaphone.cdx.json
  *   node scripts/generate-sbom.mjs --out <file>
  *   node scripts/generate-sbom.mjs --stdout
+ *   node scripts/generate-sbom.mjs --packaged-runtime  # also list the staged resident runtime payload
  *
  * Sources, and the hash each one can prove:
  *   - package-lock.json production packages: registry tarball SHA-512 (lock integrity).
  *   - apps/app/public font files: SHA-256 of the committed bytes.
  *   - licenses/tesseract-core/sources.json: SHA-256 of the shipped OCR WebAssembly cores.
  *   - config/browser-speech.json: SHA-256 of the web build's speech model and ONNX Runtime files.
- *   - licenses/android-runtime-classpath.json: resolved Gradle runtime coordinates. Gradle is not
- *     run here and the repository has no dependency verification metadata, so these carry NO hash.
+ *   - licenses/android-runtime-classpath.json: resolved Gradle runtime coordinates, each with the
+ *     SHA-256 Gradle dependency verification enforces (android/gradle/verification-metadata.xml).
+ *     A coordinate with no recorded hash fails generation.
  *   - android/local-speech/runtime-manifest.json and the pinned upstream local-speech manifests:
  *     SHA-256 of the speech AAR, its native libraries per ABI, and the acquired model inputs.
  *   - upstream.lock.json: the pinned elizaOS commit.
  * Licences (decision P-09): every component carries `alphaphone:licence-expression` (the declared
  * expression, or "not recorded in this inventory") and `alphaphone:licence-flags` (the flags of
  * scripts/licence-policy.mjs, or "none"). Flags are a record, never a failure of this script.
- * Not covered: the staged resident runtime payload (Bun, bundled agent packages, PGlite), which
- * exists only after `npm run agent:stage-android`; scripts/verify-packaged-runtime.py and
- * `generate-licenses.mjs --packaged-runtime` cover it for a concrete APK. This is a source-pin
- * inventory, not a scan of APK bytes.
+ * The staged resident runtime payload (Bun, bundled agent and workflow-worker packages, PGlite,
+ * the musl loader) exists only after `npm run agent:stage-android`. Without --packaged-runtime
+ * it is named as not covered. With it, every runtime notice entry of
+ * `generate-licenses.mjs --packaged-runtime` becomes a component, and every file the staging
+ * provenance records becomes a file component with the SHA-256 of the staged bytes. Bundled npm
+ * packages have no file of their own: they carry the hash of the bundle that contains them.
+ * This is a source-pin and staged-payload inventory, not a scan of APK bytes.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {ANDROID_CLASSPATH, BROWSER_SPEECH_CONFIG, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, collectNotices, fontLicense, fontNames, productionLockPackages} from './generate-licenses.mjs';
+import {AGENT_ASSETS, ANDROID_CLASSPATH, BROWSER_SPEECH_CONFIG, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, collectNotices, finishEntry, fontLicense, fontNames, loadTemplates, packagedRuntimePresent, productionLockPackages, runtimeEntries} from './generate-licenses.mjs';
 import {classifyLicence, flagSummary} from './licence-policy.mjs';
 
 export const LICENCE_NOT_RECORDED = 'not recorded in this inventory';
@@ -37,7 +42,9 @@ export const LICENCE_NOT_RECORDED = 'not recorded in this inventory';
 export const DEFAULT_OUTPUT = 'artifacts/sbom/alphaphone.cdx.json';
 const SPEECH_RUNTIME = 'android/local-speech/runtime-manifest.json';
 const UPSTREAM_SPEECH = 'vendor/eliza/packages/app/scripts/local-speech';
-const NOT_COVERED = 'Staged resident runtime payload (Bun, bundled agent and workflow-worker packages, PGlite, musl loader): present only after agent:stage-android; verified per APK by scripts/verify-packaged-runtime.py.';
+export const GRADLE_VERIFICATION = 'android/gradle/verification-metadata.xml';
+const NOT_COVERED = 'Staged resident runtime payload (Bun, bundled agent and workflow-worker packages, PGlite, musl loader): present only after agent:stage-android; listed by generate-sbom.mjs --packaged-runtime and verified per APK by scripts/verify-packaged-runtime.py.';
+const RUNTIME_COVERED = 'Staged resident runtime payload listed from the staged files and their provenance (Bun, bundled agent and workflow-worker packages, PGlite, musl loader); a staged payload, not the bytes of a built APK.';
 
 const sha256 = data => createHash('sha256').update(data).digest('hex');
 const exists = (root, rel) => fs.existsSync(path.join(root, rel));
@@ -119,17 +126,113 @@ function browserSpeechComponents(root) {
   return [...model, ...runtime];
 }
 
+/** {"group:name:version": [{artifact, sha256}]} from Gradle dependency verification metadata. */
+export function gradleVerificationHashes(xml) {
+  const out = new Map();
+  for (const component of xml.matchAll(/<component\s+group="([^"]+)"\s+name="([^"]+)"\s+version="([^"]+)"\s*>([\s\S]*?)<\/component>/g)) {
+    const artifacts = [...component[4].matchAll(/<artifact\s+name="([^"]+)"\s*>\s*<sha256\s+value="([0-9a-f]{64})"/g)].map(match => ({artifact: match[1], sha256: match[2]}));
+    out.set(`${component[1]}:${component[2]}:${component[3]}`, artifacts);
+  }
+  return out;
+}
+
+/**
+ * The artifact whose hash stands for a coordinate: its own .aar or .jar, else (a Kotlin
+ * Multiplatform or BOM root that redirects to a platform variant) its Gradle module metadata
+ * or POM, which Gradle verifies in the same way.
+ */
+export function gradleArtifactHash(coordinate, artifacts = []) {
+  const [, name, version] = coordinate.split(':');
+  const base = `${name}-${version}`;
+  // A sources or javadoc jar never stands for the runtime artifact.
+  for (const pattern of [new RegExp(`^${base.replace(/[.+]/g, '\\$&')}\\.(aar|jar)$`), /^(?!.*-(sources|javadoc)\.jar$).*\.(aar|jar)$/, /\.module$/, /\.pom$/]) {
+    const match = artifacts.find(item => pattern.test(item.artifact));
+    if (match) return match;
+  }
+  return null;
+}
+
 function gradleComponents(root) {
   const snapshot = readJson(root, ANDROID_CLASSPATH);
-  return snapshot.coordinates.map(coordinate => {
+  if (!exists(root, GRADLE_VERIFICATION)) throw new Error(`${GRADLE_VERIFICATION} is missing; Gradle coordinates cannot be hashed`);
+  const verified = gradleVerificationHashes(fs.readFileSync(path.join(root, GRADLE_VERIFICATION), 'utf8'));
+  const missing = [];
+  const components = snapshot.coordinates.map(coordinate => {
     const [group, artifact, version] = coordinate.split(':');
     if (!group || !artifact || !version) throw new Error(`${ANDROID_CLASSPATH}: malformed coordinate ${coordinate}`);
+    const hash = gradleArtifactHash(coordinate, verified.get(coordinate));
+    if (!hash) { missing.push(coordinate); return null; }
     const purl = `pkg:maven/${group}/${artifact}@${version}`;
     const family = MAVEN_FAMILIES.find(item => item.exact ? group === item.prefix : group.startsWith(item.prefix));
-    return {type: 'library', 'bom-ref': purl, group, name: artifact, version, purl, licenses: licenses(family ? family.license : UNKNOWN),
-      properties: [property('ships-in', 'apk'), property('hash', 'not recorded: Gradle dependency verification metadata is not enabled'),
+    return {type: 'library', 'bom-ref': purl, group, name: artifact, version, purl, hashes: [{alg: 'SHA-256', content: hash.sha256}], licenses: licenses(family ? family.license : UNKNOWN),
+      properties: [property('ships-in', 'apk'), property('hash-of', `${hash.artifact} (${GRADLE_VERIFICATION})`),
         property('source', `${ANDROID_CLASSPATH} (${snapshot.configurations.join(', ')}; input fingerprint ${snapshot.inputFingerprint})`)]};
   });
+  if (missing.length) throw new Error(`${GRADLE_VERIFICATION} records no SHA-256 for ${missing.join(', ')}; run cd android && ./gradlew --write-verification-metadata sha256 help and review the result`);
+  return components;
+}
+
+const runtimeFileRole = rel => /\/libeliza_bun\.so$/.test(rel) ? 'Bun runtime' : /\/ld-musl-[^/]+\.so\.1(\.real)?$/.test(rel) ? 'musl loader'
+  : /\/(libstdc\+\+|libgcc_s)\.so[.\d]*$/.test(rel) ? 'Alpine C++ runtime library' : /(pglite|initdb)\.(wasm|data)$|\/(vector|fuzzystrmatch|pg_trgm)\.tar(\.gz)?$|plugins-manifest\.json$/.test(rel) ? 'PGlite'
+  : /\/agent-bundle\.js$/.test(rel) ? 'agent bundle' : /\/workflow-worker\//.test(rel) ? 'workflow worker' : 'runtime payload';
+
+/** Where a provenance path (an APK entry: assets/... or lib/<abi>/...) is staged in the Android main source set. */
+const stagedPath = (mainDir, rel) => path.join(mainDir, rel.startsWith('lib/') ? `jniLibs/${rel.slice(4)}` : rel);
+
+/**
+ * The staged resident runtime: one component per runtime notice entry (Bun and every bundled
+ * agent or workflow-worker npm package) and one file component per file the staging provenance
+ * records, hashed from the staged bytes. A staged file that differs from its provenance fails.
+ */
+export function runtimeComponents(root, {agentDir = path.join(root, AGENT_ASSETS), sourceDir} = {}) {
+  if (!packagedRuntimePresent(root, agentDir)) throw new Error(`--packaged-runtime needs a staged runtime in ${path.relative(root, agentDir) || agentDir}; run npm run agent:stage-android first`);
+  const mainDir = path.resolve(agentDir, '..', '..');
+  const relative = file => path.relative(mainDir, file).split(path.sep).join('/');
+  const provenance = JSON.parse(fs.readFileSync(path.join(agentDir, 'android-agent-runtime-provenance.json'), 'utf8'));
+  const errors = [];
+  const entries = runtimeEntries(root, loadTemplates(root), errors, {agentDir, sourceDir});
+  if (errors.length) throw new Error(`Staged runtime notices are incomplete:\n${errors.join('\n')}`);
+  const files = (provenance.files ?? []).map(file => {
+    if (typeof file.path !== 'string' || !/^[0-9a-f]{64}$/.test(file.sha256 ?? '')) throw new Error(`android-agent-runtime-provenance.json: malformed file record ${JSON.stringify(file)}`);
+    const staged = stagedPath(mainDir, file.path);
+    if (!fs.existsSync(staged)) throw new Error(`${file.path}: recorded in the runtime provenance but not staged at ${relative(staged)}`);
+    const digest = sha256(fs.readFileSync(staged));
+    if (digest !== file.sha256) throw new Error(`${file.path}: staged bytes ${digest} differ from the runtime provenance ${file.sha256}`);
+    return {path: file.path, sha256: digest, bytes: fs.statSync(staged).size};
+  });
+  const fileHash = rel => files.find(file => file.path === rel)?.sha256 ?? sha256(fs.readFileSync(stagedPath(mainDir, rel)));
+  const bundle = `${relative(agentDir)}/agent-bundle.js`;
+  const workerDir = path.join(agentDir, 'workflow-worker');
+  const worker = fs.existsSync(path.join(workerDir, 'dependencies.json')) ? JSON.parse(fs.readFileSync(path.join(workerDir, 'dependencies.json'), 'utf8')) : [];
+  // A worker dependency ships as its own directory; its staged package.json identifies the copy.
+  const workerManifest = name => {
+    const dep = worker.find(item => item.name === name);
+    const file = dep?.sourcePath ? path.join(workerDir, dep.sourcePath, 'package.json') : null;
+    return file && fs.existsSync(file) ? [property(`staged-package-json-sha256:${relative(file)}`, sha256(fs.readFileSync(file)))] : [];
+  };
+  const out = entries.map(finishEntry).map(entry => {
+    const licence = property('licence-flags', entry.flags.join(',') || 'none');
+    if (entry.name === BUN_ENTRY) {
+      const bun = files.filter(file => runtimeFileRole(file.path) === 'Bun runtime');
+      return {type: 'application', 'bom-ref': 'runtime:bun', name: 'Bun', version: entry.version, licenses: licenses(entry.license),
+        ...(bun.length === 1 ? {hashes: [{alg: 'SHA-256', content: bun[0].sha256}]} : {}),
+        properties: [property('ships-in', 'apk (staged resident runtime)'), property('source', `${relative(agentDir)}/android-agent-runtime-provenance.json`),
+          ...bun.map(file => property(`file-sha256:${file.path}`, file.sha256)), property('licence-expression', entry.license), licence]};
+    }
+    const origin = entry.text.split('\n')[0], inBundle = /agent bundle/.test(origin), inWorker = /workflow worker/.test(origin);
+    const purl = `pkg:npm/${entry.name.startsWith('@') ? `%40${entry.name.slice(1)}` : entry.name}@${entry.version}`;
+    return {type: 'library', 'bom-ref': `runtime:${purl}`, name: entry.name, version: entry.version, purl, licenses: licenses(entry.license),
+      properties: [property('ships-in', 'apk (staged resident runtime)'), property('source', `generate-licenses.mjs --packaged-runtime (${inBundle && inWorker ? 'agent bundle and workflow worker' : inBundle ? 'agent bundle' : 'workflow worker'})`),
+        ...(inBundle ? [property(`bundled-in-sha256:${bundle}`, fileHash(bundle))] : []), ...(inWorker ? workerManifest(entry.name) : []),
+        property('licence-expression', entry.license), licence]};
+  });
+  for (const file of files)
+    out.push({type: 'file', 'bom-ref': `runtime-file:${file.path}`, name: file.path, hashes: [{alg: 'SHA-256', content: file.sha256}],
+      properties: [property('ships-in', 'apk (staged resident runtime)'), property('role', runtimeFileRole(file.path)), property('bytes', file.bytes),
+        property('source', `${relative(agentDir)}/android-agent-runtime-provenance.json`),
+        // The payload files' own licences are in the notices' payload entry, not per file.
+        property('licence-expression', LICENCE_NOT_RECORDED), property('licence-flags', 'unverified')]});
+  return out;
 }
 
 function speechComponents(root) {
@@ -207,14 +310,18 @@ function withLicenceFlags(root, components) {
 const strip = value => Array.isArray(value) ? value.map(strip)
   : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined).map(([key, item]) => [key, strip(item)])) : value;
 
-export function buildSbom(root = ROOT) {
+/**
+ * @param {string} root
+ * @param {{packagedRuntime?: boolean, agentDir?: string, sourceDir?: string}} [options] packagedRuntime also lists the staged resident runtime
+ */
+export function buildSbom(root = ROOT, {packagedRuntime = false, agentDir, sourceDir} = {}) {
   const pkg = readJson(root, 'package.json');
   const lockText = fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8');
   const lock = JSON.parse(lockText);
-  const components = strip(withLicenceFlags(root, [
+  const components = strip([...withLicenceFlags(root, [
     ...npmComponents(root, lock), ...fontComponents(root), ...ocrComponents(root), ...browserSpeechComponents(root),
     ...gradleComponents(root), ...speechComponents(root), upstreamComponent(root),
-  ])).sort((a, b) => a['bom-ref'].localeCompare(b['bom-ref']));
+  ]), ...(packagedRuntime ? runtimeComponents(root, {agentDir, sourceDir}) : [])]).sort((a, b) => a['bom-ref'].localeCompare(b['bom-ref']));
   const refs = new Set();
   for (const component of components) {
     if (refs.has(component['bom-ref'])) throw new Error(`Duplicate SBOM component ${component['bom-ref']}`);
@@ -230,10 +337,10 @@ export function buildSbom(root = ROOT) {
       component: {type: 'application', 'bom-ref': 'alphaphone', name: pkg.name, version: pkg.version},
       tools: {components: [{type: 'application', name: 'scripts/generate-sbom.mjs'}]},
       properties: [
-        property('evidence', 'source-pin inventory; not a scan of built APK or web bundle bytes'),
+        property('evidence', packagedRuntime ? 'source-pin and staged-runtime inventory; not a scan of built APK or web bundle bytes' : 'source-pin inventory; not a scan of built APK or web bundle bytes'),
         property('package-lock-sha256', sha256(lockText)),
         property('android-application-id', identity.appId ?? identity.applicationId ?? 'see app.config.json'),
-        property('not-covered', NOT_COVERED),
+        packagedRuntime ? property('resident-runtime', RUNTIME_COVERED) : property('not-covered', NOT_COVERED),
       ],
     },
     components,
@@ -244,15 +351,15 @@ export const renderSbom = sbom => `${JSON.stringify(sbom, null, 2)}\n`;
 
 function main(argv) {
   const out = argv.includes('--out') ? argv[argv.indexOf('--out') + 1] : DEFAULT_OUTPUT;
-  const unknown = argv.filter((arg, index) => arg.startsWith('--') ? !['--out', '--stdout'].includes(arg) : argv[index - 1] !== '--out');
-  if (unknown.length || !out) { console.error('Usage: node scripts/generate-sbom.mjs [--out <file> | --stdout]'); return 2; }
-  const sbom = buildSbom(ROOT);
+  const unknown = argv.filter((arg, index) => arg.startsWith('--') ? !['--out', '--stdout', '--packaged-runtime'].includes(arg) : argv[index - 1] !== '--out');
+  if (unknown.length || !out) { console.error('Usage: node scripts/generate-sbom.mjs [--packaged-runtime] [--out <file> | --stdout]'); return 2; }
+  const sbom = buildSbom(ROOT, {packagedRuntime: argv.includes('--packaged-runtime')});
   const text = renderSbom(sbom);
   if (argv.includes('--stdout')) { process.stdout.write(text); return 0; }
   fs.mkdirSync(path.dirname(path.resolve(out)), {recursive: true});
   fs.writeFileSync(out, text);
   const hashed = sbom.components.filter(component => component.hashes?.length).length;
-  console.log(`Wrote ${out}: ${sbom.components.length} components, ${hashed} with hashes, ${sbom.components.length - hashed} without (Gradle coordinates). sha256 ${sha256(text)}`);
+  console.log(`Wrote ${out}: ${sbom.components.length} components, ${hashed} with hashes, ${sbom.components.length - hashed} without. sha256 ${sha256(text)}`);
   // Licence flags are warnings (decision P-09): printed, recorded per component, exit 0.
   for (const component of sbom.components) {
     const value = name => component.properties.find(item => item.name === `alphaphone:${name}`)?.value;

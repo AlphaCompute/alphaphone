@@ -8,6 +8,20 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { archiveWebPayload, readBuildFlags } from "../scripts/apk.mjs";
 const root = path.resolve(import.meta.dirname, "..");
+/** Copy the committed AOSP product files into `dir` with every unset value filled, so production staging passes its lock check. */
+function completeAospLock(dir) {
+  const read = rel => JSON.parse(fs.readFileSync(path.join(root, rel), "utf8"));
+  const write = (rel, value) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), JSON.stringify(value)); };
+  const product = read("android/aosp/product.json");
+  write("android/aosp/product.json", { ...product, hostPackages: product.hostPackages.map(pkg => ({ ...pkg, version: "1.0.0", sha256: "e".repeat(64) })),
+    signer: { ...product.signer, platformCertificateSha256: "c".repeat(64) } });
+  write(product.brandConfig, read(product.brandConfig));
+  const lock = read(product.sourceLock.file);
+  Object.assign(lock.profiles.cuttlefish.manifest, { tag: "android-17.0.0_r1", tagObject: "a".repeat(40), commit: "b".repeat(40) });
+  write(product.sourceLock.file, lock);
+  write("android/aosp/pixel10.lock.json", read("android/aosp/pixel10.lock.json"));
+  write("android/release-signer.json", { ...read("android/release-signer.json"), signerSha256: "d".repeat(64) });
+}
 function zip(file, entries) {
   execFileSync("python3", ["-c", "import json,sys,zipfile\nwith zipfile.ZipFile(sys.argv[1],'w') as z:\n for k,v in json.loads(sys.argv[2]).items(): z.writestr(k,v)", file, JSON.stringify(entries)]);
 }
@@ -43,6 +57,7 @@ test("AOSP staging refuses test-mocks and non-distributable inputs before any st
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alpha-stage-"));
   try {
     fs.copyFileSync(path.join(root, "app.config.json"), path.join(dir, "app.config.json"));
+    completeAospLock(dir);
     fs.mkdirSync(path.join(dir, "artifacts/test-mocks"), { recursive: true });
     const stage = args => spawnSync(process.execPath, [path.join(root, "scripts/stage-aosp.mjs"), ...args], { cwd: dir, encoding: "utf8" });
     const flagOn = path.join(dir, "artifacts/test-mocks/launcher-debug.apk");
@@ -99,6 +114,42 @@ test("AOSP staging refuses test-mocks and non-distributable inputs before any st
     fs.rmSync(path.join(dir, "artifacts/apk-manifest.json"));
     assert.match(stage(["--apk", release, "--development"]).stderr, onlyDebugBuilds);
     assert.match(stage(["--apk", release, "--descriptor", "reviewed.json", "--production"]).stderr, /Production staging requires a release APK that verify-apks recorded as distributable/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("AOSP staging refuses --production without a descriptor, with --development, or with a foreign descriptor", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alpha-stage-refusals-"));
+  try {
+    fs.copyFileSync(path.join(root, "app.config.json"), path.join(dir, "app.config.json"));
+    completeAospLock(dir);
+    const stage = args => spawnSync(process.execPath, [path.join(root, "scripts/stage-aosp.mjs"), ...args], { cwd: dir, encoding: "utf8" });
+    // The missing-APK message says which staging was asked for.
+    assert.match(stage(["--development"]).stderr, /Development staging: supply --apk PATH to a flag-off debug launcher APK\./);
+    assert.match(stage(["--descriptor", "reviewed.json", "--production"]).stderr, /Production staging: supply --apk PATH to the signed launcher release APK that verify-apks recorded as distributable\./);
+    assert.match(stage([]).stderr, /Production staging: supply --apk PATH/);
+    let out = stage(["--apk", "absent.apk", "--production"]);
+    assert.notEqual(out.status, 0);
+    assert.match(out.stderr, /--production requires --descriptor FILE/);
+    out = stage(["--apk", "absent.apk", "--descriptor", "reviewed.json", "--production", "--development"]);
+    assert.notEqual(out.status, 0);
+    assert.match(out.stderr, /--production and --development are exclusive/);
+    // A distributable release passes admission; a descriptor for another package or module is then refused.
+    fs.mkdirSync(path.join(dir, "artifacts"));
+    const release = path.join(dir, "artifacts/launcher-release.apk");
+    zip(release, { "assets/public/build-flags.json": JSON.stringify({ testMocks: false }) });
+    const sha256 = createHash("sha256").update(fs.readFileSync(release)).digest("hex");
+    fs.writeFileSync(path.join(dir, "artifacts/apk-manifest.json"), JSON.stringify({ testMocks: false, results: [{ file: "artifacts/launcher-release.apk", mode: "release", sha256,
+      testMocks: false, bundleAudit: "passed", signed: true, runtime: "PACKAGED", runtimeNotices: true, distributable: true, licenceBlockers: [],
+      releaseAdmission: { failures: [], blockers: [], signerMatches: true }, speechQualification: { byteMatch: true, functionalPassed: true, qualified: true } }] }));
+    const identity = JSON.parse(fs.readFileSync(path.join(root, "app.config.json"), "utf8"));
+    for (const [name, foreign] of [["package", { packageName: "ai.elizaos.app", moduleName: identity.moduleName }], ["module", { packageName: identity.appId, moduleName: "Eliza" }]]) {
+      fs.writeFileSync(path.join(dir, "foreign.json"), JSON.stringify({ schemaVersion: 1, apkSha256: sha256, certificateSha256: "d".repeat(64), ...foreign }));
+      out = stage(["--apk", release, "--descriptor", "foreign.json", "--production"]);
+      assert.notEqual(out.status, 0, name);
+      assert.match(out.stderr, /Descriptor does not belong to this product: packageName .* must be ai\.elizaresearch\.alphaphone and AlphaPhone \(app\.config\.json\)/, name);
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

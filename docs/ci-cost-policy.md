@@ -6,11 +6,15 @@ Pull requests run the affected lanes below. A full Git diff includes deleted fil
 and both sides of renames. Missing history, unknown paths and shared dependencies
 select all lanes; they never silently skip checks. No GitHub file-list API or its
 300-file path-filter limit is used. Reference-only changes start small selection
-jobs but allocate no build/test runners.
+jobs but allocate no build/test runners. Reference files that node tests read
+(`testReadReference` in `scripts/ci/affected.mjs`: dependency-audit dispositions and
+snapshot, requirements and inventories, this policy's embedded ruleset, and the
+Markdown that `test/docs-links.test.mjs` scans) select Repository verification only.
 
 | Changed input | Repository verification | Chromium + production browser | Android build | Resident preparation |
 | --- | --- | --- | --- | --- |
-| README, AGENTS, docs, design references | No | No | No | No |
+| AGENTS, design references, docs/market-research | No | No | No | No |
+| README and docs that node tests read (all docs/*.json, docs Markdown checked by docs-links) | Yes | No | No | No |
 | Host tests | Yes | No | No | No |
 | Browser specs/configuration | Yes | Yes | No | No |
 | Renderer, including assets | Yes | Yes | Yes | No |
@@ -41,6 +45,9 @@ passing run of either is recorded for the current source. Round 8 added
 `.github/workflows/android-emulator.yml`, whose three emulator jobs have no trigger but
 `workflow_dispatch` and run only the suite the dispatch names (see "Explicit, expensive
 qualification"); none of them has been dispatched. Distribution APK builds, repository checks and browser regression tests remain.
+`.github/workflows/dependency-audit.yml` runs the network advisory audit weekly and on
+dispatch (one short hosted job, read-only, no secrets; docs/dependency-audit.md). It is not a
+required check, and a change to it selects Repository verification only.
 Main pushes run affected repository verification, including the production bundle
 audit, and the affected Android foundation build of both variants, so a merge that
 breaks packaging is visible on the exact main commit. They do not repeat PR browser

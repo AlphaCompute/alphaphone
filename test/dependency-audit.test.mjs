@@ -3,8 +3,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {
   checkDispositions, dependencyPaths, loadAndCheck, normalizeAudit, sha256, DISPOSITIONS, LOCK, MAX_EXCEPTION_DAYS, REFRESH, SNAPSHOT,
+  bunLockPackages, checkResident, inRange, noticePackages, normalizeResident, residentBinding, RESIDENT_REFRESH, RESIDENT_SNAPSHOT, UPSTREAM_BUN_LOCK, UPSTREAM_LOCK,
 } from '../scripts/dependency-audit.mjs';
 
 const lockText = fs.readFileSync(LOCK, 'utf8');
@@ -105,4 +109,105 @@ test('docs/dependency-audit.md records every disposition', () => {
     for (const chain of item.paths) assert.ok(docs.includes(chain), chain);
   }
   assert.ok(docs.includes('node scripts/dependency-audit.mjs'));
+});
+
+test('a network run fails on an advisory published after the snapshot (the scheduled audit comparison)', t => {
+  // A fabricated `npm audit --json` report: the reviewed uuid chain plus one advisory nobody has seen.
+  const reviewed = {source: 1, name: 'uuid', title: 'uuid buffer bounds', url: 'https://github.com/advisories/GHSA-w5hq-g745-h8pq', severity: 'moderate', range: '<11.1.1'};
+  const report = {vulnerabilities: {
+    uuid: {name: 'uuid', severity: 'moderate', isDirect: false, via: [reviewed], effects: ['xcode'], range: '<11.1.1', nodes: ['node_modules/uuid'], fixAvailable: false},
+    xcode: {name: 'xcode', severity: 'moderate', isDirect: false, via: ['uuid'], effects: ['@capacitor/cli'], range: '*', nodes: ['node_modules/xcode'], fixAvailable: false},
+    '@capacitor/cli': {name: '@capacitor/cli', severity: 'moderate', isDirect: true, via: ['xcode'], effects: [], range: '*', nodes: ['node_modules/@capacitor/cli'], fixAvailable: false},
+  }};
+  const known = {...normalizeAudit(report, lock, lockText), auditedOn: today};
+  assert.deepEqual(check({snapshot: known}), [], 'the reviewed advisory alone passes');
+  const fresh = clone(report);
+  fresh.vulnerabilities.react = {name: 'react', severity: 'high', isDirect: true, range: '*', nodes: ['node_modules/react'], fixAvailable: false,
+    via: [{source: 2, name: 'react', title: 'synthetic', url: 'https://github.com/advisories/GHSA-zzzz-zzzz-zzzz', severity: 'high', range: '*'}]};
+  const problems = check({snapshot: {...normalizeAudit(fresh, lock, lockText), auditedOn: today}});
+  assert.ok(problems.some(problem => problem.startsWith('Unrecorded advisory: high GHSA-zzzz-zzzz-zzzz via react')), problems.join('\n'));
+  // The CLI path the workflow takes exits non-zero for the same report (--from stands in for the registry).
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-audit-'));
+  t.after(() => fs.rmSync(dir, {recursive: true, force: true}));
+  const file = path.join(dir, 'audit.json');
+  fs.writeFileSync(file, JSON.stringify(fresh));
+  const run = spawnSync(process.execPath, ['scripts/dependency-audit.mjs', '--from', file], {encoding: 'utf8'});
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /FAIL Unrecorded advisory: high GHSA-zzzz-zzzz-zzzz via react/);
+  fs.writeFileSync(file, JSON.stringify(report));
+  assert.equal(spawnSync(process.execPath, ['scripts/dependency-audit.mjs', '--from', file], {encoding: 'utf8'}).status, 0);
+});
+
+test('the scheduled advisory workflow runs the network audit read-only and is not a required check', () => {
+  const workflow = fs.readFileSync('.github/workflows/dependency-audit.yml', 'utf8');
+  assert.match(workflow, /^on:\n  schedule:\n    - cron: '[^']+'\n  workflow_dispatch:\n/m);
+  assert.doesNotMatch(workflow, /pull_request|push:/);
+  assert.match(workflow, /^permissions:\n  contents: read\n/m);
+  assert.doesNotMatch(workflow, /secrets\./);
+  for (const [, ref] of workflow.matchAll(/uses: ([^\s]+)/g)) assert.match(ref, /@[0-9a-f]{40}$/, `${ref} is pinned by commit`);
+  assert.match(workflow, /run: node scripts\/dependency-audit\.mjs\n/);
+  assert.match(workflow, /run: node scripts\/dependency-audit\.mjs --resident\n/);
+});
+
+// ---------------------------------------------------------------- resident runtime
+
+test('the resident snapshot is bound to the pinned upstream commit and its lock', () => {
+  const {commit, snapshot: resident, inputSha256} = residentBinding();
+  assert.equal(commit, JSON.parse(fs.readFileSync(UPSTREAM_LOCK, 'utf8')).commit);
+  assert.ok(resident, `audit the resident runtime with: ${RESIDENT_REFRESH}`);
+  // Fails offline when upstream.lock.json moves without a refreshed resident snapshot.
+  assert.equal(resident.upstreamCommit, commit, `re-audit with: ${RESIDENT_REFRESH}`);
+  assert.equal(resident.input, UPSTREAM_BUN_LOCK);
+  if (inputSha256) assert.equal(resident.inputSha256, inputSha256, `${UPSTREAM_BUN_LOCK} changed; re-audit with: ${RESIDENT_REFRESH}`);
+  assert.equal(resident.findings.length, Object.values(resident.counts).reduce((a, b) => a + b, 0));
+  const moved = checkResident({snapshot: resident, dispositions, commit: 'f'.repeat(40), inputSha256: resident.inputSha256, today});
+  assert.ok(moved.some(problem => problem.includes(`pins ${'f'.repeat(40)}; re-audit with: ${RESIDENT_REFRESH}`)));
+  assert.ok(checkResident({snapshot: resident, dispositions, commit, inputSha256: 'e'.repeat(64), today}).some(problem => problem.includes(`different ${UPSTREAM_BUN_LOCK}`)));
+  assert.deepEqual(checkResident({snapshot: null, dispositions, commit, today}), [`${RESIDENT_SNAPSHOT} is missing; audit the resident runtime with: ${RESIDENT_REFRESH}`]);
+});
+
+test('resident dispositions are bound to the commit and must cover every resident advisory', () => {
+  const commit = 'a'.repeat(40);
+  const finding = (id, severity = 'high', name = 'undici') => ({package: name, versions: ['5.29.0'], severity, advisory: {id, severity, vulnerableRange: '<6.0.0', title: 't', url: `https://github.com/advisories/${id}`}});
+  const resident = {upstreamCommit: commit, input: UPSTREAM_BUN_LOCK, inputSha256: 'b'.repeat(64), auditedOn: today, packages: 2, counts: {}, findings: [finding('GHSA-aaaa-aaaa-aaaa')]};
+  const exception = {advisory: 'GHSA-aaaa-aaaa-aaaa', severity: 'high', packages: ['undici'], reachability: 'Not reached on device', justification: 'No upstream fix yet',
+    removeWhen: 'upstream takes undici 6', reviewedBy: 'reviewer', reviewedOn: today, reviewBy: '2026-12-01'};
+  const reviewed = {resident: {upstreamCommit: commit, exceptions: [exception]}};
+  assert.deepEqual(checkResident({snapshot: resident, dispositions: reviewed, commit, inputSha256: 'b'.repeat(64), today}), []);
+  assert.ok(checkResident({snapshot: resident, dispositions: {resident: {...reviewed.resident, upstreamCommit: 'c'.repeat(40)}}, commit, today})
+    .some(problem => problem.includes(`resident dispositions were reviewed at upstream ${'c'.repeat(40)}, not ${commit}`)));
+  const added = {...resident, findings: [...resident.findings, finding('GHSA-bbbb-bbbb-bbbb', 'critical', 'axios')]};
+  assert.ok(checkResident({snapshot: added, dispositions: reviewed, commit, today}).some(problem => problem.startsWith('Unrecorded resident advisory: critical GHSA-bbbb-bbbb-bbbb via axios@5.29.0')));
+  assert.ok(checkResident({snapshot: resident, dispositions: reviewed, commit, today: '2099-01-01'}).some(problem => problem.includes('expired on')));
+  assert.ok(checkResident({snapshot: {...resident, findings: []}, dispositions: reviewed, commit, today}).some(problem => problem.includes('stale resident exception')));
+});
+
+test('the committed resident snapshot is recorded but not yet dispositioned (pending review, reported, not gating)', () => {
+  // The resident triage has not been done: every remaining problem is an unrecorded advisory or the
+  // missing review at this commit. Anything else (binding, malformed record) is a real failure.
+  const {commit, snapshot: resident, inputSha256} = residentBinding();
+  const problems = checkResident({snapshot: resident, dispositions, commit, inputSha256, today: new Date().toISOString().slice(0, 10)});
+  for (const problem of problems) assert.match(problem, /^Unrecorded resident advisory: |resident dispositions were reviewed at upstream none/, problem);
+});
+
+test('resident input comes from the upstream Bun lock or packaged-runtime notices, and ranges match npm advisories', () => {
+  const bunLock = `{\n  "lockfileVersion": 1,\n  "workspaces": {},\n  "packages": {\n    "undici": ["undici@5.29.0", "", {}, "sha512-x"],\n    "a/undici": ["undici@7.28.0", "", {}, "sha512-y"],\n    "@elizaos/core": ["@elizaos/core@workspace:packages/core"],\n    "@s/p": ["@s/p@1.0.0-beta.1", "", {}, "sha512-z"],\n  },\n}\n`;
+  assert.deepEqual(bunLockPackages(bunLock), ['@s/p@1.0.0-beta.1', 'undici@5.29.0', 'undici@7.28.0']);
+  assert.deepEqual(noticePackages([
+    {name: 'zod', version: '4.1.0', text: 'Bundled in the on-device agent bundle.\n\nMIT'},
+    {name: 'react', version: '19.3.0', text: 'MIT'},
+    {name: 'Bun JavaScript runtime (libeliza_bun.so)', version: '1.4.2 (oven-sh/bun b)', text: 'Bundled in the on-device agent bundle.'},
+  ]), ['zod@4.1.0']);
+  for (const [version, range, expected] of [['5.29.0', '<5.29.1', true], ['5.29.1', '<5.29.1', false], ['7.28.0', '>=7.0.0 <7.30.0 || >=8.0.0 <8.2.0', true],
+    ['8.10.0', '>=7.0.0 <7.30.0 || >=8.0.0 <8.2.0', false], ['1.0.0', '*', true], ['2.0.0', '<=2.0.0', true], ['2.0.1', '=2.0.0', false],
+    ['1.5.0', '>= 1.2.0 < 1.6.0', true], ['1.6.0', '>= 1.2.0 < 1.6.0', false], ['1.5.0', '1.0.0 - 2.0.0', true], ['2.0.1', '1.0.0 - 2.0.0', false],
+    // A prerelease of a fixed version is still before the fix.
+    ['1.6.0-beta.1', '<1.6.0', true], ['1.6.0-beta.1', '>=1.6.0', false], ['1.6.1-rc.0', '<1.6.0', false],
+    // An unreadable comparator is shown for review rather than dropped.
+    ['1.0.0', '<unknown', true]])
+    assert.equal(inRange(version, range), expected, `${version} ${range}`);
+  const normalized = normalizeResident({undici: [{id: 1, url: 'https://github.com/advisories/GHSA-aaaa-aaaa-aaaa', title: 't', severity: 'high', vulnerable_versions: '<6.0.0'}]}, ['undici@5.29.0', 'undici@7.28.0']);
+  assert.deepEqual(normalized.findings.map(row => [row.package, row.versions, row.advisory.id]), [['undici', ['5.29.0'], 'GHSA-aaaa-aaaa-aaaa']]);
+  assert.equal(normalized.counts.high, 1);
+  assert.equal(normalized.inputSha256, sha256('undici@5.29.0\nundici@7.28.0'));
 });

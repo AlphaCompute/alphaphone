@@ -69,3 +69,16 @@ test('documented ruleset is the committed ruleset and requires exactly the stabl
   const workflows = read('.github/workflows/android.yml') + read('.github/workflows/browser.yml');
   for (const { context } of checks) assert.ok(workflows.includes(`name: ${context}\n`), context);
 });
+
+test('the scheduled dependency advisory audit is never a required check', () => {
+  const workflow = read('.github/workflows/dependency-audit.yml');
+  const name = /^name: (.+)$/m.exec(workflow)[1];
+  const jobNames = [...workflow.matchAll(/^    name: (.+)$/gm)].map(match => match[1]);
+  const ruleset = JSON.parse(read('scripts/ci/required-checks-ruleset.json'));
+  const required = ruleset.rules.find(rule => rule.type === 'required_status_checks').parameters.required_status_checks.map(row => row.context);
+  assert.ok(jobNames.length > 0);
+  for (const context of [name, ...jobNames]) assert.ok(!required.includes(context), `${context} must not be required`);
+  // Schedule and manual dispatch only: it never runs on, or blocks, a pull request or push.
+  assert.doesNotMatch(workflow, /^\s*(pull_request|pull_request_target|push|workflow_call):/m);
+  assert.match(workflow, /^permissions:\n  contents: read\n/m);
+});
