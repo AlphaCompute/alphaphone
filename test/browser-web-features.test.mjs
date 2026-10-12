@@ -72,7 +72,8 @@ test('HTTP authentication is a native prompt for the page host over a secure con
   assert.match(plugin, /if \(r\.isForMainFrame\(\)\) t\.pendingMain=r\.getUrl\(\)\.toString\(\);/, 'every main-frame request is recorded');
   assert.match(plugin, /if \(r\.isForMainFrame\(\)\) t\.pendingMain=target;/, 'main-frame redirects are recorded');
   assert.match(plugin, /if\(!matched\)\{handler\.cancel\(\);notice\(t,"Blocked a sign-in prompt from a different site\."\);return;\}/);
-  assert.match(plugin, /Alpha Phone does not save this password\./);
+  assert.match(plugin, /"\\nAlpha's browser does not keep this password\."\+managerLine\+/);
+  assert.match(plugin, /String managerLine=!autofillOn\?"":autofillState\.hasEnabledAutofillServices\(\)\?" Alpha's password manager can fill it, and offer to save it after the site accepts it, for "\+authOrigin\+"\.":" If your password manager supports this browser, it can fill or save it for "\+authOrigin\+"\.";/, 'provider wording depends on an enabled service');
   assert.doesNotMatch(plugin, /setHttpAuthUsernamePassword|useHttpAuthUsernamePassword/, 'nothing is stored or reused');
 });
 
@@ -86,9 +87,57 @@ test('find-in-page clears on navigation and tab change; fullscreen exits with Ba
   assert.match(adapter, /if \(s\.finding\) \{ closeFind\(\); return true; \}/, 'Back closes the find bar first');
 });
 
-test('passkeys use WebView browser mode where supported and are reported where not', () => {
-  assert.match(plugin, /WebSettingsCompat\.setWebAuthenticationSupport\(settings,WebSettingsCompat\.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER\)/);
-  assert.match(plugin, /Passkeys are not available in this browser on this device\./);
+// #402: passkeys are outside the MVP. The browser must not advertise or silently
+// half-enable them; it says so once and offers a real handoff to another browser.
+const passkeys = read(dir + 'BrowserPasskeyPolicy.java');
+const surface = read('apps/app/src/browser/browser-surface.ts');
+const template = read('apps/app/src/prototype/template.html');
+
+test('passkeys stay outside the MVP: browser-mode WebAuthn is pinned off until a qualified follow-up', () => {
+  assert.match(passkeys, /static final boolean SYSTEM_PROVIDER_QUALIFIED=false;/, 'the system-provider follow-up is a reviewed source change, not a runtime flag');
+  assert.match(passkeys, /static boolean requestBrowserWebAuthentication\(\)\{ return SYSTEM_PROVIDER_QUALIFIED; \}/);
+  assert.match(plugin, /setWebAuthenticationSupport\(settings,BrowserPasskeyPolicy\.requestBrowserWebAuthentication\(\)\?WebSettingsCompat\.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER:WebSettingsCompat\.WEB_AUTHENTICATION_SUPPORT_NONE\)/);
+  assert.equal((plugin.match(/WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER/g) || []).length, 1, 'browser-mode WebAuthn is reachable only through the policy gate');
+  assert.doesNotMatch(plugin, /s\.put\("passkeys"/, 'tab state no longer reports a passkey capability');
+  assert.doesNotMatch(plugin, /boolean passkeys/);
+});
+
+test('unsupported passkey flows are reported truthfully and name the available handoff', () => {
+  assert.match(passkeys, /Passkeys are not supported in Alpha's browser\. Sign in with a password, or choose Open in another browser from the menu\./);
+  assert.match(plugin, /notice\(t,BrowserPasskeyPolicy\.UNSUPPORTED_NOTICE\);/);
+  assert.match(plugin, /"passkeys-unsupported-mvp"/, 'installs that saw the old device-dependent notice see the corrected one once');
+  // No renderer copy claims passkey support.
+  for (const file of ['apps/app/src/prototype/browser-adapter.ts', 'apps/app/src/passwords/password-manager.ts', 'apps/app/src/prototype/settings-adapter.ts', 'apps/app/src/browser/password-provider.ts']) {
+    assert.doesNotMatch(read(file), /passkeys? (are |is )?(supported|available)|sign in with (a )?passkey|use (a |your )?passkey/i, file);
+  }
+});
+
+test('Open in another browser hands over only the committed URL of the presented page', () => {
+  const method = plugin.slice(plugin.indexOf('@PluginMethod public void openExternally'), plugin.indexOf('@PluginMethod public void downloads'));
+  assert.ok(method.length > 0, 'openExternally exists');
+  assert.match(method, /if\(!handoffReady\(t\)\|\|!Objects\.equals\(call\.getString\("navigation"\),String\.valueOf\(t\.navigation\)\)\|\|!Objects\.equals\(call\.getString\("url"\),t\.url\)\)throw new IllegalStateException\("Current page changed"\);/);
+  assert.match(method, /!paused&&!destroyed&&!shareOutstanding&&!pickerOutstanding&&!t\.dead&&Objects\.equals\(presentedId,t\.id\)&&t\.web\.isShown\(\)&&t\.committed&&!t\.loading&&t\.error\.isEmpty\(\)\n\s*&&Objects\.equals\(t\.web\.getUrl\(\),t\.url\)&&safe\(t\.url\)/);
+  // Availability is checked: only installed browsers (packages handling any https address), never Alpha or app-link handlers.
+  assert.match(method, /if\(externalBrowsers\(\)\.isEmpty\(\)\)\{notice\(t,NO_OTHER_BROWSER\);return;\}/);
+  assert.match(method, /new Intent\(Intent\.ACTION_VIEW,Uri\.parse\("https:\/\/example\.invalid\/"\)\)\.addCategory\(Intent\.CATEGORY_BROWSABLE\)/);
+  assert.match(method, /if\(info\.activityInfo!=null&&!own\.equals\(info\.activityInfo\.packageName\)\)found\.add/);
+  assert.match(method, /if\(browsers\.contains\(info\.activityInfo\.packageName\)\)offered\.add\(component\);else excluded\.add\(component\);/);
+  assert.match(method, /if\(offered\.isEmpty\(\)\)\{notice\(t,NO_OTHER_BROWSER\);return;\}/);
+  assert.match(method, /new Intent\(Intent\.ACTION_VIEW,Uri\.parse\(t\.url\)\)\.addCategory\(Intent\.CATEGORY_BROWSABLE\)/);
+  assert.match(method, /Intent\.EXTRA_EXCLUDE_COMPONENTS/);
+  assert.match(method, /for\(Tab tab:tabs\.values\(\)\)disableAutofill\(tab\);/, 'autofill sessions end before leaving the app');
+  assert.doesNotMatch(method, /putExtra\((?!Intent\.EXTRA_EXCLUDE_COMPONENTS)/, 'no page data, cookies or credentials ride along');
+  // A private tab asks first: the other browser keeps history.
+  assert.match(method, /if\(!t\.priv\)\{openInBrowser\(t\);return;\}/);
+  assert.match(method, /This is a private tab\. The other browser is not private: it keeps /);
+  assert.match(plugin, /s\.put\("externalBrowser", !externalBrowsers\(\)\.isEmpty\(\)\);/, 'the renderer can hide the item when no browser is installed');
+  assert.match(adapter, /openExternal:info\?\.externalBrowser===false\?undefined:\(\)=>void openExternally\(\),/);
+  assert.match(adapter, /await Browser\.openExternally\(\{session,id,navigation:info\.navigation,url:info\.url\}\);/);
+  assert.match(adapter, /Load a page before opening it in another browser\./);
+  assert.match(template, /aria-label="Open in another browser" onClick="\{\{browser\.openExternal\}\}"/);
+  assert.match(template, /Use this for passkey sign-in/, 'the handoff is labelled for passkey sign-in where it is offered');
+  assert.match(surface, /async openExternally\(input:\{session:string;id:string;url:string;navigation:number\}\)/, 'the development surface implements the same method');
+  assert.match(surface, /const opened=window\.open\(this\.address\(input\.url\),'_blank'\);if\(!opened\)throw Error\('Another browser could not be opened\.'\);opened\.opener=null;/, "no 'noopener' feature, which always returns null");
 });
 
 test('a page-initiated navigation commits the selected tab autofill session so the provider can offer Save', () => {
