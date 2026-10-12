@@ -100,13 +100,23 @@ Audited 2026-10-12 at upstream `13c98575987a`, from the upstream lock (3689 pack
 versions): 103 advisory findings in 34 packages, 3 critical, 42 high, 43 moderate and 15 low.
 The critical ones are `handlebars` 4.7.9 (GHSA-8r5x-fm3f-whwj, GHSA-p8wg-vrv2-v86f) and
 `shell-quote` 1.10.0 (GHSA-pqg4-j6r4-53mv); the high ones include `undici`, `axios`,
-`node-forge`, `@modelcontextprotocol/sdk`, `sharp`, `pacote` and `basic-ftp`. **None is
-dispositioned yet.** The input is the whole upstream workspace, so some of these packages are
-not in the agent bundle or the worker at all; that reachability review, against a staged
-payload's notices, is the outstanding work. Until it is done, `--resident` exits 1 and the
-offline test only checks that every remaining problem is an unrecorded advisory or the missing
-review at this commit (it does not fail `npm test` on them). This is source and registry
-evidence only.
+`node-forge`, `@modelcontextprotocol/sdk`, `sharp`, `pacote` and `basic-ftp`.
+
+The reachability review is in
+[security/vulnerability-review-2026-10-12.md](security/vulnerability-review-2026-10-12.md),
+with the prioritized fix plan. A payload staged at the pin ships 550 npm package versions;
+auditing exactly those (`--resident --notices`) leaves 5 findings: `handlebars` 4.7.9 (two
+critical, one moderate), `uuid` 8.3.2 and 9.0.1 (moderate) and `@ai-sdk/provider-utils` 4.0.26
+(low). The other 98 are in packages the mobile agent bundle does not include. Dispositions
+under `resident` in `docs/dependency-audit.dispositions.json`: 86 time-bounded exceptions (the
+98 non-shipping findings, plus `uuid`, which ships but is not reachable, and the low
+`provider-utils` finding, short-dated until its upstream fix) and `pendingUpstreamFixes` for the
+three shipped `handlebars` advisories, which deliberately have no exception. `--resident`
+therefore still exits 1 until upstream moves `handlebars` to 4.7.10 and the pin follows.
+`test/dependency-audit.test.mjs` fails on any other undispositioned resident advisory, on a
+pending fix that is also excepted, and on an exception for a shipped high or critical
+advisory. This is source and registry evidence plus a staged payload on a development
+machine; no APK was built.
 
 ### Scheduled advisory audit
 
@@ -115,8 +125,8 @@ dispatch, with `contents: read`, SHA-pinned actions and no secrets. It runs
 `node scripts/dependency-audit.mjs` against the registry, which fails on any advisory path
 without a reviewed disposition, and then the resident audit on the pinned upstream lock
 (fetched by commit). It is not a required check and never runs on a pull request or push
-(`test/ci-required-checks.test.mjs`). The resident step fails until the resident review above
-is recorded.
+(`test/ci-required-checks.test.mjs`). The resident step fails until the pending `handlebars`
+fix above reaches the pin.
 
 ## Release SBOM
 

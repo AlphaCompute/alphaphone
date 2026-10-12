@@ -182,12 +182,25 @@ test('resident dispositions are bound to the commit and must cover every residen
   assert.ok(checkResident({snapshot: {...resident, findings: []}, dispositions: reviewed, commit, today}).some(problem => problem.includes('stale resident exception')));
 });
 
-test('the committed resident snapshot is recorded but not yet dispositioned (pending review, reported, not gating)', () => {
-  // The resident triage has not been done: every remaining problem is an unrecorded advisory or the
-  // missing review at this commit. Anything else (binding, malformed record) is a real failure.
+test('the committed resident snapshot is dispositioned except the shipped advisories pending an upstream fix', () => {
+  // Every resident problem must be an unrecorded advisory that the review listed under
+  // resident.pendingUpstreamFixes (shipped, deliberately without an exception). A new advisory, a
+  // stale or expired exception, or a binding problem fails here. Uses the real date.
   const {commit, snapshot: resident, inputSha256} = residentBinding();
+  const pending = dispositions.resident?.pendingUpstreamFixes ?? [];
   const problems = checkResident({snapshot: resident, dispositions, commit, inputSha256, today: new Date().toISOString().slice(0, 10)});
-  for (const problem of problems) assert.match(problem, /^Unrecorded resident advisory: |resident dispositions were reviewed at upstream none/, problem);
+  for (const problem of problems) {
+    const match = /^Unrecorded resident advisory: \S+ (GHSA-[0-9a-z-]+) via (\S+)@/.exec(problem);
+    assert.ok(match && pending.some(item => item.advisory === match[1] && item.package === match[2]), problem);
+  }
+  for (const item of pending) {
+    assert.ok(resident.findings.some(finding => finding.advisory.id === item.advisory && finding.package === item.package), `pending fix ${item.advisory} is no longer reported; remove it`);
+    assert.ok(!(dispositions.resident.exceptions ?? []).some(exception => exception.advisory === item.advisory), `${item.advisory} is both pending and excepted`);
+    for (const field of ['reachability', 'plan']) assert.ok(typeof item[field] === 'string' && item[field].length > 20, `${item.advisory}: missing ${field}`);
+  }
+  // A shipped high or critical advisory is never carried as an exception: it stays pending until fixed.
+  for (const exception of dispositions.resident.exceptions ?? [])
+    assert.ok(!(exception.ships && ['high', 'critical'].includes(exception.severity)), `${exception.advisory} ships and is ${exception.severity}`);
 });
 
 test('resident input comes from the upstream Bun lock or packaged-runtime notices, and ranges match npm advisories', () => {
