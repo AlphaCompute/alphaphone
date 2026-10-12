@@ -174,3 +174,10 @@ APK builds, emulator bridge/HOME tests, full AOSP image boot, real integrations,
 and physical-device/user acceptance are separate gates. See
 [mvp-current-status.md](mvp-current-status.md) for their current limits. A source
 pin rollback does not by itself establish APK or OS rollback compatibility.
+
+The AOSP telephony contract additionally requires the canonical production image admission
+(`AlphaImageCapabilities`): release launcher, system install and the product-partition RRO.
+The feature XML is an additional telephony contract marker, never an alternative admission path.
+Contacts uses the bounded AlphaContacts adapter and its native capability response; Phone and SMS
+views remain deferred. Telephony contact reads recheck permission, unlock and lifecycle state
+before and after asynchronous provider reads.

@@ -8,7 +8,8 @@ import android.content.pm.PackageManager;
  * Whether this install is Alpha Phone inside the Alpha AOSP image (owner decision P-36, issue #420).
  *
  * Phone, Contacts and SMS exist only there. The launcher flavor alone is not proof: the same APK can
- * be sideloaded onto any phone. The capability requires all of:
+ * be sideloaded onto any phone. The canonical production image admission (system install, release build and product RRO)
+ * is required first. Telephony additionally requires all of:
  * <ul>
  *  <li>the launcher build, without the test-mocks switch (a test-mocks build is never an image build,
  *      and scripts/stage-aosp.mjs refuses one);</li>
@@ -37,6 +38,7 @@ final class AlphaImageCapability {
 
  /** Read once per process: installation flags and system features do not change while it runs. */
  static synchronized boolean verified(Context context) {
+  if (!AlphaImageCapabilities.aospImage(context)) return false;
   if (verified == null) {
    Context app = context.getApplicationContext() == null ? context : context.getApplicationContext();
    ApplicationInfo info = app.getApplicationInfo();

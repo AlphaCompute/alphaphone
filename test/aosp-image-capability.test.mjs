@@ -69,6 +69,7 @@ test("staging, native check and feature declaration agree", () => {
   assert.match(capability, new RegExp(`static final int FEATURE_VERSION = ${IMAGE_FEATURE_VERSION};`));
   assert.match(capability, /return packageName \+ "\.aosp_image";/);
   assert.match(capability, /return launcherBuild && !testMocks && systemInstalled && imageFeature;/, "every fact is required");
+  assert.match(capability, /if \(!AlphaImageCapabilities\.aospImage\(context\)\) return false;/, "telephony cannot bypass the production RRO capability");
   assert.match(capability, /ApplicationInfo\.FLAG_SYSTEM/);
   assert.match(capability, /hasSystemFeature\(featureName\(app\.getPackageName\(\)\), FEATURE_VERSION\)/);
   assert.match(capability, /admitted\(BuildConfig\.IS_LAUNCHER, BuildConfig\.ELIZA_DEV_ALLOW_TEST_MOCKS, system, feature\)/);
@@ -121,4 +122,13 @@ test("the upstream contacts reader is included from the reviewed pin, not copied
   assert.match(read("android/settings.gradle"), /project\(':eliza-contacts'\)\.projectDir = new File\('\.\.\/vendor\/eliza\/plugins\/plugin-native-contacts\/android'\)/);
   assert.match(read("android/app/build.gradle"), /implementation project\(':eliza-contacts'\)/);
   assert.match(read(`${JAVA}/AlphaTelephonyPlugin.java`), /import ai\.eliza\.plugins\.contacts\.ContactsReader;/);
+});
+
+test("queued contacts cannot return data after access or lifecycle changes", () => {
+  const plugin = read(`${JAVA}/AlphaTelephonyPlugin.java`);
+  assert.match(plugin, /return !closed && AlphaImageCapability\.verified\(getContext\(\)\) && unlocked\(\) && getPermissionState\("contacts"\) == PermissionState\.GRANTED/);
+  const search = plugin.slice(plugin.indexOf("@PluginMethod public void searchContacts"), plugin.indexOf("private JSObject handoff"));
+  assert.equal((search.match(/if \(!readable\(\)\) throw new SecurityException\(\);/g) || []).length, 2);
+  assert.ok(search.lastIndexOf("if (!readable())") > search.indexOf("new ContactsReader"));
+  assert.match(plugin, /handleOnDestroy\(\) \{ closed = true; reader\.shutdownNow\(\); super\.handleOnDestroy\(\); \}/);
 });

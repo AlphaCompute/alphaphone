@@ -50,10 +50,18 @@ import org.json.JSONObject;
 public class AlphaTelephonyPlugin extends Plugin {
  static final Pattern NUMBER = Pattern.compile("^\\+?[0-9]{2,20}$");
  static final int MAX_RECIPIENTS = 10, MAX_BODY = 5000, MAX_SUBSCRIPTIONS = 8, MAX_TEXT = 256, MAX_LIST = 32;
+ private volatile boolean closed;
+ private boolean unlocked() {
+  android.app.KeyguardManager lock = getContext().getSystemService(android.app.KeyguardManager.class);
+  android.os.UserManager users = getContext().getSystemService(android.os.UserManager.class);
+  return lock != null && users != null && !lock.isDeviceLocked() && users.isUserUnlocked();
+ }
+ private boolean readable() { return !closed && AlphaImageCapability.verified(getContext()) && unlocked() && getPermissionState("contacts") == PermissionState.GRANTED; }
  private final ExecutorService reader = Executors.newSingleThreadExecutor();
 
  private boolean refused(PluginCall call) {
-  if (AlphaImageCapability.verified(getContext())) return false;
+  if (call == null) return true;
+  if (!closed && unlocked() && AlphaImageCapability.verified(getContext())) return false;
   call.reject(AlphaImageCapability.UNAVAILABLE, "unavailable");
   return true;
  }
@@ -185,6 +193,7 @@ public class AlphaTelephonyPlugin extends Plugin {
   try {
    reader.execute(() -> {
     try {
+     if (!readable()) throw new SecurityException();
      JSArray contacts = new JSArray();
      for (ContactsReader.ContactRecord record : new ContactsReader(getContext()).listContacts(search, max)) {
       JSObject row = new JSObject();
@@ -195,6 +204,7 @@ public class AlphaTelephonyPlugin extends Plugin {
       row.put("phoneNumbers", phones); row.put("emailAddresses", emails);
       contacts.put(row);
      }
+     if (!readable()) throw new SecurityException();
      JSObject value = new JSObject(); value.put("contacts", contacts); call.resolve(value);
     } catch (SecurityException denied) {
      call.reject("Contacts access is not granted", "permission-required");
@@ -253,5 +263,5 @@ public class AlphaTelephonyPlugin extends Plugin {
   open(call, intent, "sms", "Your messaging app is open with the reviewed text. Send it there; Alpha has not sent anything.");
  }
 
- @Override protected void handleOnDestroy() { reader.shutdownNow(); }
+ @Override protected void handleOnDestroy() { closed = true; reader.shutdownNow(); super.handleOnDestroy(); }
 }
