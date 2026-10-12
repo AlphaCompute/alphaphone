@@ -9,7 +9,7 @@ import {webcrypto} from 'node:crypto';
 import {
   ENTITLEMENT_AUDIENCE, ENTITLEMENT_TYPE, MAX_ENTITLEMENT_LIFETIME_MS, REFRESH_RETRY_MAX_MS, REFRESH_RETRY_MIN_MS,
   EntitlementError, EntitlementRefresher, allowanceText, checkEntitlement, clearEntitlementKeyCache, decodeEntitlement,
-  admissionRefusalMessage, describeSubscription, isEntitlementSignInFailure, nextRefreshDelay, readServiceLimit, serviceLimitMessage, subscriptionAllowsAgent, subscriptionView, verifyEntitlement,
+  describeSubscription, isEntitlementSignInFailure, nextRefreshDelay, readServiceLimit, serviceLimitMessage, subscriptionView, verifyEntitlement,
 } from '../apps/app/src/runtime/subscription-entitlement.ts';
 
 const ISSUER = 'https://api.eliza.app';
@@ -110,14 +110,11 @@ test('presentation uses only Cloud numbers and never mentions credits or top-ups
   assert.equal(describeSubscription(views[3]).headline, 'AI is unavailable for this Eliza Cloud account');
   assert.equal(describeSubscription(views[3]).manageLabel, 'Open Eliza Cloud billing');
   assert.doesNotMatch(JSON.stringify(describeSubscription(views[3])), /plan/i);
-  assert.doesNotMatch(admissionRefusalMessage(views[3]), /plan/i);
   assert.equal(describeSubscription(views[4]).manageLabel, 'Manage plan in Eliza Cloud');
-  assert.match(admissionRefusalMessage(views[4]), /active Eliza Cloud plan/);
   assert.equal(describeSubscription(views[4]).headline, 'Synthetic plan has ended');
   assert.equal(describeSubscription(views[2]).manage, true);
   assert.match(describeSubscription(views[5]).detail, /Local apps and on-device speech keep working/);
   // Only an explicit no-plan answer stops Cloud-backed AI from starting.
-  assert.deepEqual(views.map(subscriptionAllowsAgent), [true, true, true, false, false, true, true, true, true]);
 });
 
 function source({token = null, keys = [], legacy, fail, keyCalls = {n: 0}} = {}) {
@@ -332,3 +329,10 @@ test('only admission and its background refresher read the entitlement; turns an
     assert.doesNotMatch(text, /Add credits|Credits available|Check credits|residentTopUp|openTopUp|uses credits|uses its credits|needs credits/, file);
   }
 });
+
+ test('expired entitlement is an unavailable plan, never expired sign-in', async () => {
+  assert.equal(isEntitlementSignInFailure(new EntitlementError('expired')), false);
+  const source = {issuer: 'https://api.eliza.app', entitlement: async () => {throw new EntitlementError('expired');}, entitlementKeys: async () => []};
+  const result = await checkEntitlement(source, {userId: 'synthetic'}, new AbortController().signal);
+  assert.equal(result.view.kind, 'unavailable');
+ });

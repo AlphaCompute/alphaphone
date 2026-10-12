@@ -9,8 +9,8 @@
  *    bucket. The phone does not gate a turn on the entitlement; it only presents plan state and
  *    the retry information Cloud returns when a limit is reached.
  *  - A billing outage, an unpublished endpoint or an expired entitlement never blocks local apps,
- *    on-device speech or local tools. Only an explicit, signed "no active plan" stops the phone
- *    from starting Cloud-backed AI, and then local apps keep working without AI.
+ *    on-device speech or local tools. Inactive plans also preserve the resident runtime;
+ *    Cloud refuses unavailable AI services at the request boundary.
  *
  * Nothing here selects a price, quota, allowance or burst/sustained limit. Every number shown to
  * the owner comes from a verified Cloud entitlement or a Cloud refusal body. The proposed Cloud
@@ -166,8 +166,7 @@ export function subscriptionView(entitlement: SubscriptionEntitlement, refreshFa
   if (status === 'canceled' || status === 'none') return { kind: 'inactive', planName: status === 'none' ? null : name, status, source: 'entitlement' };
   return { kind: 'active', planName: name, status, allowance: entitlement.allowance, expiresAt: entitlement.expiresAt, refreshFailed };
 }
-/** The resident agent may start unless Cloud explicitly says there is no active plan. */
-export function subscriptionAllowsAgent(view: SubscriptionView): boolean { return view.kind !== 'inactive'; }
+
 
 function clock(at: number): string {
   try { return new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
@@ -185,11 +184,6 @@ export function allowanceText(allowance: PlanAllowance | null): string {
 const LOCAL_KEEPS_WORKING = 'Local apps and on-device speech keep working.';
 export const MANAGE_PLAN_LABEL = 'Manage plan in Eliza Cloud';
 export const LEGACY_UNAVAILABLE_HEADLINE = 'AI is unavailable for this Eliza Cloud account';
-/** Owner message when admission refuses the resident agent. */
-export function admissionRefusalMessage(view: SubscriptionView): string {
-  const local = 'Your saved data stays on this device, and local apps keep working without AI.';
-  return view.kind === 'inactive' && view.source === 'legacy-account' ? `Eliza Cloud reports that this account cannot use AI right now. ${local}` : `AI needs an active Eliza Cloud plan. ${local}`;
-}
 export function describeSubscription(view: SubscriptionView | null | undefined): { headline: string; detail: string; manage: boolean; manageLabel: string } {
   if (!view || view.kind === 'checking') return { headline: 'Checking your plan…', detail: '', manage: false, manageLabel: MANAGE_PLAN_LABEL };
   switch (view.kind) {
@@ -265,6 +259,8 @@ export function isEntitlementSignInFailure(error: unknown): boolean {
   return isAuthFailure(error) || (error instanceof EntitlementError && error.code === 'account-mismatch');
 }
 function isAuthFailure(error: unknown): boolean {
+  // A signed entitlement expiring is billing freshness, not expired authentication.
+  if (error instanceof EntitlementError) return false;
   const record = bag(error);
   return !!record && (record.status === 401 || record.code === 'credentials-missing' || record.code === 'expired' || record.code === 'account-changed');
 }

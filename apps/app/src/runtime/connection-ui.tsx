@@ -38,7 +38,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isAndroid } from '../native';
 import type { ActionProposal, OperationReceipt, ContextEnvelope, VerifiedSession } from './alpha-client';
 import { CloudProtocol, CloudProtocolError, type CloudAgent, type CloudEnvironment, type CloudPhoneTarget } from './cloud-protocol';
-import { admissionRefusalMessage, checkEntitlement, clearEntitlementKeyCache, describeSubscription, EntitlementError, EntitlementRefresher, isEntitlementSignInFailure, readServiceLimit, serviceLimitMessage, subscriptionAllowsAgent, type SubscriptionView } from './subscription-entitlement';
+import { checkEntitlement, clearEntitlementKeyCache, describeSubscription, EntitlementError, EntitlementRefresher, isEntitlementSignInFailure, readServiceLimit, serviceLimitMessage, type SubscriptionView } from './subscription-entitlement';
 import { RemoteProtocol, RemoteProtocolError } from './remote-protocol';
 import { phoneContextMessage } from './phone-context';
 import { cloudCredentialStore, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, removeStoredCloudCredential, secureConnectionStore } from './native-connection';
@@ -359,7 +359,8 @@ async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
   signal.throwIfAborted();
   if(service!==account || (await cloudCredentialStore.read('production'))?.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
   update({residentSubscription:checked.view});
-  if(!subscriptionAllowsAgent(checked.view)){await stopLocalAgent();await retire();update({open:true,message:admissionRefusalMessage(checked.view)});return false;}
+  // Billing state never retires local orchestration or schedules. Cloud enforces AI access
+  // at the service boundary and its refusal is presented by the normal send path.
   // An admitted running resident under this same Cloud admission is reused, not stopped and rebound:
   // opening the assistant, or reconnecting one surface, must not retire the other surface's work.
   await bindResidentCloudProvider(account.identity.credentialId);
