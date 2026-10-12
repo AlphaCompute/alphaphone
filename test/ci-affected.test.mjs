@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync} from 'node:fs';
+import {mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, readdirSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -30,7 +30,10 @@ test('CI selection follows changed files, renames, missing history and manual di
   const commit = name => {git('add', ...(name==='.'?['-u']:[name]));git('commit','-qm','change '+name);};
   const pr = () => ({pull_request:{base:{sha:base},head:{sha:git('rev-parse','HEAD')}}});
   const lanes = result => [result.verify,result.browser,result.android,result.prepare];
-  put('docs/reference.md');commit('docs'); assert.deepEqual(lanes(select(pr())),[false,false,false,false]);
+  put('design/reference.html');commit('design'); assert.deepEqual(lanes(select(pr())),[false,false,false,false]);
+  base=git('rev-parse','HEAD');put('docs/market-research/notes.md');commit('docs'); assert.deepEqual(lanes(select(pr())),[false,false,false,false]);
+  // Docs that node tests read select repository verification only.
+  base=git('rev-parse','HEAD');put('docs/reference.md');commit('docs'); assert.deepEqual(lanes(select(pr())),[true,false,false,false]);
   base=git('rev-parse','HEAD');put('test/browser/notes.spec.ts','changed\n');commit('test');
   let result=select(pr());assert.deepEqual(lanes(result),[true,true,false,false]);
   assert.deepEqual(result.browser_specs,['test/browser/notes.spec.ts']);assert.deepEqual(result.browser_shards,[1]);
@@ -45,4 +48,22 @@ test('CI selection follows changed files, renames, missing history and manual di
   assert.deepEqual(lanes(select({before:base},'push')),[true,true,true,true]);
   assert.deepEqual(lanes(select({before:'0'.repeat(40)},'push')),[true,true,true,true]);
   assert.deepEqual(lanes(select({},'workflow_dispatch')),[true,true,true,true]);
+});
+
+test('docs read by node tests select verify; design and research notes select nothing', async () => {
+  const {affected, testReadReference} = await import('../scripts/ci/affected.mjs');
+  const lanes = paths => {const r=affected(paths);return [r.verify,r.browser,r.android,r.prepare];};
+  for (const path of ['docs/dependency-audit.dispositions.json','docs/dependency-audit.snapshot.json','docs/ci-cost-policy.md',
+    'docs/requirements.json','docs/mvp-remaining-work-2026-10-09.json','docs/mvp-remaining-work-2026-10-09.md','docs/core-loop-audit.md','README.md']) {
+    assert.equal(testReadReference(path), true, path);
+    assert.deepEqual(lanes([path]), [true,false,false,false], path);
+  }
+  assert.deepEqual(lanes(['design/prototype.html','design/assets/icon.svg']), [false,false,false,false]);
+  assert.deepEqual(lanes(['docs/market-research/proposal.md','AGENTS.md','LICENSE']), [false,false,false,false]);
+  // Every docs file a node test names must select verify.
+  const named = new Set();
+  for (const file of readdirSync('test').filter(name => name.endsWith('.test.mjs')))
+    for (const [path] of readFileSync(join('test', file), 'utf8').matchAll(/docs\/[A-Za-z0-9_.\/-]+\.(?:json|md)/g)) if (existsSync(path)) named.add(path);
+  assert.ok(named.size >= 5);
+  for (const path of named) assert.equal(testReadReference(path), true, path);
 });
