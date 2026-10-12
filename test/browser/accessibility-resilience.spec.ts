@@ -240,8 +240,9 @@ test.describe('toast status messages', () => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Browser', exact: true }).click();
     await page.getByRole('button', { name: 'Menu', exact: true }).click();
-    const find = page.getByRole('dialog', { name: 'Browser menu', exact: true }).getByRole('button', { name: 'Find in page', exact: true });
-    await expect(find).toBeVisible();
+    // Find in page is native-only, so the web build's menu raises its refusal through Bookmark.
+    const bookmark = page.getByRole('dialog', { name: 'Browser menu', exact: true }).getByRole('button', { name: 'Bookmark', exact: true });
+    await expect(bookmark).toBeVisible();
     // A showModal() dialog opens over the phone: the phone's own toast region is now inert.
     await page.evaluate(async () => {
       const { reviewContentQuestion } = await import('/src/browser/content-question.ts');
@@ -250,13 +251,13 @@ test.describe('toast status messages', () => {
     const dialog = page.getByRole('dialog', { name: 'Ask about selected content' });
     await expect(dialog).toBeVisible();
     // The app raises a refusal behind the dialog (the menu action runs; only its message matters here).
-    await find.evaluate((el: HTMLElement) => el.click());
-    await expect(page.locator('[data-alpha-toast]')).toContainText('Load a page before finding text in it.');
+    await bookmark.evaluate((el: HTMLElement) => el.click());
+    await expect(page.locator('[data-alpha-toast]')).toContainText('Load an HTTPS page before bookmarking it.');
     // The accessibility tree, which excludes everything the modal made inert, carries the message.
     await expect(dialog).toMatchAriaSnapshot(`
-      - status: Load a page before finding text in it.
+      - status: Load an HTTPS page before bookmarking it.
     `);
-    expect(await dialog.getByRole('status').filter({ hasText: 'Load a page before finding text in it.' }).evaluate(el => el.getAttribute('aria-live'))).toBe('polite');
+    expect(await dialog.getByRole('status').filter({ hasText: 'Load an HTTPS page before bookmarking it.' }).evaluate(el => el.getAttribute('aria-live'))).toBe('polite');
     // Closing the dialog removes its copy with it; the phone's own region was never moved.
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(page.locator('[data-alpha-toast-mirror]')).toHaveCount(0);
