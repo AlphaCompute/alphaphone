@@ -56,10 +56,15 @@ public final class BrowserExternalHandoffInstrumentedTest {
     Object t=build.invoke(p,"handoff",priv,priv?AlphaBrowserPlugin.PRIVATE_PREFIX+session.replace("-",""):AlphaBrowserPlugin.PERSISTENT_PROFILE);tab.set(t);
     web.set((WebView)get(t,"web"));WebViewClient original=web.get().getWebViewClient();
     web.get().setWebViewClient(new WebViewClient(){
+     // loadDataWithBaseURL(..., null) can keep about:blank as the visible URL.
+     // Navigate a real HTTPS identity while intercepting every response locally.
+     @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view,android.webkit.WebResourceRequest request){
+      return new android.webkit.WebResourceResponse("text/html","UTF-8",new java.io.ByteArrayInputStream("<title>Local handoff fixture</title><p>No network or sign-in</p>".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+     }
      @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon){original.onPageStarted(view,url,icon);}
      @Override public void onPageCommitVisible(WebView view,String url){original.onPageCommitVisible(view,url);}
      @Override public void onPageFinished(WebView view,String url){original.onPageFinished(view,url);if(URL.equals(url))loaded.countDown();}
-    });web.get().loadDataWithBaseURL(URL,"<title>Local handoff fixture</title><p>No network or sign-in</p>","text/html","UTF-8",null);
+    });web.get().loadUrl(URL);
    }catch(Exception failure){throw new AssertionError(failure);}});
    // The fixture owns native navigation identity; page callbacks themselves are covered elsewhere.
    assertTrue("Synthetic HTTPS document completed",loaded.await(10,TimeUnit.SECONDS));
