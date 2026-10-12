@@ -202,7 +202,7 @@ export const CAMPAIGN_RUNNERS = [
 export const NOT_RUN_BY_A_RUNNER = {
   AllViewAgentContext: "needs a real local agent with inference and a forwarding observer on the host (agentContext=true); its runner was removed with the smoke suites in 49b1bf4c",
   CombinedAgent: "needs the combined host runtime with a provider key at 10.0.2.2:47859 (scripts/start-combined-agent.mjs); no Android runner starts or pairs it",
-  CombinedAgentRestart: "same combined host runtime, in prepare/verify/cleanup phases around a host restart; recorded as never compiled into a run",
+  CombinedAgentRestart: "same combined host runtime, in prepare/verify/cleanup phases around a host restart; compiled, never executed",
   ContactsFlow: "@Ignore: Contacts is deferred from the MVP and the campaign mutates the ContactsProvider",
   DeviceAction: "needs the device-action backend host and adb reverse (deviceActions=true); its runner was removed in 49b1bf4c",
   LiveAgent: "needs a running loopback host with a real provider key, adb reverse and a provisioned bearer (liveAgent=true)",
