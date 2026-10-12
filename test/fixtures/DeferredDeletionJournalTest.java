@@ -25,6 +25,10 @@ public final class DeferredDeletionJournalTest {
   j.stage("foreign",owner,target,new DeletionDeadline("boot",100,1000));try{j.undo("foreign",object("other"),"boot",101);throw new AssertionError();}catch(SecurityException expected){}
   check(j.expire("foreign","boot",10100,(a,b)->null,t->{effects.incrementAndGet();throw new IllegalStateException("unknown transport");}).getString("phase").equals("unknown"));
   j.expire("foreign","boot",50100,(a,b)->null,t->{effects.incrementAndGet();return object("bad");});check(effects.get()==2);
+  j.acknowledge("calendar","foreign");check(j.acknowledged("calendar","foreign"));check(!j.acknowledged("reminder","foreign"));
+  j=new DeferredDeletionJournal(store);check(j.acknowledged("calendar","foreign"));
+  j.expire("foreign","boot",60100,(a,b)->null,t->{effects.incrementAndGet();return object("bad");});check(effects.get()==2);
+  JSONArray acknowledged=j.list("boot",60100);boolean receiptRetained=false;for(int i=0;i<acknowledged.length();i++){JSONObject row=acknowledged.getJSONObject(i);if(row.getString("id").equals("foreign")){check(row.getString("phase").equals("unknown"));receiptRetained=true;}}check(receiptRetained);
   for(int n=0;n<20;n++){
    Store raceStore=new Store();DeferredDeletionJournal race=new DeferredDeletionJournal(raceStore);race.stage("race",owner,target,new DeletionDeadline("boot",100,1000));
    java.util.concurrent.CountDownLatch start=new java.util.concurrent.CountDownLatch(1);AtomicInteger writes=new AtomicInteger();java.util.concurrent.atomic.AtomicReference<Throwable> failure=new java.util.concurrent.atomic.AtomicReference<>();
