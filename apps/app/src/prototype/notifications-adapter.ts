@@ -10,7 +10,7 @@ const opaque=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 export function ownNotificationSelection(notice:{id:string;revision:string;source:string}){
  return notice.source==='own'&&opaque.test(notice.id)&&opaque.test(notice.revision)?{kind:'notification',id:notice.id,revision:notice.revision,accountId:'own'}:undefined;
 }
-type Notice = { id: string; revision:string; source:'own'|'external'|'hosted'; appLabel:string; title: string; text: string; at: number; clearable: boolean; canOpen: boolean };
+type Notice = { id: string; revision:string; source:'own'|'external'|'hosted'; kind?:string; appLabel:string; title: string; text: string; at: number; clearable: boolean; canOpen: boolean };
 const native = registerPlugin<{list(): Promise<{items: Notice[]; scope: string; calendarStatus?:string}>;open(options:{id:string;revision:string;source:string}):Promise<void>;dismiss(options:{id:string;revision:string;source:string}):Promise<void>;clear(options:{items:Array<{id:string;revision:string;source:string}>}):Promise<{outcomes:Array<{status:string}>}>}>('AlphaNotifications');
 /** Active rows only. Android access and per-app opt-in are enforced natively. */
 export function installNotificationsAdapter(Component: any) {

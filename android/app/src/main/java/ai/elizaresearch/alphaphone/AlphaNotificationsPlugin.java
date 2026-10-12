@@ -101,12 +101,26 @@ public class AlphaNotificationsPlugin extends Plugin {
  @PluginMethod public void notificationHistory(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("items",NotificationAccess.history(getContext()));call.resolve(out);}catch(Exception failure){call.reject("Local notification history is unavailable");}}
  @PluginMethod public void clearNotificationHistory(PluginCall call){try{foreground();NotificationAccess.clearHistoryBoundary(getContext());call.resolve();}catch(Exception failure){call.reject("Local notification history could not be cleared");}}
  @Override protected void handleOnPause(){ids.clear();NotificationAccess.redact();super.handleOnPause();}
+ /**
+  * The kind of one of Alpha's own notices, from its channel. Hosted results and scheduled digests
+  * (alpha-hosted-results) and workflow notices can carry mail-derived text, so the renderer offers
+  * a question only for reminder and navigation rows (context-selection.ts noticeReviewable). An
+  * unrecognized channel is "other" and is not offered either.
+  */
+ static String noticeKind(String channel){
+  if(channel==null)return "other";
+  if(AlphaHostedResultsPlugin.CHANNEL.equals(channel))return "hosted-result";
+  if(WorkflowNoticePoster.CHANNEL.equals(channel)||WorkflowNoticePoster.APPROVAL_CHANNEL.equals(channel))return "workflow";
+  if(AlphaReminders.CONFIGURATION.channelId.equals(channel)||AlphaReminders.CONFIGURATION.dueChannelId().equals(channel))return "reminder";
+  if(AlphaNavigationService.CHANNEL.equals(channel))return "navigation";
+  return "other";
+ }
  @PluginMethod public void list(PluginCall call){try{
   JSArray items=new JSArray();Set<String> current=new HashSet<>();boolean locked=locked();
   StatusBarNotification[] rows=manager().getActiveNotifications();Arrays.sort(rows,Comparator.comparingLong(StatusBarNotification::getPostTime).reversed());
   for(StatusBarNotification row:rows){current.add(identity(row));if(items.length()>=100)continue;Notification n=row.getNotification();JSObject item=new JSObject();
    boolean hidden=locked||n.visibility==Notification.VISIBILITY_SECRET;
-   item.put("id",id(identity(row)));item.put("revision",id(identity(row)));item.put("source","own");item.put("appLabel","Alpha Phone");item.put("title",hidden?"Alpha Phone notification":bounded(n.extras.getCharSequence(Notification.EXTRA_TITLE),200));
+   item.put("id",id(identity(row)));item.put("revision",id(identity(row)));item.put("source","own");item.put("kind",noticeKind(n.getChannelId()));item.put("appLabel","Alpha Phone");item.put("title",hidden?"Alpha Phone notification":bounded(n.extras.getCharSequence(Notification.EXTRA_TITLE),200));
    item.put("text",hidden?(locked?"Unlock to view":"Content hidden"):bounded(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,n.extras.getCharSequence(Notification.EXTRA_TEXT)),2000));
    item.put("at",row.getPostTime());item.put("clearable",row.isClearable());item.put("canOpen",!hidden&&n.contentIntent!=null);items.put(item);
   }
