@@ -72,6 +72,7 @@ async function android(page: Page, options: AndroidOptions) {
         // Only the fixed Cloud authority answers; any other host is a transport failure.
         if (url.origin !== 'https://api.eliza.app') throw Error('Connection request failed');
         if (url.pathname === '/api/v1/user') return { status: 200, data: { success: true, data: { id } } };
+        if (url.pathname === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Deployed Cloud has no subscription entitlement route yet.
         if (url.pathname === '/api/v1/credits/balance') return { status: 200, data: { balance: options.balance ?? 0 } };
         if (url.pathname === '/api/v1/api-keys/current' && input.method === 'DELETE') {
           if (options.revoke === 'failed') throw Error('Connection request failed');
@@ -164,10 +165,10 @@ test('production Android without a packaged agent says so and does not advertise
 for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-revoked-status', 'no-content', 'unauthorized', 'server-error', 'cancelled'] as const) {
   test(`production Android Cloud sign-out states only the revocation that happened: ${mode}`, async ({ page }) => {
     const foreign = await fenceNetwork(page);
-    // Zero credits keeps the account panel open with its Sign out control.
+    // An unusable legacy account (zero balance, no entitlement route) keeps the account panel open with its Sign out control.
     await android(page, { cloudCredential: true, balance: 0, revoke: mode });
     await page.goto('/');
-    await expect(page.getByRole('button', { name: 'Add credits in Eliza Cloud', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open Eliza Cloud billing', exact: true })).toBeVisible();
     const before = (await nativeCalls(page)).length;
     if (mode === 'cancelled') await page.evaluate(() => { (window as any).holdStop = true; });
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
