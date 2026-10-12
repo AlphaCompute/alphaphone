@@ -64,9 +64,6 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  private volatile boolean destroyed;
  private volatile boolean foreground = true;
  private final NativeReadEpoch accessGeneration = new NativeReadEpoch();
- private final android.content.pm.PackageManager.OnPermissionsChangedListener permissionsChanged = uid -> {
-  if (uid == android.os.Process.myUid()) accessGeneration.incrementAndGet();
- };
  private final android.content.BroadcastReceiver screenOff = new android.content.BroadcastReceiver() {
   @Override public void onReceive(Context context, Intent intent) { accessGeneration.incrementAndGet(); }
  };
@@ -86,7 +83,6 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  @Override public void load() {
   review = getActivity().registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), this::reviewed);
   lastScope = scopeName();
-  getContext().getPackageManager().addOnPermissionsChangeListener(permissionsChanged);
   ContextCompat.registerReceiver(getContext(), screenOff, new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED);
  }
 
@@ -190,6 +186,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  @Override @PluginMethod public void requestPermissions(PluginCall call){LateLaunch.ask(call,()->super.requestPermissions(call));}
 
  @PermissionCallback private void accessResult(PluginCall call) {
+  accessGeneration.incrementAndGet();
   JSObject out = scopeResult();
   boolean blocked = false;
   for (String alias : PhotoLibraryAccess.requestAliases(Build.VERSION.SDK_INT)) {
@@ -610,7 +607,6 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
 
  @Override protected void handleOnDestroy() {
   destroyed = true; accessGeneration.incrementAndGet();
-  getContext().getPackageManager().removeOnPermissionsChangeListener(permissionsChanged);
   getContext().unregisterReceiver(screenOff);
   unwatch();
   PluginCall call = pendingReview;

@@ -55,14 +55,10 @@ public class AlphaTelephonyPlugin extends Plugin {
  private volatile boolean closed, foreground = true;
  private final NativeReadEpoch generation = new NativeReadEpoch();
  private final java.util.Set<android.os.CancellationSignal> reads = java.util.concurrent.ConcurrentHashMap.newKeySet();
- private final android.content.pm.PackageManager.OnPermissionsChangedListener permissionsChanged = uid -> {
-  if (uid == android.os.Process.myUid()) invalidateReads();
- };
  private final android.content.BroadcastReceiver screenOff = new android.content.BroadcastReceiver() {
   @Override public void onReceive(android.content.Context context, Intent intent) { invalidateReads(); }
  };
  @Override public void load() {
-  getContext().getPackageManager().addOnPermissionsChangeListener(permissionsChanged);
   androidx.core.content.ContextCompat.registerReceiver(getContext(), screenOff, new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
  }
  private boolean unlockedForeground() {
@@ -175,7 +171,7 @@ public class AlphaTelephonyPlugin extends Plugin {
   if (getPermissionState(access) == PermissionState.GRANTED) { call.resolve(statusObject()); return; }
   LateLaunch.ask(call, () -> requestPermissionForAlias(access, call, "accessResult"));
  }
- @PermissionCallback private void accessResult(PluginCall call) { if (!refused(call)) call.resolve(statusObject()); }
+ @PermissionCallback private void accessResult(PluginCall call) { invalidateReads(); if (!refused(call)) call.resolve(statusObject()); }
 
  /** Opens Android's role dialog for the dialer or SMS role. The user decides; the result is re-read. */
  @PluginMethod public void requestRole(PluginCall call) {
@@ -266,5 +262,5 @@ public class AlphaTelephonyPlugin extends Plugin {
   open(call, intent, "sms", "Your messaging app is open with the reviewed text. Send it there; Alpha has not sent anything.");
  }
 
- @Override protected void handleOnDestroy() { closed = true; invalidateReads(); getContext().getPackageManager().removeOnPermissionsChangeListener(permissionsChanged); getContext().unregisterReceiver(screenOff); reader.shutdown(); super.handleOnDestroy(); }
+ @Override protected void handleOnDestroy() { closed = true; invalidateReads(); getContext().unregisterReceiver(screenOff); reader.shutdown(); super.handleOnDestroy(); }
 }
