@@ -3,7 +3,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { androidEnv, tool } from "./toolchain.mjs";
-import { verifySecureCameraSource, writeSecureCameraOverlay } from "./aosp-secure-camera-contract.mjs";
+import { verifySecureCameraSource, writeSecureCameraOverlay, assertNoAlphaLockScreenSurface } from "./aosp-secure-camera-contract.mjs";
 import { clockProductRequirement } from "./aosp-clock-contract.mjs";
 import { provisioningComponents, writeProvisioningOverlay } from "./aosp-provisioning-overlay.mjs";
 import { releaseBlockers } from "./release-blockers.mjs";
@@ -95,6 +95,8 @@ const cameraSource = get("--aosp-source") || !development
   ? verifySecureCameraSource(get("--aosp-source"))
   : { sourceVerified: false, imageVerified: false, lockedCaptureVerified: false, deviceAcceptanceVerified: false, reason: "Development staging without reviewed AOSP source" };
 const env = androidEnv();
+const tree = execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 });
+assertNoAlphaLockScreenSurface(tree);
 if (!descriptor) {
   if (!development)
     throw new Error(
@@ -156,7 +158,6 @@ execFileSync(
 fs.appendFileSync(path.join(output, "product.mk"), clockProductRequirement);
 writeSecureCameraOverlay(output, cameraSource);
 if (production) {
-  const tree = execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 });
   const components = provisioningComponents(tree, identity.appId);
   writeProvisioningOverlay(output, identity.appId, components);
   console.log(`Provisioning overlay: HOME ${components.home}, assistant ${identity.appId}, Autofill ${components.autofill}.`);

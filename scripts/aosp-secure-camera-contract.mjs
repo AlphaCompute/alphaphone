@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { manifestComponents } from "./aosp-provisioning-overlay.mjs";
 
 const reviewed = JSON.parse(fs.readFileSync(new URL("../docs/aosp-secure-camera-source.json", import.meta.url)));
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -63,4 +64,20 @@ export function verifySecureCameraImage(run, user, expectedFingerprint) {
   const features = run("shell", "pm", "list", "features");
   if (!features.split(/\r?\n/).includes("feature:android.hardware.camera.any")) throw Error("Image has no camera feature");
   return { user, fingerprint, packageName: secureCameraPackage, handlers, imageContractVerified: true, lockedCaptureVerified: false, unlockPrivacyVerified: false, deviceAcceptanceVerified: false };
+}
+
+/** Manifest guard reused from reviewed remote df5ddb4a; runtime lockscreen behavior remains a separate gate. */
+export function assertNoAlphaLockScreenSurface(xmltree) {
+  const problems = [];
+  for (const row of manifestComponents(xmltree)) {
+    if (row.tag === "service") continue;
+    for (const attr of ["showWhenLocked", "showOnLockScreen", "turnScreenOn"])
+      if (row.attrs[attr] === "0xffffffff") problems.push(`${row.name} sets android:${attr}`);
+    for (const filter of row.filters)
+      for (const action of filter.actions)
+        if (secureCameraActions.some(name => `android.media.action.${name}` === action)) problems.push(`${row.name} handles ${action}`);
+  }
+  if (problems.length)
+    throw new Error(`Refusing the APK: Alpha does not implement a secure camera or lock-screen surface (policy P-23).\n${problems.map(p => `  - ${p}`).join("\n")}`);
+  return true;
 }
