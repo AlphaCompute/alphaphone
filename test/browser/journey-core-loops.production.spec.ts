@@ -37,7 +37,8 @@ async function fenceNetwork(page: Page, allowed: string[] = []) {
 }
 
 /** Production Android as the renderer sees it: funded Cloud account, packaged resident agent that
- * keeps its conversations across a page reload, and an intercepted Clock handoff. */
+ * keeps its conversations across a page reload, an intercepted Clock handoff and a native browser
+ * whose pages are synthetic (no WebView loads anything). */
 async function android(page: Page, options: { clock?: 'opened' | 'unavailable' | 'unknown' } = {}) {
   await page.addInitScript(({ options }) => {
     const w = window as any; w.androidBridge = {};
@@ -47,9 +48,19 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
     const slots: Record<string, string> = kept('core-loops-slots', { 'cloud:production': JSON.stringify({ token: 'synthetic-cloud-key', credentialId: id, expiresAt: Date.now() + 86_400_000 }) });
     const agent: { conversations: { id: string; title: string }[]; history: Record<string, any[]> } = kept('core-loops-agent', { conversations: [], history: {} });
     const persist = () => { sessionStorage.setItem('core-loops-slots', JSON.stringify(slots)); sessionStorage.setItem('core-loops-agent', JSON.stringify(agent)); };
-    const f = w.coreLoops = { calls: [] as string[], posts: [] as string[], views: [] as string[], streams: 0, cancelled: 0, aborts: 0, clock: [] as unknown[], hold: false, release: null as null | (() => void), unexpected: [] as string[] };
+    const f = w.coreLoops = { calls: [] as string[], posts: [] as string[], views: [] as string[], conversations: [] as string[], bodies: [] as string[], streams: 0, cancelled: 0, aborts: 0, clock: [] as unknown[], hold: false, release: null as null | (() => void), unexpected: [] as string[],
+      // AlphaBrowser: tabs the renderer created, with the address and navigation number each one
+      // committed; `excerpt` is what reviewQuestion returns, and `questions` records its arguments.
+      browser: { tabs: {} as Record<string, { session: string; url: string; navigation: number }>, sequence: 0, created: [] as string[], navigations: [] as string[], questions: [] as unknown[], excerpt: '', title: 'Harbour report' },
+      // Commits a navigation of a tab, as WebView does after it loads a page (or the page navigates itself).
+      commit: (tab: string, url: string) => {} };
     const listeners: Array<{ plugin: string; event: string; callback: (value: unknown) => void }> = [];
     const emit = (streamId: string, event: unknown) => listeners.filter(l => l.plugin === 'Agent' && l.event === 'alphaAgentStream').forEach(l => l.callback({ streamId, event }));
+    f.commit = (tab: string, url: string) => {
+      const b = f.browser, row = b.tabs[tab]; row.url = url; row.navigation++;
+      const state = { session: row.session, id: tab, sequence: ++b.sequence, url, title: b.title, loading: false, committed: true, error: '', navigation: row.navigation, canBack: row.navigation > 1, canForward: false, private: false };
+      listeners.filter(l => l.plugin === 'AlphaBrowser' && l.event === 'stateChanged').forEach(l => l.callback(state));
+    };
     const data = (streamId: string, value: unknown) => emit(streamId, { type: 'chunk', dataBase64: btoa('data: ' + JSON.stringify(value) + '\n\n') });
     const request = (method: string, path: string, body: any, headers: Record<string, string>): { status: number; data: unknown } => {
       const ok = (value: unknown) => ({ status: 200, data: value });
@@ -76,6 +87,7 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
         { name: 'AlphaActionJournal', methods: promise(['list', 'get']) },
         { name: 'AlphaNotifications', methods: promise(['status', 'crossAppStatus']) },
         { name: 'AlphaVoiceCloud', methods: promise(['checkPermissions']) },
+        { name: 'AlphaBrowser', methods: withListeners(['create', 'navigate', 'present', 'close', 'command', 'bookmarks', 'setBookmark', 'browsingState', 'saveBrowsingState', 'cancelReading', 'reviewQuestion']) },
       ],
       nativeCallback: (plugin: string, method: string, input: any, callback: (value: unknown) => void) => { if (method === 'addListener') listeners.push({ plugin, event: input?.eventName, callback }); return String(listeners.length); },
       nativePromise: async (plugin: string, method: string, input: any) => {
@@ -99,7 +111,7 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
           if (method === 'requestStream') {
             // The resident agent records the user turn, then streams its reply over native IPC.
             const conversation = /^\/api\/conversations\/([^/]+)\/messages\/stream$/.exec(input.path)![1], body = JSON.parse(input.body), streamId = input.streamId as string;
-            f.streams++; f.posts.push(String(body.text).split('[USER MESSAGE]\n').pop()); f.views.push(/"view":"([a-z-]+)"/.exec(String(body.text))?.[1] ?? '');
+            f.streams++; f.posts.push(String(body.text).split('[USER MESSAGE]\n').pop()); f.views.push(/"view":"([a-z-]+)"/.exec(String(body.text))?.[1] ?? ''); f.conversations.push(conversation); f.bodies.push(input.body);
             agent.history[conversation].push({ id: crypto.randomUUID(), role: 'user', text: body.text, timestamp: Date.now() }); persist();
             const reply = 'Resident reply ' + f.streams;
             const finish = () => {
@@ -110,6 +122,17 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
             return { streamId };
           }
           return {};
+        }
+        if (plugin === 'AlphaBrowser') {
+          const b = f.browser;
+          if (method === 'bookmarks' || method === 'setBookmark') return { urls: [] };
+          // Nothing saved: a cold start opens one new tab.
+          if (method === 'browsingState') return { history: [], tabs: [] };
+          if (['saveBrowsingState', 'present', 'cancelReading', 'close', 'command'].includes(method)) return {};
+          if (method === 'create') { b.created.push(input.id); b.tabs[input.id] = { session: input.session, url: '', navigation: 0 }; return {}; }
+          // Only a synthetic public page "loads"; the stub commits it after the call returns.
+          if (method === 'navigate') { b.navigations.push(input.url); setTimeout(() => f.commit(input.id, input.url), 0); return {}; }
+          if (method === 'reviewQuestion') { b.questions.push(structuredClone(input)); const tab = b.tabs[input.id]; if (!tab || tab.url !== input.url || tab.navigation !== input.navigation) throw Error('Page changed'); return { text: b.excerpt }; }
         }
         if (plugin === 'AlphaConnection') {
           if (method === 'secureRead') return { value: slots[input.slot] ?? null };
@@ -173,16 +196,24 @@ test('loop A on Android: the resident agent answers, the conversation follows ac
   await expect(bubble(page, 'Resident reply 1')).toHaveCount(1);
   expect(await native(page, f => f.posts)).toEqual(['Flag-off first request']);
 
-  // The same conversation is open from Notes and Calendar.
-  for (const app of ['Notes', 'Calendar']) {
+  // The same conversation is open from Notes, Calendar and Browser, and a message sent from Notes
+  // and one sent from Browser both join it.
+  const shown = ['Flag-off first request', 'Resident reply 1'];
+  for (const app of ['Notes', 'Calendar', 'Browser']) {
     await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
     await expect(page.locator('html')).toHaveAttribute('data-active-view', 'home');
     await button(page, app).click();
     await expect(page.locator('html')).toHaveAttribute('data-active-view', app.toLowerCase());
     await button(page, 'Open conversation').click();
-    await expect(bubble(page, 'Flag-off first request')).toHaveCount(1);
-    await expect(bubble(page, 'Resident reply 1')).toHaveCount(1);
+    for (const text of shown) await expect(bubble(page, text)).toHaveCount(1);
+    if (app === 'Calendar') continue;
+    const sent = `Flag-off ${app.toLowerCase()} request`;
+    await message.fill(sent); await message.press('Enter');
+    shown.push(sent, `Resident reply ${shown.length / 2 + 1}`);
+    for (const text of shown) await expect(bubble(page, text)).toHaveCount(1);
   }
+  // Opening Browser asked only for its saved bookmarks and tabs; no page was created or loaded.
+  expect(await native(page, f => [f.browser.created, f.browser.navigations])).toEqual([[], []]);
   // Stop while the resident agent holds its reply: the stream is cancelled, the chat says the agent may
   // still finish, the text is not returned for a blind resend and nothing is posted again.
   await native(page, f => { f.hold = true; });
@@ -195,21 +226,25 @@ test('loop A on Android: the resident agent answers, the conversation follows ac
   await expect(page.locator('[data-alpha-layer="conversation"]').getByText('The agent may still finish this reply. Alpha Phone will check once and show it here if it does.', { exact: true })).toHaveCount(1);
   await expect(message).toHaveValue('');
   await expect.poll(() => native(page, f => f.cancelled)).toBeGreaterThan(0);
-  expect(await native(page, f => f.posts)).toEqual(['Flag-off first request', 'Flag-off stopped request']);
+  expect(await native(page, f => f.posts)).toEqual(['Flag-off first request', 'Flag-off notes request', 'Flag-off browser request', 'Flag-off stopped request']);
   // The resident agent finishes anyway; the one automatic check shows its reply exactly once.
   await native(page, f => { f.hold = false; f.release(); });
-  await expect(bubble(page, 'Resident reply 2')).toHaveCount(1, { timeout: 60_000 });
+  await expect(bubble(page, 'Resident reply 4')).toHaveCount(1, { timeout: 60_000 });
   await expect(bubble(page, 'Flag-off stopped request')).toHaveCount(1);
-  expect(await native(page, f => f.streams)).toBe(2);
-  // Each request carried the screen it was sent from as its current-turn context.
-  expect(await native(page, f => f.views)).toEqual(['home', 'calendar']);
+  expect(await native(page, f => f.streams)).toBe(4);
+  // Each request carried the screen it was sent from as its current-turn context, and every one
+  // went to the same resident conversation.
+  expect(await native(page, f => f.views)).toEqual(['home', 'notes', 'browser', 'browser']);
+  const conversations = await native(page, f => f.conversations) as string[];
+  expect(conversations).toHaveLength(4);
+  expect(new Set(conversations).size).toBe(1);
 
   // Restart: the saved conversation comes back by itself. There is no "Load conversations" step here.
   await page.reload();
   await expect.poll(() => native(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   await button(page, 'Open conversation').click();
-  for (const text of ['Flag-off first request', 'Resident reply 1', 'Flag-off stopped request', 'Resident reply 2']) await expect(bubble(page, text)).toHaveCount(1, { timeout: 30_000 });
+  for (const text of [...shown, 'Flag-off stopped request', 'Resident reply 4']) await expect(bubble(page, text)).toHaveCount(1, { timeout: 30_000 });
   // Restoring reads history; it posts nothing.
   expect(await native(page, f => f.streams)).toBe(0);
   // The connection names the agent and where it runs, and no credential is rendered anywhere.
