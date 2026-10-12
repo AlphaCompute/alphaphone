@@ -14,7 +14,7 @@ test('phone-step approval notices post once per approval, expire, open after res
  const shared=join(preparePatchedNative({root}).root,'plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NoticeDelivery.java');
  const source=name=>join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone',name);
  try{
-  execFileSync(binary('javac'),['--release','11','-cp',jsonJar,'-d',temporary,shared,source('WorkflowNoticeDelivery.java'),source('WorkflowNoticeTaps.java'),join(root,'test/fixtures/WorkflowApprovalNoticeTest.java')],{timeout:120000});
+  execFileSync(binary('javac'),['--release','11','-cp',jsonJar,'-d',temporary,join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/NoticeOwner.java'),shared,source('WorkflowNoticeDelivery.java'),source('WorkflowNoticeTaps.java'),join(root,'test/fixtures/WorkflowApprovalNoticeTest.java')],{timeout:120000});
   assert.match(execFileSync(binary('java'),['-cp',temporary+':'+jsonJar,'ai.elizaresearch.alphaphone.WorkflowApprovalNoticeTest'],{encoding:'utf8',timeout:120000}),/^PASS workflow approval notices/);
  }finally{rmSync(temporary,{recursive:true,force:true});}
 });

@@ -16,6 +16,7 @@ public final class WorkflowApprovalNoticeTest {
   public boolean matches(String id,String title,String body){return Objects.equals(active.get(id),title+"\n"+body);}
  }
  static JSONObject route(String run)throws Exception{return new JSONObject().put("scope","a".repeat(64)).put("origin","https://agent.invalid").put("ownerId","owner").put("agentId","agent").put("workflowId","workflow").put("runId",run).put("versionId","v1");}
+ static JSONObject owner(String id)throws Exception{return NoticeOwner.fromRoute(route("owner").put("ownerId",id));}
  public static void main(String[] args)throws Exception{
   long now=1_760_000_000_000L,minute=60000L;String binding="b".repeat(64),first="approval-"+"1".repeat(64),second="approval-"+"2".repeat(64);
   Store store=new Store();Poster poster=new Poster();WorkflowNoticeDelivery delivery=new WorkflowNoticeDelivery(store,poster);WorkflowNoticeTaps taps=new WorkflowNoticeTaps(store);
@@ -123,21 +124,21 @@ public final class WorkflowApprovalNoticeTest {
   // A -> B -> A keeps encrypted metadata, fences old taps, and only an explicit revalidation can resume quietly.
   {Store s6=new Store();Poster p6=new Poster(){public void post(String id,String title,String body){posted.add(id);active.put(id,title+"\n"+body);}};
    WorkflowNoticeDelivery d6=new WorkflowNoticeDelivery(s6,p6);WorkflowNoticeTaps t6=new WorkflowNoticeTaps(s6);String id="approval-"+"1".repeat(64);JSONObject own=route("run1");
-   d6.withdrawOtherOwners(t6,"owner",now);require("succeeded".equals(d6.postApproval(t6,id,binding,own,now+10*minute,now)),"owner A posts");
+   d6.withdrawOtherOwners(t6,owner("owner"),now);require("succeeded".equals(d6.postApproval(t6,id,binding,own,now+10*minute,now)),"owner A posts");
    t6.prepare("step1",binding,own);d6.publish("step1",binding,"Private","Body");String oldTap=t6.token(id);t6.capture(oldTap);
-   require(d6.withdrawOtherOwners(t6,"B",now+minute)==2,"approval and result withdrawn on owner change");
+   require(d6.withdrawOtherOwners(t6,owner("B"),now+minute)==2,"approval and result withdrawn on owner change");
    require(p6.active.isEmpty()&&t6.pending().length()==0,"no cross-owner notice or pending tap");final WorkflowNoticeTaps beforeRestart=t6;rejects(()->beforeRestart.capture(oldTap),"old tap rejected under B");
    require("owner-changed".equals(d6.postApproval(t6,id,binding,own,now+10*minute,now+minute)),"queued A post refused under B");
-   require(t6.suspendedApprovals("owner",now+minute).length()==1,"suspended route survives");
-   d6=new WorkflowNoticeDelivery(s6,p6);t6=new WorkflowNoticeTaps(s6);d6.withdrawOtherOwners(t6,"owner",now+2*minute);
+   require(t6.suspendedApprovals(owner("owner"),now+minute).length()==1,"suspended route survives");
+   d6=new WorkflowNoticeDelivery(s6,p6);t6=new WorkflowNoticeTaps(s6);d6.withdrawOtherOwners(t6,owner("owner"),now+2*minute);
    require(p6.posted.size()==2,"return alone does not post without revalidation");
    require("succeeded".equals(d6.resumeApproval(t6,id,binding,own,now+10*minute,now+2*minute))&&p6.quiet==1,"explicit exact return posts quietly");
    String fresh=t6.token(id);require(!fresh.equals(oldTap),"fresh tap binding after restart");final WorkflowNoticeTaps current=t6;rejects(()->current.capture(oldTap),"old PendingIntent oldTap remains invalid");t6.capture(fresh);require(t6.pending().getBoolean("retained"),"fresh tap opens matching owner");
    require("not-suspended".equals(d6.resumeApproval(t6,id,binding,own,now+10*minute,now+2*minute))&&p6.quiet==1,"duplicate resume does not repost or rotate");
-   d6.withdrawOtherOwners(t6,"B",now+3*minute);d6.withdrawApproval(t6,id,now+3*minute);d6.withdrawOtherOwners(t6,"owner",now+4*minute);
-   require(t6.suspendedApprovals("owner",now+4*minute).length()==0&&"not-suspended".equals(d6.resumeApproval(t6,id,binding,own,now+10*minute,now+4*minute)),"decided while away never resumes");
-   String expiredApproval="approval-"+"2".repeat(64);d6.postApproval(t6,expiredApproval,binding,route("run2"),now+5*minute,now+4*minute);d6.withdrawOtherOwners(t6,"B",now+4*minute);d6.withdrawOtherOwners(t6,"owner",now+6*minute);require(t6.suspendedApprovals("owner",now+6*minute).length()==0,"expiredApproval approval never resumes");
-   String dismissed="approval-"+"3".repeat(64);d6.postApproval(t6,dismissed,binding,route("run3"),now+10*minute,now+6*minute);p6.active.remove(dismissed);d6.withdrawOtherOwners(t6,"B",now+6*minute);require(t6.suspendedApprovals("owner",now+6*minute).length()==0,"dismissed approval remains terminal");
+   d6.withdrawOtherOwners(t6,owner("B"),now+3*minute);d6.withdrawApproval(t6,id,now+3*minute);d6.withdrawOtherOwners(t6,owner("owner"),now+4*minute);
+   require(t6.suspendedApprovals(owner("owner"),now+4*minute).length()==0&&"not-suspended".equals(d6.resumeApproval(t6,id,binding,own,now+10*minute,now+4*minute)),"decided while away never resumes");
+   String expiredApproval="approval-"+"2".repeat(64);d6.postApproval(t6,expiredApproval,binding,route("run2"),now+5*minute,now+4*minute);d6.withdrawOtherOwners(t6,owner("B"),now+4*minute);d6.withdrawOtherOwners(t6,owner("owner"),now+6*minute);require(t6.suspendedApprovals(owner("owner"),now+6*minute).length()==0,"expiredApproval approval never resumes");
+   String dismissed="approval-"+"3".repeat(64);d6.postApproval(t6,dismissed,binding,route("run3"),now+10*minute,now+6*minute);p6.active.remove(dismissed);d6.withdrawOtherOwners(t6,owner("B"),now+6*minute);require(t6.suspendedApprovals(owner("owner"),now+6*minute).length()==0,"dismissed approval remains terminal");
   }
   // A failed receipt write does not cancel that notice, but the persisted fence blocks its tap and
   // other old-owner notices are still attempted. Retry completes without touching the matching owner.
@@ -145,13 +146,24 @@ public final class WorkflowApprovalNoticeTest {
    Poster p=new Poster();WorkflowNoticeDelivery d=new WorkflowNoticeDelivery(fault,p);WorkflowNoticeTaps t=new WorkflowNoticeTaps(fault);
    String a1="approval-"+"4".repeat(64),a2="approval-"+"5".repeat(64),b="approval-"+"6".repeat(64);JSONObject ar=route("fault-a"),br=route("fault-b").put("ownerId","B");
    d.postApproval(t,a1,binding,ar,now+10*minute,now);d.postApproval(t,a2,binding,ar,now+10*minute,now);d.postApproval(t,b,binding,br,now+10*minute,now);String prior=t.token(a1),matching=t.token(b);
-   failFence[0]=true;rejects(()->d.withdrawOtherOwners(t,"B",now+minute),"fence write failure reported");require(p.active.size()==3,"uncommitted fence cancels no notice");failFence[0]=false;
-   failReceipt[0]=true;rejects(()->d.withdrawOtherOwners(t,"B",now+minute),"one receipt write failure reported");
+   failFence[0]=true;rejects(()->d.withdrawOtherOwners(t,owner("B"),now+minute),"fence write failure reported");require(p.active.size()==3,"uncommitted fence cancels no notice");failFence[0]=false;
+   failReceipt[0]=true;rejects(()->d.withdrawOtherOwners(t,owner("B"),now+minute),"one receipt write failure reported");
    require(p.active.containsKey(a1)&&!p.active.containsKey(a2)&&p.active.containsKey(b),"other old-owner notice still attempted, matching owner untouched");rejects(()->t.capture(prior),"persisted fence refuses tap even if OS cancellation failed");
-   d.withdrawOtherOwners(t,"B",now+2*minute);require(!p.active.containsKey(a1)&&p.active.containsKey(b)&&matching.equals(t.token(b))&&p.posted.size()==3,"retry completes without repost or matching-owner token changes");
-   d.withdrawOtherOwners(t,"B",now+2*minute);require(p.active.containsKey(b)&&matching.equals(t.token(b))&&p.posted.size()==3,"repeated fence preserves unrelated owner's notice");
-   d.withdrawOtherOwners(t,"owner",now+3*minute);d.resumeApproval(t,a1,binding,ar,now+10*minute,now+3*minute);d.resumeApproval(t,a2,binding,ar,now+10*minute,now+3*minute);require(p.quiet==2,"both successfully suspended approvals resume once quietly");
+   d.withdrawOtherOwners(t,owner("B"),now+2*minute);require(!p.active.containsKey(a1)&&p.active.containsKey(b)&&matching.equals(t.token(b))&&p.posted.size()==3,"retry completes without repost or matching-owner token changes");
+   d.withdrawOtherOwners(t,owner("B"),now+2*minute);require(p.active.containsKey(b)&&matching.equals(t.token(b))&&p.posted.size()==3,"repeated fence preserves unrelated owner's notice");
+   d.withdrawOtherOwners(t,owner("owner"),now+3*minute);d.resumeApproval(t,a1,binding,ar,now+10*minute,now+3*minute);d.resumeApproval(t,a2,binding,ar,now+10*minute,now+3*minute);require(p.quiet==2,"both successfully suspended approvals resume once quietly");
    d.resumeApproval(t,a1,binding,ar,now+10*minute,now+3*minute);require(p.quiet==2,"retry never duplicates quiet posts");
+  }
+  // Owner IDs are not globally unique across servers or agents. All three identity fields matter.
+  {Store collision=new Store();Poster p=new Poster();WorkflowNoticeDelivery d=new WorkflowNoticeDelivery(collision,p);WorkflowNoticeTaps t=new WorkflowNoticeTaps(collision);
+   String aId="approval-"+"7".repeat(64),originId="approval-"+"8".repeat(64),agentId="approval-"+"9".repeat(64);JSONObject aRoute=route("a"),otherOrigin=route("b").put("origin","https://other.invalid"),otherAgent=route("c").put("agentId","other-agent");
+   d.postApproval(t,aId,binding,aRoute,now+10*minute,now);d.postApproval(t,originId,binding,otherOrigin,now+10*minute,now);d.postApproval(t,agentId,binding,otherAgent,now+10*minute,now);String oldOrigin=t.token(originId),oldAgent=t.token(agentId),matching=t.token(aId);
+   require(d.withdrawOtherOwners(t,NoticeOwner.fromRoute(aRoute),now+minute)==2,"same ownerId on other origin or agent is withdrawn");
+   require(p.active.size()==1&&p.active.containsKey(aId)&&matching.equals(t.token(aId)),"full matching tuple remains untouched");rejects(()->t.capture(oldOrigin),"other-origin token fenced");rejects(()->t.capture(oldAgent),"other-agent token fenced");
+   require("owner-changed".equals(d.postApproval(t,originId,binding,otherOrigin,now+10*minute,now+minute)),"stale colliding-origin post refused");
+   collision.values.put(WorkflowNoticeTaps.OWNER_SLOT,new JSONObject().put("ownerId","owner").toString());rejects(()->t.capture(matching),"old ownerId-only fence fails closed");require("owner-changed".equals(d.postApproval(t,aId,binding,aRoute,now+10*minute,now+minute)),"old fence refuses fresh posts");
+   d.withdrawOtherOwners(t,NoticeOwner.fromRoute(aRoute),now+minute);t.capture(matching);require(t.pending().getBoolean("retained"),"validated tuple replaces legacy fence");
+   d.withdrawOtherOwners(t,null,now+2*minute);require(p.active.isEmpty()&&t.pending().length()==0&&t.suspendedApprovals(null,now).length()==0,"explicit sign-out hides every owner and exposes no suspended routes");
   }
   // Bounds.
   rejects(()->delivery.publishApproval("op1",binding,now+minute,now),"only approval IDs");

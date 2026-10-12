@@ -58,9 +58,10 @@ public class AlphaHostedResultsPlugin extends Plugin {
  }catch(Exception error){call.reject("Approval notice could not be withdrawn; it expires with the approval");}});}
  /** Persisted owner fence; valid suspended notices are revalidated by the matching session before resume. */
  @PluginMethod public void withdrawOtherOwnerApprovalNotices(PluginCall call){submit(call,()->{try{
-  int withdrawn=WorkflowNoticeTapsFactory.delivery(getContext()).withdrawOtherOwners(WorkflowNoticeTapsFactory.create(getContext()),call.getString("ownerId"),System.currentTimeMillis());
-  notices().withdrawOtherOwners(call.getString("ownerId"));
-  JSObject out=new JSObject();out.put("withdrawn",withdrawn);out.put("suspended",WorkflowNoticeTapsFactory.create(getContext()).suspendedApprovals(call.getString("ownerId"),System.currentTimeMillis()));call.resolve(out);
+  if(!call.getData().has("owner"))throw new IllegalArgumentException("Explicit owner or sign-out required");JSONObject owner=call.getData().isNull("owner")?null:NoticeOwner.identity(call.getObject("owner"));
+  int withdrawn=WorkflowNoticeTapsFactory.delivery(getContext()).withdrawOtherOwners(WorkflowNoticeTapsFactory.create(getContext()),owner,System.currentTimeMillis());
+  notices().withdrawOtherOwners(owner);
+  JSObject out=new JSObject();out.put("withdrawn",withdrawn);out.put("suspended",WorkflowNoticeTapsFactory.create(getContext()).suspendedApprovals(owner,System.currentTimeMillis()));call.resolve(out);
  }catch(Exception error){call.reject("Another owner's approval notices could not be withdrawn; they expire with their approvals");}});}
  @PluginMethod public void resumeWorkflowApprovalNotice(PluginCall call){submit(call,()->{try{
   Long expiresAt=call.getLong("expiresAt");if(expiresAt==null)throw new IllegalArgumentException();

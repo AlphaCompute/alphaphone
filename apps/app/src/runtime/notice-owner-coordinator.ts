@@ -1,4 +1,4 @@
-export interface NoticeOwnerSnapshot {identity:string;ownerId:string;hasSession:boolean}
+export interface NoticeOwnerSnapshot {identity:string;owner:{origin:string;ownerId:string;agentId:string}|null;hasSession:boolean}
 /** The native privacy fence starts immediately; remote revalidation stays in the notice work queue.
  * Initial session restoration and retry-needed are separate states, so a failed call never hides sign-out. */
 export class NoticeOwnerCoordinator<T> {

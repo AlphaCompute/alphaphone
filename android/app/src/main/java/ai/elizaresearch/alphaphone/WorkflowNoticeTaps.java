@@ -44,12 +44,12 @@ final class WorkflowNoticeTaps {
   String token=UUID.randomUUID().toString();rows.put(id,new JSONObject().put("binding",binding).put("route",exact).put("token",token).put("state","new").put("order",0));storage.write(SLOT,rows.toString());return token;
  }}
  String token(String id)throws Exception{synchronized(LOCK){JSONObject row=ledger().optJSONObject(id);return row==null?null:row.getString("token");}}
- void owner(String ownerId)throws Exception{synchronized(LOCK){if(ownerId==null||ownerId.length()>128||ownerId.indexOf('\0')>=0)throw new IllegalArgumentException("Invalid owner");storage.write(OWNER_SLOT,new JSONObject().put("ownerId",ownerId).toString());}}
- boolean ownerMatches(JSONObject route)throws Exception{String raw=storage.read(OWNER_SLOT);return raw==null||route.getString("ownerId").equals(new JSONObject(raw).getString("ownerId"));}
+ void owner(JSONObject owner)throws Exception{synchronized(LOCK){storage.write(OWNER_SLOT,new JSONObject().put("owner",owner==null?JSONObject.NULL:NoticeOwner.identity(owner)).toString());}}
+ boolean ownerMatches(JSONObject route)throws Exception{String raw=storage.read(OWNER_SLOT);if(raw==null)return true;return NoticeOwner.matches(new JSONObject(raw).optJSONObject("owner"),route);}
  void fresh(String id)throws Exception{synchronized(LOCK){JSONObject rows=ledger(),row=rows.getJSONObject(id);row.put("token",UUID.randomUUID().toString()).put("state","new").put("order",0);storage.write(SLOT,rows.toString());}}
- JSONArray suspendedApprovals(String ownerId,long now)throws Exception{synchronized(LOCK){
+ JSONArray suspendedApprovals(JSONObject owner,long now)throws Exception{synchronized(LOCK){
   JSONArray out=new JSONArray();JSONObject rows=ledger();String raw=storage.read(WorkflowNoticeDelivery.APPROVAL_SLOT);JSONObject receipts=raw==null?new JSONObject():new JSONObject(raw);
-  for(String id:keys(rows)){JSONObject row=rows.getJSONObject(id),receipt=receipts.optJSONObject(id);if(!WorkflowNoticeDelivery.approvalId(id)||!ownerId.equals(row.getJSONObject("route").getString("ownerId"))||receipt==null||!"suspended".equals(receipt.optString("status"))||receipt.getLong("expiresAt")<=now)continue;out.put(new JSONObject().put("id",id).put("bindingHash",row.getString("binding")).put("expiresAt",receipt.getLong("expiresAt")).put("route",row.getJSONObject("route")));}return out;
+  for(String id:keys(rows)){JSONObject row=rows.getJSONObject(id),receipt=receipts.optJSONObject(id);if(!WorkflowNoticeDelivery.approvalId(id)||!NoticeOwner.matches(owner,row.getJSONObject("route"))||receipt==null||!"suspended".equals(receipt.optString("status"))||receipt.getLong("expiresAt")<=now)continue;out.put(new JSONObject().put("id",id).put("bindingHash",row.getString("binding")).put("expiresAt",receipt.getLong("expiresAt")).put("route",row.getJSONObject("route")));}return out;
  }}
  private boolean confirmed(String id,JSONObject row)throws Exception{
   if(!ownerMatches(row.getJSONObject("route")))return false;
@@ -84,10 +84,10 @@ final class WorkflowNoticeTaps {
   }throw new UnknownTap();
  }}
  /** All owner-specific routes, in stable order: results share the same privacy boundary. */
- List<String> noticesOfOtherOwners(String ownerId)throws Exception{synchronized(LOCK){
-  if(ownerId==null||ownerId.length()>128||ownerId.indexOf('\0')>=0)throw new IllegalArgumentException("Invalid owner");
+ List<String> noticesOfOtherOwners(JSONObject owner)throws Exception{synchronized(LOCK){
+  NoticeOwner.identity(owner);
   JSONObject rows=ledger();List<String> result=new ArrayList<>();
-  for(String id:keys(rows))if(!ownerId.equals(rows.getJSONObject(id).getJSONObject("route").getString("ownerId")))result.add(id);
+  for(String id:keys(rows))if(!NoticeOwner.matches(owner,rows.getJSONObject(id).getJSONObject("route")))result.add(id);
   Collections.sort(result);return result;
  }}
  /** Frees a withdrawn or expired approval route. Its receipt is no longer posted, so even a captured tap could never open. */

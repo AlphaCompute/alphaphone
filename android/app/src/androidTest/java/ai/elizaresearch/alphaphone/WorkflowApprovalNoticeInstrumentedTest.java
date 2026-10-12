@@ -43,7 +43,7 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
   JSONObject input=new JSONObject().put("id",id).put("bindingHash","b".repeat(64)).put("expiresAt",expiresAt).put("route",route);
   try(BoundedActivityScenario<MainActivity> activity=BoundedActivityScenario.launch(MainActivity.class)){
    AppNavigation.liveMode();
-   assertFalse(call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({ownerId:\"fixture-owner\"})").has("error"));
+   assertFalse(call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-owner\",agentId:\"fixture-agent\"}})").has("error"));
    assertEquals("succeeded",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+input+")").getString("status"));
    assertEquals("Posted at most once","succeeded",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+input+")").getString("status"));
    Notification notice=active(manager,id);assertNotNull("Approval notice posted",notice);assertEquals(WorkflowNoticePoster.APPROVAL_CHANNEL,notice.getChannelId());
@@ -74,13 +74,13 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
   String id=approvalId('e'),run="fixture-old-"+java.util.UUID.randomUUID();long expiry=System.currentTimeMillis()+600000;
   JSONObject input=new JSONObject().put("id",id).put("bindingHash","b".repeat(64)).put("expiresAt",expiry).put("route",route("fixture-owner",run));
   try(BoundedActivityScenario<MainActivity> activity=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({ownerId:\"fixture-owner\"})");
+   AppNavigation.liveMode();call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-owner\",agentId:\"fixture-agent\"}})");
    assertEquals("succeeded",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+input+")").getString("status"));
    StatusBarNotification original=row(manager,id);assertNotNull(original);PendingIntent stale=original.getNotification().contentIntent;String token=WorkflowNoticeTapsFactory.create(context).token(id);
-   call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({ownerId:\"fixture-next-owner\"})");awaitGone(manager,id,"Other owner's notice removed");
+   call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-next-owner\",agentId:\"fixture-agent\"}})");awaitGone(manager,id,"Other owner's notice removed");
    assertThrows(PendingIntent.CanceledException.class,()->stale.send());assertEquals(0,WorkflowNoticeTapsFactory.create(context).pending().length());
    assertEquals("owner-changed",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+input+")").getString("status"));
-   JSONObject returned=call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({ownerId:\"fixture-owner\"})");assertEquals(1,returned.getJSONArray("suspended").length());assertNull(row(manager,id));
+   JSONObject returned=call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-owner\",agentId:\"fixture-agent\"}})");assertEquals(1,returned.getJSONArray("suspended").length());assertNull(row(manager,id));
    assertEquals("succeeded",call("Capacitor.Plugins.AlphaHostedResults.resumeWorkflowApprovalNotice("+input+")").getString("status"));
    Notification resumed=row(manager,id).getNotification();assertEquals(Notification.GROUP_ALERT_SUMMARY,resumed.getGroupAlertBehavior());assertEquals("alpha_quiet_approvals",resumed.getGroup());assertEquals(Notification.VISIBILITY_PRIVATE,resumed.visibility);assertNotNull(resumed.publicVersion);
    String fresh=WorkflowNoticeTapsFactory.create(context).token(id);assertNotEquals(token,fresh);assertThrows(PendingIntent.CanceledException.class,()->stale.send());

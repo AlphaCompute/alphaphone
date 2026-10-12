@@ -38,10 +38,9 @@ final class HostedResultNotices {
   if(!run.equals(result.optString("runId"))||!required(route,"workflowId").equals(result.optString("workflowId"))||!required(route,"workflowVersionId").equals(result.optString("workflowVersionId")))throw new IllegalStateException("Retained result mismatch");
   return result;
  }
- private boolean ownerMatches(JSONObject route)throws Exception {JSONObject owner=read(OWNER);return !owner.has("ownerId")||owner.getString("ownerId").equals(route.getString("ownerId"));}
- synchronized void withdrawOtherOwners(String ownerId)throws Exception {
-  if(ownerId==null||ownerId.length()>128||ownerId.indexOf('\0')>=0)throw new IllegalArgumentException("Invalid owner");
-  write(OWNER,new JSONObject().put("ownerId",ownerId));JSONObject ledger=read(LEDGER),pending=read(PENDING);
+ private boolean ownerMatches(JSONObject route)throws Exception {String raw=storage.read(OWNER);if(raw==null)return true;return NoticeOwner.matches(new JSONObject(raw).optJSONObject("owner"),route);}
+ synchronized void withdrawOtherOwners(JSONObject owner)throws Exception {
+  write(OWNER,new JSONObject().put("owner",owner==null?JSONObject.NULL:NoticeOwner.identity(owner)));JSONObject ledger=read(LEDGER),pending=read(PENDING);
   ArrayList<String> keys=new ArrayList<>();ledger.keys().forEachRemaining(keys::add);
   for(String key:keys){JSONObject record=ledger.getJSONObject(key);if(ownerMatches(record))continue;record.put("phase","owner-withdrawn");write(LEDGER,ledger);poster.cancel(key);if(key.equals(pending.optString("key")))write(PENDING,new JSONObject());}
  }

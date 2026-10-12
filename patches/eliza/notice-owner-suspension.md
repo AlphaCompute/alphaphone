@@ -11,7 +11,7 @@ quiet resume. Resume binds the original identity and expiry and commits its
 intent before the OS effect; uncertain dispatch is never replayed. Results
 support terminal privacy withdrawal without deleting retained workflow history.
 
-Alpha persists the active-owner fence, cancels stale PendingIntents, rotates the
+Alpha persists the complete origin/owner/agent identity fence (explicit null means signed out), cancels stale PendingIntents, rotates the
 tap token before resume and suppresses sound/vibration using an explicit group
 with summary-only alert behavior. It checks the current workflow revision,
 run cancellation/completion, exact pending proposal binding and expiry without

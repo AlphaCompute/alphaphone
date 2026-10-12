@@ -51,15 +51,15 @@ final class WorkflowNoticeDelivery {
   * never keeps a route that no later call would free. */
  void withdrawApproval(WorkflowNoticeTaps taps,String id,long now)throws Exception{try{withdrawApproval(id,now);}finally{taps.forget(id);}}
  /** Persist the privacy fence before touching OS notices. Repeated calls complete interrupted cancellation. */
- int withdrawOtherOwners(WorkflowNoticeTaps taps,String ownerId,long now)throws Exception{
-  taps.owner(ownerId);Exception first=null;int withdrawn=0;
-  for(String id:taps.noticesOfOtherOwners(ownerId)){try{if(approvalId(id))shared.suspendApproval(id,now);else shared.withdraw(id);withdrawn++;}catch(Exception failure){if(first==null)first=failure;}}
+ int withdrawOtherOwners(WorkflowNoticeTaps taps,JSONObject owner,long now)throws Exception{
+  taps.owner(owner);Exception first=null;int withdrawn=0;
+  for(String id:taps.noticesOfOtherOwners(owner)){try{if(approvalId(id))shared.suspendApproval(id,now);else shared.withdraw(id);withdrawn++;}catch(Exception failure){if(first==null)first=failure;}}
   if(first!=null)throw first;return withdrawn;
  }
  /** Caller revalidated the exact proposal without authorizing it. Rotate its tap before quiet dispatch. */
  String resumeApproval(WorkflowNoticeTaps taps,String id,String binding,JSONObject route,long expiresAt,long now)throws Exception{
   if(!taps.ownerMatches(route))return "owner-changed";
-  boolean suspended=false;org.json.JSONArray retained=taps.suspendedApprovals(route.getString("ownerId"),now);
+  boolean suspended=false;org.json.JSONArray retained=taps.suspendedApprovals(NoticeOwner.fromRoute(route),now);
   for(int i=0;i<retained.length();i++)if(id.equals(retained.getJSONObject(i).getString("id")))suspended=true;
   if(!suspended)return "not-suspended";
   taps.prepare(id,binding,route);taps.fresh(id);

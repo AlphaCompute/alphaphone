@@ -170,7 +170,7 @@ export function installWorkflowAdapter(Component:any,views:Bag){
  };
  // One redacted OS notice per pending phone-step approval, so a waiting step stays discoverable
  // after leaving the app. A tap only opens the run read-only; a decision or expiry withdraws it.
- interface ApprovalNoticeNative {postWorkflowApprovalNotice(input:{id:string;bindingHash:string;expiresAt:number;route:WorkflowNoticeRoute}):Promise<{status:string}>;withdrawWorkflowApprovalNotice(input:{id:string}):Promise<void>;resumeWorkflowApprovalNotice(input:{id:string;bindingHash:string;expiresAt:number;route:WorkflowNoticeRoute}):Promise<{status:string}>;withdrawOtherOwnerApprovalNotices(input:{ownerId:string}):Promise<{withdrawn:number;suspended?:Array<{id:string;bindingHash:string;expiresAt:number;route:WorkflowNoticeRoute}>}>}
+ interface ApprovalNoticeNative {postWorkflowApprovalNotice(input:{id:string;bindingHash:string;expiresAt:number;route:WorkflowNoticeRoute}):Promise<{status:string}>;withdrawWorkflowApprovalNotice(input:{id:string}):Promise<void>;resumeWorkflowApprovalNotice(input:{id:string;bindingHash:string;expiresAt:number;route:WorkflowNoticeRoute}):Promise<{status:string}>;withdrawOtherOwnerApprovalNotices(input:{owner:{origin:string;ownerId:string;agentId:string}|null}):Promise<{withdrawn:number;suspended?:Array<{id:string;bindingHash:string;expiresAt:number;route:WorkflowNoticeRoute}>}>}
  const approvalNative=()=>registerPlugin<ApprovalNoticeNative>('AlphaHostedResults');
  const noticeRoute=(run:WorkflowRun):WorkflowNoticeRoute|null=>{const selected=connectionController.getWorkflowClient(),session=connectionController.getSnapshot().session;if(!Capacitor.isNativePlatform()||!selected?.scope||!session)return null;return {scope:selected.scope,origin:session.origin,ownerId:session.ownerId,agentId:session.agentId,workflowId:run.workflowId,runId:run.id,versionId:run.versionId};};
  async function syncApprovalNotices(route:WorkflowNoticeRoute,pending:ActionProposal[],resolved:string[]){
@@ -187,7 +187,7 @@ export function installWorkflowAdapter(Component:any,views:Bag){
  const queueApprovalNotices=(route:WorkflowNoticeRoute|null,pending:ActionProposal[],resolved:string[])=>{if(!route)return;approvalNotices=approvalNotices.then(()=>syncApprovalNotices(route,pending,resolved)).catch(()=>{});};
  // A return restores only exact pending metadata, never an executable approval context.
  const ownerNotices=new NoticeOwnerCoordinator({
-  transition:(snapshot)=>approvalNative().withdrawOtherOwnerApprovalNotices({ownerId:snapshot.ownerId}),
+  transition:(snapshot)=>approvalNative().withdrawOtherOwnerApprovalNotices({owner:snapshot.owner}),
   enqueue:(work)=>{approvalNotices=approvalNotices.then(work).catch(()=>{});},
   available:(snapshot)=>connectionController.getSnapshot().session?.sessionId===snapshot.identity&&!connectionController.getSnapshot().open&&!document.hidden,
   restore:async(result,snapshot,valid)=>{
@@ -207,7 +207,7 @@ export function installWorkflowAdapter(Component:any,views:Bag){
  const retireOtherOwnerNotices=()=>{
   if(!Capacitor.isNativePlatform())return;
   const session=connectionController.getSnapshot().session;
-  ownerNotices.update({identity:session?.sessionId??'',ownerId:session?.ownerId??'',hasSession:!!session});
+  ownerNotices.update({identity:session?.sessionId??'',owner:session?{origin:session.origin,ownerId:session.ownerId,agentId:session.agentId}:null,hasSession:!!session});
  };
  const reviewPhone=()=>{if(!receipt||operation)return;const selected=receipt,previous=phoneReview?.runId===selected.id?phoneSteps.map(step=>step.id):[];phoneSteps=[];phoneConfirm=null;void work(async(client,signal,valid)=>{const context=phoneContext(selected),review=await client.phoneReview(selected,signal);if(!valid())return;phoneContext(selected);const steps=review.finished||review.cancellationRequestedAt?[]:await connectionController.workflowPhoneActions(review,context,signal);if(valid()){phoneContext(selected);queueApprovalNotices(noticeRoute(selected),steps,previous.filter(id=>!steps.some(step=>step.id===id)));phoneReview=review;phoneSteps=steps;phoneStatus=steps.length?'Review the exact destination, sources and operation. Each step needs separate approval.':'No pending phone steps in this execution. Refresh explicitly if its next step becomes ready.';}});};
  const decidePhone=(proposal:ActionProposal,approved:boolean)=>{
