@@ -2,6 +2,8 @@ import {FEED_FILTERS,passesFilter,type FeedFilter} from '../../../../.eliza/clie
 import {AutomationsProtocol,AutomationOutcomeError,automationIssue,automationLocalDateInput,mergeAutomationRows,type AutomationRow,type AutomationIssue,type PromptDraft,type ReminderDraft,type AutomationRequest,type ScheduledVerb} from '../runtime/automations-protocol';
 import {connectionController} from '../runtime/connection-ui';
 import {DailyApps,type Reminder} from '../daily';
+import {deletionUndo} from '../runtime/deletion-undo';
+import {hiddenDeletionTargets} from '../runtime/pending-deletions';
 import {WorkflowIntentStore,workflowIntentKey} from '../runtime/workflow-intents';
 import {presentHomeWorkflowFreshness} from './home-cards';
 import './automations.css';
@@ -48,7 +50,8 @@ export function installAutomationsAdapter(Component:any,views:Bag){
    if(!valid())return;
    const next:AutomationRow[]=[],failures:AutomationIssue[]=[];
    if(remote.status==='fulfilled'){next.push(...remote.value.rows);failures.push(...remote.value.issues);}else failures.push(automationIssue('automations',remote.reason));
-   if(local.status==='fulfilled')next.push(...local.value.reminders.map(deviceRow));else failures.push(automationIssue('device',local.reason));
+   // Policy P-30: a reminder whose reviewed deletion is pending Undo is not offered for edits here.
+   if(local.status==='fulfilled'){const hidden=hiddenDeletionTargets(deletionUndo().records());next.push(...local.value.reminders.filter(row=>!hidden.reminders.has(row.id)).map(deviceRow));}else failures.push(automationIssue('device',local.reason));
    intentStore=store;if(pending.status==='rejected')failures.push({source:'automations',unavailable:false,message:'Pending requests could not be checked. Changes stay blocked until this agent’s request history is available.'});
    rows=mergeAutomationRows(next);issues=failures;state='ready';loadedSession=selected?.sessionId||'offline';
    homeCache={sessionId:loadedSession,rows:rows.map(row=>({name:row.title,status:rowStatus(row)})),total:rows.length,partial:failures.some(issue=>!issue.unavailable||issue.source==='device'),stale:false,error:false,loadedAt:Date.now()};

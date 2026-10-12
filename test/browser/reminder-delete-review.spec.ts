@@ -14,10 +14,14 @@ async function open(page:Page,at='2027-03-13T14:00Z'){
  await page.evaluate(async at=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('DailyApps').scheduleReminder({id:'delete-boundary',title:'Delete boundary reminder',at:Date.parse(at)});},at);
  await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();await page.getByRole('button',{name:/^Delete boundary reminder,/}).click();
 }
+/** The single owned review dialog (the same surface Calendar events use), never window.confirm. */
 async function review(page:Page,accept=true){
- const shown:string[]=[];page.once('dialog',dialog=>{shown.push(dialog.message());void (accept?dialog.accept():dialog.dismiss());});
+ let native=0;page.on('dialog',dialog=>{native++;void dialog.dismiss();});
  await page.getByRole('button',{name:'Delete event',exact:true}).click();
- await expect.poll(()=>shown.length).toBe(1);return shown[0];
+ const dialog=page.getByRole('dialog',{name:'Delete reminder?'});await expect(dialog).toBeVisible();
+ const shown=await dialog.innerText();
+ await dialog.getByRole('button',{name:accept?'Delete reminder':'Cancel',exact:true}).click();
+ await expect(dialog).toHaveCount(0);expect(native).toBe(0);return shown;
 }
 
 test('Cancel in the review deletes nothing',async({page})=>{
@@ -71,11 +75,13 @@ test('a reminder changed during the window is kept and its alert resumes',async(
  await expect(page.getByRole('button',{name:/^Changed elsewhere,/})).toBeVisible();
 });
 
-test('a lost cancellation response with no readback stays hidden and is resolved after reload, not redispatched',async({page})=>{
+test('a lost cancellation response with no readback is listed as unconfirmed and resolved after reload, not redispatched',async({page})=>{
  await open(page);
  await page.evaluate(async()=>{(window as any).dispatches=0;const {BrowserDaily}=await import('/src/browser/daily.ts');const operate=BrowserDaily.prototype.operateReminder;BrowserDaily.prototype.operateReminder=async function(input){(window as any).dispatches++;await operate.call(this,input);throw Error('Lost response');};BrowserDaily.prototype.reminderOperationReceipt=async function(){throw Error('Receipt unavailable');};});
  await review(page);await expire(page);
  await expect.poll(()=>pending(page)).toEqual([{phase:'unknown',reminderId:'delete-boundary'}]);
+ await expect(page.getByRole('status').filter({hasText:'Deletion of “Delete boundary reminder” is unconfirmed.'})).toBeVisible();
+ expect(await page.evaluate(()=>(window as any).dispatches)).toBe(1);
  await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
  await expect.poll(()=>pending(page)).toEqual([]);
  expect((await store(page)).reminders[0].status).toBe('cancelled');expect(Object.keys((await store(page)).receipts)).toHaveLength(1);

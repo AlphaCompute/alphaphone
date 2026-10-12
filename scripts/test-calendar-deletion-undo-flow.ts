@@ -1,10 +1,11 @@
 // Policy P-30 (issue #414): reviewed Calendar/reminder deletion with a durable ten-second Undo.
 // Pure policy, controller and provider wiring over an in-memory durable store and a simulated
-// provider that models revisions, process death and alarm delivery. No Android, CalendarProvider,
+// provider that models revisions, single-use review grants (consumed before the provider call, as
+// AlphaCalendarPlugin and BrowserCalendar do), process death and alarm delivery. No Android, CalendarProvider,
 // reminder engine, WebView or browser storage is exercised here.
 import assert from 'node:assert/strict';
 import {
-  UNDO_WINDOW_MS, MAX_DISPATCHES, requestDeletion, undoDeletion, commitDueDeletions, reconcileDeletions, pendingDeletions,
+  UNDO_WINDOW_MS, requestDeletion, undoDeletion, commitDueDeletions, reconcileDeletions, pendingDeletions, keepUnconfirmedDeletion,
   hiddenDeletionTargets, deletionReviewText, undoRemaining, targetKey, validatePendingDeletions,
   type PendingDeletionDocument, type PendingDeletionStore, type DeletionProvider, type PendingDeletion, type EventDeletionTarget, type ReminderDeletionTarget, type DeliveryHold,
 } from '../apps/app/src/runtime/pending-deletions.ts';
@@ -25,7 +26,7 @@ type Row = { revision: string; deleted: boolean };
 /** Provider model: rows with revisions, holds with deferred alarms, and an effect log. */
 class World {
   rows = new Map<string, Row>(); holds = new Map<string, { holdId: string; deferred: string[] }>();
-  deliveries: string[] = []; effects: string[] = []; revoked: string[] = [];
+  deliveries: string[] = []; effects: string[] = []; revoked: string[] = []; used = new Set<string>(); commits = 0;
   permission = true; available = true; nextCommit: 'normal' | 'die-after-effect' | 'die-before-effect' | 'unknown' = 'normal';
   readbackFails = false;
   key(record: PendingDeletion) { return record.target.kind === 'event' ? record.target.id : record.target.target.reminderId; }
@@ -39,8 +40,16 @@ class World {
   provider(): DeletionProvider {
     return {
       commit: async record => {
+        this.commits++;
         if (!this.permission) return 'permission-required';
+        // Not ready: nothing dispatched and the grant is kept (Android checks this before consume()).
         if (!this.available) return 'unavailable';
+        // Single-use grant: a used or revoked grant can never delete; the readback decides.
+        if (record.target.kind === 'event') {
+          const grant = record.target.grant;
+          if (this.used.has(grant) || this.revoked.includes(grant)) return 'unknown';
+          this.used.add(grant);
+        }
         const row = this.rows.get(this.key(record));
         if (!row || row.deleted) return 'deleted';
         if (row.revision !== this.revisionOf(record)) return 'conflict';
@@ -149,23 +158,31 @@ const T0 = 1_700_000_000_000;
   assert.equal(store.raw, null);
 }
 
-// 6. Process death with `committing` saved but before the provider call: readback shows the exact
-//    revision, so one more dispatch is safe; the attempt count bounds it.
+// 6. A dispatch that used its single-use grant but deleted nothing is reported as "not deleted",
+//    never as "changed", and is never dispatched a second time.
 {
   const store = new MemoryStore(), world = new World();
   world.rows.set('71', { revision: 'r1', deleted: false });
   await requestDeletion(store, world.provider(), { id: 'd1', label: 'Dentist', target: event() }, T0);
-  world.nextCommit = 'die-before-effect';
-  await commitDueDeletions(store, world.provider(), T0 + UNDO_WINDOW_MS);
-  const reports = await reconcileDeletions(store, world.provider(), T0 + 30_000);
-  assert.deepEqual(reports.map(r => r.status), ['deleted']); assert.deepEqual(world.effects, ['71']);
-  // A provider that keeps reporting the exact revision after each dispatch stops at MAX_DISPATCHES.
-  const stuck = new MemoryStore(), liar = new World(); liar.rows.set('72', { revision: 'r1', deleted: false });
-  const provider = liar.provider(); provider.commit = async () => 'unknown';
-  await requestDeletion(stuck, provider, { id: 'd9', label: 'Stuck', target: event('72') }, T0);
-  for (let i = 0; i < MAX_DISPATCHES + 3; i++) await reconcileDeletions(stuck, provider, T0 + 20_000 + i);
-  const [left] = await pendingDeletions(stuck);
-  assert.equal(left.phase, 'unknown'); assert.equal(left.attempts, MAX_DISPATCHES, 'Dispatches are bounded');
+  world.nextCommit = 'die-before-effect'; // grant consumed, provider call never made (Android: read/applyBatch threw)
+  const reports = await commitDueDeletions(store, world.provider(), T0 + UNDO_WINDOW_MS);
+  assert.deepEqual(reports.map(r => r.status), ['not-deleted']);
+  assert.match(reports[0].message, /deletion did not happen, so it is still there/);
+  assert.doesNotMatch(reports[0].message, /changed after you deleted it/);
+  assert.equal(store.raw, null, 'The item is shown again; nothing stays hidden');
+  for (let i = 0; i < 3; i++) assert.deepEqual(await reconcileDeletions(store, world.provider(), T0 + 20_000 + i), []);
+  assert.equal(world.commits, 1, 'Never dispatched again'); assert.deepEqual(world.effects, []);
+  // Process death after `committing` was saved but before the provider was called: restart reads
+  // back the exact revision and reports "not deleted" without dispatching.
+  const died = new MemoryStore(), restarted = new World(); restarted.rows.set('72', { revision: 'r1', deleted: false });
+  await requestDeletion(died, restarted.provider(), { id: 'd2', label: 'Gym', target: event('72') }, T0);
+  const doc = JSON.parse(died.raw!) as PendingDeletionDocument; doc.d2 = { ...doc.d2, phase: 'committing', attempts: 1 }; died.raw = JSON.stringify(doc);
+  assert.deepEqual((await reconcileDeletions(died, restarted.provider(), T0 + 60_000)).map(r => r.status), ['not-deleted']);
+  assert.equal(restarted.commits, 0); assert.deepEqual(restarted.revoked, ['grant-72'], 'The unused grant is revoked');
+  // A grant that is already gone (used by an interrupted commit) is "unknown", settled by readback.
+  const spent = new MemoryStore(), reused = new World(); reused.rows.set('73', { revision: 'r1', deleted: false }); reused.used.add('grant-73');
+  await requestDeletion(spent, reused.provider(), { id: 'd3', label: 'Lunch', target: event('73') }, T0);
+  assert.deepEqual((await commitDueDeletions(spent, reused.provider(), T0 + UNDO_WINDOW_MS)).map(r => r.status), ['not-deleted']);
 }
 
 // 7. Concurrent edit and organizer/permission effects keep the object and resume delivery.
@@ -200,18 +217,41 @@ const T0 = 1_700_000_000_000;
   assert.deepEqual((await reconcileDeletions(locked, later.provider(), T0 + 99_000)).map(r => r.status), ['deleted']);
 }
 
-// 8. Unknown outcome with unavailable readback stays hidden and unconfirmed until readback succeeds.
+// 8. Unknown outcome with unavailable readback: the item is shown again, reported once, listed
+//    as unconfirmed until a readback or the user's Keep settles it, and never redispatched.
 {
   const store = new MemoryStore(), world = new World();
   world.rows.set('71', { revision: 'r1', deleted: false });
   await requestDeletion(store, world.provider(), { id: 'd1', label: 'Dentist', target: event() }, T0);
   world.nextCommit = 'unknown'; world.readbackFails = true;
   assert.deepEqual((await commitDueDeletions(store, world.provider(), T0 + UNDO_WINDOW_MS)).map(r => r.status), ['unconfirmed']);
-  assert.deepEqual((await reconcileDeletions(store, world.provider(), T0 + 20_000)).map(r => r.status), ['unconfirmed']);
-  assert.ok(hiddenDeletionTargets(await pendingDeletions(store)).event('71'), 'Unconfirmed deletions stay hidden, never shown as kept');
+  assert.deepEqual((await reconcileDeletions(store, world.provider(), T0 + 20_000)).map(r => r.status), [], 'Reported once, then listed in Calendar');
+  assert.equal(hiddenDeletionTargets(await pendingDeletions(store)).event('71'), false, 'An unconfirmed deletion is not hidden');
   world.readbackFails = false;
-  assert.deepEqual((await reconcileDeletions(store, world.provider(), T0 + 30_000)).map(r => r.status), ['deleted']);
-  assert.deepEqual(world.effects, ['71']);
+  assert.deepEqual((await reconcileDeletions(store, world.provider(), T0 + 30_000)).map(r => r.status), ['deleted'], 'Check again settles it');
+  assert.deepEqual(world.effects, ['71']); assert.equal(world.commits, 1);
+  // A reminder whose outcome is unknown stops muting its alerts and can be kept explicitly.
+  const kept = new MemoryStore(), muted = new World(); muted.rows.set('rem1', { revision: 'a'.repeat(64), deleted: false });
+  const provider = muted.provider(); provider.commit = async () => 'unknown';
+  await requestDeletion(kept, provider, { id: 'd2', label: 'Pills', target: reminder() }, T0);
+  muted.alarm('rem1', 'occ1'); muted.readbackFails = true;
+  assert.deepEqual((await commitDueDeletions(kept, provider, T0 + UNDO_WINDOW_MS)).map(r => r.status), ['unconfirmed']);
+  assert.equal(muted.holds.size, 0, 'An unknown record releases its delivery hold');
+  assert.deepEqual(muted.deliveries, ['rem1/occ1'], 'The alert suppressed during the window is delivered');
+  await reconcileDeletions(kept, provider, T0 + 99_000);
+  assert.equal(muted.holds.size, 0, 'Reconciliation never re-holds an unknown record');
+  muted.alarm('rem1', 'occ2'); assert.deepEqual(muted.deliveries, ['rem1/occ1', 'rem1/occ2']);
+  assert.equal(await keepUnconfirmedDeletion(kept, provider, 'd2'), true);
+  assert.equal(kept.raw, null, 'Keep ends tracking');
+  assert.equal(await keepUnconfirmedDeletion(kept, provider, 'd2'), false);
+  // A new review of an item with an unconfirmed deletion supersedes it instead of reporting a duplicate.
+  const again = new MemoryStore(), redo = new World(); redo.rows.set('74', { revision: 'r1', deleted: false });
+  const p2 = redo.provider(); p2.commit = async () => 'unknown'; redo.readbackFails = true;
+  await requestDeletion(again, p2, { id: 'd4', label: 'Call', target: event('74') }, T0);
+  await commitDueDeletions(again, p2, T0 + UNDO_WINDOW_MS);
+  const second = await requestDeletion(again, p2, { id: 'd5', label: 'Call', target: event('74', 'r1', { grant: 'grant-74b' }) }, T0 + 60_000);
+  assert.equal(second.status, 'pending'); assert.deepEqual((await pendingDeletions(again)).map(r => r.id), ['d5']);
+  assert.deepEqual(redo.revoked, ['grant-74'], 'The superseded grant is revoked');
 }
 
 // 9. Recurrence scopes: a series hides every occurrence; two occurrences are separate intents.
@@ -339,7 +379,7 @@ const T0 = 1_700_000_000_000;
   const provider = deletionProvider(
     { commitDeletion: async () => ({ status: 'deleted' }), revokeDeletion: async () => ({ status: 'revoked' }), deletionReadback: async () => ({ status: 'absent' }) },
     reminders,
-    { pending: async () => journal as never, retain: async input => { journal[input.operationId] = input; }, acknowledge: async input => { delete journal[input.operationId]; } },
+    { pending: async () => journal as never, retain: async input => { journal[input.operationId] = input; }, acknowledge: async input => { delete journal[input.operationId]; }, discard: async input => { delete journal[input.operationId]; } },
   );
   const record: PendingDeletion = { version: 1, id: 'd1', label: 'Pills', requestedAt: T0, expiresAt: T0 + UNDO_WINDOW_MS, phase: 'committing', attempts: 1, target: reminder() };
   await assert.rejects(provider.commit(record));
@@ -353,4 +393,29 @@ const T0 = 1_700_000_000_000;
   assert.equal(await provider.readback(record), 'changed');
 }
 
-console.log('PASS P-30 deletion Undo: lossless Undo before dispatch, durable intent across process death before/after expiry and during dispatch, single provider effect, concurrent edit/permission/unknown outcomes, recurrence scopes, reminder alert suppression and late redelivery, failed restoration, clock skew, controller re-arm, journaled reminder cancellation. Android provider, receiver and WebView behavior not exercised.');
+// 15. A refused reminder cancellation leaves no journal entry behind and is reported truthfully.
+{
+  const scenario = async (operate: () => Promise<{ status: string; result?: unknown }>, listed: { revision: string }) => {
+    const journal: Record<string, unknown> = {}, store = new MemoryStore();
+    const reminders = {
+      holdReminderDelivery: async () => ({ status: 'held' }), releaseReminderDelivery: async () => ({ status: 'released' }), reminderDeliveryHolds: async () => ({ holds: [] }),
+      operateReminder: operate, reminderOperationReceipt: async () => ({ status: 'unknown' }),
+      listReminders: async () => ({ reminders: [{ id: 'rem1', status: 'scheduled', target: { ...reminder().target, ...listed } } as never] }),
+    };
+    const provider = deletionProvider(
+      { commitDeletion: async () => ({ status: 'unknown' }), revokeDeletion: async () => ({ status: 'revoked' }), deletionReadback: async () => ({ status: 'unavailable' }) },
+      reminders,
+      { pending: async () => journal as never, retain: async input => { journal[input.operationId] = input; }, acknowledge: async input => { delete journal[input.operationId]; }, discard: async input => { delete journal[input.operationId]; } },
+    );
+    await requestDeletion(store, provider, { id: 'd1', label: 'Pills', target: reminder() }, T0);
+    const reports = await commitDueDeletions(store, provider, T0 + UNDO_WINDOW_MS);
+    return { statuses: reports.map(r => r.status), journal: Object.keys(journal), store: store.raw };
+  };
+  // Both engines reject a cancellation of a changed target; the readback shows the new revision.
+  assert.deepEqual(await scenario(async () => { throw Error('Selected reminder changed'); }, { revision: 'f'.repeat(64) }), { statuses: ['kept-changed'], journal: [], store: null });
+  // A rejection for any other reason with the reminder unchanged: not deleted, never "changed".
+  assert.deepEqual(await scenario(async () => { throw Error('Reminder operation storage full'); }, { revision: 'a'.repeat(64) }), { statuses: ['not-deleted'], journal: [], store: null });
+  assert.deepEqual(await scenario(async () => ({ status: 'stale' }), { revision: 'a'.repeat(64) }), { statuses: ['kept-changed'], journal: [], store: null });
+}
+
+console.log('PASS P-30 deletion Undo: lossless Undo before dispatch, durable intent across process death before/after expiry and during dispatch, single provider effect, concurrent edit/permission/unknown/not-deleted outcomes with single-use grants, unconfirmed Keep, refused reminder cancellation journal cleanup, recurrence scopes, reminder alert suppression and late redelivery, failed restoration, clock skew, controller re-arm, journaled reminder cancellation. Android provider, receiver and WebView behavior not exercised.');

@@ -1,7 +1,7 @@
 import type {PendingReminderDeletion} from './reminder-deletions';
 import type {Reminder} from '../daily';
 import {
-  commitDueDeletions,reconcileDeletions,requestDeletion,undoDeletion,pendingDeletions,undoRemaining,
+  commitDueDeletions,reconcileDeletions,requestDeletion,undoDeletion,keepUnconfirmedDeletion,pendingDeletions,undoRemaining,
   type DeletionProvider,type DeletionReport,type PendingDeletion,type PendingDeletionStore,type ReadbackOutcome,type CommitOutcome,type DeletionTarget,
 } from './pending-deletions';
 /** Platform-free wiring of the P-30 deletion policy; deletion-undo.ts binds it to the bridges. */
@@ -18,7 +18,8 @@ export type ReminderBridge={
   reminderOperationReceipt(input:PendingReminderDeletion):Promise<{status:string;result?:unknown}>;
   listReminders():Promise<{reminders:Pick<Reminder,'id'|'status'|'target'>[]}>;
 };
-export type ReminderJournal={pending():Promise<Record<string,PendingReminderDeletion>>;retain(input:PendingReminderDeletion):Promise<void>;acknowledge(input:PendingReminderDeletion,result:unknown):Promise<void>};
+/** `discard` removes an entry whose cancellation is known not to have happened (refused, read back unchanged, or kept). */
+export type ReminderJournal={pending():Promise<Record<string,PendingReminderDeletion>>;retain(input:PendingReminderDeletion):Promise<void>;acknowledge(input:PendingReminderDeletion,result:unknown):Promise<void>;discard(input:PendingReminderDeletion):Promise<void>};
 
 const commitStatuses:CommitOutcome[]=['deleted','conflict','permission-required','unavailable','unknown'];
 const readbackStatuses:ReadbackOutcome[]=['absent','present','changed','permission-required','unavailable'];
@@ -36,10 +37,18 @@ export function deletionProvider(calendar:CalendarDeletionBridge,reminders:Remin
       if(record.target.kind==='event'){const {status}=await calendar.commitDeletion({grant:record.target.grant});return commitStatuses.includes(status as CommitOutcome)?status as CommitOutcome:'unknown';}
       // The existing reminder action journal is written before dispatch, so an interrupted
       // cancellation is reconciled from its receipt and never dispatched a second time.
+      // Both reminder engines either succeed or reject (changed target, storage, bridge); they
+      // never return a permission or "not yet" status for cancellation, which needs neither.
+      // A rejection is 'unknown' here and is settled by the immediate readback: unchanged means
+      // not deleted, a different revision means kept-changed. Either way the journal entry is
+      // discarded by revoke(), so it never lingers as an unconfirmed action.
       const input=await reminderInput(record),retained=(await journal.pending())[input.operationId];
       if(!retained)await journal.retain(input);
       const result=retained?await reminders.reminderOperationReceipt(input):await reminders.operateReminder(input);
-      if(result.status!=='succeeded'||!result.result)return retained?'unknown':result.status==='stale'||result.status==='conflict'?'conflict':'unknown';
+      if(result.status!=='succeeded'||!result.result){
+        if(!retained&&(result.status==='stale'||result.status==='conflict')){await journal.discard(input);return 'conflict';}
+        return 'unknown';
+      }
       await journal.acknowledge(input,result.result);
       return 'deleted';
     },
@@ -58,7 +67,11 @@ export function deletionProvider(calendar:CalendarDeletionBridge,reminders:Remin
     async hold(record){if(record.target.kind==='reminder')await reminders.holdReminderDelivery({id:record.target.target.reminderId,holdId:record.id});},
     async release(hold,redeliver){await reminders.releaseReminderDelivery({id:hold.reminderId,holdId:hold.id,redeliver});},
     async holds(){return (await reminders.reminderDeliveryHolds()).holds.map(({id,reminderId})=>({id,reminderId}));},
-    async revoke(record){if(record.target.kind==='event')await calendar.revokeDeletion({grant:record.target.grant});},
+    async revoke(record){
+      if(record.target.kind==='event'){await calendar.revokeDeletion({grant:record.target.grant});return;}
+      // Only reached when the reminder is known to survive, so its cancellation did not happen.
+      await journal.discard(await reminderInput(record));
+    },
   };
 }
 
@@ -100,6 +113,10 @@ export function createDeletionUndo(store:PendingDeletionStore,provider:DeletionP
     request:(input:{label:string;target:DeletionTarget})=>serial(async()=>{const result=await requestDeletion(store,provider,{id:crypto.randomUUID(),...input},clock.now());await refresh();return result;}),
     undo:(id:string)=>serial(async()=>{const row=records.find(r=>r.id===id),now=row&&elapsed(row)?Math.max(clock.now(),row.expiresAt):clock.now();const result=await undoDeletion(store,provider,id,now);await refresh();return result;}),
     commitDue:()=>serial(async()=>done(await commitDueDeletions(store,provider,clock.now(),elapsed))),
+    /** Deletions whose outcome could not be confirmed; Calendar shows them with Check again and Keep. */
+    unconfirmed:()=>records.filter(row=>row.phase==='unknown'),
+    /** Keep an unconfirmed item: stop tracking it. Nothing is deleted or dispatched. */
+    keep:(id:string)=>serial(async()=>{const kept=await keepUnconfirmedDeletion(store,provider,id);await refresh();return kept;}),
     reconcile:()=>serial(async()=>{if(!records.length){records=await pendingDeletions(store);observe();}return done(await reconcileDeletions(store,provider,clock.now(),elapsed));}),
   };
   return controller;

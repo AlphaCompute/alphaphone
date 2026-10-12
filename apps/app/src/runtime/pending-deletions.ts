@@ -5,6 +5,11 @@
  * provider deletion is delayed until the window expires, so an Undo inside the window is lossless:
  * the provider object was never touched. After expiry the deletion is dispatched exactly once
  * (the record is marked `committing` and saved before dispatch) and read back from the provider.
+ * A dispatched intent is never dispatched again: provider review grants are single use, so the
+ * readback alone decides the result. `present` after a dispatch means the deletion did not
+ * happen and the item is shown again; it is never reported as a concurrent change. An outcome the
+ * readback cannot settle becomes `unknown`: the item is shown again, reminder delivery resumes,
+ * and Calendar offers Check again or Keep until it is settled.
  * Nothing is ever recreated: after the provider deletion there is no restore, and a recreated
  * invitation would never be described as a lossless restore.
  *
@@ -13,8 +18,6 @@
  */
 export const UNDO_WINDOW_MS = 10_000;
 export const MAX_PENDING_DELETIONS = 50;
-/** Dispatches allowed for one intent; each one after the first requires a readback of the exact revision. */
-export const MAX_DISPATCHES = 3;
 
 export type EventDeletionScope = 'event' | 'occurrence' | 'series';
 export type EventExpected = { title: string; body: string; location: string; begin: number; end: number };
@@ -52,7 +55,7 @@ export type PendingDeletion = {
   requestedAt: number;
   expiresAt: number;
   phase: DeletionPhase;
-  /** Number of dispatches started. Only a readback that shows the exact revision allows another. */
+  /** Number of dispatches started. Never more than one: a dispatched intent is only read back. */
   attempts: number;
   target: DeletionTarget;
 };
@@ -64,7 +67,11 @@ export interface PendingDeletionStore {
   compareExchange(expected: PendingDeletionDocument | null, next: PendingDeletionDocument | null): Promise<boolean>;
 }
 
-/** Provider result of a dispatched deletion. `unknown` means the effect may or may not have happened. */
+/**
+ * Provider result of a dispatched deletion. `unknown` means the effect may or may not have happened.
+ * `unavailable` means the provider did not act and kept its grant (locked, not foreground, provider
+ * unreachable before dispatch), so the same intent may be dispatched later.
+ */
 export type CommitOutcome = 'deleted' | 'conflict' | 'permission-required' | 'unavailable' | 'unknown';
 /**
  * Provider readback of the exact target.
@@ -86,7 +93,11 @@ export interface DeletionProvider {
   release(hold: DeliveryHold, redeliver: boolean): Promise<void>;
   /** Holds the provider currently keeps; one without a record is left over from a finished Undo. */
   holds(): Promise<DeliveryHold[]>;
-  /** Revoke a provider review grant after Undo. Must be idempotent. */
+  /**
+   * Drop any authority left for this intent once it is settled with the object kept (Undo,
+   * conflict, not deleted, Keep): the event review grant, or the reminder cancellation journal
+   * entry. Must be idempotent.
+   */
   revoke(record: PendingDeletion): Promise<void>;
 }
 
@@ -99,7 +110,7 @@ export type DeletionReport = {
   label: string;
   kind: DeletionTarget['kind'];
   target: DeletionTarget;
-  status: 'deleted' | 'kept-changed' | 'kept-permission' | 'unconfirmed' | 'retry-later';
+  status: 'deleted' | 'kept-changed' | 'kept-permission' | 'not-deleted' | 'unconfirmed' | 'retry-later';
   message: string;
 };
 
@@ -185,12 +196,18 @@ export async function requestDeletion(store: PendingDeletionStore, provider: Del
   const record: PendingDeletion = { version: 1, id: input.id, label: input.label.slice(0, 500), requestedAt: now, expiresAt: now + UNDO_WINDOW_MS, phase: 'pending', attempts: 0, target: structuredClone(input.target) };
   if (!validTarget(record.target) || !ID.test(record.id)) throw Error('Invalid deletion target');
   const key = targetKey(record.target);
+  let replaced: PendingDeletion | undefined;
   const result = await edit<RequestResult>(store, all => {
+    replaced = undefined;
     const existing = Object.values(all).find(row => targetKey(row.target) === key);
-    if (existing) return { next: null, value: { status: 'duplicate', record: existing } };
-    if (Object.keys(all).length >= MAX_PENDING_DELETIONS) return { next: null, value: { status: 'full' } };
-    return { next: { ...all, [record.id]: record }, value: { status: 'pending', record } };
+    // A visible, unconfirmed earlier deletion of the same item is superseded by a new review.
+    if (existing && existing.phase !== 'unknown') return { next: null, value: { status: 'duplicate', record: existing } };
+    const next = { ...all };
+    if (existing) { replaced = existing; delete next[existing.id]; }
+    if (Object.keys(next).length >= MAX_PENDING_DELETIONS) return { next: null, value: { status: 'full' } };
+    return { next: { ...next, [record.id]: record }, value: { status: 'pending', record } };
   });
+  if (result.status === 'pending' && replaced) await settle(provider, replaced, true);
   // Holding is idempotent; a failure here is repaired by reconciliation before any delivery check.
   if (result.status === 'pending' && record.target.kind === 'reminder') await provider.hold(record).catch(() => undefined);
   return result;
@@ -215,10 +232,23 @@ export async function undoDeletion(store: PendingDeletionStore, provider: Deleti
   return result;
 }
 
+/** Keep an unconfirmed deletion's item: stop tracking it, without any provider deletion. */
+export async function keepUnconfirmedDeletion(store: PendingDeletionStore, provider: DeletionProvider, id: string): Promise<boolean> {
+  const record = await edit<PendingDeletion | undefined>(store, all => {
+    const row = all[id];
+    if (!row || row.phase !== 'unknown') return { next: null, value: undefined };
+    const next = { ...all };
+    delete next[id];
+    return { next, value: row };
+  });
+  if (record) await settle(provider, record, true);
+  return !!record;
+}
+
 async function settle(provider: DeletionProvider, record: PendingDeletion, survives: boolean) {
   const hold = deliveryHold(record);
   if (hold) await provider.release(hold, survives).catch(() => undefined);
-  else if (survives) await provider.revoke(record).catch(() => undefined);
+  if (survives) await provider.revoke(record).catch(() => undefined);
 }
 
 function report(record: PendingDeletion, status: DeletionReport['status']): DeletionReport {
@@ -228,7 +258,8 @@ function report(record: PendingDeletion, status: DeletionReport['status']): Dele
     deleted: `${name}: ${noun} deleted and confirmed.`,
     'kept-changed': `${name} changed after you deleted it, so it was kept. Review it and delete again if needed.`,
     'kept-permission': `${name} was kept: Calendar or reminder access is no longer available. Nothing was deleted.`,
-    unconfirmed: `${name}: deletion could not be confirmed. It stays hidden and will not be repeated until it is checked.`,
+    'not-deleted': `${name}: the deletion did not happen, so it is still there. Delete it again if you still want it gone.`,
+    unconfirmed: `${name}: deletion could not be confirmed. It is shown again if it still exists; use Check again or Keep in Calendar.`,
     'retry-later': `${name}: deletion will finish when the phone is unlocked and Alpha is open.`,
   }[status];
   return { id: record.id, label: name, kind: record.target.kind, target: record.target, status, message };
@@ -251,17 +282,21 @@ async function setPhase(store: PendingDeletionStore, id: string, from: DeletionP
   });
 }
 
-/** Apply a readback to a record that may already have been dispatched. Never dispatches. */
+/**
+ * Apply a readback to a record that has been dispatched. Never dispatches: provider grants are
+ * single use, so a second dispatch could only fail and would misreport the result.
+ */
 async function resolveReadback(store: PendingDeletionStore, provider: DeletionProvider, record: PendingDeletion, readback: ReadbackOutcome): Promise<DeletionReport | undefined> {
   if (readback === 'absent') { await remove(store, record.id, record.phase); await settle(provider, record, false); return report(record, 'deleted'); }
   if (readback === 'changed') { await remove(store, record.id, record.phase); await settle(provider, record, true); return report(record, 'kept-changed'); }
-  if (readback === 'present' && record.attempts < MAX_DISPATCHES) {
-    // The exact reviewed revision is still there, so no deletion happened. Re-arm one dispatch;
-    // the provider's revision guard makes a second effect impossible.
-    await setPhase(store, record.id, record.phase, 'pending');
-    return undefined;
-  }
-  if (record.phase === 'committing') await setPhase(store, record.id, 'committing', 'unknown');
+  // The exact reviewed revision is still there: no deletion happened. Show it again and say so.
+  if (readback === 'present') { await remove(store, record.id, record.phase); await settle(provider, record, true); return report(record, 'not-deleted'); }
+  if (record.phase !== 'committing') return undefined; // Already unknown and visible; Calendar lists it.
+  await setPhase(store, record.id, 'committing', 'unknown');
+  // An unsettled record stops suppressing alerts: if the reminder still exists it alerts again,
+  // and the engine drops alerts for a reminder that was cancelled.
+  const hold = deliveryHold(record);
+  if (hold) await provider.release(hold, true).catch(() => undefined);
   return report(record, 'unconfirmed');
 }
 
@@ -278,13 +313,7 @@ export async function commitDueDeletions(store: PendingDeletionStore, provider: 
     if (!record) continue;
     let outcome: CommitOutcome;
     try { outcome = await provider.commit(record); } catch { outcome = 'unknown'; }
-    if (outcome === 'deleted') {
-      let readback: ReadbackOutcome;
-      try { readback = await provider.readback(record); } catch { readback = 'unavailable'; }
-      // A successful provider result that reads back as still present is not a confirmed deletion.
-      const confirmed = await resolveReadback(store, provider, record, readback === 'present' ? 'unavailable' : readback);
-      if (confirmed) reports.push(confirmed);
-    } else if (outcome === 'conflict') {
+    if (outcome === 'conflict') {
       await remove(store, record.id, 'committing'); await settle(provider, record, true); reports.push(report(record, 'kept-changed'));
     } else if (outcome === 'permission-required') {
       await remove(store, record.id, 'committing'); await settle(provider, record, true); reports.push(report(record, 'kept-permission'));
@@ -292,11 +321,12 @@ export async function commitDueDeletions(store: PendingDeletionStore, provider: 
       // Known not dispatched (locked, not foreground). Keep the intent and the hold; retry later.
       await setPhase(store, record.id, 'committing', 'pending'); reports.push(report(record, 'retry-later'));
     } else {
-      // Read back at once: a vanished target is confirmed and a changed one was never deleted
-      // (the dispatch is bound to the exact revision). An exact match stays unknown, not redispatched.
+      // 'deleted' and 'unknown' are both settled by an immediate readback: a vanished target is
+      // confirmed, a changed one was never deleted (the dispatch is bound to the exact revision),
+      // and an exact match means the deletion did not happen. Nothing is dispatched again.
       let readback: ReadbackOutcome;
       try { readback = await provider.readback(record); } catch { readback = 'unavailable'; }
-      const resolved = await resolveReadback(store, provider, record, readback === 'present' ? 'unavailable' : readback);
+      const resolved = await resolveReadback(store, provider, record, readback);
       if (resolved) reports.push(resolved);
     }
   }
@@ -305,13 +335,16 @@ export async function commitDueDeletions(store: PendingDeletionStore, provider: 
 
 /**
  * Restart and resume reconciliation: restore suspended delivery for every live reminder intent,
- * release holds left by a completed Undo, read back interrupted dispatches, then commit what expired.
+ * release holds left by a completed Undo or an unknown outcome, read back interrupted and unknown
+ * dispatches, then commit what expired. Also serves Calendar's "Check again".
  */
 export async function reconcileDeletions(store: PendingDeletionStore, provider: DeletionProvider, now: number, elapsed?: (record: PendingDeletion) => boolean): Promise<DeletionReport[]> {
   const reports: DeletionReport[] = [];
   const records = await pendingDeletions(store);
-  const ids = new Set(records.map(row => row.id));
-  for (const record of records) if (record.target.kind === 'reminder') await provider.hold(record).catch(() => undefined);
+  // An unknown record never suppresses delivery: it is visible and no longer retried.
+  const live = records.filter(row => row.phase !== 'unknown');
+  const ids = new Set(live.map(row => row.id));
+  for (const record of live) if (record.target.kind === 'reminder') await provider.hold(record).catch(() => undefined);
   try {
     for (const hold of await provider.holds()) if (!ids.has(hold.id)) await provider.release(hold, true).catch(() => undefined);
   } catch { /* Holds stay until the next reconciliation; delivery remains suspended, never lost. */ }
@@ -326,10 +359,14 @@ export async function reconcileDeletions(store: PendingDeletionStore, provider: 
   return reports;
 }
 
-/** Targets hidden from Calendar while their deletion is pending, dispatched or unconfirmed. */
+/**
+ * Targets hidden while their deletion is pending or being dispatched. An unknown outcome is not
+ * hidden: the item is shown if it still exists, and Calendar lists it as unconfirmed.
+ */
 export function hiddenDeletionTargets(records: PendingDeletion[]) {
   const events = new Set<string>(), series = new Set<string>(), occurrences = new Set<string>(), reminders = new Set<string>();
   for (const record of records) {
+    if (record.phase === 'unknown') continue;
     const target = record.target;
     if (target.kind === 'reminder') reminders.add(target.target.reminderId);
     else if (target.scope === 'series') series.add(target.seriesId!);

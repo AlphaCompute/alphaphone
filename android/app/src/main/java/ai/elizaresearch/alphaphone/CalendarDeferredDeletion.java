@@ -21,9 +21,12 @@ import org.json.JSONObject;
  *
  * The shared Calendar plugin's remove() couples its review dialog to an immediate provider delete,
  * so it cannot delay the deletion. This product class splits the two: a confirmed review stores a
- * single-use grant bound to the exact provider revision; commit consumes the grant (saved before
- * the provider call, so it can never run twice) and applies the same atomic assertions as the
- * shared guard before deleting. The canonical revision fields and hash match
+ * single-use grant bound to the exact provider revision. Commit first checks the grant and reads
+ * the event without spending the grant, so a provider that cannot be read returns "unavailable"
+ * with the grant intact and the renderer retries later. Only then is the grant consumed (saved
+ * before the provider call, so it can never run twice) and the same atomic assertions as the
+ * shared guard applied before deleting. A missing grant is "unknown", never "conflict": the
+ * renderer settles it by readback and never reports an unchanged event as changed. The canonical revision fields and hash match
  * ai.eliza.plugins.calendar.CalendarEventGuard (checked by test/calendar-deletion-undo.test.mjs),
  * so a revision from the shared inspect() is accepted here. Scope is the same as the shared remove:
  * a direct, non-repeating Alpha Phone local event with no guests or alarms. Repeating events and
@@ -92,6 +95,11 @@ final class CalendarDeferredDeletion {
   save(context, grants);
   return grant;
  }
+ /** Read a grant without spending it. */
+ static synchronized JSONObject peek(Context context, String grant) {
+  if (grant == null || !grant.matches("[0-9a-f-]{36}")) return null;
+  return grants(context).optJSONObject(grant);
+ }
  /** Remove and return a grant. It is single use: a crash after this never allows a second commit. */
  static synchronized JSONObject consume(Context context, String grant) {
   if (grant == null || !grant.matches("[0-9a-f-]{36}")) return null;
@@ -102,26 +110,55 @@ final class CalendarDeferredDeletion {
  }
  static synchronized void revoke(Context context, String grant) { consume(context, grant); }
 
- /** Statuses: deleted, conflict, unknown. Readback after the batch confirms the provider row is gone. */
- static String commit(Context context, JSONObject grant) {
+ /**
+  * Statuses: deleted, conflict, unavailable (nothing dispatched, grant kept), unknown.
+  * Readback after the batch confirms the provider row is gone.
+  */
+ static String commit(Context context, String grantId) {
+  JSONObject grant = peek(context, grantId);
+  // Already used, revoked or expired: the readback decides, never a guessed "changed".
+  if (grant == null) return "unknown";
   ContentResolver resolver = context.getContentResolver();
+  final long id, calendarId;
   final Snapshot snapshot;
-  try { snapshot = read(resolver, Long.parseLong(grant.optString("id")), Long.parseLong(grant.optString("calendarId"))); }
-  catch (Exception unavailable) { return "unknown"; }
-  if (snapshot == null || snapshot.deleted()) return "deleted";
-  if (!snapshot.revision.equals(grant.optString("revision"))) return "conflict";
+  try { id = Long.parseLong(grant.optString("id")); calendarId = Long.parseLong(grant.optString("calendarId")); }
+  catch (NumberFormatException damaged) { consume(context, grantId); return "unknown"; }
+  try { snapshot = read(resolver, id, calendarId); }
+  catch (Exception unavailable) { return "unavailable"; }
+  if (snapshot == null) {
+   String presence = presence(resolver, id, calendarId);
+   if ("unavailable".equals(presence)) return "unavailable";
+   consume(context, grantId);
+   // An event moved to another calendar still exists: it was kept, not deleted.
+   return "absent".equals(presence) ? "deleted" : "moved".equals(presence) ? "conflict" : "unknown";
+  }
+  if (snapshot.deleted()) { consume(context, grantId); return "deleted"; }
+  if (!snapshot.revision.equals(grant.optString("revision"))) { consume(context, grantId); return "conflict"; }
+  if (consume(context, grantId) == null) return "unknown";
   try {
    resolver.applyBatch(CalendarContract.AUTHORITY, snapshot.deletion());
    return "absent".equals(readback(context, snapshot.id, snapshot.calendarId, snapshot.revision)) ? "deleted" : "unknown";
   } catch (android.content.OperationApplicationException changed) { return "conflict"; }
   catch (Exception uncertain) { return "unknown"; }
  }
- /** Statuses: absent, present (exact revision), changed, unavailable. Never mutates. */
+ /** Statuses: absent, present (exact revision), changed (edited or moved), unavailable. Never mutates. */
  static String readback(Context context, long id, long calendarId, String revision) {
   try {
    Snapshot snapshot = read(context.getContentResolver(), id, calendarId);
-   if (snapshot == null || snapshot.deleted()) return "absent";
+   if (snapshot == null) { String presence = presence(context.getContentResolver(), id, calendarId); return "moved".equals(presence) ? "changed" : "absent".equals(presence) ? "absent" : "unavailable"; }
+   if (snapshot.deleted()) return "absent";
    return snapshot.revision.equals(revision) ? "present" : "changed";
+  } catch (Exception unavailable) { return "unavailable"; }
+ }
+ /**
+  * Tells a deleted row apart from one that read() rejected because it is now in another calendar.
+  * Statuses: absent, moved, orphaned (the row is there but its calendar row is not), unavailable.
+  */
+ static String presence(ContentResolver resolver, long id, long calendarId) {
+  try {
+   ContentValues row = values(resolver, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id), new String[]{"calendar_id", "deleted"});
+   if (row == null || number(row, "deleted") != 0) return "absent";
+   return number(row, "calendar_id") != calendarId ? "moved" : "orphaned";
   } catch (Exception unavailable) { return "unavailable"; }
  }
 

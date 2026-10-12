@@ -449,6 +449,15 @@ export function installCalendarAdapter(Component: any, views: Bag) {
         finally{currentOwner.calendarSaving=false;if(owner===currentOwner)api.set({});}
       };
     }
+    // Policy P-30: deletions whose outcome could not be confirmed are listed here, never hidden
+    // indefinitely. Check again reads the provider back; Keep stops tracking without deleting.
+    out.deletionUnconfirmed=deletionUndo().unconfirmed().map(record=>({
+      text:`Deletion of “${record.label||(record.target.kind==='reminder'?'Reminder':'Untitled event')}” is unconfirmed. It is shown if it still exists.`,
+      check:async()=>{const shell=owner;if(!shell)return;await reconcileDeletions(shell);if(owner===shell&&deletionUndo().unconfirmed().some(row=>row.id===record.id))shell.toast('Still unconfirmed. Calendar could not read it back; try again later.');},
+      keep:async()=>{const shell=owner;if(!shell)return;try{await deletionUndo().keep(record.id);if(owner===shell)shell.toast('Kept. Nothing more will be deleted for it.');}catch{if(owner===shell)shell.toast('Could not update. Try again.');}},
+      checkLabel:`Check deletion of ${record.label||'item'} again`,keepLabel:`Keep ${record.label||'item'} and stop checking`,
+    }));
+    out.hasDeletionUnconfirmed=out.deletionUnconfirmed.length>0;
     return out;
   };
 }

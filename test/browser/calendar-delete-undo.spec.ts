@@ -58,3 +58,36 @@ test('a deleted repeating series is reviewed once and held for Undo',async({page
  expect(await titles(page)).toEqual(['Daily standup']);
  await expect.poll(()=>titles(page),{timeout:20_000}).toEqual([]);
 });
+
+test('an event moved to another calendar during the window is kept, not reported as deleted',async({page})=>{
+ await create(page,'Moved during undo');await reviewDelete(page);
+ await page.evaluate(async()=>{const {calendarDocument}=await import('/src/browser/calendar-store.ts');await calendarDocument.edit(()=>({sourceRevision:'',events:[]}) as any,(data:any)=>{data.events[0].calendarId='elsewhere';});});
+ await expect(page.getByText('Moved during undo changed after you deleted it, so it was kept. Review it and delete again if needed.',{exact:true})).toBeVisible({timeout:20_000});
+ expect(await titles(page)).toEqual(['Moved during undo']);expect(await pending(page)).toEqual([]);
+});
+
+test('an unconfirmed deletion is shown again with Check again and Keep, and Keep stops tracking it',async({page})=>{
+ test.setTimeout(90_000);
+ await create(page,'Unconfirmed delete');
+ // The provider loses the result of the commit and cannot read the event back.
+ await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');(window as any).readbackUnavailable=true;
+  BrowserCalendar.prototype.commitDeletion=async function(){throw Error('provider result lost');};
+  const readback=BrowserCalendar.prototype.deletionReadback;BrowserCalendar.prototype.deletionReadback=async function(input:any){return (window as any).readbackUnavailable?{status:'unavailable'}:readback.call(this,input);};});
+ await reviewDelete(page);
+ await expect(page.getByText('Unconfirmed delete: deletion could not be confirmed. It is shown again if it still exists; use Check again or Keep in Calendar.',{exact:true})).toBeVisible({timeout:20_000});
+ await expect(page.getByRole('status').filter({hasText:'Deletion of “Unconfirmed delete” is unconfirmed. It is shown if it still exists.'})).toBeVisible();
+ expect(await pending(page)).toEqual(['unknown']);
+ await expect(page.getByRole('button',{name:/^Unconfirmed delete,/})).toBeVisible();
+ await page.evaluate(()=>{(window as any).readbackUnavailable=false;});
+ await button(page,'Check deletion of Unconfirmed delete again').click();
+ await expect(page.getByText('Unconfirmed delete: the deletion did not happen, so it is still there. Delete it again if you still want it gone.',{exact:true})).toBeVisible();
+ expect(await pending(page)).toEqual([]);
+ await page.evaluate(()=>{(window as any).readbackUnavailable=true;});
+ await page.getByRole('button',{name:/^Unconfirmed delete,/}).click();
+ await reviewDelete(page);
+ await expect(page.getByRole('status').filter({hasText:'Deletion of “Unconfirmed delete” is unconfirmed. It is shown if it still exists.'})).toBeVisible({timeout:20_000});
+ await button(page,'Keep Unconfirmed delete and stop checking').click();
+ await expect(page.getByText('Kept. Nothing more will be deleted for it.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('status').filter({hasText:'is unconfirmed'})).toHaveCount(0);
+ expect(await pending(page)).toEqual([]);expect(await titles(page)).toEqual(['Unconfirmed delete']);
+});

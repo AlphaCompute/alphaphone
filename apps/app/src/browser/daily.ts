@@ -8,6 +8,7 @@ import type { Reminder, ClockRequest } from '../daily';
 import { revision } from './revision';
 import {notificationState} from './notification-store';
 import {reminderDocument} from './reminder-store';
+import {BrowserReviews} from './review';
 type Row=Reminder & {revision:string};
 type State={sourceRevision:string;reminders:Row[];deliveryHolds?:Record<string,string>;receipts?:Record<string,{binding:string;result:ReminderResult|ReminderCreateResult}>};
 const initial=():State=>({sourceRevision:revision(),reminders:[]});
@@ -59,6 +60,12 @@ export class BrowserDaily extends WebPlugin {
   }
 
   async cancelReminder(input:{id:string;target:ReminderTarget;operationId:string;bindingHash:string}){if(input.target?.reminderId!==input.id)throw Error('Reviewed reminder target required.');const response=await this.operateReminder({...input,operation:{type:'reminder_cancel',target:input.target}});return {status:response.status==='succeeded'?'cancelled':'unknown',id:input.id};}
+  private reviews=new BrowserReviews();
+  /** Policy P-30: the same owned review dialog Calendar events use. Deletes nothing. */
+  async reviewReminderDeletion(input:{id:string;title:string;details:string}){
+    const title=String(input.title||'Reminder').slice(0,200),details=String(input.details||'').slice(0,1000);
+    return {status:await this.reviews.confirm('delete-reminder-'+String(input.id).slice(0,200),'Delete reminder?',`${title}\n\n${details}`,'Delete reminder')?'reviewed' as const:'cancelled' as const};
+  }
   /** Suspend delivery while a reviewed deletion can still be undone. A held alert is delivered late on release. */
   async holdReminderDelivery(input:{id:string;holdId:string}){
     if(!/^[A-Za-z0-9_:.-]{1,200}$/.test(input.holdId)||typeof input.id!=='string'||!input.id)throw Error('Invalid reminder hold.');

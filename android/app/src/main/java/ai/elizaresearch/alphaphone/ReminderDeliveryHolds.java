@@ -13,6 +13,14 @@ import org.json.JSONObject;
  * A hold names the pending-deletion record that owns it. An alarm that fires during a hold is
  * recorded, not posted; releasing the hold after Undo (or a kept reminder) delivers it late,
  * and releasing it after a confirmed deletion drops it. Holds survive process death and reboot.
+ * A notification already posted before the hold is left in place: cancelling it would make Undo
+ * lossy, because the shared engine does not post a reminder that is already marked posted. The
+ * engine's own cancellation removes it when the deletion is confirmed.
+ * Late redelivery goes through the shared engine's deliver(), which posts only a reminder that is
+ * still scheduled with the same occurrence id and drops a cancelled or superseded one. Absorbing
+ * an alarm does not skip scheduling the next occurrence of a repeating reminder: the engine does
+ * not schedule it on delivery but on the user's decision. That is read from source
+ * (vendor ReminderStore.deliver), not exercised on a device.
  * The renderer reconciles holds against its durable pending-deletion records on every start.
  */
 final class ReminderDeliveryHolds {
@@ -51,7 +59,10 @@ final class ReminderDeliveryHolds {
    String value = occurrence == null ? "" : occurrence;
    boolean seen = false;
    for (int i = 0; i < deferred.length(); i++) if (value.equals(deferred.optString(i))) seen = true;
-   if (!seen && deferred.length() < MAXIMUM_DEFERRED) deferred.put(value);
+   if (seen) return true;
+   // A full record cannot keep another alert for late delivery: deliver it now instead of losing it.
+   if (deferred.length() >= MAXIMUM_DEFERRED) return false;
+   deferred.put(value);
    hold.put("deferred", deferred);
    write(context, holds);
    return true;

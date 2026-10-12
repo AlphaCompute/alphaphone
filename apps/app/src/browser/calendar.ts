@@ -232,10 +232,13 @@ export class BrowserCalendar extends WebPlugin {
     if(result.status!=='reviewed')return result;
     return {status:'reviewed',grant,scope,invitation,revision:scope==='series'?series!.revision:input.revision,...(scope==='event'?{}:{seriesId:reviewed.seriesId}),...(scope==='occurrence'?{occurrenceBegin:reviewed.occurrenceBegin}:{})};
   }
-  /** Revision-guarded deletion without a second dialog; only an unrevoked review grant allows it. */
+  /**
+   * Revision-guarded deletion without a second dialog; only an unrevoked review grant allows it.
+   * A missing grant (already used, revoked) is 'unknown', settled by readback, never 'conflict'.
+   */
   async commitDeletion(input:{grant:string}) {
     return calendarDocument.edit(initial,data=>{
-      const grant=data.deletionGrants?.[input.grant];if(!grant)return {status:'conflict'};
+      const grant=data.deletionGrants?.[input.grant];if(!grant)return {status:'unknown'};
       delete data.deletionGrants![input.grant];
       const state=this.deletionState(data.events,grant);
       if(state==='absent')return {status:'deleted'};
@@ -257,7 +260,9 @@ export class BrowserCalendar extends WebPlugin {
   private deletionState(events:EventRow[],grant:DeletionGrant):'absent'|'present'|'changed'{
     if(grant.scope==='series'){const series=events.find(row=>row.id===grant.seriesId&&!row.seriesId);return !series?'absent':series.revision===grant.revision?'present':'changed';}
     const row=calendarRecord(events,grant.id);
-    if(!row||row.calendarId!==grant.calendarId)return 'absent';
+    if(!row)return 'absent';
+    // Moved to another calendar: the event still exists, so it was kept, not deleted.
+    if(row.calendarId!==grant.calendarId)return 'changed';
     // Another occurrence's deletion changes the series revision; an occurrence is matched by its own fields.
     if(grant.scope==='occurrence')return matches(row,{...grant.expected,revision:undefined})?'present':'changed';
     return row.revision===grant.revision?'present':'changed';

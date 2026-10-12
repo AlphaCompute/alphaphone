@@ -194,12 +194,16 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
    });
   }catch(Exception unavailable){reviewingDeletion.set(false);c.resolve(status("unavailable"));}
  }
- /** Consumes the grant before the provider call. Statuses: deleted, conflict, permission-required, unknown. */
+ /**
+  * Consumes the grant only after the provider was read, right before the provider call.
+  * Statuses: deleted, conflict, permission-required, unavailable (locked, not in the foreground or
+  * provider unreadable: nothing dispatched and the grant kept, so the renderer retries later), unknown.
+  */
  @PluginMethod public void commitDeletion(PluginCall c){
   if(!granted()){c.resolve(status("permission-required"));return;}
-  org.json.JSONObject grant=CalendarDeferredDeletion.consume(getContext(),c.getString("grant",""));
-  if(grant==null){c.resolve(status("conflict"));return;}
-  c.resolve(status(CalendarDeferredDeletion.commit(getContext(),grant)));
+  if(!foreground()||!unlocked()){c.resolve(status("unavailable"));return;}
+  try{c.resolve(status(CalendarDeferredDeletion.commit(getContext(),c.getString("grant",""))));}
+  catch(RuntimeException uncertain){c.resolve(status("unknown"));}
  }
  /** Undo inside the window: the provider event was never touched. */
  @PluginMethod public void revokeDeletion(PluginCall c){CalendarDeferredDeletion.revoke(getContext(),c.getString("grant",""));c.resolve(status("revoked"));}

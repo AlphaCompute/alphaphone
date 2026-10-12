@@ -107,6 +107,8 @@ export const DailyApps = registerPlugin<{
     message?: string;
   }>;
   selectedReminder(options:{id:string}):Promise<ReminderTarget>;
+  /** Policy P-30: the single reviewed confirmation for a reminder deletion with Undo. Deletes nothing. */
+  reviewReminderDeletion(options:{id:string;title:string;details:string}):Promise<{status:'reviewed'|'cancelled'|'unavailable'|'busy'}>;
   /** Policy P-30: suspend and resume delivery while a reviewed deletion can be undone. */
   holdReminderDelivery(options:{id:string;holdId:string}):Promise<{status:string}>;
   releaseReminderDelivery(options:{id:string;holdId:string;redeliver:boolean}):Promise<{status:string}>;

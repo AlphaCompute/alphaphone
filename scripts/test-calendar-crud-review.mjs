@@ -9,15 +9,15 @@ import {deletionReviewText,hiddenDeletionTargets,UNDO_WINDOW_MS} from '../apps/a
 import {createDeletionUndo,deletionProvider} from '../apps/app/src/runtime/deletion-undo-core.ts';
 const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);tomorrow.setHours(12,0,0,0);
 const event={id:'71',calendarId:'19',title:'Reviewed local fixture',body:'Original',location:'Here',begin:tomorrow.getTime(),end:tomorrow.getTime()+3600000,allDay:false,recurring:false};
-let exists=true,reviewStatus='cancelled',commitStatus='deleted',inspectStatus='ready',holdInspect,listReads=0;
+let readbackDown=false,exists=true,reviewStatus='cancelled',commitStatus='deleted',inspectStatus='ready',holdInspect,listReads=0;
 const calendarEvents=new EventTarget();
 const calls=[],toasts=[],opened=[],forgotten=[];
-const calendar={pendingCreations:async()=>({status:'ready',creations:[]}),list:async()=>{listReads++;return {status:'ready',calendars:[{id:'19',name:'On this phone',local:true,account:'Alpha Phone',writable:true}],events:exists?[event]:[]};},inspect:async args=>{calls.push(['inspect',structuredClone(args)]);if(holdInspect)return holdInspect;return {status:inspectStatus,revision:'reviewed-revision'};},remove:async()=>{throw Error('Calendar must not delete without the Undo window');},reviewDeletion:async args=>{calls.push(['review',structuredClone(args)]);return reviewStatus==='reviewed'?{status:'reviewed',grant:'grant-'+calls.length,scope:'event',invitation:false,revision:args.revision}:{status:reviewStatus};},commitDeletion:async args=>{calls.push(['commit',structuredClone(args)]);if(commitStatus==='deleted')exists=false;return {status:commitStatus};},revokeDeletion:async args=>{calls.push(['revoke',structuredClone(args)]);return {status:'revoked'};},deletionReadback:async()=>({status:exists?'present':'absent'}),open:async()=>calls.push(['open']),requestAccess:async()=>({status:'granted'}),save:async args=>{calls.push(['save',structuredClone(args)]);return {status:'conflict'};}};
+const calendar={pendingCreations:async()=>({status:'ready',creations:[]}),list:async()=>{listReads++;return {status:'ready',calendars:[{id:'19',name:'On this phone',local:true,account:'Alpha Phone',writable:true}],events:exists?[event]:[]};},inspect:async args=>{calls.push(['inspect',structuredClone(args)]);if(holdInspect)return holdInspect;return {status:inspectStatus,revision:'reviewed-revision'};},remove:async()=>{throw Error('Calendar must not delete without the Undo window');},reviewDeletion:async args=>{calls.push(['review',structuredClone(args)]);return reviewStatus==='reviewed'?{status:'reviewed',grant:'grant-'+calls.length,scope:'event',invitation:false,revision:args.revision}:{status:reviewStatus};},commitDeletion:async args=>{calls.push(['commit',structuredClone(args)]);if(commitStatus==='deleted')exists=false;return {status:commitStatus};},revokeDeletion:async args=>{calls.push(['revoke',structuredClone(args)]);return {status:'revoked'};},deletionReadback:async()=>({status:readbackDown?'unavailable':exists?'present':'absent'}),open:async()=>calls.push(['open']),requestAccess:async()=>({status:'granted'}),save:async args=>{calls.push(['save',structuredClone(args)]);return {status:'conflict'};}};
 let saved=null,now=Date.now();const timers=[];
 const store={read:async()=>saved===null?null:JSON.parse(saved),compareExchange:async(expected,next)=>{if(JSON.stringify(expected)!==(saved??'null'))return false;saved=next===null?null:JSON.stringify(next);return true;}};
 const clock={now:()=>now,setTimeout:(fn,ms)=>{const t={at:now+ms,fn};timers.push(t);return t;},clearTimeout:t=>{const i=timers.indexOf(t);if(i>=0)timers.splice(i,1);}};
 const noReminders={holdReminderDelivery:async()=>({status:'held'}),releaseReminderDelivery:async()=>({status:'released'}),reminderDeliveryHolds:async()=>({holds:[]}),operateReminder:async()=>{throw Error('No reminder in this fixture');},reminderOperationReceipt:async()=>({status:'unknown'}),listReminders:async()=>({reminders:[]})};
-const undo=createDeletionUndo(store,deletionProvider(calendar,noReminders,{pending:async()=>({}),retain:async()=>{},acknowledge:async()=>{}}),clock);
+const undo=createDeletionUndo(store,deletionProvider(calendar,noReminders,{pending:async()=>({}),retain:async()=>{},acknowledge:async()=>{},discard:async()=>{}}),clock);
 let state={day:1,month:null,events:[]};
 const views={calendar:{render:()=>({events:[],hours:[],week:[],mdays:[],ev:{},f:state.form?{cals:[]}:null})}};
 const api={now:Date.now(),open:(view,patch)=>opened.push([view,structuredClone(patch)]),isActive:()=>true,track:()=>'',kx:()=>0,toast:t=>toasts.push(t),set:patch=>Object.assign(state,patch),get:()=>state};
@@ -45,11 +45,14 @@ assert.deepEqual(forgotten,[],'Cancelled, stale, external and undone deletions k
 // Expiry commits once with the grant and reads the provider back.
 await select().ev.del();assert.equal(undo.records().length,1);now+=UNDO_WINDOW_MS;await timers.shift().fn();await undo.commitDue();
 assert.equal(deletes(),1);assert.equal(exists,false);assert.deepEqual(undo.records(),[]);assert.deepEqual(forgotten,[['event','71']],'A confirmed deletion drops only that event link');
-// Unknown outcome: hidden, not repeated, resolved by readback.
+// Unknown outcome with no readback: listed as unconfirmed, not repeated, resolved by readback.
 const reload=async()=>{calendarEvents.dispatchEvent(new Event('alpha:calendar-committed'));await new Promise(r=>setTimeout(r,0));};
-exists=true;await reload();await select().ev.del();commitStatus='unknown';exists=true;now+=UNDO_WINDOW_MS;await undo.commitDue();commitStatus='deleted';
-assert.equal(undo.records()[0].phase,'unknown');assert.equal(deletes(),2);await undo.commitDue();assert.equal(deletes(),2,'Unknown outcome is not redispatched');
-exists=false;await undo.reconcile();assert.deepEqual(undo.records(),[]);assert.equal(deletes(),2);
+exists=true;await reload();await select().ev.del();commitStatus='unknown';readbackDown=true;exists=true;now+=UNDO_WINDOW_MS;await undo.commitDue();commitStatus='deleted';
+assert.equal(undo.records()[0].phase,'unknown');assert.equal(undo.unconfirmed().length,1);assert.equal(deletes(),2);await undo.commitDue();assert.equal(deletes(),2,'Unknown outcome is not redispatched');
+readbackDown=false;exists=false;await undo.reconcile();assert.deepEqual(undo.records(),[]);assert.equal(deletes(),2);
+// A dispatch whose provider readback still shows the reviewed event is "not deleted", never redispatched.
+exists=true;await reload();await select().ev.del();commitStatus='unknown';now+=UNDO_WINDOW_MS;await undo.commitDue();commitStatus='deleted';
+assert.deepEqual(undo.records(),[]);assert.equal(deletes(),3);assert.match(toasts.at(-1)||'',/deletion did not happen/);
 exists=true;await reload();
 const draft={title:'Unsent calendar draft',notes:'Keep this text',cal:'native:local'},beforeRefresh=listReads;state.form=draft;
 exists=true;calendarEvents.dispatchEvent(new Event('alpha:calendar-committed'));await new Promise(r=>setTimeout(r,0));

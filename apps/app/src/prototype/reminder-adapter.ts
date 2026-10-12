@@ -46,11 +46,14 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
       if(!pending.retained||!pending.target){if(explicit)shell.toast('The original reminder changed. Its notification link is retained without opening a replacement.');return;}
       const result=await DailyApps.listReminders();
       if(!current())return;
-      const selected=result.reminders.find(row=>sameTarget(row.target,pending.target));
+      // A reminder whose reviewed deletion is pending Undo is not reopened from its notification.
+      const hidden=hiddenDeletionTargets(deletionUndo().records());
+      const visibleReminders=result.reminders.filter(row=>!hidden.reminders.has(row.id));
+      const selected=visibleReminders.find(row=>sameTarget(row.target,pending.target));
       if(!selected){if(explicit)shell.toast('The exact reminder is unavailable. Its notification link is retained.');return;}
       const confirmation=await DailyApps.pendingReminderTap();
       if(!current()||confirmation.token!==pending.token||!confirmation.retained||!sameTarget(confirmation.target,pending.target))return;
-      const rows=[...(shell.nativeCalendarRows||[]),...events(result.reminders)];
+      const rows=[...(shell.nativeCalendarRows||[]),...events(visibleReminders)];
       const target=rows.find(row=>row.alphaReminderId===selected.id&&sameTarget(row.reminderTarget,pending.target));
       if(!target)return;
       shell.openView('calendar',{open:target.id,day:target.off,openDay:target.off,events:rows});
@@ -435,7 +438,8 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
           if(!stillSelected())return;
           // Policy P-30: one review, then a ten-second Undo. Its alert is paused at once.
           const scope=event.reminderRecurrence?'series' as const:'reminder' as const;
-          if(!window.confirm(`Delete “${event.title||'Reminder'}”?\n\n${deletionReviewText({kind:'reminder',scope})}`))return;
+          const reviewed=await DailyApps.reviewReminderDeletion({id:event.alphaReminderId,title:event.title||'Reminder',details:deletionReviewText({kind:'reminder',scope})});
+          if(reviewed.status!=='reviewed'){if(reviewed.status!=='cancelled'&&owner===deleteOwner&&deleteOwner.live)api.toast('Reminder review unavailable. Nothing was deleted.');return;}
           if(!stillSelected())return;
           const held=await deletionUndo().request({label:event.title||'Reminder',target:{kind:'reminder',target:structuredClone(renderedTarget),scope,operationId:crypto.randomUUID()}});
           if(held.status!=='pending'){api.toast(held.status==='duplicate'?'This reminder is already waiting to be deleted.':'Too many deletions are waiting. Try again in a few seconds.');return;}
