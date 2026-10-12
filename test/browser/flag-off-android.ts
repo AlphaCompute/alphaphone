@@ -16,6 +16,8 @@ export interface FlagOffMessage { externalId: string; threadId: string; subject:
 export interface FlagOffAccount { connectionId: string; email: string; connected: boolean; messages: FlagOffMessage[] }
 export interface FlagOffCalendar { id: string; name?: string; account: string }
 export interface FlagOffEvent { id: string; calendarId: string; title: string; begin: number; end: number }
+/** A file the Android document picker offers, as the bytes the selected provider holds. */
+export interface FlagOffDocument { name: string; mimeType: string; text: string }
 export interface FlagOffOptions {
   /** Managed Gmail accounts behind the synthetic Eliza Cloud. Omitted: the account list is refused. */
   accounts?: FlagOffAccount[];
@@ -25,6 +27,10 @@ export interface FlagOffOptions {
   digests?: 'native' | 'renderer';
   /** Device calendar permission and provider rows. Omitted: the calendar read is not granted. */
   calendar?: { access: 'granted' | 'not-granted'; request?: 'granted' | 'denied'; calendars: FlagOffCalendar[]; events: FlagOffEvent[] };
+  /** The Android document picker (DailyApps) and attachment port (AlphaMailAttachments): picking
+   * selects this document, and a retained source reference reopens only its exact bytes. Omitted:
+   * neither is offered. */
+  document?: FlagOffDocument;
 }
 export const AGENT_NAME = 'Alpha';
 
@@ -38,7 +44,9 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
     const agent: { conversations: { id: string; title: string }[]; history: Record<string, any[]> } = kept('flag-off-agent', { conversations: [], history: {} });
     // So do the results the agent produced and what the Android result inbox committed.
     const produced: { results: any[]; acked: number; acks: number[]; inbox: any[] } = kept('flag-off-digests', { results: [], acked: 0, acks: [], inbox: [] });
-    const persist = () => { sessionStorage.setItem('flag-off-slots', JSON.stringify(slots)); sessionStorage.setItem('flag-off-agent', JSON.stringify(agent)); sessionStorage.setItem('flag-off-digests', JSON.stringify({ results: f.digests.results, acked: f.digests.acked, acks: f.digests.acks, inbox: f.digests.inbox })); };
+    // Source references Android retained for picked documents: reference -> the bytes' SHA-256.
+    const references: Record<string, string> = kept('flag-off-references', {});
+    const persist = () => { sessionStorage.setItem('flag-off-references', JSON.stringify(references)); sessionStorage.setItem('flag-off-slots', JSON.stringify(slots)); sessionStorage.setItem('flag-off-agent', JSON.stringify(agent)); sessionStorage.setItem('flag-off-digests', JSON.stringify({ results: f.digests.results, acked: f.digests.acked, acks: f.digests.acks, inbox: f.digests.inbox })); };
     const f = w.flagOff = {
       calls: [] as string[], unexpected: [] as string[], posts: [] as string[], replies: [] as string[], streams: 0,
       mail: { accounts: structuredClone(options.accounts ?? null) as any[] | null, accountReads: 0, searches: 0, reads: [] as string[], prepares: [] as any[], dispatches: [] as any[], operations: {} as Record<string, any>, sent: [] as string[] },
@@ -46,6 +54,8 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
       // the renderer route; `inbox` is what the Android result inbox has committed for the native one.
       digests: { ...produced, pages: 0, syncs: 0, histories: 0, configured: [] as any[], runs: 0, refused: [] as string[] },
       calendar: { ...structuredClone(options.calendar ?? { access: 'not-granted', calendars: [], events: [] }), lists: 0, requests: 0 } as any,
+      // Picker requests, reads of the selected bytes, retained references and linked-source opens.
+      documents: { picks: [] as any[], reads: [] as string[], references, opened: [] as any[], forgotten: [] as string[] },
       emit: (plugin: string, event: string, value: unknown = {}) => { listeners.filter(l => l.plugin === plugin && l.event === event).forEach(l => l.callback(value)); },
       slots, persist: () => persist(),
     };
@@ -124,7 +134,8 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
     w.Capacitor = {
       PluginHeaders: [
         { name: 'DeviceApps', methods: promise(['buildInfo']) },
-        { name: 'DailyApps', methods: withListeners(['surfaceInfo', 'listReminders', 'pendingReminderTap']) },
+        { name: 'DailyApps', methods: withListeners(['surfaceInfo', 'listReminders', 'pendingReminderTap', ...(options.document ? ['perform', 'readSelected', 'forgetSelected', 'describeSelected'] : [])]) },
+        ...(options.document ? [{ name: 'AlphaMailAttachments', methods: promise(['readSelected', 'retainSourceReference', 'openSourceReference', 'cancel']) }] : []),
         { name: 'Agent', methods: withListeners(['getStatus', 'start', 'stop', 'configureCloudProvider', 'request', 'providerStatus', 'requestStream', 'cancelStream']) },
         { name: 'AlphaConnection', methods: promise(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
         { name: 'AlphaActionJournal', methods: promise(['list', 'get']) },
@@ -141,6 +152,19 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
         // No reminders are saved on this phone.
         if (plugin === 'DailyApps' && method === 'listReminders') return { reminders: [] };
         if (plugin === 'DailyApps' && method === 'pendingReminderTap') return {};
+        if (options.document && (plugin === 'DailyApps' || plugin === 'AlphaMailAttachments')) {
+          const doc = options.document, d = f.documents, bytes = new TextEncoder().encode(doc.text);
+          const selected = { status: 'selected', action: 'files', selectionId: 'selection-' + (d.picks.length || 1), name: doc.name, mimeType: doc.mimeType, uri: 'content://fixture.documents/' + encodeURIComponent(doc.name) };
+          if (plugin === 'DailyApps' && method === 'perform') { d.picks.push(structuredClone(input)); return input.action === 'files' ? selected : { status: 'cancelled' }; }
+          if (plugin === 'DailyApps' && method === 'describeSelected') return selected;
+          if (plugin === 'DailyApps' && method === 'readSelected') { d.reads.push('text:' + input.selectionId); return { status: 'read', text: doc.text, mimeType: doc.mimeType, bytes: bytes.length }; }
+          if (plugin === 'DailyApps' && method === 'forgetSelected') { d.forgotten.push(input.selectionId); return {}; }
+          if (plugin === 'AlphaMailAttachments' && method === 'readSelected') { d.reads.push('bytes:' + input.selectionId); let binary = ''; bytes.forEach(b => { binary += String.fromCharCode(b); }); return { name: doc.name, mimeType: doc.mimeType, dataBase64: btoa(binary), sha256: await sha(doc.text), size: bytes.length, sourceReferenceVersion: 1 }; }
+          if (plugin === 'AlphaMailAttachments' && method === 'retainSourceReference') { const reference = 'b1:' + crypto.randomUUID(); references[reference] = input.sha256; persist(); return { reference }; }
+          // Android reopens a reference only while the provider still holds the same bytes.
+          if (plugin === 'AlphaMailAttachments' && method === 'openSourceReference') { d.opened.push(structuredClone(input)); if (references[input.reference] !== input.sha256 || input.sha256 !== await sha(doc.text)) throw Error('Source changed'); return { message: 'Opened ' + doc.name + '.' }; }
+          if (plugin === 'AlphaMailAttachments' && method === 'cancel') return {};
+        }
         if (plugin === 'AlphaNotifications') return { permissionGranted: true, appEnabled: true };
         if (plugin === 'AlphaVoiceCloud') return { microphone: 'granted' };
         if (plugin === 'AlphaActionJournal') return method === 'list' ? { entries: [] } : { entry: null };
