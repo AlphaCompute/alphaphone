@@ -229,7 +229,7 @@ test('revocation to no plan stops refreshing, and a rejected sign-in stops the r
   const views = [];
   let checks = 0;
   new EntitlementRefresher({timers, entitlement: entitlementAt(NOW, NOW + 400000), onView: view => views.push(view),
-    check: async () => { checks++; return {view: {kind: 'inactive', planName: 'Synthetic plan', status: 'canceled', source: 'entitlement'}, entitlement: null}; }});
+    check: async () => { checks++; const entitlement = entitlementAt(NOW, NOW + 400000, 'canceled'); return {view: subscriptionView(entitlement), entitlement}; }});
   await timers.advance(3600000);
   assert.equal(checks, 1);
   assert.equal(views.at(-1).kind, 'inactive');
@@ -338,4 +338,15 @@ test('expired signed entitlement is unavailable billing, never expired sign-in',
   const token = await sign(claims({iat: NOW / 1000 - 600, exp: NOW / 1000 - 1}));
   const result = await checkEntitlement(source({token, keys: [jwk]}), exp, signal(), () => NOW);
   assert.deepEqual(result.view, {kind: 'unavailable', reason: 'invalid'});
+});
+
+test('cached tokens past their refresh hint cannot cause a zero-delay refresh loop', async () => {
+  const timers = fakeTimers();
+  const entitlement = entitlementAt(NOW - 300000, NOW + 100000);
+  let checks = 0;
+  const refresher = new EntitlementRefresher({timers, entitlement, onView: () => {}, check: async () => {checks++; return {view: subscriptionView(entitlement), entitlement};}});
+  await timers.advance(90000);
+  assert.equal(checks, 3);
+  refresher.stop();
+  for (const status of ['none', 'canceled']) assert.equal(nextRefreshDelay(entitlementAt(NOW, NOW + 100000, status), NOW, 0), null);
 });

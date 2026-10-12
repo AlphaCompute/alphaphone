@@ -271,8 +271,9 @@ export function nextRefreshDelay(entitlement: SubscriptionEntitlement | null, no
     const backoff = Math.min(REFRESH_RETRY_MAX_MS, REFRESH_RETRY_MIN_MS * 2 ** Math.min(failures - 1, 10));
     return backoff;
   }
-  if (!entitlement) return null;
-  return Math.max(0, entitlement.refreshAt - now);
+  if (!entitlement || entitlement.plan.status === 'none' || entitlement.plan.status === 'canceled') return null;
+  // Cloud may return the same cached token after its refresh hint. Never spin at zero delay.
+  return entitlement.refreshAt > now ? entitlement.refreshAt - now : REFRESH_RETRY_MIN_MS;
 }
 
 export interface RefresherTimers { setTimeout(handler: () => void, ms: number): unknown; clearTimeout(handle: unknown): void; now(): number }
