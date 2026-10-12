@@ -21,6 +21,7 @@ public final class ContactsCatalogInstrumentedTest {
   assertEquals(15,count);final int full=used;assertThrows(IllegalStateException.class,()->AlphaContactsCatalog.admitRecordBytes(full,record));
  }
  @Test public void ownedContactsHaveBoundedSearchAndExactEditSelection()throws Exception{
+  assertTrue("Disposable secondary user required",android.os.Process.myUid()/100000>0);
   android.app.Instrumentation inst=InstrumentationRegistry.getInstrumentation();Context context=inst.getTargetContext();
   String name="Alpha catalog fixture "+java.util.UUID.randomUUID();java.util.List<Uri> created=new java.util.ArrayList<>();
   inst.getUiAutomation().adoptShellPermissionIdentity(Manifest.permission.READ_CONTACTS,Manifest.permission.WRITE_CONTACTS);
