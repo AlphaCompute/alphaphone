@@ -42,7 +42,7 @@ final class CalendarScopedDeletionReview {
    CalendarEventGuard.ScopedDeletion snapshot=CalendarEventGuard.selectScopedDeletion(plugin.getContext().getContentResolver(),Long.parseLong(call.getString("id","")),Long.parseLong(call.getString("calendarId","")),call.getString("scope"),expected.getLong("begin"),expected.getLong("end"));
    if(!snapshot.matchesVisible(expected)){call.resolve(status("conflict"));return;}if(generation!=epoch||!foreground()||!granted(plugin.getContext())){call.resolve(status("unavailable"));return;}
    JSONObject target=target(snapshot);remember(target);JSObject result=status("ready");result.put("eventId",target.getString("eventId"));result.put("revision",snapshot.revision);result.put("sourceRevision",snapshot.sourceRevision);result.put("sourceId",Long.toString(snapshot.calendarId));result.put("scope",snapshot.scope);call.resolve(result);
-  }catch(Exception changed){call.resolve(status("conflict"));}});}catch(java.util.concurrent.RejectedExecutionException closed){call.resolve(status("unavailable"));}
+  }catch(UnsupportedOperationException external){call.resolve(status("external"));}catch(Exception changed){call.resolve(status("conflict"));}});}catch(java.util.concurrent.RejectedExecutionException closed){call.resolve(status("unavailable"));}
  }
  void review(PluginCall call,JSONObject operation){
   if(!granted(plugin.getContext())){call.resolve(status("permission-required"));return;}if(!foreground()){call.resolve(status("unavailable"));return;}if(!reviewing.compareAndSet(false,true)){call.resolve(status("busy"));return;}
