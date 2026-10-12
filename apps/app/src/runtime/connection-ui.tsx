@@ -359,7 +359,9 @@ async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
   signal.throwIfAborted();
   if(service!==account || (await cloudCredentialStore.read('production'))?.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
   update({residentSubscription:checked.view});
-  if(!subscriptionAllowsAgent(checked.view)){await stopLocalAgent();await retire();update({open:true,message:admissionRefusalMessage(checked.view)});return false;}
+  // Billing is a Cloud service decision. Never stop an existing local process or
+  // retire its durable work merely because a subscription check reports inactivity.
+  if(!subscriptionAllowsAgent(checked.view)){update({open:true,message:admissionRefusalMessage(checked.view)});return false;}
   // An admitted running resident under this same Cloud admission is reused, not stopped and rebound:
   // opening the assistant, or reconnecting one surface, must not retire the other surface's work.
   await bindResidentCloudProvider(account.identity.credentialId);

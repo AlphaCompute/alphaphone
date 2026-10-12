@@ -62,6 +62,14 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  private final ExecutorService worker = Executors.newSingleThreadExecutor();
  private final Handler main = new Handler(Looper.getMainLooper());
  private volatile boolean destroyed;
+ private volatile boolean foreground = true;
+ private final NativeReadEpoch accessGeneration = new NativeReadEpoch();
+ private final android.content.pm.PackageManager.OnPermissionsChangedListener permissionsChanged = uid -> {
+  if (uid == android.os.Process.myUid()) accessGeneration.incrementAndGet();
+ };
+ private final android.content.BroadcastReceiver screenOff = new android.content.BroadcastReceiver() {
+  @Override public void onReceive(Context context, Intent intent) { accessGeneration.incrementAndGet(); }
+ };
  private ActivityResultLauncher<IntentSenderRequest> review;
  private PluginCall pendingReview;
  private JSArray pendingItems;
@@ -78,6 +86,8 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  @Override public void load() {
   review = getActivity().registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), this::reviewed);
   lastScope = scopeName();
+  getContext().getPackageManager().addOnPermissionsChangeListener(permissionsChanged);
+  ContextCompat.registerReceiver(getContext(), screenOff, new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED);
  }
 
  /**
@@ -109,9 +119,29 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
   observer = null;
  }
 
- private void submit(PluginCall call, Runnable action) {
-  if (destroyed) { call.reject("Device library closed"); return; }
-  try { worker.execute(() -> { if (destroyed) call.reject("Device library closed"); else action.run(); }); }
+ @FunctionalInterface private interface ReadAction { void run(long generation, String scope); }
+ private String accessScope() {
+  return scopeName() + ":" + granted(PhotoLibraryAccess.READ_MEDIA_IMAGES) + ":" + granted(PhotoLibraryAccess.READ_MEDIA_VIDEO);
+ }
+ private boolean currentAccess(long generation, String scope) {
+  android.os.UserManager users = getContext().getSystemService(android.os.UserManager.class);
+  return !destroyed && foreground && accessGeneration.current(generation, scope, accessScope(), true)
+   && !"denied".equals(scopeName()) && !locked() && users != null && users.isUserUnlocked()
+   && (android.os.Build.VERSION.SDK_INT < 31 || users.isUserForeground()) && getActivity() != null && !getActivity().isFinishing() && !getActivity().isDestroyed();
+ }
+ private void publish(PluginCall call, JSObject result, long generation, String scope) {
+  main.post(() -> {
+   if (!currentAccess(generation, scope)) call.reject("Library access changed. Reopen Photos and reload.", "LIBRARY_STALE");
+   else call.resolve(result);
+  });
+ }
+ private void submit(PluginCall call, ReadAction action) {
+  final long generation = accessGeneration.get(); final String scope = accessScope();
+  if (!currentAccess(generation, scope)) { call.reject("Device library unavailable"); return; }
+  try { worker.execute(() -> {
+   if (!currentAccess(generation, scope)) call.reject("Device library access changed");
+   else action.run(generation, scope);
+  }); }
   catch (RejectedExecutionException stopped) { call.reject("Device library closed"); }
  }
 
@@ -130,7 +160,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
 
  private boolean locked() {
   KeyguardManager keyguard = (KeyguardManager) getContext().getSystemService(Context.KEYGUARD_SERVICE);
-  return keyguard != null && keyguard.isDeviceLocked();
+  return keyguard == null || keyguard.isDeviceLocked();
  }
 
  private JSObject scopeResult() {
@@ -171,8 +201,11 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
   call.resolve(out);
  }
 
+ @Override protected void handleOnPause() {
+  foreground = false; accessGeneration.incrementAndGet(); unwatch(); super.handleOnPause();
+ }
  @Override protected void handleOnResume() {
-  super.handleOnResume();
+  super.handleOnResume(); foreground = true; accessGeneration.incrementAndGet();
   // Grants can be downgraded or revoked in Settings while Alpha is in the background.
   String now = scopeName();
   if ("denied".equals(now)) unwatch();
@@ -262,7 +295,8 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  private JSObject current(String key) {
   PhotoLibraryAccess.Parsed parsed = PhotoLibraryAccess.parse(key);
   try (Cursor row = exact(parsed)) {
-   if (row == null || !row.moveToFirst() || added(row) != parsed.added) return null;
+   if (row == null) throw new IllegalStateException("Media provider unavailable");
+   if (!row.moveToFirst() || added(row) != parsed.added) return null;
    JSObject item = metadata(row);
    item.put("trashed", Build.VERSION.SDK_INT >= 30 && isTrashed(row));
    return item;
@@ -275,7 +309,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
 
  /** Newest first, keyset on the MediaStore id so pages never repeat or skip rows under inserts. */
  @PluginMethod public void page(PluginCall call) {
-  submit(call, () -> {
+  submit(call, (access, accessScope) -> {
    if (!readable(call)) return;
    try {
     int limit = PhotoLibraryAccess.pageLimit(call.getInt("limit", 0));
@@ -331,7 +365,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
     out.put("items", items);
     out.put("next", next);
     out.put("generation", snapshot);
-    call.resolve(out);
+    publish(call, out, access, accessScope);
    } catch (IllegalArgumentException invalid) {
     call.reject("Invalid library query");
    } catch (Exception failure) {
@@ -355,7 +389,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
 
  /** Inspect one item: current metadata and a bounded local preview. Pixels stay on the phone. */
  @PluginMethod public void inspect(PluginCall call) {
-  submit(call, () -> {
+  submit(call, (access, accessScope) -> {
    if (!readable(call)) return;
    try {
     JSObject item = current(call.getString("id", ""));
@@ -363,7 +397,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
     PhotoLibraryAccess.Parsed parsed = PhotoLibraryAccess.parse(item.getString("id"));
     try { item.put("image", thumbnail(parsed.video, parsed.rowId, Math.min(PhotoLibraryAccess.PREVIEW_MAX, Math.max(64, call.getInt("size", 720))))); }
     catch (Exception unavailable) { item.put("image", ""); }
-    call.resolve(item);
+    publish(call, item, access, accessScope);
    } catch (IllegalArgumentException invalid) {
     call.reject("Invalid library id");
    } catch (Exception failure) {
@@ -375,7 +409,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  /** Revalidate known identities: current, changed (new revision), or missing (deleted, trashed,
   * revoked from a selected-only grant, or row id reused). */
  @PluginMethod public void validate(PluginCall call) {
-  submit(call, () -> {
+  submit(call, (access, accessScope) -> {
    if (!readable(call)) return;
    try {
     JSArray items = call.getArray("items");
@@ -394,7 +428,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
     }
     JSObject result = scopeResult();
     result.put("items", out);
-    call.resolve(result);
+    publish(call, result, access, accessScope);
    } catch (Exception invalid) {
     call.reject("Select 1–200 library ids to validate");
    }
@@ -404,14 +438,14 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  /** Rows changed since a generation (Android 11+). A different MediaStore version or a large
   * backlog asks the renderer to reset its catalog instead of guessing. */
  @PluginMethod public void changes(PluginCall call) {
-  submit(call, () -> {
+  submit(call, (access, accessScope) -> {
    if (!readable(call)) return;
    JSObject out = scopeResult();
    try {
     String version = call.getString("version", "");
     long since = call.getLong("generation", -1L);
     if (Build.VERSION.SDK_INT < 30 || since < 0 || !version.equals(MediaStore.getVersion(getContext()))) {
-     out.put("reset", true); out.put("items", new JSArray()); out.put("generation", maxGeneration()); call.resolve(out); return;
+     out.put("reset", true); out.put("items", new JSArray()); out.put("generation", maxGeneration()); publish(call, out, access, accessScope); return;
     }
     Bundle query = new Bundle();
     query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION, BASE + " AND generation_modified>?");
@@ -436,7 +470,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
     out.put("reset", reset);
     out.put("items", reset ? new JSArray() : items);
     out.put("generation", reset ? maxGeneration() : generation);
-    call.resolve(out);
+    publish(call, out, access, accessScope);
    } catch (Exception failure) {
     call.reject("Library changes could not be read");
    }
@@ -464,7 +498,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
   * The result reports only what a fresh read verifies afterwards.
   */
  @PluginMethod public void requestChange(PluginCall call) {
-  submit(call, () -> {
+  submit(call, (access, accessScope) -> {
    if (!readable(call)) return;
    if (Build.VERSION.SDK_INT < 30) { call.reject("Changing device media requires Android 11 or later", "LIBRARY_UNSUPPORTED"); return; }
    String operation = call.getString("operation", "");
@@ -481,7 +515,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
      default: intent = MediaStore.createDeleteRequest(resolver, uris); break;
     }
     getActivity().runOnUiThread(() -> {
-     if (destroyed || pendingReview != null) { call.reject("Finish the open Android review first"); return; }
+     if (!currentAccess(access, accessScope) || pendingReview != null) { call.reject("Finish the open Android review first"); return; }
      pendingReview = call; pendingItems = items; pendingOperation = operation;
      try { review.launch(new IntentSenderRequest.Builder(intent.getIntentSender()).build()); }
      catch (RuntimeException failure) { pendingReview = null; pendingItems = null; call.reject("Android review could not open"); }
@@ -503,7 +537,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
   if (result.getResultCode() != android.app.Activity.RESULT_OK) {
    JSObject out = new JSObject(); out.put("status", "declined"); out.put("operation", operation); call.resolve(out); return;
   }
-  submit(call, () -> {
+  submit(call, (access, accessScope) -> {
    try {
     // Report each item's verified state, never the request as a whole.
     JSArray outcomes = new JSArray();
@@ -530,7 +564,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
     out.put("status", verified == items.length() ? "applied" : verified == 0 ? "unverified" : "partial");
     out.put("operation", operation);
     out.put("outcomes", outcomes);
-    call.resolve(out);
+    publish(call, out, access, accessScope);
    } catch (Exception failure) {
     call.reject("The change could not be verified. Reload the library before retrying.");
    }
@@ -540,7 +574,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  /** Android's chooser with read-only grants for exactly the reviewed items. Opening the chooser
   * is not a delivery receipt. */
  @PluginMethod public void share(PluginCall call) {
-  submit(call, () -> {
+  submit(call, (access, accessScope) -> {
    if (!readable(call)) return;
    try {
     List<Uri> uris = currentUris(call.getArray("items"), new HashSet<>());
@@ -560,7 +594,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
     send.setClipData(clip);
     int count = uris.size();
     getActivity().runOnUiThread(() -> {
-     if (destroyed || getActivity().isFinishing()) { call.reject("Return to Photos and share again"); return; }
+     if (!currentAccess(access, accessScope)) { call.reject("Return to Photos and share again"); return; }
      try {
       getActivity().startActivity(Intent.createChooser(send, "Share selected media"));
       JSObject out = new JSObject(); out.put("status", "opened"); out.put("count", count); call.resolve(out);
@@ -575,7 +609,9 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  }
 
  @Override protected void handleOnDestroy() {
-  destroyed = true;
+  destroyed = true; accessGeneration.incrementAndGet();
+  getContext().getPackageManager().removeOnPermissionsChangeListener(permissionsChanged);
+  getContext().unregisterReceiver(screenOff);
   unwatch();
   PluginCall call = pendingReview;
   pendingReview = null;

@@ -157,3 +157,5 @@ upgrade or purchase.
 - Retry and reset times on the resident-agent reply path need upstream `ChatTerminalFailure` to
   carry them.
 - No real Cloud account, Android device or AOSP image was used for acceptance.
+
+Integration correction: an inactive subscription at admission leaves an existing resident process and its scheduled work running. It prevents a new Cloud binding and shows the account message; Cloud still owns per-request enforcement. Account revocation or account mismatch remain separate identity failures. Starting a fully local resident without any Cloud admission remains separate work.

@@ -79,6 +79,8 @@ public final class ConsentActivity extends Activity {
   TextView status=text(ListenerPolicy.label(state),22);
   status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
   text(EXPLANATION,16);
+  text("After the listening process restarts, turn listening on here again.",16);
+  if (ListenerStore.storageFailed()) text("Listening is off. Your change could not be saved. Restart the listener and opt in again after fixing storage.",16);
   if(!consented||!store.enabled()||state==ListenerPolicy.State.PERMISSION_REQUIRED||state==ListenerPolicy.State.STOPPED_AFTER_ERRORS
    ||(state==ListenerPolicy.State.NOTIFICATIONS_REQUIRED&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)){
    button(consented?"Turn on listening":"I understand — turn on listening",view->requestMicrophone());

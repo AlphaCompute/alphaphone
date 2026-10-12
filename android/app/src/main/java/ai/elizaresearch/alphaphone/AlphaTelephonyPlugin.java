@@ -13,7 +13,7 @@ import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import androidx.activity.result.ActivityResult;
-import ai.eliza.plugins.contacts.ContactsReader;
+
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -52,8 +52,30 @@ public class AlphaTelephonyPlugin extends Plugin {
  static final int MAX_RECIPIENTS = 10, MAX_BODY = 5000, MAX_SUBSCRIPTIONS = 8, MAX_TEXT = 256, MAX_LIST = 32;
  private final ExecutorService reader = Executors.newSingleThreadExecutor();
 
+ private volatile boolean closed, foreground = true;
+ private final NativeReadEpoch generation = new NativeReadEpoch();
+ private final java.util.Set<android.os.CancellationSignal> reads = java.util.concurrent.ConcurrentHashMap.newKeySet();
+ private final android.content.pm.PackageManager.OnPermissionsChangedListener permissionsChanged = uid -> {
+  if (uid == android.os.Process.myUid()) invalidateReads();
+ };
+ private final android.content.BroadcastReceiver screenOff = new android.content.BroadcastReceiver() {
+  @Override public void onReceive(android.content.Context context, Intent intent) { invalidateReads(); }
+ };
+ @Override public void load() {
+  getContext().getPackageManager().addOnPermissionsChangeListener(permissionsChanged);
+  androidx.core.content.ContextCompat.registerReceiver(getContext(), screenOff, new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
+ }
+ private boolean unlockedForeground() {
+  android.app.KeyguardManager lock = getContext().getSystemService(android.app.KeyguardManager.class);
+  android.os.UserManager users = getContext().getSystemService(android.os.UserManager.class);
+  return !closed && foreground && lock != null && !lock.isDeviceLocked() && users != null && users.isUserUnlocked()
+   && (android.os.Build.VERSION.SDK_INT < 31 || users.isUserForeground()) && getActivity() != null && !getActivity().isFinishing() && !getActivity().isDestroyed();
+ }
+ private void invalidateReads() { generation.incrementAndGet(); for (android.os.CancellationSignal read : reads) read.cancel(); }
+ @Override protected void handleOnPause() { foreground = false; invalidateReads(); super.handleOnPause(); }
+ @Override protected void handleOnResume() { foreground = true; invalidateReads(); super.handleOnResume(); }
  private boolean refused(PluginCall call) {
-  if (AlphaImageCapability.verified(getContext())) return false;
+  if (AlphaImageCapability.verified(getContext()) && unlockedForeground()) return false;
   call.reject(AlphaImageCapability.UNAVAILABLE, "unavailable");
   return true;
  }
@@ -169,41 +191,31 @@ public class AlphaTelephonyPlugin extends Plugin {
  }
  @ActivityCallback private void roleResult(PluginCall call, ActivityResult result) { if (!refused(call)) call.resolve(statusObject()); }
 
- /** Read-only contact search through the shared upstream reader. Requires contacts access.
-  * Cost: the pinned upstream ContactsReader walks the whole Contacts table and runs two more
-  * queries per contact before it filters, so `limit` caps the matches, not the scan; a query that
-  * matches nothing costs O(contacts) provider queries on the single reader thread. A
-  * CONTENT_FILTER_URI reader belongs upstream (or in a reviewed patches/eliza patch) before any
-  * consumer searches as the user types. Nothing calls this yet (no view adapter is admitted). */
+ /** Bounded same-profile reads, cancelled on background and checked again before publication. */
  @PluginMethod public void searchContacts(PluginCall call) {
   if (refused(call)) return;
   if (getPermissionState("contacts") != PermissionState.GRANTED) { call.reject("Contacts access is not granted", "permission-required"); return; }
-  String query = call.getString("query", "");
-  Integer limit = call.getInt("limit", 25);
+  String query = call.getString("query", ""); Integer limit = call.getInt("limit", 25);
   if (query == null || query.length() > 128 || limit == null || limit < 1 || limit > 100) { call.reject("Invalid contact search", "invalid"); return; }
-  final String search = query; final long max = limit;
+  final long access = generation.get();
+  final android.os.CancellationSignal cancel = new android.os.CancellationSignal(); reads.add(cancel);
   try {
    reader.execute(() -> {
     try {
-     JSArray contacts = new JSArray();
-     for (ContactsReader.ContactRecord record : new ContactsReader(getContext()).listContacts(search, max)) {
-      JSObject row = new JSObject();
-      row.put("id", clip(record.getId())); row.put("lookupKey", record.getLookupKey().length() > 512 ? "" : record.getLookupKey());
-      row.put("displayName", clip(record.getDisplayName())); row.put("starred", record.getStarred());
-      JSArray phones = new JSArray(); for (String number : record.getPhoneNumbers()) { if (phones.length() >= MAX_LIST) break; phones.put(clip(number)); }
-      JSArray emails = new JSArray(); for (String email : record.getEmailAddresses()) { if (emails.length() >= MAX_LIST) break; emails.put(clip(email)); }
-      row.put("phoneNumbers", phones); row.put("emailAddresses", emails);
-      contacts.put(row);
-     }
-     JSObject value = new JSObject(); value.put("contacts", contacts); call.resolve(value);
-    } catch (SecurityException denied) {
-     call.reject("Contacts access is not granted", "permission-required");
-    } catch (RuntimeException unreadable) {
-     // A provider without a cursor is unavailable data, never an empty address book.
-     call.reject("Contacts could not be read", "unavailable");
-    }
+     if (!contactAccess(access, cancel)) throw new SecurityException();
+     JSObject value = new TelephonyContactsCatalog(getContext()).list(query, limit, cancel);
+     getActivity().runOnUiThread(() -> {
+      if (!contactAccess(access, cancel)) call.reject("Contacts access changed. Refresh after unlocking.", "unavailable");
+      else call.resolve(value);
+     });
+    } catch (Exception unreadable) { call.reject("Contacts could not be read. Check access and refresh.", "unavailable"); }
+    finally { reads.remove(cancel); }
    });
-  } catch (java.util.concurrent.RejectedExecutionException closed) { call.reject(LateLaunch.CLOSED); }
+  } catch (java.util.concurrent.RejectedExecutionException closed) { reads.remove(cancel); call.reject(LateLaunch.CLOSED); }
+ }
+ private boolean contactAccess(long access, android.os.CancellationSignal cancel) {
+  return !cancel.isCanceled() && generation.current(access, "contacts", "contacts", unlockedForeground())
+   && AlphaImageCapability.verified(getContext()) && getPermissionState("contacts") == PermissionState.GRANTED;
  }
 
  private JSObject handoff(String status, String target, String handler, String message) {
@@ -212,6 +224,7 @@ public class AlphaTelephonyPlugin extends Plugin {
   return value;
  }
  private void open(PluginCall call, Intent intent, String target, String done) {
+  if (refused(call)) return;
   ResolveInfo handler = getContext().getPackageManager().resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY);
   if (handler == null || handler.activityInfo == null) { call.resolve(handoff("unavailable", target, null, "No app on this phone handles this.")); return; }
   try {
@@ -253,5 +266,5 @@ public class AlphaTelephonyPlugin extends Plugin {
   open(call, intent, "sms", "Your messaging app is open with the reviewed text. Send it there; Alpha has not sent anything.");
  }
 
- @Override protected void handleOnDestroy() { reader.shutdownNow(); }
+ @Override protected void handleOnDestroy() { closed = true; invalidateReads(); getContext().getPackageManager().removeOnPermissionsChangeListener(permissionsChanged); getContext().unregisterReceiver(screenOff); reader.shutdown(); super.handleOnDestroy(); }
 }

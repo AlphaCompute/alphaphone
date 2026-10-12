@@ -9,9 +9,8 @@ import java.util.Locale;
  * Plain Java so it runs on the JVM in {@code npm test}; anything it cannot parse fails closed.
  *
  * <p>WebView's challenge carries a host and realm only: no URL, no port, and no frame. The
- * origin is therefore never inferred from the shown page. It is bound only for a challenge to
- * a pending main-frame load, and only when no other request this tab has made to the same
- * host used a different origin (for example a frame or resource on another port).
+ * origin cannot be authenticated. Provider fill/save stays disabled until the engine
+ * supplies an exact request-origin binding. Observed navigation history is insufficient.
  */
 final class BrowserHttpAuthOrigin {
  private BrowserHttpAuthOrigin(){}
@@ -53,27 +52,9 @@ final class BrowserHttpAuthOrigin {
   *        null when that record is unavailable or overflowed
   */
  static String forChallenge(String reportedHost,String pendingMain,String documentUrl,boolean committed,Collection<String> otherRequests){
-  if(reportedHost==null||reportedHost.isEmpty()||reportedHost.length()>512||otherRequests==null||pendingMain==null)return null;
-  String reportedPort=reportedHost.matches(".*:\\d{1,5}$")?reportedHost.substring(reportedHost.lastIndexOf(':')+1):null;
-  String asked=(reportedPort==null?reportedHost:reportedHost.substring(0,reportedHost.lastIndexOf(':'))).toLowerCase(Locale.ROOT);
-  // Main-frame only: with a committed page and no different main-frame load pending, the
-  // challenge can only come from that page's own frames or resources, whose port is unknown.
-  if(committed&&pendingMain.equals(documentUrl))return null;
-  if(!asked.equals(host(pendingMain)))return null;
-  String found=exactHttps(pendingMain);
-  if(found==null)return null;
-  // An uncommitted in-flight target for the same host (before a redirect) must agree.
-  if(!committed&&asked.equals(host(documentUrl))&&!found.equals(exactHttps(documentUrl)))return null;
-  if(reportedPort!=null){
-   int port=Integer.parseInt(reportedPort);
-   if(!found.equals("https://"+asked+(port==443?"":":"+port)))return null;
-  }
-  // A frame or resource of this tab on the same host but another origin could be the one
-  // asking; the challenge cannot tell them apart, so neither is filled.
-  for(String other:otherRequests){
-   if(other==null)continue;
-   if(asked.equals(host(other))&&!found.equals(other))return null;
-  }
-  return found;
+  // WebView supplies no authenticated request URL, port or frame identity. Resource
+  // redirects are absent from shouldInterceptRequest, so navigation history cannot bind
+  // this challenge. Keep manual entry, but never advertise an origin to fill/save providers.
+  return null;
  }
 }

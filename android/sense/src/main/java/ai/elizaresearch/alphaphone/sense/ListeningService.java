@@ -163,8 +163,8 @@ public final class ListeningService extends Service {
   try{opened=open(hotword,bytes);}
   catch(RuntimeException unavailable){Log.w(TAG,"Microphone unavailable");Listener.micSilenced=true;main.postDelayed(reapply,30_000);return;}
   if(opened.getState()!=AudioRecord.STATE_INITIALIZED){opened.release();Listener.micSilenced=true;main.postDelayed(reapply,30_000);return;}
+  if (!new ListenerStore(this).setSessionOpen(true)) { opened.release(); main.post(reapply); return; }
   record=opened;
-  new ListenerStore(this).setSessionOpen(true);
   Thread thread=new Thread(()->captureLoop(opened),"listener-capture");
   capture=thread;
   thread.start();

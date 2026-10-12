@@ -148,6 +148,7 @@ test('a signed canceled entitlement gates AI, keeps local apps, and only opens h
  await page.getByRole('button',{name:'Manage plan in Eliza Cloud',exact:true}).click();
  await expect.poll(async()=>(await calls(page)).filter(c=>c.method==='openExternal').map(c=>c.url)).toEqual(['https://cloud.eliza.app/cloud/billing']);
  expect((await calls(page)).some(c=>c.method==='configureCloudProvider')).toBe(false);
+ expect((await calls(page)).some(c=>c.plugin==='AlphaLocalAgent'&&c.method==='stop')).toBe(false);
 });
 
 test('a tampered entitlement is reported unavailable and never trusted as a plan',async({page})=>{

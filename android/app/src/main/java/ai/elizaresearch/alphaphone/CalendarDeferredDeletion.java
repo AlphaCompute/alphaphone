@@ -164,7 +164,8 @@ final class CalendarDeferredDeletion {
 
  private static ContentValues values(ContentResolver resolver, android.net.Uri uri, String[] fields) {
   try (Cursor row = resolver.query(uri, fields, null, null, null)) {
-   if (row == null || !row.moveToFirst()) return null;
+   if (row == null) throw new IllegalStateException("Calendar provider unavailable");
+   if (!row.moveToFirst()) return null;
    ContentValues values = new ContentValues();
    for (int i = 0; i < fields.length; i++) { if (row.isNull(i)) values.putNull(fields[i]); else if (row.getType(i) == Cursor.FIELD_TYPE_INTEGER) values.put(fields[i], row.getLong(i)); else values.put(fields[i], row.getString(i)); }
    if (row.moveToNext()) throw new IllegalStateException("Ambiguous event");

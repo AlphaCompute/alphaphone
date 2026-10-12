@@ -72,3 +72,5 @@ plus `PERMISSION_REQUIRED`, `SPEECH_UNAVAILABLE` and `STOPPED_AFTER_ERRORS`. The
 
 APK builds, image staging, an image boot, real integrations and device/user acceptance are separate
 gates; none of them proves another.
+
+Integration safety rule: consent must be explicitly renewed after each listener-process restart. Failed synchronous preference writes latch capture off, invalidate queued recognition, stop the service, and report an unsaved settings error. The capture session marker must save before recording starts. Automatic restart using persisted consent is deferred until a crash-safe storage protocol is qualified.
