@@ -1,0 +1,111 @@
+{
+  "source": {
+    "applicationSourceCommit": "1d9206c278e4c8512f86f6cbe8d41adda7d3571e",
+    "instrumentationSourceCommit": "ec85eccb17c77f4a663afd5b5cdf4a18e1b2d84f",
+    "applicationArchive": "test-results/reset-workmanager-fixture/verified-build",
+    "speechManifestSha256": "0a548ab9e3c7a798605b2581c7ff0385460fbe483be01fdc1025d41c1947fdf6",
+    "note": "Unchanged archived product APKs; rebuilt instrumentation only. Developer unqualified speech; no packaged resident runtime or release signature."
+  },
+  "device": {
+    "avd": "alpha_native_20261012c",
+    "serial": "emulator-5584",
+    "api": 35,
+    "abi": "x86_64"
+  },
+  "campaigns": [
+    {
+      "variant": "standalone",
+      "mode": "ui",
+      "passed": true,
+      "directory": "/home/shaw/.codex/worktrees/native-qualification/alphaphone/test-results/native-qualification/reset431-ui-standalone-022",
+      "applicationSha256": "92d20ec1ab3e37cda9a4f85d2d6c54544d245adcc37571e4a5cee4c0ce590e9c",
+      "instrumentationSha256": "bbf3dc8aaa5f5f3c84fef158834c25b527db81f664b415287fdf5f53f4fad2fa",
+      "harnessSha256": "59ad59ed0b62f55d430a34a53b734f85ee95ae79778e68ec49e976a760bdd9e8",
+      "userLifecycle": {
+        "user": 10,
+        "ownerRestored": true,
+        "cleanupDeferred": false,
+        "removed": true
+      },
+      "events": [
+        "prepared-owned-user-credential-and-companion",
+        "baseline-sentinels",
+        "main-window-and-input-focused",
+        "touch-trace-before",
+        "touch-trace-after",
+        "after-cancel",
+        "main-window-and-input-focused",
+        "after-denial",
+        "main-window-and-input-focused",
+        "confirmed-synthetic-device-credential",
+        "private-clear-observed",
+        "after-reset",
+        "main-window-and-input-focused",
+        "actual-first-run-screen-observed",
+        "owned-media-cleanup"
+      ],
+      "sha256": {
+        "10-before-Continue-to-unlock.png": "c0f4ea2e01102d1bd71b1be4fca3e19762b3351dcb40ffff4f84241c01291dd3",
+        "10-before-Continue-to-unlock.xml": "73f5b79b57d823292df78b6d5c794a009df668e6214d141ebf30a2dbd1c982f9",
+        "11-credential-denied.png": "9384490e0e2ffd8ebe79eb33a2bbd77d9cd3f90d81e4775be1238eba7bd4010f",
+        "11-credential-denied.xml": "f41b9c67d57285dd37e132124265e97319a018c3333bcc9f84412a1e015bd988",
+        "13-before-Settings.png": "d6344a24520f18ec84de349c2e45d095087715f987f31307e755723ef63e2fbe",
+        "13-before-Settings.xml": "5aeb2825dc2e2b76df9883963a3e6644d9a67db78b4eddf8a3817ca2ad8a9751",
+        "14-before-Reset-Alpha-data.png": "54ae80d656f51893c3ea17b49bb60abead7166b91188b2abe9ea9a690d97f077",
+        "14-before-Reset-Alpha-data.xml": "321e900adb7d99912e739d43b87f7510319b2457e836ee71282bef3561662ade",
+        "15-before-Continue-to-unlock.png": "dd441f7bd3a17b7f05cd2a49cafaa55c24f961c0d9eb24269d8dd84d63e17d4f",
+        "15-before-Continue-to-unlock.xml": "73f5b79b57d823292df78b6d5c794a009df668e6214d141ebf30a2dbd1c982f9",
+        "16-credential-confirm.png": "4746549e471f3052f23114cb8668e444b74fd3d0b489c69d8ad0d7925dbf059f",
+        "16-credential-confirm.xml": "f41b9c67d57285dd37e132124265e97319a018c3333bcc9f84412a1e015bd988",
+        "18-first-run-after-reset.png": "422407f6fd13ce7ff76d83cef464ff816e0725f7480d116ee8ce00ebcd1dd7b6",
+        "18-first-run-after-reset.xml": "c48ed42e68dd938dd2cb46f75403a6179d4429fc5f173ee9690892f3f6808ff8",
+        "2-before-Use-local-apps-without-AI.png": "e2651e359a6b5d4d43730fcb79d03829a9ccdb48a1cbbd7e9fdf44ee29aa77b7",
+        "2-before-Use-local-apps-without-AI.xml": "c48ed42e68dd938dd2cb46f75403a6179d4429fc5f173ee9690892f3f6808ff8",
+        "3-decline-startup-access.png": "5e24f61d560617fcd3dc5febc44a7c9fca3f1eba3c9be44e8e3e504db6c6dc35",
+        "3-decline-startup-access.xml": "a1381b5860a63dd82e1de9489ba644e9223437d9cda49a3d9c6e48ffa5611c9e",
+        "4-before-Settings.png": "161eafe9929466831b50610b1051515d1045d3599af7f8629d1baab4b68e2f4b",
+        "4-before-Settings.xml": "5aeb2825dc2e2b76df9883963a3e6644d9a67db78b4eddf8a3817ca2ad8a9751",
+        "5-before-Reset-Alpha-data.png": "a3e53c3c5de0a9e9fc9722fedf579ca5b2c641924555a7b57d7ac3795619a795",
+        "5-before-Reset-Alpha-data.xml": "321e900adb7d99912e739d43b87f7510319b2457e836ee71282bef3561662ade",
+        "6-before-Cancel.png": "b68bf32ef6384959e26d7cf724266fdcee439c37cb645c643edea31051c3a82e",
+        "6-before-Cancel.xml": "73f5b79b57d823292df78b6d5c794a009df668e6214d141ebf30a2dbd1c982f9",
+        "8-before-Settings.png": "161eafe9929466831b50610b1051515d1045d3599af7f8629d1baab4b68e2f4b",
+        "8-before-Settings.xml": "5aeb2825dc2e2b76df9883963a3e6644d9a67db78b4eddf8a3817ca2ad8a9751",
+        "9-before-Reset-Alpha-data.png": "54ae80d656f51893c3ea17b49bb60abead7166b91188b2abe9ea9a690d97f077",
+        "9-before-Reset-Alpha-data.xml": "321e900adb7d99912e739d43b87f7510319b2457e836ee71282bef3561662ade",
+        "apk-provenance.json": "c43dc672ac2c653475c10e2b92b7a7b9c9e13387e230a2cb122a51a1205a7fdd",
+        "build-source.json": "03d67c2f27af543e8facfc8725f53a4ff7ebab85ca13bfe04cb87883c1e4ac5f",
+        "external-result.json": "bc635b048de3db2df1530cae2c03e54ec6e927b805ecf2c16d8a8500c9c18bc5",
+        "input-before-touch-2.txt": "218cf8ca5e28b84a2ea7fdc12a924b49aa0cef2245a4f7705a91580d110d964a",
+        "power-before-launch-1.txt": "94f29401e077ff5176769bccf22589ebba21c338949b13a88a64120e7797f2d5",
+        "power-before-launch-12.txt": "37275a246bce4b18f2a49a9ab0fd72930b669c1ebedca708bde8ce3ef78a8a28",
+        "power-before-launch-17.txt": "6c7d26d4ae1798e2fd8a63d55b2a4a3426e3f42359f4437226a461bfaec10e10",
+        "power-before-launch-7.txt": "0ef549630787112228594eda9f7f30f8c5464da97bd7c474f3cbfa9142864cbe",
+        "power-before-touch-2.txt": "5941239ddc049605082c53cb45abda8469a50c3c06316f2684c6c4cfa8f890a9",
+        "standalone-phase-cancel-preserved.log": "9d86da7a43c3855190fc7f4270c815cb01a7c55b677b67ef960efd6dcdd85dd3",
+        "standalone-phase-denied-preserved.log": "5dcc32b9461d3f92c1d0f188bef3649bd6102713f150d912d963144ccf1c0e84",
+        "standalone-phase-verify.log": "ea6c35a641b3e1223205e44dc676f739f1d26725f44d428947ea96ebd6aa67c8",
+        "standalone.log": "82fb7fda61343121bcd4eb8e1bd6b0a3271269753ea62a345bea93bd8dc06c3f",
+        "verification.json": "8da5b15a35ec838a5aa690d1182fa8a04b35aabfa9c4ad3b00c7af11f4c1ce1e",
+        "window-before-touch-2.txt": "2c12f861faf9ee1a07ce86e5f8733f86e7d54bd55f895ad222d903dd1bd35dc6"
+      }
+    }
+  ],
+  "pending": [
+    "Launcher native Cancel, credential denial, confirmed reset and first-run verification.",
+    "Interrupted-before-dispatch marker recovery in both distributions."
+  ],
+  "limitations": [
+    "Synthetic disposable Android users only; no real user data or credential.",
+    "Developer APKs use an unqualified speech candidate and omit the packaged resident runtime.",
+    "Not release, full AOSP-image, physical-device or live-service acceptance.",
+    "Standalone native UI campaign required a guarded reboot of the owned emulator because earlier secondary-user input surfaces were missing."
+  ],
+  "verified": [
+    "Native Cancel and credential denial preserve both exact Notes sentinels (including normal draft recovery), private file/cache/preferences, UID key, notification and delayed namespaced WorkManager job.",
+    "A real native confirmation using the disposable user credential triggers Android clearApplicationUserData.",
+    "A fresh instrumentation process confirms private sentinels, UID key, WorkManager record/job and notification were erased.",
+    "Exact shared-media bytes and the separate companion-app private sentinel survive reset.",
+    "Actual first-run UI is visible after reset; package/media/user cleanup completed."
+  ]
+}
