@@ -105,7 +105,8 @@ export const CLASS_REGISTRY = {
   PasswordBrowserFill: {},
   InboxOperationJournal: { args: { inboxOperationNative: "1" } },
   MailAttachment: { args: { mailAttachmentNative: "1" } },
-  Notifications: {},
+  Notifications: { note: "opens Android's own shade (launcher button, or Android's global action on standalone) and taps the notice there; Alpha draws no shade (#416)" },
+  SystemShade: { note: "launcher Home asks Android for its shade (EXPAND_STATUS_BAR); standalone never does (#416, #417). No recorded run; not AOSP-image or device acceptance" },
   CameraScan: {},
   FilesTree: {},
   // J05-2: native page excerpt -> reviewed question -> composer; a note's web source across recreation.
