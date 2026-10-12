@@ -62,7 +62,14 @@
         dispatched=true;android.content.ContentProviderResult[] result=getContext().getContentResolver().applyBatch(CalendarContract.AUTHORITY,operations);if(create)eventId=ContentUris.parseId(result[result.length-1].uri);
 --- a/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java
 +++ b/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java
-@@ -49,4 +49,117 @@
+@@ -43,10 +43,123 @@
+  private static long number(ContentValues values,String key){Long value=values.getAsLong(key);return value==null?0:value;}
+  private static boolean empty(ContentValues values,String key){String value=values.getAsString(key);return value==null||value.isEmpty();}
+  private static boolean same(String value,ContentValues values,String key){String actual=values.getAsString(key);return value.equals(actual==null?"":actual);}
+- private static ContentValues read(ContentResolver resolver,android.net.Uri uri,String[] fields){try(Cursor row=resolver.query(uri,fields,null,null,null)){if(row==null||!row.moveToFirst())return null;ContentValues values=new ContentValues();for(int i=0;i<fields.length;i++){if(row.isNull(i))values.putNull(fields[i]);else if(row.getType(i)==Cursor.FIELD_TYPE_INTEGER)values.put(fields[i],row.getLong(i));else values.put(fields[i],row.getString(i));}if(row.moveToNext())throw new IllegalStateException("Ambiguous event");return values;}}
++ private static ContentValues read(ContentResolver resolver,android.net.Uri uri,String[] fields){try(Cursor row=resolver.query(uri,fields,null,null,null)){if(row==null)throw new IllegalStateException("Provider query unavailable");if(!row.moveToFirst())return null;ContentValues values=new ContentValues();for(int i=0;i<fields.length;i++){if(row.isNull(i))values.putNull(fields[i]);else if(row.getType(i)==Cursor.FIELD_TYPE_INTEGER)values.put(fields[i],row.getLong(i));else values.put(fields[i],row.getString(i));}if(row.moveToNext())throw new IllegalStateException("Ambiguous event");return values;}}
+  static Snapshot read(ContentResolver resolver,long id,long calendarId)throws Exception {
+   if(id<=0||calendarId<=0)throw new IllegalArgumentException();ContentValues event=read(resolver,ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id),EVENT);
    if(event==null||number(event,"calendar_id")!=calendarId)return null;ContentValues calendar=read(resolver,ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,calendarId),CALENDAR);if(calendar==null)return null;
    return new Snapshot(id,calendarId,event,calendar);
   }

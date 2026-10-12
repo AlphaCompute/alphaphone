@@ -33,7 +33,7 @@
     },
     {
       "file": "calendar-deletion-window.patch",
-      "sha256": "8290e08361faf0b2376423c76f7979ac5ca0e5fb7bf28c9305607dc42b049bb7",
+      "sha256": "055c33c07f0150e738af896417db2e476a6a1f2edef6e097d53edb948f42b2cf",
       "module": "plugins/plugin-native-calendar/android",
       "targets": [
         {
@@ -44,7 +44,7 @@
         {
           "path": "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java",
           "beforeSha256": "380371f5c44a3fa5ae27d3efbb87063224613423cf9d6b1adc71109197ca0200",
-          "afterSha256": "f780b230899247b73c4faf15e881c03deb0253e431294ad4c643f43e9cb0094a"
+          "afterSha256": "691c3f7cebfaf6a94377c84187689f1f0e3c22e55d84e77d885326f7de6154b1"
         }
       ]
     },
