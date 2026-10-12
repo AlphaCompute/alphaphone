@@ -40,10 +40,29 @@ Alpha now has a native local-agent bridge, generated product-namespaced lifecycl
 | No local-runtime payloads | Superseded for the agent runtime. Local language-model payloads remain undecided. |
 | Native tools, provider consent, speech, signed device images and user acceptance | Still required; moving orchestration does not itself complete them. |
 
+## Browser development routes (MVP-17)
+
+The web build is a development and preview surface, not the product. Its connection routes,
+with the synthetic specs that cover each (class S; no real private host has been paired):
+
+| Route | Flag-off web build | Spec |
+| --- | --- | --- |
+| Remote pairing to a private host over HTTPS | Supported: pair, send, restore and revoke on disconnect | `connection.production.spec.ts`, `connection-boundaries.production.spec.ts` |
+| Refused pairings: wrong role, identity or instance mismatch, expired session, used code, pairing disabled, non-HTTPS address | Refused; nothing is stored or connected | `connection-boundaries.production.spec.ts` |
+| Continue offline (local apps without AI) | Supported | `production-surface.spec.ts` |
+| Eliza Cloud sign-in | Refused: stated as unavailable on this origin; the account page opens in a new tab | `connection.production.spec.ts` |
+| A saved Cloud, staging, mock, plain-HTTP local, development or on-device selection | Refused: the chooser opens signed out and no request is made; a saved Cloud key is removed best effort | `connection-boundaries.production.spec.ts` |
+| Unverified device enrollment | Grants no phone actions; an unconfirmed revocation is reported as unconfirmed | `connection-boundaries.production.spec.ts` |
+| Development agent, local loopback host, credential-reference bridge, mock mode | Test-mocks builds only (`npm run dev`, Playwright) | `dev-connection-setup.spec.ts`, `browser-cloud-dev.spec.ts`, `mock-background-admission.spec.ts` |
+
+Production Android offers only the on-device agent with Eliza Cloud sign-in, or local apps;
+it refuses remote pairing and every origin except `https://api.eliza.app`
+(`ConnectionRoutes.java`). Whether remote pairing stays a supported route is A-02.
+
 ## Platform references
 
 Android restricts untrusted apps from executing files in their writable app home directory: [Android 10 execution changes](https://developer.android.com/about/versions/10/behavior-changes-10#execute-permission). Background foreground-service starts also have restrictions: [Android foreground-service startup rules](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start). These are packaging/lifecycle constraints to engineer around using supported mechanisms, not reasons to retain Nitro.
 
-Status: the local runtime integration and browser development path are implemented. Both distribution builds and scoped native IPC, tool, reminder and notification lifecycle campaigns have passed at the revisions recorded in the current acceptance ledger. Full resident workflow execution remains blocked by a diagnosed SIGSYS worker exit before model RPC; signed-image and physical acceptance remain open. The staged payload includes an embedding model but no offline text-generation model. No remote infrastructure was removed. See [current setup and limits](local-agent-development.md).
+Status (2026-10-12, pin `13c9857598`): the local runtime integration and browser development path are implemented. No APK with the packaged resident runtime exists at the pin: the recorded builds are developer APKs with an unpackaged runtime, not distributable ([current status](mvp-current-status.md#current-qualification-evidence)). On those APKs one partial emulator campaign ran at `2961bd9e`/`9a1ca161` (class E; [verification](verification.md#emulator-results-at-2961bd9e-2026-10-11-round-8-merged-with-round-9)): the HOME-role, offline local-apps, notice, reminder, calendar and workflow classes listed there passed, and no resident start, inference or resident workflow ran, because the runtime was not packaged. The earlier SIGSYS worker exit before model RPC led to the seccomp compatibility fix `cef69b7c` (Bun spawn keeps the owned handler); whether the exit still reproduces in a packaged worker is unverified at this pin, because no packaged-runtime run exists, and the `bun-spawn-seccomp.yml` diagnostic was not dispatched for it. Signed-image and physical acceptance remain open. The staged payload includes an embedding model but no offline text-generation model. No remote infrastructure was removed. See [current setup and limits](local-agent-development.md).
 
 See the [mobile workflow packaging audit](mobile-workflow-packaging.md) for the remaining worker dependency, loader, resource-path and lifecycle work. The host scheduling pass does not close these device packaging boundaries.

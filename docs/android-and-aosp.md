@@ -126,7 +126,9 @@ product or publish a Pixel 10 installer before its device inputs are admitted.
    HOME resolution after reboot, screen/IME/native bridge behavior and absence of crashes.
 8. Validate the same signed release on physical hardware: radios, audio/mic, touch,
    camera, suspend/resume, charging, keys, auth/agent reconnect, accessibility and
-   recovery. Then validate signed OTA and rollback. Record image/APK/source hashes.
+   recovery. Record image/APK/source hashes. Signed OTA and rollback are a future gate: no OTA
+   manifest and no rollback path exist today, `scripts/pilot-update.mjs` refuses a lower
+   versionCode, and the design is blocked on A-06.
 
 An SDK emulator with an installed launcher is useful HOME/app evidence, but is not
 proof that this product makefile built or booted in a custom AOSP image.

@@ -13,8 +13,10 @@ Only synthetic text/audio was used. No bearer appears in the evidence.
 
 ## Source fixes and reproducibility
 
-`patches/eliza/0002-paired-local-voice.patch` has exact base and SHA256 in
-`patches/eliza/local-voice-source-base.json`. It was applied only to the isolated
+Upstream changes now arrive only through a reviewed pin move in `upstream.lock.json`; the product's `patches/eliza` series is historical: this repository retired it in `34b3c82a` (2026-10-03) and `55c2944f` (2026-10-04), and the last reference went in `530d3b26` (2026-10-10), each when the pinned upstream already carried the change. The run below was made with the patch and is kept as history; it has not been repeated at the current pin.
+
+Historical record: `patches/eliza/0002-paired-local-voice.patch` (historical; retired in `34b3c82a`) had its exact base and SHA256 in
+`patches/eliza/local-voice-source-base.json` (historical, retired with it). It was applied only to the isolated
 upstream worktree, never `vendor/eliza`. Four changed upstream files pass Biome;
 a clean-base patch applicability check passes. Full upstream typecheck was not
 run. The actual source runtime loaded and served the patched routes.
@@ -31,10 +33,10 @@ is registration availability; successful audio is separately tested.
 Start with explicit, already-installed voice assets and native library:
 
 ```sh
-ALPHA_ELIZA_SOURCE=/absolute/patched/eliza \
+npm run agent:prepare   # artifacts/local-agent-resident-<pinned commit>
 ELIZA_INFERENCE_LIBRARY=/absolute/libelizainference.dylib \
 ELIZA_KOKORO_MODEL_DIR=/absolute/kokoro \
-node scripts/start-local-voice-agent.mjs
+node scripts/start-local-voice-agent.mjs   # optional: --source <prepared tree> --profile <dir> --port <n> --bun <path>
 bun scripts/test-paired-local-voice.mjs
 ```
 

@@ -239,6 +239,44 @@ Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
 
+## MVP completion integration (2026-10-12): source, browser and compile checks only
+
+Branch `claude/mvp-completion` at `bfcd47e2`, upstream pin `13c9857598`: the nine work packages
+of the [2026-10-11 audit](mvp-audit-2026-10-11.md) merged ([implementation
+results](mvp-audit-2026-10-11.md#implementation-results)). No APK was assembled, no emulator was
+started and no workflow was dispatched, so nothing here is class B (beyond a compile), E, I, R
+or D. The latest emulator record is still round 8, below.
+
+- `npm run verify` stops at `browser-speech:prepare` because `onnxruntime-web` is not
+  installed in the shared `node_modules`. With a lockfile-identical `node_modules` that has it:
+  `browser-speech:prepare` OK, `tsc --noEmit` clean, the nine node test files that had failed
+  for that reason 46 of 46, `scripts/test-notes-query-flow.ts` PASS, `npm run build` exit 0 and
+  `npm run audit:bundle` PASS (395 files, `testMocks=false`).
+- `npm --ignore-scripts test` at load average 130 to 300: 449 passed, 70 failed. 57 failures
+  were spawn timeouts of about 120 s in five native runner suites, which passed 101 of 101
+  rerun at `--test-concurrency=2` under lower load; 13 came from the missing
+  `onnxruntime-web`.
+- Playwright `chromium` and `production` projects on the 46 spec files the packages changed:
+  972 passed, 6 failed. Two are the mock calendar block clipped at 200% text
+  (`accessibility-sweep.spec.ts` and the landscape-200 case; they also fail at `2560eead`), one
+  was an `ECONNRESET` in `notes-trash-recovery.spec.ts` that passed 10 of 10 on rerun, and three
+  were the J05 Android negatives, fixed in `bfcd47e2`.
+- Gradle, compile only: both APK scripts exit 2 at their input check (no speech AAR matches the
+  committed digest). With a speech AAR and the prepared resident source supplied only as compile
+  inputs, `./gradlew --offline -x :local-speech:preBuild -x :app:verifyEmbeddingHost`
+  compiled `:app:compileStandaloneDebugJavaWithJavac`, `:app:compileLauncherDebugJavaWithJavac`
+  and both `…DebugAndroidTestJavaWithJavac` tasks: BUILD SUCCESSFUL. No APK, no install.
+- New instrumented classes and phases since round 8, none run: `RendererRecovery`,
+  `ConnectionRoutes`, `ChatContinuity`, `PasswordVaultSettings`, `PasswordVaultFill`,
+  `PosterCalendarJourney`, `JourneyJ05`, `NoteOrigin`, `HomeCalendarCard`, the
+  `notes-secure-migration`, `theme`, `crash-log` and source-reference restart phases, the
+  account-change method of `WorkflowApprovalNotice` and the approval process-death phase of
+  `WorkflowNoticeProcessDeath`. Their commands are in [core loop audit](core-loop-audit.md),
+  "What is still not covered". `BrowserFlow`'s default run is now offline; its live search
+  needs `--live-network`.
+- Not run at this source: `npm run agent:test-digest-restart` (last at `40dbe96bd1`); the new
+  dispatch-only lane `.github/workflows/digest-restart.yml` was not dispatched.
+
 ## Round 8 (2026-10-11): runner cases, fixes and hosted jobs, none run
 
 Branch `claude/r8-runner-ci`. This section records source, compile and host-runtime checks
@@ -276,7 +314,7 @@ each fix named here is shown to hold, to fail or to be still unrun.
 - Hosted jobs, linted with `actionlint` and checked by `test/ci-emulator-evidence.test.mjs`,
   never dispatched: `.github/workflows/android-emulator.yml`
   ([CI cost policy](ci-cost-policy.md#emulator-evidence-android-emulatoryml)).
-- Host-runtime evidence, not Android: `npm run agent:test-digest-restart` at pin `40dbe96b`
+- Host-runtime evidence, not Android: `npm run agent:test-digest-restart` at pin `40dbe96bd1`
   (the pin of this branch before it was merged with round 9, which moved the pin to
   `13c9857598`; not repeated there), exit 0, one run ([record](local-agent-development.md#isolated-digest-process-recovery-check)).
 - Source and browser checks on this branch (class S): `npm run verify` exit 0 at `ce8488f2` (672 tests, 668
@@ -519,10 +557,10 @@ stand as what the round-7 APKs do; this records what changed in source afterward
 
 | Round-7 observation | Classification | Change | Evidence at this source |
 | --- | --- | --- | --- |
-| Inbox's "Connect Eliza Cloud" panel offers only a new sign-in when a saved one exists | Plain defect, not an owner decision: the same saved sign-in was already offered in Settings | The Inbox panel offers "Retry saved connection" under the Settings panel's rules (`runtime/connection-ui.tsx`) | `saved-signin-retry.production.spec.ts` (flag-off bundle, stubbed Android bridge, both panels). `InboxDraftInstrumentedTest` restart phase asserts the Inbox offer; compiled, not run |
-| A top-edge swipe opens Android's shade, a swipe just below opens Alpha's | The zones are decided by the PRD and flow audit (the status shade is Android's); what stays with the owner is listed in [core loop status](core-loop-status.md#gesture-zones-and-the-notifications-panel-round-8) | Alpha's notifications open only from a visible handle on Home ([gesture zones](gesture-zones.md)) | `notifications-handle.spec.ts`, the accessibility sweeps. `AccessibilityInstrumentedTest` covers the zones; compiled, not run |
-| At 200% font the Home card title and app labels overlap or cut | Plain defect (PRD AP-15) | Home cards grow with their text, tile grids drop a column when labels stop fitting, both driven by the measured text scale (`runtime/text-scale.ts`, `phone.css`) | `large-text-overlap.spec.ts`; the overlap rules of `accessibility-audit.ts` over every retained view at 100% and 200% (`accessibility-sweep.spec.ts`, production sweep). `AccessibilityInstrumentedTest` reads the measured scale and checks Home overlap in the WebView; compiled, not run |
-| Accepting the HOME role starts a second `MainActivity` | Plain defect: two pages over one store, and the in-flight state stayed in the hidden one | The first live instance is kept and later starts are handed to it (`MainActivity`, "One live MainActivity") | `SettingsRolesInstrumentedTest`, `LauncherHomeInstrumentedTest`; compiled, not run |
+| Inbox's "Connect Eliza Cloud" panel offers only a new sign-in when a saved one exists | Plain defect, not an owner decision: the same saved sign-in was already offered in Settings | The Inbox panel offers "Retry saved connection" under the Settings panel's rules (`runtime/connection-ui.tsx`) | `saved-signin-retry.production.spec.ts` (flag-off bundle, stubbed Android bridge, both panels). `InboxDraftInstrumentedTest` restart phase asserts the Inbox offer; compiled, not run. At `2961bd9e` the `inbox` restart campaign passed on both flavors with the Inbox's "Retry saved connection" step (class E, developer APKs) |
+| A top-edge swipe opens Android's shade, a swipe just below opens Alpha's | The zones are decided by the PRD and flow audit (the status shade is Android's); what stays with the owner is listed in [core loop status](core-loop-status.md#gesture-zones-and-the-notifications-panel-round-8) | Alpha's notifications open only from a visible handle on Home ([gesture zones](gesture-zones.md)) | `notifications-handle.spec.ts`, the accessibility sweeps. `AccessibilityInstrumentedTest` covers the zones. Run at `2961bd9e` (class E, developer APKs): `Notifications` opened the panel through the handle on both flavors, and on the launcher flavor Accessibility passed the two swipe checks and then failed at its accessibility-click step (see that run) |
+| At 200% font the Home card title and app labels overlap or cut | Plain defect (PRD AP-15) | Home cards grow with their text, tile grids drop a column when labels stop fitting, both driven by the measured text scale (`runtime/text-scale.ts`, `phone.css`) | `large-text-overlap.spec.ts`; the overlap rules of `accessibility-audit.ts` over every retained view at 100% and 200% (`accessibility-sweep.spec.ts`, production sweep). `AccessibilityInstrumentedTest` reads the measured scale and checks Home overlap in the WebView. Run at `2961bd9e` (class E, developer APKs): on the launcher flavor the measured scale (2) and the overlap and label-split checks passed; on standalone the class failed at the 200% reading order (the last Home row under the composer), which the MVP completion integration fixed in the renderer and has not rerun |
+| Accepting the HOME role starts a second `MainActivity` | Plain defect: two pages over one store, and the in-flight state stayed in the hidden one | The first live instance is kept and later starts are handed to it (`MainActivity`, "One live MainActivity") | `SettingsRolesInstrumentedTest`, `LauncherHomeInstrumentedTest`. Run at `2961bd9e`/`9a1ca161` (class E, developer APKs): both passed in the `--home-role` phase after two unawaited test conditions were fixed |
 
 Other rows of the tables above, re-read for product defects:
 
@@ -556,7 +594,7 @@ changed five things:
   Cloud sign-in return is kept, so after a sign-in and then a relaunch (a system font-size
   change, renderer recovery) a home-type instance was treated as standard and a later notice tap
   or sign-in return would have been delivered without Alpha coming to the front. The kind is
-  now kept per task id. `LauncherHomeInstrumentedTest` has a method for it; compiled, not run.
+  now kept per task id. `LauncherHomeInstrumentedTest` has a method for it; it ran with the class at `2961bd9e`/`9a1ca161` (5 methods, passed; class E, developer APKs).
 - The hand-off could repeat without end. If the bring-to-front start missed the live instance,
   the home-type instance still finished and left the home task empty, and Android would start
   HOME again. The process now stops handing starts off when a front start makes a new instance,

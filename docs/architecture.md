@@ -97,6 +97,17 @@ release provisioning owns default roles, signing, update compatibility and
 recovery policy.
 
 Native reminders use the shared `plugin-native-reminders` engine and bridge.
+The Clock hand-off contract is Alpha's: `apps/app/src/runtime/clock-contract.ts` owns the
+operation and result shapes and the validation of an agent's request, and
+`ClockHandoff.java` builds the Android Clock intents from it. Upstream offers
+`clock.handoff.v1`, `clock.handoff.v2` (repeat days) and `clock.alarms.v1` (alarms owned by
+the host app) in `packages/agent/src/api/device-action-routes.ts` at the pin. Alpha
+advertises `clock.handoff.v1`, adds `clock.handoff.v2` only on Android when the agent offers
+it and the native surface reports `clockRepeatDaysVersion` of at least 1, and never
+advertises `clock.alarms.v1`, because Alpha does not own alarms (A-11). Alpha's one
+restriction on top of upstream's shape, that a repeat-days list is never empty, is stated
+in `clock-contract.ts`.
+
 `AlphaReminders` supplies the product's existing encrypted store, preference and
 channel names, receiver/Activity identities and intent routes. `DailyApps` keeps
 its public Capacitor name and inherits the reminder methods. Reminder test access

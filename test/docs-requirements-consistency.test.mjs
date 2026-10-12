@@ -133,3 +133,25 @@ test('every decision ID named in the requirement ledgers is a row in decisions.m
   for (const id of named) assert.ok(decisions.includes(`| ${id} |`), `${id} is named in the ledgers but has no row in docs/decisions.md`);
   for (const [policy] of status.matchAll(/\bP-\d\d\b/g)) assert.ok(decisions.includes(`**${policy}**`), `${policy} is named in docs/mvp-current-status.md but is not an owner decision`);
 });
+
+// An MVP item that a requirement's remaining text or gate names must be tagged with that
+// requirement in the inventory, so the two ledgers describe the same scope (AP-10 named
+// Reminders and Clock while MVP-27 was tagged only AP-09 and AP-11).
+test('every MVP item a requirement names is tagged with that requirement in the inventory', () => {
+  const inventory = new Map(JSON.parse(read('docs/mvp-remaining-work-2026-10-09.json')).items.map(item => [item.id, item]));
+  for (const requirement of requirements.requirements) {
+    for (const [id] of `${requirement.remaining} ${requirement.gate}`.matchAll(/\bMVP-\d\d\b/g)) {
+      assert.ok(inventory.has(id), `${requirement.id}: ${id} is not an inventory item`);
+      assert.ok(inventory.get(id).requirements.includes(requirement.id), `${requirement.id} names ${id}, which is not tagged ${requirement.id} in docs/mvp-remaining-work-2026-10-09.json`);
+    }
+  }
+});
+
+// Always-on listening and hardware invocation (MVP-52) gate AP-06 and AP-14 and are owner-gated.
+test('AP-06 and AP-14 name MVP-52 as open and owner-gated', () => {
+  const byId = new Map(requirements.requirements.map(requirement => [requirement.id, requirement]));
+  for (const id of ['AP-06', 'AP-14']) assert.match(byId.get(id).remaining, /always-on listening and hardware invocation \(MVP-52\) (?:is|are) open and owner-gated/i, `${id}: MVP-52`);
+  const item = JSON.parse(read('docs/mvp-remaining-work-2026-10-09.json')).items.find(entry => entry.id === 'MVP-52');
+  assert.ok(item.blocked_on.some(entry => entry.startsWith('HUMAN: ')), 'MVP-52 must stay blocked on an owner decision');
+  for (const id of ['AP-06', 'AP-14']) assert.ok(item.requirements.includes(id), `MVP-52 must be tagged ${id}`);
+});

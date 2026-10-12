@@ -375,7 +375,7 @@ Patentability requires counsel and a prior-art search. Speech-redaction patents 
 7. **The split-record model is required for finance.** Redaction must coexist with 17a-4 retention and archives. Partnering with a compliance archive (see [09](09-distribution-partners-economics.md)) turns a conflict into a feature.
 8. **Publish leakage numbers, not F1.** Adopt worst-class recall, exact, partial and implicit leak rates, and task-utility retention on an Alpha spoken-meeting benchmark. Consider an external audit similar to Limina's Armilla audit. This also supports insurance and liability positioning for redaction false negatives (see [11](11-fit-gtm-risks.md)).
 9. **Exit and partner optionality.** The August–October 2025 M&A wave (SentinelOne, Cato, Check Point, F5, PANW, CrowdStrike, Veeam) shows that incumbents pay about $180–500M for GenAI data-control capability. An on-device speech-redaction SDK is plausibly separable IP of interest to these buyers and to handset OEMs (est.; see [08](08-investors-funding-ma.md)).
-10. **Upstream contract.** ADR-02 places redaction upstream in elizaOS. The policy engine and egress chokepoint belong in the shared agent, with product-specific policy supplied explicitly. Any change must go through reviewed upstream commits or `patches/eliza`, per repository rules.
+10. **Upstream contract.** ADR-02 places redaction upstream in elizaOS. The policy engine and egress chokepoint belong in the shared agent, with product-specific policy supplied explicitly. Any change must go through reviewed upstream commits or `patches/eliza` (historical; the series was retired in `34b3c82a` and upstream changes now arrive through a reviewed pin move in `upstream.lock.json`), per repository rules.
 
 ## Open questions
 

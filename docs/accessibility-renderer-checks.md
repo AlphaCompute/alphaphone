@@ -52,8 +52,9 @@ control still exists. Their scrim stays exposed as a named close control for tou
 Toasts ("Saved", refusals, "Deleted … Undo") are written into a polite live region that
 is always present, and an open menu or inline dialog does not take that region out of
 the accessibility tree. Whether TalkBack speaks them is a device check. A top-layer
-`<dialog>` still makes the region inert while it is open, so a toast raised under one
-is not announced; that case is open.
+`<dialog>` makes the region inert while it is open, so since the MVP completion
+integration a toast raised under one is also written into a polite region inside that dialog
+(`runtime/inline-modal.ts`; an aria snapshot in `accessibility-resilience.spec.ts`).
 
 The recovery screen dismisses any open modal dialog when it appears. A modal dialog is
 drawn above everything else and would otherwise leave Reload covered and unfocusable.
@@ -69,13 +70,17 @@ product commitment; the landscape decision is still A-22 in `docs/decisions.md`.
   system's largest font at the default in-app size. The existing large-text specs cover
   150%, the largest in-app size.
 - Landscape 915 by 412 on a touch phone: clipping rules, names and tab order.
+- Landscape at 200% text (MVP completion integration): clipping and overlap rules and names.
+  The mock calendar's Standup block is clipped vertically there and in portrait at 200%; that
+  case is open (A-22 scope).
 
 Truncation policy: a single-line ellipsis or line clamp on a preview of user content
 (a mail snippet, a file name in a list, a note preview) is allowed, because the full text
 is one tap away and is exposed whole to assistive technology. Text that is cut through
-without an ellipsis is a failure. At 200% the app title in the Camera and Photos headers
-is shortened with an ellipsis; this is recorded as an open item, not a pass. The Home
-calendar card title is no longer shortened at 200%: the card grows with it (round 8).
+without an ellipsis is a failure. At 200% the app titles in the Camera and Photos headers
+wrap instead of being shortened, and a cut title marked `data-alpha-app-title` fails the sweep
+(MVP completion integration). The Home calendar card title is no longer shortened at 200%: the
+card grows with it (round 8).
 
 ## Limits
 
@@ -86,25 +91,28 @@ calendar card title is no longer shortened at 200%: the card grows with it (roun
   may grow), the page measures the drawn text size with a hidden probe and publishes it as
   `--alpha-text-scale` (`runtime/text-scale.ts`). The probe is measured, not assumed:
   `AccessibilityInstrumentedTest` asserts it reads 2 at system font scale 2.0 inside the
-  WebView. That test was compiled at this source and not run.
+  WebView. At `2961bd9e` (class E, developer APKs) the launcher flavor measured 2 and passed
+  the overlap checks; the class then failed at its accessibility-click step on both flavors'
+  runs as recorded in [verification](verification.md).
 - Contrast is not computed for text over photographs, video, gradients or blur; the
   camera, photo and map overlay specs cover those surfaces.
 - The map canvas is a pannable surface: labels and pins outside the frame are not
   failures. Places are also listed in the results sheet.
 - Landscape is checked in a mobile-emulated Chromium viewport. Android rotation, insets
   and state restoration have an instrumentation source (`RotationInstrumentedTest`); it
-  was not run as part of this work, and a device pass is still required.
-- The sweep runs the standalone presentation that a browser shows. The Android HOME
-  (launcher) presentation uses different header sizing and is not swept.
+  passed at `73b973a5` and `6dcdde34` (earlier pins) and was not run at the current pin, and a
+  device pass is still required.
+- The sweep runs the standalone presentation that a browser shows and, since the MVP
+  completion integration, the launcher presentation too.
 - The composer field keeps a pixel line height, and text typed into inputs is not judged
   for clipping; only rendered text nodes are.
-- Landscape combined with 200% text is not swept. Neither is any zoom above 200%: the
-  largest in-app size with the largest system font multiplies to 300%.
+- No zoom above 200% is swept: the largest in-app size with the largest system font
+  multiplies to 300%.
 - The sweep visits states reachable without a provider, permission or account. Dialogs
-  and flows that need one are covered by their own accessibility specs. The fixture lock
-  screen and the `photos-empty` viewer state are not visited.
-- A focused control that is partly under the floating composer (the last rows of a long
-  Settings page, for example) is not reported; only a control under a scrim or its panel is.
+  and flows that need one are covered by their own accessibility specs. Connected-provider states are visited with synthetic providers on the development
+  server only. The fixture lock screen and the `photos-empty` viewer state are not visited.
+- A focused control partly under the floating composer is reported (MVP completion
+  integration, with `scroll-padding-bottom` applied so focus scrolls clear of it).
 - A state is a screen as it opens. Flows inside a state (typing, multi-step dialogs,
   drag gestures) are not walked beyond the tab order. The scan fixture is checked once its
   result has arrived; the "Looking for a page" status shown for a second before it is not.

@@ -81,14 +81,16 @@ the renderer rejects any provider row that has a field other than `start`, `end`
   changed window and an answer on a failed check are refused. The Keystore-backed journal
   itself is not exercised.
 - `CalendarAvailabilityInstrumentedTest`: the Android reader against the device
-  CalendarProvider with calendars the test creates. It needs calendar permission from
-  the runner. It has been compiled but never run.
+  CalendarProvider with calendars the test creates. `scripts/test-calendar-regression.mjs --case=CalendarAvailabilityInstrumentedTest` grants
+  the calendar permissions. It passed 4 of 4 on both flavors at `2961bd9e` (pin `13c9857598`),
+  class E on developer APKs ([verification](verification.md)).
 
 ## Still open
 
-- The Android path has not been run on an emulator or device in this change: the
-  permission dialog, the review inside the Android WebView, synced accounts, a declined
-  invitation and a mid-review time-zone change are unverified.
+- The Android reader ran on an emulator (above). The permission dialog and the review inside
+  the Android WebView have no emulator test: the read is a device action an agent requests
+  over a negotiated connection, and a bundled APK has no agent session to script it. Synced
+  accounts, a declined invitation and a mid-review time-zone change are unverified.
 - The bridge methods ask for window focus, as the shared calendar reads do. Whether focus
   has returned by the time the calendars are listed, straight after the owner answers the
   first permission prompt, is unverified. The phone asks for the list again for about a
