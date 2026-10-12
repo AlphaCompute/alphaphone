@@ -144,7 +144,7 @@ test('Reset Alpha data explains its scope, needs explicit confirmation and never
  page.once('dialog',dialog=>void dialog.accept());
  await reset.click();
  await expect.poll(()=>calls(page,'AlphaDataReset','reset')).toBe(1);
- expect(await page.evaluate(()=>(window as any).settingsFixture.calls.find((c:any)=>c.plugin==='AlphaDataReset').input)).toEqual({confirmation:'reset-alpha-data'});
+ expect(await page.evaluate(()=>(window as any).settingsFixture.calls.find((c:any)=>c.plugin==='AlphaDataReset'&&c.method==='reset').input)).toEqual({confirmation:'reset-alpha-data'});
  await expect(app(page).getByText('Screen lock not confirmed. Nothing was erased.',{exact:true}).first()).toBeVisible();
  // No screen lock: the native typed-phrase dialog is dismissed. Nothing erased.
  await page.evaluate(()=>{(window as any).settingsFixture.resetAnswer='declined';});

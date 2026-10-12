@@ -43,8 +43,8 @@ test('no instrumented test opens the panel with the removed swipe', () => {
 
 test('the launcher keeps one MainActivity and its kind belongs to the task', () => {
   const activity = read('android/app/src/main/java/ai/elizaresearch/alphaphone/MainActivity.java');
-  // A second instance never loads a page.
-  assert.match(activity, /@Override protected void load\(\) \{ if \(!handedOff\) super\.load\(\); \}/);
+  // A second instance, or one shown while a data reset finishes, never loads a page.
+  assert.match(activity, /@Override protected void load\(\) \{ if \(!handedOff && !resetPending\) super\.load\(\); \}/);
   assert.match(activity, /MainActivity live = BuildConfig\.IS_LAUNCHER && !isAssistantSurface\(\) \? liveInstance\(\) : null;/);
   // The kind is read from the start intent once per task. A relaunch is handed the last intent given
   // to setIntent (AlphaConnectionPlugin keeps the sign-in return there), so it must not be read again.
