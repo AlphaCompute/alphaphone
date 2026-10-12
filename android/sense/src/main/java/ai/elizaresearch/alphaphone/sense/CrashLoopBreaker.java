@@ -29,6 +29,18 @@ public final class CrashLoopBreaker {
   return Arrays.stream(previous).filter(time->time<=now&&now-time<WINDOW_MS).sorted().toArray();
  }
 
+ /**
+  * Whether an open-session marker found at process start is a crash. A shutdown, reboot or OTA
+  * kills the process without a clean stop, so a marker written in a different boot is not counted,
+  * nor is one written by a different install of this package (a package update also kills the
+  * process). An unknown boot count ({@code <0}) is compared conservatively, as the same boot.
+  */
+ public static boolean uncleanExit(boolean sessionOpen,long markerBoot,long currentBoot,long markerInstall,long currentInstall){
+  if(!sessionOpen)return false;
+  if(markerBoot>=0&&currentBoot>=0&&markerBoot!=currentBoot)return false;
+  return markerInstall==currentInstall;
+ }
+
  public static boolean tripped(long[] exits,long now){return prune(exits,now).length>=LIMIT;}
 
  public static String encode(long[] exits){

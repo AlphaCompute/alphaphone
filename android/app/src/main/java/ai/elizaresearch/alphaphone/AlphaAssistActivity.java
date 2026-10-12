@@ -11,8 +11,12 @@ import androidx.annotation.RequiresApi;
 public final class AlphaAssistActivity extends MainActivity {
  @Override protected boolean isAssistantSurface() { return true; }
  private String newIntentCaller;
+ /** This launch's origin until the renderer takes it; see {@link #takeInvocation}. */
+ private String invocation;
  @Override public void onCreate(Bundle state) {
-  setIntent(cleanIntent(Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ? getLaunchedFromPackage() : null));
+  // A recreated activity (configuration change, process restore) is not a new invocation: the
+  // launching package Android reports is still the original one, so it is ignored.
+  setIntent(cleanIntent(state == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ? getLaunchedFromPackage() : null));
   super.onCreate(state);
  }
  /** Android 15+ reports who sent each new intent to this single-task surface. */
@@ -27,14 +31,25 @@ public final class AlphaAssistActivity extends MainActivity {
   setIntent(clean);
   super.onNewIntent(clean);
  }
- /** The only extras: product-set launch flags the renderer may read. Caller extras are dropped. */
+ /** The only extra: a product-set launch flag the renderer may read. Caller extras are dropped. */
  static final String EXTRA_ASSISTANT = "alpha.assistant";
- /** {@link AssistInvocation#LISTENER} or {@link AssistInvocation#ASSIST}, from Android-reported caller identity only. */
- static final String EXTRA_INVOCATION = "alpha.invocation";
- /** The caller package is known only when the caller shared its identity (the listener does). */
+ /**
+  * Reads and consumes this launch's origin: {@link AssistInvocation#LISTENER} is returned at most
+  * once per launch, then {@link AssistInvocation#ASSIST}, so a consumer that starts a voice turn on
+  * it cannot fire twice.
+  */
+ synchronized String takeInvocation() {
+  String origin = AssistInvocation.LISTENER.equals(invocation) ? AssistInvocation.LISTENER : AssistInvocation.ASSIST;
+  invocation = AssistInvocation.ASSIST;
+  return origin;
+ }
+ /**
+  * The caller package is known only when the caller shared its identity (the listener does). The
+  * origin comes from Android-reported caller identity only, never from caller extras.
+  */
  private Intent cleanIntent(String caller) {
   boolean sameSigner = caller != null && getPackageManager().checkSignatures(getPackageName(), caller) == PackageManager.SIGNATURE_MATCH;
-  return new Intent(this, AlphaAssistActivity.class).setAction(Intent.ACTION_ASSIST).putExtra(EXTRA_ASSISTANT, true)
-   .putExtra(EXTRA_INVOCATION, AssistInvocation.origin(caller, sameSigner));
+  synchronized (this) { invocation = AssistInvocation.origin(caller, sameSigner); }
+  return new Intent(this, AlphaAssistActivity.class).setAction(Intent.ACTION_ASSIST).putExtra(EXTRA_ASSISTANT, true);
  }
 }

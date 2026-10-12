@@ -4,7 +4,7 @@
  * off, and opens its own consent screen. Nothing here can turn listening on or resume it.
  */
 export const LISTENER_STATES = [
-  'OFF', 'PERMISSION_REQUIRED', 'STOPPED_AFTER_ERRORS', 'WAITING_FOR_UNLOCK', 'SPEECH_UNAVAILABLE',
+  'OFF', 'PERMISSION_REQUIRED', 'NOTIFICATIONS_REQUIRED', 'STOPPED_AFTER_ERRORS', 'PAUSED_OTHER_USER', 'WAITING_FOR_UNLOCK', 'SPEECH_UNAVAILABLE',
   'PAUSED_USER', 'PAUSED_CALL', 'PAUSED_MIC_IN_USE', 'PAUSED_MIC_UNAVAILABLE', 'LISTENING',
 ] as const;
 export type ListenerState = typeof LISTENER_STATES[number];
@@ -13,7 +13,12 @@ export type ListenerStatus =
   | { available: false }
   | { available: true; state: ListenerState; label: string; consented: boolean; listening: boolean; microphoneOpen: boolean };
 
-/** How the assistant surface was opened: by the listener's wake phrase, or any other assist entry. */
+/**
+ * How the assistant surface was opened: by the listener's wake phrase, or any other assist entry.
+ * 'listener' is reported at most once per launch (the native side consumes it), so a consumer that
+ * starts a voice turn on it cannot fire twice. The listener only invokes Alpha while the phone is
+ * unlocked; a consumer must still never start capture behind the keyguard.
+ */
 export type AssistantInvocation = 'listener' | 'assist' | null;
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {};

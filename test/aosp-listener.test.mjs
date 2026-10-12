@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { FORBIDDEN, LISTENER_SOURCE, UNPRIVILEGED, apkPermissions, checkListenerOverlay, checkListenerPermissions, listenerPackage, privappPermissions, stageListener, verifyAospListener } from "../scripts/aosp-listener.mjs";
+import { FORBIDDEN, INDICATOR_EXEMPT_ROLES, LISTENER_SOURCE, UNPRIVILEGED, apkPermissions, checkListenerDescriptor, checkListenerOverlay, checkListenerPermissions, checkListenerSpeechBundle, checkListenerSpeechNatives, listenerPackage, privappPermissions, stageListener, verifyAospListener } from "../scripts/aosp-listener.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const APP = JSON.parse(fs.readFileSync(path.join(root, "app.config.json"), "utf8")).appId;
@@ -45,7 +45,15 @@ test("hardware invocation keeps emergency and camera gestures and clears indicat
   assert.throws(() => checkListenerOverlay(overlay.replace('config_keyChordPowerVolumeUp">2<', 'config_keyChordPowerVolumeUp">3<')), /power menu/);
   assert.throws(() => checkListenerOverlay(overlay.replace("</resources>", '<integer name="config_doublePressOnPowerBehavior">0</integer></resources>')), /must not change/);
   assert.throws(() => checkListenerOverlay(overlay.replace("</resources>", '<bool name="config_emergencyGestureEnabled">false</bool></resources>')), /must not change/);
-  assert.throws(() => checkListenerOverlay(overlay.replace('config_systemAmbientAudioIntelligence" translatable="false"><', 'config_systemAmbientAudioIntelligence" translatable="false">com.example.ambient<')), /indicator/);
+  assert.equal(INDICATOR_EXEMPT_ROLES.length, 6, "all six PermissionManager EXEMPTED_ROLES");
+  for (const role of INDICATOR_EXEMPT_ROLES) {
+    const set = holder => overlay.replace(`${role}" translatable="false"><`, `${role}" translatable="false">${holder}<`);
+    assert.ok(overlay.includes(`${role}" translatable="false"></string>`), `${role} is overlaid to empty`);
+    assert.throws(() => checkListenerOverlay(set("com.example.ambient")), /must be empty/, role);
+    assert.throws(() => checkListenerOverlay(set(PKG), [APP, PKG]), /names an Alpha package/, role);
+    assert.throws(() => checkListenerOverlay(set(APP), [APP, PKG]), /names an Alpha package/, role);
+    assert.throws(() => checkListenerOverlay(overlay.replace(new RegExp(`<string name="${role}"[^>]*></string>`), "")), /overlaid to empty/, role);
+  }
   assert.throws(() => checkListenerOverlay(overlay.replace('config_supportsMicToggle">true', 'config_supportsMicToggle">false')), /toggle/);
   const makefile = read("listener.mk");
   assert.match(makefile, /^PRODUCT_PACKAGES \+= AlphaSense$/m);
@@ -54,6 +62,8 @@ test("hardware invocation keeps emergency and camera gestures and clears indicat
   const sysconfig = read("sysconfig/alphaphone-sense.xml").replace(/<!--[\s\S]*?-->/g, "");
   assert.doesNotMatch(sysconfig, /allow-in-power-save|bg-restriction-exemption|allow-in-data-usage-save/);
   assert.match(sysconfig, /android\.os\.usertype\.full\.SYSTEM/);
+  const allowed = [...sysconfig.matchAll(/<allow-association target="([^"]+)" allowed="([^"]+)"/g)].map(match => (assert.equal(match[1], PKG), match[2])).sort();
+  assert.deepEqual(allowed, [APP, "com.android.permissioncontroller", "com.android.settings", "com.android.systemui"], "the consent flow's system packages may associate; nothing else");
   const bp = read("Android.bp");
   assert.match(bp, /privileged: true/);
   assert.match(bp, /presigned: true/);
@@ -77,10 +87,34 @@ test("staging copies the reviewed configuration and APK and refuses a different 
   assert.throws(() => stageListener({ root, output, apk, dump: dump(), signer: SIGNER, launcherSigner: SIGNER, appId: APP }), /already exists/);
 });
 
+test("the privileged listener is pinned by a reviewed descriptor and must carry its qualified speech bundle", () => {
+  const hash = "c".repeat(64);
+  const good = { packageName: PKG, apkSha256: hash, certificateSha256: SIGNER };
+  assert.equal(checkListenerDescriptor(good, { appId: APP, apkSha256: hash, signer: SIGNER }), true);
+  assert.throws(() => checkListenerDescriptor(null, { appId: APP, apkSha256: hash, signer: SIGNER }), /required/);
+  assert.throws(() => checkListenerDescriptor({ ...good, packageName: APP }, { appId: APP, apkSha256: hash, signer: SIGNER }), /expected/);
+  assert.throws(() => checkListenerDescriptor(good, { appId: APP, apkSha256: "d".repeat(64), signer: SIGNER }), /apkSha256/, "other bytes with the right name and signer are refused");
+  assert.throws(() => checkListenerDescriptor(good, { appId: APP, apkSha256: hash, signer: "b".repeat(64) }), /certificateSha256/);
+  assert.throws(() => checkListenerDescriptor({ ...good, apkSha256: "x" }, { appId: APP, apkSha256: "x", signer: SIGNER }), /apkSha256/);
+  const qualified = JSON.parse(fs.readFileSync(path.join(root, "android/local-speech/qualified-runtime-manifest.json"), "utf8")).qualifiedAbis;
+  const arm = qualified.find(row => row.abi === "arm64-v8a");
+  const entries = ["AndroidManifest.xml", "classes.dex", "assets/local-speech/v1/manifest.json", ...arm.native.map(lib => `lib/arm64-v8a/${lib.file}`)];
+  assert.deepEqual(checkListenerSpeechBundle(entries, qualified), ["arm64-v8a"]);
+  assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("assets/local-speech/")), qualified), /no assets\/local-speech\/v1\/manifest\.json/, "an APK without the model can never listen");
+  assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("lib/")), qualified), /no qualified speech runtime/);
+  const hashes = Object.fromEntries(arm.native.map(lib => [`lib/arm64-v8a/${lib.file}`, lib.sha256]));
+  assert.equal(checkListenerSpeechNatives(["arm64-v8a"], qualified, entry => hashes[entry]), true);
+  assert.throws(() => checkListenerSpeechNatives(["arm64-v8a"], qualified, () => "0".repeat(64)), /differs from qualified/);
+});
+
 test("stage-aosp wires the listener and requires it for production images", () => {
   const stage = fs.readFileSync(path.join(root, "scripts/stage-aosp.mjs"), "utf8");
   assert.match(stage, /"--listener-apk"/);
+  assert.match(stage, /"--listener-descriptor"/);
   assert.match(stage, /if \(production && !listenerApk\)\s*throw/);
+  assert.match(stage, /if \(production && !listenerDescriptor\)\s*throw/);
+  assert.match(stage, /checkListenerDescriptor\(/);
+  assert.match(stage, /if \(production\) throw new Error\(`Refusing \$\{listenerApk\}: \$\{problem\.message\}`\)/, "production refuses a listener without its speech bundle");
   assert.match(stage, /a debuggable listener is staged only with --development/);
   assert.ok(stage.indexOf("stageListener(") > stage.indexOf("writeProvisioningOverlay("), "listener makefile is appended after the provisioning lines");
 });
@@ -95,6 +129,8 @@ test("the read-only image check needs a privileged, persistent listener and a no
     if (command === `shell dumpsys package ${APP}`) return overrides.alpha ?? `  Package [${APP}]\n    privateFlags=[ PRODUCT ]\n`;
     if (command === "shell getprop ro.hotword.detection_service_required") return overrides.prop ?? "true\n";
     if (command.startsWith("shell dumpsys activity services")) return overrides.services ?? "ACTIVITY MANAGER SERVICES (dumpsys activity services)\n  (nothing)\n";
+    if (command === "shell device_config get privacy camera_mic_icons_enabled") return overrides.icons ?? "null\n";
+    if (command.startsWith("shell cmd role get-role-holders --user 0 android.app.role.SYSTEM_")) return (overrides.roles ?? {})[args.at(-1)] ?? "\n";
     throw new Error(`unexpected ${command}`);
   };
   const result = verifyAospListener(device(), "0", APP);
@@ -109,5 +145,8 @@ test("the read-only image check needs a privileged, persistent listener and a no
   assert.throws(() => verifyAospListener(device({ listener: listenerDump({ extra: "      android.permission.INTERNET: granted=true\n" }) }), "0", APP), /INTERNET/);
   assert.throws(() => verifyAospListener(device({ alpha: "    privateFlags=[ PRIVILEGED PRODUCT ]\n" }), "0", APP), /nonprivileged/);
   assert.throws(() => verifyAospListener(device({ prop: "\n" }), "0", APP), /detection_service_required/);
+  assert.throws(() => verifyAospListener(device({ icons: "false\n" }), "0", APP), /camera_mic_icons_enabled/);
+  assert.equal(verifyAospListener(device({ icons: "true\n" }), "0", APP).privileged, true);
+  assert.throws(() => verifyAospListener(device({ roles: { "android.app.role.SYSTEM_UI_INTELLIGENCE": "com.example.intelligence\n" } }), "0", APP), /SYSTEM_UI_INTELLIGENCE is held/);
   assert.equal(verifyAospListener(device({ services: `  * ServiceRecord{1 u0 ${PKG}/.ListeningService}\n` }), "0", APP).listeningServiceRunning, true);
 });

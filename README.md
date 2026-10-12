@@ -42,6 +42,19 @@ the required evidence rather than treating a successful APK build as acceptance.
 - [Verification gates and evidence](docs/verification.md)
 - [Source/design provenance](docs/sources.md)
 
+## Approved MVP direction — October 12
+
+The [implementation plan](docs/implementation-plan.md) and
+[32 implementation TODOs](docs/owner-approved-mvp-plan-2026-10-12.md) supersede older
+scope wording above. Agent execution is local only; Eliza Cloud provides inference,
+subscription billing, Gmail and shared Maps. All STT/TTS must move to the native
+on-device route. Dictation and interruptible voice assistant are separate controls.
+Always-on listening is required in the Pixel 10a / Android 17 AOSP MVP. Phone,
+Contacts and SMS are AOSP-only; Wallet is removed. Full permitted Photos access and
+reset-only data management are planned. These are requirements, not claims that the
+current Cloud voice/credit UI or other source already implements them.
+See [speech research](docs/local-speech-research-2026-10-12.md) for native candidates.
+
 ## Setup
 
 ```sh
@@ -397,8 +410,10 @@ and inherit its `product.mk` from the selected product. See [build instructions]
 for signing, default-home policy and the full image verification boundary.
 
 The opt-in always-on listener ships only in the image. Build it with `./gradlew :sense:assembleRelease`
-(in `android/`, same signing variables as the APKs) and pass it with `--listener-apk FILE`; production
-staging requires it. `node scripts/verify-aosp-listener.mjs --serial SERIAL --user 0` is a read-only
+(in `android/`, same signing variables as the APKs, after the speech model bundle is prepared) and pass
+it with `--listener-apk FILE`. Production staging requires it together with `--listener-descriptor FILE`, an
+independently reviewed JSON record of `packageName`, `apkSha256` and `certificateSha256`, and refuses a
+listener APK without the qualified speech bundle. `node scripts/verify-aosp-listener.mjs --serial SERIAL --user 0` is a read-only
 check of a booted image. See [ADR 0001](docs/adr/0001-privileged-listener.md) for the privilege
 boundary and the remaining device gates.
 

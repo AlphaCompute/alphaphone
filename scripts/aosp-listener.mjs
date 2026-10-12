@@ -5,7 +5,9 @@
  * configuration from android/aosp/listener next to the staged launcher module. Admission checks
  * the APK's requested permissions against the privapp allowlist (no network, no call/output
  * capture), its package name and that it shares the launcher's signer, and the overlay keeps the
- * emergency and camera power gestures. This is staging output only: the privilege grants, the
+ * emergency and camera power gestures and clears every indicator-exempt role. Production staging
+ * also requires a reviewed listener descriptor pinning the APK hash and signer, and a packaged,
+ * qualified speech bundle. This is staging output only: the privilege grants, the
  * indicator and press-and-hold invocation are proven only by booting the built image.
  */
 import fs from "node:fs";
@@ -73,17 +75,79 @@ export function checkListenerPermissions(dump, privappXml, expectedPackage) {
   return { requested, privileged };
 }
 
-/** The overlay sets press-and-hold power to the assistant and leaves emergency/camera gestures alone. */
-export function checkListenerOverlay(configXml) {
+/** PermissionManager EXEMPTED_ROLES: holders are hidden from the microphone/camera privacy indicator. */
+export const INDICATOR_EXEMPT_ROLES = [
+  "config_systemAmbientAudioIntelligence",
+  "config_systemUiIntelligence",
+  "config_systemAudioIntelligence",
+  "config_systemNotificationIntelligence",
+  "config_systemTextIntelligence",
+  "config_systemVisualIntelligence",
+];
+
+/**
+ * The overlay sets press-and-hold power to the assistant, leaves emergency/camera gestures alone
+ * and clears every indicator-exempt role. `alphaPackages` are refused as any role value even if the
+ * emptiness rule were relaxed.
+ */
+export function checkListenerOverlay(configXml, alphaPackages = []) {
   const body = withoutComments(configXml);
   const value = name => new RegExp(`<(?:integer|bool|string)\\s+name="${name}"[^>]*>([^<]*)<`).exec(body)?.[1]?.trim();
   if (value("config_longPressOnPowerBehavior") !== "5") throw new Error("Press and hold power must open the assistant (config_longPressOnPowerBehavior 5)");
   if (value("config_keyChordPowerVolumeUp") !== "2") throw new Error("Power + volume up must keep opening the power menu (config_keyChordPowerVolumeUp 2)");
   if (value("config_supportsMicToggle") !== "true") throw new Error("The microphone privacy toggle must be available");
-  for (const role of ["config_systemAmbientAudioIntelligence", "config_systemAudioIntelligence"])
-    if (value(role) !== "") throw new Error(`${role} must be empty: its holder is exempt from the microphone indicator`);
+  for (const role of INDICATOR_EXEMPT_ROLES) {
+    const holder = value(role);
+    if (holder === undefined) throw new Error(`${role} must be overlaid to empty: its holder is exempt from the microphone indicator`);
+    if (alphaPackages.some(pkg => holder.split(/[\s,;]+/).includes(pkg))) throw new Error(`${role} names an Alpha package: it would be hidden from the microphone indicator`);
+    if (holder !== "") throw new Error(`${role} must be empty: its holder is exempt from the microphone indicator`);
+  }
   for (const kept of [/config_doublePressOnPowerBehavior/, /config_cameraDoubleTapPowerGestureEnabled/, /[Ee]mergency/, /config_defaultAssistant/, /config_keyChordPowerVolumeDown/])
     if (kept.test(body)) throw new Error(`The listener overlay must not change ${kept.source}`);
+  return true;
+}
+
+/**
+ * The model bundle the listener loads at runtime (SpeechAssets.install). A listener APK without it
+ * would sit in SPEECH_UNAVAILABLE forever, so production staging refuses it. `entries` are the
+ * APK's zip entry names; `qualifiedAbis` come from android/local-speech/qualified-runtime-manifest.json.
+ */
+export function checkListenerSpeechBundle(entries, qualifiedAbis) {
+  const names = new Set(entries);
+  if (!names.has("assets/local-speech/v1/manifest.json"))
+    throw new Error("The listener APK has no assets/local-speech/v1/manifest.json: build it after the speech model bundle is prepared, or it can never listen");
+  const abis = (qualifiedAbis ?? []).map(row => row.abi);
+  const packaged = abis.filter(abi => names.has(`lib/${abi}/libsherpa-onnx-jni.so`));
+  if (!packaged.length) throw new Error(`The listener APK packages no qualified speech runtime ABI (${abis.join(", ") || "none qualified"})`);
+  return packaged;
+}
+
+/**
+ * Native libraries the listener packages must be the qualified bytes. `hashOf(entry)` returns the
+ * SHA-256 of a zip entry. Only ABIs present in the APK are checked.
+ */
+export function checkListenerSpeechNatives(packaged, qualifiedAbis, hashOf) {
+  for (const abi of packaged) {
+    const row = qualifiedAbis.find(item => item.abi === abi);
+    for (const lib of row?.native ?? []) {
+      const actual = hashOf(`lib/${abi}/${lib.file}`);
+      if (actual !== lib.sha256) throw new Error(`Listener ${abi}/${lib.file} differs from qualified-runtime-manifest.json`);
+    }
+  }
+  return true;
+}
+
+/**
+ * The reviewed listener descriptor: an independently reviewed record pinning the listener APK's
+ * bytes and signer, like the launcher's --descriptor. Production staging requires it.
+ */
+export function checkListenerDescriptor(descriptor, { appId, apkSha256, signer }) {
+  if (!descriptor || typeof descriptor !== "object") throw new Error("A reviewed --listener-descriptor is required");
+  if (descriptor.packageName !== listenerPackage(appId)) throw new Error(`Listener descriptor names ${descriptor.packageName}, expected ${listenerPackage(appId)}`);
+  if (!/^[0-9a-f]{64}$/.test(descriptor.apkSha256 ?? "") || descriptor.apkSha256 !== apkSha256)
+    throw new Error("The listener APK does not match the reviewed descriptor's apkSha256");
+  if (!/^[0-9a-f]{64}$/.test(descriptor.certificateSha256 ?? "") || descriptor.certificateSha256 !== signer)
+    throw new Error("The listener APK signer does not match the reviewed descriptor's certificateSha256");
   return true;
 }
 
@@ -103,7 +167,7 @@ export function stageListener({ root, output, apk, dump, signer, launcherSigner,
   const source = path.join(root, LISTENER_SOURCE);
   const read = name => fs.readFileSync(path.join(source, name), "utf8");
   checkListenerPermissions(dump, read("permissions/privapp-permissions-ai.elizaresearch.alphaphone.sense.xml"), listenerPackage(appId));
-  checkListenerOverlay(read("overlay/frameworks/base/core/res/res/values/config.xml"));
+  checkListenerOverlay(read("overlay/frameworks/base/core/res/res/values/config.xml"), [appId, listenerPackage(appId)]);
   if (!/^[0-9a-f]{64}$/.test(signer ?? "") || signer !== launcherSigner)
     throw new Error("The listener APK must be signed with the launcher's certificate (its control permission is signature-level)");
   const target = path.join(output, "listener");
@@ -135,6 +199,15 @@ export function verifyAospListener(run, user, appId) {
   for (const name of FORBIDDEN) if (new RegExp(`${name.replace(/\./g, "\\.")}\\b`).test(dump)) throw Error(`The listener has ${name}`);
   if (privilegedFlag.test(run("shell", "dumpsys", "package", appId))) throw Error(`${appId} must stay nonprivileged`);
   if (run("shell", "getprop", "ro.hotword.detection_service_required").trim() !== "true") throw Error("ro.hotword.detection_service_required is not true");
+  // SystemUI hides the microphone/camera chip when this DeviceConfig flag is false. Its AOSP
+  // default is true and the image has no flag-push service; any explicit false fails admission.
+  if (/^false$/i.test(run("shell", "device_config", "get", "privacy", "camera_mic_icons_enabled").trim()))
+    throw Error("DeviceConfig privacy/camera_mic_icons_enabled is false: the microphone indicator is disabled");
+  for (const role of ["android.app.role.SYSTEM_AMBIENT_AUDIO_INTELLIGENCE", "android.app.role.SYSTEM_UI_INTELLIGENCE", "android.app.role.SYSTEM_AUDIO_INTELLIGENCE",
+    "android.app.role.SYSTEM_NOTIFICATION_INTELLIGENCE", "android.app.role.SYSTEM_TEXT_INTELLIGENCE", "android.app.role.SYSTEM_VISUAL_INTELLIGENCE"]) {
+    const holders = run("shell", "cmd", "role", "get-role-holders", "--user", user, role).trim();
+    if (holders) throw Error(`${role} is held by ${holders}: its holder is hidden from the microphone indicator`);
+  }
   const services = run("shell", "dumpsys", "activity", "services", pkg);
   return {
     user, packageName: pkg, privileged: true, persistent: true, captureHotwordGranted: true,
