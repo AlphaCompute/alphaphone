@@ -32,7 +32,7 @@ export function exercise(mode,kind='calendar',extraArguments=[]){
 const args=process.argv.slice(2);if(args[1]==='badging')console.log("package: name='${pkg}"+(args[2].includes('androidTest')?'.test':'')+"'");else console.log('E: manifest\\n  E: instrumentation\\n    A: android:name="androidx.test.runner.AndroidJUnitRunner"\\n    A: android:targetPackage="${pkg}"\\n  E: instrumentation\\n    A: android:name="${pkg}.WorkflowNoticeProcessRunner"\\n    A: android:targetPackage="${pkg}"');
 `,{mode:0o700});
   fs.writeFileSync(adb,`#!/usr/bin/env node
-const fs=require('node:fs'),a=process.argv.slice(4),file=${JSON.stringify(state)},s=JSON.parse(fs.readFileSync(file)),pkg=${JSON.stringify(pkg)},mode=${JSON.stringify(mode)};const save=()=>fs.writeFileSync(file,JSON.stringify(s));fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(a)+'\\n');
+const fs=require('node:fs'),a=process.argv.slice(4),file=${JSON.stringify(state)},s=JSON.parse(fs.readFileSync(file)),pkg=${JSON.stringify(pkg)},mode=${JSON.stringify(mode)};const save=()=>{const next=file+'.'+process.pid+'.tmp';fs.writeFileSync(next,JSON.stringify(s));fs.renameSync(next,file);};fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(a)+'\\n');
 if(a[0]==='emu')console.log('calendar-fixture\\nOK');
 else if(a.includes('ro.build.version.sdk'))console.log('35');
 else if(a.includes('ro.kernel.qemu'))console.log('1');
