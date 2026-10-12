@@ -47,6 +47,8 @@ type Selection = {kind:'development';profile:DevelopmentProfile;account?:string}
 export interface CloudServiceSession { environment: CloudEnvironment; userId: string; organizationId?: string; sessionId: string; credentialId: string; email?: string }
 export interface RestoredMessage { id: string; from: 'user' | 'agent'; text: string }
 export interface ConnectionSnapshot {
+  /** Automatic session restoration has completed; null is now a resolved no-session state. */
+  startupResolved?: boolean;
   residentBalance?: number | null;
   residentSavedCredential?: boolean;
   cloudPersonal?: PersonalSetupState;
@@ -84,7 +86,7 @@ const webCloudUnavailable = () => !testMocksEnabled && !isAndroid && !browserLoc
 const CLOUD_SERVICE = 'alpha.connection.cloud-service.v1';
 const listeners = new Set<() => void>();
 let developmentPageSuspended = false;
-let state: ConnectionSnapshot = { phoneActionsAvailable:false, phoneCapabilityReason:'', actionHistory: [], conversations: [], history: null, cloudAccount: null, open: false, busy: false, message: '', error: '', kind: 'offline', name: 'Offline', session: null, agents: [] };
+let state: ConnectionSnapshot = { startupResolved:false, phoneActionsAvailable:false, phoneCapabilityReason:'', actionHistory: [], conversations: [], history: null, cloudAccount: null, open: false, busy: false, message: '', error: '', kind: 'offline', name: 'Offline', session: null, agents: [] };
 let active: Active | null = null, operation: AbortController | null = null;
 let startup: Promise<void> | null = null, epoch = 0;
 let sending: AbortController | null = null;
@@ -781,6 +783,12 @@ export const connectionController = {
   },
   getWorkflowPresentationProtocol():1|2 { return active?.actions ? active.workflowProtocol ?? 1 : 1; },
   getWorkflowDeviceTarget(){const selected=active;if(!selected||!selected.actions||!selected.actions.credential.enrollmentId)return null;return {installationId:selected.actions.credential.installationId,enrollmentId:selected.actions.credential.enrollmentId};},
+  async workflowNoticeActions(review:WorkflowPhoneReview,signal:AbortSignal){
+    const selected=active,generation=epoch,sessionId=state.session?.sessionId;
+    if(!selected?.actions||state.open||document.hidden)throw new Error('Connection unavailable for notice validation');
+    const result=await selected.actions.pendingWorkflowNotice(review,signal);signal.throwIfAborted();
+    if(generation!==epoch||sessionId!==state.session?.sessionId||state.open||document.hidden)throw new Error('Workflow owner changed');return result;
+  },
   async workflowPhoneActions(review:WorkflowPhoneReview,context:ContextEnvelope,signal:AbortSignal){
     const selected=active,generation=epoch,sessionId=state.session?.sessionId;
     if(!selected||!selected.actions||state.open||document.hidden||context.sensitive)throw new Error('Open this workflow on the selected phone agent');
@@ -1014,7 +1022,7 @@ export const connectionController = {
         }
         else if(saved.kind==='remote'||saved.kind==='local')await connectRemote(saved.kind, saved.origin, '', signal);
       });
-    })();
+    })().finally(()=>update({startupResolved:true}));
     return startup;
   },
   async offline() {

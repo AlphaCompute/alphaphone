@@ -36,7 +36,7 @@ include ':eliza-passwords'
 project(':eliza-passwords').projectDir = new File('../vendor/eliza/plugins/plugin-native-passwords/android')
 
 include ':eliza-notifications'
-project(':eliza-notifications').projectDir = new File('../vendor/eliza/plugins/plugin-native-notifications/android')
+project(':eliza-notifications').projectDir = new File(nativePatchSource.root, 'plugins/plugin-native-notifications/android')
 
 include ':eliza-owned-media'
 project(':eliza-owned-media').projectDir = new File('../vendor/eliza/plugins/plugin-native-media/android')

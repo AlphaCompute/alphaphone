@@ -4,7 +4,7 @@ package ai.elizaresearch.alphaphone;
 final class RendererCredentialSlots {
  private static final String[] NATIVE_NAMESPACES = {
   "native-digest-source", "resident-results", "local-agent-provider", "workflow-notice-taps",
-  "workflow-notice-delivery", "action-journal", "hosted-background",
+  "workflow-notice-delivery", "workflow-notice-owner", "workflow-approval-notices", "action-journal", "hosted-background",
   "hosted-digests", "hosted-notices", "note-audio-metadata", "reminder-taps"
  };
  static String requireAllowed(String slot) {
