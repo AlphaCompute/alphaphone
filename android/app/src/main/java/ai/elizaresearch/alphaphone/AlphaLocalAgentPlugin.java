@@ -208,7 +208,9 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  @PluginMethod public void launchSurface(PluginCall call) {
   android.app.Activity activity=getActivity();
   boolean assistant=activity instanceof AlphaAssistActivity&&activity.getIntent()!=null&&activity.getIntent().getBooleanExtra(AlphaAssistActivity.EXTRA_ASSISTANT,false);
-  call.resolve(new JSObject().put("assistant",assistant));
+  // "listener" only when the image's always-on listener opened this surface (see AssistInvocation).
+  String invocation=assistant&&AssistInvocation.LISTENER.equals(activity.getIntent().getStringExtra(AlphaAssistActivity.EXTRA_INVOCATION))?AssistInvocation.LISTENER:assistant?AssistInvocation.ASSIST:null;
+  call.resolve(new JSObject().put("assistant",assistant).put("invocation",invocation));
  }
  /** Read-only: may this surface attach to the admitted running resident under the stored provider
   * admission? Never starts, stops, pairs or rebinds. With credentialId, the stored admission must

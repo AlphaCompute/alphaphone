@@ -86,3 +86,44 @@ test('the listener is an image-only APK, never part of the standalone or launche
  for(const privileged of ['CAPTURE_AUDIO_HOTWORD','START_ACTIVITIES_FROM_BACKGROUND','RECORD_BACKGROUND_AUDIO'])
   assert.doesNotMatch(app,new RegExp(privileged),`Alpha stays nonprivileged: ${privileged}`);
 });
+
+test('Alpha reports the invocation origin only from Android caller identity and stays a nonprivileged client',()=>{
+ const temporary=mkdtempSync(join(tmpdir(),'assist-invocation-'));
+ try{
+  execFileSync(binary('javac'),['--release','11','-d',temporary,join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/AssistInvocation.java'),join(root,'test/fixtures/AssistInvocationTest.java')],{timeout:60000});
+  assert.match(execFileSync(binary('java'),['-cp',temporary,'ai.elizaresearch.alphaphone.AssistInvocationTest'],{encoding:'utf8',timeout:60000}),/^PASS assist invocation/);
+ }finally{rmSync(temporary,{recursive:true,force:true});}
+ const activity=read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaAssistActivity.java');
+ assert.match(activity,/getLaunchedFromPackage\(\)/);
+ assert.match(activity,/caller\.getPackage\(\)/);
+ assert.match(activity,/checkSignatures\(getPackageName\(\), caller\)/);
+ assert.doesNotMatch(activity,/getStringExtra|getExtras|getData\(\)|getClipData/,'caller content is never read');
+ const plugin=read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaListenerPlugin.java');
+ assert.match(plugin,/@CapacitorPlugin\(name="AlphaListener"\)/);
+ assert.deepEqual([...plugin.matchAll(/control\(call,"([a-zA-Z]+)"\)/g)].map(match=>match[1]),['status','pause','turnOff'],'no enable or resume method');
+ assert.match(plugin,/checkSignatures\(context\.getPackageName\(\),LISTENER_PACKAGE\)==PackageManager\.SIGNATURE_MATCH/);
+ assert.match(read('android/app/src/main/java/ai/elizaresearch/alphaphone/MainActivity.java'),/registerPlugin\(AlphaListenerPlugin\.class\);/);
+ const manifest=read('android/app/src/main/AndroidManifest.xml');
+ assert.match(manifest,/<package android:name="ai\.elizaresearch\.alphaphone\.sense"\/>/);
+ assert.match(manifest,/<uses-permission android:name="ai\.elizaresearch\.alphaphone\.sense\.permission\.LISTENER_CONTROL" \/>/);
+});
+
+test('the renderer contract never reports listening from a malformed or non-listening reply',async()=>{
+ const {parseListenerStatus,parseAssistantInvocation,LISTENER_STATES}=await import('../apps/app/src/runtime/always-on-listener-status.ts');
+ const policy=readFileSync(join(source,'ListenerPolicy.java'),'utf8');
+ const javaStates=[...policy.slice(policy.indexOf('public enum State'),policy.indexOf('/** Observed inputs')).matchAll(/^\s{2}([A-Z_]+),?\s*$/gm)].map(match=>match[1]);
+ assert.deepEqual([...LISTENER_STATES].sort(),[...javaStates].sort(),'renderer and native state names agree');
+ assert.deepEqual(parseListenerStatus(null),{available:false});
+ assert.deepEqual(parseListenerStatus({available:true,state:'SOMETHING'}),{available:false});
+ assert.deepEqual(parseListenerStatus({available:true,state:'LISTENING',label:'Listening',consented:true,listening:true,microphoneOpen:true}),
+  {available:true,state:'LISTENING',label:'Listening',consented:true,listening:true,microphoneOpen:true});
+ assert.equal(parseListenerStatus({available:true,state:'PAUSED_USER',listening:true}).listening,false,'only LISTENING is listening');
+ assert.equal(parseListenerStatus({available:true,state:'OFF',label:'x'.repeat(200)}).label,'Listening off');
+ assert.equal(parseAssistantInvocation({assistant:true,invocation:'listener'}),'listener');
+ assert.equal(parseAssistantInvocation({assistant:true,invocation:'other'}),'assist');
+ assert.equal(parseAssistantInvocation({assistant:true}),'assist');
+ assert.equal(parseAssistantInvocation({assistant:false,invocation:'listener'}),null);
+ assert.equal(parseAssistantInvocation(undefined),null);
+ const adapter=read('apps/app/src/runtime/always-on-listener.ts');
+ assert.doesNotMatch(adapter.replace(/\/\*\*[\s\S]*?\*\//g,''),/resume|enable|grant/i,'the renderer cannot turn listening on');
+});
