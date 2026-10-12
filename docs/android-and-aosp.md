@@ -86,7 +86,8 @@ by setup. Pin app certificate and versionCode across APK and OS releases.
 
 ```sh
 npm run aosp:stage -- --apk /absolute/signed-launcher.apk \
-  --descriptor /absolute/reviewed-launcher.json --output /absolute/new-overlay
+  --descriptor /absolute/reviewed-launcher.json --aosp-source /absolute/reviewed-aosp \
+  --output /absolute/new-overlay
 ```
 
 The upstream helper rejects a package/hash/signer mismatch, absent HOME filter,
@@ -153,7 +154,8 @@ and `npm run android:build:local` commands above. Preserve the four APKs, instru
 APKs, lint results, runtime provenance and `artifacts/apk-manifest.json`. Current speech
 functional acceptance is a separate gate; do not bypass APK admission to stage a release.
 
-Use `npm run aosp:stage` with the admitted launcher and reviewed signer descriptor.
+Use `npm run aosp:stage` with the admitted launcher, reviewed signer descriptor and
+explicit `--aosp-source` path to the reviewed source checkout.
 Inherit the generated Alpha product fragment in the pinned Cuttlefish product, build
 the image and use its matching Cuttlefish host package. Verify boot, `/product` package
 placement, signer, HOME routing, resident startup, authenticated inference, native

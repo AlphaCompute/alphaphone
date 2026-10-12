@@ -17,7 +17,7 @@ export function verifySecureCameraSource(root, contract = reviewed) {
   const modules = contract.modules.map(module => {
     const directory = fs.realpathSync(path.join(base, module.path));
     // Repo shadow workspaces may link module roots; authenticate their actual Git tree and bytes.
-    const git = (...args) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8", env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" }, timeout: 60_000, maxBuffer: 4 << 20 }).trim();
+    const git = (...args) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8", env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" }, timeout: 60_000, maxBuffer: 64 << 20 }).trim();
     if (git("rev-parse", "HEAD") !== module.commit) throw Error(`Unreviewed source revision: ${module.path}`);
     // Index hints can hide tracked changes from status; ignored Java files also enter src/**/*.java.
     if (git("ls-files", "-v").split("\n").some(row => row && !row.startsWith("H "))) throw Error(`Source index hides changes: ${module.path}`);
