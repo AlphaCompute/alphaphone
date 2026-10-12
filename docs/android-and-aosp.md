@@ -305,3 +305,41 @@ This checks installed image configuration only. It does not qualify resident-age
 execution, live accounts, alarm ringing, browser security/provider freshness,
 physical hardware, production signing or update/rollback. A pass on an older image
 cannot qualify a newer app revision.
+
+## System secure camera
+
+The approved lockscreen camera is AOSP Camera2, reached through the standard
+SystemUI double-press-power gesture. Alpha does not own a lockscreen camera
+activity. Staging adds `Camera2` and resource overlays selecting
+`com.android.camera2` and enabling the framework gesture. User settings can
+still disable the gesture.
+
+All non-development staging requires `--aosp-source PATH` in addition to the
+existing distributable APK and reviewed descriptor gates. The source verifier
+checks the exact module revisions and selected file hashes in
+`docs/aosp-secure-camera-source.json`, and rejects dirty or untracked module
+sources. Linked module roots in repo shadow workspaces are supported; files
+must remain inside each resolved module. Source revisions and byte checks are
+recorded in the staged `secure-camera/source-evidence.json`. Development
+staging without a source path records `sourceVerified: false` explicitly.
+
+```sh
+node scripts/verify-aosp-secure-camera.mjs --aosp-source /path/to/aosp
+# On a separately authorized booted target, read-only checks:
+ANDROID_SERIAL=explicit-serial ALPHA_ANDROID_USER=10 \
+  ALPHA_EXPECTED_FINGERPRINT='exact/reviewed/image/fingerprint' \
+  node scripts/verify-aosp-secure-camera.mjs
+```
+
+The image check requires enabled system Camera2, both secure intent handlers,
+the effective framework/SystemUI gesture resources, a camera feature and an
+enabled gesture for the selected user. It launches nothing and changes no
+permissions, settings or files. A caller-supplied fingerprint binds the check
+to a target; it does not authenticate that target's build inputs.
+
+The pinned local AOSP source is evidence for the source contract only. Neither
+that check nor staging proves that an image consumed the overlay. The local
+Cuttlefish baseline is not approved Pixel 10a Android 17 device acceptance.
+Locked capture, absence of pre-unlock gallery/account access, return after
+unlock, permission denial and physical gesture behavior require separate
+image/device tests. These remain open acceptance work for issue #407.
