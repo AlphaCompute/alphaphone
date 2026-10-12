@@ -26,6 +26,7 @@ async function nativeStub(page:Page,options:Options={}){
     {name:'ElizaSystem',methods:methods(['getStatus','requestRole','getDeviceSettings'])},
     {name:'AlphaDevice',methods:methods(['snapshot','crashLog','clearCrashLog','recordRendererFailure','diagnosticsFacts','shareDiagnostics','openSettings'])},
     {name:'DailyApps',methods:[{name:'addListener',rtype:'callback'},{name:'removeListener',rtype:'callback'}]},
+    {name:'AlphaDataReset',methods:methods(['describe','reset'])},
    ],
    nativeCallback:(plugin:string,method:string,options:any,callback:(value:unknown)=>void)=>{if(method==='addListener'){listeners.push({plugin,event:options?.eventName,callback});return String(listeners.length);}return '0';},
    nativePromise:async(plugin:string,method:string,input:any)=>{
@@ -54,6 +55,8 @@ async function nativeStub(page:Page,options:Options={}){
      if(method==='clearCrashLog'||method==='recordRendererFailure')return {};
      if(method==='openSettings')return {status:'opened'};
     }
+    // Android's credential screen is not modelled: the fixture answers as Android would after it.
+    if(plugin==='AlphaDataReset'&&method==='reset')return input?.confirmation==='reset-alpha-data'?{status:f.resetAnswer||'cancelled'}:{status:'refused'};
     throw Error('Unexpected native operation '+plugin+'.'+method);
    },
   };
@@ -124,4 +127,27 @@ test('Privacy shows Calendar and no Contacts, Developer has no NPU or uptime, an
  expect(report.roles.find((r:any)=>r.role==='home')).toEqual({role:'home',held:false,available:true});
  expect(report.crashes.count).toBe(3);
  for(const leak of ['csk-synthetic','Fixture note text','com.android.launcher3','holders','Fixture phone'])expect(shared).not.toContain(leak);
+});
+
+test('Reset Alpha data explains its scope, needs explicit confirmation and never claims an erase that did not start',async({page})=>{
+ await nativeStub(page);
+ await settings(page);
+ await app(page).getByRole('button',{name:'Reset Alpha data',exact:true}).click();
+ for(const text of ['Photos and files in shared phone storage','Gmail mailbox','Eliza Cloud account','subscription','no backup or export','first-run setup'])await expect(app(page).getByText(text,{exact:false}).first()).toBeVisible();
+ const reset=app(page).getByRole('button',{name:'Reset Alpha data on this phone',exact:true});
+ // Declining the confirmation sends nothing to Android.
+ page.once('dialog',dialog=>{expect(dialog.message()).toContain('cannot be undone');void dialog.dismiss();});
+ await reset.click();
+ expect(await calls(page,'AlphaDataReset','reset')).toBe(0);
+ // Confirmed, then Android's screen-lock check is cancelled: nothing erased.
+ page.once('dialog',dialog=>void dialog.accept());
+ await reset.click();
+ await expect.poll(()=>calls(page,'AlphaDataReset','reset')).toBe(1);
+ expect(await page.evaluate(()=>(window as any).settingsFixture.calls.find((c:any)=>c.plugin==='AlphaDataReset').input)).toEqual({confirmation:'reset-alpha-data'});
+ await expect(app(page).getByText('Screen lock not confirmed. Nothing was erased.',{exact:true}).first()).toBeVisible();
+ // Accepted natively: the page reports a reset in progress, not a finished erase.
+ await page.evaluate(()=>{(window as any).settingsFixture.resetAnswer='resetting';});
+ page.once('dialog',dialog=>void dialog.accept());
+ await reset.click();
+ await expect(app(page).getByText('Resetting Alpha data. Alpha closes when it is done.',{exact:true}).first()).toBeVisible();
 });

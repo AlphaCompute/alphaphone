@@ -1,6 +1,5 @@
 import {browserDevProfile as devProfileQuery} from '../browser/dev-profile';
 import {testMocksEnabled,devSurfacesEnabled} from '../build-flags';
-import {openCalendarRecovery} from '../browser/calendar-recovery';
 import {openNotificationRecovery} from '../browser/notification-recovery';
 import {openAlertSoundRecovery,openDevicePreferencesRecovery,openDeviceRolesRecovery} from '../browser/preference-recovery';
 import {notificationDocument} from '../browser/notification-store';
@@ -92,6 +91,7 @@ const device = registerPlugin<{
 const deviceApps = registerPlugin<{ buildInfo(): Promise<{ launcher?: boolean; version?: string }> }>('DeviceApps');
 const notifications = registerPlugin<{status():Promise<Bag>;openAppSettings():Promise<Bag>;openChannelSettings(input:{id:string}):Promise<{status:string}>;crossAppStatus():Promise<Bag>;notificationApps():Promise<{apps:Bag[]}>;setNotificationPolicy(input:Bag):Promise<Bag>;resumeCrossApp(input:{expectedRevision:string}):Promise<Bag>;openNotificationAccess():Promise<Bag>;notificationHistory():Promise<{items:Bag[]}>;clearNotificationHistory():Promise<void>}>('AlphaNotifications');
 const speech = registerPlugin<{localSpeechStatus(input:{requestId:string}):Promise<{ready:boolean;execution:string}>}>('AlphaVoiceCloud');
+const dataReset = registerPlugin<{ describe(): Promise<{ available: boolean; deviceSecure: boolean; pending: boolean }>; reset(input: { confirmation: string }): Promise<{ status: string; message?: string }> }>('AlphaDataReset');
 const system = registerPlugin<{ getDeviceSettings(): Promise<Bag>; getStatus(): Promise<{ roles?: Bag[] }>; requestRole(input: { role: string }): Promise<{ role: string; held: boolean; resultCode: number }> }>('ElizaSystem');
 type RoleRow = { role: string; held: boolean; available: boolean; holders: string[] };
 /** Android role state exactly as ElizaSystem.getStatus() reports it; malformed rows are dropped. */
@@ -125,6 +125,34 @@ export function updateRows(updatedAt: unknown, format: (at: number) => string = 
   rows.push(['Updates', 'Alpha does not check for updates']);
   return rows;
 }
+/** Confirmation phrase AlphaDataResetPlugin requires; anything else erases nothing. */
+export const RESET_CONFIRMATION = 'reset-alpha-data';
+/**
+ * What "Reset Alpha data" does and does not erase (P-25). Alpha has no app-data backup, export
+ * or transfer, so nothing here offers to keep a copy.
+ */
+export function resetScopeRows(): Array<[string, string]> {
+  return [
+    ['Erased on this phone', 'Notes, chats, reminders, drafts, settings, saved sign-ins, the local agent and its memory, caches and Alpha keys'],
+    ['Stopped first', 'The local agent, notification listener, background work and Alpha notices'],
+    ['Not erased', 'Photos and files in shared phone storage, and anything other apps keep'],
+    ['Not erased or cancelled', 'Your Gmail mailbox, your Eliza Cloud account and its data, and any subscription'],
+    ['No copy is kept', 'Alpha has no backup or export of its data. A reset cannot be undone'],
+    ['Afterwards', 'Alpha closes and opens fresh at first-run setup'],
+  ];
+}
+export const RESET_CONFIRM_TEXT = 'Reset Alpha data?\n\nThis erases Alpha\'s notes, chats, reminders, settings, sign-ins, local agent memory and keys on this phone. It cannot be undone.\n\nPhotos and files in shared storage, your Gmail mailbox, your Eliza Cloud account and any subscription are not erased or cancelled.';
+/** Plain wording for each status AlphaDataResetPlugin.reset() returns. Unknown statuses never claim an erase. */
+export function resetOutcome(status: unknown): string {
+  switch (status) {
+    case 'resetting': return 'Resetting Alpha data. Alpha closes when it is done.';
+    case 'cancelled': return 'Screen lock not confirmed. Nothing was erased.';
+    case 'refused': return 'Reset needs explicit confirmation. Nothing was erased.';
+    case 'busy': return 'A reset request is already open.';
+    case 'unavailable': return 'Android could not confirm your screen lock. Nothing was erased.';
+    default: return 'Reset was not confirmed. Nothing was erased.';
+  }
+}
 // settings-facts:end
 
 /** Keep the reference settings components; never present fixture device facts. */
@@ -138,6 +166,17 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   let gmailAccounts: GmailAccount[] = [], gmailBusy = '', gmailNotice = '', settingsApi: Bag | undefined;
   let roles: Record<string, RoleRow> | null = null, launcher: boolean | null = null, roleBusy = false, roleNotice = '';
   let crashLog: CrashLog | null = null, crashBusy = false, diagnosticsBusy = false;
+  let resetBusy = false, resetNotice = '';
+  /** Explicit confirmation here; Android's own screen-lock check follows natively when the phone has one. */
+  async function resetAlphaData(api: Bag) {
+    if (resetBusy || !Capacitor.isNativePlatform() || !window.confirm(RESET_CONFIRM_TEXT)) return;
+    const instance = owner; resetBusy = true; resetNotice = ''; changed();
+    try {
+      const result = await dataReset.reset({ confirmation: RESET_CONFIRMATION });
+      resetNotice = resetOutcome(result?.status);
+    } catch { resetNotice = resetOutcome(undefined); }
+    finally { resetBusy = false; if (owner === instance) { api.toast(resetNotice); changed(); } }
+  }
   let gmail = 'Not checked', digests = 'Not checked', localSpeech = 'Not checked', speechChecking = false, speechGeneration = 0;
   const changed = () => owner?.vset('settings', { capabilityReadAt: Date.now() });
   async function refreshCapabilities() {
@@ -385,7 +424,6 @@ export function installSettingsAdapter(Component: any, views: Bag) {
             if(display.native)rows.push(info('Calendar visibility','Managed in Android Calendar'));
           }else rows.push(info('Calendar access','Not available in this version'));
           const groups=[{...group(rows),cap:'Calendars shown in Alpha',hasCap:true}];
-          if(!Capacitor.isNativePlatform())groups.push({...group([{kNav:true,label:'Calendar backups',lbl:'Calendar backups',sub:'Events saved in this app',hasSub:true,chev:true,noAB:true,go:()=>openCalendarRecovery()}]),cap:'Saved data',hasCap:true});
           out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Calendar',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups});
         }
         page.groups.push(group([{kNav:true,label:'Password manager',lbl:'Password manager',chev:true,noAB:true,go:()=>api.set({page:'password-provider'})}]));
@@ -405,6 +443,11 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         }
         page.groups.push(group([{kNav:true,label:'Scheduled digests',lbl:'Scheduled digests',chev:true,noAB:true,go:()=>window.dispatchEvent(new Event('alpha:hosted-digests'))}]));
         page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>connectionController.open()}]));
+        if(native)page.groups.push({...group([{kNav:true,label:'Reset Alpha data',lbl:'Reset Alpha data',chev:true,noAB:true,go:()=>api.set({page:'reset'})}]),cap:'Data on this phone',hasCap:true});
+        if(native&&state.page==='reset')out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Reset Alpha data',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[
+          group(resetScopeRows().map(([label,val])=>({kLog:true,time:label,text:val}))),
+          group([{kNav:true,label:'Reset Alpha data on this phone',lbl:resetBusy?'Waiting for confirmation…':'Reset Alpha data on this phone',busy:resetBusy,chev:true,noAB:true,go:()=>void resetAlphaData(api)},...(resetNotice?[info('Last attempt',resetNotice)]:[])]),
+        ]});
         if(testMocksEnabled)page.groups.push(group([{kNav:true,label:'Try mock mode',lbl:'Try mock mode',chev:true,noAB:true,go:()=>connectionController.mock()}]));
         if(recovery.length)page.groups.push(group([info('Saved data needs recovery','Back up before resetting'),...recovery.map(name=>({kNav:true,label:recoveryActions[name].label,lbl:recoveryActions[name].label,chev:true,noAB:true,go:()=>recoveryActions[name].open()}))]));
         if(state.page==='problems'){
