@@ -17,9 +17,10 @@ const attachments=registerPlugin<{
  * Android keeps a linked source's read grant while a note names its a1: reference (J03, option a),
  * also after the picker selection that granted it is forgotten or evicted. Notes therefore tell
  * the native side which references a saved or restorable (Trash) note still names; the others
- * are removed and their grants released, so the bounded reference map never fills with links of
- * deleted notes. A trashed note keeps its link until its Trash copy is purged, so a restored note
- * still opens its source.
+ * are removed once they were last retained more than three days ago (a content question's link
+ * may be saved in a summary note well after it was asked) and their grants released, so the bounded
+ * reference map never fills with links of deleted notes. A trashed note keeps its link until its
+ * Trash copy is purged, so a restored note still opens its source.
  */
 export async function releaseUnusedSourceReferences(notes:readonly unknown[]):Promise<void>{
  if(Capacitor.getPlatform()!=='android')return;

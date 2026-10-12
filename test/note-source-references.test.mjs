@@ -22,9 +22,10 @@ test('forgetting or evicting a picker selection never releases a grant a note li
 test('Notes reconcile references after every Trash maintenance pass and when a link is replaced',()=>{
  const plugin=readFileSync(nativeSource('AlphaMailAttachmentsPlugin.java'),'utf8');
  const method=plugin.slice(plugin.indexOf('@PluginMethod public void releaseSourceReferences('),plugin.indexOf('private JSObject saveResult('));
- assert.match(method,/NoteSourceReferences\.unreferenced\(all,keep,retainedAt,System\.currentTimeMillis\(\)\)/);
+ assert.match(method,/List<String> seed=NoteSourceReferences\.unseeded\(all,times\.getAll\(\),now\);\n   if\(!seed\.isEmpty\(\)\)\{android\.content\.SharedPreferences\.Editor edit=times\.edit\(\);for\(String key:seed\)edit\.putLong\(key,now\);if\(!edit\.commit\(\)\)throw new IOException\(\);\}\n   List<String> drop=NoteSourceReferences\.unreferenced\(all,keep,times\.getAll\(\),now\);/,'retain times are stored and seeded before anything is pruned');
  assert.match(method,/for\(String uri:NoteSourceReferences\.orphaned\(all,drop\)\)if\(SelectedDocumentAccess\.releaseUnreferenced\(getContext\(\),Uri\.parse\(uri\)\)\)released\+\+;/);
- assert.match(plugin,/retainedAt\.put\(reference,System\.currentTimeMillis\(\)\);if\(!refs\.edit\(\)\.putString\(reference,uri\.toString\(\)\)\.commit\(\)\)/,'a new link is protected by the grace period');
+ assert.match(plugin,/getSharedPreferences\(NoteSourceReferences\.RETAINED_PREFERENCES,0\)\.edit\(\)\.putLong\(reference,System\.currentTimeMillis\(\)\)\.commit\(\)\|\|!refs\.edit\(\)\.putString\(reference,uri\.toString\(\)\)\.commit\(\)/,'every retain (re)starts a stored grace period, before the reference is written');
+ assert.doesNotMatch(plugin,/retainedAt\.put\(/,'the grace period does not live only in process memory');
  const trash=readFileSync(join(root,'apps/app/src/prototype/notes-trash-adapter.ts'),'utf8');
  assert.match(trash,/releaseUnusedSourceReferences\(\[\.\.\.await savedNotes\(\),\.\.\.\(await readNotesTrash\(\)\)\.entries\.map\(entry=>entry\.note\)\]\)/,'saved and restorable notes keep their links');
  const source=readFileSync(join(root,'apps/app/src/prototype/note-source-adapter.ts'),'utf8');

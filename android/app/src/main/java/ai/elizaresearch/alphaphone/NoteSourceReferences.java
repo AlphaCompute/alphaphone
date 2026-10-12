@@ -19,8 +19,14 @@ final class NoteSourceReferences {
  static final String PREFERENCES="note-source-references";
  /** Stored references. Pruning keeps the map from silently filling. */
  static final int LIMIT=128;
- /** A reference retained this recently may not be saved in its note yet, so it is never pruned. */
- static final long GRACE_MS=10L*60*1000;
+ /**
+  * When each reference was last retained (epoch ms), kept beside the references so it survives a
+  * process restart. A link is retained when a content question about the document is asked, and a
+  * summary note may save it from the conversation much later, so a reference no note names yet is
+  * kept for GRACE_MS after it was last retained (the Notes Trash retention) before it is pruned.
+  */
+ static final String RETAINED_PREFERENCES="note-source-reference-times";
+ static final long GRACE_MS=3L*24*60*60*1000;
  static boolean valid(String reference){return reference!=null&&reference.matches("a1:[a-f0-9]{64}");}
  /** True when any stored reference names this document URI. */
  static boolean referenced(Map<String,?> references,String uri){
@@ -29,15 +35,32 @@ final class NoteSourceReferences {
   return false;
  }
  /**
-  * Stored references no saved or restorable note names (keep), other than ones retained within
-  * the grace period. Entries that are not a1: references are left for their owner.
+  * Stored references whose retain time is missing, unreadable or ahead of now (a reference stored
+  * before times were kept, or a clock moved backwards). The caller records now for them, so each
+  * gets a full grace period instead of being pruned at once or held forever.
   */
- static List<String> unreferenced(Map<String,?> references,Set<String> keep,Map<String,Long> retainedAt,long now){
+ static List<String> unseeded(Map<String,?> references,Map<String,?> retainedAt,long now){
+  List<String> seed=new ArrayList<>();
+  for(String key:references.keySet()){
+   if(!valid(key))continue;
+   Object retained=retainedAt.get(key);
+   if(!(retained instanceof Long)||(Long)retained>now)seed.add(key);
+  }
+  return seed;
+ }
+ /**
+  * Stored references no saved or restorable note names (keep) and that were last retained at least
+  * GRACE_MS ago. A reference without a usable retain time is kept (see unseeded). Entries that are
+  * not a1: references are left for their owner.
+  */
+ static List<String> unreferenced(Map<String,?> references,Set<String> keep,Map<String,?> retainedAt,long now){
   List<String> drop=new ArrayList<>();
   for(String key:references.keySet()){
    if(!valid(key)||keep.contains(key))continue;
-   Long retained=retainedAt.get(key);
-   if(retained!=null&&now-retained<GRACE_MS&&now>=retained)continue;
+   Object retained=retainedAt.get(key);
+   if(!(retained instanceof Long))continue;
+   long at=(Long)retained;
+   if(at>now||now-at<GRACE_MS)continue;
    drop.add(key);
   }
   return drop;
