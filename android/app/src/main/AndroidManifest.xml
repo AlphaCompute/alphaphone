@@ -32,6 +32,8 @@
   <intent><action android:name="android.intent.action.EDIT"/><data android:mimeType="vnd.android.cursor.item/contact"/></intent>
   <!-- Narrow visibility for password-provider setup; no vault or form access. -->
   <package android:name="proton.android.pass"/>
+  <!-- The AOSP image's always-on listener (android/sense). Absent on ordinary phones; Alpha then reports it unavailable. -->
+  <package android:name="ai.elizaresearch.alphaphone.sense"/>
   <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="content" android:mimeType="application/pdf"/></intent><intent><action android:name="android.intent.action.VIEW"/><data android:scheme="content" android:mimeType="image/*"/></intent><intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent>
   <intent><action android:name="android.media.action.STILL_IMAGE_CAMERA"/></intent>
   <intent><action android:name="android.intent.action.OPEN_DOCUMENT"/><data android:mimeType="*/*"/></intent>
@@ -54,6 +56,8 @@
   <intent><action android:name="android.intent.action.SNOOZE_ALARM"/></intent>
   <intent><action android:name="android.intent.action.DISMISS_ALARM"/></intent>
  </queries>
+ <!-- Signature permission defined by the image's listener: read its status and pause or turn it off. Grants nothing elsewhere. -->
+ <uses-permission android:name="ai.elizaresearch.alphaphone.sense.permission.LISTENER_CONTROL" />
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
  <!-- Turn-by-turn guidance keeps running with the screen off only while the user navigates. -->

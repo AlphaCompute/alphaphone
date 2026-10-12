@@ -54,6 +54,7 @@ Gmail attachments and PDF file creation remain available.
 | --- | --- |
 | `apps/app/src` | Alpha UI, product policy and adapters to shared features |
 | `android` | Product identity, Activity, permissions, resources and standalone/HOME packaging |
+| `android/sense`, `android/aosp/listener` | AOSP-image-only privileged, network-less always-on listener and its image configuration ([ADR 0001](adr/0001-privileged-listener.md)); never in the standalone or launcher APK |
 | `app.config.json` | Package ID, display name, version and orientation |
 | `backend` | Development runtime composition, character and permitted model/actions |
 | `vendor/eliza` | Pinned shared platform source; never modified by consumer builds |
