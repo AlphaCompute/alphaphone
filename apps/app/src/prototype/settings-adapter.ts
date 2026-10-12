@@ -125,11 +125,14 @@ export function updateRows(updatedAt: unknown, format: (at: number) => string = 
   rows.push(['Updates', 'Alpha does not check for updates']);
   return rows;
 }
-/** Confirmation phrase AlphaDataResetPlugin requires; anything else erases nothing. */
+/**
+ * API-shape value AlphaDataResetPlugin checks on every request. It is not the user's confirmation:
+ * the user confirms natively (Android screen lock, or a typed phrase in a native dialog).
+ */
 export const RESET_CONFIRMATION = 'reset-alpha-data';
 /**
- * What "Reset Alpha data" does and does not erase (P-25). Alpha has no app-data backup, export
- * or transfer, so nothing here offers to keep a copy.
+ * What "Reset Alpha data" does and does not erase or cancel (P-25). The reset keeps no copy;
+ * nothing here offers one.
  */
 export function resetScopeRows(): Array<[string, string]> {
   return [
@@ -137,17 +140,28 @@ export function resetScopeRows(): Array<[string, string]> {
     ['Stopped first', 'The local agent, notification listener, background work and Alpha notices'],
     ['Not erased', 'Photos and files in shared phone storage, and anything other apps keep'],
     ['Not erased or cancelled', 'Your Gmail mailbox, your Eliza Cloud account and its data, and any subscription'],
-    ['No copy is kept', 'Alpha has no backup or export of its data. A reset cannot be undone'],
+    ['Not cancelled on other devices', 'Digests Eliza Cloud already scheduled, and access you gave a paired remote agent. Manage them in Eliza Cloud or on that agent'],
+    ['Kept by Android', 'Permissions and roles you gave Alpha, such as notification access, the password autofill choice and the home app. Review them in Android Settings'],
+    ['No copy is kept', 'The reset keeps no copy of what it erases and cannot be undone. Files you saved earlier, such as a note exported to Files, stay where you saved them'],
     ['Afterwards', 'Alpha closes and opens fresh at first-run setup'],
   ];
 }
-export const RESET_CONFIRM_TEXT = 'Reset Alpha data?\n\nThis erases Alpha\'s notes, chats, reminders, settings, sign-ins, local agent memory and keys on this phone. It cannot be undone.\n\nPhotos and files in shared storage, your Gmail mailbox, your Eliza Cloud account and any subscription are not erased or cancelled.';
+export const RESET_CONFIRM_TEXT = 'Reset Alpha data?\n\nThis erases Alpha\'s notes, chats, reminders, settings, sign-ins, local agent memory and keys on this phone. It cannot be undone.\n\nPhotos and files in shared storage, your Gmail mailbox, your Eliza Cloud account and any subscription are not erased or cancelled.\n\nAndroid asks you to confirm next.';
+/** How the user confirms, from AlphaDataReset.describe(). Unknown state never promises a check. */
+export function resetCheckText(facts: unknown): string {
+  const value = facts && typeof facts === 'object' ? facts as { deviceSecure?: unknown; pending?: unknown } : {};
+  if (value.pending === true) return 'A reset is already finishing';
+  if (value.deviceSecure === true) return 'Android asks for your screen lock before anything is erased';
+  if (value.deviceSecure === false) return 'This phone has no screen lock. Alpha asks you to type RESET before anything is erased';
+  return 'Not checked';
+}
 /** Plain wording for each status AlphaDataResetPlugin.reset() returns. Unknown statuses never claim an erase. */
 export function resetOutcome(status: unknown): string {
   switch (status) {
     case 'resetting': return 'Resetting Alpha data. Alpha closes when it is done.';
     case 'cancelled': return 'Screen lock not confirmed. Nothing was erased.';
     case 'refused': return 'Reset needs explicit confirmation. Nothing was erased.';
+    case 'declined': return 'Reset not confirmed. Nothing was erased.';
     case 'busy': return 'A reset request is already open.';
     case 'unavailable': return 'Android could not confirm your screen lock. Nothing was erased.';
     default: return 'Reset was not confirmed. Nothing was erased.';
@@ -166,8 +180,13 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   let gmailAccounts: GmailAccount[] = [], gmailBusy = '', gmailNotice = '', settingsApi: Bag | undefined;
   let roles: Record<string, RoleRow> | null = null, launcher: boolean | null = null, roleBusy = false, roleNotice = '';
   let crashLog: CrashLog | null = null, crashBusy = false, diagnosticsBusy = false;
-  let resetBusy = false, resetNotice = '';
-  /** Explicit confirmation here; Android's own screen-lock check follows natively when the phone has one. */
+  let resetBusy = false, resetNotice = '', resetCheck = 'Not checked';
+  async function describeReset() {
+    const instance = owner;
+    try { resetCheck = resetCheckText(await dataReset.describe()); } catch { resetCheck = resetCheckText(undefined); }
+    if (owner === instance) changed();
+  }
+  /** A first prompt here; the confirmation that gates the erase is native (screen lock or typed phrase). */
   async function resetAlphaData(api: Bag) {
     if (resetBusy || !Capacitor.isNativePlatform() || !window.confirm(RESET_CONFIRM_TEXT)) return;
     const instance = owner; resetBusy = true; resetNotice = ''; changed();
@@ -443,13 +462,13 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         }
         page.groups.push(group([{kNav:true,label:'Scheduled digests',lbl:'Scheduled digests',chev:true,noAB:true,go:()=>window.dispatchEvent(new Event('alpha:hosted-digests'))}]));
         page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>connectionController.open()}]));
-        if(native)page.groups.push({...group([{kNav:true,label:'Reset Alpha data',lbl:'Reset Alpha data',chev:true,noAB:true,go:()=>api.set({page:'reset'})}]),cap:'Data on this phone',hasCap:true});
+        if(native)page.groups.push({...group([{kNav:true,label:'Reset Alpha data',lbl:'Reset Alpha data',chev:true,noAB:true,go:()=>{api.set({page:'reset'});void describeReset();}}]),cap:'Data on this phone',hasCap:true});
         if(native&&state.page==='reset')out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Reset Alpha data',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[
-          group(resetScopeRows().map(([label,val])=>({kLog:true,time:label,text:val}))),
+          group([...resetScopeRows(),['Confirmation',resetCheck] as [string,string]].map(([label,val])=>({kLog:true,time:label,text:val}))),
           group([{kNav:true,label:'Reset Alpha data on this phone',lbl:resetBusy?'Waiting for confirmation…':'Reset Alpha data on this phone',busy:resetBusy,chev:true,noAB:true,go:()=>void resetAlphaData(api)},...(resetNotice?[info('Last attempt',resetNotice)]:[])]),
         ]});
         if(testMocksEnabled)page.groups.push(group([{kNav:true,label:'Try mock mode',lbl:'Try mock mode',chev:true,noAB:true,go:()=>connectionController.mock()}]));
-        if(recovery.length)page.groups.push(group([info('Saved data needs recovery','Back up before resetting'),...recovery.map(name=>({kNav:true,label:recoveryActions[name].label,lbl:recoveryActions[name].label,chev:true,noAB:true,go:()=>recoveryActions[name].open()}))]));
+        if(recovery.length)page.groups.push(group([info('Saved data needs recovery','Download the damaged saved data first if you want to keep it'),...recovery.map(name=>({kNav:true,label:recoveryActions[name].label,lbl:recoveryActions[name].label,chev:true,noAB:true,go:()=>recoveryActions[name].open()}))]));
         if(state.page==='problems'){
           const rows=crashLog?[...crashLog.entries].reverse().map(entry=>{const line=describeCrashEntry(entry);return {kLog:true,time:new Date(entry.at).toLocaleString(),text:`${line.title} · ${line.detail}`};}):[];
           out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Problem log',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[

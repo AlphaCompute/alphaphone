@@ -55,7 +55,8 @@ async function nativeStub(page:Page,options:Options={}){
      if(method==='clearCrashLog'||method==='recordRendererFailure')return {};
      if(method==='openSettings')return {status:'opened'};
     }
-    // Android's credential screen is not modelled: the fixture answers as Android would after it.
+    // Android's credential screen and the native typed-phrase dialog are not modelled: the fixture answers as the plugin would after them.
+    if(plugin==='AlphaDataReset'&&method==='describe')return {available:true,deviceSecure:f.resetDeviceSecure!==false,pending:false};
     if(plugin==='AlphaDataReset'&&method==='reset')return input?.confirmation==='reset-alpha-data'?{status:f.resetAnswer||'cancelled'}:{status:'refused'};
     throw Error('Unexpected native operation '+plugin+'.'+method);
    },
@@ -133,7 +134,7 @@ test('Reset Alpha data explains its scope, needs explicit confirmation and never
  await nativeStub(page);
  await settings(page);
  await app(page).getByRole('button',{name:'Reset Alpha data',exact:true}).click();
- for(const text of ['Photos and files in shared phone storage','Gmail mailbox','Eliza Cloud account','subscription','no backup or export','first-run setup'])await expect(app(page).getByText(text,{exact:false}).first()).toBeVisible();
+ for(const text of ['Photos and files in shared phone storage','Gmail mailbox','Eliza Cloud account','subscription','paired remote agent','notification access','keeps no copy','first-run setup','Android asks for your screen lock before anything is erased'])await expect(app(page).getByText(text,{exact:false}).first()).toBeVisible();
  const reset=app(page).getByRole('button',{name:'Reset Alpha data on this phone',exact:true});
  // Declining the confirmation sends nothing to Android.
  page.once('dialog',dialog=>{expect(dialog.message()).toContain('cannot be undone');void dialog.dismiss();});
@@ -145,6 +146,11 @@ test('Reset Alpha data explains its scope, needs explicit confirmation and never
  await expect.poll(()=>calls(page,'AlphaDataReset','reset')).toBe(1);
  expect(await page.evaluate(()=>(window as any).settingsFixture.calls.find((c:any)=>c.plugin==='AlphaDataReset').input)).toEqual({confirmation:'reset-alpha-data'});
  await expect(app(page).getByText('Screen lock not confirmed. Nothing was erased.',{exact:true}).first()).toBeVisible();
+ // No screen lock: the native typed-phrase dialog is dismissed. Nothing erased.
+ await page.evaluate(()=>{(window as any).settingsFixture.resetAnswer='declined';});
+ page.once('dialog',dialog=>void dialog.accept());
+ await reset.click();
+ await expect(app(page).getByText('Reset not confirmed. Nothing was erased.',{exact:true}).first()).toBeVisible();
  // Accepted natively: the page reports a reset in progress, not a finished erase.
  await page.evaluate(()=>{(window as any).settingsFixture.resetAnswer='resetting';});
  page.once('dialog',dialog=>void dialog.accept());

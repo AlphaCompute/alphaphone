@@ -59,6 +59,7 @@
    <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started local personal agent runtime" />
   </service>
   <service android:name=".AlphaNavigationService" android:exported="false" android:foregroundServiceType="location" />
+  <activity android:name=".AlphaResetRelaunchActivity" android:exported="false" android:process=":reset_relaunch" android:excludeFromRecents="true" android:noHistory="true" android:taskAffinity="" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
   <activity android:name=".AlphaMailPdfActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="PDF attachment" />
   <service android:name=".IsolatedPdfService" android:exported="false" android:isolatedProcess="true" android:process=":isolated_pdf" android:stopWithTask="true" />
   <provider android:name=".AlphaMailFileProvider" android:authorities="${applicationId}.mailattachments" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/mail_attachment_paths"/></provider>

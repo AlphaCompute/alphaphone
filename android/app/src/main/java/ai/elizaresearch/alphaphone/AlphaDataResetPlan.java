@@ -27,13 +27,21 @@ import java.util.Set;
 final class AlphaDataResetPlan {
  private AlphaDataResetPlan() {}
 
- enum Step { MARK, STOP_AGENT, STOP_SERVICES, CANCEL_WORK, CANCEL_NOTICES, DELETE_KEYS, CLEAR_WEB, CLEAR_PLATFORM, DELETE_FILES, UNMARK, RELAUNCH }
+ enum Step { MARK, STOP_SERVICES, STOP_AGENT, CANCEL_WORK, CANCEL_NOTICES, DELETE_KEYS, CLEAR_WEB, CLEAR_PLATFORM, DELETE_FILES, UNMARK, RELAUNCH }
  enum Outcome {
   /** Android accepted its own clear of this package's data; it ends the process and removes the marker. */
   PLATFORM_CLEARING,
-  /** Private files were deleted by Alpha, the marker removed and a fresh start requested. */
+  /** Private files and keys were deleted by Alpha, the marker removed and a fresh start requested. */
   COMPLETED
  }
+
+ /**
+  * Steps that must be confirmed before Alpha deletes files itself (Android did not clear the
+  * package). A failure of any of these leaves the marker, so the reset stays pending and gated.
+  * CLEAR_WEB is not here: its on-disk storage ({@code app_webview}) is inside the private data
+  * directory that DELETE_FILES removes. CANCEL_NOTICES is retried after DELETE_FILES and must pass then.
+  */
+ static final List<Step> REQUIRED = Collections.unmodifiableList(java.util.Arrays.asList(Step.STOP_SERVICES, Step.STOP_AGENT, Step.CANCEL_WORK, Step.DELETE_KEYS));
 
  /** Durable "reset in progress" record in Alpha's private no-backup directory. */
  interface Marker {
@@ -44,15 +52,18 @@ final class AlphaDataResetPlan {
 
  /** Android-specific effects. Each must be safe to repeat after an interruption. */
  interface Host {
-  /** Stops the resident agent and waits for confirmed shutdown, or throws. */
-  void stopAgent() throws Exception;
-  /** Stops navigation and disables the notification listener and reminder alarm receiver (pending alarms then deliver nothing). */
+  /**
+   * Stops navigation and disables the notification listener, reminder alarm receiver and autofill
+   * service before anything else, so none of them runs while the agent is being stopped.
+   */
   void stopServices() throws Exception;
-  /** Cancels this package's WorkManager work and JobScheduler jobs. */
+  /** Stops the resident agent, waits for confirmed shutdown and disables its service (no sticky restart), or throws. */
+  void stopAgent() throws Exception;
+  /** Cancels this package's WorkManager work, JobScheduler jobs and AlarmManager alarms. */
   void cancelWork() throws Exception;
   /** Cancels this package's posted notices. */
   void cancelNotices() throws Exception;
-  /** Deletes this package's Android Keystore aliases. */
+  /** Deletes this package's Android Keystore aliases and confirms none is left. */
   void deleteKeys() throws Exception;
   /** Clears renderer web storage and cookies. */
   void clearWebStorage() throws Exception;
@@ -75,6 +86,11 @@ final class AlphaDataResetPlan {
   }
  }
 
+ /** The durable marker could not be written. Nothing was stopped or erased and no reset is pending. */
+ static final class NotStarted extends Exception {
+  NotStarted(Throwable cause) { super("Reset Alpha data did not start", cause); }
+ }
+
  /** Late callbacks (alarms, workers, listener events, agent starts) do nothing while this is true. */
  static boolean blocked(boolean inProcess, Marker marker) {
   if (inProcess) return true;
@@ -84,12 +100,13 @@ final class AlphaDataResetPlan {
  static Outcome run(Marker marker, Host host, Progress progress) throws Exception {
   Progress at = progress == null ? step -> {} : progress;
   at.reached(Step.MARK);
-  marker.write();
+  try { marker.write(); }
+  catch (IOException | RuntimeException unwritten) { throw new NotStarted(unwritten); }
   List<Step> failed = new ArrayList<>();
   Throwable first = null;
   // Stopping is attempted in full even when one step fails: a platform clear force-stops whatever
   // is left, and a failure only matters if Alpha has to delete files itself.
-  Step[] stops = {Step.STOP_AGENT, Step.STOP_SERVICES, Step.CANCEL_WORK, Step.CANCEL_NOTICES, Step.DELETE_KEYS, Step.CLEAR_WEB};
+  Step[] stops = {Step.STOP_SERVICES, Step.STOP_AGENT, Step.CANCEL_WORK, Step.CANCEL_NOTICES, Step.DELETE_KEYS, Step.CLEAR_WEB};
   for (Step step : stops) {
    at.reached(step);
    try { perform(host, step); }
@@ -97,11 +114,16 @@ final class AlphaDataResetPlan {
   }
   at.reached(Step.CLEAR_PLATFORM);
   if (host.clearByPlatform()) return Outcome.PLATFORM_CLEARING;
-  // Deleting files under a runtime that may still write would let erased state reappear.
-  if (failed.contains(Step.STOP_AGENT) || failed.contains(Step.STOP_SERVICES) || failed.contains(Step.CANCEL_WORK))
-   throw new Incomplete(failed, first);
+  // Deleting files under a runtime that may still write would let erased state reappear, and
+  // reporting a finished reset with Keystore aliases left would be false.
+  for (Step required : REQUIRED) if (failed.contains(required)) throw new Incomplete(failed, first);
   at.reached(Step.DELETE_FILES);
   host.deletePrivateFiles();
+  if (failed.contains(Step.CANCEL_NOTICES)) {
+   at.reached(Step.CANCEL_NOTICES);
+   try { host.cancelNotices(); }
+   catch (Exception error) { throw new Incomplete(Collections.singletonList(Step.CANCEL_NOTICES), error); }
+  }
   at.reached(Step.UNMARK);
   marker.clear();
   at.reached(Step.RELAUNCH);

@@ -191,6 +191,40 @@ public class MainActivity extends BridgeActivity {
   }
   return false;
  }
+ /**
+  * The only screen while a reset is pending. A reset that cannot finish offers a retry and Android's
+  * own App info page (Storage, Clear storage), so the launcher variant never traps the home screen.
+  */
+ private void showResetNotice(String text, boolean failed) {
+  android.widget.LinearLayout column = new android.widget.LinearLayout(this);
+  column.setOrientation(android.widget.LinearLayout.VERTICAL);
+  column.setPadding(48, 48, 48, 48);
+  android.widget.TextView notice = new android.widget.TextView(this);
+  notice.setText(text);
+  notice.setTextSize(18);
+  notice.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
+  column.addView(notice);
+  if (failed) {
+   android.widget.Button retry = new android.widget.Button(this);
+   retry.setText("Try again");
+   retry.setOnClickListener(view -> {
+    showResetNotice("Finishing Alpha data reset. Alpha closes when it is done; open it again to start fresh.", false);
+    AlphaDataReset.resumeIfPending(this, (outcome, failure) -> {
+     if (failure == null) return;
+     runOnUiThread(() -> { if (!isFinishing() && !isDestroyed()) showResetNotice(AlphaDataResetPlugin.failureText(failure), true); });
+    });
+   });
+   column.addView(retry);
+   android.widget.Button settings = new android.widget.Button(this);
+   settings.setText("Open Android App info");
+   settings.setOnClickListener(view -> {
+    try { startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", getPackageName(), null))); }
+    catch (RuntimeException unavailable) { /* The notice already names the Settings path. */ }
+   });
+   column.addView(settings);
+  }
+  setContentView(column);
+ }
  @Override public void onCreate(Bundle state) {
   SplashScreen.installSplashScreen(this);
   if (AlphaDataReset.blocked(this)) {
@@ -198,12 +232,11 @@ public class MainActivity extends BridgeActivity {
    // load() loads nothing, so the WebView stays blank; the notice replaces it on screen.
    resetPending = true;
    super.onCreate(null);
-   android.widget.TextView notice = new android.widget.TextView(this);
-   notice.setText("Finishing Alpha data reset. Alpha closes when it is done; open it again to start fresh.");
-   notice.setPadding(48, 48, 48, 48);
-   notice.setTextSize(18);
-   setContentView(notice);
-   AlphaDataReset.resumeIfPending(this);
+   showResetNotice("Finishing Alpha data reset. Alpha closes when it is done; open it again to start fresh.", false);
+   AlphaDataReset.resumeIfPending(this, (outcome, failure) -> {
+    if (failure == null) return;
+    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed()) showResetNotice(AlphaDataResetPlugin.failureText(failure), true); });
+   });
    return;
   }
   MainActivity live = BuildConfig.IS_LAUNCHER && !isAssistantSurface() ? liveInstance() : null;

@@ -589,18 +589,37 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  /**
   * Reset Alpha data: retire every surface's work, refuse further starts in this process and wait for
   * confirmed native shutdown. Throws when shutdown is not confirmed within the deadline.
+  *
+  * <p>The native state reports "booting" for up to its boot grace period after any detached launch
+  * stamp, even with no service instance. While no service instance exists and the request socket is
+  * closed, the reset waits out that grace period (a detached agent that is really booting either
+  * starts listening, and is asked to stop again, or the state turns "dead") rather than failing.
   */
  static void stopForReset(Context context) throws Exception {
   synchronized(lifecycleLock){
    startRequestId=null;startOwnsLaunch=false;
    invalidateCalls();++lifecycleEpoch;accepting=false;stopping=true;clearEnrollment();
-   ElizaAgentService.stop(context);
   }
-  long deadline=android.os.SystemClock.elapsedRealtime()+15000;
-  while(!shutdownConfirmed(ElizaAgentService.getLocalAgentBootState(context))){
-   if(android.os.SystemClock.elapsedRealtime()>=deadline)throw new IllegalStateException("Native shutdown unconfirmed");
+  requestStopForReset(context);
+  final long started=android.os.SystemClock.elapsedRealtime();
+  long deadline=started+RESET_STOP_MS;
+  boolean restopped=false;
+  while(true){
+   JSONObject state=ElizaAgentService.getLocalAgentBootState(context);
+   if(shutdownConfirmed(state))return;
+   long now=android.os.SystemClock.elapsedRealtime();
+   boolean idleGrace=state!=null&&"booting".equals(state.optString("state"))&&!state.optBoolean("serviceActive",true)&&!state.optBoolean("socketListening",true);
+   if(idleGrace)deadline=Math.max(deadline,Math.min(started+RESET_GRACE_CAP_MS,now+Math.max(0L,RESET_GRACE_MS-state.optLong("ageMs",0L))+RESET_STOP_MS));
+   if(state!=null&&state.optBoolean("socketListening",false)&&!restopped){restopped=true;requestStopForReset(context);}
+   if(now>=deadline)throw new IllegalStateException("Native shutdown unconfirmed");
    Thread.sleep(50);
   }
+ }
+ private static final long RESET_STOP_MS=15_000L,RESET_GRACE_MS=120_000L,RESET_GRACE_CAP_MS=150_000L;
+ /** A process resumed in the background may not start services; shutdown is then confirmed by status alone. */
+ private static void requestStopForReset(Context context){
+  try{ElizaAgentService.stop(context);}
+  catch(IllegalStateException backgroundStartRefused){android.util.Log.w("AlphaDataReset","Stop intent refused in the background; confirming by status");}
  }
  @PluginMethod public void stop(PluginCall call) {
   synchronized(lifecycleLock){

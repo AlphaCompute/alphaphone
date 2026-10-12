@@ -7,7 +7,9 @@ public final class AlphaApplication extends android.app.Application {
   // Isolated helper processes have no app storage; only the main process keeps the problem log and schedules upkeep.
   if(android.os.Process.isIsolated()||!getPackageName().equals(getProcessName()))return;
   // An interrupted "Reset Alpha data" finishes before anything is scheduled; nothing else starts.
-  try{if(AlphaDataReset.resumeIfPending(this))return;}catch(RuntimeException unavailable){/* Components keep their state; the next start retries. */}
+  // Fails closed: if the reset state cannot be read, nothing is scheduled in this process.
+  try{if(AlphaDataReset.resumeIfPending(this))return;}catch(RuntimeException unavailable){return;}
+  if(AlphaDataReset.blocked(this))return;
   AlphaCrashLog.install(this);
   try{AlphaNoteAudioPlugin.scheduleTrashBackstop(this);}catch(RuntimeException unavailable){/* Retried on the next start; the renderer still purges Trash. */}
  }

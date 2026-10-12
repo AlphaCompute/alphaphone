@@ -65,9 +65,12 @@ public class AlphaNoteAudioPlugin extends Plugin {
  public static final class NotesTrashBackstopWorker extends androidx.work.Worker {
   public NotesTrashBackstopWorker(@androidx.annotation.NonNull android.content.Context context,@androidx.annotation.NonNull androidx.work.WorkerParameters params){super(context,params);}
   @androidx.annotation.NonNull @Override public Result doWork(){
+   // A pending "Reset Alpha data" erases Trash itself; this worker writes nothing while it runs.
+   if(AlphaDataReset.blocked(getApplicationContext()))return Result.success();
    boolean retry=false;
    // Independent passes: a failure of one never skips the other.
    try{finishPermanentDeletions(getApplicationContext(),System.currentTimeMillis());}catch(Exception unavailable){retry=true;}
+   if(AlphaDataReset.blocked(getApplicationContext()))return Result.success();
    try{sweepExpiredTrash(getApplicationContext(),System.currentTimeMillis());}catch(Exception unavailable){retry=true;}
    return retry?Result.retry():Result.success();
   }

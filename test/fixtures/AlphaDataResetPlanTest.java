@@ -17,22 +17,22 @@ public final class AlphaDataResetPlanTest {
  static final class ProcessDeath extends Error { ProcessDeath() { super("process died"); } }
 
  static final class FileMarker implements AlphaDataResetPlan.Marker {
-  final Path path; boolean unreadable;
+  final Path path; boolean unreadable, unwritable;
   FileMarker(Path path) { this.path = path; }
   public boolean exists() { if (unreadable) throw new SecurityException("unreadable"); return Files.exists(path); }
-  public void write() throws IOException { Files.write(path, "pending".getBytes("UTF-8")); }
+  public void write() throws IOException { if (unwritable) throw new IOException("read-only"); Files.write(path, "pending".getBytes("UTF-8")); }
   public void clear() throws IOException { Files.deleteIfExists(path); }
  }
 
  /** Records each effect; can die at, or fail, a chosen step; models a store that a live agent rewrites. */
  static final class FakeHost implements AlphaDataResetPlan.Host {
   final Path data; final List<String> calls = new ArrayList<>();
-  String dieAt, failAt; boolean platformAccepts; boolean agentRunning = true; boolean relaunched;
+  String dieAt, failAt; boolean failOnce; boolean platformAccepts; boolean agentRunning = true; boolean relaunched;
   FakeHost(Path data) { this.data = data; }
   void at(String name) throws Exception {
    calls.add(name);
    if (name.equals(dieAt)) { dieAt = null; throw new ProcessDeath(); }
-   if (name.equals(failAt)) throw new IllegalStateException(name + " unconfirmed");
+   if (name.equals(failAt)) { if (failOnce) failAt = null; throw new IllegalStateException(name + " unconfirmed"); }
   }
   public void stopAgent() throws Exception { at("stopAgent"); agentRunning = false; }
   public void stopServices() throws Exception { at("stopServices"); }
@@ -85,7 +85,7 @@ public final class AlphaDataResetPlanTest {
     FakeHost host = new FakeHost(data); host.platformAccepts = true;
     List<AlphaDataResetPlan.Step> seen = new ArrayList<>();
     check(AlphaDataResetPlan.run(marker, host, seen::add) == AlphaDataResetPlan.Outcome.PLATFORM_CLEARING, "Platform outcome");
-    check(host.calls.equals(Arrays.asList("stopAgent", "stopServices", "cancelWork", "cancelNotices", "deleteKeys", "clearWeb", "clearByPlatform")), "Platform order " + host.calls);
+    check(host.calls.equals(Arrays.asList("stopServices", "stopAgent", "cancelWork", "cancelNotices", "deleteKeys", "clearWeb", "clearByPlatform")), "Platform order " + host.calls);
     check(seen.get(0) == AlphaDataResetPlan.Step.MARK, "The marker is written before anything stops");
     check(marker.exists(), "The marker stays until Android clears it with the rest of the data");
     check(Files.exists(data.resolve("files/notes.json")), "Alpha deletes nothing itself when Android accepts the clear");
@@ -101,7 +101,7 @@ public final class AlphaDataResetPlanTest {
     check(host.relaunched, "Fresh first run requested");
    }
    // 3. Process death at every step: the marker blocks late callbacks and the next start finishes the reset.
-   for (String step : new String[] {"stopAgent", "stopServices", "cancelWork", "cancelNotices", "deleteKeys", "clearWeb", "deleteFiles"}) {
+   for (String step : new String[] {"stopServices", "stopAgent", "cancelWork", "cancelNotices", "deleteKeys", "clearWeb", "deleteFiles"}) {
     Path data = seed(temporary.resolve("death-" + step));
     FileMarker marker = new FileMarker(data.resolve("no_backup/alpha-data-reset.pending"));
     FakeHost host = new FakeHost(data); host.dieAt = step;
@@ -113,7 +113,7 @@ public final class AlphaDataResetPlanTest {
     check(!host.relaunched, "No first run before the reset finishes");
     FakeHost resumed = new FakeHost(data);
     check(AlphaDataResetPlan.run(marker, resumed, null) == AlphaDataResetPlan.Outcome.COMPLETED, "Resume after " + step);
-    check(resumed.calls.get(0).equals("stopAgent"), "Resume restarts from the first step");
+    check(resumed.calls.get(0).equals("stopServices"), "Resume restarts from the first step");
     assertErased(data);
     check(!AlphaDataResetPlan.blocked(false, marker), "Gate opens only after the private data is gone");
    }
@@ -129,10 +129,48 @@ public final class AlphaDataResetPlanTest {
     check(host.calls.contains("cancelNotices") && host.calls.contains("deleteKeys"), "Remaining stop steps still run");
     check(!host.calls.contains("deleteFiles") && Files.exists(data.resolve("files/notes.json")), "No deletion under a possibly running agent");
     check(marker.exists() && AlphaDataResetPlan.blocked(false, marker), "Still pending and gated");
-    // A notice cancellation failure alone does not block the private-file deletion.
-    FakeHost later = new FakeHost(data); later.failAt = "cancelNotices";
-    check(AlphaDataResetPlan.run(marker, later, null) == AlphaDataResetPlan.Outcome.COMPLETED, "Completes when only a notice step failed");
+    // A notice cancellation that fails once is retried after file deletion and then completes.
+    FakeHost later = new FakeHost(data); later.failAt = "cancelNotices"; later.failOnce = true;
+    check(AlphaDataResetPlan.run(marker, later, null) == AlphaDataResetPlan.Outcome.COMPLETED, "Completes when a notice step passes on retry");
+    check(later.calls.subList(later.calls.size() - 3, later.calls.size()).equals(Arrays.asList("deleteFiles", "cancelNotices", "relaunch")), "Notices retried after deletion " + later.calls);
     assertErased(data);
+   }
+   // 4b. Every required step blocks deletion and keeps the marker when Android refuses its clear.
+   for (String step : new String[] {"stopServices", "stopAgent", "cancelWork", "deleteKeys"}) {
+    Path data = seed(temporary.resolve("required-" + step));
+    FileMarker marker = new FileMarker(data.resolve("no_backup/alpha-data-reset.pending"));
+    FakeHost host = new FakeHost(data); host.failAt = step;
+    boolean incomplete = false;
+    try { AlphaDataResetPlan.run(marker, host, null); } catch (AlphaDataResetPlan.Incomplete expected) { incomplete = true; }
+    check(incomplete, "A failed " + step + " reports an incomplete reset");
+    check(!host.calls.contains("deleteFiles") && Files.exists(data.resolve("files/notes.json")), "Nothing deleted after a failed " + step);
+    check(!host.relaunched && marker.exists() && AlphaDataResetPlan.blocked(false, marker), "Still pending and gated after a failed " + step);
+   }
+   // 4c. Notices that fail before and after deletion keep the marker: no finished reset is reported.
+   {
+    Path data = seed(temporary.resolve("notices"));
+    FileMarker marker = new FileMarker(data.resolve("no_backup/alpha-data-reset.pending"));
+    FakeHost host = new FakeHost(data); host.failAt = "cancelNotices";
+    boolean incomplete = false;
+    try { AlphaDataResetPlan.run(marker, host, null); } catch (AlphaDataResetPlan.Incomplete expected) { incomplete = expected.failed.contains(AlphaDataResetPlan.Step.CANCEL_NOTICES); }
+    check(incomplete && marker.exists() && !host.relaunched, "Notice failure after deletion keeps the reset pending");
+   }
+   // 4d. Web storage clear failure alone: its files live in the private data directory DELETE_FILES removes.
+   {
+    Path data = seed(temporary.resolve("web"));
+    FileMarker marker = new FileMarker(data.resolve("no_backup/alpha-data-reset.pending"));
+    FakeHost host = new FakeHost(data); host.failAt = "clearWeb";
+    check(AlphaDataResetPlan.run(marker, host, null) == AlphaDataResetPlan.Outcome.COMPLETED, "Web clear failure is covered by file deletion");
+    assertErased(data);
+   }
+   // 4e. The marker cannot be written: nothing stops or is erased, and no reset is pending.
+   {
+    Path data = seed(temporary.resolve("unwritable"));
+    FileMarker marker = new FileMarker(data.resolve("no_backup/alpha-data-reset.pending")); marker.unwritable = true;
+    FakeHost host = new FakeHost(data);
+    boolean notStarted = false;
+    try { AlphaDataResetPlan.run(marker, host, null); } catch (AlphaDataResetPlan.NotStarted expected) { notStarted = true; }
+    check(notStarted && host.calls.isEmpty() && !marker.exists() && Files.exists(data.resolve("files/notes.json")), "Marker failure stops and erases nothing");
    }
    // 5. Gate: in-process flag wins; an unreadable marker fails closed.
    {
