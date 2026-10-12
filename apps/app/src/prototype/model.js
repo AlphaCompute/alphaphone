@@ -5113,7 +5113,8 @@ class Component extends DCLogic {
     opts = opts || {}; var self = this;
     this.undoFn = opts.undo || null;
     this.setState({ toast: msg, toastUndo: !!opts.undo }); this.clear("t");
-    this.later(function () { self.undoFn = null; self.setState({ toast: "", toastUndo: false }); }, opts.undo ? 5000 : 1900, "t");
+    // opts.ms: an Undo offer lasts exactly as long as its durable window (Calendar deletion, policy P-30).
+    this.later(function () { self.undoFn = null; self.setState({ toast: "", toastUndo: false }); }, opts.ms > 0 ? Math.min(opts.ms, 60000) : opts.undo ? 5000 : 1900, "t");
   }
 
   /* ---- per-app state ---- */

@@ -107,6 +107,10 @@ export const DailyApps = registerPlugin<{
     message?: string;
   }>;
   selectedReminder(options:{id:string}):Promise<ReminderTarget>;
+  /** Policy P-30: suspend and resume delivery while a reviewed deletion can be undone. */
+  holdReminderDelivery(options:{id:string;holdId:string}):Promise<{status:string}>;
+  releaseReminderDelivery(options:{id:string;holdId:string;redeliver:boolean}):Promise<{status:string}>;
+  reminderDeliveryHolds():Promise<{holds:{id:string;reminderId:string}[]}>;
   operateReminder(options:{operationId:string;bindingHash:string;operation:ReminderOperation|ReminderCreateOperation}):Promise<{status:string;result?:ReminderResult|ReminderCreateResult;message?:string}>;
   reminderOperationReceipt(options:{operationId:string;bindingHash:string;operation:ReminderOperation|ReminderCreateOperation}):Promise<{status:string;result?:ReminderResult|ReminderCreateResult;message?:string}>;
   reminderDecision(options:{id:string;occurrenceId:string;action:"done"|"snooze"}):Promise<{status:string;message?:string}>;

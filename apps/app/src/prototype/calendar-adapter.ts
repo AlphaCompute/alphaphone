@@ -6,6 +6,8 @@ import { DailyApps } from '../daily';
 import {calendarFormTimeProblem} from '../runtime/calendar-form-draft';
 import {mapsEventOriginFor} from '../runtime/maps-event-return';
 import {rememberNoteOrigin,forgetNoteOrigin,noteOriginSupported} from './note-origin-adapter';
+import {deletionUndo} from '../runtime/deletion-undo';
+import {deletionReviewText,type EventExpected,type PendingDeletion,type DeletionReport} from '../runtime/pending-deletions';
 type Bag = Record<string, any>;
 const calendar = registerPlugin<any>('AlphaCalendar');
 const DAY=86400000;
@@ -129,9 +131,60 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     }finally{request.complete(opened);}})();
   };
   const calendarCommitted=()=>{if(owner){owner.vset('calendar',{open:null,openDay:null});void refresh(false,true);}};
+  // Policy P-30: reviewed deletions wait UNDO_WINDOW_MS before the provider is touched. Pending,
+  // dispatched and unconfirmed deletions stay hidden; the Undo offer survives restart while time remains.
+  const offerUndo=(shell:Bag,record:PendingDeletion)=>{
+    const remaining=deletionUndo().remaining(record.id);if(remaining<=0||shell!==owner||shell.live===false)return;
+    const noun=record.target.kind==='reminder'?'Reminder':'Event';
+    shell.toast(`${noun} “${record.label||(record.target.kind==='reminder'?'Reminder':'Untitled event')}” will be deleted`,{ms:remaining,undo:async()=>{
+      try{const result=await deletionUndo().undo(record.id);if(shell!==owner)return;
+        if(result.status==='restored')shell.toast(`${noun} kept. Nothing was deleted.`);
+        else shell.toast('Too late to undo. The deletion has started; check Calendar for its result.');
+      }catch{if(shell===owner)shell.toast('Undo could not be saved. Try Undo again before the time runs out.',{ms:Math.max(1000,deletionUndo().remaining(record.id)),undo:()=>offerUndo(shell,record)});}
+    }});
+  };
+  const deletionChanged=(shell:Bag,event:{type:'changed'}|{type:'reports';reports:DeletionReport[]})=>{
+    if(shell!==owner||shell.live===false)return;
+    if(event.type==='changed'){void shell.refreshReminders?.();return;}
+    // A note link is dropped only once the deletion is confirmed, never while Undo is possible.
+    for(const report of event.reports)if(report.status==='deleted'){const target=report.target;if(target.kind==='reminder')void forgetNoteOrigin('reminder',target.target.reminderId);else if(target.scope==='event'&&!/:occ:-?\d+$/.test(target.id))void forgetNoteOrigin('event',target.id);}
+    const notable=event.reports.filter(report=>report.status!=='deleted');
+    const last=notable.at(-1)||event.reports.at(-1);if(last)shell.toast(last.message);
+    if(event.reports.some(report=>report.kind==='event'))void refresh(false,true);
+  };
+  async function reconcileDeletions(shell:Bag,offer=false){
+    try{
+      await deletionUndo().reconcile();
+      if(offer)for(const record of deletionUndo().records())if(record.phase==='pending')offerUndo(shell,record);
+    }catch{/* Pending intents stay durable; the next start or resume retries reconciliation. */}
+  }
+  p.offerDeletionUndo=function(record:PendingDeletion){offerUndo(this,record);};
   p.refreshAgentCalendar=function(){return refresh(false,true);};
-  p.componentDidMount=function(){mount.call(this);owner=this;void refresh();window.addEventListener('alpha:calendar-committed',calendarCommitted);this.calendarPreferenceChanged=(event:Event)=>{if(event.type==='storage'){const e=event as StorageEvent;if(e.key!=='alpha.browser.calendar.v1')return;try{if(JSON.stringify(JSON.parse(e.oldValue||'{}').preferences)===JSON.stringify(JSON.parse(e.newValue||'{}').preferences))return;}catch{return;}}void refresh(false,true);};if(!Capacitor.isNativePlatform()){window.addEventListener('alpha:calendar-open',openCalendarEvent);window.addEventListener('alpha:calendar-preferences',this.calendarPreferenceChanged);window.addEventListener('storage',this.calendarPreferenceChanged);window.addEventListener('alpha:calendar-document-changed',this.calendarPreferenceChanged);}this.calendarResume=DailyApps.addListener('appResumed',()=>void refresh()).catch(()=>null);};
-  p.componentWillUnmount=function(){if(owner===this){agentSelection=undefined;agentSelectionKey='';agentSelectionEpoch++;owner=null;++creationReadEpoch;creationPending=null;creationRecoveryFailed=false;loading=false;calendars=[];status='Not connected';desired=undefined;loadedKey='';attemptedKey='';++generation;}void this.calendarResume?.then((l:any)=>l?.remove());window.removeEventListener('alpha:calendar-committed',calendarCommitted);if(!Capacitor.isNativePlatform()){++navigationEpoch;window.removeEventListener('alpha:calendar-open',openCalendarEvent);window.removeEventListener('alpha:calendar-preferences',this.calendarPreferenceChanged);window.removeEventListener('storage',this.calendarPreferenceChanged);window.removeEventListener('alpha:calendar-document-changed',this.calendarPreferenceChanged);}unmount.call(this);};
+  p.componentDidMount=function(){mount.call(this);owner=this;void refresh();window.addEventListener('alpha:calendar-committed',calendarCommitted);this.calendarPreferenceChanged=(event:Event)=>{if(event.type==='storage'){const e=event as StorageEvent;if(e.key!=='alpha.browser.calendar.v1')return;try{if(JSON.stringify(JSON.parse(e.oldValue||'{}').preferences)===JSON.stringify(JSON.parse(e.newValue||'{}').preferences))return;}catch{return;}}void refresh(false,true);};if(!Capacitor.isNativePlatform()){window.addEventListener('alpha:calendar-open',openCalendarEvent);window.addEventListener('alpha:calendar-preferences',this.calendarPreferenceChanged);window.addEventListener('storage',this.calendarPreferenceChanged);window.addEventListener('alpha:calendar-document-changed',this.calendarPreferenceChanged);}this.calendarResume=DailyApps.addListener('appResumed',()=>{void refresh();void reconcileDeletions(this);}).catch(()=>null);this.deletionUndoUnsubscribe=deletionUndo().subscribe(event=>deletionChanged(this,event));void reconcileDeletions(this,true);};
+  p.componentWillUnmount=function(){if(owner===this){agentSelection=undefined;agentSelectionKey='';agentSelectionEpoch++;owner=null;++creationReadEpoch;creationPending=null;creationRecoveryFailed=false;loading=false;calendars=[];status='Not connected';desired=undefined;loadedKey='';attemptedKey='';++generation;}void this.calendarResume?.then((l:any)=>l?.remove());this.deletionUndoUnsubscribe?.();this.deletionUndoUnsubscribe=undefined;window.removeEventListener('alpha:calendar-committed',calendarCommitted);if(!Capacitor.isNativePlatform()){++navigationEpoch;window.removeEventListener('alpha:calendar-open',openCalendarEvent);window.removeEventListener('alpha:calendar-preferences',this.calendarPreferenceChanged);window.removeEventListener('storage',this.calendarPreferenceChanged);window.removeEventListener('alpha:calendar-document-changed',this.calendarPreferenceChanged);}unmount.call(this);};
+  /**
+   * One review, then a durable pending intent. The provider event is deleted only after the Undo
+   * window; Undo before then is lossless because nothing was deleted.
+   */
+  async function reviewAndHoldDeletion(currentOwner:Bag,selected:Bag,event:Bag,expected:EventExpected,revision:string,scope:'series'|undefined){
+    const api=currentOwner;
+    const localScope:'event'|'occurrence'|'series'=scope||(event.seriesId?'occurrence':'event'),invitation=!!event.who?.length;
+    const reviewText=deletionReviewText({kind:'event',scope:localScope,invitation});
+    const reviewed=await calendar.reviewDeletion({id:event.id,calendarId:event.calendarId,expected,revision,...(scope?{scope}:{}),reviewText});
+    if(owner!==currentOwner)return;
+    if(reviewed.status==='cancelled')return;
+    if(reviewed.status==='external'){api.toast('Manage deletion and recurrence in Android Calendar. No event was deleted here.');return;}
+    if(reviewed.status!=='reviewed'){api.toast(reviewed.status==='conflict'?'This event changed. Nothing was deleted.':'Calendar deletion unavailable. Nothing was deleted.');await refresh(false,true);return;}
+    const target={kind:'event' as const,id:String(event.id),calendarId:String(event.calendarId),revision:reviewed.revision,expected,scope:reviewed.scope,invitation:!!reviewed.invitation,grant:reviewed.grant,...(reviewed.seriesId?{seriesId:String(reviewed.seriesId)}:{}),...(reviewed.occurrenceBegin!==undefined?{occurrenceBegin:reviewed.occurrenceBegin}:{})};
+    let held;
+    try{held=await deletionUndo().request({label:event.title||'Untitled event',target});}
+    catch{await calendar.revokeDeletion({grant:reviewed.grant}).catch(()=>undefined);api.toast('Deletion could not be saved. Nothing was deleted.');return;}
+    if(held.status!=='pending'){await calendar.revokeDeletion({grant:reviewed.grant}).catch(()=>undefined);api.toast(held.status==='duplicate'?'This event is already waiting to be deleted.':'Too many deletions are waiting. Try again in a few seconds.');return;}
+    const current=currentOwner.vget('calendar');
+    if(current.open===selected.id&&!current.form)currentOwner.vset('calendar',{open:null,openDay:null});
+    await refresh(false,true);
+    offerUndo(currentOwner,held.record);
+  }
   views.calendar.render=(state:Bag,api:Bag)=>{
     const range=rangeFor(state);
     if(desired?.key!==range.key){desired=range;++generation;status='Loading calendars…';schedule();}
@@ -376,7 +429,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       };
       if(!Capacitor.isNativePlatform()&&selected.nativeEvent.seriesId){
         out.ev.day+=' · Repeating event · edits and deletion apply to this occurrence';out.ev.browserSeries=true;
-        const seriesAction=async(remove:boolean)=>{try{const event=selected.nativeEvent;const result=await (remove?calendar.removeSeries({id:event.id,revision:event.revision}):calendar.editSeries({id:event.id,revision:event.revision,people:out.attendeeChoices||[]}));if(result.status==='saved'||result.status==='deleted'){api.set({open:null,openDay:null});await refresh(false,true);}else if(result.status==='conflict')api.toast('This series changed. Refresh and try again.');}catch{api.toast('The series could not be changed. Refresh and try again.');}};
+        const seriesAction=async(remove:boolean)=>{try{const event=selected.nativeEvent;if(remove){if(!owner)return;await reviewAndHoldDeletion(owner,selected,event,{title:event.title||'',body:event.body||'',location:event.location||'',begin:event.begin,end:event.end},event.revision,'series');return;}const result=await calendar.editSeries({id:event.id,revision:event.revision,people:out.attendeeChoices||[]});if(result.status==='saved'||result.status==='deleted'){api.set({open:null,openDay:null});await refresh(false,true);}else if(result.status==='conflict')api.toast('This series changed. Refresh and try again.');}catch{api.toast('The series could not be changed. Refresh and try again.');}};
         out.ev.editSeries=()=>void seriesAction(false);out.ev.deleteSeries=()=>void seriesAction(true);
       }
       if(!Capacitor.isNativePlatform())out.ev.people=(out.ev.people||[]).map((person:Bag,index:number)=>{const event=selected.nativeEvent,id=event.who?.[index],labels:Record<string,string>={added:'Added',invited:'Invited',yes:'Going',maybe:'Maybe',no:'Declined'};return {...person,st:labels[event.responses?.[id]||'added'],canRespond:true,response:async()=>{try{const result=await calendar.editResponse({id:event.id,revision:event.revision,person:id,name:person.name});if(result.status==='saved')await refresh(false,true);}catch{api.toast('This guest list changed. Reopen the event.');}}};});
@@ -385,28 +438,14 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       out.ev.del=async()=>{
         if(!owner||owner.calendarSaving||owner.calendarWriteUncertain)return;
         const currentOwner=owner,event=selected.nativeEvent,expected={title:event.title||'',body:event.body||'',location:event.location||'',begin:event.begin,end:event.end};
-        currentOwner.calendarSaving=true;api.set({});let dispatched=false;
+        currentOwner.calendarSaving=true;api.set({});
         try{
           const inspected=await calendar.inspect({id:event.id,calendarId:event.calendarId,expected});
           if(owner!==currentOwner||api.get('calendar').open!==selected.id)return;
           if(inspected.status==='external'){api.toast('Manage deletion and recurrence in Android Calendar. No event was deleted here.');external();return;}
           if(inspected.status!=='ready'){api.toast('This event changed or access is unavailable. Refresh before deleting.');await refresh(false,true);return;}
-          dispatched=true;
-          const result=await calendar.remove({id:event.id,calendarId:event.calendarId,expected,revision:inspected.revision});
-          if(owner!==currentOwner)return;
-          if(result.status==='deleted'){
-            if(!event.seriesId&&!/:occ:-?\d+$/.test(String(event.id)))void forgetNoteOrigin('event',String(event.id));
-            // The receipt belongs to the deleted event, not a newer detail or draft.
-            const current=api.get('calendar');
-            if(!document.hidden&&api.isActive()&&current.open===selected.id&&!current.form){
-              api.set({open:null,openDay:null});api.toast('Local event deleted and verified.');
-            }
-            await refresh(false,true);
-          }
-          else if(result.status==='conflict'){api.toast('This event changed. Nothing was deleted.');await refresh(false,true);}
-          else if(result.status==='unknown'){currentOwner.calendarWriteUncertain=true;api.toast('Deletion could not be confirmed. Refresh and check before another change.');}
-          else if(result.status!=='cancelled')api.toast('Calendar deletion unavailable. Nothing was deleted.');
-        }catch{if(dispatched){currentOwner.calendarWriteUncertain=true;api.toast('Deletion could not be confirmed. Refresh and check before another change.');}else api.toast('Calendar review unavailable. Nothing was changed.');}
+          await reviewAndHoldDeletion(currentOwner,selected,event,expected,inspected.revision,undefined);
+        }catch{api.toast('Calendar review unavailable. Nothing was changed.');}
         finally{currentOwner.calendarSaving=false;if(owner===currentOwner)api.set({});}
       };
     }

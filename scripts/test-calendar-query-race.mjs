@@ -1,6 +1,7 @@
 // Actual Calendar adapter with a deliberately delayed provider boundary.
 // Host lifecycle proof only; native CalendarProvider acceptance remains separate.
 import assert from 'node:assert/strict';
+import {deletionReviewText,hiddenDeletionTargets} from '../apps/app/src/runtime/pending-deletions.ts';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
@@ -19,7 +20,7 @@ class Shell {
 }
 let source=fs.readFileSync(new URL('../apps/app/src/prototype/calendar-adapter.ts',import.meta.url),'utf8').replace(/^import .*\n/gm,'').replace("const calendar = registerPlugin<any>('AlphaCalendar');",'').replace(/^export /gm,'');
 source=stripTypeScriptTypes(source);
-vm.runInNewContext(source+'\ninstallCalendarAdapter(Shell,views);',{window:new EventTarget(),document:{hidden:false},openCalendarRecovery:()=>{throw Error('Browser recovery must not open in native fixture');},openReminderRecovery:()=>{throw Error('Browser reminder recovery must not open in native fixture');},openReminderActionRecovery:()=>{throw Error('Browser action recovery must not open in native fixture');},openReminderCreationRecovery:()=>{throw Error('Browser reminder creation recovery must not open in native fixture');},Capacitor:{getPlatform:()=> 'android',isNativePlatform:()=>true},calendar,DailyApps,Shell,views,Date,queueMicrotask,console,mapsEventOriginFor:()=>undefined,noteOriginSupported:()=>false,rememberNoteOrigin:async()=>false,forgetNoteOrigin:async()=>{}});
+vm.runInNewContext(source+'\ninstallCalendarAdapter(Shell,views);',{window:new EventTarget(),document:{hidden:false},openCalendarRecovery:()=>{throw Error('Browser recovery must not open in native fixture');},openReminderRecovery:()=>{throw Error('Browser reminder recovery must not open in native fixture');},openReminderActionRecovery:()=>{throw Error('Browser action recovery must not open in native fixture');},openReminderCreationRecovery:()=>{throw Error('Browser reminder creation recovery must not open in native fixture');},Capacitor:{getPlatform:()=> 'android',isNativePlatform:()=>true},calendar,DailyApps,Shell,views,Date,queueMicrotask,console,mapsEventOriginFor:()=>undefined,noteOriginSupported:()=>false,rememberNoteOrigin:async()=>false,forgetNoteOrigin:async()=>{},deletionReviewText,deletionUndo:()=>({subscribe:()=>()=>{},records:()=>[],reconcile:async()=>[],remaining:()=>0})});
 shell=new Shell();shell.componentDidMount();
 assert.equal(calls.length,1);const initial=calls[0];
 // Change the real adapter's visible range away and back before A settles.
