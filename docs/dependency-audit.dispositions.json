@@ -19,11 +19,11 @@
       "paths": ["@capacitor/cli", "@capacitor/cli > xcode", "@capacitor/cli > xcode > uuid"],
       "scope": "dev",
       "reachability": "Not reachable. The advisory is an out-of-bounds write in uuid v3/v5/v6 when the caller passes its own buffer. The only consumer, xcode 3.0.1, calls uuid.v4() with no arguments (lib/pbxProject.js), and @capacitor/cli loads xcode only for the iOS `migrate uiscene` task. This product has no iOS project and runs only `cap sync android`. Nothing from this chain is in the web bundle or an APK.",
-      "justification": "No compatible fix exists: every xcode release depends on uuid ^7 and the newest @capacitor/cli (8.5.3) still depends on xcode ^3.0.1. npm's proposed fix is a downgrade to @capacitor/cli 8.4.3, which would split it from the pinned @capacitor/core and @capacitor/android 8.5.2. Forcing uuid >=11.1.1 with an override is a four-major jump under a package that declares ^7.",
+      "justification": "No compatible fix exists: every xcode release (latest 3.0.1) depends on uuid ^7 and the newest @capacitor/cli (8.5.3; 8.5.4 nightly and 9.0.0-alpha.8 are prereleases) still depends on xcode ^3.0.1. npm's proposed fix is a downgrade to @capacitor/cli 8.4.3, which would split it from the pinned @capacitor/core and @capacitor/android 8.5.2. Forcing uuid >=11.1.1 with an override is a four-major jump under a package that declares ^7.",
       "removeWhen": "@capacitor/cli drops xcode, or xcode ships with uuid >=11.1.1; take that release together with the matching @capacitor/core and @capacitor/android.",
-      "reviewedBy": "Round 3 supply-chain triage (source review of the installed packages)",
-      "reviewedOn": "2026-10-10",
-      "reviewBy": "2027-01-08"
+      "reviewedBy": "Round 3 supply-chain triage (source review of the installed packages); re-reviewed in the MVP release-tooling package (registry: @capacitor/cli latest 8.5.3 depends on xcode ^3.0.1, xcode latest 3.0.1 on uuid ^7.0.3; installed xcode still calls only uuid.v4() with no arguments, loaded only by dist/tasks/migrate-uiscene.js)",
+      "reviewedOn": "2026-10-11",
+      "reviewBy": "2027-02-08"
     }
   ]
 }
