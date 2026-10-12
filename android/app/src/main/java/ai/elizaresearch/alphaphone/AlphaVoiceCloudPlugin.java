@@ -44,7 +44,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private void queueLocalRelease(){
   main.removeCallbacks(localIdleRelease);
   if(!localReleaseQueued.compareAndSet(false,true))return;
-  try{workers.execute(()->{try{localEngine.release();}finally{localReleaseQueued.set(false);}});}catch(RejectedExecutionException ignored){localReleaseQueued.set(false);}
+  PluginWorkers.submit(workers,()->{try{localEngine.release();}finally{localReleaseQueued.set(false);}},()->localReleaseQueued.set(false));
  }
  private void scheduleLocalRelease(long delay){main.removeCallbacks(localIdleRelease);if(!destroyed)main.postDelayed(localIdleRelease,delay);}
  @PluginMethod public void workflowPresentationCapabilities(PluginCall call){JSObject result=new JSObject();result.put("protocol",2);call.resolve(result);}
@@ -82,8 +82,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   main.post(()->{
    try{capture.cancel();}catch(RuntimeException error){finishDrain(false,"Recording cancellation failed");return;}
    // Never wait on the UI thread. The serial worker barrier follows cancelled work and its cleanup.
-   try{workers.execute(()->main.post(()->{finishDrain(true,destroyed?"Voice unavailable":null);}));}
-   catch(RejectedExecutionException error){finishDrain(false,"Voice cancellation is unavailable");}
+   PluginWorkers.submit(workers,()->main.post(()->{finishDrain(true,destroyed?"Voice unavailable":null);}),()->finishDrain(false,"Voice cancellation is unavailable"));
   });
  }
  private static String required(String value,int max){if(value==null||value.isBlank()||value.length()>max)throw new IllegalArgumentException();return value;}
@@ -145,12 +144,12 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   final String id;try{id=required(call.getString("requestId"),256);}catch(Exception error){call.reject("Invalid request");return;}
   Pending request=new Pending();synchronized(pending){if(destroyed||draining||!pending.isEmpty()){if(!destroyed&&!draining&&Boolean.FALSE.equals(call.getBoolean("replace",true)))call.reject("Speaker is in use","playback-busy");else call.reject("Voice request already active or unavailable");return;}pending.put(id,request);}
   Runnable deadline=request::cancel;main.postDelayed(deadline,120000);
-  try{workers.execute(()->{
+  PluginWorkers.submit(workers,()->{
    try{if(request.cancelled)throw new IOException();work.run(request);}catch(Exception error){request.failure=request.cancelled?"Voice request cancelled":"Voice request failed";if(!request.cancelled&&error instanceof VoiceHttpException)request.failureCode="voice-http-"+((VoiceHttpException)error).status;}
    finally{try{if(request.connection!=null)request.connection.disconnect();}catch(RuntimeException error){request.failure="Voice request cleanup failed";}finally{pending.remove(id,request);main.removeCallbacks(deadline);}}
    // A continuation may submit immediately when this resolves: release admission first.
    if(request.cancelled||destroyed)call.reject("Voice request cancelled");else if(request.failure!=null){if(request.failureCode!=null)call.reject(request.failure,request.failureCode);else call.reject(request.failure);}else if(request.result==null)call.reject("Voice request failed");else call.resolve(request.result);
-  });}catch(RejectedExecutionException error){main.removeCallbacks(deadline);pending.remove(id,request);call.reject("Voice unavailable");}
+  },()->{main.removeCallbacks(deadline);pending.remove(id,request);call.reject("Voice unavailable");});
  }
  private static final class VoiceHttpException extends IOException {
   final int status;
@@ -205,7 +204,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  @PluginMethod public void cancel(PluginCall call){Pending request=pending.get(call.getString("requestId",""));if(request!=null)request.cancel();call.resolve();}
  @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
  @Override protected void handleOnPause(){speechForeground=false;scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();for(Pending request:pending.values())request.cancel();main.post(this::clearPlayback);super.handleOnPause();}
- @Override protected void handleOnDestroy(){destroyed=true;finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);try{workers.execute(localEngine::close);}catch(RejectedExecutionException ignored){}workers.shutdown();super.handleOnDestroy();}
+ @Override protected void handleOnDestroy(){destroyed=true;finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);PluginWorkers.submit(workers,localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();}
 }
 
 /** One foreground-only private audio draft. Capture and upload are separate user actions. */

@@ -170,8 +170,7 @@ public final class AlphaDevicePlugin extends Plugin {
   * LauncherHomeInstrumentedTest). Such a call is answered with a rejection instead.
   */
  private void diagnostics(PluginCall call,Runnable work){
-  try{diagnosticsWorker.execute(work);}
-  catch(java.util.concurrent.RejectedExecutionException stopped){call.reject("Problem log is unavailable");}
+  PluginWorkers.submit(diagnosticsWorker,work,()->call.reject("Problem log is unavailable"));
  }
  /** Local problem log: failure classes only, never messages, stacks or content. */
  @PluginMethod public void crashLog(PluginCall call){

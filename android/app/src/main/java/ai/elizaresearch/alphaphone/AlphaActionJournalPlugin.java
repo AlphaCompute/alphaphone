@@ -61,7 +61,7 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
  }
  private JSONObject clockMarker(JSONObject entry,String phase)throws Exception{return new JSONObject().put("phase",phase).put("attemptId",entry.getString("attemptId")).put("operationHash",entry.getString("operationHash"));}
  @PluginMethod public void reviewClock(PluginCall call){
-  worker().execute(()->{try{
+  PluginWorkers.submit(worker(),()->{try{
    String scope=field(call.getString("scope"),"[a-f0-9]{64}"),id=field(call.getString("proposalId"),"[A-Za-z0-9_-]{1,128}"),operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");
    ActionJournal store=journal();JSONObject approved;
    synchronized(store.lock()){JSONObject entry=clockEntry(store,scope,id,operationId);approved=entry.getJSONObject("record").getJSONObject("operation");if(!sameJson(approved,call.getObject("operation")))throw new IllegalStateException();
@@ -69,14 +69,14 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
     entry.put("clockReview",clockMarker(entry,"reviewing"));store.update(scope,id,previous->entry);
    }
    clockUi(()->{
-    ClockAgentReview.show(getActivity(),scope+":"+id,approved,accepted->{if(destroyed())return;try{worker().execute(()->{if(destroyed())return;try{synchronized(store.lock()){JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview");
+    ClockAgentReview.show(getActivity(),scope+":"+id,approved,accepted->{if(destroyed())return;PluginWorkers.submit(worker(),()->{if(destroyed())return;try{synchronized(store.lock()){JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview");
       if(!"reviewing".equals(clock.getString("phase"))){call.resolve(clockReply(clock,approved.getString("action")));return;}
       JSObject reply=new JSObject();if(accepted){String token=java.util.UUID.randomUUID().toString();clock.put("phase","approved").put("reviewToken",token);reply.put("reviewToken",token);}else{clock.put("phase","cancelled").put("result",ClockAgentReview.result(approved.getString("action"),"failed"));reply=clockReply(clock,approved.getString("action"));}
       store.update(scope,id,previous->entry);call.resolve(reply);
-     }}catch(Exception refusal){if(!destroyed())call.reject("Clock review expired or was retired");}});}catch(java.util.concurrent.RejectedExecutionException retired){call.reject("Clock review retired");}});
+     }}catch(Exception refusal){if(!destroyed())call.reject("Clock review expired or was retired");}},()->call.reject("Clock review retired"));});
     return null;
    });
-  }catch(Exception refusal){call.reject("Exact approved Clock review unavailable");}});
+  }catch(Exception refusal){call.reject("Exact approved Clock review unavailable");}},()->call.reject("Clock review is not available"));
  }
  @PluginMethod public void cancelClock(PluginCall call){work(call,true,(store,scope,id)->{synchronized(store.lock()){
   String operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");JSONObject entry=read(store,scope,id);
@@ -89,7 +89,7 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
  @PluginMethod public void confirmClock(PluginCall call){
   // Serialize exact approval and durable dispatch intent on the journal worker.
   // Only the foreground check and Android handoff run on the Activity thread.
-  worker().execute(()->{try{ActionJournal store=journal();synchronized(store.lock()){
+  PluginWorkers.submit(worker(),()->{try{ActionJournal store=journal();synchronized(store.lock()){
    if(destroyed())throw new IllegalStateException();
    String scope=field(call.getString("scope"),"[a-f0-9]{64}"),id=field(call.getString("proposalId"),"[A-Za-z0-9_-]{1,128}"),operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");
    JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview"),operation=entry.getJSONObject("record").getJSONObject("operation");
@@ -99,7 +99,7 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
    clock.put("phase","dispatching").remove("reviewToken");store.update(scope,id,previous->entry);
    long expiresAt=entry.getJSONObject("record").getLong("expiresAt");
    JSObject result=clockUi(()->{if(expiresAt<=System.currentTimeMillis())return ClockAgentReview.result(operation.getString("action"),"failed");return ClockAgentReview.dispatch(getActivity(),operation);});clock.put("phase","finished").put("result",result);store.update(scope,id,previous->entry);call.resolve(clockReply(clock,operation.getString("action")));
-  }}catch(Exception uncertain){call.reject("Clock handoff result is unconfirmed; do not repeat it");}});
+  }}catch(Exception uncertain){call.reject("Clock handoff result is unconfirmed; do not repeat it");}},()->call.reject("Clock handoff is not available; nothing was sent"));
  }
  @Override protected void handleOnDestroy(){super.handleOnDestroy();ClockAgentReview.abandon();}
 }

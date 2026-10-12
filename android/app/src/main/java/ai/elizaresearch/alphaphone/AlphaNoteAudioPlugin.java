@@ -24,7 +24,7 @@ public class AlphaNoteAudioPlugin extends Plugin {
  private static File directory(android.content.Context context){File d=new File(context.getNoBackupFilesDir(),"note-audio");if(!d.isDirectory()&&!d.mkdirs())throw new IllegalStateException();return d;}
  @Override public void load(){
   // Plugin registration/startup must not synchronously decrypt an entire old collection.
-  main.post(()->{if(destroyed)return;try{migrationWorker.execute(this::migrateLegacyMetadata);migrationWorker.execute(this::sweepTrashOnStart);}catch(java.util.concurrent.RejectedExecutionException stopped){migrationState="stopped";}});
+  main.post(()->{if(destroyed)return;if(PluginWorkers.submit(migrationWorker,this::migrateLegacyMetadata,()->migrationState="stopped"))PluginWorkers.submit(migrationWorker,this::sweepTrashOnStart,()->migrationState="stopped");});
  }
  private void migrateLegacyMetadata(){
   migrationState="running";

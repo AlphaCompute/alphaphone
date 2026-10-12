@@ -19,7 +19,7 @@ public class AlphaHostedResultsPlugin extends Plugin {
  // Capacitor can deliver an already queued bridge call after Activity destruction.
  // Reject it without recreating a worker or crashing the bridge HandlerThread.
  private void submit(PluginCall call,Runnable task){
-  try{io.execute(task);}catch(RejectedExecutionException closed){if(call!=null)call.reject("Result bridge closed; reopen the app to continue.");}
+  PluginWorkers.submit(io,task,()->{if(call!=null)call.reject("Result bridge closed; reopen the app to continue.");});
  }
  private HostedResultNotices notices(){return HostedDelivery.get(getContext()).notices;}
  private void channel(){new HostedNoticePoster(getContext());}

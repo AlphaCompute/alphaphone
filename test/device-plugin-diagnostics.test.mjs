@@ -11,12 +11,11 @@ import test from "node:test";
 const source = fs.readFileSync("android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaDevicePlugin.java", "utf8");
 
 test("problem-log work is never handed to the worker outside the helper that survives a stopped worker", () => {
-  const direct = [...source.matchAll(/diagnosticsWorker\.execute\(/g)];
-  assert.equal(direct.length, 1, "diagnosticsWorker.execute is called in exactly one place");
+  // The helper delegates to the shared PluginWorkers guard (see test/plugin-worker-guard.test.mjs).
+  assert.equal([...source.matchAll(/diagnosticsWorker\.execute\(/g)].length, 0, "the worker is never called directly");
   const helper = source.match(/private void diagnostics\(PluginCall call,Runnable work\)\{([\s\S]*?)\n \}/);
   assert.ok(helper, "the helper exists");
-  assert.match(helper[1], /try\{diagnosticsWorker\.execute\(work\);\}/);
-  assert.match(helper[1], /catch\(java\.util\.concurrent\.RejectedExecutionException \w+\)\{call\.reject\(/);
+  assert.match(helper[1], /PluginWorkers\.submit\(diagnosticsWorker,work,\(\)->call\.reject\(/);
   assert.ok([...source.matchAll(/diagnostics\(call,\(\)->/g)].length >= 4, "the four problem-log methods use the helper");
   assert.match(source, /handleOnDestroy\(\)\{diagnosticsWorker\.shutdown\(\);/, "the worker is still stopped with the plugin");
 });

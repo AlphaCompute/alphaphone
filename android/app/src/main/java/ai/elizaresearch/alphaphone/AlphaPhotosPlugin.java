@@ -32,8 +32,7 @@ public class AlphaPhotosPlugin extends Plugin {
  private volatile boolean destroyed;
  private void submit(PluginCall call,Runnable action){
   if(destroyed){call.reject("Photo library closed");return;}
-  try{worker.execute(()->{if(destroyed)call.reject("Photo library closed");else action.run();});}
-  catch(java.util.concurrent.RejectedExecutionException stopped){call.reject("Photo library closed");}
+  PluginWorkers.submit(worker,()->{if(destroyed)call.reject("Photo library closed");else action.run();},()->call.reject("Photo library closed"));
  }
  @Override public void load(){edits=new OwnedPhotoEdits(getContext(), MEDIA_CONFIG);captures=new OwnedCaptures(getContext(), MEDIA_CONFIG);mediaVersions=getContext().getSharedPreferences("alpha-owned-media-versions",0);playback=new OwnedVideoPlayback(getBridge());getBridge().setWebViewClient(playback);}
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -291,5 +290,5 @@ public class AlphaPhotosPlugin extends Plugin {
   }catch(IllegalArgumentException failure){call.reject(failure.getMessage());}catch(Exception failure){call.reject("Album could not be saved. Reload albums before trying again");}
   }
  });}
- @Override protected void handleOnDestroy(){destroyed=true;if(edits!=null)edits.cancel(null);try{worker.execute(()->{if(edits!=null)edits.close();});}catch(java.util.concurrent.RejectedExecutionException ignored){}worker.shutdown();if(playback!=null)playback.clear();}
+ @Override protected void handleOnDestroy(){destroyed=true;if(edits!=null)edits.cancel(null);PluginWorkers.submit(worker,()->{if(edits!=null)edits.close();},()->{/* Already stopped: nothing left to close on it. */});worker.shutdown();if(playback!=null)playback.clear();}
 }

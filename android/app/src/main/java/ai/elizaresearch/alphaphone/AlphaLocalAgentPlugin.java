@@ -215,7 +215,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   * be that Cloud credential on the pinned model. Reasons are non-sensitive diagnostics. */
  @PluginMethod public void residentAttachment(PluginCall call) {
   final String credentialId=call.getString("credentialId");
-  try{workers.execute(()->{try{
+  PluginWorkers.submit(workers,()->{try{
    AlphaCredentialStore store=new AlphaCredentialStore(getContext());
    String refusal=null;
    if(credentialId!=null){
@@ -228,8 +228,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    JSONObject bootState=ElizaAgentService.getLocalAgentBootState(getContext());
    if(refusal==null)synchronized(lifecycleLock){refusal=attachRefusalLocked(bootState,root,generation);}
    call.resolve(new JSObject(ResidentAttachment.describe(refusal).toString()));
-  }catch(Exception unavailable){call.resolve(new JSObject().put("attachable",false).put("reason","unavailable"));}});}
-  catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
+  }catch(Exception unavailable){call.resolve(new JSObject().put("attachable",false).put("reason","unavailable"));}},()->{call.reject("Local agent bridge is closed.");});
  }
  @PluginMethod public void configureProvider(PluginCall call) {
   if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
@@ -237,21 +236,19 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(!validProviderToken(key,1024)||!model.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,127}")){call.reject("Enter a valid Cerebras key.");return;}
   if(!CEREBRAS_PROVIDER_MODEL.equals(model)){call.reject("Alpha Phone uses "+CEREBRAS_PROVIDER_MODEL+" on Cerebras.");return;}
   final long configuration=reserveCredentialIntent();
-  try{workers.execute(()->{try{
+  PluginWorkers.submit(workers,()->{try{
    AlphaCredentialStore store=new AlphaCredentialStore(getContext(),()->{if(disposed)throw new IllegalStateException("Local agent bridge closed");requireCredentialIntent(configuration);});
    String failure=saveVerifiedProvider(store,key,model,AlphaLocalAgentPlugin::checkCerebrasKey);
    if(failure!=null){call.reject(failure);return;}
    store.assertCurrent();call.resolve(providerIdentity(store.readCredentialSlot("local-agent-provider:v1")));
-  }catch(Exception error){call.reject("Provider could not be saved securely.");}});}
-  catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
+  }catch(Exception error){call.reject("Provider could not be saved securely.");}},()->{call.reject("Local agent bridge is closed.");});
  }
  /** Deletes the provider slot and reads it back; resolves only when the slot is gone. */
  @PluginMethod public void clearProvider(PluginCall call) {
   final long configuration=reserveCredentialIntent();
-  try{workers.execute(()->{try{
+  PluginWorkers.submit(workers,()->{try{
    call.resolve(clearProviderSlot(new AlphaCredentialStore(getContext(),()->{if(disposed)throw new IllegalStateException("Local agent bridge closed");requireCredentialIntent(configuration);})));
-  }catch(Exception error){call.reject("The provider key could not be removed.");}});}
-  catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
+  }catch(Exception error){call.reject("The provider key could not be removed.");}},()->{call.reject("Local agent bridge is closed.");});
  }
  static final String CLOUD_PROVIDER_MODEL="cerebras/qwen-3.8-27b";
  static final String CLOUD_PROVIDER_BASE="https://api.eliza.app/api/v1";
@@ -261,12 +258,11 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   String credentialId=call.getString("credentialId",""),model=call.getString("model","");
   if(!CLOUD_PROVIDER_MODEL.equals(model)){call.reject("Choose a supported Cloud model.");return;}
   final long configuration=reserveCredentialIntent();
-  try{workers.execute(()->{try{
+  PluginWorkers.submit(workers,()->{try{
    AlphaCredentialStore store=new AlphaCredentialStore(getContext(),()->{if(disposed)throw new IllegalStateException("Local agent bridge closed");requireCredentialIntent(configuration);});
    bindCloudProvider(store,credentialId,model);store.assertCurrent();
    call.resolve(new JSObject().put("configured",true));
-  }catch(Exception unavailable){call.reject("Cloud account changed or is unavailable. Sign in again before starting the local agent.");}});}
-  catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
+  }catch(Exception unavailable){call.reject("Cloud account changed or is unavailable. Sign in again before starting the local agent.");}},()->{call.reject("Local agent bridge is closed.");});
  }
  /** Preserve the previous selection when admission loses its account, without replacing a newer selection. */
  static void bindCloudProvider(AlphaCredentialStore store,String credentialId,String model) throws Exception {
@@ -374,7 +370,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   return result;
  }
  @PluginMethod public void providerStatus(PluginCall call) {
-  try{workers.execute(()->{
+  PluginWorkers.submit(workers,()->{
    try{
     AlphaCredentialStore store=new AlphaCredentialStore(getContext());
     String saved=store.readCredentialSlot("local-agent-provider:v1");
@@ -386,8 +382,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     call.resolve(status);
    }
    catch(Exception unavailable){call.reject("Provider status unavailable.");}
-  });}
-  catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
+  },()->{call.reject("Local agent bridge is closed.");});
  }
  /** The shared service activates its bionic host from this same packaged engine/JNI pair. */
  static void configureLocalEmbeddings(File nativeDirectory,File filesDirectory,java.util.Map<String,String> env) {
@@ -495,7 +490,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    if(admitted<0){call.reject("Local agent connection changed; check status before starting again.");return;}
    epoch=admitted;
    if(attached){
-    workers.execute(()->{
+    PluginWorkers.submit(workers,()->{
      try{
       String root=ElizaAgentService.localAgentToken();if(root==null||root.isEmpty())throw new IllegalStateException();
       authenticatedStatus(epoch,root);
@@ -505,10 +500,10 @@ public final class AlphaLocalAgentPlugin extends Plugin {
      }
      catch(Superseded stale){rejectSuperseded(call);}
      catch(Exception unverified){synchronized(lifecycleLock){attachUnverified=true;}rejectPending(call,"The running local agent did not answer. Start again to restart it; no chat was sent.");}
-    });
+    },()->rejectPending(call,"Local agent bridge is closed."));
     return;
    }
-   workers.execute(()->{
+   PluginWorkers.submit(workers,()->{
     long deadline=android.os.SystemClock.elapsedRealtime()+90000;
     boolean ready=false;
     while(android.os.SystemClock.elapsedRealtime()<deadline){
@@ -523,7 +518,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
      catch(Exception uncertain){rejectPending(call,"Local enrollment did not complete. Check runtime status before reconnecting.");return;}
     }
     rejectPending(call,"Local agent startup did not complete. Check runtime status; no chat was sent.");
-   });
+   },()->rejectPending(call,"Local agent bridge is closed."));
   }catch(Exception error){synchronized(lifecycleLock){pending.remove(call);}call.reject("The on-device agent could not start. Try again or connect another agent.");}
  }
  /** Only the current startup caller may retire a launch it created; reused services are never stopped here. */
@@ -669,7 +664,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   JSONObject headers=call.getObject("headers");
   final long epoch;
   try{synchronized(lifecycleLock){epoch=admittedEpoch();pending.add(call);}}catch(Superseded stale){call.reject("Local agent is stopped or unavailable.","LOCAL_AGENT_EPOCH_CHANGED");return;}
-  try{workers.execute(()->{try{
+  PluginWorkers.submit(workers,()->{try{
    requireOwned(call,epoch);
    String token=enroll(epoch);
    synchronized(lifecycleLock){requireCurrent(epoch);if(expectedOwner!=null&&!expectedOwner.equals(ownerIdentity)){resolveCurrent(call,epoch,new JSObject().put("status",409).put("body","{\"error\":\"Local owner changed; reconnect before continuing\"}"));return;}}
@@ -680,8 +675,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    if(path.equals("/api/auth/me")&&result.getInt("status")==200){JSONObject who=new JSONObject(result.getString("body"));who.getJSONObject("session").put("id","native-owned-session");result.put("body",who.toString());result.remove("bodyBase64");}
    resolveCurrent(call,epoch,new JSObject(result.toString()));
   }catch(Superseded stale){rejectSuperseded(call);}
-  catch(Exception error){rejectPending(call,"Local agent request failed. No automatic retry was made.");}});}
-  catch(java.util.concurrent.RejectedExecutionException closed){rejectPending(call,"Local agent bridge is closed.");}
+  catch(Exception error){rejectPending(call,"Local agent request failed. No automatic retry was made.");}},()->{rejectPending(call,"Local agent bridge is closed.");});
  }
  /** Cancellation acknowledges transport closure, never server-effect cancellation. */
  @PluginMethod public void cancelStream(PluginCall call) {
@@ -697,15 +691,14 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   catch(Exception unavailable){call.reject("Local stream unavailable.");return;}
   final JSONObject supplied=call.getObject("headers");
   call.resolve(new JSObject().put("streamId",id));
-  try{workers.execute(()->{try{
+  PluginWorkers.submit(workers,()->{try{
    String token=enroll(epoch);JSONObject headers=new JSONObject().put("Authorization","Bearer "+token).put("Accept","text/event-stream").put("Content-Type","application/json");
    if(supplied!=null)for(String key:new String[]{"X-Eliza-Device-Id","X-Eliza-Device-Key","X-Eliza-Device-Capabilities"})if(supplied.has(key)){String value=supplied.getString(key);if(value.length()>2048||value.contains("\r")||value.contains("\n"))throw new IllegalArgumentException();headers.put(key,value);}
    synchronized(lifecycleLock){requireCurrent(epoch);if(!owner.equals(ownerIdentity)||streams.get(id)!=handle)throw new Superseded();}
    JSONObject input=new JSONObject().put("path",path).put("method","POST").put("body",body).put("headers",headers).put("timeoutMs",120000);
    ElizaAgentService.requestLocalAgentStream(input.toString(),event->{synchronized(lifecycleLock){try{requireCurrent(epoch);if(streams.get(id)!=handle)return;JSONObject value=new JSONObject(event);if("response".equals(value.optString("type"))&&value.optInt("status")==401)clearEnrollment();notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",value));}catch(Exception ignored){}}},handle);
   }catch(Exception error){synchronized(lifecycleLock){if(streams.get(id)==handle)notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",new JSObject().put("type","complete").put("error","Stream interrupted. Outcome unknown; check history before retrying.")));}}
-  finally{synchronized(lifecycleLock){if(streams.get(id)==handle){streams.remove(id);streamInvalidators.remove(id);}handle.cancel();}}});}
-  catch(java.util.concurrent.RejectedExecutionException closed){synchronized(lifecycleLock){streams.remove(id);streamInvalidators.remove(id);handle.cancel();}notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",new JSObject().put("type","complete").put("error","Stream unavailable.")));}
+  finally{synchronized(lifecycleLock){if(streams.get(id)==handle){streams.remove(id);streamInvalidators.remove(id);}handle.cancel();}}},()->{synchronized(lifecycleLock){streams.remove(id);streamInvalidators.remove(id);handle.cancel();}notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",new JSObject().put("type","complete").put("error","Stream unavailable.")));});
  }
  /** Destroying one surface (for example closing the assistant) cancels only this instance's
   * calls and streams. The shared runtime, its epoch and the owner enrollment stay valid for
