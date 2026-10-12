@@ -156,6 +156,7 @@ export const CLASS_REGISTRY = {
   PhotosMultiShare: {},
   PhotosTrash: {},
   ReminderDeletionJournal: {},
+  CalendarDeletionReview: { secondaryUser: true, args: { calendarDeletionReview: "1" }, grant: ["READ_CALENDAR", "WRITE_CALENDAR"], note: "Actual native review, Cancel, Undo and expiry against an owned disposable Calendar" },
   ScopedCalendarDeletion: { secondaryUser: true, args: { scopedCalendarDeletion: "1" }, grant: ["READ_CALENDAR", "WRITE_CALENDAR"], note: "Exact synthetic provider rows in a fresh owned secondary user; no real account integration" },
   ReminderCapacity: {},
   ReminderHeadsUp: { note: "skips unless notifications are enabled for the app and Do Not Disturb is off" },
@@ -178,6 +179,7 @@ export const CLASS_REGISTRY = {
  * them counts as reachable; test/android-instrumentation-runner.test.mjs checks it.
  */
 export const CAMPAIGN_RUNNERS = [
+  "scripts/test-native-calendar-deletion-restart.mjs",
   "scripts/test-native-permissions.mjs", "scripts/test-native-restart.mjs", "scripts/test-calendar-regression.mjs",
   "scripts/test-installed-upgrade.mjs", "scripts/test-reminder-one-off.mjs", "scripts/test-reminder-recurrence.mjs",
   "scripts/reminder-recovery-fixture.mjs", "scripts/test-cross-app-notifications.mjs", "scripts/test-cross-app-notifications-restart.mjs",
