@@ -305,3 +305,42 @@ This checks installed image configuration only. It does not qualify resident-age
 execution, live accounts, alarm ringing, browser security/provider freshness,
 physical hardware, production signing or update/rollback. A pass on an older image
 cannot qualify a newer app revision.
+
+## AOSP product capability admission
+
+The approved Phone/Contacts/SMS scope (#420) is restricted to the Alpha AOSP
+image. A launcher APK or HOME role does not establish that capability. Native
+admission requires all of: launcher distribution, a non-debug build with test
+mocks off, Android's system-installed package flag, and the production image
+resource marker. A standalone APK fails even if installed as an update on the
+image. Every call reads the marker again; missing resources fail closed.
+
+`aosp:stage --production` emits `AlphaImageCapabilityOverlay`, a product-partition
+runtime resource overlay targeting `AlphaImageProvisioning`. The APK's marker
+is false by default and is overlayable only from system/product partitions.
+A runtime overlay is needed because the launcher APK is presigned/preprocessed;
+an ordinary source resource overlay cannot modify that prebuilt APK. Existing
+release, signing and reviewed descriptor gates apply before staging. Development
+staging never emits this capability overlay.
+
+The capability is an OS-provisioning boundary, not remote image attestation or
+proof that an image was built and booted. A privileged image builder can control
+its system/product partitions. A real image must separately verify installation,
+RRO activation, signing and the expected build fingerprint.
+
+Until the real adapters are implemented, Contacts/Telecom/SMS remain unavailable
+on all images. Alpha's shared System bridge hides and refuses dialer/SMS roles;
+its role callback rechecks the product policy. Product-owned empty-dial-pad
+shortcuts and both native default-app bridge entry points require image
+admission. The ordinary installed-app drawer and Android's own emergency access
+are preserved. Agent view/workflow and native DailyApps routes continue to deny
+Phone/Contacts/SMS, and no new phone, contacts or SMS permissions are declared.
+
+The shared extension is an explicit hash-admitted patch in
+`patches/eliza/system-product-capabilities.patch`; default hooks preserve
+upstream behavior for other products. Kotlin targets receive the same source,
+patch, output and packaged-receipt verification as Java targets. The vendor
+checkout remains pristine. `ImageCapabilitiesInstrumentedTest` exercises
+ordinary-APK denials without performing a call, message or role selection.
+Positive image admission and real Contacts/Telecom/SMS behavior remain open in
+#420, including roles, owned endpoints, carrier identity and unknown-send recovery.

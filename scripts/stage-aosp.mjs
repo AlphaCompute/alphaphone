@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { writeAospCapabilityOverlay } from "./aosp-capability-overlay.mjs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -154,6 +155,7 @@ if (production) {
   const tree = execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 });
   const components = provisioningComponents(tree, identity.appId);
   writeProvisioningOverlay(output, identity.appId, components);
+  writeAospCapabilityOverlay(output, identity.appId);
   console.log(`Provisioning overlay: HOME ${components.home}, assistant ${identity.appId}, Autofill ${components.autofill}.`);
 }
 console.log(

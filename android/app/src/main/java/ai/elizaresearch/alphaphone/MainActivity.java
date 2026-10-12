@@ -15,7 +15,6 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.WebViewListener;
-import ai.eliza.plugins.system.SystemPlugin;
 
 /** Derived from packages/app/scripts/mobile/android/templates/main-activity.ts.
  * Product shell: local assets, Eliza's system bridge, no cloud-auth or implicit kiosk policy.
@@ -215,8 +214,8 @@ public class MainActivity extends BridgeActivity {
    if (task == -1 || task != liveTaskId) { liveTaskId = task; liveTaskHome = isHomeTypeStart(getIntent()); }
    startedAsHome = liveTaskHome;
   }
-  registerPlugin(SystemPlugin.class);
-  registerPlugin(DeviceAppsPlugin.class);
+  registerPlugin(AlphaSystemPlugin.class);
+  registerPlugin(AlphaDeviceAppsPlugin.class);
   registerPlugin(DailyAppsPlugin.class);
   registerPlugin(AlphaMapsTransportPlugin.class);
   registerPlugin(ai.eliza.plugins.camera.CameraPlugin.class);
