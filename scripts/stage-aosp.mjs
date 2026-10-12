@@ -82,8 +82,6 @@ const production = args.includes("--production");
 if (production && development) throw new Error("--production and --development are exclusive");
 // The always-on listener is part of the AOSP MVP (issue #424): production images must include it.
 const listenerApk = get("--listener-apk");
-if (production && !listenerApk)
-  throw new Error("Production staging requires --listener-apk (the always-on listener built by ./gradlew :sense:assembleRelease).");
 const apk = get("--apk");
 if (!apk) throw new Error("Supply --apk PATH to a signed launcher APK.");
 const identity = JSON.parse(fs.readFileSync("app.config.json"));
@@ -95,6 +93,9 @@ admitApk({
   development,
   manifestFile: get("--apk-manifest") || "artifacts/apk-manifest.json",
 });
+// Checked after APK admission so input refusals are reported first.
+if (production && !listenerApk)
+  throw new Error("Production staging requires --listener-apk (the always-on listener built by ./gradlew :sense:assembleRelease).");
 const env = androidEnv();
 if (!descriptor) {
   if (!development)
