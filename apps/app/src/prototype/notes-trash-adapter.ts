@@ -68,15 +68,23 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
 
  async function moveToTrash(shell:Shell,note:Bag,index:number){
   if(!ready(shell)){shell.toast(shell.notesPending&&!shell.notesStorageFailed?'Still saving. Try again in a moment. Nothing was deleted.':'Notes storage needs recovery. Nothing was deleted.');return false;}
-  let entry:NotesTrashEntry|undefined;
+  let entry:NotesTrashEntry|undefined,changed=false;
   try{
    const saved=await withNotesDeletionLock(async()=>{
     if(!ready(shell))throw Error('Notes changed');
     const stored=shell.notesStore.list.find((n:Bag)=>n.id===note.id);
     if(JSON.stringify(stored)!==JSON.stringify(note))throw Error('Note changed');
+    // Revision compare-and-swap against authoritative storage, under the origin-wide lock: this view's
+    // copy may be stale. Another view may have edited this note, or deleted a newer revision whose
+    // Trash row is now its only restorable copy and must not be replaced by this older one.
+    const authoritative=(await savedNotes()).find(n=>n.id===note.id);
+    if(!authoritative||JSON.stringify(authoritative)!==JSON.stringify(note)){changed=true;throw Error('Note changed');}
+    const rows=(doc:{entries:NotesTrashEntry[]})=>doc.entries.filter(row=>row.note.id===note.id).map(row=>JSON.stringify(row)).sort().join('\n');
+    const expected=rows(await readNotesTrash());
     entry={id:crypto.randomUUID(),note:stored,target:await shell.notesStore.target(note.id),index,deletedAt:Date.now()};
-    // Write-ahead: the restorable copy is durable before the note leaves the saved list.
-    await editNotesTrash(doc=>addNotesTrashEntry(doc,entry!));
+    // Write-ahead: the restorable copy is durable before the note leaves the saved list. Only rows this
+    // pass read (stale write-ahead rows of a note that is still saved) may be replaced.
+    await editNotesTrash(doc=>{if(rows(doc)!==expected){changed=true;throw Error('Trash changed');}return addNotesTrashEntry(doc,entry!);});
     const list=shell.vget('notes').list.filter((n:Bag)=>n.id!==note.id);
     return await shell.vset('notes',{list,open:null,sheet:null,playing:false,dict:false})===true;
    });
@@ -85,7 +93,7 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
    // A full Trash never silently drops this note or any other: nothing was written, and the
    // person chooses between making room and a separately confirmed permanent deletion.
    if(isNotesTrashFull(error)&&shell.live){refused={note,snapshot:JSON.stringify(note),index};shell.vset('notes',{trashFull:{id:note.id,title:noteTitle(note)},trashConfirm:null});}
-   else shell.toast('Could not move this note to Trash. Nothing was deleted.');
+   else shell.toast(changed?'This note changed in another view. Nothing was deleted.':'Could not move this note to Trash. Nothing was deleted.');
    return false;
   }
   void load(shell);

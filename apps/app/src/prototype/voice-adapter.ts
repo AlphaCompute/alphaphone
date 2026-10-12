@@ -7,7 +7,7 @@ import {browserDevProfile} from '../browser/dev-profile';
 import {pendingAudioDeletions,withAudioDeletionLock,changeAudioDeletion,audioDeletionNoteState,type AudioDeletion} from '../runtime/note-audio-deletions';
 import {addNotesTrashEntry,editNotesTrash,isNotesTrashFull,notesTrashExpired,readNotesTrash,removeNotesTrashEntries,savedNotes,type NotesTrashEntry} from '../runtime/notes-trash';
 import type {NotesTarget} from '../runtime/notes-contract';
-import {planInterruptedPermanentDeletion,type PermanentDeletionEvidence} from '../runtime/permanent-voice-deletion';
+import {planInterruptedPermanentDeletion,sameDeletionRow,leasedDeletionRow,deletionLeaseDue,claimDeletion,releaseDeletionClaim,deletionClaimedElsewhere,type PermanentDeletionEvidence} from '../runtime/permanent-voice-deletion';
 const audioOperation=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 import { installLocalSpeechPlayback, stopLocalSpeechPlayback, currentNoteReading, stopSpeaking, speakNote } from './local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
@@ -566,7 +566,9 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       const state=await audioDeletionNoteState(row);
       if(state==='changed')throw Error('A newer note must be preserved');
       if(current.storageReady?.()===false)throw Error('Reopen Notes first');
-      if(!(await pendingAudioDeletions())[row.id])await changeAudioDeletion(row,true);
+      // The shown row may predate a lease renewal; the stored row is the same deletion.
+      const stored=(await pendingAudioDeletions())[row.id];if(stored&&sameDeletionRow(stored,row))row=stored;
+      if(!stored)await changeAudioDeletion(row,true);
       const metadata=await noteAudio.describe({audioId:row.audioId});
       if(metadata.noteId!==row.note.id||metadata.audioId!==row.audioId)throw Error('Recording association changed');
       if(!current.voiceNoteActive()||document.hidden)throw Error('Open Notes to restore');
@@ -626,7 +628,8 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
           const metadata=await noteAudio.describe({audioId:reviewed.audio.audioId});
           if(metadata.noteId!==reviewed.id||metadata.audioId!==reviewed.audio.audioId||metadata.deletedAt)throw Error('Recording association changed');
           if(!active())return;
-          row={id:crypto.randomUUID(),target,note:reviewed as AudioDeletion['note'],audioId:reviewed.audio.audioId,...(permanent?{permanent:true as const}:{})};
+          // Leased: the Android native passes leave a row this renderer is working on alone (MVP-15).
+          row=leasedDeletionRow({id:crypto.randomUUID(),target,note:reviewed as AudioDeletion['note'],audioId:reviewed.audio.audioId,...(permanent?{permanent:true as const}:{})},Date.now());
           // Write-ahead Trash copy: the note text and its recording stay restorable for three days.
           // Maintenance drops it again if the deletion below never commits.
           const index=Math.max(0,(current.get('notes').list||[]).findIndex((n:Bag)=>n.id===reviewed.id));
@@ -648,7 +651,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
             const stale=(await readNotesTrash()).entries.filter(entry=>entry.note.id===reviewed.id).map(entry=>entry.id);
             if(stale.length)await editNotesTrash(doc=>removeNotesTrashEntries(doc,stale));
           }
-          sessionDeletions.add(row.id);
+          sessionDeletions.add(row.id);claimDeletion(row.id);
           await changeAudioDeletion(row,true);
           const authorized=()=>{if(!active())throw Error('Review changed');};
           try{await current.commitAudioNoteDeletion(row,authorized);}catch{
@@ -658,7 +661,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
           // The durable intent already exists before this second, separately observable effect.
           const retained=await noteAudio.describe({audioId:row.audioId});
           if(retained.noteId!==row.note.id||retained.audioId!==row.audioId)throw Error('Recording association changed');
-          const dispatched={...row,audioRequested:true as const};await changeAudioDeletion(row,false,dispatched);row=dispatched;
+          const dispatched=leasedDeletionRow({...row,audioRequested:true as const},Date.now());await changeAudioDeletion(row,false,dispatched);row=dispatched;
           if(await audioDeletionNoteState(row)!=='deleted')throw Error('Saved note changed before audio dispatch');
           if(!current.voiceNoteActive()||document.hidden)throw Error('Notes is no longer active');
           if(!retained.deletedAt)try{await noteAudio.remove({audioId:row.audioId,noteId:row.note.id,operationId:row.id});}catch{/* Readback only; never repeat a possibly completed trash operation. */}
@@ -666,7 +669,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
           if(result.noteId!==row.note.id||!result.deletedAt||await audioDeletionNoteState(row)!=='deleted')throw Error('Deletion unconfirmed');
           await deletionReceipt(row,'removed');
           if(permanent)await eraseForever(row);
-          await changeAudioDeletion(row,false);
+          await changeAudioDeletion(row,false);releaseDeletionClaim(row.id);
           if(active())current.set({open:null});
           window.dispatchEvent(new Event('alpha:notes-trash-changed'));
           if(permanent)current.toast(`${reviewed.title||'Voice note'} and its recording deleted forever`);
@@ -700,7 +703,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if(step==='erase')await eraseForever(row);
     else if(step==='trash-then-erase'){
       // Same order as the uninterrupted deletion: dispatch mark, audio trash under this operation, erase.
-      if(!row.audioRequested){const dispatched={...row,audioRequested:true as const};await changeAudioDeletion(row,false,dispatched);row=dispatched;}
+      if(!row.audioRequested){const dispatched=leasedDeletionRow({...row,audioRequested:true as const},Date.now());await changeAudioDeletion(row,false,dispatched);row=dispatched;}
       await noteAudio.remove({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
       const removed=await noteAudio.describe({audioId:row.audioId});
       if(removed.noteId!==row.note.id||!removed.deletedAt||await audioDeletionNoteState(row)!=='deleted')throw Error('Deletion unconfirmed');
@@ -736,7 +739,8 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       current.setView('notes',{audioDeletionPending:Object.values(await pendingAudioDeletions()),audioDeletionChecked:true});
       await withAudioDeletionLock(async()=>{const rows=Object.values(await pendingAudioDeletions());
       for(const row of rows){try{
-        if(row.permanent&&!sessionDeletions.has(row.id)){await settleInterruptedPermanentDeletion(row,current);continue;}
+        // Another live view's deletion is never settled here: its effects may still be in flight.
+        if(row.permanent&&!sessionDeletions.has(row.id)){if(!await deletionClaimedElsewhere(row.id))await settleInterruptedPermanentDeletion(row,current);continue;}
         const metadata=await noteAudio.describe({audioId:row.audioId});
         if(metadata.audioId===row.audioId&&metadata.noteId===row.note.id&&metadata.deletedAt&&await audioDeletionNoteState(row)==='deleted'){
           // A permanent deletion this process started finishes its erase here; a Trash deletion only confirms its receipt.
@@ -744,6 +748,9 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
           await changeAudioDeletion(row,false);
         }
       }catch{/* Readback only. Preserve unknown operations. */}}
+      // Rows still shown under review stay leased, so the native passes never erase what Restore offers.
+      const now=Date.now();
+      for(const row of Object.values(await pendingAudioDeletions()))if(deletionLeaseDue(row,now))try{await changeAudioDeletion(row,false,leasedDeletionRow(row,now));}catch{/* Renewed on the next pass. */}
       current.setView('notes',{audioDeletionPending:Object.values(await pendingAudioDeletions()),audioDeletionChecked:true});
     });}catch{current.setView('notes',{audioDeletionRecoveryFailed:true,audioDeletionChecked:true});}finally{deletionRefresh=null;}
     })();

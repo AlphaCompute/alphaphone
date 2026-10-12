@@ -142,7 +142,9 @@ public class AlphaNoteAudioPlugin extends Plugin {
   * - this operation already holds the recording in the audio trash (receipt "removed"), already
   *   erased it ("purged"), or the recording was never moved and no other deletion holds it.
   * A recording with a "restored" receipt, one that another deletion holds, a note that is saved
-  * again or changed, a row that is not marked permanent, and any unreadable or unrecognized
+  * again or changed, a row that is not marked permanent, a row whose renderer lease has not
+  * expired (NotesDeletionLease: a live renderer is between its steps or shows it under review),
+  * and any unreadable or unrecognized
   * store are left exactly as they are for the renderer's review. This pass never writes the Notes
   * document, so it cannot roll back or finish a deletion whose note is still saved; the
   * renderer's startup pass does that. Kept rows are copied byte for byte and the slot is edited
@@ -165,7 +167,8 @@ public class AlphaNoteAudioPlugin extends Plugin {
      JSONObject holder=new JSONObject("{"+member+"}");String operation=holder.keys().next();JSONObject row=holder.getJSONObject(operation);
      JSONObject target=row.getJSONObject("target"),note=row.getJSONObject("note"),noteAudio=note.getJSONObject("audio");
      String noteId=note.getString("id"),audioId=row.getString("audioId");
-     boolean bound=Boolean.TRUE.equals(row.opt("permanent"))&&operation.matches(OPERATION)&&operation.equals(row.getString("id"))
+     // A row a live renderer still holds (between steps, or shown under review with Restore) is left alone.
+     boolean bound=Boolean.TRUE.equals(row.opt("permanent"))&&!NotesDeletionLease.held(row,now)&&operation.matches(OPERATION)&&operation.equals(row.getString("id"))
       &&noteId.equals(target.getString("noteId"))&&audioId.equals(noteAudio.getString("audioId"))&&noteId.equals(noteAudio.getString("noteId"));
      boolean tombstoned=false;
      if(bound&&!liveNotes.contains(noteId)&&!liveAudio.contains(audioId)&&collection.equals(target.getString("sourceId")))for(int i=0;i<tombstones.length()&&!tombstoned;i++){
