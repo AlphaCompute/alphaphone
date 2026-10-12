@@ -321,12 +321,16 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  expect(await eventTitles(page)).toEqual(['Venue booking call','Venue walkthrough edited']);
  await page.getByRole('button',{name:'Delete event',exact:true}).click();
  await deleteReview.getByRole('button',{name:'Delete event',exact:true}).click();
- await expect(page.getByText('Local event deleted and verified.',{exact:true})).toBeVisible();
+ // Policy P-30: the reviewed deletion is held for a ten-second Undo before the store changes.
+ await expect(page.getByText('Event “Venue walkthrough edited” will be deleted',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:/^Venue walkthrough edited,/})).toHaveCount(0);
  await page.getByRole('button',{name:/^Book the venue edited,/}).click();
+ page.once('dialog',dialog=>void dialog.accept());
  await page.getByRole('button',{name:'Delete event',exact:true}).click();
- await expect(page.getByText('Reminder cancelled',{exact:true})).toBeVisible();
+ await expect(page.getByText('Reminder “Book the venue edited” will be deleted',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:/^Book the venue edited,/})).toHaveCount(0);
+ await expect.poll(()=>eventTitles(page),{timeout:20_000}).toEqual(['Venue booking call']);
+ await expect.poll(()=>liveReminders(page),{timeout:20_000}).toEqual(['Email the caterer']);
  await page.reload();await ready(page);
  expect(await eventTitles(page)).toEqual(['Venue booking call']);
  expect(await liveReminders(page)).toEqual(['Email the caterer']);
