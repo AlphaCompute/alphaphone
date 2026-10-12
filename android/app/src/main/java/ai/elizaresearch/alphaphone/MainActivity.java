@@ -252,6 +252,9 @@ public class MainActivity extends BridgeActivity {
   getBridge().addWebViewListener(rendererRecovery);
   WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
   getBridge().getWebView().getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+  // P-19 allows third-party cookies only in normal browser tabs. The privileged
+  // host WebView refuses them explicitly instead of relying on the platform default.
+  android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(getBridge().getWebView(), false);
   AlphaDevicePlugin.applyTextScale(this);
   // Launcher reference layouts include system-bar space. Standalone and assist
   // content must fit inside the real bars/cutout, including enforced edge-to-edge.

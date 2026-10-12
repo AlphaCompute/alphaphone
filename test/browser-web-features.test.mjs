@@ -109,3 +109,14 @@ test('P-19 changes only child-tab third-party policy after assigning an isolated
   assert.ok(plugin.indexOf('WebViewCompat.setProfile(t.web, t.profile)') < plugin.indexOf('setAcceptThirdPartyCookies(t.web, !priv)'));
   assert.match(plugin, /priv \? namespace \+ "_" \+ id : PERSISTENT_PROFILE/);
 });
+
+test('P-19 fails closed, keeps pop-ups on the opener policy and pins the host WebView strict', () => {
+  const apply = plugin.indexOf('setAcceptThirdPartyCookies(t.web, !priv)');
+  const readBack = plugin.indexOf('if (CookieManager.getInstance().acceptThirdPartyCookies(t.web) != !priv) throw new IllegalStateException();');
+  assert.ok(readBack > apply, 'a provider that does not report the requested policy yields no tab');
+  assert.match(plugin, /\} catch \(Exception e\) \{ dispose\(t\); throw e; \}/, 'build disposes the rejected WebView');
+  assert.match(plugin, /child=build\(id,opener\.priv,opener\.profile\)/, 'pop-ups inherit the opener privacy, profile and therefore cookie policy');
+  const main = read(dir + 'MainActivity.java');
+  assert.match(main, /CookieManager\.getInstance\(\)\.setAcceptThirdPartyCookies\(getBridge\(\)\.getWebView\(\), false\);/, 'host WebView refuses explicitly, not by platform default');
+  assert.doesNotMatch(main, /setAcceptThirdPartyCookies\([^)]*true\)/);
+});

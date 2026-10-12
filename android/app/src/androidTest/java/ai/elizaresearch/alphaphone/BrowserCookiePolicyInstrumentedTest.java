@@ -47,15 +47,20 @@ public final class BrowserCookiePolicyInstrumentedTest {
   org.junit.Assume.assumeTrue("Private tabs require secure scoped deletion",WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA));exercise(true);
  }
  private void exercise(boolean priv)throws Exception{
-  String token=UUID.randomUUID().toString().replace("-","");AtomicReference<WebView> first=new AtomicReference<>(),second=new AtomicReference<>();boolean[] hostPolicy=new boolean[1];
+  String token=UUID.randomUUID().toString().replace("-","");AtomicReference<WebView> first=new AtomicReference<>(),second=new AtomicReference<>(),popup=new AtomicReference<>();boolean[] hostPolicy=new boolean[1];
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    AppNavigation.liveMode();
    WebViewTestDriver.withActivity(MainActivity.class,activity->{try{
     hostPolicy[0]=CookieManager.getInstance().acceptThirdPartyCookies(activity.getBridge().getWebView());
     String profile=priv?AlphaBrowserPlugin.PRIVATE_PREFIX+token:AlphaBrowserPlugin.PERSISTENT_PROFILE;
+    assertFalse("Host WebView explicitly refuses third-party cookies",hostPolicy[0]);
     first.set(build(activity,"cookies_a",priv,profile));second.set(build(activity,"cookies_b",priv,profile));
+    // A pop-up is built exactly as AlphaBrowserPlugin.popup does: build(id, opener.priv, opener.profile).
+    popup.set(build(activity,"pcookies",priv,WebViewCompat.getProfile(first.get()).getName()));
     assertEquals("Per-tab policy",!priv,CookieManager.getInstance().acceptThirdPartyCookies(first.get()));
     assertEquals("Second tab policy",!priv,CookieManager.getInstance().acceptThirdPartyCookies(second.get()));
+    assertEquals("Pop-up inherits opener policy",!priv,CookieManager.getInstance().acceptThirdPartyCookies(popup.get()));
+    assertEquals("Pop-up shares opener profile",profile,WebViewCompat.getProfile(popup.get()).getName());
     assertEquals(profile,WebViewCompat.getProfile(first.get()).getName());
     assertNotEquals("Browser profile is never privileged host",WebViewCompat.getProfile(activity.getBridge().getWebView()).getName(),profile);
     assertEquals("Host policy unchanged",hostPolicy[0],CookieManager.getInstance().acceptThirdPartyCookies(activity.getBridge().getWebView()));
@@ -66,6 +71,9 @@ public final class BrowserCookiePolicyInstrumentedTest {
    assertEquals("No privileged bridge in iframe","\"undefined\"",evaluate(first.get(),"window.result.bridge"));
    frame(second.get(),token,false);
    assertEquals("Second tab follows same profile policy",String.valueOf(!priv),evaluate(second.get(),"window.result.cookie.includes('alpha_"+token+"=present')"));
+   frame(popup.get(),token,false);
+   assertEquals("Pop-up embedded frame sees the opener-profile cookie only under the same policy",String.valueOf(!priv),evaluate(popup.get(),"window.result.cookie.includes('alpha_"+token+"=present')"));
+   assertEquals("No privileged bridge in pop-up iframe","\"undefined\"",evaluate(popup.get(),"window.result.bridge"));
    WebViewTestDriver.withActivity(MainActivity.class,activity->{
     String hostCookies=WebViewCompat.getProfile(activity.getBridge().getWebView()).getCookieManager().getCookie("https://embed.invalid/");
     assertFalse("No browser cookie leaked into host",hostCookies!=null&&hostCookies.contains("alpha_"+token+"="));
