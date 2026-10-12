@@ -5,26 +5,28 @@ type Bag=Record<string,any>;
 const contacts=registerPlugin<any>('AlphaContacts');
 /** Native address-book rows stay in memory, never in prototype persistence or agent context. */
 export function installContactsAdapter(Component:any,views:Bag){
- const render=views.contacts.render,p=Component.prototype,mount=p.componentDidMount,unmount=p.componentWillUnmount;
- let owner:any,rows:Bag[]=[],status='Choose Contacts access to see this profile’s address book.',readable=false,loading=false,more=false,limit=50,epoch=0;
+ const render=views.contacts.render,p=Component.prototype,mount=p.componentDidMount,update=p.componentDidUpdate,unmount=p.componentWillUnmount;
+ let owner:any,rows:Bag[]=[],status='Choose Contacts access to see this profile’s address book.',readable=false,loading=false,more=false,limit=50,epoch=0,active=false;
  const changed=()=>owner?.setState({contactsNativeRevision:Date.now()});
- const clear=()=>{epoch++;rows=[];readable=false;more=false;changed();};
+ const clear=()=>{epoch++;rows=[];readable=false;more=false;loading=false;changed();};
+ const available=()=>!!owner&&owner.S().view==='contacts'&&isMvpView('contacts')&&!document.hidden;
+ const sync=()=>{const next=available();if(next===active)return;active=next;if(next)void refresh();else clear();};
  async function refresh(request=false,queryOverride?:string){
-  const target=owner,token=++epoch;if(!target||!isMvpView('contacts')){clear();return;}loading=true;rows=[];changed();
+  const target=owner,token=++epoch;if(!available()){return;}loading=true;rows=[];changed();
   try{
    const access=request?await contacts.requestPermissions():await contacts.status();
-   if(token!==epoch||target!==owner)return;
+   if(token!==epoch||target!==owner||!available())return;
    readable=access.available===true&&access.readable===true;
    if(!readable){status='Choose Contacts access to see this profile’s address book.';return;}
    const value=await contacts.list({query:queryOverride??String(target.vget('contacts').q||''),limit});
-   if(token!==epoch||target!==owner||document.hidden)return;
+   if(token!==epoch||target!==owner||!available())return;
    if(!Array.isArray(value.contacts))throw Error();rows=value.contacts;more=value.more===true;
    status=rows.length?`${rows.length} contacts${more?' · more available':''}`:'No contacts found.';
   }catch{if(token===epoch){rows=[];status='Contacts could not be read. Check access and refresh.';}}
   finally{if(token===epoch){loading=false;changed();}}
  }
  async function editor(selected?:Bag){
-  if(loading)return;loading=true;changed();
+  if(loading||!available())return;loading=true;changed();
   try{if(selected)await contacts.edit({id:selected.id,lookup:selected.lookup,revision:selected.revision});else await contacts.create();}
   catch{owner?.toast('Android Contacts could not open. Refresh and try again.');}
   finally{loading=false;void refresh();}
@@ -45,6 +47,7 @@ export function installContactsAdapter(Component:any,views:Bag){
   }
   return model;
  };
- p.componentDidMount=function(){mount?.call(this);owner=this;this.contactsReturn=watchReturnToApp(()=>void refresh());this.contactsHide=()=>{if(document.hidden)clear();};document.addEventListener('visibilitychange',this.contactsHide);void refresh();};
+ p.componentDidMount=function(){mount?.call(this);owner=this;this.contactsReturn=watchReturnToApp(()=>void refresh());this.contactsHide=()=>sync();document.addEventListener('visibilitychange',this.contactsHide);sync();};
+ p.componentDidUpdate=function(...args:any[]){update?.apply(this,args);sync();};
  p.componentWillUnmount=function(){this.contactsReturn?.();document.removeEventListener('visibilitychange',this.contactsHide);if(owner===this){owner=null;clear();}unmount?.call(this);};
 }

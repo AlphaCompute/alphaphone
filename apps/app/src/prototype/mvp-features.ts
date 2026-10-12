@@ -2,13 +2,13 @@ import { browserDevProfile } from '../browser/dev-profile';
 // Approved October 12 scope: docs/implementation-plan.md and issue #422.
 // Wallet is removed from MVP, including AOSP: no payment/provider activation.
 // #420: Phone/SMS/Contacts require an admitted Alpha AOSP image and real adapters.
-// Adapters remain unimplemented; launcher flavor, HOME role and test mocks confer no image capability.
+// Contacts is admitted only by the native image capability; Phone/SMS adapters remain unavailable.
 // Reference definitions and saved user data are retained; development fixtures are non-product.
 export const ENABLED_MVP_VIEWS = new Set([
   // "phone", // AOSP-only; Telecom adapter pending.
   // "messages", // AOSP-only SMS adapter pending; email/Telegram/Discord are separate.
   "inbox", "calendar", "browser", "camera", "photos", "maps", "notes",
-  // "contacts", // AOSP-only; Contacts adapter pending.
+  // "contacts", // AOSP-only; Admitted dynamically by the image Contacts capability.
   "files",
   // "wallet", // Removed from MVP in both distributions and AOSP; no payment flow.
   "workflows", "settings",
