@@ -26,13 +26,6 @@
  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" tools:node="remove" />
  <!-- minSdk 29 uses scoped storage; the camera plugin requests this only below API 29. -->
  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
- <!-- Device photo/video library for the local agent (P-24, issue 408). Requested only from
-      Photos > Device library. Android 14+ may grant selected items only; Alpha reports the
-      actual full/selected/denied scope and never uploads the library automatically. -->
- <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
- <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
- <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
- <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
  <queries>
   <!-- Narrow visibility for password-provider setup; no vault or form access. -->
   <package android:name="proton.android.pass"/>
