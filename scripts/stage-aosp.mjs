@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { androidEnv, tool } from "./toolchain.mjs";
 import { clockProductRequirement } from "./aosp-clock-contract.mjs";
 import { provisioningComponents, writeProvisioningOverlay } from "./aosp-provisioning-overlay.mjs";
+import { writeImageCapability } from "./aosp-image-capability.mjs";
 import { releaseBlockers } from "./release-blockers.mjs";
 
 /**
@@ -150,6 +151,11 @@ execFileSync(
   { stdio: "inherit", env },
 );
 fs.appendFileSync(path.join(output, "product.mk"), clockProductRequirement);
+// The image system feature Alpha Phone requires, with a system-partition install, before it offers
+// Phone, Contacts or SMS (P-36). Development and production images both declare it; test-mocks APKs
+// were refused above, and a sideloaded APK never has the system-partition install.
+const capability = writeImageCapability(output, identity.appId);
+console.log(`Image capability: ${Object.keys(capability).find(name => name !== "productMakefile")}.`);
 if (production) {
   const tree = execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 });
   const components = provisioningComponents(tree, identity.appId);
