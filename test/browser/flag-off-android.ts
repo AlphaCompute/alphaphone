@@ -87,6 +87,7 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
       const url = new URL(input.url), path = url.pathname, m = f.mail, body = input.body ? JSON.parse(input.body) : null;
       if (url.origin !== 'https://api.eliza.app') throw Error('Connection request failed');
       if (path === '/api/v1/user') return { status: 200, data: { success: true, data: { id } } };
+      if (path === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Deployed Cloud has no subscription entitlement route yet.
       if (path === '/api/v1/credits/balance') return { status: 200, data: { balance: 5 } };
       if (!m.accounts) return { status: 404, data: {} };
       const grant = () => m.accounts!.find(a => a.connectionId === (url.searchParams.get('grantId') ?? body?.grantId) && a.connected);
