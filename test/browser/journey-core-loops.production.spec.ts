@@ -702,8 +702,10 @@ test('loop J05 on Android: a reviewed native page excerpt, a resident answer and
   expect(foreign).toEqual([]);
 });
 
-for (const [name, text] of [['too long', 'Harbour '.repeat(626)], ['sensitive', 'Enter the verification code 123456 to continue.'], ['empty', '  ']] as const) {
-  test(`loop J05 on Android: a native page excerpt that is ${name} is refused before any review opens`, async ({ page }) => {
+// An unusable excerpt (too long or empty) is not a refusal: the review opens with an empty excerpt and
+// Continue disabled until the user pastes, as the web CORS-denied path does (J05-5). Nothing is sent.
+for (const [name, text] of [['too long', 'Harbour '.repeat(626)], ['empty', '  ']] as const) {
+  test(`loop J05 on Android: a native page excerpt that is ${name} opens the review empty, with nothing sent`, async ({ page }) => {
     test.setTimeout(120_000);
     const foreign = await fenceNetwork(page);
     await android(page);
@@ -711,8 +713,12 @@ for (const [name, text] of [['too long', 'Harbour '.repeat(626)], ['sensitive', 
     await openHarbour(page);
     await page.evaluate(value => { (window as any).coreLoops.browser.excerpt = value; }, text);
     await askAboutHarbour(page);
-    await expect(page.getByText('Page excerpt unavailable.', { exact: true })).toBeVisible();
-    await expect(page.getByRole('dialog', { name: 'Ask about selected content' })).toHaveCount(0);
+    const review = page.getByRole('dialog', { name: 'Ask about selected content' });
+    await expect(review).toBeVisible();
+    await expect(review.getByRole('textbox', { name: 'Content excerpt' })).toHaveValue('');
+    await expect(review.getByRole('button', { name: 'Use in conversation', exact: true })).toBeDisabled();
+    await review.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(review).toHaveCount(0);
     expect(await native(page, f => f.browser.questions.length)).toBe(1);
     expect(await native(page, f => f.streams)).toBe(0);
     await expectNoDevelopmentSurface(page);
@@ -720,6 +726,23 @@ for (const [name, text] of [['too long', 'Harbour '.repeat(626)], ['sensitive', 
     expect(foreign).toEqual([]);
   });
 }
+
+test('loop J05 on Android: a native page excerpt that looks like credentials is refused before any review opens', async ({ page }) => {
+  test.setTimeout(120_000);
+  const foreign = await fenceNetwork(page);
+  await android(page);
+  await residentHome(page);
+  await openHarbour(page);
+  await page.evaluate(() => { (window as any).coreLoops.browser.excerpt = 'Enter the verification code 123456 to continue.'; });
+  await askAboutHarbour(page);
+  await expect(page.locator('[data-alpha-toast]')).toContainText('This page may contain credentials or verification codes. Open a different page.');
+  await expect(page.getByRole('dialog', { name: 'Ask about selected content' })).toHaveCount(0);
+  expect(await native(page, f => f.browser.questions.length)).toBe(1);
+  expect(await native(page, f => f.streams)).toBe(0);
+  await expectNoDevelopmentSurface(page);
+  expect(await native(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
+});
 
 test('loop J05 on Android: a page navigation closes the open review, and an agent reconnect before Save refuses the summary', async ({ page }) => {
   test.setTimeout(180_000);
