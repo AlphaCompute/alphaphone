@@ -62,7 +62,7 @@
         dispatched=true;android.content.ContentProviderResult[] result=getContext().getContentResolver().applyBatch(CalendarContract.AUTHORITY,operations);if(create)eventId=ContentUris.parseId(result[result.length-1].uri);
 --- a/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java
 +++ b/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java
-@@ -43,10 +43,123 @@
+@@ -43,10 +43,139 @@
   private static long number(ContentValues values,String key){Long value=values.getAsLong(key);return value==null?0:value;}
   private static boolean empty(ContentValues values,String key){String value=values.getAsString(key);return value==null||value.isEmpty();}
   private static boolean same(String value,ContentValues values,String key){String actual=values.getAsString(key);return value.equals(actual==null?"":actual);}
@@ -99,6 +99,7 @@
 +   if(scope.equals("occurrence")&&empty(parent,"rrule"))throw new IllegalArgumentException("This recurrence needs external Calendar review");
 +   familyWhere="calendar_id=? AND (_id=? OR original_id=?)";familyArgs=new String[]{Long.toString(source),Long.toString(id),Long.toString(id)};
 +   events=rows(resolver,CalendarContract.Events.CONTENT_URI,EVENT_FIELDS,familyWhere,familyArgs,2048);
++   if(scope.equals("occurrence")&&localExclusion()&&(events.size()!=1||selectedId!=id||instance%1000!=0))throw new IllegalArgumentException("This local recurrence needs external Calendar review");
 +   StringBuilder ids=new StringBuilder();for(ContentValues event:events){if(ids.length()>0)ids.append(',');ids.append(number(event,"_id"));}
 +   String children="event_id IN ("+ids+")";
 +   attendees=rows(resolver,CalendarContract.Attendees.CONTENT_URI,ATTENDEE_FIELDS,children,null,2048);
@@ -138,6 +139,14 @@
 +  public boolean local(){return CalendarContract.ACCOUNT_TYPE_LOCAL.equals(calendar.getAsString("account_type"));}
 +  public String organizer(){return text(parent,"organizer");}
 +  public int attendeeCount(){return attendees.size();}
++  private boolean localExclusion(){return local()&&empty(parent,"_sync_id");}
++  private String excludedDates(){String date=java.time.format.DateTimeFormatter.ofPattern("uuuuMMdd'T'HHmmss'Z'",java.util.Locale.ROOT).withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.ofEpochMilli(originalInstanceTime));return empty(parent,"exdate")?date:parent.getAsString("exdate")+"\n"+date;}
++  private ContentValues exclusionUpdate(){
++   ContentValues values=new ContentValues();
++   for(String field:new String[]{"dtstart","dtend","allDay"}){if(parent.get(field)==null)values.putNull(field);else values.put(field,parent.getAsLong(field));}
++   for(String field:new String[]{"duration","eventTimezone","rrule","rdate","exrule"}){if(parent.get(field)==null)values.putNull(field);else values.put(field,parent.getAsString(field));}
++   values.put("exdate",excludedDates());return values;
++  }
 +  public ArrayList<ContentProviderOperation> assertions(){
 +   ArrayList<ContentProviderOperation> operations=new ArrayList<>();operations.add(ContentProviderOperation.newAssertQuery(ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,calendarId)).withValues(calendar).withExpectedCount(1).build());
 +   addAssertions(operations,CalendarContract.Events.CONTENT_URI,events,familyWhere,familyArgs);
@@ -148,15 +157,17 @@
 +  public void dispatch(ContentResolver resolver)throws Exception{
 +   ArrayList<ContentProviderOperation> operations=assertions();
 +   if(!scope.equals("occurrence"))operations.add(ContentProviderOperation.newDelete(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,eventId)).withExpectedCount(1).build());
-+   else{
++   else if(localExclusion()){
++    // AOSP's unsynced-exception cache expansion omits the recurrence family.
++    // For an unmodified local series, exclude this exact original UTC occurrence
++    // on the parent. Supply its unchanged recurrence fields so expansion retains
++    // duration and every other occurrence. Existing exceptions require editor review.
++    operations.add(ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,eventId)).withValues(exclusionUpdate()).withExpectedCount(1).build());
++   }else{
 +    ContentValues exception=null;for(ContentValues event:events)if(number(event,"original_id")==eventId&&number(event,"originalInstanceTime")==originalInstanceTime&&number(event,"deleted")==0)exception=event;
 +    ContentValues cancelled=new ContentValues();cancelled.put(CalendarContract.Events.STATUS,CalendarContract.Events.STATUS_CANCELED);
 +    if(exception!=null)operations.add(ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,number(exception,"_id"))).withValues(cancelled).withExpectedCount(1).build());
 +    else{cancelled.put(CalendarContract.Events.ORIGINAL_INSTANCE_TIME,originalInstanceTime);operations.add(ContentProviderOperation.newInsert(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_EXCEPTION_URI,eventId)).withValues(cancelled).build());}
-+    // Unsynced local exceptions expose a provider expansion bug: the exception
-+    // row replaces the cached parent instances. Re-expand the same reviewed
-+    // parent inside this transaction without changing its recurrence or time.
-+    if(local()&&empty(parent,"_sync_id"))operations.add(ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,eventId)).withValue(CalendarContract.Events.DTSTART,number(parent,"dtstart")).withExpectedCount(1).build());
 +   }
 +   resolver.applyBatch(CalendarContract.AUTHORITY,operations);
 +  }
@@ -165,6 +176,11 @@
 +   ContentValues current=read(resolver,ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,eventId),EVENT_FIELDS);
 +   if(!scope.equals("occurrence"))return current==null||number(current,"deleted")==1;
 +   if(current==null||number(current,"deleted")!=0||number(current,"calendar_id")!=calendarId)return false;
++   if(localExclusion()){
++    if(!excludedDates().equals(current.getAsString("exdate")))return false;
++    android.net.Uri.Builder range=CalendarContract.Instances.CONTENT_URI.buildUpon();ContentUris.appendId(range,begin);ContentUris.appendId(range,end);
++    try(Cursor row=resolver.query(range.build(),new String[]{CalendarContract.Instances.EVENT_ID},"event_id=? AND begin=? AND end=?",new String[]{Long.toString(eventId),Long.toString(begin),Long.toString(end)},null)){return row!=null&&!row.moveToFirst();}
++   }
 +   java.util.List<ContentValues> exceptions=rows(resolver,CalendarContract.Events.CONTENT_URI,EVENT_FIELDS,"original_id=? AND originalInstanceTime=? AND deleted=0",new String[]{Long.toString(eventId),Long.toString(originalInstanceTime)},2);
 +   if(exceptions.size()!=1||number(exceptions.get(0),"eventStatus")!=CalendarContract.Events.STATUS_CANCELED)return false;
 +   android.net.Uri.Builder range=CalendarContract.Instances.CONTENT_URI.buildUpon();ContentUris.appendId(range,begin);ContentUris.appendId(range,end);
