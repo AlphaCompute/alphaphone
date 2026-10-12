@@ -67,6 +67,7 @@ test('the same selected bytes cannot be attached twice',async({page})=>{
  await setup(page);await dialog(page).getByRole('checkbox').check();await dialog(page).getByRole('button',{name:'Insert attachment into draft'}).click();
  await expect(page.getByRole('button',{name:'Remove selected.txt',exact:true})).toBeVisible();
  await page.evaluate(()=>(window as any).fileEmail.shell.openView('files',{}));
+ await page.getByRole('button',{name:'Open selected.txt',exact:true}).click();
  await page.getByRole('button',{name:'Use in email',exact:true}).click();await dialog(page).getByRole('checkbox').check();
  await dialog(page).getByRole('button',{name:'Insert attachment into draft'}).click();
  await expect(dialog(page).getByRole('status')).toContainText('already attached');
