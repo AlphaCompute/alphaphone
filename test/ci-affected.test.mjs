@@ -59,6 +59,7 @@ test('docs read by node tests select verify; design and research notes select no
     assert.deepEqual(lanes([path]), [true,false,false,false], path);
   }
   assert.deepEqual(lanes(['design/prototype.html','design/assets/icon.svg']), [false,false,false,false]);
+  assert.deepEqual(lanes(['.github/workflows/dependency-audit.yml']), [true,false,false,false], 'the scheduled audit workflow selects verify only');
   assert.deepEqual(lanes(['docs/market-research/proposal.md','AGENTS.md','LICENSE']), [false,false,false,false]);
   // Every docs file a node test names must select verify.
   const named = new Set();
