@@ -73,6 +73,8 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
    if(fs.existsSync(target)&&(fs.lstatSync(target).isSymbolicLink()||hash(target)!==row.sha256))throw Error('Existing native library differs; review ownership before replacing '+name);
    return {name,sha256:row.sha256,bytes:row.bytes,alignment16KiB:true,source:row.path,target};
   });
+  // agent:stage-android stages the model with the runtime payload; this command only checks it.
+  if(!fs.existsSync(path.join(root,model.path)))throw Error('Pinned BGE model is not staged: run npm run agent:prepare, npm run agent:build-workflow-worker and npm run agent:stage-android first');
   if(hash(path.join(root,model.path))!==model.sha256)throw Error('Pinned BGE model bytes changed');
   const manifest={pin:receipt.pin,forkPin:receipt.forkPin,identity,abi:receipt.abi,model,libraries:libraries.map(({source,target,...row})=>row),qualificationReceiptSha256:hash(args[1]),jniIdentityRelocated:true,inputs:receipt.inputs};
   const manifestFile=path.join(root,'android/embedding-host/qualified-host.json');

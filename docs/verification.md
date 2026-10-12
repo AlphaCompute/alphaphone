@@ -239,6 +239,281 @@ Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
 
+## Round 10 (2026-10-11): native teardown, live search and reading availability, none run
+
+Branch `claude/r10-native-robustness`. Source, compile and browser checks only (class S). No
+APK was assembled, no emulator was started and no workflow was dispatched, so nothing here is
+class B or class E evidence, and no fix below has been shown to hold on Android.
+
+- **Calls that arrive after a plugin is destroyed.** Round 8 fixed one plugin
+  (`AlphaDevicePlugin`) after a `RejectedExecutionException` on Capacitor's bridge thread killed
+  the process. Every Java source under `android/app/src/main/java` was read for the same class.
+  Found and changed: `AlphaMailAttachmentsPlugin` (`readSelected`, `openReviewed`,
+  `retainSourceReference`, `openSourceReference` handed work to the stopped worker with no
+  catch) and `AlphaActionJournalPlugin` (`reviewClock`, `confirmClock` used the shared plugin's
+  worker, which that plugin stops on destroy); both now reject the call. `BrowserDownloads`
+  handed work to two workers that `destroy()` stops and showed its dialogs from completions
+  posted by those workers; after `destroy()` it now shows nothing and drops the work.
+  `AlphaBrowserPlugin` accepted `create`, `downloads` and the other main-thread methods after
+  destroy (its session is cleared then, so `create` built a WebView on the dead activity and
+  `downloads` opened a dialog on it); every such call is now rejected as "Browser closed".
+  Two smaller ones: `AlphaDevicePlugin.setTextScale` also refuses a destroyed activity, and
+  `AlphaHostedResultsPlugin.enable` rejects when Android has no channel-settings page instead
+  of throwing on the bridge thread. Already answering a stopped worker before this round:
+  `AlphaDevicePlugin` (problem log), `AlphaHostedResultsPlugin`, `AlphaNotificationsPlugin`,
+  `AlphaMapsTransportPlugin`, `AlphaVoiceCloudPlugin`, `AlphaLocalAgentPlugin`,
+  `AlphaConnectionPlugin`, `AlphaFilesPlugin`, `AlphaNoteDocumentsPlugin`,
+  `AlphaNoteAudioPlugin`, `AlphaPhotosPlugin`. Receivers and callbacks (`DeviceAppsPlugin`,
+  the browser's autofill callback and WebView listener, the voice plugin's memory callbacks,
+  the Maps stop listener) were already released on destroy. `test/native-plugin-teardown.test.mjs`
+  scans every source for an executor hand-off outside a `try` that answers the rejection, and
+  it fails on the pre-change sources at the eight places named above. It is a source-shape
+  guard: no late call was delivered to a destroyed plugin on a device. Three hand-offs are
+  listed in the test as reviewed exceptions with the reason for each.
+- **Requests that launch through the activity** (found in review of this branch; same class,
+  not an executor). A permission request or an activity-result request has no launcher once
+  the activity is destroyed: androidx unregisters it then and `launch()` throws
+  `IllegalStateException`, on Capacitor's bridge thread (read from the `androidx.activity`
+  1.10.1 classes this build resolves; not reproduced on a device). Unguarded before:
+  `AlphaHostedResultsPlugin.enable`, `AlphaVoiceCloudPlugin.startRecording`,
+  `DailyAppsPlugin.perform` (a selection), Capacitor's own `requestPermissions` on the four
+  plugins that declare permissions (the startup access panel calls it on `DailyApps` and
+  `AlphaVoiceCloud`), and three plugin methods the app's plugins inherit from shared ones
+  (`CalendarPlugin.requestAccess`, `requestWorkflowReadAccess`, `ReminderPlugin.scheduleReminder`).
+  Each is now the body of `LateLaunch.ask`, which rejects the call; the inherited ones are
+  overridden in the app's subclass, and the shared sources are unchanged. The guard test scans
+  every app source for such a request outside `LateLaunch.ask` or a `try` that answers it, and
+  reads the shared parent classes so a new inherited request needs its override. **Not
+  covered:** the shared camera and location plugins, which the app registers without
+  subclassing, make the same permission requests unguarded (`vendor/eliza/plugins`); that
+  needs an upstream change, not an edit here. Also changed: `AlphaMapsTransportPlugin.startNavigation`
+  refuses after destroy and retires a session it started while destruction ran, so a late
+  call cannot leave a navigation notification with no renderer behind it; and the native
+  reading review now gives the unavailable answer before it asks for a speech route.
+- **BrowserFlow live search** (failed in rounds 7 and 8). The product request is correct:
+  search words become `https://www.google.com/search?q=<words>`. The saved result files
+  (`f-default/*/BrowserFlow.txt`) show a complete HTTPS page with a body that was not that
+  address, and deliberately carry no URL, so which page loaded was **not observed**. The
+  likely cause, not confirmed, is Google answering the emulator's network with its own check
+  page (`www.google.com/sorry/…`) or consent page (`consent.google.com`), both of which carry
+  the interrupted search in `continue`. The method now accepts either the results page as
+  before, or one of those two pages when it is HTTPS, on that host, and `continue` is this
+  exact search; and in both cases it asserts the product's own request from the page's history
+  entry (HTTPS, `www.google.com`, `/search`, `q` equal to the typed words) and the missing
+  bridge. A pass records `INSTRUMENTATION_STATUS: browserFlowSearch=results` or
+  `=provider-check`, so a campaign can say which it saw; a pass with `provider-check` is not
+  evidence that a results page renders. Any other page still fails, now with the host and path
+  class of what loaded. If the next campaign fails with `host: other`, the hypothesis is wrong
+  and the method needs another look; a failure that reports `www.google.com`, `/search` and a
+  short `textLength` would instead mean the results address answered with a page that never
+  filled in (a script check that did not complete), which this method does not accept. Not run.
+- **Page reading without isolated-world injection** (WebView 133 on the SDK emulator).
+  Nothing was injected into a page's own world before this round and nothing is now; the
+  refusal was a toast after a speech route had been prepared, with advice to reload that could
+  not help. Now `AlphaBrowser.readingSupport` reports the provider's capability, the browser
+  menu carries a note when it is absent, Read aloud and Ask about page say so before doing
+  anything else, and the native review refuses with the same sentence (code
+  `reading-unsupported`), separately from a page that is merely not ready. The wording is an
+  engineering default. `BrowserReadingNavigationInstrumentedTest` has two methods and exactly
+  one runs on a given provider: the stale-document method (its assertions unchanged) with the
+  capability, and `providerWithoutIsolatedWorldSaysReadingIsUnavailableAndInjectsNothing`
+  without it. The other is skipped by assumption and listed as such; the class no longer
+  proves stale-document rejection by passing, so read the `ignored` list or
+  `browserReadingProvider=isolated-world|no-isolated-world`. Not run.
+- Compiled (JDK 21, `--offline`, `npm run agent:prepare -- --source-only`, staged agent
+  sources, a locally built unqualified speech AAR as a compile input):
+  `./gradlew :app:compileStandaloneDebugJavaWithJavac :app:compileLauncherDebugJavaWithJavac
+  :app:compileStandaloneDebugAndroidTestJavaWithJavac :app:compileLauncherDebugAndroidTestJavaWithJavac
+  -x :local-speech:preBuild -x :app:stageLocalAgentSources -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1`
+  with `-PELIZA_DEV_ALLOW_TEST_MOCKS=0` and again with `=1`: BUILD SUCCESSFUL both times.
+  Compilation only.
+- Run on a development machine at the reviewed source (after the review additions above; the
+  Gradle compile was repeated then too): `npm run verify` exit 0 (695 tests, 691 passed,
+  0 failed, 4 todo; bundle audit passed, 395 files, `testMocks=false`);
+  `ALPHA_BROWSER_TEST_PORT=7053 npx playwright test --project=chromium --workers=4` on
+  `reading-capability`, `browser-navigation`, `reading-review`, `reading-source`,
+  `reading-sensitive`, `journey-e-browser-credentials`, `web-summary-note` and
+  `browser-signins`: 67 passed. The Chromium specs run the web build, which never asks the
+  native capability question; the production project was not run.
+- Emulator commands for the integrator (developer APKs; class E when run), with
+  `RUN` = `npm run test:android:instrumentation -- --owned-emulator --avd <avd> --serial emulator-NNNN`:
+  `RUN --classes BrowserFlow,BrowserReadingNavigation,BrowserSignins,BrowserContinuity,MailAttachment,ClockHandoff`
+  (network needed for BrowserFlow); `RUN --test-mocks --classes BrowserDownload,BrowserFlow,BrowserDialogLifecycle,BrowserWebFeatures`;
+  `RUN --variants launcher --home-role --classes SettingsRoles,LauncherHome`, repeated, since
+  the crash it found appeared once in 22 runs; and, for the plugin methods now routed through
+  `LateLaunch`, `RUN --classes DailyApps,ReminderLifecycle,HostedResultsLifecycle,StartupReadiness`
+  with the voice permission campaigns of `scripts/test-native-permissions.mjs`. These exercise
+  the changed plugins while the activity is alive, and LauncherHome destroys it; none delivers
+  a call to a destroyed plugin on purpose, so a pass is regression evidence only.
+
+## Round 10 (2026-10-11): approval notices across process death and owner change, not run
+
+Class S only. Nothing in this section ran on an emulator or a device, and no APK was built.
+
+- Product change: when a different owner connects, the renderer asks the native ledger to
+  withdraw the approval notices posted for any other owner
+  (`AlphaHostedResults.withdrawOtherOwnerApprovalNotices`, only the owner ID crosses the
+  bridge; `WorkflowNoticeDelivery.withdrawOtherOwners`). The notice is cancelled, its tap route
+  is released and its receipt stays `withdrawn` in the shared upstream ledger (`NoticeDelivery`)
+  until the approval expires, so it is never posted again. Step (result) notices are not
+  touched. This is an engineering default, not an owner decision
+  ([owner actions](mvp-owner-actions.md), decision 18). Before this change the notice stayed in
+  the shade and its tap answered "Connect its original agent".
+- `scripts/android-workflow-native.mjs` has a third phase, `approval-notice-recovery`, two
+  cases on each distribution (18 cases in all):
+  `WorkflowApprovalNoticeProcessDeathInstrumentedTest` under the instrumentation APK's
+  `WorkflowNoticeProcessRunner` (the test runs in a helper process of the app and kills the
+  main process), and
+  `WorkflowApprovalNoticeInstrumentedTest#ownerChangeWithdrawsThePendingApprovalNoticeAndItsTapOpensNothing`.
+  Each case runs in its own disposable user from the hash-admitted archive pair, records the
+  pair and its runner, and a failed, skipped or missing case stops the campaign and exits
+  non-zero. `scripts/android-instrumentation.mjs` names the process-death class as a campaign
+  class; `--classes WorkflowApprovalNotice` now runs three methods, two of which post.
+- What the process-death case asserts: one receipt and one route before the death; after the
+  main process is killed and proven absent, the same OS notice (key, post time, PendingIntent)
+  and byte-identical ledgers; the tap starts a new main process whose plugin captures the
+  original token with the exact approval ID, binding and route; the capture rewrites no receipt;
+  a repeated request posts nothing and rewrites neither ledger; a changed binding or expiry is
+  refused. Not covered: the renderer's authenticated read after the capture (the fixture has
+  no agent), a decision made after the restart, reboot, and force-stop.
+- Source checks run: `test/workflow-approval-notice.test.mjs` (JVM contract of the withdrawal:
+  both ledgers, a captured tap of the old owner, a storage fault, invalid owners),
+  `test/native-campaign-evidence.test.mjs` (the real runner against a synthetic `adb`: runner
+  component, gates, grants, report, selection, failure propagation),
+  `test/android-instrumentation-runner.test.mjs`, and
+  `test/browser/workflow-notice-taps.spec.ts` (the renderer sends exactly the connected owner's
+  ID once, repeats a failed request, and in the `owner-change` scenario asks again with the next
+  owner's ID after a different owner connects, whose session never opens the first owner's
+  retained tap). The touched Java (three main and three androidTest
+  files) was compiled with `javac` against the SDK 36 `android.jar`, Capacitor's sources and the
+  Gradle cache's dependency jars with stub `R` and `BuildConfig` classes; the errors that
+  remained were all in untouched files that need generated or unstaged inputs. It was not
+  compiled by Gradle and no lint ran.
+- Review follow-up (same date): the renderer now reads an approval notice's route when the
+  request is queued, not when the queue reaches it (`queueApprovalNotices` in
+  `workflow-adapter.ts`). A request that waited behind an earlier one while the owner changed
+  used to take the next owner's identity, so its notice would have been posted for that owner
+  and kept by the withdrawal; a decision's withdrawal likewise keeps the route of the session
+  that made it. No browser spec drives the renderer's approval post or withdrawal calls (the
+  phone-step specs run without a native platform), so this is covered by the type check only.
+  The owner-change instrumented case also refuses to start with an approval route left by an
+  earlier test and releases its own routes when it fails.
+- Ledger check (MVP-12): the inventory still said no runner grants the Calendar permissions to
+  `CalendarAvailabilityInstrumentedTest`. `scripts/test-calendar-regression.mjs` has done so
+  since round 8 and the class passed on both flavors in the run recorded below; the entry was
+  corrected.
+
+## Round 10 (2026-10-11): the strict build chain at pin `13c98575987a`, on a development machine
+
+Build evidence only, from one macOS arm64 development machine at product source `2560eead`
+plus this round's changes. Nothing was installed or run on an emulator or device, no
+workflow was dispatched, and **no APK from these runs is distributable or was kept**: two
+inputs were local substitutes, as named below. Raw logs were not committed.
+
+What the strict chain (`npm run android:build:local`, no override) needs, and where it
+stops on a clean checkout:
+
+| Order | Input | Supplied by | State on a clean checkout |
+| --- | --- | --- | --- |
+| 1 | Pinned `vendor/eliza` | script (`git submodule update`) | present |
+| 2 | Speech AAR matching `runtime-manifest.json` | the reviewed AAR: a person (A-24, MVP-23). A local rebuild: scripts, with `--allow-unqualified-runtime` | missing; the preflight exits 2 here |
+| 3 | Reviewed ARM64 embedding host libraries | a person (see below) | missing; `agent:build-embedding-host` exits 3 here |
+| 4 | Prepared runtime source | script (`agent:prepare`) | produced |
+| 5 | Workflow worker artifact | script (`agent:build-workflow-worker`) | produced |
+| 6 | Staged runtime payload and embedding model | script (`agent:stage-android`) | produced |
+| 7 | Notices listing the packaged runtime | script (`licenses:packaged-runtime`, new in the chain) | produced |
+| 8 | Gradle verification metadata | committed | present |
+| 9 | Release signer and signing values | a person (A-06) | unset; the build completes unsigned |
+
+The first input that needs a person is the qualified speech AAR (step 2). With a locally
+built, unqualified speech runtime in place, the first step that stops is the embedding
+host (step 3), and it is the only one of the three that stops the chain: unqualified speech
+and an unset signer leave it running and make its releases `distributable:false`.
+
+The embedding host. `qualified-host.json` names three libraries by SHA-256; they are not in
+Git and were not found on this machine. Rebuilt here from the pinned engine
+(`elizaOS/llama.cpp` at `ea8b3f2d`, the gitlink of the pin) with NDK `29.0.13113456` and
+CMake 4.0.3: `libc++_shared.so` matched the reviewed bytes exactly (which identifies the
+NDK), `libelizainference.so` came out at 6,208,400 bytes against the reviewed 6,199,248
+and `libelizavoicejni.so` at 1,016,632 against 1,016,376. The rebuilt libraries contain the
+absolute build directory (183 source paths in the first, 5 in the second), and the size
+differences (9,152 and 256 bytes) are about 50 bytes per embedded path, which is what a
+shorter build directory would give. The
+reviewed build's directory is recorded only in its receipt, which is not in the
+repository, so no script can reproduce those bytes. With the new
+`prepare-embedding-host.mjs --remap-build-path`, two builds in different directories were
+byte-identical to each other (6,187,152 and 1,009,560 bytes; hashes in
+`android/embedding-host/build-toolchain.json` under `unqualifiedCandidateMeasurement`).
+Those bytes are not reviewed, not qualified and not staged by any script.
+
+How far the chain got. With an unqualified speech runtime copied from an earlier round's
+worktree and, for this run only, the unreviewed local rebuild admitted through an
+uncommitted edit of `qualified-host.json` (both reverted afterwards):
+
+- `npm run agent:prepare`, `npm run agent:build-workflow-worker` and
+  `npm run agent:stage-android` each exited 0 at the pin.
+- `npm run android:deps:write-verification` ran the ten tasks of `VERIFIED_TASKS` with
+  `-PELIZA_ALLOW_UNPACKAGED_RUNTIME=0`: `BUILD SUCCESSFUL`, 1,276 tasks executed.
+- `npm run android:build` with no option then exited 0 twice with dependency verification
+  enforced. Both flavors: debug and unsigned release APKs, both instrumentation APKs, lint,
+  and `verify-apks` with the resident runtime `PACKAGED` (1,120 verified entries per
+  release, 1,121 per debug APK, upstream commit `13c98575987a`), bundle audit passed.
+- The first of those two runs recorded the releases not distributable for five reasons. One
+  was a chain defect: "notices lack the packaged runtime", because nothing in
+  `android:build:local` ran `generate-licenses.mjs --packaged-runtime` (the hosted
+  resident job does). With that step added (660 entries, 66 flagged, exit 0) the second
+  run recorded `runtimeNotices: true` and four reasons, all of which need a person: speech
+  native bytes not admitted, speech functional acceptance pending or failed, unsigned
+  release, release signer unset.
+- The build wrote `artifacts/sbom/alphaphone.cdx.json` (1,878 components: 71 Gradle
+  coordinates with checksums, 1,154 staged files, Bun, 550 bundled packages, 4 APKs).
+
+Afterwards, on the restored checkout, `npm run android:build:local` exited 3 at
+`agent:build-embedding-host` in under a second with the message naming who is needed, and
+with the speech AAR removed the preflight exited 2 before it.
+
+Not done and not claimed: a strict build with the reviewed embedding host and a qualified
+speech runtime; any signed release; any Linux or hosted build with the verification
+metadata; any install. `resident-android.yml` (dispatch-only) stages no embedding host and
+so cannot pass `:app:verifyEmbeddingHost` either; it was not changed or dispatched.
+
+Review of this package (2026-10-11, same machine; source tests and two offline Gradle
+configuration runs, no APK task, no native build, nothing installed):
+
+- The repository review had read only the two root Gradle scripts while stating that "the
+  build" declares three repositories. The fifteen included projects have build scripts of
+  their own, and five of them name a repository by URL (Maven Central in four upstream
+  plugins, the plugin portal in Capacitor). The check now reads every included script and
+  the documents say what is declared
+  ([dependency audit](dependency-audit.md#gradle-dependency-verification)).
+- The instruction printed for the embedding host did not work as written on a clean
+  checkout: `stage-embedding-host.mjs --receipt` reads the staged embedding model, which
+  only `agent:stage-android` stages and which the chain reaches after the step that stops;
+  and it refuses to replace a differing `qualified-host.json`. The message, the README and
+  the owner action now say both, and the staging command names the missing model instead
+  of failing on a missing file.
+- "Rebuilds and stages the libraries on any machine" was more than was measured (three
+  directories on one macOS arm64 host). The wording now says that, and that a rebuild is
+  staged only when it is byte-identical.
+- The step's rebuild-and-stage path (taken only once `remapBuildPath` is true) had no test.
+  It now has one with the compile step replaced: an exact reproduction is staged, any
+  difference stages nothing and exits 3, `--status` and `--candidate` never stage.
+- Two assertions would have failed on the day a person supplied an input (a release host
+  with signing values set; the commit that qualifies a remapped host). They now follow the
+  committed records.
+- The recorded checksums were compared with the origin: the 71 shipped coordinates and the
+  three `aapt2` archives were fetched again from Google's Maven repository and Maven Central
+  and matched. `android/gradle/verification-metadata.xml` is now part of the build-input
+  snapshot (`scripts/source-snapshot.mjs`), and the check accepts one checksum per artifact.
+- Gradle was run twice, offline, to see the metadata refuse: with the Android Gradle plugin
+  jar's checksum changed `./gradlew help` failed on dependency verification (the file was
+  restored). `:app:dependencies` does not verify, because it resolves no artifact. No APK
+  task was run in review.
+- The embedding host and model entries of the SBOM said `ships-in: apk` in every document,
+  including the one written beside the foundation job's unpackaged APKs, which contain
+  neither. They now say an APK that packages the resident runtime.
+- Still open, unchanged by review: no Linux or hosted build has run with the metadata.
+
 ## Round 8 (2026-10-11): runner cases, fixes and hosted jobs, none run
 
 Branch `claude/r8-runner-ci`. This section records source, compile and host-runtime checks
@@ -303,6 +578,80 @@ each fix named here is shown to hold, to fail or to be still unrun.
   Chromium Notes specs 52 passed; `actionlint` exit 0 on the seven workflow files; the Gradle
   compile above repeated for both flavors, app and androidTest, with test mocks off and on:
   BUILD SUCCESSFUL twice (compile only, no APK). The digest restart check was not repeated.
+
+## Round 10 (2026-10-11): accessibility gaps (MVP-48), source and browser tests only
+
+Class S throughout: source, Node tests and Chromium on a development server or the flag-off
+bundle. No emulator, device, APK or hosted job was used; the emulator rows below are unchanged
+history and none of this is evidence for them. Branch `claude/r10-a11y-gaps`, from `2560eead`.
+
+| Finding | What changed | Covered by |
+| --- | --- | --- |
+| Home's last row under the floating composer at 200% text (emulator, standalone flavor) | Home and the app library end above the dock; the dock's footprint is measured (`runtime/dock-clearance.ts`), 108px stays the minimum | `accessibility-resilience.spec.ts` (both shells at 100%, 150% and 200%, a raised dock, a longer draft, a stacked status line, landscape); rule `obscured-by-dock` in every lane of the sweep |
+| A focused control partly under the composer | Focus that did not come from a pointer is scrolled wholly above the dock; app scrollers carry the dock's footprint as scroll padding | rule `focus-obscured` in the tab-order walk of every lane, now also walked at 200%; the Settings focus tests |
+| Titles shortened at 200% (Photos, Camera, Password manager; the Home calendar title cut by its clamp) | Above 150% text a screen title takes a row of its own; the Home title's line height opens with the text scale | the title tests in `accessibility-resilience.spec.ts`; no `[data-alpha-app-title]` or `.home-calendar-title` truncation is left in the 200% lane |
+| A toast under a top-layer dialog was neither seen nor announced | The topmost modal dialog gets a live region of its own, drawn above it (`runtime/toast-layer.ts`) | rules `toast-not-announced` and `toast-covered`; the dialog toast tests (position, hit test, accessibility tree, Undo, cleanup) |
+| Landscape with 200% text was not swept | A lane of its own. It needed one fix, caused by the title row: in landscape the camera's capture rail starts below that row and the camera's message stops at the rail | `accessibility-sweep.spec.ts` |
+| Provider-connected states were not swept | Ten states against a synthetic mailbox at the provider boundary. They found two defects, fixed: the email message field ran 16px under the pill, and a connection's status was cut off at 200% text in Settings | `accessibility-sweep.spec.ts`, `test/accessibility-coverage.test.mjs` |
+| Launcher flavor: "an accessibility click reaches no page control on this WebView" | Test defect, not a product one; see below | `test/accessibility-stand-in.test.mjs` (source checks only) |
+
+Each new rule is shown to fire on a seeded defect and to stay quiet on corrected markup in
+`accessibility-audit.spec.ts`. With the Home rule, the scroll padding and the focus handler
+taken out, the Home tests at 200% and the Settings focus test at 100% failed, so they do
+detect the defects.
+
+**The dropped accessibility click.** The round 8 result files show `ACTION_CLICK` accepted
+on the handle, on an app tile and on the calendar card with no click arriving and focus
+staying on the page body, while `ACTION_FOCUS` on the same node did move focus. The cause was
+found by reading Chromium source at the image's WebView version (133.0.6943.137), not by a
+run:
+
+- `WebContentsAccessibilityImpl.performAction` calls native `Click` and returns `true`
+  whatever happens next.
+- `BrowserAccessibilityManager::DoDefaultAction` returns without sending anything when the
+  node has no default action verb (`BrowserAccessibility::HasDefaultAction`). `SetFocus` has
+  no such gate.
+- Blink writes the default action verb in `AXObject::SerializeOtherScreenReaderAttributes`,
+  which runs only in the screen reader accessibility mode.
+- On Android that mode is chosen from `AccessibilityManager.getEnabledAccessibilityServiceList`
+  (`AccessibilityState.updateAccessibilityServices`; `SetBrowserAXMode` falls back to the basic
+  mode when no listed service looks like a screen reader). UiAutomation is not in that list,
+  and the image has no TalkBack.
+
+So on that image WebView was in its reduced mode and dropped every default action; with
+TalkBack or Switch Access bound it would not. The product side was checked in Chromium: the
+handle is a named, enabled button with no disabled or read-only ancestor in the
+accessibility tree, and the event sequence an accessibility click produces (pointerdown,
+mousedown, pointerup, mouseup, click on the element) opens the panel in both shells.
+`AccessibilityInstrumentedTest` now binds a stand-in screen reader from the instrumentation
+APK for that step (`ScreenReaderStandInService`: every event type, spoken feedback, no touch
+exploration), connects UiAutomation without suspending other services, requires the click to
+open the panel, then requires a single further click to open it again, and restores the two
+settings it changes. The click is repeated once a second for at most 20 seconds only while
+WebView is still switching modes, because nothing visible to a test says when it has. The
+check that the panel reads in order moved to the pull-down step, so it runs in the same
+WebView mode as before. None of this has run: the diagnosis is from source and the changed
+test is compiled only (`javac` 21 against `android-36`, the Gradle cache's dependency jars
+and the app classes of an existing build; no Gradle build, lint or APK).
+
+Run for this branch (class S): `npm run verify` exit 0 (684 Node tests: 680 pass, 0 fail, 4
+todo; bundle audit `PASS web-dist`). The Chromium project, every spec file, in nine batches
+with four workers: 3099 passed, 12 skipped, 1 failed. The failure is
+`local-agent-native-stream.spec.ts` "retained navigation waits for native stream settlement:
+ready-failure"; it fails 4 of 4 with the app source of `2560eead` as well and was not
+changed here. Two tests for the product side of the accessibility click were added after
+that run and passed with their spec (`accessibility-audit` and `accessibility-resilience`
+together: 60 passed). In the production project `accessibility-sweep.production.spec.ts` (now with the
+dock rules), `production-surface`, `settings`, `home-attention`, `home-daily-overview` and
+`journey-core-loops`: 119 passed; the rest of that project was not run.
+
+Open after this round: an emulator run of Accessibility on both flavors (the Home change and
+the stand-in step are unproven there; if the click still does not arrive with the stand-in
+bound, the failure message now carries the attempts, the running services and the enabled
+state of the node and its ancestors); TextScale and Rotation; everything in MVP-48's device
+list. Not swept: the launcher presentation of the app views, zoom above 200%, connected
+states other than a mailbox. An app page's own content still scrolls under the composer by
+design; only Home and the app library end above it.
 
 ## Emulator results at 2961bd9e (2026-10-11, round 8 merged with round 9)
 
@@ -730,8 +1079,8 @@ case is granted `POST_NOTIFICATIONS` in its owned user). Each receipt names its 
 hashes; a failed, skipped or missing phase is recorded (`failedPhase` / `failure`) and exits
 non-zero. Source checks: `test/installed-upgrade-runner.test.mjs` and
 `test/native-campaign-evidence.test.mjs` drive the real scripts against a synthetic `adb`;
-they are not emulator evidence. Approval notices across process death and account change have
-no native phase yet.
+they are not emulator evidence. Approval notices across process death and account change had
+no native phase at that date; round 10 added one (see "Round 10" above), which has not run.
 
 Review follow-up (same date): an attach keeps the epoch, so a request the attaching surface had
 queued earlier is refused before it pairs or is dispatched (`requireOwned`); a lifecycle change

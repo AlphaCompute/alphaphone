@@ -28,7 +28,7 @@ final class BrowserReadingWorld {
  private boolean closed;
  BrowserReadingWorld(WebView web) {
   this.web=web;
-  if(!WebViewFeature.isFeatureSupported(WebViewFeature.JS_INJECTION_IN_FRAME_AND_WORLD))return;
+  if(!supported())return;
   try {
    world=WebViewCompat.getExecutionWorld(web,"alpha-browser-reading-v1");
    // Browsing accepts arbitrary origins. The wildcard exists ONLY in this
@@ -43,6 +43,16 @@ final class BrowserReadingWorld {
    WebViewCompat.addWebMessageListener(web,CHANNEL,Set.of("*"),world,listener);
   }catch(RuntimeException unavailable){close();}
  }
+ /**
+  * Whether this WebView provider can run a script in a world the page's own script cannot reach.
+  * Without it there is no page reading at all: nothing is ever injected into the page's world.
+  */
+ static boolean supported(){
+  try{return WebViewFeature.isFeatureSupported(WebViewFeature.JS_INJECTION_IN_FRAME_AND_WORLD);}
+  catch(RuntimeException|LinkageError unavailable){return false;}
+ }
+ /** False when the provider lacks the capability or the isolated world could not be set up. */
+ boolean available(){return !closed&&world!=null;}
  private static String origin(String value){
   if(value==null)return null;
   try{Uri uri=Uri.parse(value);String host=uri.getHost();if(!"https".equalsIgnoreCase(uri.getScheme())||host==null||uri.getUserInfo()!=null)return null;return "https://"+host.toLowerCase(java.util.Locale.ROOT)+":"+(uri.getPort()<0?443:uri.getPort());}catch(Exception invalid){return null;}

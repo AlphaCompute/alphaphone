@@ -3,10 +3,13 @@
  * Fail fast, before web sync and Gradle, when an Android build input is missing.
  *
  *   node scripts/android-build-preflight.mjs [--before-prepare] [--allow-unpackaged-runtime] [--test-mocks]
+ *   node scripts/android-build-preflight.mjs --report [--json]     (npm run android:build:inputs)
  *
  * build-android.mjs runs the full check. `--before-prepare` checks only inputs that
  * android:build:local does not produce (the pinned checkout and the speech AAR), so
  * that chain stops before the long runtime preparation instead of after it.
+ * `--report` lists every input of the strict distribution build with its state and whether a
+ * script or a person supplies it. It reads files only, builds nothing and always exits 0.
  */
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
@@ -14,9 +17,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {verifyEmbeddingHost} from './stage-embedding-host.mjs';
+import {BUILD_TOOLCHAIN, HUMAN_ACTION, QUALIFIED_HOST, stagedLibraries} from './build-embedding-host.mjs';
 
 export const SPEECH_AAR = 'android/local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar';
 export const SPEECH_MANIFEST = 'android/local-speech/runtime-manifest.json';
+export const SPEECH_QUALIFIED = 'android/local-speech/qualified-runtime-manifest.json';
+export const GRADLE_VERIFICATION = 'android/gradle/verification-metadata.xml';
 const FULL_CHAIN = 'npm run android:build:local';
 const SPEECH_GUIDE = 'scripts/local-speech/README.md';
 
@@ -38,7 +44,7 @@ export function checkoutProblems(root) {
     problems.push(`vendor/eliza is ${head ? `at ${head}` : 'not checked out'}; upstream.lock.json pins ${pin}. Run: git submodule update --init vendor/eliza`);
   const aar = path.join(root, SPEECH_AAR);
   if (!fs.existsSync(aar)) {
-    problems.push(`Speech runtime ${SPEECH_AAR} is missing (Gradle :local-speech:preBuild needs it). Build and install it with the commands in ${SPEECH_GUIDE}.`);
+    problems.push(`Speech runtime ${SPEECH_AAR} is missing (Gradle :local-speech:preBuild needs it). Build and install it with the commands in ${SPEECH_GUIDE}. A local rebuild is not the qualified runtime: the reviewed AAR needs a person (npm run android:build:inputs).`);
   } else {
     const approved = JSON.parse(fs.readFileSync(path.join(root, SPEECH_MANIFEST), 'utf8')).aarSha256;
     if (sha256(aar) !== approved)
@@ -69,8 +75,9 @@ export function preparedRuntimeProblems(root, preparedSource, {allowUnpackagedRu
 }
 
 /**
- * The reviewed ARM64 embedding host (android/embedding-host/qualified-host.json). No build
- * step produces it: its libraries are staged from a qualification receipt, byte for byte.
+ * The reviewed ARM64 embedding host (android/embedding-host/qualified-host.json). Its libraries
+ * are staged byte for byte: by `npm run agent:build-embedding-host` when a rebuild reproduces
+ * them, otherwise by a person from the qualification receipt.
  */
 export function embeddingHostProblems(root, {allowUnpackagedRuntime = false, embeddingHost = verifyEmbeddingHost} = {}) {
   try {
@@ -80,7 +87,7 @@ export function embeddingHostProblems(root, {allowUnpackagedRuntime = false, emb
     const partial = allowUnpackagedRuntime
       ? ' An unpackaged developer build must have no resident payload at all: remove android/app/src/main/assets/agent and android/app/src/main/jniLibs, or stage the host.'
       : '';
-    return [`The qualified embedding host is not staged (${error.message}; Gradle :app:verifyEmbeddingHost rejects the build). ${FULL_CHAIN} does not produce it: stage the reviewed libraries with node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json> (see scripts/prepare-embedding-host.mjs).${partial}`];
+    return [`The qualified embedding host is not staged (${error.message}; Gradle :app:verifyEmbeddingHost rejects the build). npm run agent:build-embedding-host (a step of ${FULL_CHAIN}) stages the libraries only when it can reproduce the reviewed bytes, and says so when it cannot. ${HUMAN_ACTION}${partial}`];
   }
 }
 
@@ -88,11 +95,90 @@ export function formatProblems(problems) {
   return `Android build prerequisites are missing:\n${problems.map(problem => `  - ${problem}`).join('\n')}`;
 }
 
+const SIGNING_ENV = ['ELIZAOS_KEYSTORE_PATH', 'ELIZAOS_KEYSTORE_PASSWORD', 'ELIZAOS_KEY_ALIAS', 'ELIZAOS_KEY_PASSWORD'];
+const readJson = (root, rel) => JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8'));
+
+/**
+ * Every input of the strict distribution build (`npm run android:build:local` with no override),
+ * in the order the chain needs it. `suppliedBy` is 'script' when a committed command produces the
+ * input from pinned source and 'person' when no script may. `preparedSource` is null while the
+ * pinned checkout is absent (its location cannot be resolved then).
+ */
+export function strictBuildInputs(root, preparedSource, {env = process.env} = {}) {
+  const rows = [];
+  const add = (input, ok, suppliedBy, detail, action) => rows.push({input, state: ok ? 'ready' : 'missing', suppliedBy, detail, action: ok ? null : action});
+  const pin = readJson(root, 'upstream.lock.json').commit;
+  const head = readHead(path.join(root, 'vendor/eliza'));
+  add('pinned upstream checkout', head === pin, 'script', `vendor/eliza ${head ? `at ${head}` : 'not checked out'}; pin ${pin}`, 'git submodule update --init vendor/eliza');
+
+  const aar = path.join(root, SPEECH_AAR);
+  const installed = fs.existsSync(aar) ? sha256(aar) : null;
+  const local = readJson(root, SPEECH_MANIFEST);
+  add('speech runtime installed', installed !== null && installed === local.aarSha256, 'script',
+    installed === null ? `${SPEECH_AAR} is absent` : installed === local.aarSha256 ? `${SPEECH_AAR} matches ${SPEECH_MANIFEST}` : `${SPEECH_AAR} does not match ${SPEECH_MANIFEST}`,
+    `the commands in ${SPEECH_GUIDE} (a local rebuild is not the qualified runtime: it installs only with --allow-unqualified-runtime, and its APKs are never distributable)`);
+  const qualified = readJson(root, SPEECH_QUALIFIED);
+  const acceptance = qualified.functionalAcceptance ?? {};
+  const speechProblems = [installed !== qualified.aarSha256 && `the installed AAR is not the reviewed one (${qualified.aarSha256})`,
+    acceptance.passed !== true && `functional acceptance is ${acceptance.state ?? 'not recorded'} (${Object.entries(acceptance.abis ?? {}).map(([abi, value]) => `${abi} ${value.state}`).join(', ')})`].filter(Boolean);
+  add('speech runtime qualified', speechProblems.length === 0, 'person', speechProblems.length ? speechProblems.join('; ') : `reviewed AAR installed and ${SPEECH_QUALIFIED} records functional acceptance passed`,
+    'Needs a person: the owner decides A-24 (whether on-device speech still gates release). While it does, the reviewed AAR must come from whoever holds it or a rebuilt runtime must be requalified on both ABIs (MVP-23, scripts/local-speech/README.md); a local rebuild does not reproduce the reviewed bytes.');
+
+  const host = readJson(root, QUALIFIED_HOST), toolchain = readJson(root, BUILD_TOOLCHAIN);
+  const libraries = stagedLibraries(root, host);
+  const hostReady = libraries.every(row => row.state === 'staged');
+  const reproducible = toolchain.remapBuildPath === true;
+  add('embedding host libraries', hostReady, reproducible ? 'script' : 'person',
+    hostReady ? `reviewed bytes staged in android/app/src/main/jniLibs/${host.abi}` : libraries.filter(row => row.state !== 'staged').map(row => `${row.name} ${row.state === 'missing' ? 'missing' : 'is not the reviewed bytes'}`).join(', '),
+    reproducible ? 'npm run agent:build-embedding-host' : `${HUMAN_ACTION} (${toolchain.remapBuildPathEvidence})`);
+
+  const stamp = preparedSource ? path.join(preparedSource, '.alpha-runtime-source.json') : null;
+  const prepared = stamp !== null && fs.existsSync(stamp);
+  add('prepared resident runtime source', prepared, 'script', preparedSource ? path.relative(root, preparedSource) : 'needs the pinned checkout first', 'npm run agent:prepare');
+  const worker = path.join(root, 'artifacts', `mobile-workflow-worker-${pin}`, 'manifest.json');
+  add('workflow worker artifact', fs.existsSync(worker), 'script', path.relative(root, path.dirname(worker)), 'npm run agent:build-workflow-worker');
+  const staged = path.join(root, 'android/app/src/main/assets/agent/alpha-source.json');
+  const stagedWorker = path.join(root, 'android/app/src/main/assets/agent/workflow-worker/manifest.json');
+  const current = prepared && fs.existsSync(staged) && fs.existsSync(stagedWorker) && fs.readFileSync(staged, 'utf8') === fs.readFileSync(stamp, 'utf8');
+  add('staged resident runtime payload', current, 'script', !fs.existsSync(staged) ? 'android/app/src/main/assets/agent is not staged' : current ? 'staged from the prepared source' : 'staged from a different prepared source', 'npm run agent:stage-android');
+  const model = path.join(root, host.model.path);
+  add('embedding model', fs.existsSync(model), 'script', host.model.path, 'npm run agent:stage-android (it stages the pinned model with the payload)');
+  add('Gradle dependency verification metadata', fs.existsSync(path.join(root, GRADLE_VERIFICATION)), 'script', GRADLE_VERIFICATION, 'npm run android:deps:write-verification (then review the diff)');
+
+  const signer = readJson(root, 'android/release-signer.json').signerSha256;
+  const missingSigning = SIGNING_ENV.filter(name => !(typeof env[name] === 'string' && env[name].trim() !== ''));
+  add('release signer', signer !== 'unset' && missingSigning.length === 0, 'person',
+    [signer === 'unset' ? 'android/release-signer.json says unset' : `android/release-signer.json names ${signer}`, missingSigning.length ? `not set in this environment: ${missingSigning.join(', ')}` : 'signing variables are set'].join('; '),
+    'Needs a person: decision A-06 names the signing authority; that person records the certificate digest in android/release-signer.json and supplies the ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS and ELIZAOS_KEY_PASSWORD values to the build. Without them the build still completes and records unsigned, non-distributable releases.');
+  return rows;
+}
+
+export function formatReport(rows) {
+  const lines = rows.map(row => `${row.state === 'ready' ? '[ready]  ' : row.suppliedBy === 'person' ? '[PERSON] ' : '[script] '}${row.input}: ${row.detail}${row.action ? `\n          -> ${row.action}` : ''}`);
+  const open = rows.filter(row => row.state !== 'ready');
+  const person = open.filter(row => row.suppliedBy === 'person'), script = open.filter(row => row.suppliedBy === 'script');
+  lines.push('', open.length === 0 ? 'Every strict-build input is present. This is an input check, not a build or a distributable APK.'
+    : `${script.length} input(s) a script can produce: ${script.map(row => row.input).join(', ') || 'none'}.\n${person.length} input(s) only a person can supply: ${person.map(row => row.input).join(', ') || 'none'}.`);
+  // The embedding host stops the chain; unqualified speech and an unset signer do not stop it, they make its releases non-distributable.
+  const stopper = open.find(row => row.input === 'embedding host libraries' && row.suppliedBy === 'person');
+  if (stopper) lines.push('The chain cannot pass Gradle :app:verifyEmbeddingHost until a person supplies the embedding host libraries.');
+  if (person.some(row => row.input !== 'embedding host libraries')) lines.push('Unqualified speech and an unset release signer do not stop the build: verify-apks records its releases distributable:false and names them.');
+  return lines.join('\n');
+}
+
 async function main() {
   const args = process.argv.slice(2);
   for (const arg of args)
-    if (!['--before-prepare', '--allow-unpackaged-runtime', '--test-mocks'].includes(arg)) throw new Error(`Unknown option ${arg}`);
+    if (!['--before-prepare', '--allow-unpackaged-runtime', '--test-mocks', '--report', '--json'].includes(arg)) throw new Error(`Unknown option ${arg}`);
   const root = path.resolve(import.meta.dirname, '..');
+  if (args.includes('--report')) {
+    // The source guard imports the pinned checkout; without it the prepared path is unknown.
+    let prepared = null;
+    try { prepared = (await import('./local-agent-source.mjs')).sourceDirectory(root); } catch { /* reported as the missing checkout */ }
+    const rows = strictBuildInputs(root, prepared);
+    console.log(args.includes('--json') ? JSON.stringify(rows, null, 2) : formatReport(rows));
+    return;
+  }
   let problems = checkoutProblems(root);
   if (!problems.length && !args.includes('--before-prepare')) {
     // The source guard imports the pinned checkout, so load it only once that is verified.

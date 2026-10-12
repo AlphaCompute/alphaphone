@@ -14,7 +14,7 @@ for (const state of LIVE_STATES) {
     await state.open(page);
     const found = blocking(format([
       ...await auditTree(page),
-      ...await auditPage(page, { contrast: true, targetSize: 24, clipping: true, overlap: true }),
+      ...await auditPage(page, { contrast: true, targetSize: 24, clipping: true, overlap: true, dock: true }),
       ...await auditTabOrder(page),
     ]));
     expect(found, found.join('\n')).toEqual([]);
@@ -27,7 +27,7 @@ test.describe('landscape', () => {
     test(`production landscape keeps every control on screen: ${state.name}`, async ({ page }) => {
       await state.open(page);
       await expect(page.locator('html')).toHaveClass(/alpha-landscape/);
-      const found = blocking(format([...await auditPage(page, { clipping: true, overlap: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
+      const found = blocking(format([...await auditPage(page, { clipping: true, overlap: true, dock: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
       expect(found, found.join('\n')).toEqual([]);
     });
   }

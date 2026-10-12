@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { setTextScale } from './accessibility-states';
+import { auditPage, auditTabOrder, format } from './accessibility-audit';
 
 // Behaviour behind the defects the accessibility sweep found (MVP-48, renderer part).
 const offline = () => localStorage.setItem('alpha.connection.selection.v1', JSON.stringify({ kind: 'offline' }));
@@ -323,4 +324,352 @@ test.describe('recovery screen', () => {
       });
     });
   }
+});
+
+// Round 10 (MVP-48). The round 8 emulator run found Home's last row drawn under the floating
+// composer at 200% text, read by TalkBack after the composer that sat above it. These are the
+// behaviours behind the fixes, measured from bounding boxes in Chromium; the emulator check is
+// AccessibilityInstrumentedTest and a device pass is still device acceptance.
+const HOME_SHELLS = [{ name: 'standalone app', url: '/' }, { name: 'launcher', url: '/?shell=launcher' }];
+/** Home controls whose painted box (after every clipping ancestor) meets the dock, and whether the last tile can be scrolled wholly above it. */
+const homeUnderDock = (page: Page) => page.evaluate(() => {
+  const home = document.querySelector<HTMLElement>('[data-alpha-layer="home"]')!;
+  const docks = Array.from(document.querySelectorAll<HTMLElement>('[data-alpha-layer="composer"],[data-alpha-layer="pill"] > *')).filter(el => el.getClientRects().length && !el.closest('[inert]')).map(el => el.getBoundingClientRect());
+  const painted = (el: Element) => {
+    const rect = el.getBoundingClientRect(), box = { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+    for (let node = el.parentElement; node && node !== document.documentElement; node = node.parentElement) {
+      const style = getComputedStyle(node); if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+      const frame = node.getBoundingClientRect();
+      if (style.overflowX !== 'visible') { box.left = Math.max(box.left, frame.left); box.right = Math.min(box.right, frame.right); }
+      if (style.overflowY !== 'visible') { box.top = Math.max(box.top, frame.top); box.bottom = Math.min(box.bottom, frame.bottom); }
+    }
+    return box.right - box.left > 1 && box.bottom - box.top > 1 ? box : null;
+  };
+  const under: string[] = [];
+  for (const el of home.querySelectorAll('button,a[href],span,div')) {
+    if (!el.getClientRects().length || (el.matches('span,div') && !Array.from(el.childNodes).some(node => node.nodeType === 3 && (node.nodeValue || '').trim()))) continue;
+    const box = painted(el); if (!box) continue;
+    if (docks.some(dock => Math.min(box.right, dock.right) - Math.max(box.left, dock.left) > 1 && Math.min(box.bottom, dock.bottom) - Math.max(box.top, dock.top) > 1)) under.push((el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 40));
+  }
+  return { docks: docks.length, under, scrolls: home.scrollHeight > home.clientHeight + 1, gap: Math.round(Math.min(...docks.map(dock => dock.top)) - home.getBoundingClientRect().bottom) };
+});
+/**
+ * The Android check, in the page: actionable controls in document (TalkBack linear) order, by
+ * the bounds left after clipping; the next one may start a new column to the right, otherwise
+ * it must not sit above the one before it by more than half the taller of the two.
+ */
+const readingOrderProblems = (page: Page) => page.evaluate(() => {
+  const visible = (el: Element) => {
+    const rect = el.getBoundingClientRect(), box = { left: Math.max(0, rect.left), top: Math.max(0, rect.top), right: Math.min(innerWidth, rect.right), bottom: Math.min(innerHeight, rect.bottom) };
+    for (let node = el.parentElement; node && node !== document.documentElement; node = node.parentElement) {
+      const style = getComputedStyle(node); if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+      const frame = node.getBoundingClientRect();
+      if (style.overflowX !== 'visible') { box.left = Math.max(box.left, frame.left); box.right = Math.min(box.right, frame.right); }
+      if (style.overflowY !== 'visible') { box.top = Math.max(box.top, frame.top); box.bottom = Math.min(box.bottom, frame.bottom); }
+    }
+    return box.right - box.left > 0 && box.bottom - box.top > 0 ? box : null;
+  };
+  const problems: string[] = []; let previous: { name: string; box: NonNullable<ReturnType<typeof visible>> } | null = null;
+  for (const el of document.querySelectorAll('[data-screen] button,[data-screen] a[href],[data-screen] textarea,[data-screen] input')) {
+    if (!el.getClientRects().length || el.closest('[inert],[aria-hidden="true"]')) continue;
+    const box = visible(el); if (!box) continue;
+    const name = el.getAttribute('aria-label') || (el.textContent || '').trim();
+    if (previous && box.top < previous.box.top - Math.max(previous.box.bottom - previous.box.top, box.bottom - box.top) / 2 && box.left < previous.box.right) problems.push(`reading order goes up from '${previous.name}' to '${name}'`);
+    previous = { name, box };
+  }
+  return problems;
+});
+async function openHome(page: Page, url: string, scale: number) {
+  await page.addInitScript(offline);
+  await page.goto(url);
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+  if (scale !== 1) await setTextScale(page, scale);
+  await expect(page.locator('[data-alpha-layer="composer"] [data-alpha-input-bar]')).toBeVisible();
+  await page.waitForTimeout(400);
+}
+
+for (const shell of HOME_SHELLS) for (const scale of [1, 1.5, 2]) {
+  test(`${shell.name} Home at ${scale * 100}% text draws nothing under the composer and reads top to bottom`, async ({ page }) => {
+    await openHome(page, shell.url, scale);
+    const home = page.locator('[data-alpha-layer="home"]');
+    const top = await homeUnderDock(page);
+    expect(top.docks).toBe(1);
+    expect(top.under, top.under.join(', ')).toEqual([]);
+    // Home's scroll area ends just above the bar; it is not merely padded.
+    expect(top.gap).toBeGreaterThanOrEqual(4);
+    expect(await readingOrderProblems(page)).toEqual([]);
+    // Every scroll position, and the end of the list: the last tile is wholly visible above the bar.
+    for (const position of [0.33, 0.66, 1]) {
+      await home.evaluate((el, fraction) => { el.scrollTop = (el.scrollHeight - el.clientHeight) * fraction; }, position);
+      const at = await homeUnderDock(page);
+      expect(at.under, `${position}: ${at.under.join(', ')}`).toEqual([]);
+      expect(await readingOrderProblems(page)).toEqual([]);
+    }
+    const last = home.getByRole('button', { name: 'All apps', exact: true });
+    await expect(last).toBeInViewport({ ratio: 1 });
+    const tile = (await last.boundingBox())!, bar = (await page.locator('[data-alpha-input-bar]').boundingBox())!;
+    expect(tile.y + tile.height).toBeLessThanOrEqual(bar.y);
+    // At 200% Home has to scroll (three columns, four rows); that is the case the emulator caught.
+    if (scale === 2) expect(top.scrolls).toBe(true);
+    // The rule the sweep runs agrees.
+    const found = format(await auditPage(page, { dock: true, clipping: true, overlap: true })).filter(line => !line.startsWith('text-truncated:'));
+    expect(found, found.join('\n')).toEqual([]);
+  });
+}
+
+test('Home follows the dock when Android raises it and when the draft grows', async ({ page }) => {
+  await openHome(page, '/', 2);
+  const home = page.locator('[data-alpha-layer="home"]');
+  // Android's navigation bar inset lifts the composer (phone.css, .native-phone). 108px of padding did not follow it.
+  await page.evaluate(() => { document.documentElement.classList.add('native-phone'); document.documentElement.style.setProperty('--native-bottom-inset', '72px'); });
+  await expect.poll(async () => (await homeUnderDock(page)).gap).toBeGreaterThanOrEqual(4);
+  expect((await homeUnderDock(page)).under).toEqual([]);
+  const raised = (await home.boundingBox())!.height;
+  // A draft of several lines makes the bar taller; Home's scroll area ends above it again.
+  await page.getByRole('textbox', { name: 'Ask Alpha', exact: true }).fill('one\ntwo\nthree\nfour\nfive');
+  await expect.poll(async () => (await home.boundingBox())!.height).toBeLessThan(raised - 20);
+  const grown = await homeUnderDock(page);
+  expect(grown.under, grown.under.join(', ')).toEqual([]);
+  expect(grown.gap).toBeGreaterThanOrEqual(4);
+  await home.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await expect(home.getByRole('button', { name: 'All apps', exact: true })).toBeInViewport({ ratio: 1 });
+});
+
+test('a status line stacked on the composer shortens Home without moving its rows', async ({ page }) => {
+  await openHome(page, '/', 1);
+  const home = page.locator('[data-alpha-layer="home"]'), tile = home.getByRole('button', { name: 'Inbox', exact: true });
+  const before = { tile: (await tile.boundingBox())!.y, height: (await home.boundingBox())!.height };
+  // What the draft status does at startup: a block above the bar, inside the composer layer.
+  await page.evaluate(() => { const block = document.createElement('div'); block.dataset.testStack = ''; block.style.height = '40px'; document.querySelector('[data-alpha-layer="composer"]')!.prepend(block); });
+  await expect.poll(async () => Math.round(before.height - (await home.boundingBox())!.height)).toBe(40);
+  expect((await tile.boundingBox())!.y).toBeCloseTo(before.tile, 0);
+  expect((await homeUnderDock(page)).under).toEqual([]);
+  await page.evaluate(() => document.querySelector('[data-test-stack]')!.remove());
+  await expect.poll(async () => Math.round((await home.boundingBox())!.height)).toBe(Math.round(before.height));
+});
+
+test.describe('landscape Home', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 915, height: 412 } });
+  for (const scale of [1, 2]) test(`the dock stays beside Home at ${scale * 100}% text`, async ({ page }) => {
+    await openHome(page, '/', scale);
+    await expect(page.locator('html')).toHaveClass(/alpha-landscape/);
+    const at = await homeUnderDock(page);
+    expect(at.under, at.under.join(', ')).toEqual([]);
+    const home = (await page.locator('[data-alpha-layer="home"]').boundingBox())!, bar = (await page.locator('[data-alpha-input-bar]').boundingBox())!;
+    expect(home.x + home.width).toBeLessThanOrEqual(bar.x);
+    // Beside the dock, Home keeps the full height of the screen.
+    expect(home.y + home.height).toBeGreaterThanOrEqual(bar.y + bar.height);
+    await page.locator('[data-alpha-layer="home"]').evaluate(el => { el.scrollTop = el.scrollHeight; });
+    await expect(page.getByRole('button', { name: 'All apps', exact: true })).toBeInViewport({ ratio: 1 });
+    const found = format([...await auditPage(page, { dock: true, clipping: true, overlap: true }), ...await auditTabOrder(page)]).filter(line => !line.startsWith('text-truncated:'));
+    expect(found, found.join('\n')).toEqual([]);
+  });
+});
+
+test.describe('keyboard focus and the floating dock', () => {
+  for (const scale of [1, 2]) test(`every Settings row that takes focus is wholly above the dock at ${scale * 100}% text`, async ({ page }) => {
+    await page.addInitScript(offline);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const scroller = page.locator('[data-alpha-app-scroll="settings"]');
+    await expect(scroller).toBeVisible();
+    if (scale !== 1) await setTextScale(page, scale);
+    // The page is long enough to pass under the dock, so some row would take focus there.
+    expect(await scroller.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+    const dock = page.locator('[data-alpha-layer="pill"] > *, [data-alpha-layer="composer"]').first();
+    await expect(dock).toBeVisible();
+    let visited = 0, moved = false;
+    for (let step = 0; step < 60; step++) {
+      await page.keyboard.press('Tab');
+      const state = await page.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null, scroll = el?.closest<HTMLElement>('[data-alpha-app-scroll="settings"]');
+        if (!el || !scroll) return null;
+        const dock = Array.from(document.querySelectorAll<HTMLElement>('[data-alpha-layer="pill"] > *,[data-alpha-layer="composer"]')).find(item => item.getClientRects().length && !item.closest('[inert]'))!.getBoundingClientRect();
+        const box = el.getBoundingClientRect(), frame = scroll.getBoundingClientRect();
+        const overlapsX = box.right > dock.left && box.left < dock.right;
+        return { name: el.getAttribute('aria-label') || (el.textContent || '').trim().slice(0, 30), covered: overlapsX && box.bottom > dock.top + 1 && box.top < dock.bottom, inside: box.top >= frame.top - 1 && box.bottom <= frame.bottom + 1, scrollTop: scroll.scrollTop };
+      });
+      if (!state) { if (visited) break; continue; }
+      visited++; moved ||= state.scrollTop > 0;
+      expect(state.covered, `${state.name} is under the dock`).toBe(false);
+      expect(state.inside, `${state.name} is outside the scroll area`).toBe(true);
+    }
+    expect(visited).toBeGreaterThan(5);
+    // Rows below the fold were brought up, not skipped.
+    expect(moved).toBe(true);
+  });
+
+  test('a tap on a row beside the dock still opens it', async ({ page }) => {
+    // Pointer focus is not scrolled: moving a pressed row out from under the finger loses the tap.
+    await page.setViewportSize({ width: 412, height: 520 });
+    await page.addInitScript(offline);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const scroller = page.locator('[data-alpha-app-scroll="settings"]');
+    const row = page.getByRole('button', { name: 'Display', exact: true });
+    await row.scrollIntoViewIfNeeded();
+    const dock = (await page.locator('[data-alpha-layer="pill"] > *, [data-alpha-layer="composer"]').first().boundingBox())!;
+    // Put the row so that its lower edge is just inside the dock's band, to the left of the pill.
+    await scroller.evaluate((el, top) => { const target = Array.from(el.querySelectorAll('button')).find(item => (item.getAttribute('aria-label') || item.textContent || '').trim().startsWith('Display'))!; el.scrollTop += target.getBoundingClientRect().bottom - (top + 10); }, dock.y);
+    const box = (await row.boundingBox())!, before = await scroller.evaluate(el => el.scrollTop);
+    await page.mouse.click(box.x + 24, box.y + 8);
+    await expect(page.getByRole('heading', { name: 'Display', exact: true })).toBeVisible();
+    expect(before).toBeGreaterThan(0);
+  });
+});
+
+test.describe('screen titles with a large system font', () => {
+  for (const title of [{ name: 'Photos', steps: ['Photos'] }, { name: 'Camera', steps: ['Camera'] }, { name: 'Password manager', steps: ['Settings', 'Password manager'] }]) {
+    test(`"${title.name}" is shown whole at 200% text`, async ({ page }) => {
+      await page.addInitScript(offline);
+      await page.goto('/');
+      for (const step of title.steps) await page.getByRole('button', { name: step, exact: true }).first().click();
+      const heading = page.locator('[data-alpha-app-header] [data-alpha-app-title]').filter({ hasText: title.name }).filter({ visible: true }).first();
+      await expect(heading).toBeVisible();
+      // At the largest in-app size the header is still one 52px row.
+      await setTextScale(page, 1.5);
+      await expect(page.locator('html')).not.toHaveClass(/alpha-text-xl/);
+      expect(await heading.evaluate(el => Math.round(el.closest('[data-alpha-app-header]')!.getBoundingClientRect().height))).toBe(52);
+      await setTextScale(page, 2);
+      await expect(page.locator('html')).toHaveClass(/alpha-text-xl/);
+      const measured = await heading.evaluate(el => {
+        const header = el.closest('[data-alpha-app-header]')!, box = el.getBoundingClientRect(), frame = header.getBoundingClientRect();
+        const range = document.createRange(); range.selectNodeContents(el);
+        const ink = Array.from(range.getClientRects()).filter(rect => rect.width > 1);
+        const buttons = Array.from(header.querySelectorAll('button')).filter(button => button.getClientRects().length).map(button => button.getBoundingClientRect());
+        return {
+          cut: el.scrollWidth - el.clientWidth, style: getComputedStyle(el).textOverflow, lines: new Set(ink.map(rect => Math.round(rect.top))).size,
+          inside: ink.every(rect => rect.left >= frame.left - 1 && rect.right <= frame.right + 1 && rect.top >= frame.top - 1 && rect.bottom <= frame.bottom + 1 && rect.left >= box.left - 1 && rect.right <= box.right + 1),
+          overButtons: ink.some(rect => buttons.some(button => Math.min(rect.right, button.right) - Math.max(rect.left, button.left) > 1 && Math.min(rect.bottom, button.bottom) - Math.max(rect.top, button.top) > 1)),
+          smallest: Math.min(...buttons.map(button => Math.min(button.width, button.height))),
+        };
+      });
+      expect(measured.cut).toBeLessThanOrEqual(0);
+      expect(measured.style).toBe('clip');
+      expect(measured.inside).toBe(true);
+      expect(measured.overButtons).toBe(false);
+      expect(measured.lines).toBe(1);
+      // The header's buttons keep their size beside it (24px is the sweep's floor; Photos' view switch is 38px tall at every size).
+      expect(measured.smallest).toBeGreaterThanOrEqual(24);
+      const found = format(await auditPage(page, { clipping: true, overlap: true, dock: true })).filter(line => line.includes('data-alpha-app-title'));
+      expect(found, found.join('\n')).toEqual([]);
+    });
+  }
+
+  test('the Home calendar title is not cut by its own clamp at 200% text', async ({ page }) => {
+    await openHome(page, '/', 2);
+    const title = page.locator('.home-calendar-title');
+    await expect(title).toBeVisible();
+    expect(await title.evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+    const found = format(await auditPage(page, { clipping: true })).filter(line => line.includes('home-calendar-title'));
+    expect(found, found.join('\n')).toEqual([]);
+  });
+});
+
+test.describe('a toast raised while a top-layer dialog is open', () => {
+  /** The phone shell's own toast(), reached through the rendered tree: the call every adapter makes. */
+  const raise = (page: Page, message: string, undo = false) => page.evaluate(({ message, undo }) => {
+    const screen = document.querySelector('[data-screen]') as any;
+    const key = Object.keys(screen).find(name => name.startsWith('__reactFiber$'))!;
+    let fiber = screen[key];
+    while (fiber && !(fiber.stateNode && typeof fiber.stateNode.toast === 'function')) fiber = fiber.return;
+    (window as any).__undone = 0;
+    fiber.stateNode.toast(message, undo ? { undo: () => { (window as any).__undone++; } } : undefined);
+  }, { message, undo });
+  async function openDialog(page: Page) {
+    await page.addInitScript(offline);
+    await page.goto('/');
+    for (const step of ['Notes', 'New note', 'Link source document']) await page.getByRole('button', { name: step, exact: true }).first().click();
+    const dialog = page.locator('dialog[open]');
+    await expect(dialog).toBeVisible();
+    expect(await dialog.evaluate(el => el.matches(':modal'))).toBe(true);
+    return dialog;
+  }
+
+  test('it is drawn above the dialog, inside it, in a live region that was there before the text', async ({ page }) => {
+    const dialog = await openDialog(page);
+    const region = dialog.locator('[data-alpha-dialog-toast]');
+    // Present and empty as soon as the dialog is open.
+    await expect(region).toHaveCount(1);
+    await expect(region).toHaveAttribute('aria-live', 'polite');
+    // Marked like the page's own toast region: a live region with no role of its own.
+    expect(await region.getAttribute('role')).toBeNull();
+    await expect(region).toHaveAttribute('aria-atomic', 'true');
+    await expect(region).toBeEmpty();
+    await raise(page, 'Saved to Notes');
+    await expect(region).toHaveText('Saved to Notes');
+    // The page's own region holds it too, but under the dialog and inert: not what is seen or read.
+    await expect(page.locator('[data-alpha-toast]')).toContainText('Saved to Notes');
+    const measured = await region.evaluate(el => {
+      const body = el.firstElementChild!, box = body.getBoundingClientRect(), screen = document.querySelector('[data-screen]')!.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return { onTop: !!hit && body.contains(hit), inside: box.left >= screen.left && box.right <= screen.right && box.bottom <= screen.bottom && box.top >= screen.top, height: Math.round(box.height), inert: !!el.closest('[inert]'), topLayer: el.matches(':popover-open') };
+    });
+    expect(measured).toEqual({ onTop: true, inside: true, height: 48, inert: false, topLayer: true });
+    // Assistive technology is offered it: the text is in Chromium's accessibility tree once, not ignored.
+    const session = await page.context().newCDPSession(page);
+    await session.send('Accessibility.enable');
+    const { nodes } = await session.send('Accessibility.getFullAXTree') as { nodes: Array<{ ignored?: boolean; role?: { value?: string }; name?: { value?: string } }> };
+    const exposed = nodes.filter(node => !node.ignored);
+    expect(exposed.filter(node => node.role?.value === 'StaticText' && node.name?.value === 'Saved to Notes')).toHaveLength(1);
+    const found = format(await auditPage(page, { dock: true })).filter(line => line.startsWith('toast-'));
+    expect(found, found.join('\n')).toEqual([]);
+    // It leaves when the toast does, and the region stays for the next one.
+    await expect(region).toBeEmpty({ timeout: 5000 });
+    await expect(region).toHaveCount(1);
+  });
+
+  test('Undo works from inside the dialog, and nothing is left behind when the dialog closes', async ({ page }) => {
+    const dialog = await openDialog(page);
+    await raise(page, 'Note deleted', true);
+    const undo = dialog.locator('[data-alpha-dialog-toast]').getByRole('button', { name: 'Undo', exact: true });
+    await expect(undo).toBeVisible();
+    expect((await undo.boundingBox())!.height).toBeGreaterThanOrEqual(40);
+    await undo.click();
+    expect(await page.evaluate(() => (window as any).__undone)).toBe(1);
+    await raise(page, 'Still open');
+    await expect(dialog.locator('[data-alpha-dialog-toast]')).toHaveText('Still open');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('dialog[open]')).toHaveCount(0);
+    await expect(page.locator('[data-alpha-dialog-toast]')).toHaveCount(0);
+    // With no dialog the page's own region is the one on screen again.
+    await raise(page, 'Back on the page');
+    await expect(page.locator('[data-alpha-toast]')).toContainText('Back on the page');
+    const found = format(await auditPage(page, { dock: true })).filter(line => line.startsWith('toast-'));
+    expect(found, found.join('\n')).toEqual([]);
+  });
+});
+
+// The product side of the accessibility click Android delivers (docs/verification.md, round 10).
+// WebView's native click only reaches a node that is enabled with every ancestor enabled, and it
+// arrives in the page as pointerdown, mousedown, pointerup, mouseup and click on the element with
+// no pointer travel. Chromium's desktop tree and synthetic events stand in for WebView here; the
+// native delivery itself is AccessibilityInstrumentedTest on an emulator.
+for (const shell of HOME_SHELLS) test(`${shell.name}: the notifications handle is an enabled button under enabled ancestors, and an accessibility click's events open the panel`, async ({ page }) => {
+  await page.addInitScript(offline);
+  await page.goto(shell.url);
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+  const session = await page.context().newCDPSession(page);
+  await session.send('Accessibility.enable');
+  type Node = { nodeId: string; parentId?: string; ignored?: boolean; role?: { value?: string }; name?: { value?: string }; properties?: Array<{ name: string; value: { value?: unknown } }> };
+  const { nodes } = await session.send('Accessibility.getFullAXTree') as { nodes: Node[] };
+  const byId = new Map(nodes.map(node => [node.nodeId, node]));
+  const handle = nodes.find(node => !node.ignored && node.role?.value === 'button' && node.name?.value === 'Open notifications');
+  expect(handle).toBeTruthy();
+  const restricted: string[] = [];
+  for (let node: Node | undefined = handle; node; node = node.parentId ? byId.get(node.parentId) : undefined)
+    for (const property of node.properties || []) if (['disabled', 'readonly'].includes(property.name) && property.value.value) restricted.push(`${node.role?.value}:${property.name}`);
+  expect(restricted).toEqual([]);
+  expect(handle!.properties?.find(property => property.name === 'focusable')?.value.value).toBe(true);
+  const seen = await page.evaluate(() => {
+    const target = document.querySelector<HTMLElement>('[data-alpha-shade-handle]')!, log: string[] = [];
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) document.addEventListener(type, event => { if (event.target === target) log.push(type); }, true);
+    target.focus();
+    const fire = (type: string, Kind: typeof MouseEvent) => target.isConnected && target.dispatchEvent(new Kind(type, { bubbles: true, cancelable: true, composed: true, view: window }));
+    fire('pointerdown', PointerEvent); fire('mousedown', MouseEvent); fire('pointerup', PointerEvent); fire('mouseup', MouseEvent); fire('click', MouseEvent);
+    return log;
+  });
+  // The handle is still the same element when the click arrives: nothing re-renders it on pointerdown.
+  expect(seen).toEqual(['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']);
+  await expect(page.locator('[data-alpha-layer="shade"]')).toHaveAttribute('aria-hidden', 'false');
 });

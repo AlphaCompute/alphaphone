@@ -1424,6 +1424,7 @@
       <sc-if value="{{browser.openFind}}"><button class="tap" aria-label="Find in page" onClick="{{browser.openFind}}" style="min-height:50px;border-radius:18px;display:flex;align-items:center;gap:14px;padding:0 14px;text-align:left;font-size:15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.search}}"></path></svg>Find in page</button></sc-if>
       <sc-if value="{{browser.nativeControls}}"><button class="tap" aria-label="Ask about page" onClick="{{browser.askPage}}" style="min-height:50px;border-radius:18px;padding:0 14px;text-align:left;font-size:15px">Ask about page</button></sc-if>
       <button class="tap" aria-label="Read aloud" onClick="{{browser.readAloud}}" style="height: 50px; border-radius: 18px; display: flex; align-items: center; gap: 14px; padding: 0 14px; font-size: 15px"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.wave}}"></path></svg>Read aloud</button>
+      <sc-if value="{{browser.readingUnavailable}}"><p role="note" aria-label="Page reading unavailable" data-alpha-reading-unavailable style="margin: 0; padding: 6px 14px 12px; font-size: 13px; line-height: 1.4; color: var(--mut)">{{browser.readingNote}}</p></sc-if>
     </div>
     </div>
   </sc-if>
@@ -1549,7 +1550,7 @@
   </div>
 
   <sc-if value="{{camera.hasSaid}}">
-    <button class="drop" aria-label="Dismiss" onClick="{{camera.clearSaid}}" style="position: absolute; left: 16px; right: 16px; top: 108px; z-index: 3; display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 22px; background: rgba(0,0,0,.62); color: #ffffff; text-align: left">
+    <button class="drop" data-alpha-camera="said" aria-label="Dismiss" onClick="{{camera.clearSaid}}" style="position: absolute; left: 16px; right: 16px; top: 108px; z-index: 3; display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 22px; background: rgba(0,0,0,.62); color: #ffffff; text-align: left">
       <span style="width: 26px; height: 26px; border-radius: 13px; background: var(--acc); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 16px"><span class="alpha-compute-mark" aria-hidden="true"></span></span>
       <span style="font-size: 14.5px; line-height: 1.4">{{camera.said}}</span>
     </button>
@@ -3822,10 +3823,10 @@
               </sc-if>
 
               <sc-if value="{{r.kInfo}}">
-                <div style="display: flex; align-items: center; gap: 14px; padding: 8px 18px; min-height: 52px; box-sizing: border-box">
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; padding: 8px 18px; min-height: 52px; box-sizing: border-box">
                   <sc-if value="{{r.hasIcon}}"><svg class="i" viewBox="0 0 24 24"><path d="{{r.d}}"></path></svg></sc-if>
-                  <span style="flex-grow: 1; font-size: 16px">{{r.label}}</span>
-                  <span style="font-size: 14px; color: var(--mut); text-align: right">{{r.val}}</span>
+                  <span style="flex: 1 1 auto; min-width: 0; font-size: 16px; overflow-wrap: anywhere">{{r.label}}</span>
+                  <span style="flex: 0 1 auto; min-width: 0; margin-left: auto; font-size: 14px; color: var(--mut); text-align: right; overflow-wrap: anywhere">{{r.val}}</span>
                 </div>
               </sc-if>
 

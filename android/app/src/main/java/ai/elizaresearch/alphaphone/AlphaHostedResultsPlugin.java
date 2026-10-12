@@ -56,6 +56,11 @@ public class AlphaHostedResultsPlugin extends Plugin {
   String id=call.getString("id");if(!WorkflowNoticeDelivery.approvalId(id))throw new IllegalArgumentException();
   WorkflowNoticeTapsFactory.delivery(getContext()).withdrawApproval(WorkflowNoticeTapsFactory.create(getContext()),id,System.currentTimeMillis());call.resolve();
  }catch(Exception error){call.reject("Approval notice could not be withdrawn; it expires with the approval");}});}
+ /** The connected owner changed: approval notices posted for any other owner are withdrawn and never reposted. Only the owner ID crosses the bridge. */
+ @PluginMethod public void withdrawOtherOwnerApprovalNotices(PluginCall call){submit(call,()->{try{
+  int withdrawn=WorkflowNoticeTapsFactory.delivery(getContext()).withdrawOtherOwners(WorkflowNoticeTapsFactory.create(getContext()),call.getString("ownerId"),System.currentTimeMillis());
+  JSObject out=new JSObject();out.put("withdrawn",withdrawn);call.resolve(out);
+ }catch(Exception error){call.reject("Another owner's approval notices could not be withdrawn; they expire with their approvals");}});}
  private static volatile String pendingRenewal;
  /** A Renew tap only opens the review for that source; it is consumed once and never renews by itself. */
  @PluginMethod public void pendingSourceRenewal(PluginCall call){String id=pendingRenewal;pendingRenewal=null;JSObject out=new JSObject();if(id!=null)out.put("sourceId",id);call.resolve(out);}
@@ -68,7 +73,9 @@ public class AlphaHostedResultsPlugin extends Plugin {
  @PluginMethod public void pendingResult(PluginCall call){submit(call,()->{try{call.resolve(new JSObject(notices().peek().toString()));}catch(Exception error){call.reject("Saved result link unavailable");}});}
  @PluginMethod public void consumeResult(PluginCall call){submit(call,()->{try{notices().consume(call.getString("token",""));call.resolve();}catch(Exception error){call.reject("Result link changed");}});}
  @PluginMethod public void status(PluginCall call){try{JSObject out=new JSObject(HostedDelivery.get(getContext()).status().toString());out.put("enabled",enabled());call.resolve(out);}catch(Exception error){call.reject("Result status unavailable");}}
- @PluginMethod public void enable(PluginCall call){if(Build.VERSION.SDK_INT>=33&&getPermissionState("notifications")!=PermissionState.GRANTED){requestPermissionForAlias("notifications",call,"permissionResult");return;}Intent settings=new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getContext().getPackageName()).putExtra(Settings.EXTRA_CHANNEL_ID,CHANNEL);getActivity().startActivity(settings);status(call);}
+ @PluginMethod public void enable(PluginCall call){if(Build.VERSION.SDK_INT>=33&&getPermissionState("notifications")!=PermissionState.GRANTED){LateLaunch.ask(call,()->requestPermissionForAlias("notifications",call,"permissionResult"));return;}Intent settings=new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getContext().getPackageName()).putExtra(Settings.EXTRA_CHANNEL_ID,CHANNEL);try{getActivity().startActivity(settings);}catch(RuntimeException unavailable){call.reject("Android notification settings are unavailable");return;}status(call);}
  @PermissionCallback private void permissionResult(PluginCall call){status(call);}
+ /** Capacitor's own permission request launches through the activity; see {@link LateLaunch}. */
+ @Override @PluginMethod public void requestPermissions(PluginCall call){LateLaunch.ask(call,()->super.requestPermissions(call));}
  @Override protected void handleOnDestroy(){io.shutdown();}
 }

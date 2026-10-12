@@ -84,7 +84,7 @@ test('preflight rejects an unpinned checkout and android:build stops before sync
   f.write('upstream.lock.json', JSON.stringify({commit: 'f'.repeat(40)}));
   assert.match(checkoutProblems(f.root)[0], /vendor\/eliza is at .*pins f{40}\. Run: git submodule update --init vendor\/eliza/);
   // The real entry point exits with status 2 and the guidance, without starting the build.
-  for (const file of ['build-android.mjs', 'android-build-preflight.mjs', 'stage-embedding-host.mjs', 'toolchain.mjs', 'copy-file-clone.mjs'])
+  for (const file of ['build-android.mjs', 'android-build-preflight.mjs', 'stage-embedding-host.mjs', 'build-embedding-host.mjs', 'toolchain.mjs', 'copy-file-clone.mjs'])
     f.write('scripts/' + file, read('scripts/' + file));
   const result = spawnSync(process.execPath, ['scripts/build-android.mjs'], {cwd: f.root, encoding: 'utf8'});
   assert.equal(result.status, 2, result.stderr);
@@ -125,22 +125,31 @@ test('android:build:local builds the workflow worker before staging and stages b
   const chain = scripts['android:build:local'].split('&&').map(step => step.trim());
   assert.deepEqual(chain, [
     'node scripts/android-build-preflight.mjs --before-prepare',
+    // Before the long preparation: it either has the reviewed libraries, reproduces them, or
+    // stops in under a second naming the person who must supply them.
+    'npm run agent:build-embedding-host',
     'npm run agent:prepare',
     'npm run agent:build-workflow-worker',
     'npm run agent:stage-android',
+    // The shipped notices must list the staged runtime, or verify-apks records the releases
+    // distributable:false ("notices lack the packaged runtime"). It rewrites the tracked
+    // notices in the working tree for this build; that change is not committed.
+    'npm run licenses:packaged-runtime',
     'npm run android:build',
   ]);
+  assert.equal(scripts['licenses:packaged-runtime'], 'node scripts/generate-licenses.mjs --packaged-runtime');
   for (const step of chain.slice(1)) assert.ok(scripts[step.replace('npm run ', '')], step);
   // The chain ends in the strict build: no developer override may be baked into it.
   assert.doesNotMatch(scripts['android:build:local'], /--allow-unpackaged-runtime|--allow-unqualified-runtime|--test-mocks|--skip-instrumentation/);
   assert.equal(scripts['android:build'], 'node scripts/build-android.mjs');
+  assert.equal(scripts['agent:build-embedding-host'], 'node scripts/build-embedding-host.mjs', 'no --candidate or other option in the chain');
   // Staging itself refuses a missing or foreign worker artifact before the long mobile bundle build.
   const stage = read('scripts/stage-local-agent-runtime.mjs');
   assert.ok(stage.indexOf('verifyWorkerArtifact(workerArtifactDirectory(root)') > 0);
   assert.ok(stage.indexOf('verifyWorkerArtifact(workerArtifactDirectory(root)') < stage.indexOf("'build:mobile'"));
 });
 
-test('preflight names the embedding host that no build step produces', t => {
+test('preflight names the embedding host and who must supply it when the build step cannot', t => {
   // Gradle's :app:verifyEmbeddingHost failed a fully prepared and staged checkout 18 seconds into
   // the first assemble task: the reviewed libraries are ignored by Git and staged from a receipt.
   const f = fixture(t);
@@ -151,8 +160,8 @@ test('preflight names the embedding host that no build step produces', t => {
   let problems = preparedRuntimeProblems(f.root, f.source, {embeddingHost: missing});
   assert.equal(problems.length, 1);
   assert.match(problems[0], /qualified embedding host is not staged \(Qualified embedding host library missing or changed: libelizainference\.so; Gradle :app:verifyEmbeddingHost/);
-  assert.match(problems[0], /npm run android:build:local does not produce it/);
-  assert.match(problems[0], /node scripts\/stage-embedding-host\.mjs --receipt/);
+  assert.match(problems[0], /npm run agent:build-embedding-host \(a step of npm run android:build:local\) stages the libraries only when it can reproduce the reviewed bytes/);
+  assert.match(problems[0], /Needs a person: .*node scripts\/stage-embedding-host\.mjs --receipt/);
   // Test-mocks builds run the same strict Gradle check.
   assert.equal(preparedRuntimeProblems(f.root, f.source, {testMocks: true, embeddingHost: missing}).length, 1);
 

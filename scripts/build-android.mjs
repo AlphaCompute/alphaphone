@@ -142,6 +142,16 @@ export function releaseAdmission({ signed, signerSha256, versionCode }, descript
   return { failures, blockers, signerMatches: signed && descriptor.signerSha256 !== "unset" && signerSha256 === descriptor.signerSha256 };
 }
 
+/**
+ * The SBOM written beside distribution APKs: the source pins, the APKs verify-apks just
+ * recorded and, when a resident runtime is staged, that payload. Offline; it lists what was
+ * built and never changes a distributable verdict.
+ */
+export function sbomArgs(outDir, root = process.cwd()) {
+  const staged = fs.existsSync(path.join(root, "android/app/src/main/assets/agent/agent-bundle.js"));
+  return ["--out", path.join(outDir, "sbom", "alphaphone.cdx.json"), "--apks", outDir, ...(staged ? ["--packaged-runtime"] : [])];
+}
+
 async function main() {
   const options = parseBuildArgs(process.argv.slice(2));
   // A partial signing set would silently produce unsigned releases; refuse it up front.
@@ -299,6 +309,7 @@ function build(options, baseEnv, run) {
     ...(options.allowUnpackagedRuntime ? ["--allow-unpackaged-runtime"] : [])]);
   if (options.testMocks)
     console.log("Test-mocks APKs are for mock-isolation instrumentation only and are never distributable.");
+  else run("node", ["scripts/generate-sbom.mjs", ...sbomArgs(outDir, root)]);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

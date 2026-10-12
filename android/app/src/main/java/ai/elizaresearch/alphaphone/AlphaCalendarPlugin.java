@@ -28,6 +28,11 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
  static final CalendarOptionCreationStore OPTION_CREATIONS=new CalendarOptionCreationStore(CONFIGURATION);
  public AlphaCalendarPlugin(){super(CONFIGURATION);}
  private boolean granted(){return getPermissionState("calendar")==PermissionState.GRANTED;}
+ /** Capacitor's own permission request launches through the activity; see {@link LateLaunch}. */
+ @Override @PluginMethod public void requestPermissions(PluginCall call){LateLaunch.ask(call,()->super.requestPermissions(call));}
+ /** The shared calendar plugin asks for its permissions inside these two methods; see {@link LateLaunch}. */
+ @Override @PluginMethod public void requestAccess(PluginCall call){LateLaunch.ask(call,()->super.requestAccess(call));}
+ @Override @PluginMethod public void requestWorkflowReadAccess(PluginCall call){LateLaunch.ask(call,()->super.requestWorkflowReadAccess(call));}
  private static JSObject status(String value){JSObject out=new JSObject();out.put("status",value);return out;}
  private boolean foreground(){return getActivity()!=null&&!getActivity().isFinishing()&&!getActivity().isDestroyed()&&getActivity().hasWindowFocus();}
  /**

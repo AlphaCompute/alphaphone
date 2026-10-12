@@ -9,7 +9,13 @@
  * root element. Layout rules use it where room has to be made: how many columns of labelled
  * tiles fit, and how wide a Home card may grow. The browser build's text size setting rewrites
  * declared sizes (browser/display.ts), which the same probe measures.
+ *
+ * Above the largest in-app size (150%) the root element also carries `alpha-text-xl`: that is
+ * only reached with a large system font, and it is where a screen title no longer fits beside
+ * its header's buttons. phone.css gives the title a row of its own there instead of shortening it.
  */
+export const TEXT_XL_CLASS = 'alpha-text-xl';
+const TEXT_XL_ABOVE = 1.5;
 export const TEXT_SCALE_PROPERTY = '--alpha-text-scale';
 
 export function installTextScale(): () => void {
@@ -28,9 +34,10 @@ export function installTextScale(): () => void {
     if (scale === published) return;
     published = scale;
     document.documentElement.style.setProperty(TEXT_SCALE_PROPERTY, String(scale));
+    document.documentElement.classList.toggle(TEXT_XL_CLASS, scale > TEXT_XL_ABOVE);
   };
   read();
   const observer = new ResizeObserver(read);
   observer.observe(probe);
-  return () => { observer.disconnect(); probe.remove(); document.documentElement.style.removeProperty(TEXT_SCALE_PROPERTY); };
+  return () => { observer.disconnect(); probe.remove(); document.documentElement.style.removeProperty(TEXT_SCALE_PROPERTY); document.documentElement.classList.remove(TEXT_XL_CLASS); };
 }

@@ -58,9 +58,11 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  @Override public void load(){getContext().registerComponentCallbacks(localMemoryCallbacks);capture=new AlphaCloudVoiceCapture(getContext(),v->notifyListeners("recordingStopped",v));File[] stale=getContext().getCacheDir().listFiles((d,n)->n.startsWith("alpha-cloud-tts-"));if(stale!=null)for(File f:stale)f.delete();}
  @PluginMethod public void startRecording(PluginCall call){
   if(isDraining()){call.reject("Voice cancellation is still draining");return;}
-  if(getPermissionState("microphone")!=PermissionState.GRANTED){permissionEpochs.put(call.getCallbackId(),epoch.get());requestPermissionForAlias("microphone",call,"microphonePermission");return;}
+  if(getPermissionState("microphone")!=PermissionState.GRANTED){permissionEpochs.put(call.getCallbackId(),epoch.get());if(!LateLaunch.ask(call,()->requestPermissionForAlias("microphone",call,"microphonePermission")))permissionEpochs.remove(call.getCallbackId());return;}
   start(call,epoch.get());
  }
+ /** Capacitor's own permission request launches through the activity; see {@link LateLaunch}. */
+ @Override @PluginMethod public void requestPermissions(PluginCall call){LateLaunch.ask(call,()->super.requestPermissions(call));}
  @PermissionCallback private void microphonePermission(PluginCall call){Long e=permissionEpochs.remove(call.getCallbackId());if(e==null||e!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}start(call,e);}
  private void start(PluginCall call,long e){main.post(()->{if(destroyed||isDraining()||e!=epoch.get()){call.reject("Recording cancelled");return;}try{int limit=call.getInt("maxDurationMs",59000);if(limit!=29000&&limit!=59000)throw new IllegalArgumentException("Unsupported capture duration");call.resolve(capture.start(limit));}catch(Exception error){call.reject("Microphone could not start");}});}
  @PluginMethod public void getRecordingMetrics(PluginCall call){main.post(()->{try{call.resolve(capture.metrics(call.getString("recordingId")));}catch(RuntimeException error){call.reject("Recording metrics are no longer available");}});}
