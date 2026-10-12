@@ -63,7 +63,8 @@ public class AlphaTelephonyPlugin extends Plugin {
  }
 
  // Capacitor's inherited permission request launches through the activity; answer a late call instead of throwing.
- @Override @PluginMethod public void requestPermissions(PluginCall call){LateLaunch.ask(call,()->super.requestPermissions(call));}
+ @Override @PluginMethod public void requestPermissions(PluginCall call) { if (refused(call)) return; LateLaunch.ask(call, () -> super.requestPermissions(call)); }
+ @Override @PluginMethod public void checkPermissions(PluginCall call) { if (refused(call)) return; super.checkPermissions(call); }
 
  @PluginMethod public void imageCapability(PluginCall call) {
   if (refused(call)) return;
@@ -168,7 +169,12 @@ public class AlphaTelephonyPlugin extends Plugin {
  }
  @ActivityCallback private void roleResult(PluginCall call, ActivityResult result) { if (!refused(call)) call.resolve(statusObject()); }
 
- /** Read-only contact search through the shared upstream reader. Requires contacts access. */
+ /** Read-only contact search through the shared upstream reader. Requires contacts access.
+  * Cost: the pinned upstream ContactsReader walks the whole Contacts table and runs two more
+  * queries per contact before it filters, so `limit` caps the matches, not the scan; a query that
+  * matches nothing costs O(contacts) provider queries on the single reader thread. A
+  * CONTENT_FILTER_URI reader belongs upstream (or in a reviewed patches/eliza patch) before any
+  * consumer searches as the user types. Nothing calls this yet (no view adapter is admitted). */
  @PluginMethod public void searchContacts(PluginCall call) {
   if (refused(call)) return;
   if (getPermissionState("contacts") != PermissionState.GRANTED) { call.reject("Contacts access is not granted", "permission-required"); return; }

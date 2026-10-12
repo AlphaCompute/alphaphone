@@ -57,8 +57,11 @@ test("Inbox uses the single modify step and discards unsent reviews when change 
   const inbox = fs.readFileSync("apps/app/src/prototype/inbox-cloud-adapter.ts", "utf8");
   assert.match(inbox, /chip\('Authorize Gmail changes',\(\)=>void connect\('modify'\)\)/);
   assert.doesNotMatch(inbox, /connect\('(send|drafts|mailbox)'\)/, "no separate per-capability consent prompts");
-  assert.match(inbox, /if\(previous&&grantChange\.withdrawn\.length\)void provider\.withdrawn\(\);/);
+  assert.match(inbox, /if\(previous&&grantChange\.withdrawn\.length\)provider\.withdrawn\(\);/);
+  assert.match(inbox, /const dropped=previous!==selected\|\|\(!!previous&&grantChange\.dropReadCache\);/, "a changed read-cache identity drops what was read");
+  assert.match(inbox, /const key=readKey\(\),cached=key&&inboxPreview\?\.key===key/, "Home shows the preview only under the identity it was read with");
+  // Behaviour: scripts/test-inbox-cloud-flow.mjs (read grant withdrawn) and scripts/test-inbox-grant-withdrawal.mjs.
   const provider = fs.readFileSync("apps/app/src/prototype/inbox-provider-controls.ts", "utf8");
   assert.match(provider, /if\(!gmailInboxAllows\(caps,kind as GmailMailboxAction\)\)/);
-  assert.match(provider, /record\.phase==='review'\|\|record\.phase==='preparing'\)\)await run\(async\(owned,check\)=>\{await owned\.clear\(\)/, "only undispatched reviews are discarded; receipts stay");
+  assert.match(provider, /static async discardUnsent|InboxOperation\.discardUnsent\(secureConnectionStore,pending\.owner,pending\.grant\)/, "the discard is bound to the grant, not the live operation");
 });

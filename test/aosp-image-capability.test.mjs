@@ -62,7 +62,9 @@ test("staging, native check and feature declaration agree", () => {
   const call = stage.indexOf("writeImageCapability(output, identity.appId)");
   assert.ok(call > 0, "stage-aosp writes the image capability");
   assert.ok(call < stage.indexOf("if (production) {"), "development and production images both declare it");
-  assert.ok(stage.indexOf("admitApk(") < call, "test-mocks and non-distributable APKs are refused before staging");
+  const admission = stage.indexOf("\nadmitApk({");
+  assert.ok(admission > stage.indexOf("function admitApk("), "the admission call site, not the definition");
+  assert.ok(admission > 0 && admission < call, "test-mocks and non-distributable APKs are refused before the capability is written");
   const capability = read(`${JAVA}/AlphaImageCapability.java`);
   assert.match(capability, new RegExp(`static final int FEATURE_VERSION = ${IMAGE_FEATURE_VERSION};`));
   assert.match(capability, /return packageName \+ "\.aosp_image";/);
@@ -78,13 +80,22 @@ test("the telephony plugin is registered and answers only on the verified image"
   assert.equal((main.match(/AlphaTelephonyPlugin/g) || []).length, 1, "no unconditional registration");
   assert.doesNotMatch(main, /plugins\.contacts\.ContactsPlugin|MessagesPlugin|PhonePlugin/, "upstream telephony plugins with write paths are not registered");
   const plugin = read(`${JAVA}/AlphaTelephonyPlugin.java`);
-  const methods = [...plugin.matchAll(/@PluginMethod public void (\w+)\(PluginCall call\) \{\n?\s*(.*)/g)];
-  assert.deepEqual(methods.map(m => m[1]).sort(), ["composeSms", "dial", "imageCapability", "requestAccess", "requestRole", "searchContacts", "status"]);
+  // Every @PluginMethod, overrides of Capacitor's inherited permission methods included.
+  const methods = [...plugin.matchAll(/@PluginMethod public void (\w+)\(PluginCall call\)\s*\{\s*([^\n]*)/g)];
+  assert.equal(methods.length, (plugin.match(/@PluginMethod/g) || []).length, "no plugin method escapes the check");
+  assert.deepEqual(methods.map(m => m[1]).sort(), ["checkPermissions", "composeSms", "dial", "imageCapability", "requestAccess", "requestPermissions", "requestRole", "searchContacts", "status"]);
   for (const [, name, first] of methods) assert.match(first, /^if \(!?refused\(call\)\)/, `${name} re-checks the capability before anything else`);
   for (const callback of plugin.matchAll(/@(?:Permission|Activity)Callback private void (\w+)\([^)]*\) \{ (.*)/g)) assert.match(callback[2], /refused\(call\)/, `${callback[1]} re-checks the capability`);
   assert.doesNotMatch(plugin, /SmsManager|sendTextMessage|ACTION_CALL\b|placeCall|WRITE_CONTACTS|insert\(|applyBatch/, "no direct call, send or contact write");
   assert.match(plugin, /Intent\.ACTION_DIAL/); assert.match(plugin, /Intent\.ACTION_SENDTO/);
   assert.match(plugin, /if \(!eligibleFor\(role\)\)/, "a role request Android could only refuse is never shown");
+});
+
+test("the Home Phone shortcut exists only in the launcher build (P-36)", () => {
+  const apps = read(`${JAVA}/DeviceAppsPlugin.java`);
+  assert.match(apps, /if \("dial"\.equals\(role\) && BuildConfig\.IS_LAUNCHER\) return new Intent\(Intent\.ACTION_DIAL, Uri\.parse\("tel:"\)\);/, "standalone resolves no dial hand-off, so the drawer shows no Phone entry");
+  assert.match(apps, /Intent intent = roleIntent\(role\);\n\s*if \(intent == null\) \{ call\.reject/);
+  assert.match(apps, /Intent intent = roleIntent\(call\.getString\("role"\)\);\n\s*if \(intent == null\) \{ call\.reject/, "openDefault is refused too");
 });
 
 test("permissions: standalone has none, the launcher declares read access only, nothing writes", () => {

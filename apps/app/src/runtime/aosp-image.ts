@@ -21,7 +21,9 @@ export const AOSP_IMAGE_VIEWS: readonly string[] = Object.freeze(['phone', 'mess
  * yet: admitting one requires replacing its simulated actions with the AlphaTelephony contract
  * (aosp-telephony.ts) and on-image acceptance. Until then the views stay closed exactly as on a
  * standalone install. The Home drawer's Phone entry is not one of these views: it opens Android's own
- * dialer with no number, the retained stock dialer and emergency path, in every distribution.
+ * dialer with no number, the retained stock dialer and emergency path of the HOME launcher build.
+ * Native code resolves it only in the launcher build (DeviceAppsPlugin.roleIntent), so a standalone
+ * APK shows no Phone entry. Whether a sideloaded launcher on a stock phone keeps it is an open owner question.
  */
 export const ADMITTED_AOSP_VIEW_ADAPTERS: readonly string[] = Object.freeze([]);
 
