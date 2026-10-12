@@ -14,25 +14,22 @@ import static org.junit.Assert.*;
 /**
  * Actual Android notifications -> Android's own shade -> the notification's own tap (#416).
  * Alpha draws no shade of its own: the page has no notification layer, Android shows the notice,
- * and the tap reaches the PendingIntent the notice was posted with. On the launcher flavor the
- * shade is opened from Home's Notifications button; on the standalone app from Android's own
- * global action. Emulator evidence only; not AOSP-image or device acceptance.
+ * and the tap reaches the PendingIntent the notice was posted with. The shade is opened with
+ * Android's own global action on both flavors; the launcher button is SystemShadeInstrumentedTest's.
+ * Emulator evidence only; not AOSP-image or device acceptance.
  */
 @RunWith(AndroidJUnit4.class)
 public class NotificationsInstrumentedTest {
  private void until(String condition)throws Exception{long end=SystemClock.elapsedRealtime()+20000;while(SystemClock.elapsedRealtime()<end){if("true".equals(WebViewTestDriver.evaluate("Boolean("+condition+")")))return;SystemClock.sleep(100);}fail("Notification state: "+condition);}
  private boolean present(NotificationManager manager,String tag,int id){for(android.service.notification.StatusBarNotification row:manager.getActiveNotifications())if(tag.equals(row.getTag())&&row.getId()==id)return true;return false;}
- /** Opens Android's shade from Home: the launcher's button, or Android's own action on standalone. */
+ /**
+  * Opens Android's shade with Android's own global action on both flavors, so notice delivery is
+  * tested independently of Alpha's launcher button (that mechanism is SystemShadeInstrumentedTest's).
+  */
  private void openShade()throws Exception{
   until(AppNavigation.selected("Home"));
   until(AndroidShade.ALPHA_SHADE_ABSENT);
-  if(BuildConfig.IS_LAUNCHER){
-   assertEquals("Launcher Home offers the Notifications button","true",WebViewTestDriver.evaluate(AppNavigation.openNotifications()));
-   assertTrue("Launcher Home's Notifications button opens Android's shade",AndroidShade.waitOpen(5000));
-  }else{
-   assertEquals("The standalone app has no Notifications button","false",WebViewTestDriver.evaluate(AppNavigation.openNotifications()));
-   assertTrue("Android's own action opens its shade",AndroidShade.openWithoutAlpha());
-  }
+  assertTrue("Android's own action opens its shade",AndroidShade.openWithoutAlpha());
   // Still no Alpha panel behind it.
   assertEquals("true",WebViewTestDriver.evaluate(AndroidShade.ALPHA_SHADE_ABSENT));
  }

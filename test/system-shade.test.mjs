@@ -98,3 +98,12 @@ test('the launcher flavor alone requests EXPAND_STATUS_BAR and the plugin report
   assert.match(plugin, /@PluginMethod public void openNotificationShade\(PluginCall call\)\{/);
   assert.match(plugin, /!activity\.hasWindowFocus\(\)\)out\.put\("status","not-in-front"\);\s*else out\.put\("status",SystemShade\.expand\(getContext\(\),BuildConfig\.IS_LAUNCHER\)\);/);
 });
+
+test('an overflowing Home takes only a clearly downward drag at its top from the WebView', () => {
+  assert.equal(m.overflowPullDecision(false, 0, 40), 'release', 'not eligible: scrolled, editable, standalone or covered');
+  assert.equal(m.overflowPullDecision(true, 2, 3), 'wait', 'inside the slop');
+  assert.equal(m.overflowPullDecision(true, 0, m.PULL_SLOP), 'claim');
+  assert.equal(m.overflowPullDecision(true, 3, 20), 'claim', 'a slightly diagonal pull');
+  assert.equal(m.overflowPullDecision(true, 0, -20), 'release', 'upward scrolls Home as usual');
+  assert.equal(m.overflowPullDecision(true, 30, 10), 'release', 'horizontal: a card row or Back');
+});

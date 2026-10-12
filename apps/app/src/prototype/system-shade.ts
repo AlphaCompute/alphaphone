@@ -71,6 +71,23 @@ export function emptyHomeShadePull(context: PullContext, start: PullStart | null
   if (!start || !start.home || start.editable || start.keyboard || start.scrolled) return false;
   return true;
 }
+
+/** Touch slop in canvas pixels before a pull on an overflowing Home is decided. */
+export const PULL_SLOP = 6;
+
+/**
+ * A Home taller than the screen (launcher landscape, large text or display size) leaves vertical
+ * touch to the WebView, which would scroll or overscroll and cancel the pointer stream before the
+ * pull reaches Alpha. At its top such a Home cannot scroll further down, so Alpha may take a
+ * clearly downward drag there for the shade pull without taking any scroll from the person:
+ * 'claim' (prevent the WebView's handling), 'release' (leave the gesture to the WebView for good),
+ * or 'wait' (still inside the slop).
+ */
+export function overflowPullDecision(eligible: boolean, dx: number, dy: number, slop = PULL_SLOP): 'claim' | 'release' | 'wait' {
+  if (!eligible) return 'release';
+  if (Math.abs(dx) < slop && Math.abs(dy) < slop) return 'wait';
+  return dy > 0 && dy > Math.abs(dx) ? 'claim' : 'release';
+}
 // system-shade:end
 
 const EDITABLE = 'input,textarea,select,[contenteditable=""],[contenteditable="true"],[role="textbox"],[role="slider"]';
@@ -100,13 +117,58 @@ export function pullStart(target: EventTarget | null): PullStart | null {
 /**
  * A Home whose content fits gives vertical drags to the page, so a downward pull reaches Alpha as
  * pointer events instead of being taken by the WebView for scrolling or overscroll. A Home that
- * overflows (large text) scrolls normally; its Notifications button stays the way to the shade.
+ * overflows (launcher landscape, large text) scrolls normally; at its top a downward pull on empty
+ * Home is taken over by installOverflowPull instead.
  */
 export function markHomeFits(): void {
   const home = document.querySelector<HTMLElement>('[data-alpha-layer="home"]');
   if (!home) return;
   const fits = home.scrollHeight <= home.clientHeight + 1 ? 'true' : 'false';
   if (home.dataset.alphaHomeFits !== fits) home.dataset.alphaHomeFits = fits;
+}
+
+/**
+ * Takes a downward pull at the top of an overflowing launcher Home away from the WebView, so it
+ * reaches gDown/gUp as an ordinary pointer gesture (overflowPullDecision). Every other touch,
+ * upward scrolling included, is left alone. `eligible` is the shell's pull context check.
+ */
+function installOverflowPull(eligible: () => boolean): () => void {
+  let start: { x: number; y: number; scale: number } | null = null, claimed = false;
+  const touchstart = (event: TouchEvent) => {
+    start = null; claimed = false;
+    if (event.touches.length !== 1) return;
+    const target = event.target instanceof Element ? event.target : null;
+    const home = target?.closest<HTMLElement>('[data-alpha-layer="home"]');
+    if (!home || home.dataset.alphaHomeFits !== 'false' || home.scrollTop > 0 || !eligible()) return;
+    const screen = home.closest('[data-screen]')?.getBoundingClientRect();
+    const scale = screen && screen.width ? screen.width / 412 : 1, touch = event.touches[0];
+    if (screen && (touch.clientY - screen.top) / scale < STATUS_BAND) return;
+    const begin = pullStart(target);
+    if (!begin || !begin.home || begin.editable || begin.keyboard || begin.scrolled) return;
+    start = { x: touch.clientX, y: touch.clientY, scale };
+  };
+  const touchmove = (event: TouchEvent) => {
+    if (!start) return;
+    if (claimed) { if (event.cancelable) event.preventDefault(); return; }
+    const touch = event.touches[0];
+    if (!touch || event.touches.length !== 1) { start = null; return; }
+    const decision = overflowPullDecision(true, (touch.clientX - start.x) / start.scale, (touch.clientY - start.y) / start.scale);
+    if (decision === 'wait') return;
+    if (decision === 'release' || !event.cancelable) { start = null; return; }
+    claimed = true; event.preventDefault();
+  };
+  const end = () => { start = null; claimed = false; };
+  const options: AddEventListenerOptions = { capture: true, passive: false };
+  document.addEventListener('touchstart', touchstart, options);
+  document.addEventListener('touchmove', touchmove, options);
+  document.addEventListener('touchend', end, true);
+  document.addEventListener('touchcancel', end, true);
+  return () => {
+    document.removeEventListener('touchstart', touchstart, options);
+    document.removeEventListener('touchmove', touchmove, options);
+    document.removeEventListener('touchend', end, true);
+    document.removeEventListener('touchcancel', end, true);
+  };
 }
 
 const device = registerPlugin<{ openNotificationShade(): Promise<{ status?: string }> }>('AlphaDevice');
@@ -135,9 +197,12 @@ export function installSystemShade(Component: any, options: { native: boolean })
     this.alphaHomeFits = () => markHomeFits();
     window.addEventListener('resize', this.alphaHomeFits);
     watch(this);
+    // Same rule as the pull itself (emptyHomeShadePull), checked before the drag is known.
+    const self = this;
+    this.alphaOverflowPull = installOverflowPull(() => emptyHomeShadePull(self.pullContext(), { home: true, editable: false, keyboard: false, scrolled: false }, STATUS_BAND, 0, Infinity));
   };
   p.componentDidUpdate = function (...args: unknown[]) { update?.apply(this, args); watch(this); };
-  p.componentWillUnmount = function () { window.removeEventListener('resize', this.alphaHomeFits); this.alphaHomeObserver?.disconnect(); unmount?.call(this); };
+  p.componentWillUnmount = function () { window.removeEventListener('resize', this.alphaHomeFits); this.alphaHomeObserver?.disconnect(); this.alphaOverflowPull?.(); unmount?.call(this); };
   if (!options.native) return;
   p.expandAndroidShade = async function () {
     if (this.alphaShadeAsking) return;

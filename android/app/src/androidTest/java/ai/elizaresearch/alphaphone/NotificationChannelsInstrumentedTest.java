@@ -57,8 +57,8 @@ public final class NotificationChannelsInstrumentedTest {
    manager.notify(id,1,new Notification.Builder(context,id).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText("Synthetic channel recovery body").setContentIntent(tap).setAutoCancel(true).build());
    // The notice is shown and tapped in Android's own shade; Alpha draws none (#416, docs/gesture-zones.md).
    WebViewTestDriver.evaluate(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));until(AndroidShade.ALPHA_SHADE_ABSENT);
-   if(BuildConfig.IS_LAUNCHER){assertEquals("true",WebViewTestDriver.evaluate(AppNavigation.openNotifications()));assertTrue("Launcher Home's button opens Android's shade",AndroidShade.waitOpen(5000));}
-   else assertTrue("Android's own action opens its shade",AndroidShade.openWithoutAlpha());
+   // Android's own action on both flavors: channel recovery does not depend on the launcher button.
+   assertTrue("Android's own action opens its shade",AndroidShade.openWithoutAlpha());
    android.view.accessibility.AccessibilityNodeInfo notice=AndroidShade.waitText(title,10000);assertNotNull("Android's shade shows the recovered channel's notice",notice);assertTrue("The notice row is tappable",AndroidShade.tap(notice));
    for(int i=0;i<100&&java.util.Arrays.stream(manager.getActiveNotifications()).anyMatch(n->id.equals(n.getTag()));i++)SystemClock.sleep(100);
    for(int i=0;i<100&&!delivered.get();i++)SystemClock.sleep(100);assertTrue("Exact owned synthetic notification target received real tap",delivered.get());

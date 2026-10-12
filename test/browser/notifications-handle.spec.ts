@@ -208,3 +208,42 @@ test('the button keeps its target and its whole label at 200% text', async ({ pa
   const found = format(await auditPage(page, { clipping: true, overlap: true })).filter(line => !line.startsWith('text-truncated:'));
   expect(found, found.join('\n')).toEqual([]);
 });
+
+/** A real touch drag in viewport pixels through Chromium's input pipeline, so scrolling and
+ * pointercancel happen as they do for a finger on a phone. */
+async function touchDrag(page: Page, x: number, y: number, dy: number) {
+  const cdp = await page.context().newCDPSession(page);
+  const at = (to: number) => [{ x, y: to }];
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(y) });
+  for (let step = 1; step <= 12; step++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(y + dy * step / 12) }); await page.waitForTimeout(16); }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.detach();
+}
+
+test.describe('launcher Home taller than the screen (landscape)', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 915, height: 412 } });
+
+  test('a downward touch pull at the top of an overflowing Home opens the shade; upward still scrolls', async ({ page }) => {
+    await home(page);
+    const layer = page.locator('[data-alpha-layer="home"]');
+    await expect(layer).toHaveAttribute('data-alpha-home-fits', 'false');
+    expect(await layer.evaluate(element => element.scrollTop)).toBe(0);
+    // Empty Home beside the Notifications button, where vertical touch would scroll Home.
+    const row = (await page.locator('.alpha-shade-row').boundingBox())!, start = { x: row.x + row.width - 12, y: row.y + row.height - 6 };
+    expect(await page.evaluate(({ x, y }) => { const hit = document.elementFromPoint(x, y); return !!hit?.closest('[data-alpha-layer="home"]') && !hit.closest('button,.scr'); }, start)).toBe(true);
+    const icons = (await page.getByRole('button', { name: 'Browser', exact: true }).boundingBox())!;
+    // An upward drag on the app row is ordinary scrolling: Home moves, no shade.
+    await touchDrag(page, icons.x + icons.width / 2, icons.y + icons.height / 2, -160);
+    await expect.poll(() => layer.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    await closed(page, 'upward scroll');
+    // Scrolled away from its top, a downward drag scrolls Home back instead of opening the shade.
+    const scrolled = await layer.evaluate(element => element.scrollTop);
+    await touchDrag(page, icons.x + icons.width / 2, 200, 120);
+    await expect.poll(() => layer.evaluate(element => element.scrollTop)).toBeLessThan(scrolled);
+    await closed(page, 'scrolled Home scrolls back');
+    await layer.evaluate(element => { element.scrollTop = 0; });
+    // At the top, a downward pull on empty Home reaches Alpha and opens the shade.
+    await touchDrag(page, start.x, start.y, 280);
+    await expect(shade(page)).toHaveAttribute('aria-hidden', 'false');
+  });
+});

@@ -51,9 +51,14 @@ of these hold:
 
 On a phone the WebView may take a vertical drag for scrolling before the page sees it. A Home
 whose content fits the screen is marked `data-alpha-home-fits="true"` and gives vertical drags to
-the page (`touch-action: pan-x pinch-zoom`); a Home that overflows, for example at large text,
-scrolls normally and its Notifications button remains the way to the shade. Whether the pull is
-delivered this way on the AOSP image's WebView is not measured.
+the page (`touch-action: pan-x pinch-zoom`). A Home that overflows (launcher landscape, large
+text or display size) scrolls normally; only at its top, where it cannot scroll further down, does
+Alpha take a clearly downward drag on empty Home from the WebView (a non-passive `touchmove` that
+calls `preventDefault`, `overflowPullDecision` in `system-shade.ts`), so that pull reaches Alpha
+too. Upward drags, sideways drags and drags on a Home scrolled away from its top stay the
+WebView's. Chromium's touch pipeline is covered by the landscape case in
+`notifications-handle.spec.ts`; whether the AOSP image's WebView delivers either path is not
+measured.
 
 ## The Notifications button
 
@@ -90,7 +95,7 @@ Android accepted the call.
 | --- | --- | --- |
 | `test/system-shade.test.mjs` | `npm test` | The decision rules for empty Home, the surface choice, the fallback text, the template and model gates, the launcher-only permission and the native outcome mapping (source shape). |
 | `test/gesture-zones-single-instance.test.mjs` | `npm test` | The swipe handler only asks for Android's shade; the development stand-in is gated; no instrumented test still looks for an Alpha panel. |
-| `test/browser/notifications-handle.spec.ts` | `npm run test:browser` | Standalone: no button, no pull opens anything. Launcher (with the development stand-in): the button's name, size and position; tap, Enter, Space, accessibility click, a pull on the button and a pull on empty Home open it; the status bar band, sideways drags, an open sheet, an app view, a focused composer and a scrolled Home do not; the button clears a taller status bar at 360, 412 and 480px; 200% text. |
+| `test/browser/notifications-handle.spec.ts` | `npm run test:browser` | Standalone: no button, no pull opens anything. Launcher (with the development stand-in): the button's name, size and position; tap, Enter, Space, accessibility click, a pull on the button and a pull on empty Home open it; the status bar band, sideways drags, an open sheet, an app view, a focused composer and a scrolled Home do not; in landscape an overflowing Home still scrolls with touch and a downward touch pull at its top opens the stand-in; the button clears a taller status bar at 360, 412 and 480px; 200% text. |
 | `test/browser/settings-truth.production.spec.ts` | `npm run test:browser:production` | The flag-off bundle with a stubbed Android bridge: no Alpha shade, tiles or brightness; the button and an empty-Home pull call `openNotificationShade`; a focused composer does not; every non-opened outcome shows its fallback; the browser build has no shade or button. |
 | `SystemShadeInstrumentedTest` | emulator | Outcome mapping; EXPAND_STATUS_BAR declared and held by the launcher flavor only; launcher Home's request and empty-Home pull open Android's shade, a focused composer does not; standalone never does. Not compiled or run at this source. |
 | `NotificationsInstrumentedTest`, `NotificationChannelsInstrumentedTest` | emulator | A posted notice is found and tapped in Android's shade (opened from the launcher button, or Android's global action on standalone) and its PendingIntent fires; the page has no Alpha shade. Not compiled or run at this source. |

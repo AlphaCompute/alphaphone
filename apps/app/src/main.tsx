@@ -73,6 +73,8 @@ const savedMock = testMocksEnabled && (() => {
 // Resolve mock before mounting any native adapter, including after a cold start.
 // Production builds never admit mock or fixture state, whatever the URL or storage says.
 const mock = testMocksEnabled && (query.get('mode') === 'mock' || savedMock);
+// Android's shade is the notification surface (#416, #417); only the browser development build simulates it.
+const systemShade=shadeSurface({native:isAndroid,simulated:devSurfacesEnabled});
 const fixture = testMocksEnabled && (mock || (devSurfacesEnabled && !isAndroid && query.get('fixture') === '1'));
 const initialTheme = (() => {
   if (testMocksEnabled && (query.has('theme') || fixture)) return query.get('theme') === 'dark' ? 'dark' : 'light';
@@ -96,7 +98,8 @@ if (!fixture) {
   installCalendarEditDraftAdapter(Component, VIEWS);
   installNoteOriginAdapter(Component, VIEWS);
   installPrototypeDataAdapter(Component, VIEWS);
-  installNotificationsAdapter(Component);
+  // Notice rows feed only the development stand-in shade; product builds read no notice list (#416).
+  if(systemShade==='simulated')installNotificationsAdapter(Component);
   installContextSelection(Component);
   installPrototypeVoiceAdapter(Component, VIEWS);
   installNotesDocumentAdapter(Component, VIEWS);
@@ -127,8 +130,6 @@ if(developmentAgentWorkflows){installWorkflowAdapter(Component,VIEWS);installAut
 installSubviewAccessibility(VIEWS);
 installCalendarMonthFocus(Component, VIEWS);
 installChatOverlayMotion(Component);
-// Android's shade is the notification surface (#416, #417); only the browser development build simulates it.
-const systemShade=shadeSurface({native:isAndroid,simulated:devSurfacesEnabled});
 installSystemShade(Component,{native:isAndroid});
 installClockAdapter(Component, VIEWS, { simulated: testMocksEnabled && fixture, browser: !isAndroid });
 // Installed apps come from Android (or the browser device's app list); outermost so its drawer

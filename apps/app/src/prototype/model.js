@@ -5288,6 +5288,8 @@ class Component extends DCLogic {
   openSystemShade() {
     var S = this.S();
     if (S.screen !== "home" || S.view || S.shade) return;
+    // Home reached from the lock-screen camera stays locked: no notifications, from any entry.
+    if (S.secure) return this.toast("Unlock to see notifications");
     if (this.props.systemShade === "android" && this.expandAndroidShade) return this.expandAndroidShade();
     if (this.simulatedShade()) return this.openShade();
     this.toast(shadeFallback("unsupported"));

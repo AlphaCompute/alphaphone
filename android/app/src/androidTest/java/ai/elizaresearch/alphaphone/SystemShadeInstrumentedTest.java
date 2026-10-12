@@ -84,14 +84,16 @@ public class SystemShadeInstrumentedTest {
    assertTrue(device.wait(androidx.test.uiautomator.Until.hasObject(By.pkg(BuildConfig.APPLICATION_ID).depth(0)), 5000));
    until(AppNavigation.selected("Home"));
 
-   // A pull down on empty Home. Only a Home whose content fits hands vertical drags to the page.
-   org.junit.Assume.assumeTrue("Home fits this screen at the current text size",
-     "true".equals(js("document.querySelector('[data-alpha-layer=\"home\"]')?.dataset.alphaHomeFits==='true'")) || !BuildConfig.IS_LAUNCHER);
+   // A pull down on empty Home, whether Home fits the screen (vertical drags go to the page) or
+   // overflows it (Alpha takes a downward drag at Home's top from the WebView). Never skipped:
+   // which case ran is in the assertion message.
+   js("document.querySelector('[data-alpha-layer=\"home\"]').scrollTop=0");
+   String fits = js("document.querySelector('[data-alpha-layer=\"home\"]')?.dataset.alphaHomeFits??'unknown'");
    Rect web = device.findObject(By.clazz("android.webkit.WebView")).getVisibleBounds();
    int x = web.centerX(), y = web.top + Math.round(web.height() * 0.45f);
    device.swipe(x, y, x, y + web.height() / 3, 20);
    if (BuildConfig.IS_LAUNCHER) {
-    assertTrue("A pull down on empty launcher Home opens Android's shade", AndroidShade.waitOpen(5000));
+    assertTrue("A pull down on empty launcher Home opens Android's shade (Home fits: " + fits + ")", AndroidShade.waitOpen(5000));
     assertEquals("No Alpha panel behind it", "true", js(AndroidShade.ALPHA_SHADE_ABSENT));
     AndroidShade.collapse();
     until(AppNavigation.selected("Home"));
