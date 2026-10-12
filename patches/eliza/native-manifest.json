@@ -13,6 +13,35 @@
           "afterSha256": "f301f177f5172cbd5ee41e8b8eb3883447e7054d6f1df292630f8b2a6176add1"
         }
       ]
+    },
+    {
+      "file": "reminder-deletion-window.patch",
+      "sha256": "b380feaec33b2a80c05a3fee0e0205b4e783f0620b6f40a4ea3b2372c9d0317c",
+      "module": "plugins/plugin-native-reminders/android",
+      "targets": [
+        {
+          "path": "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderStore.java",
+          "beforeSha256": "095f7805b1ded1f2b6087185914b9dabb67c1cdc6341c8716f34bb4f9d6cc371",
+          "afterSha256": "3dd2029d13182b39b3b9d4acd9f99a033b150e756de49c1a3105f453aa8066ec"
+        },
+        {
+          "path": "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderEngine.java",
+          "beforeSha256": "b05bab06a739a29367551f0a58091c5f14201b28eb25fd492c4bd7845c98dfd3",
+          "afterSha256": "fbc158d4c21aa41ee89265081ba10646238d36c1c1e6188e1b541395be363be4"
+        }
+      ]
+    },
+    {
+      "file": "calendar-deletion-window.patch",
+      "sha256": "3edf29e21103e122e236c5eb06f12411ef5ba3b09c885fc6f83b367098405674",
+      "module": "plugins/plugin-native-calendar/android",
+      "targets": [
+        {
+          "path": "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarPlugin.java",
+          "beforeSha256": "f3e9b0e7f4accbeeca96a97f916a141ef722f17b773c7997fb80f2867418cc05",
+          "afterSha256": "83c66d1af32ac6bbbefcd21d208fd2f115696cab57aeab25607d745282dd483d"
+        }
+      ]
     }
   ]
 }
