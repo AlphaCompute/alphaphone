@@ -23,6 +23,7 @@ import {installNoteSourceAdapter} from './prototype/note-source-adapter';
 import { installNotesDocumentAdapter } from './prototype/notes-document-adapter';
 import { installPrototypeMapsAdapter } from './prototype/maps-adapter';
 import { installNotificationsAdapter } from './prototype/notifications-adapter';
+import { installSystemShade, shadeSurface } from './prototype/system-shade';
 import { installContextSelection } from './prototype/context-selection';
 import { installWorkflowAdapter } from './prototype/workflow-adapter';
 import { installAutomationsAdapter } from './prototype/automations-adapter';
@@ -72,6 +73,8 @@ const savedMock = testMocksEnabled && (() => {
 // Resolve mock before mounting any native adapter, including after a cold start.
 // Production builds never admit mock or fixture state, whatever the URL or storage says.
 const mock = testMocksEnabled && (query.get('mode') === 'mock' || savedMock);
+// Android's shade is the notification surface (#416, #417); only the browser development build simulates it.
+const systemShade=shadeSurface({native:isAndroid,simulated:devSurfacesEnabled});
 const fixture = testMocksEnabled && (mock || (devSurfacesEnabled && !isAndroid && query.get('fixture') === '1'));
 const initialTheme = (() => {
   if (testMocksEnabled && (query.has('theme') || fixture)) return query.get('theme') === 'dark' ? 'dark' : 'light';
@@ -95,7 +98,8 @@ if (!fixture) {
   installCalendarEditDraftAdapter(Component, VIEWS);
   installNoteOriginAdapter(Component, VIEWS);
   installPrototypeDataAdapter(Component, VIEWS);
-  installNotificationsAdapter(Component);
+  // Notice rows feed only the development stand-in shade; product builds read no notice list (#416).
+  if(systemShade==='simulated')installNotificationsAdapter(Component);
   installContextSelection(Component);
   installPrototypeVoiceAdapter(Component, VIEWS);
   installNotesDocumentAdapter(Component, VIEWS);
@@ -126,6 +130,7 @@ if(developmentAgentWorkflows){installWorkflowAdapter(Component,VIEWS);installAut
 installSubviewAccessibility(VIEWS);
 installCalendarMonthFocus(Component, VIEWS);
 installChatOverlayMotion(Component);
+installSystemShade(Component,{native:isAndroid});
 installClockAdapter(Component, VIEWS, { simulated: testMocksEnabled && fixture, browser: !isAndroid });
 // Installed apps come from Android (or the browser device's app list); outermost so its drawer
 // state composes with every Home binding above.
@@ -210,7 +215,7 @@ function Phone() {
     else if(action==='background'){shell.leave();shell.setState({screen:'off',voice:'off',chat:'input',shade:false});document.documentElement.dataset.devBackground='true';window.dispatchEvent(new Event('blur'));}
     else if(action==='resume'){delete document.documentElement.dataset.devBackground;shell.unlock();window.dispatchEvent(new Event('focus'));}
     if(['power','unlock','boot','background','resume'].includes(action))window.dispatchEvent(new Event('alpha:device-state'));
-  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component configureChatPull={(surface:{input:boolean;scale:number})=>setPullSurface(current=>current.input===surface.input&&current.scale===surface.scale?current:surface)} chatPullBinding={chatPullBinding} phoneSurface assistantSurface={assistantSurface} onCloseAssistant={closeAssistant} onReopenStartupAccess={isAndroid && !fixture && !assistantSurface ? reopenStartupPermissions : undefined} systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
+  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component configureChatPull={(surface:{input:boolean;scale:number})=>setPullSurface(current=>current.input===surface.input&&current.scale===surface.scale?current:surface)} chatPullBinding={chatPullBinding} phoneSurface assistantSurface={assistantSurface} onCloseAssistant={closeAssistant} onReopenStartupAccess={isAndroid && !fixture && !assistantSurface ? reopenStartupPermissions : undefined} systemShell={launcherPresentation} systemShade={systemShade} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
 {!fixture && <><ConnectionChooser />{!assistantSurface && <><HostedDigestPanel />{!connection.open && <StartupPermissions />}</>}</>}</>;
 }
 /** Android's locale and 24-hour setting; WebView Intl alone does not follow the latter. */
