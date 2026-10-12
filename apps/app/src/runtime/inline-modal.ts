@@ -58,3 +58,48 @@ export function createInlineModal(close:()=>void,returnFocus?:()=>HTMLElement|nu
  };
  return {ref};
 }
+
+/** The open showModal() dialog that is on top, or null. */
+function topModal():HTMLDialogElement|null {
+ let open:HTMLDialogElement[];
+ try{open=Array.from(document.querySelectorAll<HTMLDialogElement>('dialog:modal'));}
+ catch{open=Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]'));}
+ return open.at(-1)||null;
+}
+/**
+ * A showModal() dialog makes everything outside the top layer inert, including the phone's toast
+ * region, so a status raised while one is open is neither seen nor announced. While a modal dialog
+ * is open, each new toast is repeated in a polite live region inside that dialog. The region is
+ * added empty first and filled on the next frame, so screen readers treat the text as an update.
+ */
+export function installModalToastMirror():()=>void {
+ let region:HTMLElement|null=null,source:HTMLElement|null=null,last='',frame=0;
+ const mirror=()=>{
+  // The toast's Undo button stays outside the dialog; only its message is repeated.
+  const text=(source?.querySelector('span')?.textContent||'').replace(/\s+/g,' ').trim();
+  if(text===last)return;
+  last=text;
+  const dialog=topModal();
+  if(!dialog||!text)return;
+  if(!region||region.parentElement!==dialog){
+   region?.remove();
+   region=document.createElement('div');region.dataset.alphaToastMirror='';
+   region.setAttribute('role','status');region.setAttribute('aria-live','polite');region.setAttribute('aria-atomic','true');
+   region.style.cssText='position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap';
+   dialog.append(region);
+  }
+  const target=region;cancelAnimationFrame(frame);
+  frame=requestAnimationFrame(()=>{if(target.isConnected)target.textContent=text;});
+ };
+ const watch=new MutationObserver(mirror);
+ // The toast region is rendered with the phone; find it again if the phone remounts.
+ const attach=()=>{
+  if(source?.isConnected)return;
+  watch.disconnect();last='';
+  source=document.querySelector<HTMLElement>('[data-alpha-toast]');
+  if(source)watch.observe(source,{childList:true,subtree:true,characterData:true});
+ };
+ const root=new MutationObserver(attach);root.observe(document.body,{childList:true,subtree:true});
+ attach();
+ return ()=>{root.disconnect();watch.disconnect();cancelAnimationFrame(frame);region?.remove();region=null;source=null;};
+}

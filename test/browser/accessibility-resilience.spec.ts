@@ -233,6 +233,33 @@ test.describe('toast status messages', () => {
     expect(await region.evaluate(el => !!el.closest('[inert],[aria-hidden="true"]'))).toBe(false);
     expect(await page.getByRole('button', { name: 'Tabs', exact: true }).count()).toBe(0);
   });
+
+  test('a toast raised while a top-layer dialog is open is announced inside that dialog', async ({ page }) => {
+    await page.addInitScript(offline);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Browser', exact: true }).click();
+    await page.getByRole('button', { name: 'Menu', exact: true }).click();
+    const find = page.getByRole('dialog', { name: 'Browser menu', exact: true }).getByRole('button', { name: 'Find in page', exact: true });
+    await expect(find).toBeVisible();
+    // A showModal() dialog opens over the phone: the phone's own toast region is now inert.
+    await page.evaluate(async () => {
+      const { reviewContentQuestion } = await import('/src/browser/content-question.ts');
+      reviewContentQuestion({ name: 'Synthetic excerpt', text: 'Public text', current: () => true, compose: () => {} });
+    });
+    const dialog = page.getByRole('dialog', { name: 'Ask about selected content' });
+    await expect(dialog).toBeVisible();
+    // The app raises a refusal behind the dialog (the menu action runs; only its message matters here).
+    await find.evaluate((el: HTMLElement) => el.click());
+    await expect(page.locator('[data-alpha-toast]')).toContainText('Load a page before finding text in it.');
+    // The accessibility tree, which excludes everything the modal made inert, carries the message.
+    await expect(dialog).toMatchAriaSnapshot(`
+      - status: Load a page before finding text in it.
+    `);
+    expect(await dialog.getByRole('status').filter({ hasText: 'Load a page before finding text in it.' }).evaluate(el => el.getAttribute('aria-live'))).toBe('polite');
+    // Closing the dialog removes its copy with it; the phone's own region was never moved.
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.locator('[data-alpha-toast-mirror]')).toHaveCount(0);
+  });
 });
 
 test.describe('photo editor in landscape', () => {
