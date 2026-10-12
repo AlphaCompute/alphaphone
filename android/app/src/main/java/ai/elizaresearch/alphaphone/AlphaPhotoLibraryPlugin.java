@@ -30,8 +30,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  private boolean locked(){KeyguardManager keyguard=getContext().getSystemService(KeyguardManager.class);UserManager users=getContext().getSystemService(UserManager.class);return keyguard==null||users==null||keyguard.isDeviceLocked()||!users.isUserUnlocked();}
  private JSObject scopeResult(){
   JSObject access=catalog.access(),out=new JSObject();String scope=access.getString("scope");
-  // The model contract expresses a one-kind full grant using its per-kind flags.
-  out.put("scope","partial".equals(scope)?"full":scope);
+  out.put("scope",scope);out.put("imageAccess",access.getString("images"));out.put("videoAccess",access.getString("videos"));
   out.put("images","full".equals(access.getString("images")));out.put("videos","full".equals(access.getString("videos")));
   out.put("canSelectMore",Build.VERSION.SDK_INT>=34);out.put("canEditOthers",Build.VERSION.SDK_INT>=30);out.put("locked",locked());
   try{out.put("version",catalog.fence().cursorIdentity());}catch(Exception unavailable){out.put("version","");}return out;

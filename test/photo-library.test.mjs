@@ -256,3 +256,10 @@ test('volume-qualified media identities and provider revisions survive the agent
  assert.equal(m.parsePage({...page([]),items:[native],next:'12345678-1234-1234-1234-123456789012'}).items.length,1);
  const catalog=new m.LibraryCatalog();catalog.apply(page([1]),true);catalog.observeScope(scope({locked:true}));assert.equal(catalog.items.length,0);
 });
+
+test('mixed full and selected media grants are not represented as full access',()=>{
+ const mixed=m.parseScope(scope({scope:'partial',imageAccess:'full',videoAccess:'selected',videos:false}));
+ assert.equal(mixed.scope,'partial');assert.equal(m.scopePresentation(mixed).label,'Mixed access');
+ assert.match(m.scopePresentation(mixed).detail,/Videos: selected/);
+ assert.equal(m.validateLibraryResult({type:'photo_library_search'},{kind:'photo_library_search',scope:'partial',items:[],more:false}).scope,'partial');
+});
