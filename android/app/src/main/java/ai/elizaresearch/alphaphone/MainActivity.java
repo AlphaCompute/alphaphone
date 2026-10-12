@@ -132,7 +132,9 @@ public class MainActivity extends BridgeActivity {
   try { return intent.getBooleanExtra(EXTRA_FRONT_START, false); }
   catch (RuntimeException foreign) { return false; }
  }
- @Override protected void load() { if (!handedOff) super.load(); }
+ /** True while an interrupted "Reset Alpha data" finishes; this instance shows only a notice. */
+ private boolean resetPending = false;
+ @Override protected void load() { if (!handedOff && !resetPending) super.load(); }
  private void handOff(MainActivity live) {
   boolean home = isHomeIntent(getIntent());
   boolean sameTask = live.getTaskId() == getTaskId();
@@ -191,6 +193,19 @@ public class MainActivity extends BridgeActivity {
  }
  @Override public void onCreate(Bundle state) {
   SplashScreen.installSplashScreen(this);
+  if (AlphaDataReset.blocked(this)) {
+   // A reset is finishing: no plugins, bridge page or renderer storage may start before it ends.
+   // load() loads nothing, so the WebView stays blank; the notice replaces it on screen.
+   resetPending = true;
+   super.onCreate(null);
+   android.widget.TextView notice = new android.widget.TextView(this);
+   notice.setText("Finishing Alpha data reset. Alpha closes when it is done; open it again to start fresh.");
+   notice.setPadding(48, 48, 48, 48);
+   notice.setTextSize(18);
+   setContentView(notice);
+   AlphaDataReset.resumeIfPending(this);
+   return;
+  }
   MainActivity live = BuildConfig.IS_LAUNCHER && !isAssistantSurface() ? liveInstance() : null;
   // An instance our own front start made always finishes. Any other start is handed to the live
   // instance, unless the front start has already been seen to miss it in this process.
@@ -233,6 +248,7 @@ public class MainActivity extends BridgeActivity {
   registerPlugin(AlphaVoiceCloudPlugin.class);
   registerPlugin(AlphaNoteAudioPlugin.class);
   registerPlugin(AlphaNoteDocumentsPlugin.class);
+  registerPlugin(AlphaDataResetPlugin.class);
   registerPlugin(AlphaNotificationsPlugin.class);
   registerPlugin(AlphaHostedResultsPlugin.class);
   registerPlugin(ai.eliza.plugins.passwords.PasswordsPlugin.class);

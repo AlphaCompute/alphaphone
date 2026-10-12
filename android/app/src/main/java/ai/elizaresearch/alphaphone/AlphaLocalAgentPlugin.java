@@ -456,6 +456,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  @PluginMethod public void start(PluginCall call) {
   String requestId=call.getString("requestId");
   if(requestId!=null&&!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
+  if(AlphaDataReset.blocked(getContext())){call.reject("Alpha data is being reset. The agent stays stopped.","ALPHA_DATA_RESET");return;}
   try {
    if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
    final AlphaCredentialStore providerStore=new AlphaCredentialStore(getContext());
@@ -479,6 +480,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
      if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
      if(observedEpoch!=lifecycleEpoch)continue;
      if(disposed){call.reject("Local agent bridge is closed.");return;}
+     // Rechecked under the lifecycle lock: a reset that began after the first check wins.
+     if(AlphaDataReset.blocked(getContext())){call.reject("Alpha data is being reset. The agent stays stopped.","ALPHA_DATA_RESET");return;}
      if(credentialMutationEpoch>=0){call.reject("Local provider is changing; wait before starting.");return;}
      if(credentialShutdownRequest!=-1&&(credentialShutdownRequest<0||!ElizaAgentService.isCredentialShutdownConfirmed(credentialShutdownRequest))){call.reject("Provider shutdown is unconfirmed; check the local agent before starting.");return;}
      if(stopping&&shutdownConfirmed(nativeState))stopping=false;
@@ -582,6 +585,22 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    }
    call.reject("Local runtime changed while checking status; check again.");
   }catch(Exception error){call.reject("Local runtime status unavailable.");}
+ }
+ /**
+  * Reset Alpha data: retire every surface's work, refuse further starts in this process and wait for
+  * confirmed native shutdown. Throws when shutdown is not confirmed within the deadline.
+  */
+ static void stopForReset(Context context) throws Exception {
+  synchronized(lifecycleLock){
+   startRequestId=null;startOwnsLaunch=false;
+   invalidateCalls();++lifecycleEpoch;accepting=false;stopping=true;clearEnrollment();
+   ElizaAgentService.stop(context);
+  }
+  long deadline=android.os.SystemClock.elapsedRealtime()+15000;
+  while(!shutdownConfirmed(ElizaAgentService.getLocalAgentBootState(context))){
+   if(android.os.SystemClock.elapsedRealtime()>=deadline)throw new IllegalStateException("Native shutdown unconfirmed");
+   Thread.sleep(50);
+  }
  }
  @PluginMethod public void stop(PluginCall call) {
   synchronized(lifecycleLock){
