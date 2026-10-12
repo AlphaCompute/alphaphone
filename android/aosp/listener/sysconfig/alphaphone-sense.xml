@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+ Alpha always-on listener system configuration.
+ - Installed for the system (primary) user only: no secondary, guest or work-profile listener.
+ - Only Alpha (status/pause through the signature-protected provider) and SystemUI (Quick Settings
+   tile) may bind to or call into the listener.
+ No power-save or background-restriction exemption is granted.
+-->
+<config>
+    <install-in-user-type package="ai.elizaresearch.alphaphone.sense">
+        <install-in user-type="android.os.usertype.full.SYSTEM" />
+    </install-in-user-type>
+    <allow-association target="ai.elizaresearch.alphaphone.sense" allowed="ai.elizaresearch.alphaphone" />
+    <allow-association target="ai.elizaresearch.alphaphone.sense" allowed="com.android.systemui" />
+</config>

@@ -6,6 +6,7 @@ import { androidEnv, tool } from "./toolchain.mjs";
 import { clockProductRequirement } from "./aosp-clock-contract.mjs";
 import { provisioningComponents, writeProvisioningOverlay } from "./aosp-provisioning-overlay.mjs";
 import { releaseBlockers } from "./release-blockers.mjs";
+import { stageListener } from "./aosp-listener.mjs";
 
 /**
  * Refuse inputs that must never reach an image: anything from the separate
@@ -64,12 +65,12 @@ const get = (key) => {
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--development" || args[i] === "--production") continue;
   if (
-    !["--apk", "--output", "--descriptor", "--apk-manifest"].includes(args[i]) ||
+    !["--apk", "--output", "--descriptor", "--apk-manifest", "--listener-apk"].includes(args[i]) ||
     !args[i + 1] ||
     args[i + 1].startsWith("--")
   )
     throw new Error(
-      "Use --apk FILE --output NEW_DIR [--descriptor FILE [--production] | --development] [--apk-manifest FILE]",
+      "Use --apk FILE --output NEW_DIR [--descriptor FILE [--production] | --development] [--apk-manifest FILE] [--listener-apk FILE]",
     );
   i++;
 }
@@ -79,6 +80,10 @@ const development = args.includes("--development");
 // refused until a signed, PACKAGED, qualified release APK exists.
 const production = args.includes("--production");
 if (production && development) throw new Error("--production and --development are exclusive");
+// The always-on listener is part of the AOSP MVP (issue #424): production images must include it.
+const listenerApk = get("--listener-apk");
+if (production && !listenerApk)
+  throw new Error("Production staging requires --listener-apk (the always-on listener built by ./gradlew :sense:assembleRelease).");
 const apk = get("--apk");
 if (!apk) throw new Error("Supply --apk PATH to a signed launcher APK.");
 const identity = JSON.parse(fs.readFileSync("app.config.json"));
@@ -155,6 +160,23 @@ if (production) {
   const components = provisioningComponents(tree, identity.appId);
   writeProvisioningOverlay(output, identity.appId, components);
   console.log(`Provisioning overlay: HOME ${components.home}, assistant ${identity.appId}, Autofill ${components.autofill}.`);
+}
+if (listenerApk) {
+  // Debuggable listener builds are development-only; a production image takes a release build.
+  if (!development) {
+    let debuggable;
+    try {
+      debuggable = /android:debuggable[^\n]*0xffffffff/.test(execFileSync(tool("aapt"), ["dump", "xmltree", listenerApk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 }));
+    } catch {
+      throw new Error(`Refusing ${listenerApk}: its manifest could not be read.`);
+    }
+    if (debuggable) throw new Error(`Refusing ${listenerApk}: a debuggable listener is staged only with --development.`);
+  }
+  const listenerCert = execFileSync(tool("apksigner"), ["verify", "--print-certs", listenerApk], { encoding: "utf8", env });
+  const listenerSigner = /Signer #1 certificate SHA-256 digest:\s*([a-fA-F0-9]+)/.exec(listenerCert)?.[1]?.toLowerCase();
+  const dump = execFileSync(tool("aapt"), ["dump", "permissions", listenerApk], { encoding: "utf8", env, maxBuffer: 16 << 20 });
+  stageListener({ root: process.cwd(), output, apk: listenerApk, dump, signer: listenerSigner, launcherSigner: String(reviewed.certificateSha256 ?? "").toLowerCase(), appId: identity.appId });
+  console.log(`Always-on listener staged: ${identity.appId}.sense (privileged, no network). Grants, indicator and invocation are image-boot evidence, not staging evidence.`);
 }
 console.log(
   `Add under vendor/${identity.slug.replaceAll("-", "_")} and inherit product.mk from the selected AOSP product. This is staging evidence, not an image boot.`,
