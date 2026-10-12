@@ -73,7 +73,7 @@
       "count": 4,
       "owner": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaBrowserPlugin.java (httpAuth)",
       "binding": "websiteBinding",
-      "fillRoute": "Native username/password fields report the exact HTTPS origin verified for the challenge as web domain/scheme, PasswordFormPolicy.TOP_ORIGIN_EXTRA and PasswordAutofillPolicy.FIELD_ORIGIN. Without a single secure origin they are IMPORTANT_FOR_AUTOFILL_NO. Sign in commits the Autofill session (the provider may offer Save); Cancel cancels it.",
+      "fillRoute": "Native username/password fields report the exact HTTPS origin of a pending main-frame load as web domain/scheme, PasswordFormPolicy.TOP_ORIGIN_EXTRA and PasswordAutofillPolicy.FIELD_ORIGIN. A challenge while a page is committed with no other main-frame load pending, or for a host on which any frame or resource of the tab used another origin (for example another port), gets no origin and the fields are IMPORTANT_FOR_AUTOFILL_NO. No browser tab is fillable while the prompt is open (overlay). Sign in keeps the prompt open; the Autofill session is committed (the provider may offer Save) only when that load commits at the bound origin, and is cancelled on a repeated challenge, failure, navigation or Cancel.",
       "providers": {
         "integrated": {
           "status": "source",
@@ -87,7 +87,8 @@
       "remainingGates": [
         "integrated vault fill and save on a device against an HTTPS Basic-auth fixture",
         "Proton warning and fill on a device",
-        "port and redirect cases on a device",
+        "port, redirect and same-host frame cases on a device",
+        "Save offered only after the site accepts the credentials, on a device",
         "release-signed APK"
       ]
     },

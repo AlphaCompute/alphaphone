@@ -1,14 +1,17 @@
 package ai.elizaresearch.alphaphone;
 
+import ai.eliza.plugins.browsersurface.BrowserAutofillEligibility;
 import ai.eliza.plugins.passwords.PasswordFormPolicy;
 import ai.eliza.plugins.passwords.PasswordFormPolicy.Node;
+import java.util.Set;
 
 /**
  * Plain-JVM check (issue #404) that the HTTP authentication prompt's origin rule and the
  * field shape Alpha reports (BrowserHttpAuthAutofill) are accepted by the pinned upstream
  * PasswordFormPolicy for exactly the verified origin, and refused for wrong origins, frames,
- * missing field origins and an untrusted host. It does not run Android, a provider, a vault
- * or a device.
+ * missing field origins and an untrusted host. The structures are hand-built mirrors of what
+ * the Android views report; Android's own onProvideAutofillStructure, AssistStructure, a
+ * provider, a vault and a device are not run here.
  */
 public final class LoginBindingTest {
  static final String HOST = "ai.elizaresearch.alphaphone";
@@ -43,6 +46,18 @@ public final class LoginBindingTest {
   return root;
  }
 
+ /** A request whose structure also holds an enabled tab WebView with its own web login form.
+  * {@code withPassword=false} leaves only a username field on the page. */
+ static Node withTab(String promptOrigin, String pageOrigin, boolean withPassword) {
+  java.net.URI page = java.net.URI.create(pageOrigin);
+  Node web = new Node(); web.id = "web"; web.webDomain = page.getHost(); web.webScheme = page.getScheme(); web.topOrigin = pageOrigin;
+  Node u = new Node(); u.id = "wu"; u.text = true; u.htmlType = "text"; u.htmlAutocomplete = "username"; u.fieldOrigin = pageOrigin;
+  web.add(u);
+  if (withPassword) { Node p = new Node(); p.id = "wp"; p.text = true; p.htmlType = "password"; p.fieldOrigin = pageOrigin; web.add(p); }
+  Node activity = new Node(); activity.add(web).add(prompt(promptOrigin, null, null));
+  return activity;
+ }
+
  static String rejected(Node root, String pkg, boolean hostIsBrowser, boolean forSave) {
   try { PasswordFormPolicy.evaluate(pkg, HOST, hostIsBrowser, root, p -> false, forSave); return null; }
   catch (PasswordFormPolicy.Rejected r) { return r.getMessage(); }
@@ -50,18 +65,42 @@ public final class LoginBindingTest {
 
  public static void main(String[] args) throws Exception {
   // --- Origin rule for the challenge ---
-  eq("https://example.com", BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/login", null), "committed page");
-  eq("https://example.com:8443", BrowserHttpAuthOrigin.forChallenge("example.com:8443", "https://example.com:8443/a"), "explicit port");
-  eq("https://example.com", BrowserHttpAuthOrigin.forChallenge("example.com:443", "https://Example.com/a"), "default port normalised");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com:8443", "https://example.com/a"), "reported port contradicts page");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/a", "https://example.com:8443/b"), "redirect to another port");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "http://example.com/a"), "cleartext page");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/a", "http://example.com/b"), "redirect to cleartext");
-  eq("https://example.com", BrowserHttpAuthOrigin.forChallenge("example.com", "https://other.example/a", "https://example.com/b"), "only the matching pending redirect counts");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://other.example/a"), "no page for this host");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://user:pw@example.com/a"), "user info");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("", "https://example.com/"), "missing host");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("accounts.example.com", "https://example.com/"), "subdomain is a different binding");
+  // forChallenge(reportedHost, pendingMain, documentUrl, committed, otherRequestOrigins)
+  Set<String> none = Set.of();
+  eq("https://example.com", BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/login", "https://example.com/login", false, none), "first load, not committed");
+  eq("https://example.com:8443", BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com:8443/a", "https://example.com:8443/a", false, none), "port taken from the main-frame load, not the challenge");
+  eq("https://example.com", BrowserHttpAuthOrigin.forChallenge("example.com:443", "https://Example.com/a", "https://Example.com/a", false, none), "default port normalised");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com:8443", "https://example.com/a", "https://example.com/a", false, none), "reported port contradicts the load");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com:8443/b", "https://example.com/a", false, none), "redirect to another port before commit");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "http://example.com/a", "http://example.com/a", false, none), "cleartext load");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "http://example.com/b", "https://example.com/a", false, none), "redirect to cleartext");
+  eq("https://example.com", BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/b", "https://other.example/a", true, none), "page-initiated load from another site");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://other.example/a", "https://other.example/a", true, none), "no pending load for this host");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://user:pw@example.com/a", "https://user:pw@example.com/a", false, none), "user info");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("", "https://example.com/", "https://example.com/", false, none), "missing host");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("accounts.example.com", "https://example.com/", "https://example.com/", false, none), "subdomain is a different binding");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/", "https://example.com/", false, null), "request record unavailable or overflowed");
+  // Frames and resources: WebView reports no port and no frame for a challenge.
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/", "https://example.com/", true, Set.of("https://example.com:8443")),
+     "committed page plus a same-host frame on another port: never bound to the page origin");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/", "https://example.com/", true, none),
+     "committed page and no pending main-frame load: a resource or frame is asking, not filled");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/admin", "https://example.com/", true, Set.of("https://example.com:8443", "https://cdn.example")),
+     "pending same-host load while a frame on another port is live");
+  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/", "https://other.example/", true, Set.of("http://example.com")),
+     "a cleartext request to the host is a different origin");
+  eq("https://example.com", BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/admin", "https://example.com/", true, Set.of("https://example.com", "https://cdn.example:8443")),
+     "same-origin resources and other hosts do not block the pending main-frame load");
+  eq("https://example.com:8443", BrowserHttpAuthOrigin.requestOrigin("https://EXAMPLE.com:8443/x?y"), "request origin keeps a non-default port");
+  eq("http://example.com", BrowserHttpAuthOrigin.requestOrigin("http://example.com:80/"), "http default port omitted");
+  eq(null, BrowserHttpAuthOrigin.requestOrigin("blob:https://example.com/1"), "non-network requests are not recorded");
+
+  // --- No tab is fillable while a site prompt is open (canAutofill sets overlay) ---
+  BrowserAutofillEligibility.TabState tab = new BrowserAutofillEligibility.TabState();
+  tab.selected = true; tab.shown = true; tab.committed = true; tab.documentUrl = tab.engineUrl = "https://example.com/";
+  eq(true, BrowserAutofillEligibility.eligible(tab), "committed selected tab without a prompt");
+  tab.overlay = true;
+  eq(false, BrowserAutofillEligibility.eligible(tab), "the same tab while the HTTP sign-in prompt is open");
 
   // --- Shared upstream policy with Alpha's field shape ---
   String origin = "https://example.com:8443";
@@ -91,6 +130,17 @@ public final class LoginBindingTest {
   // The previous username input type (VISIBLE_PASSWORD) would have made the form ambiguous.
   Node legacy = prompt(origin, null, null); legacy.children.get(1).inputType = CLASS_TEXT | TEXT_VISIBLE_PASSWORD;
   eq("Ambiguous password fields", rejected(legacy, HOST, true, false), "legacy username type");
+
+  // --- The activity's whole structure: tab WebView window plus the prompt window ---
+  // While the prompt is open the tab is ineligible, so CredentialWebView reports no children.
+  Node activity = new Node(); Node tabWindow = new Node(); tabWindow.id = "tab"; activity.add(tabWindow).add(prompt(origin, null, null));
+  eq(origin, PasswordFormPolicy.evaluate(HOST, HOST, true, activity, p -> false, false).webOrigin, "prompt with an excluded tab window");
+  Node activitySave = new Node(); activitySave.add(new Node()).add(prompt(origin, "ada", "s3cret"));
+  eq(origin, PasswordFormPolicy.evaluate(HOST, HOST, true, activitySave, p -> false, true).webOrigin, "save with an excluded tab window");
+  // Why the overlay matters: a re-enabled tab adds its page's login fields to the same request.
+  eq("Ambiguous password fields", rejected(withTab(origin, origin, true), HOST, true, false), "re-enabled tab, same origin");
+  eq("Ambiguous password fields", rejected(withTab(origin, "https://other.example", true), HOST, true, false), "re-enabled tab, another origin");
+  eq("Cross-origin frame", rejected(withTab(origin, "https://other.example", false), HOST, true, false), "re-enabled tab with only a username field");
 
   System.out.println("PASS login binding " + checks);
  }

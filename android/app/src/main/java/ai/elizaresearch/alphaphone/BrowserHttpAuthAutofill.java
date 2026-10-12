@@ -26,7 +26,7 @@ final class BrowserHttpAuthAutofill {
  private BrowserHttpAuthAutofill(){}
 
  /** The single verified HTTPS origin for this challenge, or null (see {@link BrowserHttpAuthOrigin}). */
- static String origin(String reportedHost,String... candidates){ return BrowserHttpAuthOrigin.forChallenge(reportedHost,candidates); }
+ static String origin(String reportedHost,String pendingMain,String documentUrl,boolean committed,java.util.Collection<String> otherRequests){ return BrowserHttpAuthOrigin.forChallenge(reportedHost,pendingMain,documentUrl,committed,otherRequests); }
 
  /** A username or password field of the HTTP authentication prompt. */
  static EditText field(Context context,String origin,boolean password){

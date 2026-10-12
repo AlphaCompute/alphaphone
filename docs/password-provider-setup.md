@@ -80,8 +80,11 @@ fixture behavior, not integrated Alpha, biometric or physical-device acceptance.
 ### Passkeys
 
 Passkeys are outside the MVP (owner decision 2026-10-12, issue #402). Alpha's browser keeps
-WebView WebAuthn off, tells the user once that passkeys are not supported, and offers
-**Open in another browser** for passkey-only sign-ins. Password save and fill are unchanged.
+WebView WebAuthn off and tells the user once, when the first tab opens, that passkeys are not
+supported. That notice is informational: the browser does not detect a passkey-only sign-in
+(with WebAuthn off WebView reports none, and Alpha never scripts the page's own world). The
+browser menu's **Open in another browser** is labelled for passkey sign-in, offers only installed
+browsers, and says so when there is none. Password save and fill are unchanged.
 The integrated password manager does not provide passkeys or store TOTP secrets. A later
 release may route WebAuthn to Android's system credential provider after real browser and
 image qualification; that is a separate follow-up, not current support.

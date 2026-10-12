@@ -22,7 +22,10 @@ final class BrowserPasskeyPolicy {
  /** False until the system credential provider follow-up is qualified on a real image. */
  static final boolean SYSTEM_PROVIDER_QUALIFIED=false;
 
- /** Shown once per install. It names what works instead of advertising passkeys. */
+ /** Shown once per install when the first tab opens. It is informational and is not tied to a
+  * passkey flow: with WebAuthn off WebView reports no passkey request, and Alpha never scripts
+  * the page's own world to watch for one. The browser menu keeps "Open in another browser"
+  * labelled for passkey sign-in, so the handoff is available when a site asks for a passkey. */
  static final String UNSUPPORTED_NOTICE=
   "Passkeys are not supported in Alpha's browser. Sign in with a password, or choose Open in another browser from the menu.";
 

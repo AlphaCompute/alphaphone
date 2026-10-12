@@ -28,15 +28,19 @@ const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 // is not detected; pairing codes are registered for documentation, not discovered.
 const RENDERER_DETECTORS = [
   /\btype\s*[=:]\s*\{?\s*["']password["']/gi,
+  /\btype\s*=\s*password\b/gi, // unquoted HTML attribute
+  /\btype\s*=\s*\{[^}\n]*password[^}\n]*\}/gi, // dynamic type={show ? 'text' : 'password'}
   /\bauto[cC]omplete\s*[=:]\s*\{?\s*["'][^"']*\b(?:username|current-password|new-password|one-time-code|webauthn)\b[^"']*["']/gi,
   /\binput\([^\n]*?,\s*'password',/g,
+  /(?:-webkit-)?text-security\s*:|[wW]ebkitTextSecurity|textSecurity\s*:/g, // masked text that is not type=password
 ];
 const NATIVE_DETECTORS = [
-  /textPassword|textWebPassword|numberPassword/g,
-  /TYPE_TEXT_VARIATION_(?:WEB_)?PASSWORD|TYPE_NUMBER_VARIATION_PASSWORD/g,
+  /textPassword|textWebPassword|numberPassword|textVisiblePassword/g,
+  /TYPE_TEXT_VARIATION_(?:WEB_|VISIBLE_)?PASSWORD|TYPE_NUMBER_VARIATION_PASSWORD/g,
   /autofillHints|setAutofillHints|AUTOFILL_HINT_(?:PASSWORD|USERNAME)/g,
+  /PasswordTransformationMethod|PasswordVisualTransformation|KeyboardType\.Password/g,
+  /setInputType\(\s*(?:0x[0-9a-fA-F]+|\d+)\s*\)|android:inputType\s*=\s*"(?:0x[0-9a-fA-F]+|\d+)"/g, // numeric input types hide a password variation
 ];
-
 const registered = inventory.surfaces.filter(surface => surface.file);
 
 test('the inventory covers websites, other apps and every Alpha-owned secret field', () => {
@@ -79,32 +83,66 @@ test('no Alpha-owned login form is eligible until it has a provider-owned native
 test('the HTTP authentication prompt binds fills to the single verified HTTPS origin', () => {
   const auth = read('android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserHttpAuthAutofill.java');
   // The origin rule itself is executed on the JVM below.
-  assert.match(auth, /static String origin\(String reportedHost,String\.\.\. candidates\)\{ return BrowserHttpAuthOrigin\.forChallenge\(reportedHost,candidates\); \}/);
+  assert.match(auth, /static String origin\(String reportedHost,String pendingMain,String documentUrl,boolean committed,java\.util\.Collection<String> otherRequests\)\{ return BrowserHttpAuthOrigin\.forChallenge\(reportedHost,pendingMain,documentUrl,committed,otherRequests\); \}/);
   assert.match(auth, /InputType\.TYPE_CLASS_TEXT\|\(password\?InputType\.TYPE_TEXT_VARIATION_PASSWORD:InputType\.TYPE_TEXT_FLAG_NO_SUGGESTIONS\)/, 'exactly one password-typed field');
   assert.doesNotMatch(auth, /getAutofillValue|getText\(\)/, 'Alpha never reads provider values back');
-  assert.match(plugin, /String authOrigin=BrowserHttpAuthAutofill\.origin\(host,t\.url,t\.pendingMain\);/);
-  assert.match(plugin, /AutofillManager autofill=authOrigin==null\?null:getActivity\(\)\.getSystemService\(AutofillManager\.class\);if\(autofill!=null\)autofill\.commit\(\);\n\s*String u=user\.getText\(\)\.toString\(\),p=pass\.getText\(\)\.toString\(\);user\.setText\(""\);pass\.setText\(""\);/, 'Save is offered before values are cleared');
-  assert.match(plugin, /showSiteDialog\(t,dialog,\(\)->\{if\(answered\[0\]\)return;AutofillManager autofill=getActivity\(\)\.getSystemService\(AutofillManager\.class\);if\(autofill!=null\)autofill\.cancel\(\);/, 'Cancel ends the Autofill session');
-  // Browser tabs are not fillable while the prompt is open, so the prompt is the only login structure.
-  assert.match(plugin, /dismissSiteDialogs\(\);siteDialog=dialog;siteDialogTab=t;siteDialogCancel=cancel;\n\s*for\(Tab tab:tabs\.values\(\)\)disableAutofill\(tab\);/);
+  // Bound only to a pending main-frame load, and refused when a same-host frame/resource used another origin.
+  assert.match(plugin, /String authOrigin=BrowserHttpAuthAutofill\.origin\(host,t\.pendingMain,t\.url,t\.committed,t\.requestOriginsOverflow\?null:t\.requestOrigins\);/);
+  assert.match(plugin, /if \(r\.isForMainFrame\(\)\) t\.pendingMain=r\.getUrl\(\)\.toString\(\); else recordRequestOrigin\(t,r\.getUrl\(\)\.toString\(\)\);/, 'every frame and resource origin is recorded');
+  assert.match(plugin, /if\(t\.requestOrigins\.size\(\)>=MAX_REQUEST_ORIGINS\)t\.requestOriginsOverflow=true;/, 'an overflowed record refuses binding');
+  // No tab is fillable while any site prompt is open, including after a provider unlock resumes the activity.
+  const can = plugin.slice(plugin.indexOf('private boolean canAutofill(Tab t)'), plugin.indexOf('private void cancelAutofill(Tab t)'));
+  assert.match(can, /state\.overlay=siteDialog!=null;/);
+  assert.match(can, /return BrowserAutofillEligibility\.eligible\(state\);/);
+  assert.match(plugin, /dismissSiteDialogs\(\);siteDialog=dialog;siteDialogTab=t;siteDialogCancel=cancel;siteDialogAutofill=false;\n\s*for\(Tab tab:tabs\.values\(\)\)disableAutofill\(tab\);/);
+  // Save waits for the site: Sign in keeps the prompt open; commit() only when the load commits at the bound origin.
+  assert.match(plugin, /\.setPositiveButton\("Sign in",null\)\.setNegativeButton\("Cancel",null\)\.create\(\);/);
+  assert.match(plugin, /t\.authSaveOrigin=authOrigin;\n\s*v\.setEnabled\(false\);dialog\.setMessage\(message\+"\\n\\nSigning in…"\);\n\s*handler\.proceed\(u,p\);/);
+  assert.doesNotMatch(plugin.slice(plugin.indexOf('private void httpAuth('), plugin.indexOf('// ---- Camera for capture-enabled')), /\.commit\(\)/, 'the prompt itself never commits');
+  const finish = plugin.slice(plugin.indexOf('private void finishAuthSave('), plugin.indexOf('private void finishAuthSave(') + 700);
+  assert.match(finish, /boolean accepted=committedUrl!=null&&origin\.equals\(BrowserHttpAuthOrigin\.exactHttps\(committedUrl\)\)&&t\.httpStatus!=401&&t\.httpStatus!=407;/);
+  assert.match(finish, /if\(accepted\)\{siteDialogAutofill=false;AutofillManager manager=[^\n]*manager\.commit\(\);\}\n\s*dismissSiteDialogs\(\);/);
+  assert.match(plugin, /finishAuthSave\(t,url\); syncAutofill\(t\);/, 'resolved before the tab can become fillable');
+  assert.match(plugin, /\/\/ A repeated challenge means the previous answer was not accepted: never offer to save it\.\n\s*finishAuthSave\(t,null\);/);
+  assert.match(plugin, /private void fail\(Tab t, String message\) \{ finishAuthSave\(t,null\);/);
+  // Dismissal cancels first: a provider may save when every field becomes invisible.
+  assert.match(plugin, /if\(siteDialogAutofill\)\{siteDialogAutofill=false;AutofillManager manager=getActivity\(\)\.getSystemService\(AutofillManager\.class\);if\(manager!=null\)manager\.cancel\(\);\}\n\s*dialog\.dismiss\(\);/);
+  assert.match(plugin, /dialog\.setCancelable\(authOrigin==null\);dialog\.setCanceledOnTouchOutside\(false\);/);
+  // The password manager is named only when Android has an Autofill service enabled.
+  assert.match(plugin, /boolean autofillOn=authOrigin!=null&&autofillState!=null&&autofillState\.isEnabled\(\);/);
 });
 
-test('every renderer credential field is registered in config/login-surfaces.json', () => {
-  const files = walk('apps/app/src', file => /\.(ts|tsx|js|html)$/.test(file) && !/\.test\./.test(file));
-  const unregistered = [];
+/** Every detector hit whose line no registered pattern for that file covers (per line, not per file). */
+function unregisteredHits(files, detectors) {
+  const hits = [];
   for (const file of files) {
     const text = read(file);
-    const owned = registered.filter(surface => surface.file === file).map(surface => new RegExp(surface.pattern, 'g'));
     const coveredLines = new Set();
-    for (const pattern of owned) for (const match of text.matchAll(pattern)) coveredLines.add(lineOf(text, match.index));
-    for (const detector of RENDERER_DETECTORS) {
+    for (const surface of registered.filter(entry => entry.file === file)) {
+      for (const match of text.matchAll(new RegExp(surface.pattern, 'g'))) coveredLines.add(lineOf(text, match.index));
+    }
+    for (const detector of detectors) {
       for (const match of text.matchAll(detector)) {
         const line = lineOf(text, match.index);
-        if (!coveredLines.has(line)) unregistered.push(`${file}:${line} ${match[0]}`);
+        if (!coveredLines.has(line)) hits.push(`${file}:${line} ${match[0]}`);
       }
     }
   }
-  assert.deepEqual(unregistered, [], 'register each new credential field (and wire its fill route if eligible)');
+  return hits;
+}
+
+test('every renderer credential field is registered in config/login-surfaces.json', () => {
+  const files = walk('apps/app/src', file => /\.(ts|tsx|js|jsx|mjs|cjs|html|css)$/.test(file) && !/\.test\./.test(file));
+  assert.deepEqual(unregisteredHits(files, RENDERER_DETECTORS), [], 'register each new credential field (and wire its fill route if eligible)');
+});
+
+test('the detectors catch the field shapes they claim to', () => {
+  const samples = {
+    renderer: ['<input type=password>', '<input type={reveal ? "text" : "password"}>', "style={{WebkitTextSecurity:'disc'}}", '.pin{-webkit-text-security:disc}', '<input autoComplete="current-password">'],
+    native: ['android:inputType="textVisiblePassword"', 'InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD', 'new PasswordTransformationMethod()', 'field.setInputType(0x81)', 'android:inputType="129"'],
+  };
+  for (const sample of samples.renderer) assert.ok(RENDERER_DETECTORS.some(detector => new RegExp(detector.source, detector.flags).test(sample)), sample);
+  for (const sample of samples.native) assert.ok(NATIVE_DETECTORS.some(detector => new RegExp(detector.source, detector.flags).test(sample)), sample);
 });
 
 test('each registered Alpha-owned field still exists exactly as inventoried', () => {
@@ -115,16 +153,11 @@ test('each registered Alpha-owned field still exists exactly as inventoried', ()
 });
 
 test('native Alpha UI declares no unregistered credential fields', () => {
-  const roots = ['android/app/src/main', 'android/app/src/launcher'].filter(dir => fs.existsSync(dir));
-  const files = roots.flatMap(root => walk(root, file => /\.(java|kt|xml)$/.test(file)));
-  const hits = [];
-  for (const file of files) {
-    const text = read(file);
-    for (const detector of NATIVE_DETECTORS) for (const match of text.matchAll(detector)) {
-      if (!registered.some(surface => surface.file === file)) hits.push(`${file}:${lineOf(text, match.index)} ${match[0]}`);
-    }
-  }
-  assert.deepEqual(hits, []);
+  // Every Android module's source sets (app, launcher, embedding-host, local-speech, fixtures), per line.
+  const roots = fs.readdirSync('android', {withFileTypes: true}).filter(entry => entry.isDirectory()).map(entry => path.join('android', entry.name, 'src')).filter(dir => fs.existsSync(dir));
+  assert.ok(roots.includes(path.join('android', 'app', 'src')));
+  const files = roots.flatMap(root => walk(root, file => /\.(java|kt|xml)$/.test(file) && !/[\\/](test|androidTest)[\\/]/.test(file)));
+  assert.deepEqual(unregisteredHits(files, NATIVE_DETECTORS), []);
 });
 
 test('website fills bind to the committed HTTPS top-level origin of an eligible tab', () => {
@@ -174,6 +207,8 @@ test('the pinned password policy admits the HTTP auth prompt only for its exact 
       'android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserHttpAuthOrigin.java',
       'vendor/eliza/plugins/plugin-native-passwords/android/src/main/java/ai/eliza/plugins/passwords/PasswordFormPolicy.java',
       'vendor/eliza/plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/PasswordFacets.java',
+      'vendor/eliza/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserAutofillEligibility.java',
+      'vendor/eliza/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserWebOrigin.java',
       'test/fixtures/LoginBindingTest.java'], {timeout: 60000});
     assert.match(execFileSync(binary('java'), ['-cp', temporary, 'ai.elizaresearch.alphaphone.LoginBindingTest'], {encoding: 'utf8', timeout: 60000}), /^PASS login binding \d+/);
   } finally { fs.rmSync(temporary, {recursive: true, force: true}); }
