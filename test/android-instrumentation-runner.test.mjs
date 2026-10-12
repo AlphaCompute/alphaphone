@@ -483,3 +483,101 @@ test("a class whose every method is skipped by its gate is recorded as skipped, 
   const runner = fs.readFileSync("scripts/android-instrumentation.mjs", "utf8");
   assert.match(runner, /row\.status === "passed" \? "passed" : spec\.phases \? "failed" : row\.status/);
 });
+
+const sourceOf = name => fs.readFileSync(ROOTS.map(root => path.join(root, `ai/elizaresearch/alphaphone/${name}InstrumentedTest.java`)).find(file => fs.existsSync(file)), "utf8");
+
+test("BrowserFlow's live search page runs only with --live-network; the default run is offline", () => {
+  // Rounds 7 and 8: the default campaign failed on www.google.com/search for environment reasons.
+  assert.ok(!instrumentArgs(C("BrowserFlow")).includes("browserFlowLive"), "a default run never passes the live gate");
+  assert.deepEqual(instrumentArgs(C("BrowserFlow"), { live: true }).slice(-6, -1), ["browserFlowLive", "1", "-e", "class", C("BrowserFlow")]);
+  assert.equal(parseInstrumentationArgs([]).liveNetwork, false);
+  assert.equal(parseInstrumentationArgs(["--live-network"]).liveNetwork, true);
+  assert.ok(DEFAULT_CLASSES.includes("BrowserFlow"));
+  assert.match(CLASS_REGISTRY.BrowserFlow.note, /--live-network \(browserFlowLive=1\)/);
+  const method = sourceOf("BrowserFlow").slice(sourceOf("BrowserFlow").indexOf("void submittedSearchUsesRealProviderAndRejectsExecutableAddress"));
+  assert.ok(method.indexOf("if(!live)return;") > 0 && method.indexOf("if(!live)return;") < method.indexOf("location.hostname==='www.google.com'"), "the live page load follows the gate");
+  // Every liveArgs gate is one the class reads, as for `args`.
+  for (const [name, spec] of Object.entries(CLASS_REGISTRY)) for (const [gate, value] of Object.entries(spec.liveArgs ?? {}))
+    assert.ok(sourceOf(name).includes(`"${value}".equals(androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("${gate}"))`) || gateRead(sourceOf(name), gate, value), `${name} reads ${gate}=${value}`);
+  const runner = fs.readFileSync("scripts/android-instrumentation.mjs", "utf8");
+  assert.equal((runner.match(/instrumentArgs\(cls, \{[^}]*\blive\b[^}]*\}\)/g) ?? []).length, 3, "listing, retry and run all carry the live choice");
+});
+
+test("ConnectionRoutes runs only on a flag-off build", () => {
+  assert.equal(parseInstrumentationArgs(["--classes", "ConnectionRoutes"]).classes[0], C("ConnectionRoutes"));
+  assert.throws(() => parseInstrumentationArgs(["--test-mocks", "--classes", "ConnectionRoutes"]), /flag-off policy/);
+  for (const [name, spec] of Object.entries(CLASS_REGISTRY).filter(([, spec]) => spec.flagOffOnly)) {
+    assert.ok(sourceOf(name).includes("!BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS"), `${name} assumes a flag-off build`);
+    assert.ok(!spec.requiresTestMocksBuild && !spec.testMocks, `${name} cannot need test mocks too`);
+  }
+  const source = sourceOf("ConnectionRoutes");
+  for (const route of [".cloud.eliza.app/api/v1/user", "https://agent.example.test/api/auth/pair", "https://api.eliza.app/api/auth/pair", "https://api.eliza.app/api/v1/api-keys/other", "/api/v1/api-keys/current\").put(\"method\", \"DELETE\").put(\"body\""]) assert.ok(source.includes(route), route);
+  assert.match(source, /"Connection request failed"/);
+  assert.match(source, /"VALIDATE"/);
+});
+
+test("round-9 registrations: new classes, campaigns and removed reasons", () => {
+  for (const name of ["RendererRecovery", "ChatContinuity", "SelectedDocument", "PasswordVaultSettings", "PasswordVaultFill"]) {
+    assert.ok(Object.hasOwn(CLASS_REGISTRY, name), name);
+    assert.ok(!CLASS_REGISTRY[name].campaign, `${name} runs through this runner`);
+  }
+  // --classes SelectedDocument runs its ungated methods; only the restart phase stays with its campaign.
+  assert.equal(parseInstrumentationArgs(["--classes", "SelectedDocument"]).classes[0], C("SelectedDocument"));
+  assert.equal(CLASS_REGISTRY.SelectedDocument.args, undefined);
+  assert.equal(CLASS_REGISTRY.WorkflowLegacyReminderUpgrade.campaign.split(" ").slice(0, 2).join(" "), "node scripts/test-installed-upgrade.mjs");
+  assert.throws(() => parseInstrumentationArgs(["--classes", "WorkflowLegacyReminderUpgrade"]), /test-installed-upgrade/);
+  // SettingsCrashLog has its two-process runner now.
+  assert.ok(!Object.hasOwn(NOT_RUN_BY_A_RUNNER, "SettingsCrashLog"));
+  assert.throws(() => parseInstrumentationArgs(["--classes", "SettingsCrashLog"]), /test-native-restart\.mjs crash-log/);
+  // The reviewed-workflow host classes were deleted, not left unreachable.
+  for (const name of ["Workflow", "WorkflowApproval", "WorkflowCancellation", "WorkflowLifecycle", "WorkflowMetadata", "WorkflowSubmission"]) {
+    assert.ok(!Object.hasOwn(NOT_RUN_BY_A_RUNNER, name), name);
+    assert.ok(!fs.existsSync(path.join(ROOTS[0], `ai/elizaresearch/alphaphone/${name}InstrumentedTest.java`)), `${name} is deleted`);
+  }
+  // The vault classes change device security state, so they are gated and never default.
+  for (const name of ["PasswordVaultSettings", "PasswordVaultFill"]) assert.ok(CLASS_REGISTRY[name].args && !DEFAULT_CLASSES.includes(name), name);
+  // The page refuses an entry without a website, so each synthetic entry names one (.invalid only).
+  assert.match(sourceOf("PasswordVaultSettings"), /type\("Add website", website\)/);
+  assert.equal((sourceOf("PasswordVaultSettings").match(/\.example\.invalid", (typedSecret|null)\)/g) ?? []).length, 2);
+  // A fixture PIN that was set is cleared even when its own verification fails (no close() follows a throwing constructor).
+  const fixture = fs.readFileSync(ROOTS.map(root => path.join(root, "ai/elizaresearch/alphaphone/PasswordVaultFixture.java")).find(file => fs.existsSync(file)), "utf8");
+  assert.match(fixture, /set = true;[\s\S]*catch \(Throwable failed\) \{ close\(\); throw failed; \}/);
+});
+
+test("restart runner wires the migration, crash-log, theme and source-reference phases to real methods and gates", () => {
+  const source = fs.readFileSync("scripts/test-native-restart.mjs", "utf8");
+  const classes = testClasses();
+  for (const [scenario, cls, method, gate, phases] of [
+    ["notes-secure-migration", "NotesSecureStorageInstrumentedTest", "secureMigrationProcessRestartPhase", "notesSecureMigrationPhase", ["prepare", "verify", "cleanup"]],
+    ["crash-log", "SettingsCrashLogInstrumentedTest", "realCrashSurvivesRestartAndShowsInSettings", "crashLogPhase", ["prepare", "crash", "readback", "cleanup"]],
+    ["theme", "SettingsFlowInstrumentedTest", "themeProcessRestartPhase", "themePhase", ["prepare", "verify", "cleanup"]],
+    ["source-reference", "SelectedDocumentInstrumentedTest", "sourceReferenceProcessRestartPhase", "sourceReferencePhase", ["prepare", "verify", "cleanup"]],
+  ]) {
+    assert.ok(source.includes(`"${scenario}": {`) || source.includes(`\t${scenario}: {`), scenario);
+    assert.ok(source.includes(`testClass: "${cls}",\n\t\tmethod: "${method}",\n\t\tgate: "${gate}"`), `${scenario} names ${cls}#${method} with ${gate}`);
+    const java = fs.readFileSync(classes.get(cls), "utf8");
+    assert.match(java, new RegExp(`void ${method}\\(`), `${cls} has ${method}`);
+    assert.ok(java.includes(`getString("${gate}")`), `${cls} reads ${gate}`);
+    for (const phase of phases) assert.ok(java.includes(`"${phase}"`), `${cls} handles ${phase}`);
+  }
+});
+
+test("round-9 journeys and links: J01, J05, the note link and the Maps return are registered offline", () => {
+  for (const [name, gate] of [["PosterCalendarJourney", "posterJourney"], ["JourneyJ05", "journeyJ05"], ["Maps", "mapsEventReturn"]]) {
+    assert.equal(CLASS_REGISTRY[name].args[gate], "1", `${name} passes ${gate}`);
+    assert.ok(gateRead(sourceOf(name), gate, "1"), `${name} reads ${gate}`);
+    assert.ok(!DEFAULT_CLASSES.includes(name), `${name} is not a default class`);
+  }
+  // Maps gained a runner entry, so it is no longer listed as unreachable.
+  assert.ok(!Object.hasOwn(NOT_RUN_BY_A_RUNNER, "Maps"));
+  assert.equal(parseInstrumentationArgs(["--classes", "Maps"]).classes[0], C("Maps"));
+  // J05 composes the flag-off journey: a test-mocks build is refused.
+  assert.equal(CLASS_REGISTRY.JourneyJ05.flagOffOnly, true);
+  assert.throws(() => parseInstrumentationArgs(["--test-mocks", "--classes", "JourneyJ05"]), /flag-off policy/);
+  // The note link needs no gate or provider.
+  assert.equal(CLASS_REGISTRY.NoteOrigin.args, undefined);
+  assert.match(sourceOf("NoteOrigin"), /"note-origins:v1:device"/);
+  // BrowserPageQuestion and the journey built on it name no public host.
+  for (const name of ["BrowserPageQuestion", "JourneyJ05"]) assert.ok(!/example\.com|www\.google\.com/.test(sourceOf(name)), `${name} contacts no public host`);
+  assert.doesNotMatch(CLASS_REGISTRY.BrowserPageQuestion.note, /needs network|example\.com/);
+});

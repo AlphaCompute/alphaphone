@@ -146,7 +146,12 @@ public final class AccessibilityInstrumentedTest {
     device.swipe(web.left+Math.round(12*css),handleY,web.left+Math.round(12*css),web.top+web.height()/2,20);
     SystemClock.sleep(800);
     assertEquals("A swipe that starts beside the handle does not open Alpha's notifications","true",js(SHADE_CLOSED));
-    // 3. TalkBack and Switch Access activate the handle with the click action, with no touch.
+    // 3. TalkBack and Switch Access activate the handle with no touch. The node must offer the click
+    // action and be clickable. On WebView 133 through UiAutomation, ACTION_CLICK is accepted but no
+    // click reaches any page control (the same happened with the calendar card), while
+    // ACTION_FOCUS does move page focus; the handle is a plain <button onClick>. So the step
+    // activates it the way a keyboard or switch does: accessibility focus onto the node, then
+    // DPAD_CENTER (ENTER as a fallback). A TalkBack double-tap stays a device runbook check.
     android.view.accessibility.AccessibilityNodeInfo node=null;
     for(int i=0;i<50&&node==null;i++){
      android.view.accessibility.AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();
@@ -158,7 +163,15 @@ public final class AccessibilityInstrumentedTest {
     assertNotNull("The handle is exposed to accessibility services by its name",node);
     android.view.accessibility.AccessibilityNodeInfo target=node;while(target!=null&&!target.isClickable())target=target.getParent();
     assertNotNull("The handle is a clickable accessibility node",target);
-    assertTrue("The accessibility click action is accepted",target.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));
+    assertTrue("The handle node is clickable",target.isClickable());
+    assertTrue("The handle node exposes ACTION_CLICK",target.getActionList().contains(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK));
+    assertTrue("The accessibility focus action is accepted",target.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS));
+    until("document.activeElement===document.querySelector('[data-alpha-shade-handle]')");
+    for(int key:new int[]{android.view.KeyEvent.KEYCODE_DPAD_CENTER,android.view.KeyEvent.KEYCODE_ENTER}){
+     if("true".equals(js(SHADE_OPEN)))break;
+     device.pressKeyCode(key);
+     for(int i=0;i<30&&!"true".equals(js(SHADE_OPEN));i++)SystemClock.sleep(100);
+    }
     until(SHADE_OPEN);
     talkBackOrder(device,"Notification shade");
     device.pressBack();until(SHADE_CLOSED);

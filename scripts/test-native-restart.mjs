@@ -66,6 +66,44 @@ const cases = {
 		scope:
 			"Real SAF grant restoration and revocation; distinct PID asserted by native test",
 	},
+	// MVP-25: the legacy localStorage Notes layout migrates into the encrypted slot in a new
+	// process, as after an upgrade; the exact legacy and current bytes are read back.
+	"notes-secure-migration": {
+		testClass: "NotesSecureStorageInstrumentedTest",
+		method: "secureMigrationProcessRestartPhase",
+		gate: "notesSecureMigrationPhase",
+		restore: "verify",
+		scope:
+			"Synthetic legacy Notes layout migrated in a new process; exact bytes read back from the Keystore-encrypted slot",
+	},
+	// The crash phase kills its own process through the real default handler: the runner requires
+	// that interruption, confirms no app process is left, and reads the log back in a new process.
+	"crash-log": {
+		testClass: "SettingsCrashLogInstrumentedTest",
+		method: "realCrashSurvivesRestartAndShowsInSettings",
+		gate: "crashLogPhase",
+		crash: "crash",
+		restore: "readback",
+		scope:
+			"A real uncaught exception recorded by class only, read back and shown in Settings by a new process",
+	},
+	// F18: Display > Theme survives a new process (the browser spec covers storage only).
+	theme: {
+		testClass: "SettingsFlowInstrumentedTest",
+		method: "themeProcessRestartPhase",
+		gate: "themePhase",
+		restore: "verify",
+		scope: "Dark theme chosen in Settings and applied by a new process",
+	},
+	// J03: a reviewed note's linked source reopens the exact bytes in a new process.
+	"source-reference": {
+		testClass: "SelectedDocumentInstrumentedTest",
+		method: "sourceReferenceProcessRestartPhase",
+		gate: "sourceReferencePhase",
+		restore: "verify",
+		scope:
+			"Retained SAF source reference reopened with exact bytes after a process restart",
+	},
 };
 const [scenario, appApk, testApk, output = "test-results/native-restart"] =
 	process.argv.slice(2);
@@ -100,6 +138,54 @@ await runNativeFixture({
 		const stop = () =>
 			context.run("shell", "am", "force-stop", "--user", String(user), app);
 		await stop();
+		if (selected.crash) {
+			const testClass = app + "." + selected.testClass;
+			let output;
+			try {
+				output = await context.run(
+					"shell",
+					"am",
+					"instrument",
+					"--user",
+					String(user),
+					"-w",
+					"-r",
+					"-e",
+					"class",
+					testClass + "#" + selected.method,
+					...phaseArgs(selected.crash),
+					app + ".test/androidx.test.runner.AndroidJUnitRunner",
+				);
+			} catch (error) {
+				output = String(error.stdout ?? "");
+			}
+			fs.writeFileSync(
+				path.join(directory, variant + "-phase-" + selected.crash + ".log"),
+				output,
+			);
+			const { requireInstrumentationInterruption } = await import(
+				"../vendor/eliza/packages/app/scripts/lib/instrumentation-result.mjs"
+			);
+			let left;
+			try {
+				left = (await context.run("shell", "pidof", app)).trim();
+			} catch (error) {
+				// pidof exits 1 with no output when nothing matches.
+				if (error.code !== 1 || String(error.stdout ?? "").trim()) throw error;
+				left = "";
+			}
+			details.crash = {
+				instrumentation: requireInstrumentationInterruption(
+					output,
+					testClass,
+					selected.method,
+				),
+				processExited: left === "",
+			};
+			assert.equal(left, "", "The crashed process must be gone before readback");
+			// Proven above without it; the stop only keeps every phase boundary the same.
+			await stop();
+		}
 		await context.instrumentPhase(
 			selected.restore,
 			phaseArgs(selected.restore),

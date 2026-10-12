@@ -50,12 +50,18 @@ public final class SettingsCrashLogInstrumentedTest {
  }
 
  /**
-  * Two-phase forced crash. The runner first passes crashLogPhase=crash (this process dies with
-  * the real default handler), then crashLogPhase=readback in a new process.
+  * Two-phase forced crash, run by node scripts/test-native-restart.mjs crash-log: prepare (the log
+  * starts empty), crashLogPhase=crash (this process dies with the real default handler; the runner
+  * confirms it exited), crashLogPhase=readback in a new process, then cleanup.
   */
  @Test public void realCrashSurvivesRestartAndShowsInSettings()throws Exception{
   String phase=InstrumentationRegistry.getArguments().getString("crashLogPhase");
-  Assume.assumeTrue("Two-phase crash runner required","crash".equals(phase)||"readback".equals(phase));
+  Assume.assumeTrue("Two-phase crash runner required","prepare".equals(phase)||"crash".equals(phase)||"readback".equals(phase)||"cleanup".equals(phase));
+  if("prepare".equals(phase)||"cleanup".equals(phase)){
+   AlphaCrashLog.clear(context);
+   assertNull("The problem log holds no uncaught entry",last(AlphaCrashLog.read(context).getJSONArray("entries"),"uncaught"));
+   return;
+  }
   if("crash".equals(phase)){
    AlphaCrashLog.clear(context);
    new Thread(()->{throw new IllegalStateException(SECRET);},"forced-crash").start();

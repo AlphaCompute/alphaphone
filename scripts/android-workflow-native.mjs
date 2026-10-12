@@ -1,6 +1,6 @@
 /** Archived workflow scenarios; upstream owns leased APK and disposable-user lifecycles.
  * Phases: `workflow` (phone-step reads and drafts) and `approval-notice` (phone-step approval
- * notice builders, OS posting, tap route and withdrawal). Every case runs on both distributions
+ * notice builders, OS posting, tap route and withdrawal, and the tap fenced after an account change). Every case runs on both distributions
  * from one hash-admitted archive pair; any failed, skipped or missing case fails the campaign.
  * `--variant=standalone|launcher` and `--phase=workflow|approval-notice` run part of it, for the
  * cases left after a failure stopped an earlier run: the report then carries `selection` and
@@ -40,7 +40,11 @@ for(const variant of ['standalone','launcher'])for(const kind of ['debug','andro
 const cases=[{class:'WorkflowPhoneNativeInstrumentedTest',method:'privateReadResultSurvivesRecreationButNeverExpandsPassiveHistory',gate:'workflowPhoneNative',grant:true}, {class:'WorkflowPhoneNativeInstrumentedTest',method:'selectedCalendarQueryExcludesOtherAccountsAndRefusesOverflow',gate:'workflowPhoneNative',grant:true}, {class:'WorkflowPhoneNativeInstrumentedTest',method:'morningAndEveningShareOneCalendarSourceWithDistinctWindows',gate:'workflowPhoneNative',grant:true}, {class:'WorkflowPhoneNativeInstrumentedTest',method:'deniedCalendarGrantReturnsNoEvents',gate:'workflowPhoneDenied',grant:false}, {class:'WorkflowDraftNativeInstrumentedTest',method:'encryptedDraftIsAtomicAndSurvivesRecreation',gate:'workflowDraftNative',grant:false},
  {class:'WorkflowApprovalNoticeInstrumentedTest',method:'approvalAndStepBuildersAreRedactedAndExpire',gate:'workflowApprovalNotice',grant:false,phase:'approval-notice'},
  // The OS post and tap need the runtime notification permission in the owned secondary user.
- {class:'WorkflowApprovalNoticeInstrumentedTest',method:'approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision',gate:'workflowApprovalNotice',grant:false,notifications:true,phase:'approval-notice'}];
+ {class:'WorkflowApprovalNoticeInstrumentedTest',method:'approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision',gate:'workflowApprovalNotice',grant:false,notifications:true,phase:'approval-notice'},
+ // MVP-18: a tap after the account changed is fenced to the other-account state; no stale approval opens.
+ // Its process-death counterpart needs the separate runner process: scripts/ci/pending-recovery-ui.py
+ // phase workflow-approval-process-death (WorkflowNoticeProcessDeathInstrumentedTest).
+ {class:'WorkflowApprovalNoticeInstrumentedTest',method:'approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval',gate:'workflowApprovalNotice',grant:false,notifications:true,phase:'approval-notice'}];
 const phaseOf=test=>test.phase??'workflow';
 const cancellation=new AbortController(),cancel=()=>cancellation.abort();
 const execute=promisify(execFile);

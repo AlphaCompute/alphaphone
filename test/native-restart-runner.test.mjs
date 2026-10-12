@@ -8,6 +8,10 @@ for (const kind of [
 	"text-scale",
 	"tree",
 	"bookmark",
+	"notes-secure-migration",
+	"crash-log",
+	"theme",
+	"source-reference",
 ]) {
 	test(`${kind} restart owns its user and APKs and executes prepare, restore and cleanup`, () => {
 		const r = exercise("pass", kind);
@@ -18,7 +22,7 @@ for (const kind of [
 		assert.equal(r.state.user, "0");
 		assert.deepEqual(r.state.files, {});
 		const calls = r.commands.filter((a) => a.includes("instrument"));
-		assert.equal(calls.length, kind === "bookmark" ? 4 : 3);
+		assert.equal(calls.length, ["bookmark", "crash-log"].includes(kind) ? 4 : 3);
 		assert.ok(calls.every((a) => a[a.indexOf("--user") + 1] === "10"));
 		const positions = r.commands.flatMap((a, i) =>
 			a.includes("instrument") ? [i] : [],
@@ -40,20 +44,31 @@ for (const kind of [
 			"text-scale": "textScalePhase",
 			tree: "treePhase",
 			bookmark: "bookmarkPhase",
+			"notes-secure-migration": "notesSecureMigrationPhase",
+			"crash-log": "crashLogPhase",
+			theme: "themePhase",
+			"source-reference": "sourceReferencePhase",
 		}[kind];
 		assert.deepEqual(
 			calls.map((a) => a[a.indexOf(gate) + 1]),
-			[
-				"prepare",
-				["inbox", "notes"].includes(kind) ? "restore" : "verify",
-				...(kind === "bookmark" ? ["verifyRemoved"] : []),
-				"cleanup",
-			],
+			kind === "crash-log"
+				? ["prepare", "crash", "readback", "cleanup"]
+				: [
+						"prepare",
+						["inbox", "notes"].includes(kind) ? "restore" : "verify",
+						...(kind === "bookmark" ? ["verifyRemoved"] : []),
+						"cleanup",
+					],
 		);
 		if (["inbox", "notes"].includes(kind))
 			assert.deepEqual(r.record.processes, { prepare: 100, restore: 200 });
+		if (kind === "crash-log") {
+			// The crash phase is a raw instrumentation that must end in the process crash.
+			assert.equal(r.record.crash.processExited, true);
+			assert.equal(r.commands.filter((a) => a.includes("pidof")).length, 1);
+		}
 	});
-	// Failure handling is shared by all six configurations; exercise it once.
+	// Failure handling is shared by all configurations; exercise it once.
 	if (kind === "inbox") for (const mode of [
 		"summary-only",
 		"wrong-method",
@@ -94,6 +109,17 @@ for (const kind of ["inbox"])
 				3,
 			);
 		});
+for (const mode of ["crash-completes", "crash-survives"])
+	test(`crash-log refuses a crash phase that ${mode === "crash-completes" ? "did not crash" : "left a process"} and never reads back`, () => {
+		const r = exercise(mode, "crash-log");
+		assert.notEqual(r.code, 0);
+		assert.equal(r.record.passed, false);
+		const phases = r.commands
+			.filter((a) => a.includes("instrument"))
+			.map((a) => a[a.indexOf("crashLogPhase") + 1]);
+		assert.ok(!phases.includes("readback"), "No readback after an unproven crash");
+		assert.equal(phases.at(-1), "cleanup");
+	});
 test("restart retains the fixture user when owned process termination is uncertain", () => {
 	const r = exercise("stop-failure", "inbox");
 	assert.notEqual(r.code, 0);

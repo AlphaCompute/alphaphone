@@ -228,13 +228,42 @@ public class BrowserFlowInstrumentedTest {
    click("Tabs");click("Close tab");
   }
  }
+ /** The URL the shown child WebView was asked to load (WebView.getUrl(), the pending or committed
+  * entry), read natively so it is known even when the page never loads. A page withdrawn behind a
+  * host panel (a load error, a dialog) still counts; null when no child WebView has an address. */
+ private String childUrl()throws Exception{
+  AtomicReference<String> url=new AtomicReference<>();
+  WebViewTestDriver.withActivity(MainActivity.class,main->{
+   List<WebView> views=new ArrayList<>();collect(main.getWindow().getDecorView(),views,main.getBridge().getWebView());
+   for(WebView web:views)if(web.isShown()&&web.getUrl()!=null){url.set(web.getUrl());return;}
+   for(WebView web:views)if(web.getUrl()!=null){url.set(web.getUrl());return;}
+  });
+  return url.get();
+ }
+ /** By default this asserts what the product submits: the executable address is refused before any
+  * page exists, and a search becomes https://www.google.com/search?q=<query> in the child WebView.
+  * Nothing here needs the public page to load, so the default campaign can pass offline.
+  * browserFlowLive=1 (an emulator with network) also waits for the real results page and checks
+  * that the provider cannot reach the app bridge; rounds 7 and 8 failed only on that live load. */
  @Test public void submittedSearchUsesRealProviderAndRejectsExecutableAddress()throws Exception{
+  boolean live="1".equals(androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("browserFlowLive"));
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();
    address("javascript:alert(1)");
    until("document.body.innerText.includes('valid HTTP or HTTPS address without credentials')");
    assertEquals("Rejected address cannot create a page","null",child("true"));
+   String rejected=childUrl();
+   assertFalse("Rejected address is never handed to a WebView",rejected!=null&&rejected.toLowerCase(java.util.Locale.ROOT).startsWith("javascript:"));
    String query="android calendar documentation";address(query);
+   String submitted=null;
+   for(int i=0;i<150;i++){submitted=childUrl();if(submitted!=null&&submitted.startsWith("https:"))break;SystemClock.sleep(100);}
+   if(submitted==null||!submitted.startsWith("https:"))fail("Search must create a child page with an HTTPS address; "+diagnostics());
+   android.net.Uri uri=android.net.Uri.parse(submitted);
+   assertEquals("Search provider host","www.google.com",uri.getHost());
+   assertEquals("Search provider path","/search",uri.getPath());
+   assertEquals("Search query is the typed text, unchanged",query,uri.getQueryParameter("q"));
+   assertNull("No credentials in the submitted address",uri.getUserInfo());
+   if(!live)return;
    boolean loaded=false;
    for(int i=0;i<300;i++){
     if("true".equals(child("location.protocol==='https:' && location.hostname==='www.google.com' && location.pathname==='/search' && new URL(location.href).searchParams.get('q')==="+JSONObject.quote(query)+" && document.readyState==='complete' && !!document.body && document.body.innerText.trim().length>20"))){loaded=true;break;}

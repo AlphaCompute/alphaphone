@@ -79,3 +79,46 @@ test('Back dismisses the reading review and cancels only its speech before brows
  // Its capture listener must be gone: the next Back belongs to the app again.
  await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));expect(await page.evaluate(()=>(window as any).backEscaped)).toBe(true);
 });
+
+// LOOP-E: production Android reads through the resident runtime. The renderer must pick the resident
+// binding (execution 'device') over a paired voice, hand native only the one-use token with that
+// binding, and abort when the binding changes mid-reading or before the next one. The native call is
+// a synthetic in-page stub on the browser voice; this is renderer source evidence, not native.
+test('resident reading uses the resident binding and a binding change aborts it',async({page})=>{
+ const result=await page.evaluate(async()=>{
+  const {connectionController}=await import('/src/runtime/connection-ui.tsx');
+  const {BrowserVoice}=await import('/src/browser/voice.ts');
+  const {createNativeReadingVoice}=await import('/src/runtime/native-reading-voice.ts');
+  const controller=connectionController as any,proto=BrowserVoice.prototype as any,calls:any[]=[];
+  let resident={execution:'device',ownerId:'fixture-owner',sessionId:'fixture-session'};
+  const listeners=new Set<()=>void>(),saved={resident:controller.getResidentReadingBinding,paired:controller.getPairedVoiceBinding,subscribe:controller.subscribe,synth:proto.synthesizeLocalBrowserReading};
+  controller.getResidentReadingBinding=()=>resident;
+  controller.getPairedVoiceBinding=()=>{throw Error('The paired voice must not be consulted while a resident binding exists');};
+  controller.subscribe=(listener:()=>void)=>{listeners.add(listener);return ()=>{listeners.delete(listener);};};
+  proto.synthesizeLocalBrowserReading=function(input:any){calls.push(input);return new Promise(()=>{});};
+  try{
+   const voice=createNativeReadingVoice();
+   if(!voice)return {voice:false};
+   const chosen={binding:voice.binding,current:voice.isCurrent()};
+   const speaking=voice.speak('token-one',new AbortController().signal).then(()=>'finished',(error:any)=>`${error?.name}:${error?.message}`);
+   for(let i=0;i<50&&!calls.length;i++)await new Promise(resolve=>setTimeout(resolve,20));
+   const before=calls.length;
+   resident={...resident,sessionId:'replaced-session'};
+   listeners.forEach(listener=>listener());
+   const outcome=await speaking;
+   const next=await voice.speak('token-two',new AbortController().signal).then(()=>'finished',(error:any)=>`${error?.name}:${error?.message}`);
+   return {voice:true,chosen,before,calls,outcome,afterChange:voice.isCurrent(),next};
+  }finally{Object.assign(controller,{getResidentReadingBinding:saved.resident,getPairedVoiceBinding:saved.paired,subscribe:saved.subscribe});if(saved.synth)proto.synthesizeLocalBrowserReading=saved.synth;else delete proto.synthesizeLocalBrowserReading;}
+ });
+ expect(result.voice).toBe(true);
+ expect(result.chosen!.binding).toMatchObject({execution:'device',ownerId:'fixture-owner',sessionId:'fixture-session'});
+ expect(result.chosen!.binding.expiresAt).toBeGreaterThan(Date.now());
+ expect(result.chosen!.current).toBe(true);
+ // Exactly one native call, carrying the resident binding and the one-use token, never page text.
+ expect(result.before).toBe(1);expect(result.calls).toHaveLength(1);
+ expect(result.calls![0]).toMatchObject({execution:'device',ownerId:'fixture-owner',sessionId:'fixture-session',readingToken:'token-one'});
+ expect(Object.keys(result.calls![0]).sort()).toEqual(['execution','expiresAt','ownerId','readingToken','requestId','sessionId']);
+ expect(result.outcome).toMatch(/^AbortError:/);
+ expect(result.afterChange).toBe(false);
+ expect(result.next).toBe('AbortError:Reading selection changed');
+});
