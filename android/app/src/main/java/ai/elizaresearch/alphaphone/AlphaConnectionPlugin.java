@@ -294,11 +294,10 @@ public final class AlphaConnectionPlugin extends Plugin {
  @PluginMethod public void openExternal(PluginCall call) {
   try {
    URI url = validatedUrl(call.getString("url"), false);
-   String host = url.getHost().toLowerCase(Locale.ROOT);
-   if (!(host.equals("eliza.app") || host.endsWith(".eliza.app") || host.equals("accounts.google.com"))) throw new IllegalArgumentException();
-   if (url.getPort() != -1 && url.getPort() != 443) throw new IllegalArgumentException();
+   // Production hosts only in a flag-off build; staging and other *.eliza.app hosts need test mocks.
+   if (!ConnectionRoutes.externalHost(url.getScheme(), url.getHost(), url.getPort(), BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)) throw new IllegalArgumentException();
    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.toASCIIString())); intent.addCategory(Intent.CATEGORY_BROWSABLE);
-   boolean cliLogin=("eliza.app".equals(host)||"staging.eliza.app".equals(host))&&"/auth/cli-login".equals(url.getPath());
+   boolean cliLogin=ConnectionRoutes.externalCliLogin(url.getHost(),url.getPath(),BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
    if(cliLogin){
     String id=required(call.getString("requestId"),256);
     Pending pending=new Pending();pending.browserCall=call;

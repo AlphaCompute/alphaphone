@@ -37,6 +37,25 @@ final class ConnectionRoutes {
   return "https".equals(scheme)&&"api.eliza.app".equals(host)&&(port==-1||port==443);
  }
  /**
+  * Hosts openExternal may hand to the system browser. A flag-off renderer opens only Cloud sign-in
+  * (https://eliza.app/auth/cli-login), credit top-up and account management on
+  * https://cloud.eliza.app/cloud/billing, and Google's consent page for Gmail
+  * (https://accounts.google.com). Staging (staging.eliza.app, cloud-staging.eliza.app) and any other
+  * *.eliza.app host are admitted only in test-mocks builds. HTTPS on the default port only; the host
+  * is compared lower-cased and exactly, so a lookalike or trailing-dot spelling is refused.
+  */
+ static boolean externalHost(String scheme,String host,int port,boolean testMocks){
+  if(!"https".equals(scheme)||host==null||(port!=-1&&port!=443))return false;
+  String value=host.toLowerCase(java.util.Locale.ROOT);
+  if("eliza.app".equals(value)||"cloud.eliza.app".equals(value)||"accounts.google.com".equals(value))return true;
+  return testMocks&&value.matches("[a-z0-9-]+(\\.[a-z0-9-]+)*\\.eliza\\.app");
+ }
+ /** The Cloud sign-in page, whose return is a browser handoff rather than a fire-and-forget open. */
+ static boolean externalCliLogin(String host,String path,boolean testMocks){
+  String value=host==null?"":host.toLowerCase(java.util.Locale.ROOT);
+  return ("eliza.app".equals(value)||testMocks&&"staging.eliza.app".equals(value))&&"/auth/cli-login".equals(path);
+ }
+ /**
   * Cloud self-revocation: the presented sign-in key revokes only itself. Exactly
   * DELETE https://api.eliza.app/api/v1/api-keys/current on the default port, without a query
   * or body. The staging authority exists only in test-mocks builds.
