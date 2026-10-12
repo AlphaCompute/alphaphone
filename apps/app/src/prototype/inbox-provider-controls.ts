@@ -3,6 +3,7 @@ import { secureConnectionStore } from '../runtime/native-connection';
 import { connectionController } from '../runtime/connection-ui';
 import type { GmailInboxCapabilities, GmailInboxReceipt } from '../runtime/cloud-protocol';
 import { classifyGmailFailure, type GmailFailureKind } from '../runtime/gmail-mailbox';
+import { gmailInboxAllows, type GmailMailboxAction } from '../runtime/gmail-grants';
 type Bag=Record<string,any>;
 /** Explicit provider review; state never enters prototype persistence or agent context. */
 export function inboxProviderControls(publish:()=>void,toast:(message:string)=>void){
@@ -52,16 +53,22 @@ export function inboxProviderControls(publish:()=>void,toast:(message:string)=>v
   if(failure==='stale'&&(record.phase==='preparing'||record.phase==='review')){await run(async(owned,check)=>{await owned.clear();check();visible=false;});if(!operation?.snapshot()){failure=null;onStale?.();}return;}
   if(record.phase==='preparing'){await run(owned=>owned.reloadReview());return;}
   await run(owned=>owned.refresh());}
- async function prepare(proposal:Bag,source?:{draftId:string}){if(!operation)return;const kind=proposal.kind;if(!(kind==='send'?caps?.send:kind.startsWith('draft-')?caps?.providerDrafts:caps?.mailboxMutations)){toast('The selected account has not granted this provider action.');return;}visible=true;
+ async function prepare(proposal:Bag,source?:{draftId:string}){if(!operation)return;const kind=proposal.kind;if(!gmailInboxAllows(caps,kind as GmailMailboxAction)){toast('The selected account has not granted this provider action. Authorize Gmail changes, then try again. Nothing was changed.');return;}visible=true;
   // An unsent review of an earlier version of this email was never dispatched. Discard it and
   // prepare the current content under a new request ID; the same content reopens its own review.
   const pending=unsent();
   if(pending&&composerKind(kind)){if(pending.proposal.kind===kind&&pending.composer?.draftId===source?.draftId&&composerContent(pending.proposal)===composerContent(proposal)&&pending.phase==='review'){publish();return;}await run(async(owned,check)=>{await owned.clear();check();await owned.prepare(proposal,source);});return;}
   await run(owned=>owned.prepare(proposal,source));}
+ /** The account no longer grants a change capability: discard an undispatched review prepared under
+  * it, so it can never be confirmed against the withdrawn grant. A dispatched or settled operation keeps
+  * its receipt. Capabilities are re-read. */
+ async function withdrawn(){const record=operation?.snapshot();
+  if(record&&(record.phase==='review'||record.phase==='preparing'))await run(async(owned,check)=>{await owned.clear();check();visible=false;toast('Gmail change access was withdrawn, so the unsent review was discarded. Nothing was changed.');});
+  if(selected)await bind(selected);}
  async function editSavedDraft(){await run(async(owned,check)=>{const record=owned.snapshot(),reference=record?.receipt?.providerResult,binding=connectionController.getCloudClient(),grant=selected;if(!record||!binding||!reference||typeof reference.draftId!=='string'||typeof reference.providerDigest!=='string')throw new Error('No provider draft receipt');const controller=new AbortController();draftRead=controller;try{const current=await binding.client.gmailDraft(grant,reference.draftId,controller.signal);check();if(current.providerDigest!==reference.providerDigest)throw new Error('Gmail draft changed outside this app. The saved content will not overwrite it. Open Gmail to inspect the conflict.');if(!await editor?.(record.proposal,current))throw new Error('Save or discard changed local edits before opening this provider draft.');check();await owned.clear();check();visible=false;}finally{if(draftRead===controller)draftRead=null;controller.abort();}});}
  async function followup(kind:'delete-draft'|'undo'){await run(async(owned,check)=>{const record=owned.snapshot(),result=record?.receipt?.providerResult;if(!record||!result)throw new Error('No confirmed provider result');const proposal=kind==='delete-draft'?{kind:'draft-delete',draftId:result.draftId,expectedDigest:result.providerDigest,confirmPermanentDelete:true}:{kind:record.proposal.kind==='archive'?'unarchive':'untrash',messageId:result.messageId,expectedHistoryId:result.historyId};await owned.clear();check();await owned.prepare(proposal);});}
 
- return {bind,reset,prepare,setEditor:(value:typeof editor)=>{editor=value;},setComposer:(value:typeof composer)=>{composer=value;},
+ return {bind,reset,prepare,withdrawn,setEditor:(value:typeof editor)=>{editor=value;},setComposer:(value:typeof composer)=>{composer=value;},
  /** A confirmed undo put a message back; the list on screen no longer shows the mailbox. */
  onRestored(value:()=>void){onRestored=value;},capabilities:()=>caps,
  setObservers(value:{stale?:()=>void;receipt?:(receipt:GmailInboxReceipt)=>void;sent?:(source:{draftId:string},proposal:Bag,grant:string)=>void;sentNote?:(source:{draftId:string})=>string}){onStale=value.stale||null;onReceipt=value.receipt||null;onSent=value.sent||null;sentNote=value.sentNote||null;},

@@ -12,7 +12,8 @@ import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import { connectionController } from '../runtime/connection-ui';
 import type { GmailAccount } from '../runtime/cloud-protocol';
-import { disconnectGmailAccount, disconnectMessage, gmailReadable, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
+import { disconnectGmailAccount, disconnectMessage, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
+import { gmailGrantLabel, gmailGrantTier } from '../runtime/gmail-grants';
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
 import { buildDiagnostics, diagnosticsFileName, diagnosticsText } from '../runtime/diagnostics-export';
 import { leavePasswordManager, passwordEntryPage, passwordManagerGroups, passwordManagerLifecycle, refreshPasswordManager, PASSWORD_PAGES } from '../passwords/password-manager';
@@ -155,7 +156,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
             const accounts = await cloud.client.gmailAccounts(abort.signal);
             if (abort.signal.aborted || owner !== instance || capabilityAbort !== abort || connectionController.getCloudClient()?.sessionId !== cloud.sessionId) return;
             gmailAccounts = accounts;
-            gmail = accounts.some(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage')) ? 'Read access authorized' : 'Authorization required';
+            gmail = gmailGrantLabel(accounts);
           } catch { if (owner === instance && capabilityAbort === abort) gmail = 'Authorization not verified'; }
         })(),
         (async () => {
@@ -178,7 +179,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     try {
       const result = await disconnectGmailAccount(cloud.client, account.connectionId, new AbortController().signal);
       if (owner !== instance || connectionController.getCloudClient()?.sessionId !== cloud.sessionId) return;
-      if (result.accounts) { gmailAccounts = result.accounts; gmail = result.accounts.some(gmailReadable) ? 'Read access authorized' : 'Authorization required'; }
+      if (result.accounts) { gmailAccounts = result.accounts; gmail = gmailGrantLabel(result.accounts); }
       else gmail = 'Authorization not verified';
       gmailNotice = disconnectMessage(result.outcome, account.label);
       settingsApi?.toast(gmailNotice);
@@ -430,7 +431,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Connections') {
         const connected = gmailAccounts.filter(a => a.connected && a.connectionId);
         page.groups = [group([info('Gmail', gmail),
-          ...connected.map(a => info(a.label, gmailReadable(a) ? 'Connected · read access' : 'Connected · read access not granted')),
+          ...connected.map(a => info(a.label, { modify: 'Connected · read and change access', readonly: 'Connected · read access', none: 'Connected · read access not granted' }[gmailGrantTier(a)])),
           ...(gmailNotice ? [info('Last change', gmailNotice)] : []),
           { kNav:true, label:'Open Inbox', lbl:'Open Inbox', chev:true, noAB:true, go:()=>api.open('inbox') },
           ...connected.map(a => { const label = `Disconnect ${a.label}`; return { kNav:true, label, lbl:gmailBusy === a.connectionId ? 'Disconnecting…' : label, chev:true, noAB:true, go:()=>void disconnectGmail(a) }; }),

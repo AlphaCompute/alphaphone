@@ -6,6 +6,7 @@ import { presentHomeInboxStatus } from './home-cards';
 import { inboxDrafts, type ComposePrefill, type SuggestionTarget } from './inbox-drafts';
 import { classifyGmailFailure, disconnectGmailAccount, disconnectMessage, gmailReadable, setGmailReadState, GMAIL_ACCOUNTS_CHANGED, type GmailFailureKind } from '../runtime/gmail-mailbox';
 import { connectionController } from '../runtime/connection-ui';
+import { gmailGrantChange, gmailInboxAllows, gmailModifyIncomplete } from '../runtime/gmail-grants';
 import { safeMailLink, type GmailAccount, type GmailDraftContent, type GmailDraftSummary, type GmailLink, type GmailMessage } from '../runtime/cloud-protocol';
 import { reviewOpaqueAttachment } from '../runtime/inbox-operation';
 import { openConnectionBrowser } from '../runtime/native-connection';
@@ -178,10 +179,14 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   }
   async function refreshAccounts(preserveSelection=false) {
     let loadAfter = false;
-    await work('Checking Gmail connection…', async ({ client }, signal, valid) => {
+    await work('Checking Gmail connection…', async (binding, signal, valid) => {
+      const { client } = binding;
       const result = await client.gmailAccounts(signal);
       if (!valid()) return;
-      const previous=selected;accounts = result; accountsChecked = true;
+      const previous=selected,before=accounts.find(a=>a.connectionId===previous);accounts = result; accountsChecked = true;
+      // A withdrawn change grant discards unsent reviews prepared under it; nothing is dispatched (P-37).
+      const grantChange=gmailGrantChange({sessionId:binding.sessionId,account:before},{sessionId:binding.sessionId,account:accounts.find(a=>a.connectionId===previous)});
+      if(previous&&grantChange.withdrawn.length)void provider.withdrawn();
       if (!accounts.some(a => a.connectionId === selected && a.connected && a.grantedCapabilities.includes('google.gmail.triage'))) selected = accounts.find(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage'))?.connectionId || '';
       if(previous!==selected){inboxPreview=null;hasUnread=false;}
       const retained=preserveSelection&&!!selected&&selected===previous;
@@ -242,7 +247,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     }, () => void refreshAccounts());
     disconnecting = false; publish();
   }
-  async function connect(permission:'read'|'send'|'drafts'|'mailbox'='read') {
+  async function connect(permission:'read'|'modify'='read') {
     await work('Complete Gmail authorization in your browser', async ({ client }, signal, valid) => {
       const url = await client.initiateGmail(signal,permission);
       if (!valid()) return;
@@ -358,7 +363,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   /** Swipe left routes to the same reviewed archive flow as the message view. */
   async function swipeArchive(message: GmailMessage) {
     const caps = provider.capabilities();
-    if (!caps?.mailboxMutations) { api?.toast('Authorize mailbox changes to archive. Nothing was changed.'); return; }
+    if (!caps || !gmailInboxAllows(caps, 'archive')) { api?.toast('Authorize Gmail changes to archive. Nothing was changed.'); return; }
     if (!caps.threads) { api?.toast('Open the message to archive it. Nothing was changed.'); return; }
     const accountId = selected; let historyId: string | null = null;
     await work('Preparing archive review…', async ({ client }, signal, valid) => {
@@ -537,9 +542,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       ...(selected && newerMail && messages.length && loadedQuery === currentQuery() ? [chip('Load newer mail', () => void load())] : []),
       chip('Connect Gmail', () => void connect()),
       chip('Check connection', () => void refreshAccounts()),
-      ...(selected&&!provider.capabilities()?.send?[chip('Authorize Gmail sending',()=>void connect('send'))]:[]),
-      ...(selected&&!provider.capabilities()?.providerDrafts?[chip('Authorize Gmail drafts',()=>void connect('drafts'))]:[]),
-      ...(selected&&!provider.capabilities()?.mailboxMutations?[chip('Authorize mailbox changes',()=>void connect('mailbox'))]:[]),
+      // Read first; one incremental consent for every approved mailbox change (P-37).
+      ...(selected&&gmailModifyIncomplete(provider.capabilities())?[chip('Authorize Gmail changes',()=>void connect('modify'))]:[]),
       ...accounts.filter(a => a.connectionId).map(a => chip(a.label, () => selectAccount(a), a.connectionId === selected)),
       ...(selected ? [chip('Disconnect Gmail', () => void disconnect())] : []),
     ] : [chip('Connect Eliza Cloud', () => connectionController.openCloudAccount())];
