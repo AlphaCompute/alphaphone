@@ -13,11 +13,14 @@ public final class DeferredDeletionJournalTest {
   j.stage("expiry",owner,target,new DeletionDeadline("boot",100,1000));
   j.expire("expiry","other-boot",999999,(a,b)->null,t->{effects.incrementAndGet();return object("bad");});check(effects.get()==0);
   j.expire("expiry","boot",10100,(a,b)->"owner-changed",t->{effects.incrementAndGet();return object("bad");});check(effects.get()==0);
-  store.fail=true;try{j.expire("expiry","boot",10100,(a,b)->null,t->{effects.incrementAndGet();return object("bad");});throw new AssertionError();}catch(IllegalStateException expected){}check(effects.get()==0);store.fail=false;
-  try{j.expire("expiry","boot",10100,(a,b)->null,t->{effects.incrementAndGet();store.fail=true;return new JSONObject().put("status","deleted");});throw new AssertionError();}catch(IllegalStateException expected){}store.fail=false;
+  check(j.expire("expiry","boot",50000,(a,b)->null,t->{effects.incrementAndGet();return object("bad");}).getString("phase").equals("paused"));check(effects.get()==0);
+  check(j.undo("expiry",owner,"boot",50000).getString("phase").equals("undone"));
+  j.stage("write",owner,target,new DeletionDeadline("boot",100,1000));
+  store.fail=true;try{j.expire("write","boot",10100,(a,b)->null,t->{effects.incrementAndGet();return object("bad");});throw new AssertionError();}catch(IllegalStateException expected){}check(effects.get()==0);store.fail=false;
+  try{j.expire("write","boot",10100,(a,b)->null,t->{effects.incrementAndGet();store.fail=true;return new JSONObject().put("status","deleted");});throw new AssertionError();}catch(IllegalStateException expected){}store.fail=false;
   check(effects.get()==1);j=new DeferredDeletionJournal(store);
-  j.expire("expiry","boot",50000,(a,b)->null,t->{effects.incrementAndGet();return new JSONObject().put("status","deleted");});check(effects.get()==1);
-  check(j.list("boot",50000).getJSONObject(1).getString("phase").equals("unknown")||j.list("boot",50000).getJSONObject(0).getString("phase").equals("unknown"));
+  j.expire("write","boot",50000,(a,b)->null,t->{effects.incrementAndGet();return new JSONObject().put("status","deleted");});check(effects.get()==1);
+  boolean unknown=false;JSONArray all=j.list("boot",50000);for(int i=0;i<all.length();i++)unknown|=all.getJSONObject(i).getString("id").equals("write")&&all.getJSONObject(i).getString("phase").equals("unknown");check(unknown);
   j.stage("reboot",owner,target,new DeletionDeadline("boot",100,1000));check(j.undo("reboot",owner,"new-boot",1).getString("phase").equals("undone"));
   j.stage("foreign",owner,target,new DeletionDeadline("boot",100,1000));try{j.undo("foreign",object("other"),"boot",101);throw new AssertionError();}catch(SecurityException expected){}
   check(j.expire("foreign","boot",10100,(a,b)->null,t->{effects.incrementAndGet();throw new IllegalStateException("unknown transport");}).getString("phase").equals("unknown"));
@@ -30,6 +33,10 @@ public final class DeferredDeletionJournalTest {
    undo.start();expiry.start();start.countDown();undo.join();expiry.join();if(failure.get()!=null)throw new AssertionError(failure.get());
    String phase=race.list("boot",20000).getJSONObject(0).getString("phase");check(phase.equals("undone")?writes.get()==0:phase.equals("deleted")&&writes.get()==1);
   }
+  Store retained=new Store();DeferredDeletionJournal bounded=new DeferredDeletionJournal(retained);
+  bounded.stage("uncertain",owner,target,new DeletionDeadline("boot",1,1));bounded.expire("uncertain","boot",10001,(a,b)->null,t->{throw new IllegalStateException("lost response");});
+  for(int n=0;n<600;n++){String id="terminal_"+n;bounded.stage(id,owner,target,new DeletionDeadline("boot",n+10,n+10));bounded.undo(id,owner,"boot",n+11);}
+  JSONArray history=bounded.list("boot",100000);check(history.length()<=129);boolean kept=false;for(int i=0;i<history.length();i++)kept|=history.getJSONObject(i).getString("id").equals("uncertain");check(kept);
   System.out.println("PASS durable deletion claims, recovery and no replay");
  }
 }

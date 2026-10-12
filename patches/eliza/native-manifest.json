@@ -16,18 +16,18 @@
     },
     {
       "file": "reminder-deletion-window.patch",
-      "sha256": "b380feaec33b2a80c05a3fee0e0205b4e783f0620b6f40a4ea3b2372c9d0317c",
+      "sha256": "2cd81e4d4a840642be77dbb835c736faf6d3259cf9b35379436ec885f2d470d9",
       "module": "plugins/plugin-native-reminders/android",
       "targets": [
         {
           "path": "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderStore.java",
           "beforeSha256": "095f7805b1ded1f2b6087185914b9dabb67c1cdc6341c8716f34bb4f9d6cc371",
-          "afterSha256": "3dd2029d13182b39b3b9d4acd9f99a033b150e756de49c1a3105f453aa8066ec"
+          "afterSha256": "f49e30828267dd66017c926128fb4c0ee3d08f75af6e4bee81017b8ad4649850"
         },
         {
           "path": "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderEngine.java",
           "beforeSha256": "b05bab06a739a29367551f0a58091c5f14201b28eb25fd492c4bd7845c98dfd3",
-          "afterSha256": "fbc158d4c21aa41ee89265081ba10646238d36c1c1e6188e1b541395be363be4"
+          "afterSha256": "f27bedd21716ff5c78bc5b46535987de20b01da5704398860ad0a7113ffbe08e"
         }
       ]
     },
@@ -40,6 +40,18 @@
           "path": "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarPlugin.java",
           "beforeSha256": "f3e9b0e7f4accbeeca96a97f916a141ef722f17b773c7997fb80f2867418cc05",
           "afterSha256": "83c66d1af32ac6bbbefcd21d208fd2f115696cab57aeab25607d745282dd483d"
+        }
+      ]
+    },
+    {
+      "file": "action-journal-native-claim.patch",
+      "sha256": "61a585ff7a168a0bdaad4af70b06a13e28064729b4d94bdda76f747f125491ea",
+      "module": "plugins/plugin-native-action-journal/android",
+      "targets": [
+        {
+          "path": "plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/ActionJournal.java",
+          "beforeSha256": "3b0f71bed77506d5a1b48af152191389cf621ecf71789521982a8a46eb285976",
+          "afterSha256": "4902e0d10862fad375d87e70f15782017b685726c069b54e25350368b6cdd346"
         }
       ]
     }

@@ -42,4 +42,4 @@ include ':eliza-owned-media'
 project(':eliza-owned-media').projectDir = new File('../vendor/eliza/plugins/plugin-native-media/android')
 
 include ':eliza-action-journal'
-project(':eliza-action-journal').projectDir = new File('../vendor/eliza/plugins/plugin-native-action-journal/android')
+project(':eliza-action-journal').projectDir = new File(nativePatchSource.root, 'plugins/plugin-native-action-journal/android')

@@ -12,7 +12,7 @@ final class DeferredDeletionJournal {
  DeferredDeletionJournal(Store store){this.store=store;}
  private JSONObject read()throws Exception{String raw=store.read();if(raw==null)return new JSONObject().put("version",1).put("records",new JSONObject());JSONObject data=new JSONObject(raw);if(data.getInt("version")!=1)throw new IllegalStateException("Deletion journal unavailable");data.getJSONObject("records");return data;}
  private static JSONObject copy(JSONObject value)throws Exception{return new JSONObject(value.toString());}
- private static boolean same(Object a,Object b)throws Exception{
+ static boolean same(Object a,Object b)throws Exception{
   if(a instanceof JSONObject&&b instanceof JSONObject){JSONObject x=(JSONObject)a,y=(JSONObject)b;if(x.length()!=y.length())return false;for(java.util.Iterator<String> i=x.keys();i.hasNext();){String key=i.next();if(!y.has(key)||!same(x.get(key),y.get(key)))return false;}return true;}
   if(a instanceof JSONArray&&b instanceof JSONArray){JSONArray x=(JSONArray)a,y=(JSONArray)b;if(x.length()!=y.length())return false;for(int i=0;i<x.length();i++)if(!same(x.get(i),y.get(i)))return false;return true;}
   return java.util.Objects.equals(a,b);
@@ -26,7 +26,12 @@ final class DeferredDeletionJournal {
   if(id==null||!id.matches("[A-Za-z0-9_-]{1,128}"))throw new IllegalArgumentException("Deletion identity required");
   JSONObject data=read(),records=data.getJSONObject("records"),prior=records.optJSONObject(id);
   if(prior!=null){if(!same(owner,prior.getJSONObject("owner"))||!same(target,prior.getJSONObject("target")))throw new IllegalArgumentException("Deletion identity changed");return copy(prior);}
-  if(records.length()>=500)throw new IllegalStateException("Deletion history full");
+  // Terminal entries may retire only after a new explicit native review reaches stage.
+  // Never evict unknown/dispatching/paused/pending intents. Reuse cannot bypass target guards.
+  java.util.ArrayList<String> terminal=new java.util.ArrayList<>();for(java.util.Iterator<String> i=records.keys();i.hasNext();){String key=i.next();String phase=records.getJSONObject(key).getString("phase");if("deleted".equals(phase)||"undone".equals(phase)||"conflict".equals(phase))terminal.add(key);}
+  terminal.sort((a,b)->Long.compare(records.optJSONObject(a).optJSONObject("deadline").optLong("createdElapsed"),records.optJSONObject(b).optJSONObject("deadline").optLong("createdElapsed")));
+  for(int i=0;i<terminal.size()-127;i++)records.remove(terminal.get(i));
+  if(records.length()>=500)throw new IllegalStateException("Pending deletion history requires review");
   JSONObject row=new JSONObject().put("version",1).put("id",id).put("owner",copy(owner)).put("target",copy(target)).put("phase","queued").put("deadline",new JSONObject().put("continuity",deadline.continuity).put("createdElapsed",deadline.createdElapsed).put("expiresElapsed",deadline.expiresElapsed).put("expiresAt",deadline.expiresAt));
   records.put(id,row);store.save(data.toString());return copy(row);
  }
@@ -36,18 +41,18 @@ final class DeferredDeletionJournal {
  synchronized JSONObject undo(String id,JSONObject owner,String continuity,long elapsed)throws Exception{
   JSONObject data=read(),row=data.getJSONObject("records").getJSONObject(id);
   if(!same(owner,row.getJSONObject("owner")))throw new SecurityException("Deletion owner changed");
-  String phase=row.getString("phase");if(!"queued".equals(phase))return copy(row);
-  if("expired".equals(window(row,continuity,elapsed)))throw new IllegalStateException("Undo window ended");
+  String phase=row.getString("phase");if(!"queued".equals(phase)&&!"paused".equals(phase))return copy(row);
+  if(!"paused".equals(phase)&&"expired".equals(window(row,continuity,elapsed)))throw new IllegalStateException("Undo window ended");
   row.put("phase","undone");store.save(data.toString());return copy(row);
  }
  synchronized JSONObject expire(String id,String continuity,long elapsed,Admission admission,Delete deletion)throws Exception{
   JSONObject data=read(),row=data.getJSONObject("records").getJSONObject(id);
   if(!"queued".equals(row.getString("phase"))||!"expired".equals(window(row,continuity,elapsed)))return copy(row);
   String refusal;try{refusal=admission.refusal(copy(row.getJSONObject("owner")),copy(row.getJSONObject("target")));}catch(Exception unavailable){refusal="owner-unavailable";}
-  if(refusal!=null){row.put("blocked",refusal);store.save(data.toString());return copy(row);}
+  if(refusal!=null){row.put("phase","paused").put("blocked",refusal);store.save(data.toString());return copy(row);}
   row.remove("blocked");row.put("phase","dispatching");store.save(data.toString());
   JSONObject outcome;try{outcome=deletion.apply(copy(row.getJSONObject("target")));}catch(Exception unknown){outcome=new JSONObject().put("status","unknown");}
   String status=outcome.optString("status","unknown");if(!java.util.Arrays.asList("deleted","conflict","permission-required","unknown").contains(status))status="unknown";
-  row.put("phase",status).put("outcome",outcome);store.save(data.toString());return copy(row);
+  row.put("phase","permission-required".equals(status)?"paused":status).put("outcome",outcome);if("permission-required".equals(status))row.put("blocked",status);store.save(data.toString());return copy(row);
  }
 }
