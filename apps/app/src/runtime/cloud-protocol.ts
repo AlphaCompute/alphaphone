@@ -322,7 +322,8 @@ export class CloudProtocol {
           controller.signal.throwIfAborted();
           if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
           // The new key replaces a saved one. Revoke the old key first, once and best effort: a
-          // failed or unconfirmed revocation never blocks this sign-in, and the old key is cleared.
+          // failed or unconfirmed revocation never blocks this sign-in. The write below replaces the
+          // old key in place (stores that bind a claim to the key it replaces stay atomic).
           const previousSignIn = await this.revokeReplaced(controller.signal);
           controller.signal.throwIfAborted();
           if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
@@ -355,10 +356,10 @@ export class CloudProtocol {
     let previous: CloudCredential | null;
     try { previous = await this.credentials.read(this.environment); } catch { return "unconfirmed"; }
     if (!previous) return undefined;
-    try { const result = await this.revokeStored(previous, signal); return result.supported && result.revoked ? "revoked" : "unconfirmed"; }
+    try { const result = await this.revokeStored(previous, signal, false); return result.supported && result.revoked ? "revoked" : "unconfirmed"; }
     catch { return "unconfirmed"; }
   }
-  private async revokeStored(credential: CloudCredential, signal: AbortSignal): Promise<CloudSessionRevocation> {
+  private async revokeStored(credential: CloudCredential, signal: AbortSignal, clearLocal = true): Promise<CloudSessionRevocation> {
     try {
       if (!this.options.deleteRequests) return { supported: false, reason: "transport" };
       let data: unknown;
@@ -373,7 +374,7 @@ export class CloudProtocol {
       if (result.success !== true || (result.status !== undefined && result.status !== "revoked")) throw new CloudProtocolError("invalid-response");
       return { supported: true, revoked: true, credentialId: typeof result.credentialId === "string" ? result.credentialId : null, revokedAt: typeof result.revokedAt === "string" ? result.revokedAt : null };
     } finally {
-      const current = await this.credentials.read(this.environment);
+      const current = clearLocal ? await this.credentials.read(this.environment) : null;
       if (current?.credentialId === credential.credentialId && current?.token === credential.token) await this.credentials.clear(this.environment);
     }
   }
