@@ -1,3 +1,4 @@
+import {refreshDeletionViews} from '../runtime/deletions';
 import {openReminderRecovery,openReminderCreationRecovery,openReminderActionRecovery} from '../browser/reminder-recovery';
 import {openCalendarRecovery} from '../browser/calendar-recovery';
 import { registerPlugin } from '../platform-plugins';
@@ -376,7 +377,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       };
       if(!Capacitor.isNativePlatform()&&selected.nativeEvent.seriesId){
         out.ev.day+=' · Repeating event · edits and deletion apply to this occurrence';out.ev.browserSeries=true;
-        const seriesAction=async(remove:boolean)=>{try{const event=selected.nativeEvent;const result=await (remove?calendar.removeSeries({id:event.id,revision:event.revision}):calendar.editSeries({id:event.id,revision:event.revision,people:out.attendeeChoices||[]}));if(result.status==='saved'||result.status==='deleted'){api.set({open:null,openDay:null});await refresh(false,true);}else if(result.status==='conflict')api.toast('This series changed. Refresh and try again.');}catch{api.toast('The series could not be changed. Refresh and try again.');}};
+        const seriesAction=async(remove:boolean)=>{try{const event=selected.nativeEvent;const result=await (remove?calendar.removeSeries({id:event.id,revision:event.revision}):calendar.editSeries({id:event.id,revision:event.revision,people:out.attendeeChoices||[]}));if(result.status==='queued'){api.set({open:null,openDay:null});refreshDeletionViews();api.toast('Deletion queued. Undo is available for 10 seconds.');}else if(result.status==='saved'||result.status==='deleted'){api.set({open:null,openDay:null});await refresh(false,true);}else if(result.status==='conflict')api.toast('This series changed. Refresh and try again.');}catch{api.toast('The series could not be changed. Refresh and try again.');}};
         out.ev.editSeries=()=>void seriesAction(false);out.ev.deleteSeries=()=>void seriesAction(true);
       }
       if(!Capacitor.isNativePlatform())out.ev.people=(out.ev.people||[]).map((person:Bag,index:number)=>{const event=selected.nativeEvent,id=event.who?.[index],labels:Record<string,string>={added:'Added',invited:'Invited',yes:'Going',maybe:'Maybe',no:'Declined'};return {...person,st:labels[event.responses?.[id]||'added'],canRespond:true,response:async()=>{try{const result=await calendar.editResponse({id:event.id,revision:event.revision,person:id,name:person.name});if(result.status==='saved')await refresh(false,true);}catch{api.toast('This guest list changed. Reopen the event.');}}};});
@@ -394,7 +395,8 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           dispatched=true;
           const result=await calendar.remove({id:event.id,calendarId:event.calendarId,expected,revision:inspected.revision});
           if(owner!==currentOwner)return;
-          if(result.status==='deleted'){
+          if(result.status==='queued'){const current=api.get('calendar');if(!document.hidden&&api.isActive()&&current.open===selected.id&&!current.form){api.set({open:null,openDay:null});api.toast('Deletion queued. Undo is available for 10 seconds.');}refreshDeletionViews();}
+          else if(result.status==='deleted'){
             if(!event.seriesId&&!/:occ:-?\d+$/.test(String(event.id)))void forgetNoteOrigin('event',String(event.id));
             // The receipt belongs to the deleted event, not a newer detail or draft.
             const current=api.get('calendar');

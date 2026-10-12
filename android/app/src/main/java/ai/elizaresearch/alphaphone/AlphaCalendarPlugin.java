@@ -36,7 +36,7 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
   NativeDeletionCoordinator coordinator=NativeDeletionCoordinator.get(getContext());DeleteOwner captured=operationId==null?null:deleteOwners.remove(operationId);
   if(operationId!=null&&(captured==null||captured.owner==null))throw new SecurityException("Agent deletion review expired");
   org.json.JSONObject owner=captured==null?coordinator.manualOwner():captured.owner;
-  if(captured!=null)NativeDeletionClaim.check(AlphaActionJournal.get(getContext()),captured.identity,operationId,captured.operation,owner,true);
+  if(captured!=null){NativeDeletionClaim.check(AlphaActionJournal.get(getContext()),captured.identity,operationId,captured.operation,owner,true);target.put("journalBinding",NativeDeletionClaim.binding(AlphaActionJournal.get(getContext()),captured.identity));}
   return JSObject.fromJSONObject(new org.json.JSONObject().put("status","queued").put("deletion",coordinator.stageCalendar(target,owner,operationId)));
  }
  @Override @PluginMethod public void executeAgent(PluginCall call){

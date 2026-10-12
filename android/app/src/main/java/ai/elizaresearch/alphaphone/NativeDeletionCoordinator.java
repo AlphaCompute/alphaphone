@@ -30,18 +30,37 @@ final class NativeDeletionCoordinator {
   if(!stageOwnerCurrent(owner))throw new SecurityException("Deletion owner changed during review");
   String id=operationId==null?java.util.UUID.randomUUID().toString():operationId;JSONObject row=AlphaReminders.engine(context).stageDeletion(id,ownerKey(owner),target,clock(),binding);schedule(0);return row;
  }
+ JSONObject receipt(String kind,String id)throws Exception{
+  JSONObject time=clock();JSONArray rows="calendar".equals(kind)?calendar.list(time.getString("continuity"),time.getLong("elapsed")):AlphaReminders.engine(context).pendingDeletions();
+  for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(id.equals(row.getString("id")))return row;}return null;
+ }
  JSONArray pending()throws Exception{
   JSONObject time=clock();JSONArray result=new JSONArray(),events=calendar.list(time.getString("continuity"),time.getLong("elapsed"));
-  for(int i=0;i<events.length();i++){JSONObject row=events.getJSONObject(i);if(visible(row.getJSONObject("owner")))result.put(row.put("kind","calendar"));}
-  JSONArray reminders=AlphaReminders.engine(context).pendingDeletions();for(int i=0;i<reminders.length();i++){JSONObject row=reminders.getJSONObject(i);if(!visible(new JSONObject(row.getString("owner"))))continue;
+  for(int i=0;i<events.length();i++){JSONObject row=events.getJSONObject(i);if(pendingPhase(row)&&visible(row.getJSONObject("owner")))result.put(row.put("kind","calendar"));}
+  JSONArray reminders=AlphaReminders.engine(context).pendingDeletions();for(int i=0;i<reminders.length();i++){JSONObject row=reminders.getJSONObject(i);if(!pendingPhase(row)||!visible(new JSONObject(row.getString("owner"))))continue;
    if("queued".equals(row.getString("phase"))){String state=!time.getString("continuity").equals(row.getString("continuity"))||time.getLong("elapsed")<row.getLong("createdElapsed")?"clock-changed":time.getLong("elapsed")<row.getLong("expiresElapsed")?"open":"expired";row.put("window",state);}
    result.put(row.put("kind","reminder"));}
   return result;
  }
- private boolean visible(JSONObject owner){try{return stageOwnerCurrent(owner);}catch(Exception unavailable){return false;}}
+ private static boolean pendingPhase(JSONObject row){return java.util.Set.of("queued","paused","unknown","dispatching").contains(row.optString("phase"));}
+ private final Object visibilityLock=new Object();private JSONObject visibleOwner;private long visibleUntil;
+ private static boolean stableOwner(JSONObject a,JSONObject b)throws Exception{
+  if(!a.getString("kind").equals(b.getString("kind")))return false;if("manual".equals(a.getString("kind")))return DeferredDeletionJournal.same(a,b);
+  JSONObject x=a.getJSONObject("identity"),y=b.getJSONObject("identity");for(String field:new String[]{"subjectUserId","agentId","installationId","enrollmentId","accountRef","environment"})if(!x.getString(field).equals(y.getString(field)))return false;return true;
+ }
+ private boolean canUndo(JSONObject owner)throws Exception{return stableOwner(owner,"manual".equals(owner.getString("kind"))?manualOwner():agentOwner());}
+ private boolean visible(JSONObject owner){try{
+  if("manual".equals(owner.getString("kind")))return stageOwnerCurrent(owner);
+  synchronized(visibilityLock){
+   boolean valid=false;try{valid=visibleOwner!=null&&android.os.SystemClock.elapsedRealtime()<visibleUntil&&stageOwnerCurrent(visibleOwner);}catch(Exception changed){}
+   if(!valid){visibleOwner=null;JSONObject authenticated=agentOwner();visibleUntil=android.os.SystemClock.elapsedRealtime()+5000;visibleOwner=authenticated;}
+   return stableOwner(owner,visibleOwner);
+  }
+ }catch(Exception unavailable){return false;}}
+
  synchronized JSONObject undo(String kind,String id)throws Exception{
-  JSONObject time=clock();if("calendar".equals(kind)){JSONArray rows=calendar.list(time.getString("continuity"),time.getLong("elapsed"));for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(id.equals(row.getString("id"))&&current(row.getJSONObject("owner")))return calendar.undo(id,row.getJSONObject("owner"),time.getString("continuity"),time.getLong("elapsed"));}}
-  else if("reminder".equals(kind)){JSONArray rows=AlphaReminders.engine(context).pendingDeletions();for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(id.equals(row.getString("id"))&&current(new JSONObject(row.getString("owner"))))return AlphaReminders.engine(context).settleDeletion(id,row.getString("owner"),time,true);}}
+  JSONObject time=clock();if("calendar".equals(kind)){JSONArray rows=calendar.list(time.getString("continuity"),time.getLong("elapsed"));for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(id.equals(row.getString("id"))&&canUndo(row.getJSONObject("owner")))return calendar.undo(id,row.getJSONObject("owner"),time.getString("continuity"),time.getLong("elapsed"));}}
+  else if("reminder".equals(kind)){JSONArray rows=AlphaReminders.engine(context).pendingDeletions();for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(id.equals(row.getString("id"))&&canUndo(new JSONObject(row.getString("owner"))))return AlphaReminders.engine(context).settleDeletion(id,row.getString("owner"),time,true);}}
   throw new SecurityException("Deletion no longer belongs to this session");
  }
  synchronized void reconcile()throws Exception{

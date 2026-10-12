@@ -2,7 +2,7 @@
 export const DELETE_UNDO_MS=10_000;
 export type DeletionClock={continuity:string;elapsed:number;wall:number};
 export type DeletionDeadline={continuity:string;createdElapsed:number;expiresElapsed:number;expiresAt:number};
-export type DeletePhase='queued'|'dispatching'|'undone'|'deleted'|'conflict'|'permission-required'|'owner-changed'|'unknown';
+export type DeletePhase='queued'|'paused'|'dispatching'|'undone'|'deleted'|'conflict'|'permission-required'|'owner-changed'|'unknown';
 export type PendingDeletion<T>={version:1;id:string;owner:string;target:T;deadline:DeletionDeadline;phase:DeletePhase};
 function clockValid(clock:DeletionClock){return !!clock&&typeof clock.continuity==='string'&&clock.continuity.length>0&&clock.continuity.length<=200&&Number.isFinite(clock.elapsed)&&clock.elapsed>=0&&Number.isSafeInteger(clock.wall)&&clock.wall>=0;}
 export function deletionDeadline(clock:DeletionClock):DeletionDeadline{
@@ -15,10 +15,10 @@ export function deletionWindow(deadline:DeletionDeadline,clock:DeletionClock):'o
 }
 /** Apply while holding the durable document transaction: Undo and expiry have one winner. */
 export function claimDeletion<T>(entry:PendingDeletion<T>,owner:string,clock:DeletionClock,action:'undo'|'dispatch'):boolean{
- if(entry.phase!=='queued'||entry.owner!==owner)return false;
+ if((entry.phase!=='queued'&&!(action==='undo'&&entry.phase==='paused'))||entry.owner!==owner)return false;
  const state=deletionWindow(entry.deadline,clock);
  // Lost clock continuity never authorizes a write. Cancelling a still-unapplied intent is safe.
- if(action==='undo'){if(state==='expired')return false;entry.phase='undone';return true;}
+ if(action==='undo'){if(entry.phase!=='paused'&&state==='expired')return false;entry.phase='undone';return true;}
  if(state!=='expired')return false;
  entry.phase='dispatching';return true;
 }

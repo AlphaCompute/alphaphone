@@ -47,7 +47,7 @@
 +  ReminderEnvelope envelope=new ReminderEnvelope(context,this);JSONObject all=deletionRows(envelope);
 +  if(all.has(token)){JSONObject previous=all.getJSONObject(token);if(!owner.equals(previous.getString("owner"))||!canonical(target).equals(canonical(previous.getJSONObject("target")))||(binding==null)!=(!previous.has("operationBinding"))||binding!=null&&!canonical(binding).equals(canonical(previous.getJSONObject("operationBinding"))))throw new IllegalArgumentException("Deletion identity changed");return new JSONObject(previous.toString());}
 +  if(binding!=null){
-+   exactKeys(binding,"operationId","bindingHash","operation");if(!token.equals(binding.getString("operationId"))||!binding.getString("bindingHash").matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid operation binding");
++   if(binding.has("journalBinding"))exactKeys(binding,"operationId","bindingHash","operation","journalBinding");else exactKeys(binding,"operationId","bindingHash","operation");if(!token.equals(binding.getString("operationId"))||!binding.getString("bindingHash").matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid operation binding");
 +   JSONObject operation=binding.getJSONObject("operation");exactKeys(operation,"type","target");if(!"reminder_cancel".equals(operation.getString("type"))||!canonical(target).equals(canonical(operation.getJSONObject("target"))))throw new IllegalArgumentException("Deletion operation changed");
 +   if(envelope.active().getJSONObject("operations").has(token))throw new IllegalArgumentException("Operation already exists");
 +  }

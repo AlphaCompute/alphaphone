@@ -1,3 +1,4 @@
+import {deletions,refreshDeletionViews} from '../runtime/deletions';
 import {BrowserReviews} from '../browser/review';
 import type {ConversationMessageTarget} from '../runtime/alpha-client';
 import {formatDeviceRecordDateTime} from "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts";
@@ -600,9 +601,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       }
       if(isCalendarOperation(operation)){
         if(operation.type==='calendar_create_local'||operation.type==='calendar_read_next'){if(Capacitor.getPlatform()!=='android'||expectedContext.sensitive||document.hidden)throw Error('Foreground Android Calendar is required');const permission=await registerPlugin<{requestAccess():Promise<{status:string}>;requestWorkflowReadAccess():Promise<{status:string}>}>('AlphaCalendar')[operation.type==='calendar_create_local'?'requestAccess':'requestWorkflowReadAccess']();signal.throwIfAborted();context(this);if(permission.status!=='granted'||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Calendar permission or phone context changed');}
-        const calendar=registerPlugin<{executeAgent(input:{operation:unknown;operationId:string}):Promise<{status:string;result?:unknown}>;cancelAgent(input:{operationId:string}):Promise<unknown>}>('AlphaCalendar');
+        const calendar=registerPlugin<{executeAgent(input:{operation:unknown;operationId:string;journalIdentity?:{scope:string;proposalId:string}}):Promise<{status:string;result?:unknown}>;cancelAgent(input:{operationId:string}):Promise<unknown>}>('AlphaCalendar');
         const cancel=()=>{void calendar.cancelAgent({operationId}).catch(()=>{});};signal.addEventListener('abort',cancel,{once:true});
-        let result:{status:string;result?:unknown};try{signal.throwIfAborted();result=await calendar.executeAgent({operation,operationId});}finally{signal.removeEventListener('abort',cancel);}
+        let result:{status:string;result?:unknown};try{signal.throwIfAborted();result=await calendar.executeAgent({operation,operationId,journalIdentity});}finally{signal.removeEventListener('abort',cancel);}
         if(result.status==='applied'){
           const calendarResult=validateCalendarResult(operation,result.result);
           // Return the receipt immediately; DeviceActions must journal it before
@@ -708,6 +709,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         }
         context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Reminder context changed');
         signal.throwIfAborted();
+        if(operation.type==='reminder_cancel'){
+          const queued=await deletions.reviewAgentReminder({operationId,bindingHash,operation,journalIdentity});
+          if(queued.status==='queued')refreshDeletionViews();
+          return {status:queued.status==='cancelled'?'failed':'unknown',summary:queued.status==='queued'?'Deletion queued with 10 seconds to Undo. Final outcome remains pending.':queued.status==='cancelled'?'Deletion cancelled before admission.':'Deletion outcome requires review; it will not be repeated.'};
+        }
         const result=await DailyApps.operateReminder({operationId,bindingHash,operation});
         // Publish the new revision only after the receipt attempt; refreshing here
         // cancels this context-bound action before it can acknowledge the server.

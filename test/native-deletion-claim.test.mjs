@@ -11,7 +11,7 @@ test('native claim cannot be repeated, removed by cached recovery or replaced by
  const dir=mkdtempSync(join(tmpdir(),'alpha-delete-claim-')),root=resolve(import.meta.dirname,'..'),prepared=preparePatchedNative({root});
  try{
   const source=join(prepared.root,'plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal');
-  execFileSync('javac',['--release','17','-cp',jar,'-d',dir,join(source,'ActionJournal.java'),join(source,'ActionJournalConfiguration.java'),...['NativeDeletionClaim.java','DeferredDeletionJournal.java','DeletionDeadline.java'].map(name=>join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone',name)),join(root,'test/fixtures/NativeDeletionClaimTest.java')]);
+  execFileSync('javac',['--release','17','-cp',jar,'-d',dir,join(source,'ActionJournal.java'),join(source,'ActionJournalConfiguration.java'),...['NativeDeletionClaim.java','DeferredDeletionJournal.java','DeletionDeadline.java','NativeDeletionRecovery.java'].map(name=>join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone',name)),join(root,'test/fixtures/NativeDeletionClaimTest.java')]);
   assert.match(execFileSync('java',['-cp',dir+':'+jar,'ai.elizaresearch.alphaphone.NativeDeletionClaimTest'],{encoding:'utf8'}),/^PASS native deletion claim/);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });

@@ -3,6 +3,7 @@ import org.json.*;
 import ai.eliza.plugins.actionjournal.ActionJournal;
 /** A permanent claim in the existing exact action receipt, not renderer-owned recovery state. */
 final class NativeDeletionClaim {
+ static JSONObject binding(ActionJournal journal,JSONObject identity)throws Exception{JSONObject entry=journal.get(identity.getString("scope"),identity.getString("proposalId"));if(entry==null||!entry.has("nativeDispatchClaim"))throw new SecurityException("Deletion claim missing");return new JSONObject().put("scope",entry.getString("scope")).put("proposalId",entry.getString("proposalId")).put("operationHash",entry.getString("operationHash"));}
  static void check(ActionJournal journal,JSONObject identity,String operationId,JSONObject operation,JSONObject owner,boolean claim)throws Exception{
   if(identity==null||owner==null||!"agent".equals(owner.getString("kind")))throw new SecurityException("Native action identity required");
   String scope=ActionJournal.scope(identity.getString("scope")),proposal=ActionJournal.id(identity.getString("proposalId"));

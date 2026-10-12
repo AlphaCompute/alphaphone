@@ -12,6 +12,7 @@ final class NativeOwnerReminderHost {
   JSONObject exchange(JSONObject session,String path,JSONObject deviceHeaders)throws Exception;
  }
  private final Ports ports;
+ NativeOwnerReminderHost(Ports ports){this.ports=ports;}
  NativeOwnerReminderHost(Context context){
   AlphaCredentialStore store=new AlphaCredentialStore(context.getApplicationContext());
   ports=new Ports(){

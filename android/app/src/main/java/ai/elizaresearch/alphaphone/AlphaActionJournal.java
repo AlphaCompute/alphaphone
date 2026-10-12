@@ -29,7 +29,7 @@ final class AlphaActionJournal {
   }
   return instance;
  }
- private static void checkResult(JSONObject entry,String status,JSONObject result)throws Exception{
+ static void checkResult(JSONObject entry,String status,JSONObject result)throws Exception{
   JSONObject retainedOperation=entry.getJSONObject("record").optJSONObject("operation");
   // A free/busy answer holds up to 200 busy intervals: it has its own exact shape and bound.
   if(retainedOperation!=null&&CalendarAvailabilityJournalResult.TYPE.equals(retainedOperation.optString("type"))){CalendarAvailabilityJournalResult.check(retainedOperation,entry.getString("operationId"),status,result);return;}

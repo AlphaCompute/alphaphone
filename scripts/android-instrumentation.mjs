@@ -145,6 +145,7 @@ export const CLASS_REGISTRY = {
   PhotoFilter: {},
   PhotosMultiShare: {},
   PhotosTrash: {},
+  ReminderDeletionJournal: {},
   ReminderCapacity: {},
   ReminderHeadsUp: { note: "skips unless notifications are enabled for the app and Do Not Disturb is off" },
   ReminderStale: {},
