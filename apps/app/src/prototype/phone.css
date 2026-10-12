@@ -209,6 +209,12 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 .standalone-app [data-alpha-app-header] .app-header-action-icon { display:block; }
 .app-header-context { display:none; }
 .standalone-app [data-alpha-app-header] .app-header-context { display:block; flex:1; }
+/* Large text (runtime/text-scale.ts sets .alpha-large-text from 150%): the title names the screen and
+ * wraps at word breaks onto a second line instead of being cut, the header grows with it, and the
+ * header's icon controls give up their extra width (44px stays the minimum target). */
+.alpha-large-text.standalone-app [data-alpha-app-header] { height:auto!important; }
+.alpha-large-text.standalone-app [data-alpha-app-header] [data-alpha-app-title] { white-space:normal!important; text-overflow:clip!important; overflow:visible!important; flex:1 1 0; }
+.alpha-large-text.standalone-app [data-alpha-app-header] :is(.ib,.app-header-back,[data-alpha-header-icon-action]) { width:44px!important; min-width:44px; }
 
 .standalone-app .notes-layout { padding-top:0!important; }
 

@@ -10,8 +10,10 @@ test.describe.configure({ mode: 'parallel' });
 
 const STATES = [...LIVE_STATES, ...DEVELOPMENT_STATES, ...MOCK_STATES, ...FAILURE_STATES];
 // Deliberate single-line ellipsis and line clamps on previews of user content are allowed: the
-// full text is one tap away and is exposed whole to assistive technology. Hard clipping is not.
-const blocking = (lines: string[]) => lines.filter(line => !line.startsWith('text-truncated:'));
+// full text is one tap away and is exposed whole to assistive technology. Hard clipping is not, and
+// neither is a cut app title: it names the screen and has room to wrap.
+const appTitle = (line: string) => /^text-truncated: .*<[^>]*\bdata-alpha-app-title\b/.test(line);
+const blocking = (lines: string[]) => lines.filter(line => !line.startsWith('text-truncated:') || appTitle(line));
 
 for (const theme of ['light', 'dark'] as const) {
   for (const state of STATES) {
