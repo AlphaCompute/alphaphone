@@ -32,7 +32,7 @@ const duration = (seconds: number) => seconds ? `${Math.floor(seconds / 60)}:${S
 /** One instance per Photos module mount. */
 export function createDeviceLibrary(port: PhotoLibraryPort = nativePort, available = deviceLibraryAvailable) {
   const catalog = new LibraryCatalog(), selection = new LibrarySelection(), revisions = createCaptureRevisions();
-  let scope: LibraryScopeState | undefined, busy = false, error = '', status = '', review: LibraryReview | undefined, acting = false, epoch = 0, disposed = false;
+  let scope: LibraryScopeState | undefined, scopeRequested = false, loadRequested = false, busy = false, error = '', status = '', review: LibraryReview | undefined, acting = false, epoch = 0, disposed = false;
   let api: Bag | undefined;
   const listeners: Promise<PluginListenerHandle>[] = [];
   const visible = () => !!api && api.isActive?.() !== false && api.get?.('photos')?.album === 'device';
@@ -156,7 +156,8 @@ export function createDeviceLibrary(port: PhotoLibraryPort = nativePort, availab
     tile(currentApi: Bag) {
       api = currentApi;
       if (!available()) return undefined;
-      if (!scope && !busy) queueMicrotask(() => { void readScope().then(refresh); });
+      // One automatic scope read per Photos entry; a failure shows its error instead of retrying every render.
+      if (!scope && !scopeRequested) { scopeRequested = true; queueMicrotask(() => { void readScope().then(refresh); }); }
       attach();
       return {
         name: 'Device library', count: scope ? scopePresentation(scope).label : '…', bg: catalog.items[0]?.image ? background(catalog.items[0]) : 'var(--s2)', tf: '', flt: '',
@@ -166,6 +167,7 @@ export function createDeviceLibrary(port: PhotoLibraryPort = nativePort, availab
     /** The album view data when Photos shows the device library. */
     album(st: Bag, currentApi: Bag) {
       api = currentApi;
+      if (!catalog.loaded && !loadRequested) { loadRequested = true; queueMicrotask(() => { void load(); }); }
       const presentation = scopePresentation(scope);
       const message = [error, status, presentation.detail, selection.size ? `${selection.size} selected${selection.size === 1 ? ' · the assistant can see this item\'s identity only' : ''}` : ''].filter(Boolean).join(' ');
       const reviewOpen = !!review;
@@ -192,7 +194,7 @@ export function createDeviceLibrary(port: PhotoLibraryPort = nativePort, availab
       };
     },
     selected: focused,
-    leave() { selection.clear(); review = undefined; status = ''; epoch++; busy = false; },
+    leave() { selection.clear(); review = undefined; status = ''; error = ''; epoch++; busy = false; scopeRequested = false; loadRequested = false; },
     dispose() { disposed = true; epoch++; for (const handle of listeners.splice(0)) void handle.then(value => value.remove()).catch(() => {}); },
   };
 }
