@@ -1,0 +1,262 @@
+package ai.elizaresearch.alphaphone.sense;
+
+import android.Manifest;
+import android.annotation.SuppressLint;
+import android.app.Service;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
+import android.media.AudioAttributes;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioPlaybackConfiguration;
+import android.media.AudioRecord;
+import android.media.AudioRecordingConfiguration;
+import android.media.MediaRecorder;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.util.Log;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * The always-on microphone foreground service (type microphone). It runs only while
+ * {@link ListenerPolicy#foreground} allows and opens the microphone only while
+ * {@link ListenerPolicy#holdsMicrophone} allows. Audio is analysed in RAM: voice activity and turn
+ * segmentation ({@link SpeechGate}), then local speech recognition, then {@link WakePhrase}. Every
+ * audio buffer is zeroed after use and transcripts are dropped after classification. Nothing is
+ * written to storage and this package has no network permission.
+ *
+ * Calls (audio mode), another app taking the microphone and the microphone privacy toggle (both
+ * reported as a silenced recording) pause analysis. Assistant/voice playback suppresses wake
+ * detection so the assistant's own speech does not invoke it.
+ */
+public final class ListeningService extends Service {
+ private static final String TAG="AlphaListener";
+ /** android.media.MediaRecorder.AudioSource.HOTWORD (system API): a capture that yields to every other client. */
+ static final int AUDIO_SOURCE_HOTWORD=1999;
+ private static final long ECHO_GUARD_MS=1500;
+
+ private final Handler main=new Handler(Looper.getMainLooper());
+ private final ExecutorService recognizer=Executors.newSingleThreadExecutor(runnable->new Thread(runnable,"listener-asr"));
+ private final AtomicBoolean recognizing=new AtomicBoolean();
+ private volatile boolean analyse;
+ private volatile long playbackQuietSince=0;
+ private volatile Thread capture;
+ private volatile AudioRecord record;
+ private final Object engineLock=new Object();
+ private ai.eliza.speech.LocalSpeechEngine engine;
+ private AudioManager audio;
+ private final Runnable reapply=this::apply;
+
+ private final AudioManager.OnModeChangedListener modes=mode->{
+  Listener.inCall=mode==AudioManager.MODE_IN_CALL||mode==AudioManager.MODE_IN_COMMUNICATION||mode==AudioManager.MODE_CALL_SCREENING
+   ||mode==AudioManager.MODE_CALL_REDIRECT||mode==AudioManager.MODE_COMMUNICATION_REDIRECT;
+  main.post(reapply);
+ };
+
+ private final AudioManager.AudioRecordingCallback recordings=new AudioManager.AudioRecordingCallback(){
+  @Override public void onRecordingConfigChanged(List<AudioRecordingConfiguration> configs){updateRecordings(configs);}
+ };
+
+ /**
+  * Any other active recording pauses the listener and releases the microphone, so it never competes
+  * with the app the user is using (including Alpha's own voice turn). Our own recording being
+  * silenced without another visible client is the microphone privacy toggle or audio policy.
+  */
+ private void updateRecordings(List<AudioRecordingConfiguration> configs){
+  AudioRecord current=record;
+  int session=current==null?AudioManager.ERROR:current.getAudioSessionId();
+  boolean other=false,silenced=false;
+  for(AudioRecordingConfiguration config:configs){
+   if(config.getClientAudioSessionId()==session)silenced=config.isClientSilenced();
+   else other=true;
+  }
+  if(other!=Listener.otherAppRecording||silenced!=Listener.micSilenced){
+   Listener.otherAppRecording=other;
+   Listener.micSilenced=silenced;
+   main.post(reapply);
+  }
+ }
+
+ private final AudioManager.AudioPlaybackCallback playback=new AudioManager.AudioPlaybackCallback(){
+  @Override public void onPlaybackConfigChanged(List<AudioPlaybackConfiguration> configs){updatePlayback(configs);}
+ };
+
+ @Override public void onCreate(){
+  super.onCreate();
+  audio=getSystemService(AudioManager.class);
+  ListenerNotifications.channels(this);
+  audio.addOnModeChangedListener(getMainExecutor(),modes);
+  modes.onModeChanged(audio.getMode());
+  audio.registerAudioRecordingCallback(recordings,main);
+  updateRecordings(audio.getActiveRecordingConfigurations());
+  audio.registerAudioPlaybackCallback(playback,main);
+  updatePlayback(audio.getActivePlaybackConfigurations());
+ }
+
+ @Override public int onStartCommand(Intent intent,int flags,int startId){apply();return START_STICKY;}
+
+ @Override public IBinder onBind(Intent intent){return null;}
+
+ @Override public void onDestroy(){
+  main.removeCallbacks(reapply);
+  stopCapture();
+  audio.removeOnModeChangedListener(modes);
+  audio.unregisterAudioRecordingCallback(recordings);
+  audio.unregisterAudioPlaybackCallback(playback);
+  // The model is released on the recognition thread after any in-flight utterance, then the thread ends.
+  recognizer.execute(()->{synchronized(engineLock){if(engine!=null){engine.close();engine=null;}}});
+  recognizer.shutdown();
+  super.onDestroy();
+ }
+
+ /** Re-evaluates policy and converges the service, notification and microphone on it. */
+ private void apply(){
+  main.removeCallbacks(reapply);
+  ListenerPolicy.State state=Listener.state(this);
+  if(!ListenerPolicy.foreground(state)){
+   stopCapture();
+   stopForeground(STOP_FOREGROUND_REMOVE);
+   stopSelf();
+   ListenerNotifications.showStatus(this,state);
+   return;
+  }
+  try{
+   startForeground(ListenerNotifications.ACTIVE_ID,ListenerNotifications.active(this,state),ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+  }catch(RuntimeException refused){
+   // Android refused the microphone service (no while-in-use exemption or permission). Never capture without it.
+   Log.w(TAG,"Foreground microphone service refused: "+refused.getClass().getSimpleName());
+   stopCapture();stopSelf();return;
+  }
+  ListenerNotifications.showStatus(this,state);
+  analyse=ListenerPolicy.processesAudio(state);
+  if(ListenerPolicy.holdsMicrophone(state))startCapture();else stopCapture();
+  long until=new ListenerStore(this).pausedUntil(),now=System.currentTimeMillis();
+  if(state==ListenerPolicy.State.PAUSED_USER&&until!=ListenerPolicy.PAUSE_UNTIL_RESUMED)main.postDelayed(reapply,Math.max(1000,until-now));
+  if(analyse)recognizer.execute(this::loadEngine);
+ }
+
+ private void loadEngine(){
+  synchronized(engineLock){
+   if(engine!=null)return;
+   try{engine=new ai.eliza.speech.LocalSpeechEngine(ai.eliza.speech.SpeechAssets.install(this));Listener.speechUnavailable=false;}
+   catch(Throwable failed){Log.w(TAG,"Local speech model unavailable: "+failed.getClass().getSimpleName());Listener.speechUnavailable=true;main.post(reapply);}
+  }
+ }
+
+ private synchronized void startCapture(){
+  if(capture!=null)return;
+  if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)return;
+  boolean hotword=checkSelfPermission("android.permission.CAPTURE_AUDIO_HOTWORD")==PackageManager.PERMISSION_GRANTED;
+  int bytes=Math.max(AudioRecord.getMinBufferSize(SpeechGate.SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT),SpeechGate.FRAME_SAMPLES*2*10);
+  AudioRecord opened;
+  try{opened=open(hotword,bytes);}
+  catch(RuntimeException unavailable){Log.w(TAG,"Microphone unavailable");Listener.micSilenced=true;main.postDelayed(reapply,30_000);return;}
+  if(opened.getState()!=AudioRecord.STATE_INITIALIZED){opened.release();Listener.micSilenced=true;main.postDelayed(reapply,30_000);return;}
+  record=opened;
+  new ListenerStore(this).setSessionOpen(true);
+  Thread thread=new Thread(()->captureLoop(opened),"listener-capture");
+  capture=thread;
+  thread.start();
+ }
+
+ /**
+  * HOTWORD is accepted only by the legacy constructor (AudioRecord.Builder limits sources to the
+  * public set). Without CAPTURE_AUDIO_HOTWORD (a developer install outside the image) the listener
+  * uses VOICE_RECOGNITION and relies on {@link #updateRecordings} to release the microphone
+  * whenever another app records.
+  */
+ @SuppressLint("WrongConstant")
+ private AudioRecord open(boolean hotword,int bytes){
+  if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)throw new SecurityException("RECORD_AUDIO");
+  return new AudioRecord(hotword?AUDIO_SOURCE_HOTWORD:MediaRecorder.AudioSource.VOICE_RECOGNITION,SpeechGate.SAMPLE_RATE,
+   AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,bytes);
+ }
+
+ private synchronized void stopCapture(){
+  Thread thread=capture;
+  capture=null;analyse=false;
+  AudioRecord current=record;record=null;
+  // stop() unblocks a pending read; the capture thread then sees it is no longer current and exits.
+  if(current!=null)try{current.stop();}catch(RuntimeException ignored){}
+  if(thread!=null){try{thread.join(1000);}catch(InterruptedException ignored){Thread.currentThread().interrupt();}}
+  if(current!=null)current.release();
+  if(thread!=null)new ListenerStore(this).setSessionOpen(false);
+  Listener.micSilenced=false;
+ }
+
+ private void captureLoop(AudioRecord source){
+  short[] frame=new short[SpeechGate.FRAME_SAMPLES];
+  SpeechGate gate=new SpeechGate(this::onUtterance);
+  try{
+   source.startRecording();
+   while(capture==Thread.currentThread()&&!Thread.currentThread().isInterrupted()){
+    int filled=0;
+    while(filled<frame.length){
+     int read=source.read(frame,filled,frame.length-filled,AudioRecord.READ_BLOCKING);
+     if(read<0)throw new IllegalStateException("read "+read);
+     filled+=read;
+     if(capture!=Thread.currentThread())break;
+    }
+    if(filled==frame.length&&analyse)gate.accept(frame);else gate.reset();
+    Arrays.fill(frame,(short)0);
+   }
+  }catch(RuntimeException failed){
+   Log.w(TAG,"Capture stopped: "+failed.getClass().getSimpleName());
+   main.post(()->{if(capture==null)return;stopCapture();main.postDelayed(reapply,5000);});
+  }finally{
+   gate.reset();
+   Arrays.fill(frame,(short)0);
+   try{source.stop();}catch(RuntimeException ignored){}
+  }
+ }
+
+ /** Called on the capture thread with a fresh array this method now owns. */
+ private void onUtterance(float[] samples){
+  if(!analyse||SystemClock.elapsedRealtime()<playbackQuietSince+ECHO_GUARD_MS||!recognizing.compareAndSet(false,true)){Arrays.fill(samples,0f);return;}
+  try{
+   recognizer.execute(()->{
+    String text=null;
+    try{
+     ai.eliza.speech.LocalSpeechEngine local;
+     synchronized(engineLock){local=engine;}
+     if(local==null||!analyse)return;
+     text=local.transcribe(samples);
+     WakePhrase.Action action=WakePhrase.classify(text);
+     text=null;
+     if(action==WakePhrase.Action.IGNORE||!analyse)return;
+     main.post(()->act(action));
+    }catch(RuntimeException failed){Log.w(TAG,"Recognition failed: "+failed.getClass().getSimpleName());}
+    finally{Arrays.fill(samples,0f);recognizing.set(false);}
+   });
+  }catch(RuntimeException rejected){Arrays.fill(samples,0f);recognizing.set(false);}
+ }
+
+ private void act(WakePhrase.Action action){
+  if(Listener.state(this)!=ListenerPolicy.State.LISTENING)return;
+  if(action==WakePhrase.Action.PAUSE_LISTENING){
+   new ListenerStore(this).pause(ListenerPolicy.PAUSE_UNTIL_RESUMED);
+   Listener.refresh(this);
+  }else if(action==WakePhrase.Action.INVOKE&&!AssistantInvocation.start(this))Log.w(TAG,"Assistant invocation refused");
+ }
+
+ /**
+  * Assistant speech, voice calls and accessibility speech suppress wake detection while they play
+  * and briefly afterwards (the guard timestamp is the last moment such playback was active).
+  */
+ private void updatePlayback(List<AudioPlaybackConfiguration> configs){
+  boolean speaking=false;
+  for(AudioPlaybackConfiguration config:configs){
+   int usage=config.getAudioAttributes().getUsage();
+   if(usage==AudioAttributes.USAGE_ASSISTANT||usage==AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY||usage==AudioAttributes.USAGE_VOICE_COMMUNICATION)speaking=true;
+  }
+  if(speaking)playbackQuietSince=Long.MAX_VALUE-ECHO_GUARD_MS;
+  else if(playbackQuietSince==Long.MAX_VALUE-ECHO_GUARD_MS)playbackQuietSince=SystemClock.elapsedRealtime();
+ }
+}
