@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /** Same-user, permission-filtered MediaStore access. No media bytes or index are uploaded. */
 final class PermittedMediaCatalog implements AutoCloseable {
  private static final int PAGE_SIZE=24;
- private static final String[] FIELDS={"_id","width","height","date_added","_size",MediaStore.MediaColumns.DISPLAY_NAME,"date_modified","owner_package_name","generation_added","generation_modified","is_favorite"};
+ private static final String[] FIELDS={"_id","width","height","date_added","_size",MediaStore.MediaColumns.DISPLAY_NAME,"date_modified","owner_package_name","generation_added","generation_modified","is_favorite","is_trashed","date_expires"};
  private final Context context;
  private final ContentResolver resolver;
  private final Handler main=new Handler(Looper.getMainLooper());
@@ -65,12 +65,19 @@ final class PermittedMediaCatalog implements AutoCloseable {
   List<String> result=new ArrayList<>(MediaStore.getExternalVolumeNames(context));Collections.sort(result);
   if(result.size()>16)throw new IllegalStateException("Too many media volumes");return result;
  }
- private String version(String volume){return Build.VERSION.SDK_INT>=30?MediaStore.getVersion(context,volume):MediaStore.getVersion(context);}
+ private String version(String volume){String value=Build.VERSION.SDK_INT>=30?MediaStore.getVersion(context,volume):MediaStore.getVersion(context);if(value==null||value.isEmpty())throw new IllegalStateException("Media version unavailable");return value;}
  private String snapshot(List<String> volumes){
   unlocked();StringBuilder value=new StringBuilder(access().toString()).append('|').append(epoch.get());
   for(String volume:volumes)value.append('|').append(volume).append('=').append(version(volume));return value.toString();
  }
  private void current(String expected,List<String> volumes){if(!expected.equals(snapshot(volumes))||!volumes.equals(volumes()))throw new IllegalStateException("Photo access or library changed; refresh Photos");}
+ static final class Fence {
+  final List<String> volumes;final String snapshot;final long until=SystemClock.elapsedRealtime()+5000;
+  Fence(List<String> volumes,String snapshot){this.volumes=List.copyOf(volumes);this.snapshot=snapshot;}
+  String cursorIdentity()throws Exception{return Base64.encodeToString(java.security.MessageDigest.getInstance("SHA-256").digest(snapshot.getBytes(java.nio.charset.StandardCharsets.UTF_8)),Base64.URL_SAFE|Base64.NO_WRAP|Base64.NO_PADDING);}
+ }
+ Fence fence(){List<String> volumes=volumes();return new Fence(volumes,snapshot(volumes));}
+ void requireCurrent(Fence fence){if(SystemClock.elapsedRealtime()>fence.until)throw new IllegalStateException("Media query took too long; refresh Photos");current(fence.snapshot,fence.volumes);}
  private String[] fields(boolean video){List<String> result=new ArrayList<>(java.util.Arrays.asList(Build.VERSION.SDK_INT>=30?FIELDS:java.util.Arrays.copyOf(FIELDS,8)));if(video)result.add(MediaStore.Video.VideoColumns.DURATION);return result.toArray(new String[0]);}
  private String revision(Cursor row,String volume){
   // The provider version rejects recycled row IDs after a database rebuild.
@@ -80,7 +87,7 @@ final class PermittedMediaCatalog implements AutoCloseable {
   MediaLibraryKey key=new MediaLibraryKey(volume,row.getLong(0),video);JSObject result=new JSObject();result.put("id",key.toString());result.put("kind",key.video?"video":"image");
   result.put("width",row.getInt(1));result.put("height",row.getInt(2));result.put("date",row.getLong(3)*1000);result.put("size",row.getLong(4));result.put("duration",video?row.getLong(row.getColumnIndexOrThrow(MediaStore.Video.VideoColumns.DURATION))/1000d:0);
   String name=row.getString(5);result.put("name",name==null?"":name.substring(0,Math.min(256,name.length())));result.put("revision",revision(row,volume));result.put("mutationRevision",revision(row,volume));
-  result.put("favorite",Build.VERSION.SDK_INT>=30&&row.getInt(10)==1);result.put("owned",context.getPackageName().equals(row.getString(7)));result.put("trashed",false);return result;
+  result.put("favorite",Build.VERSION.SDK_INT>=30&&row.getInt(10)==1);result.put("owned",context.getPackageName().equals(row.getString(7)));result.put("trashed",Build.VERSION.SDK_INT>=30&&row.getInt(11)==1);result.put("expiresAt",Build.VERSION.SDK_INT>=30?row.getLong(12)*1000:0);result.put("identity",version(volume)+":"+row.getLong(3)+(Build.VERSION.SDK_INT>=30?":"+row.getLong(8):""));return result;
  }
  Uri uri(MediaLibraryKey key){return ContentUris.withAppendedId(key.video?MediaStore.Video.Media.getContentUri(key.volume):MediaStore.Images.Media.getContentUri(key.volume),key.id);}
  private String thumbnail(MediaLibraryKey key,int size)throws Exception{
@@ -89,39 +96,46 @@ final class PermittedMediaCatalog implements AutoCloseable {
    try(ByteArrayOutputStream bytes=new ByteArrayOutputStream()){if(!bitmap.compress(Bitmap.CompressFormat.JPEG,80,bytes))throw new IllegalStateException();return "data:image/jpeg;base64,"+Base64.encodeToString(bytes.toByteArray(),Base64.NO_WRAP);}finally{bitmap.recycle();}
   }finally{main.removeCallbacks(timeout);}
  }
- private Cursor query(String volume,boolean video,Bundle args){
+ private boolean readable(boolean video){return !"denied".equals(access().getString(video?"videos":"images"));}
+ private Cursor query(String volume,boolean video,Bundle args){return query(volume,video,args,fields(video));}
+ private Cursor query(String volume,boolean video,Bundle args,String[] projection){
+  unlocked();if(!readable(video))throw new SecurityException("Media access was revoked");
   CancellationSignal cancellation=new CancellationSignal();Runnable timeout=cancellation::cancel;main.postDelayed(timeout,3000);
   try{
    // Typed collections are required for other apps' media under scoped storage.
    Uri collection=video?MediaStore.Video.Media.getContentUri(volume):MediaStore.Images.Media.getContentUri(volume);
-   Cursor cursor=resolver.query(collection,fields(video),args,cancellation);
+   Cursor cursor=resolver.query(collection,projection,args,cancellation);
    if(cursor==null){main.removeCallbacks(timeout);return null;}
    return new android.database.CursorWrapper(cursor){@Override public void close(){try{super.close();}finally{main.removeCallbacks(timeout);}}};
   }catch(RuntimeException failure){main.removeCallbacks(timeout);throw failure;}
  }
  /** Provider search, not an in-memory scan of previously loaded thumbnails. */
- JSObject list(String cursor,String search,String kind,boolean thumbnails)throws Exception{
+ JSObject list(String cursor,String search,String kind,boolean thumbnails)throws Exception{return list(cursor,search,kind,thumbnails,"all");}
+ JSObject list(String cursor,String search,String kind,boolean thumbnails,String filter)throws Exception{
+  if(filter==null||!filter.matches("all|favorites|trash")||(Build.VERSION.SDK_INT<30&&!filter.equals("all")))throw new IllegalArgumentException("Unsupported media filter");
+  String pageKind=kind+":"+filter;
   if(search==null||search.length()>128||search.indexOf('\0')>=0||kind==null||!kind.matches("all|image|video"))throw new IllegalArgumentException("Invalid photo query");
   List<String> volumes=volumes();String snapshot=snapshot(volumes);int bucketIndex=0;long before=Long.MAX_VALUE;
-  List<MediaLibraryKey> buckets=new ArrayList<>();for(String volume:volumes){if(!kind.equals("video"))buckets.add(new MediaLibraryKey(volume,1,false));if(!kind.equals("image"))buckets.add(new MediaLibraryKey(volume,1,true));}
+  List<MediaLibraryKey> buckets=new ArrayList<>();for(String volume:volumes){if(readable(false)&&!kind.equals("video"))buckets.add(new MediaLibraryKey(volume,1,false));if(readable(true)&&!kind.equals("image"))buckets.add(new MediaLibraryKey(volume,1,true));}
   if(cursor!=null&&!cursor.isEmpty()){
    Page page;synchronized(pages){page=pages.remove(cursor);}
-   if(page==null||page.until<SystemClock.elapsedRealtime()||!page.snapshot.equals(snapshot)||!page.query.equals(search)||!page.kind.equals(kind))throw new IllegalStateException("Photo page expired; refresh Photos");
+   if(page==null||page.until<SystemClock.elapsedRealtime()||!page.snapshot.equals(snapshot)||!page.query.equals(search)||!page.kind.equals(pageKind))throw new IllegalStateException("Photo page expired; refresh Photos");
    bucketIndex=page.bucket;before=page.before;
   }
-  JSArray items=new JSArray();String next="";
+  JSArray items=new JSArray();String next="";long thumbnailUntil=SystemClock.elapsedRealtime()+3000;
   outer:for(;bucketIndex<buckets.size();bucketIndex++,before=Long.MAX_VALUE){
    MediaLibraryKey bucket=buckets.get(bucketIndex);String volume=bucket.volume;Bundle args=new Bundle();List<String> values=new ArrayList<>();values.add(Long.toString(before));
-   String where="is_pending=0 AND _id<?"+(Build.VERSION.SDK_INT>=30?" AND is_trashed=0":"");
+   String where="is_pending=0 AND _id<?"+(Build.VERSION.SDK_INT>=30?" AND is_trashed="+(filter.equals("trash")?"1":"0"):"")+(filter.equals("favorites")?" AND is_favorite=1":"");
+   if(Build.VERSION.SDK_INT>=30)args.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,filter.equals("trash")?MediaStore.MATCH_ONLY:MediaStore.MATCH_EXCLUDE);
    if(!search.isBlank()){where+=" AND instr(lower("+MediaStore.MediaColumns.DISPLAY_NAME+"),lower(?))>0";values.add(search.trim());}
    args.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,where);args.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,values.toArray(new String[0]));
    args.putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS,new String[]{"_id"});args.putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION,ContentResolver.QUERY_SORT_DIRECTION_DESCENDING);args.putInt(ContentResolver.QUERY_ARG_LIMIT,PAGE_SIZE+1-items.length());
    try(Cursor rows=query(volume,bucket.video,args)){
     if(rows==null)throw new IllegalStateException("Media provider unavailable");
     while(rows.moveToNext()){
-     if(items.length()==PAGE_SIZE){next=UUID.randomUUID().toString();synchronized(pages){pages.entrySet().removeIf(entry->entry.getValue().until<SystemClock.elapsedRealtime());while(pages.size()>=32)pages.remove(pages.keySet().iterator().next());pages.put(next,new Page(snapshot,search,kind,bucketIndex,before));}break outer;}
+     if(items.length()==PAGE_SIZE){next=UUID.randomUUID().toString();synchronized(pages){pages.entrySet().removeIf(entry->entry.getValue().until<SystemClock.elapsedRealtime());while(pages.size()>=32)pages.remove(pages.keySet().iterator().next());pages.put(next,new Page(snapshot,search,pageKind,bucketIndex,before));}break outer;}
      JSObject item=metadata(rows,volume,bucket.video);before=rows.getLong(0);
-     if(thumbnails){try{item.put("image",thumbnail(MediaLibraryKey.parse(item.getString("id")),240));}catch(Exception unavailable){item.put("image","");}}items.put(item);
+     if(thumbnails&&SystemClock.elapsedRealtime()<thumbnailUntil){try{item.put("image",thumbnail(MediaLibraryKey.parse(item.getString("id")),240));}catch(Exception unavailable){item.put("image","");}}items.put(item);
     }
    }
   }
@@ -133,9 +147,53 @@ final class PermittedMediaCatalog implements AutoCloseable {
   if(pixels)result.put("image",thumbnail(key,1024));
   if(!revision.equals(inspect(key).getString("revision")))throw new IllegalStateException("Selected media changed");current(snapshot,volumes);return result;
  }
- private JSObject inspect(MediaLibraryKey key){
-  unlocked();Bundle args=new Bundle();args.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,"_id=? AND is_pending=0"+(Build.VERSION.SDK_INT>=30?" AND is_trashed=0":""));args.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{Long.toString(key.id)});
+ private JSObject inspect(MediaLibraryKey key){return inspect(key,false);}
+ private JSObject inspect(MediaLibraryKey key,boolean includeTrash){
+  unlocked();Bundle args=new Bundle();args.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,"_id=? AND is_pending=0"+(Build.VERSION.SDK_INT>=30&&!includeTrash?" AND is_trashed=0":""));if(Build.VERSION.SDK_INT>=30)args.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,includeTrash?MediaStore.MATCH_INCLUDE:MediaStore.MATCH_EXCLUDE);args.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{Long.toString(key.id)});
   try(Cursor row=query(key.volume,key.video,args)){if(row==null||!row.moveToFirst())throw new SecurityException("Selected media is unavailable");return metadata(row,key.volume,key.video);}
+ }
+ JSObject albumItem(String id,String identity,boolean pixels)throws Exception{
+  JSObject row=read(id,null,false);if(!identity.equals(row.getString("identity")))throw new IllegalStateException("Media identity changed");
+  if(pixels){row.put("image",thumbnail(MediaLibraryKey.parse(id),240));if(!row.getString("revision").equals(read(id,null,false).getString("revision")))throw new IllegalStateException("Media changed");}return row;
+ }
+ JSObject summary()throws Exception{
+  List<String> volumes=volumes();String snapshot=snapshot(volumes);long until=SystemClock.elapsedRealtime()+3000;int favorites=0,videos=0,trash=0;
+  for(String volume:volumes)for(boolean video:new boolean[]{false,true}){
+   if(!readable(video))continue;
+   Bundle args=new Bundle();args.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,"is_pending=0");if(Build.VERSION.SDK_INT>=30)args.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_INCLUDE);
+   String[] projection=Build.VERSION.SDK_INT>=30?new String[]{"is_favorite","is_trashed"}:new String[]{"_id"};
+   try(Cursor rows=query(volume,video,args,projection)){
+    if(rows==null)throw new IllegalStateException("Media provider unavailable");
+    while(rows.moveToNext()){if(SystemClock.elapsedRealtime()>until)throw new IllegalStateException("Media count took too long");if(Build.VERSION.SDK_INT>=30&&rows.getInt(1)==1){trash++;continue;}if(video)videos++;if(Build.VERSION.SDK_INT>=30&&rows.getInt(0)==1)favorites++;}
+   }
+  }
+  current(snapshot,volumes);JSObject result=new JSObject();result.put("favorites",favorites);result.put("videos",videos);result.put("trash",trash);result.put("canFavorite",Build.VERSION.SDK_INT>=30);return result;
+ }
+ /** No UI approval here: the caller must hold the one-shot reviewed operation. */
+ JSObject mutationSource(String id,String expected)throws Exception{
+  if(Build.VERSION.SDK_INT<30||expected==null||expected.isEmpty()||expected.length()>256)throw new IllegalArgumentException("Invalid media revision");
+  MediaLibraryKey key=MediaLibraryKey.parse(id);if(!volumes().contains(key.volume))throw new SecurityException("Media volume unavailable");
+  JSObject row=inspect(key,true);if(!expected.equals(row.getString("mutationRevision")))throw new IllegalStateException("stale");return row;
+ }
+ JSObject changeFlag(String id,String expected,boolean favorite,boolean desired)throws Exception{
+  JSObject before=mutationSource(id,expected);MediaLibraryKey key=MediaLibraryKey.parse(id);
+  if(favorite&&Boolean.TRUE.equals(before.getBoolean("trashed")))throw new IllegalStateException("stale");
+  if(Boolean.TRUE.equals(before.getBoolean(favorite?"favorite":"trashed"))==desired){before.put("status","unchanged");return before;}
+  // Query and update use the same typed, volume-specific row. Generation is the
+  // final atomic fence: approval grants access, not permission to change newer bytes.
+  Bundle read=new Bundle();read.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_INCLUDE);
+  read.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,"_id=? AND is_pending=0");read.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{Long.toString(key.id)});
+  long generation,added;
+  try(Cursor row=query(key.volume,key.video,read)){
+   if(row==null||!row.moveToFirst()||!expected.equals(revision(row,key.volume)))throw new IllegalStateException("stale");generation=row.getLong(9);added=row.getLong(8);
+  }
+  unlocked();String column=favorite?"is_favorite":"is_trashed";
+  Bundle update=new Bundle(read);update.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,"_id=? AND is_pending=0 AND generation_modified=? AND generation_added=? AND "+column+"=?"+(favorite?" AND is_trashed=0":""));
+  update.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{Long.toString(key.id),Long.toString(generation),Long.toString(added),desired?"0":"1"});
+  android.content.ContentValues values=new android.content.ContentValues();values.put(column,desired?1:0);
+  if(resolver.update(uri(key),values,update)!=1)throw new IllegalStateException("stale");
+  JSObject after=inspect(key,true);if(Boolean.TRUE.equals(after.getBoolean(favorite?"favorite":"trashed"))!=desired||!before.getString("identity").equals(after.getString("identity")))throw new IllegalStateException("unverified");
+  after.put("status",favorite?(desired?"favorited":"unfavorited"):(desired?"trashed":"restored"));invalidate();return after;
  }
  @Override public void close(){closed=true;invalidate();resolver.unregisterContentObserver(observer);}
 }

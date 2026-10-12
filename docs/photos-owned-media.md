@@ -15,10 +15,27 @@ Selected reads recheck permission, lock state and revision. A reviewed native-so
 patch lets the existing copy editor read a host-validated permitted still image;
 saved copies remain owned PNGs with the existing operation receipt journal.
 
-This is work in progress, not #408 acceptance. Full-library organization, reviewed
-external mutations, local-agent operations, large-catalog/native permission downgrade
-campaigns and both-variant APK verification remain required. The SDK compile and
-identity/patch-admission tests do not prove those outcomes. Android's permission
+The permitted-library branch also queries Favorites, Videos and Recently deleted
+through typed collections. Custom album membership retains volume-qualified identities
+and withholds inaccessible members. Album responses recheck the whole access/version
+snapshot; subsequent pages bind that snapshot as well as the album revision.
+
+Favorite, trash and restore requests over permitted rows require a native review
+and Android's write-access prompt. Approval is consumed once; the provider update
+still compares the selected row's generation and original identity. A stale row is
+skipped, an uncertain result is not replayed, and a batch can report partial success.
+These grants are not persisted. Permanent deletion of the full library is left to
+Android's expiration/management surface; the owned-only permanent-delete path does
+not silently delete a different scope.
+
+This is work in progress, not #408 acceptance. Local-agent operations and installed
+large-catalog, foreign-media, permission-downgrade, reboot and reviewed-mutation
+campaigns remain required. The initial catalog checkpoint built all four developer
+APKs and passed lint; subsequent organization code has SDK compilation and renderer
+checks but still needs new exact-source APK and native qualification. Repository
+verification passed 755 tests (751 passed, four existing TODOs) before the final
+album-response snapshot tightening. Existing browser album/batch/delete journeys
+passed all 12 cases. These checks do not prove native provider outcomes. Android's permission
 contract is documented in [selected photo/video access](https://developer.android.com/about/versions/14/changes/partial-photo-video-access).
 
 Favorites (Android 11+) sets `IS_FAVORITE` on an active owned row and verifies the
