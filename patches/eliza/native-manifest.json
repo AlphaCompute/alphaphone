@@ -13,6 +13,18 @@
           "afterSha256": "f301f177f5172cbd5ee41e8b8eb3883447e7054d6f1df292630f8b2a6176add1"
         }
       ]
+    },
+    {
+      "file": "permitted-photo-copy-source.patch",
+      "sha256": "613ce22e76b9dd383d0a091d4f3065054d5f637faf7dcfe7cc0bec1761f7db91",
+      "module": "plugins/plugin-native-media/android",
+      "targets": [
+        {
+          "path": "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedPhotoEdits.java",
+          "beforeSha256": "adcaba3a54f600bcf9906260ffee605158f0119eb70738f24c68af7c757764c7",
+          "afterSha256": "3f09d9455d95e8bec27699133ecb976466ca6af690f3563a466399bb282e4d48"
+        }
+      ]
     }
   ]
 }

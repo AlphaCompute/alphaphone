@@ -1,8 +1,25 @@
 # Owned Photos collections and trash
 
-The production Photos adapter uses Android MediaStore for this package's published
-images and videos only. Selected external images continue through explicit picker
-grants. These collection operations add no broad photo-library permission.
+The owned collection operations below manage this package's published images and
+videos. The #408 branch additionally requests photo/video library access only from
+the explicit Photos control. Android 14 selected-only access is reported separately
+from full image and full video access; denial retains the owned collection.
+
+The new catalog queries the current user's MediaStore in 24-item pages. Keys include
+the storage volume, media kind and row ID; revisions also bind the provider version
+and available generation columns. Filename queries run against the provider,
+not only loaded thumbnails. Cursors expire after two minutes and are invalidated
+by library changes or app backgrounding. At most 240 thumbnails remain in the
+renderer; library access does not create a cloud upload or background pixel index.
+Selected reads recheck permission, lock state and revision. A reviewed native-source
+patch lets the existing copy editor read a host-validated permitted still image;
+saved copies remain owned PNGs with the existing operation receipt journal.
+
+This is work in progress, not #408 acceptance. Full-library organization, reviewed
+external mutations, local-agent operations, large-catalog/native permission downgrade
+campaigns and both-variant APK verification remain required. The SDK compile and
+identity/patch-admission tests do not prove those outcomes. Android's permission
+contract is documented in [selected photo/video access](https://developer.android.com/about/versions/14/changes/partial-photo-video-access).
 
 Favorites (Android 11+) sets `IS_FAVORITE` on an active owned row and verifies the
 returned generation and value. Videos and Favorites are native query predicates
