@@ -15,6 +15,7 @@ import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, gmailReadable, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
 import { buildDiagnostics, diagnosticsFileName, diagnosticsText } from '../runtime/diagnostics-export';
+import { exportVoiceTiming } from '../runtime/voice-timing';
 import { leavePasswordManager, passwordEntryPage, passwordManagerGroups, passwordManagerLifecycle, refreshPasswordManager, PASSWORD_PAGES } from '../passwords/password-manager';
 
 type Bag = Record<string, any>;
@@ -228,6 +229,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         roles: roleState.status === 'fulfilled' ? Object.values(readRoles(roleState.value)) : [],
         crashes: problems.status === 'fulfilled' ? problems.value.entries : [],
         connection: { kind: connection.kind, connected: !!connection.session },
+        // Per-turn voice latency kept on this device; buildDiagnostics copies timing fields only.
+        voiceTiming: (() => { try { return JSON.parse(exportVoiceTiming()); } catch { return null; } })(),
       });
       const text = diagnosticsText(report);
       if (native) {
