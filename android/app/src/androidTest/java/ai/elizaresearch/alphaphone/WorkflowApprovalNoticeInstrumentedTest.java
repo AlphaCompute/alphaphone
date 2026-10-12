@@ -32,6 +32,12 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
   long end=SystemClock.elapsedRealtime()+15000;
   while(SystemClock.elapsedRealtime()<end){String raw=WebViewTestDriver.evaluate("window.__approvalNotice");if(!"null".equals(raw)&&!"undefined".equals(raw))return new JSONObject((String)new JSONTokener(raw).nextValue());SystemClock.sleep(50);}throw new AssertionError("Approval notice bridge timed out");
  }
+ /** DOM readiness precedes asynchronous session restoration and its signed-out owner fence. */
+ private static void awaitSignedOutStartup(AlphaCredentialStore store)throws Exception{
+  long end=SystemClock.elapsedRealtime()+15000;
+  while(SystemClock.elapsedRealtime()<end){String raw=store.readCredentialSlot(WorkflowNoticeTaps.OWNER_SLOT);if(raw!=null){JSONObject fence=new JSONObject(raw);if(fence.has("owner")&&fence.isNull("owner"))return;}SystemClock.sleep(50);}
+  throw new AssertionError("Actual signed-out startup must settle before synthetic owner seeding");
+ }
  private Notification active(NotificationManager manager,String id){for(StatusBarNotification row:manager.getActiveNotifications())if(("alpha-workflow-"+id).equals(row.getTag()))return row.getNotification();return null;}
  /** Runner-owned: a fresh secondary user with notification permission granted. Synthetic route; no agent, account or device action. */
  @Test public void approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision()throws Exception{
@@ -42,7 +48,7 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
   JSONObject route=new JSONObject().put("scope","a".repeat(64)).put("origin","https://workflow-fixture.invalid").put("ownerId","fixture-owner").put("agentId","fixture-agent").put("workflowId","fixture-flow").put("runId",run).put("versionId","fixture-version");
   JSONObject input=new JSONObject().put("id",id).put("bindingHash","b".repeat(64)).put("expiresAt",expiresAt).put("route",route);
   try(BoundedActivityScenario<MainActivity> activity=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();
+   AppNavigation.liveMode();awaitSignedOutStartup(store);
    assertFalse(call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-owner\",agentId:\"fixture-agent\"}})").has("error"));
    assertEquals("succeeded",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+input+")").getString("status"));
    assertEquals("Posted at most once","succeeded",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+input+")").getString("status"));
@@ -74,7 +80,7 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
   String id=approvalId('e'),run="fixture-old-"+java.util.UUID.randomUUID();long expiry=System.currentTimeMillis()+600000;
   JSONObject input=new JSONObject().put("id",id).put("bindingHash","b".repeat(64)).put("expiresAt",expiry).put("route",route("fixture-owner",run));
   try(BoundedActivityScenario<MainActivity> activity=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-owner\",agentId:\"fixture-agent\"}})");
+   AppNavigation.liveMode();awaitSignedOutStartup(store);call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-owner\",agentId:\"fixture-agent\"}})");
    assertEquals("succeeded",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+input+")").getString("status"));
    assertTrue(call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:\"bad\"})").has("error"));
    StatusBarNotification original=row(manager,id);assertNotNull("Malformed owner must not sign out or remove the matching notice",original);PendingIntent stale=original.getNotification().contentIntent;String token=WorkflowNoticeTapsFactory.create(context).token(id);
