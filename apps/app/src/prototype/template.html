@@ -19,9 +19,10 @@
 <div data-alpha-layer="home" onFocusCapture="{{focusAppContent}}" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
 <div data-alpha-home-layout style="min-height:100%;display:flex;flex-direction:column;padding:20px 0 108px;box-sizing:border-box">
 <sc-if value="{{storageAccessWarning}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
-  <!-- The only way into Alpha's notifications (docs/gesture-zones.md): a visible control below
-       Android's status bar. The top-edge swipe is Android's and opens Android's own shade. -->
-  <div class="alpha-shade-row"><button class="alpha-shade-handle" data-alpha-shade-handle aria-label="Open notifications" aria-controls="alpha-notifications" aria-expanded="false" onClick="{{openShade}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bell}}"></path></svg><span>Notifications</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.down}}"></path></svg></button></div>
+  <!-- Launcher Home only (docs/gesture-zones.md, #416, #417): Android's shade is the one
+       notification and quick-settings surface. This visible control asks Android to open it, as
+       a pull down on empty Home does; the top-edge swipe stays Android's. Alpha draws no shade. -->
+  <sc-if value="{{showShadeButton}}"><div class="alpha-shade-row"><button class="alpha-shade-handle" data-alpha-shade-handle aria-label="Open notifications" aria-description="Opens Android's notifications and quick settings" onClick="{{openSystemShade}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bell}}"></path></svg><span>Notifications</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.down}}"></path></svg></button></div></sc-if>
   <div class="scr" style="display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px; scroll-padding-left: 24px; touch-action: pan-x; flex-shrink: 0">
     <button class="home-calendar-card" data-alpha-home-calendar data-alpha-home-calendar-event="{{homeCalendarHasEvent}}" data-alpha-home-calendar-meta="{{homeCalendarHasMeta}}" data-alpha-home-calendar-overdue="{{homeCalendarOverdue}}" onClick="{{goCalendar}}" aria-label="{{homeCalendarLabel}}" aria-description="{{homeCalendarDescription}}" style="flex-shrink: 0; scroll-snap-align: start; border-radius: 30px; background: var(--acc); color: #ffffff; padding: 22px; box-sizing: border-box">
       <div class="home-calendar-head">
@@ -4138,9 +4139,12 @@
 </sc-if>
 
 
-<!-- No heads-up banner: Alpha shows only real notices, through the shade (AlphaNotifications). -->
+<!-- No heads-up banner: Alpha posts real notices as Android notifications; Android shows them. -->
 
-
+<!-- Development stand-in for Android's shade (ELIZA_DEV_ALLOW_TEST_MOCKS=1 browser builds only,
+     simulatedShade). A browser has no SystemUI, so this simulates it for development tests.
+     Product builds, including every APK, render nothing here: Android's shade is the surface (#416). -->
+<sc-if value="{{simulatedShade}}">
 <sc-if value="{{isOn}}">
 <div data-alpha-layer="shade" id="alpha-notifications" role="region" aria-label="Notifications" aria-hidden="{{shadeHidden}}" inert="{{shadeHidden}}" onKeyDown="{{shadeKey}}" style="position: absolute; inset: 0; z-index: 66; background: var(--bg); transform: translateY({{shadeY}}); transition: transform .55s cubic-bezier(.19,1,.22,1); display: flex; flex-direction: column; padding: 56px 14px 0; box-sizing: border-box">
 <sc-if value="{{storageAccessWarning}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
@@ -4180,6 +4184,7 @@
     <button class="ib" aria-label="Settings" onClick="{{goSettings}}" style="background: var(--s2)"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.gear}}"></path></svg></button>
   </div>
 </div>
+</sc-if>
 </sc-if>
 
 
