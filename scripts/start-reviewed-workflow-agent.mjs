@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Runs the pinned Eliza app host (vendor/eliza by default) with an isolated private profile for
-// the workflow host scripts. Their profiles and ports: test-reviewed-workflow-host and
+// Runs the pinned Eliza app host (the prepared tree of the vendor/eliza pin by default) with an
+// isolated private profile for the workflow host scripts. Their profiles and ports: test-reviewed-workflow-host and
 // test-workflow-cancel-recovery use the defaults; test-workflow-approvals-host, -approval-crash and
 // -metadata-host use --profile ~/.local/share/alphaphone/local-workflow-approvals --port 47854;
 // test-workflow-lifecycle-host uses --profile ~/.local/share/alphaphone/local-workflow-lifecycle --port 47856.
@@ -12,10 +12,16 @@ import {spawn, execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
 import {AGENT_MODEL,agentModelEnvironment} from './agent-model.mjs';
-// --source selects another prepared tree of the pinned commit, such as artifacts/local-agent-resident-<commit>.
+import {sourceDirectory} from './local-agent-source.mjs';
+// The default is artifacts/local-agent-resident-<commit> from `npm run agent:prepare`; --source selects
+// another prepared tree of the pinned commit.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const {values:options} = parseArgs({options:{source:{type:'string'}, profile:{type:'string'}, port:{type:'string'}, bun:{type:'string'}}, strict:true});
-const source = path.resolve(options.source || path.join(root, 'vendor/eliza'));
+const source = path.resolve(options.source || sourceDirectory(root));
+if (!fs.existsSync(path.join(source,'node_modules'))) {
+  console.error(`No installed runtime source at ${source}. Run \`npm run agent:prepare\` (creates artifacts/local-agent-resident-<commit> from the pinned commit), or pass --source with another prepared checkout of it. Never install into vendor/eliza.`);
+  process.exit(2);
+}
 const profile = path.resolve(options.profile || path.join(os.homedir(), '.local/share/alphaphone/local-reviewed-workflows'));
 const port = Number(options.port || 47848);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
