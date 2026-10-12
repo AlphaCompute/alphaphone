@@ -43,7 +43,7 @@ import { DailyApps } from './daily';
 import { installPrototypeVoiceAdapter } from './prototype/voice-adapter';
 import { installPrototypeBrowserAdapter } from './prototype/browser-adapter';
 import { installCalendarAdapter } from './prototype/calendar-adapter';
-import { installSettingsAdapter } from './prototype/settings-adapter';
+import { installSettingsAdapter, readAppearanceChoice, resolveAppearance } from './prototype/settings-adapter';
 import { ConnectionChooser, connectionController } from './runtime/connection-ui';
 import { installNotesTrashAdapter } from './prototype/notes-trash-adapter';
 import { installInboxCloudAdapter, inboxAttention, subscribeInboxAttention } from './prototype/inbox-cloud-adapter';
@@ -73,8 +73,7 @@ const mock = testMocksEnabled && (query.get('mode') === 'mock' || savedMock);
 const fixture = testMocksEnabled && (mock || (devSurfacesEnabled && !isAndroid && query.get('fixture') === '1'));
 const initialTheme = (() => {
   if (testMocksEnabled && (query.has('theme') || fixture)) return query.get('theme') === 'dark' ? 'dark' : 'light';
-  try { return localStorage.getItem('alpha.appearance.v1') === 'dark' ? 'dark' : 'light'; }
-  catch { return 'light'; }
+  return resolveAppearance(readAppearanceChoice());
 })();
 document.documentElement.dataset.connectionMode = mock ? 'mock' : 'live';
 if (testMocksEnabled && mock) { const style = document.createElement('style'); style.textContent = MOCK_BANNER_STYLE; document.head.append(style); }

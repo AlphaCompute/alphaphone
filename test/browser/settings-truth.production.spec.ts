@@ -253,7 +253,9 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
   'Notifications':[/Reminders\s*Channel allowed/,/Scheduled digest results\s*Channel allowed/],'Battery':[/64%/,/On battery/,/Battery saver\s*Off/],
   'Privacy & data':[/Device location\s*On/,/Microphone\s*Allowed for Alpha/,/Camera\s*Not allowed/],
   'About':[/Stub phone/,/Alpha Phone\s*0\.1\.0 \(7\)/,/Installed or last updated/,/Updates\s*Alpha does not check for updates/,/Android\s*16/,/Security patch\s*2026-09-05/,/Inference model\s*Not reported by agent/],
-  'Developer':[/App version\s*0\.1\.0/,/Agent memory\s*Not connected/],'Models':[/Inference model\s*Not reported by agent/],
+  'Developer':[/App version\s*0\.1\.0/,/Agent memory\s*Not connected/],
+  // Telegram, Discord and the other deferred connectors cannot be connected in this build.
+  'Connections':[/Other connectors\s*Not available in this version/],'Models':[/Inference model\s*Not reported by agent/],
  };
  const report:string[]=[`Settings: ${top.replace(/\s+/g,' ')}`];
  noFixtures(top,'Settings');
@@ -270,7 +272,7 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
   for(const pattern of shown[label]||[])expect(text,`${label} shows ${pattern}`).toMatch(pattern);
   // A switch must be backed by something this app owns. Only the calendar and theme controls qualify.
   const switches=await current(page).locator('[role="switch"],[aria-pressed],[aria-checked],input[type="checkbox"],input[type="range"]').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')||e.textContent?.trim()||e.tagName));
-  const owned=label==='Display'?['Theme: Light','Theme: Dark','Text size']:[];
+  const owned=label==='Display'?['Theme: System','Theme: Light','Theme: Dark','Text size']:[];
   expect(switches.filter(name=>!owned.includes(name)),`${label} has a switch that nothing backs`).toEqual([]);
   for(const [row,target] of handoffs[label]||[]){
    const before=(await opened(page)).length;
@@ -393,6 +395,7 @@ test('the browser build of Settings shows no fixture value and no radio or senso
   report.push(`${label}: ${text.replace(/\s+/g,' ')}`);
   noFixtures(text,label);
   expect(text).not.toMatch(/Wi-Fi\s*(On|Off)\b|Bluetooth\s*(On|Off)\b|Airplane mode\s*(On|Off)\b/);
+  if(label==='Connections'){expect(text).toMatch(/Other connectors\s*Not available in this version/);expect(text).not.toMatch(/Other connectors\s*Not connected/);}
  }
  await test.info().attach('browser-settings-rows',{body:report.join('\n\n'),contentType:'text/plain'});
  const about=report.find(row=>row.startsWith('About: '))||'';
