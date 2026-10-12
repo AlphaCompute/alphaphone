@@ -17,7 +17,7 @@ import static org.junit.Assert.*;
 /** Owned CalendarProvider and encrypted journal evidence. Synthetic synced rows do not
  * contact a service. Journal reconstruction is not an installed process-kill test. */
 public final class ScopedCalendarDeletionInstrumentedTest {
- @Test public void localRecurrenceUndoAndExpiryPreserveOtherOccurrences()throws Exception{exercise(false);}
+ @Test public void localRecurrenceUndoAndExpiryPreserveOtherOccurrences()throws Exception{for(int attempt=0;attempt<10;attempt++)try{exercise(false);}catch(AssertionError failure){throw new AssertionError("Local recurrence iteration "+attempt,failure);}}
  @Test public void syntheticSyncedRecurrenceUsesAppDeletionAndExactReadback()throws Exception{exercise(true);}
  private void exercise(boolean synced)throws Exception{
   assertTrue("Explicit disposable Calendar deletion fixture required","1".equals(InstrumentationRegistry.getArguments().getString("scopedCalendarDeletion")));
