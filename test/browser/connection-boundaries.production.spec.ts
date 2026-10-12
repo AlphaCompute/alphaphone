@@ -45,12 +45,14 @@ async function android(page: Page, options: AndroidOptions) {
       { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'configureCloudProvider', 'request']) },
       { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
       { name: 'AlphaNotifications', methods: methods(['status', 'crossAppStatus', 'addListener', 'removeListener']) },
+      { name: 'AlphaHostedResults', methods: methods(['disableBackground']) },
       { name: 'AlphaVoiceCloud', methods: methods(['checkPermissions']) },
     ], nativePromise: async (plugin: string, method: string, input: any) => {
       w.nativeCalls.push({ plugin, method, slot: input?.slot, url: input?.url, http: input?.method, authorization: input?.headers?.Authorization, path: input?.path });
       if (plugin === 'DeviceApps') return { launcher: false, version: 'connection-boundaries' };
       if (plugin === 'AlphaNotifications') return { permissionGranted: true, appEnabled: true };
       if (plugin === 'AlphaVoiceCloud') return { microphone: 'granted' };
+      if (plugin === 'AlphaHostedResults' && method === 'disableBackground') return {};
       if (plugin === 'Agent') {
         if (method === 'getStatus') return { packaged: options.packaged !== false, state: 'stopped', serviceActive: false, socketListening: false };
         // A held stop lets a test cancel sign-out before any revocation request is issued.
@@ -165,9 +167,12 @@ test('production Android without a packaged agent says so and does not advertise
 for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-revoked-status', 'no-content', 'unauthorized', 'server-error', 'cancelled'] as const) {
   test(`production Android Cloud sign-out states only the revocation that happened: ${mode}`, async ({ page }) => {
     const foreign = await fenceNetwork(page);
-    // An unusable legacy account (zero balance, no entitlement route) keeps the account panel open with its Sign out control.
+    // Billing status does not block resident startup. Open account settings explicitly to sign out.
     await android(page, { cloudCredential: true, balance: 0, revoke: mode });
     await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: /Agent connection/ }).click();
     await expect(page.getByRole('button', { name: 'Open Eliza Cloud billing', exact: true })).toBeVisible();
     const before = (await nativeCalls(page)).length;
     if (mode === 'cancelled') await page.evaluate(() => { (window as any).holdStop = true; });
@@ -193,6 +198,7 @@ for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-
     // This sign-out stops the resident process before its key is revoked, and the local key is always removed.
     const stop = calls.findIndex((call, index) => index >= before && call.plugin === 'Agent' && call.method === 'stop');
     expect(stop).toBeGreaterThan(-1);
+    expect(calls.slice(before).some(call => call.plugin === 'AlphaHostedResults' && call.method === 'disableBackground')).toBe(true);
     if (mode !== 'cancelled') expect(stop).toBeLessThan(calls.indexOf(revocations[0]));
     expect(await secureValues(page)).not.toHaveProperty('cloud:production');
     await expect(page.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
