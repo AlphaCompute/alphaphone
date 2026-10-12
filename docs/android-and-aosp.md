@@ -330,13 +330,14 @@ proof that an image was built and booted. A privileged image builder can control
 its system/product partitions. A real image must separately verify installation,
 RRO activation, signing and the expected build fingerprint.
 
-Until the real adapters are implemented, Contacts/Telecom/SMS remain unavailable
-on all images. Alpha's shared System bridge hides and refuses dialer/SMS roles;
+Telecom and SMS adapters remain unavailable on all images. Alpha's shared System bridge hides and refuses dialer/SMS roles;
 its role callback rechecks the product policy. Product-owned empty-dial-pad
 shortcuts and both native default-app bridge entry points require image
 admission. The ordinary installed-app drawer and Android's own emergency access
 are preserved. Agent view/workflow and native DailyApps routes continue to deny
-Phone/Contacts/SMS, and no new phone, contacts or SMS permissions are declared.
+Phone/SMS. Contacts navigation is admitted only by the native image capability;
+READ_CONTACTS is requested explicitly inside that admitted view. No phone or SMS
+permissions are declared.
 
 The shared extension is an explicit hash-admitted patch in
 `patches/eliza/system-product-capabilities.patch`; default hooks preserve
@@ -384,3 +385,12 @@ Cuttlefish baseline is not approved Pixel 10a Android 17 device acceptance.
 Locked capture, absence of pre-unlock gallery/account access, return after
 unlock, permission denial and physical gesture behavior require separate
 image/device tests. These remain open acceptance work for issue #407.
+
+Contacts adapter work adds same-profile, permission-gated bounded provider reads only
+inside the admitted image. Contact rows remain in renderer memory. Creation and editing
+use a pinned system Contacts editor with account selection and save handled by Android;
+Alpha has no WRITE_CONTACTS permission or import/export path. Native selection checks bind
+provider ID, lookup key and last-update revision before edit handoff. Phone and SMS adapters
+remain disabled. The ContactsCatalog instrumentation class creates and cleans only its
+own synthetic contacts in a disposable profile; this provider test is not image admission,
+real address-book acceptance, or a Telecom/SMS result.

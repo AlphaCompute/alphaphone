@@ -15,7 +15,7 @@ final class AlphaImageCapabilities {
    context.getResources().getBoolean(R.bool.alpha_aosp_image_capability));}
   catch(RuntimeException unavailable){return false;}
  }
- // Provisioning is necessary but not sufficient: no Contacts/Telecom/SMS adapter is admitted yet.
+ // Provisioning is necessary but not sufficient: Telecom/SMS roles remain unavailable.
  static boolean roleEnabled(String role){return "home".equals(role)||"assistant".equals(role);}
  static boolean defaultAppEnabled(Context context,String role){return "dial".equals(role)&&aospImage(context);}
 }

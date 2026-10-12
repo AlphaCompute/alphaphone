@@ -36,5 +36,8 @@ export function deferredMvpPrompt(text: unknown) {
   const match = UNAVAILABLE_PROMPT.exec(String(text).trim());
   if (!match) return false;
   const view = PROMPT_VIEWS[(match[1] || match[2] || match[3] || "").toLowerCase()];
-  return !view || !IMAGE_VIEWS.has(view);
+  return !view || !(view === "contacts" ? !browserDevProfile && isMvpView("contacts") : IMAGE_VIEWS.has(view));
 }
+
+/** Native image admission enables only implemented adapters; Phone/SMS remain unavailable. */
+export function admitImageContacts(admitted:boolean){if(browserDevProfile)return;if(admitted){ENABLED_MVP_VIEWS.add("contacts");DEFERRED_MVP_VIEWS.delete("contacts");}else{ENABLED_MVP_VIEWS.delete("contacts");DEFERRED_MVP_VIEWS.add("contacts");}}

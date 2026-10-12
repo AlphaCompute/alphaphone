@@ -18,6 +18,6 @@ public final class AlphaDeviceAppsPlugin extends DeviceAppsPlugin {
  }
  @PluginMethod public void platformCapabilities(PluginCall call){
   JSObject result=new JSObject();result.put("aospImage",AlphaImageCapabilities.aospImage(getContext()));
-  result.put("phone",false);result.put("contacts",false);result.put("sms",false);call.resolve(result);
+  result.put("phone",false);result.put("contacts",AlphaImageCapabilities.aospImage(getContext()));result.put("sms",false);call.resolve(result);
  }
 }

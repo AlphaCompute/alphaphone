@@ -244,8 +244,8 @@ test("Capacitor's own permission request, and the shared plugins' requests an ap
   const guardedOverride = (source, method) => new RegExp(`@Override @PluginMethod public void ${method}\\(PluginCall call\\) ?\\{(?: if \\(refused\\(call\\)\\) return;)? ?LateLaunch\\.ask\\(call, ?\\(\\) ?-> ?super\\.${method}\\(call\\)\\); ?\\}`).test(source);
   // Plugin.requestPermissions is a plugin method of every plugin and launches for one that declares permissions.
   const declaring = files.filter(name => /@CapacitorPlugin\([^\n]*\bpermissions\s*=/.test(read(name)));
-  assert.deepEqual(declaring, ["AlphaCalendarPlugin.java", "AlphaHostedResultsPlugin.java", "AlphaSystemPlugin.java", "AlphaTelephonyPlugin.java", "AlphaVoiceCloudPlugin.java", "DailyAppsPlugin.java"], "the plugins that declare permissions");
-  for (const name of declaring) assert.ok(guardedOverride(read(name), "requestPermissions"), `${name}: requestPermissions is overridden with the guard`);
+  assert.deepEqual(declaring, ["AlphaCalendarPlugin.java", "AlphaContactsPlugin.java", "AlphaHostedResultsPlugin.java", "AlphaSystemPlugin.java", "AlphaTelephonyPlugin.java", "AlphaVoiceCloudPlugin.java", "DailyAppsPlugin.java"], "the plugins that declare permissions");
+  for (const name of declaring.filter(name=>name!=="AlphaContactsPlugin.java")) assert.ok(guardedOverride(read(name), "requestPermissions"), `${name}: requestPermissions is overridden with the guard`);
 
   // A plugin that extends a shared (vendored) plugin inherits its plugin methods. The shared
   // source is not edited here; the app's subclass overrides each inherited method that launches.
@@ -291,3 +291,5 @@ test("shared Kotlin System activity launch methods have guarded product override
   const wrapper = read("AlphaSystemPlugin.java");
   for(const method of inherited) assert.ok(wrapper.includes(`@Override @PluginMethod public void ${method}(PluginCall call){LateLaunch.ask(call,()->super.${method}(call));}`),method);
 });
+
+test("Contacts generic permission requests remain image and foreground gated",()=>{const source=read("AlphaContactsPlugin.java");assert.match(source,/public void requestPermissions\(PluginCall call\)\{\s*if\(!foreground\(\)\)/);assert.match(source,/LateLaunch.ask\(call,\(\)->requestPermissionForAlias\("contacts",call,"permissionResult"\)\)/);});
