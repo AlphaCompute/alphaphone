@@ -2833,17 +2833,6 @@
             <div class="dot" style="height: 12px; width: 62%; border-radius: 6px; background: var(--s3)"></div>
           </div>
         </sc-if>
-        <sc-if value="{{files.pv.asked}}">
-          <div class="enter" style="display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 24px; background: var(--s2); margin-top: 20px">
-            <div style="display: flex; align-items: center; justify-content: space-between">
-              <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex-shrink:0;color:var(--acct)"><span class="alpha-compute-mark" aria-hidden="true" style="width:100%;height:100%"></span></span>
-              <button class="ib" aria-label="Save to Notes" onClick="{{files.pv.saveSum}}" style="margin: -10px -10px -10px 0; color: var(--acct)"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.bookmark}}"></path></svg></button>
-            </div>
-            <sc-for list="{{files.pv.sum}}" as="b">
-              <div style="display: flex; gap: 12px"><span style="width: 6px; height: 6px; border-radius: 3px; background: var(--acct); margin-top: 8px; flex-shrink: 0"></span><span style="font-size: 15px; line-height: 1.45">{{b}}</span></div>
-            </sc-for>
-          </div>
-        </sc-if>
 
         <sc-if value="{{files.pv.isPages}}">
           <sc-if value="{{files.pv.isPdf}}">

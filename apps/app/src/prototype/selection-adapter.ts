@@ -3,6 +3,7 @@ import {reviewMailAttachment,type MailAttachment} from '../runtime/inbox-attachm
 import type {Source} from './note-source-adapter';
 const sourceFiles=registerPlugin<{readSelected(input:{selectionId:string}):Promise<MailAttachment & {sha256:string;size:number;sourceReferenceVersion?:1}>;retainSourceReference(input:{selectionId:string;sha256:string}):Promise<{reference?:string}>}>('AlphaMailAttachments');
 import {reviewContentQuestion} from '../browser/content-question';
+import {sensitiveReadingText} from '../browser/reading-sensitive';
 import { installFilesTreeAdapter } from './files-tree-adapter';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps, type NativeResult } from '../daily';
@@ -117,7 +118,7 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
       const forget = () => { clear(true); api.set({ open: null }); };
       const ask=()=>{
         closeQuestion?.();
-        closeQuestion=reviewContentQuestion({name:selected.pdf?name+' · page '+(selected.pdf.page+1):name,text:selected.text??'',current:()=>current===selected&&api.get(module).open===marker&&!document.hidden,compose:(draft,source)=>api.composeContentQuestion(draft,source),...(selected.result.selectionId&&['text/plain','application/pdf','image/png','image/jpeg','image/webp'].includes(mime)?{source:async():Promise<Source>=>{const file=await sourceFiles.readSelected({selectionId:selected.result.selectionId!}),checked=await reviewMailAttachment(file);if(current!==selected||checked.sha256!==file.sha256||checked.size!==file.size||file.name!==selected.result.name||file.mimeType!==mime||mime==='text/plain'&&checked.text!==selected.text)throw Error('Source changed');const reference=file.sourceReferenceVersion===1?(await sourceFiles.retainSourceReference({selectionId:selected.result.selectionId!,sha256:checked.sha256})).reference:undefined;if(current!==selected)throw Error('Selection changed');return {version:1,name:file.name,mimeType:file.mimeType,sha256:checked.sha256,size:checked.size,...(reference?{reference}:{})};}}:{}),...(image?{image:async(signal:AbortSignal)=>(await fetch(image,{signal})).blob()}: {})});
+        closeQuestion=reviewContentQuestion({name:selected.pdf?name+' · page '+(selected.pdf.page+1):name,text:selected.text??'',current:()=>current===selected&&api.get(module).open===marker&&!document.hidden,validate:text=>!sensitiveReadingText(text),compose:(draft,source)=>api.composeContentQuestion(draft,source),...(selected.result.selectionId&&['text/plain','application/pdf','image/png','image/jpeg','image/webp'].includes(mime)?{source:async():Promise<Source>=>{const file=await sourceFiles.readSelected({selectionId:selected.result.selectionId!}),checked=await reviewMailAttachment(file);if(current!==selected||checked.sha256!==file.sha256||checked.size!==file.size||file.name!==selected.result.name||file.mimeType!==mime||mime==='text/plain'&&checked.text!==selected.text)throw Error('Source changed');const reference=file.sourceReferenceVersion===1?(await sourceFiles.retainSourceReference({selectionId:selected.result.selectionId!,sha256:checked.sha256})).reference:undefined;if(current!==selected)throw Error('Selection changed');return {version:1,name:file.name,mimeType:file.mimeType,sha256:checked.sha256,size:checked.size,...(reference?{reference}:{})};}}:{}),...(image?{image:async(signal:AbortSignal)=>(await fetch(image,{signal})).blob()}: {})});
       };
       if (module === 'files') {
         const rows = selected.text === undefined
@@ -138,7 +139,6 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
           askLabel: 'Ask Alpha', ask, close,
           startRename: () => selected.result.status === 'renamed-reselect' ? api.toast('Select the renamed file before making another change.') : api.set({renaming:true,rn:name}),
           share: () => share(api), move: () => api.toast('Moving requires access to the source and destination folders. This selection cannot be moved here yet.'), del: () => api.toast('Delete in the Android document app.'),
-          saveSum: () => api.toast('Document analysis is not connected.'),
         };
       } else if (image) {
         data.viewing = true; data.viewEmpty = false; data.editing = false;
