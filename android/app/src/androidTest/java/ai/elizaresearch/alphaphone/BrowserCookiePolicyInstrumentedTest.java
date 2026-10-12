@@ -53,10 +53,11 @@ public final class BrowserCookiePolicyInstrumentedTest {
    WebViewTestDriver.withActivity(MainActivity.class,activity->{try{
     hostPolicy[0]=CookieManager.getInstance().acceptThirdPartyCookies(activity.getBridge().getWebView());
     String profile=priv?AlphaBrowserPlugin.PRIVATE_PREFIX+token:AlphaBrowserPlugin.PERSISTENT_PROFILE;
-    assertFalse("Host WebView explicitly refuses third-party cookies",hostPolicy[0]);
     first.set(build(activity,"cookies_a",priv,profile));second.set(build(activity,"cookies_b",priv,profile));
     // A pop-up is built exactly as AlphaBrowserPlugin.popup does: build(id, opener.priv, opener.profile).
     popup.set(build(activity,"pcookies",priv,WebViewCompat.getProfile(first.get()).getName()));
+    // Asserted after the builds so a failure is not masked by the finally block's cookie cleanup.
+    assertFalse("Host WebView explicitly refuses third-party cookies",hostPolicy[0]);
     assertEquals("Per-tab policy",!priv,CookieManager.getInstance().acceptThirdPartyCookies(first.get()));
     assertEquals("Second tab policy",!priv,CookieManager.getInstance().acceptThirdPartyCookies(second.get()));
     assertEquals("Pop-up inherits opener policy",!priv,CookieManager.getInstance().acceptThirdPartyCookies(popup.get()));
