@@ -15,5 +15,9 @@
         <data android:mimeType="image/jpeg" />
       </intent-filter>
     </activity>
+    <!-- Autofill campaign only (PasswordVaultFillInstrumentedTest): a native sign-in form in the
+         test package, which has its own package name and the instrumentation signer. -->
+    <activity android:name="ai.elizaresearch.alphaphone.PasswordFillFixtureActivity"
+      android:exported="true" android:label="Alpha autofill fixture" />
   </application>
 </manifest>
