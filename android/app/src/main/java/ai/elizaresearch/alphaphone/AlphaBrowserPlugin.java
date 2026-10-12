@@ -554,18 +554,24 @@ public class AlphaBrowserPlugin extends Plugin {
   if(++t.authAttempts>3){handler.cancel();fail(t,"Sign-in failed. Reload to try again.");return;}
   float density=getContext().getResources().getDisplayMetrics().density;int pad=Math.round(20*density);
   android.widget.LinearLayout form=new android.widget.LinearLayout(getActivity());form.setOrientation(android.widget.LinearLayout.VERTICAL);form.setPadding(pad,pad/2,pad,0);
-  android.widget.EditText user=new android.widget.EditText(getActivity());user.setHint("Username");user.setSingleLine(true);user.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
-  android.widget.EditText pass=new android.widget.EditText(getActivity());pass.setHint("Password");pass.setSingleLine(true);pass.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+  // Password-manager fill (#404) binds to the one exact HTTPS origin verified above; none is
+  // reported (and Autofill is excluded) when the matched pages disagree or are not HTTPS.
+  String authOrigin=BrowserHttpAuthAutofill.origin(host,t.url,t.pendingMain);
+  android.widget.EditText user=BrowserHttpAuthAutofill.field(getActivity(),authOrigin,false);
+  android.widget.EditText pass=BrowserHttpAuthAutofill.field(getActivity(),authOrigin,true);
   form.addView(user);form.addView(pass);
   String label=realm==null?"":realm.replaceAll("[\\x00-\\x1f\\x7f]"," ").trim();if(label.length()>100)label=label.substring(0,100);
-  String message=asked+" asks you to sign in."+(label.isEmpty()?"":"\nThe site says: “"+label+"”")+"\nAlpha Phone does not save this password."+(t.authAttempts>1?"\n\nThe previous sign-in was not accepted.":"");
+  String message=asked+" asks you to sign in."+(label.isEmpty()?"":"\nThe site says: “"+label+"”")+"\nAlpha's browser does not keep this password."+(authOrigin==null?"":" Your password manager can fill or save it for "+authOrigin+".")+(t.authAttempts>1?"\n\nThe previous sign-in was not accepted.":"");
   boolean[] answered={false};
   AlertDialog dialog=new AlertDialog.Builder(getActivity()).setTitle("Sign in").setMessage(message).setView(form)
-   .setPositiveButton("Sign in",(d,w)->{answered[0]=true;siteDialogCancel=null;String u=user.getText().toString(),p=pass.getText().toString();user.setText("");pass.setText("");
+   .setPositiveButton("Sign in",(d,w)->{answered[0]=true;siteDialogCancel=null;
+    // Let the selected provider offer to save before the values are cleared; it asks the user.
+    AutofillManager autofill=authOrigin==null?null:getActivity().getSystemService(AutofillManager.class);if(autofill!=null)autofill.commit();
+    String u=user.getText().toString(),p=pass.getText().toString();user.setText("");pass.setText("");
     if(tabs.get(t.id)==t&&!t.dead)handler.proceed(u,p);else handler.cancel();})
    .setNegativeButton("Cancel",null).create();
   // Cancelling the page's own sign-in stops the load; for a resource of an already shown page it only notes it.
-  showSiteDialog(t,dialog,()->{if(answered[0])return;handler.cancel();if(tabs.get(t.id)!=t||t.dead)return;if(t.committed)notice(t,"Sign-in was cancelled.");else fail(t,"Sign-in was cancelled. Reload to try again.");});
+  showSiteDialog(t,dialog,()->{if(answered[0])return;AutofillManager autofill=getActivity().getSystemService(AutofillManager.class);if(autofill!=null)autofill.cancel();handler.cancel();if(tabs.get(t.id)!=t||t.dead)return;if(t.committed)notice(t,"Sign-in was cancelled.");else fail(t,"Sign-in was cancelled. Reload to try again.");});
  }
  // ---- Camera for capture-enabled file inputs ---------------------------------------
  static boolean captureType(String[] accept){
