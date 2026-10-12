@@ -95,8 +95,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     output = fs.openSync(options['--out'], 'wx', 0o600);
     const descriptorBytes = fs.readFileSync(options['--descriptor']);
     const expected = {...JSON.parse(descriptorBytes), fingerprint: options['--fingerprint'], apkPath: options['--apk-path']};
-    const run = (...args) => execFileSync(options['--adb'] ?? 'adb', ['-s', options['--serial'], ...args],
-      {encoding: 'utf8', timeout: 15_000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe']});
+    const run = (...args) => {
+      try { return execFileSync(options['--adb'] ?? 'adb', ['-s', options['--serial'], ...args],
+        {encoding: 'utf8', timeout: 15_000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe']}); }
+      catch { throw Error('ADB observation failed or timed out'); }
+    };
     const report = verifyCuttlefishLauncher(run, expected, options['--user']);
     report.descriptorSha256 = createHash('sha256').update(descriptorBytes).digest('hex');
     report.observedAt = new Date().toISOString();
@@ -104,7 +107,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     console.log(`PASS ${options['--out']}: Cuttlefish launcher postboot checks only`);
   } catch (error) {
     // Subprocess errors can contain stdout/stderr; retain a bounded diagnostic, not raw device dumps.
-    const message = error.code || error.status !== undefined ? 'ADB observation failed or timed out' : error.message;
+    const message = String(error.message).slice(0, 1024);
     if (output !== undefined) fs.writeFileSync(output, JSON.stringify({passed: false, evidence: 'cuttlefish-launcher-postboot', error: message, observedAt: new Date().toISOString()}, null, 2) + '\n');
     console.error(message);
     process.exitCode = 1;
