@@ -332,3 +332,12 @@ test('only admission and its background refresher read the entitlement; turns an
     assert.doesNotMatch(text, /Add credits|Credits available|Check credits|residentTopUp|openTopUp|uses credits|uses its credits|needs credits/, file);
   }
 });
+
+// An account-plan check may refuse a new Cloud binding, but must not tear down
+// already-running local schedules or their foreground session before that answer.
+test('inactive admission does not stop an existing resident or retire it before checking', () => {
+  const source = fs.readFileSync(new URL('../apps/app/src/runtime/connection-ui.tsx', import.meta.url), 'utf8');
+  const refusal = source.slice(source.indexOf('if(!subscriptionAllowsAgent(checked.view))'), source.indexOf('// An admitted running resident'));
+  assert.doesNotMatch(refusal, /stopLocalAgent|retire\(/);
+  assert.match(source, /async startLocal\(\)[^\n]*active\?\.kind==='resident'/);
+});
