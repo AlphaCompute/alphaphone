@@ -240,7 +240,8 @@ test("a permission or activity-result request that arrives after the activity is
 });
 
 test("Capacitor's own permission request, and the shared plugins' requests an app plugin inherits, are answered the same way", () => {
-  const guardedOverride = (source, method) => new RegExp(`@Override @PluginMethod public void ${method}\\(PluginCall call\\)\\{LateLaunch\\.ask\\(call,\\(\\)->super\\.${method}\\(call\\)\\);\\}`).test(source);
+  // AlphaTelephonyPlugin re-checks the image capability first (P-36); the late-launch guard is the same.
+  const guardedOverride = (source, method) => new RegExp(`@Override @PluginMethod public void ${method}\\(PluginCall call\\) ?\\{(?: if \\(refused\\(call\\)\\) return;)? ?LateLaunch\\.ask\\(call, ?\\(\\) ?-> ?super\\.${method}\\(call\\)\\); ?\\}`).test(source);
   // Plugin.requestPermissions is a plugin method of every plugin and launches for one that declares permissions.
   const declaring = files.filter(name => /@CapacitorPlugin\([^\n]*\bpermissions\s*=/.test(read(name)));
   assert.deepEqual(declaring, ["AlphaCalendarPlugin.java", "AlphaHostedResultsPlugin.java", "AlphaTelephonyPlugin.java", "AlphaVoiceCloudPlugin.java", "DailyAppsPlugin.java"], "the plugins that declare permissions");
