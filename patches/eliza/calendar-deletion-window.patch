@@ -62,7 +62,7 @@
         dispatched=true;android.content.ContentProviderResult[] result=getContext().getContentResolver().applyBatch(CalendarContract.AUTHORITY,operations);if(create)eventId=ContentUris.parseId(result[result.length-1].uri);
 --- a/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java
 +++ b/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java
-@@ -43,10 +43,139 @@
+@@ -43,10 +43,140 @@
   private static long number(ContentValues values,String key){Long value=values.getAsLong(key);return value==null?0:value;}
   private static boolean empty(ContentValues values,String key){String value=values.getAsString(key);return value==null||value.isEmpty();}
   private static boolean same(String value,ContentValues values,String key){String actual=values.getAsString(key);return value.equals(actual==null?"":actual);}
@@ -97,6 +97,7 @@
 +   // The public exception insertion API requires RRULE; reject unsupported RDATE-only
 +   // occurrence cancellation explicitly instead of silently deleting the series.
 +   if(scope.equals("occurrence")&&empty(parent,"rrule"))throw new UnsupportedOperationException("This recurrence needs external Calendar review");
++   if(scope.equals("occurrence")&&!local()&&empty(parent,"_sync_id"))throw new UnsupportedOperationException("This unsynced calendar event needs external Calendar review");
 +   familyWhere="calendar_id=? AND (_id=? OR original_id=?)";familyArgs=new String[]{Long.toString(source),Long.toString(id),Long.toString(id)};
 +   events=rows(resolver,CalendarContract.Events.CONTENT_URI,EVENT_FIELDS,familyWhere,familyArgs,2048);
 +   if(scope.equals("occurrence")&&localExclusion()&&(events.size()!=1||selectedId!=id||instance%1000!=0))throw new UnsupportedOperationException("This local recurrence needs external Calendar review");

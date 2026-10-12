@@ -22,7 +22,8 @@ unchanged recurrence/time fields in the same checked update. It verifies both th
 stored exclusion and the absence of that occurrence. It does not create an
 invitation or invent a replacement event.
 
-RDATE-only occurrence deletion, local unsynced families with existing exceptions,
+RDATE-only occurrence deletion, nonlocal series still awaiting a sync ID,
+local unsynced families with existing exceptions,
 and local occurrences not aligned to whole seconds require Android Calendar
 editor review. Inspection returns `external`, so the existing renderer handoff
 opens the editor and states that Alpha has deleted nothing. Series deletion
