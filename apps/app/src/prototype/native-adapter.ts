@@ -267,8 +267,7 @@ export function installPrototypeNativeAdapters(
       if (key === 'send' || key === 'selShare') return unavailable(api, 'Choose and share the real photo in your Android photo app.');
     }
     if (module === 'maps') {
-      if (key === 'qKey') return (e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); void perform(module, api, 'maps', { query: text(api.get(module).query) }); } };
-      if (key === 'start') return native('maps', { query: text(row.name || st.query) });
+      // Search, Start and Directions belong to maps-adapter; its 'Open in maps app' is the only Maps handoff.
       if (key === 'call') return native('phone');
       if (key === 'web') return unavailable(api, 'Open the real place website from the Android map app.');
       if (['shareEta', 'voice', 'end'].includes(key)) return unavailable(api, 'Live navigation and ETA are managed by the Android map app.');
@@ -278,7 +277,6 @@ export function installPrototypeNativeAdapters(
         if (text(row.label).startsWith('Call ')) return native('phone');
         if (text(row.label).startsWith('Message ')) return native('messages');
         if (text(row.label).startsWith('Email ')) return native('email');
-        if (text(row.label).startsWith('Directions ')) return native('maps');
       }
       if (['save', 'del', 'toggleFav'].includes(key)) return native('contacts');
     }
@@ -293,7 +291,6 @@ export function installPrototypeNativeAdapters(
     }
     if (module === 'wallet') {
       if (key === 'addCal') return native('calendar');
-      if (key === 'dirs') return native('maps');
       if (['onNum', 'onCvv', 'onExp', 'onCode', 'onName'].includes(key)) return unavailable(api, 'Payment credentials are not collected by this app.');
       if (['pay', 'auth', 'verify', 'next', 'scan', 'reload', 'remove', 'setDef', 'startPay'].includes(key)) return unavailable(api, 'Wallet payments and verification are not connected. Nothing has been charged or verified.');
     }
