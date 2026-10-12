@@ -90,10 +90,25 @@ Cloud must also put any `Retry-After` value in the body:
 | Period allowance used up | 429 | `{"error":{"code":"allowance_exhausted","resetsAt":"<ISO>"}}` |
 | No active plan | 402 | `{"error":"subscription_required"}` |
 
-When the resident agent's reply arrives as a failure, the same values may appear in
-`failureKind` or `terminalFailure` (`kind`, `retryAfterMs`, `retryAfterSeconds`, `retryAt` and
-`resetsAt`). The phone tells the owner when to retry. It never retries the message or buys
-anything.
+On a direct HTTP refusal the phone reads these bodies and tells the owner when to retry. It never
+retries the message or buys anything.
+
+The resident agent's reply path is narrower. At the pinned upstream revision the agent reports a
+refused turn as `failureKind` / `terminalFailure.kind` from upstream `CHAT_FAILURE_KINDS`
+(`packages/contracts/src/contracts/chat.ts`), and `terminalFailureContentValue` in
+`packages/agent/src/api/chat-routes.ts` keeps only `kind`, `message`, `transient` and `code`.
+So on that path:
+
+| Upstream reply | Phone copy |
+|---|---|
+| `insufficient_credits` (how upstream reports a Cloud 402 today) | Neutral: Eliza Cloud declined the request for the account's billing; check the account in Settings. It does not claim a plan is missing, because the kind does not say whether the plan is missing or its usage is spent |
+| `insufficient_credits` with `code` `allowance_exhausted` or `subscription_required` | The specific allowance or no-plan copy |
+| `rate_limited` | Rate-limit copy with "wait a moment"; no countdown |
+| any other kind | "The agent could not complete this response." |
+
+`retryAfterMs`, `retryAt` and `resetsAt` cannot reach the phone on the reply path until upstream
+`ChatTerminalFailure` carries them. That needs an upstream change. Until then the phone shows
+retry and reset times only for direct HTTP refusals.
 
 ## 4. Phone behaviour by condition
 
@@ -101,26 +116,35 @@ anything.
 |---|---|---|
 | Valid entitlement, plan `active`, `trialing` or `past_due` | Plan name and the Cloud allowance. For `past_due`, also a link to manage the plan | yes |
 | Valid entitlement, plan `canceled` or `none` | "No active plan" or "<plan> has ended", with a link to manage the plan in Eliza Cloud. Local apps stay available without AI | no |
+| Route not deployed (404) and the transitional account check fails (section 5) | "AI is unavailable for this Eliza Cloud account", with "Open Eliza Cloud billing". No plan wording | no |
 | Billing outage (5xx, timeout, offline) | "Plan status unavailable"; Cloud still decides each request | yes |
 | Bad signature, unknown key or bad claims | Reported as unavailable (`invalid`) and never trusted | yes |
-| Entitlement issued for another account | An error asking the owner to sign in again | no |
-| A verified entitlement lapses while refreshes fail | "Plan status is out of date" (`expired`) | unchanged; Cloud decides |
-| Sign-in rejected (401) | Sign-in action | no |
+| Entitlement issued for another account, at admission | An error asking the owner to sign in again | no |
+| Entitlement issued for another account, during background refresh | Refresh stops, the Cloud-bound resident agent is stopped, the Cloud account is detached and the same sign-in error is shown | stopped |
+| A verified entitlement lapses while refreshes fail | "Plan status is out of date" (`expired`), kept on every later failed refresh until a check succeeds | unchanged; Cloud decides |
+| Sign-in rejected (401), at admission | Sign-in action | no |
+| Sign-in rejected (401), during background refresh | Same as an account mismatch during refresh: agent stopped, sign-in shown | stopped |
 
 Background refresh happens at `rfa`, or after 75% of the lifetime. After a failure it retries
-after 30 s, then doubles the wait up to 5 minutes. It stops on sign-out, on a plan with no access,
-or when Cloud returns 404 for the route.
+after 30 s, then doubles the wait up to 5 minutes. It stops whenever the Cloud account is detached
+(every sign-out, expiry, account change or re-admission path), on a plan with no access, on a
+rejected sign-in or account mismatch, or when Cloud returns 404 for the route.
 
 ## 5. Transitional account check
 
 Until Cloud deploys section 1, a `404` sends the phone to the existing
-`GET /api/v1/credits/balance` endpoint. A balance of zero or less is treated only as "no active
-plan". The phone never shows the balance. Remove this path once the entitlement route ships.
+`GET /api/v1/credits/balance` endpoint. A balance of zero or less refuses the resident agent with
+the neutral account copy in section 4; the phone never shows the balance. Against deployed Cloud
+this means the admission gate is still the credit balance, and the billing link opens Cloud's
+existing credit billing page. The plan copy applies only once Cloud issues entitlements. Remove
+this path once the entitlement route ships.
 
 ## 6. Plan management
 
-"Manage plan in Eliza Cloud" opens Cloud's hosted page at `https://cloud.eliza.app/cloud/billing`
-in the system browser. The phone creates no checkout, upgrade or purchase.
+"Manage plan in Eliza Cloud" (entitlement source) and "Open Eliza Cloud billing" (transitional
+account check) both open Cloud's hosted page at `https://cloud.eliza.app/cloud/billing` in the
+system browser. Today that page is Cloud's credit billing page. The phone creates no checkout,
+upgrade or purchase.
 
 ## Gates that remain open
 
@@ -130,4 +154,6 @@ in the system browser. The phone creates no checkout, upgrade or purchase.
   billing-outage conditions. It needs the deployed Cloud.
 - The numeric burst and sustained limits, the allowance and the price are not selected. They must
   be proposed from measured provider cost and pilot traffic, and the owner decides them.
+- Retry and reset times on the resident-agent reply path need upstream `ChatTerminalFailure` to
+  carry them.
 - No real Cloud account, Android device or AOSP image was used for acceptance.

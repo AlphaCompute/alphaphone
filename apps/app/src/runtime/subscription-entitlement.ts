@@ -107,7 +107,9 @@ export function entitlementClaims(header: Bag, claims: Bag, expected: Entitlemen
   if (!audience.includes(ENTITLEMENT_AUDIENCE)) throw new EntitlementError('audience');
   const userId = text(claims.sub, 128);
   const organizationId = claims.org == null ? null : text(claims.org, 128);
-  if (userId !== expected.userId || (expected.organizationId ?? null) !== organizationId) throw new EntitlementError('account-mismatch');
+  // Cloud ids are UUIDs; a difference in letter case alone is the same account.
+  const same = (a: string | null, b: string | null) => (a === null || b === null) ? a === b : a.toLowerCase() === b.toLowerCase();
+  if (!same(userId, expected.userId) || !same(expected.organizationId ?? null, organizationId)) throw new EntitlementError('account-mismatch');
   const issuedAt = seconds(claims.iat), expiresAt = seconds(claims.exp);
   const notBefore = claims.nbf === undefined ? issuedAt : seconds(claims.nbf);
   if (expiresAt <= issuedAt || expiresAt - issuedAt > MAX_ENTITLEMENT_LIFETIME_MS) throw new EntitlementError('lifetime');
@@ -181,16 +183,26 @@ export function allowanceText(allowance: PlanAllowance | null): string {
   return `Plan allowance details are in Eliza Cloud.${reset}`;
 }
 const LOCAL_KEEPS_WORKING = 'Local apps and on-device speech keep working.';
-export function describeSubscription(view: SubscriptionView | null | undefined): { headline: string; detail: string; manage: boolean } {
-  if (!view || view.kind === 'checking') return { headline: 'Checking your plan…', detail: '', manage: false };
+export const MANAGE_PLAN_LABEL = 'Manage plan in Eliza Cloud';
+export const LEGACY_UNAVAILABLE_HEADLINE = 'AI is unavailable for this Eliza Cloud account';
+/** Owner message when admission refuses the resident agent. */
+export function admissionRefusalMessage(view: SubscriptionView): string {
+  const local = 'Your saved data stays on this device, and local apps keep working without AI.';
+  return view.kind === 'inactive' && view.source === 'legacy-account' ? `Eliza Cloud reports that this account cannot use AI right now. ${local}` : `AI needs an active Eliza Cloud plan. ${local}`;
+}
+export function describeSubscription(view: SubscriptionView | null | undefined): { headline: string; detail: string; manage: boolean; manageLabel: string } {
+  if (!view || view.kind === 'checking') return { headline: 'Checking your plan…', detail: '', manage: false, manageLabel: MANAGE_PLAN_LABEL };
   switch (view.kind) {
     case 'active': return {
       headline: view.status === 'past_due' ? `${view.planName} · payment due` : view.status === 'trialing' ? `${view.planName} · trial` : view.planName,
       detail: [allowanceText(view.allowance), view.status === 'past_due' ? 'Update payment in Eliza Cloud to keep AI available.' : '', view.refreshFailed ? 'Plan status could not be refreshed; Eliza Cloud still decides each AI request.' : ''].filter(Boolean).join(' '),
-      manage: view.status === 'past_due' };
-    case 'inactive': return { headline: view.status === 'canceled' ? `${view.planName ?? 'Your plan'} has ended` : 'No active plan', detail: `AI needs an active Eliza Cloud plan. Nothing is purchased automatically. ${LOCAL_KEEPS_WORKING}`, manage: true };
-    case 'expired': return { headline: view.planName, detail: `Plan status is out of date and could not be refreshed. Eliza Cloud still decides each AI request. ${LOCAL_KEEPS_WORKING}`, manage: false };
-    case 'unavailable': return { headline: 'Plan status unavailable', detail: view.reason === 'not-published' ? `Eliza Cloud has not published plan status for this account yet. Eliza Cloud still decides each AI request. ${LOCAL_KEEPS_WORKING}` : `Plan status could not be checked right now. Eliza Cloud still decides each AI request. ${LOCAL_KEEPS_WORKING}`, manage: false };
+      manage: view.status === 'past_due', manageLabel: MANAGE_PLAN_LABEL };
+    case 'inactive':
+      // Deployed Cloud has no plans yet: its account check is not described as a plan.
+      if (view.source === 'legacy-account') return { headline: LEGACY_UNAVAILABLE_HEADLINE, detail: `Eliza Cloud reports that this account cannot use AI right now. Check the account in Eliza Cloud billing. Nothing is purchased automatically. ${LOCAL_KEEPS_WORKING}`, manage: true, manageLabel: 'Open Eliza Cloud billing' };
+      return { headline: view.status === 'canceled' ? `${view.planName ?? 'Your plan'} has ended` : 'No active plan', detail: `AI needs an active Eliza Cloud plan. Nothing is purchased automatically. ${LOCAL_KEEPS_WORKING}`, manage: true, manageLabel: MANAGE_PLAN_LABEL };
+    case 'expired': return { headline: view.planName, detail: `Plan status is out of date and could not be refreshed. Eliza Cloud still decides each AI request. ${LOCAL_KEEPS_WORKING}`, manage: false, manageLabel: MANAGE_PLAN_LABEL };
+    case 'unavailable': return { headline: 'Plan status unavailable', detail: view.reason === 'not-published' ? `Eliza Cloud has not published plan status for this account yet. Eliza Cloud still decides each AI request. ${LOCAL_KEEPS_WORKING}` : `Plan status could not be checked right now. Eliza Cloud still decides each AI request. ${LOCAL_KEEPS_WORKING}`, manage: false, manageLabel: MANAGE_PLAN_LABEL };
   }
 }
 
@@ -206,7 +218,7 @@ export interface EntitlementSource {
 export type EntitlementCheck = { view: SubscriptionView; entitlement: SubscriptionEntitlement | null };
 const keyCache = new Map<string, { keys: JsonWebKey[]; fetchedAt: number }>();
 const KEY_CACHE_MS = 60 * 60 * 1000;
-/** Test hook: forget cached signing keys. */
+/** Forgets cached public signing keys. Called when the Cloud account is detached. */
 export function clearEntitlementKeyCache(): void { keyCache.clear(); }
 async function keysFor(source: EntitlementSource, kid: unknown, signal: AbortSignal, now: number): Promise<JsonWebKey[]> {
   const cached = keyCache.get(source.issuer);
@@ -248,6 +260,10 @@ export async function checkEntitlement(source: EntitlementSource, expected: Omit
     return { view: { kind: 'unavailable', reason: error instanceof EntitlementError ? 'invalid' : 'outage' }, entitlement: null };
   }
 }
+/** A refusal that means the signed-in account is no longer the one this phone admitted. */
+export function isEntitlementSignInFailure(error: unknown): boolean {
+  return isAuthFailure(error) || (error instanceof EntitlementError && error.code === 'account-mismatch');
+}
 function isAuthFailure(error: unknown): boolean {
   const record = bag(error);
   return !!record && (record.status === 401 || record.code === 'credentials-missing' || record.code === 'expired' || record.code === 'account-changed');
@@ -279,6 +295,8 @@ export class EntitlementRefresher {
   private readonly onAuthFailure: (error: unknown) => void;
   private readonly timers: RefresherTimers;
   private entitlement: SubscriptionEntitlement | null;
+  /** Plan name of a verified entitlement that lapsed while refresh kept failing. */
+  private lapsedPlanName: string | null = null;
   constructor(options: {
     check: (signal: AbortSignal) => Promise<EntitlementCheck>;
     onView: (view: SubscriptionView) => void;
@@ -309,7 +327,8 @@ export class EntitlementRefresher {
     const now = this.timers.now();
     // A verified entitlement that lapses while refresh is failing is reported, not silently kept.
     if (this.entitlement && this.failures > 0 && this.entitlement.expiresAt <= now) {
-      this.onView({ kind: 'expired', planName: this.entitlement.plan.name });
+      this.lapsedPlanName = this.entitlement.plan.name;
+      this.onView({ kind: 'expired', planName: this.lapsedPlanName });
       this.entitlement = null;
     }
     let delay = nextRefreshDelay(this.entitlement, now, this.failures);
@@ -323,12 +342,14 @@ export class EntitlementRefresher {
     try {
       const result = await this.check(controller.signal);
       if (this.stopped || controller.signal.aborted) return;
-      if (result.entitlement) { this.entitlement = result.entitlement; this.failures = 0; this.onView(result.view); }
+      if (result.entitlement) { this.entitlement = result.entitlement; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); }
       // Terminal until the next explicit check: no plan, or a Cloud without the route.
-      else if (result.view.kind === 'inactive' || (result.view.kind === 'unavailable' && result.view.reason === 'not-published')) { this.entitlement = null; this.failures = 0; this.onView(result.view); return; }
+      else if (result.view.kind === 'inactive' || (result.view.kind === 'unavailable' && result.view.reason === 'not-published')) { this.entitlement = null; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); return; }
       else {
         this.failures++;
         if (this.entitlement && this.entitlement.expiresAt > this.timers.now()) this.onView(subscriptionView(this.entitlement, true));
+        // A lapsed plan stays reported as out of date until a check succeeds, never as a plain outage.
+        else if (this.lapsedPlanName !== null) this.onView({ kind: 'expired', planName: this.lapsedPlanName });
         else if (!this.entitlement) this.onView(result.view);
       }
     } catch (error) {
@@ -340,10 +361,16 @@ export class EntitlementRefresher {
 }
 
 /** A Cloud refusal the owner can act on. */
-export interface ServiceLimit { kind: 'rate-limited' | 'allowance-exhausted' | 'subscription-required'; retryAfterMs: number | null; resetsAt: number | null }
+export interface ServiceLimit { kind: 'rate-limited' | 'allowance-exhausted' | 'subscription-required' | 'billing-refused'; retryAfterMs: number | null; resetsAt: number | null }
 const RATE_KINDS = new Set(['rate_limited', 'rate-limited', 'rate_limit_exceeded', 'too_many_requests']);
 const ALLOWANCE_KINDS = new Set(['allowance_exhausted', 'quota_exceeded', 'usage_limit_reached']);
-const SUBSCRIPTION_KINDS = new Set(['subscription_required', 'subscription_inactive', 'payment_required']);
+const SUBSCRIPTION_KINDS = new Set(['subscription_required', 'subscription_inactive']);
+/**
+ * Billing refusals that do not say whether the plan is missing or its usage is spent. The pinned
+ * upstream agent reports a Cloud 402 as ChatFailureKind `insufficient_credits`
+ * (packages/contracts chat.ts), and today's Cloud returns it for an empty credit balance.
+ */
+const BILLING_KINDS = new Set(['insufficient_credits', 'insufficient_quota', 'payment_required']);
 function retryFields(row: Bag, now: number): { retryAfterMs: number | null; resetsAt: number | null } {
   const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : typeof value === 'string' && /^\d+(\.\d+)?$/.test(value.trim()) ? Number(value) : null;
   const instant = (value: unknown) => {
@@ -364,14 +391,19 @@ function retryFields(row: Bag, now: number): { retryAfterMs: number | null; rese
 /**
  * Reads a Cloud limit refusal from an HTTP error ({status,data}), a reply's
  * failureKind/terminalFailure, or a nested error body. Returns null for anything else.
+ *
+ * At the pinned upstream revision a resident-agent reply carries terminalFailure as only
+ * {kind, message, transient, code} (chat-routes terminalFailureContentValue), so retry and reset
+ * times reach the phone only on direct HTTP refusals. Reply-path timing needs an upstream change.
  */
 export function readServiceLimit(source: unknown, now: number = Date.now()): ServiceLimit | null {
   const visit = (value: unknown, depth: number, status: number | null): ServiceLimit | null => {
     const row = bag(value);
     if (!row || depth > 3) return null;
     const ownStatus = typeof row.status === 'number' ? row.status : status;
-    const kindValue = [row.kind, row.failureKind, row.code, row.error, row.type].find(item => typeof item === 'string') as string | undefined;
-    const kind = kindValue?.toLowerCase();
+    // A specific code (e.g. terminalFailure.code) wins over a generic kind on the same row.
+    const kinds = [row.kind, row.failureKind, row.code, row.error, row.type].filter((item): item is string => typeof item === 'string').map(item => item.toLowerCase());
+    const has = (set: Set<string>) => kinds.some(item => set.has(item));
     for (const key of ['terminalFailure', 'data', 'error', 'details']) {
       const nested = visit(row[key], depth + 1, ownStatus);
       if (nested) {
@@ -380,11 +412,12 @@ export function readServiceLimit(source: unknown, now: number = Date.now()): Ser
       }
     }
     let limit: ServiceLimit['kind'] | null = null;
-    if (kind && ALLOWANCE_KINDS.has(kind)) limit = 'allowance-exhausted';
-    else if (kind && SUBSCRIPTION_KINDS.has(kind)) limit = 'subscription-required';
-    else if (kind && RATE_KINDS.has(kind)) limit = 'rate-limited';
+    if (has(ALLOWANCE_KINDS)) limit = 'allowance-exhausted';
+    else if (has(SUBSCRIPTION_KINDS)) limit = 'subscription-required';
+    else if (has(RATE_KINDS)) limit = 'rate-limited';
+    else if (has(BILLING_KINDS)) limit = 'billing-refused';
     else if (ownStatus === 429 && depth === 0) limit = 'rate-limited';
-    else if (ownStatus === 402 && depth === 0) limit = 'subscription-required';
+    else if (ownStatus === 402 && depth === 0) limit = 'billing-refused';
     return limit ? { kind: limit, ...retryFields(row, now) } : null;
   };
   return visit(source, 0, null);
@@ -406,5 +439,6 @@ export function serviceLimitMessage(limit: ServiceLimit | null, now: number = Da
     const reset = limit.resetsAt != null && limit.resetsAt > now ? ` It resets ${clock(limit.resetsAt)}.` : limit.retryAfterMs != null ? ` It resets in ${retryDuration(limit.retryAfterMs)}.` : '';
     return `Your plan's AI allowance for this period is used up.${reset} Nothing is purchased automatically. ${LOCAL_KEEPS_WORKING}`;
   }
+  if (limit.kind === 'billing-refused') return `Eliza Cloud declined this AI request for your account's billing. Check your account in Settings. Alpha Phone did not retry your message, and nothing is purchased automatically. ${LOCAL_KEEPS_WORKING}`;
   return `AI needs an active Eliza Cloud plan. Manage your plan in Eliza Cloud. Nothing is purchased automatically. ${LOCAL_KEEPS_WORKING}`;
 }

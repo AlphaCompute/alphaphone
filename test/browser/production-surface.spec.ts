@@ -334,11 +334,11 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
   },mode);
   await page.goto('/');
   if(mode==='signed-out')await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();
-  if(mode==='empty')await expect(page.getByRole('button',{name:'Manage plan in Eliza Cloud',exact:true})).toBeVisible();
+  if(mode==='empty')await expect(page.getByRole('button',{name:'Open Eliza Cloud billing',exact:true})).toBeVisible();
   // A billing outage is not a gate: Cloud decides each AI request, and local apps keep working.
   if(mode==='unavailable'){
    await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
-   await expect(page.getByRole('button',{name:'Manage plan in Eliza Cloud',exact:true})).toHaveCount(0);
+   await expect(page.getByRole('button',{name:/Manage plan in Eliza Cloud|Open Eliza Cloud billing/})).toHaveCount(0);
   }
   const admitted=mode==='funded'||mode==='unavailable';
   if(mode==='funded')await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();

@@ -165,10 +165,10 @@ test('production Android without a packaged agent says so and does not advertise
 for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-revoked-status', 'no-content', 'unauthorized', 'server-error', 'cancelled'] as const) {
   test(`production Android Cloud sign-out states only the revocation that happened: ${mode}`, async ({ page }) => {
     const foreign = await fenceNetwork(page);
-    // No active plan (legacy zero-balance account) keeps the account panel open with its Sign out control.
+    // An unusable legacy account (zero balance, no entitlement route) keeps the account panel open with its Sign out control.
     await android(page, { cloudCredential: true, balance: 0, revoke: mode });
     await page.goto('/');
-    await expect(page.getByRole('button', { name: 'Manage plan in Eliza Cloud', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open Eliza Cloud billing', exact: true })).toBeVisible();
     const before = (await nativeCalls(page)).length;
     if (mode === 'cancelled') await page.evaluate(() => { (window as any).holdStop = true; });
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();

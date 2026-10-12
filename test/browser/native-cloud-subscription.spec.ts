@@ -88,11 +88,12 @@ async function boot(page:Page,initial:{mode?:Mode;holdIdentity?:boolean;saved?:b
  await expect.poll(()=>page.evaluate(()=>(window as any).planFlags)).toEqual({native:'android',mocks:false});
 }
 const calls=(page:Page)=>page.evaluate(()=>(window as any).planFixture.calls as Array<{plugin:string;method:string;path?:string;url?:string}>);
+// Deployed Cloud (no entitlement route) with an unusable account: neutral account copy, not a plan.
 async function noPlan(page:Page){
  await boot(page);
  await expect(page.getByRole('dialog',{name:'Your Cloud account',exact:true})).toBeVisible();
- await expect(page.getByText('No active plan',{exact:true})).toBeVisible();
- await expect(page.getByRole('button',{name:'Manage plan in Eliza Cloud',exact:true})).toBeVisible();
+ await expect(page.getByText('AI is unavailable for this Eliza Cloud account',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Open Eliza Cloud billing',exact:true})).toBeVisible();
 }
 
 test('the account panel never shows a credit balance or a top-up',async({page})=>{
@@ -108,13 +109,13 @@ for(const failure of ['503','offline','malformed'] as const)test(`no plan then a
  await page.getByRole('button',{name:'Check plan again',exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>typeof(window as any).planFixture.releasePlan)).toBe('function');
  await expect(page.getByText('Checking your plan…',{exact:true})).toBeVisible();
- await expect(page.getByRole('button',{name:'Manage plan in Eliza Cloud',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Open Eliza Cloud billing',exact:true})).toHaveCount(0);
  await page.evaluate(()=>(window as any).planFixture.releasePlan());
  // An outage admits the resident agent: Cloud still decides each AI request on its side.
  await expect.poll(()=>page.evaluate(()=>typeof(window as any).planFixture.releaseProvider)).toBe('function');
  await expect(page.getByText('Plan status unavailable',{exact:true})).toBeVisible();
- await expect(page.getByText('No active plan',{exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Manage plan in Eliza Cloud',exact:true})).toHaveCount(0);
+ await expect(page.getByText('AI is unavailable for this Eliza Cloud account',{exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Open Eliza Cloud billing',exact:true})).toHaveCount(0);
  expect(await page.evaluate(()=>(window as any).planController.getSnapshot().residentSubscription)).toEqual({kind:'unavailable',reason:'outage'});
  expect((await calls(page)).some(c=>c.method==='openExternal'||c.path?.includes('/personal')||c.path?.includes('/agents'))).toBe(false);
  await page.evaluate(()=>{const w=window as any;w.planController.cancel();w.planFixture.releaseProvider();});
@@ -168,7 +169,7 @@ test('an entitlement for another account is refused and the agent is not admitte
 
 test('an expired saved sign-in exposes the real sign-in action without a plan or permission bypass',async({page},info)=>{
  await boot(page,{mode:'401'});await expect(page.getByRole('dialog',{name:'Sign in to Eliza Cloud',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeEnabled();await expect(page.getByRole('alert')).toContainText('no longer valid');
- await expect(page.getByRole('button',{name:'Retry saved connection',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Continue',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Manage plan in Eliza Cloud',exact:true})).toHaveCount(0);await expect(page.getByRole('dialog',{name:'Set up Alpha access'})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Retry saved connection',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Continue',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Open Eliza Cloud billing',exact:true})).toHaveCount(0);await expect(page.getByRole('dialog',{name:'Set up Alpha access'})).toHaveCount(0);
  expect((await calls(page)).some(c=>c.method==='configureCloudProvider'||c.method==='openExternal')).toBe(false);await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:info.outputPath('expired-saved-sign-in.png'),animations:'disabled'});
 });
 
@@ -179,13 +180,13 @@ test('a missing saved credential keeps the original first-run sign-in gate',asyn
 });
 
 test('401 after a prior plan check replaces stale account copy with sign-in',async({page})=>{
- await noPlan(page);await page.evaluate(()=>(window as any).planFixture.mode='401');await page.getByRole('button',{name:'Check plan again',exact:true}).click();await expect(page.getByRole('dialog',{name:'Sign in to Eliza Cloud',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeEnabled();await expect(page.getByText('No active plan',{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Manage plan in Eliza Cloud',exact:true})).toHaveCount(0);expect((await calls(page)).some(c=>c.method==='configureCloudProvider')).toBe(false);
+ await noPlan(page);await page.evaluate(()=>(window as any).planFixture.mode='401');await page.getByRole('button',{name:'Check plan again',exact:true}).click();await expect(page.getByRole('dialog',{name:'Sign in to Eliza Cloud',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeEnabled();await expect(page.getByText('AI is unavailable for this Eliza Cloud account',{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Open Eliza Cloud billing',exact:true})).toHaveCount(0);expect((await calls(page)).some(c=>c.method==='configureCloudProvider')).toBe(false);
 });
 
 test('a legacy account without a plan stays gated and a usable retry is admitted without a balance',async({page})=>{
  await noPlan(page);await page.getByRole('button',{name:'Check plan again',exact:true}).click();
  await expect(page.getByRole('button',{name:'Check plan again',exact:true})).toBeEnabled();
- await expect(page.getByText('No active plan',{exact:true})).toBeVisible();
+ await expect(page.getByText('AI is unavailable for this Eliza Cloud account',{exact:true})).toBeVisible();
  await page.evaluate(()=>(window as any).planFixture.mode='legacy-positive');
  await page.getByRole('button',{name:'Check plan again',exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>typeof(window as any).planFixture.releaseProvider)).toBe('function');
@@ -193,7 +194,7 @@ test('a legacy account without a plan stays gated and a usable retry is admitted
  await expect(page.getByText(/has not published plan status/)).toBeVisible();
  expect(await page.evaluate(()=>(window as any).planController.getSnapshot().residentSubscription)).toEqual({kind:'unavailable',reason:'not-published'});
 
- await expect(page.getByRole('button',{name:'Manage plan in Eliza Cloud',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Open Eliza Cloud billing',exact:true})).toHaveCount(0);
  await expect(page.getByRole('dialog',{name:'Set up Alpha access'})).toHaveCount(0);
  await page.evaluate(()=>{const w=window as any;w.planController.cancel();w.planFixture.releaseProvider();});
  await expect.poll(()=>page.evaluate(()=>(window as any).planController.getSnapshot().busy)).toBe(false);

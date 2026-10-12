@@ -38,7 +38,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isAndroid } from '../native';
 import type { ActionProposal, OperationReceipt, ContextEnvelope, VerifiedSession } from './alpha-client';
 import { CloudProtocol, CloudProtocolError, type CloudAgent, type CloudEnvironment, type CloudPhoneTarget } from './cloud-protocol';
-import { checkEntitlement, describeSubscription, EntitlementError, EntitlementRefresher, readServiceLimit, serviceLimitMessage, subscriptionAllowsAgent, type SubscriptionView } from './subscription-entitlement';
+import { admissionRefusalMessage, checkEntitlement, clearEntitlementKeyCache, describeSubscription, EntitlementError, EntitlementRefresher, isEntitlementSignInFailure, readServiceLimit, serviceLimitMessage, subscriptionAllowsAgent, type SubscriptionView } from './subscription-entitlement';
 import { RemoteProtocol, RemoteProtocolError } from './remote-protocol';
 import { phoneContextMessage } from './phone-context';
 import { cloudCredentialStore, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, removeStoredCloudCredential, secureConnectionStore } from './native-connection';
@@ -111,7 +111,10 @@ let deviceReadReview:((proposal:ActionProposal,context:ContextEnvelope,signal:Ab
 const actionJournal = registerPlugin<ActionJournal>('AlphaActionJournal');
 let cloud = makeCloud('production');
 let service: { client: CloudProtocol; identity: CloudServiceSession } | null = null;
-function detachService() { retireReadReplies();for(const request of automationsRequests)request.abort(new DOMException('Cloud account changed','AbortError')); clearPersonalSetup(); service = null; update({ cloudAccount: null }); }
+let entitlementRefresher: EntitlementRefresher | null = null;
+/** Every Cloud detach ends background plan refresh, so no request goes out under a stale admission. */
+function stopEntitlementRefresh(){entitlementRefresher?.stop();entitlementRefresher=null;clearEntitlementKeyCache();}
+function detachService() { stopEntitlementRefresh(); retireReadReplies();for(const request of automationsRequests)request.abort(new DOMException('Cloud account changed','AbortError')); clearPersonalSetup(); service = null; update({ cloudAccount: null }); }
 async function verifyService(client: CloudProtocol, signal: AbortSignal, expected?:{credentialId:string;credentialReference?:string}) {
   const credential = await cloudCredentialStore.read(client.environment); signal.throwIfAborted();
   if(expected&&(credential?.credentialId!==expected.credentialId||credential?.credentialReference!==expected.credentialReference))throw new Error('Cloud account changed. Try again.');
@@ -339,8 +342,6 @@ async function connectDevelopment(profile:DevelopmentProfile,signal:AbortSignal)
  // This explicitly gated browser fixture implements reminder v2; real peers still negotiate it.
  const identity=await readDevelopmentIdentity(profile,signal);const client=new LocalAgentProtocol(developmentBridge(profile,identity));const {session,name}=await client.connect(signal);signal.throwIfAborted();const credential=developmentCredential(profile,identity),scope=await actionScope(JSON.stringify([client.origin,session.ownerId,session.agentId,credential.installationId]));const actions=new DeviceActions(session,credential,scope,(path,body,signal)=>client.request(path,body,signal),developmentJournal(profile,identity),(op,id,context,signal,binding,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,signal,binding,workflowRoute,journalIdentity),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:'unknown'}),true,true);await retire();signal.throwIfAborted();await verifyDevelopmentIdentity(identity,signal);const workflowProtocol=2 as const;save({kind:'development',profile,...(identity.account?{account:identity.account}:{})});developmentVoiceExpiresAt=Date.now()+3600000;activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
 }
-let entitlementRefresher: EntitlementRefresher | null = null;
-function stopEntitlementRefresh(){entitlementRefresher?.stop();entitlementRefresher=null;}
 async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
   stopEntitlementRefresh();
   update({residentSubscription:{kind:'checking'}});
@@ -356,7 +357,7 @@ async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
   signal.throwIfAborted();
   if(service!==account || (await cloudCredentialStore.read('production'))?.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
   update({residentSubscription:checked.view});
-  if(!subscriptionAllowsAgent(checked.view)){await stopLocalAgent();await retire();update({open:true,message:'AI needs an active Eliza Cloud plan. Your saved data stays on this device, and local apps keep working without AI.'});return false;}
+  if(!subscriptionAllowsAgent(checked.view)){await stopLocalAgent();await retire();update({open:true,message:admissionRefusalMessage(checked.view)});return false;}
   // An admitted running resident under this same Cloud admission is reused, not stopped and rebound:
   // opening the assistant, or reconnecting one surface, must not retire the other surface's work.
   await bindResidentCloudProvider(account.identity.credentialId);
@@ -367,11 +368,24 @@ async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
   entitlementRefresher=new EntitlementRefresher({entitlement:checked.entitlement,retry:checked.view.kind==='unavailable'&&checked.view.reason!=='not-published',
     check:refreshSignal=>checkEntitlement(client.entitlementSource(),expected,refreshSignal),
     onView:view=>{if(service===account)update({residentSubscription:view});},
-    // A rejected sign-in during a background refresh is shown on the next explicit check.
-    onAuthFailure:()=>{if(service===account)update({residentSubscription:{kind:'unavailable',reason:'outage'}});}});
+    onAuthFailure:error=>{if(service===account)void residentRefreshRefused(account,error);}});
   return true;
 }
 
+/**
+ * A background refresh found the admitted account is no longer valid: a rejected sign-in, or an
+ * entitlement issued for a different account. The same rule as admission applies: the Cloud-bound
+ * agent is stopped and the owner is asked to sign in again. Anything else stays an outage view.
+ */
+async function residentRefreshRefused(account:NonNullable<typeof service>,error:unknown){
+  if(!isEntitlementSignInFailure(error)){update({residentSubscription:{kind:'unavailable',reason:'outage'}});return;}
+  stopEntitlementRefresh();
+  try{await stopLocalAgent();}catch{/* The sign-in message below still applies. */}
+  if(service!==account)return;
+  if(active?.kind==='resident')retire('Sign-in required');
+  detachService();
+  update({residentSubscription:null,open:true,message:'',error:errorMessage(error)});
+}
 async function connectResident(signal: AbortSignal) {
   if(isAndroid && !testMocksEnabled && !await admitCloudResident(signal))return;
   if (!await localAgentPackaged()) throw new Error(remotePairingRetired ? 'The on-device agent is not included in this build. You can use local apps without AI.' : webCloudUnavailable() ? 'The local agent is unavailable here. Connect a remote agent or continue offline.' : 'The local agent is unavailable here. Connect a remote agent, sign in with Eliza Cloud, or continue offline.');
@@ -1082,7 +1096,7 @@ export const connectionController = {
     await work('Opening Eliza Cloud sign-in…',async signal=>{
       // A running process retains its environment; stop it before replacing credentials.
       await stopLocalAgent(); await retire(); detachService();
-      stopEntitlementRefresh(); update({residentSubscription:null}); cloud=makeCloud('production');
+      update({residentSubscription:null}); cloud=makeCloud('production');
       await cloud.login(signal,()=>update({message:'Finish signing in to Eliza Cloud in your browser, then return here.'}));
       await connectResident(signal);
     });
@@ -1467,7 +1481,7 @@ export function ConnectionChooser() {
   // A check that ended without a view (identity or transport failure) is "unavailable", never a stale gate.
   const residentPlanView=snapshot.residentSubscription;
   const residentPlanUnchecked=!residentPlanView||residentPlanView.kind==='checking';
-  const residentPlan=residentPlanUnchecked&&!snapshot.busy?{headline:'Plan status unavailable',detail:'Try again.',manage:false}:describeSubscription(residentPlanView);
+  const residentPlan=residentPlanUnchecked&&!snapshot.busy?{headline:'Plan status unavailable',detail:'Try again.',manage:false,manageLabel:''}:describeSubscription(residentPlanView);
   const residentPlanRecheck=residentPlanUnchecked||residentPlanView.kind==='inactive';
   if(isAndroid && !testMocksEnabled)return <div className="alpha-connection-scrim"><div className={'alpha-connection alpha-connection-native'+(residentKnownAccount||residentRestoring?' alpha-connection-resume':'')} role="dialog" aria-modal="true" aria-labelledby="connection-title" aria-busy={residentRestoring||undefined} tabIndex={-1} ref={panel}>
     <header><h1 id="connection-title" className={residentKnownAccount||residentRestoring?'serif':undefined}>{residentHeading}</h1>{(snapshot.session||localApps)&&<button aria-label="Close connection settings" disabled={snapshot.busy} onClick={()=>connectionController.close()}>×</button>}</header>
@@ -1475,7 +1489,7 @@ export function ConnectionChooser() {
     {snapshot.cloudAccount&&!residentSignInRequired ? <>
       <section aria-label="Eliza Cloud plan"><p><strong>{residentPlan.headline}</strong></p>{residentPlan.detail&&<p>{residentPlan.detail}</p>}</section>
       {!residentRestoring&&<div className="alpha-connection-actions">
-      {residentPlan.manage&&<button disabled={snapshot.busy} onClick={()=>void connectionController.residentManagePlan()}>Manage plan in Eliza Cloud</button>}
+      {residentPlan.manage&&<button disabled={snapshot.busy} onClick={()=>void connectionController.residentManagePlan()}>{residentPlan.manageLabel}</button>}
       <button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>{residentPlanRecheck?'Check plan again':'Continue'}</button>
       <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudSignOut()}>Sign out</button>
       </div>}

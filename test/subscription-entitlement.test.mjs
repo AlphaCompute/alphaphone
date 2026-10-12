@@ -9,7 +9,7 @@ import {webcrypto} from 'node:crypto';
 import {
   ENTITLEMENT_AUDIENCE, ENTITLEMENT_TYPE, MAX_ENTITLEMENT_LIFETIME_MS, REFRESH_RETRY_MAX_MS, REFRESH_RETRY_MIN_MS,
   EntitlementError, EntitlementRefresher, allowanceText, checkEntitlement, clearEntitlementKeyCache, decodeEntitlement,
-  describeSubscription, nextRefreshDelay, readServiceLimit, serviceLimitMessage, subscriptionAllowsAgent, subscriptionView, verifyEntitlement,
+  admissionRefusalMessage, describeSubscription, isEntitlementSignInFailure, nextRefreshDelay, readServiceLimit, serviceLimitMessage, subscriptionAllowsAgent, subscriptionView, verifyEntitlement,
 } from '../apps/app/src/runtime/subscription-entitlement.ts';
 
 const ISSUER = 'https://api.eliza.app';
@@ -72,6 +72,9 @@ test('signature, key, algorithm and encoding failures are never trusted', async 
 test('account binding, issuer, audience and short lifetime are enforced', async () => {
   const {jwk, sign} = await keyPair();
   await rejects(verifyEntitlement(await sign(claims({sub: '33333333-3333-4333-8333-333333333333'})), [jwk], expected, NOW), 'account-mismatch');
+  // UUID letter case alone is the same account, on either side.
+  assert.equal((await verifyEntitlement(await sign(claims({sub: USER.toUpperCase(), org: ORG.toUpperCase()})), [jwk], expected, NOW)).plan.status, 'active');
+  assert.equal((await verifyEntitlement(await sign(claims()), [jwk], {...expected, userId: USER.toUpperCase()}, NOW)).plan.status, 'active');
   await rejects(verifyEntitlement(await sign(claims({org: undefined})), [jwk], expected, NOW), 'account-mismatch');
   await rejects(verifyEntitlement(await sign(claims()), [jwk], {...expected, organizationId: null}, NOW), 'account-mismatch');
   await rejects(verifyEntitlement(await sign(claims({iss: 'https://api-staging.eliza.app'})), [jwk], expected, NOW), 'audience');
@@ -103,6 +106,13 @@ test('presentation uses only Cloud numbers and never mentions credits or top-ups
     assert.doesNotMatch(text, /credit|top.?up|\$|price|upgrade now/i, view.kind);
   }
   assert.equal(describeSubscription(views[3]).manage, true);
+  // Today's deployed Cloud has no plans: its account check is not described as a missing plan.
+  assert.equal(describeSubscription(views[3]).headline, 'AI is unavailable for this Eliza Cloud account');
+  assert.equal(describeSubscription(views[3]).manageLabel, 'Open Eliza Cloud billing');
+  assert.doesNotMatch(JSON.stringify(describeSubscription(views[3])), /plan/i);
+  assert.doesNotMatch(admissionRefusalMessage(views[3]), /plan/i);
+  assert.equal(describeSubscription(views[4]).manageLabel, 'Manage plan in Eliza Cloud');
+  assert.match(admissionRefusalMessage(views[4]), /active Eliza Cloud plan/);
   assert.equal(describeSubscription(views[4]).headline, 'Synthetic plan has ended');
   assert.equal(describeSubscription(views[2]).manage, true);
   assert.match(describeSubscription(views[5]).detail, /Local apps and on-device speech keep working/);
@@ -198,6 +208,12 @@ test('refresh is scheduled from the entitlement, backs off on outage and reports
   // Failures continue until the entitlement lapses; then the owner sees "expired", not a stale plan.
   await timers.advance(400000);
   assert.ok(views.some(view => view.kind === 'expired'));
+  // Further failed refreshes keep reporting the lapsed plan as out of date, not as a plain outage.
+  const failedBefore = checks;
+  await timers.advance(REFRESH_RETRY_MAX_MS * 3);
+  assert.ok(checks > failedBefore);
+  assert.deepEqual(views.at(-1), {kind: 'expired', planName: 'Synthetic plan'});
+  assert.equal(views.slice(views.findIndex(view => view.kind === 'expired')).every(view => view.kind === 'expired'), true);
   const afterExpiry = checks;
   outcome = 'ok';
   await timers.advance(REFRESH_RETRY_MAX_MS);
@@ -229,6 +245,22 @@ test('revocation to no plan stops refreshing, and a rejected sign-in stops the r
   assert.equal(auth, 1);
   assert.equal(authTimers.queue.length, 0);
 
+  // An entitlement for another account during refresh is a sign-in failure, never an outage view.
+  const mismatchTimers = fakeTimers();
+  const refused = [];
+  const mismatchViews = [];
+  new EntitlementRefresher({timers: mismatchTimers, entitlement: entitlementAt(NOW, NOW + 400000), onView: view => mismatchViews.push(view), onAuthFailure: error => refused.push(error),
+    check: async () => { throw new EntitlementError('account-mismatch'); }});
+  await mismatchTimers.advance(3600000);
+  assert.equal(refused.length, 1);
+  assert.ok(isEntitlementSignInFailure(refused[0]));
+  assert.deepEqual(mismatchViews, []);
+  assert.equal(mismatchTimers.queue.length, 0);
+  assert.ok(isEntitlementSignInFailure({status: 401}));
+  assert.ok(isEntitlementSignInFailure({code: 'credentials-missing'}));
+  assert.equal(isEntitlementSignInFailure(new EntitlementError('signature')), false);
+  assert.equal(isEntitlementSignInFailure({status: 503}), false);
+
   // A Cloud without the route is not polled.
   const legacyTimers = fakeTimers();
   let legacyChecks = 0;
@@ -252,15 +284,30 @@ test('Cloud limit refusals carry retry information and never imply a purchase or
   assert.equal(allowance.kind, 'allowance-exhausted');
   assert.equal(allowance.resetsAt, NOW + 86400000);
   assert.match(serviceLimitMessage(allowance, NOW), /allowance for this period is used up\. It resets .+\. Nothing is purchased automatically\. Local apps and on-device speech keep working\.$/);
-  const subscription = readServiceLimit({status: 402, data: {}}, NOW);
+  const subscription = readServiceLimit({status: 402, data: {error: 'subscription_required'}}, NOW);
   assert.equal(subscription.kind, 'subscription-required');
   assert.match(serviceLimitMessage(subscription, NOW), /active Eliza Cloud plan.*Nothing is purchased automatically/);
+  // A bare 402 does not say whether a plan is missing or usage is spent: neutral billing copy.
+  const bare = readServiceLimit({status: 402, data: {}}, NOW);
+  assert.equal(bare.kind, 'billing-refused');
+  assert.doesNotMatch(serviceLimitMessage(bare, NOW), /plan/i);
+  // The pinned upstream reply shape (contracts chat.ts ChatTerminalFailure; chat-routes
+  // terminalFailureContentValue keeps only kind, message, transient and code).
+  const upstreamCredits = readServiceLimit({failureKind: 'insufficient_credits', terminalFailure: {kind: 'insufficient_credits', message: 'Synthetic upstream message', transient: false}}, NOW);
+  assert.deepEqual(upstreamCredits, {kind: 'billing-refused', retryAfterMs: null, resetsAt: null});
+  assert.match(serviceLimitMessage(upstreamCredits, NOW), /^Eliza Cloud declined this AI request for your account's billing\. .*did not retry your message, and nothing is purchased automatically\./);
+  const upstreamRate = readServiceLimit({failureKind: 'rate_limited', terminalFailure: {kind: 'rate_limited', message: 'Synthetic', transient: true}}, NOW);
+  assert.deepEqual(upstreamRate, {kind: 'rate-limited', retryAfterMs: null, resetsAt: null});
+  assert.match(serviceLimitMessage(upstreamRate, NOW), /Wait a moment before sending again/);
+  // A specific Cloud code carried in terminalFailure.code is preferred over the generic kind.
+  assert.equal(readServiceLimit({failureKind: 'insufficient_credits', terminalFailure: {kind: 'insufficient_credits', message: 'm', transient: false, code: 'allowance_exhausted'}}, NOW).kind, 'allowance-exhausted');
+  assert.equal(readServiceLimit({failureKind: 'insufficient_credits', terminalFailure: {kind: 'insufficient_credits', message: 'm', transient: false, code: 'subscription_required'}}, NOW).kind, 'subscription-required');
   assert.equal(readServiceLimit({failureKind: 'provider_error'}, NOW), null);
   assert.equal(readServiceLimit({status: 500, data: {}}, NOW), null);
   assert.equal(readServiceLimit('rate_limited', NOW), null);
   // A retry hint beyond a day is not shown as a countdown.
   assert.equal(readServiceLimit({status: 429, data: {retryAfterSeconds: 999999}}, NOW).retryAfterMs, null);
-  for (const limit of [rate, allowance, subscription]) assert.doesNotMatch(serviceLimitMessage(limit, NOW), /credit|top.?up|upgrade|buy/i);
+  for (const limit of [rate, allowance, subscription, bare, upstreamCredits]) assert.doesNotMatch(serviceLimitMessage(limit, NOW), /credit|top.?up|upgrade|buy/i);
 });
 
 test('only admission and its background refresher read the entitlement; turns and local speech never do', () => {
@@ -268,6 +315,13 @@ test('only admission and its background refresher read the entitlement; turns an
   const admission = ui.slice(ui.indexOf('async function admitCloudResident'), ui.indexOf('async function connectResident'));
   assert.ok(admission.includes('checkEntitlement('));
   assert.equal(ui.split('checkEntitlement(').length, admission.split('checkEntitlement(').length, 'checkEntitlement is called only during admission/refresh');
+  // Every Cloud detach stops background refresh; the send path never reads billing.
+  const detach = ui.slice(ui.indexOf('function detachService()'), ui.indexOf('async function verifyService'));
+  assert.match(detach, /^function detachService\(\) \{ stopEntitlementRefresh\(\);/);
+  assert.match(ui.slice(ui.indexOf('function stopEntitlementRefresh'), ui.indexOf('function detachService()')), /entitlementRefresher\?\.stop\(\);entitlementRefresher=null;/);
+  const send = ui.slice(ui.indexOf('  async send('), ui.indexOf('export function ConnectionChooser'));
+  assert.ok(send.length > 1000, 'send path located');
+  assert.doesNotMatch(send, /creditBalance|legacyAccountUsable|entitlementSource|subscriptionEntitlement|ENTITLEMENT_PATH|credits\/balance|subscription\/entitlement/);
   const importers = [];
   const walk = dir => { for (const entry of fs.readdirSync(dir, {withFileTypes: true})) { const path = `${dir}/${entry.name}`; if (entry.isDirectory()) walk(path); else if (/\.(ts|tsx|js|mjs)$/.test(entry.name) && /subscription-entitlement/.test(fs.readFileSync(path, 'utf8'))) importers.push(path); } };
   walk('apps/app/src');
