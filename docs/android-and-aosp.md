@@ -272,3 +272,29 @@ ANDROID_SERIAL=<exact-serial> ALPHA_ANDROID_USER=<user-id> node scripts/verify-a
 The check requires enabled `com.android.deskclock` and its set/show/snooze/dismiss activity handlers. It does not launch an alarm, change permissions, provision a device, or prove ringing. Alpha's shared manifest declares the caller SET_ALARM permission and visibility queries; Clock's own notifications/exact-alarm access remains separately verified on the image. Confirm actual set/fire/snooze/dismiss, permission denial, reboot, time-zone/DST, cancellation and DND/physical audio before claiming alarm MVP completion.
 
 DeskClock is the real AOSP module defined in `packages/apps/DeskClock/Android.bp` and included by the standard handheld product. Pin its source through the selected image manifest; do not substitute an unreviewed downloaded APK.
+
+## Read-only Cuttlefish launcher verification
+
+After booting a development image, bind the observation to its independently retained
+staging descriptor and expected build fingerprint:
+
+```sh
+node scripts/verify-cuttlefish-launcher.mjs --serial 127.0.0.1:6520 --user 0 \
+  --descriptor /absolute/staged-overlay/launcher.json \
+  --fingerprint 'exact expected build fingerprint' \
+  --apk-path /product/app/AlphaPhone/AlphaPhone.apk --out /absolute/new-report.json
+```
+
+This makes no device changes. It requires a booted Cuttlefish image, the selected
+foreground unlocked user, enforcing SELinux, exact system APK bytes, Alpha HOME,
+an enabled system recovery HOME, DeskClock handlers and a current WebView provider.
+A data-installed override, wrong image or APK, missing recovery launcher, or a reboot
+or replacement during observation fails. Keep the descriptor from staging rather
+than creating the expected hash from whatever happens to be installed. The reported
+certificate is inherited from that descriptor via identical APK bytes, not a fresh
+signature check. The output file must be new; failures are retained too.
+
+This checks installed image configuration only. It does not qualify resident-agent
+execution, live accounts, alarm ringing, browser security/provider freshness,
+physical hardware, production signing or update/rollback. A pass on an older image
+cannot qualify a newer app revision.
