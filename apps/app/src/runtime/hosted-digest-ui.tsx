@@ -57,7 +57,7 @@ export function HostedDigestPanel() {
 	const interactiveDevelopment=devSurfacesEnabled&&browserDevProfile&&JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null')?.kind==='development';
 	const [nativeReady,setNativeReady]=useState(false),[nativeSourceProtocol,setNativeSourceProtocol]=useState(false);
     // Agent-advertised features: native evening loops and lapsed-source pausing come from patched plugin-workflow.
-    const [features,setFeatures]=useState<Pick<DigestCapabilities,'nativeEvening'|'sourcePause'>>({nativeEvening:false,sourcePause:false});
+    const [features,setFeatures]=useState<Pick<DigestCapabilities,'nativeEvening'|'sourcePause'|'dossier'>>({nativeEvening:false,sourcePause:false,dossier:false});
 	const [backgroundEnabled,setBackgroundEnabled]=useState(false);
 	const [noticeEnabled,setNoticeEnabled]=useState(false), [focusedRun,setFocusedRun]=useState<string|null>(null), [tap,setTap]=useState<{token:string;runId:string;sessionId:string}|null>(null);
 	const [open, setOpen] = useState(false),
@@ -143,7 +143,7 @@ export function HostedDigestPanel() {
 			if (binding.current !== b || document.hidden) return;
 			setAvailable(supported);
             const nativeSupported=supported&&advertised.nativeSources&&isAndroid&&connection.kind==='resident';
-            setNativeSourceProtocol(nativeSupported);setFeatures({nativeEvening:nativeSupported&&advertised.nativeEvening,sourcePause:supported&&advertised.sourcePause});
+            setNativeSourceProtocol(nativeSupported);setFeatures({nativeEvening:nativeSupported&&advertised.nativeEvening,sourcePause:supported&&advertised.sourcePause,dossier:nativeSupported&&advertised.dossier});
 			if (!supported) {
 				setMessage("This agent has not enabled scheduled digests.");
 				return;
@@ -180,7 +180,7 @@ export function HostedDigestPanel() {
 		const selected = connectionController.getWorkflowClient();
 		binding.current?.controller.abort();
 		binding.current = null;
-		setAvailable(false);setNativeReady(false);setBackgroundEnabled(false);setNoticeEnabled(false);setFeatures({nativeEvening:false,sourcePause:false});
+		setAvailable(false);setNativeReady(false);setBackgroundEnabled(false);setNoticeEnabled(false);setFeatures({nativeEvening:false,sourcePause:false,dossier:false});
 		setResults([]);rememberRetainedDigests(null);setFocusedRun(null);setTap(null);setRenewing(null);
 		setSources([]);
 		setLoops([]);
@@ -612,7 +612,7 @@ export function HostedDigestPanel() {
 										))}
 								</select>
 							</label>
-{sources.find(s=>s.id===sourceId)?.live?.provider==='native'&&<button disabled={busy} onClick={()=>{const source=sources.find(s=>s.id===sourceId)!;setReview({path:'dossier',body:{sourceId:source.id,sourceRevision:source.revision,mutationId:crypto.randomUUID(),confirmed:true},summary:`Prepare a dossier now from ${source.label}? This sends one fresh read of your reviewed selected phone sources to this agent’s configured text model. It creates no recurring schedule. Model usage is billed by this agent.`});}}>Review on-demand dossier</button>}
+{features.dossier&&sources.find(s=>s.id===sourceId)?.live?.provider==='native'&&<button disabled={busy} onClick={()=>{const source=sources.find(s=>s.id===sourceId)!;setReview({path:'dossier',body:{sourceId:source.id,sourceRevision:source.revision,mutationId:crypto.randomUUID(),confirmed:true},summary:`Prepare a dossier now from ${source.label}? This sends one fresh read of your reviewed selected phone sources to this agent’s configured text model. It creates no recurring schedule. Model usage is billed by this agent.`});}}>Review on-demand dossier</button>}
 							<label>
 								Time zone
 								<input value={zone} onChange={(e) => setZone(e.target.value)} />
