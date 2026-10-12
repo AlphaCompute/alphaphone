@@ -26,7 +26,7 @@ biometric allowed, host identifies itself as a browser), the service declaration
 | Show and copy | Native only. Show opens a FLAG_SECURE dialog that hides after 30 s or when Alpha stops. Copy marks the clip sensitive and attempts to clear it after 45 s. If Android hides clipboard ownership, clearing waits until Alpha resumes. A replaced or unidentifiable clip is never deleted. |
 | Damaged vault | If the key is lost or permanently invalidated (for example, the screen lock was removed), the vault is reported as undecryptable. The only action is "Delete saved passwords and start over": two taps and a fresh unlock, and native code refuses it while the vault is still readable. |
 | Set as autofill service | Opens Android's own confirmation (`Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE` for Alpha's package, falling back to Settings). The status row reports only what `AutofillManager#getAutofillServiceComponentName` reads back on refresh or resume. Opening the screen is never treated as selection. |
-| Fill | Native app fields through Android Autofill. Browser fields without verified native origins are refused. |
+| Fill | Native app fields through Android Autofill. Browser fields without verified native origins are refused. The browser's native HTTP authentication prompt supplies those origins and is fillable for its exact HTTPS origin (source; device acceptance pending). |
 | Save | "Save password?" is offered by Android after a sign-in; Alpha's prompt names the site or app and username, and writes only after Save and a fresh unlock. Save and Fill close their own grants after completion. Same binding and username updates the existing entry. |
 | Export | None in this version. Any future export must require explicit confirmation and a fresh authentication. |
 
@@ -79,8 +79,15 @@ fixture behavior, not integrated Alpha, biometric or physical-device acceptance.
 
 ### Passkeys
 
-Alpha's browser enables WebView browser-mode WebAuthn where the installed provider supports it.
-The integrated password manager does not provide passkeys or store TOTP secrets.
+Passkeys are outside the MVP (owner decision 2026-10-12, issue #402). Alpha's browser keeps
+WebView WebAuthn off and tells the user once, when the first tab opens, that passkeys are not
+supported. That notice is informational: the browser does not detect a passkey-only sign-in
+(with WebAuthn off WebView reports none, and Alpha never scripts the page's own world). The
+browser menu's **Open in another browser** is labelled for passkey sign-in, offers only installed
+browsers, and says so when there is none. Password save and fill are unchanged.
+The integrated password manager does not provide passkeys or store TOTP secrets. A later
+release may route WebAuthn to Android's system credential provider after real browser and
+image qualification; that is a separate follow-up, not current support.
 
 ### Evidence boundary
 

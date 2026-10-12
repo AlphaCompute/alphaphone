@@ -72,7 +72,8 @@ test('HTTP authentication is a native prompt for the page host over a secure con
   assert.match(plugin, /if \(r\.isForMainFrame\(\)\) t\.pendingMain=r\.getUrl\(\)\.toString\(\);/, 'every main-frame request is recorded');
   assert.match(plugin, /if \(r\.isForMainFrame\(\)\) t\.pendingMain=target;/, 'main-frame redirects are recorded');
   assert.match(plugin, /if\(!matched\)\{handler\.cancel\(\);notice\(t,"Blocked a sign-in prompt from a different site\."\);return;\}/);
-  assert.match(plugin, /Alpha Phone does not save this password\./);
+  assert.match(plugin, /"\\nAlpha's browser does not keep this password\."\+managerLine\+/);
+  assert.match(plugin, /String managerLine=!autofillOn\?"":autofillState\.hasEnabledAutofillServices\(\)\?" Alpha's password manager can fill it, and offer to save it after the site accepts it, for "\+authOrigin\+"\.":" If your password manager supports this browser, it can fill or save it for "\+authOrigin\+"\.";/, 'provider wording depends on an enabled service');
   assert.doesNotMatch(plugin, /setHttpAuthUsernamePassword|useHttpAuthUsernamePassword/, 'nothing is stored or reused');
 });
 
