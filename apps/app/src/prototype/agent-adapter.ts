@@ -358,6 +358,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if (view === 'photos') {
       const state = shell.vget('photos');
       if (state.open === state.nativePhotoSelection?.id) providerSelection = state.nativePhotoSelection;
+      // Device library: exactly one owner-selected item, by identity and a local revision only.
+      else if (state.album === 'device' && !state.open && state.nativeLibrarySelection) providerSelection = state.nativeLibrarySelection;
     }
     if (view === 'inbox') {
       const state = shell.vget('inbox');

@@ -1758,6 +1758,30 @@
           <button class="ib" aria-label="Delete all forever" onClick="{{photos.alb.emptyTrash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
         </sc-if>
       </div>
+      <sc-if value="{{photos.alb.isDevice}}">
+        <div data-alpha-device-library-actions style="display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 8px; flex-shrink: 0">
+          <sc-if value="{{photos.alb.dev.hasAccess}}"><button class="tap" onClick="{{photos.alb.dev.access}}" style="padding: 8px 14px; border-radius: 18px; background: var(--s2); color: var(--fg); font-size: 13px">{{photos.alb.dev.accessLabel}}</button></sc-if>
+          <sc-if value="{{photos.alb.dev.canAct}}">
+            <button class="tap" aria-label="Share selected library items" onClick="{{photos.alb.dev.share}}" style="padding: 8px 14px; border-radius: 18px; background: var(--s2); color: var(--fg); font-size: 13px">Share</button>
+            <sc-if value="{{photos.alb.dev.canEdit}}">
+              <button class="tap" aria-label="Favorite selected library items" onClick="{{photos.alb.dev.favorite}}" style="padding: 8px 14px; border-radius: 18px; background: var(--s2); color: var(--fg); font-size: 13px">Favorite</button>
+              <button class="tap" aria-label="Move selected library items to trash" onClick="{{photos.alb.dev.trash}}" style="padding: 8px 14px; border-radius: 18px; background: var(--s2); color: var(--fg); font-size: 13px">Trash</button>
+              <button class="tap" aria-label="Delete selected library items permanently" onClick="{{photos.alb.dev.delete}}" style="padding: 8px 14px; border-radius: 18px; background: var(--s2); color: var(--fg); font-size: 13px">Delete</button>
+            </sc-if>
+            <button class="tap" aria-label="Clear library selection" onClick="{{photos.alb.dev.clear}}" style="padding: 8px 14px; border-radius: 18px; background: transparent; color: var(--mut); font-size: 13px">Clear</button>
+          </sc-if>
+        </div>
+        <sc-if value="{{photos.alb.dev.reviewing}}">
+          <div role="alertdialog" aria-label="{{photos.alb.dev.reviewTitle}}" style="margin: 0 16px 8px; padding: 14px 16px; border-radius: 16px; background: var(--s2); color: var(--fg); flex-shrink: 0">
+            <div style="font-size: 15px; font-weight: 600">{{photos.alb.dev.reviewTitle}}</div>
+            <div style="font-size: 13px; color: var(--mut); margin-top: 4px">{{photos.alb.dev.reviewDetail}}</div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px">
+              <button class="tap" onClick="{{photos.alb.dev.cancel}}" style="padding: 8px 14px; border-radius: 18px; background: transparent; color: var(--fg); font-size: 13px">Cancel</button>
+              <button class="tap" onClick="{{photos.alb.dev.confirm}}" style="padding: 8px 14px; border-radius: 18px; background: var(--acc); color: #ffffff; font-size: 13px">Continue</button>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
       <div class="scr" data-alpha-app-scroll="photos" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding: 8px 0 180px">
         <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px">
           <sc-for list="{{photos.alb.items}}" as="p">
