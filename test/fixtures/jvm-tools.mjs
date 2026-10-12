@@ -20,11 +20,11 @@ export const jsonJar=process.env.ALPHA_JSON_JAR||cached;
 export const jsonJarSkip=jsonJar?false:'Set ALPHA_JSON_JAR or install the pinned Gradle JSON test dependency';
 
 /** Compiles the sources (plus org.json when needed) and returns the main class's stdout. */
-export function runJvm(sources,mainClass,{json=false}={}){
+export function runJvm(sources,mainClass,{json=false,args=[]}={}){
  const temporary=mkdtempSync(join(tmpdir(),'alpha-jvm-'));
  try{
   const classpath=json?['-cp',jsonJar]:[];
   execFileSync(javaBinary('javac'),['--release','11',...classpath,'-d',temporary,...sources],{timeout:120000});
-  return execFileSync(javaBinary('java'),['-cp',json?temporary+':'+jsonJar:temporary,mainClass],{encoding:'utf8',timeout:120000});
+  return execFileSync(javaBinary('java'),['-cp',json?temporary+':'+jsonJar:temporary,mainClass,...args],{encoding:'utf8',timeout:120000});
  }finally{rmSync(temporary,{recursive:true,force:true});}
 }
