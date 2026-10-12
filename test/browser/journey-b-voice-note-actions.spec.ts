@@ -325,7 +325,6 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  await expect(page.getByText('Event “Venue walkthrough edited” will be deleted',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:/^Venue walkthrough edited,/})).toHaveCount(0);
  await page.getByRole('button',{name:/^Book the venue edited,/}).click();
- page.once('dialog',dialog=>void dialog.accept());
  await page.getByRole('button',{name:'Delete event',exact:true}).click();
  await expect(page.getByText('Reminder “Book the venue edited” will be deleted',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:/^Book the venue edited,/})).toHaveCount(0);
@@ -340,7 +339,9 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  const finalNotes=await notes(page);
  expect(finalNotes).toHaveLength(1);
  expect(finalNotes[0]).toMatchObject({id:recorded.id,audio:recorded.audio,body:transcript,summary:[summary]});
- for(const message of dialogs)expect(message).toBe('Replace the retained unsaved form with a new event?');
+ // The only other dialog is the single reminder deletion review (policy P-30).
+ expect(dialogs.filter(message=>message.startsWith('Delete “Book the venue edited”?'))).toHaveLength(1);
+ for(const message of dialogs.filter(message=>!message.startsWith('Delete “')))expect(message).toBe('Replace the retained unsaved form with a new event?');
 });
 
 // B-13 negative cases: a proposal that names a calendar source revision other than the one on

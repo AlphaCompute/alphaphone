@@ -71,14 +71,14 @@ test('a reminder changed during the window is kept and its alert resumes',async(
  await expect(page.getByRole('button',{name:/^Changed elsewhere,/})).toBeVisible();
 });
 
-test('a lost cancellation response stays hidden and is resolved by readback, not redispatch',async({page})=>{
+test('a lost cancellation response with no readback stays hidden and is resolved after reload, not redispatched',async({page})=>{
  await open(page);
- await page.evaluate(async()=>{(window as any).dispatches=0;const {BrowserDaily}=await import('/src/browser/daily.ts');const operate=BrowserDaily.prototype.operateReminder;BrowserDaily.prototype.operateReminder=async function(input){(window as any).dispatches++;await operate.call(this,input);throw Error('Lost response');};});
+ await page.evaluate(async()=>{(window as any).dispatches=0;const {BrowserDaily}=await import('/src/browser/daily.ts');const operate=BrowserDaily.prototype.operateReminder;BrowserDaily.prototype.operateReminder=async function(input){(window as any).dispatches++;await operate.call(this,input);throw Error('Lost response');};BrowserDaily.prototype.reminderOperationReceipt=async function(){throw Error('Receipt unavailable');};});
  await review(page);await expire(page);
  await expect.poll(()=>pending(page)).toEqual([{phase:'unknown',reminderId:'delete-boundary'}]);
  await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
  await expect.poll(()=>pending(page)).toEqual([]);
- expect((await store(page)).reminders[0].status).toBe('cancelled');
+ expect((await store(page)).reminders[0].status).toBe('cancelled');expect(Object.keys((await store(page)).receipts)).toHaveLength(1);
  await expect(page.getByRole('button',{name:/^Delete boundary reminder,/})).toHaveCount(0);
 });
 
