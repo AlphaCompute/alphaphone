@@ -41,5 +41,10 @@ project(':eliza-notifications').projectDir = new File('../vendor/eliza/plugins/p
 include ':eliza-owned-media'
 project(':eliza-owned-media').projectDir = new File('../vendor/eliza/plugins/plugin-native-media/android')
 
+// Read-only contact records for the Alpha AOSP image (AlphaTelephonyPlugin). The upstream Capacitor
+// plugin class is not registered; only its ContactsReader is used.
+include ':eliza-contacts'
+project(':eliza-contacts').projectDir = new File('../vendor/eliza/plugins/plugin-native-contacts/android')
+
 include ':eliza-action-journal'
 project(':eliza-action-journal').projectDir = new File('../vendor/eliza/plugins/plugin-native-action-journal/android')
