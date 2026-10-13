@@ -13,7 +13,7 @@ public final class AlphaDeletionsPlugin extends Plugin {
  @Override public void load(){super.load();NativeDeletionCoordinator.get(getContext()).start();}
  private void task(PluginCall call,Task action){try{worker.execute(()->{try{if(retired)throw new IllegalStateException();call.resolve(JSObject.fromJSONObject(action.run()));}catch(Exception unavailable){call.reject("Deletion state could not be confirmed. Saved data is retained; refresh before reviewing again.");}});}catch(java.util.concurrent.RejectedExecutionException stopped){call.reject("Deletion view retired");}}
  private interface Task{JSONObject run()throws Exception;}
- @PluginMethod public void pending(PluginCall call){task(call,()->new JSONObject().put("deletions",NativeDeletionCoordinator.get(getContext()).pending()));}
+ @PluginMethod public void pending(PluginCall call){task(call,()->new JSONObject().put("deletions",NativeDeletionCoordinator.get(getContext()).pending()).put("deletedOrigins",NativeDeletionCoordinator.get(getContext()).deletedNoteOrigins()));}
  @PluginMethod public void dismiss(PluginCall call){task(call,()->NativeDeletionCoordinator.get(getContext()).dismiss(call.getString("kind"),call.getString("id")));}
  @PluginMethod public void undo(PluginCall call){task(call,()->NativeDeletionCoordinator.get(getContext()).undo(call.getString("kind"),call.getString("id")));}
  @PluginMethod public void reviewReminder(PluginCall call){reviewReminder(call,null,null,null);}

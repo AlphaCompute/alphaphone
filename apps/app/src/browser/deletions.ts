@@ -1,3 +1,4 @@
+import {deletedNoteOrigins} from './deleted-note-origins';
 import {browserDeletionRecovery} from './deletion-recovery';
 import type {JournalEntry} from '../runtime/device-actions';
 import {WebPlugin} from '@capacitor/core';
@@ -10,7 +11,7 @@ export class BrowserDeletions extends WebPlugin{
  private reviews=new BrowserReviews();
  constructor(private daily:BrowserDaily,private calendar:BrowserCalendar){super();}
  async receipt(input:{entry:JournalEntry}){const type=(input.entry.record.operation as {type:string}).type;if(type==='calendar_delete')return {recovery:browserDeletionRecovery(input.entry,await this.calendar.deletionReceipt(input.entry.operationId))};if(type==='reminder_cancel'){const saved=await this.daily.deletionReceipt(input.entry.operationId);return {recovery:browserDeletionRecovery(input.entry,saved.entry,saved.row)};}return {recovery:null};}
- async pending(){await this.calendar.settleDeletions();await this.daily.settleDeletions();return {deletions:[...await this.calendar.pendingDeletions(),...await this.daily.pendingDeletions()]};}
+ async pending(){await this.calendar.settleDeletions();await this.daily.settleDeletions();return {deletions:[...await this.calendar.pendingDeletions(),...await this.daily.pendingDeletions()],deletedOrigins:await deletedNoteOrigins()};}
  async dismiss(input:{kind:string;id:string}){if(input.kind==='calendar')return this.calendar.dismissDeletion(input.id);if(input.kind==='reminder')return this.daily.dismissDeletion(input.id);throw Error('Unknown deletion kind.');}
  async undo(input:{kind:string;id:string}){if(input.kind==='calendar')return this.calendar.undoDeletion(input.id);if(input.kind==='reminder')return this.daily.undoDeletion(input.id);throw Error('Unknown deletion kind.');}
  async reviewReminder(input:{target:ReminderTarget}){return this.review(input.target);}

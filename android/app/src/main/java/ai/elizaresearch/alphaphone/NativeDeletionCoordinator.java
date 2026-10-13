@@ -43,6 +43,17 @@ final class NativeDeletionCoordinator {
    result.put(row.put("kind","reminder"));}
   return result;
  }
+ /** Note links exist for native reminders only. A queued/undone/uncertain receipt proves nothing. */
+ JSONArray deletedNoteOrigins()throws Exception{
+  JSONArray result=new JSONArray(),rows=AlphaReminders.engine(context).pendingDeletions();
+  for(int i=0;i<rows.length();i++){
+   JSONObject receipt=rows.getJSONObject(i);
+   if(!"deleted".equals(receipt.optString("phase"))||!"complete".equals(receipt.optString("effects"))||!visible(new JSONObject(receipt.getString("owner"))))continue;
+   String id=receipt.getJSONObject("target").getString("reminderId");JSONObject row=AlphaReminders.engine(context).read(id);
+   if(row!=null&&"cancelled".equals(row.optString("status"))&&row.optString("occurrenceId").equals(receipt.getJSONObject("target").getString("occurrenceId")))result.put(new JSONObject().put("kind","reminder").put("id",id));
+  }
+  return result;
+ }
  private static boolean pendingPhase(JSONObject row){return java.util.Set.of("queued","paused","unknown","dispatching").contains(row.optString("phase"));}
  private final Object visibilityLock=new Object();private JSONObject visibleOwner;private long visibleUntil;
  private static boolean stableOwner(JSONObject a,JSONObject b)throws Exception{

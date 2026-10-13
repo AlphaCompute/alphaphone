@@ -1,3 +1,4 @@
+import {forgetNoteOrigin,savedNoteOrigin} from '../prototype/note-origin-adapter';
 import {connectionController} from './connection-ui';
 import {useEffect,useRef,useState} from 'react';
 import {deletions,refreshDeletionViews,type DeletionEntry} from './deletions';
@@ -8,6 +9,8 @@ export function DeletionUndo(){
  useEffect(()=>{let retired=false,inflight=false,identityEpoch=0;
   const refresh=async()=>{if(inflight||retired)return;if(document.hidden||browserScreenLocked()){setEntries([]);return;}inflight=true;const admittedEpoch=identityEpoch;
    try{const result=await deletions.pending();if(retired||admittedEpoch!==identityEpoch||document.hidden||browserScreenLocked())return;
+    for(const origin of result.deletedOrigins||[]){if(savedNoteOrigin(origin.kind,origin.id))await forgetNoteOrigin(origin.kind,origin.id);}
+    if(retired||admittedEpoch!==identityEpoch||document.hidden||browserScreenLocked())return;
     const next=result.deletions.map(e=>[e.kind,e.id,e.phase]).join('|');if(signature.current&&next!==signature.current)refreshDeletionViews();signature.current=next;
     setEntries(result.deletions.filter(e=>['queued','paused','unknown','dispatching'].includes(e.phase)));setError('');
    }catch{if(!retired)setError('Pending deletion status is unavailable. Refresh before making another change.');}finally{inflight=false;}
