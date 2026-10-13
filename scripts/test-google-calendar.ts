@@ -72,8 +72,28 @@ await check('abort signal rejects late success even when a transport ignores it'
 });
 await check('all-day spans keep exclusive UTC civil-date boundary through DST',async()=>{
   const dstRange={...range,timeMin:'2026-10-31T00:00:00Z',timeMax:'2026-11-03T00:00:00Z'};
-  const f=fixture(dstRange);await f.select();f.state.events=[{...event,isAllDay:true,startAt:'2026-10-31T00:00:00Z',endAt:'2026-11-02T00:00:00Z'}];const result=await f.reader.read(dstRange,signal());assert.equal(result.status,'ready');if(result.status==='ready'){assert.equal(result.events[0].end-result.events[0].begin,2*86400000);assert.equal(result.events[0].timeZone,'UTC');assert.equal(result.events[0].allDay,true);}
-  f.state.events[0].startAt='2026-10-31T07:00:00Z';assert.equal((await f.reader.read(dstRange,signal())).status,'unavailable');
+  const f=fixture(dstRange);await f.select();f.state.events=[{...event,isAllDay:true,timezone:'UTC',startAt:'2026-10-31T00:00:00Z',endAt:'2026-11-02T00:00:00Z'}];const result=await f.reader.read(dstRange,signal());assert.equal(result.status,'ready');if(result.status==='ready'){assert.equal(result.events[0].end-result.events[0].begin,2*86400000);assert.equal(result.events[0].timeZone,'UTC');assert.equal(result.events[0].allDay,true);}
+  f.state.events[0].timezone='Invalid/Calendar';assert.equal((await f.reader.read(dstRange,signal())).status,'unavailable');
+});
+await check('actual Los Angeles all-day offsets become UTC civil dates with exclusive end',async()=>{
+  const holidayRange={...range,timeMin:'2026-09-01T00:00:00Z',timeMax:'2026-09-10T00:00:00Z'};
+  const f=fixture(holidayRange);await f.select();f.state.events=[{...event,isAllDay:true,startAt:'2026-09-07T07:00:00Z',endAt:'2026-09-08T07:00:00Z'}];
+  const result=await f.reader.read(holidayRange,signal());assert.equal(result.status,'ready');if(result.status==='ready'){assert.equal(result.events[0].begin,Date.parse('2026-09-07T00:00:00Z'));assert.equal(result.events[0].end,Date.parse('2026-09-08T00:00:00Z'));}
+});
+await check('spring and fall DST all-day boundaries use calendar dates, not elapsed duration',async()=>{
+  for(const [startAt,endAt,startDay,endDay] of [
+    ['2026-03-08T08:00:00Z','2026-03-09T07:00:00Z','2026-03-08','2026-03-09'],
+    ['2026-11-01T07:00:00Z','2026-11-02T08:00:00Z','2026-11-01','2026-11-02'],
+    ['2026-10-31T07:00:00Z','2026-11-02T08:00:00Z','2026-10-31','2026-11-02'],
+  ]){
+    const window={...range,timeMin:startDay+'T00:00:00Z',timeMax:endDay+'T23:59:59Z'},f=fixture(window);await f.select();
+    f.state.events=[{...event,isAllDay:true,timezone:null,startAt,endAt}]; // calendar timezone fallback
+    const result=await f.reader.read(window,signal());assert.equal(result.status,'ready');if(result.status==='ready'){assert.equal(result.events[0].begin,Date.parse(startDay+'T00:00:00Z'));assert.equal(result.events[0].end,Date.parse(endDay+'T00:00:00Z'));}
+  }
+});
+await check('unknown all-day timezone and zero civil-date span fail closed',async()=>{
+  const f=fixture();await f.select();f.state.events=[{...event,isAllDay:true,timezone:'Invalid/Calendar'}];assert.equal((await f.reader.read(range,signal())).status,'unavailable');
+  f.state.events=[{...event,isAllDay:true}];assert.equal((await f.reader.read(range,signal())).status,'unavailable');
 });
 await check('cancelled and out-of-window events excluded; recurrence instances stay individual',async()=>{
   const f=fixture();await f.select();f.state.events=[{...event,externalId:'cancelled',status:'cancelled'}, {...event,externalId:'past',startAt:'2026-10-12T00:00:00Z',endAt:range.timeMin}, {...event,externalId:'occ1',metadata:{recurringEventId:'series'}},{...event,externalId:'occ2',startAt:'2026-10-14T18:00:00Z',endAt:'2026-10-14T19:00:00Z',metadata:{recurringEventId:'series'}}];

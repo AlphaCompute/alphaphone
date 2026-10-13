@@ -58,10 +58,25 @@ function failure(error: unknown): Failure {
   return { status: 'unavailable', message: 'Google Calendar could not be loaded. Retry before relying on this schedule.' };
 }
 function record(event: GoogleCalendarEvent, calendar: GoogleCalendarSource): GoogleCalendarRecord {
-  const begin = Date.parse(event.startAt), end = Date.parse(event.endAt);
+  let begin = Date.parse(event.startAt), end = Date.parse(event.endAt);
   if (!Number.isFinite(begin) || !Number.isFinite(end) || end <= begin) throw new CloudProtocolError('invalid-response');
-  // The existing Alpha all-day contract uses UTC civil dates, not local midnight instants.
-  if (event.isAllDay && (begin % 86400000 !== 0 || end % 86400000 !== 0)) throw new CloudProtocolError('invalid-response');
+  const timeZone = event.timezone || calendar.timeZone;
+  // Cloud normalizes Google's all-day dates to midnight instants in the calendar zone.
+  // Alpha stores their civil dates at UTC midnight, including the exclusive end date.
+  // Convert each boundary independently: a DST transition can make the provider span
+  // 23 or 25 hours without changing the number of calendar days it occupies.
+  try {
+    if (event.isAllDay) {
+      if (!timeZone) throw new CloudProtocolError('invalid-response');
+      const format = new Intl.DateTimeFormat('en-US', { timeZone, calendar: 'gregory', numberingSystem: 'latn', year: 'numeric', month: '2-digit', day: '2-digit' });
+      const civil = (instant: number) => {
+        const parts = Object.fromEntries(format.formatToParts(instant).map(part => [part.type, part.value]));
+        return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+      };
+      begin = civil(begin); end = civil(end);
+      if (!Number.isFinite(begin) || !Number.isFinite(end) || end <= begin) throw new CloudProtocolError('invalid-response');
+    } else if (timeZone) new Intl.DateTimeFormat('en-US', { timeZone });
+  } catch { throw new CloudProtocolError('invalid-response'); }
   return { id: `${calendar.id}:${encodeURIComponent(event.externalId)}`, calendarId: calendar.id,
     providerEventId: event.externalId, title: event.title || 'Untitled event', body: event.description, location: event.location,
     begin, end, allDay: event.isAllDay, timeZone: event.isAllDay ? 'UTC' : event.timezone || calendar.timeZone || 'UTC',
