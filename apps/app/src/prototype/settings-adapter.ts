@@ -13,6 +13,8 @@ import { DailyApps } from '../daily';
 import { connectionController } from '../runtime/connection-ui';
 import {googleConnectionController} from '../runtime/google-connection-ui';
 import {GOOGLE_ACCOUNTS_CHANGED,googleDisconnectConfirmation,googleDisconnectMessage} from '../runtime/google-accounts';
+import { browserLocalAgentEnabled } from '../runtime/local-agent';
+import {developmentCartesiaVoiceEnabled} from '../runtime/development-cartesia-conversation';
 import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, gmailReadable, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
@@ -141,16 +143,29 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   let roles: Record<string, RoleRow> | null = null, launcher: boolean | null = null, roleBusy = false, roleNotice = '';
   let crashLog: CrashLog | null = null, crashBusy = false, diagnosticsBusy = false;
   let gmail = 'Not checked', digests = 'Not checked', localSpeech = 'Not checked', speechChecking = false, speechGeneration = 0;
+  let inferenceProvider = 'Not reported by agent';
   const changed = () => owner?.vset('settings', { capabilityReadAt: Date.now() });
   async function refreshCapabilities() {
     capabilityAbort?.abort(); const abort = capabilityAbort = new AbortController();
     const cloud = connectionController.getCloudClient(), workflow = connectionController.getWorkflowClient(), instance = owner;
     gmail = cloud ? 'Checking authorization…' : 'Cloud sign-in required'; gmailAccounts = [];
     digests = workflow ? 'Checking agent support…' : 'Connect an agent';
+    inferenceProvider = 'Not reported by agent';
     localSpeech = 'Not checked'; speechChecking = false; ++speechGeneration; changed();
     const timeout = setTimeout(() => { abort.abort(); if (owner === instance && capabilityAbort === abort) { if (gmail === 'Checking authorization…') gmail = 'Authorization not verified'; if (digests === 'Checking agent support…') digests = 'Agent support not verified'; changed(); } }, 10000);
     try {
       await Promise.allSettled([
+        (async () => {
+          if (!browserLocalAgentEnabled) return;
+          const agent = connectionController.getBrowserSpeechAgent();
+          if (!agent) return;
+          try {
+            const status = await agent.request('/api/status', undefined, abort.signal);
+            if (abort.signal.aborted || owner !== instance || capabilityAbort !== abort || connectionController.getBrowserSpeechAgent() !== agent) return;
+            // This field reports the provider, not a specific model or a Cloud account.
+            inferenceProvider = status.state === 'running' && status.model === 'cerebras' ? 'Cerebras' : 'Not reported by agent';
+          } catch { /* Keep unverified runtime information explicitly unknown. */ }
+        })(),
         (async () => {
           if (!cloud) return;
           try {
@@ -336,7 +351,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const info = (label: string, val: string): Bag => ({ kInfo: true, label, val, hasVal: true, noAB: true });
     const nav = (label: string, page: string): Bag => ({ kNav: true, label, lbl: label, chev: true, noAB: true, go: manage(page) });
     const group = (rows: Bag[]) => ({ css: 'background:var(--s2);padding:4px 0', rows });
-    const speechRows = (): Bag[] => [info('Speech', 'Eliza Cloud (uses credits)')];
+    const speechRows = (): Bag[] => [info('Speech', developmentCartesiaVoiceEnabled?'Cartesia · development':'Eliza Cloud (uses credits)')];
     const problemCount = crashLog ? crashLog.entries.length : null;
     const problemsRow = (): Bag => ({ kNav:true, label:'Problem log', lbl:'Problem log', val: problemCount === null ? 'Unavailable' : problemCount ? `${problemCount} recorded` : 'None recorded', hasVal:true, chev:true, noAB:true, go:()=>{ api.set({ page:'problems' }); void refresh(); } });
     const diagnosticsRow = (): Bag => ({ kNav:true, label:'Export diagnostics', lbl: diagnosticsBusy ? 'Preparing diagnostics…' : 'Export diagnostics', chev:true, noAB:true, go:()=>void exportDiagnostics(api) });
@@ -477,8 +492,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           ...(Capacitor.isNativePlatform() ? [info('Mobile data', reported(facts.mobileDataEnabled)), info('Airplane mode', reported(facts.airplaneMode))] : []),
           nav('Manage mobile networks', 'mobile'), ...(Capacitor.isNativePlatform() ? [nav('Airplane mode in Android', 'airplane')] : [])])];
       } else if (page.title === 'Models') {
-        page.hero = { ...page.hero, big: target, sub: 'Conversation uses the selected agent. Voice uses Eliza Cloud.' };
-        page.groups = [group([info('Connection', connection.kind), info('Inference model', 'Not reported by agent'), info('Voice', account ? 'Eliza Cloud' : 'Sign-in required'), { kNav:true, label:'Eliza Cloud account', lbl:'Eliza Cloud account', chev:true, noAB:true, go:()=>connectionController.openCloudAccount() }])];
+        page.hero = { ...page.hero, big: target, sub: developmentCartesiaVoiceEnabled?'Direct Cerebras and Cartesia · development':'Conversation uses the selected agent. Voice uses Eliza Cloud.' };
+        page.groups = [group([info('Connection', connection.kind), ...(browserLocalAgentEnabled ? [info('Inference provider', inferenceProvider)] : []), info('Inference model', 'Not reported by agent'), info('Voice', developmentCartesiaVoiceEnabled?'Cartesia · development':account ? 'Eliza Cloud' : 'Sign-in required'), { kNav:true, label:'Eliza Cloud account', lbl:'Eliza Cloud account', chev:true, noAB:true, go:()=>connectionController.openCloudAccount() }])];
       } else if (page.title === 'Developer') {
         page.groups = [group([info('App version', facts.appVersion || buildVersion), info('Agent memory', connection.session?'Usage not reported by agent':'Not connected')]), group([problemsRow(), diagnosticsRow()]), group([nav('Android developer settings', 'developer')])];
       } else if (page.title === 'Notifications') {
