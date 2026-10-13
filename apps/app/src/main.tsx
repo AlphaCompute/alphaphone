@@ -174,6 +174,9 @@ function Phone() {
       const width = document.documentElement.clientWidth || window.innerWidth;
       const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
       const height = Math.min(layoutHeight, window.visualViewport?.height || layoutHeight);
+      const viewportTop = Math.max(0, Math.min(window.visualViewport?.offsetTop || 0, layoutHeight - height));
+      document.documentElement.style.setProperty('--alpha-visible-height', `${height}px`);
+      document.documentElement.style.setProperty('--alpha-visible-top', `${viewportTop}px`);
       const coarse = !isAndroid && window.matchMedia('(pointer: coarse)').matches;
       const desktop = !isAndroid && width > 600 && !coarse;
       const banner = testMocksEnabled && mock ? document.querySelector('.mock-mode-banner')?.getBoundingClientRect().bottom || 36 : 0;
@@ -195,8 +198,8 @@ function Phone() {
 
     };
     const bannerObserver=new ResizeObserver(size);const bannerElement=testMocksEnabled&&mock?document.querySelector('.mock-mode-banner'):null;if(bannerElement)bannerObserver.observe(bannerElement);
-    size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size);
-    return () => { bannerObserver.disconnect(); window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); };
+    size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size); window.visualViewport?.addEventListener('scroll', size);
+    return () => { bannerObserver.disconnect(); window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); window.visualViewport?.removeEventListener('scroll', size); };
   }, []);
   return <>{BrowserDeviceControls&&!isAndroid&&!mock&&query.get('tools')==='1'&&<BrowserDeviceControls command={action=>{
     if(!shell)return;
