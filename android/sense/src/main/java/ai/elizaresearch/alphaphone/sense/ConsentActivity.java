@@ -35,6 +35,7 @@ public final class ConsentActivity extends Activity {
   +"People near you may be heard. Only turn this on where that is lawful and appropriate.";
 
  private LinearLayout column;
+ private long pendingConsentGeneration=-1;
 
  @Override protected void onCreate(Bundle state){
   super.onCreate(state);
@@ -105,6 +106,8 @@ public final class ConsentActivity extends Activity {
  }
 
  private void requestMicrophone(){
+  if(pendingConsentGeneration>=0)return;
+  pendingConsentGeneration=ListenerStore.consentGeneration();
   String[] wanted=checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED
    ?new String[]{Manifest.permission.RECORD_AUDIO}:new String[]{Manifest.permission.RECORD_AUDIO,Manifest.permission.POST_NOTIFICATIONS};
   requestPermissions(wanted,REQUEST_MICROPHONE);
@@ -113,10 +116,12 @@ public final class ConsentActivity extends Activity {
  @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] results){
   super.onRequestPermissionsResult(code,permissions,results);
   if(code!=REQUEST_MICROPHONE)return;
+  long generation=pendingConsentGeneration;pendingConsentGeneration=-1;
+  if(generation<0)return;
   // Consent needs both: the microphone, and the notification that is listening's visible indicator.
   if(!ListenerPolicy.consentPermissionsGranted(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED,
    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)){render();return;}
-  new ListenerStore(this).grantConsent(System.currentTimeMillis());
+  new ListenerStore(this).grantConsent(System.currentTimeMillis(),generation);
   changed();
  }
 }

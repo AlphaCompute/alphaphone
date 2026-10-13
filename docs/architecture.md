@@ -38,8 +38,8 @@ The pending marker covers interruption before dispatch; it is itself app data an
 is not a guarantee of atomic filesystem deletion or recovery from power loss midway
 through Android's clear operation. Installed self-clear acceptance must be observed
 externally on a disposable package/user, since the reset kills its own instrumentation.
-The future separate AOSP listener package requires its own reviewed reset contract
-before that package ships; clearing Alpha cannot clear a different package's state.
+The separate AOSP listener uses the reset contract below; native image qualification
+remains required before shipping it.
 
 Production Notes and vault migration controls are disabled, including their native
 entry points. Damaged-data notices retain saved bytes and drafts without backup or
@@ -182,3 +182,22 @@ The feature XML is an additional telephony contract marker, never an alternative
 Contacts uses the bounded AlphaContacts adapter and its native capability response; Phone and SMS
 views remain deferred. Telephony contact reads recheck permission, unlock and lifecycle state
 before and after asynchronous provider reads.
+
+### Reset and the image listener
+
+Before dispatching Android's package-data clear, a pending Alpha reset asks the
+same-signed image listener to erase its consent/settings through its existing
+signature-protected control provider. Missing listeners are allowed; an installed
+listener with a signer/permission mismatch, failed write, missing provider or
+ambiguous acknowledgement keeps the reset marker and stops Alpha until retry.
+The listener serializes revocation with consent writes and rejects permission
+callbacks whose consent request predates reset. It invalidates queued recognition,
+clears its settings durably and
+requests microphone-service stop. A successful retry may clear a previous storage
+failure, but never grants consent or resumes listening. Device-wide files and
+other applications are outside this contract.
+
+Focused JVM tests cover durable revocation, invalidated recognition tickets,
+failed-write retry and admission before app initialization. These are source-level
+checks; actual microphone release, provider IPC, process interruption and both
+image distributions still require native qualification for #409/#424.
