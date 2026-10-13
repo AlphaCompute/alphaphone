@@ -58,7 +58,7 @@ the renderer rejects any provider row that has a field other than `start`, `end`
 | --- | --- |
 | Executor and provider boundary | `apps/app/src/runtime/calendar-availability.ts` |
 | Review dialogs | `apps/app/src/prototype/calendar-availability-review.ts` |
-| Android provider read | `android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarAvailabilityReader.java` |
+| Android provider read | Upstream `SelectedCalendarReader.availabilitySources` and `readAvailability` (`vendor/eliza/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/read/SelectedCalendarReader.java`, elizaOS/eliza#35911, at the pin); the time-zone check is Alpha's `CalendarZones.java` |
 | Android bridge methods | `availabilitySources` and `readAvailability` in `AlphaCalendarPlugin.java` |
 | Android journal policy | `CalendarAvailabilityJournalResult.java`, called from `AlphaActionJournal.java` |
 | Browser provider read | `apps/app/src/browser/calendar.ts` |
@@ -70,7 +70,8 @@ the renderer rejects any provider row that has a field other than `start`, `end`
   the executor and the real `DeviceActions` client over a synthetic provider.
 - `test/browser/calendar-availability.spec.ts`: the renderer, review dialogs, journal
   orchestration and the browser in-app calendar, with synthetic agent routes.
-- `test/calendar-availability-reader.test.mjs` compiles the Android reader for the JVM and
+- `test/calendar-availability-reader.test.mjs` compiles the pinned upstream reader
+  (`SelectedCalendarReader`), Alpha's `CalendarZones` and the journal policy for the JVM and
   runs `test/fixtures/CalendarAvailabilityReaderTest.java`. The reader's exact projection,
   selection and sort order are executed by the `sqlite3` shell over tables that use
   CalendarProvider's column names, in five time zones from UTC-11 to UTC+14. The rows

@@ -1,8 +1,6 @@
 package ai.elizaresearch.alphaphone;
-import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.LauncherApps;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -10,9 +8,6 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.UserHandle;
 import android.util.Base64;
 import ai.eliza.plugins.system.SystemLauncherApps;
 import com.getcapacitor.*;
@@ -23,6 +18,8 @@ import java.io.ByteArrayOutputStream;
  * or default-handler hand-off happens only from an explicit renderer call. */
 @CapacitorPlugin(name = "DeviceApps")
 public class DeviceAppsPlugin extends Plugin {
+ /** Alpha's own refusal code for a read or launch Android refused; upstream's codes are the rest. */
+ static final String FAILED = "failed";
  /** Launcher icon edge in pixels; small enough that a full drawer stays well under 1 MB. */
  static final int ICON_PX = 96;
 
@@ -45,13 +42,14 @@ public class DeviceAppsPlugin extends Plugin {
   call.resolve(value);
  }
  /** One entry per launcher activity, across the current user and its profiles. Legacy callers that
-  * launch by package only still work; the drawer launches the exact listed component. */
+  * launch by package only still work; the drawer launches the exact listed component. Discovery is
+  * upstream {@link SystemLauncherApps} (elizaOS/eliza#35909); the renderer orders the list itself. */
  @PluginMethod public void list(PluginCall call) {
   boolean icons = Boolean.TRUE.equals(call.getBoolean("icons", false));
   PackageManager packages = getContext().getPackageManager();
   JSArray apps = new JSArray();
   try {
-   for (LauncherLibrary.Entry item : LauncherLibrary.list(getContext())) {
+   for (SystemLauncherApps.App item : SystemLauncherApps.list(getContext())) {
     JSObject app = new JSObject(); app.put("packageName", item.packageName); app.put("activityName", item.activityName); app.put("label", item.label);
     if (item.user != null) { app.put("user", item.user); app.put("profile", item.profile); app.put("locked", item.locked); }
     if (icons) { String icon = iconFor(item.icon(packages)); if (icon == null && item.user == null) icon = iconFor(packages, item.packageName); if (icon != null) app.put("icon", icon); }
@@ -59,7 +57,7 @@ public class DeviceAppsPlugin extends Plugin {
    }
   } catch (RuntimeException error) {
    // An unreadable inventory is reported, never a partial list and never a crash of Home.
-   call.reject("Installed apps could not be read", LauncherLibrary.FAILED, error); return;
+   call.reject("Installed apps could not be read", FAILED, error); return;
   }
   JSObject result = new JSObject(); result.put("apps", apps); call.resolve(result);
  }
@@ -75,71 +73,51 @@ public class DeviceAppsPlugin extends Plugin {
   Intent intent;
   try { intent = SystemLauncherApps.launchIntent(getContext(), name); }
   catch (IllegalArgumentException error) { call.reject("Choose an installed app"); return; }
-  if (intent == null) { LauncherLibrary.Refusal why = LauncherLibrary.explain(getContext().getPackageManager(), name); call.reject(why.getMessage(), why.code); return; }
+  if (intent == null) { String[] why = explain(getContext().getPackageManager(), name); call.reject(why[1], why[0]); return; }
   try { getActivity().startActivity(intent); call.resolve(); }
-  catch (RuntimeException error) { call.reject("App could not be opened", LauncherLibrary.FAILED, error); }
+  catch (RuntimeException error) { call.reject("App could not be opened", FAILED, error); }
+ }
+ /** Code and message for a package-only launch with no openable activity, worded as upstream's
+  * component refusals (SystemLauncherApps.explain is package-private). */
+ static String[] explain(PackageManager packages, String packageName) {
+  ApplicationInfo application;
+  try { application = packages.getApplicationInfo(packageName, 0); }
+  catch (PackageManager.NameNotFoundException error) { return new String[] {SystemLauncherApps.NOT_INSTALLED, "This app is no longer installed."}; }
+  if (!application.enabled) return new String[] {SystemLauncherApps.DISABLED, "This app is disabled. Enable it in Android settings to open it."};
+  return new String[] {SystemLauncherApps.NO_LAUNCHER, "This app has no screen that can be opened from here."};
  }
  /** Opens exactly the listed component in its profile, re-resolved now; a stale entry is refused. */
  private void launchComponent(PluginCall call, String packageName, String activityName, String user) {
-  LauncherLibrary.Target target;
-  try { target = LauncherLibrary.resolve(getContext(), packageName, activityName, user); }
+  SystemLauncherApps.Target target;
+  try { target = SystemLauncherApps.resolve(getContext(), packageName, activityName, user); }
   catch (IllegalArgumentException error) { call.reject("Choose an installed app"); return; }
-  catch (LauncherLibrary.Refusal refusal) { call.reject(refusal.getMessage(), refusal.code); return; }
-  catch (RuntimeException error) { call.reject("App could not be opened", LauncherLibrary.FAILED, error); return; }
+  catch (SystemLauncherApps.Refusal refusal) { call.reject(refusal.getMessage(), refusal.code); return; }
+  catch (RuntimeException error) { call.reject("App could not be opened", FAILED, error); return; }
   try {
-   if (target.user == null) getActivity().startActivity(LauncherLibrary.launchIntent(target.component));
+   if (target.user == null) getActivity().startActivity(SystemLauncherApps.launchIntent(target.component));
    else getContext().getSystemService(LauncherApps.class).startMainActivity(target.component, target.user, null, null);
    call.resolve();
   } catch (RuntimeException error) {
    // Gone between resolve and start, refused by Android, or no Activity to start from.
-   call.reject("App could not be opened", LauncherLibrary.FAILED, error);
+   call.reject("App could not be opened", FAILED, error);
   }
  }
 
  // Installs, removals, enable/disable and profile pause/unlock happen outside Alpha. The renderer
- // is told that something changed and re-reads the list itself; no inventory is pushed.
- private LauncherApps.Callback packageCallback;
- private BroadcastReceiver profileReceiver;
+ // is told that something changed and re-reads the list itself; no inventory is pushed. Alpha's own
+ // updates are not reported (upstream filters the host package).
+ private AutoCloseable appsWatch;
  @Override public void load() {
-  Context context = getContext();
-  LauncherApps launcher = context.getSystemService(LauncherApps.class);
-  if (launcher != null) {
-   packageCallback = new LauncherApps.Callback() {
-    @Override public void onPackageRemoved(String packageName, UserHandle user) { appsChanged(packageName, "removed"); }
-    @Override public void onPackageAdded(String packageName, UserHandle user) { appsChanged(packageName, "added"); }
-    @Override public void onPackageChanged(String packageName, UserHandle user) { appsChanged(packageName, "changed"); }
-    @Override public void onPackagesAvailable(String[] packageNames, UserHandle user, boolean replacing) { appsChanged(null, "available"); }
-    @Override public void onPackagesUnavailable(String[] packageNames, UserHandle user, boolean replacing) { appsChanged(null, "unavailable"); }
-    @Override public void onPackagesSuspended(String[] packageNames, UserHandle user) { appsChanged(null, "suspended"); }
-    @Override public void onPackagesUnsuspended(String[] packageNames, UserHandle user) { appsChanged(null, "unsuspended"); }
-   };
-   try { launcher.registerCallback(packageCallback, new Handler(Looper.getMainLooper())); }
-   catch (RuntimeException error) { packageCallback = null; }
-  }
-  IntentFilter profiles = new IntentFilter();
-  profiles.addAction(Intent.ACTION_MANAGED_PROFILE_AVAILABLE); profiles.addAction(Intent.ACTION_MANAGED_PROFILE_UNAVAILABLE);
-  profiles.addAction(Intent.ACTION_MANAGED_PROFILE_UNLOCKED); profiles.addAction(Intent.ACTION_MANAGED_PROFILE_ADDED); profiles.addAction(Intent.ACTION_MANAGED_PROFILE_REMOVED);
-  // Other profile kinds (clone, private) announce themselves with these on newer Android; older releases never send them.
-  profiles.addAction(Intent.ACTION_PROFILE_ACCESSIBLE); profiles.addAction(Intent.ACTION_PROFILE_INACCESSIBLE);
-  profiles.addAction(Intent.ACTION_PROFILE_ADDED); profiles.addAction(Intent.ACTION_PROFILE_REMOVED);
-  profiles.addAction(Intent.ACTION_PROFILE_AVAILABLE); profiles.addAction(Intent.ACTION_PROFILE_UNAVAILABLE);
-  profileReceiver = new BroadcastReceiver() { @Override public void onReceive(Context context, Intent intent) { appsChanged(null, "profile"); } };
-  try {
-   // System profile broadcasts only; no other app can send to this receiver.
-   androidx.core.content.ContextCompat.registerReceiver(context, profileReceiver, profiles, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
-  } catch (RuntimeException error) { profileReceiver = null; }
+  try { appsWatch = SystemLauncherApps.watch(getContext(), this::appsChanged); }
+  catch (RuntimeException error) { appsWatch = null; }
  }
  @Override protected void handleOnDestroy() {
-  Context context = getContext();
-  LauncherApps launcher = context.getSystemService(LauncherApps.class);
-  if (launcher != null && packageCallback != null) try { launcher.unregisterCallback(packageCallback); } catch (RuntimeException ignored) {}
-  if (profileReceiver != null) try { context.unregisterReceiver(profileReceiver); } catch (RuntimeException ignored) {}
-  packageCallback = null; profileReceiver = null;
+  AutoCloseable watch = appsWatch; appsWatch = null;
+  if (watch != null) try { watch.close(); } catch (Exception ignored) { /* Already unregistered. */ }
  }
  private void appsChanged(String packageName, String reason) {
   JSObject change = new JSObject(); change.put("reason", reason);
-  // Alpha's own updates never change the list it shows.
-  if (packageName != null) { if (packageName.equals(getContext().getPackageName())) return; change.put("packageName", packageName); }
+  if (packageName != null) change.put("packageName", packageName);
   notifyListeners("appsChanged", change);
  }
  @PluginMethod public void resolveDefault(PluginCall call) {

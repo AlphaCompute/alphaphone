@@ -1,7 +1,7 @@
 package android.provider;
 /**
- * JVM stand-in for the CalendarContract names CalendarAvailabilityReader and the pinned
- * shared readers use. Column names and values are the platform's published constants, so the
+ * JVM stand-in for the CalendarContract names the pinned SelectedCalendarReader (availability
+ * read included) and the other pinned shared readers use. Column names and values are the platform's published constants, so the
  * SQL the reader builds is the SQL CalendarProvider would receive. Test-only.
  */
 public final class CalendarContract {

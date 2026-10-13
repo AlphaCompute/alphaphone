@@ -72,6 +72,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   type Folder = 'inbox' | 'sent' | 'drafts' | 'archive' | 'trash';
   const MAILBOX_CHANGED = 'Newer mail arrived while this list was loading and is not shown yet. Load newer mail to read the list again.';
   let newerMail = false;
+  /** Gmail mailbox revision reported with the first page of the loaded list, when the server sends one. */
+  let firstPageRevision: string | null = null;
   const folderQuery: Record<Folder, string> = { inbox: 'in:inbox', sent: 'in:sent', drafts: 'in:drafts', archive: 'in:archive', trash: 'in:trash' };
   let loadedQuery = '', nextPageToken: string | null = null, folder: Folder = 'inbox';
   // Provider drafts are listed separately from messages.
@@ -311,11 +313,15 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       // A later page that repeats a loaded message was cut from a mailbox that changed after the
       // earlier pages were read (new mail moved every row down). The repeat is dropped as before,
       // and the list says that it is no longer the whole mailbox.
-      const shifted = !!pageToken && result.messages.some(m => seen.has(m.id));
+      // The mailbox revision says the same for a removed message, which no repeat can show: a later
+      // page whose revision differs from the first page's was listed from a changed mailbox. A server
+      // that sends no revision (older Cloud) leaves only the repeat check.
+      const revisionChanged = !!pageToken && !!firstPageRevision && !!result.mailboxHistoryId && result.mailboxHistoryId !== firstPageRevision;
+      const shifted = !!pageToken && (revisionChanged || result.messages.some(m => seen.has(m.id)));
       // A message the provider lists twice, in one page or across pages, is shown once.
       const fresh = result.messages.filter(m => !seen.has(m.id) && !!seen.add(m.id));
       messages = pageToken ? [...messages, ...fresh] : fresh;
-      if (!pageToken) seenCursors = new Set();
+      if (!pageToken) { seenCursors = new Set(); firstPageRevision = result.mailboxHistoryId ?? null; }
       // A provider cursor that repeats would page forever; treat it as the end of the results.
       const next = result.nextPageToken ?? null;
       nextPageToken = next && !seenCursors.has(next) ? next : null;

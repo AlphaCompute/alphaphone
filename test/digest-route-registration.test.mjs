@@ -37,7 +37,7 @@ test('the protocol under test is the whole set of hosted paths the app source na
   for(const path of literals)assert.ok(called.includes(path),`${path} is exercised`);
 });
 
-test('every hosted digest route the app calls is registered by the pinned agent, except the recorded dossier gap', () => {
+test('every hosted digest route the app calls is registered by the pinned agent, including the dossier', () => {
   const routes=show('plugins/plugin-workflow/src/plugin-routes.ts');
   const registered=new Set([...routes.matchAll(/type:\s*'(GET|POST|PUT|PATCH|DELETE)',\s*path:\s*'([^']+)'/g)].map(([,method,path])=>`${method} ${path}`));
   assert.ok(registered.has('GET /api/workflow/status'),'the route table was parsed');
@@ -46,10 +46,12 @@ test('every hosted digest route the app calls is registered by the pinned agent,
   const prefixes=[...new Set([...policy.matchAll(/["'](\/api\/workflow\/hosted\/[^"']*\/)["']/g)].map(match=>match[1]))];
   assert.deepEqual(prefixes,['/api/workflow/hosted/cloud-delegation/'],'route-auth-policy prefixes under hosted/');
   const unregistered=appCalls().filter(call=>call.includes('/api/workflow/hosted/')&&!registered.has(call)&&!prefixes.some(prefix=>call.split(' ')[1].startsWith(prefix)));
-  // POST /hosted/dossier is handled by workflow-routes.ts but no route registers it at this pin, so the
-  // app offers the dossier only when /status advertises hostedDossierProtocol (digest-capabilities.test.mjs).
-  // When an upstream fix registers it, this fails: remove the gap here and reconsider the gate.
-  assert.deepEqual(unregistered,['POST /api/workflow/hosted/dossier']);
+  // elizaOS/eliza#35906 registered POST /hosted/dossier; the resident renderer offers the dossier on that
+  // basis (digest-capabilities.test.mjs). A pin without it must fail here.
+  assert.deepEqual(unregistered,[]);
+  assert.ok(registered.has('POST /api/workflow/hosted/dossier'),'the pinned agent registers the dossier route');
+  const dossier=routes.slice(routes.indexOf("path: '/api/workflow/hosted/dossier'"));
+  assert.match(dossier.slice(0,600),/2000|2_000/,'the dossier route keeps the handler\'s 2000-byte body cap');
   const handler=show('plugins/plugin-workflow/src/routes/workflow-routes.ts');
   assert.match(handler,/'\/hosted\/dossier'/,'the handler itself knows the dossier path');
 });

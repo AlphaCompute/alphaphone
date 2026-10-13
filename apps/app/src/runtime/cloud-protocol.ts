@@ -497,7 +497,10 @@ export class CloudProtocol {
       ...(data.hasAttachments === undefined ? {} : typeof data.hasAttachments === "boolean" ? { hasAttachments: data.hasAttachments } : (() => { throw new CloudProtocolError("invalid-response"); })()) };
   }
   /** One page of results. `nextPageToken` is the provider's opaque cursor for the same query, or null. */
-  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 10 | 25 | 50 = 25, pageToken?: string): Promise<{ messages: GmailMessage[]; syncedAt: string; nextPageToken: string | null }> {
+  /** One search page. `mailboxHistoryId` is the Gmail mailbox revision read before the page was listed
+   * (elizaOS/eliza#35908); two pages of one search with different values came from a changed mailbox.
+   * Older Cloud servers omit it. */
+  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 10 | 25 | 50 = 25, pageToken?: string): Promise<{ messages: GmailMessage[]; syncedAt: string; nextPageToken: string | null; mailboxHistoryId?: string }> {
     if (pageToken !== undefined && (typeof pageToken !== "string" || !pageToken || pageToken.length > 4096)) throw new TypeError("Invalid Gmail page token");
     const params = new URLSearchParams({ side: "owner", grantId: string(grantId), query: string(query), maxResults: String(maxResults) });
     if (pageToken !== undefined) params.set("pageToken", pageToken);
@@ -505,7 +508,9 @@ export class CloudProtocol {
     if (!Array.isArray(data.messages)) throw new CloudProtocolError("invalid-response");
     const next = data.nextPageToken;
     if (next != null && (typeof next !== "string" || !next || next.length > 4096 || next === pageToken)) throw new CloudProtocolError("invalid-response");
-    return { messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt), nextPageToken: next == null ? null : next };
+    const revision = data.mailboxHistoryId;
+    if (revision != null && (typeof revision !== "string" || !/^\d{1,20}$/.test(revision))) throw new CloudProtocolError("invalid-response");
+    return { messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt), nextPageToken: next == null ? null : next, ...(revision == null ? {} : { mailboxHistoryId: revision }) };
   }
   /** Revokes Eliza Cloud's stored Google grant for one owner connection. It does not delete mail and
    * cannot remove the app from the user's Google Account permissions; callers verify with gmailAccounts. */

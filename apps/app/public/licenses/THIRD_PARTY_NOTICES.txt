@@ -18,18 +18,18 @@ share-alike-data (1):
   - OpenStreetMap data@regional extract served by the configured Maps endpoint (ODbL-1.0)
 licence-text-missing-from-package (11):
   - @tesseract.js-data/eng@1.0.0 (MIT)
-  - elizaOS voice runtime sources (OmniVoice, kokoro_lib, eliza-inference FFI) in libelizainference@elizaOS fused fork ea8b3f2dfc2641dea3e6238bc6dd99595584b076 (eliza 13c98575987a121decc45b161b0c8a4ee698554e); ABIs arm64-v8a, x86_64 (license unverified)
+  - elizaOS voice runtime sources (OmniVoice, kokoro_lib, eliza-inference FFI) in libelizainference@elizaOS fused fork 7efee003752402e8c73edb4677e5ef397c3104a7 (eliza bc71e21f3b5020a2d11719e6e905c0347a4d802f); ABIs arm64-v8a, x86_64 (license unverified)
   - Kokoro-82M af_sam voice preset (tts-voice, Kokoro voice preset)@1e4c73713e11f7ff42bc2a686cc5b178c8cac14f (sha256 6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b; 522240 bytes) (Apache-2.0)
   - Kokoro-82M v1.0 (tts-model, GGUF)@1e4c73713e11f7ff42bc2a686cc5b178c8cac14f (sha256 165acd9d2d9b6c2d71fa5bd52b92a2559be08567f58ed496bade076e3d9cb46c; 162546720 bytes) (Apache-2.0)
-  - llama.cpp, ggml and mtmd (fused into libelizainference)@elizaOS fused fork ea8b3f2dfc2641dea3e6238bc6dd99595584b076 (eliza 13c98575987a121decc45b161b0c8a4ee698554e); ABIs arm64-v8a, x86_64 (MIT)
-  - LLVM libc++ (libc++_shared.so from the Android NDK)@elizaOS fused fork ea8b3f2dfc2641dea3e6238bc6dd99595584b076 (eliza 13c98575987a121decc45b161b0c8a4ee698554e); ABIs arm64-v8a, x86_64 (Apache-2.0 WITH LLVM-exception)
+  - llama.cpp, ggml and mtmd (fused into libelizainference)@elizaOS fused fork 7efee003752402e8c73edb4677e5ef397c3104a7 (eliza bc71e21f3b5020a2d11719e6e905c0347a4d802f); ABIs arm64-v8a, x86_64 (MIT)
+  - LLVM libc++ (libc++_shared.so from the Android NDK)@elizaOS fused fork 7efee003752402e8c73edb4677e5ef397c3104a7 (eliza bc71e21f3b5020a2d11719e6e905c0347a4d802f); ABIs arm64-v8a, x86_64 (Apache-2.0 WITH LLVM-exception)
   - murmurhash-js@1.0.0 (MIT)
   - pdf.js QuickJS sandbox@bundled with pdfjs-dist 6.3.289 (license unverified)
-  - Silero VAD (fused into libelizainference)@elizaOS fused fork ea8b3f2dfc2641dea3e6238bc6dd99595584b076 (eliza 13c98575987a121decc45b161b0c8a4ee698554e); ABIs arm64-v8a, x86_64 (MIT)
+  - Silero VAD (fused into libelizainference)@elizaOS fused fork 7efee003752402e8c73edb4677e5ef397c3104a7 (eliza bc71e21f3b5020a2d11719e6e905c0347a4d802f); ABIs arm64-v8a, x86_64 (MIT)
   - Silero VAD v5 (vad-model, GGUF)@1e4c73713e11f7ff42bc2a686cc5b178c8cac14f (sha256 d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995; 620736 bytes) (MIT)
   - tr46@0.0.3 (MIT)
 unverified (3):
-  - elizaOS voice runtime sources (OmniVoice, kokoro_lib, eliza-inference FFI) in libelizainference@elizaOS fused fork ea8b3f2dfc2641dea3e6238bc6dd99595584b076 (eliza 13c98575987a121decc45b161b0c8a4ee698554e); ABIs arm64-v8a, x86_64 (license unverified)
+  - elizaOS voice runtime sources (OmniVoice, kokoro_lib, eliza-inference FFI) in libelizainference@elizaOS fused fork 7efee003752402e8c73edb4677e5ef397c3104a7 (eliza bc71e21f3b5020a2d11719e6e905c0347a4d802f); ABIs arm64-v8a, x86_64 (license unverified)
   - On-device elizaOS agent runtime payload@pinned upstream runtime when present in the APK payload (license unverified)
   - pdf.js QuickJS sandbox@bundled with pdfjs-dist 6.3.289 (license unverified)
 proprietary-licence-held-outside-repo (1):
@@ -1862,9 +1862,9 @@ THIS SOFTWARE.
 
 ==============================================================================
 elizaOS
-Version: 2.0.4 (13c98575987a121decc45b161b0c8a4ee698554e)
+Version: 2.0.4 (bc71e21f3b5020a2d11719e6e905c0347a4d802f)
 License: MIT
-Source: https://github.com/elizaOS/eliza/tree/13c98575987a121decc45b161b0c8a4ee698554e
+Source: https://github.com/elizaOS/eliza/tree/bc71e21f3b5020a2d11719e6e905c0347a4d802f
 
 MIT License
 
@@ -1890,7 +1890,7 @@ SOFTWARE.
 
 ==============================================================================
 elizaOS voice runtime sources (OmniVoice, kokoro_lib, eliza-inference FFI) in libelizainference
-Version: elizaOS fused fork ea8b3f2dfc2641dea3e6238bc6dd99595584b076 (eliza 13c98575987a121decc45b161b0c8a4ee698554e); ABIs arm64-v8a, x86_64
+Version: elizaOS fused fork 7efee003752402e8c73edb4677e5ef397c3104a7 (eliza bc71e21f3b5020a2d11719e6e905c0347a4d802f); ABIs arm64-v8a, x86_64
 License: license unverified
 Source: https://github.com/elizaOS/eliza/tree/develop/packages/inference
         Qualified libraries:
@@ -3991,7 +3991,7 @@ litigation is filed.
 
 ==============================================================================
 llama.cpp, ggml and mtmd (fused into libelizainference)
-Version: elizaOS fused fork ea8b3f2dfc2641dea3e6238bc6dd99595584b076 (eliza 13c98575987a121decc45b161b0c8a4ee698554e); ABIs arm64-v8a, x86_64
+Version: elizaOS fused fork 7efee003752402e8c73edb4677e5ef397c3104a7 (eliza bc71e21f3b5020a2d11719e6e905c0347a4d802f); ABIs arm64-v8a, x86_64
 License: MIT
 Source: https://github.com/ggml-org/llama.cpp
         Qualified libraries:
@@ -4023,7 +4023,7 @@ SOFTWARE.
 
 ==============================================================================
 LLVM libc++ (libc++_shared.so from the Android NDK)
-Version: elizaOS fused fork ea8b3f2dfc2641dea3e6238bc6dd99595584b076 (eliza 13c98575987a121decc45b161b0c8a4ee698554e); ABIs arm64-v8a, x86_64
+Version: elizaOS fused fork 7efee003752402e8c73edb4677e5ef397c3104a7 (eliza bc71e21f3b5020a2d11719e6e905c0347a4d802f); ABIs arm64-v8a, x86_64
 License: Apache-2.0 WITH LLVM-exception
 Source: https://github.com/llvm/llvm-project/tree/main/libcxx
         Qualified libraries:
@@ -6944,7 +6944,7 @@ SOFTWARE.
 
 ==============================================================================
 Silero VAD (fused into libelizainference)
-Version: elizaOS fused fork ea8b3f2dfc2641dea3e6238bc6dd99595584b076 (eliza 13c98575987a121decc45b161b0c8a4ee698554e); ABIs arm64-v8a, x86_64
+Version: elizaOS fused fork 7efee003752402e8c73edb4677e5ef397c3104a7 (eliza bc71e21f3b5020a2d11719e6e905c0347a4d802f); ABIs arm64-v8a, x86_64
 License: MIT
 Source: https://github.com/snakers4/silero-vad
         Qualified libraries:

@@ -15,23 +15,34 @@ the operator's index of build, provisioning, release and support material is the
   host. The production Android Welcome dialog offers Cloud sign-in for the on-device
   agent or local apps without AI. Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The upstream pin in `upstream.lock.json` is `13c9857598`, the merge commit of upstream
-  pull request 34888, reachable from elizaOS `develop` when
-  `scripts/ci/upstream-reachability.json` was recorded (2026-10-11 UTC). It adds the shared
+- The upstream pin in `upstream.lock.json` is `bc71e21f3b` (moved on 2026-10-13, branch
+  `claude/mvp-final`), the elizaOS `develop` head that merged the eleven Alpha upstream pull
+  requests (35906 to 35913, 36123, 36124 and 36126; the last moves llama.cpp to the fork commit
+  with the CVE-2026-107183 fix). `scripts/ci/upstream-reachability.json` records it as identical
+  to `develop` on 2026-10-13, and what each change means for Alpha is in
+  [agent integration](agent-integration.md#upstream-changes-in-the-13c9857598-to-bc71e21f3b-move).
+  At this pin there are only source and browser test results and Gradle compilation
+  ([verification](verification.md#pin-move-to-bc71e21f3b-2026-10-13-source-and-compile-checks-only));
+  every other result in this document is at an earlier pin. The engine gitlink changed, so the
+  reviewed ARM64 embedding host must be requalified before a distribution build
+  (`android/embedding-host/qualified-host.json`). The previous pin, `13c9857598`, was the merge
+  commit of upstream pull request 34888, reachable from elizaOS `develop` when the
+  reachability record was taken (2026-10-11 UTC). It added the shared
   notification receipt ledger, which `WorkflowNoticeDelivery` now configures with the
   deployed slot names and record formats, to the shared password manager, password
   transfer and Keystore text frames; no local source patch remains (the `patches`
   directory is gone). Results recorded at the earlier pins `40dbe96bd1`, `945209d3`,
   `4148a166` and `352d7a08` are historical, and that includes every entry under
-  [current qualification evidence](#current-qualification-evidence) except its first two, the
-  round 8 and round 9 integrations, and the MVP completion integration entry above them, which are the only ones at the current pin. At the
-  current pin there are source and browser test results, developer APK builds without the
+  [current qualification evidence](#current-qualification-evidence) except the pin move entry
+  (at `bc71e21f3b`) and the MVP completion, round 8 and round 9 entries (at `13c9857598`). At
+  `13c9857598` there are source and browser test results, developer APK builds without the
   resident runtime (not distributable) and one partial emulator campaign on such builds
   ([verification](verification.md#emulator-results-at-2961bd9e-2026-10-11-round-8-merged-with-round-9));
-  no distribution APK build and no device run is recorded: see MVP-08 in the
+  at neither pin is a distribution APK build or a device run recorded: see MVP-08 in the
   [remaining-work inventory](mvp-remaining-work-2026-10-09.md).
 - Local orchestration does not imply local inference. The configured text model
-  uses hosted Cerebras; Whisper/Kokoro speech has separate host and Android paths.
+  uses hosted Cerebras (`qwen-3.8-27b`); on-device speech is only the llama.cpp-based
+  libelizainference voice host (P-10), and flag-off builds use Eliza Cloud speech (P-07).
 - A powered-off phone cannot run its resident agent. Acceptance of missed-occurrence
   recovery in place of powered-off execution remains an explicit product decision
   ([A-09](decisions.md#open-decisions)).
@@ -69,7 +80,7 @@ class has no evidence of that kind for the current head.
 
 | Area | Implemented boundary | Remaining acceptance | Evidence class |
 | --- | --- | --- | --- |
-| Home and launcher | Branded Home with clock, agenda cards from real providers and a grid of the enabled Alpha views; the launcher flavor declares the `HOME`/`DEFAULT` filter; quick-setting tiles show the switch states Android reports and open the matching Android Settings page (see Settings). An All-apps drawer with search lists the apps `DeviceAppsPlugin` reports, launches the exact component (package, activity and Android user, `LauncherLibrary.java`), opens the stock dialer, and shows explicit empty and failed states with a manual retry (`apps/app/src/prototype/home-launcher.ts`; `home-launcher.spec.ts` and `home-native-launcher.spec.ts`, both against a stubbed bridge). A landscape layout places Home and the composer side by side and docks the conversation beside Home (`home-landscape.spec.ts`); `app.config.json` leaves orientation unspecified. | HOME-role selection, opening three installed apps and returning HOME each time: `LauncherHomeInstrumentedTest` and `SettingsRolesInstrumentedTest` passed in the runner's `--home-role` phase on the launcher flavor, class E on developer APKs with an unpackaged runtime at `2961bd9e`/`9a1ca161` ([verification](verification.md#emulator-results-at-2961bd9e-2026-10-11-round-8-merged-with-round-9)); that is not a distribution build (B), an image (I) or a device (D). Still open: the same on a distribution APK, default HOME in a full image (I) and physical use (D). `RotationInstrumentedTest` passed at `73b973a5` and `6dcdde34` (earlier pins) and was not run at the current pin. The rest of the installed-app library contract (favorites and order, profile identity, refresh on package change) is implemented in source (`home-app-library.spec.ts` against a native stub) and `LauncherLibraryInstrumentedTest` has no recorded run (MVP-53). At 200% text Home's scroller now ends above the composer (`home-compact-scroll.spec.ts`); Accessibility, which failed on that step in round 8, has not been rerun. Whether rotation ships is [A-22](decisions.md#new-decision-items). | S; E developer APKs at the current pin |
+| Home and launcher | Branded Home with clock, agenda cards from real providers and a grid of the enabled Alpha views; the launcher flavor declares the `HOME`/`DEFAULT` filter; quick-setting tiles show the switch states Android reports and open the matching Android Settings page (see Settings). An All-apps drawer with search lists the apps `DeviceAppsPlugin` reports, launches the exact component (package, activity and Android user, through upstream `SystemLauncherApps` since the pin `bc71e21f3b`), opens the stock dialer, and shows explicit empty and failed states with a manual retry (`apps/app/src/prototype/home-launcher.ts`; `home-launcher.spec.ts` and `home-native-launcher.spec.ts`, both against a stubbed bridge). A landscape layout places Home and the composer side by side and docks the conversation beside Home (`home-landscape.spec.ts`); `app.config.json` leaves orientation unspecified. | HOME-role selection, opening three installed apps and returning HOME each time: `LauncherHomeInstrumentedTest` and `SettingsRolesInstrumentedTest` passed in the runner's `--home-role` phase on the launcher flavor, class E on developer APKs with an unpackaged runtime at `2961bd9e`/`9a1ca161` ([verification](verification.md#emulator-results-at-2961bd9e-2026-10-11-round-8-merged-with-round-9)); that is not a distribution build (B), an image (I) or a device (D). Still open: the same on a distribution APK, default HOME in a full image (I) and physical use (D). `RotationInstrumentedTest` passed at `73b973a5` and `6dcdde34` (earlier pins) and was not run at the current pin. The rest of the installed-app library contract (favorites and order, profile identity, refresh on package change) is implemented in source (`home-app-library.spec.ts` against a native stub) and `LauncherAppsInstrumentedTest` (formerly `LauncherLibraryInstrumentedTest`) has no recorded run (MVP-53). At 200% text Home's scroller now ends above the composer (`home-compact-scroll.spec.ts`); Accessibility, which failed on that step in round 8, has not been rerun. Whether rotation ships is [A-22](decisions.md#new-decision-items). | S; E developer APKs at the current pin |
 | Local startup and ownership | Native bridge, reproducible payload preparation, owner enrollment and private browser-host transport. Shared launcher preserves existing tokens and runtime-written configuration. | Native IPC/process lifecycle, reboot, owner isolation and installed variant identity on the intended image. On developer APKs at the current pin `LocalAgentOfflineApps`, `StartupReadiness` and `Shell` passed on both flavors ([verification](verification.md#emulator-results-at-2961bd9e-2026-10-11-round-8-merged-with-round-9)); the resident runtime was not packaged, so no resident start ran. A renderer killed by Android is now recovered within a bounded budget (`RendererRecoveryInstrumentedTest`, not run). See [local setup](local-agent-development.md). | S; E developer APKs at the current pin |
 | Connection choices | Android production builds open a Welcome dialog for the on-device agent: sign in to Eliza Cloud for inference credits, or "Use local apps without AI", which reaches Home with no network and persists across restart. Production Android does not pair with or restore a remote or Cloud agent: the controller and `connectRemote` refuse it, the native transport rejects the pairing route and, in a flag-off build, every request whose origin is not exactly `https://api.eliza.app` (`ConnectionRoutes.java`; a dedicated Cloud agent host is refused too, because no production Android path connects a Cloud agent, pending A-16), and a saved remote credential is not read, written or removed. The saved selection itself is ignored and is replaced once the user chooses local apps or the resident agent starts. Cloud sign-out sends Cloud's self-revocation (`DELETE /api/v1/api-keys/current`) once and says "revoked" only when Cloud confirms it; otherwise it says the token was removed on this phone only. The production web build offers remote pairing over HTTPS and Continue offline; Cloud sign-in is stated as unavailable there and a saved Cloud selection or service is signed out without a request; that sign-out also deletes a stored `cloud:production` key from the browser's secret store, best effort, and no other slot. Remote disconnect revokes the device enrollment and owner session and reports an unconfirmed revocation as such. Resident, remote, local and Cloud connections negotiate verified phone actions at enrollment; a Cloud runtime that does not advertise them stays chat-only. A sign-in as a second Cloud account revokes the first account's key once before the new key is stored, unless Cloud returns the same key, and the resident conversation stays with the local owner, not the Cloud account; a zero Cloud balance keeps the sign-in for a top-up but starts no agent and writes no selection ([agent integration](agent-integration.md#accepted-limits-and-gates-recorded-at-the-mvp-completion-integration)). A flag-off `openExternal` opens only `eliza.app`, `cloud.eliza.app` and `accounts.google.com`. Synthetic coverage: `test/browser/connection-boundaries.production.spec.ts`, `test/browser/connection.production.spec.ts`, `test/browser/cloud-account-replacement.production.spec.ts`, `test/browser/resident-first-run.production.spec.ts`, `test/connection-routes.test.mjs`, `test/fixtures/ConnectionRoutesTest.java`. | Cloud self-revocation has not run against live Eliza Cloud, and the native route guard, origin guard and DELETE admission are compiled and JVM-tested but not exercised in an APK or on a device (`ConnectionRoutesInstrumentedTest` is compiled, not run). The web build cannot revoke a Cloud credential. Real-device wrong-owner/origin, expired and reused token, and callback tests; managed endpoint ([A-02](decisions.md#open-decisions)). | S |
 | Chat and retained context | Typed conversations, selected-source context, reviewed actions with durable receipts, and conversation-bound local composer drafts with explicit conflict recovery. Stop closes the client stream, discards the late reply and, for resident, local and remote agents, asks the agent to cancel once through upstream's `POST /api/turns/:roomId/abort`; Cloud agents and agents without that route get the in-chat notice that the agent may still finish. Either way the chat shows the state and one read of the conversation shows the reply if it finished; nothing is resent. A dropped response is reconciled once by repeating the identical request under the same client message ID. The composer keeps the text through every failure before the message is posted (no agent, expired session, offline or rate-limited conversation setup, changed screen or owner, Stop before the post), and remote, Cloud and resident connections restore the saved conversation on connect (with older pages except on Cloud). A send that fails after the post is reported as an unknown outcome with a history check, never as unsent. | Emulator and device acceptance of draft, Stop, history and Back/HOME/keyboard continuity (browser source evidence: `test/browser/chat-continuity.spec.ts`, `test/browser/assistant-draft-dispatch.spec.ts`). Back and HOME during a reply no longer cancel it (a view change still aborts it), the transcript keeps its scroll anchor through resize, Back and HOME, failures are reported by kind and a lost network shows a notice beside the composer (flag-off specs). `Shell` passed on developer APKs at the current pin ([verification](verification.md#emulator-results-at-2961bd9e-2026-10-11-round-8-merged-with-round-9)); `ChatContinuity`, `Assistant`, `Flow` and `AssistantResidentReuse` have no recorded run. The read after Stop matches the stopped message by text and time because upstream history rows do not expose the client message ID; Cloud history has no older-page cursor and no cancel route. Broad model quality, missing-detail clarification, target-device performance and complete physical user journeys. | S; R local Cerebras (historical) |
@@ -103,7 +114,7 @@ Status of each [PRD](prd.md) requirement, mirrored in `docs/requirements.json` a
 
 | Requirement | Status | Status rows | Next gate |
 | --- | --- | --- | --- |
-| AP-01 | partial | Home and launcher; Design and accessibility | E: LauncherLibrary and Rotation at the current pin, and LauncherHome and SettingsRoles again on a distribution launcher APK; then D on the selected phone |
+| AP-01 | partial | Home and launcher; Design and accessibility | E: LauncherApps and Rotation at the current pin, and LauncherHome and SettingsRoles again on a distribution launcher APK; then D on the selected phone |
 | AP-02 | partial | Home and launcher; Local startup and ownership; Connection choices; Release | B: four distribution APKs build at the current pin and scripts/verify-apks.mjs marks the releases distributable:true, which needs the release signer (A-06); then E: install both modes, open apps and return HOME repeatedly |
 | AP-03 | partial | Connection choices; Local startup and ownership | E then R and D: ConnectionRoutesInstrumentedTest on a flag-off APK; then CLI-session expiry, reused-claim refusal, live self-revocation, account replacement and wrong-owner tests against the managed endpoint (A-02) |
 | AP-04 | partial | Chat and retained context; Connection choices; Privacy and outbound context | E then D: resident process restart and reconnect without duplicate messages or writes; no inference-available claim without provider health evidence |
@@ -160,6 +171,18 @@ providers, OAuth grants); (D) physical-device and user acceptance. A result in o
 never stands in for another.
 
 ### Current qualification evidence
+
+Pin move, 2026-10-13: branch `claude/mvp-final`, upstream pin `bc71e21f3b` (from `13c9857598`),
+with the upstream changes consumed. Nothing was pushed and no hosted run was made.
+
+- Class S, development machine: see [verification](verification.md#pin-move-to-bc71e21f3b-2026-10-13-source-and-compile-checks-only)
+  for `npm run verify`, the resident dependency audit (no finding without a reviewed disposition;
+  the handlebars and `@ai-sdk/provider-utils` advisories are gone) and the JVM calendar reader run.
+- Class B, compile only: Gradle compiled the app and instrumentation Java of the standalone and
+  launcher debug variants against the prepared source at the pin. No APK was assembled. A
+  candidate ARM64 embedding host was built at the new engine commit and checked for its symbols
+  and 16 KiB alignment; it is not reviewed or staged.
+- Classes E, I, R and D: none at this pin.
 
 MVP completion integration, 2026-10-12: branch `claude/mvp-completion` at `bfcd47e2`, upstream
 pin `13c9857598`, the nine work packages of the [2026-10-11 audit](mvp-audit-2026-10-11.md)
@@ -322,9 +345,10 @@ These cannot be completed in software from this repository; they are prepared bu
   starting with powered-off scheduling (A-09) and the voice latency method (A-10); review
   of the flagged licence notices (P-09 makes them non-blocking, not reviewed); and the
   four-unit physical pilot.
-- Emulator and hosted CI campaigns: 12 core-loop steps need an emulator run and 5 a
-  dispatched `resident-android.yml` run ([core loop audit](core-loop-audit.md)); one step needs
-  an upstream dossier route (D-23).
+- Emulator and hosted CI campaigns: 13 core-loop steps need an emulator run and 5 a
+  dispatched `resident-android.yml` run ([core loop audit](core-loop-audit.md)). The upstream
+  dossier route that D-23 waited for is registered at the pin `bc71e21f3b`; D-23 now needs an
+  emulator run.
 
 The complete, ordered list of what only the owner or a person with access or hardware can
 do is [owner actions](mvp-owner-actions.md).

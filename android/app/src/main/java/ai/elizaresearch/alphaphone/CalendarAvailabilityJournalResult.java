@@ -1,5 +1,6 @@
 package ai.elizaresearch.alphaphone;
 
+import ai.eliza.plugins.calendar.read.SelectedCalendarReader;
 import java.nio.charset.StandardCharsets;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -43,10 +44,10 @@ final class CalendarAvailabilityJournalResult {
   if(window==null||window.length()!=3)throw new IllegalArgumentException("Invalid availability window");
   for(String key:new String[]{"start","end","timeZone"})
    if(!(operation.opt(key) instanceof String)||!operation.get(key).equals(window.opt(key)))throw new IllegalArgumentException("Availability window changed");
-  whole(shared.opt("calendarCount"),1,CalendarAvailabilityReader.MAX_SELECTED);
-  whole(shared.opt("transparentIgnored"),0,CalendarAvailabilityReader.MAX_EVENTS);
+  whole(shared.opt("calendarCount"),1,SelectedCalendarReader.AVAILABILITY_SELECTED);
+  whole(shared.opt("transparentIgnored"),0,SelectedCalendarReader.AVAILABILITY_EVENTS);
   JSONArray busy=shared.optJSONArray("busy");
-  if(busy==null||busy.length()>CalendarAvailabilityReader.MAX_EVENTS)throw new IllegalArgumentException("Invalid busy intervals");
+  if(busy==null||busy.length()>SelectedCalendarReader.AVAILABILITY_EVENTS)throw new IllegalArgumentException("Invalid busy intervals");
   String start=instant(window.get("start")),end=instant(window.get("end")),previous="";
   for(int i=0;i<busy.length();i++){
    JSONObject interval=busy.optJSONObject(i);

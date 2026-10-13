@@ -56,5 +56,31 @@
       "sourceSha256": "5d86016176bf34709fa9a33812b02ed88e36121c7fe6162b754813208aa10cb2",
       "generatedSha256": "8cd7ae576165991d8b3bb86e8a7723adde169ac057e05c0b80dc2a7549ee7304"
     }
-  ]
+  ],
+  "requalification": {
+    "required": true,
+    "atPin": "bc71e21f3b5020a2d11719e6e905c0347a4d802f",
+    "forkPin": "7efee003752402e8c73edb4677e5ef397c3104a7",
+    "reason": "The pin move to bc71e21f3b50 changed the engine gitlink (ea8b3f2dfc26 to 7efee0037524, elizaOS/llama.cpp#58: CVE-2026-107183, and CVE-2026-52132 for the /rerank top_n bound, via elizaOS/eliza#36126) and the native build input packages/app/scripts/stage-elizavoice-lib.ts. The reviewed libraries below were built from the earlier source, so distribution builds refuse them until a new receipt is reviewed and staged (node scripts/prepare-embedding-host.mjs --build, then node scripts/stage-embedding-host.mjs --receipt).",
+    "candidateBuild": {
+      "evidence": "B: built on a development machine on 2026-10-13 with node scripts/prepare-embedding-host.mjs --fork <clean checkout at 7efee0037524> --abi arm64-v8a --build (NDK 29.0.13113456). ELF ABI, 16 KiB LOAD alignment, the embedding symbols and every voice symbol checked by that script. Not reviewed, not staged, not run on an emulator or a device; the receipt is not committed.",
+      "libraries": [
+        {
+          "name": "libelizainference.so",
+          "sha256": "4777df2e3b0bcc259bc17d075e451fe0820aede44865d3a794974e415e254f68",
+          "bytes": 6206736
+        },
+        {
+          "name": "libelizavoicejni.so",
+          "sha256": "1163689900afce49d262ffc1b2a8640acf6b872627362721640d97ecc0f8605e",
+          "bytes": 1010056
+        },
+        {
+          "name": "libc++_shared.so",
+          "sha256": "35e56d209d7f28a79bf1e263cbf1e4bafc5038448dea0a954cba0423a28f0f6b",
+          "bytes": 1304848
+        }
+      ]
+    }
+  }
 }

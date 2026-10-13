@@ -42,9 +42,9 @@ export interface FlagOffSchedules {
   /** Advertise phone sources (`hostedNativeSourceProtocol`) and accept native selections; stubs
    * the AlphaHostedResults consent port and AlphaCalendar's workflow calendars. */
   native?: { evening?: boolean; calendars: { id: string; name: string; account: string }[] };
-  /** Serve POST /hosted/dossier and advertise it as `hostedDossierProtocol: 1`. The agent pinned in
-   * upstream.lock.json registers that route but does not advertise this flag; the stub advertises
-   * it so a renderer that gates the dossier on the advertisement still offers it here. */
+  /** Serve POST /hosted/dossier (and advertise `hostedDossierProtocol: 1`). The agent pinned in
+   * upstream.lock.json registers that route without advertising it, and the renderer offers the
+   * dossier with resident phone sources either way; without this flag the stub refuses the POST. */
   dossier?: boolean;
 }
 export const AGENT_NAME = 'Alpha';

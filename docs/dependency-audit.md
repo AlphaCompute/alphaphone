@@ -118,6 +118,16 @@ pending fix that is also excepted, and on an exception for a shipped high or cri
 advisory. This is source and registry evidence plus a staged payload on a development
 machine; no APK was built.
 
+Re-audited 2026-10-13 at upstream `bc71e21f3b` (plan step A-3, after elizaOS/eliza#36124 moved
+`handlebars` to 4.7.10 and `@ai-sdk/openai` to 3.0.118): 3687 package versions, 99 findings,
+1 critical (`shell-quote`, not shipped), 42 high, 42 moderate and 14 low. The three `handlebars`
+advisories and GHSA-866g-f22w-33x8 (`@ai-sdk/provider-utils` 4.0.26) are gone; their pending fix
+and their exception were removed, and the other 85 exceptions are unchanged, because every
+remaining finding resolves to the same package versions as at `13c98575987a`.
+`node scripts/dependency-audit.mjs --resident` now exits 0. The shipped-set evidence is still the
+payload staged at `13c98575987a`; the payload was not re-staged at `bc71e21f3b`, so the
+packaged-notices audit (A-4) at this pin has not run.
+
 ### Scheduled advisory audit
 
 `.github/workflows/dependency-audit.yml` runs weekly (Mondays 06:17 UTC) and on manual
@@ -125,8 +135,8 @@ dispatch, with `contents: read`, SHA-pinned actions and no secrets. It runs
 `node scripts/dependency-audit.mjs` against the registry, which fails on any advisory path
 without a reviewed disposition, and then the resident audit on the pinned upstream lock
 (fetched by commit). It is not a required check and never runs on a pull request or push
-(`test/ci-required-checks.test.mjs`). The resident step fails until the pending `handlebars`
-fix above reaches the pin.
+(`test/ci-required-checks.test.mjs`). Since the pin `bc71e21f3b` the resident step has no
+pending fix and passes while every finding keeps an unexpired disposition.
 
 ## Release SBOM
 

@@ -143,7 +143,10 @@ export function HostedDigestPanel() {
 			if (binding.current !== b || document.hidden) return;
 			setAvailable(supported);
             const nativeSupported=supported&&advertised.nativeSources&&isAndroid&&connection.kind==='resident';
-            setNativeSourceProtocol(nativeSupported);setFeatures({nativeEvening:nativeSupported&&advertised.nativeEvening,sourcePause:supported&&advertised.sourcePause,dossier:nativeSupported&&advertised.dossier});
+            // The dossier needs native phone sources, which only the resident agent has. That agent is staged
+            // from upstream.lock.json, whose plugin-workflow registers POST /api/workflow/hosted/dossier
+            // (elizaOS/eliza#35906, test/digest-route-registration.test.mjs); /status does not advertise it.
+            setNativeSourceProtocol(nativeSupported);setFeatures({nativeEvening:nativeSupported&&advertised.nativeEvening,sourcePause:supported&&advertised.sourcePause,dossier:nativeSupported});
 			if (!supported) {
 				setMessage("This agent has not enabled scheduled digests.");
 				return;

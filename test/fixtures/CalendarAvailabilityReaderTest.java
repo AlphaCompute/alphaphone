@@ -4,6 +4,7 @@ import android.content.ContentResolver;
 import android.database.Cursor;
 import android.net.Uri;
 import ai.eliza.plugins.calendar.read.CalendarSourceIdentity;
+import ai.eliza.plugins.calendar.read.SelectedCalendarReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,7 +23,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Runs the product CalendarAvailabilityReader on the JVM. The provider is a stand-in: the
+ * Runs the pinned upstream SelectedCalendarReader availability read (availabilitySources and
+ * readAvailability, elizaOS/eliza#35911), which Alpha calls, plus Alpha's own zone check and
+ * journal policy, on the JVM. The provider is a stand-in: the
  * reader's exact projection, selection, arguments and sort order are executed by the sqlite3
  * command-line shell over tables that use CalendarProvider's column names and hold titles,
  * descriptions, locations and calendars the owner never chose. This checks the reader's SQL
@@ -171,7 +174,7 @@ public final class CalendarAvailabilityReaderTest {
     provider.event(3,"SHARED",dayStart+20*HOUR,dayStart+21*HOUR,false,0,1,null,false);
 
     // Only the chosen calendar: provider availability is carried, cancelled, declined and deleted rows are not occurrences.
-    JSONArray work=CalendarAvailabilityReader.read(provider,chosen(provider,1),iso(dayStart),iso(dayEnd),zone);
+    JSONArray work=SelectedCalendarReader.readAvailability(provider,chosen(provider,1),iso(dayStart),iso(dayEnd),zone);
     rows(work,row(dayStart+9*HOUR,dayStart+10*HOUR,false,"busy"),row(dayStart+11*HOUR,dayStart+12*HOUR,false,"free"),row(dayStart+13*HOUR,dayStart+14*HOUR,false,"tentative"),
      row(dayStart+18*HOUR,dayStart+19*HOUR,false,"busy"),row(dayStart+19*HOUR,dayStart+20*HOUR,false,"busy"));
     same("[1]",Arrays.toString(provider.instanceArguments.get(0)),"Only the chosen calendar id is bound");
@@ -179,18 +182,18 @@ public final class CalendarAvailabilityReaderTest {
     cases.put(shared(zoneName+" chosen calendar, whole local day",zoneName,dayStart,dayEnd,1,work,"busy",1,new JSONArray()
      .put(busy(dayStart+9*HOUR,dayStart+10*HOUR,false,false)).put(busy(dayStart+13*HOUR,dayStart+14*HOUR,false,true)).put(busy(dayStart+18*HOUR,dayStart+19*HOUR,false,false)).put(busy(dayStart+19*HOUR,dayStart+20*HOUR,false,false))));
     // A window covered only by an event marked free: the unrelated calendar's overlapping event is never read.
-    JSONArray freeHour=CalendarAvailabilityReader.read(provider,chosen(provider,1),iso(dayStart+11*HOUR),iso(dayStart+12*HOUR),zone);
+    JSONArray freeHour=SelectedCalendarReader.readAvailability(provider,chosen(provider,1),iso(dayStart+11*HOUR),iso(dayStart+12*HOUR),zone);
     rows(freeHour,row(dayStart+11*HOUR,dayStart+12*HOUR,false,"free"));
     cases.put(shared(zoneName+" hour covered by an event marked free",zoneName,dayStart+11*HOUR,dayStart+12*HOUR,1,freeHour,"free",1,new JSONArray()));
     // Choosing two calendars adds the second calendar's interval and nothing else.
-    rows(CalendarAvailabilityReader.read(provider,chosen(provider,1,2),iso(dayStart),iso(dayEnd),zone),
+    rows(SelectedCalendarReader.readAvailability(provider,chosen(provider,1,2),iso(dayStart),iso(dayEnd),zone),
      row(dayStart+9*HOUR,dayStart+10*HOUR,false,"busy"),row(dayStart+9*HOUR,dayStart+17*HOUR,false,"busy"),row(dayStart+11*HOUR,dayStart+12*HOUR,false,"free"),row(dayStart+13*HOUR,dayStart+14*HOUR,false,"tentative"),
      row(dayStart+18*HOUR,dayStart+19*HOUR,false,"busy"),row(dayStart+19*HOUR,dayStart+20*HOUR,false,"busy"));
     // A calendar shared at free/busy level is readable when chosen.
-    rows(CalendarAvailabilityReader.read(provider,chosen(provider,3),iso(dayStart),iso(dayEnd),zone),row(dayStart+20*HOUR,dayStart+21*HOUR,false,"busy"));
+    rows(SelectedCalendarReader.readAvailability(provider,chosen(provider,3),iso(dayStart),iso(dayEnd),zone),row(dayStart+20*HOUR,dayStart+21*HOUR,false,"busy"));
     // Touching intervals do not overlap: an event ending at the window start or starting at its end is not read.
-    rows(CalendarAvailabilityReader.read(provider,chosen(provider,1),iso(dayStart+10*HOUR),iso(dayStart+11*HOUR),zone));
-    rows(CalendarAvailabilityReader.read(provider,chosen(provider,1),iso(dayStart+9*HOUR+1800000),iso(dayStart+9*HOUR+1800001),zone),row(dayStart+9*HOUR,dayStart+10*HOUR,false,"busy"));
+    rows(SelectedCalendarReader.readAvailability(provider,chosen(provider,1),iso(dayStart+10*HOUR),iso(dayStart+11*HOUR),zone));
+    rows(SelectedCalendarReader.readAvailability(provider,chosen(provider,1),iso(dayStart+9*HOUR+1800000),iso(dayStart+9*HOUR+1800001),zone),row(dayStart+9*HOUR,dayStart+10*HOUR,false,"busy"));
     for(String[] bound:provider.instanceArguments)for(String id:bound)require(!id.equals("4"),"A calendar the owner did not choose is never bound");
 
     // All-day events are stored as UTC-midnight civil dates and block the owner's local date.
@@ -201,13 +204,13 @@ public final class CalendarAvailabilityReaderTest {
     days.event(1,"LATER",civil+2*DAY,civil+3*DAY,true,0,1,null,false);
     days.event(2,"PARTNER_TRIP",civil-DAY,civil+2*DAY,true,0,1,null,false);
     JSONObject holiday=row(civil,civil+DAY,true,"busy"),birthday=row(civil,civil+DAY,true,"free");
-    JSONArray firstHour=CalendarAvailabilityReader.read(days,chosen(days,1),iso(dayStart),iso(dayStart+HOUR),zone);
+    JSONArray firstHour=SelectedCalendarReader.readAvailability(days,chosen(days,1),iso(dayStart),iso(dayStart+HOUR),zone);
     rows(firstHour,holiday,birthday);
-    JSONArray lastHour=CalendarAvailabilityReader.read(days,chosen(days,1),iso(dayEnd-HOUR),iso(dayEnd),zone);
+    JSONArray lastHour=SelectedCalendarReader.readAvailability(days,chosen(days,1),iso(dayEnd-HOUR),iso(dayEnd),zone);
     rows(lastHour,holiday,birthday);
     // The local hours just outside the date are free, even where the UTC date still matches.
-    JSONArray before=CalendarAvailabilityReader.read(days,chosen(days,1),iso(dayStart-HOUR),iso(dayStart),zone);rows(before);
-    JSONArray after=CalendarAvailabilityReader.read(days,chosen(days,1),iso(dayEnd),iso(dayEnd+HOUR),zone);rows(after);
+    JSONArray before=SelectedCalendarReader.readAvailability(days,chosen(days,1),iso(dayStart-HOUR),iso(dayStart),zone);rows(before);
+    JSONArray after=SelectedCalendarReader.readAvailability(days,chosen(days,1),iso(dayEnd),iso(dayEnd+HOUR),zone);rows(after);
     cases.put(shared(zoneName+" all-day, first local hour",zoneName,dayStart,dayStart+HOUR,1,firstHour,"busy",1,new JSONArray().put(busy(dayStart,dayStart+HOUR,true,false))));
     cases.put(shared(zoneName+" all-day, last local hour",zoneName,dayEnd-HOUR,dayEnd,1,lastHour,"busy",1,new JSONArray().put(busy(dayEnd-HOUR,dayEnd,true,false))));
     cases.put(shared(zoneName+" all-day, hour before the date",zoneName,dayStart-HOUR,dayStart,1,before,"free",0,new JSONArray()));
@@ -225,7 +228,7 @@ public final class CalendarAvailabilityReaderTest {
    Provider provider=new Provider(directory);
    provider.calendar(1,"WORK",700);provider.calendar(2,"SHARED",100);provider.calendar(3,"HIDDEN",0);
    provider.event(1,"BUSY",dayStart+9*HOUR,dayStart+10*HOUR,false,0,1,null,false);
-   JSONArray sources=CalendarAvailabilityReader.sources(provider);
+   JSONArray sources=SelectedCalendarReader.availabilitySources(provider);
    same(2,sources.length(),"Readable calendars");
    for(int i=0;i<sources.length();i++){
     JSONObject source=sources.getJSONObject(i);same(4,source.length(),"Source fields "+source);same(Long.toString(i+1),source.getString("id"),"Source id");
@@ -234,73 +237,73 @@ public final class CalendarAvailabilityReaderTest {
    }
    // A read is bound to the revisions the owner reviewed.
    JSONArray reviewed=chosen(provider,1);
-   rows(CalendarAvailabilityReader.read(provider,reviewed,start,end,zone),row(dayStart+9*HOUR,dayStart+10*HOUR,false,"busy"));
+   rows(SelectedCalendarReader.readAvailability(provider,reviewed,start,end,zone),row(dayStart+9*HOUR,dayStart+10*HOUR,false,"busy"));
    provider.write("UPDATE calendars SET name='RENAMED' WHERE _id=1;");
    int readsBefore=provider.instanceUris.size();
-   rejects(CalendarAvailabilityReader.SourceChanged.class,()->CalendarAvailabilityReader.read(provider,reviewed,start,end,zone));
+   rejects(SelectedCalendarReader.SourceChanged.class,()->SelectedCalendarReader.readAvailability(provider,reviewed,start,end,zone));
    same(readsBefore,provider.instanceUris.size(),"A changed calendar is refused before any event is read");
    JSONArray current=chosen(provider,1);
    provider.afterInstances=()->sqlite(provider.database,"UPDATE calendars SET account_name='moved@account.example' WHERE _id=1;");
-   rejects(CalendarAvailabilityReader.SourceChanged.class,()->CalendarAvailabilityReader.read(provider,current,start,end,zone));
-   rejects(CalendarAvailabilityReader.SourceChanged.class,()->CalendarAvailabilityReader.read(provider,new JSONArray().put(new JSONObject().put("id","987654321").put("revision",current.getJSONObject(0).getString("revision"))),start,end,zone));
+   rejects(SelectedCalendarReader.SourceChanged.class,()->SelectedCalendarReader.readAvailability(provider,current,start,end,zone));
+   rejects(SelectedCalendarReader.SourceChanged.class,()->SelectedCalendarReader.readAvailability(provider,new JSONArray().put(new JSONObject().put("id","987654321").put("revision",current.getJSONObject(0).getString("revision"))),start,end,zone));
    // The revision of a calendar with no access cannot be chosen through a forged selection either:
    // it was never offered, and the renderer only sends offered ids (asserted in the renderer tests).
 
    // Malformed selections and windows are refused before any provider read.
    JSONArray valid=chosen(provider,1);JSONObject one=valid.getJSONObject(0);String revision=one.getString("revision");
    int before=provider.instanceUris.size();
-   rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,null,start,end,zone));
-   rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,new JSONArray(),start,end,zone));
-   rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,new JSONArray().put(one).put(one),start,end,zone));
+   rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,null,start,end,zone));
+   rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,new JSONArray(),start,end,zone));
+   rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,new JSONArray().put(one).put(one),start,end,zone));
    JSONArray seventeen=new JSONArray();for(int i=1;i<=17;i++)seventeen.put(new JSONObject().put("id",Integer.toString(i)).put("revision",revision));
-   rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,seventeen,start,end,zone));
+   rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,seventeen,start,end,zone));
    for(String id:new String[]{"0","01","-1","1 OR 1=1","1)","","abc"})
-    rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,new JSONArray().put(new JSONObject().put("id",id).put("revision",revision)),start,end,zone));
-   rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,new JSONArray().put(new JSONObject().put("id","1").put("revision",revision.toUpperCase())),start,end,zone));
-   rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,new JSONArray().put(new JSONObject().put("id","1").put("revision",revision).put("title","x")),start,end,zone));
-   rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,valid,start,iso(dayStart+7*DAY+1),zone));
-   rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,valid,end,start,zone));
-   rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,valid,start,start,zone));
-   rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,valid,"2026-10-13T04:00:00Z",end,zone));
-   rejects(IllegalArgumentException.class,()->CalendarAvailabilityReader.read(provider,valid,start,end,null));
-   rejects(Exception.class,()->CalendarAvailabilityReader.read(provider,valid,"yesterday",end,zone));
+    rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,new JSONArray().put(new JSONObject().put("id",id).put("revision",revision)),start,end,zone));
+   rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,new JSONArray().put(new JSONObject().put("id","1").put("revision",revision.toUpperCase())),start,end,zone));
+   rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,new JSONArray().put(new JSONObject().put("id","1").put("revision",revision).put("title","x")),start,end,zone));
+   rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,valid,start,iso(dayStart+7*DAY+1),zone));
+   rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,valid,end,start,zone));
+   rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,valid,start,start,zone));
+   rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,valid,"2026-10-13T04:00:00Z",end,zone));
+   rejects(IllegalArgumentException.class,()->SelectedCalendarReader.readAvailability(provider,valid,start,end,null));
+   rejects(Exception.class,()->SelectedCalendarReader.readAvailability(provider,valid,"yesterday",end,zone));
    same(before,provider.instanceUris.size(),"No provider read for a malformed request");
    // Exactly seven days is allowed.
-   CalendarAvailabilityReader.read(provider,valid,start,iso(dayStart+7*DAY),zone);
+   SelectedCalendarReader.readAvailability(provider,valid,start,iso(dayStart+7*DAY),zone);
 
    // A provider that returns a row from another calendar, or an inverted interval, fails the read.
    provider.hostileRows=new ArrayList<>();provider.hostileRows.add(new String[]{"2","integer",Long.toString(dayStart),"integer",Long.toString(dayStart+HOUR),"integer","0","integer","0","integer","1","integer","","null"});
-   rejects(IllegalStateException.class,()->CalendarAvailabilityReader.read(provider,valid,start,end,zone));
+   rejects(IllegalStateException.class,()->SelectedCalendarReader.readAvailability(provider,valid,start,end,zone));
    provider.hostileRows.set(0,new String[]{"1","integer",Long.toString(dayStart+HOUR),"integer",Long.toString(dayStart),"integer","0","integer","0","integer","1","integer","","null"});
-   rejects(IllegalStateException.class,()->CalendarAvailabilityReader.read(provider,valid,start,end,zone));
+   rejects(IllegalStateException.class,()->SelectedCalendarReader.readAvailability(provider,valid,start,end,zone));
    provider.hostileRows=null;
 
    // Bounds: 200 occupying rows are returned; one more fails the whole read. Skipped rows do not count.
    Provider full=new Provider(directory);full.calendar(1,"BUSY",700);
    full.write("WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<199) INSERT INTO instances SELECT 1,1000+i,'SECRET_MANY_TITLE','SECRET_DESCRIPTION','SECRET_LOCATION',"+dayStart+"+i*60000,"+dayStart+"+i*60000+60000,0,0,1,NULL,0 FROM n;"
     +"WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<49) INSERT INTO instances SELECT 1,2000+i,'SECRET_CANCELLED_TITLE','SECRET_DESCRIPTION','SECRET_LOCATION',"+dayStart+"+i*60000,"+dayStart+"+i*60000+60000,0,0,2,NULL,0 FROM n;");
-   same(CalendarAvailabilityReader.MAX_EVENTS,CalendarAvailabilityReader.read(full,chosen(full,1),start,end,zone).length(),"Rows at the bound");
+   same(SelectedCalendarReader.AVAILABILITY_EVENTS,SelectedCalendarReader.readAvailability(full,chosen(full,1),start,end,zone).length(),"Rows at the bound");
    full.event(1,"OVER",dayStart+12*HOUR,dayStart+13*HOUR,false,0,1,null,false);
-   rejects(CalendarAvailabilityReader.TooMany.class,()->CalendarAvailabilityReader.read(full,chosen(full,1),start,end,zone));
+   rejects(SelectedCalendarReader.TooMany.class,()->SelectedCalendarReader.readAvailability(full,chosen(full,1),start,end,zone));
    Provider crowded=new Provider(directory);
-   crowded.write("WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<"+CalendarAvailabilityReader.MAX_SOURCES+") INSERT INTO calendars SELECT i,'a@account.example','com.example','N','N',200,'o@owner.example' FROM n;");
-   same(CalendarAvailabilityReader.MAX_SOURCES,CalendarAvailabilityReader.sources(crowded).length(),"Sources at the bound");
+   crowded.write("WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<"+SelectedCalendarReader.AVAILABILITY_SOURCES+") INSERT INTO calendars SELECT i,'a@account.example','com.example','N','N',200,'o@owner.example' FROM n;");
+   same(SelectedCalendarReader.AVAILABILITY_SOURCES,SelectedCalendarReader.availabilitySources(crowded).length(),"Sources at the bound");
    crowded.calendar(1000,"EXTRA",200);
-   rejects(CalendarAvailabilityReader.TooMany.class,()->CalendarAvailabilityReader.sources(crowded));
+   rejects(SelectedCalendarReader.TooMany.class,()->SelectedCalendarReader.availabilitySources(crowded));
 
    // Time zones match by rules, so an alias of the phone's zone is the same zone.
-   require(CalendarAvailabilityReader.sameZone("Asia/Calcutta",ZoneId.of("Asia/Kolkata")),"Alias matches");
-   require(CalendarAvailabilityReader.sameZone("America/New_York",ZoneId.of("America/New_York")),"Same zone matches");
-   require(!CalendarAvailabilityReader.sameZone("Europe/London",ZoneId.of("Asia/Tokyo")),"Different zones differ");
-   require(!CalendarAvailabilityReader.sameZone("America/Phoenix",ZoneId.of("America/Denver")),"Same offset today, different rules");
-   require(!CalendarAvailabilityReader.sameZone("Not/AZone",ZoneId.of("UTC")),"Unknown zone");
-   require(!CalendarAvailabilityReader.sameZone(null,ZoneId.of("UTC")),"Missing zone");
+   require(CalendarZones.sameZone("Asia/Calcutta",ZoneId.of("Asia/Kolkata")),"Alias matches");
+   require(CalendarZones.sameZone("America/New_York",ZoneId.of("America/New_York")),"Same zone matches");
+   require(!CalendarZones.sameZone("Europe/London",ZoneId.of("Asia/Tokyo")),"Different zones differ");
+   require(!CalendarZones.sameZone("America/Phoenix",ZoneId.of("America/Denver")),"Same offset today, different rules");
+   require(!CalendarZones.sameZone("Not/AZone",ZoneId.of("UTC")),"Unknown zone");
+   require(!CalendarZones.sameZone(null,ZoneId.of("UTC")),"Missing zone");
 
    // Journal policy: the exact free/busy answer is retained at the contract's largest size (200
    // intervals, far over the journal's 8000-byte default), and nothing else is.
    JSONObject operation=new JSONObject().put("type","calendar_availability").put("start",start).put("end",end).put("timeZone","America/New_York");
    JSONArray intervals=new JSONArray();
-   for(int i=0;i<CalendarAvailabilityReader.MAX_EVENTS;i++)intervals.put(busy(dayStart+i*60000L,dayStart+i*60000L+60000L,i%2==0,i%3==0));
+   for(int i=0;i<SelectedCalendarReader.AVAILABILITY_EVENTS;i++)intervals.put(busy(dayStart+i*60000L,dayStart+i*60000L+60000L,i%2==0,i%3==0));
    JSONObject answer=new JSONObject().put("version",1).put("kind","calendar_availability").put("window",new JSONObject().put("start",start).put("end",end).put("timeZone","America/New_York"))
     .put("calendarCount",16).put("status","busy").put("busy",intervals).put("transparentIgnored",200);
    JSONObject retained=new JSONObject().put("operationId","operation-1").put("foregroundResult",answer);

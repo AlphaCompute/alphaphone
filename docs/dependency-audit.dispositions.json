@@ -35,47 +35,10 @@
     }
   ],
   "resident": {
-    "upstreamCommit": "13c98575987a121decc45b161b0c8a4ee698554e",
+    "upstreamCommit": "bc71e21f3b5020a2d11719e6e905c0347a4d802f",
     "description": "Reviewed dispositions for the resident snapshot (docs/dependency-audit.snapshot.json, key \"resident\") at this upstream commit. \"pendingUpstreamFixes\" are shipped advisories deliberately left without an exception: the resident audit fails on them until upstream fixes them. test/dependency-audit.test.mjs fails on any other undispositioned resident advisory.",
-    "shippedSetEvidence": "Payload staged at upstream 13c98575987a121decc45b161b0c8a4ee698554e on 2026-10-12 on a development machine (npm run agent:prepare, agent:build-workflow-worker, agent:stage-android); generate-licenses --packaged-runtime listed 550 bundled npm package versions; node scripts/dependency-audit.mjs --resident --notices on them: 2 critical, 2 moderate, 1 low (handlebars 4.7.9 x3, uuid 8.3.2/9.0.1, @ai-sdk/provider-utils 4.0.26). Source and registry evidence plus a staged payload; not an APK build or device run.",
-    "pendingUpstreamFixes": [
-      {
-        "advisory": "GHSA-8r5x-fm3f-whwj",
-        "severity": "critical",
-        "package": "handlebars",
-        "versions": [
-          "4.7.9"
-        ],
-        "ships": true,
-        "reachability": "Ships in the agent bundle (plugin-assistant prompt templates). Not reachable as shipped: plugin-assistant renders templates with its own AST interpreter (src/text/template-engine.ts, Handlebars.parse only, no compile/precompile), template sources are code-authored prompt templates, and user or model text enters only as values. The interpreter copies the own-property lookup pattern that GHSA-p8wg-vrv2-v86f bypasses, so it is hardened in the same upstream change.",
-        "plan": "U-1: upstream elizaOS bumps handlebars to 4.7.10 (root override or bun update; every declared range except the lerna and @verdaccio/hooks exact pins allows it) and denies \"constructor\" lookups on prototype objects in plugin-assistant template-engine.ts; alphaphone takes the new pin before the pilot.",
-        "noExceptionBecause": "Shipped critical (or same-fix moderate) advisory: kept undispositioned so the resident audit stays red until the upstream fix lands."
-      },
-      {
-        "advisory": "GHSA-p8wg-vrv2-v86f",
-        "severity": "critical",
-        "package": "handlebars",
-        "versions": [
-          "4.7.9"
-        ],
-        "ships": true,
-        "reachability": "Ships in the agent bundle (plugin-assistant prompt templates). Not reachable as shipped: plugin-assistant renders templates with its own AST interpreter (src/text/template-engine.ts, Handlebars.parse only, no compile/precompile), template sources are code-authored prompt templates, and user or model text enters only as values. The interpreter copies the own-property lookup pattern that GHSA-p8wg-vrv2-v86f bypasses, so it is hardened in the same upstream change.",
-        "plan": "U-1: upstream elizaOS bumps handlebars to 4.7.10 (root override or bun update; every declared range except the lerna and @verdaccio/hooks exact pins allows it) and denies \"constructor\" lookups on prototype objects in plugin-assistant template-engine.ts; alphaphone takes the new pin before the pilot.",
-        "noExceptionBecause": "Shipped critical (or same-fix moderate) advisory: kept undispositioned so the resident audit stays red until the upstream fix lands."
-      },
-      {
-        "advisory": "GHSA-xw65-4hp5-5hc7",
-        "severity": "moderate",
-        "package": "handlebars",
-        "versions": [
-          "4.7.9"
-        ],
-        "ships": true,
-        "reachability": "Ships in the agent bundle (plugin-assistant). Not reachable: needs precompile() output embedded in an HTML script element; nothing in the bundle calls precompile.",
-        "plan": "U-1: upstream elizaOS bumps handlebars to 4.7.10 (root override or bun update; every declared range except the lerna and @verdaccio/hooks exact pins allows it) and denies \"constructor\" lookups on prototype objects in plugin-assistant template-engine.ts; alphaphone takes the new pin before the pilot.",
-        "noExceptionBecause": "Shipped critical (or same-fix moderate) advisory: kept undispositioned so the resident audit stays red until the upstream fix lands."
-      }
-    ],
+    "shippedSetEvidence": "Payload staged at upstream 13c98575987a121decc45b161b0c8a4ee698554e on 2026-10-12 on a development machine (npm run agent:prepare, agent:build-workflow-worker, agent:stage-android); generate-licenses --packaged-runtime listed 550 bundled npm package versions; node scripts/dependency-audit.mjs --resident --notices on them: 2 critical, 2 moderate, 1 low (handlebars 4.7.9 x3, uuid 8.3.2/9.0.1, @ai-sdk/provider-utils 4.0.26). At pin bc71e21f3b50 (2026-10-13, after elizaOS/eliza#36124): vendor/eliza/bun.lock resolves only handlebars@4.7.10 and no @ai-sdk/provider-utils@4.0.26 (@ai-sdk/openai 3.0.118), and node scripts/dependency-audit.mjs --resident --write reports neither the three handlebars advisories nor GHSA-866g-f22w-33x8; every remaining finding resolves to the same package versions as at 13c98575987a, so the earlier shipped-set classification is carried forward. The payload has not been re-staged at bc71e21f3b50, so the packaged-notices audit (A-4) at this pin is still to run. Source and registry evidence plus an earlier staged payload; not an APK build or device run.",
+    "pendingUpstreamFixes": [],
     "exceptions": [
       {
         "advisory": "GHSA-238p-pmpm-9mq7",
@@ -609,23 +572,6 @@
         "reviewedBy": "MVP vulnerability review 2026-10-12 (docs/security/vulnerability-review-2026-10-12.md): npm bulk advisories at the pin, GitHub advisory ranges, bun.lock dependency chains, and the packaged-runtime notices of a payload staged at the pin",
         "reviewedOn": "2026-10-12",
         "reviewBy": "2027-01-10"
-      },
-      {
-        "advisory": "GHSA-866g-f22w-33x8",
-        "severity": "low",
-        "packages": [
-          "@ai-sdk/provider-utils"
-        ],
-        "versions": [
-          "@ai-sdk/provider-utils@4.0.26"
-        ],
-        "ships": true,
-        "reachability": "Ships: @ai-sdk/provider-utils 4.0.26 is bundled in the agent through @ai-sdk/openai 3.0.58, which the upstream root override pins. Reachable only from the HTTP endpoint the OpenAI-compatible provider calls: the JSON and error response handlers read the body with no size limit, so a hostile or compromised endpoint could exhaust agent memory (availability only; no data exposure). 4.0.54 and 5.0.47 in the same payload are fixed.",
-        "justification": "Low severity and needs a malicious TLS endpoint. The fix is an upstream override change (@ai-sdk/openai >=3.0.77 depends on provider-utils 4.0.33); alphaphone cannot change vendor/eliza. Scheduled before the pilot as plan item U-2, so this exception is short.",
-        "removeWhen": "Upstream moves the @ai-sdk/openai override to >=3.0.77 (provider-utils >=4.0.33) and alphaphone takes that pin.",
-        "reviewedBy": "MVP vulnerability review 2026-10-12 (docs/security/vulnerability-review-2026-10-12.md): npm bulk advisories at the pin, GitHub advisory ranges, bun.lock dependency chains, and the packaged-runtime notices of a payload staged at the pin",
-        "reviewedOn": "2026-10-12",
-        "reviewBy": "2026-11-30"
       },
       {
         "advisory": "GHSA-86w9-cpqp-85rv",

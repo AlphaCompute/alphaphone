@@ -15,7 +15,11 @@ entries are ordered by how much they unblock. Options are quoted from
 [decisions](decisions.md#pending-owner-decisions); listing an option is not a
 recommendation, and until a choice is recorded there the current behaviour stays.
 
-State of evidence today, at the current pin `13c9857598`: source and browser tests,
+The pin moved to `bc71e21f3b` on 2026-10-13 (branch `claude/mvp-final`); at that pin there are
+only source and browser tests and Gradle compilation, and the reviewed embedding host must be
+requalified for its new llama.cpp engine before a distribution build
+(`android/embedding-host/qualified-host.json`, item 1 below). State of evidence at the previous
+pin `13c9857598`: source and browser tests,
 developer APK builds that carry no resident runtime and are not distributable, and one
 partial emulator campaign on such builds (round 8, below). No distribution APK build,
 `resident-android.yml` or `android-emulator.yml` run, real-account use or device result exists

@@ -60,14 +60,16 @@ the product on a phone.
 | A | 31 | 18 | 0 | 1 | 2 | 21 | 86% | 6 | 4 | 0 |
 | B | 28 | 23 | 0 | 0 | 0 | 23 | 100% | 3 | 2 | 0 |
 | C | 15 | 9 | 0 | 0 | 1 | 10 | 90% | 2 | 3 | 0 |
-| D | 23 | 17 | 0 | 0 | 1 | 18 | 94% | 3 | 1 | 1 |
+| D | 23 | 17 | 0 | 1 | 1 | 19 | 89% | 3 | 1 | 0 |
 | E | 27 | 13 | 0 | 10 | 0 | 23 | 57% | 3 | 1 | 0 |
 | F | 22 | 18 | 0 | 0 | 1 | 19 | 95% | 3 | 0 | 0 |
 | J01 | 10 | 9 | 0 | 0 | 0 | 9 | 100% | 0 | 1 | 0 |
 | J03 | 11 | 9 | 0 | 0 | 0 | 9 | 100% | 2 | 0 | 0 |
 | J04 | 10 | 8 | 0 | 0 | 0 | 8 | 100% | 1 | 1 | 0 |
 | J05 | 9 | 7 | 0 | 1 | 0 | 8 | 88% | 1 | 0 | 0 |
-| All | 186 | 131 | 0 | 12 | 5 | 148 | 89% | 24 | 13 | 1 |
+| All | 186 | 131 | 0 | 13 | 5 | 149 | 88% | 24 | 13 | 0 |
+
+**Pin move to `bc71e21f3b` (2026-10-13).** D-23 moved from UPSTREAM to EMULATOR: the pinned agent now registers the dossier route, so no step waits for an elizaOS change. Nothing else in the table changed; no step ran at the new pin.
 
 **MVP completion integration (2026-10-12).** The table above was recomputed from the per-loop tables, which `test/core-loop-audit-consistency.test.mjs` now checks. A-29 and E-14 moved back to EMULATOR (A-29 ran only on developer APKs; E-14's runs never used the integrated vault), D-21, D-22 and E-22 to E-27 were added, and D-23 was added as the first UPSTREAM step (the pinned agent has no dossier route). The B and J01 Count lines, which still read 22 of 23 and 7 of 9 after round 8, now match their tables. The only open EMULATOR step of the pilot journeys (MVP-49) is J05-2.
 
@@ -128,8 +130,8 @@ run. The round 4 hand-offs on `main` closed B-28, F-20, J04-7 and J04-10 (see "R
 and merge"). No SOFTWARE row remains; that is a statement about this table's steps, not about
 the product: 35 closable steps still need an emulator or CI run that has not been made.
 
-UPSTREAM was zero until the MVP completion integration added D-23 (the pinned agent registers
-no dossier route). Round 4 history: UPSTREAM was zero because this audit established no step that certainly needs an elizaOS
+UPSTREAM was zero until the MVP completion integration added D-23 (the pinned agent registered
+no dossier route), and is zero again since the pin move to `bc71e21f3b` registered it. Round 4 history: UPSTREAM was zero because this audit established no step that certainly needs an elizaOS
 change. Two failures could turn out to be upstream once someone runs them: the on-device
 speech functional failure on arm64 (B-7) and the integrated password manager's native
 flow, which current status records as failing before save/unlock (E-14).
@@ -292,10 +294,10 @@ Journey spec: `test/browser/journey-d-digests.spec.ts` (passed in this audit).
 | D-19 | Morning and evening flows run on the resident runtime with real model output on a phone | None. | HUMAN |
 | D-20 | Delivery under battery saver, Doze and lock | None. | DEVICE |
 | D-21 | Phone sources (calendars on the phone) feed a digest only after consent, within the bounds, and can be revoked and renewed | `digest-native-sources.production.spec.ts` (MVP completion integration, flag-off bundle, stubbed bridge): the 16-calendar cap and the 1–168 h expiry bounds, the consent summary text, confirm and revoke, renewal arm and clear, the renew tap rebinding the bound loop, and no evening controls without the agent's advertisement. `test/native-digest-sources.test.mjs` (host JVM). No emulator run of the native source path. | EVIDENCED |
-| D-22 | A dossier request is offered only when the agent advertises it, and Cancel dispatches nothing | `digest-native-sources.production.spec.ts` (Cancel dispatches nothing); `test/digest-route-registration.test.mjs` reads the pinned upstream route table and requires the button to be gated on `hostedDossierProtocol` 1 with native sources. Class S. | EVIDENCED |
-| D-23 | A dossier runs on the pinned agent | The pinned upstream registers no `POST /hosted/dossier` route (`test/digest-route-registration.test.mjs`), so no build of this repository can run one. | UPSTREAM |
+| D-22 | A dossier request is offered only with native phone sources on the resident agent, and Cancel dispatches nothing | `digest-native-sources.production.spec.ts` (Cancel dispatches nothing); `test/digest-route-registration.test.mjs` reads the pinned upstream route table and requires `POST /api/workflow/hosted/dossier` to be registered (elizaOS/eliza#35906, at the pin `bc71e21f3b`), and `test/digest-capabilities.test.mjs` requires the button to be gated on native sources on the resident agent, which is staged from that pin. Class S. | EVIDENCED |
+| D-23 | A dossier runs on the pinned agent | The pin `bc71e21f3b` registers `POST /api/workflow/hosted/dossier` with the handler's 2000-byte body cap (elizaOS/eliza#35906; `test/digest-route-registration.test.mjs`, class S). No dossier has run: that needs the resident agent on an emulator with native phone sources and an inference route. Until the pin move this step was UPSTREAM. | EMULATOR |
 
-Count: 17 evidenced, 0 SOFTWARE, 0 EMULATOR, 1 CI; separately 3 HUMAN, 1 DEVICE, 1 UPSTREAM. **17 of 18 = 94%.** (MVP completion integration: added D-21 and D-22 (evidenced, class S) and D-23 (UPSTREAM). Two counted rows are not at the current pin: D-8 last ran at `40dbe96bd1` (host runtime) and D-14 at `6dcdde34` (pin `40dbe96bd1`). Counted only at the current pin, D is 15 of 18 = 83%. Round 5: 14 of 16; round 7 moved D-14 on a class-E run.)
+Count: 17 evidenced, 0 SOFTWARE, 1 EMULATOR, 1 CI; separately 3 HUMAN, 1 DEVICE, 0 UPSTREAM. **17 of 19 = 89%.** (Pin move to `bc71e21f3b`: D-23 moved from UPSTREAM to EMULATOR when the dossier route was registered upstream. MVP completion integration: added D-21 and D-22 (evidenced, class S) and D-23 (UPSTREAM). Two counted rows are not at the current pin: D-8 last ran at `40dbe96bd1` (host runtime) and D-14 at `6dcdde34` (pin `40dbe96bd1`). Counted only at the current pin, D is 15 of 18 = 83%. Round 5: 14 of 16; round 7 moved D-14 on a class-E run.)
 
 ### E. Browser and credentials
 
@@ -676,11 +678,20 @@ EVIDENCED. Neither is counted as an UPSTREAM step and neither was made:
   NEEDS upstream: add the account the calendar belongs to and a line stating that no
   attendees are added or changed and no invitations are sent (the plugin already refuses
   events with attendee data or an all-day flag in `CalendarEventGuard.direct`).
+  Done upstream in elizaOS/eliza#35913, at the pin `bc71e21f3b`: the review reads "Calendar:
+  On this phone", "Account: Alpha Phone (this phone only)" and, for a change, "No attendees are
+  invited, changed or notified." `CalendarAgentCrudInstrumentedTest` checks those lines before
+  it presses Create or Update (compiled, not run).
 - **F-12, removed messages between pages.** The managed Gmail search response
   (`packages/cloud/shared/.../agent-google-connector`, route `gmail/search`) returns
   `messages`, `syncedAt` and `nextPageToken` only. NEEDS upstream: a mailbox revision
   (Gmail `historyId`) in each page, or a refusal of a cursor cut from an older revision, so
   the client can detect a row removed between pages instead of silently skipping one.
+  Done upstream in elizaOS/eliza#35908 (`mailboxHistoryId` on each page), at the pin
+  `bc71e21f3b`: the Inbox keeps the first page's revision and treats a later page with another
+  one as a changed list (Load newer mail), even when no row repeats
+  (`scripts/test-inbox-cloud-flow.mjs`, class S). It needs a deployed Eliza Cloud that includes
+  the change; an older server sends no revision and the repeat check alone applies.
 
 ## Changes made in this audit
 

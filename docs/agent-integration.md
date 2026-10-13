@@ -237,9 +237,40 @@ failure and cleanup, and never weaken seccomp or SELinux to obtain a pass.
   unreferenced, the reference and its grant are released, and a note saved after that has
   no link; this is the limit.
 
+## Upstream changes in the 13c9857598 to bc71e21f3b move
+
+On 2026-10-13 (branch `claude/mvp-final`, not pushed) the pin moved from `13c9857598` to
+`bc71e21f3b`, the elizaOS `develop` head at the time, which `scripts/ci/upstream-reachability.json`
+records as identical to `develop`. The range holds 1051 commits (879 non-merge,
+`git -C vendor/eliza log --no-merges 13c9857598..bc71e21f3b`), so this section lists the eleven
+Alpha pull requests it was taken for and every other change to code that Alpha compiles from the
+pin (the Gradle modules in `android/settings.gradle`, the staged native classes and the copied
+client features). The rest reaches Alpha only through the resident runtime source that
+`npm run agent:prepare` stages, with no Alpha-specific test. Every result is class S or a Gradle
+compilation; nothing here ran on an emulator or a device.
+
+| Upstream change | What Alpha does with it | Test |
+| --- | --- | --- |
+| #35906 register `POST /api/workflow/hosted/dossier` | The resident agent registers the dossier route; the renderer offers the dossier with native phone sources on the resident agent (`hosted-digest-ui.tsx`), with the request body unchanged and capped at 2000 bytes by the dispatcher and the handler | `test/digest-route-registration.test.mjs`, `test/digest-capabilities.test.mjs` |
+| #35907 `clientMessageId` on history user rows | Stop's single reconciliation read matches the stopped turn by the `clientMessageId` it was sent with; the text and time match is kept only when no row carries an id (older agents, shared-tier Cloud) (`stopped-reply-match.ts`, `connection-ui.tsx`) | `test/stopped-reply-match.test.mjs`, `scripts/test-connection-history.mjs` |
+| #35908 Gmail `mailboxHistoryId` per search page | `gmailSearch` parses it; the Inbox keeps the first page's value and treats a later page with another as a changed list (Load newer mail), even when no row repeats. Needs the deployed Eliza Cloud to include the change | `scripts/test-cloud-protocol.mjs`, `scripts/test-inbox-cloud-flow.mjs` |
+| #35909 `SystemLauncherApps` by component and profile | Replaces `LauncherLibrary.java` in `DeviceAppsPlugin` (list, icon, resolve, launch intent, change watch); Alpha keeps its `failed` code and a package-only refusal helper because `SystemLauncherApps.explain` is package-private. Upstream sorts by label; the renderer sorts itself | `LauncherAppsInstrumentedTest` (compiled, not run) |
+| #35910 retained limit for JSON slots | `AlphaCredentialStore` passes `retainedLimit` (32 MiB for `notes-trash:v1:device`, else the slot limit), lowers the Trash cap to the 30 MiB policy limit and reports `CapacityException` as storage-full on every write path | `NotesStorageDurabilityInstrumentedTest` (compiled, not run) |
+| #35911 free/busy read of selected calendars | `CalendarAvailabilityReader.java` deleted; `AlphaCalendarPlugin` calls `SelectedCalendarReader.availabilitySources` and `readAvailability`; the zone check moved to `CalendarZones.java`; the 200-interval journal bound stays Alpha's | `test/calendar-availability-reader.test.mjs` (the upstream reader on the JVM) |
+| #35912 `creationId` on events the host created | Note links for device-calendar events are keyed by the `creationId` Alpha saves with, not the reusable row id; events from the Android Calendar hand-off are not linked and say so | `scripts/test-calendar-crud-review.mjs`, `journey-j04-android.production.spec.ts` |
+| #35913 Calendar review names the account and attendees | Inherited by `AlphaCalendarPlugin`; the review reads "Calendar: On this phone" and "Account: Alpha Phone (this phone only)" | `CalendarAgentCrudInstrumentedTest` checks the text (compiled, not run) |
+| #36123 no reply, transcript or image text in bionic inference logs | Staged in the resident runtime source | None in this repository |
+| #36124 handlebars 4.7.10, `@ai-sdk/openai` 3.0.118 | Resident dependency audit: the three handlebars advisories and GHSA-866g-f22w-33x8 are gone; their pending fix and exception were removed (`docs/dependency-audit.dispositions.json`) | `node scripts/dependency-audit.mjs --resident`, `test/dependency-audit.test.mjs` |
+| #36126 llama.cpp at elizaOS/llama.cpp `7efee0037524` (#58: CVE-2026-107183, and CVE-2026-52132 for the `/rerank` `top_n` bound) | The voice host record names the new pin and engine commit (it holds no qualified binaries). The reviewed ARM64 embedding host was built from the earlier engine, so `android/embedding-host/qualified-host.json` is marked for requalification and distribution builds refuse it; a candidate built at the new engine is recorded there, unreviewed | `test/embedding-host-admission.test.mjs`, `test/voice-host-record.test.mjs` |
+| `87fd32888d` and follow-ups: protected native password editor (`openEditor`) | Not used: Alpha's form calls `save`. The development vault implements `openEditor` as unavailable, like the web plugin | `npm run typecheck` |
+| `a7056c4adc` versioned device-unlocked custody migration for passwords and secure store | Consumed through the Gradle modules; the migration runs in upstream code on existing vaults | None in this repository; an installed-upgrade run is needed (class E) |
+| `eaafb8b7b0`, `4e2b5834e4`, `5820a185bf` secure-store task data key custody and Cloud-owner activation binding | Consumed through the Gradle module; not called by Alpha | Gradle compilation |
+| `d87a58d36e` on-device Kokoro voice library and local transcription in `packages/app` | Changes the native build input `stage-elizavoice-lib.ts`, which is part of the embedding host requalification above | `test/embedding-host-admission.test.mjs` |
+| `a90c52d8dc`, `c1f9a60373`, `c7a764266d`, `514757be39`, `f612e8c48e`, `ad02f1e2ae` in `plugins/plugin-workflow` | Staged in the resident runtime | None in this repository |
+
 ## Upstream commits in the last pin move
 
-The pin moved from `40dbe96bd1` to `13c9857598` in round 9. These are the 16 non-merge commits
+The pin moved from `40dbe96bd1` to `13c9857598` in round 9 (the move before `bc71e21f3b`). These are the 16 non-merge commits
 in that range (`git -C vendor/eliza log --no-merges 40dbe96bd1..13c9857598`, read-only), with
 what Alpha does with each. "Consumed" means Alpha's build includes the changed file and a
 product path runs it; "staged" means it is in the resident runtime source that

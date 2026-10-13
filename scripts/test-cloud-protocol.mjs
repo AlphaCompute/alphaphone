@@ -64,7 +64,7 @@ const server = http.createServer(async (req, res) => {
         if (url.pathname.endsWith('/search')) {
           assert.ok(['in:inbox', 'in:sent'].includes(url.searchParams.get('query'))); assert.ok(['25', '50'].includes(url.searchParams.get('maxResults')));
           const pageToken = url.searchParams.get('pageToken');
-          data = { messages: [mail], syncedAt: '2026-09-29T12:00:00Z', ...(mode === 'paged' ? { nextPageToken: pageToken ? null : 'opaque+/token=' } : mode === 'repeat-token' ? { nextPageToken: pageToken } : {}) };
+          data = { messages: [mail], syncedAt: '2026-09-29T12:00:00Z', ...(mode === 'paged' ? { nextPageToken: pageToken ? null : 'opaque+/token=' } : mode === 'repeat-token' ? { nextPageToken: pageToken } : {}), ...(mode === 'revision' ? { mailboxHistoryId: '18446744073709551615' } : mode === 'bad-revision' ? { mailboxHistoryId: 12345 } : {}) };
         }
         else if (url.pathname.endsWith('/inbox-v1/capabilities')) data = { version: 1, from: 'owner@example.invalid', threads: true, send: false, providerDrafts: false, mailboxMutations: true, attachments: true, providerExactlyOnce: false, atomicDraftReplacement: false, ...(mode === 'read-state' ? { readState: true } : mode === 'bad-read-state' ? { readState: 'yes' } : {}) };
         else { assert.equal(url.searchParams.get('messageId'), mail.externalId); data = { message: mail, bodyText: '<script>plain untrusted email text</script>' }; }
@@ -126,6 +126,10 @@ try {
   assert.equal((await client.gmailSearch(grant, 'in:sent', signal(), 25, first.nextPageToken)).nextPageToken, null, 'opaque cursor is sent back exactly');
   mode = 'repeat-token'; await assert.rejects(client.gmailSearch(grant, 'in:inbox', signal(), 25, 'same'), error => error.code === 'invalid-response', 'a repeated cursor cannot loop');
   await assert.rejects(client.gmailSearch(grant, 'in:inbox', signal(), 25, ''), TypeError);
+  // Mailbox revision (elizaOS/eliza#35908): an optional decimal string; absent from older servers.
+  mode = 'ok'; assert.equal('mailboxHistoryId' in await client.gmailSearch(grant, 'in:inbox', signal()), false, 'older servers send no revision');
+  mode = 'revision'; assert.equal((await client.gmailSearch(grant, 'in:inbox', signal())).mailboxHistoryId, '18446744073709551615');
+  mode = 'bad-revision'; await assert.rejects(client.gmailSearch(grant, 'in:inbox', signal()), error => error.code === 'invalid-response', 'a malformed revision is refused');
   mode = 'ok'; assert.equal((await client.gmailInboxCapabilities(grant, signal())).readState, false, 'older servers do not advertise read state');
   mode = 'read-state'; assert.equal((await client.gmailInboxCapabilities(grant, signal())).readState, true);
   mode = 'bad-read-state'; await assert.rejects(client.gmailInboxCapabilities(grant, signal()), error => error.code === 'invalid-response');

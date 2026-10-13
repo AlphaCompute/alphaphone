@@ -103,33 +103,19 @@
   ],
   "resident": {
     "description": "Advisories for the resident runtime's npm packages at the pinned upstream commit, from the npm bulk advisory endpoint. Regenerate with: node scripts/dependency-audit.mjs --resident --write. Dispositions live in docs/dependency-audit.dispositions.json under \"resident\".",
-    "upstreamCommit": "13c98575987a121decc45b161b0c8a4ee698554e",
+    "upstreamCommit": "bc71e21f3b5020a2d11719e6e905c0347a4d802f",
     "input": "vendor/eliza/bun.lock",
-    "auditedOn": "2026-10-12",
-    "inputSha256": "9a0085f80adb7187259aeec871143cdf25e1e66ee5d46399d7cf01e8204dd471",
-    "packages": 3689,
+    "auditedOn": "2026-10-13",
+    "inputSha256": "a0cd9a6bdfc8cb1ab965488afe94ddaba1c79b7498491fc9e4a4c8c9827dcebe",
+    "packages": 3687,
     "counts": {
       "info": 0,
-      "low": 15,
-      "moderate": 43,
+      "low": 14,
+      "moderate": 42,
       "high": 42,
-      "critical": 3
+      "critical": 1
     },
     "findings": [
-      {
-        "package": "@ai-sdk/provider-utils",
-        "versions": [
-          "4.0.26"
-        ],
-        "severity": "low",
-        "advisory": {
-          "id": "GHSA-866g-f22w-33x8",
-          "severity": "low",
-          "vulnerableRange": ">=4.0.0-beta.10 <4.0.33",
-          "title": "@ai-sdk/provider-utils has an Uncontrolled Resource Consumption issue",
-          "url": "https://github.com/advisories/GHSA-866g-f22w-33x8"
-        }
-      },
       {
         "package": "@fastify/busboy",
         "versions": [
@@ -674,48 +660,6 @@
           "vulnerableRange": ">=13.0.0 <21.3.1",
           "title": "file-type affected by infinite loop in ASF parser on malformed input with zero-size sub-header",
           "url": "https://github.com/advisories/GHSA-5v7r-6r5c-r473"
-        }
-      },
-      {
-        "package": "handlebars",
-        "versions": [
-          "4.7.9"
-        ],
-        "severity": "critical",
-        "advisory": {
-          "id": "GHSA-8r5x-fm3f-whwj",
-          "severity": "critical",
-          "vulnerableRange": ">=4.0.0 <=4.7.9",
-          "title": "Handlebars: JavaScript Injection via AST Type Confusion in compile (bypass of CVE-2026-33937)",
-          "url": "https://github.com/advisories/GHSA-8r5x-fm3f-whwj"
-        }
-      },
-      {
-        "package": "handlebars",
-        "versions": [
-          "4.7.9"
-        ],
-        "severity": "critical",
-        "advisory": {
-          "id": "GHSA-p8wg-vrv2-v86f",
-          "severity": "critical",
-          "vulnerableRange": ">=4.0.0 <=4.7.9",
-          "title": "Handlebars: JavaScript Injection via Own Property Check Bypass",
-          "url": "https://github.com/advisories/GHSA-p8wg-vrv2-v86f"
-        }
-      },
-      {
-        "package": "handlebars",
-        "versions": [
-          "4.7.9"
-        ],
-        "severity": "moderate",
-        "advisory": {
-          "id": "GHSA-xw65-4hp5-5hc7",
-          "severity": "moderate",
-          "vulnerableRange": ">=4.0.0 <=4.7.9",
-          "title": "Handlebars: JavaScript Injection via Unsafe Inline Embedding of Precompiled Templates",
-          "url": "https://github.com/advisories/GHSA-xw65-4hp5-5hc7"
         }
       },
       {

@@ -8,7 +8,7 @@
     "deferred": "Out of the MVP by recorded policy.",
     "blocked": "Cannot progress without an external decision, resource or artifact."
   },
-  "note": "Status is software state, not acceptance. Evidence lists source and test paths that implement or check the requirement; they are not passing results. Each gate names the next evidence class required. Refreshed 2026-10-12 against upstream pin 13c9857598 for the MVP completion integration (branch claude/mvp-completion; docs/mvp-audit-2026-10-11.md, Implementation results). Every entry was re-read. At 13c9857598 there are source and browser test results (class S), developer APK builds without the resident runtime (B, not distributable) and one partial emulator campaign on such builds at 2961bd9e/9a1ca161 (class E, docs/verification.md). No distribution APK build, AOSP image, real integration or device result exists. Earlier refreshes: 2026-10-10 at pin 40dbe96bd1 and the round 9 integration at 13c9857598.",
+  "note": "Status is software state, not acceptance. Evidence lists source and test paths that implement or check the requirement; they are not passing results. Each gate names the next evidence class required. Refreshed 2026-10-13 against upstream pin bc71e21f3b for the pin move on branch claude/mvp-final (docs/agent-integration.md, Upstream changes in the 13c9857598 to bc71e21f3b move): only AP-01 and AP-02 changed; nothing has run on an emulator or a device at bc71e21f3b. The previous refresh, 2026-10-12 against upstream pin 13c9857598 for the MVP completion integration (branch claude/mvp-completion; docs/mvp-audit-2026-10-11.md, Implementation results), re-read every entry. At 13c9857598 there are source and browser test results (class S), developer APK builds without the resident runtime (B, not distributable) and one partial emulator campaign on such builds at 2961bd9e/9a1ca161 (class E, docs/verification.md). No distribution APK build, real integration or device result is recorded at either pin. The owner has built an AOSP image for a Pixel 10a; no boot or acceptance result from it is recorded in these documents. Earlier refreshes: 2026-10-10 at pin 40dbe96bd1 and the round 9 integration at 13c9857598.",
   "requirements": [
     {
       "id": "AP-01",
@@ -19,7 +19,7 @@
         "Home and launcher",
         "Design and accessibility"
       ],
-      "gate": "E: LauncherLibrary and Rotation at the current pin, and LauncherHome and SettingsRoles again on a distribution launcher APK; then D on the selected phone",
+      "gate": "E: LauncherApps and Rotation at the current pin, and LauncherHome and SettingsRoles again on a distribution launcher APK; then D on the selected phone",
       "evidence": [
         "apps/app/src/prototype/template.html",
         "apps/app/src/prototype/mvp-features.ts",
@@ -32,11 +32,12 @@
         "test/browser/home-native-launcher.spec.ts",
         "test/browser/home-landscape.spec.ts",
         "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LauncherHomeInstrumentedTest.java",
-        "android/app/src/main/java/ai/elizaresearch/alphaphone/LauncherLibrary.java",
+        "android/app/src/main/java/ai/elizaresearch/alphaphone/DeviceAppsPlugin.java",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LauncherAppsInstrumentedTest.java",
         "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/SettingsRolesInstrumentedTest.java",
         "test/product-identity.test.mjs"
       ],
-      "remaining": "The All-apps drawer, search and landscape Home exist; the drawer launches the exact component (package, activity and user) through LauncherLibrary.java. LauncherHome and SettingsRoles passed in the runner's --home-role phase on the launcher flavor, class E on developer APKs with an unpackaged resident runtime (not distributable), one API 36 arm64 SDK emulator, at 2961bd9e and 9a1ca161 (pin 13c9857598); that is not B (distributable), I or D evidence. LauncherLibraryInstrumentedTest has no recorded run (MVP-53). RotationInstrumentedTest passed at 73b973a5 (pin 352d7a08) and 6dcdde34 (pin 40dbe96bd1) and was not run at 13c9857598. At 200% text the Home scroller now ends above the composer (test/browser/home-compact-scroll.spec.ts, browser build); the Accessibility class that failed on that step in round 8 has not been rerun. Package and storage identity are checked by test/product-identity.test.mjs."
+      "remaining": "The All-apps drawer, search and landscape Home exist; the drawer launches the exact component (package, activity and user) through upstream SystemLauncherApps (elizaOS/eliza#35909), which replaced LauncherLibrary.java at the pin bc71e21f3b. LauncherHome and SettingsRoles passed in the runner's --home-role phase on the launcher flavor, class E on developer APKs with an unpackaged resident runtime (not distributable), one API 36 arm64 SDK emulator, at 2961bd9e and 9a1ca161 (pin 13c9857598); that is not B (distributable), I or D evidence. LauncherLibraryInstrumentedTest, now LauncherAppsInstrumentedTest on SystemLauncherApps, has no recorded run (MVP-53). RotationInstrumentedTest passed at 73b973a5 (pin 352d7a08) and 6dcdde34 (pin 40dbe96bd1) and was not run at 13c9857598. At 200% text the Home scroller now ends above the composer (test/browser/home-compact-scroll.spec.ts, browser build); the Accessibility class that failed on that step in round 8 has not been rerun. Package and storage identity are checked by test/product-identity.test.mjs."
     },
     {
       "id": "AP-02",
@@ -60,7 +61,7 @@
         "android/release-signer.json",
         "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LocalAgentOfflineAppsInstrumentedTest.java"
       ],
-      "remaining": "No distribution APK build exists at the current pin (13c9857598). Developer APKs without the resident runtime were built there (hosted Android foundation runs 38118499272 at c0b19147 and 38131665152 at f87850fa, and development machines) and installed on one API 36 arm64 emulator at 2961bd9e and 9a1ca161, where LauncherHome and SettingsRoles (--home-role), LocalAgentOfflineApps, Shell and NoMockProduct passed: class E on developer APKs only. There is no distribution B build and no class I or D evidence. scripts/verify-apks.mjs passes a developer APK as a developer build; it marks a release distributable only when it is signed by the certificate in android/release-signer.json, which stays unset until A-06, and carries the packaged resident runtime and qualified speech. A distribution build also needs the reviewed embedding host. The MVP completion integration compiled both flavors' app and instrumentation Java (compile only, no APK) and added RendererRecoveryInstrumentedTest, which has not run."
+      "remaining": "No distribution APK build exists at the current pin (bc71e21f3b) or the previous one (13c9857598). The pin move to bc71e21f3b changed the llama.cpp engine gitlink (CVE-2026-107183 fix), so the reviewed ARM64 embedding host no longer matches its source: android/embedding-host/qualified-host.json is marked for requalification and distribution builds refuse it until a new receipt is reviewed and staged (a candidate was built, class B, not staged). Developer APKs without the resident runtime were built there (hosted Android foundation runs 38118499272 at c0b19147 and 38131665152 at f87850fa, and development machines) and installed on one API 36 arm64 emulator at 2961bd9e and 9a1ca161, where LauncherHome and SettingsRoles (--home-role), LocalAgentOfflineApps, Shell and NoMockProduct passed: class E on developer APKs only. There is no distribution B build and no class I or D evidence. scripts/verify-apks.mjs passes a developer APK as a developer build; it marks a release distributable only when it is signed by the certificate in android/release-signer.json, which stays unset until A-06, and carries the packaged resident runtime and qualified speech. A distribution build also needs the reviewed embedding host. The MVP completion integration compiled both flavors' app and instrumentation Java (compile only, no APK) and added RendererRecoveryInstrumentedTest, which has not run."
     },
     {
       "id": "AP-03",

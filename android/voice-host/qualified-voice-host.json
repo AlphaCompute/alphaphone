@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "description": "On-device voice host: fused libelizainference (llama.cpp/ggml/mtmd, Kokoro-82M, Silero VAD) through the relocated libelizavoicejni. The only on-device speech engine. Rows are filled by actual qualification runs; nothing here claims emulator or device execution.",
-  "pin": "13c98575987a121decc45b161b0c8a4ee698554e",
-  "forkPin": "ea8b3f2dfc2641dea3e6238bc6dd99595584b076",
+  "pin": "bc71e21f3b5020a2d11719e6e905c0347a4d802f",
+  "forkPin": "7efee003752402e8c73edb4677e5ef397c3104a7",
   "identity": "ai.elizaresearch.alphaphone",
   "provider": "libelizainference-cpu",
   "bundle": {

@@ -27,7 +27,7 @@ test('native evening, source pausing and the dossier follow what the agent adver
  assert.deepEqual(out.old,{digests:true,nativeSources:true,nativeEvening:false,sourcePause:false,dossier:false});
  assert.deepEqual(out.patched,{digests:true,nativeSources:true,nativeEvening:true,sourcePause:true,dossier:false});
  assert.equal(out.eveningWithoutNative.nativeEvening,false);
- // The on-demand dossier route is not registered at the pin; only an agent that says it serves it gets the button.
+ // The advertisement is still parsed exactly; the renderer gates on the resident agent (see below).
  assert.equal(out.dossier.dossier,true);assert.equal(out.dossierOther.dossier,false);
  assert.equal(out.oldState,'Source expired — renew to resume');
  assert.equal(out.pausedState,'Source expired — paused');
@@ -35,11 +35,12 @@ test('native evening, source pausing and the dossier follow what the agent adver
  assert.equal(out.current,'On');
  assert.deepEqual(out.renewals,[['s','expired'],['soon','expiring']]);
 });
-test('the dossier button is offered only for an advertised dossier capability',async()=>{
+test('the dossier button is offered only with resident phone sources, whose pinned agent registers the route',async()=>{
  const {readFile}=await import('node:fs/promises');
  const ui=await readFile(resolve(root,'apps/app/src/runtime/hosted-digest-ui.tsx'),'utf8');
  const button=ui.split('\n').find(line=>line.includes('Review on-demand dossier'));
  assert.ok(button,'the dossier review button exists');
- assert.match(button,/^\{features\.dossier&&/,'it renders only when the agent advertises the dossier');
- assert.match(ui,/dossier:nativeSupported&&advertised\.dossier/,'and only with native phone sources');
+ assert.match(button,/^\{features\.dossier&&/,'it renders only when the dossier feature is on');
+ assert.match(ui,/dossier:nativeSupported\}/,'which is exactly native phone sources on the resident agent');
+ assert.match(ui,/const nativeSupported=supported&&advertised\.nativeSources&&isAndroid&&connection\.kind==='resident';/,'and native sources need the resident (pinned) agent');
 });

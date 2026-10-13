@@ -89,12 +89,13 @@ test('an event location opens unconfigured Maps, hands off to an installed map a
   expect(foreign).toEqual([]);
 });
 
-// LOOP-B: a Calendar event drafted from a note cannot keep its link to the note on Android, because
-// device calendar ids are provider-assigned and reused (noteOriginSupported('event') is false). The
-// draft says so before Save. The draft is placed in the Calendar view's state as the note hand-off
+// LOOP-B: a Calendar event drafted from a note keeps its link to the note on Android. Device calendar
+// row ids are provider-assigned and reused, so the link is keyed by the creationId Alpha saves the
+// event with, which the pinned reader returns on listed events (elizaOS/eliza#35912); the draft no
+// longer warns that it will not link back. The draft is placed in the Calendar view's state as the note hand-off
 // (voice-adapter draftFromNote) leaves it; the Keystore-encrypted note and retained audio that lead
 // there are not stubbed here. Renderer evidence only.
-test('an Android event draft from a note says it will not link back; a draft without a note says nothing', async ({ page }) => {
+test('an Android event draft from a note no longer says it will not link back; nothing is saved or linked before Save', async ({ page }) => {
   test.setTimeout(120_000);
   const foreign = await fenceNetwork(page);
   await flagOffAndroid(page, { calendar: { access: 'granted', calendars: [{ id: '7', name: 'Harbour team', account: 'owner@example.invalid' }], events: [] } });
@@ -120,8 +121,21 @@ test('an Android event draft from a note says it will not link back; a draft wit
   await expect(notice).toHaveCount(0);
   await draft(true);
   await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Synthetic follow-up');
+  await expect(notice).toHaveCount(0);
+  // Guests, video or an alert hand the save to Android Calendar, which records no Alpha creationId.
+  await page.evaluate(() => {
+    const root = document.getElementById('root') as any, key = Object.keys(root).find(name => name.startsWith('__reactContainer$'))!;
+    const pending = [root[key]];
+    while (pending.length) {
+      const fiber = pending.pop();
+      if (typeof fiber?.stateNode?.vget === 'function' && typeof fiber.stateNode.vset === 'function') { const form = fiber.stateNode.vget('calendar').form; fiber.stateNode.vset('calendar', { form: { ...form, alert: 10 } }); return; }
+      if (fiber?.sibling) pending.push(fiber.sibling);
+      if (fiber?.child) pending.push(fiber.child);
+    }
+    throw Error('No phone shell');
+  });
   await expect(notice).toHaveText('This event will not link back to the note on this phone.');
-  // Showing the notice saves nothing and links nothing.
+  // Neither draft saves or links anything before Save.
   expect(await harness(page, f => f.calls.filter((call: string) => /AlphaCalendar\.save|compareExchange/.test(call)))).toEqual([]);
   await expectNoDevelopmentSurface(page);
   expect(await harness(page, f => f.unexpected)).toEqual([]);

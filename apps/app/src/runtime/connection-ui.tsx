@@ -42,6 +42,7 @@ import { CloudProtocol, CloudProtocolError, type CloudAgent, type CloudEnvironme
 import { RemoteProtocol, RemoteProtocolError } from './remote-protocol';
 import { phoneContextMessage } from './phone-context';
 import { cloudCredentialStore, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, removeStoredCloudCredential, secureConnectionStore } from './native-connection';
+import { findStoppedUserTurn, type StoppedTurn } from './stopped-reply-match';
 import './connection-ui.css';
 
 type Selection = {kind:'development';profile:DevelopmentProfile;account?:string} | { kind: 'resident' } | { kind: 'offline'; localApps?: true } | { kind: 'none' } | { kind: 'mock' } | { kind: 'remote' | 'local'; origin: string } | { kind: 'cloud'; environment: CloudEnvironment; agentId: string; ownerId?: string };
@@ -599,7 +600,7 @@ function cancelStoppedReply() { if (!stoppedReply) return; clearTimeout(stoppedR
  * same single later read (no cancel attempt); nothing is sent. Only the restore that follows a
  * connection does this (not a message edit's re-read). Older unanswered turns are left alone. */
 const RESTORED_REPLY_WINDOW_MS = 10 * 60_000;
-function scheduleStoppedReply(selected: Active, session: VerifiedSession, conversationId: string, text: string, sentAt: number, delay = STOPPED_REPLY_CHECK_MS, cancelTurn = true) {
+function scheduleStoppedReply(selected: Active, session: VerifiedSession, conversationId: string, turn: StoppedTurn, delay = STOPPED_REPLY_CHECK_MS, cancelTurn = true) {
   cancelStoppedReply();
   const generation = epoch, controller = new AbortController();
   // The check belongs to the stopped conversation: selecting another one retires it.
@@ -622,7 +623,8 @@ function scheduleStoppedReply(selected: Active, session: VerifiedSession, conver
       if (!current()) return;
       // Another operation began during the read: say so instead of leaving "will check once" standing.
       if (sending || operation) { update({ replyNotice: 'Load this conversation from Agent connection to see whether the stopped reply finished.' }); return; }
-      const user = [...result.messages].reverse().find(item => item.role === 'user' && typeof item.text === 'string' && restoredText(item.text, item.userTextFormat) === text && (typeof item.timestamp !== 'number' || item.timestamp >= sentAt - 120_000));
+      // By clientMessageId when the agent returns it (two turns may share text), else by text and time.
+      const user = findStoppedUserTurn(result.messages, turn, restoredText);
       const index = user ? result.messages.indexOf(user) : -1;
       const reply = user && (result.messages.find(item => item.role === 'assistant' && item.replyToMessageId === user.id) ?? result.messages.slice(index + 1).find(item => item.role === 'assistant' && item.replyToMessageId === undefined));
       if (!user) { update({ replyNotice: 'The agent did not record the stopped message.' }); return; }
@@ -672,7 +674,7 @@ async function restoreConversationHistory(id:string,signal:AbortSignal,automatic
   update({history:{sessionId:session.sessionId,conversationId:id,revision:(state.history?.revision||0)+1,messages,automatic},historyError:'',historyPartial:result.partial,...(automatic?{}:{open:false,replyNotice:''}),message:(automatic?'Saved conversation restored.':saved?'Conversation restored.':'History restored for this session; restart selection could not be saved.')+older});
   const last=result.messages.at(-1);
   if(afterConnect&&selected.kind==='resident'&&last?.role==='user'&&typeof last.text==='string'&&typeof last.timestamp==='number'&&last.timestamp>Date.now()-RESTORED_REPLY_WINDOW_MS)
-    scheduleStoppedReply(selected,session,id,restoredText(last.text,last.userTextFormat),last.timestamp,STOPPED_REPLY_CHECK_MS,false);
+    scheduleStoppedReply(selected,session,id,{text:restoredText(last.text,last.userTextFormat),sentAt:last.timestamp,...(typeof last.clientMessageId==='string'?{clientMessageId:last.clientMessageId}:{})},STOPPED_REPLY_CHECK_MS,false);
 }
 /** Restored chats are bounded; anything older stays on the agent and is reported as partial. */
 const HISTORY_LIMIT=2000, HISTORY_PAGE=200;
@@ -1377,7 +1379,7 @@ export const connectionController = {
       const mark = (target: unknown) => { if (target && typeof target === 'object' && (!dispatched || refused || 'notDispatched' in target)) try { Object.defineProperty(target, 'notDispatched', { value: !dispatched || refused, configurable: true }); } catch { /* An unmarkable error stays an unknown outcome. */ } };
       mark(error);
       // Stop (or leaving the chat) after dispatch: the turn may still complete on the agent.
-      if (signal.aborted && dispatched && generation === epoch && selected === active && state.session?.sessionId === session.sessionId) scheduleStoppedReply(selected, session, dispatched.conversationId, text, dispatched.at);
+      if (signal.aborted && dispatched && generation === epoch && selected === active && state.session?.sessionId === session.sessionId) scheduleStoppedReply(selected, session, dispatched.conversationId, { clientMessageId: requestId, text, sentAt: dispatched.at });
       if (error && typeof error === 'object' && 'status' in error && error.status === 429) {
         const limited = refused ? Object.assign(new AlphaClientError('transport-failed', 'The agent is busy and did not accept this message. Wait, then send it again.'), { refusedBeforeTurn: true }) : new AlphaClientError('transport-failed', RATE_LIMITED);
         // Rate-limited before the post (creating or reading the conversation): still provably unsent.

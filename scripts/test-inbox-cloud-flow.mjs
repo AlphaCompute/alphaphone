@@ -16,11 +16,13 @@ const slots=new Map(),searches=[],disconnects=[],toasts=[],events=[],initiates=[
 // Authorization handoff: off until the reconnect section turns it on. `handoff` holds the browser open.
 let oauthUrl=null,handoff=null,inboxActive=true;
 const mail=(id,extra={})=>({id,threadId:'thread-'+id,subject:'Fixture '+id,from:'Sender',fromEmail:'sender@example.invalid',to:['fixture@example.invalid'],snippet:'Preview',receivedAt:'2026-09-30T00:00:00Z',unread:false,...extra});
+// Gmail mailbox revision per page (elizaOS/eliza#35908); a query without an entry models an older Cloud server.
+const revisions={};
 const pages={'in:inbox':[[mail('mail-1',{unread:true}),mail('mail-2')],[mail('mail-2'),mail('mail-3')]],'in:sent':[[mail('sent-1',{to:['friend@example.invalid']})]],'from:fixture':[[mail('mail-1')]]};
 const client={
  gmailAccounts:async()=>[{connectionId:'grant-a',label:'Fixture account',connected,grantedCapabilities:connected?['google.gmail.triage']:[]}],
  gmailSearch:async(_grant,query,_signal,size,pageToken)=>{searches.push({query,size,pageToken:pageToken??null});if(failNext){const error=failNext;failNext=null;throw error;}
-  const list=pages[query]||[[]],index=pageToken?Number(pageToken.slice(5)):0,result={messages:list[index]||[],syncedAt:'revision',nextPageToken:index+1<list.length?'page-'+(index+1):null};
+  const list=pages[query]||[[]],index=pageToken?Number(pageToken.slice(5)):0,result={messages:list[index]||[],syncedAt:'revision',nextPageToken:index+1<list.length?'page-'+(index+1):null,...(revisions[query]?.[index]?{mailboxHistoryId:revisions[query][index]}:{})};
   if(delay)return new Promise(resolve=>{releaseSearch=()=>resolve(result);});return result;},
  gmailRead:async(_grant,id)=>({message:Object.values(pages).flat(2).find(m=>m.id===id),bodyText:'Fixture body'}),
  disconnectGmail:async(id)=>{disconnects.push(id);connected=false;},
@@ -134,6 +136,20 @@ const discardsBefore=toasts.length;shell.st.compose={subject:'Second share',body
 shell.st.compose={subject:'Third share',body:''};render();await tick();render();await tick();assert.equal(render().c.subject,'Second share','an open draft is never overwritten');assert.match(toasts.slice(discardsBefore).join(' '),/shared content was not added/);
 views.inbox.back(shell.st,api);render().c.discard();render().c.confirmDiscard();await tick();
 
+// A removed message repeats no row, so only the mailbox revision shows that the later page came
+// from a changed mailbox: the list offers Load newer mail. Same revision: no change is claimed.
+const savedInbox=pages['in:inbox'];
+pages['in:inbox']=[[mail('rev-1'),mail('rev-2')],[mail('rev-4')]];
+for(const [label,second,changed] of [['same revision','1001',false],['changed revision','1002',true],['older server','',false]]){
+ revisions['in:inbox']=second?['1001',second]:undefined;const toastsBefore=toasts.length;
+ chip('Refresh').pick();await tick();assert.equal(render().hasMore,true,label);
+ render().loadMore();await tick();
+ assert.deepEqual(local(render().rows.map(r=>r.subj)),['Fixture rev-1','Fixture rev-2','Fixture rev-4'],`${label}: no row repeats`);
+ assert.equal(render().chips.some(c=>c.label==='Load newer mail'),changed,`${label}: Load newer mail offered only for a changed revision`);
+ assert.equal(toasts.slice(toastsBefore).some(t=>/Newer mail arrived/.test(t)),changed,`${label}: the change is reported once`);
+ if(changed){const before=searches.length;chip('Load newer mail').pick();await tick();assert.deepEqual(searches.slice(before),[{query:'in:inbox',size:25,pageToken:null}],'Load newer mail reloads from page one');assert.equal(render().chips.some(c=>c.label==='Load newer mail'),false,'a fresh first page clears the change');}
+}
+delete revisions['in:inbox'];pages['in:inbox']=savedInbox;
 // Only a complete successful empty page can claim no unread mail.
 pages['in:inbox']=[[]];chip('Refresh').pick();await tick();assert.equal(shell.renderVals().homeInboxTitle,'No unread email');assert.equal(shell.renderVals().homeInboxHasRows,false);
 views.inbox.onLeave();const leftSearches=searches.length;assert.equal(shell.renderVals().homeInboxTitle,'No unread email','Home retains metadata after full messages are retired');assert.equal(searches.length,leftSearches,'returning Home never fetches mail');render();await tick();

@@ -90,7 +90,7 @@ export const CLASS_REGISTRY = {
   NotesTrashBackstop: {},
   // Added by the round-2 integration (PR 388); no recorded run.
   AssistantResidentReuse: { note: "synthetic runtime observation, enrollment and streams; not evidence that a live resident stream survives" },
-  LauncherLibrary: { note: "resolves against this image's package manager only; two methods skip when the image has no other launchable app" },
+  LauncherApps: { note: "upstream SystemLauncherApps through Alpha's identity; resolves against this image's package manager only; two methods skip when the image has no other launchable app" },
   NotesStorageDurability: { args: { notesStorage: "1" } },
   DailyApps: {},
   ReminderLifecycle: { note: "the re-post method skips unless notifications are enabled for the app" },

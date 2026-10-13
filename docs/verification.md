@@ -252,6 +252,49 @@ Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
 
+## Pin move to bc71e21f3b (2026-10-13): source and compile checks only
+
+Branch `claude/mvp-final` (not pushed), upstream pin `bc71e21f3b` (from `13c9857598`), with the
+upstream changes consumed as listed in [agent integration](agent-integration.md#upstream-changes-in-the-13c9857598-to-bc71e21f3b-move).
+Development machine at load average 60 to 115 (other sessions running). No APK was assembled, no
+emulator was started and no workflow was dispatched: nothing here is class B beyond a compile, or
+E, I, R or D. The latest emulator record is still round 8, below, at `13c9857598`.
+
+- `npm run upstream:verify`: source verified at `bc71e21f3b`; reachability recorded with
+  `--record-reachability` (identical to `develop`, 2026-10-13).
+- `npm run verify`: prepare-client and `tsc --noEmit` clean; node tests 818 of 819 passed. The
+  one failure, `client-feature-preparation.test.mjs` "direct local development launcher", was its
+  20 s spawn timeout under that load; the file passed 6 of 6 when rerun alone. The remaining
+  steps were then run one by one: `scripts/test-notes-query-flow.ts` PASS, `npm run build` exit 0,
+  `npm run audit:bundle` PASS (387 files, `testMocks=false`). An earlier full node run on the same
+  change set before its last test and document fixes passed 815 of 819; the four failures were
+  pin statements, a removed evidence path and the Stop test sandbox, all fixed since.
+- Playwright `chromium` and `production` projects on the seven spec files the consumed changes
+  touch (Stop, Inbox paging, app library, note to calendar hand-off, J04 Android, phone sources
+  and dossier, Gmail scope): 62 passed, 0 failed.
+- Resident dependency audit (plan step A-3): `node scripts/dependency-audit.mjs --resident --write`
+  99 findings, none without a reviewed disposition; `--resident` exits 0
+  ([dependency audit](dependency-audit.md)).
+- `test/calendar-availability-reader.test.mjs`: the upstream `SelectedCalendarReader`
+  availability read on the JVM with the `sqlite3` provider stand-in, PASS.
+- Gradle, compile only, against the prepared source at the pin
+  (`node scripts/prepare-local-agent.mjs --source-only`):
+  `./gradlew --offline -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1` compiled
+  `:app:compileStandaloneDebugJavaWithJavac`, `:app:compileLauncherDebugJavaWithJavac` and both
+  `…DebugAndroidTestJavaWithJavac` tasks: BUILD SUCCESSFUL. No APK, no install.
+- Embedding host: the engine gitlink and `stage-elizavoice-lib.ts` changed, so
+  `android/embedding-host/qualified-host.json` is marked for requalification and
+  `node scripts/stage-embedding-host.mjs --verify` refuses a distribution build. A candidate was
+  built with `node scripts/prepare-embedding-host.mjs --abi arm64-v8a --build` at engine
+  `7efee0037524` (NDK 29.0.13113456): ELF ABI, 16 KiB alignment and every embedding and voice
+  symbol checked by that script. Its hashes are recorded in the file; it was not reviewed, staged
+  or run (class B for the build only).
+- Changed instrumented classes, none run: `LauncherAppsInstrumentedTest` (was
+  `LauncherLibraryInstrumentedTest`), the lowered-Trash-cap method of
+  `NotesStorageDurabilityInstrumentedTest`, the review-text checks of
+  `CalendarAgentCrudInstrumentedTest`, and `CalendarAvailabilityInstrumentedTest` on the upstream
+  reader.
+
 ## MVP completion integration (2026-10-12): source, browser and compile checks only
 
 Branch `claude/mvp-completion` at `bfcd47e2`, upstream pin `13c9857598`: the nine work packages

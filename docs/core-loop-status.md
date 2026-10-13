@@ -92,17 +92,19 @@ Closed in the browser build:
 
 Still open:
 
-- Device-calendar events are not linked to their note in the Android build:
-  CalendarProvider row ids are assigned by the provider and can be reused, and the
-  pinned native Calendar plugin stores no Alpha field on an event. Reminder links use
+- Device-calendar events created from a note are linked to it in the Android build since the
+  pin `bc71e21f3b`, by the creation id Alpha saves the event with: CalendarProvider row ids are
+  assigned by the provider and can be reused, so the link is not keyed by them, and the pinned
+  reader now returns `creationId` on events this app created (elizaOS/eliza#35912). The link is
+  remembered at save and dropped when the event is deleted (`calendar-adapter.ts`,
+  `note-origin-adapter.ts`; `scripts/test-calendar-crud-review.mjs`, class S); no Android run.
+  It names a link, not ownership: another app with calendar write access can set the same
+  fields. An event that Android Calendar saves (the guests, video or alert hand-off) carries no
+  creation id and is not linked, and its draft says so before Save. Reminder links use
   the reminder's own id; on Android the link is written to the native slot
   `note-origins:v1:device`, whose native compare-and-exchange refused it until the MVP
   completion integration admitted it. `NoteOriginInstrumentedTest` reads it back at storage
-  level and has not run, so no Android reminder link is shown to work. The event draft
-  opened from a note now says, before Save, that the event will not link back to the note on
-  this phone.
-  NEEDS upstream: a stable per-event identity (or an extended property) returned by
-  `list` in plugin-native-calendar.
+  level and has not run, so no Android reminder or event link is shown to work.
 - The contract documents ([notes document flows](notes-document-flows.md),
   [calendar contract](calendar-reminder-contract.md), flow audit J02) do not describe a
   note back-reference or a calendar-event hand-off from a note. The behavior above is
@@ -157,7 +159,7 @@ Spec: `journey-d-digests.spec.ts`
 | Final restart: history and acknowledgement retained; nothing runs again | yes | — | — |
 | Two hosted loops complete while the phone is powered off and deliver once on reconnect | not coverable | — | Owner decision A-09, then a hosted service and a powered-off phone |
 | Phone sources (calendars on the phone) feed a digest after consent, within the 16-calendar and 1–168 h bounds, and can be revoked and renewed | flag-off spec, bridge stubbed (`digest-native-sources.production.spec.ts`) | The native source path (`test/native-digest-sources.test.mjs`, host JVM; no emulator run) | Real calendars on a phone |
-| A dossier is offered only when the agent advertises it; Cancel sends nothing | flag-off spec, bridge stubbed (`digest-native-sources.production.spec.ts`, `test/digest-route-registration.test.mjs`) | — | The pinned agent registers no dossier route, so no dossier can run (UPSTREAM) |
+| A dossier is offered only with native phone sources on the resident agent; Cancel sends nothing | flag-off spec, bridge stubbed (`digest-native-sources.production.spec.ts`, `test/digest-route-registration.test.mjs`, `test/digest-capabilities.test.mjs`) | — | The pinned agent registers the dossier route since `bc71e21f3b` (elizaOS/eliza#35906); no dossier has run on an emulator (EMULATOR) |
 
 Open items:
 
@@ -358,7 +360,7 @@ The remaining "Still open" notes in this document, re-read in round 8 for plain 
 | Reminder deletion from the detail page is immediate | Owner decision A-25 (reminders: review before deletion or not). Not changed. |
 | A saved local draft that is an older version of the sent email is kept and offered | By design: the draft does not hold the sent content, so removing it would delete text the owner never sent. Not a defect. |
 | The Maps "Back to event" control is not offered during active guidance | By design: leaving guidance is its own explicit action. Not a defect. |
-| Device-calendar events are not linked to their note on Android | NEEDS upstream, as recorded above. |
+| Device-calendar events from the Android Calendar hand-off are not linked to their note | They carry no Alpha creation id; the draft says so before Save. Events Alpha saves are linked by creation id since the pin `bc71e21f3b`. |
 | The contract documents do not describe the note back-reference | Documentation owed by the contract's owner. Not product behaviour. |
 
 ## What no browser journey can establish
