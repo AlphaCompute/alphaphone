@@ -9,6 +9,8 @@ import { connectionController } from '../runtime/connection-ui';
 import { safeMailLink, type GmailAccount, type GmailDraftContent, type GmailDraftSummary, type GmailLink, type GmailMessage } from '../runtime/cloud-protocol';
 import { reviewOpaqueAttachment } from '../runtime/inbox-operation';
 import { openConnectionBrowser } from '../runtime/native-connection';
+import {googleConnectionController} from '../runtime/google-connection-ui';
+import {GOOGLE_ACCOUNTS_CHANGED,googleDisconnectConfirmation,googleDisconnectMessage} from '../runtime/google-accounts';
 import { DailyApps } from '../daily';
 
 type Bag = Record<string, any>;
@@ -221,7 +223,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   async function disconnect() {
     const account = accounts.find(a => a.connectionId === selected);
     if (operation || !account?.connectionId) return;
-    if (!window.confirm(`Disconnect ${account.label} from Alpha Phone?\n\nEliza Cloud deletes its stored Gmail access for this account and this phone stops reading it. No mail is deleted. Local drafts stay on this phone until you discard them.`)) return;
+    if (!window.confirm(googleDisconnectConfirmation(account.label))) return;
     const id = account.connectionId, label = account.label;
     disconnecting = true;
     await work(`Disconnecting ${label}…`, async ({ client }, signal, valid) => {
@@ -235,16 +237,19 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
         setAttention(selected ? { state: 'stale', unread: 0, unreadMore: false, source: accountLabel(), updatedAt: null } : { state: 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null });
         void provider.bind(selected); void drafts.bind(selected, accounts.find(a => a.connectionId === selected)?.label || '');
       }
-      status = disconnectMessage(result.outcome, label);
+      status = googleDisconnectMessage(result.outcome, label);
       api?.toast(status);
       window.dispatchEvent(new CustomEvent(GMAIL_ACCOUNTS_CHANGED, { detail: { source: 'inbox' } }));
+      window.dispatchEvent(new Event(GOOGLE_ACCOUNTS_CHANGED));
       publish({ open: null, nativeMailSelection: null });
     }, () => void refreshAccounts());
     disconnecting = false; publish();
   }
   async function connect(permission:'read'|'send'|'drafts'|'mailbox'='read') {
     await work('Complete Gmail authorization in your browser', async ({ client }, signal, valid) => {
-      const url = await client.initiateGmail(signal,permission);
+      if(permission==='read'){googleConnectionController.open();return;}
+      const keepCalendar=accounts.find(account=>account.connectionId===selected)?.grantedCapabilities.includes('google.calendar.read')===true;
+      const url = keepCalendar?await client.initiateGoogle(signal,'read',permission):await client.initiateGmail(signal,permission);
       if (!valid()) return;
       await openConnectionBrowser(url, signal);
       if (valid()) status = 'After authorizing Gmail, tap Check connection.';
@@ -553,7 +558,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       ...(selected&&!provider.capabilities()?.providerDrafts?[chip('Authorize Gmail drafts',()=>void connect('drafts'))]:[]),
       ...(selected&&!provider.capabilities()?.mailboxMutations?[chip('Authorize mailbox changes',()=>void connect('mailbox'))]:[]),
       ...accounts.filter(a => a.connectionId).map(a => chip(a.label, () => selectAccount(a), a.connectionId === selected)),
-      ...(selected ? [chip('Disconnect Gmail', () => void disconnect())] : []),
+      ...(selected ? [chip('Disconnect Google account', () => void disconnect())] : []),
     ] : [chip('Connect Eliza Cloud', () => connectionController.openCloudAccount())];
     chips.push(...drafts.chips(chip), ...provider.chips(chip));
 
@@ -612,10 +617,10 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       setAttention({ state: 'stale', unread: 0, unreadMore: false, source: null, updatedAt: null });
       phase = 'idle'; status = 'Checking Gmail connection…'; publish({ open: null, nativeMailSelection: null });
     };
-    window.addEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
+    window.addEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.addEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
   };
   p.componentWillUnmount = function () {
-    this.inboxConnectionUnsubscribe?.(); void this.inboxResume?.then((handle: Bag) => handle?.remove()); window.removeEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
+    this.inboxConnectionUnsubscribe?.(); void this.inboxResume?.then((handle: Bag) => handle?.remove()); window.removeEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.removeEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
     shell = undefined; openInboxHandler = null; clear(); setAttention({ state: 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null }); unmount?.call(this);
   };
 }

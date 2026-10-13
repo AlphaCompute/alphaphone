@@ -954,6 +954,7 @@ export const connectionController = {
               await verifyService(makeCloud('production'),signal,expected);
             });
             if(restoreEpoch!==epoch||state.error||service?.identity.credentialId!==expected.credentialId)return;
+            if(state.automaticRestore&&state.purpose!=='cloud-account')update({open:false,message:''});
           }
         }catch(error){if(canRestore())await work('Checking your Cloud account…',async()=>{throw error;});return;}
       }
