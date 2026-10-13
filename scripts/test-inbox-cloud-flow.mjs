@@ -9,6 +9,7 @@ import { reviewMailContext, validateMailContext } from '../apps/app/src/runtime/
 import { CloudProtocolError, safeMailLink } from '../apps/app/src/runtime/cloud-protocol.ts';
 import { reviewOpaqueAttachment, checkOutgoingAttachments, outgoingAttachmentLimits, attachmentBytes } from '../apps/app/src/runtime/inbox-operation.ts';
 import * as mailbox from '../apps/app/src/runtime/gmail-mailbox.ts';
+import * as googleAccounts from '../apps/app/src/runtime/google-accounts.ts';
 import { presentHomeInboxStatus } from '../apps/app/src/prototype/home-cards.ts';
 import { formatTime } from '../apps/app/src/prototype/locale-time.ts';
 let session='account-a',agent='remote-a',releaseSearch,delay=false,failNext=null,connected=true,confirmAnswer=true;
@@ -32,7 +33,7 @@ const strip=async(file,name)=>{let source=await readFile(new URL(`../apps/app/sr
 const windowFixture={addEventListener:(name,fn)=>events.push({name,fn}),removeEventListener:()=>{},dispatchEvent:event=>{events.push({dispatched:event.type,detail:event.detail});return true;},confirm:()=>confirmAnswer};
 class CustomEvent{constructor(type,init){this.type=type;this.detail=init?.detail;}}
 const inboxUnsaved=()=>({ready:Promise.resolve(),available:false,conflict:false,error:false,status:'',edit(){},clear:async()=>{},retire(){},resume(){}});
-const sandbox={URL,presentHomeInboxStatus,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,safeMailLink,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,reviewMailAttachment,reviewMailContext,validateMailContext,...mailbox,registerPlugin:()=>({cancel:async()=>{}}),crypto:globalThis.crypto,TextEncoder,structuredClone,secureConnectionStore:{read:async key=>slots.get(key)??null,compareExchange:async(key,prior,next)=>{if(JSON.stringify(slots.get(key)??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)slots.delete(key);else slots.set(key,next);return {status:'saved'};}},connectionController:controller,DailyApps:{addListener:async()=>({remove:async()=>{}})},openConnectionBrowser:async()=>{throw new Error('No automatic OAuth');},queueMicrotask,setTimeout,AbortController,DOMException,Date,console,window:windowFixture,CustomEvent,document:{documentElement:{dataset:{connectionMode:'live'}}}};
+const sandbox={URL,presentHomeInboxStatus,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,safeMailLink,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,reviewMailAttachment,reviewMailContext,validateMailContext,...mailbox,...googleAccounts,Event,googleConnectionController:{open(){throw Error('Explicit Google authorization not exercised by this read fixture');}},registerPlugin:()=>({cancel:async()=>{}}),crypto:globalThis.crypto,TextEncoder,structuredClone,secureConnectionStore:{read:async key=>slots.get(key)??null,compareExchange:async(key,prior,next)=>{if(JSON.stringify(slots.get(key)??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)slots.delete(key);else slots.set(key,next);return {status:'saved'};}},connectionController:controller,DailyApps:{addListener:async()=>({remove:async()=>{}})},openConnectionBrowser:async()=>{throw new Error('No automatic OAuth');},queueMicrotask,setTimeout,AbortController,DOMException,Date,console,window:windowFixture,CustomEvent,document:{documentElement:{dataset:{connectionMode:'live'}}}};
 vm.createContext(sandbox);
 for(const [file,name] of [['inbox-provider-controls.ts','inboxProviderControls'],['inbox-drafts.ts','inboxDrafts'],['inbox-cloud-adapter.ts',['installInboxCloudAdapter','inboxAttention','openInbox','linkifyMailText','linkTextMismatch']]])vm.runInContext(await strip(file,name),sandbox);
 sandbox.installInboxCloudAdapter(Shell,views);
@@ -109,9 +110,9 @@ pages['in:inbox']=[[]];chip('Refresh').pick();await tick();assert.equal(shell.re
 views.inbox.onLeave();const leftSearches=searches.length;assert.equal(shell.renderVals().homeInboxTitle,'No unread email','Home retains metadata after full messages are retired');assert.equal(searches.length,leftSearches,'returning Home never fetches mail');render();await tick();
 
 // Disconnect requires confirmation and reports the read-back state.
-confirmAnswer=false;chip('Disconnect Gmail').pick();await tick();assert.deepEqual(disconnects,[],'cancelled confirmation sends nothing');
-confirmAnswer=true;chip('Disconnect Gmail').pick();await tick();
+confirmAnswer=false;chip('Disconnect Google account').pick();await tick();assert.deepEqual(disconnects,[],'cancelled confirmation sends nothing');
+confirmAnswer=true;chip('Disconnect Google account').pick();await tick();
 assert.deepEqual(disconnects,['grant-a']);assert.match(render().emptyText,/is disconnected/);assert.equal(render().rows.length,0);
-assert.equal(shell.renderVals().homeInboxTitle,'Connect email');assert.equal(render().chips.some(c=>c.label==='Disconnect Gmail'),false);assert.ok(events.some(e=>e.dispatched==='alpha:gmail-accounts-changed'&&e.detail.source==='inbox'));
+assert.equal(shell.renderVals().homeInboxTitle,'Connect email');assert.equal(render().chips.some(c=>c.label==='Disconnect Google account'),false);assert.ok(events.some(e=>e.dispatched==='alpha:gmail-accounts-changed'&&e.detail.source==='inbox'));
 shell.componentWillUnmount();
 console.log('PASS: Inbox auto-load, Refresh, provider paging, Sent folder, unread badge, account/query fences, classified errors with explicit Retry, shared compose prefill, honest chips and confirmed disconnect. Provider fixture only.');

@@ -4,6 +4,8 @@ test.beforeEach(async({context,page})=>{await guardNoMedia(context);await page.r
 // Gmail MVP flows against a controlled provider-boundary fixture: no real account, OAuth or mail.
 type Options={accounts?:string[];readState?:boolean;pages?:Record<string,number>};
 async function setup(page:Page,options:Options={}){
+ // Provider fixtures use local apps; they do not perform resident/Cloud onboarding.
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
  await page.goto('/');
  await page.evaluate(async options=>{
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
@@ -148,13 +150,13 @@ test('Inbox disconnect asks first and then shows the honest disconnected state',
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
  await expect(page.getByRole('region',{name:'Inbox',exact:true}).getByText('Subject in-0-a',{exact:true})).toBeVisible();
  page.once('dialog',dialog=>dialog.dismiss());
- await page.getByRole('button',{name:'Disconnect Gmail',exact:true}).click();
+ await page.getByRole('button',{name:'Disconnect Google account',exact:true}).click();
  expect((await gm(page)).disconnects).toEqual([]);
- page.once('dialog',dialog=>{expect(dialog.message()).toContain('No mail is deleted');void dialog.accept();});
- await page.getByRole('button',{name:'Disconnect Gmail',exact:true}).click();
- await expect(page.getByText(/owner@example\.test is disconnected\. Eliza Cloud no longer holds its Gmail access/).first()).toBeVisible();
+ page.once('dialog',dialog=>{expect(dialog.message()).toContain('including Gmail and Calendar');expect(dialog.message()).toContain('mail and calendar events are not deleted');void dialog.accept();});
+ await page.getByRole('button',{name:'Disconnect Google account',exact:true}).click();
+ await expect(page.getByText(/owner@example\.test is disconnected from Alpha\. Eliza Cloud no longer holds this Google connection/).first()).toBeVisible();
  await expect(page.getByText('Subject in-0-a',{exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Disconnect Gmail',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Disconnect Google account',exact:true})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Refresh',exact:true})).toHaveCount(0);
  expect((await gm(page)).disconnects).toEqual(['grant-0']);
 });
@@ -163,12 +165,12 @@ test('Settings Connections disconnects one confirmed account and reports the rea
  await setup(page,{accounts:['first@example.test','second@example.test']});
  await page.getByRole('button',{name:'Settings',exact:true}).click();
  await page.getByRole('button',{name:'Connections',exact:true}).click();
- await expect(page.getByRole('button',{name:'Disconnect second@example.test',exact:true})).toBeVisible();
- page.once('dialog',dialog=>dialog.accept());
- await page.getByRole('button',{name:'Disconnect second@example.test',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Disconnect Google account second@example.test',exact:true})).toBeVisible();
+ page.once('dialog',dialog=>{expect(dialog.message()).toContain('Calendar');return dialog.accept();});
+ await page.getByRole('button',{name:'Disconnect Google account second@example.test',exact:true}).click();
  await expect(page.getByText(/second@example\.test is disconnected/).first()).toBeVisible();
- await expect(page.getByRole('button',{name:'Disconnect second@example.test',exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Disconnect first@example.test',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Disconnect Google account second@example.test',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Disconnect Google account first@example.test',exact:true})).toBeVisible();
  expect((await gm(page)).disconnects).toEqual(['grant-1']);
 });
 

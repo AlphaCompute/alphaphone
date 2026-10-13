@@ -10,6 +10,7 @@ import { reviewMailAttachment } from '../apps/app/src/runtime/inbox-attachment.t
 import { reviewMailContext, validateMailContext } from '../apps/app/src/runtime/reviewed-mail-context.ts';
 import { safeMailLink } from '../apps/app/src/runtime/cloud-protocol.ts';
 import * as mailbox from '../apps/app/src/runtime/gmail-mailbox.ts';
+import * as googleAccounts from '../apps/app/src/runtime/google-accounts.ts';
 
 const strip=async(file,names)=>{let source=await readFile(new URL(`../apps/app/src/prototype/${file}`,import.meta.url),'utf8');source=source.replace(/^import .*;\n/gm,'').replace(/^export (?=(?:async )?function |const |let |interface |type )/gm,'')+`\n${[].concat(names).map(n=>`globalThis.${n}=${n};`).join('')}`;return '{'+stripTypeScriptTypes(source,{mode:'transform'})+'}';};
 const digest=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
@@ -57,7 +58,7 @@ function scenario({caps={},accounts=null}={}){
  class FixedDate extends Date{constructor(...a){super(...(a.length?a:[clock]));}static now(){return clock;}}
  const windowFixture={addEventListener(){},removeEventListener(){},dispatchEvent(){return true;},confirm:text=>{confirms.push(text);return confirmAnswer;}};
  const inboxUnsaved=()=>({ready:Promise.resolve(),available:false,conflict:false,error:false,status:'',edit(){},clear:async()=>{},retire(){},resume(){}});
- const sandbox={URL,Date:FixedDate,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,reviewMailAttachment,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,safeMailLink,reviewMailContext,validateMailContext,...mailbox,
+ const sandbox={URL,Date:FixedDate,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,reviewMailAttachment,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,safeMailLink,reviewMailContext,validateMailContext,...mailbox,...googleAccounts,Event,googleConnectionController:{open(){throw Error('Explicit Google authorization not exercised by this read fixture');}},
   registerPlugin:()=>native,crypto:globalThis.crypto,TextEncoder,structuredClone,
   secureConnectionStore:{read:async key=>structuredClone(slots.get(key)??null),compareExchange:async(key,prior,next)=>{if(JSON.stringify(slots.get(key)??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)slots.delete(key);else slots.set(key,structuredClone(next));return {status:'saved'};}},
   connectionController:controller,
