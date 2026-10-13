@@ -19,6 +19,11 @@ public class PhotoAttachmentSourceTest {
   Source oversized=new Source();oversized.data=new byte[PhotoAttachmentSource.MAX_BYTES+1];rejects(()->PhotoAttachmentSource.read(oversized,()->{}));if(!oversized.closed)throw new AssertionError("unclosed oversized source");
   Source empty=new Source();empty.data=new byte[0];rejects(()->PhotoAttachmentSource.read(empty,()->{}));
   for(PhotoAttachmentSource.Metadata invalid:new PhotoAttachmentSource.Metadata[]{metadata("../photo.png","image/png",99,"r","i"),metadata("photo.gif","image/gif",99,"r","i"),metadata("photo.png","image/png",PhotoAttachmentSource.MAX_BYTES+1L,"r","i"),metadata("photo.png","image/png",99,"","i")}){Source item=new Source();item.first=invalid;rejects(()->PhotoAttachmentSource.read(item,()->{}));if(item.opened!=0)throw new AssertionError("invalid source opened");}
+  // Copy completion may precede pause/selection revocation while delivery waits for the UI thread.
+  boolean[] current={true};int[] delivered={0},rejected={0};
+  Runnable queued=()->PhotoAttachmentSource.publish(()->{if(!current[0])throw new SecurityException();},()->delivered[0]++,()->rejected[0]++);
+  current[0]=false;queued.run();if(delivered[0]!=0||rejected[0]!=1)throw new AssertionError("late byte publication");
+  current[0]=true;queued.run();if(delivered[0]!=1||rejected[0]!=1)throw new AssertionError("current byte publication");
   System.out.println("PASS photo attachment source");
  }
 }

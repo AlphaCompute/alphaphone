@@ -35,5 +35,10 @@ final class PhotoAttachmentSource {
   // redaction. Preserve those exact readable bytes; never request ACCESS_MEDIA_LOCATION.
   return new Copy(before,bytes.toByteArray());
  }
+ /** Called on the UI thread: a completed copy still needs current delivery authority. */
+ static void publish(Guard current,Runnable resolve,Runnable reject){
+  try{current.check();}catch(Exception unavailable){reject.run();return;}
+  resolve.run();
+ }
  private PhotoAttachmentSource(){}
 }

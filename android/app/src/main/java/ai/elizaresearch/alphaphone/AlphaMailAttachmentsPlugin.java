@@ -77,7 +77,14 @@ public final class AlphaMailAttachmentsPlugin extends Plugin {
     }
    },guard);
    validate(copy.metadata.name,copy.metadata.mime,copy.bytes);guard.check();catalog.requireCurrent(fence);
-   JSObject result=new JSObject();result.put("name",copy.metadata.name);result.put("mimeType",copy.metadata.mime);result.put("size",copy.bytes.length);result.put("sha256",copy.sha256);result.put("dataBase64",android.util.Base64.encodeToString(copy.bytes,android.util.Base64.NO_WRAP));call.resolve(result);
+   JSObject result=new JSObject();result.put("name",copy.metadata.name);result.put("mimeType",copy.metadata.mime);result.put("size",copy.bytes.length);result.put("sha256",copy.sha256);result.put("dataBase64",android.util.Base64.encodeToString(copy.bytes,android.util.Base64.NO_WRAP));
+   // Serialize publication with Activity pause/destruction. Recheck access and row revision
+   // after waiting for the UI thread; the worker's successful copy is not delivery authority.
+   main.post(()->PhotoAttachmentSource.publish(()->{
+    guard.check();try(PermittedMediaCatalog delivery=new PermittedMediaCatalog(getContext(),false,()->{})){
+     delivery.read(id,revision,false);guard.check();
+    }
+   },()->call.resolve(result),()->call.reject("Selected photo changed or is unavailable. Review it again.")));
   }catch(Exception unavailable){call.reject("Selected photo changed or is unavailable. Choose a permitted PNG, JPEG or WebP source up to 5 MiB and review it again.");}
  });}
  @PluginMethod public void cancelPhotoSelected(PluginCall call){cancelPhotoReads();call.resolve();}
