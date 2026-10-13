@@ -32,7 +32,9 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private PluginCall preparingPlayback;
  private volatile boolean destroyed;
  private volatile boolean speechForeground=true;
- private final ai.eliza.speech.LocalSpeechEngineHolder localEngine=new ai.eliza.speech.LocalSpeechEngineHolder(()->new ai.eliza.speech.LocalSpeechEngine(ai.eliza.speech.SpeechAssets.install(getContext())));
+ // On-device speech: fused libelizainference (llama.cpp/ggml) only. Released after 120 s idle in the
+ // foreground, 30 s in the background, and at once under memory pressure.
+ private final AlphaFusedSpeech.Holder localEngine=new AlphaFusedSpeech.Holder(()->AlphaFusedSpeech.open(getContext()));
  private final java.util.concurrent.atomic.AtomicBoolean localReleaseQueued=new java.util.concurrent.atomic.AtomicBoolean();
  private final Runnable localIdleRelease=this::queueLocalRelease;
  private final android.content.ComponentCallbacks2 localMemoryCallbacks=new android.content.ComponentCallbacks2(){
@@ -170,21 +172,28 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  });}
  private void submitLocal(PluginCall call,Work work){submit(call,request->{main.removeCallbacks(localIdleRelease);try{work.run(request);}catch(Exception error){localEngine.release();throw error;}catch(LinkageError|OutOfMemoryError error){localEngine.release();throw new IOException("On-device speech unavailable",error);}finally{if(request.cancelled||destroyed)localEngine.release();else scheduleLocalRelease(speechForeground?120000:30000);}});}
  // Local CPU execution has no dependency on an account, URL, or host process.
+ // The status resolves only when the native pair loads, the ABI is at least 16, every bundle file
+ // verifies and a context opens. `ready` (recognition) needs ASR, Kokoro TTS and VAD; `playback`
+ // (read-aloud) needs Kokoro only, so a bundle without a qualified ASR pair still reads aloud.
+ // A build without the voice bundle answers "unavailable" without loading any native library.
  @PluginMethod public void localSpeechStatus(PluginCall call){submitLocal(call,request->{
-  localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();return null;});
-  if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",true);out.put("execution","device");out.put("provider","sherpa-onnx-cpu");request.result=out;
+  if(!AlphaFusedSpeechAssets.packaged(getContext())){if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",false);out.put("playback",false);out.put("execution","device");out.put("provider",AlphaFusedSpeech.PROVIDER);out.put("packaged",false);request.result=out;return;}
+  AlphaFusedSpeech.Status status=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();return engine.status();});
+  if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",status.ready());out.put("playback",status.playback());out.put("execution","device");out.put("provider",AlphaFusedSpeech.PROVIDER);out.put("abi",status.abi);out.put("asr",status.asr);out.put("tts",status.tts);out.put("vad",status.vad);out.put("packaged",true);request.result=out;
  });}
  @PluginMethod public void transcribeLocalRecording(PluginCall call){submitLocal(call,request->{
   File file=capture.selected(required(call.getString("recordingId"),256));if(file==null)throw new IOException();byte[] wav=AlphaVoicePcm.decode(file,()->request.cancelled||destroyed);float[] samples;
-  try{samples=ai.eliza.speech.LocalSpeechEngine.readMono16kWav(new ByteArrayInputStream(wav));}finally{Arrays.fill(wav,(byte)0);}
-  String text;try{text=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();return engine.transcribe(samples);});}finally{Arrays.fill(samples,0);}
-  if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("text",text);out.put("local",true);out.put("execution","device");out.put("provider","sherpa-onnx-cpu");request.result=out;
+  try{samples=AlphaSpeechText.readMono16kWav(new ByteArrayInputStream(wav));}finally{Arrays.fill(wav,(byte)0);}
+  // VAD no-speech pre-check, then batch ASR. The JNI cannot interrupt ASR: a cancelled result is discarded.
+  String text;try{text=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();return engine.transcribe(samples,()->request.cancelled||destroyed);});}finally{Arrays.fill(samples,0);}
+  if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("text",text);out.put("local",true);out.put("execution","device");out.put("provider",AlphaFusedSpeech.PROVIDER);request.result=out;
  });}
  @PluginMethod public void synthesizeLocal(PluginCall call){main.post(()->{if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&(playbackFile!=null||!pending.isEmpty())){call.reject("Speaker is in use","playback-busy");return;}synthesizeLocalNow(call);});}
  private void synthesizeLocalNow(PluginCall call){synthesizeLocalNow(call,null);}
  private void synthesizeLocalNow(PluginCall call,String reviewed){submitLocal(call,request->{
   String text=reviewed==null?required(call.getString("text"),500):reviewed;byte[] audio;
-  audio=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();if(reviewed!=null)return engine.synthesizePassage(text,()->request.cancelled||destroyed);ai.eliza.speech.LocalSpeechEngine.Audio generated=engine.synthesize(text,()->request.cancelled||destroyed);try{return generated.wav();}finally{Arrays.fill(generated.samples,0);}});
+  // Kokoro cannot be interrupted inside a phrase: cancellation is checked between phrases.
+  audio=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();if(reviewed!=null)return engine.synthesizePassage(text,()->request.cancelled||destroyed);AlphaFusedSpeech.Audio generated=engine.synthesize(text,()->request.cancelled||destroyed);try{return generated.wav();}finally{Arrays.fill(generated.samples,0);}});
   if(request.cancelled||destroyed){Arrays.fill(audio,(byte)0);throw new IOException();}
   File file=File.createTempFile("alpha-cloud-tts-",".wav",getContext().getCacheDir());CountDownLatch completed=new CountDownLatch(1);
   try{try(OutputStream out=new FileOutputStream(file)){out.write(audio);}main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackFile!=null){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject out=new JSObject();out.put("playbackId",playbackId);out.put("execution","device");request.result=out;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});if(!completed.await(10,TimeUnit.SECONDS)){request.cancel();file.delete();throw new IOException("Playback preparation timed out");}}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}

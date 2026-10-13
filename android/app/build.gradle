@@ -111,21 +111,10 @@ android {
  compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
 }
 if (appLinkHost) androidComponents { onVariants(selector().all()) { variant -> variant.sources.manifests.addStaticManifestFile(appLinksManifest) } }
-// Instrumentation diagnoses the same audited runtime already packaged by local-speech.
-// Extract only its Java API for compilation; do not package a second AAR/JNI runtime.
-def speechTestApiJar = layout.buildDirectory.file('generated/speech-android-test-api/classes.jar')
-def extractSpeechAndroidTestApi = tasks.register('extractSpeechAndroidTestApi', Sync) {
- dependsOn ':local-speech:preBuild'
- from(zipTree(file('../local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar'))) {
-  include 'classes.jar'
- }
- into layout.buildDirectory.dir('generated/speech-android-test-api')
-}
 dependencies {
  implementation project(':eliza-network-policy')
  implementation 'androidx.browser:browser:1.9.0'
     implementation "androidx.work:work-runtime:2.11.0"
- implementation project(':local-speech')
  implementation project(':capacitor-android')
  implementation project(':eliza-system')
  implementation project(':eliza-notifications')
@@ -140,7 +129,6 @@ dependencies {
  implementation "androidx.webkit:webkit:$rootProject.ext.androidxWebkitVersion"
  implementation "androidx.appcompat:appcompat:$rootProject.ext.androidxAppCompatVersion"
  implementation "androidx.core:core-splashscreen:$rootProject.ext.coreSplashScreenVersion"
- androidTestCompileOnly files(speechTestApiJar).builtBy(extractSpeechAndroidTestApi)
  androidTestImplementation 'androidx.test:runner:1.6.2'
  androidTestImplementation 'androidx.test.ext:junit:1.3.0'
  // Accessibility (ATF through Espresso) and TalkBack-order/rotation checks over the real UI.
@@ -162,3 +150,14 @@ def verifyEmbeddingHost = tasks.register('verifyEmbeddingHost', Exec) {
  commandLine args
 }
 tasks.named('preBuild').configure { dependsOn verifyEmbeddingHost }
+
+// On-device voice (fused libelizainference ASR/Kokoro/VAD) is packaged only from bytes that match
+// android/voice-host/qualified-voice-host.json. An APK without assets/voice is valid: local speech
+// then reports unavailable and the product stays on the Cloud route (P-07).
+def verifyVoiceHost = tasks.register('verifyVoiceHost', Exec) {
+ workingDir rootProject.projectDir.parentFile
+ def args = ['node', 'scripts/stage-embedding-host.mjs', '--verify-voice']
+ if (project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME') == '1') args += '--allow-unpackaged-runtime'
+ commandLine args
+}
+tasks.named('preBuild').configure { dependsOn verifyVoiceHost }

@@ -17,7 +17,7 @@ import org.junit.*;
 import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
 
-/** Actual offline Capacitor submitLocal -> packaged CPU models -> native playback; fixture audio only. */
+/** Actual offline Capacitor submitLocal -> packaged fused libelizainference voice -> native playback; fixture audio only. */
 @RunWith(AndroidJUnit4.class)
 public final class LocalSpeechBridgeInstrumentedTest {
  private static void until(String expression,long timeout)throws Exception {long end=SystemClock.elapsedRealtime()+timeout;while(SystemClock.elapsedRealtime()<end){if("true".equals(WebViewTestDriver.evaluate("Boolean("+expression+")")))return;SystemClock.sleep(50);}fail("Local bridge condition timed out");}
@@ -29,7 +29,7 @@ public final class LocalSpeechBridgeInstrumentedTest {
  private static AlphaVoiceCloudPlugin plugin()throws Exception {AtomicReference<AlphaVoiceCloudPlugin> value=new AtomicReference<>();BoundedActivityScenario.main(()->{for(android.app.Activity a:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))if(a instanceof MainActivity)value.set((AlphaVoiceCloudPlugin)((MainActivity)a).getBridge().getPlugin("AlphaVoiceCloud").getInstance());});assertNotNull(value.get());return value.get();}
  private static Field field(Class<?> c,String name)throws Exception {Field f=c.getDeclaredField(name);f.setAccessible(true);return f;}
  private static boolean draining(AlphaVoiceCloudPlugin plugin,java.util.Map<?,?> pending)throws Exception {synchronized(pending){return field(AlphaVoiceCloudPlugin.class,"draining").getBoolean(plugin);}}
- private static JSONObject ready(String id)throws Exception {JSONObject r=call("Capacitor.Plugins.AlphaVoiceCloud.localSpeechStatus({requestId:"+JSONObject.quote(id)+"})");assertFalse("Local status must succeed",r.has("error"));assertTrue(r.getBoolean("ready"));assertEquals("device",r.getString("execution"));assertEquals("sherpa-onnx-cpu",r.getString("provider"));return r;}
+ private static JSONObject ready(String id)throws Exception {JSONObject r=call("Capacitor.Plugins.AlphaVoiceCloud.localSpeechStatus({requestId:"+JSONObject.quote(id)+"})");assertFalse("Local status must succeed",r.has("error"));assertTrue(r.getBoolean("ready"));assertEquals("device",r.getString("execution"));assertEquals(AlphaFusedSpeech.PROVIDER,r.getString("provider"));assertTrue("Fused voice ABI v16+",r.getInt("abi")>=AlphaFusedSpeech.ABI_MIN);assertTrue(r.getBoolean("asr")&&r.getBoolean("tts")&&r.getBoolean("vad"));assertTrue("Read-aloud readiness follows Kokoro",r.getBoolean("playback"));return r;}
  @Test public void offlineLocalBridgeTranscribesSynthesizesPlaysAndRecoversCancellation()throws Exception {
   Assume.assumeTrue("Explicit packaged local bridge opt-in","1".equals(InstrumentationRegistry.getArguments().getString("localSpeechBridge")));
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();assertNull("Networking must be disabled",context.getSystemService(ConnectivityManager.class).getActiveNetwork());
@@ -45,7 +45,7 @@ public final class LocalSpeechBridgeInstrumentedTest {
     AlphaVoiceCloudPlugin nativePlugin=plugin();Object capture=field(AlphaVoiceCloudPlugin.class,"capture").get(nativePlugin);
     BoundedActivityScenario.main(()->{try{field(capture.getClass(),"file").set(capture,audio);field(capture.getClass(),"id").set(capture,clip);field(capture.getClass(),"durationMs").set(capture,6625L);}catch(Exception e){throw new RuntimeException(e);}});
     JSONObject text=call("Capacitor.Plugins.AlphaVoiceCloud.transcribeLocalRecording({recordingId:"+JSONObject.quote(clip)+",requestId:'bridge-asr'})");
-    assertFalse("Actual local transcription succeeds",text.has("error"));assertTrue(text.getBoolean("local"));assertEquals("device",text.getString("execution"));assertEquals("sherpa-onnx-cpu",text.getString("provider"));
+    assertFalse("Actual local transcription succeeds",text.has("error"));assertTrue(text.getBoolean("local"));assertEquals("device",text.getString("execution"));assertEquals(AlphaFusedSpeech.PROVIDER,text.getString("provider"));
     String lower=text.getString("text").toLowerCase(Locale.ROOT);for(String word:new String[]{"nightfall","yellow","lamps","light","quarter"})assertTrue("Known human fixture contains "+word,lower.contains(word));
     WebViewTestDriver.evaluate("window.__localBridgeEnded=[];window.__localBridgeFailed=[];window.__localBridgeListeners=null;Promise.all([Capacitor.Plugins.AlphaVoiceCloud.addListener('playbackEnded',v=>window.__localBridgeEnded.push(v.playbackId)),Capacitor.Plugins.AlphaVoiceCloud.addListener('playbackFailed',v=>window.__localBridgeFailed.push(v.playbackId))]).then(h=>window.__localBridgeListeners=h)");until("window.__localBridgeListeners!==null",10000);
     JSONObject speech=call("Capacitor.Plugins.AlphaVoiceCloud.synthesizeLocal({text:'The quick brown fox jumps over the lazy dog.',requestId:'bridge-tts'})");assertFalse(speech.has("error"));assertEquals("device",speech.getString("execution"));String first=speech.getString("playbackId");

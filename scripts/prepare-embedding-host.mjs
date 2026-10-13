@@ -1,9 +1,13 @@
 // Consumer-owned preparation of the pinned fused Android engine and relocated JNI host.
 // Produces isolated artifacts only; does not alter vendor, package an APK or select runtime providers.
+// The same CPU build serves embeddings and on-device voice (ASR, Kokoro TTS, VAD); the receipt
+// records the voice symbol check separately so scripts/stage-embedding-host.mjs --receipt-voice
+// can admit it for android/voice-host/qualified-voice-host.json. --abi x86_64 builds the emulator host.
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
+import {VOICE_FUSED_SYMBOLS,missingSymbols,voiceJniSymbols} from './stage-embedding-host.mjs';
 const root=path.resolve(import.meta.dirname,'..'),upstream=path.join(root,'vendor/eliza');
 const args=process.argv.slice(2),option=name=>{const i=args.indexOf(name);return i<0?undefined:args[i+1];};
 for(let i=0;i<args.length;i++){if(args[i]==='--build')continue;if(['--fork','--output','--abi'].includes(args[i])){if(!args[++i]||args[i].startsWith('--'))throw Error('Missing option value');}else throw Error('Unknown option');}
@@ -53,8 +57,12 @@ if(args.includes('--build')){
  for(const [executable,...argv] of commands)execFileSync(executable,argv,{cwd:staging,env:{...process.env,...receipt.env},stdio:'inherit'});
  const tools=path.join(ndk,'toolchains/llvm/prebuilt',process.platform==='darwin'?'darwin-x86_64':'linux-x86_64','bin');
  const libraries=[path.join(staging,'packages/app/platforms/android/app/src/main/jniLibs',abi,'libelizainference.so'),path.join(staging,'packages/app/platforms/android/app/src/main/jniLibs',abi,'libc++_shared.so'),path.join(output,'jni-build/libelizavoicejni.so')];
+ const voiceMissing=[];
  receipt.libraries=libraries.map(file=>{
   const symbols=execFileSync(path.join(tools,'llvm-nm'),['-D','--defined-only',file],{encoding:'utf8',maxBuffer:16*1024*1024});
+  // Voice capability is recorded, not required: an embedding-only qualification stays valid.
+  if(path.basename(file)==='libelizainference.so')voiceMissing.push(...missingSymbols(symbols,VOICE_FUSED_SYMBOLS));
+  if(path.basename(file)==='libelizavoicejni.so')voiceMissing.push(...missingSymbols(symbols,voiceJniSymbols(identity)));
   const elf=execFileSync(path.join(tools,'llvm-readelf'),['-W','-h','-l','-d',file],{encoding:'utf8'});
   if(!elf.includes(abi==='arm64-v8a'?'AArch64':'Advanced Micro Devices X86-64')||/NEEDED[^\n]*musl/i.test(elf))throw Error('Wrong native engine ABI');
   const required=path.basename(file)==='libelizainference.so'?['eliza_inference_embed','eliza_inference_embed_with_options','eliza_inference_abi_version']:path.basename(file)==='libelizavoicejni.so'?['nativeEmbed','nativeEmbedUtf8','nativeEmbedWithOptionsUtf8'].map(name=>'Java_'+identity.replaceAll('.','_')+'_ElizaVoiceNative_'+name):[];
@@ -65,7 +73,10 @@ if(args.includes('--build')){
   return {path:file,sha256:createHash('sha256').update(fs.readFileSync(file)).digest('hex'),bytes:fs.statSync(file).size,requiredSymbols:required,alignment16KiB:true};
  });
  if(git(fork,'rev-parse','HEAD')!==forkPin||git(fork,'status','--porcelain'))throw Error('Engine source changed during build');
+ // Symbol presence is not capability: asr_stream_* are exported stubs at ABI v16. The runtime
+ // still probes the ABI version and *_supported() before use.
+ receipt.voiceSymbols={fused:VOICE_FUSED_SYMBOLS,jni:voiceJniSymbols(identity),missing:voiceMissing,verified:voiceMissing.length===0};
  receipt.built=true;
  fs.writeFileSync(path.join(output,'PREPARATION.json'),JSON.stringify(receipt,null,2)+'\n');
 }
-console.log(JSON.stringify({receipt:path.join(output,'PREPARATION.json'),built:receipt.built,packaged:false,runtimePolicyChanged:false}));
+console.log(JSON.stringify({receipt:path.join(output,'PREPARATION.json'),built:receipt.built,voiceSymbolsVerified:receipt.voiceSymbols?.verified??null,packaged:false,runtimePolicyChanged:false}));

@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "description": "On-device voice host: fused libelizainference (llama.cpp/ggml/mtmd, Kokoro-82M, Silero VAD) through the relocated libelizavoicejni. The only on-device speech engine. Rows are filled by actual qualification runs; nothing here claims emulator or device execution.",
+  "pin": "13c98575987a121decc45b161b0c8a4ee698554e",
+  "forkPin": "ea8b3f2dfc2641dea3e6238bc6dd99595584b076",
+  "identity": "ai.elizaresearch.alphaphone",
+  "provider": "libelizainference-cpu",
+  "bundle": {
+    "format": "alpha-voice-bundle-v1",
+    "assetRoot": "android/app/src/main/assets/voice/v1",
+    "deviceDirectory": "noBackupFilesDir/voice/v1",
+    "textModel": false
+  },
+  "abis": [
+    {
+      "abi": "arm64-v8a",
+      "release": true,
+      "variant": "cpu",
+      "libraryRecord": "android/embedding-host/qualified-host.json",
+      "libraries": [],
+      "requiredFusedSymbols": [
+        "eliza_inference_abi_version",
+        "eliza_inference_create",
+        "eliza_inference_destroy",
+        "eliza_inference_mmap_acquire",
+        "eliza_inference_asr_transcribe",
+        "eliza_inference_kokoro_load",
+        "eliza_inference_kokoro_synthesize_ipa_alloc",
+        "eliza_inference_kokoro_sample_rate",
+        "eliza_inference_free_pcm",
+        "eliza_inference_vad_supported",
+        "eliza_inference_vad_open",
+        "eliza_inference_vad_process",
+        "eliza_inference_vad_reset",
+        "eliza_inference_vad_close"
+      ],
+      "requiredJniSymbols": [
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeContextCreateUtf8",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeContextDestroy",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVoiceAbiVersion",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeAsrTranscribe",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeKokoroSynthesizeIpa",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeKokoroSampleRate",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadSupported",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadOpen",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadProcessBatch",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadReset",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadClose"
+      ],
+      "abiVersionMin": 16,
+      "alignment16KiB": true,
+      "voiceSymbolsVerified": false,
+      "voiceQualificationReceiptSha256": null,
+      "note": "Release ABI. Shares the embedding host bytes (same receipt); voice symbols are not yet checked on those bytes. Admit with node scripts/stage-embedding-host.mjs --receipt-voice <PREPARATION.json>."
+    },
+    {
+      "abi": "x86_64",
+      "release": false,
+      "variant": "cpu",
+      "libraryRecord": null,
+      "libraries": [],
+      "requiredFusedSymbols": [
+        "eliza_inference_abi_version",
+        "eliza_inference_create",
+        "eliza_inference_destroy",
+        "eliza_inference_mmap_acquire",
+        "eliza_inference_asr_transcribe",
+        "eliza_inference_kokoro_load",
+        "eliza_inference_kokoro_synthesize_ipa_alloc",
+        "eliza_inference_kokoro_sample_rate",
+        "eliza_inference_free_pcm",
+        "eliza_inference_vad_supported",
+        "eliza_inference_vad_open",
+        "eliza_inference_vad_process",
+        "eliza_inference_vad_reset",
+        "eliza_inference_vad_close"
+      ],
+      "requiredJniSymbols": [
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeContextCreateUtf8",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeContextDestroy",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVoiceAbiVersion",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeAsrTranscribe",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeKokoroSynthesizeIpa",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeKokoroSampleRate",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadSupported",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadOpen",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadProcessBatch",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadReset",
+        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadClose"
+      ],
+      "abiVersionMin": 16,
+      "alignment16KiB": true,
+      "voiceSymbolsVerified": false,
+      "voiceQualificationReceiptSha256": null,
+      "note": "Debug and emulator only (release abiFilters stay arm64-v8a). Not yet built: node scripts/prepare-embedding-host.mjs --abi x86_64 --build, then --receipt-voice."
+    }
+  ],
+  "models": [
+    {
+      "name": "Eliza-1 ASR text model",
+      "path": "asr/eliza-1-asr.gguf",
+      "role": "asr-model",
+      "sha256": null,
+      "bytes": null,
+      "license": null,
+      "source": null,
+      "revision": null,
+      "status": "open: upstream names no product-qualified, mobile-sized ASR text GGUF; the only pinned pair is labelled retired pre-Gemma and is not admitted here"
+    },
+    {
+      "name": "Eliza-1 ASR audio projector",
+      "path": "asr/eliza-1-asr-mmproj.gguf",
+      "role": "asr-mmproj",
+      "sha256": null,
+      "bytes": null,
+      "license": null,
+      "source": null,
+      "revision": null,
+      "status": "open: paired with asr-model"
+    },
+    {
+      "name": "Kokoro-82M v1.0",
+      "path": "tts/kokoro/kokoro-82m-v1_0.gguf",
+      "role": "tts-model",
+      "sha256": "165acd9d2d9b6c2d71fa5bd52b92a2559be08567f58ed496bade076e3d9cb46c",
+      "bytes": 162546720,
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/bundles/e2b/tts/kokoro/kokoro-82m-v1_0.gguf",
+      "revision": "1e4c73713e11f7ff42bc2a686cc5b178c8cac14f",
+      "status": "pinned (upstream plugins/plugin-native-inference/src/aosp-voice-download.ts and host-tts-worker.ts)"
+    },
+    {
+      "name": "Kokoro-82M af_sam voice preset",
+      "path": "tts/kokoro/af_sam.bin",
+      "role": "tts-voice",
+      "sha256": "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",
+      "bytes": 522240,
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/voice/kokoro/voices/af_sam.bin",
+      "revision": "1e4c73713e11f7ff42bc2a686cc5b178c8cac14f",
+      "status": "pinned (the preset upstream BionicSpeechInstrumentedTest and the AOSP download use)"
+    },
+    {
+      "name": "Silero VAD v5",
+      "path": "vad/silero-vad-v5.gguf",
+      "role": "vad-model",
+      "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+      "bytes": 620736,
+      "license": "MIT",
+      "source": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/voice/vad/silero-vad-v5.gguf",
+      "revision": "1e4c73713e11f7ff42bc2a686cc5b178c8cac14f",
+      "status": "pinned by sha256 and size (upstream model-catalog/voice-model-versions.json); the URL at this revision is not yet confirmed by Alpha"
+    }
+  ],
+  "lexicon": {
+    "name": "Kokoro en-US lexicon (from the CMU Pronouncing Dictionary)",
+    "path": "g2p/en-us-lexicon.tsv",
+    "role": "lexicon",
+    "sha256": "7d6114d502c1c63bb83bc6e176e21dd5120166c5992973f18ae9f917a12d0cd4",
+    "bytes": 2584441,
+    "license": "BSD-2-Clause",
+    "generator": "scripts/android-voice-lexicon.mjs",
+    "source": {
+      "name": "CMU Pronouncing Dictionary",
+      "url": "https://raw.githubusercontent.com/cmusphinx/cmudict/74790861f652b15e4ac49015a90074ad62a27690/cmudict.dict",
+      "revision": "74790861f652b15e4ac49015a90074ad62a27690",
+      "sha256": "81917843c7f44ce2b094ac63873c2c7a4cf802040792c455ba3ca406891c3d22",
+      "bytes": 3618488,
+      "notice": "licenses/cmudict-BSD-2-Clause.txt"
+    },
+    "status": "generated and recorded",
+    "intelligibility": "unqualified"
+  },
+  "evidence": {
+    "buildReceipt": null,
+    "emulatorDeviceExecuted": false,
+    "deviceExecuted": false,
+    "functionalAcceptance": null
+  }
+}

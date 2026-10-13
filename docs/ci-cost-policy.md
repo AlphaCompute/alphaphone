@@ -205,9 +205,11 @@ commit with its release: round 8 replaced the four major-tag references the olde
 workflows still had (`android-actions/setup-android`, `gradle/actions/setup-gradle`,
 `reactivecircus/android-emulator-runner`, `oven-sh/setup-bun`) with the commits those tags
 resolved to on 2026-10-10, so no workflow's behaviour changed. A change to the file itself selects no automatic lane. One `build` job
-repeats the Android foundation build's speech and APK steps with the instrumentation
-APKs (and a second Gradle build for the test-mocks pair when the reading suite is
-selected), and records the speech runtime as a requalification candidate; each selected
+repeats the Android foundation build's APK steps with the instrumentation APKs (and a
+second Gradle build for the test-mocks pair when the reading suite is selected); for the
+speech suite it also builds the x86_64 fused libelizainference voice host, admits it into
+that workspace only as an unreviewed hosted CI build, and stages the pinned voice bundle
+into the developer APK ([fused speech](fused-speech.md)); each selected
 suite then boots one API 35 x86_64 emulator. No run exists yet, so no duration is known:
 the `build` job is limited to 150 minutes and the emulator jobs to 90, 90 and 60. A later dispatch of the same suite on the same ref cancels the earlier one.
 
@@ -216,8 +218,8 @@ the `build` job is limited to 150 minutes and the emulator jobs to 90, 90 and 60
 gh workflow run android-emulator.yml --ref <branch> -f suite=instrumentation
 # Reading and page-question classes on the pinned Chromium 157 WebView; also builds the test-mocks pair.
 gh workflow run android-emulator.yml --ref <branch> -f suite=browser-reading
-# The unchanged LocalSpeechInstrumentedTest on x86_64 against the candidate built in that run.
-gh workflow run android-emulator.yml --ref <branch> -f suite=local-speech
+# The fused-speech classes on x86_64 against the voice bundle and engine built in that run.
+gh workflow run android-emulator.yml --ref <branch> -f suite=fused-speech
 # All three after one build.
 gh workflow run android-emulator.yml --ref <branch> -f suite=all
 ```
@@ -226,16 +228,15 @@ gh workflow run android-emulator.yml --ref <branch> -f suite=all
 | --- | --- | --- | --- | --- |
 | `instrumentation` | `instrumentation` | `npm run test:android:instrumentation` with its default classes, standalone then launcher | `android-emulator-instrumentation-<sha>-<run>-<attempt>`: `test-results/android-instrumentation/ci-default/` (`results.json`, raw output per class), `test-results/emulator-suite/instrumentation.json` | any class is failed, skipped or missing |
 | `browser-reading` | `browser-reading` | `scripts/prepare-ci-webview.mjs` (WebView 157.0.8083.0), then BrowserReadingNavigation and BrowserPageQuestion on the flag-off pair and BrowserReading, BrowserSensitiveReading and BrowserIsolatedReading on the test-mocks pair | `android-emulator-browser-reading-…`: `ci-reading/`, `ci-reading-test-mocks/`, the provider provisioning evidence | the provider cannot be installed, or any class is failed, skipped or missing |
-| `local-speech` | `local-speech` | `scripts/local-speech/requalify-runtime.py run` with networking off | `local-speech-x86_64-…`: `test-results/local-speech-x86_64/` (candidate before and after, `x86_64/instrumentation.log`, `x86_64/local-speech-evidence/`, the APK pair, `result.json`) | the canonical run does not record an x86_64 pass |
+| `fused-speech` | `fused-speech` | `scripts/ci/speech-candidate.mjs check` on the standalone APK, then FusedSpeechAbi, FusedSpeech, SpeechSentenceCancellation and VoiceNoteReadAloud on standalone with networking off | `fused-speech-x86_64-…`: `test-results/fused-speech-x86_64/` (the instrumentation record, the APK pair, `result.json`) | the APK is not the recorded bytes or carries no qualified ASR pair (none exists upstream yet, so the job is refused today), or any class is failed, skipped or missing |
 
 The suites are implemented in `scripts/ci/emulator-suite.mjs`, which refuses to run
 outside a GitHub-hosted runner. Results are emulator-class evidence for developer-override
-APKs built in that run (resident runtime not packaged, speech runtime unqualified) on an
-x86_64 SDK image. They are not evidence for a distributable build, an arm64 device, the
-AOSP image or acceptance. The speech job produces one ABI of one candidate: admission
-still needs the same candidate's arm64-v8a run (the artifact carries the APK pair for it)
-and `requalify-runtime.py admit --reviewer` with a reviewer named by a person. No job
-admits anything. Artifacts expire after three days; copy what a ledger cites.
+APKs built in that run (resident runtime not packaged, voice host an unreviewed hosted
+build) on an x86_64 SDK image. They are not evidence for a distributable build, an arm64
+device, the AOSP image or acceptance. The speech job covers one ABI: admission still needs
+arm64-v8a hardware (class D) and a reviewer named by a person, and only that review edits
+`android/voice-host/qualified-voice-host.json`. No job admits anything. Artifacts expire after three days; copy what a ledger cites.
 
 Before distributing a new runtime/APK, explicitly run resident qualification on
 the reviewed revision and inspect its terminal result. A green ordinary PR does

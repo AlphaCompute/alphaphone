@@ -40,6 +40,7 @@ import { fontLicenceCheck, fontLicenceLine } from "./font-license-blockers.mjs";
 import { licenceFlagLines, licenceFlagRecords } from "./licence-policy.mjs";
 import { packagedGzipProblems } from "./android-gzip-assets.mjs";
 import { appLinkFilters } from "./render-assetlinks.mjs";
+import { readVoiceHost, VOICE_BUNDLE_FORMAT } from "./stage-embedding-host.mjs";
 
 const USAGE = "Usage: node scripts/verify-apks.mjs [--test-mocks] [--allow-unpackaged-runtime]";
 const args = process.argv.slice(2);
@@ -65,6 +66,38 @@ function releaseFile(dir, variant) {
   if (present.length !== 1)
     throw new Error(`Expected exactly one ${variant} release APK in ${dir}, found ${present.length ? present.join(", ") : "none"}`);
   return { file: present[0], signed: present[0] === signed };
+}
+
+/**
+ * The packaged voice bundle (assets/voice/v1) and native engine against qualified-voice-host.json.
+ * Records whether on-device voice is packaged; functional acceptance is never inferred from bytes.
+ */
+function voiceHostAdmission(file) {
+  const names = execFileSync("unzip", ["-Z1", file], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\n").filter(Boolean);
+  const bundle = names.filter(name => name.startsWith("assets/voice/"));
+  if (!bundle.length) return { packaged: false, asr: false, differences: [], functionalAcceptance: null };
+  const differences = [];
+  const host = readVoiceHost(".");
+  const read = entry => execFileSync("unzip", ["-p", file, entry], { maxBuffer: 512 * 1024 * 1024 });
+  const manifest = names.includes("assets/voice/v1/manifest.json") ? JSON.parse(read("assets/voice/v1/manifest.json").toString("utf8")) : null;
+  if (manifest?.format !== VOICE_BUNDLE_FORMAT) differences.push("assets/voice/v1/manifest.json is missing or has another format");
+  const pinned = new Map([...host.models.filter(row => row.sha256 !== null), ...(host.lexicon.sha256 !== null ? [host.lexicon] : [])].map(row => [row.path, row]));
+  for (const row of manifest?.files ?? []) {
+    const entry = `assets/voice/v1/${row.path}`, expected = pinned.get(row.path);
+    if (!expected || !names.includes(entry)) { differences.push(`${entry}: not a qualified voice file`); continue; }
+    const bytes = read(entry);
+    if (bytes.length !== expected.bytes || createHash("sha256").update(bytes).digest("hex") !== expected.sha256) differences.push(`${entry}: differs from the qualified bytes`);
+  }
+  for (const name of bundle) if (name !== "assets/voice/v1/manifest.json" && !(manifest?.files ?? []).some(row => `assets/voice/v1/${row.path}` === name)) differences.push(`${name}: unlisted voice entry`);
+  for (const abi of new Set(names.filter(name => /^lib\/[^/]+\/libelizainference\.so$/.test(name)).map(name => name.split("/")[1]))) {
+    const record = host.abis.find(row => row.abi === abi);
+    if (!record?.voiceSymbolsVerified) { differences.push(`lib/${abi}: native engine has no voice-symbol qualification`); continue; }
+    for (const library of record.libraries) {
+      const bytes = names.includes(`lib/${abi}/${library.name}`) ? read(`lib/${abi}/${library.name}`) : null;
+      if (!bytes || bytes.length !== library.bytes || createHash("sha256").update(bytes).digest("hex") !== library.sha256) differences.push(`lib/${abi}/${library.name}: differs from the voice-qualified bytes`);
+    }
+  }
+  return { packaged: true, asr: (manifest?.files ?? []).some(row => row.role === "asr-model"), differences, functionalAcceptance: host.evidence.functionalAcceptance };
 }
 
 const results = [];
@@ -118,7 +151,7 @@ for (const variant of ["standalone", "launcher"])
       catch (error) { problems.push(`apksigner verify failed for ${file}: ${error.message}`); }
     }
     if (problems.length) failures.push(`${file}:\n  - ${problems.join("\n  - ")}`);
-    const { badging, xml, names, dexClasses, ...record } = d;
+    const { badging, xml, names, dexClasses, removedSpeechClasses, ...record } = d;
     results.push({
       ...record,
       variant,
@@ -188,16 +221,23 @@ for (const row of release) {
   row.runtime = runtime.runtime;
   // Test-mocks builds and releases without the resident runtime are never
   // distributable. Signing is recorded separately (row.signed).
-  row.speechQualification = JSON.parse(execFileSync("python3", [
-    "scripts/local-speech/verify-apk-qualification.py", row.file,
-  ], { encoding: "utf8" }));
+  // On-device voice is optional: without it local speech reports unavailable and Cloud voice is used.
+  // A packaged bundle must match android/voice-host/qualified-voice-host.json byte for byte.
+  row.voiceHost = voiceHostAdmission(row.file);
+  if (row.voiceHost.differences.length)
+    throw new Error(`On-device voice in ${row.file} is not admitted:\n  - ${row.voiceHost.differences.join("\n  - ")}`);
   row.distributable = !testMocks && row.signed === true && row.releaseAdmission.signerMatches === true &&
     row.releaseAdmission.blockers.length === 0 && row.releaseAdmission.failures.length === 0 &&
-    runtime.distributable === true && row.runtimeNotices === true && row.speechQualification.byteMatch === true && row.speechQualification.functionalPassed === true && row.speechQualification.qualified === true &&
+    runtime.distributable === true && row.runtimeNotices === true &&
+    (row.voiceHost.packaged === false || row.voiceHost.functionalAcceptance?.passed === true) &&
     row.licenceBlockers.length === 0;
 }
-for (const row of results.filter(row => row.mode === "debug"))
+for (const row of results.filter(row => row.mode === "debug")) {
   row.runtime = runtimePackaging.find(entry => entry.apk === row.file).runtime;
+  row.voiceHost = voiceHostAdmission(row.file);
+  if (row.voiceHost.differences.length)
+    throw new Error(`On-device voice in ${row.file} is not admitted:\n  - ${row.voiceHost.differences.join("\n  - ")}`);
+}
 
 const mappings = {};
 for (const variant of ["standalone", "launcher"]) {
@@ -244,7 +284,7 @@ fs.writeFileSync(
 console.log(JSON.stringify(results, null, 2));
 const undistributable = release.filter(row => !row.distributable);
 if (undistributable.length)
-  console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build", !row.speechQualification.byteMatch && "speech native bytes not admitted", !row.speechQualification.functionalPassed && "speech functional acceptance pending or failed", !row.runtimeNotices && "notices lack the packaged runtime (run node scripts/generate-licenses.mjs --packaged-runtime after staging)", ...row.releaseAdmission.blockers, ...row.licenceBlockers].filter(Boolean).join(", ")})`).join("; ")}`);
+  console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build", !row.runtimeNotices && "notices lack the packaged runtime (run node scripts/generate-licenses.mjs --packaged-runtime after staging)", row.voiceHost.packaged && row.voiceHost.functionalAcceptance?.passed !== true && "on-device voice packaged without recorded functional acceptance", ...row.releaseAdmission.blockers, ...row.licenceBlockers].filter(Boolean).join(", ")})`).join("; ")}`);
 // Licence flags are warnings: recorded per APK above, printed once here, never a failure.
 for (const line of flagLines) console.warn(line);
 const fontItems = new Map(release.flatMap(row => [...row.fontLicenceCheck.items, ...row.fontLicenceCheck.resolved].map(item => [item, row.fontLicenceCheck.blocksDistribution])));

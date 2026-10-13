@@ -76,9 +76,6 @@
     volatile <fields>;
 }
 
-# On-device speech runtime (sherpa-onnx) binds Java classes from native code.
--keep class com.k2fsa.sherpa.onnx.** { *; }
-
 # Crash-report symbolication.
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile

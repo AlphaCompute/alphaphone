@@ -11,19 +11,15 @@ roots.push('android/app/src/launcher','android/app/src/standalone','android/app/
  'android/gradlew','android/gradlew.bat','android/app/proguard-rules.pro',
  'android/notification-fixture/build.gradle','android/notification-fixture/src',
  'scripts/build-android.mjs','scripts/android-build-preflight.mjs','scripts/toolchain.mjs','scripts/verify-upstream.mjs',
- 'scripts/pinned-upstream-source.mjs','scripts/verify-apks.mjs','scripts/local-speech/verify-apk-qualification.py','scripts/apk.mjs','scripts/source-snapshot.mjs');
-// Generated speech models and the qualified JNI archive are APK inputs, unlike
-// Gradle outputs. Include their bytes so a model/runtime change invalidates the archive.
-roots.push('android/local-speech/build.gradle','vendor/eliza/packages/app/platforms/android/local-speech','vendor/eliza/packages/app/scripts/local-speech',
- 'android/local-speech/runtime-manifest.json','android/local-speech/qualified-runtime-manifest.json','android/local-speech/libs',
- 'android/local-speech/src');
-if(fs.existsSync('scripts/local-speech'))for(const name of fs.readdirSync('scripts/local-speech').sort()){
- const entry=path.join('scripts/local-speech',name);
- if(fs.lstatSync(entry).isFile() && /\.(?:py|json|patch|md)$/.test(name))roots.push(entry);
-}
+ 'scripts/pinned-upstream-source.mjs','scripts/verify-apks.mjs','scripts/apk.mjs','scripts/source-snapshot.mjs');
+// The on-device voice qualification and its staging/verification code are APK inputs: the voice
+// bundle bytes (assets/voice) and native engine (jniLibs) are captured below with the payload.
+roots.push('android/voice-host','android/embedding-host',
+ 'scripts/stage-embedding-host.mjs','scripts/prepare-embedding-host.mjs',
+ 'scripts/android-stage-voice-models.mjs','scripts/android-voice-lexicon.mjs');
 // Resident payload and generated Java are consumed directly by Gradle. Capture
 // their exact bytes, provenance and reproduction inputs, excluding web assets/dependencies.
-roots.push('android/app/src/main/assets/agent','android/app/src/main/jniLibs',
+roots.push('android/app/src/main/assets/agent','android/app/src/main/assets/voice','android/app/src/main/jniLibs',
  'android/app/build/generated/local-agent/java',
  'android/app/build/generated/local-agent/source-manifest.json',
  'upstream.lock.json',
@@ -38,4 +34,4 @@ function walk(entry){if(!fs.existsSync(entry))return;const stat=fs.lstatSync(ent
 roots.forEach(walk);
 const hashes=Object.fromEntries(files.sort().map(file=>[file,crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')]));
 const digest=crypto.createHash('sha256').update(JSON.stringify(hashes)).digest('hex');
-console.log(JSON.stringify({schemaVersion:4,digest,files:hashes},null,2));
+console.log(JSON.stringify({schemaVersion:5,digest,files:hashes},null,2));

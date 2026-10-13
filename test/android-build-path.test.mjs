@@ -4,8 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync, spawnSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
-import {checkoutProblems, embeddingHostProblems, preparedRuntimeProblems, SPEECH_AAR, SPEECH_MANIFEST} from '../scripts/android-build-preflight.mjs';
+import {checkoutProblems, embeddingHostProblems, preparedRuntimeProblems, VOICE_ASSET_ROOT, VOICE_HOST_MANIFEST} from '../scripts/android-build-preflight.mjs';
 import {TURBO_AGENT_DETECTION_ENV, preparedSourceEnv} from '../scripts/local-agent-source.mjs';
 import {ensurePreparedWorkflowWorker} from '../scripts/prepared-workflow-worker.mjs';
 import {workerHash} from '../scripts/workflow-worker-artifact.mjs';
@@ -48,14 +47,16 @@ function fixture(t) {
 
 test('preflight names the exact command for each missing build input', t => {
   const f = fixture(t);
-  f.write(SPEECH_MANIFEST, JSON.stringify({aarSha256: '0'.repeat(64), noEspeak: true}));
-  let problems = checkoutProblems(f.root);
+  // No on-device voice bundle is a valid build: local speech reports unavailable and Cloud voice is unchanged.
+  assert.deepEqual(checkoutProblems(f.root), []);
+  let problems = checkoutProblems(f.root, {voiceHost: () => { throw Error('Voice bundle lacks vad-model'); }});
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /Speech runtime .* is missing .*scripts\/local-speech\/README\.md/);
-
-  f.write(SPEECH_AAR, 'locally built');
-  assert.match(checkoutProblems(f.root)[0], /does not match android\/local-speech\/runtime-manifest\.json/);
-  f.write(SPEECH_MANIFEST, JSON.stringify({aarSha256: createHash('sha256').update('locally built').digest('hex'), noEspeak: true}));
+  assert.ok(problems[0].startsWith(`The on-device voice bundle in ${VOICE_ASSET_ROOT} is not admitted by ${VOICE_HOST_MANIFEST} (Voice bundle lacks vad-model; Gradle :app:verifyVoiceHost rejects the build).`), problems[0]);
+  assert.match(problems[0], /npm run android:build:local does not produce it: restage it with node scripts\/android-stage-voice-models\.mjs --from <directory of pinned voice models> \(see docs\/fused-speech\.md\), or remove android\/app\/src\/main\/assets\/voice to build without on-device voice\./);
+  // A staged bundle with no qualification record is refused by the real verifier, never repaired.
+  f.write(`${VOICE_ASSET_ROOT}/manifest.json`, '{}');
+  assert.match(checkoutProblems(f.root)[0], /is not admitted by android\/voice-host\/qualified-voice-host\.json/);
+  fs.rmSync(path.join(f.root, 'android/app/src/main/assets/voice'), {recursive: true});
   assert.deepEqual(checkoutProblems(f.root), []);
 
   // A clean checkout: no prepared source. This is what used to fail deep in Gradle.

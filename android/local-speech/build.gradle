@@ -1,3 +1,0 @@
-// Engine and build policy come from the reviewed Eliza pin. Product assets stay here.
-ext.elizaSpeechSourceDir = file('../../vendor/eliza/packages/app/platforms/android/local-speech')
-apply from: new File(ext.elizaSpeechSourceDir, 'consumer.gradle')

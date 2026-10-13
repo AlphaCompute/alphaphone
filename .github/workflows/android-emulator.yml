@@ -1,9 +1,9 @@
 name: Android emulator evidence
 # Dispatch only. Every job after `build` boots an emulator on a hosted runner, so nothing
 # here runs on a push, a pull request or a schedule (docs/ci-cost-policy.md). The result is
-# emulator-class evidence on developer-override APKs (unpackaged resident runtime,
-# unqualified speech runtime) on an x86_64 SDK image: never a distributable build, a
-# device or acceptance.
+# emulator-class evidence on developer-override APKs (unpackaged resident runtime; for
+# fused-speech, an unreviewed CI build of the x86_64 voice host) on an x86_64 SDK image:
+# never a distributable build, a device or acceptance.
 on:
   workflow_dispatch:
     inputs:
@@ -15,7 +15,7 @@ on:
         options:
           - instrumentation
           - browser-reading
-          - local-speech
+          - fused-speech
           - all
 permissions:
   contents: read
@@ -25,7 +25,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    name: Build developer APKs and speech candidate
+    name: Build developer APKs
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     outputs:
@@ -33,7 +33,6 @@ jobs:
       source_sha: ${{ github.sha }}
       manifest_sha256: ${{ steps.freeze.outputs.manifest }}
       test_mocks_manifest_sha256: ${{ steps.freeze.outputs.test_mocks_manifest }}
-      candidate_sha256: ${{ steps.freeze.outputs.candidate }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,49 +59,42 @@ jobs:
         run: |
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
-          # The speech wrappers require the CMake release of the qualified build.
+          # The fused engine wrappers (prepare-embedding-host) require the CMake release of the qualified build.
           python3 -m pip install cmake==4.0.3
           test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: npm ci
-      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .eliza/browser-speech
-          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
-      - name: Acquire verified browser speech model
-        timeout-minutes: 10
-        run: npm run browser-speech:prepare
-      # Acquisition inputs only. Every hit is size/hash verified; the runtime is built here.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .eliza/local-speech/downloads
-          key: speech-downloads-${{ runner.os }}-${{ hashFiles('vendor/eliza/packages/app/scripts/local-speech/download-manifest.json') }}
-      - name: Acquire verified speech source, models and license references
-        timeout-minutes: 15
+      # On-device speech is the fused libelizainference engine (llama.cpp/ggml) only. The fused-speech
+      # suite needs the x86_64 voice host and the pinned voice bundle inside the developer APK.
+      - name: Initialize the pinned fused engine checkout
+        if: inputs.suite == 'fused-speech' || inputs.suite == 'all'
+        run: git -C vendor/eliza submodule update --init --recursive plugins/plugin-local-inference/native/llama.cpp
+      - name: Build the x86_64 voice host and admit it into this workspace only
+        if: inputs.suite == 'fused-speech' || inputs.suite == 'all'
+        timeout-minutes: 75
         run: |
-          python3 scripts/local-speech/acquire-downloads.py
-          python3 scripts/local-speech/make-lexicon.py
-      - name: Build both no-eSpeak runtime ABIs
-        timeout-minutes: 65
+          node scripts/prepare-embedding-host.mjs --fork vendor/eliza/plugins/plugin-local-inference/native/llama.cpp \
+            --output "$RUNNER_TEMP/voice-host-x86_64" --abi x86_64 --build
+          # A hosted rebuild is not a reviewed qualification: the receipt says so, and the edited
+          # record is never committed. These APKs are developer APKs and never distributable.
+          node -e 'const fs=require("fs"),f=process.argv[1],r=JSON.parse(fs.readFileSync(f));r.qualifiedAt="unreviewed hosted CI build "+process.env.GITHUB_RUN_ID;fs.writeFileSync(f,JSON.stringify(r,null,2)+"\n")' "$RUNNER_TEMP/voice-host-x86_64/PREPARATION.json"
+          node scripts/stage-embedding-host.mjs --receipt-voice "$RUNNER_TEMP/voice-host-x86_64/PREPARATION.json"
+      # Model bytes only; every hit is size/hash verified again when it is staged.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: inputs.suite == 'fused-speech' || inputs.suite == 'all'
+        with:
+          path: .eliza/voice-models
+          key: voice-models-${{ hashFiles('android/voice-host/qualified-voice-host.json') }}
+      - name: Acquire and stage the pinned voice bundle
+        if: inputs.suite == 'fused-speech' || inputs.suite == 'all'
+        timeout-minutes: 20
         run: |
-          jobs="$(nproc)"
-          jobs=$((jobs > 4 ? 4 : jobs))
-          for abi in arm64-v8a x86_64; do
-            python3 scripts/local-speech/build-no-espeak.py --abi "$abi" --ndk "$ANDROID_NDK_HOME" --jobs "$jobs"
-            python3 scripts/local-speech/strip-runtime.py --abi "$abi" --ndk "$ANDROID_NDK_HOME"
+          node -e 'const m=require("./android/voice-host/qualified-voice-host.json");for(const r of m.models.filter(r=>r.sha256))console.log(r.path+" "+r.source);console.log("cmudict.dict "+m.lexicon.source.url)' |
+          while read -r file url; do
+            test -f ".eliza/voice-models/$file" || { mkdir -p "$(dirname ".eliza/voice-models/$file")"; curl -fsSL --retry 3 -o ".eliza/voice-models/$file" "$url"; }
           done
-          python3 scripts/local-speech/verify-source.py
-      - name: Assemble the runtime and record it as a requalification candidate
-        run: |
-          python3 scripts/local-speech/prepare-assets.py
-          python3 scripts/local-speech/assemble-runtime.py
-          # The candidate names this rebuild's native bytes, toolchain and the canonical
-          # test's hash; both ABIs start not-executed. The local-speech job fills in x86_64.
-          python3 scripts/local-speech/requalify-runtime.py record --ndk "$ANDROID_NDK_HOME" \
-            --candidate test-results/local-speech-ci/requalification/candidate.json
-          # A Linux rebuild cannot reproduce the reviewed native bytes; install it as an
-          # explicitly unqualified runtime. These APKs are never distributable.
-          python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE" --allow-unqualified-runtime
+          # --record writes the lexicon hash into this workspace's record only when none is committed.
+          node scripts/android-voice-lexicon.mjs --cmudict .eliza/voice-models/cmudict.dict --record
+          node scripts/android-stage-voice-models.mjs --from .eliza/voice-models
       - name: Prepare pinned native lifecycle sources
         run: node scripts/prepare-local-agent.mjs --source-only
       - name: Build flag-off developer APKs with their instrumentation APKs
@@ -117,12 +109,11 @@ jobs:
           before=$(sha256sum artifacts/*.apk artifacts/instrumentation/*.apk)
           npm run android:build -- --test-mocks
           test "$before" = "$(sha256sum artifacts/*.apk artifacts/instrumentation/*.apk)"
-      - name: Anchor the exact manifests and candidate
+      - name: Anchor the exact manifests
         id: freeze
         run: |
           {
             echo "manifest=$(sha256sum artifacts/apk-manifest.json | cut -d' ' -f1)"
-            echo "candidate=$(sha256sum test-results/local-speech-ci/requalification/candidate.json | cut -d' ' -f1)"
             if [ -f artifacts/test-mocks/apk-manifest.json ]; then
               echo "test_mocks_manifest=$(sha256sum artifacts/test-mocks/apk-manifest.json | cut -d' ' -f1)"
             fi
@@ -140,7 +131,6 @@ jobs:
             artifacts/test-mocks/apk-manifest.json
             artifacts/test-mocks/*-debug.apk
             artifacts/test-mocks/*-androidTest.apk
-            test-results/local-speech-ci/requalification/candidate.json
           compression-level: 0
           if-no-files-found: error
           retention-days: 3
@@ -152,8 +142,8 @@ jobs:
             artifacts/*.json
             artifacts/test-mocks/*.json
             android/app/build/reports/
-            test-results/local-speech-ci/
-            android/local-speech/runtime-manifest.json
+            android/voice-host/qualified-voice-host.json
+            android/app/src/main/assets/voice/v1/manifest.json
           retention-days: 3
 
   # (c) The default instrumentation run on both distributions.
@@ -293,18 +283,17 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  # (a) The x86_64 half of speech requalification: the unchanged canonical test against
-  # the candidate built in this run. Admission still needs the other ABI and a named reviewer.
-  local-speech:
-    name: Canonical speech test on x86_64
+  # (a) The x86_64 half of on-device speech: the fused-speech classes against the developer APK
+  # that carries the voice bundle. Admission still needs arm64-v8a hardware and a named reviewer.
+  fused-speech:
+    name: On-device speech on x86_64
     needs: build
-    if: inputs.suite == 'local-speech' || inputs.suite == 'all'
+    if: inputs.suite == 'fused-speech' || inputs.suite == 'all'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
       EXPECTED_MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
-      EXPECTED_CANDIDATE_SHA256: ${{ needs.build.outputs.candidate_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -321,23 +310,22 @@ jobs:
         with:
           packages: platform-tools build-tools;36.0.0
           log-accepted-android-sdk-licenses: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           path: .
           merge-multiple: true
-      - name: Require the build job's exact APK manifest and candidate, capacity and KVM
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-emulator-build-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-evidence
+      - name: Require the build job's exact APK manifest and voice bundle, capacity and KVM
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           test "$(sha256sum artifacts/apk-manifest.json | cut -d' ' -f1)" = "$EXPECTED_MANIFEST_SHA256"
-          test "$(sha256sum test-results/local-speech-ci/requalification/candidate.json | cut -d' ' -f1)" = "$EXPECTED_CANDIDATE_SHA256"
-          # The canonical test must be the file the candidate was recorded against.
-          node scripts/ci/speech-candidate.mjs check test-results/local-speech-ci/requalification/candidate.json
-          # `run` records into the candidate; keep the recorded one for an independent `ingest`.
-          cp test-results/local-speech-ci/requalification/candidate.json test-results/local-speech-ci/candidate-before-run.json
+          # The build job's workspace record (unreviewed x86_64 receipt) is what the APK was admitted against.
+          cp build-evidence/android/voice-host/qualified-voice-host.json android/voice-host/qualified-voice-host.json
+          node scripts/ci/speech-candidate.mjs check artifacts/standalone-debug.apk
           python3 -c 'import shutil; assert shutil.disk_usage(".").free >= 8*1024**3, "Insufficient fresh-runner emulator capacity"'
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -352,16 +340,16 @@ jobs:
           disk-size: 4096M
           emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
-          script: node scripts/ci/emulator-suite.mjs local-speech
-      - name: Package what `requalify-runtime.py ingest --abi x86_64` reads
+          script: node scripts/ci/emulator-suite.mjs fused-speech
+      - name: Package the run with its exact APK pair
         if: always()
-        run: node scripts/ci/speech-candidate.mjs package test-results/local-speech-ci test-results/local-speech-x86_64
+        run: node scripts/ci/speech-candidate.mjs package test-results/android-instrumentation/ci-fused-speech test-results/fused-speech-x86_64
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: local-speech-x86_64-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: fused-speech-x86_64-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            test-results/local-speech-x86_64/
+            test-results/fused-speech-x86_64/
             test-results/emulator-suite/
             test-results/android-fixture/
           compression-level: 0
