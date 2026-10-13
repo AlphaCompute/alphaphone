@@ -31,6 +31,24 @@ The development host launches Bun with `--conditions=eliza-source` and `--no-ins
 
 Workflow drafts in local browser development persist in the private host profile, separately scoped to the selected owner/agent. Atomic compare-and-exchange rejects stale-tab changes. These development drafts are not encrypted; the editor says so. Android continues to use its encrypted native draft store. Draft storage does not save or execute a workflow on the agent until the separate reviewed submission.
 
+## Isolated Mac provider QA
+
+Use separate `ALPHA_REMOTE_PROFILE`, `ALPHA_REMOTE_PORT` and Vite `--port` values
+when comparing a developer runtime with an existing preview. Reuse a verified
+prepared source through `ALPHA_ELIZA_SOURCE`; never restart another preview's host.
+
+`ALPHA_DEV_CARTESIA=1` explicitly enables the pinned runtime's self-hosted Cartesia
+speech service. Supply `CARTESIA_API_KEY_FILE` as an absolute reference to an existing
+owner-only regular file. The launcher passes only that reference to the host;
+it does not read the key into the renderer or accept a `VITE_` credential.
+This opt-in does not change the app's Cloud voice controls. Server health,
+selected app voice, actual recording/playback and Android acceptance are separate
+checks. Leave microphone and playback tests to an explicitly authorized session.
+
+The developer Models page reads the active host's inference provider. A saved
+Cloud account is independent of this selection, and an unreported model name
+stays unknown.
+
 ## Speech routes and optional local development
 
 Chat voice, Notes dictation and generic Maps/workflow speech select Eliza Cloud in the product. A valid saved Cloud account is required; opening voice must reuse that account rather than request a new sign-in unnecessarily. Notes recordings remain local until the user explicitly requests transcription. Chat voice has a separate conversation controller and does not open Notes. Actual microphone, playback, backend STT selection and Android permission acceptance require their own qualification; text inference readiness does not prove them.
