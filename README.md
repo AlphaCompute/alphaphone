@@ -165,17 +165,20 @@ wrapper is hash-pinned. No Eliza root dependency installation or package
 publication is required for this shell.
 
 On-device speech uses only the llama.cpp-based libelizainference voice host (decision P-10).
-Build and stage it as described in [fused speech](docs/fused-speech.md); the built libraries are
-intentionally absent from Git and are checked against the qualification record
-`android/voice-host/qualified-voice-host.json`. The x86_64 voice host is not yet qualified.
-APKs built without a qualified voice host are build evidence, not release candidates.
+Build and stage it as described in [fused speech](docs/fused-speech.md); the libraries and the
+voice bundle (`android/app/src/main/assets/voice/v1`) are intentionally absent from Git and
+are checked against the qualification record `android/voice-host/qualified-voice-host.json`
+by Gradle's `:app:verifyVoiceHost`. An APK without a voice bundle is valid: local speech then
+reports unavailable and the disclosed Cloud route stays (P-07). A packaged bundle must be the
+exact recorded bytes and needs recorded functional acceptance before a release is distributable.
+No qualified mobile ASR pair exists upstream yet, and the x86_64 voice host is not yet built.
 
 Every Android build also needs the prepared resident runtime source in
 `artifacts/local-agent-resident-<commit>` (from `upstream.lock.json`): Gradle's
 `stageLocalAgentSources` step generates the native agent service classes from it.
 Distribution builds also need the staged runtime payload, which in turn needs the
 workflow-worker artifact (`artifacts/mobile-workflow-worker-<commit>`). On a clean
-checkout, after the speech AAR above, one command does all of it:
+checkout, one command does all of it:
 
 ```sh
 # Distributable build: check inputs, prepare, build the worker, stage the runtime,
@@ -194,8 +197,9 @@ npm run android:build -- --allow-unpackaged-runtime
 
 `npm run android:build` first runs `scripts/android-build-preflight.mjs` and stops
 (exit 2), before the web sync and Gradle, naming the command to run when the pinned
-`vendor/eliza` checkout, the installed speech AAR, the prepared runtime source or (for
-distribution builds) the staged runtime payload is missing or stale.
+`vendor/eliza` checkout, the prepared runtime source or (for distribution builds) the staged
+runtime payload is missing or stale, or when a staged voice bundle is not admitted by the
+voice-host record.
 
 One input has no build step: the reviewed ARM64 embedding host
 (`android/embedding-host/qualified-host.json`). Its three native libraries are ignored by

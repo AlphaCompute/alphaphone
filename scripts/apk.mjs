@@ -27,8 +27,9 @@ export const EXPORTED_COMPONENTS = Object.freeze({
   "ai.elizaresearch.alphaphone.release.DataIntegrityProvider": "android.permission.DUMP",
 });
 // On-device speech is the fused libelizainference engine only. Entries and classes of the removed
-// speech runtimes (Open Neural Network Exchange models and runtimes, sherpa, ORT-Web) never ship.
-export const REMOVED_SPEECH_ENTRY = /(?:\.on{2}x$|libon{2}xruntime|libsherpa|k2fsa|ort-wasm)/i;
+// speech runtimes (Open Neural Network Exchange models and runtimes, sherpa, ORT-Web, the former
+// in-browser model directory public/browser-speech/) never ship.
+export const REMOVED_SPEECH_ENTRY = /(?:\.on{2}x$|libon{2}xruntime|libsherpa|k2fsa|ort-wasm|^assets\/public\/browser-speech\/)/i;
 export const REMOVED_SPEECH_CLASSES = Object.freeze(["Lcom/k2fsa/", "Lai/eliza/speech/"]);
 import { manifestFacts } from "../vendor/eliza/packages/app/scripts/lib/android-manifest-facts.mjs";
 export { manifestFacts, parseXmlTree } from "../vendor/eliza/packages/app/scripts/lib/android-manifest-facts.mjs";
@@ -81,9 +82,6 @@ export function distributionProblems(apk, { mode, testMocks = false } = {}) {
     problems.push("WRITE_EXTERNAL_STORAGE is requested");
   const maps = apk.names.filter(name => name.startsWith("assets/") && name.endsWith(".map"));
   if (maps.length) problems.push(`Source maps are packaged: ${maps.slice(0, 3).join(", ")}`);
-  // Android speech runs natively in libelizainference; the browser build's speech assets must not ride along.
-  const browserSpeech = apk.names.filter(name => name.startsWith("assets/public/browser-speech/"));
-  if (browserSpeech.length) problems.push(`Browser speech model assets are packaged: ${browserSpeech.slice(0, 3).join(", ")}`);
   const removedSpeech = apk.names.filter(name => REMOVED_SPEECH_ENTRY.test(name));
   if (removedSpeech.length) problems.push(`Removed speech runtime entries are packaged: ${removedSpeech.slice(0, 3).join(", ")}`);
   if (apk.removedSpeechClasses?.length) problems.push(`Removed speech runtime classes are packaged: ${apk.removedSpeechClasses.join(", ")}`);

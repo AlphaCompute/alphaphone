@@ -6,7 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {AVD,FUSED_SPEECH_CLASSES,READING_CLASSES,READING_TEST_MOCKS_CLASSES,SERIAL,disableEmulatorNetwork,runSuite,suitePlan,summarize} from '../scripts/ci/emulator-suite.mjs';
-import {CANONICAL_TEST,candidateProblems,packageSpeechRun} from '../scripts/ci/speech-candidate.mjs';
+import {CANONICAL_TEST,asrPackaged,candidateProblems,packageSpeechRun} from '../scripts/ci/speech-candidate.mjs';
 import {CLASS_REGISTRY,DEFAULT_CLASSES,parseInstrumentationArgs} from '../scripts/android-instrumentation.mjs';
 import {affected} from '../scripts/ci/affected.mjs';
 
@@ -85,7 +85,10 @@ test('every action in the emulator evidence workflow is pinned to an exact commi
  // One commit per action across the file, and the first-party pins are the ones the other workflows use.
  const pins=new Map();for(const [,target] of uses){const [name,commit]=target.split('@');assert.equal(pins.get(name)??commit,commit,name);pins.set(name,commit);}
  const others=['android.yml','browser.yml','resident-android.yml'].map(file=>read(path.join('.github/workflows',file))).join('\n');
- for(const [name,commit] of pins)if(name.startsWith('actions/'))assert.ok(others.includes(`${name}@${commit}`),`${name} is pinned to a commit no other workflow uses`);
+ // actions/cache is used only here (the fused-speech voice-model cache) since the browser speech
+ // caches left the other workflows; every other first-party action shares their reviewed pin.
+ for(const [name,commit] of pins)if(name.startsWith('actions/')&&name!=='actions/cache')assert.ok(others.includes(`${name}@${commit}`),`${name} is pinned to a commit no other workflow uses`);
+ assert.equal(others.includes('actions/cache@'),false,'a shared actions/cache must use the same pin in every workflow');
  assert.deepEqual([...pins.keys()].filter(name=>!name.startsWith('actions/')).sort(),['android-actions/setup-android','gradle/actions/setup-gradle','reactivecircus/android-emulator-runner']);
 });
 
@@ -296,8 +299,11 @@ test('speech candidate check refuses an APK whose voice bundle or x86_64 engine 
    'assets/voice/v1/manifest.json':Buffer.from(JSON.stringify({format:'alpha-voice-bundle-v1',files:[...host.models.filter(row=>row.sha256),{...host.lexicon,role:'lexicon'}].map(({path:file,role,sha256,bytes})=>({path:file,role,sha256,bytes}))}))};
   change(files);return {names:Object.keys(files),read:entry=>files[entry]??null};
  };
- // Without a qualified ASR pair the run cannot prove transcription, so the candidate is refused and says why.
- assert.deepEqual(candidateProblems(apk(),host),['no ASR pair is packaged; FusedSpeech transcription cannot run (no product-qualified mobile ASR pair exists upstream)']);
+ // Without a qualified ASR pair the run still exercises Kokoro, VAD and the ABI; it is admitted and says it has no ASR.
+ assert.deepEqual(candidateProblems(apk(),host),[]);
+ assert.equal(asrPackaged(apk()),false);
+ assert.equal(asrPackaged(apk(files=>{files['assets/voice/v1/manifest.json']=Buffer.from(JSON.stringify({files:[{role:'asr-model'},{role:'asr-mmproj'}]}));})),true);
+ assert.equal(asrPackaged(apk(files=>{files['assets/voice/v1/manifest.json']=Buffer.from('not json');})),false);
  const cases=[[files=>{delete files['assets/voice/v1/manifest.json'];},/carries no on-device voice bundle/],[files=>{files['assets/voice/v1/vad/silero-vad-v5.gguf']=Buffer.from('other');},/vad\/silero-vad-v5\.gguf is not a qualified voice file/],
   [files=>{files['lib/x86_64/libelizainference.so']=Buffer.from('rebuilt');},/lib\/x86_64\/libelizainference\.so differs from the voice-qualified bytes/],[files=>{delete files['lib/x86_64/libelizavoicejni.so'];},/libelizavoicejni\.so is not packaged/]];
  for(const [change,expected] of cases)assert.match(candidateProblems(apk(change),host).join('; '),expected);
@@ -314,14 +320,17 @@ test('speech package copies the run and its APK pair and reports only what the r
  const record=(statuses,passed=true)=>put('runs/ci-fused-speech/results.json',JSON.stringify({passed,classes:Object.entries(statuses).map(([name,status])=>({variant:'standalone',class:`ai.elizaresearch.alphaphone.${name}InstrumentedTest`,status}))}));
  record(Object.fromEntries(FUSED_SPEECH_CLASSES.map(name=>[name,'passed'])));
  put('artifacts/standalone-debug.apk','app');put('artifacts/instrumentation/standalone-androidTest.apk','test');
- const result=packageSpeechRun({results:'runs/ci-fused-speech',output:'out',repository:root,environment:{GITHUB_SHA:'9'.repeat(40),GITHUB_RUN_ID:'12'}});
+ const result=packageSpeechRun({results:'runs/ci-fused-speech',output:'out',repository:root,environment:{GITHUB_SHA:'9'.repeat(40),GITHUB_RUN_ID:'12'},asr:true});
  assert.equal(result.passed,true);assert.deepEqual(result.missing,[]);assert.equal(result.abi,'x86_64');assert.equal(result.evidenceClass,'E');assert.equal(result.commit,'9'.repeat(40));
  assert.match(result.admission,/^not admitted/);for(const item of ['arm64-v8a','Kokoro intelligibility','physical-device acceptance'])assert.ok(result.notEvidenceFor.includes(item),item);
+ assert.equal(result.asrPackaged,true);assert.ok(!result.notEvidenceFor.some(item=>/transcription/.test(item)));
  assert.deepEqual(Object.keys(result.files).sort(),['instrumentation/results.json','standalone-androidTest.apk','standalone-debug.apk']);
  assert.equal(result.files['standalone-debug.apk'],sha(path.join(root,'artifacts/standalone-debug.apk')));
  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'out/result.json'),'utf8')),result);
  assert.throws(()=>packageSpeechRun({results:'runs/ci-fused-speech',output:'out',repository:root}),/already exists/);
  // A class that did not pass, or one that never ran, is packaged as a failure.
+ // Without an ASR pair (or with an unreadable APK) transcription is named as not evidenced.
+ for(const [asr,output] of [[false,'out-no-asr'],[null,'out-unknown-asr']]){const run=packageSpeechRun({results:'runs/ci-fused-speech',output,repository:root,asr});assert.equal(run.asrPackaged,asr);assert.ok(run.notEvidenceFor.some(item=>/^on-device transcription/.test(item)),output);}
  record({...Object.fromEntries(FUSED_SPEECH_CLASSES.map(name=>[name,'passed'])),FusedSpeech:'failed'},false);
  assert.equal(packageSpeechRun({results:'runs/ci-fused-speech',output:'out-failed',repository:root}).passed,false);
  record({FusedSpeechAbi:'passed'});

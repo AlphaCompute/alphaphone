@@ -10,9 +10,12 @@
  *
  * `check` refuses an APK whose voice bundle (assets/voice/v1) or x86_64 engine is not the exact
  * qualified bytes, or that carries no voice bundle at all (the emulator would only prove that
- * local speech is unavailable). `package` copies the instrumentation record, the raw class logs and
- * the exact APK pair into one folder and writes result.json. Nothing is inferred: a run that
- * failed or never started is packaged as that.
+ * local speech is unavailable). A bundle without an ASR pair is admitted: no product-qualified
+ * mobile ASR pair exists upstream yet, and Kokoro, VAD and the ABI checks can still be exercised.
+ * The FusedSpeech transcription methods then skip by assumption, and the packaged result records
+ * asrPackaged:false with on-device transcription under notEvidenceFor. `package` copies the
+ * instrumentation record, the raw class logs and the exact APK pair into one folder and writes
+ * result.json. Nothing is inferred: a run that failed or never started is packaged as that.
  *
  * An x86_64 pass here is one ABI on an emulator (evidence class E). Admission still needs the
  * arm64-v8a engine on hardware (class D) and a reviewer named by a person; the result never edits
@@ -28,6 +31,14 @@ import { FUSED_SPEECH_CLASSES } from "./emulator-suite.mjs";
 export const CANONICAL_TEST = "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/FusedSpeechInstrumentedTest.java";
 export const ABI = "x86_64";
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
+
+/** Whether the APK's voice bundle lists an ASR text model and its projector. `read(entry)` returns bytes or null. */
+export function asrPackaged({ read }) {
+  try {
+    const files = JSON.parse(read("assets/voice/v1/manifest.json")?.toString("utf8") ?? "null")?.files ?? [];
+    return files.some(row => row.role === "asr-model") && files.some(row => row.role === "asr-mmproj");
+  } catch { return false; }
+}
 
 /** Problems that make an APK unusable for the hosted run; empty when it can run. `read(entry)` returns bytes or null. */
 export function candidateProblems({ names, read }, host) {
@@ -48,7 +59,7 @@ export function candidateProblems({ names, read }, host) {
     if (!bytes || bytes.length !== library.bytes || sha(bytes) !== library.sha256) problems.push(`lib/${ABI}/${library.name} differs from the voice-qualified bytes`);
   }
   if (!names.some(name => name === `lib/${ABI}/libelizavoicejni.so`)) problems.push(`lib/${ABI}/libelizavoicejni.so is not packaged`);
-  if (!(bundle.files ?? []).some(row => row.role === "asr-model")) problems.push("no ASR pair is packaged; FusedSpeech transcription cannot run (no product-qualified mobile ASR pair exists upstream)");
+  // No ASR pair is not a refusal: the run records asrPackaged:false and proves nothing about transcription.
   return problems;
 }
 
@@ -58,7 +69,7 @@ function apkReader(file) {
 }
 
 /** Copies the run's record and APK pair into a new folder and says what the record shows. */
-export function packageSpeechRun({ results, output, repository = process.cwd(), environment = process.env }) {
+export function packageSpeechRun({ results, output, repository = process.cwd(), environment = process.env, asr = null }) {
   const target = path.resolve(repository, output);
   if (fs.existsSync(target)) throw new Error(`${output} already exists; evidence is never replaced`);
   fs.mkdirSync(target, { recursive: true });
@@ -88,8 +99,11 @@ export function packageSpeechRun({ results, output, repository = process.cwd(), 
     // Exactly what the instrumentation record says; `passed` is never inferred here.
     passed: record?.passed === true && FUSED_SPEECH_CLASSES.every(name => ran.has(name)) && missing.length === 0,
     classes, missing, files,
+    // true, false, or null when the APK could not be read; anything but true leaves transcription unproven.
+    asrPackaged: asr,
     admission: "not admitted: arm64-v8a on hardware (class D) and a reviewer named by a person are still required; qualified-voice-host.json evidence is edited only by that review",
-    notEvidenceFor: ["arm64-v8a", "microphone, speaker or perceptual quality", "Kokoro intelligibility", "physical-device acceptance"],
+    notEvidenceFor: ["arm64-v8a", "microphone, speaker or perceptual quality", "Kokoro intelligibility", "physical-device acceptance",
+      ...(asr === true ? [] : ["on-device transcription (no ASR pair was packaged; the FusedSpeech ASR methods skip)"])],
   };
   fs.writeFileSync(path.join(target, "result.json"), `${JSON.stringify(result, null, 2)}\n`, { flag: "wx" });
   return result;
@@ -101,10 +115,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const host = JSON.parse(fs.readFileSync("android/voice-host/qualified-voice-host.json", "utf8"));
     const problems = candidateProblems(apkReader(first), host);
     if (problems.length) { console.error(`Speech candidate refused:\n  - ${problems.join("\n  - ")}`); process.exit(1); }
-    console.log(`Speech candidate admitted for the ${ABI} emulator run`);
+    const reader = apkReader(first);
+    console.log(`Speech candidate admitted for the ${ABI} emulator run${asrPackaged(reader) ? "" : " without an ASR pair: Kokoro, VAD and ABI only; transcription is not evidenced"}`);
   } else if (command === "package" && first && second) {
-    const result = packageSpeechRun({ results: first, output: second });
-    console.log(JSON.stringify({ abi: result.abi, passed: result.passed, classes: result.classes, missing: result.missing }, null, 2));
+    let asr = null;
+    try { asr = asrPackaged(apkReader("artifacts/standalone-debug.apk")); } catch { /* Unreadable APK: recorded as null. */ }
+    const result = packageSpeechRun({ results: first, output: second, asr });
+    console.log(JSON.stringify({ abi: result.abi, passed: result.passed, asrPackaged: result.asrPackaged, classes: result.classes, missing: result.missing }, null, 2));
   } else {
     console.error("Use: node scripts/ci/speech-candidate.mjs check <app.apk> | package <results-directory> <new-output-directory>");
     process.exit(2);

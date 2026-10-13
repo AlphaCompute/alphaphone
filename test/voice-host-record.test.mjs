@@ -15,18 +15,27 @@ const commit = seed => hex(seed).slice(0, 40);
 export function voiceHostFixture(overrides = {}) {
   return {
     schemaVersion: 1, pin: commit('pin'), forkPin: commit('fork'), identity: 'ai.elizaresearch.alphaphone', provider: 'libelizainference-cpu',
-    abis: [{abi: 'arm64-v8a', libraries: [
-      {name: 'libelizainference.so', sha256: hex('inference'), bytes: 6199248},
-      {name: 'libelizavoicejni.so', sha256: hex('jni'), bytes: 1016376},
-      {name: 'libc++_shared.so', sha256: hex('libcxx'), bytes: 1304848},
-    ]}],
-    models: [
-      {name: 'Kokoro-82M', role: 'tts', revision: 'hexgrad/Kokoro-82M@fixture', path: 'tts/kokoro-82m-q8.gguf', sha256: hex('kokoro'), bytes: 90_000_000, license: 'Apache-2.0', source: 'https://huggingface.co/hexgrad/Kokoro-82M'},
-      {name: 'Silero VAD', role: 'vad', revision: 'v5-fixture', path: 'vad/silero-v5.gguf', sha256: hex('vad'), bytes: 2_000_000, license: 'MIT', source: 'https://github.com/snakers4/silero-vad'},
-      // A model under non-OSI terms with no licence file held: listed and flagged, never blocking.
-      {name: 'Fixture ASR text model', role: 'asr', revision: 'fixture', path: 'asr/text.gguf', sha256: hex('asr'), bytes: 500_000_000, license: 'LicenseRef-Gemma-Terms-of-Use', source: 'https://ai.google.dev/gemma/terms'},
-      {name: 'Fixture ASR projector', role: 'asr', revision: 'fixture', path: 'asr/eliza-1-asr-mmproj.gguf', sha256: hex('mmproj'), bytes: 100_000_000, source: 'https://example.invalid/asr'},
+    abis: [
+      {abi: 'arm64-v8a', release: true, libraryRecord: 'android/embedding-host/qualified-host.json', voiceSymbolsVerified: true, libraries: [
+        {name: 'libelizainference.so', sha256: hex('inference'), bytes: 6199248},
+        {name: 'libelizavoicejni.so', sha256: hex('jni'), bytes: 1016376},
+        {name: 'libc++_shared.so', sha256: hex('libcxx'), bytes: 1304848},
+      ]},
+      // Not built yet: an empty library list is "not yet voice-qualified", not broken input.
+      {abi: 'x86_64', release: false, libraryRecord: null, voiceSymbolsVerified: false, libraries: []},
     ],
+    models: [
+      {name: 'Kokoro-82M', role: 'tts-model', revision: 'hexgrad/Kokoro-82M@fixture', path: 'tts/kokoro/kokoro-82m-q8.gguf', sha256: hex('kokoro'), bytes: 90_000_000, license: 'Apache-2.0', source: 'https://huggingface.co/hexgrad/Kokoro-82M', status: 'pinned'},
+      {name: 'Kokoro af_sam preset', role: 'tts-voice', revision: 'hexgrad/Kokoro-82M@fixture', path: 'tts/kokoro/af_sam.bin', sha256: hex('af_sam'), bytes: 522240, license: 'Apache-2.0', source: 'https://huggingface.co/hexgrad/Kokoro-82M', status: 'pinned'},
+      {name: 'Silero VAD', role: 'vad-model', revision: 'v5-fixture', path: 'vad/silero-v5.gguf', sha256: hex('vad'), bytes: 2_000_000, license: 'MIT', source: 'https://github.com/snakers4/silero-vad', status: 'pinned'},
+      // A model under non-OSI terms with no licence file held: listed and flagged, never blocking.
+      {name: 'Fixture ASR text model', role: 'asr-model', revision: 'fixture', path: 'asr/text.gguf', sha256: hex('asr'), bytes: 500_000_000, license: 'LicenseRef-Gemma-Terms-of-Use', source: 'https://ai.google.dev/gemma/terms', status: 'pinned'},
+      {name: 'Fixture ASR projector', role: 'asr-mmproj', revision: 'fixture', path: 'asr/eliza-1-asr-mmproj.gguf', sha256: hex('mmproj'), bytes: 100_000_000, source: 'https://example.invalid/asr', status: 'pinned'},
+      // An open row: nothing pinned, so it is neither listed nor staged.
+      {name: 'Open ASR row', role: 'asr-model', path: 'asr/open.gguf', sha256: null, bytes: null, license: null, source: null, revision: null, status: 'open: no qualified pair'},
+    ],
+    lexicon: {name: 'Kokoro en-US lexicon', path: 'g2p/en-us-lexicon.tsv', role: 'lexicon', sha256: hex('lexicon'), bytes: 2584441, license: 'BSD-2-Clause',
+      source: {name: 'CMU Pronouncing Dictionary', url: 'https://example.invalid/cmudict.dict', revision: commit('cmudict'), sha256: hex('cmudict'), bytes: 3618488, notice: 'licenses/cmudict-BSD-2-Clause.txt'}},
     ...overrides,
   };
 }
@@ -52,40 +61,62 @@ test('a well-formed voice-host record has no problems', () => {
   assert.deepEqual(voiceHostProblems(voiceHostFixture()), []);
 });
 
+test('the committed Android record satisfies the shared schema', () => {
+  const record = JSON.parse(fs.readFileSync(path.join(ROOT, VOICE_HOST), 'utf8'));
+  assert.deepEqual(voiceHostProblems(record), []);
+});
+
 test('the schema rejects malformed hashes, missing libraries and non-GGUF models', () => {
-  const bad = voiceHostFixture({schemaVersion: 2, forkPin: 'main', abis: [{abi: 'x86_64', libraries: [{name: 'libelizainference.so', sha256: 'ABC', bytes: 0}]}]});
-  bad.models.push({name: 'Legacy recognizer', role: 'asr', revision: 'r', path: 'asr/encoder.bin', sha256: hex('legacy'), bytes: 1, source: 'https://example.invalid'});
+  const bad = voiceHostFixture({schemaVersion: 2, forkPin: 'main', abis: [
+    {abi: 'x86_64', libraries: [{name: 'libelizainference.so', sha256: 'ABC', bytes: 0}]},
+    {abi: 'arm64-v8a', voiceSymbolsVerified: true, libraries: []},
+    {abi: 'riscv64'},
+  ]});
+  bad.models.push({name: 'Legacy recognizer', role: 'asr-model', revision: 'r', path: 'asr/encoder.bin', sha256: hex('legacy'), bytes: 1, source: 'https://example.invalid'});
+  bad.models.push({name: 'Unexplained open row', role: 'vad-model', path: 'vad/x.gguf', sha256: null});
+  bad.models.push({name: 'Preset', role: 'tts-voice', revision: 'r', path: 'tts/kokoro/af.gguf', sha256: hex('p'), bytes: 1, source: 'https://example.invalid'});
+  bad.models.push({name: 'Unknown role', role: 'tts', revision: 'r', path: 'tts/x.gguf', sha256: hex('u'), bytes: 1, source: 'https://example.invalid'});
   const problems = voiceHostProblems(bad, 'fixture');
   for (const expected of ['schemaVersion must be 1', 'forkPin must be a 40-character git commit', 'abis[0].libraries[0].sha256 must be a lowercase SHA-256',
-    'abis[0].libraries[0].bytes must be a positive integer', 'models[4].path must be a GGUF file'])
+    'abis[0].libraries[0].bytes must be a positive integer', 'abis[1].libraries must list the qualified libraries once voiceSymbolsVerified is true',
+    'abis[2].libraries must be an array', 'models[6].path must be a GGUF file', 'models[7].status must start with "open"',
+    'models[8].path must be a Kokoro voice preset (.bin)', 'models[9].role must be one of'])
     assert.ok(problems.some(problem => problem.includes(expected)), `${expected}\n${problems.join('\n')}`);
   assert.ok(voiceHostProblems(voiceHostFixture({abis: []})).some(problem => problem.includes('abis must list at least one ABI')));
   assert.deepEqual(voiceHostProblems([], 'fixture'), ['fixture: not a JSON object']);
 });
 
-test('notices list the fused libelizainference sources and every GGUF model, flagging what is unverified', t => {
+test('notices list the fused libelizainference sources, every pinned model and the lexicon, flagging what is unverified', t => {
   const dir = scratch(t, voiceHostFixture());
   const {entries, errors, warnings} = collectNotices(dir);
   assert.deepEqual(errors, []);
   // The requires-scoped reason applies once the record exists, so it is used, not stale. The one
   // model with no licence and no recorded reason is listed with a note, never an error.
-  assert.deepEqual(warnings, [`Fixture ASR projector (asr model, GGUF) fixture (sha256 ${hex('mmproj')}; 100000000 bytes): license unverified, with no reason recorded in licenses/unverified-allowlist.json`]);
+  assert.deepEqual(warnings, [`Fixture ASR projector (asr-mmproj, GGUF) fixture (sha256 ${hex('mmproj')}; 100000000 bytes): license unverified, with no reason recorded in licenses/unverified-allowlist.json`]);
   const byName = Object.fromEntries(entries.map(entry => [entry.name, entry]));
   for (const component of VOICE_HOST_DEFAULT_COMPONENTS) assert.ok(byName[component.name], component.name);
   const llama = byName['llama.cpp, ggml and mtmd (fused into libelizainference)'];
   assert.equal(llama.license, 'MIT');
   assert.match(llama.version, new RegExp(`elizaOS fused fork ${commit('fork')}`));
   assert.match(llama.source, new RegExp(`arm64-v8a/libelizainference\\.so \\(sha256 ${hex('inference')}; 6199248 bytes\\)`));
+  assert.match(llama.source, /x86_64: not yet voice-qualified; not built/);
   assert.match(llama.text, /Permission is hereby granted, free of charge/);
   const voice = byName['elizaOS voice runtime sources (OmniVoice, kokoro_lib, eliza-inference FFI) in libelizainference'];
   assert.deepEqual([voice.license, voice.flags.includes('unverified')], [UNVERIFIED, true]);
   assert.match(voice.obligations.find(item => item.flag === 'unverified').note, /fused llama\.cpp fork/);
-  const kokoro = byName['Kokoro-82M (tts model, GGUF)'];
+  const kokoro = byName['Kokoro-82M (tts-model, GGUF)'];
   assert.deepEqual([kokoro.license, kokoro.version], ['Apache-2.0', `hexgrad/Kokoro-82M@fixture (sha256 ${hex('kokoro')}; 90000000 bytes)`]);
   // Non-OSI model terms with no text held are flagged, not an error.
-  const asr = byName['Fixture ASR text model (asr model, GGUF)'];
+  const asr = byName['Fixture ASR text model (asr-model, GGUF)'];
   assert.ok(asr.flags.length > 0, JSON.stringify(asr.flags));
-  assert.deepEqual(byName['Fixture ASR projector (asr model, GGUF)'].license, UNVERIFIED);
+  assert.deepEqual(byName['Fixture ASR projector (asr-mmproj, GGUF)'].license, UNVERIFIED);
+  assert.equal(byName['Kokoro af_sam preset (tts-voice, Kokoro voice preset)'].license, 'Apache-2.0');
+  // Open rows are not shipped, so they are not listed.
+  assert.ok(!entries.some(entry => entry.name.startsWith('Open ASR row')));
+  // The lexicon carries the CMUdict notice the record names.
+  const lexicon = byName['Kokoro en-US lexicon (lexicon)'];
+  assert.equal(lexicon.license, 'BSD-2-Clause');
+  assert.match(lexicon.text, /Carnegie Mellon/);
 });
 
 test('a licence file named by the record must match its recorded hash', t => {
@@ -105,7 +136,7 @@ test('a malformed record is broken input for the notices', t => {
   assert.ok(collectNotices(dir).errors.some(error => error.includes('pin must be a 40-character git commit')));
 });
 
-test('the SBOM lists each qualified library per ABI and each model with its hash and size', t => {
+test('the SBOM lists each qualified library per ABI, each pinned model and the lexicon with its hash and size', t => {
   const dir = scratch(t, voiceHostFixture());
   const bom = generateSbom(dir);
   const byRef = new Map(bom.components.map(component => [component['bom-ref'], component]));
@@ -115,7 +146,11 @@ test('the SBOM lists each qualified library per ABI and each model with its hash
   // A fused library's licences are its notice entries; the component says so and is flagged.
   const prop = (component, name) => component.properties.find(item => item.name === `alphaphone:${name}`)?.value;
   assert.deepEqual([prop(library, 'licence-expression'), prop(library, 'licence-flags')], ['not recorded in this inventory', 'unverified']);
-  const kokoro = byRef.get('voice-model:tts/Kokoro-82M');
+  assert.ok(![...byRef.keys()].some(ref => ref.startsWith('voice-host:x86_64/')), 'an ABI that is not voice-qualified lists no library');
+  assert.ok(!byRef.has('voice-model:asr-model/Open ASR row'), 'an open model row is not a component');
+  const lexicon = byRef.get('voice-lexicon:g2p/en-us-lexicon.tsv');
+  assert.deepEqual([lexicon.type, lexicon.hashes[0].content], ['data', hex('lexicon')]);
+  const kokoro = byRef.get('voice-model:tts-model/Kokoro-82M');
   assert.equal(kokoro.type, 'machine-learning-model');
   assert.equal(kokoro.hashes[0].content, hex('kokoro'));
   assert.ok(kokoro.properties.some(item => item.name === 'alphaphone:source-revision' && item.value === 'hexgrad/Kokoro-82M@fixture'));

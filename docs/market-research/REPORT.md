@@ -1,5 +1,7 @@
 # Alpha Phone — market, competitive, opportunity and technical research
 
+> **Superseded in part (2026-10-13, [decision P-10](../decisions.md)).** On-device and local speech and inference use only libelizainference (llama.cpp/ggml, GGUF models). ONNX Runtime, sherpa-onnx and ONNX-format models named in this section are historical research context, not a plan.
+
 This report consolidates fifteen research sections on the market, competitors, regulation, distribution and technical plan for Alpha Phone. Each section carries its own tables, citations and open questions. Scope, the product baseline and the topic checklist are in [Scope and coverage](00-manifest.md).
 
 **(est.)** marks an estimate. Sections 12–15 are plans; none of their content has been built or measured yet. This report is not legal or investment advice.

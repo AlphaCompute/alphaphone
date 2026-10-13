@@ -91,7 +91,7 @@ test('resident reading uses the resident binding and a binding change aborts it'
   const {createNativeReadingVoice}=await import('/src/runtime/native-reading-voice.ts');
   const controller=connectionController as any,proto=BrowserVoice.prototype as any,calls:any[]=[];
   let resident={execution:'device',ownerId:'fixture-owner',sessionId:'fixture-session'};
-  const listeners=new Set<()=>void>(),saved={resident:controller.getResidentReadingBinding,paired:controller.getPairedVoiceBinding,subscribe:controller.subscribe,synth:proto.synthesizeLocalBrowserReading};
+  const listeners=new Set<()=>void>(),saved={resident:controller.getResidentReadingBinding,paired:controller.getPairedVoiceBinding,subscribe:controller.subscribe,synth:proto.synthesizeLocalBrowserReading,status:proto.localSpeechStatus};
   controller.getResidentReadingBinding=()=>resident;
   controller.getPairedVoiceBinding=()=>{throw Error('The paired voice must not be consulted while a resident binding exists');};
   controller.subscribe=(listener:()=>void)=>{listeners.add(listener);return ()=>{listeners.delete(listener);};};
@@ -100,6 +100,11 @@ test('resident reading uses the resident binding and a binding change aborts it'
    const voice=createNativeReadingVoice();
    if(!voice)return {voice:false};
    const chosen={binding:voice.binding,current:voice.isCurrent()};
+   // Resident reading needs playback (Kokoro) only: recognition being unavailable must not block it.
+   proto.localSpeechStatus=async()=>({ready:false,playback:true,execution:'browser'});
+   const readAloudWithoutRecognition=await voice.ready(new AbortController().signal);
+   proto.localSpeechStatus=async()=>({ready:false,playback:false,execution:'browser'});
+   const readAloudWithoutPlayback=await voice.ready(new AbortController().signal);
    const speaking=voice.speak('token-one',new AbortController().signal).then(()=>'finished',(error:any)=>`${error?.name}:${error?.message}`);
    for(let i=0;i<50&&!calls.length;i++)await new Promise(resolve=>setTimeout(resolve,20));
    const before=calls.length;
@@ -107,10 +112,11 @@ test('resident reading uses the resident binding and a binding change aborts it'
    listeners.forEach(listener=>listener());
    const outcome=await speaking;
    const next=await voice.speak('token-two',new AbortController().signal).then(()=>'finished',(error:any)=>`${error?.name}:${error?.message}`);
-   return {voice:true,chosen,before,calls,outcome,afterChange:voice.isCurrent(),next};
-  }finally{Object.assign(controller,{getResidentReadingBinding:saved.resident,getPairedVoiceBinding:saved.paired,subscribe:saved.subscribe});if(saved.synth)proto.synthesizeLocalBrowserReading=saved.synth;else delete proto.synthesizeLocalBrowserReading;}
+   return {voice:true,chosen,before,calls,outcome,afterChange:voice.isCurrent(),next,readAloudWithoutRecognition,readAloudWithoutPlayback};
+  }finally{Object.assign(controller,{getResidentReadingBinding:saved.resident,getPairedVoiceBinding:saved.paired,subscribe:saved.subscribe});if(saved.synth)proto.synthesizeLocalBrowserReading=saved.synth;else delete proto.synthesizeLocalBrowserReading;if(saved.status)proto.localSpeechStatus=saved.status;else delete proto.localSpeechStatus;}
  });
  expect(result.voice).toBe(true);
+ expect([result.readAloudWithoutRecognition,result.readAloudWithoutPlayback]).toEqual([true,false]);
  expect(result.chosen!.binding).toMatchObject({execution:'device',ownerId:'fixture-owner',sessionId:'fixture-session'});
  expect(result.chosen!.binding.expiresAt).toBeGreaterThan(Date.now());
  expect(result.chosen!.current).toBe(true);

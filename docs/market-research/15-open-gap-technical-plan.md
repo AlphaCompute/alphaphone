@@ -1,5 +1,7 @@
 # 15 — Open-gap technical plan: confidential capture, redaction, consent and verifiable cloud processing
 
+> **Superseded in part (2026-10-13, [decision P-10](../decisions.md)).** On-device and local speech and inference use only libelizainference (llama.cpp/ggml, GGUF models). ONNX Runtime, sherpa-onnx and ONNX-format models named in this section are historical research context, not a plan.
+
 > Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [architecture and source ownership](../architecture.md). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
 
 This is a plan, not acceptance evidence: nothing in it is built or proves that a capability exists. Capability statements about Alpha today come from repository documents; every external fact has a URL. **(est.)** marks an estimate or model; **(unverified)** marks a figure not confirmed against a primary source.

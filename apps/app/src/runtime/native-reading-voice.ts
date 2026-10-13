@@ -4,7 +4,8 @@ import {createOnDeviceVoice} from './local-voice';
 import {createPairedVoice} from './paired-voice';
 import {connectionController} from './connection-ui';
 const native=registerPlugin<any>('AlphaVoiceCloud');
-/** Approved page text stays native; the renderer passes only its one-use token. */
+/** Approved page text stays native; the renderer passes only its one-use token.
+ * Resident reading needs Kokoro playback only, not recognition, so it gates on playbackReady. */
 export function createNativeReadingVoice(){
  const resident=connectionController.getResidentReadingBinding();
  if(resident){
@@ -12,7 +13,7 @@ export function createNativeReadingVoice(){
   const binding={...resident,expiresAt:Date.now()+120000};
   const isCurrent=()=>JSON.stringify(connectionController.getResidentReadingBinding())===JSON.stringify(resident);
   const check=()=>{if(!isCurrent()||document.hidden||connectionController.getSnapshot().open)throw new DOMException('Reading selection changed','AbortError');};
-  return {binding,isCurrent,ready:voice.ready,async speak(readingToken:string,signal:AbortSignal){
+  return {binding,isCurrent,ready:voice.playbackReady,async speak(readingToken:string,signal:AbortSignal){
    check();const owned=new AbortController(),cancel=()=>owned.abort(new DOMException('Reading cancelled','AbortError'));
    const unsubscribe=connectionController.subscribe(()=>{try{check();}catch{cancel();}});
    const hidden=()=>{if(document.hidden)cancel();};document.addEventListener('visibilitychange',hidden);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();

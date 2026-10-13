@@ -9,6 +9,7 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {auditWebBundle, engineFindings} from '../scripts/audit-production-bundle.mjs';
+import {REMOVED_SPEECH_CLASSES, REMOVED_SPEECH_ENTRY} from '../scripts/apk.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WORD = 'on' + 'nx';
@@ -70,4 +71,12 @@ test('the engine rule does not fire on ordinary bundle content or base64 data', 
   const dir = bundle(t, {'assets/index.js': `const font="data:font/woff2;base64,${noise}";const sport="person";`, 'licenses/third-party-notices.json': '[]'});
   assert.deepEqual(auditWebBundle(dir).findings, []);
   assert.deepEqual(engineFindings('assets/maplibre-gl-worker.js', 'self.onmessage=()=>{}'), []);
+});
+
+test('the APK check names every removed speech entry and class, and spares the fused engine', () => {
+  for (const name of [`assets/models/encoder.${WORD}`, `lib/arm64-v8a/lib${WORD}runtime.so`, `lib/arm64-v8a/libsher${'pa'}-${WORD}-jni.so`, 'assets/public/ort-wasm-simd.wasm',
+    'assets/public/browser-speech/manifest.json', `assets/k2${'fsa'}/tokens.txt`]) assert.match(name, REMOVED_SPEECH_ENTRY, name);
+  for (const name of ['lib/arm64-v8a/libelizainference.so', 'lib/arm64-v8a/libelizavoicejni.so', 'assets/voice/v1/tts/kokoro/kokoro-82m-v1_0.gguf',
+    'assets/public/assets/pdf.worker.wasm', 'assets/public/licenses/third-party-notices.json']) assert.doesNotMatch(name, REMOVED_SPEECH_ENTRY, name);
+  assert.deepEqual([...REMOVED_SPEECH_CLASSES], [`Lcom/k2${'fsa'}/`, 'Lai/eliza/speech/']);
 });

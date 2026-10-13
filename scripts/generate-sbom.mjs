@@ -15,8 +15,9 @@
  *   - licenses/android-runtime-classpath.json: resolved Gradle runtime coordinates, each with the
  *     SHA-256 Gradle dependency verification enforces (android/gradle/verification-metadata.xml).
  *     A coordinate with no recorded hash fails generation.
- *   - android/voice-host/qualified-voice-host.json (when the voice host is qualified): SHA-256 and
- *     size of each libelizainference voice-host library per ABI, and of each GGUF speech model.
+ *   - android/voice-host/qualified-voice-host.json: SHA-256 and size of each voice-qualified
+ *     libelizainference library per ABI (none until an ABI is voice-qualified), of each pinned
+ *     speech model (open rows are skipped) and of the generated Kokoro lexicon.
  *   - upstream.lock.json: the pinned elizaOS commit.
  * Licences (decision P-09): every component carries `alphaphone:licence-expression` (the declared
  * expression, or "not recorded in this inventory") and `alphaphone:licence-flags` (the flags of
@@ -33,7 +34,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {AGENT_ASSETS, ANDROID_CLASSPATH, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, VOICE_HOST, collectNotices, finishEntry, fontLicense, fontNames, loadTemplates, packagedRuntimePresent, productionLockPackages, runtimeEntries, voiceHostProblems} from './generate-licenses.mjs';
+import {AGENT_ASSETS, ANDROID_CLASSPATH, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, VOICE_HOST, collectNotices, finishEntry, fontLicense, fontNames, loadTemplates, packagedRuntimePresent, productionLockPackages, pinnedVoiceModels, runtimeEntries, voiceHostProblems} from './generate-licenses.mjs';
 import {classifyLicence, flagSummary} from './licence-policy.mjs';
 
 export const LICENCE_NOT_RECORDED = 'not recorded in this inventory';
@@ -217,7 +218,7 @@ export function runtimeComponents(root, {agentDir = path.join(root, AGENT_ASSETS
   return out;
 }
 
-/** The libelizainference voice host: its libraries per ABI and its GGUF speech models. */
+/** The libelizainference voice host: its qualified libraries per ABI, its pinned speech models and the Kokoro lexicon. */
 function voiceHostComponents(root) {
   if (!exists(root, VOICE_HOST)) return [];
   const record = readJson(root, VOICE_HOST);
@@ -229,12 +230,20 @@ function voiceHostComponents(root) {
       out.push({type: 'library', 'bom-ref': `voice-host:${abi.abi}/${library.name}`, name: `${library.name} (${abi.abi})`, version: `elizaOS fused fork ${record.forkPin}`,
         hashes: [{alg: 'SHA-256', content: library.sha256}],
         properties: [property('ships-in', 'apk'), property('abi', abi.abi), property('bytes', library.bytes), property('source', VOICE_HOST), property('eliza-pin', record.pin)]});
-  for (const model of record.models)
+  // Open model rows (sha256 null) are not pinned and cannot be staged, so they are not components.
+  for (const model of pinnedVoiceModels(record))
     out.push({type: 'machine-learning-model', 'bom-ref': `voice-model:${model.role}/${model.name}`, name: model.name, version: model.revision,
       hashes: [{alg: 'SHA-256', content: model.sha256}], licenses: licenses(model.license || UNVERIFIED),
       externalReferences: [{type: 'distribution', url: model.source}],
       properties: [property('ships-in', 'apk'), property('role', model.role), property('bytes', model.bytes), property('source-revision', model.revision),
         ...(model.path ? [property('path', model.path)] : []), property('source', VOICE_HOST)]});
+  const lexicon = record.lexicon;
+  if (lexicon && lexicon.sha256 !== null)
+    out.push({type: 'data', 'bom-ref': `voice-lexicon:${lexicon.path}`, name: lexicon.name, version: lexicon.source.revision,
+      hashes: [{alg: 'SHA-256', content: lexicon.sha256}], licenses: licenses(lexicon.license),
+      externalReferences: [{type: 'distribution', url: lexicon.source.url}],
+      properties: [property('ships-in', 'apk'), property('role', 'lexicon'), property('bytes', lexicon.bytes), property('source-revision', lexicon.source.revision),
+        property('source-sha256', lexicon.source.sha256), property('path', lexicon.path), property('source', VOICE_HOST)]});
   return out;
 }
 

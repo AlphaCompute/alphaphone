@@ -96,7 +96,7 @@ this host runs arm64 images only):
 1. Build the APKs from the exact commit. Developer APKs are enough for instrumentation:
    `npm run android:build -- --allow-unpackaged-runtime`, and
    `npm run android:build -- --test-mocks` for the test-mocks pair. The distributable chain
-   is `npm run android:build:local` (speech AAR first, see the README; it also needs the
+   is `npm run android:build:local` (see the README; it needs the
    reviewed embedding host libraries staged with
    `node scripts/stage-embedding-host.mjs --receipt <QUALIFICATION.json>`).
 2. In the commands below, `APP.apk` and `TEST.apk` are a matching pair from that build, for

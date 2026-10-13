@@ -594,16 +594,22 @@ function androidEntries(root, templates, errors) {
 /**
  * On-device speech: the llama.cpp-based libelizainference voice host (ASR, Kokoro TTS, VAD),
  * read from the Android qualification record. No other speech inference engine ships in any build.
- * Schema (docs/fused-speech.md, written by the Android voice-host qualification):
- *   {schemaVersion: 1, pin, forkPin, identity, provider,
- *    abis: [{abi, libraries: [{name, sha256, bytes}]}],
+ * One schema, shared with the Android build gate (scripts/stage-embedding-host.mjs readVoiceHost)
+ * and documented in docs/fused-speech.md:
+ *   {schemaVersion: 1, pin, forkPin, identity, provider, bundle,
+ *    abis: [{abi, release, libraryRecord, libraries: [{name, sha256, bytes}], voiceSymbolsVerified, …}],
  *    components?: [{name, version?, license, source, licenseFile?, licenseSha256?}],
- *    models: [{name, role, revision, sha256, bytes, license?, source, path? (.gguf), licenseFile?, licenseSha256?}]}
- * A component or model without a verified licence is listed as UNVERIFIED and flagged, never dropped.
+ *    models: [{name, path, role, sha256, bytes, license, source, revision, status}],
+ *    lexicon?: {name, path, role: 'lexicon', sha256, bytes, license, source: {name, url, revision, sha256, bytes, notice}}}
+ * An ABI with no libraries yet is "not yet voice-qualified" (its bytes may be named by libraryRecord).
+ * A model row whose sha256 is null is open: it cannot be staged, so it is not listed. Every model
+ * is GGUF except the Kokoro voice preset (role tts-voice, a .bin of style vectors). A component or
+ * model without a verified licence is listed as UNVERIFIED and flagged, never dropped.
  */
 export const VOICE_HOST = 'android/voice-host/qualified-voice-host.json';
 const HEX64 = /^[0-9a-f]{64}$/;
 const HEX40 = /^[0-9a-f]{40}$/;
+export const VOICE_MODEL_ROLES = Object.freeze(['asr-model', 'asr-mmproj', 'tts-model', 'tts-voice', 'vad-model']);
 /** Components fused into libelizainference when the record names none of its own. */
 export const VOICE_HOST_DEFAULT_COMPONENTS = Object.freeze([
   {name: 'llama.cpp, ggml and mtmd (fused into libelizainference)', license: 'MIT', source: 'https://github.com/ggml-org/llama.cpp'},
@@ -611,6 +617,9 @@ export const VOICE_HOST_DEFAULT_COMPONENTS = Object.freeze([
   {name: 'Silero VAD (fused into libelizainference)', license: 'MIT', source: 'https://github.com/snakers4/silero-vad'},
   {name: 'LLVM libc++ (libc++_shared.so from the Android NDK)', license: 'Apache-2.0 WITH LLVM-exception', source: 'https://github.com/llvm/llvm-project/tree/main/libcxx'},
 ]);
+
+/** Model rows that are pinned (a recorded hash); open rows (sha256 null) are not shipped. */
+export const pinnedVoiceModels = record => (Array.isArray(record?.models) ? record.models : []).filter(model => model?.sha256 !== null);
 
 /** Validate a qualified-voice-host.json value. Returns the problems found; an empty list means usable. */
 export function voiceHostProblems(record, label = VOICE_HOST) {
@@ -622,7 +631,10 @@ export function voiceHostProblems(record, label = VOICE_HOST) {
   if (!Array.isArray(record.abis) || !record.abis.length) at('abis', 'must list at least one ABI');
   for (const [index, abi] of (Array.isArray(record.abis) ? record.abis : []).entries()) {
     if (typeof abi?.abi !== 'string' || !abi.abi) at(`abis[${index}].abi`, 'is missing');
-    if (!Array.isArray(abi?.libraries) || !abi.libraries.length) { at(`abis[${index}].libraries`, 'must list the staged libraries'); continue; }
+    if (!Array.isArray(abi?.libraries)) { at(`abis[${index}].libraries`, 'must be an array (empty while the ABI is not yet voice-qualified)'); continue; }
+    if (abi.voiceSymbolsVerified === true && !abi.libraries.length) at(`abis[${index}].libraries`, 'must list the qualified libraries once voiceSymbolsVerified is true');
+    if (abi.libraryRecord !== undefined && abi.libraryRecord !== null && (typeof abi.libraryRecord !== 'string' || !abi.libraryRecord.endsWith('.json')))
+      at(`abis[${index}].libraryRecord`, 'must be null or a repository path to a JSON record');
     for (const [n, library] of abi.libraries.entries()) {
       if (typeof library?.name !== 'string' || !/\.so$/.test(library.name)) at(`abis[${index}].libraries[${n}].name`, 'must name a .so file');
       if (!HEX64.test(library?.sha256 ?? '')) at(`abis[${index}].libraries[${n}].sha256`, 'must be a lowercase SHA-256');
@@ -631,15 +643,44 @@ export function voiceHostProblems(record, label = VOICE_HOST) {
   }
   if (!Array.isArray(record.models)) at('models', 'must be an array');
   for (const [index, model] of (Array.isArray(record.models) ? record.models : []).entries()) {
-    for (const key of ['name', 'role', 'revision', 'source']) if (typeof model?.[key] !== 'string' || !model[key]) at(`models[${index}].${key}`, 'is missing');
-    if (!HEX64.test(model?.sha256 ?? '')) at(`models[${index}].sha256`, 'must be a lowercase SHA-256');
+    for (const key of ['name', 'path']) if (typeof model?.[key] !== 'string' || !model[key]) at(`models[${index}].${key}`, 'is missing');
+    if (!VOICE_MODEL_ROLES.includes(model?.role)) at(`models[${index}].role`, `must be one of ${VOICE_MODEL_ROLES.join(', ')}`);
+    if (model?.sha256 === null) {
+      // An open row: nothing is pinned, so nothing can be staged or listed. It must say why.
+      if (typeof model.status !== 'string' || !model.status.startsWith('open')) at(`models[${index}].status`, 'must start with "open" when sha256 is null');
+      continue;
+    }
+    for (const key of ['revision', 'source']) if (typeof model?.[key] !== 'string' || !model[key]) at(`models[${index}].${key}`, 'is missing');
+    if (!HEX64.test(model?.sha256 ?? '')) at(`models[${index}].sha256`, 'must be a lowercase SHA-256 or null for an open row');
     if (!Number.isSafeInteger(model?.bytes) || model.bytes <= 0) at(`models[${index}].bytes`, 'must be a positive integer');
-    if (model?.path !== undefined && !/\.gguf$/i.test(model.path)) at(`models[${index}].path`, 'must be a GGUF file; libelizainference loads only GGUF models');
+    if (typeof model?.path === 'string') {
+      if (model.role === 'tts-voice') { if (!/\.bin$/i.test(model.path)) at(`models[${index}].path`, 'must be a Kokoro voice preset (.bin)'); }
+      else if (!/\.gguf$/i.test(model.path)) at(`models[${index}].path`, 'must be a GGUF file; libelizainference loads only GGUF models');
+    }
+  }
+  const lexicon = record.lexicon;
+  if (lexicon !== undefined) {
+    if (!lexicon || typeof lexicon !== 'object' || Array.isArray(lexicon)) at('lexicon', 'must be an object when present');
+    else {
+      for (const key of ['name', 'license']) if (typeof lexicon[key] !== 'string' || !lexicon[key]) at(`lexicon.${key}`, 'is missing');
+      if (typeof lexicon.path !== 'string' || !/\.tsv$/.test(lexicon.path)) at('lexicon.path', 'must name a .tsv lexicon');
+      if (lexicon.sha256 !== null && (!HEX64.test(lexicon.sha256 ?? '') || !Number.isSafeInteger(lexicon.bytes) || lexicon.bytes <= 0)) at('lexicon', 'needs a lowercase SHA-256 and positive bytes, or sha256 null before it is generated');
+      const source = lexicon.source;
+      if (!source || typeof source.url !== 'string' || !HEX40.test(source.revision ?? '') || !HEX64.test(source.sha256 ?? '')) at('lexicon.source', 'must record the source url, a 40-character revision and its SHA-256');
+      if (source?.notice !== undefined && (typeof source.notice !== 'string' || !source.notice.startsWith('licenses/'))) at('lexicon.source.notice', 'must be a file under licenses/');
+    }
   }
   if (record.components !== undefined && !Array.isArray(record.components)) at('components', 'must be an array when present');
   for (const [index, component] of (Array.isArray(record.components) ? record.components : []).entries())
     for (const key of ['name', 'license', 'source']) if (typeof component?.[key] !== 'string' || !component[key]) at(`components[${index}].${key}`, 'is missing');
   return problems;
+}
+
+/** One line per ABI: its qualified libraries, or where its bytes are recorded while it is not yet voice-qualified. */
+export function voiceHostLibraryLines(record) {
+  return record.abis.flatMap(item => item.libraries.length
+    ? item.libraries.map(library => `${item.abi}/${library.name} (sha256 ${library.sha256}; ${library.bytes} bytes)`)
+    : [`${item.abi}: not yet voice-qualified${item.libraryRecord ? `; the library bytes are those recorded in ${item.libraryRecord}` : '; not built'}`]);
 }
 
 function voiceHostEntries(root, templates, errors) {
@@ -648,7 +689,7 @@ function voiceHostEntries(root, templates, errors) {
   const problems = voiceHostProblems(record);
   if (problems.length) { errors.push(...problems); return []; }
   const abis = record.abis.map(item => item.abi).join(', ');
-  const libraries = record.abis.flatMap(item => item.libraries.map(library => `${item.abi}/${library.name} (sha256 ${library.sha256}; ${library.bytes} bytes)`)).join('\n');
+  const libraries = voiceHostLibraryLines(record).join('\n');
   // A licence file named by the record must match its recorded hash; otherwise the canonical text is used.
   const licenceText = (item, where) => {
     if (item.licenseFile) {
@@ -658,17 +699,23 @@ function voiceHostEntries(root, templates, errors) {
       return {text: normalizeText(bytes.toString('utf8'))};
     }
     const canonical = item.license && item.license !== UNVERIFIED ? templates.canonical(item.license) : '';
-    return canonical ? {text: canonical, textSource: 'spdx-canonical'} : {text: ''};
+    // The record holds no licence file of its own here, so the canonical text stands in and is flagged.
+    return canonical ? {text: canonical, textSource: 'spdx-canonical', _flags: ['licence-text-missing-from-package']} : {text: ''};
   };
   const components = (record.components ?? VOICE_HOST_DEFAULT_COMPONENTS).map((component, index) => ({
     name: component.name, version: component.version || `elizaOS fused fork ${record.forkPin} (eliza ${record.pin}); ABIs ${abis}`,
     license: component.license, source: `${component.source}\nQualified libraries:\n${libraries}`, ...licenceText(component, `components[${index}]`),
   }));
-  const models = record.models.map((model, index) => ({
-    name: `${model.name} (${model.role} model, GGUF)`, version: `${model.revision} (sha256 ${model.sha256}; ${model.bytes} bytes)`,
-    license: model.license || UNVERIFIED, source: model.source, ...licenceText({...model, license: model.license || UNVERIFIED}, `models[${index}]`),
+  const models = pinnedVoiceModels(record).map(model => ({
+    name: `${model.name} (${model.role}, ${model.role === 'tts-voice' ? 'Kokoro voice preset' : 'GGUF'})`, version: `${model.revision} (sha256 ${model.sha256}; ${model.bytes} bytes)`,
+    license: model.license || UNVERIFIED, source: model.source, ...licenceText({...model, license: model.license || UNVERIFIED}, `models[${record.models.indexOf(model)}]`),
   }));
-  return [...components, ...models];
+  const lexicon = record.lexicon && record.lexicon.sha256 !== null ? [{
+    name: `${record.lexicon.name} (lexicon)`, version: `${record.lexicon.source.revision} (generated sha256 ${record.lexicon.sha256}; ${record.lexicon.bytes} bytes)`,
+    license: record.lexicon.license, source: record.lexicon.source.url,
+    ...licenceText({license: record.lexicon.license, licenseFile: record.lexicon.source.notice, licenseSha256: record.lexicon.source.noticeSha256}, 'lexicon.source'),
+  }] : [];
+  return [...components, ...models, ...lexicon];
 }
 
 export const AGENT_ASSETS = 'android/app/src/main/assets/agent';

@@ -91,7 +91,12 @@ test('Android coordinates, the voice host and the upstream pin match their recor
   if (fs.existsSync(path.join(ROOT, VOICE_HOST))) {
     const record = read(VOICE_HOST);
     for (const abi of record.abis) for (const library of abi.libraries) assert.equal(byRef.get(`voice-host:${abi.abi}/${library.name}`).hashes[0].content, library.sha256);
-    for (const model of record.models) assert.equal(byRef.get(`voice-model:${model.role}/${model.name}`).hashes[0].content, model.sha256);
+    // Open rows (sha256 null) are not pinned, so they are not components.
+    for (const model of record.models) {
+      if (model.sha256 === null) assert.equal(byRef.has(`voice-model:${model.role}/${model.name}`), false, model.name);
+      else assert.equal(byRef.get(`voice-model:${model.role}/${model.name}`).hashes[0].content, model.sha256);
+    }
+    if (record.lexicon?.sha256) assert.equal(byRef.get(`voice-lexicon:${record.lexicon.path}`).hashes[0].content, record.lexicon.sha256);
   } else assert.deepEqual(sbom.components.filter(component => /^voice-(host|model):/.test(component['bom-ref'])), []);
   const upstream = read('upstream.lock.json');
   assert.equal(sbom.components.find(component => component.name === 'elizaOS').version, upstream.commit);
