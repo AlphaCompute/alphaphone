@@ -32,7 +32,7 @@ function selection(value: unknown): GoogleCalendarSelection | null {
 }
 function changed(owner: GoogleCalendarAccountKey): void {
   if (typeof globalThis.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
-    globalThis.dispatchEvent(new CustomEvent(GOOGLE_CALENDAR_SELECTION_CHANGED, { detail: { ...owner } }));
+    globalThis.dispatchEvent(new CustomEvent(GOOGLE_CALENDAR_SELECTION_CHANGED, { detail: { environment: owner.environment, userId: owner.userId, organizationId: owner.organizationId } }));
   }
 }
 /** Restores a preference, never event content or evidence that its source remains connected.
