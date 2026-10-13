@@ -1,42 +1,19 @@
-import { readFileSync } from "node:fs";
-import { stripTypeScriptTypes } from "node:module";
-import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 
-const root = resolve(import.meta.dirname, "../..");
-const compile = (path: string) =>
-	stripTypeScriptTypes(readFileSync(resolve(root, path), "utf8"), {
-		mode: "transform",
-	}).replace(/^import[\s\S]*?;\n/gm, "");
-const source = [
-	".eliza/client-features/packages/core/src/events.ts",
-	".eliza/client-features/packages/core/src/views/view-interact-protocol.ts",
-	".eliza/client-features/packages/core/src/views/view-action-handoff.ts",
-	".eliza/client-features/packages/core/src/views/completed-action-navigation.ts",
-	"apps/app/src/runtime/alpha-client.ts",
-	"apps/app/src/prototype/mvp-features.ts",
-	"apps/app/src/runtime/view-navigation.ts",
-]
-	.map(compile)
-	.join("\n");
 async function setup(page: import("@playwright/test").Page) {
 	// Native WebView and localhost are secure contexts; about:blank is not.
 	await page.route('**/__navigation-fixture',route=>route.fulfill({contentType:'text/html',body:'<main id="screen">Home</main>'}));
 	await page.goto('/__navigation-fixture');
-	await page.addScriptTag({
-		type: "module",
-		content:
-			"const browserDevProfile=false;\n" +
-			source +
-			"\nwindow.ViewNavigationClient=ViewNavigationClient;",
-	});
-	await page.evaluate(() => {
+	await page.evaluate(async () => {
+		// Load the real module graph, including image capability admission. Stripping
+		// imports hid new dependencies and made the fixture fail before navigation ran.
+		const {ViewNavigationClient} = await import('/src/runtime/view-navigation.ts');
 		const win = window as any;
 		win.active = true;
 		win.current = { view: "home", revision: 1, sensitive: false };
 		win.requests = [];
 		win.switches = 0;
-		win.client = new win.ViewNavigationClient(
+		win.client = new ViewNavigationClient(
 			async (path: string, body: unknown) => {
 				win.requests.push({ path, body });
 				if (path.endsWith("claim")) return { claimId: "owned-claim" };

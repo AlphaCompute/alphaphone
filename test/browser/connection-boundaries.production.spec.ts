@@ -183,7 +183,7 @@ for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       await page.evaluate(() => { (window as any).holdStop = false; (window as any).releaseStop(); });
     }
-    const status = page.getByRole('status');
+    const status = page.getByRole('dialog', { name: 'Eliza Cloud', exact: true }).getByRole('status');
     if (mode === 'revoked') await expect(status).toContainText('Signed out of Eliza Cloud. This sign-in was revoked.');
     else {
       await expect(status).toContainText('The sign-in token was removed here; Eliza Cloud did not confirm revoking it.');
