@@ -32,11 +32,12 @@ final class WorkflowNoticePoster implements WorkflowNoticeDelivery.Poster {
  }
  public boolean allowed(){return allowed(CHANNEL);}
  @Override public boolean approvalsAllowed(){return allowed(APPROVAL_CHANNEL);}
- private PendingIntent tap(String id)throws Exception{
+ private PendingIntent tap(String id)throws Exception{return tap(id,false);}
+ private PendingIntent tap(String id,boolean question)throws Exception{
   Intent launch=context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
   String token=WorkflowNoticeTapsFactory.create(context).token(id);
   if(launch==null||token==null)throw new IllegalStateException("Workflow notification route unavailable");
-  launch.setAction(WorkflowNoticeTaps.ACTION).setData(android.net.Uri.parse(WorkflowNoticeTaps.PREFIX+token));
+  launch.setAction(question?WorkflowNoticeTaps.ASK_ACTION:WorkflowNoticeTaps.ACTION).setData(android.net.Uri.parse(WorkflowNoticeTaps.PREFIX+token));
   return PendingIntent.getActivity(context,0,launch,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
  }
  private Notification redacted(String channel,String title){return new Notification.Builder(context,channel).setSmallIcon(R.drawable.notification_icon).setContentTitle(title).setContentText("Unlock to review this notification.").build();}
@@ -51,7 +52,9 @@ final class WorkflowNoticePoster implements WorkflowNoticeDelivery.Poster {
  }
  public void post(String id,String title,String body)throws Exception{
   if(!allowed())throw new SecurityException("Notification delivery is disabled");
-  manager().notify(tag(id),0,step(title,body,tap(id)).build());awaitListed(id);
+  Notification.Action.Builder ask=new Notification.Action.Builder(null,"Ask Alpha",tap(id,true));
+  if(Build.VERSION.SDK_INT>=31)ask.setAuthenticationRequired(true);
+  manager().notify(tag(id),0,step(title,body,tap(id)).addAction(ask.build()).build());awaitListed(id);
  }
  /** notify() hands the notice to the system asynchronously, so an immediate read of the active list
   * can miss it and the receipt would record "unknown" for a notice Android is about to show. Wait

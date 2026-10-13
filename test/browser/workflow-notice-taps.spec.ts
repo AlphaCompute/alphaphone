@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 // Production renderer and authenticated connection; controlled transport/native queue, no real notification.
-for(const scenario of ['two','other-owner','wrong-version','unconfirmed','navigation-race','owner-race','reconnect','owner-change','queue-changed','builder-race','new-tap-during-read'] as const){
+for(const scenario of ['ask','ask-cancel','ask-changed','ask-owner','ask-sensitive','two','other-owner','wrong-version','unconfirmed','navigation-race','owner-race','reconnect','owner-change','queue-changed','builder-race','new-tap-during-read'] as const){
  test('scoped native workflow tap '+scenario,async({page})=>{
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(scenario=>{
@@ -89,9 +89,27 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');const s=c.getSnapshot().session!,b=c.getWorkflowClient()!,f=(window as any).deliveryFixture;
   const tap=(id:string)=>({scope:b.scope,origin:s.origin,ownerId:s.ownerId,agentId:s.agentId,workflowId:'flow',runId:id,versionId:'v1',token:id,operationId:'operation-'+id,bindingHash:'b'.repeat(64),retained:true});
   f.pendingReads=0;f.taps=scenario==='two'?[tap('run1')]:[tap('run1'),tap('run2')];f.second=tap('run2');if(scenario==='other-owner')f.taps[0].ownerId='another-owner';if(scenario==='wrong-version')f.wrongVersion=true;if(scenario==='queue-changed')f.queueChanged=true;if(scenario==='unconfirmed')f.taps[0].retained=false;if(['navigation-race','owner-race','reconnect','owner-change','builder-race','new-tap-during-read'].includes(scenario))f.hold=true;
+  if(scenario.startsWith('ask')){f.taps=[{...tap('run1'),question:true,notice:{id:'notice1',revision:'revision1',source:'own',appLabel:'Alpha Phone',title:'Completed task',text:'Public result text'}}];}
   document.dispatchEvent(new Event('visibilitychange'));
  },scenario);
- if(scenario==='two'){
+ if(scenario.startsWith('ask')){
+  const review=page.getByRole('dialog',{name:'Ask about selected content'});
+  await expect(review.getByRole('textbox',{name:'Content excerpt'})).toHaveValue('Completed task\nPublic result text');
+  expect(await page.evaluate(()=>(window as any).deliveryFixture.consumed||[])).toEqual([]);
+  if(scenario==='ask-cancel'){await review.getByRole('button',{name:'Cancel',exact:true}).click();await expect(review).toHaveCount(0);}
+  else if(scenario==='ask-owner'){await page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');await c.offline();});await expect(review).toHaveCount(0);}
+  else {
+   if(scenario==='ask-sensitive'){await review.getByRole('textbox',{name:'Content excerpt'}).fill('Your verification code is 123456');await review.getByRole('button',{name:'Use in conversation',exact:true}).click();await expect(review.getByRole('status')).toContainText('credentials or verification codes');await review.getByRole('button',{name:'Cancel',exact:true}).click();}
+   else {
+    await review.getByRole('textbox',{name:'Content excerpt'}).fill('Reviewed public text');
+    if(scenario==='ask-changed')await page.evaluate(()=>{(window as any).deliveryFixture.taps[0].notice.text='Replaced text';});
+    await review.getByRole('button',{name:'Use in conversation',exact:true}).click();
+    if(scenario==='ask'){await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('Help me with this notification.\n\nSource: Alpha Phone notification\n\nReviewed public text');await expect.poll(()=>page.evaluate(()=>(window as any).deliveryFixture.consumed||[])).toEqual(['run1']);}
+    else await expect(page.getByText('This notification or account changed. Nothing was added to your conversation.',{exact:true})).toBeVisible();
+   }
+  }
+  if(scenario!=='ask')expect(await page.evaluate(()=>(window as any).deliveryFixture.consumed||[])).toEqual([]);
+ }else if(scenario==='two'){
   await expect(page.getByText('Verified retained result run1',{exact:true})).toBeVisible();await expect.poll(()=>page.evaluate(()=>(window as any).deliveryFixture.consumed?.length)).toBe(1);
   await page.evaluate(()=>{const f=(window as any).deliveryFixture;f.taps.push(f.second);document.dispatchEvent(new Event('visibilitychange'));});
   await expect(page.getByText('Verified retained result run2',{exact:true})).toBeVisible();await expect.poll(()=>page.evaluate(()=>(window as any).deliveryFixture.consumed?.length)).toBe(2);
