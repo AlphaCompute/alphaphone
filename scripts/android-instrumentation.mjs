@@ -56,9 +56,11 @@ const RUNNER = "androidx.test.runner.AndroidJUnitRunner";
  */
 export const CLASS_REGISTRY = {
   NoMockProduct: {},
+  BrowserInstalledResolver: { note: "Real installed generic HTTPS filter visibility only; no external launch or network request" },
   Shell: {},
   StartupReadiness: { args: { startupReadiness: "1" } },
   TextScale: { note: "textScaleProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs text-scale" },
+  BrowserExternalHandoff: { note: "Synthetic committed HTTPS child and resolver fixture; intercepts chooser dispatch, no external page is opened" },
   ResetPolicy: { note: "Non-destructive cancellation, migration refusal and isolated marker checks; not a system reset proof" },
   BrowserCookiePolicy: { note: "Synthetic intercepted HTTPS origins; private method requires scoped WebView deletion support" },
   BrowserSignins: { note: "signinProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs signin" },
