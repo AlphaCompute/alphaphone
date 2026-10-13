@@ -80,6 +80,7 @@ public final class AlphaMailAttachmentsPlugin extends Plugin {
    JSObject result=new JSObject();result.put("name",copy.metadata.name);result.put("mimeType",copy.metadata.mime);result.put("size",copy.bytes.length);result.put("sha256",copy.sha256);result.put("dataBase64",android.util.Base64.encodeToString(copy.bytes,android.util.Base64.NO_WRAP));call.resolve(result);
   }catch(Exception unavailable){call.reject("Selected photo changed or is unavailable. Choose a permitted PNG, JPEG or WebP source up to 5 MiB and review it again.");}
  });}
+ @PluginMethod public void cancelPhotoSelected(PluginCall call){cancelPhotoReads();call.resolve();}
  private void cancelPhotoReads(){photoGeneration.incrementAndGet();for(InputStream stream:photoStreams){try{stream.close();}catch(IOException ignored){}}photoStreams.clear();}
  @Override protected void handleOnPause(){cancelPhotoReads();super.handleOnPause();}
  private void revoke(File file){try{Uri uri=FileProvider.getUriForFile(getContext(),getContext().getPackageName()+".mailattachments",file);getContext().revokeUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(RuntimeException ignored){}file.delete();}

@@ -8,13 +8,13 @@ export async function photosBridge(page:Page,scope='full'){
   const row={id:'m:external_primary:i:91',name:'Synthetic beach.jpg',kind:'image',image,width:100,height:80,date:Date.now(),revision:'provider:1:100:2:1:2',mutationRevision:'provider:1:100:2:1:2',favorite:true,owned:false};
   const state=w.mediaFixture={scope,calls,emit:()=>listeners['AlphaPhotos:libraryChanged']?.(),row};
   const access=()=>({scope:state.scope,images:state.scope==='partial'?'full':state.scope,videos:state.scope==='partial'?'denied':state.scope});
-  const plugins:Record<string,string[]>={AlphaMailAttachments:['readPhotoSelected','cancel'],AlphaPhotos:['libraryAccess','requestLibraryAccess','openLibrarySettings','listPermitted','list','summary','albums','read'],DeviceApps:['buildInfo','launchInfo','localeInfo','list','resolveDefault'],DailyApps:['surfaceInfo'],AlphaNotifications:['status','list'],AlphaVoiceCloud:['checkPermissions']};
+  const plugins:Record<string,string[]>={AlphaMailAttachments:['readPhotoSelected','cancelPhotoSelected'],AlphaPhotos:['libraryAccess','requestLibraryAccess','openLibrarySettings','listPermitted','list','summary','albums','read'],DeviceApps:['buildInfo','launchInfo','localeInfo','list','resolveDefault'],DailyApps:['surfaceInfo'],AlphaNotifications:['status','list'],AlphaVoiceCloud:['checkPermissions']};
   w.Capacitor={Plugins:{},PluginHeaders:Object.entries(plugins).map(([name,methods])=>({name,methods:[...methods,'addListener','removeListener'].map(name=>({name,rtype:name==='addListener'?'callback':'promise'}))})),
    nativeCallback:(plugin:string,method:string,input:any,callback:()=>void)=>{if(method==='addListener')listeners[plugin+':'+input.eventName]=callback;return plugin+':'+input.eventName;},
    nativePromise:async(plugin:string,method:string,input:any)=>{
     calls.push({plugin,method,input});
     if(plugin==='AlphaMailAttachments'){
-     if(method==='cancel')return {};
+     if(method==='cancelPhotoSelected')return {};
      if(state.scope==='denied'||input.revision!==row.mutationRevision)throw Error('Photo unavailable');
      const source='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7l8AAAAASUVORK5CYII=';
      const bytes=Uint8Array.from(atob(source),c=>c.charCodeAt(0));

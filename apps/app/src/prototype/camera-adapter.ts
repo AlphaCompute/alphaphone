@@ -79,7 +79,7 @@ const nativeLibrary = registerPlugin<{
   deletePreparedTrash(options:{confirmation:string}): Promise<{status:string;deletedIds:string[];skippedIds:string[];failedIds:string[]}>;
   keepCapture(options:{dataBase64:string;operationId:string}): Promise<{status:string;id?:string;message?:string}>;
 }>('AlphaPhotos');
-const photoAttachments=registerPlugin<{readPhotoSelected(input:{id:string;revision:string}):Promise<MailAttachment&{size:number;sha256:string}>;cancel():Promise<void>}>('AlphaMailAttachments');
+const photoAttachments=registerPlugin<{readPhotoSelected(input:{id:string;revision:string}):Promise<MailAttachment&{size:number;sha256:string}>;cancelPhotoSelected():Promise<void>}>('AlphaMailAttachments');
 const device=registerPlugin<{openSettings(options:{page:'privacy'}):Promise<{status:string}>}>('AlphaDevice');
 type AccessKind='camera'|'microphone';
 /** Only an explicit permission denial gets settings recovery. Every other
@@ -832,7 +832,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     return data;
   };
   if (views.photos) views.photos.back = (st: Bag, currentApi: Bag) => { if(edit){cancelEdit();currentApi.set({nativeEditRevision:Date.now()});return true;}if(selection){selection=undefined;endHold();currentApi.set({nativeMultiSelection:Date.now()});return true;}if(st.sheet==='owned-album'){manager=undefined;currentApi.set({sheet:null});return true;}if(st.sheet==='empty'){cancelPermanent(currentApi);return true;}if(st.sheet)return photosBack?.(st,currentApi); if (preview?.id === st.open || captures.some(c => c.id === st.open) || albumRows.some(c => c.id === st.open)) { currentApi.set({ open: null, nativePhotoSelection: null }); preview = undefined; closeVideo(); return true; } return photosBack?.(st, currentApi); };
-  if(views.photos)views.photos.onLeave=(owner:Bag)=>{deviceLibrary.leave();owner.set({nativeLibrarySelection:null});closeQuestion?.();closeQuestion=undefined;void photoAttachments.cancel().catch(()=>{});cancelEdit();editRecoveryChecked=false;automaticEditRecovery='';selection=undefined;swallowedTap='';endHold();manager=undefined;const old=prepared;prepared=undefined;if(old)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});owner.set({sheet:null});photosLeave?.(owner);};
+  if(views.photos)views.photos.onLeave=(owner:Bag)=>{deviceLibrary.leave();owner.set({nativeLibrarySelection:null});closeQuestion?.();closeQuestion=undefined;void photoAttachments.cancelPhotoSelected().catch(()=>{});cancelEdit();editRecoveryChecked=false;automaticEditRecovery='';selection=undefined;swallowedTap='';endHold();manager=undefined;const old=prepared;prepared=undefined;if(old)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});owner.set({sheet:null});photosLeave?.(owner);};
   async function playVideo(selected: SavedPhoto, owner: Bag) {
     if (selected.kind !== 'video') return;
     try {
