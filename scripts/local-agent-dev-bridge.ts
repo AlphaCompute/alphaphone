@@ -15,24 +15,25 @@ const AUDIO_ENVELOPE_LIMIT=3*1024*1024;
 const ASR_PATH='/api/asr/whisper';
 const TTS_PATH='/api/tts/kokoro';
 const VOICE_PATH='/api/v1/voice/session';
+const VOICE_AGENT_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VOICE_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function voiceControl(input:any):'health'|'consent'|'mint'|'revoke'|null {
  if(typeof input.path!=='string'||!input.path.startsWith(VOICE_PATH))return null;
  if(typeof input.ownerId!=='string'||!input.ownerId||input.stream||input.storage||input.audioBase64||input.requestId)return null;
- if(Object.keys(input.headers??{}).some(key=>!['accept','content-type'].includes(key.toLowerCase())))return null;
+ if(Object.keys(input.headers??{}).some(key=>!['accept','content-type','x-eliza-device-id','x-eliza-device-key','x-eliza-device-capabilities'].includes(key.toLowerCase())))return null;
  if(input.method==='GET'&&input.body===undefined&&new RegExp('^'+VOICE_PATH+'/health\\?conversationId=([0-9a-f-]{36})$','i').test(input.path))return VOICE_UUID.test(input.path.split('=')[1])?'health':null;
  if(input.method!=='POST'||(input.body!==undefined&&(typeof input.body!=='string'||input.body.length>2048)))return null;
  let value:any;try{value=input.body===undefined?{}:JSON.parse(input.body);}catch{return null;}
  if(!value||typeof value!=='object'||Array.isArray(value))return null;
  if(input.path===VOICE_PATH+'/consent'&&Object.keys(value).length===0)return 'consent';
  if(new RegExp('^'+VOICE_PATH+'/[0-9a-f-]{36}/revoke$','i').test(input.path)&&VOICE_UUID.test(input.path.split('/')[5])&&Object.keys(value).length===0)return 'revoke';
- if(input.path===VOICE_PATH&&Object.keys(value).every(key=>['agentId','conversationId','consentNonce','transport'].includes(key))&&VOICE_UUID.test(value.agentId)&&VOICE_UUID.test(value.conversationId)&&typeof value.consentNonce==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value.consentNonce)&&value.transport==='websocket')return 'mint';
+ if(input.path===VOICE_PATH&&Object.keys(value).every(key=>['agentId','conversationId','consentNonce','transport'].includes(key))&&VOICE_AGENT_ID.test(value.agentId)&&VOICE_UUID.test(value.conversationId)&&typeof value.consentNonce==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value.consentNonce)&&value.transport==='websocket')return 'mint';
  return null;
 }
 function voiceControlResponse(kind:string,input:any,status:number,raw:string,origin:URL){
  const value=JSON.parse(raw),now=Date.now(),exact=(keys:string[])=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(key=>keys.includes(key));
  if(status<200||status>=300){if(!exact(['code'])||typeof value.code!=='string'||!/^[a-z0-9_]{1,100}$/.test(value.code))throw Error('Invalid voice error');return value;}
- if(kind==='health'){if(!exact(['ready','agentId','conversationId'])||value.ready!==true||!VOICE_UUID.test(value.agentId)||value.conversationId!==input.path.split('=')[1])throw Error('Invalid voice health');}
+ if(kind==='health'){if(!exact(['ready','agentId','conversationId'])||value.ready!==true||!VOICE_AGENT_ID.test(value.agentId)||value.conversationId!==input.path.split('=')[1])throw Error('Invalid voice health');}
  else if(kind==='consent'){if(!exact(['consentNonce','expiresAt'])||typeof value.consentNonce!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(value.consentNonce))throw Error('Invalid voice consent');}
  else if(kind==='revoke'){if(!exact(['revoked'])||value.revoked!==true)throw Error('Invalid voice revocation');}
  else{
