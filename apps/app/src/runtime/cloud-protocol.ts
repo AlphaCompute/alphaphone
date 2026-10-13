@@ -454,10 +454,12 @@ export class CloudProtocol {
       ...(response.noResponseReason === "ignored" ? { noResponseReason: "ignored" as const } : {}) };
   }
   /** Read access by default; Calendar writes require explicit additional consent. */
-  async initiateGoogle(signal:AbortSignal, calendarPermission:'read'|'write'='read'):Promise<string> {
+  async initiateGoogle(signal:AbortSignal, calendarPermission:'read'|'write'='read', gmailPermission:'read'|'send'|'drafts'|'mailbox'='read'):Promise<string> {
     if(!['read','write'].includes(calendarPermission))throw new TypeError('Invalid Calendar permission');
+    if(!['read','send','drafts','mailbox'].includes(gmailPermission))throw new TypeError('Invalid Gmail permission');
     const response=object(await this.googleRequest('/api/v1/eliza/google/connect/initiate',signal,{side:'owner',capabilities:[
       'google.basic_identity','google.gmail.triage','google.calendar.read',...(calendarPermission==='write'?['google.calendar.write']:[]),
+      ...(gmailPermission==='read'?[]:[gmailPermission==='send'?'google.gmail.send':gmailPermission==='drafts'?'google.gmail.drafts':'google.gmail.mailbox']),
     ]}));
     return this.googleAuthUrl(response.authUrl);
   }

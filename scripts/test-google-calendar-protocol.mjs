@@ -34,6 +34,14 @@ const client=new CloudProtocol('production',async input=>{
 },{read:async()=>credential,write:async()=>{},clear:async()=>{}},async()=>{});
 await client.initiateGoogle(signal());assert.deepEqual(calls.at(-1).body,{side:'owner',capabilities:['google.basic_identity','google.gmail.triage','google.calendar.read']});
 await client.initiateGoogle(signal(),'write');assert.deepEqual(calls.at(-1).body.capabilities,['google.basic_identity','google.gmail.triage','google.calendar.read','google.calendar.write']);
+for(const permission of ['send','drafts','mailbox']){
+ await client.initiateGoogle(signal(),'read',permission);
+ assert.deepEqual(calls.at(-1).body.capabilities,['google.basic_identity','google.gmail.triage','google.calendar.read',`google.gmail.${permission}`]);
+ assert.equal(calls.at(-1).body.capabilities.includes('google.calendar.write'),false,'Gmail upgrade never adds Calendar writes');
+}
+const beforeInvalidPermission=calls.length;
+await assert.rejects(client.initiateGoogle(signal(),'read','manage'),TypeError);
+assert.equal(calls.length,beforeInvalidPermission,'unsupported permissions never dispatch');
 await client.initiateGmail(signal());assert.deepEqual(calls.at(-1).body.capabilities,['google.basic_identity','google.gmail.triage']);
 assert.deepEqual(await client.googleCalendars(grant,signal()),[row]);
 assert.equal((await client.googleCalendarFeed(grant,calendarId,range,signal())).events[0].title,'Fixture');
