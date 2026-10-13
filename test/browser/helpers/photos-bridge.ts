@@ -16,9 +16,10 @@ export async function photosBridge(page:Page,scope='full'){
     if(plugin==='AlphaMailAttachments'){
      if(method==='cancel')return {};
      if(state.scope==='denied'||input.revision!==row.mutationRevision)throw Error('Photo unavailable');
-     const bytes=Uint8Array.from(atob(image.split(',')[1]),c=>c.charCodeAt(0));
+     const source='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7l8AAAAASUVORK5CYII=';
+     const bytes=Uint8Array.from(atob(source),c=>c.charCodeAt(0));
      const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
-     return {name:'source.png',mimeType:'image/png',size:bytes.length,sha256:hash,dataBase64:image.split(',')[1]};
+     return {name:'source.png',mimeType:'image/png',size:bytes.length,sha256:hash,dataBase64:source};
     }
     if(plugin==='AlphaPhotos'){
      if(method==='libraryAccess')return access();
