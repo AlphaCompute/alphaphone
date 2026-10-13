@@ -54,6 +54,14 @@ test('Calendar reads retain the current receipt instead of invalidating reset re
  const result=await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');const {calendarDocument}=await import('/src/browser/calendar-store.ts');const calendar=new BrowserCalendar();await calendar.prepareAgentSource();const before=await calendarDocument.capture();await Promise.all([calendar.prepareAgentSource(),calendar.pendingCreations(),calendar.list({begin:Date.now(),end:Date.now()+86400000}),calendar.listAlerts()]);return {before,after:await calendarDocument.capture()};});
  expect(result.after).toEqual(result.before);
 });
+test('Undo polling retains the calendar receipt while no deletion has expired',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/?mode=dev');
+ const before=await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');await new BrowserCalendar().save({creationId:crypto.randomUUID(),calendarId:'local',title:'Polled',begin:Date.now()+60000,end:Date.now()+120000});return (await import('/src/browser/calendar-store.ts')).calendarDocument.capture();});
+ // The pending-deletion poll runs every 500ms; several cycles must not replace the receipt.
+ await page.waitForTimeout(2000);
+ expect(await page.evaluate(async()=>(await import('/src/browser/calendar-store.ts')).calendarDocument.capture())).toEqual(before);
+});
 for(const kind of ['response','series-edit','series-delete','meeting','open'] as const)test(`Home during queued ${kind} read prevents late presentation`,async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
  await page.goto('/?mode=dev');
