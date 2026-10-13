@@ -15,7 +15,7 @@ const instant=at(13,12);
 class FixedDate extends Date {constructor(...args){super(...(args.length?args:[instant]));}static now(){return instant;}}
 const event=(patch={})=>({id:'google:grant:calendar:event',calendarId:'google:grant:calendar',providerEventId:'event',title:'Owned Google event',body:'Owned body',location:'',begin:at(13,12),end:at(13,13),allDay:false,timeZone:'UTC',revision:'synthetic',source:'google',readOnly:true,...patch});
 async function harness(events,{day=0,personal=true}={}){
-  let view='calendar',allowRead=true;
+  let view='calendar',allowRead=true,pendingRead=null;
   let selected={connectionId:'grant',sourceId:'google:grant:calendar',name:'Owned Google calendar',account:'owner@example.test'};
   const listeners=new EventTarget(),writes=[],cloud={client:{},sessionId:'session',credentialId:'credential'};
   const state={events:[],day,month:null,open:null,form:null,calPrefs:{personal:{on:personal}}};
@@ -30,14 +30,14 @@ async function harness(events,{day=0,personal=true}={}){
     connectionController:{getCloudClient:()=>cloud,subscribe:()=>()=>{},rejectCloudSession:()=>{}},
     googleCalendarAccountKey:()=>({environment:'production',userId:'owned',organizationId:'owned'}),readGoogleCalendarSelection:()=>selected,
     currentGoogleCalendarBinding:()=>({}),googleConnectionController:{open(){}},GOOGLE_ACCOUNTS_CHANGED:'accounts',GOOGLE_CALENDAR_SELECTION_CHANGED:'selection',
-    GoogleCalendarReader:class{invalidate(){}selectSource(){}async listSources(){return allowRead?{status:'ready',calendars:[{id:selected.sourceId}]}:{status:'not-connected',message:'Disconnected'};}async read(){return {status:'ready',events};}},
+    GoogleCalendarReader:class{invalidate(){}selectSource(){}async listSources(){return allowRead?{status:'ready',calendars:[{id:selected.sourceId}]}:{status:'not-connected',message:'Disconnected'};}async read(){if(pendingRead)await pendingRead;return {status:'ready',events};}},
   });
   vm.runInContext(calendar+'\n{'+nativeSource+'\nglobalThis.installNative=installCalendarAdapter;}\n{'+source+'\nglobalThis.install=installGoogleCalendarViewAdapter;}',ctx);
   class Shell{live=true;S(){return {view};}vget(){return state;}vset(_key,patch){Object.assign(state,patch);}async refreshReminders(){}componentDidMount(){}componentDidUpdate(){}componentWillUnmount(){}}
   ctx.installNative(Shell,{calendar:ctx.view});ctx.install(Shell,{calendar:ctx.view});const shell=new Shell();shell.componentDidMount();shell.componentDidUpdate();
   for(let i=0;i<12;i++)await Promise.resolve();
   const api={now:new FixedDate(),get:key=>key==='calendar'?state:{},set:patch=>{writes.push(patch);Object.assign(state,patch);},sw:()=>({}),track:()=>'',kx:()=>0,swallowed:()=>false,toast:()=>{},person:()=>null};
-  return {render:()=>ctx.view.render(state,api),state,writes,leave(){view='home';},revoke(){allowRead=false;listeners.dispatchEvent(new Event('accounts'));},async returnToCalendar(){view='calendar';shell.componentDidUpdate();for(let i=0;i<12;i++)await Promise.resolve();},clear(){selected=null;listeners.dispatchEvent(new Event('selection'));},close:()=>shell.componentWillUnmount()};
+  return {render:()=>ctx.view.render(state,api),state,writes,holdNextRead(){let release;pendingRead=new Promise(resolve=>{release=resolve;});return()=>{release();pendingRead=null;};},async startRefresh(){listeners.dispatchEvent(new Event('accounts'));for(let i=0;i<8;i++)await Promise.resolve();},leave(){view='home';},revoke(){allowRead=false;listeners.dispatchEvent(new Event('accounts'));},async returnToCalendar(){view='calendar';shell.componentDidUpdate();for(let i=0;i<12;i++)await Promise.resolve();},clear(){selected=null;listeners.dispatchEvent(new Event('selection'));},close:()=>shell.componentWillUnmount()};
 }
 test('Google visibility is independent of the local Personal calendar toggle',async()=>{
   const h=await harness([event()],{personal:false});try{assert.equal(h.render().events.length,1);}finally{h.close();}
@@ -68,3 +68,5 @@ test('Google detail blocks writes and clearing its selection removes it without 
 });
 
 test('grant revocation outside Calendar clears cached events before returning',async()=>{const h=await harness([event()]);try{assert.equal(h.render().events.length,1);h.leave();h.revoke();assert.equal(h.render().events.length,0);await h.returnToCalendar();assert.equal(h.render().events.length,0);}finally{h.close();}});
+
+test('leaving during a pending Google read allows automatic reload on return',async()=>{const h=await harness([event()]);try{const release=h.holdNextRead();await h.startRefresh();h.leave();release();for(let i=0;i<8;i++)await Promise.resolve();await h.returnToCalendar();assert.equal(h.render().events.length,1);}finally{h.close();}});

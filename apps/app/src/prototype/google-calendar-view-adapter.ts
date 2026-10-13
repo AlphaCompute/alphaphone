@@ -35,6 +35,7 @@ export function installGoogleCalendarViewAdapter(Component:any,views:Bag){
    if(result.status!=='ready'){message=result.message;changed();return;}
    rows=result.events.map(googleCalendarDisplayRecord);loaded=key;shell.googleCalendarRows=rows;message=`${selected.name} · ${selected.account} · Read only`;changed();
   }catch(error){if(current()){message='Google Calendar could not be verified. Retry before relying on this schedule.';connectionController.rejectCloudSession(cloud.sessionId,error);changed();}}
+  finally{if(token===epoch&&!current()){attempted='';reader?.invalidate();}}
  }
  p.componentDidMount=function(){mount.call(this);owner=this;let previous=bindingKey();const accountChanged=()=>{previous=bindingKey();reset();void refresh(true);};this.googleCalendarUnsubscribe=connectionController.subscribe(()=>{const next=bindingKey();if(next!==previous){previous=next;reset();void refresh();}});this.googleCalendarChanged=accountChanged;window.addEventListener(GOOGLE_ACCOUNTS_CHANGED,accountChanged);window.addEventListener(GOOGLE_CALENDAR_SELECTION_CHANGED,accountChanged);};
  p.componentDidUpdate=function(...args:any[]){update?.apply(this,args);void refresh();};
