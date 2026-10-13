@@ -164,12 +164,17 @@ and both-variant execution are pending.
 ## Device library (source for issue 408)
 
 The Device library album retains the agent proposal, selection, review and receipt
-contract from #442. Its native facade now shares `PermittedMediaCatalog` and
-`PermittedMediaReview` with the main Photos view from #437. Both surfaces use the
-same Android permission grants, typed per-volume collections, volume-qualified
-identities, provider-version/generation revisions and exact conditional mutations.
-There is no second media index. This album watches only while open and refreshes
-bounded pages on provider changes instead of maintaining an incremental index.
+contract from #442. Its native facade (`AlphaPhotoLibraryPlugin`) uses the
+`AlphaPhotos` plugin's own `PermittedMediaCatalog` and `PermittedMediaReview`
+instances rather than constructing its own: one read epoch, one grant-change
+invalidation, one MediaStore observer and one Android review at a time across both
+surfaces. Both use the same permission grants, typed per-volume collections,
+volume-qualified identities, provider-version/generation revisions and exact
+conditional mutations. There is no second media index. The observer is registered
+only while the main Photos grid or this album is open (each watches under its own
+name), and both refresh bounded pages on provider changes. The two owner surfaces
+(the main grid and this album) still both exist; consolidating them into one view is
+a product decision left open.
 
 Search supports kind, dates and favorites. Names remain local to owner searches;
 the agent search accepts no text and its results omit filenames, albums, byte sizes,

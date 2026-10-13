@@ -207,7 +207,7 @@ export function installWorkflowAdapter(Component:any,views:Bag){
  const retireOtherOwnerNotices=()=>{
   if(!Capacitor.isNativePlatform())return;
   const session=connectionController.getSnapshot().session;
-  ownerNotices.update({identity:session?.sessionId??'',owner:session?{origin:session.origin,ownerId:session.ownerId,agentId:session.agentId}:null,hasSession:!!session,startupResolved:connectionController.getSnapshot().startupResolved});
+  ownerNotices.update({identity:session?.sessionId??'',owner:session?{origin:session.origin,ownerId:session.ownerId,agentId:session.agentId}:null,hasSession:!!session,startupResolved:connectionController.getSnapshot().startupResolved,busy:connectionController.getSnapshot().busy});
  };
  const reviewPhone=()=>{if(!receipt||operation)return;const selected=receipt,previous=phoneReview?.runId===selected.id?phoneSteps.map(step=>step.id):[];phoneSteps=[];phoneConfirm=null;void work(async(client,signal,valid)=>{const context=phoneContext(selected),review=await client.phoneReview(selected,signal);if(!valid())return;phoneContext(selected);const steps=review.finished||review.cancellationRequestedAt?[]:await connectionController.workflowPhoneActions(review,context,signal);if(valid()){phoneContext(selected);queueApprovalNotices(noticeRoute(selected),steps,previous.filter(id=>!steps.some(step=>step.id===id)));phoneReview=review;phoneSteps=steps;phoneStatus=steps.length?'Review the exact destination, sources and operation. Each step needs separate approval.':'No pending phone steps in this execution. Refresh explicitly if its next step becomes ready.';}});};
  const decidePhone=(proposal:ActionProposal,approved:boolean)=>{

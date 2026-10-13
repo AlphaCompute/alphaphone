@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Icon;
+import android.provider.Settings;
 
 /**
  * The listening indicator the listener itself owns: an ongoing foreground-service notification,
@@ -79,7 +80,8 @@ final class ListenerNotifications {
  }
 
  /**
-  * Whether the listening indicator would be visible in the shade and on the lock screen. Creates
+  * Whether the listening indicator would be visible in the shade and on the lock screen (including
+  * the device-wide lock-screen notification setting). Creates
   * the channels first so a fresh install is judged on the channel it will post to.
   */
  static boolean indicatorVisible(Context context){
@@ -90,8 +92,16 @@ final class ListenerNotifications {
    NotificationChannel channel=manager.getNotificationChannel(CHANNEL_ACTIVE);
    return ListenerPolicy.notificationsVisible(context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED,
     manager.areNotificationsEnabled(),channel==null?NotificationManager.IMPORTANCE_NONE:channel.getImportance(),
-    channel!=null&&channel.getLockscreenVisibility()==Notification.VISIBILITY_SECRET);
+    channel!=null&&channel.getLockscreenVisibility()==Notification.VISIBILITY_SECRET,lockScreenShowsNotifications(context));
   }catch(RuntimeException unavailable){return false;}
+ }
+
+ /** Settings.Secure.LOCK_SCREEN_SHOW_NOTIFICATIONS (hidden constant; default on). Unreadable counts as hidden. */
+ static final String LOCK_SCREEN_SHOW_NOTIFICATIONS="lock_screen_show_notifications";
+
+ static boolean lockScreenShowsNotifications(Context context){
+  try{return Settings.Secure.getInt(context.getContentResolver(),LOCK_SCREEN_SHOW_NOTIFICATIONS,1)!=0;}
+  catch(RuntimeException unreadable){return false;}
  }
 
  /** Posts or clears the attention notification for states that capture nothing. */

@@ -28,33 +28,51 @@ final class PermittedMediaReview implements AutoCloseable {
   this.bridge=bridge;this.catalog=catalog;this.worker=worker;
   launcher=bridge.registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(),result->{
    Request request=pending.getAndSet(null);if(request==null)return;
-   if(closed||result.getResultCode()!=Activity.RESULT_OK||request.until<SystemClock.elapsedRealtime()){request.call.reject("Photo change cancelled or expired. No change was dispatched.");return;}
-   try{worker.execute(()->apply(request));}catch(RuntimeException unavailable){request.call.reject("Photos closed before dispatch. Review the selection again.");}
+   if(closed||result.getResultCode()!=Activity.RESULT_OK||request.until<SystemClock.elapsedRealtime()){request.call.reject("Photo change cancelled or expired. No change was dispatched.",DECLINED);return;}
+   afterResume(request);
   });
  }
+ /**
+  * Android delivers the write-request result before the activity resumes, while the catalog is
+  * still marked background (its plugin's handleOnResume has not run). Applying then would fail the
+  * foreground check and report an approved change as unverified, so dispatch waits for RESUMED.
+  */
+ private void afterResume(Request request){
+  androidx.lifecycle.Lifecycle lifecycle=bridge.getActivity().getLifecycle();
+  if(lifecycle.getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)){dispatch(request);return;}
+  lifecycle.addObserver(new androidx.lifecycle.LifecycleEventObserver(){
+   @Override public void onStateChanged(androidx.lifecycle.LifecycleOwner owner,androidx.lifecycle.Lifecycle.Event event){
+    if(event==androidx.lifecycle.Lifecycle.Event.ON_RESUME){owner.getLifecycle().removeObserver(this);if(closed||request.until<SystemClock.elapsedRealtime())request.call.reject("Photo change cancelled or expired. No change was dispatched.",DECLINED);else dispatch(request);}
+    else if(event==androidx.lifecycle.Lifecycle.Event.ON_DESTROY){owner.getLifecycle().removeObserver(this);request.call.reject("Photos closed before dispatch. Review the selection again.");}
+   }
+  });
+ }
+ private void dispatch(Request request){try{worker.execute(()->apply(request));}catch(RuntimeException unavailable){request.call.reject("Photos closed before dispatch. Review the selection again.");}}
  void request(PluginCall call,List<String> ids,List<String> revisions,boolean favorite,boolean desired,boolean batch){
   Request request=new Request(call,ids,revisions,favorite,desired,batch);
   if(closed||Build.VERSION.SDK_INT<30||ids.isEmpty()||ids.size()>20||new HashSet<>(ids).size()!=ids.size()||ids.size()!=revisions.size()){call.reject("Select 1–20 distinct permitted items.");return;}
-  if(!pending.compareAndSet(null,request)){call.reject("Finish the current photo review first.");return;}
+  if(!pending.compareAndSet(null,request)){call.reject("Finish the current photo review first.","LIBRARY_BUSY");return;}
   try{
    List<Uri> uris=new ArrayList<>();StringBuilder names=new StringBuilder();
    for(int i=0;i<ids.size();i++){JSObject row=catalog.mutationSource(ids.get(i),revisions.get(i));if(favorite&&Boolean.TRUE.equals(row.getBoolean("trashed")))throw new IllegalStateException();uris.add(catalog.uri(MediaLibraryKey.parse(ids.get(i))));names.append(i+1).append(". ").append(row.getString("name").replaceAll("[\\p{Cntrl}]"," ")).append('\n');}
    android.app.PendingIntent grant=MediaStore.createWriteRequest(bridge.getContext().getContentResolver(),uris);
    bridge.getActivity().runOnUiThread(()->{
-    if(closed||pending.get()!=request||!bridge.getActivity().hasWindowFocus()||request.until<SystemClock.elapsedRealtime()){cancel(request,"Return to Photos to review this change.");return;}
+    if(closed||pending.get()!=request||!bridge.getActivity().hasWindowFocus()||request.until<SystemClock.elapsedRealtime()){cancel(request,"Return to Photos to review this change.",DECLINED);return;}
     String action=favorite?(desired?"Favorite":"Unfavorite"):(desired?"Move to Recently deleted":"Restore");
     new AlertDialog.Builder(bridge.getActivity()).setTitle(action+" "+ids.size()+" item"+(ids.size()==1?"":"s")+"?")
      .setMessage(names+"\nAndroid will ask for access. Only these selected revisions will be changed; items changed elsewhere will be skipped.")
-     .setNegativeButton("Cancel",(dialog,which)->cancel(request,"Photo change cancelled. No change was dispatched."))
-     .setOnCancelListener(dialog->cancel(request,"Photo change cancelled. No change was dispatched."))
+     .setNegativeButton("Cancel",(dialog,which)->cancel(request,"Photo change cancelled. No change was dispatched.",DECLINED))
+     .setOnCancelListener(dialog->cancel(request,"Photo change cancelled. No change was dispatched.",DECLINED))
      .setPositiveButton("Continue",(dialog,which)->{
-      if(closed||pending.get()!=request||request.until<SystemClock.elapsedRealtime()){cancel(request,"Photo review expired.");return;}
+      if(closed||pending.get()!=request||request.until<SystemClock.elapsedRealtime()){cancel(request,"Photo review expired.",DECLINED);return;}
       if(!LateLaunch.ask(call,()->launcher.launch(new IntentSenderRequest.Builder(grant.getIntentSender()).build())))pending.compareAndSet(request,null);
      }).show();
    });
-  }catch(Exception unavailable){cancel(request,"Selected media changed or is unavailable. Refresh Photos.");}
+  }catch(Exception unavailable){cancel(request,"Selected media changed or is unavailable. Refresh Photos.",STALE);}
  }
- private void cancel(Request request,String reason){if(pending.compareAndSet(request,null))request.call.reject(reason);}
+ /** Error codes: nothing was dispatched because the owner or Android declined, or because a selected revision changed. */
+ static final String DECLINED="LIBRARY_DECLINED",STALE="LIBRARY_STALE";
+ private void cancel(Request request,String reason,String code){if(pending.compareAndSet(request,null))request.call.reject(reason,code);}
  private void apply(Request request){
   JSArray outcomes=new JSArray();int verified=0;
   for(int i=0;i<request.ids.size();i++){

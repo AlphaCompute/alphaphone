@@ -6,6 +6,8 @@ test('notice coordinator retries transient suspension and always fences sign-out
  for(const reason of ['hidden','chooser']){const f=fixture();let release;const deferred=new Promise(r=>release=r);f.restore(async valid=>{await deferred;assert.equal(valid(),false)});f.c.update(A);await new Promise(r=>setImmediate(r));f.available(false);release();await f.drain();f.available(true);f.restore(async()=>{});f.c.update(A);await f.drain();assert.deepEqual(f.transitions,['a','a'],reason);assert.equal(f.restores.length,2);}
  const f=fixture();f.c.update(out);await f.drain();assert.deepEqual(f.transitions,[]);f.fail(true);f.c.update(A);await f.drain();f.fail(false);f.c.update(out);await f.drain();assert.deepEqual(f.transitions,['a','']);
  const stale=fixture();let release;const deferred=new Promise(r=>release=r);stale.restore(async()=>{await deferred;throw Error('old request');});stale.c.update(A);await new Promise(r=>setImmediate(r));stale.c.update(out);release();await stale.drain();stale.c.update(out);await stale.drain();assert.deepEqual(stale.transitions,['a','']);
+ const reconnect=fixture();reconnect.c.update(A);await reconnect.drain();reconnect.c.update({...out,busy:true});await reconnect.drain();reconnect.c.update({...A,identity:'session-a2'});await reconnect.drain();assert.deepEqual(reconnect.transitions,['a','a'],'busy reconnect publishes no null owner');
+ reconnect.c.update({...out,busy:true});await reconnect.drain();reconnect.c.update(out);await reconnect.drain();assert.deepEqual(reconnect.transitions,['a','a',''],'settled sign-out still fences');
  console.log('PASS');`;
  assert.match(execFileSync(process.execPath,['--import=tsx','--input-type=module','-e',script],{cwd:new URL('../',import.meta.url),encoding:'utf8'}),/PASS/);
 });

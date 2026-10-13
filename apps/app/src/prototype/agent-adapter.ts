@@ -1,4 +1,4 @@
-import {deletions,refreshDeletionViews} from '../runtime/deletions';
+import {deletions,refreshDeletionViews,reminderDeletionRefusal} from '../runtime/deletions';
 import {BrowserReviews} from '../browser/review';
 import type {ConversationMessageTarget} from '../runtime/alpha-client';
 import {formatDeviceRecordDateTime} from "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts";
@@ -731,6 +731,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(operation.type==='reminder_cancel'){
           const queued=await deletions.reviewAgentReminder({operationId,bindingHash,operation,journalIdentity});
           if(queued.status==='queued')refreshDeletionViews();
+          if(reminderDeletionRefusal(queued.status))return {status:'failed',summary:'Deletion was not queued. Nothing changed.'};
           return {status:queued.status==='cancelled'?'failed':'unknown',summary:queued.status==='queued'?'Deletion queued with 10 seconds to Undo. Final outcome remains pending.':queued.status==='cancelled'?'Deletion cancelled before admission.':'Deletion outcome requires review; it will not be repeated.'};
         }
         const result=await DailyApps.operateReminder({operationId,bindingHash,operation});
