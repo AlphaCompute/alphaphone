@@ -186,7 +186,11 @@ The existing Dictate → Apply transcript path now captures the text selection a
 
 Concurrent note changes block application; persistence failure retains the reviewed transcript for explicit retry. The host adapter flow fixture verifies selected-range insertion, text-note preservation, no retained audio, save failure/retry and concurrent-edit refusal. This is synthetic recording/provider evidence. `NoteAudioInstrumentedTest#dictationReplacesSelectionAndKeepsTextNoteAcrossRecreation` adds actual Android recording with a manually entered transcript, selection insertion and recreation readback; this flow and the other three native audio flows passed on both Build55 variants. Exact logs are in `test-results/prototype-build55/native-updates/`; that combined matrix still failed the separate browser reload-namespace case. This does not claim live speech recognition.
 
-## Browser build recognition (2026-10-07)
+## Browser build recognition (2026-10-07, superseded 2026-10-12)
+
+Superseded by decision P-10: the in-browser recognizer described below was removed, and local
+browser transcription now goes through the local agent
+([browser-speech-recognition.md](browser-speech-recognition.md)). Historical record:
 
 The web build no longer asks for a manually typed transcript on the **Record and transcribe**
 route: **Transcribe in this browser** runs Whisper tiny.en locally in a worker (English only),

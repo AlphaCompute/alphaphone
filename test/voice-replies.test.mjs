@@ -22,7 +22,8 @@ function fixture({native = true} = {}) {
     localStorage: {getItem: k => f.store.has(k) ? f.store.get(k) : null, setItem: (k, v) => f.store.set(k, String(v)), removeItem: k => f.store.delete(k)},
     window: {dispatchEvent: event => { f.events.push(event.type); return true; }, addEventListener() {}, removeEventListener() {}},
     document: {hidden: false, documentElement: {dataset: {}}, addEventListener() {}, removeEventListener() {}},
-    createOnDeviceVoice: () => ({ready: async () => true}),
+    // Recognition readiness (ready) and read-aloud readiness (playbackReady) are separate checks.
+    createOnDeviceVoice: () => ({ready: async () => false, playbackReady: async () => true}),
     createCloudVoice: () => ({speak: async (text,signal,started) => box.speakLocalText(text,signal,started,false,{execution:'cloud'})}),
     planLocalSpeech: text => { if (/🙂/.test(text)) throw Error('Unsupported'); return [text]; },
     speakLocalText: async (text, signal, started, _queue, requirements) => {
@@ -140,6 +141,8 @@ test('note read-aloud uses only the local route, reports state and stops on requ
   assert.equal(await f.box.speakNote('Done reading', {noteId: 'note-2'}), 'finished');
   assert.equal(await f.box.speakNote('Smile 🙂'), 'unsupported', 'unsupported native text is refused before audio');
   assert.equal(await f.box.speakNote('   '), 'unsupported');
+  f.box.createOnDeviceVoice = () => ({ready: async () => true, playbackReady: async () => false});
+  assert.equal(await f.box.speakNote('Playback not ready'), 'unavailable', 'read-aloud follows playback readiness, not recognition readiness');
   f.box.createOnDeviceVoice = () => null;
   assert.equal(await f.box.speakNote('No engine'), 'unavailable');
   assert.equal(f.spoken.length, 2);

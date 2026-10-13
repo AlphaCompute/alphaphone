@@ -22,7 +22,7 @@ export function cloudVoiceViewFixture(options={}){
  load('local-speech-playback.ts',box,['playOwnedSpeech']);
  load('runtime/cloud-voice.ts',box,['cloudVoiceFailure','createCloudVoice']);
  load('prototype/local-speech-playback.ts',box,['installLocalSpeechPlayback','stopLocalSpeechPlayback','currentNoteReading','stopSpeaking','speakNote']);
- load('runtime/voice-states.ts',box,['voiceFailure','transcriptProvenance','speechProgressMessage','deniedSettingsChoice','DENIED_SETTINGS_LABEL']);
+ load('runtime/voice-states.ts',box,['voiceFailure','transcriptProvenance','deniedSettingsChoice','DENIED_SETTINGS_LABEL']);
  load('prototype/voice-adapter.ts',box,['installPrototypeVoiceAdapter']);
  const icons={check:'check',mic:'official-mic-path',stop:'stop',play:'play',x:'close',cloud:'cloud',user:'account'};
  class Shell{

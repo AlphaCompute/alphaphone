@@ -141,17 +141,15 @@
       "gate": "Owner: voice send and route policy (MVP-01) and whether on-device speech is still required (A-24); then R: Cloud speech with a signed-in account, and D: physical audio, interruption and latency (A-10)",
       "evidence": [
         "apps/app/src/prototype/voice-adapter.ts",
-        "android/local-speech/qualified-runtime-manifest.json",
-        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LocalSpeechInstrumentedTest.java",
         "test/browser/browser-speech.spec.ts",
         "apps/app/src/runtime/voice-selection.ts",
         "test/browser/chat-voice-mode.spec.ts",
         "test/browser/production-surface.spec.ts",
         "scripts/test-native-permissions.mjs",
         "apps/app/src/runtime/voice-timing.ts",
-        "android/local-speech/requalification/candidate-20261009.json"
+        "docs/fused-speech.md"
       ],
-      "remaining": "Flag-off builds use Eliza Cloud speech (P-07); no real Cloud transcription has been exercised. The send policy is one constant that keeps today's sending of ongoing Cloud turns until MVP-01 is decided; local-first speech with Cloud only by disclosed opt-in is the PRD wording, pending MVP-01. A Cloud reply with no speech says so, and voice timing marks are recorded but not yet in the Settings diagnostics export. On-device speech: functional acceptance failed on a physical arm64-v8a device (D); a rebuilt candidate on main (android/local-speech/requalification/candidate-20261009.json) passed on an arm64 emulator (E) and is not admitted, and x86_64 is not executed; whether on-device speech is still required is A-24. The voice, voice-revoke and voice-limit campaigns passed on both flavors at 6dcdde34 (round 7, pin 40dbe96bd1) and were not rerun at 13c9857598. Always-on listening and hardware invocation (MVP-52) are open and owner-gated."
+      "remaining": "Flag-off builds use Eliza Cloud speech (P-07); no real Cloud transcription has been exercised. The send policy is one constant that keeps today's sending of ongoing Cloud turns until MVP-01 is decided; local-first speech with Cloud only by disclosed opt-in is the PRD wording, pending MVP-01. A Cloud reply with no speech says so, and voice timing marks are recorded but not yet in the Settings diagnostics export. On-device speech: the retired Sherpa engine failed functional acceptance on a physical arm64-v8a device (D); decision P-10 replaces it with the libelizainference voice host (docs/fused-speech.md), on which no acceptance has run; whether on-device speech is still required is A-24. The voice, voice-revoke and voice-limit campaigns passed on both flavors at 6dcdde34 (round 7, pin 40dbe96bd1) and were not rerun at 13c9857598. Always-on listening and hardware invocation (MVP-52) are open and owner-gated."
     },
     {
       "id": "AP-07",

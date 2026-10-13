@@ -32,7 +32,7 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   expect(calls.filter(p=>p.startsWith('/api/auth/cli-session'))).toEqual([]);
   const voice=await page.evaluate(async()=>{
    const {connectionController:c}=await import('/src/runtime/connection-ui.tsx'),binding=c.getCloudClient()!,{BrowserVoice}=await import('/src/browser/voice.ts'),v=new BrowserVoice();
-   (v as any).recognizer.transcribe=()=>{throw Error('Local Whisper must not run');};
+   (v as any).transcribeLocalRecording=()=>{throw Error('Local speech must not run');};
    (v as any).capture.clips.set('closed-fixture',{blob:new Blob(['closed fixture'],{type:'audio/webm'}),durationMs:10});
    const options={environment:'production',credentialId:binding.credentialId,requestId:crypto.randomUUID()};
    const transcript=await v.transcribeRecording({...options,recordingId:'closed-fixture'});const prepared=await v.synthesize({...options,requestId:crypto.randomUUID(),text:'Closed fixture text'});

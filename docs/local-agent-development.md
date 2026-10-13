@@ -64,7 +64,7 @@ Require both speech providers at startup with:
 ALPHA_LOCAL_ASR=required \
 ALPHA_LOCAL_TTS=required \
 ALPHA_TTS_LIBRARY=/absolute/path/to/libelizainference.dylib \
-ALPHA_TTS_MODEL_DIR=/absolute/path/to/kokoro \
+ELIZA_KOKORO_MODEL_DIR=/absolute/path/to/kokoro \
 npm run dev:local
 ```
 
@@ -78,11 +78,12 @@ permissions (`chmod 600`). For example:
   "ALPHA_LOCAL_ASR": "required",
   "ALPHA_LOCAL_TTS": "required",
   "ALPHA_TTS_LIBRARY": "/absolute/path/to/libelizainference.dylib",
-  "ALPHA_TTS_MODEL_DIR": "/absolute/path/to/kokoro"
+  "ELIZA_KOKORO_MODEL_DIR": "/absolute/path/to/kokoro"
 }
 ```
 
-`npm run dev` and `npm run dev:local` read this file at startup. Explicit shell
+`npm run dev` and `npm run dev:local` read this file at startup. A file that still uses the
+retired `ALPHA_TTS_MODEL_DIR` key is read as `ELIZA_KOKORO_MODEL_DIR`, with a warning to rename it. Explicit shell
 environment values take precedence, including `ALPHA_LOCAL_TTS=off`. Optional
 saved keys are `ALPHA_WHISPER_BIN`, `ALPHA_ASR_MODEL` and
 `ALPHA_WHISPER_BACKEND`. Only speech modes and absolute asset paths are accepted;

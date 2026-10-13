@@ -20,7 +20,8 @@ the required evidence rather than treating a successful APK build as acceptance.
 
 - [Account-bound local Inbox drafts](docs/inbox-local-drafts.md)
 - [Browser implementation and acceptance review](docs/mvp-browser-review.md)
-- [In-browser speech recognition](docs/browser-speech-recognition.md)
+- [Browser speech: local agent or Eliza Cloud](docs/browser-speech-recognition.md)
+- [Fused speech on libelizainference](docs/fused-speech.md)
 - [MVP scope and gap report](docs/mvp-scope-and-gap-report.md)
 - [MVP completion plan](docs/mvp-completion-plan.md)
 - [Remaining MVP work after PR 373](docs/mvp-remaining-work-2026-10-09.md)
@@ -138,12 +139,12 @@ For real host inference and speech, follow the separate [local agent setup](docs
 **Settings → Character → Wake assistant** opens the recording UI; recording starts
 only after Start recording is selected.
 
-Voice recording in the web build is transcribed locally by Whisper tiny.en (English only) in a
-browser worker; audio is not uploaded and the transcript is always reviewed before it is saved
-or used. The ~56 MB model is downloaded once at build time by `npm run browser-speech:prepare`
-(run automatically before `build` and the dev servers), self-hosted under `browser-speech/` and
-loaded only on the first transcription. APKs omit it. See
-[in-browser speech recognition](docs/browser-speech-recognition.md).
+The web build has no speech engine of its own. Local speech in a browser runs on the private
+local agent on the same computer, which uses the native llama.cpp-based libelizainference
+engine; without the agent, local transcription reports that the agent is required and the
+recording is kept. Eliza Cloud is the disclosed opt-in route (P-07). The transcript is always
+reviewed before it is saved or used. See
+[browser speech](docs/browser-speech-recognition.md) and [fused speech](docs/fused-speech.md).
 
 Deleted notes, including voice notes, move to a Trash inside Notes and are erased
 automatically 3 days after deletion; Undo, Restore, Delete forever and Empty Trash are
@@ -163,15 +164,11 @@ recognize the usual macOS Homebrew JDK/Android SDK locations. The Gradle 8.13
 wrapper is hash-pinned. No Eliza root dependency installation or package
 publication is required for this shell.
 
-Before the first Android build, reproduce the pinned speech runtime and model
-assets using [the local speech build instructions](scripts/local-speech/README.md).
-These generated inputs are intentionally absent from Git. Both ARM64 and x86_64
-runtimes are required; Android CI provisions and validates them on a clean checkout.
-The build requires Android NDK r28c (`28.2.13676358`) and CMake 4.0.3 and refuses other
-versions. A local rebuild does not reproduce the qualified hashes in
-`android/local-speech/runtime-manifest.json` (see the instructions for why), so
-`install-generated.py` refuses it unless `--allow-unqualified-runtime` is passed; APKs
-built with such a runtime are build evidence, not release candidates.
+On-device speech uses only the llama.cpp-based libelizainference voice host (decision P-10).
+Build and stage it as described in [fused speech](docs/fused-speech.md); the built libraries are
+intentionally absent from Git and are checked against the qualification record
+`android/voice-host/qualified-voice-host.json`. The x86_64 voice host is not yet qualified.
+APKs built without a qualified voice host are build evidence, not release candidates.
 
 Every Android build also needs the prepared resident runtime source in
 `artifacts/local-agent-resident-<commit>` (from `upstream.lock.json`): Gradle's

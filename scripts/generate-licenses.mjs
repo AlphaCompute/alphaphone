@@ -89,8 +89,8 @@ const normalizeText = text => text.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, 
 
 /**
  * True when an installed package holds only TypeScript declarations and package metadata, so
- * no code from it can reach any bundle. protobufjs (via onnxruntime-web) declares @types/node,
- * and with it undici-types, as a regular dependency; npm therefore records them as production.
+ * no code from it can reach any bundle. A runtime dependency that declares @types/node (and with
+ * it undici-types) as a regular dependency makes npm record them as production.
  */
 const METADATA_FILE = /^(package\.json|readme(\..*)?|license(\..*)?|licence(\..*)?|changelog(\..*)?|notice(\..*)?|.*\.md)$/i;
 export function declarationOnlyPackage(dir) {
@@ -525,11 +525,22 @@ export function parseGradleTree(output) {
 export function androidDependencyFingerprint(root) {
   const settings = read(root, 'android/settings.gradle');
   const modules = new Map([...settings.matchAll(/project\('(:[^']+)'\)\.projectDir\s*=\s*new File\('([^']+)'\)/g)].map(m => [m[1], path.posix.join('android', m[2])]));
-  const files = ['android/variables.gradle', 'android/build.gradle', 'android/app/build.gradle', 'android/local-speech/build.gradle'];
+  const files = ['android/variables.gradle', 'android/build.gradle', 'android/app/build.gradle'];
   const app = read(root, 'android/app/build.gradle');
-  for (const [, name] of app.matchAll(/^\s*implementation\s+project\('(:[^']+)'\)/gm)) if (modules.has(name)) files.push(path.posix.join(modules.get(name), 'build.gradle'));
-  const consumer = read(root, 'android/local-speech/build.gradle').match(/elizaSpeechSourceDir\s*=\s*file\('([^']+)'\)/);
-  if (consumer) files.push(path.posix.join('android/local-speech', consumer[1], 'consumer.gradle'));
+  for (const [, name] of app.matchAll(/^\s*implementation\s+project\('(:[^']+)'\)/gm)) {
+    if (modules.has(name)) files.push(path.posix.join(modules.get(name), 'build.gradle'));
+    // A module included without a projectDir lives at android/<name>; only an existing one is read.
+    else if (exists(root, path.posix.join('android', name.slice(1), 'build.gradle'))) files.push(path.posix.join('android', name.slice(1), 'build.gradle'));
+  }
+  // A module that applies a shared script (`ext.<dir> = file('…')` then `apply from: new File(ext.<dir>, '<file>')`) declares its dependencies there.
+  for (const file of [...files]) {
+    if (!exists(root, file)) continue;
+    const text = read(root, file);
+    for (const [, variable, applied] of text.matchAll(/apply from:\s*new File\(ext\.(\w+),\s*'([^']+)'\)/g)) {
+      const dir = text.match(new RegExp(`ext\\.${variable}\\s*=\\s*file\\('([^']+)'\\)`))?.[1];
+      if (dir) files.push(path.posix.join(path.posix.dirname(file), dir, applied));
+    }
+  }
   const lines = [];
   for (const file of [...new Set(files)].sort()) {
     if (!exists(root, file)) { lines.push(`${file}: missing`); continue; }
@@ -580,70 +591,84 @@ function androidEntries(root, templates, errors) {
   ];
 }
 
-function speechEntries(root, templates, errors) {
-  if (!exists(root, 'android/local-speech/runtime-manifest.json')) return [];
-  const manifest = readJson(root, 'android/local-speech/runtime-manifest.json');
-  const scripts = 'vendor/eliza/packages/app/scripts/local-speech';
-  const consumer = exists(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle') ? read(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle') : '';
-  const sherpaVersion = consumer.match(/sherpa-onnx-([\d.]+)-no-espeak\.aar/)?.[1];
-  if (!sherpaVersion) errors.push('Cannot determine the Sherpa-ONNX version from the pinned local-speech consumer.gradle');
-  const ort = exists(root, `${scripts}/onnxruntime-provenance.json`) ? readJson(root, `${scripts}/onnxruntime-provenance.json`) : [];
-  const ortVersions = [...new Set(ort.map(item => item.version))];
-  if (ortVersions.length !== 1) errors.push('Cannot determine a single ONNX Runtime version from onnxruntime-provenance.json');
-  const reference = exists(root, `${scripts}/reference-manifest.json`) ? readJson(root, `${scripts}/reference-manifest.json`) : [];
-  const pinned = (referencePath, localPath) => {
-    const item = reference.find(entry => entry.path === referencePath);
-    const text = read(root, localPath);
-    if (!item) errors.push(`${referencePath} is not pinned in ${scripts}/reference-manifest.json`);
-    else if (sha256(Buffer.from(text)) !== item.sha256) errors.push(`${localPath} does not match the pinned ${referencePath} sha256`);
-    return normalizeText(text);
-  };
-  const abis = manifest.qualifiedAbis.map(q => q.abi).join(', ');
-  // The qualified runtime is the no-eSpeak build. Any other build links eSpeak NG (GPL), which is listed and flagged.
-  const espeak = manifest.noEspeak === true ? [] : [{name: 'eSpeak NG (linked into the Sherpa-ONNX speech runtime)', version: `built with Sherpa-ONNX ${sherpaVersion}`, license: 'GPL-3.0-or-later',
-    source: 'https://github.com/espeak-ng/espeak-ng', text: templates.canonical('GPL-3.0-or-later') || 'android/local-speech/runtime-manifest.json does not record the no-eSpeak build, so eSpeak NG is linked. Its licence text is not held in licenses/.',
-    ...(templates.canonical('GPL-3.0-or-later') ? {textSource: 'spdx-canonical'} : {}), _flags: ['licence-text-missing-from-package']}];
-  return [
-    ...espeak,
-    {name: 'Sherpa-ONNX (no-eSpeak Android build)', version: `${sherpaVersion} (AAR sha256 ${manifest.aarSha256}; ABIs ${abis})`, license: 'Apache-2.0',
-      source: `https://github.com/k2-fsa/sherpa-onnx/tree/v${sherpaVersion}`, text: templates.apache},
-    {name: 'ONNX Runtime', version: ortVersions.join(', '), license: 'MIT', source: `https://github.com/microsoft/onnxruntime/tree/v${ortVersions[0]}`,
-      text: pinned('onnxruntime-LICENSE', 'licenses/onnxruntime-MIT.txt')},
-    {name: 'OpenAI Whisper tiny.en speech recognition model (int8 ONNX conversion by k2-fsa)', version: 'sherpa-onnx-whisper-tiny.en', license: 'MIT',
-      source: 'https://github.com/openai/whisper', text: pinned('whisper-LICENSE', 'licenses/whisper-MIT.txt')},
-    {name: 'CMU Pronouncing Dictionary (speech lexicon)', version: '74790861f652b15e4ac49015a90074ad62a27690', license: 'BSD-2-Clause',
-      source: 'https://github.com/cmusphinx/cmudict', text: pinned('cmudict-LICENSE', 'licenses/cmudict-BSD-2-Clause.txt')},
-    {name: 'Piper LJSpeech medium voice model (int8)', version: 'rhasspy/piper-voices c10ece1aade47bb51c153c893d14e5bf8e5b7117', license: UNVERIFIED,
-      source: 'https://huggingface.co/rhasspy/piper-voices/tree/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/ljspeech/medium',
-      text: `Model card:\n${pinned('ljspeech-MODEL_CARD', 'licenses/piper-ljspeech-medium-MODEL_CARD.txt')}\n\nRepository README:\n${pinned('piper-voices-README.md', 'licenses/piper-voices-README.md')}`},
-    {name: 'Sherpa-ONNX native build dependencies', version: `built with Sherpa-ONNX ${sherpaVersion}`, license: UNVERIFIED,
-      source: `https://github.com/k2-fsa/sherpa-onnx/tree/v${sherpaVersion}/cmake`,
-      text: 'The statically linked native dependencies are discovered during the reproducible speech build. Their license files are copied into the installed model bundle under local-speech/v1/notices/native/ and hash-pinned by its manifest; they are not enumerated in source.'},
-  ];
+/**
+ * On-device speech: the llama.cpp-based libelizainference voice host (ASR, Kokoro TTS, VAD),
+ * read from the Android qualification record. No other speech inference engine ships in any build.
+ * Schema (docs/fused-speech.md, written by the Android voice-host qualification):
+ *   {schemaVersion: 1, pin, forkPin, identity, provider,
+ *    abis: [{abi, libraries: [{name, sha256, bytes}]}],
+ *    components?: [{name, version?, license, source, licenseFile?, licenseSha256?}],
+ *    models: [{name, role, revision, sha256, bytes, license?, source, path? (.gguf), licenseFile?, licenseSha256?}]}
+ * A component or model without a verified licence is listed as UNVERIFIED and flagged, never dropped.
+ */
+export const VOICE_HOST = 'android/voice-host/qualified-voice-host.json';
+const HEX64 = /^[0-9a-f]{64}$/;
+const HEX40 = /^[0-9a-f]{40}$/;
+/** Components fused into libelizainference when the record names none of its own. */
+export const VOICE_HOST_DEFAULT_COMPONENTS = Object.freeze([
+  {name: 'llama.cpp, ggml and mtmd (fused into libelizainference)', license: 'MIT', source: 'https://github.com/ggml-org/llama.cpp'},
+  {name: 'elizaOS voice runtime sources (OmniVoice, kokoro_lib, eliza-inference FFI) in libelizainference', license: UNVERIFIED, source: 'https://github.com/elizaOS/eliza/tree/develop/packages/inference'},
+  {name: 'Silero VAD (fused into libelizainference)', license: 'MIT', source: 'https://github.com/snakers4/silero-vad'},
+  {name: 'LLVM libc++ (libc++_shared.so from the Android NDK)', license: 'Apache-2.0 WITH LLVM-exception', source: 'https://github.com/llvm/llvm-project/tree/main/libcxx'},
+]);
+
+/** Validate a qualified-voice-host.json value. Returns the problems found; an empty list means usable. */
+export function voiceHostProblems(record, label = VOICE_HOST) {
+  const problems = [];
+  const at = (where, message) => problems.push(`${label}: ${where} ${message}`);
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return [`${label}: not a JSON object`];
+  if (record.schemaVersion !== 1) at('schemaVersion', 'must be 1');
+  for (const key of ['pin', 'forkPin']) if (!HEX40.test(record[key] ?? '')) at(key, 'must be a 40-character git commit');
+  if (!Array.isArray(record.abis) || !record.abis.length) at('abis', 'must list at least one ABI');
+  for (const [index, abi] of (Array.isArray(record.abis) ? record.abis : []).entries()) {
+    if (typeof abi?.abi !== 'string' || !abi.abi) at(`abis[${index}].abi`, 'is missing');
+    if (!Array.isArray(abi?.libraries) || !abi.libraries.length) { at(`abis[${index}].libraries`, 'must list the staged libraries'); continue; }
+    for (const [n, library] of abi.libraries.entries()) {
+      if (typeof library?.name !== 'string' || !/\.so$/.test(library.name)) at(`abis[${index}].libraries[${n}].name`, 'must name a .so file');
+      if (!HEX64.test(library?.sha256 ?? '')) at(`abis[${index}].libraries[${n}].sha256`, 'must be a lowercase SHA-256');
+      if (!Number.isSafeInteger(library?.bytes) || library.bytes <= 0) at(`abis[${index}].libraries[${n}].bytes`, 'must be a positive integer');
+    }
+  }
+  if (!Array.isArray(record.models)) at('models', 'must be an array');
+  for (const [index, model] of (Array.isArray(record.models) ? record.models : []).entries()) {
+    for (const key of ['name', 'role', 'revision', 'source']) if (typeof model?.[key] !== 'string' || !model[key]) at(`models[${index}].${key}`, 'is missing');
+    if (!HEX64.test(model?.sha256 ?? '')) at(`models[${index}].sha256`, 'must be a lowercase SHA-256');
+    if (!Number.isSafeInteger(model?.bytes) || model.bytes <= 0) at(`models[${index}].bytes`, 'must be a positive integer');
+    if (model?.path !== undefined && !/\.gguf$/i.test(model.path)) at(`models[${index}].path`, 'must be a GGUF file; libelizainference loads only GGUF models');
+  }
+  if (record.components !== undefined && !Array.isArray(record.components)) at('components', 'must be an array when present');
+  for (const [index, component] of (Array.isArray(record.components) ? record.components : []).entries())
+    for (const key of ['name', 'license', 'source']) if (typeof component?.[key] !== 'string' || !component[key]) at(`components[${index}].${key}`, 'is missing');
+  return problems;
 }
 
-/** In-browser speech (web build only; Android omits these assets and uses its native recognizer). */
-export const BROWSER_SPEECH_CONFIG = 'config/browser-speech.json';
-function browserSpeechEntries(root, templates, errors) {
-  if (!exists(root, BROWSER_SPEECH_CONFIG)) return [];
-  const config = readJson(root, BROWSER_SPEECH_CONFIG);
-  const pinned = item => {
-    if (!exists(root, item.path)) { errors.push(`${item.path}: missing`); return ''; }
-    const bytes = fs.readFileSync(path.join(root, item.path));
-    if (sha256(bytes) !== item.sha256) errors.push(`${item.path} does not match its sha256 in ${BROWSER_SPEECH_CONFIG}`);
-    return normalizeText(bytes.toString('utf8'));
+function voiceHostEntries(root, templates, errors) {
+  if (!exists(root, VOICE_HOST)) return [];
+  const record = readJson(root, VOICE_HOST);
+  const problems = voiceHostProblems(record);
+  if (problems.length) { errors.push(...problems); return []; }
+  const abis = record.abis.map(item => item.abi).join(', ');
+  const libraries = record.abis.flatMap(item => item.libraries.map(library => `${item.abi}/${library.name} (sha256 ${library.sha256}; ${library.bytes} bytes)`)).join('\n');
+  // A licence file named by the record must match its recorded hash; otherwise the canonical text is used.
+  const licenceText = (item, where) => {
+    if (item.licenseFile) {
+      if (!exists(root, item.licenseFile)) { errors.push(`${VOICE_HOST}: ${where} licenseFile ${item.licenseFile} is missing`); return {text: ''}; }
+      const bytes = fs.readFileSync(path.join(root, item.licenseFile));
+      if (item.licenseSha256 && sha256(bytes) !== item.licenseSha256) errors.push(`${item.licenseFile} does not match the licenseSha256 recorded in ${VOICE_HOST}`);
+      return {text: normalizeText(bytes.toString('utf8'))};
+    }
+    const canonical = item.license && item.license !== UNVERIFIED ? templates.canonical(item.license) : '';
+    return canonical ? {text: canonical, textSource: 'spdx-canonical'} : {text: ''};
   };
-  const files = config.files.map(file => `${file.path} (sha256 ${file.sha256})`).join('\n');
-  return [
-    {name: `OpenAI Whisper tiny.en speech recognition model (int8 ONNX conversion by ${config.source.repository}, web build)`, version: `${config.source.repository}@${config.source.revision}`,
-      license: 'MIT AND Apache-2.0', source: `https://huggingface.co/${config.source.repository}/tree/${config.source.revision}\nFiles shipped under browser-speech/ in the web build:\n${files}`,
-      text: `OpenAI Whisper (model weights and code):\n${normalizeText(read(root, 'licenses/whisper-MIT.txt'))}\n\nONNX conversion model card (declares apache-2.0):\n${pinned(config.source.modelCard)}\n\n${templates.apache}`},
-    {name: 'ONNX Runtime Web WebAssembly (statically linked components)', version: `${config.runtime.package} ${config.runtime.version}`, license: UNVERIFIED,
-      source: config.runtime.notices.source,
-      // The onnxruntime-web and onnxruntime-common npm packages ship no license file; ONNX
-      // Runtime's own MIT license carries the Microsoft copyright notice their entries lack.
-      text: `ONNX Runtime (MIT; the same LICENSE at every release):\n${normalizeText(read(root, 'licenses/onnxruntime-MIT.txt'))}\n\nONNX Runtime ThirdPartyNotices.txt for the components statically linked into the WebAssembly:\n${pinned(config.runtime.notices)}`},
-  ];
+  const components = (record.components ?? VOICE_HOST_DEFAULT_COMPONENTS).map((component, index) => ({
+    name: component.name, version: component.version || `elizaOS fused fork ${record.forkPin} (eliza ${record.pin}); ABIs ${abis}`,
+    license: component.license, source: `${component.source}\nQualified libraries:\n${libraries}`, ...licenceText(component, `components[${index}]`),
+  }));
+  const models = record.models.map((model, index) => ({
+    name: `${model.name} (${model.role} model, GGUF)`, version: `${model.revision} (sha256 ${model.sha256}; ${model.bytes} bytes)`,
+    license: model.license || UNVERIFIED, source: model.source, ...licenceText({...model, license: model.license || UNVERIFIED}, `models[${index}]`),
+  }));
+  return [...components, ...models];
 }
 
 export const AGENT_ASSETS = 'android/app/src/main/assets/agent';
@@ -783,7 +808,8 @@ function applyReasons(root, entries, warnings, packagedRuntime) {
     used.add(match);
     entry._reason = match.reason.trim();
   }
-  for (const item of allowlist.entries) if (!used.has(item)) warnings.push(`${ALLOWLIST}: stale entry ${item.name}${item.sha256 ? ` (${item.sha256})` : ''}`);
+  // An entry that names the record it `requires` (for example the voice-host qualification) is stale only once that record exists.
+  for (const item of allowlist.entries) if (!used.has(item) && (!item.requires || exists(root, item.requires))) warnings.push(`${ALLOWLIST}: stale entry ${item.name}${item.sha256 ? ` (${item.sha256})` : ''}`);
 }
 
 export function collectNotices(root = ROOT, {packagedRuntime = shippedPackagedRuntime(root)} = {}) {
@@ -799,8 +825,7 @@ export function collectNotices(root = ROOT, {packagedRuntime = shippedPackagedRu
     ...fontEntries(root, templates, errors),
     elizaEntry(root),
     ...androidEntries(root, templates, errors),
-    ...speechEntries(root, templates, errors),
-    ...browserSpeechEntries(root, templates, errors),
+    ...voiceHostEntries(root, templates, errors),
     ...payloadEntries(packagedRuntime),
     ...(packagedRuntime ? runtimeEntries(root, templates, errors) : []),
     ...mapDataEntries(root),
@@ -841,7 +866,7 @@ export function renderText(entries) {
     '',
     'This product includes the third-party software, fonts, models and data listed below.',
     'Generated by scripts/generate-licenses.mjs from package-lock.json, bundled font files,',
-    'the resolved Android runtime classpath, the pinned speech runtime manifests and elizaOS.',
+    'the resolved Android runtime classpath, the qualified voice-host record and elizaOS.',
     `Entries: ${entries.length}. Flagged entries: ${flagged.length}.`,
     '',
     'FLAGGED ENTRIES',

@@ -2,16 +2,16 @@ import {devSurfacesEnabled} from '../build-flags';
 import {browserCloudVoice,browserCloudCredential} from './cloud-connection';
 import type {LocalAgentProtocol} from '../runtime/local-agent';
 import {browserSpeechConnection as connectionController} from './agent-speech';
-import {recordingPcmSamples,recordingPcmWav} from './recording-pcm';
+import {recordingPcmWav} from './recording-pcm';
 import {browserMediaVolume} from './audio-settings';
 import {audioRecord,audioMetadata,retainAudio,changeAudioDeleted,audioDeletionStatus,migrateAudio,purgeAudio} from './note-audio-store';
-import { BrowserSpeechRecognizer } from './speech-recognizer';
-import { speechError } from './speech-protocol';
-import { silentRecording } from './whisper-engine';
+import { speechError } from './speech-errors';
 import { BrowserAudioCapture } from './audio-capture';
 import { WebPlugin } from '@capacitor/core';
 // Recordings stay local until transcription is requested. The selected Cloud or
 // explicit local/development route owns processing; provider credentials stay off-page.
+// There is no in-browser speech engine: local recognition and Kokoro playback run on the
+// private local agent, which uses the native llama.cpp-based libelizainference stack.
 export class BrowserVoice extends WebPlugin {
  private connection=Promise.resolve(connectionController).then(connectionController=>{
   const selected=()=>JSON.stringify([connectionController.getSnapshot().session?.sessionId,connectionController.getCloudEnvironment(),connectionController.getCloudClient()?.sessionId,connectionController.getCloudClient()?.credentialId]);
@@ -22,7 +22,6 @@ export class BrowserVoice extends WebPlugin {
  private speechRequest?:AbortController;
  private speechRequestId?:string;
  private capture=new BrowserAudioCapture(event=>{void this.notifyListeners('recordingStopped',event);});
- private recognizer=new BrowserSpeechRecognizer();
  private speech=new Map<string,{text:string;requestId?:string}>();
  private agentAudio=new Map<string,{blob:Blob;requestId?:string;agent?:LocalAgentProtocol;sessionId:string;cloud?:{environment:string;credentialId:string}}>();
  private audio?:HTMLAudioElement;
@@ -46,8 +45,9 @@ export class BrowserVoice extends WebPlugin {
   // The entrypoint binds this facade after browser factories have registered.
   const connectionController=await this.connection;signal.throwIfAborted();
   const agent=connectionController.getBrowserSpeechAgent();if(agent){const result=await agent.speechRequest(undefined,signal);return {ready:result.ready===true,execution:'browser',route:'local-agent'};}
-  // Readiness never downloads the model; it is fetched from this app on the first transcription.
-  return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined'&&typeof Worker!=='undefined'&&typeof WebAssembly!=='undefined',execution:'browser',route:'browser',engine:'whisper',model:'whisper-tiny.en',language:'en'};
+  // No agent, no local recognition: the browser never loads a model or inference runtime itself.
+  // Read-aloud can still use the browser's own local voices (synthesizeLocal without an agent).
+  return {ready:false,playback:typeof window.speechSynthesis!=='undefined',execution:'browser',route:'local-agent',reason:'local-agent-required'};
  });}
  getRecordingMetrics(input:{recordingId:string}){return Promise.resolve(this.capture.metrics(input.recordingId));}
  startRecording(input:{maxDurationMs?:number}={}){return this.capture.start(input);}
@@ -60,14 +60,8 @@ export class BrowserVoice extends WebPlugin {
    const connectionController=await this.connection;signal.throwIfAborted();
    const agent=connectionController.getBrowserSpeechAgent();
    if(agent){const selectedSession=agent.session;const audio=await recordingPcmWav(clip.blob,signal);if(connectionController.getBrowserSpeechAgent()!==agent||agent.session!==selectedSession)throw new DOMException('Voice selection changed','AbortError');const result=await agent.speechRequest(audio,signal);return {text:result.text,local:true,execution:'browser',route:'local-agent',language:'en'};}
-   if(document.hidden)throw new DOMException('Transcription cancelled','AbortError');
-   const samples=await recordingPcmSamples(clip.blob,signal);
-   // Silence is reported before any model download.
-   if(silentRecording(samples))throw speechError('no-speech','No speech detected.');
-   const result=await this.recognizer.transcribe(samples,signal,progress=>{void this.notifyListeners('speechProgress',{requestId,...progress});});
-   signal.throwIfAborted();
-   if(result.noSpeech||!result.text.trim())throw speechError('no-speech','No speech detected.');
-   return {text:result.text,local:true,execution:'browser',route:'browser',engine:result.engine,model:result.model,modelRevision:result.modelRevision,runtime:result.runtime,language:result.language};
+   // No silent fallback to Cloud or to an in-browser engine; the recording stays in this app.
+   throw speechError('local-agent-required','Connect the local agent to transcribe on this computer.');
   },requestId);
  }
 
@@ -225,9 +219,9 @@ export class BrowserVoice extends WebPlugin {
    for(const [id,speech] of this.speech)if(speech.requestId===requestId)this.speech.delete(id);
    return;
   }
-  this.speechRequest?.abort();this.speechRequest=undefined;this.speechRequestId=undefined;this.recognizer.stop();this.capture.cancel();await this.stopPlayback();
+  this.speechRequest?.abort();this.speechRequest=undefined;this.speechRequestId=undefined;this.capture.cancel();await this.stopPlayback();
  }
- async releaseLocalSpeech(){await this.cancel();this.recognizer.cancel();this.speech.clear();this.agentAudio.clear();this.capture.clear();}
+ async releaseLocalSpeech(){await this.cancel();this.speech.clear();this.agentAudio.clear();this.capture.clear();}
 }
 function playbackWait<T>(work:Promise<T>,signal:AbortSignal):Promise<T>{
  return new Promise((resolve,reject)=>{

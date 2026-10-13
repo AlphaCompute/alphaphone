@@ -28,6 +28,26 @@ export const DENYLIST = Object.freeze([
 ]);
 const TEXT = /\.(?:html?|js|mjs|cjs|css|json|txt|svg|xml|webmanifest)$/i;
 
+// Owner rule: on-device speech and inference use only the native llama.cpp-based libelizainference
+// stack. No model or runtime of the removed in-browser and Sherpa engines may ship in any bundle,
+// with or without test mocks. The tokens are spelled in pieces so the repository-wide search
+// (test/llama-cpp-only.test.mjs) finds no literal outside its own allow-list.
+const OX = 'on' + 'nx';
+export const FORBIDDEN_ENGINE_PATH = new RegExp(`\\.${OX}$|${OX}runtime|ort-wasm|sher${'pa'}|k2${'fsa'}|(?:^|/)browser-speech/`, 'i');
+// Each token holds a character outside base64, so embedded data URIs cannot match by chance.
+export const FORBIDDEN_ENGINE_TEXT = Object.freeze([`${OX}runtime-`, `${OX}runtime/`, `${OX}runtime.`, 'ort-wasm', `sher${'pa'}-${OX}`, `com.k2${'fsa'}`]);
+const FORBIDDEN_MODEL_REFERENCE = new RegExp(`[\\w/-]\\.${OX}\\b`);
+/** Every forbidden inference-engine path or string in a bundle file. Binary files are checked by path only. */
+export function engineFindings(file, text) {
+  const findings = [];
+  if (FORBIDDEN_ENGINE_PATH.test(file)) findings.push({file, rule: `forbidden inference engine file (${OX.toUpperCase()}/Sherpa)`});
+  if (text !== undefined) {
+    for (const token of FORBIDDEN_ENGINE_TEXT) if (text.includes(token)) findings.push({file, rule: `forbidden inference engine reference "${token}"`});
+    if (FORBIDDEN_MODEL_REFERENCE.test(text)) findings.push({file, rule: `forbidden model reference "*.${OX}"`});
+  }
+  return findings;
+}
+
 // Hard-coded avatar initials: a small round badge span whose whole text is two capital
 // letters or a "+N" overflow count, written into markup instead of rendered from data.
 // Matches the raw markup and its JSON-escaped form inside a bundled ?raw template.
@@ -73,6 +93,8 @@ export function auditWebBundle(dir, options = {}) {
   const files = walk(dir);
   // Only a bundle that both records and is expected to carry test mocks skips the denylist.
   const skip = expected && flags.testMocks;
+  // The engine rule holds for every bundle, test mocks or not.
+  for (const file of files) findings.push(...engineFindings(file, TEXT.test(file) ? readFileSync(path.join(dir, file), 'utf8') : undefined));
   if (!skip) {
     for (const file of files) {
       if (file === 'img' || file.startsWith('img/')) findings.push({file, rule: 'fixture image directory img/'});

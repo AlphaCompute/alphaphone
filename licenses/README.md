@@ -53,14 +53,16 @@ Inputs:
 - `android-runtime-classpath.json`: the resolved release and debug runtime classpath for both
   distribution variants. Its fingerprint covers the Gradle dependency declarations; generation fails
   when they change until the snapshot is refreshed.
-- `android/local-speech/runtime-manifest.json` and the pinned upstream local-speech manifests.
-  `onnxruntime-MIT.txt`, `whisper-MIT.txt`, `cmudict-BSD-2-Clause.txt`,
-  `piper-ljspeech-medium-MODEL_CARD.txt` and `piper-voices-README.md` must match the SHA-256 values
-  in `vendor/eliza/packages/app/scripts/local-speech/reference-manifest.json`.
-- `config/browser-speech.json` for the web build's in-browser speech recognition:
-  `whisper-tiny.en-onnx-MODEL_CARD.md` (the pinned ONNX conversion's model card) and
-  `onnxruntime-web/ThirdPartyNotices.txt` (ONNX Runtime v1.30.0, for the libraries statically
-  linked into the shipped WebAssembly) must match the SHA-256 values recorded there.
+- `android/voice-host/qualified-voice-host.json`, the qualification record of the on-device speech
+  engine: the llama.cpp-based `libelizainference` voice host (ASR, Kokoro TTS, VAD) and its GGUF
+  models. The schema is in `docs/fused-speech.md`. Each fused source component (llama.cpp, ggml and
+  mtmd; the elizaOS voice sources; Silero VAD; libc++) and each model is listed with its licence.
+  A `licenseFile` named by the record must match its `licenseSha256`; `cmudict-BSD-2-Clause.txt`
+  is kept for the Kokoro lexicon. A component or model with no verified licence is listed as
+  `UNVERIFIED` and flagged, with its reason in `unverified-allowlist.json`. Model terms that are
+  not an open-source licence (for example the Gemma Terms of Use) are flagged, never blocking.
+  Until the record exists, no speech entries are generated. No other inference runtime is an input:
+  the web build has no in-browser speech engine (`test/llama-cpp-only.test.mjs`).
 - `vendor/eliza/LICENSE` at the commit pinned by `upstream.lock.json` (read only).
 - `ODbL-1.0.txt` for OpenStreetMap-derived map data served by the configured Maps endpoint.
 
@@ -81,7 +83,8 @@ sources for the existing mediabunny and OCR notices.
 staged runtime) record the reason for each item whose licence could not be established from
 shipped metadata. They gate nothing: an item is listed and flagged
 `unverified` whether or not it has an entry, and the reason is printed as its obligation note.
-A missing or stale entry is printed as a `LICENCE NOTE`. A reason is not legal sign-off. A font
+A missing or stale entry is printed as a `LICENCE NOTE`; an entry with `requires: <path>` names
+the record that ships its item and is reported as stale only once that record exists. A reason is not legal sign-off. A font
 entry there carries an exact file hash; the `unresolved-font-licence` check reports a payload
 file with those bytes as an unresolved font. No font is listed there today.
 
