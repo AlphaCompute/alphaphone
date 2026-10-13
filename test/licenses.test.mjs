@@ -208,7 +208,7 @@ test('a production dependency with a copyleft or unknown licence is listed and f
   assert.match(entry('scheduler').obligations[0].note, /replace the library/);
   // None of it reaches a release gate: flags in a release row are a record only.
   const row = {mode: 'release', distributable: true, testMocks: false, bundleAudit: 'passed', signed: true, runtime: 'PACKAGED', runtimeNotices: true,
-    releaseAdmission: {failures: [], blockers: [], signerMatches: true}, speechQualification: {byteMatch: true, functionalPassed: true, qualified: true},
+    releaseAdmission: {failures: [], blockers: [], signerMatches: true}, voiceHost: {packaged: false, asr: false, differences: [], functionalAcceptance: null},
     licenceFlags: licenceFlagRecords(result.entries), licenceBlockers: []};
   assert.ok(row.licenceFlags.some(item => item.name === 'react-dom' && item.flags.includes('copyleft-strong')));
   assert.deepEqual(releaseBlockers(row), []);

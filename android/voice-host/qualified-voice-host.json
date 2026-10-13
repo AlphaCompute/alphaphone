@@ -97,6 +97,7 @@
   ],
   "models": [
     {
+      "name": "Eliza-1 ASR text model",
       "path": "asr/eliza-1-asr.gguf",
       "role": "asr-model",
       "sha256": null,
@@ -107,6 +108,7 @@
       "status": "open: upstream names no product-qualified, mobile-sized ASR text GGUF; the only pinned pair is labelled retired pre-Gemma and is not admitted here"
     },
     {
+      "name": "Eliza-1 ASR audio projector",
       "path": "asr/eliza-1-asr-mmproj.gguf",
       "role": "asr-mmproj",
       "sha256": null,
@@ -117,6 +119,7 @@
       "status": "open: paired with asr-model"
     },
     {
+      "name": "Kokoro-82M v1.0",
       "path": "tts/kokoro/kokoro-82m-v1_0.gguf",
       "role": "tts-model",
       "sha256": "165acd9d2d9b6c2d71fa5bd52b92a2559be08567f58ed496bade076e3d9cb46c",
@@ -127,6 +130,7 @@
       "status": "pinned (upstream plugins/plugin-native-inference/src/aosp-voice-download.ts and host-tts-worker.ts)"
     },
     {
+      "name": "Kokoro-82M af_sam voice preset",
       "path": "tts/kokoro/af_sam.bin",
       "role": "tts-voice",
       "sha256": "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",
@@ -137,6 +141,7 @@
       "status": "pinned (the preset upstream BionicSpeechInstrumentedTest and the AOSP download use)"
     },
     {
+      "name": "Silero VAD v5",
       "path": "vad/silero-vad-v5.gguf",
       "role": "vad-model",
       "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
@@ -148,6 +153,7 @@
     }
   ],
   "lexicon": {
+    "name": "Kokoro en-US lexicon (from the CMU Pronouncing Dictionary)",
     "path": "g2p/en-us-lexicon.tsv",
     "role": "lexicon",
     "sha256": "7d6114d502c1c63bb83bc6e176e21dd5120166c5992973f18ae9f917a12d0cd4",

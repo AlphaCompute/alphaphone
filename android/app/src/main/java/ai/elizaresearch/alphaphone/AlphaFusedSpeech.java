@@ -41,7 +41,10 @@ final class AlphaFusedSpeech implements AutoCloseable {
  static final class Status {
   final int abi;final boolean asr,tts,vad;
   Status(int abi,boolean asr,boolean tts,boolean vad){this.abi=abi;this.asr=asr;this.tts=tts;this.vad=vad;}
+  /** Recognition readiness (the device dictation route also reads its transcript aloud). */
   boolean ready(){return asr&&tts&&vad;}
+  /** Read-aloud readiness on its own: Kokoro and the lexicon. It never depends on the ASR pair. */
+  boolean playback(){return tts;}
  }
  static final class Audio {
   final float[] samples;final int sampleRate;

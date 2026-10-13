@@ -65,7 +65,14 @@ export function packageSpeechRun({ results, output, repository = process.cwd(), 
   const missing = [], files = {};
   const copy = (source, name) => {
     if (!fs.existsSync(source)) { missing.push(name); return false; }
-    if (fs.statSync(source).isDirectory()) fs.cpSync(source, path.join(target, name), { recursive: true });
+    if (fs.statSync(source).isDirectory()) {
+      fs.cpSync(source, path.join(target, name), { recursive: true });
+      // Every copied record file is hashed too, so the package names exactly what it holds.
+      for (const entry of fs.readdirSync(path.join(target, name), { recursive: true }).map(String).sort()) {
+        const file = path.join(target, name, entry);
+        if (fs.statSync(file).isFile()) files[`${name}/${entry.split(path.sep).join("/")}`] = sha(fs.readFileSync(file));
+      }
+    }
     else { fs.mkdirSync(path.dirname(path.join(target, name)), { recursive: true }); fs.copyFileSync(source, path.join(target, name)); files[name] = sha(fs.readFileSync(path.join(target, name))); }
     return true;
   };

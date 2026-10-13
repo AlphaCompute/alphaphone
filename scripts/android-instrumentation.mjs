@@ -145,10 +145,11 @@ export const CLASS_REGISTRY = {
   PdfViewer: { args: { isolatedPdfNative: "1" } },
   PhotosBatch: { args: { photosBatch: "1" } },
   UiDispatch: { args: { uiDispatch: "1" } },
-  LocalSpeech: { args: { localSpeech: "1" }, note: "needs the packaged on-device speech models; recorded as failing functional acceptance on arm64-v8a" },
-  LocalSpeechBridge: { args: { localSpeechBridge: "1" }, note: "needs the packaged on-device speech models" },
-  VoiceNoteReadAloud: { args: { localSpeech: "1" }, note: "needs the packaged on-device speech models; not audible-speaker evidence" },
-  SpeechSentenceCancellation: { args: { speechSentenceCancellation: "1" }, note: "needs the packaged on-device speech models" },
+  FusedSpeech: { args: { localSpeech: "1" }, note: "needs the packaged voice bundle (assets/voice/v1) and the voice-qualified libelizainference pair; the ASR methods skip until a qualified ASR pair exists; no functional acceptance is recorded yet" },
+  FusedSpeechAbi: { args: { fusedSpeechAbi: "1" }, note: "needs the voice-qualified libelizainference pair packaged for the device ABI; symbol and ABI probe only, no inference" },
+  LocalSpeechBridge: { args: { localSpeechBridge: "1" }, note: "needs the packaged voice bundle including a qualified ASR pair (none exists yet)" },
+  VoiceNoteReadAloud: { args: { localSpeech: "1" }, note: "needs the packaged voice bundle; not audible-speaker evidence" },
+  SpeechSentenceCancellation: { args: { speechSentenceCancellation: "1" }, note: "needs the packaged voice bundle (Kokoro)" },
   // Classes with no opt-in gate and no host, account or permission precondition.
   ActionJournal: {},
   ActivityInstanceSelection: {},
@@ -215,7 +216,6 @@ export const NOT_RUN_BY_A_RUNNER = {
   ResidentAgent: "needs the packaged ARM64 resident runtime and a run id; scripts/android-resident-instrumentation.mjs runs ResidentService and ResidentEgressRedaction, not this class",
   ResidentModelResponseContractTest: "plain contract test without the InstrumentedTest suffix; it runs under --all or by its full dotted name and needs no registry entry",
   SpeechPipelineTrace: "diagnostic acquisition for the on-device speech failure, explicitly not acceptance evidence",
-  VoiceFloatPathDiagnostic: "root-cause diagnostic for the on-device speech round trip, explicitly not acceptance evidence",
 };
 
 /**

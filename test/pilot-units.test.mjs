@@ -24,7 +24,7 @@ function build(t, row, extra = {}) {
 }
 // Everything verify-apks records for a distributable release.
 const DISTRIBUTABLE = { mode: "release", signed: true, signerSha256: SIGNER, distributable: true, runtime: "PACKAGED", runtimeNotices: true,
-  speechQualification: { byteMatch: true, functionalPassed: true, qualified: true }, licenceBlockers: [] };
+  voiceHost: { packaged: false, asr: false, differences: [], functionalAcceptance: null }, licenceBlockers: [] };
 const descriptor = (signerSha256 = SIGNER, versionCode = 4) => ({ schema: 1, signerSha256, lastRelease: { versionCode, versionName: null, recordedAt: null } });
 
 test("unit arguments require an alias that is neither a name nor a serial pattern", () => {
@@ -68,18 +68,20 @@ test("a pilot or acceptance unit never gets a non-distributable release, and eve
   assert.match(refusal({ distributable: false, runtime: "NOT_PACKAGED", runtimeNotices: false }), /unpackaged runtime \(resident runtime NOT_PACKAGED\)/);
   assert.match(refusal({ runtime: undefined }), /unpackaged runtime \(resident runtime not recorded\)/);
   assert.match(refusal({ runtimeNotices: false }), /notices lack the packaged runtime/);
-  assert.match(refusal({ speechQualification: { byteMatch: false, functionalPassed: false, qualified: false } }), /unqualified speech \(native bytes not admitted, functional acceptance pending or failed\)/);
-  assert.match(refusal({ speechQualification: { byteMatch: true, functionalPassed: true, qualified: false } }), /unqualified speech \(not qualified\)/);
-  assert.match(refusal({ speechQualification: undefined }), /unqualified speech \(no qualification recorded\)/);
+  // On-device voice is optional; a packaged bundle needs exact bytes and recorded functional acceptance.
+  assert.match(refusal({ voiceHost: { packaged: true, asr: false, differences: ["assets/voice/v1/x: differs"], functionalAcceptance: null } }), /unqualified on-device voice \(bytes differ from the voice-host record, functional acceptance pending or failed\)/);
+  assert.match(refusal({ voiceHost: { packaged: true, asr: false, differences: [], functionalAcceptance: { passed: false } } }), /unqualified on-device voice \(functional acceptance pending or failed\)/);
+  assert.equal(admit({ voiceHost: { packaged: true, asr: false, differences: [], functionalAcceptance: { passed: true } } }).distributable, true);
+  assert.match(refusal({ voiceHost: undefined }), /on-device voice admission was not recorded/);
   assert.match(refusal({ testMocks: true }), /test-mocks build/);
   assert.match(refusal({ bundleAudit: "failed" }), /flag-off bundle audit/);
   assert.match(refusal({ distributable: false }), /verify-apks did not record this release as distributable/);
   assert.match(refusal({ releaseAdmission: { failures: [], blockers: ["release signer is unset in android/release-signer.json"], signerMatches: false } }), /release signer is unset/);
   // All open blockers are listed together, once each.
   const all = refusal({ distributable: false, signed: false, signerSha256: null, runtime: "NOT_PACKAGED", licenceBlockers: [font, font],
-    speechQualification: { byteMatch: true, functionalPassed: false, qualified: false } });
+    voiceHost: { packaged: true, asr: false, differences: [], functionalAcceptance: null } });
   const listed = all.split("\n").filter(line => line.startsWith("  - "));
-  assert.deepEqual(listed.map(line => line.slice(4).split(/[:(]/)[0].trim()), ["unsigned release", "unpackaged runtime", "unqualified speech"]);
+  assert.deepEqual(listed.map(line => line.slice(4).split(/[:(]/)[0].trim()), ["unsigned release", "unpackaged runtime", "unqualified on-device voice"]);
   assert.match(all, /--build debug rehearses the same steps on a disposable emulator/);
   // The documented rehearsal path is unchanged: a debug row is admitted, labelled, and never distributable.
   const rehearsal = admitUnitApk(build(t, { mode: "debug", signed: true }), { variant: "launcher", build: "debug" }, { descriptor: descriptor() });
@@ -126,7 +128,7 @@ test("an admitted APK whose own contents contradict its manifest row is refused 
   }
   // Recorded facts of the wrong shape are blockers or errors, never a pass.
   const shaped = { ...DISTRIBUTABLE, testMocks: false, bundleAudit: "passed", releaseAdmission: { failures: [], blockers: [], signerMatches: true } };
-  for (const change of [{ licenceBlockers: "" }, { licenceBlockers: null }, { licenceBlockers: {} }, { speechQualification: true }, { speechQualification: [] }, { releaseAdmission: true }, { releaseAdmission: {} },
+  for (const change of [{ licenceBlockers: "" }, { licenceBlockers: null }, { licenceBlockers: {} }, { voiceHost: true }, { voiceHost: [] }, { voiceHost: {} }, { voiceHost: { packaged: true, differences: [] } }, { releaseAdmission: true }, { releaseAdmission: {} },
     { releaseAdmission: { failures: [], blockers: [] } }, { runtimeNotices: "true" }, { signed: "true" }, { distributable: "true" }, { testMocks: undefined }, { runtime: "packaged" }]) {
     let outcome; try { outcome = releaseBlockers({ ...shaped, ...change }); } catch (error) { outcome = [error.message]; }
     assert.ok(outcome.length > 0, `admitted ${JSON.stringify(change)}`);
@@ -255,15 +257,15 @@ test("campaign records are read from emulator-suite, resident proofs and residen
   const byId = Object.fromEntries(campaigns.map(row => [row.id, row]));
   assert.deepEqual(byId["emulator-suite:instrumentation"].apkSha256, [app], "test APKs are not the candidate");
   assert.deepEqual(byId["resident-android"].apkSha256, [app], "helper and test APKs are not the candidate");
-  assert.equal(byId["emulator-suite:local-speech"].present, false);
+  assert.equal(byId["emulator-suite:fused-speech"].present, false);
   const result = recordCandidate({ qualified: true, androidBuild: { apks: [{ sha256: app }] } }, root);
   assert.deepEqual(Object.fromEntries(result.candidate.campaigns.map(row => [row.id, row.status])), {
-    "emulator-suite:instrumentation": "passed", "emulator-suite:browser-reading": "mismatched", "emulator-suite:local-speech": "missing",
+    "emulator-suite:instrumentation": "passed", "emulator-suite:browser-reading": "mismatched", "emulator-suite:fused-speech": "missing",
     "resident-instrumentation": "passed", "resident-android": "passed" });
   // A missing campaign leaves the candidate unqualified, even though the head itself qualified.
   assert.equal(result.qualified, true);
   assert.equal(result.candidateQualified, false);
-  write("test-results/emulator-suite/local-speech.json", { suite: "local-speech", passed: true, steps: [{ name: "speech", results: "test-results/android-instrumentation/ci-default/results.json" }] });
+  write("test-results/emulator-suite/fused-speech.json", { suite: "fused-speech", passed: true, steps: [{ name: "speech", results: "test-results/android-instrumentation/ci-default/results.json" }] });
   write("test-results/android-instrumentation/ci-reading/results.json", { passed: true, apks: [{ variant: "launcher", role: "app", sha256: app }] });
   assert.equal(recordCandidate({ qualified: true, androidBuild: { apks: [{ sha256: app }] } }, root).candidateQualified, true);
   // A test-mocks step in the suite is recorded but binds nothing; it does not make the campaign foreign.

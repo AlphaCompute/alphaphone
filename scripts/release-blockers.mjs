@@ -37,12 +37,16 @@ export function releaseBlockers(row, { manifestTestMocks = false, admission = ro
   }
   if (row.runtime !== "PACKAGED") blockers.push(`unpackaged runtime (resident runtime ${row.runtime ?? "not recorded"})`);
   else if (row.runtimeNotices !== true) blockers.push("notices lack the packaged runtime");
-  const speech = row.speechQualification;
-  if (!speech) blockers.push("unqualified speech (no qualification recorded)");
-  else {
-    const missing = [speech.byteMatch !== true && "native bytes not admitted", speech.functionalPassed !== true && "functional acceptance pending or failed",
-      speech.byteMatch === true && speech.functionalPassed === true && speech.qualified !== true && "not qualified"].filter(Boolean);
-    if (missing.length) blockers.push(`unqualified speech (${missing.join(", ")})`);
+  // On-device voice (fused libelizainference, android/voice-host/qualified-voice-host.json) is
+  // optional: a release without it uses Cloud voice. A packaged bundle must match the record byte for
+  // byte and must have recorded functional acceptance; bytes alone never qualify it.
+  const voice = row.voiceHost;
+  if (!voice || typeof voice !== "object" || Array.isArray(voice) || typeof voice.packaged !== "boolean")
+    blockers.push("on-device voice admission was not recorded");
+  else if (voice.packaged) {
+    const missing = [(!Array.isArray(voice.differences) || voice.differences.length) && "bytes differ from the voice-host record",
+      voice.functionalAcceptance?.passed !== true && "functional acceptance pending or failed"].filter(Boolean);
+    if (missing.length) blockers.push(`unqualified on-device voice (${missing.join(", ")})`);
   }
   // The font check must have been run and recorded. Its items block only under the policy constant,
   // and only the named font check counts: no other licence text in this field is a blocker.

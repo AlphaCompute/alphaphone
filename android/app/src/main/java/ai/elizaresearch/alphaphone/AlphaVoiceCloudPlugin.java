@@ -172,11 +172,14 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  });}
  private void submitLocal(PluginCall call,Work work){submit(call,request->{main.removeCallbacks(localIdleRelease);try{work.run(request);}catch(Exception error){localEngine.release();throw error;}catch(LinkageError|OutOfMemoryError error){localEngine.release();throw new IOException("On-device speech unavailable",error);}finally{if(request.cancelled||destroyed)localEngine.release();else scheduleLocalRelease(speechForeground?120000:30000);}});}
  // Local CPU execution has no dependency on an account, URL, or host process.
- // Ready only when the native pair loads, the ABI is at least 16, every bundle file verifies and a
- // context opens, with ASR, Kokoro TTS and VAD all packaged. A partial bundle reports ready:false.
+ // The status resolves only when the native pair loads, the ABI is at least 16, every bundle file
+ // verifies and a context opens. `ready` (recognition) needs ASR, Kokoro TTS and VAD; `playback`
+ // (read-aloud) needs Kokoro only, so a bundle without a qualified ASR pair still reads aloud.
+ // A build without the voice bundle answers "unavailable" without loading any native library.
  @PluginMethod public void localSpeechStatus(PluginCall call){submitLocal(call,request->{
+  if(!AlphaFusedSpeechAssets.packaged(getContext())){if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",false);out.put("playback",false);out.put("execution","device");out.put("provider",AlphaFusedSpeech.PROVIDER);out.put("packaged",false);request.result=out;return;}
   AlphaFusedSpeech.Status status=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();return engine.status();});
-  if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",status.ready());out.put("execution","device");out.put("provider",AlphaFusedSpeech.PROVIDER);out.put("abi",status.abi);out.put("asr",status.asr);out.put("tts",status.tts);out.put("vad",status.vad);request.result=out;
+  if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",status.ready());out.put("playback",status.playback());out.put("execution","device");out.put("provider",AlphaFusedSpeech.PROVIDER);out.put("abi",status.abi);out.put("asr",status.asr);out.put("tts",status.tts);out.put("vad",status.vad);out.put("packaged",true);request.result=out;
  });}
  @PluginMethod public void transcribeLocalRecording(PluginCall call){submitLocal(call,request->{
   File file=capture.selected(required(call.getString("recordingId"),256));if(file==null)throw new IOException();byte[] wav=AlphaVoicePcm.decode(file,()->request.cancelled||destroyed);float[] samples;
