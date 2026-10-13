@@ -47,7 +47,12 @@ export class BrowserDaily extends WebPlugin {
   });}
   async deletionReceipt(id:string){const data=await reminderDocument.read(initial);return {entry:data.deletions?.[id]||null,row:data.reminders.find(r=>r.pendingDeletion===id||r.id===data.deletions?.[id]?.target.row.id)};}
   async pendingDeletions(){const data=await reminderDocument.read(initial),clock=browserDeletionClock();return Object.values(data.deletions||{}).filter(e=>!e.acknowledged&&['queued','paused','unknown','dispatching'].includes(e.phase)&&browserDeletionOwnerVisible(e.owner)).map(e=>({...e,kind:'reminder',window:e.phase==='queued'?deletionWindow(e.deadline,clock):undefined}));}
-  async settleDeletions(){await reminderDocument.edit(initial,data=>settleReminderDeletions(data,browserDeletionOwnerCurrent));}
+  async settleDeletions(){
+    // Polling an empty store must not create a document or a recovery revision.
+    const data=await reminderDocument.read(initial);
+    if(!Object.values(data.deletions||{}).some(entry=>entry.phase==='queued'))return;
+    await reminderDocument.edit(initial,data=>settleReminderDeletions(data,browserDeletionOwnerCurrent));
+  }
   async dismissDeletion(id:string){return reminderDocument.edit(initial,data=>{const entry=data.deletions?.[id];if(!entry||!browserDeletionOwnerVisible(entry.owner)||!['unknown','dispatching'].includes(entry.phase))throw Error('Uncertain deletion is unavailable.');entry.acknowledged=true;return {status:'acknowledged'};});}
   async undoDeletion(id:string){return reminderDocument.edit(initial,data=>undoReminderDeletion(data,id,browserDeletionOwnerVisible));}
   async notifyReminder(id:string,occurrenceId:string){await this.notifyListeners('reminderOpened',{id,occurrenceId});}
