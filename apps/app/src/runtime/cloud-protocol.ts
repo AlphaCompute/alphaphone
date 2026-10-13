@@ -61,6 +61,21 @@ export interface GoogleConnection {
   configured: boolean; connected: boolean; reason: string;
   connectionId: string | null; grantedCapabilities: string[];
 }
+/** Managed Google Calendar wire data. Cloud enforces ownership of each grant. */
+export interface GoogleCalendarSummary {
+  calendarId:string; summary:string; description:string|null; primary:boolean; accessRole:string;
+  backgroundColor:string|null; foregroundColor:string|null; timeZone:string|null; selected:boolean;
+}
+export interface GoogleCalendarEvent {
+  externalId:string; calendarId:string; title:string; description:string; location:string; status:string;
+  startAt:string; endAt:string; isAllDay:boolean; timezone:string|null; htmlLink:string|null; conferenceLink:string|null;
+  organizer:Record<string,unknown>|null;
+  attendees:Array<{email:string|null;displayName:string|null;responseStatus:string|null;self:boolean;organizer:boolean;optional:boolean}>;
+  metadata:Record<string,unknown>;
+}
+/** Core exhausts provider pages before returning; no client cursor exists. */
+export interface GoogleCalendarFeed { calendarId:string; events:GoogleCalendarEvent[]; syncedAt:string }
+export interface GoogleCalendarRange { timeMin:string; timeMax:string; timeZone:string }
 export interface GmailInboxCapabilities {
   version:1; from:string; threads:boolean; send:boolean; providerDrafts:boolean;
   mailboxMutations:boolean; attachments:boolean; providerExactlyOnce:false; atomicDraftReplacement:false;
@@ -438,14 +453,66 @@ export class CloudProtocol {
       ...(response.interrupted === true ? { interrupted: true } : {}),
       ...(response.noResponseReason === "ignored" ? { noResponseReason: "ignored" as const } : {}) };
   }
+  /** Read access by default; Calendar writes require explicit additional consent. */
+  async initiateGoogle(signal:AbortSignal, calendarPermission:'read'|'write'='read'):Promise<string> {
+    if(!['read','write'].includes(calendarPermission))throw new TypeError('Invalid Calendar permission');
+    const response=object(await this.googleRequest('/api/v1/eliza/google/connect/initiate',signal,{side:'owner',capabilities:[
+      'google.basic_identity','google.gmail.triage','google.calendar.read',...(calendarPermission==='write'?['google.calendar.write']:[]),
+    ]}));
+    return this.googleAuthUrl(response.authUrl);
+  }
+  private googleAuthUrl(value:unknown):string {
+    let url:URL;try{url=new URL(string(value));}catch{throw new CloudProtocolError('invalid-response');}
+    if(url.origin!=='https://accounts.google.com'||url.username||url.password||url.hash)throw new CloudProtocolError('invalid-response');
+    return url.href;
+  }
+  /** Reject responses from an account that changed while its request was in flight. */
+  private async googleRequest(path:string,signal:AbortSignal,body?:unknown):Promise<unknown> {
+    const credential=await this.credentials.read(this.environment);signal.throwIfAborted();
+    if(!credential)throw new CloudProtocolError('credentials-missing');
+    const binding=JSON.stringify([credential.credentialId,credential.credentialReference,credential.token,credential.userId,credential.organizationId]);
+    const data=await this.requestData(path,signal,{authenticated:true,credentialId:credential.credentialId,body});
+    const current=await this.credentials.read(this.environment);signal.throwIfAborted();
+    if(!current||JSON.stringify([current.credentialId,current.credentialReference,current.token,current.userId,current.organizationId])!==binding)throw new CloudProtocolError('account-changed');
+    return data;
+  }
+  async googleCalendars(grantId:string,signal:AbortSignal):Promise<GoogleCalendarSummary[]> {
+    const params=new URLSearchParams({side:'owner',grantId:uuid(grantId)});
+    const data=await this.googleRequest(`/api/v1/eliza/google/calendar/calendars?${params}`,signal);
+    if(!Array.isArray(data))throw new CloudProtocolError('invalid-response');
+    const seen=new Set<string>();
+    return data.map(value=>{
+      const row=object(value),calendarId=string(row.calendarId);
+      if(seen.has(calendarId)||typeof row.primary!=='boolean'||typeof row.selected!=='boolean')throw new CloudProtocolError('invalid-response');
+      seen.add(calendarId);
+      return {calendarId,summary:string(row.summary),description:optionalString(row.description),primary:row.primary,accessRole:string(row.accessRole),backgroundColor:optionalString(row.backgroundColor),foregroundColor:optionalString(row.foregroundColor),timeZone:optionalString(row.timeZone),selected:row.selected};
+    });
+  }
+  async googleCalendarFeed(grantId:string,calendarId:string,range:GoogleCalendarRange,signal:AbortSignal):Promise<GoogleCalendarFeed> {
+    uuid(grantId);string(calendarId);
+    if(timestamp(range.timeMax)<=timestamp(range.timeMin))throw new TypeError('Calendar range must end after it starts');
+    try{new Intl.DateTimeFormat('en-US',{timeZone:range.timeZone}).format();}catch{throw new TypeError('Invalid Calendar time zone');}
+    const params=new URLSearchParams({side:'owner',grantId,calendarId,timeMin:range.timeMin,timeMax:range.timeMax,timeZone:range.timeZone});
+    const data=object(await this.googleRequest(`/api/v1/eliza/google/calendar/feed?${params}`,signal));
+    if(data.calendarId!==calendarId||!Array.isArray(data.events)||data.nextPageToken!=null||data.truncated===true)throw new CloudProtocolError('invalid-response');
+    timestamp(data.syncedAt);
+    const plain=(value:unknown)=>{if(typeof value!=='string')throw new CloudProtocolError('invalid-response');return value;};
+    const flag=(value:unknown)=>{if(typeof value!=='boolean')throw new CloudProtocolError('invalid-response');return value;};
+    const seen=new Set<string>();
+    const events=data.events.map(value=>{
+      const row=object(value),externalId=string(row.externalId);
+      if(row.calendarId!==calendarId||seen.has(externalId)||!Array.isArray(row.attendees)||timestamp(row.endAt)<timestamp(row.startAt))throw new CloudProtocolError('invalid-response');
+      seen.add(externalId);
+      return {externalId,calendarId,title:plain(row.title),description:plain(row.description),location:plain(row.location),status:string(row.status),startAt:string(row.startAt),endAt:string(row.endAt),isAllDay:flag(row.isAllDay),timezone:optionalString(row.timezone),htmlLink:optionalString(row.htmlLink),conferenceLink:optionalString(row.conferenceLink),organizer:row.organizer==null?null:object(row.organizer),metadata:object(row.metadata),attendees:row.attendees.map(value=>{const a=object(value);return {email:optionalString(a.email),displayName:optionalString(a.displayName),responseStatus:optionalString(a.responseStatus),self:flag(a.self),organizer:flag(a.organizer),optional:flag(a.optional)};})};
+    });
+    return {calendarId,events,syncedAt:string(data.syncedAt)};
+  }
   async initiateGmail(signal: AbortSignal, permission: 'read'|'send'|'drafts'|'mailbox' = 'read'): Promise<string> {
     const response = await this.call("/api/v1/eliza/google/connect/initiate", signal, { authenticated: true,
       body: { side: "owner", capabilities: ["google.basic_identity", "google.gmail.triage", ...(permission === "read" ? [] : [permission === "send" ? "google.gmail.send" : permission === "drafts" ? "google.gmail.drafts" : "google.gmail.mailbox"])] } });
-    let url: URL;
-    try { url = new URL(string(response.authUrl)); } catch { throw new CloudProtocolError("invalid-response"); }
-    if (url.origin !== "https://accounts.google.com" || url.username || url.password || url.hash) throw new CloudProtocolError("invalid-response");
-    return url.href;
+    return this.googleAuthUrl(response.authUrl);
   }
+
   private googleConnection(value: unknown): GmailAccount {
     const data = object(value);
     if (typeof data.configured !== "boolean" || typeof data.connected !== "boolean" || !Array.isArray(data.grantedCapabilities)) throw new CloudProtocolError("invalid-response");
