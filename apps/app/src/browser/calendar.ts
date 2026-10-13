@@ -39,12 +39,12 @@ export class BrowserCalendar extends WebPlugin {
     const operation=validateCalendarOperation(input.operation);
     if(operation.type==='calendar_create_local'||operation.type==='calendar_read_next')return {status:'unsupported'};
     const deletionOwner=operation.type==='calendar_delete'?browserDeletionOwner():null;
-    const operationHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');
     const binding=JSON.stringify(operation),identity=operation.type==='calendar_create'?operation.source:operation.target;
     if(this.active.has(input.operationId))return {status:'busy'};
     const ticket={cancelled:false,controller:new AbortController()};this.active.set(input.operationId,ticket);
     const fields=(row:EventRow):CalendarFields=>({title:row.title,description:row.body,location:row.location,start:new Date(row.begin).toISOString(),end:new Date(row.end).toISOString(),timeZone:row.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone});
     try {
+      const operationHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');
       const data=(await calendarDocument.read(initial,ticket.controller.signal)),row=operation.type==='calendar_create'?undefined:calendarRecord(data.events,operation.target.eventId);
       if(operation.type==='calendar_delete'&&data.deleteClaims?.[input.operationId])return {status:'unknown'};
       const prior=data.receipts?.[input.operationId];
