@@ -4,6 +4,6 @@
   "verifyPath": "/steward/auth/email/code/verify",
   "tenant": "elizacloud",
   "client": "ai.elizaresearch.alphaphone",
-  "sendBody": ["email", "tenant", "client", "pkce.codeChallenge", "pkce.codeChallengeMethod"],
-  "verifyBody": ["email", "code", "tenant", "client", "pkce.codeVerifier"]
+  "sendBody": ["email", "tenantId", "client", "pkce.codeChallenge", "pkce.codeChallengeMethod"],
+  "verifyBody": ["email", "code", "tenantId", "client", "pkce.codeVerifier"]
 }

@@ -234,3 +234,30 @@ test('development host email sign-in mints a mobile key server-side and commits 
   }finally{globalThis.fetch=original;}
  }finally{await f.close();}
 });
+
+test('cancelling an in-flight email verification keeps the existing account and never mints a key',async()=>{
+ const f=await fixture();let release;
+ try{
+  let entered;const waiting=new Promise(resolve=>{entered=resolve;});
+  f.setSignIn(async path=>{
+   if(path==='/steward/auth/email/code/send')return Response.json({ok:true,data:{expiresAt:new Date(Date.now()+600000).toISOString()}});
+   if(path==='/steward/auth/email/code/verify'){
+    entered();await new Promise(resolve=>{release=resolve;});
+    // Deliberately ignores the aborted transport, like a response already in flight.
+    return Response.json({ok:true,token:'synthetic-steward-session-token-0001'});
+   }
+   return null;
+  });
+  const started=await f.rpc({operation:'signInStartEmail',environment:'production',email:'owner@example.invalid'});
+  assert.equal(started.status,200);
+  const pending=f.rpc({operation:'signInVerifyEmail',attemptId:started.data.attemptId,code:'123456'});
+  await waiting;
+  assert.equal((await f.rpc({operation:'signInCancel'})).status,200);
+  release();
+  assert.notEqual((await pending).status,200);
+  assert.equal(f.calls.some(call=>new URL(call.url).pathname.startsWith('/api/v1/app-auth/')),false);
+  const saved=JSON.parse((await f.rpc({operation:'secureRead',slot:'cloud:production'})).data.value);
+  assert.equal(saved.credentialId,credentialId);
+  assert.equal((await f.rpc({operation:'signInStatus'})).data.active,false);
+ }finally{release?.();await f.close();}
+});

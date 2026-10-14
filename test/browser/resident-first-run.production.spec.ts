@@ -115,7 +115,7 @@ test('first run: an expired sign-in session keeps no key and the resident runs w
   const { welcome } = await firstRun(page);
   await setStub(page, { login: 'expired' });
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
-  await expect(welcome.getByText(/This sign-in link has expired/)).toBeVisible({ timeout: 30_000 });
+  await expect(welcome.getByText('Your Eliza Cloud sign-in has expired. Sign in again.', {exact:true})).toBeVisible({ timeout: 30_000 });
   await nothingLeft(page, welcome, true);
 });
 

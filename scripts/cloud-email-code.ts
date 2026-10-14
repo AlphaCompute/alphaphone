@@ -8,10 +8,10 @@ import {readFileSync} from 'node:fs';
  */
 export const CLOUD_EMAIL_CODE=JSON.parse(readFileSync(new URL('../config/cloud-email-code.json',import.meta.url),'utf8')) as {sendPath:string;verifyPath:string;tenant:string;client:string};
 export function emailCodeSendBody(email:string,verifier:string){
- return {email,tenant:CLOUD_EMAIL_CODE.tenant,client:CLOUD_EMAIL_CODE.client,pkce:{codeChallenge:createHash('sha256').update(verifier).digest('base64url'),codeChallengeMethod:'S256'}};
+ return {email,tenantId:CLOUD_EMAIL_CODE.tenant,client:CLOUD_EMAIL_CODE.client,pkce:{codeChallenge:createHash('sha256').update(verifier).digest('base64url'),codeChallengeMethod:'S256'}};
 }
 export function emailCodeVerifyBody(email:string,code:string,verifier:string){
- return {email,code,tenant:CLOUD_EMAIL_CODE.tenant,client:CLOUD_EMAIL_CODE.client,pkce:{codeVerifier:verifier}};
+ return {email,code,tenantId:CLOUD_EMAIL_CODE.tenant,client:CLOUD_EMAIL_CODE.client,pkce:{codeVerifier:verifier}};
 }
 /** The server's expiresAt when present, never later than 15 minutes; 10 minutes when absent. */
 export function emailCodeExpiresAt(reported:unknown,now=Date.now()){
