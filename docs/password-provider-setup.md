@@ -26,7 +26,7 @@ biometric allowed, host identifies itself as a browser), the service declaration
 | Show and copy | Native only. Show opens a FLAG_SECURE dialog that hides after 30 s or when Alpha stops. Copy marks the clip sensitive and attempts to clear it after 45 s. If Android hides clipboard ownership, clearing waits until Alpha resumes. A replaced or unidentifiable clip is never deleted. |
 | Damaged vault | If the key is lost or permanently invalidated (for example, the screen lock was removed), the vault is reported as undecryptable. The only action is "Delete saved passwords and start over": two taps and a fresh unlock, and native code refuses it while the vault is still readable. |
 | Set as autofill service | Opens Android's own confirmation (`Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE` for Alpha's package, falling back to Settings). The status row reports only what `AutofillManager#getAutofillServiceComponentName` reads back on refresh or resume. Opening the screen is never treated as selection. |
-| Fill | Native app fields through Android Autofill. Browser fields without verified native origins are refused. HTTP-auth prompts also remain excluded: WebView does not authenticate the challenge URL, port or frame. Manual entry is available. |
+| Fill | Native app fields through Android Autofill. Browser fields without verified native origins are refused. HTTP-auth prompts are filled only for an engine-authenticated challenge origin (`BrowserHttpAuthOrigin.bind`); Android WebView reports none, so the prompt says fill is off and manual entry is used. |
 | Save | "Save password?" is offered by Android after a sign-in; Alpha's prompt names the site or app and username, and writes only after Save and a fresh unlock. Save and Fill close their own grants after completion. Same binding and username updates the existing entry. |
 | Export | None in this version. Any future export must require explicit confirmation and a fresh authentication. |
 
@@ -131,4 +131,14 @@ Primary references:
 - [PackageManager signing verification](https://developer.android.com/reference/android/content/pm/PackageManager#hasSigningCertificate(java.lang.String,%20byte[],%20int)): publisher verification respects proof of signing-key rotation.
 - [Proton Android setup](https://proton.me/support/pass-setup-android) and the pinned provider constraints in `browser-autofill-integration.md`.
 
-HTTP-auth provider fill and save remain disabled: Android WebView supplies no authenticated request origin, port or frame for a host/realm challenge. Navigation history cannot safely establish that origin. Manual credential entry remains available.
+HTTP-auth provider fill and save require an engine-authenticated challenge (`BrowserHttpAuthOrigin.bind`):
+the exact request URL after redirects (scheme, host, port), a realm matching WebView's, a top-level
+request, engine-validated TLS and the tab's current navigation, on the selected, shown, resumed tab
+with no other prompt. The observed main-frame target can only refuse a binding (a later redirect).
+Android WebView reports only host and realm, so Alpha's browser uses `STANDARD_WEBVIEW`, which reports
+no challenge: the prompt states why password-manager fill is off, the fields are excluded from
+Autofill with no hints, and manual entry remains. A bound prompt's binding is revoked on Cancel,
+dismissal, a repeated challenge, navigation, tab change, close or renderer loss; revoked or unbound fields
+leave every Autofill request, report no typed value even to a manual request, and drop late fill values. The JVM fixture (`test/fixtures/LoginBindingTest.java`) covers
+redirects, frames, wrong origin/port/realm, cleartext, stale and hidden tabs, lock (pause) and cancel;
+it does not run a provider, a vault, Android's structure code or a device.
