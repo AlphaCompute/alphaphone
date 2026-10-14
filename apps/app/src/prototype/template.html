@@ -585,7 +585,7 @@
 
 
 <sc-if value="{{is.inbox}}">
-<div onFocusCapture="{{inbox.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
+<div onFocusCapture="{{inbox.captureSubviewFocus}}" data-alpha-pane-owner="inbox" data-alpha-pane-split="{{inbox.split}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <div data-alpha-subview="inbox-list" inert="{{inbox.listCovered}}" aria-hidden="{{inbox.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{inbox.notSearching}}">
     <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
@@ -622,7 +622,7 @@
           <svg class="i" viewBox="0 0 24 24" style="color: var(--acct)"><path d="{{ic.reply}}"></path></svg>
           <svg class="i" viewBox="0 0 24 24"><path d="{{ic.archive}}"></path></svg>
         </div>
-        <button aria-label="{{it.label}}" onClick="{{it.open}}" style="position: relative; width: 100%; display: flex; gap: 14px; padding: 13px 20px; align-items: flex-start; background: var(--bg); transform: translateX({{it.tx}}px); transition: transform .28s cubic-bezier(.19,1,.22,1); box-sizing: border-box">
+        <button aria-current="{{it.selected}}" aria-label="{{it.label}}" onClick="{{it.open}}" style="position: relative; width: 100%; display: flex; gap: 14px; padding: 13px 20px; align-items: flex-start; background: var(--bg); transform: translateX({{it.tx}}px); transition: transform .28s cubic-bezier(.19,1,.22,1); box-sizing: border-box">
           <span style="width: 44px; height: 44px; border-radius: 22px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; background: var(--s2); white-space: nowrap">{{it.ini}}</span>
           <div style="flex-grow: 1; min-width: 0">
             <div style="display: flex; align-items: center; gap: 6px">
@@ -2231,7 +2231,7 @@
   <sc-if value="{{notes.audioDeletionUnknown}}"><div role="status" style="padding:8px 24px;font-size:13px">Voice note deletion needs review. No deletion will be repeated.<button class="tap" onClick="{{notes.checkAudioDeletion}}">Check deletion status</button><sc-for list="{{notes.audioDeletionPending}}" as="pending"><div>{{pending.title}} <button class="tap" onClick="{{pending.restore}}">Restore note and recording</button></div></sc-for></div></sc-if>
   <sc-if value="{{notes.browserRecovery}}"><div style="display:flex;gap:8px;padding:0 24px 6px;flex-wrap:wrap"><button aria-label="Recover browser Notes" onClick="{{notes.openBrowserRecovery}}" style="min-height:44px;padding:10px;border-radius:12px;background:var(--s2);color:var(--fg)">Notes recovery</button><button aria-label="Recover note audio deletion history" onClick="{{notes.openAudioRecovery}}" style="min-height:44px;padding:10px;border-radius:12px;background:var(--s2);color:var(--fg)">Audio deletion recovery</button></div></sc-if>
   <sc-if value="{{notes.storageStatus}}"><div class="notes-storage-status" role="status" aria-live="polite" style="flex-shrink:0;padding:0 24px 6px;font-size:12px;line-height:1.34;color:var(--mut);overflow-wrap:anywhere">{{notes.storageStatus}}</div></sc-if>
-  <div class="notes-workspace" data-alpha-notes-split="{{notes.split}}" style="position:relative;display:flex;flex-direction:column;flex:1;min-height:0">
+  <div class="notes-workspace" data-alpha-pane-owner="notes" data-alpha-notes-split="{{notes.split}}" style="position:relative;display:flex;flex-direction:column;flex:1;min-height:0">
   <div data-alpha-subview="notes-list" inert="{{notes.listCovered}}" aria-hidden="{{notes.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{notes.notSearching}}">
     <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
@@ -2708,7 +2708,7 @@
 
 
 <sc-if value="{{is.files}}">
-<div onFocusCapture="{{files.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
+<div onFocusCapture="{{files.captureSubviewFocus}}" data-alpha-pane-owner="files" data-alpha-pane-split="{{files.split}}" data-alpha-file-preview-split="{{files.splitPreview}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <div data-alpha-subview="files-list" inert="{{files.listCovered}}" aria-hidden="{{files.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{files.notSearching}}">
     <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">

@@ -20,29 +20,34 @@ function popupFocus(name:string,current:()=>Bag){
 }
 /** Full-screen subviews replace their covered content in accessibility navigation. */
 export function installSubviewAccessibility(views:Bag){
- let notesApi:Bag|undefined;
- const notesSplit=()=>document.documentElement.classList.contains('alpha-wide') && !document.documentElement.classList.contains('alpha-text-xl') && document.documentElement.clientWidth>=1000;
- let split=notesSplit();
+ const paneApis:Record<string,Bag>={};
+ const pendingFocus=new Map<string,MutationObserver>();
+ const widePanes=()=>document.documentElement.classList.contains('alpha-wide') && !document.documentElement.classList.contains('alpha-text-xl') && document.documentElement.clientWidth>=1000;
+ let split=widePanes();
  // Canvas fitting and text sizing can change independently of a window resize.
- const refreshNotesLayout=()=>{
-  const next=notesSplit();if(next===split)return;split=next;
-  if(!notesApi?.isActive())return;
-  const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;
-  const restore=!next && previous?.closest('[data-alpha-subview="notes-list"]');
-  if(restore){
-   const afterCover=new MutationObserver(()=>{
-    if(!restore.hasAttribute('inert'))return;
-    afterCover.disconnect();
-    if(!notesApi?.isActive()||notesSplit()||document.querySelector('dialog[open]'))return;
-    if(document.activeElement!==previous&&document.activeElement!==document.body)return;
-    document.querySelector<HTMLElement>('.notes-workspace > [data-alpha-subview]:not([inert]):not([data-alpha-subview="notes-list"]) button')?.focus({preventScroll:true});
-   });
-   afterCover.observe(restore,{attributes:true,attributeFilter:['inert']});
+ const refreshPaneLayout=()=>{
+  const next=widePanes();if(next===split)return;split=next;
+  for(const [name,api] of Object.entries(paneApis)){
+   pendingFocus.get(name)?.disconnect();pendingFocus.delete(name);
+   if(!api.isActive())continue;
+   const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;
+   const restore=!next && previous?.closest(`[data-alpha-pane-owner="${name}"] [data-alpha-subview]`);
+   if(restore){
+    const afterCover=new MutationObserver(()=>{
+     if(!restore.hasAttribute('inert'))return;
+     afterCover.disconnect();pendingFocus.delete(name);
+     if(!api.isActive()||widePanes()||document.querySelector('dialog[open]'))return;
+     if(document.activeElement!==previous&&document.activeElement!==document.body)return;
+     document.querySelector<HTMLElement>(`[data-alpha-pane-owner="${name}"] [data-alpha-subview]:not([inert]) button`)?.focus({preventScroll:true});
+    });
+    pendingFocus.set(name,afterCover);
+    afterCover.observe(restore,{attributes:true,attributeFilter:['inert']});
+   }
+   api.shell({responsivePaneWide:next});
   }
-  notesApi.shell({notesSplitLayout:next});
  };
- new ResizeObserver(refreshNotesLayout).observe(document.documentElement);
- new MutationObserver(refreshNotesLayout).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+ new ResizeObserver(refreshPaneLayout).observe(document.documentElement);
+ new MutationObserver(refreshPaneLayout).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
  for(const name of ['inbox','workflows']){
   const render=views[name].render;
   let output:Bag={};
@@ -57,7 +62,9 @@ export function installSubviewAccessibility(views:Bag){
    if(name==='inbox'){
     contextModal.render(!!out.contextReviewOpen);attachmentModal.render(!!out.attachmentOpen);providerModal.render(!!out.providerReview);
     const review=!!(out.contextReviewOpen||out.attachmentOpen||out.providerReview);
-    return {...out,captureSubviewFocus:focus.capture,contextModal:contextModal.ref,attachmentModal:attachmentModal.ref,providerModal:providerModal.ref,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!!(out.detail||out.composing||review),detailCovered:!!(out.composing||review),composeCovered:review};
+    paneApis.inbox=api;
+    out.split=widePanes() && !!out.detail && !out.composing && !review;
+    return {...out,captureSubviewFocus:focus.capture,contextModal:contextModal.ref,attachmentModal:attachmentModal.ref,providerModal:providerModal.ref,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!out.split && !!(out.detail||out.composing||review),detailCovered:!!(out.composing||review),composeCovered:review};
    }
    return {...out,...popups(out),captureSubviewFocus:focus.capture,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!!(out.detail||out.automation?.detail||out.runOpen||out.builder),detailCovered:!!(out.runOpen||out.builder),runCovered:!!out.builder};
   };
@@ -77,9 +84,16 @@ export function installSubviewAccessibility(views:Bag){
    const out=output=render(state,api);deleteModal?.render(!!(out.emptyOpen||out.trashConfirmOpen));
    const covered=coverage(out);
    if(name==='notes'){
-    notesApi=api; split=notesSplit();
+    paneApis.notes=api; split=widePanes();
     out.split=split && !!(out.isEdit||out.isVoice||out.isLink) && !out.recording && !out.trashOpen;
     if(out.split)covered.listCovered=false;
+   }
+   if(name==='files'){
+    paneApis.files=api;
+    out.split=widePanes() && !!(out.inFolder||out.isPreview);
+    out.splitPreview=out.split && !!out.inFolder && !!out.isPreview;
+    if(out.splitPreview)covered.detailCovered=false;
+    else if(out.split)covered.listCovered=false;
    }
    return {...out,...refs,...popups(out),emptyModal:deleteModal?.ref,captureSubviewFocus:focus.capture,...covered};
   };

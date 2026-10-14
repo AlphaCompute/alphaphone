@@ -399,3 +399,13 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 .notes-workspace[data-alpha-notes-split="true"] > [data-alpha-subview="notes-link"] { left:var(--notes-list-width)!important; }
 
 .notes-workspace[data-alpha-notes-split="true"] [data-alpha-subview="notes-list"] button[aria-current="true"] { box-shadow:inset 0 0 0 2px var(--acct); }
+
+/* Retained Inbox and Files panes use their existing source selection and preview ownership. */
+[data-alpha-pane-split="true"] { --source-pane-width:360px; }
+[data-alpha-pane-split="true"] > [data-alpha-subview$="-list"] { width:var(--source-pane-width); border-right:1px solid var(--s3); box-sizing:border-box; }
+[data-alpha-pane-split="true"] > [data-alpha-subview="inbox-detail"],
+[data-alpha-pane-split="true"] > [data-alpha-subview="files-folder"],
+[data-alpha-pane-split="true"] > [data-alpha-subview="files-preview"] { left:var(--source-pane-width)!important; }
+[data-alpha-file-preview-split="true"] > [data-alpha-subview="files-folder"] { left:0!important; right:auto!important; width:var(--source-pane-width); border-right:1px solid var(--s3); box-sizing:border-box; }
+
+[data-alpha-pane-split="true"] [data-alpha-subview="inbox-list"] button[aria-current="true"] { box-shadow:inset 3px 0 0 var(--acct); }
