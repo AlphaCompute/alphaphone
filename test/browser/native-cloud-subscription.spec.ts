@@ -554,21 +554,23 @@ test.describe('account, plan and sign-in expiry',()=>{
  });
 });
 
-for(const failure of ['clearFailure','clearRetainsBinding'])test(`native ${failure} cannot claim Cloud inference is removed or start with the old binding`,async({page})=>{
+for(const failure of ['clearFailure','clearRetainsBinding'])test(`native ${failure} starts the agent without claiming Cloud inference is removed`,async({page})=>{
  await boot(page,{saved:false,bound:true,[failure]:true});
  await expect.poll(async()=>(await snapshot(page)).residentInference).toBe('unknown');
  await idle(page);
  expect((await snapshot(page)).error).toContain('removal could not be confirmed');
- expect(await page.evaluate(()=>(window as any).planFixture.starts)).toBe(0);
- expect(await page.evaluate(()=>(window as any).planFixture.bound)).toBe(true);
+ // The agent always runs on the device: an unconfirmed removal never leaves a no-agent state.
+ expect(await page.evaluate(()=>(window as any).planFixture.starts)).toBeGreaterThanOrEqual(1);
+ expect(await page.evaluate(()=>(window as any).planFixture.running)).toBe(true);
 });
-test('failed native removal still revokes and removes the Cloud sign-in without restarting the old binding',async({page})=>{
+test('failed native removal still revokes the Cloud sign-in and restarts the agent as unconfirmed',async({page})=>{
  await boot(page,{...await entitlements()});await agentRunning(page,'cloud');
  await fixture(page,{clearFailure:true});
  const before=await page.evaluate(()=>(window as any).planFixture.starts);
  await page.evaluate(()=>(window as any).planController.cloudSignOut());await idle(page);
  expect(await page.evaluate(()=>(window as any).planFixture.saved)).toBe(false);
- expect(await page.evaluate(()=>(window as any).planFixture.starts)).toBe(before);
+ expect(await page.evaluate(()=>(window as any).planFixture.starts)).toBeGreaterThan(before);
+ expect(await page.evaluate(()=>(window as any).planFixture.running)).toBe(true);
  expect((await snapshot(page)).residentInference).toBe('unknown');
  expect((await snapshot(page)).error).toContain('removal could not be confirmed');
  expect((await cloudRequests(page)).some(c=>c.path==='/api/v1/api-keys/current' && c.httpMethod==='DELETE')).toBe(true);

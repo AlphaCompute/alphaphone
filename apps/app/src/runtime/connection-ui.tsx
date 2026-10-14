@@ -205,10 +205,13 @@ let service: { client: CloudProtocol; identity: CloudServiceSession } | null = n
 let entitlementRefresher: EntitlementRefresher | null = null;
 /**
  * The Eliza Cloud inference binding the running resident was started with: 'cloud' (bound to an
- * admitted plan), 'unbound', or 'kept' (left as stored while Cloud was unreachable). Null before
+ * admitted plan), 'unbound', 'kept' (left as stored while Cloud was unreachable) or 'unknown'
+ * (native could not confirm removing a stored binding; the agent still runs). Null before
  * the first start. A plan change that needs a different binding restarts the agent once.
  */
-let residentBinding: 'cloud' | 'unbound' | 'kept' | null = null;
+let residentBinding: 'cloud' | 'unbound' | 'kept' | 'unknown' | null = null;
+/** Shown beside the running agent when native could not confirm the Cloud inference binding was removed. */
+const RESIDENT_UNBIND_UNCONFIRMED='Cloud inference removal could not be confirmed. Your agent is running; retry in Settings.';
 /** A plan change arrived while another connection step ran; it is applied when that step ends. */
 let residentRebindQueued = false;
 /** Every Cloud detach ends background plan refresh, so no request goes out under a stale admission. */
@@ -588,7 +591,7 @@ async function recheckResidentPlan(){
   finally{if(operation===controller)operation=null;runQueuedResidentRebind();}
 }
 /** Bind or unbind Eliza Cloud inference before the agent starts. Returns the binding in effect. */
-async function applyResidentBinding(admission:ResidentAdmission,signal:AbortSignal):Promise<{binding:'cloud'|'unbound'|'kept';error?:string}> {
+async function applyResidentBinding(admission:ResidentAdmission,signal:AbortSignal):Promise<{binding:'cloud'|'unbound'|'kept'|'unknown';error?:string}> {
   if(!residentBindable())return {binding:admission.binding};
   if(admission.binding==='kept')return {binding:'kept'};
   if(admission.binding==='cloud'&&admission.credentialId&&admission.account){
@@ -601,14 +604,17 @@ async function applyResidentBinding(admission:ResidentAdmission,signal:AbortSign
       return {binding:'cloud'};
     }catch(error){
       signal.throwIfAborted();
-      // Start without Cloud inference only after native confirms removal.
-      try{await clearLocalProvider();}catch(cause){residentBinding=null;update({residentInference:'unknown'});throw new Error('Cloud inference removal could not be confirmed. Retry in Settings before restarting your agent.',{cause});}
+      // The agent always starts. It is reported unbound only after native confirms removal;
+      // otherwise its inference state is unconfirmed (native still gates a Cloud binding on a
+      // valid production credential at use time) and the owner can retry in Settings.
+      try{await clearLocalProvider();}catch{signal.throwIfAborted();return {binding:'unknown',error:`AI could not be connected to your Eliza Cloud plan: ${errorMessage(error)} ${RESIDENT_UNBIND_UNCONFIRMED}`};}
       signal.throwIfAborted();
       return {binding:'unbound',error:`AI could not be connected to your Eliza Cloud plan: ${errorMessage(error)} Your agent is running; check your plan again in Settings.`};
     }
   }
   // Unbound: remove any stored Cloud inference binding. A no-op (no restart) when none is stored.
-  try{await clearLocalProvider();}catch(cause){residentBinding=null;update({residentInference:'unknown'});throw new Error('Cloud inference removal could not be confirmed. Retry in Settings before restarting your agent.',{cause});}
+  // A removal native cannot confirm never stops the agent from starting; it is shown as unconfirmed.
+  try{await clearLocalProvider();}catch{signal.throwIfAborted();return {binding:'unknown',error:RESIDENT_UNBIND_UNCONFIRMED};}
   signal.throwIfAborted();
   return {binding:'unbound'};
 }
@@ -1509,13 +1515,13 @@ export const connectionController = {
   },
   async cloudSignOut() {
     await work('Signing out of Cloud services…', async signal => {
-      let unbindError:unknown;
       if(residentCloudFlow()){
         stopEntitlementRefresh();writePlanAdmission(null);update({residentSubscription:null,residentPlanNotice:null,planEndsAt:null,redeemError:'',redeemNotice:''});
         // Unbind Cloud inference before the key is revoked: native stops a process holding the key
-        // and removes the binding. The agent is started again, unbound, after sign-out below.
+        // and removes the binding. The agent is started again after sign-out below, even when
+        // native could not confirm removal (it is then shown as unconfirmed, never as unbound).
         await retire();residentBinding=null;update({residentInference:'unknown'});
-        if(residentBindable())try{await clearLocalProvider();residentBinding='unbound';update({residentInference:'unavailable'});}catch(error){unbindError=error;}
+        if(residentBindable())try{await clearLocalProvider();residentBinding='unbound';update({residentInference:'unavailable'});}catch{/* Retried by the restart below, which reports an unconfirmed removal. */}
       }
       const previous = service; detachCloudTarget(); detachService();
       localStorage.removeItem(CLOUD_SERVICE);
@@ -1528,11 +1534,10 @@ export const connectionController = {
       await client.disconnect();
       const message = revoked ? 'Signed out of Eliza Cloud. This sign-in was revoked.' : 'Signed out of Eliza Cloud on this phone. The sign-in token was removed here; Eliza Cloud did not confirm revoking it.';
       update({ agents: [], residentSavedCredential:false, ...(residentCloudFlow()?{purpose:'agent' as const}:{}), message });
-      if(unbindError)throw new Error(`${message} Cloud inference removal could not be confirmed. Retry in Settings before restarting your agent.`,{cause:unbindError});
       // The agent keeps running: reconnected (or restarted) without Cloud inference, and the
       // sign-in dialog asks for an account again.
       // A cancelled sign-out still removed the local key above; the agent is then started by the queued rebind.
-      if(residentCloudFlow()){if(signal.aborted)residentRebindQueued=true;else{retire();await connectResident(signal);update({message,open:true});}}
+      if(residentCloudFlow()){if(signal.aborted)residentRebindQueued=true;else{retire();await connectResident(signal);update({message,open:true,...(state.residentInference==='unknown'?{error:RESIDENT_UNBIND_UNCONFIRMED}:{})});}}
     });
   },
   async mock() {
