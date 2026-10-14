@@ -138,7 +138,7 @@ with no other prompt. The observed main-frame target can only refuse a binding (
 Android WebView reports only host and realm, so Alpha's browser uses `STANDARD_WEBVIEW`, which reports
 no challenge: the prompt states why password-manager fill is off, the fields are excluded from
 Autofill with no hints, and manual entry remains. A bound prompt's binding is revoked on Cancel,
-dismissal, a repeated challenge, navigation, tab change or close; revoked fields leave every Autofill
-request and drop late fill values. The JVM fixture (`test/fixtures/LoginBindingTest.java`) covers
+dismissal, a repeated challenge, navigation, tab change, close or renderer loss; revoked or unbound fields
+leave every Autofill request, report no typed value even to a manual request, and drop late fill values. The JVM fixture (`test/fixtures/LoginBindingTest.java`) covers
 redirects, frames, wrong origin/port/realm, cleartext, stale and hidden tabs, lock (pause) and cancel;
 it does not run a provider, a vault, Android's structure code or a device.

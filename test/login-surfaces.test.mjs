@@ -88,8 +88,17 @@ test('the HTTP authentication prompt fills only for an engine-authenticated orig
   assert.match(plugin, /private final BrowserHttpAuthOrigin\.EngineChallengeSource authEngine=BrowserHttpAuthOrigin\.STANDARD_WEBVIEW;/);
   assert.match(plugin, /BrowserHttpAuthOrigin\.Decision authDecision=BrowserHttpAuthOrigin\.bind\(authEngine\.challenge\(host,realm\),authSnapshot\(t,host,realm\)\);/);
   // An engine report is never synthesized by Alpha from navigation history, page script or the top-level URL.
-  const nativeMain = walk('android/app/src/main/java', file => file.endsWith('.java'));
-  for (const file of nativeMain) assert.doesNotMatch(read(file), /new BrowserHttpAuthOrigin\.EngineChallenge\(/, `${file} must not fabricate an engine challenge`);
+  // Every app source set (flavors and the flag-only testMocks set included), whatever the qualifier
+  // or import: only the class itself names the constructor, and STANDARD_WEBVIEW is the one source.
+  const appSources = walk('android/app/src', file => /\.(java|kt)$/.test(file) && !/[\\/]androidTest[\\/]/.test(file));
+  for (const file of appSources) {
+    const source = read(file);
+    const own = file.endsWith('BrowserHttpAuthOrigin.java');
+    assert.doesNotMatch(source, /new\s+(?:[\w.]+\.)?EngineChallenge\s*\(/, `${file} must not fabricate an engine challenge`);
+    if (!own) assert.doesNotMatch(source, /EngineChallengeSource(?!\s+authEngine=BrowserHttpAuthOrigin\.STANDARD_WEBVIEW;)/, `${file} must not supply another engine source`);
+  }
+  assert.equal((rule.match(/EngineChallenge\(/g) || []).length, 1, 'the only constructor is the declaration');
+  assert.equal((rule.match(/EngineChallengeSource [A-Z_]+=/g) || []).length, 1, 'STANDARD_WEBVIEW is the only engine source');
   assert.doesNotMatch(plugin, /requestOrigins|recordRequestOrigin/, 'observed request history is not an origin source');
   // Refusal is stated in the prompt; manual entry stays available.
   assert.match(plugin, /String managerLine=authOrigin==null\?"\\n"\+authDecision\.refusal:/);
@@ -97,7 +106,9 @@ test('the HTTP authentication prompt fills only for an engine-authenticated orig
   assert.match(auth, /static EditText field\(Context context,String origin,BooleanSupplier bound,boolean password\)/);
   assert.match(auth, /if\(origin==null\)\{field\.setImportantForAutofill\(View\.IMPORTANT_FOR_AUTOFILL_NO\);return field;\}\n\s*field\.setAutofillHints\(password\?View\.AUTOFILL_HINT_PASSWORD:View\.AUTOFILL_HINT_USERNAME\);/);
   assert.match(auth, /@Override public int getImportantForAutofill\(\)\{return admitted\(\)\?super\.getImportantForAutofill\(\):View\.IMPORTANT_FOR_AUTOFILL_NO;\}/);
-  assert.match(auth, /if\(!admitted\(\)\)\{[^}]*structure\.setAutofillHints\(null\);\n\s*structure\.setAutofillType\(View\.AUTOFILL_TYPE_NONE\);\n\s*return;/);
+  assert.match(auth, /if\(!admitted\(\)\)\{[^}]*structure\.setAutofillHints\(null\);\n\s*structure\.setAutofillType\(View\.AUTOFILL_TYPE_NONE\);\n\s*structure\.setAutofillValue\(null\);\n\s*structure\.setText\(""\);\n\s*structure\.setDataIsSensitive\(true\);\n\s*return;/, 'an unbound or revoked field reports no typed value, even to a manual request');
+  assert.match(auth, /@Override public int getAutofillType\(\)\{return admitted\(\)\?super\.getAutofillType\(\):View\.AUTOFILL_TYPE_NONE;\}/, 'unbound fields are not autofillable, so typed text is never tracked for save');
+  assert.match(auth, /@Override public AutofillValue getAutofillValue\(\)\{return admitted\(\)\?super\.getAutofillValue\(\):null;\}/);
   assert.match(auth, /@Override public void autofill\(AutofillValue value\)\{if\(admitted\(\)\)super\.autofill\(value\);\}/);
   assert.match(plugin, /java\.util\.function\.BooleanSupplier bound=\(\)->authBinding!=null&&authBinding\.admits\(authSnapshot\(t,host,realm\)\)&&siteDialogTab==t;/);
   assert.match(plugin, /siteDialogRevoke=\(\)->\{if\(authBinding!=null\)authBinding\.revoke\(\);BrowserHttpAuthAutofill\.exclude\(user,pass\);\};/);
@@ -105,7 +116,11 @@ test('the HTTP authentication prompt fills only for an engine-authenticated orig
   assert.match(plugin, /AlertDialog dialog=siteDialog;if\(dialog==null\)return;\n\s*revokeSiteDialogAutofill\(\);/);
   assert.match(plugin, /dialog\.setOnDismissListener\(d->\{if\(siteDialog!=dialog\)return;revokeSiteDialogAutofill\(\);/);
   assert.match(auth, /InputType\.TYPE_CLASS_TEXT\|\(password\?InputType\.TYPE_TEXT_VARIATION_PASSWORD:InputType\.TYPE_TEXT_FLAG_NO_SUGGESTIONS\)/, 'exactly one password-typed field');
-  assert.doesNotMatch(auth, /getAutofillValue|getText\(\)/, 'Alpha never reads provider values back');
+  // The only getAutofillValue is the framework-facing gate above; Alpha never reads values itself.
+  assert.equal((auth.match(/getAutofillValue/g) || []).length, 2, 'getAutofillValue appears only in the bound/unbound gate');
+  assert.doesNotMatch(auth, /getText\(\)/, 'Alpha never reads provider values back');
+  // Renderer loss revokes an open prompt for that tab (and cancels its framework session) immediately.
+  assert.match(plugin, /onRenderProcessGone\(WebView v, RenderProcessGoneDetail detail\) \{[^\n]*t\.dead=true; if\(siteDialogTab==t\)dismissSiteDialogs\(\);[^\n]*v\.destroy\(\);/);
   // No tab is fillable while any site prompt is open, including after a provider unlock resumes the activity.
   const can = plugin.slice(plugin.indexOf('private boolean canAutofill(Tab t)'), plugin.indexOf('private void cancelAutofill(Tab t)'));
   assert.match(can, /state\.overlay=siteDialog!=null;/);

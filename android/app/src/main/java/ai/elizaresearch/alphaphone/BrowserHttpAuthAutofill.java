@@ -55,12 +55,20 @@ final class BrowserHttpAuthAutofill {
   private boolean admitted(){return origin!=null&&bound!=null&&bound.getAsBoolean();}
   // View#isImportantForAutofill reads this, so a revoked or unbound field drops out of every request.
   @Override public int getImportantForAutofill(){return admitted()?super.getImportantForAutofill():View.IMPORTANT_FOR_AUTOFILL_NO;}
+  // Not autofillable at all when unbound: no value-change or save tracking of manually typed text.
+  @Override public int getAutofillType(){return admitted()?super.getAutofillType():View.AUTOFILL_TYPE_NONE;}
+  // A manually typed username or password is never reported to a provider without a binding.
+  @Override public AutofillValue getAutofillValue(){return admitted()?super.getAutofillValue():null;}
   @Override public void onProvideAutofillStructure(ViewStructure structure,int flags){
    super.onProvideAutofillStructure(structure,flags);
    if(!admitted()){
-    // A manual request can include unimportant views: report a plain, non-fillable text field.
+    // A manual request includes unimportant views, and TextView reports its full text for
+    // Autofill: report a plain, empty, non-fillable field so typed values never leave Alpha.
     structure.setAutofillHints(null);
     structure.setAutofillType(View.AUTOFILL_TYPE_NONE);
+    structure.setAutofillValue(null);
+    structure.setText("");
+    structure.setDataIsSensitive(true);
     return;
    }
    // ViewStructure parses scheme and host from this value; the port travels in the extras.
