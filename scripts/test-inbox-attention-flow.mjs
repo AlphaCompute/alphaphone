@@ -351,3 +351,12 @@ console.log('PASS prepared Gmail reads cancel on hide and invalidate content on 
  t.mailNotices.tap=tap();for(const fn of t.resume)fn();await t.tick();assert.equal(t.mailNotices.consumed.length,3,'resume retries pending tap');
  t.shell.componentWillUnmount();
 }
+
+// Pausing while native lookup is pending retains the route instead of consuming unseen mail.
+{
+ const t=await boot();t.mount();await t.tick();let release;
+ t.sandbox.pendingGmailNotice=()=>new Promise(resolve=>{release=resolve;});
+ t.mailNotices.listener();await t.tick();t.sandbox.document.hidden=true;
+ release({token:'paused',grantId:'grant-a',credentialId:'fixture-credential',userId:'fixture-owner',generation:'g'});await t.tick();
+ assert.equal(t.mailNotices.consumed.length,0);assert.equal(t.shell.opened.length,0);t.shell.componentWillUnmount();
+}

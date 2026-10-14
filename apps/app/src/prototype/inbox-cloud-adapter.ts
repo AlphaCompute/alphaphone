@@ -80,12 +80,13 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const watchSelectedMail=()=>{const binding=connectionController.getCloudClient();if(binding)void configureGmailBackground(binding.credentialId,selected).catch(()=>{});};
   let noticeAttempt=0;
   async function openNotice(){
-    const attempt=++noticeAttempt;
+    if(document.hidden||!shell)return;
+    const noticeShell=shell,attempt=++noticeAttempt;
     try{
       const tap=await pendingGmailNotice(),binding=connectionController.getCloudClient(),owner=connectionController.getSnapshot().cloudAccount;
-      if(!tap||!binding||!owner||binding.credentialId!==tap.credentialId||owner.userId!==tap.userId)return;
+      if(document.hidden||shell!==noticeShell||attempt!==noticeAttempt||!tap||!binding||!owner||binding.credentialId!==tap.credentialId||owner.userId!==tap.userId)return;
       const rows=await binding.client.gmailAccounts(new AbortController().signal);
-      const current=()=>attempt===noticeAttempt&&connectionController.getCloudClient()?.sessionId===binding.sessionId&&connectionController.getCloudClient()?.credentialId===tap.credentialId;
+      const current=()=>!document.hidden&&shell===noticeShell&&attempt===noticeAttempt&&connectionController.getCloudClient()?.sessionId===binding.sessionId&&connectionController.getCloudClient()?.credentialId===tap.credentialId;
       if(!current())return;
       const account=rows.find(row=>row.connectionId===tap.grantId&&gmailReadable(row));if(!account)return;
       // Consumption rechecks the native generation. A tap opens only the Inbox list, never marks a message read.
