@@ -76,7 +76,12 @@ test('format v2 plan_allowance is read in micro-dollars; v1 tokens and unknown u
     assert.equal(entitlement.allowance, null);
     assert.equal(entitlement.plan.status, 'active');
   }
-  for (const ver of [0, -1, 1.5, '2']) await rejects(verifyEntitlement(await sign(claims({ver})), [jwk], expected, NOW), 'malformed');
+  // An unreadable ver is v1: it never blocks the plan state.
+  for (const ver of [0, -1, 1.5, '2']) {
+    const entitlement = await verifyEntitlement(await sign(claims({ver, plan_allowance: period})), [jwk], expected, NOW);
+    assert.equal(entitlement.formatVersion, 1);
+    assert.equal(entitlement.allowance.unit, 'requests');
+  }
 });
 
 test('signature, key, algorithm and encoding failures are never trusted', async () => {
@@ -338,12 +343,15 @@ test('Cloud limit refusals carry retry information and never imply a purchase or
   assert.equal(readServiceLimit('rate_limited', NOW), null);
   // A retry hint beyond a day is not shown as a countdown.
   assert.equal(readServiceLimit({status: 429, data: {retryAfterSeconds: 999999}}, NOW).retryAfterMs, null);
-  // Anthropic-style /api/v1/messages refusal: the wait is only in Retry-After, which the transports
-  // return as `retryAfter` (seconds or an HTTP date). A wait in the body still wins.
+  // Synthetic Anthropic-style refusal (the shape of Cloud's /api/v1/messages, which the phone does not
+  // call): the wait is only in Retry-After, which the transports return as `retryAfter`. A wait in
+  // the body still wins.
   const anthropic = {code: 'http', status: 429, data: {type: 'error', error: {type: 'rate_limit_error', message: 'Organization rate limit exceeded.'}}};
   assert.deepEqual(readServiceLimit({...anthropic, retryAfter: '30'}, NOW), {kind: 'rate-limited', retryAfterMs: 30000, resetsAt: null});
   assert.deepEqual(readServiceLimit({...anthropic, retryAfter: new Date(NOW + 90000).toUTCString()}, NOW), {kind: 'rate-limited', retryAfterMs: 90000, resetsAt: null});
   assert.deepEqual(readServiceLimit(anthropic, NOW), {kind: 'rate-limited', retryAfterMs: null, resetsAt: null});
+  // Only IMF-fixdate dates are read; other text is not turned into a wait.
+  for (const junk of ['-5', 'abc 2', 'Sun Nov  6 08:49:37 1994', '30, 30']) assert.equal(readServiceLimit({...anthropic, retryAfter: junk}, NOW).retryAfterMs, null, junk);
   assert.equal(readServiceLimit({status: 429, data: {error: 'rate_limited', retryAfterSeconds: 5}, retryAfter: '60'}, NOW).retryAfterMs, 5000);
   assert.match(serviceLimitMessage(readServiceLimit({...anthropic, retryAfter: '30'}, NOW), NOW), /Try again in about 30 seconds\./);
   for (const limit of [rate, allowance, subscription, bare, upstreamCredits]) assert.doesNotMatch(serviceLimitMessage(limit, NOW), /credit|top.?up|upgrade|buy/i);

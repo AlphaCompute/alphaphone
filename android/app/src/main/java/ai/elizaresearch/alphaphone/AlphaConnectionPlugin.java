@@ -275,6 +275,8 @@ public final class AlphaConnectionPlugin extends Plugin {
     stage=RequestStage.STATUS;
     status = connection.getResponseCode();
     if (status >= 300 && status < 400) throw new IllegalArgumentException();
+    // Some Cloud refusals give their wait only in Retry-After (seconds or an HTTP date).
+    String retryAfter = status >= 400 ? connection.getHeaderField("Retry-After") : null;
     if (connection.getContentLengthLong() > responseLimit) throw new IllegalArgumentException();
     stage=RequestStage.READ;
     byte[] bytes;
@@ -288,8 +290,6 @@ public final class AlphaConnectionPlugin extends Plugin {
     }
     stage=RequestStage.RESOLVE;
     JSObject result = new JSObject(); result.put("status", status); result.put("data", data);
-    // Some Cloud refusals (the Anthropic-style /api/v1/messages body) carry the wait only in Retry-After.
-    String retryAfter = status >= 400 ? connection.getHeaderField("Retry-After") : null;
     if (retryAfter != null && retryAfter.matches("[A-Za-z0-9 ,:+-]{1,64}")) result.put("retryAfter", retryAfter);
     call.resolve(result);
    } catch (Exception error) {

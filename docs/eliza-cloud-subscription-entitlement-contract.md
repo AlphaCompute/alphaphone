@@ -92,11 +92,14 @@ entitlement names an unknown `kid`, which makes key rotation safe.
 
 ### Refusal bodies
 
-The native transport returns the status, the JSON body and, for an error response, the
-`Retry-After` header (seconds or an HTTP date) as `retryAfter`. A retry time in the body wins.
-Cloud's `/api/v1/messages` keeps the Anthropic body `{"type":"error","error":{"type":"rate_limit_error"}}`
-and gives its wait only in `Retry-After`; the phone reads it as a rate limit with that wait. The
-resident agent uses the OpenAI-style routes, whose bodies carry the time:
+The transports return the status, the JSON body and, for an error response, the `Retry-After`
+header (seconds or an IMF-fixdate) as `retryAfter`, for every route the phone admits. A retry
+time in the body wins. The Android transport always sees the header; the browser transport sees
+it when Cloud exposes it to CORS (elizaOS/eliza PR #36255), and the development bridge does not
+forward it. Cloud's `/api/v1/messages` keeps the Anthropic body
+`{"type":"error","error":{"type":"rate_limit_error"}}` with its wait only in `Retry-After`. The
+phone does not call that route (the resident agent uses the OpenAI-style routes), but it reads
+`rate_limit_error` as a rate limit with the header wait. Cloud bodies carry the time:
 
 | Situation | Status | Body |
 |---|---|---|
@@ -129,7 +132,7 @@ retry and reset times only for direct HTTP refusals.
 Cloud side: elizaOS/eliza PR #36125 (`POST /api/v1/subscription/redeem`, the entitlement and key
 routes, refusal bodies with `retryAfterSeconds`, 402 `allowance_exhausted` with `resetsAt`), PR
 #36186 (plan burst and sustained buckets) and the format v2 `plan_allowance` claim with Maps plan
-buckets (elizaOS/eliza, issue #410 follow-up).
+buckets (elizaOS/eliza PR #36255).
 
 | Condition | Phone result | Cloud inference bound (the agent runs in every row) |
 |---|---|---|

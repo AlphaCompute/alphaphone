@@ -151,8 +151,9 @@ export function entitlementClaims(header: Bag, claims: Bag, expected: Entitlemen
   if (expiresAt <= now) throw new EntitlementError('expired');
   const plan = bag(claims.plan);
   if (!plan || !PLAN_STATUSES.includes(plan.status as PlanStatus)) throw new EntitlementError('malformed');
-  if (claims.ver !== undefined && (typeof claims.ver !== 'number' || !Number.isSafeInteger(claims.ver) || claims.ver < 1)) throw new EntitlementError('malformed');
-  const formatVersion = (claims.ver as number | undefined) ?? 1;
+  // `ver` only adds claims (a breaking change uses a new `typ`), so an unreadable value is v1 and
+  // never blocks the plan state.
+  const formatVersion = typeof claims.ver === 'number' && Number.isSafeInteger(claims.ver) && claims.ver >= 1 ? claims.ver : 1;
   let allowance: PlanAllowance | null = null;
   if (claims.allowance != null) {
     const row = bag(claims.allowance);
@@ -446,7 +447,7 @@ export class EntitlementRefresher {
 
 /** A Cloud refusal the owner can act on. */
 export interface ServiceLimit { kind: 'rate-limited' | 'allowance-exhausted' | 'subscription-required' | 'billing-refused'; retryAfterMs: number | null; resetsAt: number | null }
-/** `rate_limit_error` is the Anthropic-style body of Cloud's /api/v1/messages, which carries its wait only in `Retry-After`. */
+/** `rate_limit_error` is the Anthropic-style refusal type (Cloud's /api/v1/messages, whose wait is only in `Retry-After`). */
 const RATE_KINDS = new Set(['rate_limited', 'rate-limited', 'rate_limit_exceeded', 'too_many_requests', 'rate_limit_error']);
 const ALLOWANCE_KINDS = new Set(['allowance_exhausted', 'quota_exceeded', 'usage_limit_reached']);
 const SUBSCRIPTION_KINDS = new Set(['subscription_required', 'subscription_inactive']);
@@ -466,8 +467,9 @@ function retryFields(row: Bag, now: number): { retryAfterMs: number | null; rese
   let retryAfterMs: number | null = null;
   const ms = finite(row.retryAfterMs), secs = finite(row.retryAfterSeconds ?? row.retry_after ?? row.retryAfter);
   if (ms !== null) retryAfterMs = ms; else if (secs !== null) retryAfterMs = secs * 1000;
-  // `retryAfter` may be the raw Retry-After header, which is either seconds or an HTTP date.
-  const headerDate = typeof row.retryAfter === 'string' && !/^\s*\d/.test(row.retryAfter) ? row.retryAfter : undefined;
+  // `retryAfter` may be the raw Retry-After header: seconds, or an HTTP date (IMF-fixdate only;
+  // Date.parse accepts too much to trust any other form).
+  const headerDate = typeof row.retryAfter === 'string' && /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(row.retryAfter.trim()) ? row.retryAfter : undefined;
   const at = instant(row.retryAt ?? row.retry_at ?? headerDate);
   if (retryAfterMs === null && at !== null) retryAfterMs = Math.max(0, at - now);
   const resetsAt = instant(row.resetsAt ?? row.resetAt ?? row.reset_at);
