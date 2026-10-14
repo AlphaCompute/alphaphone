@@ -52,7 +52,7 @@ function scenario({caps={},accounts=null}={}){
   gmailOperation:async()=>{throw new Error('No receipt');},
  };
  const listeners=new Set(),slots=new Map();
- const controller={getCloudClient:()=>session?{client,sessionId:session}:null,getSnapshot:()=>({session:null,cloudAccount:session?{environment:'production',userId:'fixture-owner',sessionId:session}:null}),subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},rejectCloudSession:()=>false,open:()=>{}};
+ const controller={getCloudClient:()=>session?{client,sessionId:session,credentialId:'fixture-credential'}:null,getSnapshot:()=>({session:null,cloudAccount:session?{environment:'production',userId:'fixture-owner',sessionId:session}:null}),subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},rejectCloudSession:()=>false,open:()=>{}};
  class Shell{constructor(){this.st={q:null,compose:null};this.opened=[];}componentDidMount(){}componentWillUnmount(){}vset(_,p){Object.assign(this.st,p);}openView(view,patch){this.opened.push([view,patch]);}browserNavigateApproved(href){navigations.push(href);return Promise.resolve();}}
  const views={inbox:{state:{}}};
  let selectionCount=0;const files=[{name:'a.txt',mimeType:'text/plain',text:'alpha'},{name:'b.txt',mimeType:'text/plain',text:'bravo'},{name:'c.txt',mimeType:'text/plain',text:'charlie'}];
@@ -61,13 +61,14 @@ function scenario({caps={},accounts=null}={}){
  class FixedDate extends Date{constructor(...a){super(...(a.length?a:[clock]));}static now(){return clock;}}
  const windowFixture={addEventListener(){},removeEventListener(){},dispatchEvent(){return true;},confirm:text=>{confirms.push(text);return confirmAnswer;}};
  const inboxUnsaved=()=>({ready:Promise.resolve(),available:false,conflict:false,error:false,status:'',edit(){},clear:async()=>{},retire(){},resume(){}});
- const sandbox={prepareMailHtml:()=>{throw Error("HTML uses the rendered browser test");},readGmailAccountChoice,saveGmailAccountChoice,GmailReadAhead,URL,Date:FixedDate,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,reviewMailAttachment,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,safeMailLink,reviewMailContext,validateMailContext,...mailbox,...googleAccounts,...grants,Event,googleConnectionController:{open(){throw Error('Explicit Google authorization not exercised by this read fixture');}},
+ const mailNotices={tap:null,withdrawals:0,consumed:[],listener:null};
+ const sandbox={configureGmailBackground:async()=>{},withdrawGmailBackground:async()=>{mailNotices.withdrawals++;},pendingGmailNotice:async()=>mailNotices.tap,consumeGmailNotice:async token=>{mailNotices.consumed.push(token);mailNotices.tap=null;},onGmailNotice:async fn=>{mailNotices.listener=fn;return {remove:async()=>{}};},prepareMailHtml:()=>{throw Error("HTML uses the rendered browser test");},readGmailAccountChoice,saveGmailAccountChoice,GmailReadAhead,URL,Date:FixedDate,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,reviewMailAttachment,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,safeMailLink,reviewMailContext,validateMailContext,...mailbox,...googleAccounts,...grants,Event,googleConnectionController:{open(){throw Error('Explicit Google authorization not exercised by this read fixture');}},
   registerPlugin:()=>native,crypto:globalThis.crypto,TextEncoder,structuredClone,
   secureConnectionStore:{read:async key=>structuredClone(slots.get(key)??null),compareExchange:async(key,prior,next)=>{if(JSON.stringify(slots.get(key)??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)slots.delete(key);else slots.set(key,structuredClone(next));return {status:'saved'};}},
   connectionController:controller,
   DailyApps:{addListener:async(name,fn)=>{if(name==='appResumed')resume.push(fn);return {remove:async()=>{}};},perform:async()=>({status:'selected',selectionId:'sel-'+(selectionCount++),name:'file'}),forgetSelected:async()=>{}},
   openConnectionBrowser:async()=>{throw new Error('No OAuth');},queueMicrotask,setTimeout,AbortController,DOMException,console,window:windowFixture,CustomEvent:class{constructor(t,i){this.type=t;this.detail=i?.detail;}},document:{addEventListener(){},removeEventListener(){},documentElement:{dataset:{connectionMode:'live'}}},atob,btoa};
- return {sandbox,client,calls,toasts,prepared,dispatched,opened,saved,navigations,confirms,resume,views,Shell,listeners,slots,
+ return {mailNotices,sandbox,client,calls,toasts,prepared,dispatched,opened,saved,navigations,confirms,resume,views,Shell,listeners,slots,
   setSession:v=>{session=v;for(const fn of listeners)fn();},advance:ms=>{clock+=ms;},gate:()=>{let open;probeGate=new Promise(r=>{open=r;});return ()=>{probeGate=null;open();};},failProbe:e=>{probeFail=e;},answer:v=>{confirmAnswer=v;}};
 }
 async function boot(options){
@@ -335,3 +336,27 @@ const preparationFailures=[];
 }
 if(preparationFailures.length)throw new AggregateError(preparationFailures,'Gmail preparation lifecycle failures');
 console.log('PASS prepared Gmail reads cancel on hide and invalidate content on observed revocation. Owned fixtures only.');
+
+// Native notice taps clear retained folder/search before reads; cold hydration retains native state.
+{
+ const t=await boot();t.mount();t.setActive(true);t.render();await t.tick();
+ t.chip('Sent').pick();await t.tick();t.shell.st.q='subject:old';
+ const tap=()=>({token:'notice',grantId:'grant-a',credentialId:'fixture-credential',userId:'fixture-owner',generation:'native-generation'});
+ t.mailNotices.tap=tap();t.mailNotices.listener();await t.tick();
+ assert.equal(searches(t).at(-1)[1],'in:inbox','notice opens Inbox rather than retained Sent/search');
+ assert.equal(t.shell.st.q,null);assert.equal(t.mailNotices.consumed.length,1);
+ t.setSession(null);await t.tick();t.mailNotices.tap=tap();t.setSession('session-rehydrated');await t.tick();
+ assert.equal(t.mailNotices.withdrawals,0,'renderer hydration never withdraws native cursor');
+ assert.equal(t.mailNotices.consumed.length,2,'pending cold-start tap retried after Cloud hydration');
+ t.mailNotices.tap=tap();for(const fn of t.resume)fn();await t.tick();assert.equal(t.mailNotices.consumed.length,3,'resume retries pending tap');
+ t.shell.componentWillUnmount();
+}
+
+// Pausing while native lookup is pending retains the route instead of consuming unseen mail.
+{
+ const t=await boot();t.mount();await t.tick();let release;
+ t.sandbox.pendingGmailNotice=()=>new Promise(resolve=>{release=resolve;});
+ t.mailNotices.listener();await t.tick();t.sandbox.document.hidden=true;
+ release({token:'paused',grantId:'grant-a',credentialId:'fixture-credential',userId:'fixture-owner',generation:'g'});await t.tick();
+ assert.equal(t.mailNotices.consumed.length,0);assert.equal(t.shell.opened.length,0);t.shell.componentWillUnmount();
+}

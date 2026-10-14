@@ -116,8 +116,8 @@ test('the Calendar month picker is a bounded sheet on a wide screen and scrolls 
   expect(wide.width).toBeLessThanOrEqual(561);
   expect(Math.abs(wide.x - (1280 - wide.x - wide.width))).toBeLessThan(4);
   await resize(page, SMALL_LANDSCAPE);
-  const short = await box(dialog);
-  expect(short.y + short.height).toBeLessThanOrEqual(361);
+  // The sheet's own transition can still be settling after the renderer has measured.
+  await expect.poll(async () => { const bounds = await box(dialog); return bounds.y + bounds.height; }).toBeLessThanOrEqual(361);
   // Every day stays reachable by scrolling the sheet, at full tap size.
   const last = dialog.getByRole('button').last();
   await last.scrollIntoViewIfNeeded();
