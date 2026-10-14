@@ -98,8 +98,11 @@ recording a clip on the device:
    through the bionic host (`BionicAsrStreams`, staged from the pin) and returns
    `final.text` in the response to the request that carries `speech-end`.
 4. **Stop reconciliation.** Stop (Transcribe), Mute and the end of a conversation cut the capture
-   at the tap: frames stamped later are dropped, an open segment is closed at the tap and its final
-   is awaited, so a transcript holds exactly the audio up to the stop. Cancel discards everything.
+   at the tap: frames (stamped with the end of their audio on the capture clock, start time plus
+   samples read) later than the tap are dropped, an open segment is closed at the tap and its final
+   is awaited, so a transcript holds the audio up to the stop at 32 ms window granularity. Cancel
+   discards everything. A segment whose transcription fails (`502 ASR_FAILED`) yields no text and
+   the capture continues; an unavailable route or transport failure ends it.
 5. **Endpointing (assistant).** After the last segment's final, a short gap (300 ms) asks a
    semantic end-of-turn port and a long gap (1,200 ms) submits; both follow the VAD speech-end,
    which itself trails speech by the gate's ~512 ms hangover. These are engineering defaults
@@ -110,13 +113,23 @@ recording a clip on the device:
 6. **Send.** The turn goes through the existing voice policy unchanged (`VOICE_SEND_POLICY`
    in `voice-selection.ts`, MVP-01/P-01). A reply carrying action proposals ends voice for review in
    the conversation: automatic submission never approves a side effect.
-7. **Barge-in and heard content.** Speech that starts while a reply is pending or playing cancels
-   that request or playback (generation ids drop its late callbacks) and becomes the next turn; the
-   earlier turn is never resent. Replies play one sentence at a time and only sentences whose
-   playback completed count as heard: the conversation keeps that text and marks the rest
+7. **Barge-in and heard content.** Speech that starts while a reply is pending or playing is
+   tentative: it interrupts once the VAD segment has stayed open for 700 ms (longer than the gate's
+   hangover, so a blip never confirms by time) or once its transcript passes the disfluency and echo
+   gate (upstream `shouldRespondToVoiceTurn`, against every sentence of the reply that has started
+   playing). A cough or the reply's own echo leaves the reply running. While a reply plays, voice
+   interrupts only over a capture whose platform echo canceller is attached and enabled
+   (`echoCancelled` from `startLiveCapture`); otherwise speech during playback is ignored and the
+   Stop speaking button remains. Interrupting cancels that request or playback (generation ids drop
+   its late callbacks) and the speech becomes the next turn; the earlier turn is never resent.
+   Replies play one sentence at a time and only sentences whose playback completed count as heard:
+   the conversation view keeps that text and marks the rest
    "(Interrupted. The rest of this reply was not played.)". Stop speaking does the same by button.
-   **Upstream gap:** the agent's own memory still holds the full reply; there is no route to record
-   the heard portion (the agent marks interrupted generations only when the request itself is cut).
+   **Gaps:** the marking is this session's conversation view only. The agent's own memory still
+   holds the full reply (there is no route to record the heard portion), so reloading history shows
+   it in full; a reply the agent completes after the user interrupted it while it was still being
+   generated is not shown in the voice session but appears in full after a reload. The 700 ms hold
+   and the sentence-by-sentence synthesis gap are engineering defaults to tune on a device.
 
 Interim text: the agent publishes ephemeral `voice-transcript` events (`speech-start`, `partial`
 with the full running text, `final`, `error`) on its WebSocket event stream. `live-voice.ts`

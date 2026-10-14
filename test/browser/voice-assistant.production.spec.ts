@@ -16,7 +16,7 @@ async function setup(page:Page){
    }
    return emit(plugin,event,value);
   };
-  const f=w.live={captures:[] as any[],stops:[] as string[],active:null as string|null,routes:[] as any[],finals:[] as string[],spoken:[] as string[],plays:[] as string[],stopped:0,forbidden:[] as string[],onStop:null as null|((id:string)=>void)};
+  const f=w.live={noCanceller:false,captures:[] as any[],stops:[] as string[],active:null as string|null,routes:[] as any[],finals:[] as string[],spoken:[] as string[],plays:[] as string[],stopped:0,forbidden:[] as string[],onStop:null as null|((id:string)=>void)};
   const events:Array<{event:string;callback:(value:any)=>void}>=[];
   f.emit=(event:string,value:any)=>{for(const row of events)if(row.event===event)row.callback(value);};
   f.frame=(timestamp:number)=>({pcm16:btoa(String.fromCharCode(...new Uint8Array(1024))),sampleRate:16000,channels:1,samples:512,timestamp});
@@ -36,7 +36,7 @@ async function setup(page:Page){
    if(method==='checkPermissions')return {microphone:'granted'};
    if(method==='localSpeechStatus')return {ready:true,execution:'device'};
    if(method==='liveCaptureStatus')return {permission:true,available:true};
-   if(method==='startLiveCapture'){f.captures.push({captureId:input.captureId,echoCancel:input.echoCancel===true});f.active=input.captureId;return {captureId:input.captureId,sampleRate:16000};}
+   if(method==='startLiveCapture'){f.captures.push({captureId:input.captureId,echoCancel:input.echoCancel===true});f.active=input.captureId;return {captureId:input.captureId,sampleRate:16000,echoCancelled:input.echoCancel===true&&!f.noCanceller};}
    if(method==='stopLiveCapture'){const id=input.captureId;f.stops.push(id);f.onStop?.(id);if(f.active===id){f.active=null;}f.emit('liveCaptureEnded',{captureId:id});return {captureId:id,durationMs:1000};}
    if(method==='synthesizeLocal'){f.spoken.push(input.text);return {playbackId:'play-'+f.spoken.length,execution:'device'};}
    if(method==='play'){f.plays.push(input.playbackId);return {};}
@@ -144,6 +144,35 @@ test('Stop speaking interrupts by button; Mute turns the microphone off and on w
  await button(page,'Stop voice conversation').click();
  await expect(page.getByText('(Interrupted before this reply was played.)')).toBeVisible();
  expect(await posts(page)).toEqual(['How is the weather']);
+ await clean(page,foreign);
+});
+
+test('without an echo canceller, speech during playback never interrupts; a lost Transcribe capture can start again',async({page})=>{
+ const foreign=await setup(page);
+ await page.evaluate(()=>{const w=window as any;w.live.noCanceller=true;w.flagOff.replies.push('The library closes at six tonight.');});
+ await button(page,'Talk').click();
+ await expect(voice(page)).toHaveAttribute('data-voice-state','listening');
+ await say(page,'When does the library close');
+ await expect(voice(page)).toHaveAttribute('data-voice-state','speaking');
+ const stopped=await live(page,f=>f.stopped);
+ await say(page,'closes at six tonight');
+ await page.waitForTimeout(1600);
+ expect(await live(page,f=>f.stopped)).toBe(stopped);
+ await expect(voice(page)).toHaveAttribute('data-voice-state','speaking');
+ expect(await posts(page)).toEqual(['When does the library close']);
+ await button(page,'Stop voice conversation').click();
+ await expect(voice(page)).toHaveCount(0);
+ // Transcribe: the microphone is lost mid-recording; recording again works.
+ await button(page,'Transcribe').click();
+ await expect(transcription(page)).toHaveAttribute('data-voice-state','recording');
+ await page.evaluate(()=>{const f=(window as any).live;f.emit('liveCaptureEnded',{captureId:f.active,error:'capture'});f.active=null;});
+ await expect(transcription(page)).toHaveAttribute('data-voice-state','ready');
+ await button(page,'Start recording').click();
+ await expect(transcription(page)).toHaveAttribute('data-voice-state','recording');
+ await say(page,'Buy stamps');
+ await button(page,'Stop recording').click();
+ await expect(page.getByRole('textbox',{name:'Review transcript',exact:true})).toHaveValue('Buy stamps');
+ expect(await live(page,f=>f.captures.length)).toBe(3);
  await clean(page,foreign);
 });
 

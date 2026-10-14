@@ -1038,7 +1038,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       messages.review='Review the transcript, listen using the local agent on this computer, or save it with the recording. No chat message has been sent.';
     }
     if(chatDestination?.mode==='dictation'){labels.review='Use in draft';messages.recording='Recording on this device. Stop to transcribe into editable text. Nothing is sent to your agent.';messages.review='Edit the transcript, then add it to your draft. Only Send submits the message.';}
-    if(liveDictation){messages.ready='Starting transcription on this device. Nothing is sent to your agent.';messages.recording='Transcribing on this device. Stop when you finish; speech after Stop is not used. Nothing is sent to your agent.';messages.transcribing='Finishing the transcript on this device. Nothing is sent to your agent.';}
+    if(liveDictation){messages.ready='Starting transcription on this device. No message is sent.';messages.recording='Your agent on this phone transcribes as you speak. Stop when you finish; speech after Stop is not used. No message is sent.';messages.transcribing='Finishing the transcript on this phone. No message is sent.';messages.review='Edit the transcript, then add it to your draft. Only Send submits the message.';}
     // The Cloud route offers no typing choice (MVP-01 decides whether it should); its failure wording names none.
     const canType = !cloudMode && stage === 'recorded' && !!clip && !busy && (failure === 'no-speech' || failure === 'local-agent' || failure === 'recognition');
     // A refused microphone uses the route slot for its recovery: Android's app settings for Alpha.

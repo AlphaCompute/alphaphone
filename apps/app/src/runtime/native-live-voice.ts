@@ -22,7 +22,7 @@ type FramesEvent = { captureId?: unknown; frames?: unknown; vad?: unknown; peak?
 type EndedEvent = { captureId?: unknown; error?: unknown };
 const plugin = registerPlugin<{
   liveCaptureStatus(): Promise<{ available?: unknown }>;
-  startLiveCapture(input: { captureId: string; echoCancel?: boolean }): Promise<{ captureId?: unknown; sampleRate?: unknown }>;
+  startLiveCapture(input: { captureId: string; echoCancel?: boolean }): Promise<{ captureId?: unknown; sampleRate?: unknown; echoCancelled?: unknown }>;
   stopLiveCapture(input: { captureId: string }): Promise<{ captureId?: unknown; durationMs?: unknown }>;
   addListener(event: 'liveCaptureFrames', callback: (event: FramesEvent) => void): Promise<PluginListenerHandle>;
   addListener(event: 'liveCaptureEnded', callback: (event: EndedEvent) => void): Promise<PluginListenerHandle>;
@@ -122,22 +122,26 @@ export async function openNativeLiveStream(input: {
   const stopNative = () => stopped ??= (async () => {
     stopping = true;
     try { await plugin.stopLiveCapture({ captureId }); } catch { /* Already stopped. */ }
-    // The native thread flushes its last frames before it reports the end.
-    await Promise.race([endedPromise, new Promise(resolve => setTimeout(resolve, 500))]);
+    // The native thread flushes its last frames before it reports the end (its stop waits up to 1.5 s).
+    await Promise.race([endedPromise, new Promise(resolve => setTimeout(resolve, 2000))]);
     accepting = false;
     await detach();
   })();
   const abort = () => { stream.cancel(); void stopNative(); };
+  let echoCancelled = false;
   try {
     input.signal.throwIfAborted();
     const result = await plugin.startLiveCapture({ captureId, echoCancel: input.echoCancel });
     if (result?.captureId !== captureId || result.sampleRate !== 16000) throw Error('Live capture identity changed.');
+    echoCancelled = input.echoCancel && result.echoCancelled === true;
     input.signal.throwIfAborted();
   } catch (error) { stream.cancel(); await stopNative(); throw error; }
   input.signal.addEventListener('abort', abort, { once: true });
   const startedAt = Date.now();
   return {
     startedAt,
+    /** The platform echo canceller is active on this capture. */
+    echoCancelled,
     speaking: () => stream.speaking(),
     /** Stop now and finalize: results for audio up to this moment arrive before this resolves. */
     async close(at = Date.now()) {
@@ -167,7 +171,8 @@ export function nativeAssistantListener(options: { roomId?: string; onInterim?: 
       onLevel: peak => handlers.onLevel?.(peak),
       onLost: error => handlers.onEnd(error),
     });
-    return { close: async () => { await capture.close(); }, cancel: () => capture.cancel() };
+    // Voice may interrupt playback only when the device cancels its own speaker from the microphone.
+    return { fullDuplex: capture.echoCancelled, close: async () => { await capture.close(); }, cancel: () => capture.cancel() };
   };
 }
 
@@ -206,6 +211,8 @@ export function createNativeLiveDictation(options: { roomId?: string; onInterim?
             if (!owned() || current.stopping) return;
             if (current.timer) clearTimeout(current.timer);
             current.controller.abort();
+            // A lost capture leaves nothing to stop or transcribe; Transcribe can start again.
+            recording = undefined; current.texts.length = 0;
             emit({ recordingId: current.id, durationMs: Number.NaN });
           },
         });

@@ -80,7 +80,7 @@ export function createLiveSegmentStream(input: { transport: LiveVoiceTransport; 
       if (finished) return;
       finished = true;
       const at = cut ?? Date.now();
-      if (closeSegment(at)) await session.endTurn();
+      if (closeSegment(at)) await session.endTurn(at);
       await session.close().catch(() => {});
       for (; expected > 0 && !discarded; expected--) input.onSegment(null);
     },

@@ -6,6 +6,7 @@ import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.media.audiofx.AcousticEchoCanceler;
+import android.media.audiofx.AudioEffect;
 import android.media.audiofx.NoiseSuppressor;
 import android.util.Base64;
 import com.getcapacitor.JSArray;
@@ -54,12 +55,15 @@ final class AlphaLiveVoiceCapture {
  private final Sink sink;
  private final boolean echoCancel;
  private volatile boolean running;
+ private volatile boolean echoCancelled;
  private Thread thread;
  private long startedAt;
 
  AlphaLiveVoiceCapture(Context context,String captureId,Sink sink){this(context,captureId,sink,false);}
  AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,boolean echoCancel){this.context=context.getApplicationContext();this.captureId=captureId;this.sink=sink;this.echoCancel=echoCancel;}
  String captureId(){return captureId;}
+ /** The platform echo canceller is attached and enabled on this capture (full duplex is safe). */
+ boolean echoCancelled(){return echoCancelled;}
 
  synchronized void start()throws Exception{
   if(thread!=null)throw new IllegalStateException("Live capture already started");
@@ -72,11 +76,11 @@ final class AlphaLiveVoiceCapture {
   if(recorder.getState()!=AudioRecord.STATE_INITIALIZED){recorder.release();ElizaVoiceNative.nativeVadClose(vad);throw new IllegalStateException("Microphone unavailable");}
   AcousticEchoCanceler echo=null;NoiseSuppressor noise=null;
   if(source==MediaRecorder.AudioSource.VOICE_COMMUNICATION){
-   try{echo=AcousticEchoCanceler.create(recorder.getAudioSessionId());if(echo!=null)echo.setEnabled(true);}catch(RuntimeException unavailable){echo=null;}
+   try{echo=AcousticEchoCanceler.create(recorder.getAudioSessionId());if(echo!=null&&(echo.setEnabled(true)!=AudioEffect.SUCCESS||!echo.getEnabled())){echo.release();echo=null;}}catch(RuntimeException unavailable){echo=null;}
    try{if(NoiseSuppressor.isAvailable()){noise=NoiseSuppressor.create(recorder.getAudioSessionId());if(noise!=null)noise.setEnabled(true);}}catch(RuntimeException unavailable){noise=null;}
   }
   try{recorder.startRecording();}catch(RuntimeException error){release(echo,noise);recorder.release();ElizaVoiceNative.nativeVadClose(vad);throw error;}
-  running=true;startedAt=System.currentTimeMillis();
+  running=true;startedAt=System.currentTimeMillis();echoCancelled=echo!=null;
   final AcousticEchoCanceler effectEcho=echo;final NoiseSuppressor effectNoise=noise;
   thread=new Thread(()->{try{loop(recorder,vad);}finally{release(effectEcho,effectNoise);}},"alpha-live-voice");
   thread.start();
@@ -103,13 +107,18 @@ final class AlphaLiveVoiceCapture {
   float[] pcm=new float[LiveVadGate.WINDOW];
   byte[] bytes=new byte[LiveVadGate.WINDOW*2];
   int windows=0;float peak=0f;
+  // Frames are stamped with the end of their audio on the capture clock (start + samples read), not
+  // with when the read returned: a reader running behind its buffer still stamps audio captured
+  // before a stop as before the stop.
+  final long origin=startedAt;long samplesRead=0;
   try{
    ElizaVoiceNative.nativeVadReset(vad);
    while(running){
     int filled=0;
     while(filled<window.length&&running){int read=recorder.read(window,filled,window.length-filled);if(read<0)throw new IllegalStateException("Microphone read failed");filled+=read;}
     if(!running)break;
-    long at=System.currentTimeMillis();
+    samplesRead+=window.length;
+    long at=origin+samplesRead*1000/SAMPLE_RATE;
     for(int i=0;i<window.length;i++){short sample=window[i];pcm[i]=sample/32768f;bytes[i*2]=(byte)(sample&0xff);bytes[i*2+1]=(byte)((sample>>8)&0xff);peak=Math.max(peak,Math.abs(pcm[i]));}
     float[] probability=ElizaVoiceNative.nativeVadProcessBatch(vad,pcm);
     JSObject frame=new JSObject();

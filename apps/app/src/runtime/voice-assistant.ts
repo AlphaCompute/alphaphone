@@ -21,12 +21,17 @@
  * `send`: speech after submission interrupts the in-flight reply or playback and becomes the
  * next turn, so the earlier turn is never committed twice.
  *
- * Barge-in and heard content: speech that starts while a reply is pending or playing aborts that
- * reply (the native request and playback are cancelled through the port's AbortSignal). Replies
- * are played one sentence at a time; only sentences whose playback completed count as heard. The
- * sentence playing when the user interrupted is reported as unheard: the playback engine reports
- * completion per utterance, not a position, so a partial sentence is never claimed as spoken.
- * `onHeard` reports the heard/unheard split for the host to keep in conversation state.
+ * Barge-in and heard content: speech that starts while a reply is pending or playing is tentative.
+ * It interrupts once the VAD segment has stayed open for `bargeInConfirmMs` or its transcript passes
+ * the disfluency/echo gate; a cough, a blip or the reply's own echo (rejected by the gate) leaves the
+ * reply running. While a reply plays, voice can interrupt only over a capture that reports active
+ * echo cancellation (`fullDuplex`); otherwise speech during playback is ignored and Stop speaking
+ * remains. Interrupting aborts the reply (the native request and playback are cancelled through
+ * the port's AbortSignal). Replies are played one sentence at a time; only sentences whose playback
+ * completed count as heard. The sentence playing when the user interrupted is reported as unheard:
+ * the playback engine reports completion per utterance, not a position, so a partial sentence is
+ * never claimed as spoken. `onHeard` reports the heard/unheard split for the host to keep in
+ * conversation state.
  *
  * Side effects: an automatic voice submission is never approval. A reply that carries action
  * proposals ends the voice session (the host shows the review); a Notes read-reply pause waits for
@@ -74,6 +79,8 @@ export interface AssistantCapture {
   close(): Promise<void>;
   /** Discard: no further segment results are delivered. */
   cancel(): void | Promise<void>;
+  /** The capture cancels the device's own playback (platform echo canceller active). */
+  readonly fullDuplex?: boolean;
 }
 export interface AssistantListenHandlers {
   signal: AbortSignal;
@@ -115,13 +122,16 @@ export interface AssistantTiming {
   shortGapMs: number;
   longGapMs: number;
   endpointDeadlineMs: number;
+  /** Speech held this long while a reply is pending or playing interrupts it before its transcript. */
+  bargeInConfirmMs: number;
 }
 /**
  * Engineering defaults from docs/local-speech-research-2026-10-12.md, not accepted measurements or
  * owner-set constants. Gaps follow the VAD speech-end, which itself trails the last voiced window
- * by the native gate's hangover (LiveVadGate, about 512 ms).
+ * by the native gate's hangover (LiveVadGate, about 512 ms). The barge-in hold exceeds that
+ * hangover, so a short blip (which keeps a segment open for about 550 ms) never confirms by time.
  */
-export const ASSISTANT_TIMING_DEFAULTS: AssistantTiming = Object.freeze({ shortGapMs: 300, longGapMs: 1200, endpointDeadlineMs: 250 });
+export const ASSISTANT_TIMING_DEFAULTS: AssistantTiming = Object.freeze({ shortGapMs: 300, longGapMs: 1200, endpointDeadlineMs: 250, bargeInConfirmMs: 700 });
 export interface AssistantClock {
   now(): number;
   setTimer(callback: () => void, ms: number): unknown;
@@ -161,7 +171,15 @@ export function splitSpokenSentences(text: string): string[] {
   return out.filter(Boolean);
 }
 
-type Segment = { closed: boolean; done: boolean; text: string };
+type Segment = {
+  closed: boolean;
+  done: boolean;
+  text: string;
+  /** Started while a reply was pending or playing: interrupts only once confirmed. */
+  tentative?: Response;
+  /** Started during playback over a capture without echo cancellation: never a turn. */
+  ignored?: boolean;
+};
 type Response = {
   turnId: string;
   controller: AbortController;
@@ -169,9 +187,9 @@ type Response = {
   sentences: string[];
   played: number;
   started: boolean;
-  /** Echo context for segments that started during this reply's playback. */
-  spoken: string;
 };
+/** Every sentence of the reply that has started playing: the echo the microphone may hear. */
+const audible = (response: Response) => response.started ? response.sentences.slice(0, response.played + 1).join(' ') : '';
 
 /** One voice assistant conversation. Owned by the chat shell; stopped on any binding change. */
 export class VoiceAssistantSession {
@@ -184,6 +202,7 @@ export class VoiceAssistantSession {
   private controller?: AbortController;
   private capture?: AssistantCapture;
   private opening?: Promise<AssistantCapture | undefined>;
+  private closing: Promise<void> = Promise.resolve();
   private segments: Segment[] = [];
   private lastSpeechEndAt = 0;
   private shortTimer: unknown;
@@ -212,14 +231,17 @@ export class VoiceAssistantSession {
   getSnapshot(): AssistantState { return { ...this.state, ...(this.state.awaitingUserInput ? { awaitingUserInput: { ...this.state.awaitingUserInput } } : {}) }; }
 
   private publish(state: AssistantState) {
-    this.state = { ...state, ...(this.mutedValue ? { muted: true } : {}) };
+    const { muted: _muted, ...rest } = state;
+    this.state = { ...rest, ...(this.mutedValue ? { muted: true } : {}) };
     this.ports.onState?.(this.getSnapshot());
   }
   private listeningState(): AssistantState {
-    const open = this.segments.some(segment => !segment.closed);
+    const open = this.segments.some(segment => !segment.closed && !segment.ignored && !segment.tentative);
     const text = this.utteranceText();
     return { phase: 'listening', ...(open ? { hearing: true } : {}), ...(text ? { pendingText: text } : {}) };
   }
+  /** The phase in progress, with mute and listening details refreshed. */
+  private republish() { this.publish(this.response ? { ...this.state } : this.listeningState()); }
   private current(session: number) { return this.active && this.session === session; }
   private check(session: number) {
     if (!this.current(session)) throw stopped();
@@ -250,7 +272,7 @@ export class VoiceAssistantSession {
   }
 
   async stop(): Promise<void> {
-    if (!this.active) { await this.drainSpeech(); return; }
+    if (!this.active) { await Promise.all([this.drainSpeech(), this.closing]); return; }
     this.active = false;
     ++this.session; ++this.turn; ++this.utteranceEpoch;
     this.controller?.abort(stopped());
@@ -268,25 +290,32 @@ export class VoiceAssistantSession {
     await Promise.all([
       Promise.resolve(capture?.cancel()).catch(() => {}),
       opening?.then(late => late?.cancel()).catch(() => {}),
+      this.closing,
       this.drainSpeech(),
     ]);
   }
 
-  /** Microphone off/on. Muting finalizes speech up to now; the reply in progress continues. */
+  /**
+   * Microphone off/on. Muting finalizes speech up to now (also a capture that is still opening);
+   * the reply in progress continues. Unmuting waits until the muted capture has finished closing.
+   */
   async setMuted(muted: boolean): Promise<void> {
     if (!this.active || muted === this.mutedValue) return;
     const session = this.session;
     this.mutedValue = muted;
     if (muted) {
-      const capture = this.capture;
+      const capture = this.capture, opening = this.opening;
       this.capture = undefined;
-      this.publish(this.response ? { ...this.state } : this.listeningState());
-      await capture?.close();
+      this.republish();
+      if (capture) this.closeCapture(capture);
+      // A capture still opening is closed by open() as soon as it arrives.
+      await opening?.catch(() => {});
+      await this.closing;
       if (this.current(session)) this.schedule();
       return;
     }
-    if (this.state.phase === 'awaiting-user-input') { this.publish({ ...this.state }); return; }
-    try { await this.open(session); this.check(session); this.publish(this.response ? { ...this.state } : this.listeningState()); }
+    if (this.state.phase === 'awaiting-user-input') { this.republish(); return; }
+    try { await this.open(session); this.check(session); if (!this.mutedValue) this.republish(); }
     catch (error) { if (this.current(session)) await this.fail(session, error); }
   }
 
@@ -316,9 +345,17 @@ export class VoiceAssistantSession {
     return true;
   }
 
+  private closeCapture(capture: AssistantCapture) {
+    const closed = Promise.resolve().then(() => capture.close()).catch(() => {});
+    this.closing = Promise.all([this.closing, closed]).then(() => {});
+  }
+
   private async open(session: number) {
     if (this.capture || this.opening) return;
+    // A muted capture's last segment is delivered before a new capture can open.
+    await this.closing;
     this.check(session);
+    if (this.capture || this.opening || this.mutedValue) return;
     const signal = this.controller!.signal;
     const pending = this.ports.listen({
       signal,
@@ -326,10 +363,13 @@ export class VoiceAssistantSession {
       onSpeechEnd: at => { if (this.current(session)) this.speechEnded(at); },
       onSegment: text => { if (this.current(session)) this.segmentResult(text); },
       onEnd: error => { if (this.current(session)) void this.captureEnded(session, error); },
-      onLevel: peak => { if (this.current(session)) this.ports.onLevel?.(peak); },
+      onLevel: peak => { if (this.current(session) && !this.mutedValue) this.ports.onLevel?.(peak); },
     }).then(capture => {
       if (this.opening !== pending || !this.current(session)) { void Promise.resolve(capture.cancel()).catch(() => {}); return undefined; }
-      this.opening = undefined; this.capture = capture; return capture;
+      this.opening = undefined;
+      // Muted while the microphone was opening: it never stays on.
+      if (this.mutedValue) { this.closeCapture(capture); return undefined; }
+      this.capture = capture; return capture;
     }, error => { if (this.opening === pending) this.opening = undefined; throw error; });
     this.opening = pending;
     await pending;
@@ -349,7 +389,7 @@ export class VoiceAssistantSession {
 
   // --- Endpointing --------------------------------------------------------------------------
 
-  private utteranceText() { return this.segments.filter(segment => segment.done && segment.text).map(segment => segment.text).join(' ').trim(); }
+  private utteranceText() { return this.segments.filter(segment => segment.done && segment.text && !segment.ignored && !segment.tentative).map(segment => segment.text).join(' ').trim(); }
   private clearTimers() {
     if (this.shortTimer !== undefined) this.clock.clearTimer(this.shortTimer);
     if (this.longTimer !== undefined) this.clock.clearTimer(this.longTimer);
@@ -362,11 +402,30 @@ export class VoiceAssistantSession {
     this.clearTimers();
     this.endpointController?.abort();
     this.endpointController = undefined;
-    if (this.response) this.interrupt();
-    if (!this.segments.length && this.ports.beginUtterance) {
+    const response = this.response;
+    if (response?.started && !this.capture?.fullDuplex) {
+      // Without echo cancellation the microphone hears the reply: speech during playback is not a turn.
+      this.segments.push({ closed: false, done: false, text: '', ignored: true });
+      return;
+    }
+    if (!this.segments.some(segment => !segment.ignored) && this.ports.beginUtterance) {
       try { this.ports.beginUtterance(); } catch { void this.stop(); return; }
     }
-    this.segments.push({ closed: false, done: false, text: '' });
+    const segment: Segment = { closed: false, done: false, text: '', ...(response ? { tentative: response } : {}) };
+    this.segments.push(segment);
+    if (response) {
+      const session = this.session;
+      // Held speech interrupts before its transcript; a blip closes first and waits for the gate.
+      this.clock.setTimer(() => { if (this.current(session) && !segment.closed && segment.tentative === response) this.confirmBargeIn(segment); }, this.timing.bargeInConfirmMs);
+      return;
+    }
+    this.publish(this.listeningState());
+  }
+
+  private confirmBargeIn(segment: Segment) {
+    const response = segment.tentative;
+    delete segment.tentative;
+    if (response && this.response === response) this.interrupt();
     this.publish(this.listeningState());
   }
 
@@ -374,8 +433,8 @@ export class VoiceAssistantSession {
     const open = this.segments.find(segment => !segment.closed);
     if (!open) return;
     open.closed = true;
-    this.lastSpeechEndAt = Number.isFinite(at) ? Math.min(at, this.clock.now()) : this.clock.now();
-    this.publish(this.listeningState());
+    if (!open.ignored) this.lastSpeechEndAt = Number.isFinite(at) ? Math.min(at, this.clock.now()) : this.clock.now();
+    this.republish();
     this.schedule();
   }
 
@@ -383,13 +442,18 @@ export class VoiceAssistantSession {
     const segment = this.segments.find(item => item.closed && !item.done);
     if (!segment) return; // A result for a discarded utterance.
     segment.done = true;
-    const value = typeof text === 'string' ? text.trim() : '';
+    const value = !segment.ignored && typeof text === 'string' ? text.trim() : '';
     if (value) {
-      const echo = this.response?.started ? this.response.spoken : this.lastSpoken.text;
-      const context = { recentAgentReply: echo, replyAgeMs: this.response?.started ? 0 : Math.max(0, this.clock.now() - this.lastSpoken.at), agentSpeaking: !!this.response?.started };
+      const playing = this.response?.started ? this.response : undefined;
+      const context = { recentAgentReply: playing ? audible(playing) : this.lastSpoken.text, replyAgeMs: playing ? 0 : Math.max(0, this.clock.now() - this.lastSpoken.at), agentSpeaking: !!playing };
       if (!this.ports.shouldRespond || this.ports.shouldRespond(value, context)) segment.text = value;
     }
-    this.publish(this.response ? { ...this.state } : this.listeningState());
+    if (segment.tentative) {
+      // An accepted transcript confirms the interruption; noise, filler or echo leaves the reply running.
+      if (segment.text) this.confirmBargeIn(segment);
+      else { delete segment.tentative; segment.ignored = true; }
+    }
+    this.republish();
     this.schedule();
   }
 
@@ -431,7 +495,7 @@ export class VoiceAssistantSession {
     ++this.utteranceEpoch;
     if (!text) return;
     const turn = ++this.turn;
-    const response: Response = { turnId: crypto.randomUUID(), controller: new AbortController(), sentences: [], played: 0, started: false, spoken: '' };
+    const response: Response = { turnId: crypto.randomUUID(), controller: new AbortController(), sentences: [], played: 0, started: false };
     this.response = response;
     this.publish({ phase: 'thinking', transcript: text });
     this.ports.onTurn?.('submitted', response.turnId);
@@ -458,7 +522,8 @@ export class VoiceAssistantSession {
         const { proposalId, digest } = reply.awaitingUserInput ?? {} as { proposalId?: unknown; digest?: unknown };
         if (reply.complete !== false || typeof proposalId !== 'string' || !proposalId.trim() || typeof digest !== 'string' || !digest.trim())
           throw new VoiceAssistantError('reply', 'The owner-input pause was not confirmed for this turn.');
-        const pause: AssistantAwaitingInput = { proposalId, digest, requestId: response.turnId, conversationId: this.ports.conversationId, userMessageId: reply.userMessageId, assistantMessageId: reply.assistantMessageId };
+        const pausedReply = reply.assistantMessageId;
+        const pause: AssistantAwaitingInput = { proposalId, digest, requestId: response.turnId, conversationId: this.ports.conversationId, userMessageId: reply.userMessageId, assistantMessageId: pausedReply };
         // The microphone is off while the owner reviews; nothing heard meanwhile is sent.
         const capture = this.capture; this.capture = undefined;
         await Promise.resolve(capture?.cancel()).catch(() => {});
@@ -467,7 +532,7 @@ export class VoiceAssistantSession {
         reply = await new Promise<AssistantReply>((resolve, reject) => {
           this.awaiting = { pause, resolve, resolved: false };
           response.controller.signal.addEventListener('abort', () => reject(stopped()), { once: true });
-          this.publish({ phase: 'awaiting-user-input', transcript: text, replyId: reply.assistantMessageId, awaitingUserInput: { ...pause } });
+          this.publish({ phase: 'awaiting-user-input', transcript: text, replyId: pausedReply, awaitingUserInput: { ...pause } });
         });
         this.awaiting = undefined;
         guard();
@@ -485,9 +550,7 @@ export class VoiceAssistantSession {
         const playback = this.ports.speak({
           turnId: response.turnId, replyId: reply.assistantMessageId, text: sentence, signal: response.controller.signal,
           onStarted: () => {
-            if (!this.owned(session, turn, response)) return;
-            response.spoken = sentence;
-            if (response.started) return;
+            if (!this.owned(session, turn, response) || response.started) return;
             response.started = true;
             this.ports.onTurn?.('first-audio', response.turnId);
             this.publish({ phase: 'speaking', replyId: reply.assistantMessageId });
@@ -514,6 +577,7 @@ export class VoiceAssistantSession {
   private finishResponse(response: Response) {
     if (this.response !== response) return;
     this.response = undefined;
+    for (const segment of this.segments) if (segment.tentative === response) delete segment.tentative;
     this.ports.onTurn?.('finished', response.turnId);
     this.publish(this.listeningState());
     // Speech that arrived while the reply played becomes the next turn.
@@ -526,8 +590,9 @@ export class VoiceAssistantSession {
     if (!response) return;
     ++this.turn;
     this.response = undefined;
+    for (const segment of this.segments) if (segment.tentative === response) delete segment.tentative;
     response.controller.abort(new DOMException('Voice reply interrupted', 'AbortError'));
-    if (response.started) this.lastSpoken = { text: response.spoken, at: this.clock.now() };
+    if (response.started) this.lastSpoken = { text: audible(response), at: this.clock.now() };
     this.reportInterrupted(response);
     this.ports.onTurn?.('interrupted', response.turnId);
   }

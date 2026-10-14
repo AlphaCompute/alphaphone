@@ -41,7 +41,8 @@ function harness(options = {}) {
     assertCurrent: () => { if (!current) throw new DOMException('binding changed', 'AbortError'); },
     listen: async handlers => {
       log.captures++; mic = handlers;
-      return {close: async () => { log.closed++; }, cancel: () => { log.cancelled++; }};
+      if (options.holdOpen) await options.holdOpen.promise;
+      return {fullDuplex: options.fullDuplex ?? true, close: async () => { log.closed++; }, cancel: () => { log.cancelled++; }};
     },
     shouldRespond: options.shouldRespond,
     endpoint: options.endpoint,
@@ -138,7 +139,15 @@ test('barge-in during inference cancels the request, drops its late reply and se
   await h.clock.advance(ASSISTANT_TIMING_DEFAULTS.longGapMs);
   assert.equal(h.log.sends.length, 1);
   const first = h.replies[0];
+  // A cough: the segment closes before the hold and its transcript is filler, so the request continues.
   h.mic.onSpeechStart(h.clock.now()); await flush();
+  await h.clock.advance(560); h.mic.onSpeechEnd(h.clock.now()); h.mic.onSegment(''); await flush();
+  assert.equal(first.input.signal.aborted, false, 'noise does not cancel the request');
+  assert.equal(h.phase(), 'thinking');
+  // Held speech confirms the interruption before its transcript arrives.
+  h.mic.onSpeechStart(h.clock.now()); await flush();
+  assert.equal(first.input.signal.aborted, false, 'speech start alone is tentative');
+  await h.clock.advance(ASSISTANT_TIMING_DEFAULTS.bargeInConfirmMs);
   assert.equal(first.input.signal.aborted, true, 'the in-flight request is cancelled');
   assert.deepEqual(h.log.turns.map(([event]) => event), ['submitted', 'interrupted']);
   await h.clock.advance(300); h.mic.onSpeechEnd(h.clock.now()); h.mic.onSegment('for four people'); await flush();
@@ -165,9 +174,13 @@ test('barge-in during playback stops it and keeps only the sentences that finish
   h.speeches[0].done.resolve(); await flush();
   assert.equal(h.speeches.length, 2);
   h.speeches[1].input.onStarted(); await flush();
-  // The user talks over the second sentence.
+  // The user talks over the second sentence; a short answer is confirmed by its transcript.
   h.mic.onSpeechStart(h.clock.now()); await flush();
-  assert.equal(h.speeches[1].input.signal.aborted, true, 'playback is aborted at speech start');
+  assert.equal(h.speeches[1].input.signal.aborted, false, 'tentative until confirmed');
+  await h.clock.advance(560); h.mic.onSpeechEnd(h.clock.now()); await flush();
+  assert.equal(h.speeches[1].input.signal.aborted, false);
+  h.mic.onSegment('wait'); await flush();
+  assert.equal(h.speeches[1].input.signal.aborted, true, 'playback is aborted once the speech is accepted');
   assert.equal(h.speeches.length, 2, 'no further sentence starts');
   assert.deepEqual(h.log.heard, [{turnId: h.log.sends[0].turnId, replyId: 'a-0', heard: 'You have three meetings today.', unheard: 'The first starts at nine with Priya. Then lunch with Sam at noon.', interrupted: true}]);
   assert.equal(h.phase(), 'listening');
@@ -204,11 +217,44 @@ test('echo of the reply heard while it plays is not sent as a turn', async () =>
   await h.clock.advance(ASSISTANT_TIMING_DEFAULTS.longGapMs);
   h.answer(0, 'Your reminder says to water the plants before you leave.'); await flush();
   h.speeches[0].input.onStarted(); await flush();
-  // The speaker leaks into the microphone: VAD opens, playback stops, the transcript is the reply.
+  // The speaker leaks into the microphone: the VAD opens, the transcript is the reply itself.
   await h.say('water the plants');
+  assert.equal(h.speeches[0].input.signal.aborted, false, 'echo never interrupts the reply');
+  assert.equal(h.phase(), 'speaking');
+  h.speeches[0].done.resolve(); await flush();
   await h.clock.advance(ASSISTANT_TIMING_DEFAULTS.longGapMs * 2);
-  assert.equal(h.log.sends.length, 1, 'the echo is discarded');
+  assert.equal(h.log.sends.length, 1, 'the echo is not sent as a turn');
+  assert.equal(h.log.heard.at(-1).interrupted, false);
   assert.equal(h.phase(), 'listening');
+});
+
+test('without an active echo canceller, speech during playback is ignored; Stop speaking still interrupts', async () => {
+  const h = harness({fullDuplex: false});
+  await h.session.start();
+  await h.say('what is the forecast');
+  await h.clock.advance(ASSISTANT_TIMING_DEFAULTS.longGapMs);
+  h.answer(0, 'Sunny with a light breeze all afternoon.'); await flush();
+  h.speeches[0].input.onStarted(); await flush();
+  h.mic.onSpeechStart(h.clock.now()); await flush();
+  await h.clock.advance(ASSISTANT_TIMING_DEFAULTS.bargeInConfirmMs * 2);
+  h.mic.onSpeechEnd(h.clock.now()); h.mic.onSegment('sunny with a light breeze'); await flush();
+  assert.equal(h.speeches[0].input.signal.aborted, false);
+  assert.equal(h.session.interruptSpeech(), true);
+  await h.clock.advance(ASSISTANT_TIMING_DEFAULTS.longGapMs * 2);
+  assert.equal(h.log.sends.length, 1, 'nothing heard during playback is sent');
+});
+
+test('Mute while the microphone is still opening closes it as soon as it opens', async () => {
+  const holdOpen = deferred();
+  const h = harness({holdOpen});
+  const starting = h.session.start();
+  await flush();
+  const muting = h.session.setMuted(true);
+  holdOpen.resolve(); await starting; await muting;
+  assert.equal(h.log.closed, 1, 'the late capture is closed, not left streaming');
+  assert.equal(h.session.muted, true);
+  await h.session.setMuted(false);
+  assert.equal(h.log.captures, 2);
 });
 
 test('account or binding change stops the conversation: capture cancelled, nothing sent, late callbacks ignored', async () => {
@@ -297,6 +343,24 @@ test('sentence splitting keeps the reply text and avoids tiny fragments', () => 
   assert.throws(() => new VoiceAssistantSession({conversationId: 'r', assertCurrent() {}, listen: async () => ({close: async () => {}, cancel() {}}), send: async () => ({}), speak: async () => {}}, {timing: {shortGapMs: 900, longGapMs: 300}}), RangeError);
 });
 
+test('a failed turn reported by both its error event and its 502 response counts once', async () => {
+  let listener;const results = [];
+  const transport = {
+    post: async body => body.vad?.some(edge => edge.type === 'speech-end') ? Promise.reject(Object.assign(Error('Live ASR error'), {status: 502, data: {code: 'ASR_FAILED'}})) : {ok: true},
+    subscribe: fn => { listener = fn; return () => {}; },
+  };
+  const stream = createLiveSegmentStream({transport, onSegment: text => results.push(text)});
+  const sessionId = stream.sessionId;
+  await stream.accept([frame(1)], [{type: 'speech-start', timestampMs: 1}]);
+  listener({type: 'agent_event', stream: 'voice-transcript', payload: {type: 'voice-transcript', sessionId, turnId: 't1', phase: 'speech-start'}});
+  // The agent reports the failure as an event while the request that closed the segment is in flight.
+  const closing = stream.accept([frame(2)], [{type: 'speech-end', timestampMs: 2}]);
+  listener({type: 'agent_event', stream: 'voice-transcript', payload: {type: 'voice-transcript', sessionId, turnId: 't1', phase: 'error'}});
+  await closing;
+  await stream.accept([frame(3)], [{type: 'speech-start', timestampMs: 3}]);
+  assert.deepEqual(results, [null], 'one null for the one failed segment');
+});
+
 // --- Live segment stream --------------------------------------------------------------------
 
 function stubTransport() {
@@ -323,12 +387,35 @@ test('stop reconciliation: frames after the stop are never forwarded and the ope
   assert.deepEqual(ends, [150], 'the open segment closes at the stop');
   const forwarded = agent.posts.flatMap(body => body.frames ?? []).map(f => f.timestamp);
   assert.deepEqual(forwarded, [100, 132, 140]);
+  assert.equal(agent.posts.find(body => body.vad?.some(edge => edge.type === 'speech-end')).vad[0].timestampMs, 150, 'the closing edge carries the stop time');
   assert.equal(segments.length, 1, 'the final arrives before close resolves');
   assert.equal(agent.posts.at(-1).close, true, 'the agent session is released');
   assert.equal(agent.posts.filter(body => body.vad?.some(edge => edge.type === 'speech-end')).length, 1);
 });
 
-test('one result per closed segment: ASR failure is null, transport failure is fatal, cancel discards', async () => {
+test('a 502 ASR_FAILED segment yields null and the stream continues; a bare 502 is a transport failure', async () => {
+  const agent = stubTransport();let failNext = true;
+  agent.reply = (body, next) => {
+    if (!body.vad?.some(edge => edge.type === 'speech-end')) return {ok: true, mode: 'stream', framesReceived: 1};
+    if (failNext) { failNext = false; return Promise.reject(Object.assign(Error('Live ASR error'), {status: 502, data: {code: 'ASR_FAILED'}})); }
+    return finalOn(body, next);
+  };
+  const segments = [], fatal = [];
+  const stream = createLiveSegmentStream({transport: agent.transport, onSegment: text => segments.push(text), onFatal: code => fatal.push(code)});
+  await stream.accept([frame(1)], [{type: 'speech-start', timestampMs: 1}]);
+  await stream.accept([frame(2)], [{type: 'speech-end', timestampMs: 2}]);
+  await stream.accept([frame(3)], [{type: 'speech-start', timestampMs: 3}]);
+  await stream.accept([frame(4)], [{type: 'speech-end', timestampMs: 4}]);
+  assert.deepEqual(segments, [null, 'heard 1 frames']);
+  assert.deepEqual(fatal, []);
+  // A 502 without the route's code is a transport failure.
+  agent.reply = body => body.vad?.some(edge => edge.type === 'speech-end') ? Promise.reject(Object.assign(Error('bad gateway'), {status: 502})) : {ok: true};
+  await stream.accept([frame(5)], [{type: 'speech-start', timestampMs: 5}]);
+  await stream.accept([frame(6)], [{type: 'speech-end', timestampMs: 6}]);
+  assert.deepEqual(fatal, ['TRANSPORT']);
+});
+
+test('one result per closed segment: an unavailable route (503) is fatal after a null result, cancel discards', async () => {
   const agent = stubTransport();
   agent.reply = (body, next) => body.vad?.some(edge => edge.type === 'speech-end') ? Promise.reject(Object.assign(Error('down'), {status: 503})) : {ok: true, mode: 'stream', framesReceived: 1};
   const segments = [], fatal = [];

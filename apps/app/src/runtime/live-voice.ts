@@ -116,6 +116,8 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions) {
   const finalized = new Set<string>();
   // Client clock marks for the open utterance (numbers only).
   let speechStartAt: number | undefined, speechEndAt: number | undefined, firstPartialAt: number | undefined, partials = 0, responseMode: LiveMode = 'unknown';
+  // A failed turn is reported by the 502 response and, where events arrive, by an error event: once.
+  let turnFailed = false;
   const waiting: Array<(final: LiveFinal | null) => void> = [];
 
   const setInterim = (text: string) => { if (text === interim) return; interim = text; options.onInterim?.(text); };
@@ -156,6 +158,8 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions) {
     }
     // error: the turn produced no transcript.
     current = undefined; lastSeq = 0; setInterim(''); resetTurnMarks();
+    if (turnFailed) { turnFailed = false; return; }
+    turnFailed = true;
     options.onError?.('ASR_FAILED');
     for (const resolve of waiting.splice(0)) resolve(null);
   };
@@ -169,6 +173,13 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions) {
       catch (error) {
         if (disposed || controller.signal.aborted) return;
         const status = (error as { status?: unknown })?.status;
+        // 502 with code ASR_FAILED is the route's per-turn failure: that segment has no transcript.
+        if (status === 502 && (error as { data?: { code?: unknown } })?.data?.code === 'ASR_FAILED') {
+          current = undefined; lastSeq = 0; setInterim(''); resetTurnMarks();
+          if (turnFailed) { turnFailed = false; } else { turnFailed = true; options.onError?.('ASR_FAILED'); }
+          for (const resolve of waiting.splice(0)) resolve(null);
+          return;
+        }
         options.onError?.(status === 503 || status === 429 ? 'LIVE_ASR_UNAVAILABLE' : 'TRANSPORT');
         for (const resolve of waiting.splice(0)) resolve(null);
         return;
@@ -198,7 +209,7 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions) {
       if (disposed) return Promise.resolve();
       const at = now();
       for (const edge of vad) {
-        if (edge.type === 'speech-start') { resetTurnMarks(); speechStartAt = at; }
+        if (edge.type === 'speech-start') { resetTurnMarks(); speechStartAt = at; turnFailed = false; }
         else speechEndAt = at;
       }
       const posts: Promise<void>[] = [];
@@ -225,7 +236,7 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions) {
       });
     },
     /** Close the open segment now (the conversation decided the user finished). */
-    endTurn() { speechEndAt ??= now(); return send({ vad: [{ type: 'speech-end', timestampMs: Date.now() }] }); },
+    endTurn(atMs?: number) { speechEndAt ??= now(); return send({ vad: [{ type: 'speech-end', timestampMs: Number.isFinite(atMs) ? atMs! : Date.now() }] }); },
     /** Finalize any open segment and release the agent session. */
     async close() {
       if (disposed) return;
