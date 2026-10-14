@@ -4,16 +4,17 @@ import { CloudPersonalProtocol, PersonalProtocolError } from './cloud-personal-p
 import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
 import { reviewOpaqueAttachment, type OpaqueMailAttachment } from './inbox-operation.ts';
 import { gmailCapabilitiesFor } from './gmail-grants.ts';
-import { ENTITLEMENT_KEYS_PATH, ENTITLEMENT_PATH, type EntitlementSource } from './subscription-entitlement.ts';
+import { BILLING_LIMITS_PATH, ENTITLEMENT_KEYS_PATH, ENTITLEMENT_PATH, REDEEM_PATH, fallbackPlanFromLimits, normalizeSubscriptionCode, readServiceLimit, SubscriptionRedeemError, type EntitlementSource, type FallbackPlan, type RedeemResult } from './subscription-entitlement.ts';
 /** Narrow Alpha adapter for Eliza Cloud. Contracts inspected in v3's
  * cloud/api/auth/cli-session, cloud/api/v1/eliza/{agents,google}, and
  * ui/src/api/client-cloud.ts. Native composition owns HTTP and secure storage.
  * This module never stores credentials in renderer persistence or logs them. */
 export type CloudEnvironment = "production" | "staging";
 type CloudAuthority = { readonly api: string; readonly web: string; readonly agents: string };
-// Staging is a test-mocks surface (ELIZA_DEV_ALLOW_TEST_MOCKS=1). Vite replaces
-// import.meta.env at build time, so flag-off bundles fold the staging authority
-// away. Node contract tests import this source without Vite and keep both.
+// Staging is a test-mocks surface (ELIZA_DEV_ALLOW_TEST_MOCKS=1): QA builds reach
+// api-staging.eliza.app, its issuer and its web origins (docs/cloud-subscription-qa.md).
+// Vite replaces import.meta.env at build time, so flag-off bundles fold the staging
+// authority away. Node contract tests import this source without Vite and keep both.
 const stagingAvailable: boolean = import.meta.env === undefined || import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS === '1';
 const authorities: Partial<Record<CloudEnvironment, CloudAuthority>> = {
   production: { api: "https://api.eliza.app", web: "https://eliza.app", agents: "cloud.eliza.app" },
@@ -21,6 +22,12 @@ const authorities: Partial<Record<CloudEnvironment, CloudAuthority>> = {
 };
 /** Whether this build can address the environment. Production builds expose only production. */
 export function cloudEnvironmentAvailable(environment: CloudEnvironment): boolean { return authorities[environment] !== undefined; }
+/** The one hosted plan page an environment opens in the system browser. Nothing else is opened for billing. */
+export function planManagementUrl(environment: CloudEnvironment): string {
+  const authority = authorities[environment];
+  if (!authority) throw new Error("This Eliza Cloud environment is unavailable in this build.");
+  return `https://${authority.agents}/cloud/billing`;
+}
 export interface CloudCredential {
   /** Local generation identifier, never an authentication credential. */
   credentialId?: string;
@@ -211,22 +218,66 @@ export class CloudProtocol {
   private async call(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
     return object(await this.requestData(path, signal, options));
   }
-  /** Transitional pre-subscription account check. Used only while Cloud has not deployed the
-   * subscription entitlement route; the UI shows plan state, never a credit balance or top-up.
-   * The credential ID binds the snapshot to one login; it is not a spend authorization. */
-  async creditBalance(signal: AbortSignal): Promise<{ balance: number; credentialId: string }> {
+  /** Plan state from the read-only billing snapshot, used only while the entitlement route is
+   * absent. `null` when the snapshot route is absent too or does not report a known plan state. */
+  async billingFallbackPlan(signal: AbortSignal): Promise<FallbackPlan | null> {
     signal.throwIfAborted();
     const credential = await this.credentials.read(this.environment);
     signal.throwIfAborted();
     if (!credential?.credentialId) throw new CloudProtocolError("credentials-missing");
-    const data = await this.call("/api/v1/credits/balance", signal, {
-      authenticated: true, credentialId: credential.credentialId,
-    });
+    let data: ObjectValue;
+    try { data = await this.call(BILLING_LIMITS_PATH, signal, { authenticated: true, credentialId: credential.credentialId }); }
+    catch (error) {
+      if (error instanceof CloudProtocolError && error.code === "http" && [404, 405, 501].includes(error.status ?? 0)) return null;
+      throw error;
+    }
     await this.assertSameCredential(credential.credentialId, signal);
-    const balance = typeof data.balance === "number" ? data.balance
-      : typeof data.balance === "string" && data.balance.trim() ? Number(data.balance) : NaN;
-    if (!Number.isFinite(balance)) throw new CloudProtocolError("invalid-response");
-    return { balance, credentialId: credential.credentialId };
+    if (data.success !== true) return null;
+    return fallbackPlanFromLimits(data);
+  }
+  /**
+   * Redeems a subscription grant code for the signed-in account. `idempotencyKey` is fresh for
+   * each owner submission; a transport failure (the request may have arrived) is retried once
+   * with the same key, which Cloud answers with the original grant. HTTP refusals are never
+   * retried. The code is never logged, stored or put in an error.
+   */
+  async redeemSubscriptionCode(code: string, idempotencyKey: string, signal: AbortSignal): Promise<RedeemResult> {
+    signal.throwIfAborted();
+    const normalized = normalizeSubscriptionCode(code);
+    if (!normalized) throw new SubscriptionRedeemError("invalid");
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new TypeError("Invalid idempotency key");
+    const credential = await this.credentials.read(this.environment);
+    signal.throwIfAborted();
+    if (!credential?.credentialId) throw new CloudProtocolError("credentials-missing");
+    let data: ObjectValue | undefined;
+    for (let attempt = 0; data === undefined; attempt++) {
+      try { data = await this.call(REDEEM_PATH, signal, { authenticated: true, credentialId: credential.credentialId, body: { code: normalized, idempotencyKey } }); }
+      catch (error) {
+        signal.throwIfAborted();
+        if (error instanceof CloudProtocolError) {
+          if (error.code !== "http") throw error;
+          const status = error.status ?? 0, body = error.data && typeof error.data === "object" ? error.data as ObjectValue : {};
+          if (status === 401) throw error;
+          if (status === 400) throw new SubscriptionRedeemError("invalid");
+          if (status === 409) throw new SubscriptionRedeemError(body.code === "subscription_grant_already_redeemed" ? "already-redeemed" : "invalid");
+          if (status === 429) throw new SubscriptionRedeemError("rate-limited", readServiceLimit({ status, data: error.data })?.retryAfterMs ?? null);
+          if (status === 403) throw new SubscriptionRedeemError("account");
+          throw new SubscriptionRedeemError("unavailable");
+        }
+        if (error instanceof Error && error.message === "Cloud account changed") throw error;
+        // Transport failure: the request may have reached Cloud. One replay with the same key.
+        if (attempt >= 1) throw new SubscriptionRedeemError("unavailable");
+        await delay(1000, signal);
+      }
+    }
+    await this.assertSameCredential(credential.credentialId, signal);
+    const grant = data.grant && typeof data.grant === "object" && !Array.isArray(data.grant) ? data.grant as ObjectValue : null;
+    if (data.success !== true || !grant || typeof data.replayed !== "boolean") throw new SubscriptionRedeemError("unavailable");
+    const endsAt = typeof grant.endsAt === "string" ? Date.parse(grant.endsAt) : NaN;
+    const summary = data.entitlement && typeof data.entitlement === "object" ? data.entitlement as ObjectValue : null;
+    const plan = summary?.plan && typeof summary.plan === "object" ? summary.plan as ObjectValue : null;
+    const planName = typeof plan?.name === "string" && plan.name.trim() && plan.name.length <= 80 && !/[\x00-\x1f\x7f]/.test(plan.name) ? plan.name.trim() : null;
+    return { replayed: data.replayed, grantEndsAt: Number.isFinite(endsAt) ? endsAt : null, paidPlanTakesPrecedence: grant.paidPlanTakesPrecedence === true, planName };
   }
   private async assertSameCredential(credentialId: string, signal: AbortSignal) {
     const current = await this.credentials.read(this.environment);
@@ -267,12 +318,13 @@ export class CloudProtocol {
     return { issuer: this.entitlementIssuer,
       entitlement: signal => this.subscriptionEntitlement(signal),
       entitlementKeys: signal => this.subscriptionEntitlementKeys(signal),
-      legacyAccountUsable: async signal => (await this.creditBalance(signal)).balance > 0 };
+      fallbackPlan: signal => this.billingFallbackPlan(signal) };
   }
-  /** Opens Cloud's hosted plan management page. No checkout, upgrade or overage purchase is created here. */
+  /** Opens Cloud's hosted plan page (exactly planManagementUrl) in the system browser. No
+   * checkout, upgrade or overage purchase is created here; the owner chooses a plan in Cloud. */
   async openSubscriptionManagement(signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
-    await this.openExternal(`https://${this.authority.agents}/cloud/billing`, signal);
+    await this.openExternal(planManagementUrl(this.environment), signal);
     signal.throwIfAborted();
   }
   /** Scoped personal onboarding, using the existing native credential transport. */
