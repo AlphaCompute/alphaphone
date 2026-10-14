@@ -64,9 +64,10 @@ export interface ConnectionSnapshot {
   residentPlanNotice?: 'needs-plan' | 'offline' | null;
   /**
    * Whether the running on-device agent has Eliza Cloud inference bound: 'cloud' when an
-   * admitted plan bound it, 'unavailable' when the agent runs without it. Never a credential.
+   * admitted plan bound it, 'unavailable' when the agent runs without it, 'unknown'
+   * when native state has not been confirmed. Never a credential.
    */
-  residentInference?: 'cloud' | 'unavailable' | null;
+  residentInference?: 'cloud' | 'unavailable' | 'unknown' | null;
   /** When the current plan or redeemed grant ends, if Cloud reported it. */
   planEndsAt?: number | null;
   /** Outcome of the last subscription code submission. Never contains the code. */
@@ -600,14 +601,14 @@ async function applyResidentBinding(admission:ResidentAdmission,signal:AbortSign
       return {binding:'cloud'};
     }catch(error){
       signal.throwIfAborted();
-      // The agent still starts, without Cloud inference; the owner can check the plan again.
-      try{await clearLocalProvider();}catch{/* Native refuses a provider whose account changed; Cloud still decides each request. */}
+      // Start without Cloud inference only after native confirms removal.
+      try{await clearLocalProvider();}catch(cause){residentBinding=null;update({residentInference:'unknown'});throw new Error('Cloud inference removal could not be confirmed. Retry in Settings before restarting your agent.',{cause});}
       signal.throwIfAborted();
       return {binding:'unbound',error:`AI could not be connected to your Eliza Cloud plan: ${errorMessage(error)} Your agent is running; check your plan again in Settings.`};
     }
   }
   // Unbound: remove any stored Cloud inference binding. A no-op (no restart) when none is stored.
-  try{await clearLocalProvider();}catch{/* The agent still starts; Cloud refuses AI requests without a plan. */}
+  try{await clearLocalProvider();}catch(cause){residentBinding=null;update({residentInference:'unknown'});throw new Error('Cloud inference removal could not be confirmed. Retry in Settings before restarting your agent.',{cause});}
   signal.throwIfAborted();
   return {binding:'unbound'};
 }
@@ -664,7 +665,7 @@ async function connectResident(signal: AbortSignal) {
   // Browser development keeps its explicit restore flow; Android restores the saved conversation.
   if(residentCloudFlow()&&admission&&bound){
     residentBinding=bound.binding;
-    update({residentInference:bound.binding==='cloud'?'cloud':'unavailable'});
+    update({residentInference:bound.binding==='cloud'?'cloud':bound.binding==='unbound'?'unavailable':'unknown'});
     // The agent is running. A sign-in that is still required keeps the (non-dismissible) sign-in
     // dialog; everything else is a notice beside the running agent, never a gate.
     const notice=admission.notice,error=bound.error??notice?.error;
@@ -1232,7 +1233,7 @@ export const connectionController = {
     const view=state.residentSubscription,account=state.cloudAccount,plan=view&&view.kind!=='checking'?describeSubscription(view):null;
     const expiresAt=account?.expiresAt??null;
     // The agent always runs; this says only whether Eliza Cloud AI is connected to it.
-    const inference=state.residentInference==='cloud'?'Eliza Cloud':state.residentPlanNotice==='offline'?'Unavailable · Cloud unreachable':state.residentInference==='unavailable'?(account?'Unavailable · needs a plan':'Unavailable · sign in'):'Starting…';
+    const inference=state.residentInference==='unknown'?'Status unconfirmed':state.residentInference==='cloud'?'Eliza Cloud':state.residentPlanNotice==='offline'?'Unavailable · Cloud unreachable':state.residentInference==='unavailable'?(account?'Unavailable · needs a plan':'Unavailable · sign in'):'Starting…';
     if(state.residentPlanNotice==='offline'&&!account){const recent=readPlanAdmission();return {signedIn:false,offline:true,account:null,plan:recent?`${recent.planName} · offline`:'Offline',status:recent?.status??null,endsAt:state.planEndsAt??null,keyExpiresAt:null,keyExpiring:false,inference};}
     return {signedIn:!!account,offline:false,inference,account:account?(account.email||`Account ${account.userId.slice(0,8)}`):null,
       plan:state.residentPlanNotice==='needs-plan'&&view?.kind!=='inactive'?'No active plan':plan?.headline??(account?'Checking plan…':'Not signed in'),
@@ -1508,12 +1509,13 @@ export const connectionController = {
   },
   async cloudSignOut() {
     await work('Signing out of Cloud services…', async signal => {
+      let unbindError:unknown;
       if(residentCloudFlow()){
         stopEntitlementRefresh();writePlanAdmission(null);update({residentSubscription:null,residentPlanNotice:null,planEndsAt:null,redeemError:'',redeemNotice:''});
         // Unbind Cloud inference before the key is revoked: native stops a process holding the key
         // and removes the binding. The agent is started again, unbound, after sign-out below.
-        await retire();residentBinding='unbound';update({residentInference:'unavailable'});
-        if(residentBindable())try{await clearLocalProvider();}catch{/* Removing the sign-in below also stops a process bound to it. */}
+        await retire();residentBinding=null;update({residentInference:'unknown'});
+        if(residentBindable())try{await clearLocalProvider();residentBinding='unbound';update({residentInference:'unavailable'});}catch(error){unbindError=error;}
       }
       const previous = service; detachCloudTarget(); detachService();
       localStorage.removeItem(CLOUD_SERVICE);
@@ -1526,6 +1528,7 @@ export const connectionController = {
       await client.disconnect();
       const message = revoked ? 'Signed out of Eliza Cloud. This sign-in was revoked.' : 'Signed out of Eliza Cloud on this phone. The sign-in token was removed here; Eliza Cloud did not confirm revoking it.';
       update({ agents: [], residentSavedCredential:false, ...(residentCloudFlow()?{purpose:'agent' as const}:{}), message });
+      if(unbindError)throw new Error(`${message} Cloud inference removal could not be confirmed. Retry in Settings before restarting your agent.`,{cause:unbindError});
       // The agent keeps running: reconnected (or restarted) without Cloud inference, and the
       // sign-in dialog asks for an account again.
       // A cancelled sign-out still removed the local key above; the agent is then started by the queued rebind.
@@ -1635,7 +1638,7 @@ export const connectionController = {
       // The on-device agent answered without Eliza Cloud inference (no plan, offline or signed
       // out): its turn is recorded in the conversation, and the owner gets an honest answer with
       // the plan actions instead of a generic failure. Nothing is retried or purchased.
-      if (failed && selected.kind === 'resident' && residentCloudFlow() && (state.residentInference !== 'cloud' || ('failureKind' in reply && reply.failureKind === 'no_provider'))) {
+      if (failed && selected.kind === 'resident' && residentCloudFlow() && (state.residentInference === 'unavailable' || ('failureKind' in reply && reply.failureKind === 'no_provider'))) {
         const notice = state.residentPlanNotice ?? null, signedIn = !!state.cloudAccount;
         return { text: inferenceUnavailableReply(notice, signedIn), planAction: notice === 'offline' ? 'retry' : signedIn ? 'plan' : 'sign-in', ...(typeof reply.messageId === 'string' && validateUuid(reply.messageId) ? { messageId: reply.messageId } : {}), ...(typeof reply.userMessageId === 'string' && validateUuid(reply.userMessageId) ? { userMessageId: reply.userMessageId } : {}), messageBinding: { conversationId: id, session: { ...session } } };
       }

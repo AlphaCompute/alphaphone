@@ -165,3 +165,10 @@ JVM source-copy fixtures and a controlled browser bridge exercise the rejection 
 review contracts; they do not establish Android permission, MediaStore, native
 lifecycle or live Gmail acceptance. Keep #419 open until the dependency stack is
 integrated and those native/provider checks are completed.
+
+Provider-removal failures must remain visible: a rejected native clear or a configured
+read-back does not establish an unbound resident. Cloud sign-out still revokes the
+session and removes its local token, but does not restart a resident whose old
+inference binding could not be confirmed removed. A retained offline binding is
+shown as unconfirmed until its state is established. Synthetic browser coverage
+exercises these failures; this is not device or live Cloud acceptance.

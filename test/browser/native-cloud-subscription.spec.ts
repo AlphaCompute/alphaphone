@@ -56,7 +56,7 @@ async function entitlements(overrides:Record<string,unknown>={}){
 // stops a running process, start launches it (bound or unbound), and a chat turn without a bound
 // provider is answered by the local runtime as provider-less (upstream failureKind no_provider).
 type Fixture={plan?:string;route?:'signed'|'absent'|'503'|'401'|'offline';limits?:'active'|'none'|'canceled'|'absent'|'503';identity?:'ok'|'offline'|'401';
- redeem?:'ok'|'invalid'|'rate'|'already'|'transport-once';redeemPlan?:string;saved?:boolean;expiresAt?:number;holdProvider?:boolean;bound?:boolean;storage?:Record<string,string>};
+ redeem?:'ok'|'invalid'|'rate'|'already'|'transport-once';redeemPlan?:string;saved?:boolean;expiresAt?:number;holdProvider?:boolean;bound?:boolean;clearFailure?:boolean;clearRetainsBinding?:boolean;storage?:Record<string,string>};
 async function boot(page:Page,initial:Fixture&{tokens?:Record<string,string>;keys?:unknown[]}={}){
  page.on('pageerror',(error:Error)=>console.error('Composition page error:',error.message));
  await page.route('https://**',route=>route.abort());
@@ -75,7 +75,7 @@ async function boot(page:Page,initial:Fixture&{tokens?:Record<string,string>;key
     if(method==='start'){f.running=true;f.starts++;return {state:'ready'};}
     if(method==='stop'){f.running=false;return {};}
     if(method==='configureCloudProvider'){if(f.holdProvider)await new Promise<void>(resolve=>f.releaseProvider=resolve);f.running=false;f.bound=true;return {configured:true};}
-    if(method==='clearProvider'){if(f.bound)f.running=false;f.bound=false;return {configured:false};}
+    if(method==='clearProvider'){if(f.clearFailure)throw Error('Synthetic native removal failed');if(f.clearRetainsBinding)return {configured:false};if(f.bound)f.running=false;f.bound=false;return {configured:false};}
     if(method==='providerStatus')return {provider:'elizacloud',configured:f.bound,...(f.bound?{model:'cerebras/qwen-3.8-27b'}:{})};
     if(method==='residentAttachment')return {attachable:false,reason:'not-enrolled'};
     if(method==='addListener')return {remove:async()=>{}};
@@ -552,4 +552,24 @@ test.describe('account, plan and sign-in expiry',()=>{
   await page.evaluate(()=>(window as any).planController.openPlan());
   await expect(page.getByRole('button',{name:'Approve this phone again',exact:true})).toHaveCount(0);
  });
+});
+
+for(const failure of ['clearFailure','clearRetainsBinding'])test(`native ${failure} cannot claim Cloud inference is removed or start with the old binding`,async({page})=>{
+ await boot(page,{saved:false,bound:true,[failure]:true});
+ await expect.poll(async()=>(await snapshot(page)).residentInference).toBe('unknown');
+ await idle(page);
+ expect((await snapshot(page)).error).toContain('removal could not be confirmed');
+ expect(await page.evaluate(()=>(window as any).planFixture.starts)).toBe(0);
+ expect(await page.evaluate(()=>(window as any).planFixture.bound)).toBe(true);
+});
+test('failed native removal still revokes and removes the Cloud sign-in without restarting the old binding',async({page})=>{
+ await boot(page,{...await entitlements()});await agentRunning(page,'cloud');
+ await fixture(page,{clearFailure:true});
+ const before=await page.evaluate(()=>(window as any).planFixture.starts);
+ await page.evaluate(()=>(window as any).planController.cloudSignOut());await idle(page);
+ expect(await page.evaluate(()=>(window as any).planFixture.saved)).toBe(false);
+ expect(await page.evaluate(()=>(window as any).planFixture.starts)).toBe(before);
+ expect((await snapshot(page)).residentInference).toBe('unknown');
+ expect((await snapshot(page)).error).toContain('removal could not be confirmed');
+ expect((await cloudRequests(page)).some(c=>c.path==='/api/v1/api-keys/current' && c.httpMethod==='DELETE')).toBe(true);
 });
