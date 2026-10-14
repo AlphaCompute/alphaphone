@@ -337,6 +337,19 @@ async function ensureResident() {
   await startResident('Restarting your agent…', true);
   update({ open: open || state.open, message: message || (state.session ? '' : state.message), error: state.error || error });
 }
+/** P-11: a startup path that ended without any agent (a Cloud account check that returned early, or
+ * a saved development/remote/Cloud agent that could not be restored) must not keep claiming
+ * "starting" with nothing starting. With the resident selected it starts now; otherwise the
+ * state is `recovering`, whose Retry starts the resident. */
+async function settleResidentAfterStartup() {
+  if (!residentAlwaysPresent || active || operation || state.kind !== 'starting') return;
+  // Mock mode (test mocks only) runs no agent connection at all.
+  if (testMocksEnabled && new URLSearchParams(location.search).get('mode') === 'mock') return;
+  const saved = selection();
+  if (saved?.kind === 'mock') return;
+  if (!saved || saved.kind === 'resident') { await ensureResident(); return; }
+  update({ kind: 'recovering' });
+}
 function activate(next: Active, session: VerifiedSession, name: string) {
   retireReadReplies();
   active?.viewNavigation?.dispose();
@@ -1157,7 +1170,7 @@ export const connectionController = {
         }
         else if(saved.kind==='remote'||saved.kind==='local')await connectRemote(saved.kind, saved.origin, '', signal);
       });
-    })();
+    })().then(settleResidentAfterStartup);
     return startup;
   },
   /** Test mocks only: leave mock mode or a fixture connection where no resident runs. Where the
@@ -1218,12 +1231,16 @@ export const connectionController = {
   },
   async residentCloudLogin() {
     await work('Opening Eliza Cloud sign-in…',async signal=>{
-      // A running process retains its environment; stop it before replacing credentials.
-      await stopLocalAgent(); await retire(); detachService();
+      // P-11: the resident keeps running while the owner signs in in the browser; a cancelled or
+      // failed sign-in leaves it untouched. (The native credential write itself stops a process
+      // whose provider environment depends on the replaced key.)
+      detachService();
       update({residentBalance:null}); cloud=makeCloud('production');
       // A login over a saved key revokes that key first (best effort); see CloudProtocol.login.
       const login=await cloud.login(signal,()=>update({message:'Finish signing in to Eliza Cloud in your browser, then return here.'}));
       const issued=(await cloudCredentialStore.read('production'))?.credentialId;
+      // A running process retains its environment; restart it so it launches with the new sign-in.
+      signal.throwIfAborted(); await stopLocalAgent(); await retire();
       await connectResident(signal);
       // Cloud refused the key it just issued. It is removed rather than kept for a retry that cannot
       // work; the resident keeps running without AI (P-11).

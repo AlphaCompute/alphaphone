@@ -27,7 +27,7 @@ async function agentConnection(page: Page) {
   return page.getByRole('dialog');
 }
 
-test('signing out of account A and into account B stops the resident first and uses only B afterwards', async ({ page }) => {
+test('signing out of account A and into account B stops the resident before A is revoked and uses only B afterwards', async ({ page }) => {
   test.setTimeout(150_000);
   const foreign = await fenceNetwork(page);
   await flagOffAndroid(page);
@@ -67,7 +67,10 @@ test('signing out of account A and into account B stops the resident first and u
   expect(order.slice(firstStart, revokeA)).toContain('Agent.stop');
   expect(revokeA).toBeLessThan(removeA);
   expect(removeA).toBeLessThan(storeB);
-  expect(order.slice(signOut, storeB)).toContain('Agent.stop');
+  // P-11: after sign-out the resident runs with no provider, and it keeps running while the owner signs
+  // in as B in the browser; it is stopped only after B's key is stored, then restarted bound to B.
+  expect(order.slice(signOut, storeB)).not.toContain('Agent.stop');
+  expect(order.slice(storeB, lastStart)).toContain('Agent.stop');
   // B's key binds the provider before the agent starts again, with B's credits read first.
   expect(order.indexOf('credits ' + B.email)).toBeGreaterThan(storeB);
   expect(order.indexOf('configureCloudProvider ' + stored.credentialId)).toBeGreaterThan(order.indexOf('credits ' + B.email));

@@ -39,3 +39,14 @@ test('browser speech has no Web Speech fallback', () => {
   for (const file of ['apps/app/src/browser/voice.ts', 'apps/app/src/browser/browser-surface.ts'])
     assert.doesNotMatch(read(file), /speechSynthesis|SpeechSynthesisUtterance/, file);
 });
+
+test('no startup path ends claiming "starting" with nothing starting', () => {
+  // Every startup outcome is settled: the resident starts, or the state is `recovering` with Retry.
+  assert.match(connection, /\}\)\(\)\.then\(settleResidentAfterStartup\);/);
+  assert.match(connection, /async function settleResidentAfterStartup\(\) \{[\s\S]{0,600}await ensureResident\(\);[\s\S]{0,80}update\(\{ kind: 'recovering' \}\);/);
+});
+
+test('the Cloud sign-in keeps the resident running until the new key is stored', () => {
+  const login = connection.slice(connection.indexOf('async residentCloudLogin()'), connection.indexOf('async residentTopUp()'));
+  assert.ok(login.indexOf('cloud.login(') >= 0 && login.indexOf('stopLocalAgent()') > login.indexOf('cloud.login('), 'stop only after the browser sign-in returned');
+});

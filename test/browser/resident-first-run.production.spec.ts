@@ -39,13 +39,17 @@ async function firstRun(page: Page, overrides: Partial<StubAccount> = {}) {
   await expect(welcome.getByRole('button', { name: 'Use local apps without AI', exact: true })).toHaveCount(0);
   return { foreign, welcome };
 }
-/** No key was kept or bound, and the resident is running again without AI (P-11). */
-async function nothingLeft(page: Page, welcome: ReturnType<Page['getByRole']>) {
+/** No key was kept or bound, and the resident is running without AI (P-11). `untouched`: the sign-in
+ * never stored a key, so the resident kept running throughout (never stopped, never restarted). */
+async function nothingLeft(page: Page, welcome: ReturnType<Page['getByRole']>, untouched = false) {
   await expect(welcome.getByText('Running on this device', { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeEnabled();
   expect(await harness(page, f => f.slots['cloud:production'] ?? null)).toBeNull();
   expect(await stub(page, s => s.order.some((entry: string) => entry.startsWith('configureCloudProvider')))).toBe(false);
-  expect(await starts(page)).toBeGreaterThanOrEqual(2);
+  if (untouched) {
+    expect(await starts(page)).toBe(1);
+    expect(await stub(page, s => s.order.includes('Agent.stop'))).toBe(false);
+  } else expect(await starts(page)).toBeGreaterThanOrEqual(2);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.selection.v1') ?? 'null'))).toEqual({ kind: 'resident' });
 }
 
@@ -101,7 +105,7 @@ test('first run: Cancel while waiting for the browser sign-in keeps no key and t
   const polls = await stub(page, s => s.polls);
   await page.waitForTimeout(2000);
   expect(await stub(page, s => s.polls)).toBe(polls);
-  await nothingLeft(page, welcome);
+  await nothingLeft(page, welcome, true);
   expect(foreign).toEqual([]);
 });
 
@@ -111,7 +115,7 @@ test('first run: an expired sign-in session keeps no key and the resident runs w
   await setStub(page, { login: 'expired' });
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
   await expect(welcome.getByText(/This sign-in link has expired/)).toBeVisible({ timeout: 30_000 });
-  await nothingLeft(page, welcome);
+  await nothingLeft(page, welcome, true);
 });
 
 test('first run: Cloud refusing the new key (401 on the account read) removes it and the resident runs without AI', async ({ page }) => {
