@@ -21,7 +21,7 @@ function complete(root){
  const native=path.join(root,PARADEE_NATIVE),bundle='assets/paradee-voice/v1/';
  const pins=[['tts/model.gguf','model'],['tts/lexicon.lex','lexicon'],['asr/model.gguf','asr'],['asr/mmproj.gguf','projector']].map(([name,data])=>({...write(native,bundle+name,data),path:name}));
  const inputs={paradee:pins[0],lexicon:pins[1]};write(root,PARADEE_SOURCE+'/inputs.json',JSON.stringify(inputs));
- write(root,'android/paradee-voice/asr-inputs.json',JSON.stringify({files:pins.slice(2)}));
+ write(root,'android/paradee-voice/asr-inputs.json',JSON.stringify({backend:'qwen3',files:pins.slice(2).map((pin,i)=>({...pin,role:i?'asr-mmproj':'asr-model'}))}));
  const manifest={format:'eliza-paradee-voice-v1',model:pins[0].path,lexicon:pins[1].path,files:pins};
  const files=pins.map(row=>({...row,path:bundle+row.path}));files.push(write(native,bundle+'manifest.json',JSON.stringify(manifest)));
  for(const abi of ['arm64-v8a','x86_64'])files.push(write(native,`jniLibs/${abi}/libelizainference.so`,abi));
@@ -48,3 +48,19 @@ test('app packaging requires the exact inference bytes for both ABIs, independen
  write(root,'android/app/src/main/jniLibs/x86_64/libelizainference.so','different');assert.throws(()=>verifyParadeeAppLinkage(root,{allowAbsent:true}),/x86_64/);
 });
 test('app Java-only allowance never admits a partial Paradee output',t=>{const root=fixture(t);assert.deepEqual(verifyParadeeAppLinkage(root,{allowAbsent:true}),{packaged:false,qualified:false});fs.mkdirSync(path.join(root,PARADEE_NATIVE),{recursive:true});assert.throws(()=>verifyParadeeAppLinkage(root,{allowAbsent:true}),/missing/);});
+
+test('a parakeet slot admits exactly one Phonon-2 GGUF and refuses any other file under asr/',t=>{
+ const root=fixture(t),{native,record,save}=complete(root),slot=path.join(root,'android/paradee-voice/asr-inputs.json');
+ const pair=JSON.parse(fs.readFileSync(slot,'utf8')).files;
+ // One parakeet-tdt GGUF: the slot record lists one file and the projector would be a stray file in asr/.
+ write(root,'android/paradee-voice/asr-inputs.json',JSON.stringify({backend:'parakeet',files:[pair[0]]}));
+ assert.throws(()=>verifyParadeeRuntime(root),/ASR file outside the reviewed slot/);
+ const bundle='assets/paradee-voice/v1/',manifestPath=path.join(native,bundle,'manifest.json'),manifest=JSON.parse(fs.readFileSync(manifestPath,'utf8'));
+ manifest.files=manifest.files.filter(row=>row.path!==pair[1].path);fs.unlinkSync(path.join(native,bundle,pair[1].path));
+ const entry=write(native,bundle+'manifest.json',JSON.stringify(manifest));
+ record.files=record.files.filter(row=>row.path!==bundle+pair[1].path&&row.path!==bundle+'manifest.json').concat([{...entry}]);save();
+ assert.deepEqual(verifyParadeeRuntime(root),{packaged:true,qualified:false});
+ // Backend and file count must agree, and an unknown backend is refused.
+ write(root,'android/paradee-voice/asr-inputs.json',JSON.stringify({backend:'parakeet',files:pair}));assert.throws(()=>verifyParadeeRuntime(root),/incomplete for the parakeet backend/);
+ write(root,'android/paradee-voice/asr-inputs.json',JSON.stringify({backend:'whisper',files:[pair[0]]}));assert.throws(()=>verifyParadeeRuntime(root),/backend must be parakeet or qwen3/);
+});

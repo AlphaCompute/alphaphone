@@ -59,7 +59,7 @@ separately. Nothing is downloaded or packaged into the phone APK.
 
 ## Actual proof
 
-`bun scripts/test-paired-whisper.mjs` runs against47846, uses normal owner
+The retired `test-paired-whisper.mjs` (deleted on 2026-10-14) ran against47846, uses normal owner
 pairing and Host10.0.2.2 to prevent loopback trust from replacing authentication.
 It synthesizes a fixed phrase with the same agent's Kokoro TTS, converts only
 that known fixture to PCM WAV, and transcribes it with real whisper.cpp.

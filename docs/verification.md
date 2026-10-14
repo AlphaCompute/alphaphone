@@ -252,6 +252,65 @@ Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
 
+## Pin move to c7a9a0d7e7 (2026-10-14): Phonon-2 and live voice
+
+Branch `claude/mvp-final` (not pushed). The pin moved from `644d56c93d` to `c7a9a0d7e7`, the
+elizaOS `develop` head (41 commits) that contains Phonon-2 (#36212, `d06a1aa9c9`), streaming ASR
+(#36213, `d68909cb`), live voice (#36214, `70dc0bbf`) and the voice gap fixes (#36239), with the
+llama.cpp gitlink `5df17a66` (llama.cpp `main` with elizaOS/llama.cpp#79). `vendor/eliza` is a
+standalone clone checked out at the pin; its nested llama.cpp is a fresh shallow clone at the
+gitlink. The nine `patches/eliza` targets are unchanged between the two pins. Development machine
+under heavy load from other sessions (load average 25 to 100). No emulator, device, AOSP image or
+hosted run; nothing installed.
+
+- `npm run upstream:verify`: source verified at `c7a9a0d7e7`; reachability re-recorded
+  (`identical` to `develop`, 2026-10-14) with #36212, #36213, #36214 and #36239 added to the record.
+- Engine and bundle (class B): `packages/app/scripts/paradee-voice/build-native.ts` at the pin
+  (NDK 28.2) built both ABIs with `LLAMA_BUILD_PARAKEET=ON` and eSpeak NG `N_PATH_HOME=1024`
+  (voice ABI 18, `paradee_supported()=1`, `asr_supported()=1`, 83 exports, LOAD alignment 16 KiB)
+  and converted the Paradee GGUF (now `357477…`, the v1_0 metadata of #36239) and the misaki
+  lexicon from pinned sources, both equal to their pins. `scripts/prepare-embedding-host.mjs
+  --build --remap-build-path` built the path-independent engine and the registered
+  `ElizaVoiceNative` JNI for both ABIs (receipt checks passed: ELF ABI, embedding symbols, only
+  `JNI_OnLoad` exported, 16 KiB alignment); those engine bytes are the voice host record's.
+  The Phonon-2 GGUF is the byte-reproducible conversion (`dc552eb7…`, 330,632,256 bytes) of
+  `FermionResearch/Phonon-2@7e153e40` made earlier with the pinned converter's `--verify`.
+- Voice staging: `node scripts/android-stage-voice-models.mjs --from <outputs>` staged both engines
+  and the bundle (Paradee, misaki, eSpeak NG data, Phonon-2, Silero VAD, notices including
+  Fermion's NOTICE and the CC-BY-4.0 text) with every byte equal to
+  `android/voice-host/qualified-voice-host.json`; `scripts/paradee-runtime.mjs --app-linkage` and
+  `scripts/voice-host.mjs --verify` admitted them (`qualified:false`).
+- Gradle `--offline -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1 -x :app:verifyEmbeddingHost`, with the
+  candidate embedding host libraries (not reviewed) copied into the ignored app `jniLibs`:
+  `:app:compileStandaloneDebugJavaWithJavac`, `:app:compileLauncherReleaseJavaWithJavac`,
+  `:app:compileStandaloneReleaseJavaWithJavac`, `:app:compile{Standalone,Launcher}DebugAndroidTestJavaWithJavac`
+  (including `LiveVoiceVadInstrumentedTest`), `:app:compileStandaloneDebugUnitTestJavaWithJavac`
+  and `:sense:compileReleaseJavaWithJavac` BUILD SUCCESSFUL, with `:local-speech:verifySpeechInputs`,
+  `:app:verifyParadeeAppLinkage` and `:app:verifyVoiceHost` passing and 29 pinned local-agent
+  sources staged (now including `BionicAsrStreams` and `ElizaAsrNativeEnv`).
+  `:app:assembleStandaloneDebug` then built a **developer** APK of 413,950,347 bytes (sha256
+  `e68ed8f3…`; 1,044,070,938 bytes with the Qwen3 pair at `644d56c93d`): both ABIs carry the
+  recorded `libelizainference.so`, `libparadeevoicejni.so` and the candidate app JNI, and
+  `assets/paradee-voice/v1` stores (no longer deflates) the GGUFs and lexicon. It has no resident
+  runtime payload and skipped the embedding-host admission: build evidence only, not a
+  distribution build, never installed or run. The candidate libraries were removed afterwards.
+- Live voice (class S): `test/live-voice.test.mjs` (the client against a stub agent speaking the
+  upstream wire format, stale-turn and other-session drops, one final per turn, numbers-only latency
+  in diagnostics, the host-JVM `LiveVadGate` run) and `test/browser/live-voice.spec.ts` (Chromium,
+  stub agent over a routed WebSocket: interim text replaced by each newer partial, cleared at the
+  final, nothing in storage) passed. The Chromium voice, speech and timing specs passed (44 of 44), and the production project's
+  `native-speech.production.spec.ts` and `production-surface.spec.ts` passed (32 of 32).
+  Live voice has not run on an emulator or a device, and interim text does not reach the phone
+  (the agent IPC has no event stream; [fused speech](fused-speech.md#live-voice-android-voice-conversation)).
+- `npm run verify`: exit 0 at the final content (prepare-client, `tsc --noEmit`, node tests 1238 of
+  1238 plus `scripts/test-notes-query-flow.ts`, `npm run build`, `npm run audit:bundle` PASS, 389
+  files, `testMocks=false`). The resident dependency audit was re-run at the pin (`vendor/eliza/bun.lock`
+  is unchanged, so its findings and dispositions are unchanged).
+- Not done: `npm run android:build:local` (the embedding host needs a person to review a receipt at
+  this pin), on-device qualification of the voice host, any APK install, instrumentation run,
+  emulator HOME-role test, AOSP image, live Eliza Cloud or device acceptance. Evidence classes E, I,
+  R and D are absent.
+
 ## Pin move to 644d56c93d (2026-10-14): shared voice stack
 
 Branch `claude/mvp-final` (not pushed). alphaphone#493 (`codex/shared-contract-pin-oct14`, not

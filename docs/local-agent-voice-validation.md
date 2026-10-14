@@ -37,7 +37,7 @@ npm run agent:prepare   # artifacts/local-agent-resident-<pinned commit>
 ELIZA_INFERENCE_LIBRARY=/absolute/libelizainference.dylib \
 ELIZA_KOKORO_MODEL_DIR=/absolute/kokoro \
 node scripts/start-local-voice-agent.mjs   # optional: --source <prepared tree> --profile <dir> --port <n> --bun <path>
-bun scripts/test-paired-local-voice.mjs
+# test-paired-local-voice.mjs (Kokoro era) was deleted on 2026-10-14
 ```
 
 The launcher uses the normal protected AlphaPhone Cerebras key file and a

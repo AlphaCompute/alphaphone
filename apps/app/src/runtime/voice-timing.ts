@@ -13,12 +13,32 @@
  * policy in force. The marks are raw: whether review time counts toward a target (A-10) is
  * decided by the aggregator's boundary, never by moving a mark.
  *
+ * A live turn (the agent's streaming ASR, live-voice.ts) also carries `live`: the ASR mode and
+ * numbers only — partial count, speech-start to first partial, speech-end to final on this
+ * client, and the agent's own last-frame to final. Never text.
+ *
  * Plain constants and function exports only: Node contract tests evaluate this source.
  */
 type VoiceTimingMark = 'recording-end' | 'transcript-ready' | 'send' | 'first-token' | 'final-reply' | 'first-audio';
 type VoiceTimingEntry = 'conversation' | 'notes';
 type VoiceTimingPolicy = 'auto-send' | 'review';
-type VoiceTimingRecord = { version: 1; id: string; recordedAt: number; route: string; cold: boolean; entry?: VoiceTimingEntry; policy?: VoiceTimingPolicy; marks: Partial<Record<VoiceTimingMark, number>>; outcome?: 'abandoned' };
+type VoiceTimingLive = { mode: 'stream' | 'batch' | 'unknown'; partials: number; firstPartialMs?: number; finalFromSpeechEndMs?: number; asrFinalFromSpeechEndMs?: number };
+type VoiceTimingRecord = { version: 1; id: string; recordedAt: number; route: string; cold: boolean; entry?: VoiceTimingEntry; policy?: VoiceTimingPolicy; marks: Partial<Record<VoiceTimingMark, number>>; live?: VoiceTimingLive; outcome?: 'abandoned' };
+const voiceTimingLiveNumbers = ['firstPartialMs', 'finalFromSpeechEndMs', 'asrFinalFromSpeechEndMs'] as const;
+/** The `live` numbers of a record, or undefined when the value is not exactly that shape. */
+export function voiceTimingLive(value: unknown): VoiceTimingLive | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const row = value as Record<string, unknown>;
+  if (!['stream', 'batch', 'unknown'].includes(row.mode as string) || !Number.isSafeInteger(row.partials) || (row.partials as number) < 0 || (row.partials as number) > 100000) return undefined;
+  const out: VoiceTimingLive = { mode: row.mode as VoiceTimingLive['mode'], partials: row.partials as number };
+  for (const key of voiceTimingLiveNumbers) {
+    const at = row[key];
+    if (at === undefined) continue;
+    if (typeof at !== 'number' || !Number.isFinite(at) || at < 0 || at >= 3_600_000) return undefined;
+    out[key] = Math.round(at);
+  }
+  return out;
+}
 const voiceTimingKey = 'alphaphone:voice-timing:v1';
 const voiceTimingLimit = 200;
 const voiceTimingOrder: VoiceTimingMark[] = ['recording-end', 'transcript-ready', 'send', 'first-token', 'final-reply', 'first-audio'];
@@ -33,6 +53,7 @@ function voiceTimingValid(value: unknown): value is VoiceTimingRecord {
   if (row.version !== 1 || typeof row.id !== 'string' || !/^[0-9a-f-]{36}$/.test(row.id) || !Number.isFinite(row.recordedAt) || typeof row.cold !== 'boolean' || !voiceTimingRoutes.includes(row.route as string)) return false;
   if ((row.entry !== undefined && row.entry !== 'conversation' && row.entry !== 'notes') || (row.policy !== undefined && row.policy !== 'auto-send' && row.policy !== 'review')) return false;
   if (!row.marks || typeof row.marks !== 'object' || Array.isArray(row.marks)) return false;
+  if (row.live !== undefined && !voiceTimingLive(row.live)) return false;
   return Object.entries(row.marks as Record<string, unknown>).every(([key, at]) => voiceTimingOrder.includes(key as VoiceTimingMark) && typeof at === 'number' && Number.isFinite(at) && at >= 0 && at < 3_600_000);
 }
 /** Every stored record that passes validation, oldest first. */
@@ -71,6 +92,15 @@ export function markVoiceTiming(mark: VoiceTimingMark, turn?: string): boolean {
   if (voiceTimingOrder.slice(0, index).some(prior => (row.marks[prior] ?? -1) > at)) return false;
   row.marks[mark] = at; voiceTimingSave(row);
   if (mark === 'first-audio') voiceTimingActive = undefined;
+  return true;
+}
+/** Attach live ASR numbers to the active turn (or the named one while it is still active). */
+export function recordLiveVoiceTiming(live: unknown, turn?: string): boolean {
+  const active = voiceTimingActive, numbers = voiceTimingLive(live);
+  if (!active || !numbers || (turn !== undefined && turn !== active.id)) return false;
+  const row = voiceTimingRecords().find(item => item.id === active.id);
+  if (!row || row.outcome || row.live) return false;
+  row.live = numbers; voiceTimingSave(row);
   return true;
 }
 /** The turn ended without a reply (cancelled, discarded, typed instead). Kept as abandoned. */

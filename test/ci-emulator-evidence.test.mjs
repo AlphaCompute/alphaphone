@@ -188,7 +188,7 @@ test('suite plans: default classes; reading classes with the builds and gates th
  assert.deepEqual(fused.variants,['standalone']);assert.equal(fused.testMocks,false);
  assert.deepEqual(fused.classes.map(name=>name.split('.').at(-1)),FUSED_SPEECH_CLASSES.map(name=>name+'InstrumentedTest'));
  // Each speech class is registered with its own gate; nothing here selects methods.
- assert.deepEqual(Object.fromEntries(FUSED_SPEECH_CLASSES.map(name=>[name,CLASS_REGISTRY[name].args])),{LocalSpeech:{localSpeech:'1'},LocalSpeechBridge:{localSpeechBridge:'1'},SpeechSentenceCancellation:{speechSentenceCancellation:'1'},VoiceNoteReadAloud:{localSpeech:'1'}});
+ assert.deepEqual(Object.fromEntries(FUSED_SPEECH_CLASSES.map(name=>[name,CLASS_REGISTRY[name].args])),{LocalSpeech:{localSpeech:'1'},LocalSpeechBridge:{localSpeechBridge:'1'},SpeechSentenceCancellation:{speechSentenceCancellation:'1'},VoiceNoteReadAloud:{localSpeech:'1'},LiveVoiceVad:{localSpeech:'1'}});
  assert.equal(speech[2].results,'test-results/android-instrumentation/ci-fused-speech/results.json');
  assert.ok(read(CANONICAL_TEST).includes('"1".equals(InstrumentationRegistry.getArguments().getString("localSpeech"))'));
  assert.throws(()=>suitePlan('all'),/Unknown suite/);assert.throws(()=>suitePlan('resident'),/Unknown suite/);
@@ -288,19 +288,19 @@ test('speech suite: networking is proven off before the speech classes, and only
 const sha=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const bytesSha=bytes=>createHash('sha256').update(bytes).digest('hex');
 test('speech candidate check refuses an APK whose voice bundle or x86_64 engine is not the recorded bytes',()=>{
- const model=Buffer.from('paradee'),lexicon=Buffer.from('misaki'),vad=Buffer.from('silero'),engine=Buffer.from('engine'),asr=Buffer.from('asr'),mmproj=Buffer.from('mmproj');
+ const model=Buffer.from('paradee'),lexicon=Buffer.from('misaki'),vad=Buffer.from('silero'),engine=Buffer.from('engine'),asr=Buffer.from('asr');
  const row=(file,role,bytes)=>({path:file,role,sha256:bytesSha(bytes),bytes:bytes.length});
  const host={models:[row('tts/paradee/paradee-8m-v1_0.gguf','tts-model',model),row('tts/paradee/misaki-en-us.lex','g2p-lexicon',lexicon),row('vad/silero-vad-v5.gguf','vad-model',vad),
-  row('asr/eliza-1-asr.gguf','asr-model',asr),row('asr/eliza-1-asr-mmproj.gguf','asr-mmproj',mmproj)],
+  row('asr/phonon-2-fv5.gguf','asr-model',asr)],
   abis:[{abi:'x86_64',libraries:[{name:'libelizainference.so',sha256:bytesSha(engine),bytes:engine.length}]}]};
  const apk=(change=()=>{},withAsr=false)=>{
   const listed=host.models.filter(entry=>withAsr||!entry.path.startsWith('asr/'));
   const files={'lib/x86_64/libelizainference.so':engine,'lib/x86_64/libparadeevoicejni.so':Buffer.from('jni'),
    'assets/paradee-voice/v1/manifest.json':Buffer.from(JSON.stringify({format:'eliza-paradee-voice-v1',files:listed.map(({path:file,sha256,bytes})=>({path:file,sha256,bytes}))}))};
-  for(const entry of listed)files[`assets/paradee-voice/v1/${entry.path}`]={'tts/paradee/paradee-8m-v1_0.gguf':model,'tts/paradee/misaki-en-us.lex':lexicon,'vad/silero-vad-v5.gguf':vad,'asr/eliza-1-asr.gguf':asr,'asr/eliza-1-asr-mmproj.gguf':mmproj}[entry.path];
+  for(const entry of listed)files[`assets/paradee-voice/v1/${entry.path}`]={'tts/paradee/paradee-8m-v1_0.gguf':model,'tts/paradee/misaki-en-us.lex':lexicon,'vad/silero-vad-v5.gguf':vad,'asr/phonon-2-fv5.gguf':asr}[entry.path];
   change(files);return {names:Object.keys(files),read:entry=>files[entry]??null};
  };
- // Without the ASR slot pair the run still exercises Paradee and cancellation; it is admitted and says it has no ASR.
+ // Without the ASR slot file (Phonon-2) the run still exercises Paradee and cancellation; it is admitted and says it has no ASR.
  assert.deepEqual(candidateProblems(apk(),host),[]);
  assert.equal(asrPackaged(apk()),false);
  assert.deepEqual(candidateProblems(apk(()=>{},true),host),[]);

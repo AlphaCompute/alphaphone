@@ -58,11 +58,23 @@ android {
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
  }
  buildFeatures { buildConfig true }
+ // The voice bundle's GGUF models and misaki lexicon are stored, not deflated (paradee-voice README):
+ // VoiceAssets.install copies them on first use without inflating 330 MB of Phonon-2.
+ androidResources { noCompress += ['gguf', 'lex'] }
  defaultConfig {
   buildConfigField 'boolean', 'AOSP_BUILD', 'false'
   buildConfigField 'String', 'ELIZA_CHROMIUM_PACKAGE_NAME', '""'
   buildConfigField 'String', 'ELIZA_CHROMIUM_CERT_SHA256', '""'
   buildConfigField 'boolean', 'ELIZA_DEV_ALLOW_TEST_MOCKS', 'false'
+  // libelizainference ASR backend and decode threads, exported by the pinned ElizaVoiceNative
+  // (ElizaAsrNativeEnv) before the library loads. The APK ships only Phonon-2
+  // (android/paradee-voice/asr-inputs.json), so the default is parakeet; an explicit
+  // ELIZA_ASR_BACKEND build environment (auto | parakeet | qwen3) overrides it. Empty threads
+  // means one per big core, measured on the device.
+  def elizaAsrBackend = (System.getenv('ELIZA_ASR_BACKEND') ?: 'parakeet').trim().toLowerCase()
+  def elizaAsrThreads = (System.getenv('ELIZA_ASR_THREADS') ?: '').trim()
+  buildConfigField 'String', 'ELIZA_ASR_BACKEND', "\"${elizaAsrBackend in ['auto', 'parakeet', 'qwen3', 'mtmd'] ? elizaAsrBackend : 'parakeet'}\""
+  buildConfigField 'String', 'ELIZA_ASR_THREADS', "\"${elizaAsrThreads ==~ /[0-9]{1,2}/ ? elizaAsrThreads : ''}\""
  }
  // Developer hooks (DevelopmentAgentPlugin, DevelopmentVoiceCapture, SyntheticAutofillService,
  // loopback cleartext config, peer-fixture visibility) are attached to debug variants only

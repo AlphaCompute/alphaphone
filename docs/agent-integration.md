@@ -143,7 +143,8 @@ runtime, follow [local agent setup](local-agent-development.md).
 fixture for real model turns, new-process history, cancellation and proposal-only
 actions. `scripts/test-dev-agent.mjs` exercises the host protocol and an approved
 temporary host note fixture. Neither proves Android UI execution. Local ASR's
-host-only and HTTP checks are in `scripts/test-local-asr.mjs`.
+host-only and HTTP checks were in the retired `test-local-asr.mjs` (Whisper era, deleted on
+2026-10-14); the current ASR route contract is checked against the pinned upstream workers.
 
 ## Verification boundaries
 

@@ -213,8 +213,41 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  @PluginMethod public void stopPlayback(PluginCall call){String requestId=call.getString("requestId");main.post(()->{if(requestId==null||Objects.equals(playbackRequestId,requestId))clearPlayback();call.resolve();});}
  @PluginMethod public void cancel(PluginCall call){Pending request=pending.get(call.getString("requestId",""));if(request!=null)request.cancel();call.resolve();}
  @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
- @Override protected void handleOnPause(){speechForeground=false;scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();for(Pending request:pending.values())request.cancel();main.post(this::clearPlayback);super.handleOnPause();}
- @Override protected void handleOnDestroy(){destroyed=true;finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);PluginWorkers.submit(workers,localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();}
+ // Live voice (live-voice.ts / native-live-voice.ts): app-process capture with Silero VAD. One capture at a time.
+ private final ExecutorService liveWorker=Executors.newSingleThreadExecutor();
+ private AlphaLiveVoiceCapture live; // Guarded by liveWorker (all access runs on it).
+ private final Map<String,Long> livePermissionEpochs=new ConcurrentHashMap<>();
+ @PluginMethod public void liveCaptureStatus(PluginCall call){
+  boolean permitted=getPermissionState("microphone")==PermissionState.GRANTED;
+  PluginWorkers.submit(liveWorker,()->{JSObject result=new JSObject();result.put("permission",permitted);result.put("available",!destroyed&&AlphaLiveVoiceCapture.vadAvailable(getContext()));call.resolve(result);},()->call.resolve(new JSObject().put("permission",permitted).put("available",false)));
+ }
+ @PluginMethod public void startLiveCapture(PluginCall call){
+  String id=call.getString("captureId","");
+  if(!id.matches("[0-9a-fA-F-]{36}")){call.reject("Invalid live capture");return;}
+  if(isDraining()||destroyed||!speechForeground){call.reject("Recording cancelled");return;}
+  if(getPermissionState("microphone")!=PermissionState.GRANTED){livePermissionEpochs.put(call.getCallbackId(),epoch.get());if(!LateLaunch.ask(call,()->requestPermissionForAlias("microphone",call,"liveMicrophonePermission")))livePermissionEpochs.remove(call.getCallbackId());return;}
+  startLive(call,id,epoch.get());
+ }
+ @PermissionCallback private void liveMicrophonePermission(PluginCall call){Long e=livePermissionEpochs.remove(call.getCallbackId());if(e==null||e!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startLive(call,call.getString("captureId",""),e);}
+ private void startLive(PluginCall call,String id,long e){
+  PluginWorkers.submit(liveWorker,()->{
+   if(destroyed||!speechForeground||e!=epoch.get()){call.reject("Recording cancelled");return;}
+   if(live!=null){live.stop();live=null;}
+   AlphaLiveVoiceCapture next=new AlphaLiveVoiceCapture(getContext(),id,new AlphaLiveVoiceCapture.Sink(){
+    public void frames(String captureId,JSArray frames,JSArray vad,float peak){notifyListeners("liveCaptureFrames",new JSObject().put("captureId",captureId).put("frames",frames).put("vad",vad).put("peak",peak));}
+    public void ended(String captureId,String error){JSObject event=new JSObject().put("captureId",captureId);if(error!=null)event.put("error",error);notifyListeners("liveCaptureEnded",event);}
+   });
+   try{next.start();live=next;call.resolve(new JSObject().put("captureId",id).put("sampleRate",AlphaLiveVoiceCapture.SAMPLE_RATE));}
+   catch(Exception|Error error){call.reject("Live capture could not start","capture");}
+  },()->call.reject("Voice unavailable"));
+ }
+ @PluginMethod public void stopLiveCapture(PluginCall call){
+  String id=call.getString("captureId","");
+  PluginWorkers.submit(liveWorker,()->{if(live==null||!live.captureId().equals(id)){call.resolve(new JSObject().put("captureId",id).put("durationMs",0));return;}long duration=live.stop();live=null;call.resolve(new JSObject().put("captureId",id).put("durationMs",duration));},()->call.resolve(new JSObject().put("captureId",id).put("durationMs",0)));
+ }
+ private void stopLiveCapture(){PluginWorkers.submit(liveWorker,()->{if(live!=null){live.stop();live=null;}},()->{/* Already shut down: its last task stopped the capture. */});}
+ @Override protected void handleOnPause(){speechForeground=false;stopLiveCapture();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();for(Pending request:pending.values())request.cancel();main.post(this::clearPlayback);super.handleOnPause();}
+ @Override protected void handleOnDestroy(){destroyed=true;stopLiveCapture();liveWorker.shutdown();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);PluginWorkers.submit(workers,localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();}
 }
 
 /** One foreground-only private audio draft. Capture and upload are separate user actions. */

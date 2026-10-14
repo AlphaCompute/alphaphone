@@ -241,7 +241,7 @@ test('Paradee notices preserve the eSpeak license and exclude the retired speech
   const espeak = entries.find(row => row.name.startsWith('eSpeak NG'));
   assert.equal(espeak.license, 'GPL-3.0-or-later');
   assert.match(espeak.text, /GNU GENERAL PUBLIC LICENSE/);
-  assert.equal(entries.some(row => row.name.startsWith('Sherpa-ONNX')), false);
+  assert.equal(entries.some(row => /^Sherpa-O/.test(row.name)), false);
 });
 
 function scratchRoot(t, {ownNodeModules = false} = {}) {

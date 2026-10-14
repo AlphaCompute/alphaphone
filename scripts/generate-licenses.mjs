@@ -598,7 +598,7 @@ function androidEntries(root, templates, errors) {
 
 /**
  * On-device speech: libelizainference with the shared paradee-voice library (Paradee-8M TTS, misaki
- * G2P with eSpeak NG out-of-lexicon fallback, the model-agnostic ASR slot, Silero VAD), read from
+ * G2P with eSpeak NG out-of-lexicon fallback, the ASR slot (Phonon-2), Silero VAD), read from
  * the Android voice host record (schema in scripts/voice-host.mjs, documented in docs/fused-speech.md).
  * No other speech inference engine ships in any build. Every component, model, data file and notice
  * the record names is listed; copyleft (eSpeak NG GPL-3.0-or-later) and unverified licences are
@@ -638,11 +638,24 @@ function voiceHostEntries(root, templates, errors) {
   for (const model of pinnedVoiceModels(record)) {
     const key = model.role === 'g2p-data' ? 'eSpeak NG 1.52.0 English data (voice bundle, tts/paradee/espeak-ng-data)' : model.role === 'notice' ? null : `${model.name} (${model.role})`;
     if (key === null) continue;
-    const entry = grouped.get(key) ?? {name: key, versions: [], license: licence(model.license), source: model.url ?? model.source};
+    const entry = grouped.get(key) ?? {name: key, versions: [], license: licence(model.license), source: model.url ?? model.source, model};
     entry.versions.push(`${model.path} sha256 ${model.sha256} (${model.bytes} bytes)`);
     grouped.set(key, entry);
   }
-  const models = [...grouped.values()].map(entry => ({name: entry.name, version: entry.versions.join('; '), license: entry.license, source: entry.source, ...licenceText(entry.license)}));
+  // A model whose licence requires attribution (Phonon-2, CC-BY-4.0) ships its attribution, the
+  // upstream NOTICE and the upstream licence text verbatim; its training-data terms are flagged.
+  const attributed = entry => {
+    const {model} = entry;
+    if (!model.attribution && !model.noticeFiles) return licenceText(entry.license);
+    const files = Array.isArray(model.noticeFiles) ? model.noticeFiles : [];
+    const missing = files.filter(file => !exists(root, file));
+    if (missing.length) errors.push(`${VOICE_HOST}: ${model.path} notice file missing: ${missing.join(', ')}`);
+    const text = [model.attribution ?? '', ...files.filter(file => exists(root, file)).map(file => normalizeText(read(root, file)))].filter(Boolean).join('\n\n');
+    // The weights' own licence is recorded; the training-data terms their NOTICE names are not
+    // established here, so they are flagged unverified (a record, never a build failure).
+    return {text, _flags: model.licenseFlags?.length ? ['unverified'] : [], ...(model.licenseFlags?.length ? {_reason: `${model.license} weights; attribution, NOTICE and licence text are in this entry. ${model.licenseFlags.join(' ')}`} : {})};
+  };
+  const models = [...grouped.values()].map(entry => ({name: entry.name, version: entry.versions.join('; '), license: entry.license, source: entry.source, ...attributed(entry)}));
   return [...components, ...models];
 }
 

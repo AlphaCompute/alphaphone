@@ -1,6 +1,10 @@
 # Combined host speech roundtrip
 
-`scripts/test-combined-voice-roundtrip.mjs` is prepared for the isolated combined Eliza host on47858. It has not been run against a service. The default invocation prints preparation metadata and exits without reading credentials or making requests. Only `--run` executes the proof. It never starts/restarts a host, requests a pairing code, creates a session or changes provider configuration.
+> Historical. This campaign used Kokoro and whisper.cpp, which no longer ship. Its script
+> (`test-combined-voice-roundtrip.mjs`) and the paired-Whisper script were deleted on 2026-10-14;
+> on-device speech is Paradee-8M and Phonon-2 on libelizainference ([fused speech](fused-speech.md)).
+
+`test-combined-voice-roundtrip.mjs` was prepared for the isolated combined Eliza host on47858. It has not been run against a service. The default invocation prints preparation metadata and exits without reading credentials or making requests. Only `--run` executes the proof. It never starts/restarts a host, requests a pairing code, creates a session or changes provider configuration.
 
 The explicit owner-only, non-symlink session file supplies an existing paired token in memory. Requests use Node HTTP with `Host:10.0.2.2:47858` and a non-loopback forwarded identity; `/api/auth/me` must return OWNER with session mode. The combined profile process record must match the supplied reviewed source manifest. No token, session identifier, raw failed response or subprocess stderr is printed or saved. Both TTS and ASR POST routes must reject missing and invalid credentials with401 before synthesis proceeds.
 
@@ -20,7 +24,7 @@ Prepared execution after the parent starts the reviewed combined host and suppli
 ALPHA_COMBINED_OWNER_SESSION=/absolute/private/session.json \
 ALPHA_COMBINED_SOURCE_MANIFEST=/absolute/reviewed-source.json \
 ALPHA_VOICE_ROUNDTRIP_OUTPUT=/absolute/new-evidence-directory \
-node scripts/test-combined-voice-roundtrip.mjs --run
+node test-combined-voice-roundtrip.mjs --run   # deleted
 ```
 
 `ALPHA_COMBINED_PROFILE` can name the explicitly isolated combined profile. Defaults are the prepared combined-agent47858 profile and `/opt/homebrew/bin/ffmpeg` / `ffprobe`; `ALPHA_FFMPEG` and `ALPHA_FFPROBE` may select reviewed installed tools. Syntax checking and the no-network preparation invocation pass. No combined-host result is claimed.
@@ -28,7 +32,7 @@ node scripts/test-combined-voice-roundtrip.mjs --run
 ## Earlier evidence audit
 
 - **47844:** `test-results/local-agent-voice/paired-http.json` records authenticated local Kokoro WAV synthesis (297644bytes, SHA-256 `663152d3e665a94358160255ae1b773b889e5b7650892c926b68641f9bb97426`),401 boundaries and a Cerebras text reply. It contains no ASR transcript or listening assessment. Native playback completion alone also does not establish intelligibility.
-- **47846:** `test-results/paired-whisper/real-http.json` is genuine prior machine-recognition evidence, recorded2026-09-30T11:28:16.668Z. `scripts/test-paired-whisper.mjs` synthesized “Please remember to water the plants tomorrow morning.” through that host's Kokoro, converted the actual audio with ffmpeg and submitted it to real tiny.en Whisper. The recorded transcript is the entire exact sentence; PCM SHA-256 is `98b304b8f11249eb540b95f6bcaeada5835e869a63b5b17fb5349deab392eea1`. Its assertion checked meaningful phrase inclusion, not a general WER metric. It also recorded missing/invalid401, duplicate409, silence/invalid422, oversize413, concurrent429 and actual decoding cancellation/release. This qualifies one synthetic phrase on that isolated historical runtime. It does not qualify the future combined47858 host, naturalness, human perception or every utterance.
+- **47846:** `test-results/paired-whisper/real-http.json` is genuine prior machine-recognition evidence, recorded2026-09-30T11:28:16.668Z. `test-paired-whisper.mjs` (deleted) synthesized “Please remember to water the plants tomorrow morning.” through that host's Kokoro, converted the actual audio with ffmpeg and submitted it to real tiny.en Whisper. The recorded transcript is the entire exact sentence; PCM SHA-256 is `98b304b8f11249eb540b95f6bcaeada5835e869a63b5b17fb5349deab392eea1`. Its assertion checked meaningful phrase inclusion, not a general WER metric. It also recorded missing/invalid401, duplicate409, silence/invalid422, oversize413, concurrent429 and actual decoding cancellation/release. This qualifies one synthetic phrase on that isolated historical runtime. It does not qualify the future combined47858 host, naturalness, human perception or every utterance.
 
 ## Configured voice asset identity
 

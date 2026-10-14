@@ -2,7 +2,7 @@
 /**
  * Hosted half of on-device speech qualification (.github/workflows/android-emulator.yml, job
  * `fused-speech`). The engine is libelizainference with the shared paradee-voice library (Paradee
- * TTS, misaki G2P, the ASR slot pair, Silero VAD) recorded in
+ * TTS, misaki G2P, the ASR slot (Phonon-2), Silero VAD) recorded in
  * android/voice-host/qualified-voice-host.json; this script checks the APK before the run and
  * packages what the run produced afterwards.
  *
@@ -11,7 +11,7 @@
  *
  * `check` refuses an APK whose voice bundle (assets/paradee-voice/v1) or x86_64 engine is not the
  * exact recorded bytes, or that carries no voice bundle at all (the emulator would only prove that
- * local speech is unavailable). A bundle without the ASR slot pair is admitted for the TTS and
+ * local speech is unavailable). A bundle without the ASR slot file is admitted for the TTS and
  * cancellation classes; the packaged result then records asrPackaged:false with on-device
  * transcription under notEvidenceFor. `package` copies the instrumentation record, the raw class
  * logs and the exact APK pair into one folder and writes result.json. Nothing is inferred: a run
@@ -30,15 +30,19 @@ import { FUSED_SPEECH_CLASSES } from "./emulator-suite.mjs";
 
 export const CANONICAL_TEST = "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LocalSpeechInstrumentedTest.java";
 export const BUNDLE = "assets/paradee-voice/v1";
-const SLOT = ["asr/eliza-1-asr.gguf", "asr/eliza-1-asr-mmproj.gguf"];
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+/** The reviewed ASR slot files (android/paradee-voice/asr-inputs.json): today the one Phonon-2 GGUF. */
+export function asrSlotPaths(root = repositoryRoot) {
+  return JSON.parse(fs.readFileSync(path.join(root, "android/paradee-voice/asr-inputs.json"), "utf8")).files.map(row => row.path);
+}
 export const ABI = "x86_64";
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 
-/** Whether the APK's voice bundle lists the ASR slot pair. `read(entry)` returns bytes or null. */
-export function asrPackaged({ read }) {
+/** Whether the APK's voice bundle lists every reviewed ASR slot file. `read(entry)` returns bytes or null. */
+export function asrPackaged({ read }, slot = asrSlotPaths()) {
   try {
     const files = JSON.parse(read(`${BUNDLE}/manifest.json`)?.toString("utf8") ?? "null")?.files ?? [];
-    return SLOT.every(slot => files.some(row => row.path === slot));
+    return slot.length > 0 && slot.every(file => files.some(row => row.path === file));
   } catch { return false; }
 }
 
@@ -105,7 +109,7 @@ export function packageSpeechRun({ results, output, repository = process.cwd(), 
     asrPackaged: asr,
     admission: "not admitted: arm64-v8a on hardware (class D) and a reviewer named by a person are still required; qualified-voice-host.json evidence is edited only by that review",
     notEvidenceFor: ["arm64-v8a", "microphone, speaker or perceptual quality", "Paradee intelligibility", "physical-device acceptance",
-      ...(asr === true ? [] : ["on-device transcription (no ASR slot pair was packaged)"])],
+      ...(asr === true ? [] : ["on-device transcription (no ASR slot file was packaged)"])],
   };
   fs.writeFileSync(path.join(target, "result.json"), `${JSON.stringify(result, null, 2)}\n`, { flag: "wx" });
   return result;
@@ -118,7 +122,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const problems = candidateProblems(apkReader(first), host);
     if (problems.length) { console.error(`Speech candidate refused:\n  - ${problems.join("\n  - ")}`); process.exit(1); }
     const reader = apkReader(first);
-    console.log(`Speech candidate admitted for the ${ABI} emulator run${asrPackaged(reader) ? "" : " without the ASR slot pair: Paradee and cancellation only; transcription is not evidenced"}`);
+    console.log(`Speech candidate admitted for the ${ABI} emulator run${asrPackaged(reader) ? "" : " without the ASR slot file: Paradee and cancellation only; transcription is not evidenced"}`);
   } else if (command === "package" && first && second) {
     let asr = null;
     try { asr = asrPackaged(apkReader("artifacts/standalone-debug.apk")); } catch { /* Unreadable APK: recorded as null. */ }

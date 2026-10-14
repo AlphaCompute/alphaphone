@@ -6,7 +6,8 @@ import {sanitizeCrashEntries,type CrashEntry} from './crash-log.ts';
  * values, failure classes). Everything else is dropped rather than scrubbed, so note text,
  * mail, addresses, provider keys, tokens, session and account identifiers, URLs and other
  * apps' package names cannot reach the export even if a caller passes them in. Voice latency
- * records keep their timing fields only; no transcript or reply text is ever copied.
+ * records keep their timing fields only (marks, and for a live turn the ASR mode, partial count
+ * and three spans); no transcript, partial or reply text is ever copied.
  */
 export const DIAGNOSTICS_FORMAT='alpha-diagnostics/v1';
 export const RUNTIME_ASSETS=['agent/alpha-source.json','agent/agent-bundle.js','agent/workflow-worker/manifest.json','agent/workflow-worker/files.sha256'] as const;
@@ -33,7 +34,8 @@ export type DiagnosticsInput={
  /** Parsed exportVoiceTiming() output. */
  voiceTiming?:unknown;
 };
-export type VoiceTimingRow={version:1;id:string;recordedAt:number;route:string;cold:boolean;entry?:'conversation'|'notes';policy?:'auto-send'|'review';marks:Record<string,number>;outcome?:'abandoned'};
+export type VoiceTimingLiveRow={mode:'stream'|'batch'|'unknown';partials:number;firstPartialMs?:number;finalFromSpeechEndMs?:number;asrFinalFromSpeechEndMs?:number};
+export type VoiceTimingRow={version:1;id:string;recordedAt:number;route:string;cold:boolean;entry?:'conversation'|'notes';policy?:'auto-send'|'review';marks:Record<string,number>;live?:VoiceTimingLiveRow;outcome?:'abandoned'};
 export type DiagnosticsReport={
  format:typeof DIAGNOSTICS_FORMAT;generatedAt:string;platform:'android'|'web';
  app:{version:string|null;versionCode?:number;variant?:'launcher'|'standalone';buildType?:'debug'|'release';testMocks?:boolean};
@@ -69,6 +71,14 @@ function voiceTimingRows(input:unknown):VoiceTimingRow[]{
   const out:VoiceTimingRow={version:1,id,recordedAt:row.recordedAt as number,route,cold:row.cold,marks};
   const entry=one(row.entry,['conversation','notes'] as const);if(entry)out.entry=entry;
   const policy=one(row.policy,['auto-send','review'] as const);if(policy)out.policy=policy;
+  // Live ASR numbers only (voice-timing.ts recordLiveVoiceTiming): mode, a count and three spans.
+  const live=row.live&&typeof row.live==='object'&&!Array.isArray(row.live)?row.live as Record<string,unknown>:null;
+  const liveMode=live?one(live.mode,['stream','batch','unknown'] as const):undefined;
+  if(live&&liveMode&&Number.isSafeInteger(live.partials)&&(live.partials as number)>=0&&(live.partials as number)<=100000){
+   const numbers:VoiceTimingLiveRow={mode:liveMode,partials:live.partials as number};
+   for(const key of ['firstPartialMs','finalFromSpeechEndMs','asrFinalFromSpeechEndMs'] as const){const at=live[key];if(typeof at==='number'&&Number.isFinite(at)&&at>=0&&at<3_600_000)numbers[key]=Math.round(at);}
+   out.live=numbers;
+  }
   if(row.outcome==='abandoned')out.outcome='abandoned';
   rows.push(out);
  }

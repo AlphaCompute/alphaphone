@@ -28,18 +28,22 @@ the operator's index of build, provisioning, release and support material is the
   agent runs behind it, and the plan decides only whether Cloud inference is bound into the
   running agent. There is no "without AI" or offline mode. Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The upstream pin in `upstream.lock.json` is `644d56c93d` (moved on 2026-10-14, branch
-  `claude/mvp-final`), the same shared-contract pin as alphaphone#493. It contains the shared
-  voice stack: ONNX speech paths removed (elizaOS/eliza#36153), the ASR registry gate (#36157),
-  the standalone Qwen3-ASR and Paradee host workers on libelizainference ABI v17 (#36158), the
-  RegisterNatives JNI v17 with Paradee TTS and ASR cancel (#36168) and the Paradee worker fix
-  (#36194), with the llama.cpp gitlink `3f131ab9` (Paradee-8M, native misaki G2P, voice ABI 18).
-  `scripts/ci/upstream-reachability.json` records `develop` reaching it on 2026-10-14. The
-  previous pin was `bc71e21f3b` (2026-10-13; see
+- The upstream pin in `upstream.lock.json` is `c7a9a0d7e7` (moved on 2026-10-14, branch
+  `claude/mvp-final`), the elizaOS `develop` head that contains Phonon-2 as the default mobile
+  ASR (elizaOS/eliza#36212, `d06a1aa9c9`), streaming ASR (#36213, `d68909cb`), live voice with the
+  `POST /api/asr/local-inference/live` route and ephemeral `voice-transcript` events (#36214,
+  `70dc0bbf`) and the voice gap fixes (#36239: AOSP eSpeak NG data, the Paradee GGUF named `v1_0`,
+  a 1024-byte eSpeak NG data path), with the llama.cpp gitlink `5df17a66` (llama.cpp `main`: the
+  `533d0d89` merge with Parakeet-TDT and its AVX2 tier, the Paradee GGUF pin #78 and the eSpeak
+  data-path fix #79; Paradee-8M, native misaki G2P, voice ABI 18).
+  `scripts/ci/upstream-reachability.json` records it as identical to `develop` on 2026-10-14. The
+  previous pin was `644d56c93d` (2026-10-14, the shared voice stack of alphaphone#493), before it
+  `bc71e21f3b` (2026-10-13; see
   [agent integration](agent-integration.md#upstream-changes-in-the-13c9857598-to-bc71e21f3b-move)).
-  At this pin there are only source and browser test results and Gradle compilation
-  ([verification](verification.md#pin-move-to-644d56c93d-2026-10-14-shared-voice-stack)); voice is
-  recorded in `android/voice-host/qualified-voice-host.json` and is not qualified.
+  At this pin there are only source and browser test results, Gradle compilation and Android
+  library builds ([verification](verification.md#pin-move-to-c7a9a0d7e7-2026-10-14-phonon-2-and-live-voice));
+  voice is recorded in `android/voice-host/qualified-voice-host.json` (Phonon-2 ASR slot) and is not
+  qualified.
   every other result in this document is at an earlier pin. The engine gitlink changed, so the
   reviewed ARM64 embedding host must be requalified before a distribution build
   (`android/embedding-host/qualified-host.json`). The previous pin, `13c9857598`, was the merge
@@ -198,6 +202,14 @@ Ledger refresh of 2026-10-11 at main `2560eead` (the merge of pull request #392)
 refresh re-derived the table above and the other ledgers from source, tests and the dated
 sections of [verification](verification.md). It ran the docs tests and `npm run verify` and
 produced no evidence of any other class. The newest evidence is the round 8 entry below.
+
+Pin move, 2026-10-14 (second): branch `claude/mvp-final`, upstream pin `c7a9a0d7e7` (from
+`644d56c93d`): Phonon-2 replaces the Qwen3-ASR pair in the ASR slot, the engine is rebuilt with
+`LLAMA_BUILD_PARAKEET=ON` for both ABIs, and the Android voice conversation streams to the
+agent's live ASR route. Nothing was pushed and no hosted run was made.
+- Class S and B, development machine: see [verification](verification.md#pin-move-to-c7a9a0d7e7-2026-10-14-phonon-2-and-live-voice).
+  The voice host and embedding host records are not qualified (human review pending); no E, I, R
+  or D evidence exists for this engine or for live voice.
 
 Pin move, 2026-10-14: branch `claude/mvp-final`, upstream pin `644d56c93d` (from `bc71e21f3b`),
 merging alphaphone#493 and consuming the shared voice stack (Paradee-8M, misaki G2P, the ASR slot,

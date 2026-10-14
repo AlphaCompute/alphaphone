@@ -1,2 +1,0 @@
-/tmp/claude-501/-Users-shawwalters-Documents-alphaphone/64d469c3-a277-49bf-9ffb-2a1b72247eb0/scratchpad/wt-final/vendor/eliza/packages/app/platforms/android/app/src/main/elizavoice-jni/CMakeLists.txt
-/tmp/claude-501/-Users-shawwalters-Documents-alphaphone/64d469c3-a277-49bf-9ffb-2a1b72247eb0/scratchpad/wt-final/vendor/eliza/packages/app/platforms/android/paradee-voice/src/main/cpp/CMakeLists.txt

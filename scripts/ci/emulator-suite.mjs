@@ -32,7 +32,7 @@ import { fileURLToPath } from "node:url";
 export const SERIAL = "emulator-5554";
 export const AVD = "test";
 /** On-device speech classes; each needs the packaged voice bundle and engine (see LocalSpeechInstrumentedTest). */
-export const FUSED_SPEECH_CLASSES = ["LocalSpeech", "LocalSpeechBridge", "SpeechSentenceCancellation", "VoiceNoteReadAloud"];
+export const FUSED_SPEECH_CLASSES = ["LocalSpeech", "LocalSpeechBridge", "SpeechSentenceCancellation", "VoiceNoteReadAloud", "LiveVoiceVad"];
 /** Flag-off classes that need isolated-world injection, and the ones that also need the test-mocks build. */
 export const READING_CLASSES = ["BrowserReadingNavigation", "BrowserPageQuestion"];
 export const READING_TEST_MOCKS_CLASSES = ["BrowserReading", "BrowserSensitiveReading", "BrowserIsolatedReading"];

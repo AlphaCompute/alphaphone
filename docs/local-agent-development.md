@@ -83,6 +83,12 @@ permissions (`chmod 600`). For example:
 }
 ```
 
+The TTS directory holds the pinned Paradee-8M GGUF and misaki lexicon (optionally
+`espeak-ng-data/`); the ASR directory holds `asr/phonon-2-fv5.gguf` (Phonon-2, the only GGUF under
+`asr/`) and `vad/silero-vad-v5.gguf`. The agent's host workers load them through
+libelizainference, and the ASR worker runs with `ELIZA_ASR_BACKEND=parakeet`
+(`scripts/host-speech-assets.json`, [host speech migration](host-speech-migration-2026-10-14.md)).
+
 `npm run dev` and `npm run dev:local` read this file at startup. A file that still uses the
 earlier Alpha-only keys (`ALPHA_LOCAL_TTS`, `ALPHA_LOCAL_ASR`, `ALPHA_TTS_MODEL_DIR`,
 `ALPHA_ASR_MODEL_DIR`, `ALPHA_TTS_LIBRARY`) is read as the upstream names, with a warning to
@@ -94,9 +100,9 @@ rejected. The file does not download assets or configure speech on Android. Spee
 development computer; text-model inference still uses the configured provider (Qwen
 `qwen-3.8-27b` on Cerebras).
 
-The earlier cold-Kokoro, paired-Whisper and combined voice-roundtrip campaigns refuse to run
-(`scripts/retired-host-speech-proof.mjs`); their historical evidence below describes the retired
-engines.
+The earlier cold-Kokoro, paired-Whisper and combined voice-roundtrip campaign scripts were deleted
+on 2026-10-14 (they could not qualify Paradee or Phonon-2); their historical evidence below
+describes the retired engines.
 
 Notes recording uses the selected Cloud account. The retired local-agent Notes UI journeys are removed; real browser capture, reviewed saves, cancellation and playback remain covered by the Cloud-bound recording E2E fixtures. Those fixtures use synthetic transport and do not qualify a live Cloud provider. The explicit local-host playback check above remains available for development speech. Native Android speech and physical-device acceptance remain separate.
 

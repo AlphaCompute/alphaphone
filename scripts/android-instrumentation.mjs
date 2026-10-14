@@ -160,9 +160,10 @@ export const CLASS_REGISTRY = {
   PhotosForeignLibrary: { args: {}, note: "requires an explicit disposable user, separate-UID synthetic ledger and expected permission scope; no implicit media access" },
   PhotosLibrary: { args: { photosLibrary: "1" }, note: "requires an owned disposable secondary user; synthetic generation fence only, not foreign-media permission acceptance" },
   UiDispatch: { args: { uiDispatch: "1" } },
-  LocalSpeech: { args: { localSpeech: "1" }, note: "needs the staged on-device voice outputs (assets/paradee-voice/v1: Paradee, misaki, ASR slot pair) and the recorded libelizainference engine; no device qualification is recorded yet" },
+  LocalSpeech: { args: { localSpeech: "1" }, note: "needs the staged on-device voice outputs (assets/paradee-voice/v1: Paradee, misaki, the Phonon-2 ASR slot) and the recorded libelizainference engine; no device qualification is recorded yet" },
   LocalSpeechBridge: { args: { localSpeechBridge: "1" }, note: "needs the staged on-device voice outputs including the ASR slot pair" },
   VoiceNoteReadAloud: { args: { localSpeech: "1" }, note: "needs the packaged voice bundle; not audible-speaker evidence" },
+  LiveVoiceVad: { args: { localSpeech: "1" }, note: "Silero VAD in the app process on the packaged bundle with the app JNI bridge; no microphone, no agent call" },
   SpeechSentenceCancellation: { args: { speechSentenceCancellation: "1" }, note: "needs the staged on-device voice outputs (Paradee)" },
   // Classes with no opt-in gate and no host, account or permission precondition.
   ActionJournal: {},

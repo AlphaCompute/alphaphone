@@ -20,8 +20,10 @@ Whisper executable, backend and single-model settings are retired.
 The TTS directory contains the shared pinned Paradee GGUF and Misaki lexicon.
 If `espeak-ng-data` is present its English data pins are checked too; without
 that optional directory, the shared worker spells unknown words letter by
-letter. ASR requires the shared pinned Qwen3-ASR GGUF pair under `asr/` and
-Silero VAD under `vad/`, with no alternative VAD GGUF. Exact paths, sizes and
+letter. ASR requires the shared pinned Phonon-2 GGUF (`asr/phonon-2-fv5.gguf`, the
+parakeet backend, upstream `PHONON_ASR_ASSETS`) as the only GGUF under `asr/` and
+Silero VAD under `vad/`, with no alternative VAD GGUF; the launchers export
+`ELIZA_ASR_BACKEND=parakeet` (updated for the `c7a9a0d7e7` pin). Exact paths, sizes and
 hashes are in `scripts/host-speech-assets.json`; a test compares them against
 the checked-out shared workers. Assets are not downloaded by these launchers.
 
@@ -40,9 +42,9 @@ recording their hashes and discoverable Mach-O dependencies. Unresolved and
 system dependencies remain explicit limitations of that closure record.
 
 The old cold-Kokoro, paired-Whisper, agent-ASR/TTS and combined voice-roundtrip
-campaign entrypoints explicitly refuse to run. They embed retired model and
-independent recognizer assumptions and cannot qualify this runtime. Their
-historical source and existing evidence are retained. Current admission,
+campaign entrypoints were deleted on 2026-10-14. They embedded retired model and
+independent recognizer assumptions and could not qualify this runtime. Their
+existing evidence is retained in the docs that describe it. Current admission,
 service lifecycle, protocol and proxy tests exercise source behavior with
 synthetic inputs; new installed-asset, intelligibility, cold-start latency and
 physical-device campaigns remain necessary. No new runtime qualification is

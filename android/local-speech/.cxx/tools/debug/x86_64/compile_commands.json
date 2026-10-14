@@ -1,7 +1,0 @@
-[
-{
-  "directory": "/tmp/claude-501/-Users-shawwalters-Documents-alphaphone/64d469c3-a277-49bf-9ffb-2a1b72247eb0/scratchpad/wt-final/android/local-speech/.cxx/Debug/195b4w55/x86_64",
-  "command": "/Users/shawwalters/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++ --target=x86_64-none-linux-android26 --sysroot=/Users/shawwalters/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot -DELIZA_VOICE_JNI_CLASS=\\\"ai/eliza/voice/VoiceNative\\\" -DELIZA_VOICE_JNI_FULL=0 -Dparadeevoicejni_EXPORTS -I/private/tmp/claude-501/-Users-shawwalters-Documents-alphaphone/64d469c3-a277-49bf-9ffb-2a1b72247eb0/scratchpad/wt-final/vendor/eliza/plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fno-limit-debug-info  -fPIC -O2 -DNDEBUG -fvisibility=hidden -fvisibility-inlines-hidden -std=gnu++17 -o elizavoice-jni/CMakeFiles/paradeevoicejni.dir/elizavoice-jni.cpp.o -c /tmp/claude-501/-Users-shawwalters-Documents-alphaphone/64d469c3-a277-49bf-9ffb-2a1b72247eb0/scratchpad/wt-final/vendor/eliza/packages/app/platforms/android/app/src/main/elizavoice-jni/elizavoice-jni.cpp",
-  "file": "/tmp/claude-501/-Users-shawwalters-Documents-alphaphone/64d469c3-a277-49bf-9ffb-2a1b72247eb0/scratchpad/wt-final/vendor/eliza/packages/app/platforms/android/app/src/main/elizavoice-jni/elizavoice-jni.cpp"
-}
-]

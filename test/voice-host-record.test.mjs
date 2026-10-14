@@ -22,25 +22,38 @@ test('the committed record satisfies the schema, the pin, the shared Paradee pin
   assert.equal(record.provider, 'libelizainference-paradee');
   assert.deepEqual(record.abis.map(row => row.abi), ['arm64-v8a', 'x86_64']);
   const slot = JSON.parse(fs.readFileSync(path.join(ROOT, VOICE_ASR_SLOT), 'utf8'));
-  assert.deepEqual(slot.files.map(row => row.path), ['asr/eliza-1-asr.gguf', 'asr/eliza-1-asr-mmproj.gguf'], 'model-agnostic canonical slot paths');
-  assert.match(slot.intended, /Phonon-2/);
+  assert.equal(slot.backend, 'parakeet', 'Phonon-2 is the shipped ASR');
+  assert.deepEqual(slot.files.map(row => row.path), ['asr/phonon-2-fv5.gguf'], 'one parakeet-tdt GGUF, no Qwen3 pair');
+  assert.equal(record.asrSlot.backend, 'parakeet');
+  const phonon = record.models.find(row => row.role === 'asr-model');
+  assert.equal(phonon.license, 'CC-BY-4.0');
+  assert.match(phonon.attribution, /Fermion Research/);
+  for (const file of phonon.noticeFiles) assert.ok(fs.existsSync(path.join(ROOT, file)), file);
+  assert.ok(record.models.some(row => row.path === 'notices/Phonon-2-NOTICE.txt' && row.sha256 === '00624a5043e7ce74029317b024132ca5286116d6fbf3191d226374bc8273789f'), 'Fermion NOTICE ships in the bundle');
+  assert.equal(record.models.some(row => row.role === 'asr-mmproj'), false);
   const paradee = record.models.find(row => row.role === 'tts-model');
   assert.equal(paradee.path, 'tts/paradee/paradee-8m-v1_0.gguf');
   assert.ok(paradee.bytes < 40 * 1024 * 1024, 'Paradee ships in the APK assets');
-  assert.equal(record.models.some(row => /kokoro|\.onnx|\.bin$/i.test(row.path)), false, 'no Kokoro, ONNX or voice preset');
+  assert.equal(record.models.some(row => /kokoro|\.on{2}x|\.bin$/i.test(row.path)), false, 'no Kokoro, other-runtime model or voice preset');
 });
 
 test('the schema rejects bad hashes, missing ABIs, non-GGUF models, an incomplete ASR slot and unearned qualification', () => {
   const bad = structuredClone(committed);
   bad.abis[0].libraries[0].sha256 = 'nope';
-  bad.models.find(row => row.role === 'tts-model').path = 'tts/paradee/paradee.onnx';
-  bad.models = bad.models.filter(row => row.role !== 'asr-mmproj');
+  bad.models.find(row => row.role === 'tts-model').path = 'tts/paradee/paradee.pt';
+  bad.models = bad.models.filter(row => row.role !== 'asr-model');
   bad.qualified = true;
   const problems = voiceHostProblems(bad, 'fixture');
-  for (const expected of ['abis[0].libraries[0] needs a lowercase SHA-256', 'must be a GGUF file', 'has no asr-mmproj', 'qualified cannot be true without device execution'])
+  for (const expected of ['abis[0].libraries[0] needs a lowercase SHA-256', 'must be a GGUF file', 'has no asr-model', 'ASR rows must be exactly asr-model for the parakeet backend', 'qualified cannot be true without device execution'])
     assert.ok(problems.some(problem => problem.includes(expected)), expected);
   assert.ok(voiceHostProblems({...committed, abis: committed.abis.slice(0, 1)}).some(problem => problem.includes('must record arm64-v8a and x86_64')));
   assert.deepEqual(voiceHostProblems([], 'fixture'), ['fixture: not a JSON object']);
+  // A Qwen3 pair needs the qwen3 backend; a parakeet slot carrying a projector is refused.
+  const pair = structuredClone(committed);
+  pair.models.push({...pair.models.find(row => row.role === 'asr-model'), name: 'projector', path: 'asr/extra-mmproj.gguf', role: 'asr-mmproj'});
+  assert.ok(voiceHostProblems(pair, 'fixture').some(problem => problem.includes('ASR rows must be exactly asr-model')));
+  pair.asrSlot = {...pair.asrSlot, backend: 'qwen3', paths: ['asr/phonon-2-fv5.gguf', 'asr/extra-mmproj.gguf']};
+  assert.deepEqual(voiceHostProblems(pair, 'fixture'), []);
 });
 
 test('notices list the engine components and every voice model, flagging eSpeak NG copyleft without blocking', () => {
@@ -49,8 +62,16 @@ test('notices list the engine components and every voice model, flagging eSpeak 
   const espeak = entries.filter(entry => entry.name.startsWith('eSpeak NG'));
   assert.ok(espeak.length >= 2, 'the linked library and the bundled data');
   for (const entry of espeak) { assert.equal(entry.license, 'GPL-3.0-or-later'); assert.ok(entry.flags.includes('copyleft-strong')); }
-  for (const name of ['Paradee-8M v1.0 (F32 GGUF) (tts-model)', 'misaki English (US) lexicon (g2p-lexicon)', 'Qwen3-ASR-0.6B Q8_0 (ASR slot model) (asr-model)', 'Silero VAD v5 (GGUF) (vad-model)'])
+  for (const name of ['Paradee-8M v1.0 (F32 GGUF) (tts-model)', 'misaki English (US) lexicon (g2p-lexicon)', 'Phonon-2 (Parakeet-TDT 0.6B, five-value GGUF; ASR slot model) (asr-model)', 'Silero VAD v5 (GGUF) (vad-model)'])
     assert.ok(entries.some(entry => entry.name === name), name);
+  // CC-BY-4.0 attribution: the attribution line, Fermion's NOTICE and the licence text ship; the training-data terms are flagged, not blocking.
+  const phonon = entries.find(entry => entry.name.startsWith('Phonon-2'));
+  assert.equal(phonon.license, 'CC-BY-4.0');
+  assert.match(phonon.text, /Phonon-2 by Fermion Research/);
+  assert.ok(phonon.text.includes(fs.readFileSync(path.join(ROOT, 'licenses/Phonon-2-NOTICE.txt'), 'utf8').trim().split('\n')[0]));
+  assert.match(phonon.text, /Attribution 4\.0 International/);
+  assert.ok(phonon.flags.includes('unverified'));
+  assert.equal(entries.some(entry => entry.name.startsWith('Qwen3-ASR')), false, 'the Qwen3 pair no longer ships');
   assert.equal(entries.find(entry => entry.name.startsWith('Paradee-8M')).license, 'Apache-2.0');
 });
 
@@ -80,8 +101,7 @@ function fixtureProduct(t) {
   fs.writeFileSync(path.join(dir, 'vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json'), JSON.stringify(inputs, null, 2));
   fs.mkdirSync(path.join(dir, 'android/voice-host'), {recursive: true});fs.mkdirSync(path.join(dir, 'android/paradee-voice'), {recursive: true});
   fs.writeFileSync(path.join(dir, VOICE_HOST), JSON.stringify(record, null, 2));
-  const asr = record.models.filter(model => model.role.startsWith('asr-')).map(({path: file, sha256, bytes}) => ({path: file, sha256, bytes}));
-  fs.writeFileSync(path.join(dir, VOICE_ASR_SLOT), JSON.stringify({files: asr}));
+  fs.writeFileSync(path.join(dir, VOICE_ASR_SLOT), JSON.stringify({backend: record.asrSlot.backend, files: record.models.filter(model => model.role.startsWith('asr-')).map(({path: file, role, sha256, bytes}) => ({path: file, role, sha256, bytes}))}));
   for (const name of ['upstream.lock.json', 'app.config.json']) fs.copyFileSync(path.join(ROOT, name), path.join(dir, name));
   return {dir, from, record};
 }

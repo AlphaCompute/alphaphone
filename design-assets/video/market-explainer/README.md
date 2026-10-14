@@ -21,8 +21,8 @@ node design-assets/video/market-explainer/render.mjs --fps 30
 The renderer produces video-only output. Mux that output with `soundtrack.wav` to
 make an audiovisual export. `audio.py` regenerates timing and the soundtrack from
 `script.json` and `vo/*.wav`; it requires NumPy and SoundFile. The narration in `vo/`
-is a fixed, committed input: the earlier ONNX-based generator was removed (no ONNX
-runtime is used anywhere in this repository). To regenerate a line, synthesize it with
+is a fixed, committed input: the earlier Kokoro voice generator (tts.py) was removed, and
+speech in this repository runs only on llama.cpp-based libelizainference. To regenerate a line, synthesize it with
 the local agent's Paradee route (`POST /api/tts/paradee`, docs/fused-speech.md). The
 existing recordings do not require a TTS service, credentials, or model download to play.
 

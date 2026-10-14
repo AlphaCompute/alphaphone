@@ -836,7 +836,7 @@ the requesting lifecycle; it no longer has an independent worker-retirement time
 The existing synthesis/transport bounds and cancellation remain enforced. No new
 runtime patch or timeout increase was needed for this requalification.
 
-The new `npm run agent:test-cold-kokoro` check verifies the admitted source and
+The `agent:test-cold-kokoro` check (retired with Kokoro; its script and npm entry were deleted on 2026-10-14) verified the admitted source and
 installed assets, starts three fresh workers without initialization/status probes,
 and checks actual WAV output. They passed in 2,517, 2,119 and 1,579 milliseconds.
 Cancellation during cold initialization followed by successful synthesis in a new

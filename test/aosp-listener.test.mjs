@@ -104,7 +104,7 @@ test("the privileged listener is pinned by a reviewed descriptor and must carry 
   const full = () => manifest([...voiceHost.models.map(row => row.path)]);
   assert.deepEqual(checkListenerSpeechBundle(entries, voiceHost, full), ["arm64-v8a"]);
   assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("assets/")), voiceHost, full), /no assets\/paradee-voice\/v1\/manifest\.json/, "an APK without the bundle can never listen");
-  assert.throws(() => checkListenerSpeechBundle(entries, voiceHost, () => manifest(voiceHost.models.filter(row => !row.path.startsWith("asr/")).map(row => row.path))), /no asr\/eliza-1-asr\.gguf, asr\/eliza-1-asr-mmproj\.gguf/, "a read-aloud-only bundle cannot recognise speech");
+  assert.throws(() => checkListenerSpeechBundle(entries, voiceHost, () => manifest(voiceHost.models.filter(row => !row.path.startsWith("asr/")).map(row => row.path))), /no asr\/phonon-2-fv5\.gguf/, "a read-aloud-only bundle cannot recognise speech");
   assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("lib/")), voiceHost, full), /no recorded voice host ABI/);
   const hashes = Object.fromEntries(arm.libraries.map(lib => [`lib/arm64-v8a/${lib.name}`, lib.sha256]));
   assert.equal(checkListenerSpeechNatives(["arm64-v8a"], voiceHost, entry => hashes[entry]), true);

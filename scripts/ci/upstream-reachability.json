@@ -2,14 +2,14 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "d06a1aa9c9222ce8be60190af2317784a1b9bfff",
-  "head": "644d56c93df9e410b1ef4297f961cb1df9e7d152",
+  "baseCommit": "c7a9a0d7e7ea399ead4016727737d2d975f2d5ba",
+  "head": "c7a9a0d7e7ea399ead4016727737d2d975f2d5ba",
   "recordedAt": "2026-10-14",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...644d56c93df9e410b1ef4297f961cb1df9e7d152",
-  "status": "behind",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...c7a9a0d7e7ea399ead4016727737d2d975f2d5ba",
+  "status": "identical",
   "aheadBy": 0,
-  "behindBy": 36,
-  "mergeBase": "644d56c93df9e410b1ef4297f961cb1df9e7d152",
+  "behindBy": 0,
+  "mergeBase": "c7a9a0d7e7ea399ead4016727737d2d975f2d5ba",
   "pinOnlyCommits": [],
   "pullRequests": [
     {
@@ -270,6 +270,34 @@
       "mergedAt": "2026-10-13T22:06:23Z",
       "mergeCommit": "bc71e21f3b5020a2d11719e6e905c0347a4d802f",
       "head": "claude/alpha-llama-cpp-security-pin"
+    },
+    {
+      "number": 36212,
+      "state": "merged",
+      "mergedAt": "2026-10-14T10:32:20Z",
+      "mergeCommit": "d06a1aa9c9222ce8be60190af2317784a1b9bfff",
+      "head": "claude/alpha-asr-phonon2"
+    },
+    {
+      "number": 36213,
+      "state": "merged",
+      "mergedAt": "2026-10-14T11:16:58Z",
+      "mergeCommit": "d68909cb71213ebdcb650bfb6fb043d33db8cf8f",
+      "head": "claude/alpha-asr-streaming"
+    },
+    {
+      "number": 36214,
+      "state": "merged",
+      "mergedAt": "2026-10-14T12:03:17Z",
+      "mergeCommit": "70dc0bbf93ff67811e5eff3c6d2c92922e1acf4c",
+      "head": "claude/alpha-asr-live-voice"
+    },
+    {
+      "number": 36239,
+      "state": "merged",
+      "mergedAt": "2026-10-14T17:48:29Z",
+      "mergeCommit": "c7a9a0d7e7ea399ead4016727737d2d975f2d5ba",
+      "head": "claude/alpha-voice-gaps"
     }
   ]
 }

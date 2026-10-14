@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {PARADEE_NATIVE, PARADEE_SOURCE, verifyParadeeRuntime} from './paradee-runtime.mjs';
+import {ASR_BACKEND_ROLES, PARADEE_NATIVE, PARADEE_SOURCE, asrSlotFiles, verifyParadeeRuntime} from './paradee-runtime.mjs';
 
 export const VOICE_HOST_MANIFEST = 'android/voice-host/qualified-voice-host.json';
 export const VOICE_ASR_SLOT = 'android/paradee-voice/asr-inputs.json';
@@ -20,8 +20,8 @@ export const VOICE_BUNDLE_ASSETS = 'assets/paradee-voice/v1';
 export const VOICE_ABIS = Object.freeze(['arm64-v8a', 'x86_64']);
 export const VOICE_LIBRARIES = Object.freeze(['libelizainference.so', 'libc++_shared.so']);
 export const VOICE_ROLES = Object.freeze(['tts-model', 'g2p-lexicon', 'g2p-data', 'asr-model', 'asr-mmproj', 'vad-model', 'notice']);
-/** Roles a packaged bundle must carry: speech output, G2P and the complete ASR slot. */
-export const VOICE_REQUIRED_ROLES = Object.freeze(['tts-model', 'g2p-lexicon', 'asr-model', 'asr-mmproj']);
+/** Roles a packaged bundle must carry: speech output, G2P and an ASR model (the slot record decides the rest). */
+export const VOICE_REQUIRED_ROLES = Object.freeze(['tts-model', 'g2p-lexicon', 'asr-model']);
 const isCommit = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
 const isSha = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const isBytes = value => Number.isSafeInteger(value) && value > 0;
@@ -39,6 +39,13 @@ export function voiceHostProblems(record, label = VOICE_HOST_MANIFEST) {
   if (record.nativeOutput !== PARADEE_NATIVE) at('nativeOutput', `must be ${PARADEE_NATIVE}`);
   if (record.bundle?.format !== VOICE_BUNDLE_FORMAT || record.bundle?.assetRoot !== VOICE_BUNDLE_ASSETS) at('bundle', 'layout changed');
   if (record.asrSlot?.record !== VOICE_ASR_SLOT) at('asrSlot.record', `must be ${VOICE_ASR_SLOT}`);
+  const backendRoles = ASR_BACKEND_ROLES[record.asrSlot?.backend];
+  if (!backendRoles) at('asrSlot.backend', 'must be parakeet or qwen3');
+  else {
+    const asrRows = (Array.isArray(record.models) ? record.models : []).filter(model => model?.role === 'asr-model' || model?.role === 'asr-mmproj');
+    if (asrRows.map(model => model.role).sort().join() !== [...backendRoles].sort().join()) at('models', `ASR rows must be exactly ${backendRoles.join(' and ')} for the ${record.asrSlot.backend} backend`);
+    if (JSON.stringify(record.asrSlot.paths) !== JSON.stringify(asrRows.map(model => model.path))) at('asrSlot.paths', 'must list the ASR rows in order');
+  }
   if (!Array.isArray(record.abis) || record.abis.map(row => row?.abi).join() !== VOICE_ABIS.join()) at('abis', `must record ${VOICE_ABIS.join(' and ')}`);
   for (const [index, row] of (Array.isArray(record.abis) ? record.abis : []).entries()) {
     if (!Array.isArray(row?.libraries) || row.libraries.map(lib => lib?.name).join() !== VOICE_LIBRARIES.join()) { at(`abis[${index}].libraries`, `must list ${VOICE_LIBRARIES.join(', ')}`); continue; }
@@ -73,8 +80,9 @@ export function readVoiceHost(root) {
   if (record.identity !== identity) throw Error(`${VOICE_HOST_MANIFEST} identity changed`);
   // Model-agnostic ASR slot: the record's asr rows must be exactly the reviewed slot record.
   const slot = readJson(root, VOICE_ASR_SLOT);
+  const files = asrSlotFiles(slot);
   const asr = record.models.filter(model => model.role === 'asr-model' || model.role === 'asr-mmproj');
-  if (!Array.isArray(slot.files) || slot.files.length !== asr.length || slot.files.some(file => !asr.some(model => model.path === file.path && model.sha256 === file.sha256 && model.bytes === file.bytes)))
+  if (slot.backend !== record.asrSlot.backend || files.length !== asr.length || files.some(file => !asr.some(model => model.path === file.path && model.role === file.role && model.sha256 === file.sha256 && model.bytes === file.bytes)))
     throw Error(`${VOICE_HOST_MANIFEST} ASR rows differ from ${VOICE_ASR_SLOT}`);
   const inputsFile = path.join(root, PARADEE_SOURCE, 'inputs.json');
   if (fs.existsSync(inputsFile)) {

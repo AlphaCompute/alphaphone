@@ -1,25 +1,26 @@
 {
-  "schemaVersion": 1,
-  "description": "Model-agnostic ASR slot of the on-device voice bundle. libelizainference loads whichever ASR pair sits at these canonical bundle paths (asr/eliza-1-asr.gguf and asr/eliza-1-asr-mmproj.gguf); changing the ASR model means changing only this record (paths stay, bytes/sha256/model change) and restaging. scripts/paradee-runtime.mjs admits exactly these two files.",
+  "schemaVersion": 2,
+  "description": "Model-agnostic ASR slot of the on-device voice bundle. libelizainference (built with LLAMA_BUILD_PARAKEET=ON) serves eliza_inference_asr_* and asr_stream_* from whatever sits under <bundle>/asr/: a parakeet-tdt GGUF (one file) or the Qwen3-ASR text + mmproj pair (two files). `backend` names which; `asr/` holds only that backend's files. Changing the ASR model means changing only this record and restaging; scripts/paradee-runtime.mjs admits exactly these files and refuses any other file under asr/.",
   "slot": "asr",
-  "model": "Qwen3-ASR-0.6B Q8_0 (ggml-org/Qwen3-ASR-0.6B-GGUF@928ab958557df9aa2ef1c93e0e83c7ad0933fae2), the upstream mobile-voice@1.0.0 ASR entry",
-  "license": "Apache-2.0",
-  "intended": "Phonon-2 (elizaOS/eliza#36212: Phonon-2 default mobile ASR, streaming ASR JNI, llama.cpp main 533d0d89). Merged upstream on 2026-10-14 as d06a1aa9c9, after this pin (644d56c93d), so it is not consumed yet; when the pin moves to a develop commit that contains it (the engine is rebuilt on its llama.cpp gitlink), replace these rows with the Phonon-2 GGUF pair from that bundle record. Phonon-2 weights are CC-BY-4.0 (attribution required; flag, do not block).",
+  "backend": "parakeet",
+  "runtimeEnv": {
+    "ELIZA_ASR_BACKEND": "parakeet"
+  },
+  "model": "Phonon-2 (Parakeet-TDT 0.6B, five-value weights), the upstream mobile-voice@1.1.0 default ASR (elizaOS/eliza#36212, d06a1aa9c9)",
+  "license": "CC-BY-4.0",
+  "attribution": "Phonon-2 by Fermion Research, CC-BY-4.0, derived from NVIDIA parakeet-tdt-0.6b-v3 (CC-BY-4.0). Fermion's NOTICE ships in the bundle (notices/Phonon-2-NOTICE.txt) and in the app's third-party notices; the GGUF also carries it as parakeet.notice.",
+  "licenseFlags": [
+    "Training audio listed in the Phonon-2 NOTICE includes CHiME-6 (CC-BY-SA-4.0) and SPGISpeech (Kensho terms). Flagged for review, not a build blocker."
+  ],
   "install": "APK assets (assets/paradee-voice/v1/asr/), copied to app storage and SHA-256 verified on first use by ai.eliza.voice.VoiceAssets.install",
   "files": [
     {
-      "path": "asr/eliza-1-asr.gguf",
-      "bytes": 804749248,
-      "sha256": "bca259818b50ca7c4c05e9bdb35a5dc04fa039653a6d6f3f0f331f96f6aa1971",
-      "source": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF (revision 928ab958557df9aa2ef1c93e0e83c7ad0933fae2), file Qwen3-ASR-0.6B-Q8_0.gguf",
-      "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/Qwen3-ASR-0.6B-Q8_0.gguf"
-    },
-    {
-      "path": "asr/eliza-1-asr-mmproj.gguf",
-      "bytes": 214392480,
-      "sha256": "41a342b5e4c514e968cb756de6cd1b7be39eff43c44c57a2ef5fc6522e36603d",
-      "source": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF (revision 928ab958557df9aa2ef1c93e0e83c7ad0933fae2), file mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
-      "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf"
+      "path": "asr/phonon-2-fv5.gguf",
+      "role": "asr-model",
+      "bytes": 330632256,
+      "sha256": "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
+      "architecture": "parakeet-tdt",
+      "source": "Converted by elizaOS/llama.cpp tools/parakeet/convert_phonon2_to_gguf.py --archive phonon-2.bps.tar.zst --output phonon-2-fv5.gguf --verify from huggingface.co/FermionResearch/Phonon-2@7e153e4054c0a10db6d47d6fff5c062d4c77c154 (archive sha256 98125795b6dda72f5c6eee9ba33d19815df65dcb18b50a357bf9f73c9935309e); byte-reproducible, equal to the mobile-voice@1.1.0 catalog pin (status unpublished: built locally, never downloaded)"
     }
   ]
 }

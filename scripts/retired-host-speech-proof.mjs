@@ -1,1 +1,0 @@
-throw Error('Historical Kokoro/Whisper campaign is retired for this shared pin. It cannot qualify Paradee/Qwen3-ASR. Use current route contract tests; new real-asset qualification remains required.');
