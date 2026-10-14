@@ -49,6 +49,12 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().cloudAccount)).toBeNull();
   await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.openCloudAccount());
   await page.getByRole('dialog',{name:'Eliza Cloud',exact:true}).getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
+  // In-app sign-in through the development host offers the email code (Google needs the phone's App
+  // Link); the retired browser hand-off stays reachable here as the test-mocks diagnostic fallback.
+  const signIn=page.getByRole('dialog',{name:'Sign in to Eliza Cloud',exact:true});
+  await expect(signIn.getByRole('form',{name:'Sign in with email'})).toBeVisible();
+  await expect(signIn.getByRole('button',{name:'Continue with Google',exact:true})).toHaveCount(0);
+  await signIn.getByRole('button',{name:'Browser sign-in (diagnostic)',exact:true}).click();
   await expect(page.getByRole('dialog',{name:'Eliza Cloud',exact:true}).getByText('owned@example.invalid',{exact:true})).toBeVisible();
   expect(calls.filter(p=>p.startsWith('/api/auth/cli-session'))).toHaveLength(2);
   await info.attach('closed-cloud-requests',{body:JSON.stringify({calls,mediaCapture:false,playback:false,providerRequests:false}),contentType:'application/json'});

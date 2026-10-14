@@ -204,8 +204,8 @@ Configuration uses the upstream names only (`scripts/speech-env.mjs`):
 `ELIZA_ASR_MODEL_DIR` for ASR (`1` requires, `0` turns off, unset enables only with a model
 directory). The earlier Alpha-only names (`ALPHA_LOCAL_TTS`, `ALPHA_TTS_LIBRARY`,
 `ALPHA_TTS_MODEL_DIR`, `ALPHA_LOCAL_ASR`, `ALPHA_ASR_MODEL_DIR`, `ALPHA_WHISPER_*`,
-`ALPHA_ASR_MODEL`) are refused with their replacement; a saved `local-speech.json` is read with the
-renamed keys and warns. Exact host asset paths and hashes are in `scripts/host-speech-assets.json`
+`ALPHA_ASR_MODEL`) are refused with their replacement, in the environment and in a saved `local-speech.json`;
+nothing maps them to the upstream names. Exact host asset paths and hashes are in `scripts/host-speech-assets.json`
 ([host speech migration](host-speech-migration-2026-10-14.md)).
 
 ## Always-on listener (`:sense`)
