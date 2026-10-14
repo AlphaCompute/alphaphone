@@ -143,7 +143,7 @@ test('the Android collector times capture from AudioRecord and playback from the
   const { nativeSource, fixture, runJvm } = await import('./fixtures/jvm-tools.mjs');
   assert.match(runJvm([nativeSource('VoiceLatencyTrials.java'), fixture('VoiceLatencyTrialsTest.java')], 'ai.elizaresearch.alphaphone.VoiceLatencyTrialsTest'), /^PASS voice latency trials/);
   const harness = fs.readFileSync(path.join(path.dirname(nativeSource('x')), '../../../../../androidTest/java/ai/elizaresearch/alphaphone/NativeVoiceLatencyInstrumentedTest.java'), 'utf8');
-  assert.match(harness, /\},"harness-no-inference"\);/, 'the harness labels its own trials');
+  assert.match(harness, /\},"harness-no-inference",source\);/, 'the harness labels its own trials');
   const read = name => fs.readFileSync(nativeSource(name), 'utf8');
   const probe = read('AlphaVoiceLatencyProbe.java'), capture = read('AlphaLiveVoiceCapture.java'), plugin = read('AlphaVoiceCloudPlugin.java');
   assert.match(probe, /getTimestamp\(scratch,AudioTimestamp\.TIMEBASE_MONOTONIC\)/);
