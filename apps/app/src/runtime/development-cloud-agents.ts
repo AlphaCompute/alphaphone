@@ -1,7 +1,8 @@
 import type {ChatChannel} from './alpha-client';
 import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from './automations-route-policy.ts';
 import { CloudPersonalProtocol, PersonalProtocolError } from './cloud-personal-protocol.ts';
-import { CloudProtocol, CloudProtocolError, object, optionalString, string, uuid, type CloudAgent } from './cloud-protocol.ts';
+import { CloudProtocolError, object, optionalString, string, uuid, type CloudAgent } from './cloud-protocol.ts';
+import { LegacyCliLoginProtocol } from './legacy-cli-login.ts';
 
 /**
  * DEVELOPMENT INFRASTRUCTURE ONLY. Not a product path.
@@ -18,7 +19,7 @@ export interface CloudPhoneTarget {
   agentId: string; origin: string; userId: string; organizationId: string;
   credentialId: string; headers: Record<string,string>;
 }
-export class DevelopmentCloudAgentProtocol extends CloudProtocol {
+export class DevelopmentCloudAgentProtocol extends LegacyCliLoginProtocol {
   private phoneTarget: CloudPhoneTarget | null = null;
   setPhoneTarget(target: CloudPhoneTarget | null) { this.phoneTarget = target; }
   async phoneRequest(target: CloudPhoneTarget, path: string, signal: AbortSignal, body?: unknown, method: AutomationsMethod = body === undefined ? 'GET' : 'POST'): Promise<Record<string,unknown>> {

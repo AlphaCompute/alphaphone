@@ -118,9 +118,49 @@ configuration and outbound-context policy. Production builds do not accept remot
 billed inference for the resident agent; it does not select a hosted agent. Existing
 remote credentials and history are retained without automatically reconnecting.
 Remote browser transports are available only with the explicit test-mocks switch and remain non-product development infrastructure.
-The production AlphaConnection boundary admits exact managed-service origin and path/method pairs for account sign-in, identity, balance, self-revocation and owner Gmail. Dedicated hosts and agent/provisioning paths on the Cloud API origin are refused before network dispatch. Native resident inference remains on its separately admitted provider route; the Eliza Cloud Maps data routes (`GET /api/v1/maps/capabilities` and body-only `POST /api/v1/maps/{geocode,reverse,places/search,places/details,routes}`, #412) are admitted exactly, and other new service APIs require explicit route review. GPS, the active route and guidance stay on the phone. Debug host forwarding (the DevelopmentAgent bridge, present only in test-mocks
+The production AlphaConnection boundary admits exact managed-service origin and path/method pairs for identity, balance, self-revocation and owner Gmail. Dedicated hosts and agent/provisioning paths on the Cloud API origin are refused before network dispatch. Native resident inference remains on its separately admitted provider route; the Eliza Cloud Maps data routes (`GET /api/v1/maps/capabilities` and body-only `POST /api/v1/maps/{geocode,reverse,places/search,places/details,routes}`, #412) are admitted exactly, and other new service APIs require explicit route review. GPS, the active route and guidance stay on the phone. Debug host forwarding (the DevelopmentAgent bridge, present only in test-mocks
 builds) is development infrastructure, not evidence of a resident runtime or
 production authentication.
+
+### Eliza Cloud sign-in ownership (in-app, 2026-10-14)
+
+Sign-in happens on Alpha's own screens; no Eliza Cloud web page is part of it.
+
+- **Native (`AlphaCloudSignInPlugin`, `CloudSignInFlow`)** owns every secret and every
+  sign-in request, using fixed URLs on the Cloud API origin (`ConnectionRoutes.signInRoute`;
+  the renderer transport admits none of them):
+  - Email: `POST /steward/auth/email/send`, then the six-digit code typed into Alpha goes to
+    `POST /steward/auth/email/code/verify`. A second verification uses `/steward/auth/mfa/{totp,sms}/complete`.
+  - Google: Alpha creates a PKCE verifier and state, keeps them in memory and in an
+    encrypted, single-use, ten-minute pending record (`cloud-signin:v1:pending`, a native-only
+    slot), and opens `{api}/steward/auth/oauth/google/authorize` in a Custom Tab. It never uses a
+    WebView. Steward returns to the verified App Link `https://eliza.app/alphaphone/auth/callback`,
+    with code and state in the fragment. The link is matched exactly, the pending record is burned
+    before any request, and the code goes to `POST /steward/auth/oauth/exchange` with the verifier.
+  - Both paths then run the shared tail. The Steward session goes to
+    `POST /api/v1/app-auth/connect` (`mobile_pkce`, client `ai.elizaresearch.alphaphone`, a
+    second independent state and PKCE pair), then `POST /mobile/token`. Native writes an ack
+    receipt and then the `eliza_mobile_` key to `cloud:<environment>` (AlphaCredentialStore,
+    Keystore AES-GCM, credential-intent rule) and acknowledges with `POST /mobile/ack`. The ack is
+    retried at most three times and resumed on the next start. Finally native revokes the Steward
+    session with `POST /steward/auth/logout`; the Steward refresh token is never stored.
+- **Renderer (`cloud-sign-in.ts`, `cloud-sign-in-ui.tsx`, `CloudProtocol.signInWith*`)** shows
+  the screens. It receives only `{status, environment, expiresAt, accountCreated}`. One sign-in
+  runs at a time (`login-active`). It then runs the unchanged identity, entitlement, redeem and
+  resident-binding path on the stored key, and says so when `accountCreated` is true.
+- **Cloud (elizaOS/eliza `packages/cloud`, `packages/auth`)** owns the accounts:
+  - Steward links Google and email to the existing user by verified email.
+  - Mobile App Auth mints the key, valid for 30 days.
+  - For this to work, Cloud must register `ai.elizaresearch.alphaphone` in
+    `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON`, allowlist the return URL for tenant `elizacloud`, and
+    serve `/.well-known/assetlinks.json` on `eliza.app` (`android/app/src/main/assetlinks.template.json`).
+    `staging.eliza.app` serves the same with the debug certificate added.
+- **Test-mocks only:**
+  - The staging return host (`src/testMocks/AndroidManifest.xml`).
+  - The development Cloud bridge's email sign-in.
+  - For one release, the retired browser hand-off (`legacy-cli-login.ts`: `/api/auth/cli-session`
+    and the `cli-login` page) as a diagnostic fallback. `scripts/audit-production-bundle.mjs`
+    refuses its markers in a production bundle.
 
 Third-party web content runs in an isolated native browser surface; it must not
 receive the application's Capacitor bridge. Origin, context revision, consent,

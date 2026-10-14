@@ -36,8 +36,12 @@ test('plan state never stops or withholds the on-device agent', () => {
   for (const method of ['async stopLocal()', 'async removeProvider()', 'async disconnect()'])
     assert.match(between(ui, method, '\n  },'), /if\(residentCloudFlow\(\)\)\{update\(\{error:ALWAYS_LOCAL,message:''\}\);return;\}/, method);
   // Sign-in and sign-out keep the agent running and reconnect it afterwards.
+  // In-app sign-in (owner directive 2026-10-14): opening the screen sends nothing and stops nothing;
+  // once the key is stored the resident agent is reconnected.
   const login = between(ui, 'async residentCloudLogin()', 'async residentManagePlan()');
-  assert.ok(!login.includes('stopLocalAgent(') && login.includes('retire();await connectResident(signal);'));
+  assert.ok(!login.includes('stopLocalAgent(') && login.includes('async residentCloudLogin() { connectionController.beginSignIn(residentEnvironment()); }'));
+  const signedIn = between(ui, 'async function signedIn(', '/** The development hosted-agent client.');
+  assert.ok(!signedIn.includes('stopLocalAgent(') && signedIn.includes('retire();await connectResident(signal);'));
   const signOut = between(ui, 'async cloudSignOut()', 'async mock()');
   assert.ok(!signOut.includes('stopLocalAgent(') && signOut.includes('else{retire();await connectResident(signal);'));
   // Cloud inference is unbound (native stops a process holding the key) before the key is revoked.
@@ -78,7 +82,8 @@ test('the plan surface is a notice beside the running agent, not a gate', () => 
   // Only a required sign-in locks the dialog; needs-plan and offline are closable.
   assert.ok(chooser.includes("const residentLocked=!snapshot.cloudAccount&&snapshot.residentPlanNotice!=='offline';"));
   assert.ok(chooser.includes('{!residentLocked&&<button aria-label="Close connection settings"'));
-  assert.match(ui, /close\(\) \{ if\(residentSignInRequired\(\)\)\{/);
+  // Back from the in-app sign-in screen returns to the gate; the gate itself still cannot be dismissed.
+  assert.match(ui, /close\(\) \{ if\(state\.signIn&&!state\.busy\)\{connectionController\.cancelSignIn\(\);return;\} if\(residentSignInRequired\(\)\)\{/);
   // No agent-less product choice remains in the phone's flow.
   const resident = between(chooser, 'if(residentCloudFlow())return', 'if(browserOnly)return');
   assert.doesNotMatch(resident, /Use local apps without AI|without AI|No agent connected/);

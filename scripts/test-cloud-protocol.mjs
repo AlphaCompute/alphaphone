@@ -10,6 +10,10 @@ if (!process.execArgv.includes('--experimental-transform-types')) {
 const { CloudProtocol } = await import('../apps/app/src/runtime/cloud-protocol.ts');
 // Hosted agents are development infrastructure (#406): the product adapter has no agent route.
 const { DevelopmentCloudAgentProtocol } = await import('../apps/app/src/runtime/development-cloud-agents.ts');
+// The browser hand-off survives only as a test-mocks diagnostic fallback for one release.
+const { LegacyCliLoginProtocol } = await import('../apps/app/src/runtime/legacy-cli-login.ts');
+const { CloudSignInError } = await import('../apps/app/src/runtime/cloud-sign-in.ts');
+assert.equal('login' in CloudProtocol.prototype, false, 'production CloudProtocol has no browser hand-off login');
 for (const method of ['listAgents', 'agentDetail', 'personal', 'phoneRequest', 'setPhoneTarget', 'listConversations', 'messages', 'createConversation', 'send'])
   assert.equal(method in CloudProtocol.prototype, false, `production CloudProtocol has no ${method}`);
 const id = '72475cd0-e135-4c42-a9e2-fb5fe0820ada';
@@ -100,18 +104,47 @@ const store = {
 };
 const opened = [];
 const browser = async (url, signal) => { signal.throwIfAborted(); opened.push(url); };
+// Synthetic in-app sign-in host (AlphaCloudSignInPlugin's contract): it owns every secret, stores the
+// key in the credential store before reporting success, and returns only non-secret outcomes.
+const hostCalls = [];
+let hostMode = 'ok', releaseGoogle = null;
+const host = {
+  async startGoogle(input) { hostCalls.push(['google', input.environment]); if (hostMode === 'hold') return new Promise((_, reject) => { releaseGoogle = reject; });
+    if (hostMode === 'unstored') return { status: 'authenticated', environment: input.environment, expiresAt: Date.now() + 60000, accountCreated: false };
+    saved = { credentialId: 'local-generation-1', token, expiresAt: Date.now() + 30 * 86400000, serverCredentialId: id };
+    return { status: 'authenticated', environment: input.environment, expiresAt: saved.expiresAt, accountCreated: hostMode === 'created' }; },
+  async startEmail(input) { hostCalls.push(['email', input.environment]); assert.equal(input.email, 'owner@example.invalid', 'the address is trimmed, never altered');
+    if (hostMode === 'cooldown') throw Object.assign(new Error('cooldown'), { code: 'cooldown' });
+    return { attemptId: sessionId, expiresAt: Date.now() + 600000, resendAt: Date.now() + 60000 }; },
+  async verifyEmail(input) { hostCalls.push(['verify', input.code]);
+    if (input.code !== '123456') throw Object.assign(new Error('invalid-code'), { code: 'invalid-code' });
+    if (hostMode === 'mfa') return { status: 'mfa', method: 'totp', expiresAt: Date.now() + 300000 };
+    if (hostMode === 'foreign') return { status: 'authenticated', environment: 'staging', expiresAt: Date.now() + 60000, accountCreated: null };
+    if (hostMode === 'leak') return { status: 'authenticated', environment: 'production', expiresAt: Date.now() + 60000, accountCreated: false, secret: 'eliza_mobile_must-not-cross' };
+    saved = { credentialId: 'local-generation-2', token, expiresAt: Date.now() + 30 * 86400000, serverCredentialId: id };
+    return { status: 'authenticated', environment: 'production', expiresAt: saved.expiresAt, accountCreated: false }; },
+  async verifyMfa(input) { hostCalls.push(['mfa', input.code]); saved = { credentialId: 'local-generation-3', token };
+    return { status: 'authenticated', environment: 'production', expiresAt: Date.now() + 60000, accountCreated: null }; },
+  async cancel() { hostCalls.push(['cancel']); releaseGoogle?.(Object.assign(new Error('cancelled'), { code: 'cancelled' })); releaseGoogle = null; },
+};
 // Managed services (login, identity, Gmail, revocation) run on the CloudProtocol that product builds ship;
 // only the hosted-agent routes use the development subclass, over the same credential store.
-const make = (environment = 'production') => new CloudProtocol(environment, request, store, browser);
+const make = (environment = 'production', signIn = host) => new CloudProtocol(environment, request, store, browser, { signIn });
+const makeLegacy = (environment = 'production') => new LegacyCliLoginProtocol(environment, request, store, browser);
 const makeAgents = (environment = 'production') => new DevelopmentCloudAgentProtocol(environment, request, store, browser);
 const signal = () => new AbortController().signal;
 try {
   const client = make();
   assert.equal(Object.getPrototypeOf(client), CloudProtocol.prototype, 'managed services are tested on the shipped class');
   const agents = makeAgents();
-  await client.login(signal());
-  assert.equal(saved.token, token, 'session token preferred over legacy API key');
-  assert.equal(opened.at(-1), `https://eliza.app/auth/cli-login?session=${sessionId}`);
+  // In-app email sign-in: the host stores the key; no web page is opened and no Cloud route is called here.
+  const started = await client.startEmailSignIn('  owner@example.invalid ', signal());
+  assert.equal(started.attemptId, sessionId);
+  await assert.rejects(client.verifyEmailSignIn(started.attemptId, '000000', signal()), error => error instanceof CloudSignInError && error.code === 'invalid-code');
+  assert.equal(saved, null, 'a wrong code stores nothing');
+  const signedIn = await client.verifyEmailSignIn(started.attemptId, '123456', signal());
+  assert.deepEqual({ ...signedIn, expiresAt: typeof signedIn.expiresAt }, { status: 'authenticated', environment: 'production', expiresAt: 'number', accountCreated: false });
+  assert.equal(saved.token, token); assert.equal(opened.length, 0, 'in-app sign-in opens no Eliza Cloud page');
   assert.equal((await client.identity(signal())).userId, id);
   assert.equal((await agents.listAgents(signal()))[0].id, id);
   assert.equal((await agents.listConversations(id, signal()))[0].id, conversationId);
@@ -166,23 +199,50 @@ try {
   assert.equal(agentReads, readsBeforeOutage + 1); assert.ok(saved);
   await client.disconnect(); assert.equal(saved, null);
   await assert.rejects(agents.listAgents(signal()), error => error.code === 'credentials-missing');
-  mode = 'consumed'; await assert.rejects(client.login(signal()), error => error.code === 'credential-consumed');
+  // Google through the host: one sign-in at a time, cancellation burns the host's attempt.
+  hostMode = 'created'; assert.equal((await client.signInWithGoogle(signal())).accountCreated, true, 'a created account is reported, never silent');
+  await client.disconnect(); assert.equal(saved, null);
+  hostMode = 'hold';
+  const googleCancel = new AbortController();
+  const google = assert.rejects(client.signInWithGoogle(googleCancel.signal), error => error.name === 'AbortError');
+  await new Promise(resolve => setTimeout(resolve, 5));
+  await assert.rejects(client.startEmailSignIn('owner@example.invalid', signal()), error => error.code === 'login-active');
+  googleCancel.abort(); await google; assert.equal(saved, null);
+  assert.deepEqual(hostCalls.at(-1), ['cancel'], 'cancelling burns the pending attempt in the host');
+  hostMode = 'mfa'; const mfaAttempt = await client.startEmailSignIn('owner@example.invalid', signal());
+  const step = await client.verifyEmailSignIn(mfaAttempt.attemptId, '123456', signal());
+  assert.deepEqual([step.status, step.method], ['mfa', 'totp']); assert.equal(saved, null);
+  assert.equal((await client.verifyMfaSignIn(mfaAttempt.attemptId, '654321', signal())).status, 'authenticated'); await client.disconnect();
+  hostMode = 'cooldown'; await assert.rejects(client.startEmailSignIn('owner@example.invalid', signal()), error => error.code === 'cooldown');
+  hostMode = 'foreign'; await assert.rejects(client.verifyEmailSignIn(sessionId, '123456', signal()), error => error.code === 'unavailable', 'an outcome for another environment is refused');
+  hostMode = 'leak'; await assert.rejects(client.verifyEmailSignIn(sessionId, '123456', signal()), error => error.code === 'unavailable', 'an outcome carrying extra fields is refused');
+  hostMode = 'unstored'; await assert.rejects(client.signInWithGoogle(signal()), error => error.code === 'credentials-missing', 'success without a stored key is not a sign-in');
+  hostMode = 'ok'; await assert.rejects(make('production', null).signInWithGoogle(signal()), error => error instanceof CloudSignInError && error.code === 'unavailable', 'no host, no sign-in');
+  await make('staging').signInWithGoogle(signal()); assert.deepEqual(hostCalls.findLast(call => call[0] === 'google'), ['google', 'staging']);
+  await client.disconnect();
+  // Test-mocks diagnostic fallback (one release): the retired browser hand-off still works there.
+  const legacy = makeLegacy();
+  await legacy.login(signal());
+  assert.equal(saved.token, token, 'session token preferred over legacy API key');
+  assert.equal(opened.at(-1), `https://eliza.app/auth/cli-login?session=${sessionId}`);
+  await legacy.disconnect();
+  mode = 'consumed'; await assert.rejects(legacy.login(signal()), error => error.code === 'credential-consumed');
   assert.equal(saved, null);
-  mode = 'expiry'; await assert.rejects(client.login(signal()), error => error.code === 'expired');
+  mode = 'expiry'; await assert.rejects(legacy.login(signal()), error => error.code === 'expired');
   assert.equal(saved, null);
   mode = 'pending';
   const seen = new Promise(resolve => { pendingObserved = resolve; });
   const cancel = new AbortController();
-  const login = client.login(cancel.signal);
+  const login = legacy.login(cancel.signal);
   const rejection = assert.rejects(login, error => error.name === 'AbortError');
   await seen;
-  await assert.rejects(client.login(signal()), error => error.code === 'login-active');
+  await assert.rejects(legacy.login(signal()), error => error.code === 'login-active');
   cancel.abort(); await rejection; assert.equal(saved, null);
   const pollsAtCancel = polls; await new Promise(resolve => setTimeout(resolve, 30)); assert.equal(polls, pollsAtCancel);
-  mode = 'ok'; await make('staging').login(signal());
+  mode = 'ok'; await makeLegacy('staging').login(signal());
   assert.equal(opened.at(-1), `https://staging.eliza.app/auth/cli-login?session=${sessionId}`);
   await client.disconnect();
-  process.stdout.write('PASS: synthetic HTTP Cloud login, credential preference/storage, restart, agent list/detail, dedicated/shared conversation routing and send, Gmail scopes/status/account/search/read/thread, complete HTML preservation and malformed/oversized HTML handling, search paging, read-state capability, disconnect, URL rejection, outage without retry, consumed claim, expiry, cancellation and staging routing. No live account acceptance.\n');
+  process.stdout.write('PASS: synthetic in-app Cloud sign-in (email, MFA, Google, cancellation, one at a time, refused foreign/extra/unstored outcomes), test-mocks browser hand-off fallback, credential preference/storage, restart, agent list/detail, dedicated/shared conversation routing and send, Gmail scopes/status/account/search/read/thread, complete HTML preservation and malformed/oversized HTML handling, search paging, read-state capability, disconnect, URL rejection, outage without retry, consumed claim, expiry, cancellation and staging routing. No live account acceptance.\n');
 } finally {
   server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
 }

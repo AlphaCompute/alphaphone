@@ -1,0 +1,141 @@
+package ai.elizaresearch.alphaphone;
+
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Base64;
+import java.util.HashSet;
+import java.util.Set;
+
+/** Plain-JVM checks of the in-app sign-in policy. No Android, network, storage or account. */
+public final class CloudSignInFlowTest {
+ private static int checks;
+ private static void check(boolean condition, String message) { checks++; if (!condition) throw new AssertionError(message); }
+ public static void main(String[] args) throws Exception {
+  CloudSignInFlow.Environment production = CloudSignInFlow.Environment.PRODUCTION, staging = CloudSignInFlow.Environment.STAGING;
+
+  // Environments: staging only with test mocks.
+  check(CloudSignInFlow.environment("production", false) == production, "production always");
+  check(CloudSignInFlow.environment("staging", true) == staging, "staging with test mocks");
+  for (String refused : new String[]{"staging", "development", "", null}) {
+   try { CloudSignInFlow.environment(refused, false); check(false, "refused environment " + refused); } catch (IllegalArgumentException expected) { checks++; }
+  }
+  check("https://eliza.app/alphaphone/auth/callback".equals(production.callback()), "production App Link");
+  check("https://staging.eliza.app/alphaphone/auth/callback".equals(staging.callback()), "staging App Link");
+
+  // PKCE and state: RFC 7636 shapes, fresh every time, S256 matches the verifier.
+  Set<String> seen = new HashSet<>();
+  for (int i = 0; i < 200; i++) {
+   String verifier = CloudSignInFlow.newVerifier(), state = CloudSignInFlow.newState();
+   check(verifier.length() == 64 && CloudSignInFlow.validVerifier(verifier), "64-character verifier");
+   check(CloudSignInFlow.validState(state), "43-character state");
+   check(seen.add(verifier) && seen.add(state), "never repeated");
+  }
+  String verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+  check("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM".equals(CloudSignInFlow.s256(verifier)), "RFC 7636 appendix B vector");
+
+  // Authorize URL: exact Steward route, S256, tenant, registered return, no other parameter.
+  String state = CloudSignInFlow.newState(), challenge = CloudSignInFlow.s256(CloudSignInFlow.newVerifier());
+  URI authorize = new URI(CloudSignInFlow.authorizeUrl(production, challenge, state));
+  check("https".equals(authorize.getScheme()) && "api.eliza.app".equals(authorize.getHost()) && authorize.getPort() == -1, "Cloud API authority");
+  check("/steward/auth/oauth/google/authorize".equals(authorize.getPath()), "Steward Google authorize");
+  check(authorize.getRawQuery().equals("response_type=code&tenant_id=elizacloud&redirect_uri=https%3A%2F%2Feliza.app%2Falphaphone%2Fauth%2Fcallback&code_challenge=" + challenge + "&code_challenge_method=S256&state=" + state), "exact query");
+  check(new URI(CloudSignInFlow.authorizeUrl(staging, challenge, state)).getHost().equals("api-staging.eliza.app"), "staging authority");
+  for (String[] bad : new String[][]{{challenge, "short"}, {"x", state}, {challenge, state + "&x=1"}}) {
+   try { CloudSignInFlow.authorizeUrl(production, bad[0], bad[1]); check(false, "refused authorize input"); } catch (IllegalArgumentException expected) { checks++; }
+  }
+
+  // Callback: Steward puts code and state in the fragment.
+  String code = Base64.getUrlEncoder().withoutPadding().encodeToString("synthetic-one-time-steward-code-0001".getBytes(StandardCharsets.US_ASCII));
+  String base = "https://eliza.app/alphaphone/auth/callback";
+  CloudSignInFlow.Callback ok = CloudSignInFlow.parseCallback(base + "#code=" + code + "&state=" + state, production);
+  check(ok != null && code.equals(ok.code) && state.equals(ok.state) && ok.error == null, "valid return");
+  check(CloudSignInFlow.parseCallback(base + "#state=" + state + "&code=" + code, production) != null, "order does not matter");
+  CloudSignInFlow.Callback refused = CloudSignInFlow.parseCallback(base + "?error=oauth_authorization_failed&state=" + state, production);
+  check(refused != null && refused.code == null && "oauth_authorization_failed".equals(refused.error), "Steward recovery link in the query");
+  check(CloudSignInFlow.parseCallback(base + "#error=mfa_required&state=" + state, production) != null, "error in the fragment");
+  String[] rejected = {
+   "http://eliza.app/alphaphone/auth/callback#code=" + code + "&state=" + state,
+   "https://evil.example/alphaphone/auth/callback#code=" + code + "&state=" + state,
+   "https://eliza.app.evil.example/alphaphone/auth/callback#code=" + code + "&state=" + state,
+   "https://staging.eliza.app/alphaphone/auth/callback#code=" + code + "&state=" + state,
+   "https://eliza.app:443/alphaphone/auth/callback#code=" + code + "&state=" + state,
+   "https://user@eliza.app/alphaphone/auth/callback#code=" + code + "&state=" + state,
+   "https://eliza.app/alphaphone/auth/callback/#code=" + code + "&state=" + state,
+   "https://eliza.app/alphaphone/auth/callbackx#code=" + code + "&state=" + state,
+   "https://eliza.app/alphaphone/auth/cloud-delegation#code=" + code + "&state=" + state,
+   "https://eliza.app/ALPHAPHONE/auth/callback#code=" + code + "&state=" + state,
+   base + "?code=" + code + "&state=" + state,
+   base + "?x=1#code=" + code + "&state=" + state,
+   base + "#code=" + code + "&state=" + state + "&extra=1",
+   base + "#code=" + code + "&code=" + code + "&state=" + state,
+   base + "#code=" + code + "&state=" + state + "&state=" + state,
+   base + "#code=" + code,
+   base + "#state=" + state,
+   base + "#code=" + code + "&error=access_denied&state=" + state,
+   base + "#code=" + code + "&state=" + state.substring(1),
+   base + "#code=" + code + "&state=" + state + "x",
+   base + "#code=a%2Fb&state=" + state,
+   base + "#code=&state=" + state,
+   base + "#code=" + code + "&state=" + state + "&",
+   base + "#",
+   base,
+   base + "#error=Not%20Allowed&state=" + state,
+   "alphaphone://cloud-delegation?code=" + code + "&state=" + state,
+   null,
+  };
+  for (String url : rejected) check(CloudSignInFlow.parseCallback(url, production) == null, "rejected return " + url);
+  check(CloudSignInFlow.parseCallback("https://staging.eliza.app/alphaphone/auth/callback#code=" + code + "&state=" + state, staging) != null, "staging return for staging");
+
+  // Pending record: single attempt, expires after ten minutes, constant-time state match.
+  long now = 1_800_000_000_000L;
+  CloudSignInFlow.Pending pending = CloudSignInFlow.Pending.create(production, now);
+  check(pending.expiresAt == now + 10 * 60 * 1000L, "ten-minute pending record");
+  CloudSignInFlow.Callback mine = CloudSignInFlow.parseCallback(base + "#code=" + code + "&state=" + pending.state, production);
+  CloudSignInFlow.Callback other = CloudSignInFlow.parseCallback(base + "#code=" + code + "&state=" + CloudSignInFlow.newState(), production);
+  check(pending.matches(mine, now + 1000), "matching state");
+  check(!pending.matches(other, now + 1000), "unknown state");
+  check(!pending.matches(mine, pending.expiresAt), "expired record never matches");
+  check(!pending.matches(null, now), "no return");
+  CloudSignInFlow.Pending restored = CloudSignInFlow.Pending.parse(pending.serialize(), false);
+  check(restored != null && restored.state.equals(pending.state) && restored.verifier.equals(pending.verifier) && restored.expiresAt == pending.expiresAt && restored.environment == production, "encrypted-at-rest round trip");
+  check(CloudSignInFlow.Pending.parse(CloudSignInFlow.Pending.create(staging, now).serialize(), false) == null, "a staging record is refused by a product build");
+  for (String bad : new String[]{null, "", "v2.production." + pending.state + "." + pending.verifier + ".1", "v1.production.short." + pending.verifier + ".1", "v1.production." + pending.state + ".short.1", "v1.production." + pending.state + "." + pending.verifier + ".x", pending.serialize() + ".extra"})
+   check(CloudSignInFlow.Pending.parse(bad, true) == null, "refused record " + bad);
+
+  // Inputs and responses.
+  check(CloudSignInFlow.validEmail("owner@example.invalid") && !CloudSignInFlow.validEmail("owner@") && !CloudSignInFlow.validEmail("a b@example.invalid") && !CloudSignInFlow.validEmail("owner@example.invalid‮"), "email shape");
+  check(CloudSignInFlow.validCode("012345") && !CloudSignInFlow.validCode("12345") && !CloudSignInFlow.validCode("1234567") && !CloudSignInFlow.validCode("12a456"), "six digits");
+  check(CloudSignInFlow.validMobileSecret("eliza_mobile_" + "a".repeat(40)) && !CloudSignInFlow.validMobileSecret("eliza_" + "a".repeat(40)) && !CloudSignInFlow.validMobileSecret("eliza_mobile_\n" + "a".repeat(40)), "mobile key shape");
+  check(CloudSignInFlow.validUuid("55555555-5555-4555-8555-555555555555") && !CloudSignInFlow.validUuid("x"), "credential id");
+
+  // Failure mapping and the bounded acknowledgement retry.
+  check("rate-limited".equals(CloudSignInFlow.failureForStatus("send", 429)), "429");
+  check("invalid-code".equals(CloudSignInFlow.failureForStatus("verify", 401)) && "invalid-code".equals(CloudSignInFlow.failureForStatus("mfa", 400)), "wrong code");
+  check("expired".equals(CloudSignInFlow.failureForStatus("exchange", 401)) && "expired".equals(CloudSignInFlow.failureForStatus("token", 410)), "used or expired code");
+  check("account-check".equals(CloudSignInFlow.failureForStatus("verify", 403)) && "unavailable".equals(CloudSignInFlow.failureForStatus("connect", 503)) && "rejected".equals(CloudSignInFlow.failureForStatus("connect", 400)), "other statuses");
+  check(CloudSignInFlow.ACK_ATTEMPTS == 3, "at most three acknowledgements");
+  check(CloudSignInFlow.ackRetryable(-1) && CloudSignInFlow.ackRetryable(503) && CloudSignInFlow.ackRetryable(429) && !CloudSignInFlow.ackRetryable(400) && !CloudSignInFlow.ackRetryable(401) && !CloudSignInFlow.ackRetryable(410), "retry only transport and server failures");
+  check(CloudSignInFlow.ackBackoffMs(0) == 0 && CloudSignInFlow.ackBackoffMs(1) == 1000 && CloudSignInFlow.ackBackoffMs(2) == 2000 && CloudSignInFlow.ackBackoffMs(9) == 4000, "bounded backoff");
+
+  // Routes: the sign-in client admits exactly its fixed routes; the renderer transport admits none.
+  String[] routes = {"/steward/auth/email/send", "/steward/auth/email/code/verify", "/steward/auth/oauth/exchange", "/steward/auth/mfa/totp/complete", "/steward/auth/mfa/sms/complete", "/steward/auth/logout", "/api/v1/app-auth/connect", "/api/v1/app-auth/mobile/token", "/api/v1/app-auth/mobile/ack"};
+  for (String route : routes) {
+   check(ConnectionRoutes.signInRoute(route, "POST", true), "sign-in route " + route);
+   check(!ConnectionRoutes.signInRoute(route, "GET", false) && !ConnectionRoutes.signInRoute(route, "POST", false), "POST with a body only " + route);
+   check(!ConnectionRoutes.managedService(route, null, "POST", true, false), "renderer transport refuses " + route);
+  }
+  check(ConnectionRoutes.signInRoute("/api/v1/app-auth/mobile/config", "GET", false), "config read");
+  for (String route : new String[]{"/steward/auth/oauth/google/authorize", "/steward/auth/mfa/passkey/complete", "/steward/auth/email/send/", "/steward/auth/revoke", "/api/v1/app-auth/mobile/ack/x", "/api/auth/cli-session", null})
+   check(!ConnectionRoutes.signInRoute(route, "POST", true), "refused sign-in route " + route);
+  check(ConnectionRoutes.signInOrigin("https", "api.eliza.app", -1, false) && ConnectionRoutes.signInOrigin("https", "api.eliza.app", 443, false), "production API");
+  check(!ConnectionRoutes.signInOrigin("https", "api-staging.eliza.app", -1, false) && ConnectionRoutes.signInOrigin("https", "api-staging.eliza.app", -1, true), "staging only with test mocks");
+  check(!ConnectionRoutes.signInOrigin("http", "api.eliza.app", -1, true) && !ConnectionRoutes.signInOrigin("https", "eliza.app", -1, false) && !ConnectionRoutes.signInOrigin("https", "api.eliza.app", 8443, false), "nothing else");
+  // The retired browser hand-off is not a product route.
+  check(!ConnectionRoutes.managedService("/api/auth/cli-session", null, "POST", true, false), "no cli-session create in product builds");
+  check(!ConnectionRoutes.managedService("/api/auth/cli-session/d32f7f34-962b-47b7-8f0d-f2fe7f12610a", null, "GET", false, false), "no cli-session poll in product builds");
+  check(ConnectionRoutes.managedService("/api/auth/cli-session", null, "POST", true, true), "test-mocks diagnostic fallback keeps it");
+  check(MessageDigest.isEqual("a".getBytes(StandardCharsets.US_ASCII), "a".getBytes(StandardCharsets.US_ASCII)), "jdk");
+  System.out.println("PASS cloud sign-in flow (" + checks + " checks)");
+ }
+}

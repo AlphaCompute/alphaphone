@@ -128,7 +128,6 @@ async function boot(page:Page,initial:Fixture&{tokens?:Record<string,string>;key
     f.plan=f.redeemPlan;f.route='signed';
     return {status:200,data:{success:true,replayed:f.bodies.length>1,grant:{id:'synthetic-grant',planKey:'plus_monthly',startsAt:'2026-10-13T00:00:00.000Z',endsAt:'2027-04-14T00:00:00.000Z',revoked:false,paidPlanTakesPrecedence:false},entitlement:{plan:{id:'plus_monthly',name:'Plus',status:'active'},source:'grant',effectiveUntil:'2027-04-14T00:00:00.000Z'}}};
    }
-   if(path==='/api/auth/cli-session')return {status:503,data:{}};
    throw Error('Unexpected Cloud route '+path);
   }};
  },initial);
@@ -541,8 +540,11 @@ test.describe('account, plan and sign-in expiry',()=>{
   expect(await page.evaluate(()=>(window as any).planController.residentPlanSettings().keyExpiring)).toBe(true);
   await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:info.outputPath('sign-in-expiry-warning.png'),animations:'disabled'});
   await page.getByRole('button',{name:'Approve this phone again',exact:true}).click();
-  // Re-approval is the real Cloud CLI sign-in (the fixture refuses it here); the agent keeps running.
-  await expect.poll(async()=>(await calls(page)).some(c=>c.path==='/api/auth/cli-session'&&c.httpMethod==='POST')).toBe(true);
+  // Re-approval opens Alpha's own sign-in screen; nothing is sent until the owner chooses, no Eliza
+  // Cloud page or browser hand-off route is used, and the agent keeps running.
+  await expect(page.getByRole('dialog',{name:'Sign in to Eliza Cloud',exact:true})).toBeVisible();
+  await expect(page.getByRole('form',{name:'Sign in with email'})).toBeVisible();
+  expect((await calls(page)).some(c=>c.path==='/api/auth/cli-session'||c.method==='openExternal')).toBe(false);
   await expect.poll(async()=>(await snapshot(page)).session!==null).toBe(true);
  });
 

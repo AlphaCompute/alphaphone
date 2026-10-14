@@ -91,7 +91,9 @@ public final class InboxDraftInstrumentedTest {
    js("localStorage.setItem("+JSONObject.quote(SELECTION)+",JSON.stringify({kind:'none'}));localStorage.removeItem("+JSONObject.quote(SERVICE)+")");reload();
    // Exercise the production sign-in control with a closed test-APK transport;
    // a developer-only environment selector is not part of this UI contract.
-   nav("Settings");click("Agent connection");click("Sign in with Eliza Cloud");// The Android account panel names the signed-in state and offers Sign out only once /api/v1/user verified the session.
+   nav("Settings");click("Agent connection");click("Sign in with Eliza Cloud");
+   until("document.querySelector('.alpha-cloud-sign-in input[name=email]')");js(InboxFixtureSignIn.DRIVE_EMAIL);
+   until("document.querySelector('.alpha-cloud-sign-in input[name=one-time-code]')");js(InboxFixtureSignIn.DRIVE_CODE);// The Android account panel names the signed-in state and offers Sign out only once /api/v1/user verified the session.
    until("document.querySelector('#connection-title')?.textContent==='Your Cloud account'&&"+button("Sign out"));click("Close connection settings");
    // Inbox loads the signed-in mailbox by itself (the old explicit Load Inbox control is gone).
    nav("Inbox");until(button("Fixture a"));until(button("Refresh"));click("Compose");input("To","literal@example.invalid");click("literal@example.invalid");input("Subject","Synthetic saved draft");input("Message","Exact native draft\nSecond line");click("Save draft locally");until("[...document.querySelectorAll('[role=status]')].some(e=>e.textContent==='Saved locally on this device')");

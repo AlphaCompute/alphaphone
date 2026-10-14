@@ -97,17 +97,37 @@ of the same bytes it stages and writes a presigned/preprocessed nonprivileged So
 `android_app_import` plus a `PRODUCT_PACKAGES` fragment. No local-agent marker or
 privileged permission whitelist is fabricated for a thin launcher.
 
-## App Links preparation
+## App Links
 
-Verified App Links for the Cloud delegation return are prepared but not active. The
-manifest carries a commented `autoVerify` HTTPS intent filter, and
-`android/app/src/main/assetlinks.template.json` is the `/.well-known/assetlinks.json`
-template for `ai.elizaresearch.alphaphone` with a placeholder certificate fingerprint.
-The `alphaphone://cloud-delegation` custom scheme remains the active return path. To
-activate: choose the owned return host, publish the file with the release signer's
-SHA-256 fingerprint, enable the filter and renderer HTTPS return in a reviewed change,
-then verify with `adb shell pm get-app-links ai.elizaresearch.alphaphone` on an installed
-signed build ([runbook](pilot-acceptance-runbook.md#external-integration-runbooks)).
+**In-app Eliza Cloud sign-in return (active).** MainActivity declares one verified App Link,
+`https://eliza.app/alphaphone/auth/callback` (exact path, `autoVerify`). Test-mocks builds add
+`https://staging.eliza.app/alphaphone/auth/callback` from `src/testMocks/AndroidManifest.xml`.
+Steward returns Google sign-in there with a one-time code. AlphaCloudSignInPlugin validates the link
+strictly and exchanges the code natively (docs/architecture.md, "Eliza Cloud sign-in ownership").
+
+Until `eliza.app` serves `/.well-known/assetlinks.json` with the installed signer's SHA-256
+fingerprint, Android does not verify the link. The return then opens in the browser and Google
+sign-in cannot finish. Email-code sign-in is unaffected. To set it up:
+
+1. Publish `android/app/src/main/assetlinks.template.json` with the release fingerprint
+   (`android/release-signer.json`). Staging also lists the debug fingerprint.
+2. Verify with `adb shell pm get-app-links ai.elizaresearch.alphaphone` on an installed signed build
+   ([runbook](pilot-acceptance-runbook.md#external-integration-runbooks)).
+
+An APK build, an emulator verification, the AOSP image and the owner's device acceptance are
+separate evidence levels; none of them proves another.
+
+**AOSP image requirements for sign-in:**
+
+- Include `com.android.statementservice` (the App Link verifier, IntentFilterVerifier). Without it
+  `autoVerify` never succeeds and the Google return is not delivered to Alpha.
+- Include a browser that provides Custom Tabs (the Alpha Chromium, which answers
+  `android.support.customtabs.action.CustomTabsService`). Without one, Alpha falls back to a plain
+  `ACTION_VIEW` browser. With no browser at all, Alpha offers only email sign-in.
+- Neither component needs GMS.
+
+**Cloud delegation return (prepared, not active).** It still uses the `alphaphone://cloud-delegation`
+custom scheme. Moving it to an HTTPS App Link is a separate reviewed change.
 
 ## Full AOSP product integration
 

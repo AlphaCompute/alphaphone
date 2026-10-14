@@ -9,15 +9,17 @@ import {createServer} from 'node:http';
 if(!process.execArgv.some((arg,i)=>arg==='--import'&&process.execArgv[i+1]==='tsx')){const child=spawnSync(process.execPath,['--import','tsx',process.argv[1]],{stdio:'inherit',timeout:60000});if(child.error)throw child.error;process.exit(child.status??1);}
 const {createBrowserCloudDevHandler}=await import('../scripts/browser-cloud-dev-bridge.ts');
 const {CloudProtocol}=await import('../apps/app/src/runtime/cloud-protocol.ts');
+const {LegacyCliLoginProtocol}=await import('../apps/app/src/runtime/legacy-cli-login.ts');
 const {BrowserCloudConnection}=await import('../apps/app/src/browser/cloud-connection.ts');
 const owner='11111111-1111-4111-8111-111111111111',org='22222222-2222-4222-8222-222222222222',credentialId='33333333-3333-4333-8333-333333333333',reference='browser-cloud-reference:44444444-4444-4444-8444-444444444444';
 const secret='synthetic-cloud-credential-not-a-real-key';
 async function fixture(){
  const profile=await mkdtemp(join(tmpdir(),'alpha-browser-cloud-')),file=join(profile,'existing-secret');await writeFile(file,secret,{mode:0o600});
  const seed={environment:'production',credentialFile:file,credentialSha256:createHash('sha256').update(secret).digest('hex'),userId:owner,organizationId:org,credentialReference:reference,credentialId};await writeFile(join(profile,'initial-credential.json'),JSON.stringify(seed),{mode:0o600});
- const calls=[];let response=async()=>new Response('{}'),pollResponse=async()=>Response.json({status:'authenticated',apiKey:secret});const session=randomUUID();
+ const calls=[];let signIn=null,response=async()=>new Response('{}'),pollResponse=async()=>Response.json({status:'authenticated',apiKey:secret});const session=randomUUID();
  const request=async(url,input={})=>{
   const path=new URL(url).pathname;calls.push({url,input});
+  if(signIn){const handled=await signIn(path,input);if(handled)return handled;}
   if(path==='/api/auth/cli-session')return Response.json({sessionId:session,expiresAt:new Date(Date.now()+60000).toISOString()});
   if(path==='/api/auth/cli-session/'+session)return pollResponse();
   assert.equal(new Headers(input.headers).get('Authorization'),'Bearer '+secret);
@@ -30,7 +32,7 @@ async function fixture(){
  const start=async()=>{server=createServer(createBrowserCloudDevHandler({profile,request}));await new Promise(r=>server.listen(0,'127.0.0.1',r));origin=`http://127.0.0.1:${server.address().port}`;};await start();
  const send=(data,options={})=>fetch(origin,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Alpha-Browser-Cloud':'1',...(options.headers||{})},body:JSON.stringify(data),signal:options.signal});
  const rpc=async data=>{const r=await send(data);return {status:r.status,data:await r.json()};};
- return {profile,file,calls,send,rpc,setResponse:fn=>{response=fn;},setPollResponse:fn=>{pollResponse=fn;},origin:()=>origin,session,restart:async()=>{await new Promise(r=>server.close(r));await start();},close:async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));await rm(profile,{recursive:true,force:true});}};
+ return {profile,file,calls,send,rpc,setSignIn:fn=>{signIn=fn;},setResponse:fn=>{response=fn;},setPollResponse:fn=>{pollResponse=fn;},origin:()=>origin,session,restart:async()=>{await new Promise(r=>server.close(r));await start();},close:async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));await rm(profile,{recursive:true,force:true});}};
 }
 test('existing Mac credential becomes a real canonical identity/credit reference, never a browser bearer',async()=>{
  const f=await fixture();try{
@@ -57,7 +59,7 @@ test('normal canonical CLI poll claims stay server-private and commit by referen
   try{
    const old=await account.secureRead({slot:'cloud:production'});assert.equal(JSON.parse(old.value).credentialReference,reference);
    const store={acceptsReferences:true,read:async()=>{const r=await account.secureRead({slot:'cloud:production'});return r.value?JSON.parse(r.value):null;},write:async(_env,value)=>account.secureWrite({slot:'cloud:production',value:JSON.stringify({...value,credentialId:randomUUID()})}),clear:async()=>account.secureRemove({slot:'cloud:production'})};
-   const client=new CloudProtocol('production',input=>account.request({...input,requestId:randomUUID(),body:input.body===undefined?undefined:JSON.stringify(input.body)}),store,async()=>{});
+   const client=new LegacyCliLoginProtocol('production',input=>account.request({...input,requestId:randomUUID(),body:input.body===undefined?undefined:JSON.stringify(input.body)}),store,async()=>{});
    await client.login(new AbortController().signal);const credential=await store.read();assert.equal(credential.token,undefined);assert.match(credential.credentialReference,/^browser-cloud-reference:/);assert.notEqual(credential.credentialReference,reference);assert.deepEqual(await client.identity(new AbortController().signal),{userId:owner,organizationId:org,email:'owned@example.invalid'});
    assert.equal(JSON.stringify(credential).includes(secret),false);const privateState=JSON.parse(await readFile(join(f.profile,'credentials.json'),'utf8'));assert.equal(privateState.production.token,secret);assert.equal((await stat(join(f.profile,'credentials.json'))).mode&0o077,0);
    await client.disconnect();await f.restart();assert.equal((await f.rpc({operation:'secureRead',slot:'cloud:production'})).data.value,null);
@@ -88,7 +90,7 @@ test('cancel closes an in-flight Cloud audio stream; stale account audio cannot 
 });
 
 test('native production Cloud stores never admit a development reference as a bearer',async()=>{
- let writes=0;const id=randomUUID(),client=new CloudProtocol('production',async input=>({status:200,data:input.url.endsWith('/api/auth/cli-session')?{sessionId:id,expiresAt:new Date(Date.now()+60000).toISOString()}:{status:'authenticated',credentialReference:reference}}),{read:async()=>null,write:async()=>{writes++;},clear:async()=>{}},async()=>{});
+ let writes=0;const id=randomUUID(),client=new LegacyCliLoginProtocol('production',async input=>({status:200,data:input.url.endsWith('/api/auth/cli-session')?{sessionId:id,expiresAt:new Date(Date.now()+60000).toISOString()}:{status:'authenticated',credentialReference:reference}}),{read:async()=>null,write:async()=>{writes++;},clear:async()=>{}},async()=>{});
  await assert.rejects(client.login(new AbortController().signal),e=>e.code==='credential-consumed');assert.equal(writes,0);
 });
 
@@ -190,5 +192,45 @@ test('managed Google bridge refuses scope escalation, mutations, malformed query
   const entered=Promise.withResolvers(),release=Promise.withResolvers();f.setResponse(async()=>{entered.resolve();await release.promise;return Response.json([{calendarId:'one'}]);});
   const pending=call(route);await entered.promise;await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:reference});release.resolve();
   assert.equal((await pending).status,409,'logout prevents publishing an in-flight calendar result');
+ }finally{await f.close();}
+});
+
+// In-app sign-in through the development host (email code): the Steward session, PKCE material and
+// the minted key stay in the host; the page receives only the outcome and a reference. Synthetic.
+test('development host email sign-in mints a mobile key server-side and commits it by reference',async()=>{
+ const f=await fixture();try{
+  const steward='synthetic-steward-session-token-0001',minted='eliza_mobile_synthetic-minted-key-0001',serverId='55555555-5555-4555-8555-555555555555',newOwner='66666666-6666-4666-8666-666666666666';
+  let challenge=null,stateSeen=null;const order=[];
+  f.setSignIn(async(path,input)=>{
+   if(!path.startsWith('/steward/')&&!path.startsWith('/api/v1/app-auth/')&&!(path==='/api/v1/user'&&new Headers(input.headers).get('Authorization')==='Bearer '+minted))return null;
+   order.push(path);const body=input.body?JSON.parse(input.body):undefined,auth=new Headers(input.headers).get('Authorization');assert.equal(input.redirect,'error');
+   if(path==='/steward/auth/email/send'){assert.deepEqual(body,{email:'owner@example.invalid',tenantId:'elizacloud'});assert.equal(auth,null);return Response.json({ok:true,data:{expiresAt:new Date(Date.now()+600000).toISOString(),challengeId:'c',pollSecret:'p'}});}
+   if(path==='/steward/auth/email/code/verify'){if(body.code!=='123456')return Response.json({ok:false,error:'Invalid code'},{status:401});return Response.json({ok:true,token:steward,refreshToken:'synthetic-refresh-0001',expiresIn:900,user:{id:'u'}});}
+   if(path==='/api/v1/app-auth/connect'){assert.equal(auth,'Bearer '+steward);assert.equal(body.flow,'mobile_pkce');assert.equal(body.clientId,'ai.elizaresearch.alphaphone');assert.equal(body.environment,'production');assert.equal(body.redirectUri,'https://eliza.app/alphaphone/auth/callback');assert.equal(body.codeChallengeMethod,'S256');assert.match(body.state,/^[A-Za-z0-9_-]{43}$/);challenge=body.codeChallenge;stateSeen=body.state;return Response.json({success:true,code:'emac_'+'a'.repeat(64),codeType:'mobile_app_auth_code',expiresAt:new Date(Date.now()+300000).toISOString(),expiresIn:300,accountCreated:true});}
+   if(path==='/api/v1/app-auth/mobile/token'){assert.equal(auth,null);assert.equal(body.state,stateSeen);assert.equal(createHash('sha256').update(body.codeVerifier).digest('base64url'),challenge,'PKCE verifier matches the challenge');return Response.json({success:true,credentialId:serverId,secret:minted,tokenType:'Bearer',expiresAt:new Date(Date.now()+30*86400000).toISOString(),expiresIn:2592000,scopes:['cloud:user'],acknowledgementRequired:true,acknowledgeBy:new Date(Date.now()+300000).toISOString()});}
+   if(path==='/api/v1/app-auth/mobile/ack'){assert.equal(body.secret,minted);assert.equal(body.credentialId,serverId);return Response.json({success:true,status:'acknowledged',credentialId:serverId,expiresAt:new Date(Date.now()+30*86400000).toISOString(),scopes:['cloud:user']});}
+   if(path==='/api/v1/user')return Response.json({success:true,data:{id:newOwner,organization_id:org,email:'owner@example.invalid'}});
+   if(path==='/steward/auth/logout'){assert.equal(auth,'Bearer '+steward);assert.deepEqual(body,{refreshToken:'synthetic-refresh-0001'});return Response.json({ok:true});}
+   throw Error('Unexpected sign-in route '+path);
+  });
+  const {BrowserCloudSignIn}=await import('../apps/app/src/browser/cloud-connection.ts');
+  const account=new BrowserCloudConnection(),host=new BrowserCloudSignIn(),original=globalThis.fetch;globalThis.fetch=(url,options={})=>url===f.origin()||String(url).startsWith('/__alpha')?original(f.origin(),{...options,headers:{...options.headers,Origin:f.origin()}}):original(url,options);
+  try{
+   const store={acceptsReferences:true,read:async()=>{const r=await account.secureRead({slot:'cloud:production'});return r.value?JSON.parse(r.value):null;},write:async()=>{throw Error('The page never writes an in-app sign-in');},clear:async()=>account.secureRemove({slot:'cloud:production'})};
+   const client=new CloudProtocol('production',input=>account.request({...input,requestId:randomUUID(),body:input.body===undefined?undefined:JSON.stringify(input.body)}),store,async()=>{throw Error('No page is opened');},{signIn:host});
+   await assert.rejects(client.signInWithGoogle(new AbortController().signal),error=>error.code==='browser-unavailable','Google needs the phone');
+   const started=await client.startEmailSignIn('owner@example.invalid',new AbortController().signal);
+   await assert.rejects(client.startEmailSignIn('owner@example.invalid',new AbortController().signal),error=>error.code==='cooldown');
+   await assert.rejects(client.verifyEmailSignIn(started.attemptId,'000000',new AbortController().signal),error=>error.code==='invalid-code');
+   const outcome=await client.verifyEmailSignIn(started.attemptId,'123456',new AbortController().signal);
+   assert.equal(outcome.status,'authenticated');assert.equal(outcome.accountCreated,true);
+   assert.deepEqual(order.filter(path=>path!=='/steward/auth/email/code/verify'&&path!=='/steward/auth/logout'),['/steward/auth/email/send','/api/v1/app-auth/connect','/api/v1/app-auth/mobile/token','/api/v1/app-auth/mobile/ack','/api/v1/user'],'acknowledged before the identity read and the commit');
+   for(let wait=0;wait<50&&!order.includes('/steward/auth/logout');wait++)await new Promise(resolve=>setTimeout(resolve,10));
+   assert.ok(order.includes('/steward/auth/logout'),'the Steward session is revoked, best effort');
+   const credential=await store.read();assert.equal(credential.token,undefined);assert.match(credential.credentialReference,/^browser-cloud-reference:/);assert.equal(JSON.stringify(credential).includes(minted),false);
+   const privateState=JSON.parse(await readFile(join(f.profile,'credentials.json'),'utf8'));assert.equal(privateState.production.token,minted);assert.equal(privateState.production.userId,newOwner);
+   assert.equal(JSON.stringify(outcome).includes(steward)||JSON.stringify(outcome).includes(minted),false,'no secret reaches the page');
+   await assert.rejects(client.verifyEmailSignIn(started.attemptId,'123456',new AbortController().signal),error=>error.code==='expired','an attempt is single use');
+  }finally{globalThis.fetch=original;}
  }finally{await f.close();}
 });

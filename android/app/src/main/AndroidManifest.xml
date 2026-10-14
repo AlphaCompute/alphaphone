@@ -39,6 +39,8 @@
   <intent><action android:name="android.intent.action.OPEN_DOCUMENT"/><data android:mimeType="*/*"/></intent>
   <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="geo"/></intent>
   <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="https"/></intent>
+  <!-- Custom Tabs providers for the in-app Eliza Cloud Google sign-in (androidx.browser). -->
+  <intent><action android:name="android.support.customtabs.action.CustomTabsService"/></intent>
   <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="http"/></intent>
   <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.APP_CALENDAR"/></intent>
   <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.APP_EMAIL"/></intent>
@@ -98,12 +100,13 @@
   <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:screenOrientation="${appOrientation}" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|density|navigation" android:theme="@style/AppTheme.Launch">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
    <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="alphaphone" android:host="cloud-delegation"/></intent-filter>
-   <!-- PREPARED, NOT ACTIVE: verified App Links return for Eliza Cloud delegation. Enable only after
-        the release signing certificate fingerprint is published in /.well-known/assetlinks.json on the
-        return host (template: android/app/src/main/assetlinks.template.json) and the renderer accepts
-        the https return URL. The custom scheme above remains the active return path.
-   <intent-filter android:autoVerify="true"><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="https" android:host="CLOUD_DELEGATION_RETURN_HOST" android:pathPrefix="/alphaphone/cloud-delegation"/></intent-filter>
-   -->
+   <!-- In-app Eliza Cloud sign-in return (AlphaCloudSignInPlugin): Steward redirects the Google
+        Custom Tab to this verified App Link, so no other app can claim it and no Eliza page renders.
+        Verification needs /.well-known/assetlinks.json on eliza.app listing the release certificate
+        (template: android/app/src/main/assetlinks.template.json). Until it is published, Android
+        leaves the link to the browser and the native callback never fires. Cloud delegation keeps
+        its custom-scheme return above. The staging return host exists only in the test-mocks manifest. -->
+   <intent-filter android:autoVerify="true"><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="https" android:host="eliza.app" android:path="/alphaphone/auth/callback"/></intent-filter>
   </activity>
  </application>
 </manifest>

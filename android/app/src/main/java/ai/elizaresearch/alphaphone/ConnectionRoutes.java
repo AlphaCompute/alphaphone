@@ -23,7 +23,7 @@ final class ConnectionRoutes {
   * separate in-process Agent bridge, never through this transport, and does not pair with, restore
   * or connect a remote or Cloud agent (the controller returns before any saved selection is used and
   * the production dialog offers only Cloud sign-in for the subscription plan). Every request a flag-off
-  * build legitimately sends here (sign-in, identity, subscription entitlement and its public keys,
+  * build legitimately sends here (identity, subscription entitlement and its public keys,
   * subscription code redemption, the billing snapshot read while the entitlement
   * route is absent, key self-revocation, the connected
   * services under /api/v1/eliza/, Maps data under /api/v1/maps/) goes to the Cloud API, so the only admitted origin is exactly
@@ -37,6 +37,26 @@ final class ConnectionRoutes {
   if(testMocks)return true;
   return "https".equals(scheme)&&"api.eliza.app".equals(host)&&(port==-1||port==443);
  }
+ /**
+  * In-app Eliza Cloud sign-in (AlphaCloudSignInPlugin). These fixed routes are sent only by the
+  * native sign-in client with URLs it builds itself; the renderer transport never admits them, so
+  * no Steward session, authorization code, verifier or unacknowledged key crosses the bridge.
+  * The browser sign-in hand-off (/api/auth/cli-session) is not a product route: it remains only in
+  * ELIZA_DEV_ALLOW_TEST_MOCKS=1 builds as a diagnostic fallback for one release.
+  */
+ static boolean signInRoute(String path,String method,boolean hasBody){
+  if(path==null)return false;
+  if("GET".equals(method))return !hasBody&&"/api/v1/app-auth/mobile/config".equals(path);
+  if(!"POST".equals(method)||!hasBody)return false;
+  return java.util.Set.of("/steward/auth/email/send","/steward/auth/email/code/verify","/steward/auth/oauth/exchange",
+   "/steward/auth/mfa/totp/complete","/steward/auth/mfa/sms/complete","/steward/auth/logout",
+   "/api/v1/app-auth/connect","/api/v1/app-auth/mobile/token","/api/v1/app-auth/mobile/ack").contains(path);
+ }
+ /** The sign-in client's origin: exactly the environment's Cloud API on the default port. */
+ static boolean signInOrigin(String scheme,String host,int port,boolean testMocks){
+  if(!"https".equals(scheme)||(port!=-1&&port!=443))return false;
+  return "api.eliza.app".equals(host)||testMocks&&"api-staging.eliza.app".equals(host);
+ }
  /** P-22/P-31: allow current managed APIs; new services need explicit route review. */
  static boolean managedService(String path,String query,String method,boolean hasBody,boolean testMocks){
   if(testMocks)return true;
@@ -47,9 +67,9 @@ final class ConnectionRoutes {
   if("/api/v1/maps/capabilities".equals(path))return "GET".equals(method)&&query==null&&!hasBody;
   // Subscription code redemption carries its code and idempotency key in the JSON body only.
   if("POST".equals(method)&&"/api/v1/subscription/redeem".equals(path))return query==null&&hasBody;
-  if("POST".equals(method))return query==null&&(java.util.Set.of("/api/auth/cli-session","/api/v1/eliza/google/connect/initiate","/api/v1/eliza/google/disconnect","/api/v1/eliza/google/gmail/inbox-v1/operations").contains(path)||path.matches("/api/v1/eliza/google/gmail/inbox-v1/operations/[A-Za-z0-9_-]{1,160}/dispatch"));
+  if("POST".equals(method))return query==null&&(java.util.Set.of("/api/v1/eliza/google/connect/initiate","/api/v1/eliza/google/disconnect","/api/v1/eliza/google/gmail/inbox-v1/operations").contains(path)||path.matches("/api/v1/eliza/google/gmail/inbox-v1/operations/[A-Za-z0-9_-]{1,160}/dispatch"));
   if(!"GET".equals(method)||hasBody)return false;
-  return path.matches("/api/auth/cli-session/[0-9a-fA-F-]{36}")||java.util.Set.of("/api/v1/user","/api/v1/billing/limits","/api/v1/subscription/entitlement","/api/v1/subscription/entitlement-keys","/api/v1/eliza/google/accounts","/api/v1/eliza/google/status","/api/v1/eliza/google/calendar/calendars","/api/v1/eliza/google/calendar/feed","/api/v1/eliza/google/gmail/search","/api/v1/eliza/google/gmail/read").contains(path)||path.matches("/api/v1/eliza/google/gmail/inbox-v1/(capabilities|thread|attachment|drafts|draft)")||path.matches("/api/v1/eliza/google/gmail/inbox-v1/operations/[A-Za-z0-9_-]{1,160}");
+  return java.util.Set.of("/api/v1/user","/api/v1/billing/limits","/api/v1/subscription/entitlement","/api/v1/subscription/entitlement-keys","/api/v1/eliza/google/accounts","/api/v1/eliza/google/status","/api/v1/eliza/google/calendar/calendars","/api/v1/eliza/google/calendar/feed","/api/v1/eliza/google/gmail/search","/api/v1/eliza/google/gmail/read").contains(path)||path.matches("/api/v1/eliza/google/gmail/inbox-v1/(capabilities|thread|attachment|drafts|draft)")||path.matches("/api/v1/eliza/google/gmail/inbox-v1/operations/[A-Za-z0-9_-]{1,160}");
  }
  /**
   * Request headers this transport forwards. Product builds talk only to the managed Cloud API, which

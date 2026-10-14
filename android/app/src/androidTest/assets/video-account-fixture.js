@@ -9,23 +9,35 @@
   const calls = [];
   window.__alphaVideoAccount = { calls };
   Capacitor.nativePromise = async function(plugin, method, input = {}) {
+    // In-app sign-in host: stores a synthetic key the way AlphaCloudSignInPlugin does and returns
+    // only the non-secret outcome. No Steward, Cloud or browser traffic.
+    if (plugin === 'AlphaCloudSignIn') {
+      calls.push('signIn:' + method);
+      if (method === 'cancel') return {};
+      if (method === 'startEmail') {
+        if (input.email !== 'video-fixture@example.invalid' || input.environment !== 'production') throw Error('Unexpected sign-in request');
+        return { attemptId: session, expiresAt: Date.now() + 600000, resendAt: Date.now() + 60000 };
+      }
+      if (method === 'verifyEmail') {
+        if (input.attemptId !== session || input.code !== '123456') throw Object.assign(Error('invalid-code'), { code: 'invalid-code' });
+        const expiresAt = Date.now() + 30 * 24 * 3600 * 1000;
+        credential = JSON.stringify({ credentialId: crypto.randomUUID(), token: 'synthetic-video-account-only', expiresAt });
+        return { status: 'authenticated', environment: 'production', expiresAt, accountCreated: false };
+      }
+      throw Error('Unexpected sign-in operation');
+    }
     if (plugin === 'AlphaConnection') {
       if (input.slot === 'cloud:production') {
         if (method === 'secureRead') return { value: credential };
         if (method === 'secureWrite') { credential = input.value; return {}; }
         if (method === 'secureRemove') { credential = null; return {}; }
       }
-      if (method === 'openExternal') {
-        if (input.url !== `https://eliza.app/auth/cli-login?session=${session}`) throw Error('Unexpected account browser route');
-        calls.push('browser-return'); return {};
-      }
+      if (method === 'openExternal') throw Error('In-app sign-in opens no page');
       if (method === 'request') {
         const url = new URL(input.url);
         if (url.origin !== 'https://api.eliza.app' || url.search || url.hash) throw Error('Unexpected account authority');
         const path = url.pathname;
         calls.push(path);
-        if (path === '/api/auth/cli-session' && input.method === 'POST') return { status: 200, data: { sessionId: session, expiresAt: new Date(Date.now() + 60000).toISOString() } };
-        if (path === `/api/auth/cli-session/${session}` && input.method === 'GET') return { status: 200, data: { status: 'authenticated', token: 'synthetic-video-account-only' } };
         const saved = credential && JSON.parse(credential);
         if (!saved || input.headers?.Authorization !== `Bearer ${saved.token}` || input.method !== 'GET') throw Error('Unbound account request');
         if (path === '/api/v1/user') return { status: 200, data: { success: true, data: { id } } };

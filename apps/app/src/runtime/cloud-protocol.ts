@@ -3,11 +3,15 @@ import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts
 import { reviewOpaqueAttachment, type OpaqueMailAttachment } from './inbox-operation.ts';
 import { gmailCapabilitiesFor } from './gmail-grants.ts';
 import type { CloudMapsRoute } from '../maps/cloud-provider.ts';
+import { authenticated as signInAuthenticated, CloudSignInError, emailStarted, verified as signInVerified, type CloudSignInAuthenticated, type CloudSignInEmailStarted, type CloudSignInMfaRequired, type CloudSignInPort } from './cloud-sign-in.ts';
 import { BILLING_LIMITS_PATH, ENTITLEMENT_KEYS_PATH, ENTITLEMENT_PATH, REDEEM_PATH, fallbackPlanFromLimits, normalizeSubscriptionCode, readServiceLimit, SubscriptionRedeemError, type EntitlementSource, type FallbackPlan, type RedeemResult } from './subscription-entitlement.ts';
 /** Narrow Alpha adapter for Eliza Cloud managed services: sign-in, identity, subscription plan and
- * the connected Google services. Contracts inspected in v3's cloud/api/auth/cli-session,
- * cloud/api/v1/eliza/google and ui/src/api/client-cloud.ts. Native composition owns HTTP and secure
- * storage. This module never stores credentials in renderer persistence or logs them.
+ * the connected Google services. Sign-in is in-app (cloud-sign-in.ts): the native host signs in with
+ * Steward and mints an `eliza_mobile_` key through Cloud's mobile App Auth routes, so no Eliza Cloud
+ * web page is opened. Contracts inspected in cloud/api/v1/app-auth, cloud/api/v1/eliza/google and
+ * ui/src/api/client-cloud.ts. Native composition owns HTTP and secure storage. This module never
+ * stores credentials in renderer persistence or logs them. The browser hand-off sign-in survives only
+ * in legacy-cli-login.ts for ELIZA_DEV_ALLOW_TEST_MOCKS=1 builds.
  * The agent always runs on the phone: this adapter has no hosted-agent discovery, runtime or
  * pairing route. The development-only hosted-agent fixture extends it in
  * development-cloud-agents.ts and is constructed only in ELIZA_DEV_ALLOW_TEST_MOCKS=1 builds. */
@@ -39,6 +43,8 @@ export interface CloudCredential {
   expiresAt?: number;
   userId?: string;
   organizationId?: string;
+  /** Cloud's id for an in-app sign-in key (mobile App Auth credentialId). Not a secret. */
+  serverCredentialId?: string;
 }
 export interface CloudCredentialStore {
   acceptsReferences?: boolean;
@@ -56,13 +62,14 @@ export interface CloudNativeRequest {
 }
 /** Optional transport capabilities. The native transport admits only GET and POST today, so
  * credential self-revocation (DELETE) is reported unsupported unless the host opts in. */
-export interface CloudProtocolOptions { deleteRequests?: boolean }
+export interface CloudProtocolOptions { deleteRequests?: boolean;
+  /** In-app sign-in host. Absent where this build has no sign-in (the production web build). */
+  signIn?: CloudSignInPort }
 /** Server-side revocation of the CLI-issued credential. `supported:false` means nothing was sent
  * or the deployed Cloud has no self-revocation route; the local credential is cleared either way. */
 export type CloudSessionRevocation =
   | { supported: true; revoked: true; credentialId: string | null; revokedAt: string | null }
   | { supported: false; reason: "transport" | "server" | "no-credential" };
-export interface CloudLoginAttempt { sessionId: string; expiresAt: number; browserUrl: string }
 export interface CloudAgent {
   id: string; name: string | null; status: string; executionTier: string | null;
   /** Only validated REST targets, never internal bridge URLs. Null until available. */
@@ -167,12 +174,12 @@ export function uuid(value: unknown): string {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw new CloudProtocolError("invalid-response");
   return id;
 }
-function timestamp(value: unknown): number {
+export function timestamp(value: unknown): number {
   const parsed = Date.parse(string(value));
   if (!Number.isFinite(parsed)) throw new CloudProtocolError("invalid-response");
   return parsed;
 }
-function delay(ms: number, signal: AbortSignal): Promise<void> {
+export function delay(ms: number, signal: AbortSignal): Promise<void> {
   signal.throwIfAborted();
   return new Promise((resolve, reject) => {
     const abort = () => { clearTimeout(timer); reject(signal.reason); };
@@ -182,10 +189,10 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 export class CloudProtocol {
-  private activeLogin: AbortController | null = null;
+  protected activeLogin: AbortController | null = null;
   constructor(readonly environment: CloudEnvironment, private readonly request: CloudNativeRequest,
     protected readonly credentials: CloudCredentialStore,
-    private readonly openExternal: (url: string, signal: AbortSignal) => Promise<void>,
+    protected readonly openExternal: (url: string, signal: AbortSignal) => Promise<void>,
     private readonly options: CloudProtocolOptions = {}) {}
   protected get authority(): CloudAuthority {
     const authority = authorities[this.environment];
@@ -329,67 +336,73 @@ export class CloudProtocol {
     await this.openExternal(planManagementUrl(this.environment), signal);
     signal.throwIfAborted();
   }
-  cancelLogin(): void { this.activeLogin?.abort(new DOMException("Login cancelled", "AbortError")); }
-  /** Only one poller may claim the server's single-consumption credential. A
-   * cancelled/lost claim is not retried automatically; start a fresh login. */
-  async login(signal: AbortSignal, onWaiting?: (attempt: CloudLoginAttempt) => void): Promise<void> {
+  /** Whether this build can sign in here. The production web build has no sign-in host. */
+  get signInAvailable(): boolean { return this.options.signIn !== undefined; }
+  cancelLogin(): void {
+    this.activeLogin?.abort(new DOMException("Login cancelled", "AbortError"));
+    void this.options.signIn?.cancel().catch(() => { /* Nothing pending. */ });
+  }
+  /**
+   * One sign-in step at a time (`login-active`). Cancelling the signal cancels the host's attempt,
+   * which burns a pending Google record. Host failures arrive as CloudSignInError codes only.
+   */
+  private async signInStep<T>(signal: AbortSignal, run: (port: CloudSignInPort) => Promise<unknown>, parse: (value: unknown) => T): Promise<T> {
+    void this.authority; // A flag-off build has no staging authority: refuse before any host call.
+    const port = this.options.signIn;
+    if (!port) throw new CloudSignInError("unavailable");
     if (this.activeLogin) throw new CloudProtocolError("login-active");
     signal.throwIfAborted();
     const controller = new AbortController();
     this.activeLogin = controller;
+    let rejectAbort: (reason: unknown) => void = () => {};
+    const interrupted = new Promise<never>((_, reject) => { rejectAbort = reject; });
     const abort = () => controller.abort(signal.reason);
+    const cancelled = () => { void port.cancel().catch(() => {}); rejectAbort(controller.signal.reason); };
     signal.addEventListener("abort", abort, { once: true });
-    let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+    controller.signal.addEventListener("abort", cancelled, { once: true });
     try {
-      // The server issues the UUID; client-chosen IDs are deliberately ignored.
-      const created = await this.call("/api/auth/cli-session", controller.signal, { body: {} });
-      const sessionId = uuid(created.sessionId);
-      const expiresAt = timestamp(created.expiresAt);
-      if (expiresAt <= Date.now()) throw new CloudProtocolError("expired");
-      expiryTimer = setTimeout(() => controller.abort(new CloudProtocolError("expired")), Math.min(expiresAt - Date.now(), 2_147_483_647));
-      const browserUrl = `${this.authority.web}/auth/cli-login?session=${encodeURIComponent(sessionId)}`;
-      onWaiting?.({ sessionId, expiresAt, browserUrl });
-      await this.openExternal(browserUrl, controller.signal);
-      if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
-      while (true) {
-        controller.signal.throwIfAborted();
-        if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
-        let response: ObjectValue;
-        try { response = await this.call(`/api/auth/cli-session/${sessionId}`, controller.signal, {expiresAt}); }
-        catch (error) {
-          if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
-          if (error instanceof CloudProtocolError && (error.status === 404 || error.status === 410)) throw new CloudProtocolError("expired");
-          throw error;
-        }
-        if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
-        const data = response.data == null ? response : object(response.data);
-        if (data.status === "authenticated") {
-          const token = ["token", "accessToken", "stewardToken", "sessionToken", "apiKey"]
-            .flatMap(key => [response[key], data[key]]).find(value => typeof value === "string" && value.trim());
-          const reference=data.credentialReference ?? response.credentialReference;
-          if(!token && !(this.credentials.acceptsReferences && typeof reference==="string" && /^browser-cloud-reference:[0-9a-f-]{36}$/.test(reference)))throw new CloudProtocolError("credential-consumed");
-          const credential: CloudCredential = token ? {token:string(token)} : {credentialReference:string(reference)};
-          if (data.expiresAt != null) credential.expiresAt = timestamp(data.expiresAt);
-          if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
-          if (data.userId != null) credential.userId = string(data.userId);
-          if (data.organizationId != null) credential.organizationId = string(data.organizationId);
-          controller.signal.throwIfAborted();
-          if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
-          await this.credentials.write(this.environment, credential, controller.signal);
-          return;
-        }
-        if (data.status === "expired") throw new CloudProtocolError("expired");
-        if (data.status !== "pending") throw new CloudProtocolError("invalid-response");
-        await delay(Math.min(1500, Math.max(1, expiresAt - Date.now())), controller.signal);
-      }
+      const value = await Promise.race([run(port), interrupted]);
+      controller.signal.throwIfAborted();
+      return parse(value);
+    } catch (error) {
+      if (controller.signal.aborted) throw controller.signal.reason;
+      if (error instanceof CloudProtocolError) throw error;
+      throw CloudSignInError.from(error);
     } finally {
-      clearTimeout(expiryTimer);
       signal.removeEventListener("abort", abort);
-      this.activeLogin = null;
+      controller.signal.removeEventListener("abort", cancelled);
+      if (this.activeLogin === controller) this.activeLogin = null;
     }
   }
+  /** The host stored the key before reporting success; confirm this store now holds a sign-in. */
+  private async storedSignIn(outcome: CloudSignInAuthenticated, signal: AbortSignal): Promise<CloudSignInAuthenticated> {
+    const credential = await this.credentials.read(this.environment);
+    signal.throwIfAborted();
+    const usable = !!credential?.credentialId && (typeof credential.token === "string" && !!credential.token
+      || !!this.credentials.acceptsReferences && typeof credential.credentialReference === "string");
+    if (!usable) throw new CloudProtocolError("credentials-missing");
+    if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
+    return outcome;
+  }
+  /** Google through a Custom Tab and a verified App Link return. Resolves once the key is stored. */
+  async signInWithGoogle(signal: AbortSignal): Promise<CloudSignInAuthenticated> {
+    const outcome = await this.signInStep(signal, port => port.startGoogle({ environment: this.environment }), value => signInAuthenticated(value, this.environment));
+    return this.storedSignIn(outcome, signal);
+  }
+  /** Sends a six-digit code to the address. The address is never stored or logged here. */
+  async startEmailSignIn(email: string, signal: AbortSignal): Promise<CloudSignInEmailStarted> {
+    return this.signInStep(signal, port => port.startEmail({ environment: this.environment, email: email.trim() }), emailStarted);
+  }
+  async verifyEmailSignIn(attemptId: string, code: string, signal: AbortSignal): Promise<CloudSignInAuthenticated | CloudSignInMfaRequired> {
+    const outcome = await this.signInStep(signal, port => port.verifyEmail({ attemptId, code }), value => signInVerified(value, this.environment));
+    return outcome.status === "mfa" ? outcome : this.storedSignIn(outcome, signal);
+  }
+  async verifyMfaSignIn(attemptId: string, code: string, signal: AbortSignal): Promise<CloudSignInAuthenticated> {
+    const outcome = await this.signInStep(signal, port => port.verifyMfa({ attemptId, code }), value => signInAuthenticated(value, this.environment));
+    return this.storedSignIn(outcome, signal);
+  }
   async disconnect(): Promise<void> { this.cancelLogin(); await this.credentials.clear(this.environment); }
-  /** Revokes the presented CLI-issued key with Cloud's self-revocation route
+  /** Revokes the presented sign-in key with Cloud's self-revocation route
    * (`DELETE /api/v1/api-keys/current`), then clears local storage. One attempt, never retried:
    * a lost response is reported as an error and the local credential is still cleared. */
   async revokeSession(signal: AbortSignal): Promise<CloudSessionRevocation> {

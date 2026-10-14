@@ -27,6 +27,9 @@ export const DENYLIST = Object.freeze([
   '/api/auth/pair', 'Pair this agent before connecting', 'Choose an endpoint serving one agent', 'Pair the agent again',
   '/api/v1/eliza/agents', 'personalElizaId', 'dedicated-always', 'personal Cloud agent', 'cloud-runtime:',
   'X-Eliza-Phone-Protocol', 'x-eliza-phone-protocol', 'Connect your own remote agent',
+  // In-app Eliza Cloud sign-in (owner directive 2026-10-14): the browser hand-off is a test-mocks
+  // diagnostic fallback for one release, and the staging return host is test-mocks only.
+  '/api/auth/cli-session', '/auth/cli-login', 'Browser sign-in (diagnostic)', 'staging.eliza.app/alphaphone',
 ]);
 const TEXT = /\.(?:html?|js|mjs|cjs|css|json|txt|svg|xml|webmanifest)$/i;
 

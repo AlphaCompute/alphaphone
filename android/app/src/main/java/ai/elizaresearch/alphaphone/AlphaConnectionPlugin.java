@@ -220,8 +220,10 @@ public final class AlphaConnectionPlugin extends Plugin {
     if(!ConnectionRoutes.admittedOrigin(url.getScheme(),url.getHost(),url.getPort(),BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS))throw new IllegalArgumentException();
     {
      String path=url.getPath();
-     if("/api/auth/cli-session".equals(path))operation=RequestOperation.CLI_CREATE;
-     else if(path!=null&&path.matches("/api/auth/cli-session/[0-9a-fA-F-]{36}"))operation=RequestOperation.CLI_POLL;
+     // The browser sign-in hand-off is a test-mocks diagnostic fallback for one release; product
+     // sign-in is native (AlphaCloudSignInPlugin) and the route policy refuses these paths.
+     if(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&"/api/auth/cli-session".equals(path))operation=RequestOperation.CLI_CREATE;
+     else if(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&path!=null&&path.matches("/api/auth/cli-session/[0-9a-fA-F-]{36}"))operation=RequestOperation.CLI_POLL;
      else if("/api/v1/user".equals(path))operation=RequestOperation.IDENTITY;
      else if("/api/v1/billing/limits".equals(path))operation=RequestOperation.BILLING_LIMITS;
      else if("/api/v1/subscription/entitlement".equals(path))operation=RequestOperation.ENTITLEMENT;
@@ -235,7 +237,7 @@ public final class AlphaConnectionPlugin extends Plugin {
     if(ConnectionRoutes.retiredPairing(url.getPath(),BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS))throw new IllegalArgumentException();
     boolean selfRevocation=ConnectionRoutes.cloudSelfRevocation(url.getScheme(),url.getHost(),url.getPort(),url.getRawPath(),url.getRawQuery(),method,call.getString("body")!=null,BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
     if((AutomationsRoutes.owns(url.getPath())||AutomationsRoutes.owns(route))?!AutomationsRoutes.allowed(route,method):!(Set.of("GET","POST").contains(method)||selfRevocation))throw new IllegalArgumentException();
-    if("GET".equals(method)&&("api.eliza.app".equals(url.getHost())||"api-staging.eliza.app".equals(url.getHost()))&&url.getPath().matches("/api/auth/cli-session/[0-9a-fA-F-]{36}")){
+    if(operation==RequestOperation.CLI_POLL&&"GET".equals(method)&&("api.eliza.app".equals(url.getHost())||"api-staging.eliza.app".equals(url.getHost()))){
      // Gate only future dispatch. A claim already sent must finish and may be saved while backgrounded.
      long expiresAt=call.getLong("expiresAt",System.currentTimeMillis()+30000);
      synchronized(foregroundLock){
@@ -307,7 +309,9 @@ public final class AlphaConnectionPlugin extends Plugin {
    if (!(host.equals("eliza.app") || host.endsWith(".eliza.app") || host.equals("accounts.google.com"))) throw new IllegalArgumentException();
    if (url.getPort() != -1 && url.getPort() != 443) throw new IllegalArgumentException();
    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.toASCIIString())); intent.addCategory(Intent.CATEGORY_BROWSABLE);
-   boolean cliLogin=("eliza.app".equals(host)||"staging.eliza.app".equals(host))&&"/auth/cli-login".equals(url.getPath());
+   // Test-mocks diagnostic fallback only; production sign-in never opens an Eliza Cloud page.
+   boolean cliLogin=BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&("eliza.app".equals(host)||"staging.eliza.app".equals(host))&&"/auth/cli-login".equals(url.getPath());
+   if(!BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&"/auth/cli-login".equals(url.getPath()))throw new IllegalArgumentException();
    if(cliLogin){
     String id=required(call.getString("requestId"),256);
     Pending pending=new Pending();pending.browserCall=call;

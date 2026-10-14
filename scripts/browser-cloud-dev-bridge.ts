@@ -1,5 +1,5 @@
 import {managedServiceRequest} from '../apps/app/src/runtime/managed-service-routes.ts';
-import {randomUUID,createHash} from 'node:crypto';
+import {randomUUID,createHash,randomBytes} from 'node:crypto';
 import {mkdir,readFile,writeFile,rename,lstat} from 'node:fs/promises';
 import path from 'node:path';
 import {homedir} from 'node:os';
@@ -82,6 +82,89 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
  async function current(env:Environment,c:Credential,signal:AbortSignal){signal.throwIfAborted();await admitted(env,c.credentialReference,c.credentialId);await keyFor(c);signal.throwIfAborted();}
  function retire(env:Environment){for(const row of active.values())if(row.environment===env)row.controller.abort(new DOMException('Cloud account changed','AbortError'));for(const [id,login]of pending)if(login.environment===env)pending.delete(id);for(const [ref,claim]of claims)if(claim.environment===env)claims.delete(ref);}
  async function canonical(env:Environment,route:string,signal:AbortSignal,init:RequestInit={},credential?:Credential){const headers=new Headers(init.headers);headers.set('Accept','application/json');headers.set('User-Agent','AlphaPhone-Browser-Cloud/1');if(credential)headers.set('Authorization','Bearer '+await keyFor(credential));const result=await fetchCloud(authorities[env]+route,{...init,headers,redirect:'error',signal});signal.throwIfAborted();return result;}
+ // In-app sign-in for the browser development host (email code only: Google needs the phone's App
+ // Link). The same Steward and mobile App Auth contracts as AlphaCloudSignInPlugin; the Steward
+ // session, PKCE material and the minted key stay in this process and the private profile file.
+ type SignInAttempt={id:string;environment:Environment;email:string;expiresAt:number;resendAt:number;busy:boolean;mfa?:{type:string;challengeId:string}};
+ let signIn:SignInAttempt|null=null;
+ const SIGN_IN_CLIENT='ai.elizaresearch.alphaphone',SIGN_IN_CALLBACK={production:'https://eliza.app/alphaphone/auth/callback',staging:'https://staging.eliza.app/alphaphone/auth/callback'} as const;
+ const signInFailure=(code:string)=>Object.assign(Error(code),{status:409,code});
+ const signInStatus=(stage:string,status:number)=>status===429?'rate-limited':status===410?'expired':status===403?'account-check':(status===400||status===401)&&(stage==='verify'||stage==='mfa')?'invalid-code':status>=500?'unavailable':'rejected';
+ async function signInCall(env:Environment,route:string,body:Record<string,unknown>,signal:AbortSignal,bearer?:string){
+  let response:Response;
+  try{response=await fetchCloud(authorities[env]+route,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json','User-Agent':'AlphaPhone-Browser-Cloud/1',...(bearer?{Authorization:'Bearer '+bearer}:{})},body:JSON.stringify(body),redirect:'error',signal});}
+  catch(error:any){if(signal.aborted)throw signInFailure('cancelled');throw signInFailure('offline');}
+  const text=await response.text();if(text.length>256*1024)throw signInFailure('unavailable');
+  let data:Record<string,any>={};try{if(text)data=object(JSON.parse(text));}catch{if(response.ok)throw signInFailure('unavailable');}
+  return {status:response.status,data};
+ }
+ const pkce=()=>{const verifier=randomBytes(48).toString('base64url');return {verifier,challenge:createHash('sha256').update(verifier).digest('base64url'),state:randomBytes(32).toString('base64url')};};
+ async function signInComplete(attempt:SignInAttempt,session:Record<string,any>,signal:AbortSignal){
+  const token=session.token,refresh=session.refreshToken,env=attempt.environment;
+  if(typeof token!=='string'||token.length<20||token.length>16384)throw signInFailure('unavailable');
+  try{
+   const {verifier,challenge,state}=pkce(),binding={clientId:SIGN_IN_CLIENT,environment:env,redirectUri:SIGN_IN_CALLBACK[env]};
+   const connected=await signInCall(env,'/api/v1/app-auth/connect',{flow:'mobile_pkce',...binding,state,codeChallenge:challenge,codeChallengeMethod:'S256',deviceName:'Alpha Phone browser development'},signal,token);
+   if(connected.status!==200)throw signInFailure(signInStatus('connect',connected.status));
+   if(connected.data.codeType!=='mobile_app_auth_code'||typeof connected.data.code!=='string'||!/^emac_[0-9a-f]{64}$/.test(connected.data.code))throw signInFailure('unavailable');
+   const proof={...binding,code:connected.data.code,state,codeVerifier:verifier};
+   const minted=await signInCall(env,'/api/v1/app-auth/mobile/token',{...proof,grantType:'authorization_code'},signal);
+   if(minted.status!==200)throw signInFailure(signInStatus('token',minted.status));
+   const secret=minted.data.secret,credentialId=minted.data.credentialId,expiresAt=Date.parse(minted.data.expiresAt);
+   if(minted.data.acknowledgementRequired!==true||typeof secret!=='string'||!secret.startsWith('eliza_mobile_')||secret.length>512||!UUID.test(credentialId)||!(expiresAt>Date.now()))throw signInFailure('unavailable');
+   let acknowledged=false;
+   for(let attemptNumber=0;attemptNumber<3&&!acknowledged;attemptNumber++){
+    if(attemptNumber)await new Promise(resolve=>setTimeout(resolve,1000*2**(attemptNumber-1)));
+    const acked=await signInCall(env,'/api/v1/app-auth/mobile/ack',{...proof,credentialId,secret},signal).catch(()=>({status:-1,data:{}as Record<string,any>}));
+    if(acked.status===200&&acked.data.status==='acknowledged'&&acked.data.credentialId===credentialId||acked.status===409&&acked.data.error==='authorization_complete')acknowledged=true;
+    else if(!(acked.status===-1||acked.status===429||acked.status>=500))break;
+   }
+   if(!acknowledged)throw signInFailure('activation-pending');
+   const identityResponse=await canonical(env,'/api/v1/user',signal,{},{token:secret}as Credential),identity=object(await identityResponse.json()),who=object(identity.data??identity);
+   if(!identityResponse.ok||!UUID.test(who.id)||!UUID.test(who.organization_id))throw signInFailure('unavailable');
+   await serial(async()=>{const stored=await load();stored[env]={token:secret,credentialReference:'browser-cloud-reference:'+randomUUID(),credentialId:randomUUID(),userId:who.id,organizationId:who.organization_id,expiresAt};retire(env);await save(stored);});
+   return {status:'authenticated',environment:env,expiresAt,accountCreated:typeof connected.data.accountCreated==='boolean'?connected.data.accountCreated:null};
+  }finally{void signInCall(env,'/steward/auth/logout',typeof refresh==='string'?{refreshToken:refresh}:{},AbortSignal.timeout(10000),token).catch(()=>{});}
+ }
+ async function signInOperation(data:Record<string,any>,signal:AbortSignal){
+  if(data.operation==='signInCancel'){signIn=null;return {};}
+  if(data.operation==='signInStatus')return {active:!!signIn,google:false,email:true};
+  if(data.operation==='signInStartEmail'){
+   const env=environment(data.environment),email=typeof data.email==='string'?data.email.trim().toLowerCase():'';
+   if(email.length>320||!/^[^\s@\p{Cc}\p{Cf}]+@[^\s@\p{Cc}\p{Cf}]+\.[^\s@\p{Cc}\p{Cf}]+$/u.test(email))throw signInFailure('invalid-email');
+   if(signIn?.busy)throw signInFailure('login-active');
+   if(signIn&&signIn.email===email&&signIn.environment===env&&Date.now()<signIn.resendAt)throw signInFailure('cooldown');
+   const attempt:SignInAttempt={id:randomUUID(),environment:env,email,expiresAt:0,resendAt:0,busy:true};signIn=attempt;
+   try{
+    const sent=await signInCall(env,'/steward/auth/email/send',{email,tenantId:'elizacloud'},signal);
+    if(sent.status!==200)throw signInFailure(signInStatus('send',sent.status));
+    const reply=sent.data.data&&typeof sent.data.data==='object'?sent.data.data:sent.data,expiresAt=Math.min(Date.parse(reply.expiresAt),Date.now()+15*60*1000);
+    if(!(expiresAt>Date.now()))throw signInFailure('unavailable');
+    attempt.expiresAt=expiresAt;attempt.resendAt=Date.now()+60000;return {attemptId:attempt.id,expiresAt,resendAt:attempt.resendAt};
+   }catch(error){if(signIn===attempt)signIn=null;throw error;}finally{attempt.busy=false;}
+  }
+  if(data.operation==='signInVerifyEmail'||data.operation==='signInVerifyMfa'){
+   const mfa=data.operation==='signInVerifyMfa',attempt=signIn;
+   if(!attempt||attempt.id!==data.attemptId||Date.now()>=attempt.expiresAt){signIn=null;throw signInFailure('expired');}
+   if(attempt.busy)throw signInFailure('login-active');
+   if(typeof data.code!=='string'||!/^\d{6}$/.test(data.code))throw signInFailure('invalid-code');
+   if(mfa!==!!attempt.mfa)throw signInFailure('expired');
+   if(mfa&&!['totp','sms'].includes(attempt.mfa!.type))throw signInFailure('mfa-unsupported');
+   attempt.busy=true;
+   try{
+    const verified=mfa?await signInCall(attempt.environment,`/steward/auth/mfa/${attempt.mfa!.type}/complete`,{challengeId:attempt.mfa!.challengeId,code:data.code},signal)
+     :await signInCall(attempt.environment,'/steward/auth/email/code/verify',{email:attempt.email,code:data.code,tenantId:'elizacloud'},signal);
+    if(verified.status!==200){const code=signInStatus(mfa?'mfa':'verify',verified.status);if(code!=='invalid-code'&&signIn===attempt)signIn=null;throw signInFailure(code);}
+    if(!mfa&&verified.data.mfaRequired===true){
+     const challenge=verified.data.mfa;if(!challenge||!['totp','sms','passkey'].includes(challenge.type)||typeof challenge.challengeId!=='string')throw signInFailure('unavailable');
+     attempt.mfa={type:challenge.type,challengeId:challenge.challengeId};attempt.expiresAt=Math.min(attempt.expiresAt,Date.parse(challenge.expiresAt)||attempt.expiresAt);
+     return {status:'mfa',method:challenge.type,expiresAt:attempt.expiresAt};
+    }
+    const outcome=await signInComplete(attempt,verified.data,signal);if(signIn===attempt)signIn=null;return outcome;
+   }catch(error:any){if(error.code!=='invalid-code'&&signIn===attempt)signIn=null;throw error;}finally{attempt.busy=false;}
+  }
+  throw Error('Unsupported development operation');
+ }
  const send=(res:ServerResponse,status:number,data:unknown)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
  return async(req:IncomingMessage,res:ServerResponse)=>{
   const host=req.headers.host,origin=req.headers.origin;
@@ -93,6 +176,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
    const bytes=Buffer.concat(chunks),content=req.headers['content-type']||'';let data:Record<string,any>,audio:File|undefined;
    if(content.startsWith('multipart/form-data;')){const form=await new Request('http://127.0.0.1',{method:'POST',headers:{'Content-Type':content},body:bytes}).formData();if([...form.keys()].some(k=>!['operation','environment','credentialReference','credentialId','requestId','audio'].includes(k)))throw Error('Invalid speech form');data=Object.fromEntries([...form].filter(([k])=>k!=='audio'));const value=form.get('audio');if(!(value instanceof File)||value.size<1||value.size>16_000_000||!['audio/webm','audio/ogg','audio/mp4','audio/wav','audio/mpeg'].includes(value.type.split(';')[0]))throw Error('Invalid speech audio');audio=value;}
    else{if(content!=='application/json'||size>2*1024*1024)throw Error('JSON development request required');data=object(JSON.parse(bytes.toString('utf8')));}
+   if(typeof data.operation==='string'&&data.operation.startsWith('signIn')){send(res,200,await signInOperation(data,controller.signal));return;}
    if(data.operation==='cancel'){active.get(requestId(data.requestId))?.controller.abort();send(res,200,{});return;}
    const slot=data.slot,env=environment(data.environment??(typeof slot==='string'?slot.replace(/^cloud:/,''):undefined));
    if(data.operation==='secureRead'){if(slot!==`cloud:${env}`)throw Error('Unsupported credential slot');const c=(await load())[env];send(res,200,{value:c?JSON.stringify(publicCredential(c)):null});return;}

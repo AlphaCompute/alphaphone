@@ -142,7 +142,7 @@ routes, refusal bodies with `retryAfterSeconds`, 402 `allowance_exhausted` with 
 | Sign-in rejected (401), at admission | Sign-in dialog | no |
 | Sign-in rejected (401), during background refresh | Same as an account mismatch during refresh: unbound, sign-in shown | unbound |
 | Plan becomes admissible (redeem, return to the app, Check plan again) | Bound into the running agent: attached when the process already matches, otherwise a clean restart that keeps history | yes |
-| Cloud sign-in key expires within 14 days (`expiresAt` from the CLI login) | Warning in the account panel and Settings, with "Approve this phone again" (a fresh CLI sign-in) | unchanged |
+| Cloud sign-in key expires within 14 days (`expiresAt` of the in-app sign-in key, 30-day TTL) | Warning in the account panel and Settings, with "Approve this phone again" (the in-app sign-in screen) | unchanged |
 
 The 7-day offline grace is an engineering bound for offline use, not a billing decision: Cloud
 refuses every AI request without a plan. The record behind it (`alpha.connection.plan-admission.v1`)
