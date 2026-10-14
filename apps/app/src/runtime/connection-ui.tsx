@@ -355,6 +355,16 @@ async function work(message: string, action: (signal: AbortSignal) => Promise<vo
   }
   finally { if (operation === controller) operation = null; update({ busy: false, ...(!showDialog&&!state.open?{message:''}:{}) }); runQueuedResidentRebind(); }
 }
+function activate(next: Active, session: VerifiedSession, name: string) {
+  retireReadReplies();
+  active?.viewNavigation?.dispose();
+  actionReceipts.clear();
+  conversationMemory.clear();
+  cancelStoppedReply();
+  for(const request of automationsRequests)request.abort(new DOMException('The connection changed','AbortError'));
+  epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
+  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, historyError: '', historyPartial:false, replyNotice:'', actionHistory: [], kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
+}
 /**
  * Applies a plan change to the running on-device agent: re-admits the account, binds or unbinds
  * Eliza Cloud inference, and reconnects (attaching when the process already matches, otherwise a
@@ -370,16 +380,6 @@ function queueResidentRebind() {
   void work('Updating your agent…', async signal => { retire(); await connectResident(signal); if (shown && state.open && !state.message) update({ message: shown }); }, false);
 }
 function runQueuedResidentRebind() { if (residentRebindQueued && !operation) queueResidentRebind(); }
-function activate(next: Active, session: VerifiedSession, name: string) {
-  retireReadReplies();
-  active?.viewNavigation?.dispose();
-  actionReceipts.clear();
-  conversationMemory.clear();
-  cancelStoppedReply();
-  for(const request of automationsRequests)request.abort(new DOMException('The connection changed','AbortError'));
-  epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
-  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, historyError: '', historyPartial:false, replyNotice:'', actionHistory: [], kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
-}
 async function remoteIdentity(remote: RemoteProtocol, signal: AbortSignal) {
   const credential = await remoteCredentialStore.read(remote.origin);
   if (!credential || !remote.session) throw new Error('Pair this agent before connecting.');
