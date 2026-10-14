@@ -18,11 +18,14 @@ export const regionalDataset: RegionalDataset = {
  coverage: { region: 'Monaco', bounds: [7.409, 43.724, 7.449, 43.752] },
 };
 
-// Endpoint policy. Plain-HTTP loopback hosts and the emulator gateway exist only in
-// test-mocks builds (ELIZA_DEV_ALLOW_TEST_MOCKS=1) and fold out of every other build,
-// which accepts HTTPS only. An unset VITE_MAPS_BASE_URL stays honestly unconfigured.
+// The regional gateway is a development prototype (#412): only test-mocks builds
+// (ELIZA_DEV_ALLOW_TEST_MOCKS=1) read VITE_MAPS_BASE_URL, and plain-HTTP loopback hosts
+// and the emulator gateway fold out of every other build. Product builds use Eliza
+// Cloud Maps (./cloud-maps.ts).
+const regionalBaseUrl: string | undefined = testMocksEnabled ? import.meta.env.VITE_MAPS_BASE_URL || undefined : undefined;
+export const regionalMapsConfigured = !!regionalBaseUrl;
 export const { regionalDiagnostics, nativeRegion, nativeRegionRequest, regionalMap, initializeRegionalMaps } = createRegionalMaps({
- baseUrl: import.meta.env.VITE_MAPS_BASE_URL || undefined,
+ baseUrl: regionalBaseUrl,
  nativeGateway: testMocksEnabled ? 'http://10.0.2.2:47850' : '',
  developmentHosts: testMocksEnabled ? ['127.0.0.1', '10.0.2.2'] : [],
  development: devSurfacesEnabled,
