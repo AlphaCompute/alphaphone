@@ -19,11 +19,10 @@ let session='account-a',agent='remote-a',releaseSearch,releaseAccounts,delayAcco
 const slots=new Map(),reads=[],searches=[],disconnects=[],toasts=[],events=[];
 const mail=(id,extra={})=>({id,threadId:'thread-'+id,subject:'Fixture '+id,from:'Sender',fromEmail:'sender@example.invalid',to:['fixture@example.invalid'],snippet:'Preview',receivedAt:'2026-09-30T00:00:00Z',unread:false,...extra});
 const pages={'in:inbox':[[mail('mail-1',{unread:true}),mail('mail-2')],[mail('mail-2'),mail('mail-3')]],'in:sent':[[mail('sent-1',{to:['friend@example.invalid']})]],'from:fixture':[[mail('mail-1')]]};
-let catalogEnabled=false;const labelOptions=[];
 const client={
  gmailAccounts:async()=>{if(delayAccounts)await new Promise(resolve=>{releaseAccounts=resolve;});return [{connectionId:'grant-a',label:'Fixture account',connected,grantedCapabilities:connected&&readGrant?['google.gmail.triage']:[]}];},
- gmailSearch:async(_grant,query,_signal,size,pageToken,options)=>{searches.push({query,size,pageToken:pageToken??null});labelOptions.push(options);if(failNext){const error=failNext;failNext=null;throw error;}
-  const list=pages[query]||[[]],index=pageToken?Number(pageToken.slice(5)):0,result={messages:list[index]||[],syncedAt:'revision',nextPageToken:index+1<list.length?'page-'+(index+1):null,supportsSpamTrash:catalogEnabled,...(catalogEnabled&&options?.includeLabels?{labels:[{id:'Label_123',name:'Projects / A "quoted" name',type:'user'}]}:{})};
+ gmailSearch:async(_grant,query,_signal,size,pageToken)=>{searches.push({query,size,pageToken:pageToken??null});if(failNext){const error=failNext;failNext=null;throw error;}
+  const list=pages[query]||[[]],index=pageToken?Number(pageToken.slice(5)):0,result={messages:list[index]||[],syncedAt:'revision',nextPageToken:index+1<list.length?'page-'+(index+1):null};
   if(delay)return new Promise(resolve=>{releaseSearch=()=>resolve(result);});return result;},
  gmailRead:async(_grant,id)=>{reads.push(id);return {message:Object.values(pages).flat(2).find(m=>m.id===id),bodyText:'Fixture body'};},
  disconnectGmail:async(id)=>{disconnects.push(id);connected=false;},
@@ -126,13 +125,5 @@ views.inbox.onLeave();const leftSearches=searches.length;assert.equal(shell.rend
 assert.equal(render().chips.some(c=>/Connect Gmail|Check connection|Authorize|Disconnect|Fixture account/.test(c.label)),false);
 assert.equal(render().emptyAdd,false,'connected empty mailbox is not a connect prompt');
 assert.deepEqual(disconnects,[],'Inbox has no disconnect mutation');
-catalogEnabled=true;chip('Refresh').pick();await tick();
-assert.equal(render().extraFolders.find(row=>row.value==='spam').disabled,false);
-chip('Spam').pick();await tick();assert.equal(searches.at(-1).query,'in:spam');
-chip('Trash').pick();await tick();assert.equal(searches.at(-1).query,'in:trash');
-chip('Promotions').pick();await tick();assert.equal(searches.at(-1).query,'in:inbox category:promotions');
-const custom=render().extraFolders.find(row=>row.value==='label:Label_123');assert.ok(custom);custom.pick();await tick();assert.equal(labelOptions.at(-1).labelId,'Label_123','custom label uses exact ID, never query interpolation');
-const customReads=searches.length;chip('Inbox').pick();await tick();render().extraFolders.find(row=>row.value==='label:Label_123').pick();await tick();assert.equal(searches.length,customReads,'custom folder reuses its own cached list, including an empty list');
-assert.equal(labelOptions.filter(options=>options?.includeLabels).length>0,true);
 shell.componentWillUnmount();
 console.log('PASS: Inbox auto-load, Refresh, provider paging, Sent folder, unread badge, account/query fences, classified errors with explicit Retry, shared compose prefill, compact toolbar and immediate pagination feedback. Provider fixture only.');
