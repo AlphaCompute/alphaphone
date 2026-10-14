@@ -330,8 +330,9 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
     const renewalSources=useRef(sources);renewalSources.current=sources;
     const renewalFlight=resolveTap;
     const renewalStart=useRef(startRenewal);renewalStart.current=startRenewal;
+    // Renewal taps exist only on Android; elsewhere the native plugin is absent and must not replace the sync status.
     const checkRenewal=()=>renewalFlight.current(async()=>{
-      const b=binding.current;if(!b||!canSyncResults()||questionBusy.current||questionClose.current)return;
+      const b=binding.current;if(!isAndroid||!b||!canSyncResults()||questionBusy.current||questionClose.current)return;
       // Only a real pending tap may report a failure: a check with no tap (the native record is
       // unavailable here, or nothing was tapped) leaves the panel's current status untouched.
       let tapped=false;
