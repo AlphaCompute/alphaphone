@@ -6,7 +6,12 @@
  *
  *   node scripts/native-voice-latency-emulator.mjs --serial emulator-5610 --avd <name> \
  *     --python <venv python with grpcio> --wav q1.wav [--wav q2.wav ...] \
- *     [--trials 60] [--cold-every 6] [--gap-seconds 9] --out <new directory>
+ *     [--trials 60] [--cold-every 6] [--gap-seconds 9] [--feed] --out <new directory>
+ *
+ * --feed pushes the WAVs to the app's external files and has the harness read them as a paced feed
+ * instead of the virtual microphone (no --python needed). Use it when the emulator's microphone
+ * delivers silence (seen on a heavily loaded macOS host: the ranchu HAL logs pcm_readi failures).
+ * Feed trials carry the synthetic-feed capture clock.
  *
  * The app and androidTest APKs must already be installed (developer APKs that carry the voice bundle
  * and the app JNI bridge). Only the emulator whose console reports --avd is used; the run never
@@ -24,8 +29,9 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const CLASS = `${PACKAGE}.NativeVoiceLatencyInstrumentedTest`;
 
 export function parse(argv) {
-  const options = { wavs: [], trials: 60, coldEvery: 6, gapSeconds: 9 };
+  const options = { wavs: [], trials: 60, coldEvery: 6, gapSeconds: 9, feed: false };
   for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--feed') { options.feed = true; continue; }
     const key = argv[i], value = argv[++i];
     if (value === undefined) throw new Error(`${key} needs a value`);
     if (key === '--serial') options.serial = value;
@@ -40,7 +46,7 @@ export function parse(argv) {
   }
   if (!/^emulator-(\d+)$/.test(options.serial ?? '')) throw new Error('--serial emulator-<port> is required');
   if (!/^[A-Za-z0-9_.-]+$/.test(options.avd ?? '')) throw new Error('--avd <name> of the owned emulator is required');
-  if (!options.python || !options.wavs.length || !options.out) throw new Error('--python, --wav and --out are required');
+  if ((!options.feed && !options.python) || !options.wavs.length || !options.out) throw new Error('--wav, --out and (without --feed) --python are required');
   if (!Number.isInteger(options.trials) || options.trials < 1 || !Number.isInteger(options.coldEvery) || options.coldEvery < 2 || !(options.gapSeconds >= 0.5 && options.gapSeconds <= 60)) throw new Error('--trials >= 1, --cold-every >= 2, --gap-seconds 0.5-60');
   options.port = Number(options.serial.slice('emulator-'.length));
   return options;
@@ -57,8 +63,13 @@ async function main() {
   if (avd !== options.avd) throw new Error(`${options.serial} runs AVD ${JSON.stringify(avd)}, not ${options.avd}`);
   for (const name of [PACKAGE, `${PACKAGE}.test`]) if (!adb('shell', 'pm', 'path', name).startsWith('package:')) throw new Error(`${name} is not installed on ${options.serial}`);
   fs.mkdirSync(options.out, { recursive: true });
+  if (options.feed) {
+    const feed = `/storage/emulated/0/Android/data/${PACKAGE}/files/feed`;
+    adb('shell', 'rm', '-rf', feed); adb('shell', 'mkdir', '-p', feed);
+    options.wavs.forEach((file, index) => adb('push', file, `${feed}/${String(index).padStart(3, '0')}.wav`));
+  }
   const device = { serial: options.serial, avd, abi: adb('shell', 'getprop', 'ro.product.cpu.abi'), sdk: adb('shell', 'getprop', 'ro.build.version.sdk'), fingerprint: adb('shell', 'getprop', 'ro.build.fingerprint'), qemu: adb('shell', 'getprop', 'ro.kernel.qemu') || adb('shell', 'getprop', 'ro.boot.qemu') };
-  const instrument = spawn('adb', ['-s', options.serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', CLASS, '-e', 'nativeVoiceLatency', '1', '-e', 'trials', String(options.trials), '-e', 'coldEvery', String(options.coldEvery), `${PACKAGE}.test/androidx.test.runner.AndroidJUnitRunner`]);
+  const instrument = spawn('adb', ['-s', options.serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', CLASS, '-e', 'nativeVoiceLatency', '1', '-e', 'trials', String(options.trials), '-e', 'coldEvery', String(options.coldEvery), ...(options.feed ? ['-e', 'feed', '1', '-e', 'gapSeconds', String(options.gapSeconds)] : []), `${PACKAGE}.test/androidx.test.runner.AndroidJUnitRunner`]);
   let output = '';
   instrument.stdout.on('data', chunk => { output += chunk; });
   instrument.stderr.on('data', chunk => { output += chunk; });
@@ -72,20 +83,24 @@ async function main() {
     fs.writeFileSync(path.join(options.out, 'instrumentation.txt'), output);
     throw new Error(`The harness never reported that it listens; see ${path.join(options.out, 'instrumentation.txt')}`);
   }
-  const inject = spawn(options.python, [path.join(ROOT, 'scripts/inject-emulator-audio.py'), '--port', String(options.port), '--repeat', String(repetitions(options.trials, options.wavs.length)), '--gap-seconds', String(options.gapSeconds), '--inject', ...options.wavs], { stdio: ['ignore', 'pipe', 'pipe'] });
-  let injection = '';
-  inject.stdout.on('data', chunk => { injection += chunk; });
-  inject.stderr.on('data', chunk => { injection += chunk; });
+  const inject = options.feed ? null : spawn(options.python, [path.join(ROOT, 'scripts/inject-emulator-audio.py'), '--port', String(options.port), '--repeat', String(repetitions(options.trials, options.wavs.length)), '--gap-seconds', String(options.gapSeconds), '--inject', ...options.wavs], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let injection = options.feed ? 'feed mode: no microphone injection\n' : '';
   let injectExit;
-  // An injector that stops early (authentication, gRPC) would leave the harness waiting out its timeout.
-  inject.on('close', code => { injectExit = code; if (code !== 0 && instrumentExit === undefined) instrument.kill('SIGTERM'); });
+  if (inject) {
+    inject.stdout.on('data', chunk => { injection += chunk; });
+    inject.stderr.on('data', chunk => { injection += chunk; });
+    // An injector that stops early (authentication, gRPC) would leave the harness waiting out its timeout.
+    inject.on('close', code => { injectExit = code; if (code !== 0 && instrumentExit === undefined) instrument.kill('SIGTERM'); });
+  }
   const status = await finished;
-  if (inject.exitCode === null) inject.kill('SIGTERM');
-  await new Promise(resolve => (injectExit !== undefined ? resolve() : inject.on('close', () => resolve())));
+  if (inject) {
+    if (inject.exitCode === null) inject.kill('SIGTERM');
+    await new Promise(resolve => (injectExit !== undefined ? resolve() : inject.on('close', () => resolve())));
+  }
   fs.writeFileSync(path.join(options.out, 'instrumentation.txt'), output);
   fs.writeFileSync(path.join(options.out, 'injection.txt'), injection);
   const exported = /nativeVoiceLatencyExport=(\S+)/.exec(output)?.[1];
-  const report = { campaign: 'issue-395-native-voice-latency-emulator', evidenceClass: 'E', notEvidenceFor: ['device latency', 'acoustic output timing', 'physical microphone', 'voice-assistant acceptance (no language model ran)'], device, options: { trials: options.trials, coldEvery: options.coldEvery, gapSeconds: options.gapSeconds, wavs: options.wavs.map(file => path.basename(file)) }, instrumentationExit: status, injectorExit: injectExit ?? null, passed: /OK \(1 test\)/.test(output) };
+  const report = { campaign: 'issue-395-native-voice-latency-emulator', evidenceClass: 'E', notEvidenceFor: ['device latency', 'acoustic output timing', 'physical microphone', 'voice-assistant acceptance (no language model ran)'], device, options: { source: options.feed ? 'synthetic-feed' : 'virtual-microphone', trials: options.trials, coldEvery: options.coldEvery, gapSeconds: options.gapSeconds, wavs: options.wavs.map(file => path.basename(file)) }, instrumentationExit: status, injectorExit: injectExit ?? null, passed: /OK \(1 test\)/.test(output) };
   if (exported) {
     const local = path.join(options.out, 'native-voice-timing.json');
     execFileSync('adb', ['-s', options.serial, 'pull', exported, local], { stdio: 'ignore' });

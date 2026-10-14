@@ -51,6 +51,9 @@ import static org.junit.Assert.*;
  * and the TTS at the reply, so the reply-side load lands inside the measured interval.
  *
  * <p>Opt-in: {@code -e nativeVoiceLatency 1 [-e trials 60] [-e coldEvery 6] [-e timeoutMs 1800000]}.
+ * {@code -e feed 1 [-e gapSeconds 8]} replaces the microphone with a paced feed of the WAVs pushed to
+ * {@code <external files>/feed/} (for emulators whose virtual microphone delivers silence); those
+ * trials carry the {@code synthetic-feed} capture clock and measure from the fed last speech sample.
  * Every trial is recorded with pipeline {@code harness-no-inference}. Writes the
  * alpha-native-voice-timing-v2 export plus harness details (transcripts on an emulator only) to
  * {@code <external files>/native-voice-latency/}. Emulator results are not device latency.
@@ -77,12 +80,17 @@ public final class NativeVoiceLatencyInstrumentedTest {
  private final AtomicInteger skipped=new AtomicInteger(),finished=new AtomicInteger();
  private final AtomicReference<String> captureError=new AtomicReference<>();
  private final JSONArray turnsLog=new JSONArray();
+ // Microphone diagnostics: capture batches seen and the loudest peak, to tell silence from VAD misses.
+ private final AtomicInteger batchesSeen=new AtomicInteger();
+ private final float[] maxPeak={0f};
 
  @Test public void measuresLastSpeechToAudibleResponse()throws Exception{
   Bundle args=InstrumentationRegistry.getArguments();
   org.junit.Assume.assumeTrue("Opt-in native latency harness with a driven microphone","1".equals(args.getString("nativeVoiceLatency")));
   int target=Integer.parseInt(args.getString("trials","60")),coldEvery=Integer.parseInt(args.getString("coldEvery","6"));
   long timeoutMs=Long.parseLong(args.getString("timeoutMs","1800000"));
+  boolean feed="1".equals(args.getString("feed"));
+  double gapSeconds=Double.parseDouble(args.getString("gapSeconds","8"));
   assertTrue(target>0&&coldEvery>1&&timeoutMs>0);
   Instrumentation instrumentation=InstrumentationRegistry.getInstrumentation();
   app=instrumentation.getTargetContext();
@@ -95,8 +103,10 @@ public final class NativeVoiceLatencyInstrumentedTest {
   HandlerThread playbackThread=new HandlerThread("latency-playback");playbackThread.start();playback=new Handler(playbackThread.getLooper());
   // Warm start: the first trial is still marked cold (first turn of the process).
   worker.submit(()->{try{asr=bundle.openAsr();assertTrue(asr.supportsStreaming());voice=bundle.openVoice();}catch(Exception error){throw new RuntimeException(error);}}).get(300,TimeUnit.SECONDS);
+  AlphaLiveVoiceCapture.SourceFactory source=feed?feedSource(new File(app.getExternalFilesDir(null),"feed"),gapSeconds):AlphaLiveVoiceCapture.MicrophoneSource::new;
   AlphaLiveVoiceCapture capture=new AlphaLiveVoiceCapture(app,UUID.randomUUID().toString(),new AlphaLiveVoiceCapture.Sink(){
    public void frames(String captureId,JSArray frames,JSArray vad,float peak){
+    batchesSeen.incrementAndGet();synchronized(maxPeak){if(peak>maxPeak[0])maxPeak[0]=peak;}
     boolean start=false,end=false;
     for(int i=0;i<vad.length();i++){String type=vad.optJSONObject(i).optString("type");if("speech-start".equals(type))start=true;else if("speech-end".equals(type))end=true;}
     if(start&&!busy.compareAndSet(false,true)){skipped.incrementAndGet();return;}
@@ -107,7 +117,7 @@ public final class NativeVoiceLatencyInstrumentedTest {
     worker.submit(()->turn(opening,pcm,closing,coldEvery));
    }
    public void ended(String captureId,String error){if(error!=null)captureError.set(error);}
-  },"harness-no-inference");
+  },"harness-no-inference",source);
   long started=System.currentTimeMillis();
   capture.start();
   // The campaign driver starts injecting speech when it sees this status.
@@ -121,9 +131,9 @@ public final class NativeVoiceLatencyInstrumentedTest {
   }
   JSONObject export=AlphaVoiceLatencyProbe.export(app);
   export.put("harness",new JSONObject()
-   .put("pipeline","harness-no-inference")
+   .put("pipeline","harness-no-inference").put("source",feed?"synthetic-feed":"microphone")
    .put("description","AlphaLiveVoiceCapture (AudioRecord + Silero VAD) -> Phonon-2 streaming ASR in the app process -> fixed reply (no language model) -> Paradee-8M -> MediaPlayer; not device latency when environment is emulator")
-   .put("trialsRequested",target).put("coldEvery",coldEvery).put("skippedSegments",skipped.get()).put("captureError",captureError.get()==null?JSONObject.NULL:captureError.get())
+   .put("trialsRequested",target).put("coldEvery",coldEvery).put("skippedSegments",skipped.get()).put("captureBatches",batchesSeen.get()).put("maxPeak",(double)maxPeak[0]).put("captureError",captureError.get()==null?JSONObject.NULL:captureError.get())
    .put("elapsedMs",System.currentTimeMillis()-started).put("turns",turnsLog));
   File dir=new File(app.getExternalFilesDir(null),"native-voice-latency");assertTrue(dir.isDirectory()||dir.mkdirs());
   File out=new File(dir,"native-voice-latency-"+UUID.randomUUID()+".json");
@@ -205,6 +215,38 @@ public final class NativeVoiceLatencyInstrumentedTest {
   if(stream!=null){stream.close();stream=null;}
   if(asr!=null){asr.close();asr=null;}
   if(voice!=null){voice.close();voice=null;}
+ }
+
+ /**
+  * A paced feed of the speech WAVs in {@code dir} (16 kHz mono PCM16), in name order, each followed by
+  * {@code gapSeconds} of silence, repeating. Samples become readable at the monotonic time they would
+  * have been captured, and that time is their capture time ("synthetic-feed"): it replaces the
+  * microphone and AudioRecord timestamps only, never the VAD, recognition, synthesis or playback.
+  */
+ private static AlphaLiveVoiceCapture.SourceFactory feedSource(File dir,double gapSeconds)throws Exception{
+  File[] files=dir.listFiles((d,name)->name.endsWith(".wav"));
+  assertNotNull("push the speech WAVs to "+dir,files);
+  java.util.Arrays.sort(files);
+  assertTrue("push the speech WAVs to "+dir,files.length>0);
+  java.util.List<float[]> clips=new java.util.ArrayList<>();
+  for(File file:files)try(java.io.InputStream in=new java.io.FileInputStream(file)){clips.add(AlphaLocalSpeechEngine.readMono16kWav(in));}
+  int gap=(int)Math.round(gapSeconds*AlphaLiveVoiceCapture.SAMPLE_RATE);
+  int cycle=0;for(float[] clip:clips)cycle+=clip.length+gap;
+  short[] schedule=new short[cycle];int at=0;
+  for(float[] clip:clips){for(float sample:clip)schedule[at++]=(short)Math.round(Math.max(-1,Math.min(1,sample))*32767);at+=gap;}
+  return ()->new AlphaLiveVoiceCapture.Source(){
+   final long start=System.nanoTime();long position;volatile boolean closed;
+   public int read(short[] buffer,int offset,int length){
+    long due=captureTimeNs(position+length-1);
+    while(!closed&&System.nanoTime()<due){long wait=due-System.nanoTime();try{Thread.sleep(wait/1_000_000,(int)(wait%1_000_000));}catch(InterruptedException interrupted){Thread.currentThread().interrupt();return -1;}}
+    if(closed)return -1;
+    for(int i=0;i<length;i++)buffer[offset+i]=schedule[(int)((position+i)%schedule.length)];
+    position+=length;return length;
+   }
+   public long captureTimeNs(long frame){return VoiceLatencyTrials.frameTimeNs(start,0,frame,AlphaLiveVoiceCapture.SAMPLE_RATE);}
+   public String clock(){return "synthetic-feed";}
+   public void close(){closed=true;}
+  };
  }
 
  private static float[] decode(String base64){

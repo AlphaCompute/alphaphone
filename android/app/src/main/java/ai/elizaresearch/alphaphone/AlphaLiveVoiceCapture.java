@@ -44,28 +44,56 @@ final class AlphaLiveVoiceCapture {
   return vad;
  }
 
+ /**
+  * Where the 16 kHz mono PCM comes from. Production uses the microphone ({@link MicrophoneSource});
+  * the issue #395 harness can substitute a paced feed when an emulator's virtual microphone delivers
+  * no audio, and labels its trials with that source's clock.
+  */
+ interface Source {
+  int read(short[] buffer,int offset,int length);
+  /** CLOCK_MONOTONIC capture time of the 0-based frame, or VoiceLatencyTrials.UNSET. */
+  long captureTimeNs(long frame);
+  /** Clock label for {@link #captureTimeNs} ("audiorecord-timestamp" for the microphone). */
+  String clock();
+  void close();
+ }
+ interface SourceFactory { Source open()throws Exception; }
+ /** The shipped source: AudioRecord VOICE_RECOGNITION, timed with AudioRecord.getTimestamp. */
+ static final class MicrophoneSource implements Source {
+  private final AudioRecord recorder;
+  private final android.media.AudioTimestamp stamp=new android.media.AudioTimestamp();
+  MicrophoneSource()throws Exception{
+   int minimum=AudioRecord.getMinBufferSize(SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);
+   recorder=new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION,SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,Math.max(minimum,LiveVadGate.WINDOW*2*16));
+   if(recorder.getState()!=AudioRecord.STATE_INITIALIZED){recorder.release();throw new IllegalStateException("Microphone unavailable");}
+   try{recorder.startRecording();}catch(RuntimeException error){recorder.release();throw error;}
+  }
+  public int read(short[] buffer,int offset,int length){return recorder.read(buffer,offset,length);}
+  public long captureTimeNs(long frame){return AlphaVoiceLatencyProbe.captureTimeNs(recorder,stamp,frame,SAMPLE_RATE);}
+  public String clock(){return "audiorecord-timestamp";}
+  public void close(){try{recorder.stop();}catch(RuntimeException ignored){}recorder.release();}
+ }
+
  private final Context context;
  private final String captureId;
  private final Sink sink;
  private final String pipeline;
+ private final SourceFactory sources;
  private volatile boolean running;
  private Thread thread;
  private long startedAt;
 
  AlphaLiveVoiceCapture(Context context,String captureId,Sink sink){this(context,captureId,sink,"live-voice");}
  /** {@code pipeline} labels the latency trials this capture opens ("live-voice" for the shipped conversation). */
- AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,String pipeline){this.context=context.getApplicationContext();this.captureId=captureId;this.sink=sink;this.pipeline=pipeline;AlphaVoiceLatencyProbe.prepareIdentity(this.context);}
+ AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,String pipeline){this(context,captureId,sink,pipeline,MicrophoneSource::new);}
+ AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,String pipeline,SourceFactory sources){this.context=context.getApplicationContext();this.captureId=captureId;this.sink=sink;this.pipeline=pipeline;this.sources=sources;AlphaVoiceLatencyProbe.prepareIdentity(this.context);}
  String captureId(){return captureId;}
 
  synchronized void start()throws Exception{
   if(thread!=null)throw new IllegalStateException("Live capture already started");
   long vad=openVad(context);
-  int minimum=AudioRecord.getMinBufferSize(SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);
-  AudioRecord recorder;
-  try{recorder=new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION,SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,Math.max(minimum,LiveVadGate.WINDOW*2*16));}
-  catch(SecurityException|IllegalArgumentException error){ElizaVoiceNative.nativeVadClose(vad);throw error;}
-  if(recorder.getState()!=AudioRecord.STATE_INITIALIZED){recorder.release();ElizaVoiceNative.nativeVadClose(vad);throw new IllegalStateException("Microphone unavailable");}
-  try{recorder.startRecording();}catch(RuntimeException error){recorder.release();ElizaVoiceNative.nativeVadClose(vad);throw error;}
+  Source recorder;
+  try{recorder=sources.open();}catch(Exception|Error error){ElizaVoiceNative.nativeVadClose(vad);throw error;}
   running=true;startedAt=System.currentTimeMillis();
   thread=new Thread(()->loop(recorder,vad),"alpha-live-voice");
   thread.start();
@@ -78,7 +106,7 @@ final class AlphaLiveVoiceCapture {
   return Math.max(0,System.currentTimeMillis()-startedAt);
  }
 
- private void loop(AudioRecord recorder,long vad){
+ private void loop(Source recorder,long vad){
   String error=null;
   LiveVadGate gate=new LiveVadGate();
   ArrayDeque<JSObject> preroll=new ArrayDeque<>();
@@ -90,8 +118,7 @@ final class AlphaLiveVoiceCapture {
   // Issue #395 collector: capture time of the last sample of the last window the gate still counts as
   // speech. Speech can end anywhere inside that 32 ms window, so the latency is understated by at
   // most one window; frames the platform drops would overstate it instead.
-  android.media.AudioTimestamp stamp=new android.media.AudioTimestamp();
-  long framesRead=0,lastSpeechNs=VoiceLatencyTrials.UNSET;String lastSpeechClock="audiorecord-timestamp";
+  long framesRead=0,lastSpeechNs=VoiceLatencyTrials.UNSET;String lastSpeechClock=recorder.clock();
   try{
    ElizaVoiceNative.nativeVadReset(vad);
    while(running){
@@ -100,8 +127,8 @@ final class AlphaLiveVoiceCapture {
     if(!running)break;
     long at=System.currentTimeMillis();
     framesRead+=window.length;
-    long windowEndNs=AlphaVoiceLatencyProbe.captureTimeNs(recorder,stamp,framesRead-1,SAMPLE_RATE);
-    String windowClock="audiorecord-timestamp";
+    long windowEndNs=recorder.captureTimeNs(framesRead-1);
+    String windowClock=recorder.clock();
     if(windowEndNs==VoiceLatencyTrials.UNSET){windowEndNs=System.nanoTime();windowClock="read-return";}
     for(int i=0;i<window.length;i++){short sample=window[i];pcm[i]=sample/32768f;bytes[i*2]=(byte)(sample&0xff);bytes[i*2+1]=(byte)((sample>>8)&0xff);peak=Math.max(peak,Math.abs(pcm[i]));}
     float[] probability=ElizaVoiceNative.nativeVadProcessBatch(vad,pcm);
@@ -125,8 +152,7 @@ final class AlphaLiveVoiceCapture {
    }
   }catch(Exception|Error failure){error="capture";}
   finally{
-   try{recorder.stop();}catch(RuntimeException ignored){}
-   recorder.release();
+   recorder.close();
    ElizaVoiceNative.nativeVadClose(vad);
    java.util.Arrays.fill(bytes,(byte)0);java.util.Arrays.fill(window,(short)0);java.util.Arrays.fill(pcm,0f);
    preroll.clear();

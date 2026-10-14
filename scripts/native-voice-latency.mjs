@@ -28,7 +28,7 @@ export const identityKeys = Object.freeze(['sourceCommit', 'engineSha256', 'mode
 export const pipelines = Object.freeze({ 'live-voice': 'voice-assistant', 'harness-no-inference': 'diagnostic' });
 export const minimumTrials = 50, budgetMs = 6000;
 const outcomes = ['passed', 'failed', 'abandoned'];
-const captureClocks = ['audiorecord-timestamp', 'read-return'];
+const captureClocks = ['audiorecord-timestamp', 'read-return', 'synthetic-feed'];
 const thermalStates = ['none', 'light', 'moderate', 'severe', 'critical', 'emergency', 'shutdown', 'unknown'];
 const sha256 = /^[a-f0-9]{64}$/, commit = /^[a-f0-9]{40}$/;
 const finite = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
