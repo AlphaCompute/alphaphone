@@ -157,7 +157,8 @@ buckets (elizaOS/eliza PR #36255).
 The 7-day offline grace is an engineering bound for offline use, not a billing decision: Cloud
 refuses every AI request without a plan. The record behind it (`alpha.connection.plan-admission.v1`)
 holds the environment, local credential generation id, user and organization ids, plan name and
-status, and the verification time; no credential.
+status, and the verification time; no credential. A failed background refresh does not renew that
+verification time, even while the previous entitlement remains valid.
 
 Background refresh happens at `rfa`, or after 75% of the lifetime. After a failure it retries
 after 30 s, then doubles the wait up to 5 minutes. It also runs when the owner returns to the app.
@@ -177,7 +178,12 @@ the plan state came from the billing snapshot.
 - `400` (unknown, expired, disabled, used up or malformed): "This code could not be redeemed."
   `409 subscription_grant_already_redeemed`: already received. `429`: "Too many attempts. Try
   again in …" from `retryAfterSeconds`. `403`: account copy. Anything else: try again later.
-- The code is never logged, stored, put in an error or echoed.
+- A replay whose grant has been revoked is refused, never reported as redeemed.
+- A failed submission keeps the code in the input with its accessible error so the owner can
+  correct it; a successful submission clears it. The code is never logged, persisted, put in
+  an error or echoed.
+- The account panel uses Cloud's `effectiveUntil` for the active plan window. A grant end is
+  used only when no paid plan takes precedence and Cloud supplies no effective end.
 - On success the phone reads the entitlement again and admits the agent when the plan allows.
   When a paid plan takes precedence, the copy says so.
 
