@@ -54,7 +54,28 @@ final class AlphaSms {
  /** The process's journal; an interrupted dispatch from an earlier process is reconciled to unknown on first load. */
  static synchronized SmsSendJournal journal(Context context) throws IOException {
   if (journal == null) {
-   SmsSendJournal loaded = new SmsSendJournal(new File(context.getNoBackupFilesDir(), "alpha-sms-sends.journal"));
+   AlphaCredentialStore store = new AlphaCredentialStore(context);
+   File legacy = new File(context.getNoBackupFilesDir(), "alpha-sms-sends.journal");
+   final String slot = "sms-send-ledger:v1:device";
+   SmsSendJournal loaded = new SmsSendJournal(new SmsSendJournal.Storage() {
+    public String read() throws IOException {
+     try {
+      String encrypted = store.readCredentialSlot(slot);
+      if (encrypted != null) { if (legacy.exists() && !legacy.delete()) throw new IOException("Legacy SMS journal could not be removed"); return new JSONObject(encrypted).getString("journal"); }
+      if (!legacy.exists()) return null;
+      String previous = new String(java.nio.file.Files.readAllBytes(legacy.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+      // Encrypt before removing the old file; an interrupted migration never loses replay protection.
+      write(previous);
+      return previous;
+     } catch (Exception failure) { throw new IOException("SMS journal unavailable", failure); }
+    }
+    public void write(String value) throws IOException {
+     try {
+      store.writeCredentialSlot(slot, new JSONObject().put("journal", value).toString());
+      if (legacy.exists() && !legacy.delete()) throw new IOException("Legacy SMS journal could not be removed");
+     } catch (Exception failure) { throw new IOException("SMS journal unavailable", failure); }
+    }
+   });
    loaded.reconcile(boot(context), false);
    journal = loaded;
   }
@@ -239,7 +260,9 @@ final class AlphaSms {
   * divided by the platform. A platform call that throws ends the dispatch as unknown: earlier
   * recipients may have been submitted, so nothing is attempted again automatically.
   */
- static SmsSendJournal.Record dispatch(Context context, SmsSendJournal journal, String operationId, String[] recipients, String body, int subscriptionId, ArrayList<String> parts) throws IOException {
+ interface DispatchGuard { void check(); }
+ static SmsSendJournal.Record dispatch(Context context, SmsSendJournal journal, String operationId, String[] recipients, String body, int subscriptionId, ArrayList<String> parts, DispatchGuard guard) throws IOException {
+  guard.check();
   SmsManager manager = manager(context, subscriptionId);
   int[] counts = new int[recipients.length];
   java.util.Arrays.fill(counts, parts.size());
@@ -248,6 +271,7 @@ final class AlphaSms {
   try {
    int index = 0;
    for (String recipient : recipients) {
+    guard.check();
     ArrayList<PendingIntent> sent = new ArrayList<>(), delivered = new ArrayList<>();
     for (int part = 0; part < parts.size(); part++, index++) { sent.add(callback(context, ACTION_SENT, operationId, index)); delivered.add(callback(context, ACTION_DELIVERED, operationId, index)); }
     if (parts.size() == 1) manager.sendTextMessage(recipient, null, parts.get(0), sent.get(0), delivered.get(0));
@@ -303,6 +327,7 @@ final class AlphaSms {
      boolean allSent = true, reported = false;
      for (int i = first; i < first + count; i++) { allSent &= record.sent[i] == SmsSendJournal.SUCCESS; reported |= record.reported[i] && record.delivery[i] == SmsSendJournal.UNKNOWN; }
      if (!allSent) continue;
+     if (journal.ambiguousProviderOwner(record, recipient, ROW_WINDOW_MS)) continue;
      if (record.providerRow[recipient] == 0) {
       long row = findRow(resolver, context.getPackageName(), record, recipient, claimed);
       if (row > 0) { journal.providerRow(record.operationId, recipient, row); claimed.add(row); }
@@ -325,15 +350,15 @@ final class AlphaSms {
   */
  private static final long ROW_WINDOW_MS = 10 * 60_000L;
  private static long findRow(ContentResolver resolver, String creator, SmsSendJournal.Record record, int recipient, Set<Long> claimed) {
-  String where = Telephony.Sms.ADDRESS + " = ? AND " + Telephony.Sms.CREATOR + " = ? AND " + Telephony.Sms.DATE + " >= ? AND " + Telephony.Sms.DATE + " <= ? AND " + Telephony.Sms.TYPE + " IN (2,4,5,6)";
+  String where = Telephony.Sms.ADDRESS + " = ? AND " + Telephony.Sms.CREATOR + " = ? AND " + Telephony.Sms.DATE + " >= ? AND " + Telephony.Sms.DATE + " <= ? AND " + Telephony.Sms.TYPE + " IN (2,4,5,6) AND " + Telephony.Sms.SUBSCRIPTION_ID + " = ?";
   try (Cursor c = resolver.query(Telephony.Sms.CONTENT_URI, new String[] { Telephony.Sms._ID, Telephony.Sms.BODY }, where,
-    new String[] { record.recipients[recipient], creator, Long.toString(record.createdAt), Long.toString(record.createdAt + ROW_WINDOW_MS) }, Telephony.Sms._ID + " ASC")) {
-   int seen = 0;
-   while (c != null && c.moveToNext() && seen++ < 20) {
+    new String[] { record.recipients[recipient], creator, Long.toString(record.createdAt), Long.toString(record.createdAt + ROW_WINDOW_MS), Integer.toString(record.subscriptionId) }, Telephony.Sms._ID + " ASC")) {
+   SmsSendJournal.ProviderMatch match = new SmsSendJournal.ProviderMatch();
+   while (c != null && c.moveToNext()) {
     long id = longAt(c, Telephony.Sms._ID); String body = textAt(c, Telephony.Sms.BODY);
-    if (id > 0 && body != null && !claimed.contains(id) && SmsSendJournal.sha256(body).equals(record.bodyHash)) return id;
+    if (!match.visit(id, id > 0 && body != null && SmsSendJournal.sha256(body).equals(record.bodyHash), claimed.contains(id))) return 0;
    }
+   return match.result();
   }
-  return 0;
  }
 }

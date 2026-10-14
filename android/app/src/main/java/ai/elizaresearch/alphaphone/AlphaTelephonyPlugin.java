@@ -475,6 +475,7 @@ public class AlphaTelephonyPlugin extends Plugin {
   if (parts.size() > 1) message.append("Sent as ").append(parts.size()).append(" linked texts per recipient.\n");
   message.append("Carrier charges may apply.\n\n").append(body);
   final String[] to = recipients; final int sub = subscriptionId;
+  final int reviewedSlot = sim.getSimSlotIndex(), reviewedCarrier = sim.getCarrierId();
   reviewCall = call;
   reviewCancelled = () -> decide(call, journal, operationId, to, body, sub, "cancelled", now, boot);
   try {
@@ -487,7 +488,10 @@ public class AlphaTelephonyPlugin extends Plugin {
      review = null; reviewCall = null; reviewCancelled = null;
      // Recheck everything at the moment of the owner's decision.
      if (!AlphaImageCapability.verified(getContext()) || !unlockedForeground() || sendBlocker(sub) != null) { decide(call, journal, operationId, to, body, sub, "denied", now, boot); return; }
-     try { call.resolve(AlphaSms.result(AlphaSms.dispatch(getContext(), journal, operationId, to, body, sub, parts))); }
+     try { call.resolve(AlphaSms.result(AlphaSms.dispatch(getContext(), journal, operationId, to, body, sub, parts, () -> {
+      SubscriptionInfo current = activeSubscription(sub);
+      if (!AlphaImageCapability.verified(getContext()) || !unlockedForeground() || sendBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
+     }))); }
      catch (Exception unrecorded) {
       SmsSendJournal.Record record = journal.get(operationId);
       if (record != null) call.resolve(AlphaSms.result(record));
@@ -496,6 +500,7 @@ public class AlphaTelephonyPlugin extends Plugin {
     })
     .create();
    review.setOnDismissListener(dialog -> { if (reviewCall == call) cancelReview(); });
+   if (review.getWindow() != null) review.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
    review.show();
    // An overlay must not be able to steer the owner's Send tap.
    android.widget.Button send = review.getButton(android.content.DialogInterface.BUTTON_POSITIVE);

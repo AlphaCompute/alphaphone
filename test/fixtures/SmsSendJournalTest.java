@@ -127,6 +127,41 @@ public final class SmsSendJournalTest {
   throwsOn(() -> boundReloaded.existing("b0", b0), "tombstones survive reload");
   require(boundReloaded.existing("b" + (SmsSendJournal.MAX_RECORDS + 4), SmsSendJournal.sha256(SmsSendJournal.bindingText(one, "m" + (SmsSendJournal.MAX_RECORDS + 4), 3))) != null, "kept records survive reload");
 
+  // Lifetime capacity never forgets a key: further work fails, including after reloading storage.
+  final String[] memory = { null };
+  SmsSendJournal.Storage storage = new SmsSendJournal.Storage() {
+   public String read() { return memory[0]; }
+   public void write(String value) { memory[0] = value; }
+  };
+  SmsSendJournal capacity = new SmsSendJournal(storage);
+  for (int i = 0; i < SmsSendJournal.MAX_RECORDS + SmsSendJournal.MAX_TOMBSTONES; i++) capacity.decide("cap" + i, one, "x", 3, "cancelled", i + 1, 7);
+  throwsOn(() -> { try { capacity.beginDispatch("overflow", one, "x", 3, new int[] { 1 }, 99999, 7); } catch (java.io.IOException e) { throw new RuntimeException(e); } }, "capacity refuses new sends");
+  SmsSendJournal capacityReloaded = new SmsSendJournal(storage);
+  throwsOn(() -> capacityReloaded.existing("cap0", SmsSendJournal.sha256(SmsSendJournal.bindingText(one, "x", 3))), "oldest key survives lifetime capacity");
+  throwsOn(() -> { try { capacityReloaded.beginDispatch("cap0", one, "x", 3, new int[] { 1 }, 99999, 7); } catch (java.io.IOException e) { throw new RuntimeException(e); } }, "oldest key cannot redispatch after reload");
+  SmsSendJournal failing = new SmsSendJournal(new SmsSendJournal.Storage() {
+   public String read() { return null; }
+   public void write(String value) throws java.io.IOException { throw new java.io.IOException("secure storage failed"); }
+  });
+  throwsOn(() -> { try { failing.beginDispatch("blocked", one, "x", 3, new int[] { 1 }, 1, 7); } catch (java.io.IOException e) { throw new RuntimeException(e); } }, "secure storage failure refuses dispatch");
+  require(failing.get("blocked") == null, "failed initial storage has no dispatched record");
+
+  SmsSendJournal.ProviderMatch unique = new SmsSendJournal.ProviderMatch();
+  unique.visit(1, false, false); unique.visit(2, true, false);
+  require(unique.result() == 2, "one fully enumerated provider match");
+  unique.visit(3, true, false); require(unique.result() == 0, "identical provider messages are ambiguous");
+  SmsSendJournal.ProviderMatch claimed = new SmsSendJournal.ProviderMatch(); claimed.visit(2, true, true);
+  require(claimed.result() == 0, "another operation owns the row");
+  SmsSendJournal.ProviderMatch truncated = new SmsSendJournal.ProviderMatch(); truncated.visit(1, true, false);
+  for (int i = 0; i < 20; i++) truncated.visit(i + 2, false, false);
+  require(truncated.result() == 0, "bounded incomplete enumeration proves no match");
+  SmsSendJournal attribution = new SmsSendJournal(new File(dir, "attribution"));
+  SmsSendJournal.Record first = attribution.beginDispatch("first", one, "same", 3, new int[] { 1 }, 1000, 7);
+  attribution.endDispatch("first", true);
+  require(!attribution.ambiguousProviderOwner(first, 0, 600000), "one operation can own unique row");
+  attribution.beginDispatch("second", one, "same", 3, new int[] { 1 }, 2000, 7);
+  require(attribution.ambiguousProviderOwner(first, 0, 600000), "two identical reviewed sends cannot steal delivery evidence");
+
   // A damaged journal is an error, never an empty journal that would allow a resend.
   Files.write(file.toPath(), "v1|broken\n".getBytes("UTF-8"));
   throwsOn(() -> { try { new SmsSendJournal(file); } catch (java.io.IOException e) { throw new RuntimeException(e); } }, "damaged journal refused");

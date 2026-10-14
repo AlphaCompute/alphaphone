@@ -29,8 +29,8 @@ import java.util.regex.Pattern;
  *
  * Bounds: at most {@link #MAX_RECORDS} records. When full, the oldest closed records are dropped, then
  * the oldest records still waiting for evidence, so a carrier that never sends delivery reports cannot
- * block sending. A dropped record leaves a tombstone of its operation ID and binding (at most
- * {@link #MAX_TOMBSTONES}), and a repeated ID with a tombstone is refused, never sent again.
+ * block sending until the lifetime ID capacity is reached. A dropped record leaves a tombstone of its operation ID and binding (at most
+ * {@link #MAX_TOMBSTONES}), and a repeated ID with a tombstone is refused, never sent again. New sends fail closed at capacity; tombstones are never deleted.
  */
 final class SmsSendJournal {
  static final int MAX_RECIPIENTS = 5, MAX_BODY = 1600, MAX_PARTS_PER_RECIPIENT = 10, MAX_RECORDS = 200, MAX_TOMBSTONES = 1000;
@@ -96,11 +96,21 @@ final class SmsSendJournal {
   }
  }
 
- private final File file;
+ interface Storage { String read() throws IOException; void write(String value) throws IOException; }
+ private final Storage storage;
  private final Map<String, Record> records = new LinkedHashMap<>();
  /** Operation ID to binding hash of records dropped by the bound, oldest first. */
  private final Map<String, String> tombstones = new LinkedHashMap<>();
- SmsSendJournal(File file) throws IOException { this.file = file; load(); }
+ SmsSendJournal(Storage storage) throws IOException { this.storage = storage; load(); }
+ /** File adapter is used only by the JVM tests; Android supplies encrypted credential storage. */
+ SmsSendJournal(File file) throws IOException { this(new Storage() {
+  public String read() throws IOException { return file.exists() ? new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8) : null; }
+  public void write(String value) throws IOException {
+   File temp = new File(file.getPath() + ".tmp");
+   try (FileOutputStream stream = new FileOutputStream(temp)) { stream.write(value.getBytes(StandardCharsets.UTF_8)); stream.getFD().sync(); }
+   Files.move(temp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+  }
+ }); }
 
  // ---- Validation and binding ------------------------------------------------------------------
 
@@ -197,6 +207,7 @@ final class SmsSendJournal {
  private Record create(String operationId, String[] recipients, String body, int subscriptionId, long now, long boot) {
   validate(operationId, recipients, body, subscriptionId);
   if (records.containsKey(operationId) || tombstones.containsKey(operationId)) throw new IllegalStateException("operation exists");
+  if (records.size() + tombstones.size() >= MAX_RECORDS + MAX_TOMBSTONES) throw new IllegalStateException("SMS journal capacity reached; existing IDs remain protected");
   prune(boot, now);
   Record record = new Record(operationId, subscriptionId, sha256(bindingText(recipients, body, subscriptionId)), sha256(body), recipients.clone(), now, boot);
   records.put(operationId, record);
@@ -303,9 +314,29 @@ final class SmsSendJournal {
     tombstones.put(record.operationId, record.bindingHash);
    }
   }
-  java.util.Iterator<String> oldest = tombstones.keySet().iterator();
-  while (tombstones.size() > MAX_TOMBSTONES && oldest.hasNext()) { oldest.next(); oldest.remove(); }
+  // Never discard an idempotency tombstone. Capacity refuses new work instead.
   if (records.size() >= MAX_RECORDS) throw new IllegalStateException("journal full");
+ }
+
+ /** Matching by content is unsafe when another operation could own the provider row. */
+ synchronized boolean ambiguousProviderOwner(Record record, int recipient, long window) {
+  for (Record other : records.values()) {
+   if (other == record || other.decision != null || other.subscriptionId != record.subscriptionId || !other.bodyHash.equals(record.bodyHash) || Math.abs(other.createdAt - record.createdAt) > window) continue;
+   for (String address : other.recipients) if (address.equals(record.recipients[recipient])) return true;
+  }
+  // Pruned operations lack address/time metadata. Once any are pruned, content-based attribution
+  // cannot exclude them. Sending remains possible, but delivery stays unknown.
+  return !tombstones.isEmpty();
+ }
+ /** At most one matching provider row, with complete enumeration and no previous owner. */
+ static final class ProviderMatch {
+  private long row; private int seen; private boolean ambiguous;
+  boolean visit(long id, boolean matches, boolean claimed) {
+   if (++seen > 20) { ambiguous = true; return false; }
+   if (matches) { if (row != 0 || claimed) ambiguous = true; row = id; }
+   return true;
+  }
+  long result() { return ambiguous ? 0 : row; }
  }
 
  // ---- Storage: one line per record, atomically replaced ---------------------------------------
@@ -346,9 +377,10 @@ final class SmsSendJournal {
   return r;
  }
  private void load() throws IOException {
-  if (!file.exists()) return;
+  String saved = storage.read();
+  if (saved == null) return;
   // A damaged journal is an error, never an empty one: an empty journal would allow a resend.
-  for (String line : new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8).split("\n")) {
+  for (String line : saved.split("\n")) {
    if (line.isEmpty()) continue;
    if (line.startsWith("t1|")) {
     String[] f = line.split("\\|", -1);
@@ -364,8 +396,6 @@ final class SmsSendJournal {
   StringBuilder out = new StringBuilder();
   for (Map.Entry<String, String> dropped : tombstones.entrySet()) out.append("t1|").append(dropped.getKey()).append('|').append(dropped.getValue()).append('\n');
   for (Record record : records.values()) out.append(encode(record)).append('\n');
-  File temp = new File(file.getPath() + ".tmp");
-  try (FileOutputStream stream = new FileOutputStream(temp)) { stream.write(out.toString().getBytes(StandardCharsets.UTF_8)); stream.getFD().sync(); }
-  if (!temp.renameTo(file)) { Files.move(temp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE); }
+  storage.write(out.toString());
  }
 }
