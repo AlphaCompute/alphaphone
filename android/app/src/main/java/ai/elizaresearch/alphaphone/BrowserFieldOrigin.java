@@ -108,6 +108,30 @@ final class BrowserFieldOrigin {
   }
  }
 
+ /**
+  * A focus report refused only because the tab was not eligible yet ({@link #HIDDEN}: still
+  * loading, a site prompt open, not shown or paused). Login pages commonly focus a field on load
+  * ({@code autofocus} or {@code focus()}), before the load finishes, and the script does not report
+  * a field again while it stays focused. The report is kept for the navigation it arrived in and
+  * re-run through {@link #bind} in full when the tab becomes eligible; every other refusal is final.
+  * Keeping it grants nothing: only a later successful {@code bind} creates a {@link Binding}.
+  */
+ static final class Deferred {
+  final EngineSource engine;final Report report;final long navigation;
+  private Deferred(EngineSource engine,Report report,long navigation){this.engine=engine;this.report=report;this.navigation=navigation;}
+  /** The report to retry, or null when the refusal is not a wait for eligibility. */
+  static Deferred of(EngineSource engine,Report report,TabSnapshot tab,Decision decision){
+   if(engine==null||report==null||report.kind!=Kind.FOCUS||tab==null||!tab.supported||decision==null||decision.fillable())return null;
+   return HIDDEN.equals(decision.refusal)?new Deferred(engine,report,tab.navigation):null;
+  }
+  /** A later message from the same frame document (same engine source and script document id). */
+  boolean sameFrame(EngineSource other,Report message){
+   return other!=null&&message!=null&&java.util.Objects.equals(engine.sourceOrigin,other.sourceOrigin)&&engine.mainFrame==other.mainFrame&&report.document.equals(message.document);
+  }
+  /** Still the navigation the report arrived in; a later document never inherits it. */
+  boolean current(TabSnapshot now){return now!=null&&now.navigation==navigation;}
+ }
+
  enum Kind{FOCUS,BLUR,GONE,SUBMIT}
 
  /**

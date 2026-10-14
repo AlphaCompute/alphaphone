@@ -72,6 +72,9 @@ final class BrowserLoginFields {
  /** The latest focus report of the bound fields: which of them is focused, and where. */
  private BrowserFieldOrigin.Report focus;
  private JavaScriptReplyProxy proxy;
+ /** A field focused before the tab was eligible (see {@link BrowserFieldOrigin.Deferred}), and its frame's reply proxy. */
+ private BrowserFieldOrigin.Deferred deferred;
+ private JavaScriptReplyProxy deferredProxy;
  private int base=0;
 
  private BrowserLoginFields(WebView web,Host host){this.web=web;this.host=host;this.anchor=new Anchor(web.getContext());}
@@ -111,29 +114,16 @@ final class BrowserLoginFields {
   // The only origin source: what WebView reported for the posting frame.
   BrowserFieldOrigin.EngineSource engine=new BrowserFieldOrigin.EngineSource(sourceOrigin==null?null:sourceOrigin.toString(),isMainFrame);
   switch(report.kind){
-   case FOCUS: {
-    BrowserFieldOrigin.Decision decision=BrowserFieldOrigin.bind(engine,now);
-    // Re-focus of the same fields (switching between them, or returning from a provider's unlock
-    // screen) keeps the binding and its virtual ids, so a pending fill result still matches.
-    if(binding!=null&&binding.sameFields(engine,report)){
-     focus=report;
-     if(decision.fillable())enter(report);
-     return;
-    }
-    // Focus moved to other fields: any earlier binding ends, including when the new field is refused.
-    revoke(true);
-    if(!decision.fillable())return;
-    binding=new BrowserFieldOrigin.Binding(decision.origin,now.navigation,report);
-    proxy=reply;focus=report;
-    base=(base+SPAN)%0x3ffffff0;
-    enter(report);
+   case FOCUS:
+    focus(engine,report,reply,now);
     return;
-   }
    case BLUR:
+    if(deferred!=null&&deferred.sameFrame(engine,report))forget();
     if(binding!=null&&binding.sameFrame(engine,report))exit();
     return;
    case GONE:
     // The bound document is unloading (including a frame navigating on its own).
+    if(deferred!=null&&deferred.sameFrame(engine,report))forget();
     if(binding!=null&&binding.sameFrame(engine,report))revoke(true);
     return;
    case SUBMIT:
@@ -144,6 +134,47 @@ final class BrowserLoginFields {
     if(report.username!=0)manager.notifyValueChanged(anchor,base+1,AutofillValue.forText(report.usernameValue));
     manager.notifyValueChanged(anchor,base+2,AutofillValue.forText(report.passwordValue));
   }
+ }
+
+ /** A focus report from the engine-attested frame {@code engine}, judged against the tab {@code now}. */
+ private void focus(BrowserFieldOrigin.EngineSource engine,BrowserFieldOrigin.Report report,JavaScriptReplyProxy reply,BrowserFieldOrigin.TabSnapshot now){
+  // A newer focus replaces any field still waiting for the tab to become eligible.
+  forget();
+  BrowserFieldOrigin.Decision decision=BrowserFieldOrigin.bind(engine,now);
+  // Re-focus of the same fields (switching between them, or returning from a provider's unlock
+  // screen) keeps the binding and its virtual ids, so a pending fill result still matches.
+  if(binding!=null&&binding.sameFields(engine,report)){
+   focus=report;
+   if(decision.fillable())enter(report);
+   return;
+  }
+  // Focus moved to other fields: any earlier binding ends, including when the new field is refused.
+  revoke(true);
+  // Focus that arrived while the page was still loading (autofocus) or a prompt was open is
+  // kept for this navigation and judged again, in full, when the tab becomes eligible.
+  deferred=BrowserFieldOrigin.Deferred.of(engine,report,now,decision);deferredProxy=deferred==null?null:reply;
+  if(!decision.fillable())return;
+  binding=new BrowserFieldOrigin.Binding(decision.origin,now.navigation,report);
+  proxy=reply;focus=report;
+  base=(base+SPAN)%0x3ffffff0;
+  enter(report);
+ }
+ private void forget(){deferred=null;deferredProxy=null;}
+
+ /**
+  * Called by the host whenever the tab may have become eligible (page finished, prompt closed,
+  * resumed, shown). A field focused before then is offered now, through the same {@link
+  * BrowserFieldOrigin#bind} decision; one from an earlier navigation is dropped.
+  */
+ void retry(){
+  BrowserFieldOrigin.Deferred pending=deferred;JavaScriptReplyProxy reply=deferredProxy;
+  if(closed||pending==null||reply==null||binding!=null)return;
+  BrowserFieldOrigin.TabSnapshot now=host.snapshot();
+  if(!pending.current(now)){forget();return;}
+  // Still not eligible: keep waiting without ending anything.
+  BrowserFieldOrigin.Decision decision=BrowserFieldOrigin.bind(pending.engine,now);
+  if(!decision.fillable()&&BrowserFieldOrigin.HIDDEN.equals(decision.refusal))return;
+  focus(pending.engine,pending.report,reply,now);
  }
 
  private AutofillManager manager(){return web.getContext().getSystemService(AutofillManager.class);}
@@ -177,7 +208,7 @@ final class BrowserLoginFields {
 
  void close(){
   if(closed)return;
-  revoke(true);closed=true;
+  revoke(true);forget();closed=true;
   if(script!=null){try{script.remove();}catch(RuntimeException ignored){}script=null;}
   if(world!=null){try{WebViewCompat.removeWebMessageListener(web,world,CHANNEL);}catch(RuntimeException ignored){}world=null;}
  }
