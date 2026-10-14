@@ -1387,3 +1387,18 @@ made by another surface during an attach does not make this surface stop the res
 Both runners bind the bytes upstream pins to the admitted hashes in `preflightVariant`, before
 any install, so a build that overwrites the archive after admission fails the run instead of
 being recorded under the admitted hashes. These are source checks only, as above.
+
+## Latest upstream pin integration (2026-10-14)
+
+The source pin moves from `c7a9a0d7e7ea399ead4016727737d2d975f2d5ba` to
+`f93d0dfabee30295dfca915e84addf9523260319`, the observed Eliza develop head.
+Its llama.cpp gitlink is `56e70ff2a0ca060fa2dc3fead2f38003cd7dd64f`, the observed
+fork main head after upstream integration PR #72. This includes the Android
+FFmpeg compatibility repair in Eliza #36279. The product continues using the
+llama.cpp speech migration already integrated into main.
+
+Historical native-library receipts remain tied to their recorded source and
+bytes. This source pin update does not qualify those older libraries for the
+new revision. Strict Android distribution builds require newly built libraries
+and the existing qualification process; no emulator, AOSP boot or physical
+device acceptance is implied by the pin update.
