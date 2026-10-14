@@ -97,7 +97,7 @@ export function stageVoiceModels(productRoot, {from, unrecordedEngine = false}) 
   fs.writeFileSync(manifestFile, manifestText);
   const files = [{path: `${VOICE_BUNDLE_ASSETS}/manifest.json`, bytes: Buffer.byteLength(manifestText), sha256: createHash('sha256').update(manifestText).digest('hex')},
     ...rows.map(row => ({path: row.target, bytes: row.bytes, sha256: row.sha256}))].sort((a, b) => a.path.localeCompare(b.path));
-  fs.writeFileSync(path.join(output, 'build-record.json'), `${JSON.stringify({inputs, abis: record.abis.map(row => row.abi), files}, null, 2)}\n`);
+  fs.writeFileSync(path.join(output, 'build-record.json'), `${JSON.stringify({sourceCommit:record.pin, nativeCommit:record.forkPin, inputs, abis: record.abis.map(row => row.abi), files}, null, 2)}\n`);
   return {staged: files.map(row => row.path), asr: bundleFiles.some(row => row.path.startsWith('asr/'))};
 }
 

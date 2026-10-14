@@ -69,7 +69,7 @@ test('voice projection refuses an unreviewed pin by default',()=>fixture(({root}
 }));
 test('actual pinned voice projection authenticates source and output hashes and excludes dashboard transport',()=>{
  const source=prepareClientFeatures(),stamp=JSON.parse(fs.readFileSync(path.join(source,'.source.json')));
- assert.equal(stamp.baseCommit,'c7a9a0d7e7ea399ead4016727737d2d975f2d5ba');assert.equal(stamp.projectionVersion,1);
+ assert.equal(stamp.baseCommit,'87d9bd96477f37a01c27ac76f6c5b3a3bff3faad');assert.equal(stamp.projectionVersion,1);
  const client='packages/ui/src/voice/voice-session-client.ts',text=fs.readFileSync(path.join(source,client),'utf8');
  assert.match(text,/requires an injected session fetch/);assert.doesNotMatch(text,/import\("\.\/voice-session-fetch"\)/);
  assert.notEqual(stamp.sourceFiles[client],stamp.files[client]);

@@ -1,8 +1,8 @@
 # Fused speech: libelizainference on the device and on the local agent
 
 Alpha Phone has one local speech engine: **libelizainference**, the llama.cpp-based native
-library from the elizaOS llama.cpp fork (decision P-42). At the pin `c7a9a0d7e7` (llama.cpp
-gitlink `5df17a66`, voice ABI 18, built with `LLAMA_BUILD_PARAKEET=ON`) it contains ggml, the
+library from the elizaOS llama.cpp fork (decision P-42). At the pin `87d9bd96477f` (llama.cpp
+gitlink `56e70ff2a0ca`, voice ABI 18, built with `LLAMA_BUILD_PARAKEET=ON`) it contains ggml, the
 **Parakeet-TDT** decoder that runs **Phonon-2** ASR in batch and streaming mode (P-55), mtmd (the
 Qwen3-ASR alternative, not shipped), the **Paradee-8M** speech graph on the shared kokoro layers
 (P-54), the native **misaki** English G2P, **eSpeak NG 1.52.0** (statically linked, used only for
@@ -117,6 +117,14 @@ agent) and Gradle compilation; not run on an emulator or a device.
   (`scripts/generate-licenses.mjs`) and the SBOM (`scripts/generate-sbom.mjs`) read it.
 
 ## Build, stage and verify
+
+The current source pin uses the upstream-preserving native integration and disables
+the optional Android video helper that required API 28. Both engine ABIs build with
+ABI 18, ASR and Paradee enabled, and 16 KiB load alignment. The voice record contains
+their measured hashes and remains unqualified. Staging binds the generated record to
+both the Eliza and llama.cpp revisions; an older bundle cannot satisfy the new pin.
+The earlier path-independent build described below is historical evidence, not a
+claim that the current development build reproduces those bytes.
 
 1. Build the shared outputs at the pin with the upstream builder, outside `vendor/eliza`
    (NDK 28.2; it converts the Paradee GGUF and misaki lexicon from pinned sources and checks them):
