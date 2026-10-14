@@ -1,3 +1,4 @@
+import {withdrawGmailBackground} from './gmail-background';
 import type {GmailAccount} from './cloud-protocol';
 import {disconnectGmailAccount, type GmailDisconnectOutcome} from './gmail-mailbox';
 
@@ -61,6 +62,9 @@ export function createGoogleAccounts(
     async disconnect(connectionId: string, signal: AbortSignal) {
       check(signal);
       if (!connectionId.trim()) throw new TypeError('Choose a Google connection to disconnect.');
+      // Retire native callbacks/notices before attempting a possibly ambiguous remote revoke.
+      await withdrawGmailBackground(connectionId);
+      check(signal);
       const result = await disconnectGmailAccount({
         async disconnectGmail(id, requestSignal) {
           check(requestSignal);
