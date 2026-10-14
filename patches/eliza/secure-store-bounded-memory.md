@@ -1,6 +1,6 @@
 # Secure-store bounded memory patch
 
-Applies to pinned upstream `13c98575987a121decc45b161b0c8a4ee698554e`, file
+Applies to pinned upstream `c7a9a0d7e7ea399ead4016727737d2d975f2d5ba`, file
 `plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java`.
 
 The 32 MiB Notes envelope exhausted a 192 MiB Android heap while JSON validation

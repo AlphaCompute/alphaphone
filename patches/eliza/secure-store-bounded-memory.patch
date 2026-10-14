@@ -1,3 +1,4 @@
+diff --git a/plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java b/plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java
 --- a/plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java
 +++ b/plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java
 @@ -3,7 +3,6 @@
@@ -8,11 +9,11 @@
  import java.io.File;
  import java.io.FileOutputStream;
  import java.io.FileNotFoundException;
-@@ -90,10 +89,9 @@
+@@ -115,10 +114,9 @@
        out.getFD().sync(); file.finishWrite(out);
        out = null;
        try (InputStream input = file.openRead()) {
--       byte[] committed = readBounded(input, limit + 64);
+-       byte[] committed = readBounded(input, ceiling + 64);
 -       if (committed.length != 2 + iv.length + encrypted.length || committed[0] != 1 || committed[1] != iv.length
 -         || !Arrays.equals(iv, Arrays.copyOfRange(committed, 2, 2 + iv.length))
 -         || !Arrays.equals(encrypted, Arrays.copyOfRange(committed, 2 + iv.length, committed.length))) throw new IllegalStateException();
@@ -22,9 +23,9 @@
        }
       } catch (Exception error) { if (out != null) file.failWrite(out); throw error; }
      }
-@@ -103,17 +101,41 @@
+@@ -128,17 +126,41 @@
   public String read(String name) throws Exception {
-   String slot=slotHash(name);int limit=slotLimit(name);
+   String slot=slotHash(name);int limit=retainedLimit(name);
    synchronized(LOCK) {
 -   AtomicFile file=slotFile(slot); byte[] stored;
 -   try(InputStream input=file.openRead()){stored=readBounded(input,limit+64);}
@@ -74,7 +75,7 @@
   }
   public void remove(String name)throws Exception {
    synchronized(LOCK){
-@@ -128,13 +150,14 @@
+@@ -153,13 +175,14 @@
     return true;
    }
   }
