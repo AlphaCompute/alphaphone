@@ -12,6 +12,10 @@ public final class ConnectionRoutesTest {
   // Session checks, pair-code display and unrelated routes are not the pairing mutation.
   for(String path:new String[]{"/api/auth/me","/api/auth/pair-code","/api/auth/status","/api/auth/logout","/api/auth/pairing","/api/v1/user","/",null})check(!ConnectionRoutes.retiredPairing(path,false),"flag-off keeps "+path);
   check(!ConnectionRoutes.retiredPairing("/api/auth/pair",true),"test-mocks builds keep development pairing");
+  // #406: product builds declare nothing to a hosted or paired agent runtime over this transport.
+  for(String name:new String[]{"accept","content-type","authorization"}){check(ConnectionRoutes.admittedHeader(name,false),"flag-off admits "+name);check(ConnectionRoutes.admittedHeader(name,true),"test mocks admit "+name);}
+  for(String name:new String[]{"x-eliza-device-id","x-eliza-device-key","x-eliza-device-capabilities","x-eliza-phone-protocol"}){check(!ConnectionRoutes.admittedHeader(name,false),"flag-off refuses "+name);check(ConnectionRoutes.admittedHeader(name,true),"test mocks keep "+name);}
+  for(String name:new String[]{"cookie","x-eliza-agent-id","Authorization","X-Eliza-Phone-Protocol","",null})check(!ConnectionRoutes.admittedHeader(name,true)&&!ConnectionRoutes.admittedHeader(name,false),"header "+name);
 
   check(revoke("https","api.eliza.app",-1,"/api/v1/api-keys/current",null,"DELETE",false,false),"production self-revocation");
   check(revoke("https","api.eliza.app",443,"/api/v1/api-keys/current",null,"DELETE",false,false),"explicit default port");
@@ -96,10 +100,6 @@ public final class ConnectionRoutesTest {
   check(!ConnectionRoutes.managedService("/api/v1/user",null,"POST",true,false),"identity write refused");
   check(!ConnectionRoutes.managedService("/api/v1/user",null,"GET",true,false),"GET body refused");
   check(ConnectionRoutes.managedService("/api/agents",null,"GET",false,true),"separate development infrastructure retained");
-  // #406: product builds declare nothing to a hosted or paired agent runtime over this transport.
-  for(String name:new String[]{"accept","content-type","authorization"}){check(ConnectionRoutes.admittedHeader(name,false),"flag-off admits "+name);check(ConnectionRoutes.admittedHeader(name,true),"test mocks admit "+name);}
-  for(String name:new String[]{"x-eliza-device-id","x-eliza-device-key","x-eliza-device-capabilities","x-eliza-phone-protocol"}){check(!ConnectionRoutes.admittedHeader(name,false),"flag-off refuses "+name);check(ConnectionRoutes.admittedHeader(name,true),"test mocks keep "+name);}
-  for(String name:new String[]{"cookie","x-eliza-agent-id","Authorization","X-Eliza-Phone-Protocol","",null})check(!ConnectionRoutes.admittedHeader(name,true)&&!ConnectionRoutes.admittedHeader(name,false),"header "+name);
-  System.out.println("PASS connection routes: retired pairing, exact Cloud self-revocation, the flag-off Cloud API origin and no hosted-agent declaration headers");
+  System.out.println("PASS connection routes: retired pairing, exact Cloud self-revocation and the flag-off Cloud API origin only");
  }
 }
