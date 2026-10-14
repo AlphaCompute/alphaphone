@@ -1851,6 +1851,7 @@
       </div>
       <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 150px; background: linear-gradient(to top, rgba(0,0,0,.8) 90px, rgba(0,0,0,0)); pointer-events: none; opacity: {{photos.v.chromeOp}}; transition: opacity .25s; z-index: 3; display: flex; align-items: flex-end">
         <div style="display: flex; justify-content: space-around; width: 100%; padding: 0 16px 34px; pointer-events: {{photos.v.chromePE}}">
+          <sc-if value="{{photos.v.canEmail}}"><button class="ib" aria-label="Use photo in email" onClick="{{photos.v.email}}" style="font-size:12px">Email</button></sc-if>
           <sc-if value="{{photos.v.notSecure}}"><button class="ib" aria-label="Share photo" onClick="{{photos.v.share}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button></sc-if>
           <button class="ib" aria-label="{{photos.v.favLabel}}" onClick="{{photos.v.fav}}"><svg class="i" viewBox="0 0 24 24" style="{{photos.v.favIcon}}"><path d="{{ic.heart}}"></path></svg></button>
           <button class="ib" aria-label="Edit photo" onClick="{{photos.v.edit}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.edit}}"></path></svg></button>
