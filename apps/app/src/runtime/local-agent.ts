@@ -289,7 +289,7 @@ export async function clearLocalProvider():Promise<LocalProviderStatus> {
   const cleared=await native.clearProvider();
   if(record(cleared).configured!==false)throw Error('The provider key could not be confirmed removed.');
   const status=await localProviderStatus();
-  if(status.configured&&status.provider==='cerebras')throw Error('The provider key could not be confirmed removed.');
+  if(status.configured)throw Error('The provider key could not be confirmed removed.');
   return status;
 }
 

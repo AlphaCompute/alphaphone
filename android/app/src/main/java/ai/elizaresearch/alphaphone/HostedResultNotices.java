@@ -68,17 +68,24 @@ final class HostedResultNotices {
   catch(SecurityException denied){record.put("phase","denied");write(LEDGER,ledger);return "denied";}
  }
  synchronized void capture(String key)throws Exception {
+  capture(key,false);
+ }
+ synchronized void capture(String key,boolean question)throws Exception {
   if(key==null||!key.matches("[a-f0-9]{64}"))return;
   JSONObject ledger=read(LEDGER),record=ledger.optJSONObject(key);if(record==null||!ownerMatches(record)||!"posted".equals(record.optString("phase")))return;
-  JSONObject previous=read(PENDING);if(key.equals(previous.optString("key")))return;
-  write(PENDING,new JSONObject().put("key",key).put("token",UUID.randomUUID().toString()));
+  JSONObject previous=read(PENDING);if(key.equals(previous.optString("key"))&&question==previous.optBoolean("question"))return;
+  write(PENDING,new JSONObject().put("key",key).put("question",question).put("token",UUID.randomUUID().toString()));
  }
  synchronized JSONObject peek()throws Exception {
   JSONObject pending=read(PENDING),record=read(LEDGER).optJSONObject(pending.optString("key"));
   if(record==null||!ownerMatches(record))return new JSONObject();
   JSONObject out=new JSONObject(record.toString());out.remove("digest");out.remove("createdAt");out.remove("phase");out.put("token",pending.getString("token"));
   try{JSONObject result=result(record);if(!hash(result.toString()).equals(record.getString("digest")))throw new IllegalStateException();out.put("retained",true);}catch(Exception missing){out.put("retained",false);}
-  return out;
+  out.put("question",pending.optBoolean("question"));return out;
+ }
+ synchronized void releaseQuestion(String token)throws Exception {
+  JSONObject pending=read(PENDING);if(!token.equals(pending.optString("token"))||!pending.optBoolean("question"))throw new IllegalStateException("Question changed");
+  write(PENDING,new JSONObject()); // Explicit Cancel keeps the original notice route usable.
  }
  synchronized void consume(String token)throws Exception {
   JSONObject pending=read(PENDING);if(!token.equals(pending.optString("token")))throw new IllegalStateException("Tap changed");

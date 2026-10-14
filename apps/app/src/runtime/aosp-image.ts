@@ -16,12 +16,12 @@ export const AOSP_IMAGE_METHOD = 'imageCapability';
 /** Views the owner decision limits to the Alpha AOSP image. */
 export const AOSP_IMAGE_VIEWS: readonly string[] = Object.freeze(['phone', 'messages', 'contacts']);
 /**
- * Telephony views remain deferred until backed by real adapters. Contacts has its own bounded
+ * SMS has a native provider and reviewed-send adapter. Contacts has its own bounded
  * native adapter and is admitted dynamically by DeviceApps.platformCapabilities before mounting.
  * The Phone drawer handoff is separately guarded by AlphaImageCapabilities, including release,
  * system-install and product-overlay requirements; ordinary launcher APKs do not expose it.
  */
-export const ADMITTED_AOSP_VIEW_ADAPTERS: readonly string[] = Object.freeze([]);
+export const ADMITTED_AOSP_VIEW_ADAPTERS: readonly string[] = Object.freeze(['messages']);
 
 type Header = { name?: unknown; methods?: readonly { name?: unknown }[] };
 /** True only for an Android bridge whose native side registered the image-only plugin. */

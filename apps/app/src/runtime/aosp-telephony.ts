@@ -50,10 +50,11 @@ export interface AlphaTelephonyPlugin {
   searchContacts(options: { query: string; limit: number }): Promise<unknown>;
   dial(options: { number: string }): Promise<unknown>;
   composeSms(options: { recipients: string[]; body: string }): Promise<unknown>;
-  listThreads(options: { limit: number; before?: number }): Promise<unknown>;
-  listMessages(options: { threadId: string; limit: number; before?: number }): Promise<unknown>;
+  listThreads(options: { limit: number; before?: number; cursor?: string }): Promise<unknown>;
+  listMessages(options: { threadId: string; limit: number; before?: number; cursor?: string }): Promise<unknown>;
   observeMessages(options: { enabled: boolean }): Promise<unknown>;
   sendSms(options: { operationId: string; recipients: string[]; body: string; subscriptionId: number }): Promise<unknown>;
+  smsSendHistory(): Promise<unknown>;
   smsSendResult(options: { operationId: string }): Promise<unknown>;
   addListener?(event: 'messagesChanged' | 'smsSendUpdated', listener: (data: unknown) => void): Promise<{ remove(): Promise<void> | void }>;
 }
@@ -292,6 +293,20 @@ export function parseSmsSendResult(value: unknown, review: SmsReview & { subscri
     || (['sent', 'delivered'].includes(status) && parts.some(p => p.sent !== 'success')) || (status === 'delivered' && parts.some(p => p.delivery !== 'success'))) throw invalid('SMS send status');
   return { kind: 'sms-send', operationId, subscriptionId: review.subscriptionId, bindingHash, status, parts, createdAt: v.createdAt as number };
 }
+/** Display-only journal metadata. Never use this in place of a request-bound action receipt. */
+export function parseSmsJournal(value: unknown): SmsSendResult[] {
+ const data=object(value,'SMS journal');
+ if(!Array.isArray(data.receipts)||data.receipts.length>200)throw invalid('SMS journal');
+ const seen=new Set<string>();
+ return data.receipts.map(raw=>{
+  const row=object(raw,'SMS journal receipt');
+  if(typeof row.operationId!=='string'||seen.has(row.operationId)||!Number.isSafeInteger(row.subscriptionId)||(row.subscriptionId as number)<0||typeof row.bindingHash!=='string'||!Array.isArray(row.parts))throw invalid('SMS journal receipt');
+  seen.add(row.operationId);
+  let recipients=1;
+  for(const rawPart of row.parts){const part=object(rawPart,'SMS journal part');if(!Number.isInteger(part.recipientIndex)||(part.recipientIndex as number)<0||(part.recipientIndex as number)>4)throw invalid('SMS journal recipient');recipients=Math.max(recipients,(part.recipientIndex as number)+1);}
+  return parseSmsSendResult(row,{recipients:Array(recipients).fill('display-only'),body:'',subscriptionId:row.subscriptionId as number},row.operationId,row.bindingHash);
+ });
+}
 /** No send result permits an automatic repeat: only a new owner review with a new operation ID. */
 export function smsSendMayRetryAutomatically(_: SmsSendResult): false { return false; }
 
@@ -334,6 +349,24 @@ export function createAospTelephony(plugin: AlphaTelephonyPlugin | null, image: 
       if (before !== undefined && (!Number.isSafeInteger(before) || before <= 0)) throw new RangeError('Invalid page cursor');
       return parseMessages(await plugin.listMessages(before === undefined ? { threadId, limit } : { threadId, limit, before }), threadId, limit);
     },
+    async threadPage(cursor?: string) {
+      const plugin = native();
+      if (cursor !== undefined && !/^\d{1,16}:thread:[1-9]\d{0,17}$/.test(cursor)) throw new RangeError('Invalid thread cursor');
+      const value = object(await plugin.listThreads({ limit: 50, ...(cursor ? {cursor} : {}) }), 'thread page');
+      const rows = parseThreads(value, 50), next = value.next;
+      if (next !== null && (typeof next !== 'string' || !/^\d{1,16}:thread:[1-9]\d{0,17}$/.test(next))) throw invalid('thread cursor');
+      if (next && (!rows.length || next === cursor)) throw invalid('thread progress');
+      return { rows, next: next as string | null };
+    },
+    async messagePage(threadId: string, cursor?: string) {
+      const plugin = native();
+      if (!THREAD_ID.test(threadId) || (cursor !== undefined && !/^\d{1,16}:(sms|mms):[1-9]\d{0,17}$/.test(cursor))) throw new RangeError('Invalid message cursor');
+      const value = object(await plugin.listMessages({ threadId, limit: 50, ...(cursor ? {cursor} : {}) }), 'message page');
+      const rows = parseMessages(value, threadId, 50), next = value.next;
+      if (next !== null && (typeof next !== 'string' || !/^\d{1,16}:(sms|mms):[1-9]\d{0,17}$/.test(next))) throw invalid('message cursor');
+      if (next && (!rows.length || next === cursor)) throw invalid('message progress');
+      return { rows, next: next as string | null };
+    },
     /** Change notices carry no message content; re-read a bounded page. Returns the stop function. */
     async observeMessages(onChange: () => void, onSendUpdated?: (operationId: string) => void) {
       const plugin = native();
@@ -358,6 +391,7 @@ export function createAospTelephony(plugin: AlphaTelephonyPlugin | null, image: 
       const hash = await smsBindingHash(bound);
       return parseSmsSendResult(await plugin.sendSms({ operationId, recipients: review.recipients, body: review.body, subscriptionId: review.subscriptionId }), bound, operationId, hash);
     },
+    async smsSendHistory() { return parseSmsJournal(await native().smsSendHistory()); },
     /** Reads the journaled result; never sends. */
     async smsSendResult(review: SmsReview & { subscriptionId: number }, operationId: string) {
       const plugin = native();

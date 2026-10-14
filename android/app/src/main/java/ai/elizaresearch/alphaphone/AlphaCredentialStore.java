@@ -28,6 +28,7 @@ final class AlphaCredentialStore {
   slots=new JsonCredentialSlots(new File(context.getApplicationContext().getNoBackupFilesDir(),"connection-credentials"),"alpha.connection.aes.v1",AlphaCredentialStore::slotLimit);
  }
  static int slotLimit(String name){
+  if("sms-send-ledger:v1:device".equals(name))return 1024*1024;
   if("gmail-background:v1".equals(name))return 2*1024*1024;
   if("native-delete-journal:v1".equals(name))return 4*1024*1024;
   if("notes-audio-deletions:v1:device".equals(name))return 1024*1024;
