@@ -110,8 +110,7 @@ test('the Calendar month picker is a bounded sheet on a wide screen and scrolls 
   expect(wide.width).toBeLessThanOrEqual(561);
   expect(Math.abs(wide.x - (1280 - wide.x - wide.width))).toBeLessThan(4);
   await page.setViewportSize(SMALL_LANDSCAPE);
-  const short = await box(dialog);
-  expect(short.y + short.height).toBeLessThanOrEqual(361);
+  await expect.poll(async () => { const bounds = await box(dialog); return bounds.y + bounds.height; }).toBeLessThanOrEqual(361);
   // Every day stays reachable by scrolling the sheet, at full tap size.
   const last = dialog.getByRole('button').last();
   await last.scrollIntoViewIfNeeded();
@@ -223,8 +222,10 @@ test('Camera keeps one capture session and an undistorted preview through rotati
   await expect(frame).toBeVisible();
   for (const viewport of [LANDSCAPE, SMALL_LANDSCAPE, PORTRAIT, TABLET_LANDSCAPE]) {
     await page.setViewportSize(viewport);
+    // Resize is asynchronous; wait for the fitted frame before measuring its aspect ratio.
+    await expect.poll(async () => { const bounds = await box(frame); return bounds.y + bounds.height; }).toBeLessThanOrEqual(viewport.height + 0.5);
     const bounds = await box(frame);
-    expect(bounds.y).toBeGreaterThanOrEqual(-0.5); expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height + 0.5);
+    expect(bounds.y).toBeGreaterThanOrEqual(-0.5);
     expect(bounds.x).toBeGreaterThanOrEqual(-0.5); expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width + 0.5);
     expect(bounds.width / bounds.height).toBeCloseTo(0.75, 2);
     expect(await frame.locator('span').first().evaluate(el => getComputedStyle(el).backgroundSize)).toBe('contain');
