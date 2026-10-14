@@ -22,6 +22,10 @@ export function admitSpeech(kind, env=process.env) {
  if(kind==='asr'){
   const models=[]; const walk=dir=>{for(const entry of readdirSync(dir,{withFileTypes:true})){const file=join(dir,entry.name);if(entry.isDirectory())walk(file);else if(!entry.isFile())throw Error('Unsupported VAD asset');else if(entry.name.endsWith('.gguf'))models.push(file);}};
   walk(join(root,'vad'));if(models.length!==1 || models[0]!==join(root,'vad/silero-vad-v5.gguf'))throw Error('Ambiguous VAD assets');
+  // asr/ holds only the pinned Phonon-2 GGUF; the library would load any other GGUF it finds there.
+  const asr=[];const walkAsr=dir=>{for(const entry of readdirSync(dir,{withFileTypes:true})){const file=join(dir,entry.name);if(entry.isDirectory())walkAsr(file);else if(!entry.isFile())throw Error('Unsupported ASR asset');else if(entry.name.endsWith('.gguf'))asr.push(file);}};
+  walkAsr(join(root,'asr'));const expected=speechAssets.asr.filter(pin=>pin.path.startsWith('asr/')).map(pin=>join(root,pin.path));
+  if(asr.length!==expected.length||asr.some(file=>!expected.includes(file)))throw Error('Ambiguous ASR assets');
  }
- return {ELIZA_INFERENCE_LIBRARY:library,ELIZA_INFERENCE_LIBRARY_SHA256:digest,[key]:root,[kind==='tts'?'ELIZA_PARADEE_ENABLED':'ELIZA_ASR_ENABLED']:'1'};
+ return {ELIZA_INFERENCE_LIBRARY:library,ELIZA_INFERENCE_LIBRARY_SHA256:digest,[key]:root,[kind==='tts'?'ELIZA_PARADEE_ENABLED':'ELIZA_ASR_ENABLED']:'1',...(kind==='asr'?{ELIZA_ASR_BACKEND:'parakeet'}:{})};
 }

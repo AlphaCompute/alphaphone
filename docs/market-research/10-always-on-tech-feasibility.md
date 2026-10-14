@@ -1,5 +1,7 @@
 # 10 — Always-on assistant: technical feasibility and competitive technology
 
+> **Superseded in part (2026-10-13, [decision P-42](../decisions.md)).** On-device and local speech and inference use only libelizainference (llama.cpp/ggml, GGUF models). ONNX Runtime, sherpa-onnx and ONNX-format models named in this section are historical research context, not a plan.
+
 Alpha Phone's capability statements come from the repository: [`docs/standalone-paired-asr.md`](../standalone-paired-asr.md) and [`docs/mvp-scope-and-gap-report.md`](../mvp-scope-and-gap-report.md). Current state: ASR is whisper.cpp `tiny.en` (a 77,704,698-byte model) on a **paired host**, and TTS is Kokoro, also on the host. On-device STT/TTS is an MVP requirement that is **not met**. Physical-microphone acceptance has not happened. The AOSP test emulator has neither a recognition service nor a TTS service installed.
 
 **Product baseline.** Alpha's own AOSP image does not ship banking apps, Play Integrity or GMS, so AICore and ML Kit GenAI are absent on that image by design. Cloud inference stays on Qwen (`qwen-3.8-27b`) on Cerebras.

@@ -67,7 +67,7 @@ async function boot(page:Page,initial:{signIn?:SignInMode;tokens?:Record<string,
    f.calls.push({plugin,method,path:input?.url?new URL(input.url).pathname:input?.path,email:input?.email,environment:input?.environment});
    if(plugin==='AlphaCloudSignIn'){
     if(method==='cancel'){f.release?.(fail('cancelled'));f.release=null;return {};}
-    if(method==='status')return {active:false,google:true,email:true};
+    if(method==='status')return f.signIn==='not-ready'?{active:false,inApp:false,google:false,email:false}:{active:false,inApp:true,google:true,email:true};
     if(method==='startGoogle'){if(f.signIn==='hold')return new Promise((_,reject)=>{f.release=reject;});return store();}
     if(method==='startEmail'){if(f.signIn==='offline')throw fail('offline');return {attemptId:'33333333-3333-4333-8333-333333333333',expiresAt:Date.now()+600000,resendAt:Date.now()+60000};}
     if(method==='verifyEmail'){if(input.code!=='123456')throw fail('invalid-code');if(f.signIn==='mfa')return {status:'mfa',method:'totp',expiresAt:Date.now()+300000};return store();}

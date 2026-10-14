@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { auditPage, auditTabOrder, auditTree, format } from './accessibility-audit';
-import { CONNECTED_STATES, DEVELOPMENT_STATES, FAILURE_STATES, LIVE_STATES, MOCK_STATES, setTextScale } from './accessibility-states';
+import { CONNECTED_STATES, DEVELOPMENT_STATES, FAILURE_STATES, FIXTURE_STATES, LAUNCHER_STATES, LIVE_STATES, MOCK_STATES, setTextScale } from './accessibility-states';
 
 // MVP-48, renderer part. Every retained primary view, subview and failure screen is checked for
 // accessible names and roles, keyboard reachability, focus order and traps, contrast, pointer
@@ -10,8 +10,10 @@ test.describe.configure({ mode: 'parallel' });
 
 const STATES = [...LIVE_STATES, ...DEVELOPMENT_STATES, ...MOCK_STATES, ...CONNECTED_STATES, ...FAILURE_STATES];
 // Deliberate single-line ellipsis and line clamps on previews of user content are allowed: the
-// full text is one tap away and is exposed whole to assistive technology. Hard clipping is not.
-const blocking = (lines: string[]) => lines.filter(line => !line.startsWith('text-truncated:'));
+// full text is one tap away and is exposed whole to assistive technology. Hard clipping is not, and
+// neither is a cut app title: it names the screen and has room to wrap.
+const appTitle = (line: string) => /^text-truncated: .*<[^>]*\bdata-alpha-app-title\b/.test(line);
+const blocking = (lines: string[]) => lines.filter(line => !line.startsWith('text-truncated:') || appTitle(line));
 
 for (const theme of ['light', 'dark'] as const) {
   for (const state of STATES) {
@@ -69,3 +71,20 @@ test.describe('landscape', () => {
     });
   }
 });
+
+// Screens the states above do not reach: the fixture lock screen and photos-empty viewer and the
+// Android HOME (launcher) presentation. Provider-connected states are in STATES.
+for (const state of [...FIXTURE_STATES, ...LAUNCHER_STATES]) {
+  for (const scale of [1, 2]) {
+    test(`${scale * 100}% text, names, focus and contrast: ${state.name}`, async ({ page }) => {
+      await state.open(page, 'light');
+      if (scale !== 1) await setTextScale(page, scale);
+      const found = blocking(format([
+        ...await auditTree(page),
+        ...await auditPage(page, scale === 1 ? { contrast: true, targetSize: 24, clipping: true, overlap: true, dock: true } : { clipping: true, overlap: true, dock: true }),
+        ...await auditTabOrder(page),
+      ]));
+      expect(found, found.join('\n')).toEqual([]);
+    });
+  }
+}

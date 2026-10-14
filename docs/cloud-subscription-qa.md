@@ -19,10 +19,10 @@ the development chooser) against the environment you pick:
 | | Staging | Production (test-mocks build) |
 |---|---|---|
 | API and entitlement issuer | `https://api-staging.eliza.app` | `https://api.eliza.app` |
-| Sign-in | In-app: email code, or Google in a Custom Tab via `https://api-staging.eliza.app/steward/auth/oauth/google/authorize` | In-app: email code, or Google via `https://api.eliza.app/steward/auth/oauth/google/authorize` |
+| Sign-in (once ready) | In-app: email code, or Google in a Custom Tab via `https://api-staging.eliza.app/steward/auth/oauth/google/authorize` | In-app: email code, or Google via `https://api.eliza.app/steward/auth/oauth/google/authorize` |
 | Google return (verified App Link) | `https://staging.eliza.app/alphaphone/auth/callback` (test-mocks manifest only) | `https://eliza.app/alphaphone/auth/callback` |
 | Key | `eliza_mobile_` from `/api/v1/app-auth/mobile/token`, environment `staging`, client `ai.elizaresearch.alphaphone` | same, environment `production` |
-| Diagnostic fallback (one release) | **Browser sign-in (diagnostic)**: `https://staging.eliza.app/auth/cli-login` | `https://eliza.app/auth/cli-login` |
+| Hand-off (until the readiness probe passes; afterwards the **Browser sign-in (diagnostic)** button) | `https://staging.eliza.app/auth/cli-login` | `https://eliza.app/auth/cli-login` |
 | Choose a plan | `https://cloud-staging.eliza.app/cloud/billing` | `https://cloud.eliza.app/cloud/billing` |
 | Secure slot | `cloud:staging` | `cloud:production` |
 | After plan admission | Stops with "Plan admitted on staging (subscription gate QA)". The agent is not started: the native resident inference binding reads only `cloud:production`. | Android: binds the resident agent to Cloud inference and starts it, as in a distribution build. Browser: stops after admission. |
@@ -64,7 +64,11 @@ adb shell pm set-app-links-user-selection --user cur --package ai.elizaresearch.
 adb shell pm get-app-links ai.elizaresearch.alphaphone     # shows the verification state per host
 ```
 
-Email code sign-in does not depend on the App Link.
+Email code sign-in does not depend on the App Link, but the readiness probe does: Alpha offers its
+in-app screens only after Cloud reports the client registration, the redirect allowlist admits the
+return URL, and the return host's `assetlinks.json` lists this APK's package and signing certificate.
+Until then **Sign in with Eliza Cloud** opens the Cloud sign-in hand-off in the browser. The answer is
+cached (6 hours when ready, 10 minutes when not); clearing Alpha's app data resets it.
 
 On the phone: **Settings › Agent connection › Subscription gate QA**, choose **Staging**, then
 **Start subscription gate QA**. The app reloads into the gate. **Leave subscription gate QA** at

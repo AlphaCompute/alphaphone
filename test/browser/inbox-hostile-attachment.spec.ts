@@ -71,6 +71,15 @@ async function setup(page:Page,parts:Part[],options:{opaque?:boolean;agent?:bool
 const fixture=(page:Page)=>page.evaluate(()=>(window as any).hostileFixture as {attachmentRequests:string[];mutations:number});
 const files=(page:Page)=>page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return (await registerPlugin<any>('AlphaFiles').list({})).entries.map((entry:any)=>entry.name as string);});
 const review=(page:Page)=>page.getByRole('dialog',{name:'Review attachment'});
+const REFUSED='This attachment does not match its type or is too large. It was not opened or saved.';
+/** A refused file is reported as refused: never as Gmail being unavailable, with no Retry (the same bytes
+ * would be refused again), and the message stays open for the next file. */
+async function expectRefused(page:Page){
+ await expect(page.getByText(REFUSED,{exact:true}).first()).toBeVisible();
+ await expect(page.getByText(/Gmail is unavailable/)).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Retry',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('region',{name:'Email message'})).toContainText('Please open the attached invoice.');
+}
 
 const openFile=async(page:Page,name:string)=>{
  await page.reload();
@@ -134,20 +143,17 @@ test('active content served under a previewable type is shown as literal text or
  await review(page).getByRole('button',{name:'Back to message',exact:true}).click();
 
  for(const [name,requested] of [['photo.png','as-png'],['scan.pdf','as-pdf'],['logo.jpg','as-jpeg'],['page.html','html-named-text'],['vector.svg','svg-as-supported']] as const){
-  await page.getByText(name,{exact:true}).click();
-  // The response fails the type check: no review opens and the person is told it did not load.
-  await expect(page.getByText('Gmail is unavailable right now. Retry, or check the connection.',{exact:true}).first()).toBeVisible();
+  await page.getByRole('region',{name:'Email message'}).getByText(name,{exact:true}).click();
+  // The response fails the type check: no review opens and the person is told the file was refused.
+  await expectRefused(page);
   await expect(review(page)).toHaveCount(0);
   await expect(page.getByRole('dialog',{name:'Reviewed attachment'})).toHaveCount(0);
   await expectInert(page,seen);
-  // Retry asks again and is refused again; it never falls back to showing the file.
-  await page.getByRole('button',{name:'Retry',exact:true}).click();
+  // Choosing it again asks again and is refused again; it never falls back to showing the file.
+  await page.getByRole('region',{name:'Email message'}).getByText(name,{exact:true}).click();
   await expect.poll(async()=>(await fixture(page)).attachmentRequests.filter(request=>request.endsWith(':'+requested)).length).toBe(2);
-  await expect(page.getByText('Gmail is unavailable right now. Retry, or check the connection.',{exact:true}).first()).toBeVisible();
+  await expectRefused(page);
   await expect(review(page)).toHaveCount(0);
-  // The failure closed the message; reopen it for the next file.
-  await page.getByText('Invoices attached',{exact:true}).first().click();
-  await expect(page.getByRole('region',{name:'Email message'})).toContainText('Please open the attached invoice.');
  }
  expect(await files(page)).toEqual([]);
  expect((await fixture(page)).mutations).toBe(0);
@@ -172,12 +178,11 @@ test('an oversized attachment is refused before any bytes are requested, and a r
  expect((await fixture(page)).attachmentRequests).toEqual([]);
 
  for(const [name,requested] of [['small.bin','lying'],['ledger.bin','swapped'],['..','traversal']] as const){
+  // An understated size (the bytes exceed the cap), bytes other than the hash describes, and an unsafe name.
   await page.getByRole('region',{name:'Email message'}).getByText(name,{exact:true}).click();
-  await expect(page.getByText('Gmail is unavailable right now. Retry, or check the connection.',{exact:true}).first()).toBeVisible();
+  await expectRefused(page);
   await expect(review(page)).toHaveCount(0);
   expect((await fixture(page)).attachmentRequests.at(-1)).toBe(`gmailOpaqueAttachment:${requested}`);
-  await page.getByText('Invoices attached',{exact:true}).first().click();
-  await expect(page.getByRole('region',{name:'Email message'})).toContainText('Please open the attached invoice.');
  }
  expect(await files(page)).toEqual([]);
  await expectInert(page,seen);
@@ -253,10 +258,8 @@ test('a PNG-and-HTML polyglot is previewed only as a sandboxed image, and URL-li
 
  // A data: URL as a file name contains a path separator: the response is refused, nothing opens.
  await page.getByRole('region',{name:'Email message'}).getByText(dataName,{exact:true}).click();
- await expect(page.getByText('Gmail is unavailable right now. Retry, or check the connection.',{exact:true}).first()).toBeVisible();
+ await expectRefused(page);
  await expect(review(page)).toHaveCount(0);
- await page.getByText('Invoices attached',{exact:true}).first().click();
- await expect(page.getByRole('region',{name:'Email message'})).toContainText('Please open the attached invoice.');
 
  // A name that reads as a script URL is only ever text: in the list, the review and Files.
  await page.getByRole('region',{name:'Email message'}).getByText(scheme,{exact:true}).click();

@@ -4,7 +4,8 @@
  *
  * What is real: the Camera view, Scan mode capture, the local English OCR engine (the same
  * path scan-event.spec.ts exercises), the suggestion review, the hand-off into the Calendar
- * form, Calendar Save, browser Calendar storage, the Home agenda card and the Calendar day view.
+ * form, the retained-form store that keeps that unsaved form across a reload, Calendar Save,
+ * browser Calendar storage, the Home agenda card and the Calendar day view.
  *
  * Synthetic fixtures (external boundaries only):
  *  - Camera: getUserMedia returns a canvas stream that draws the poster text. No physical camera.
@@ -54,9 +55,9 @@ async function openScanMode(page:Page){
 }
 
 test('J01 poster scan becomes exactly one reviewed Calendar event; suggestions and drafts never save by themselves',async({page})=>{
+ // No step of this journey asks a question: any confirm(), alert() or prompt() is a failure.
  const dialogs:string[]=[];
- // Replacing a retained unsaved Calendar form asks first; accept and record the exact prompt.
- page.on('dialog',d=>{dialogs.push(d.message());void d.accept();});
+ page.on('dialog',d=>{dialogs.push(d.type()+': '+d.message());void d.dismiss();});
  await page.clock.setFixedTime(new Date('2026-10-09T15:00:00Z'));
  await page.addInitScript(()=>{
   // Synthetic camera: a canvas stream drawing the poster. Everything after getUserMedia is real.
@@ -93,14 +94,14 @@ test('J01 poster scan becomes exactly one reviewed Calendar event; suggestions a
  expect(await events(page)).toHaveLength(0);
  await expect(page.getByRole('button',{name:'Open your calendar',exact:true})).toContainText('No upcoming events');
 
- // 3. Scan, review, hand off and Save in Calendar: exactly one event.
- await openScanMode(page);
- dialog=await scanPoster(page);
- await dialog.getByLabel('Event title',{exact:true}).fill('Reviewed studio visit');
- await dialog.getByRole('button',{name:'Review in Calendar',exact:true}).click();
- await expect(dialog).toHaveCount(0);
+ // 3. The scan draft carries a creationId, so Calendar retained the reviewed form across the
+ //    reload: New event restores it through form recovery, still unsaved, and Save writes one event.
+ await page.getByRole('button',{name:'Calendar',exact:true}).click();
+ await page.getByRole('button',{name:'New event',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Reviewed studio visit');
+ await expect(page.getByRole('textbox',{name:'Location',exact:true})).toHaveValue('Main hall');
  await expect(page.getByLabel('Selected event date',{exact:true})).toHaveText('Saturday, October 10, 2026');
+ await expect(page.getByRole('textbox',{name:'Notes',exact:true})).toHaveValue(poster);
  expect(await events(page)).toHaveLength(0);
  await page.getByRole('button',{name:'Save event',exact:true}).click();
  await expect.poll(async()=>(await events(page)).length).toBe(1);
@@ -124,6 +125,5 @@ test('J01 poster scan becomes exactly one reviewed Calendar event; suggestions a
  await page.getByRole('button',{name:'Day 10',exact:true}).click();
  await expect(page.getByRole('button',{name:/^Reviewed studio visit,/})).toHaveCount(1);
  expect(await events(page)).toHaveLength(1);
- // Any prompt seen on the way must be the retained-draft replacement question, nothing else.
- for(const message of dialogs)expect(message).toBe('Replace the retained unsaved form with a new event?');
+ expect(dialogs).toEqual([]);
 });

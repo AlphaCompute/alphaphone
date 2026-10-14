@@ -37,14 +37,11 @@ and the managed Gmail routes at the pin in `upstream.lock.json`.
 The client also:
 - publishes a Home summary through `inboxAttention()` (`not-connected`, `loading`, `ready`, `error` or
   `stale`, with an unread count, the account label and a time) and `openInbox()`, without subjects,
-  senders or bodies. Home does not read it yet: `data-adapter.ts` (owned by the shell/Home package) still
-  has to set its attention fields from `inboxAttention()` and call `openInbox()` from triage;
-- runs one bounded `in:inbox is:unread` metadata query (at most 10 rows) on cold start, on resume and
-  after leaving Inbox, never two at once and never within 5 minutes of the previous one. The first probe
-  after start or an account change also lists the accounts once to find the grant. A probe answer that
-  arrives after an open Inbox has loaded its list is dropped. Leaving Inbox marks the summary stale; the
-  badge keeps a stale value only while it is younger than 5 minutes. New-mail notifications remain blocked
-  on A-05;
+  senders or bodies. Home consumes it (`apps/app/src/main.tsx`). The unread count reflects only Inbox
+  data the user explicitly loaded: there is no background unread probe, and Home and resume fetch no
+  Gmail metadata (`scripts/test-inbox-attention-flow.mjs`). The count is unknown until a read happens; a
+  stale summary keeps the last real count and time, and Home shows a dash when none exists. Leaving Inbox
+  marks the summary stale. New-mail awareness remains blocked on A-05;
 - turns plain-text `https` URLs in a body into the same link list (`inbox.d.links`). A link opens only in
   Alpha's Browser, only for HTTPS, and only after a confirmation that names the destination site and warns
   when the link text names a different site. Nothing is fetched to render a message. `template.html` renders the reviewed link buttons;

@@ -14,7 +14,10 @@ The agent answers with a saved scripted reply and its proposals are authored thr
 "Development device actions" control; providers (microphone, Cloud transcription, speech
 output, mail provider, Maps provider, web pages, camera) are synthetic fixtures. A passing
 journey is not APK, emulator, AOSP image, real-integration or physical-device evidence and
-does not qualify any row in [current status](mvp-current-status.md) beyond class S.
+does not qualify any row in [current status](mvp-current-status.md) beyond class S. Where a
+section below names an emulator result, it is class E on developer APKs (round 7 at `6dcdde34`,
+pin `40dbe96bd1`, or round 8 at `2961bd9e`/`9a1ca161`, pin `13c9857598`; see
+[verification](verification.md)).
 
 Run one journey at a time: `npx playwright test test/browser/journey-<id>-<slug>.spec.ts --project=chromium --workers=2`.
 
@@ -29,8 +32,8 @@ Spec: `journey-a-conversation.spec.ts`
 
 | Step | Browser | Native-only | Human or device |
 | --- | --- | --- | --- |
-| Boot to Home with typed and talk entry points, no agent selected | yes | Cold boot into Alpha HOME, HOME role, recovery/emergency routes | Device boot and HOME-role selection |
-| Connection choice (Settings → Agent connection → development profile) | yes (development profile only) | Android Welcome dialog, native `AlphaConnection` bridge | Cloud sign-in, agent selection/provisioning, remote pairing with a real account (A-02) |
+| Boot to Home with typed and talk entry points, resident agent starting | yes | Cold boot into Alpha HOME, HOME role, recovery/emergency routes | Device boot and HOME-role selection |
+| Connection choice (Settings → Agent connection → development profile) | yes (development profile only); the flag-off Android "Your agent" dialog's sign-in, Cancel, expired session, refused key and zero-balance branches (the resident starts and keeps running in each, P-43) (`resident-first-run.production.spec.ts`) and the start-failure branch (`connection-boundaries.production.spec.ts`) are covered on the production bundle with the bridge stubbed | Native `AlphaConnection` bridge | Cloud sign-in, agent selection/provisioning, remote pairing with a real account (A-02) |
 | Typed conversation | yes | — | Real model quality |
 | Switch Notes / Calendar / Browser and keep the same conversation | yes | — | — |
 | Cancel a pending reply (Stop): the chat says once that the agent may still finish, the composer stays empty and nothing is resent | yes | — | — |
@@ -89,12 +92,19 @@ Closed in the browser build:
 
 Still open:
 
-- Device-calendar events are not linked to their note in the Android build:
-  CalendarProvider row ids are assigned by the provider and can be reused, and the
-  pinned native Calendar plugin stores no Alpha field on an event. Reminder links use
-  the reminder's own id and the same store on Android, but no Android run exists.
-  NEEDS upstream: a stable per-event identity (or an extended property) returned by
-  `list` in plugin-native-calendar.
+- Device-calendar events created from a note are linked to it in the Android build since the
+  pin `bc71e21f3b`, by the creation id Alpha saves the event with: CalendarProvider row ids are
+  assigned by the provider and can be reused, so the link is not keyed by them, and the pinned
+  reader now returns `creationId` on events this app created (elizaOS/eliza#35912). The link is
+  remembered at save and dropped when the event is deleted (`calendar-adapter.ts`,
+  `note-origin-adapter.ts`; `scripts/test-calendar-crud-review.mjs`, class S); no Android run.
+  It names a link, not ownership: another app with calendar write access can set the same
+  fields. An event that Android Calendar saves (the guests, video or alert hand-off) carries no
+  creation id and is not linked, and its draft says so before Save. Reminder links use
+  the reminder's own id; on Android the link is written to the native slot
+  `note-origins:v1:device`, whose native compare-and-exchange refused it until the MVP
+  completion integration admitted it. `NoteOriginInstrumentedTest` reads it back at storage
+  level and has not run, so no Android reminder or event link is shown to work.
 - The contract documents ([notes document flows](notes-document-flows.md),
   [calendar contract](calendar-reminder-contract.md), flow audit J02) do not describe a
   note back-reference or a calendar-event hand-off from a note. The behavior above is
@@ -145,9 +155,11 @@ Spec: `journey-d-digests.spec.ts`
 | Evening occurrence runs once for the evening schedule only | yes | — | — |
 | App closed across a scheduled time: no backlog replay, never run late | yes | — | Power loss, Doze, battery |
 | The missed time leaves exactly one explicit `missed` record, labelled "Missed — not run", acknowledged once, unchanged by later ticks and restart | yes | — | — |
-| A missed record does not replace the last real brief that Home reads; a schedule with only a missed record has no brief | yes (asserted on the retained value Home reads; with an agent connected the Home card lists workflows) | — | — |
+| A missed record does not replace the last real brief that Home reads; a schedule with only a missed record has no brief | yes (asserted on the retained value Home reads, and on Home's dedicated Latest brief card: absent with no brief or only a missed record, present with the retained brief) | — | — |
 | Final restart: history and acknowledgement retained; nothing runs again | yes | — | — |
 | Two hosted loops complete while the phone is powered off and deliver once on reconnect | not coverable | — | Owner decision A-09, then a hosted service and a powered-off phone |
+| Phone sources (calendars on the phone) feed a digest after consent, within the 16-calendar and 1–168 h bounds, and can be revoked and renewed | flag-off spec, bridge stubbed (`digest-native-sources.production.spec.ts`) | The native source path (`test/native-digest-sources.test.mjs`, host JVM; no emulator run) | Real calendars on a phone |
+| A dossier is offered only with native phone sources on the resident agent; Cancel sends nothing | flag-off spec, bridge stubbed (`digest-native-sources.production.spec.ts`, `test/digest-route-registration.test.mjs`, `test/digest-capabilities.test.mjs`) | — | The pinned agent registers the dossier route since `bc71e21f3b` (elizaOS/eliza#35906); no dossier has run on an emulator (EMULATOR) |
 
 Open items:
 
@@ -275,7 +287,11 @@ Still open:
 
 - The control is not offered during active guidance.
 - No Android run: the return uses the same `list` call the Calendar adapter uses, but
-  only the browser build was exercised.
+  only the browser build was exercised. `MapsInstrumentedTest`'s event-return method has not run.
+- On a flag-off Android build with an installed map app, Maps opened from an event offers
+  "Open in maps app" and hands the exact location text over once per tap
+  (`journey-j04-android.production.spec.ts`, bridge stubbed). The journey's 8 of 8 in the
+  core loop audit excludes a production route, which needs a Maps provider (A-23).
 
 ## J05. Web research → note
 
@@ -286,7 +302,12 @@ Spec: `journey-j05-web-research-note.spec.ts` (two serial tests)
 | Bounded review of a public HTTPS page excerpt (test-owned page fulfilled by the test) | yes | Excerpt extraction from the isolated native WebView and its revision binding | Real-site coverage |
 | Ask with the development agent; answer shown | yes | — | Real agent answer quality |
 | Explicit Save: exactly one note with a source link; reopen after reload | yes | Encrypted native Notes storage | — |
-| Cross-origin reading denied: pasted text is reviewed instead and still saves one linked note | yes | — | — |
+| Cross-origin reading denied: pasted text is reviewed instead and still saves one linked note | yes | On Android without isolated-world injection the review opens with an empty excerpt for pasted text, Continue disabled until text is entered (`browser-paste-fallback.production.spec.ts`, bridge stubbed) | — |
+
+Native: `BrowserPageQuestionInstrumentedTest` ran in round 7 (`6dcdde34`): one of its four
+methods passed on both flavors and three stopped because no WebView on that machine has
+isolated-world injection. CI-2 (`android-emulator.yml`, WebView 157) has not been dispatched,
+and `JourneyJ05InstrumentedTest` has not run.
 
 ## Breaks found by the audit and their disposition
 
@@ -339,7 +360,7 @@ The remaining "Still open" notes in this document, re-read in round 8 for plain 
 | Reminder deletion from the detail page is immediate | Owner decision A-25 (reminders: review before deletion or not). Not changed. |
 | A saved local draft that is an older version of the sent email is kept and offered | By design: the draft does not hold the sent content, so removing it would delete text the owner never sent. Not a defect. |
 | The Maps "Back to event" control is not offered during active guidance | By design: leaving guidance is its own explicit action. Not a defect. |
-| Device-calendar events are not linked to their note on Android | NEEDS upstream, as recorded above. |
+| Device-calendar events from the Android Calendar hand-off are not linked to their note | They carry no Alpha creation id; the draft says so before Save. Events Alpha saves are linked by creation id since the pin `bc71e21f3b`. |
 | The contract documents do not describe the note back-reference | Documentation owed by the contract's owner. Not product behaviour. |
 
 ## What no browser journey can establish

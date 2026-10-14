@@ -1,4 +1,5 @@
 import {managedServiceRequest} from '../apps/app/src/runtime/managed-service-routes.ts';
+import {CLOUD_EMAIL_CODE,emailCodeExpiresAt,emailCodeSendBody,emailCodeVerifyBody} from './cloud-email-code.ts';
 import {randomUUID,createHash,randomBytes} from 'node:crypto';
 import {mkdir,readFile,writeFile,rename,lstat} from 'node:fs/promises';
 import path from 'node:path';
@@ -85,8 +86,10 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
  // In-app sign-in for the browser development host (email code only: Google needs the phone's App
  // Link). The same Steward and mobile App Auth contracts as AlphaCloudSignInPlugin; the Steward
  // session, PKCE material and the minted key stay in this process and the private profile file.
- type SignInAttempt={id:string;environment:Environment;email:string;expiresAt:number;resendAt:number;busy:boolean;mfa?:{type:string;challengeId:string}};
+ type SignInAttempt={id:string;environment:Environment;email:string;verifier:string;expiresAt:number;resendAt:number;busy:boolean;failed:number;mfa?:{type:string;challengeId:string}};
  let signIn:SignInAttempt|null=null;
+ // One code send a minute, whatever the address; five wrong codes end an attempt (as AlphaCloudSignInPlugin).
+ let lastEmailSendAt=0;const MAX_VERIFY_ATTEMPTS=5;
  const SIGN_IN_CLIENT='ai.elizaresearch.alphaphone',SIGN_IN_CALLBACK={production:'https://eliza.app/alphaphone/auth/callback',staging:'https://staging.eliza.app/alphaphone/auth/callback'} as const;
  const signInFailure=(code:string)=>Object.assign(Error(code),{status:409,code});
  const signInStatus=(stage:string,status:number)=>status===429?'rate-limited':status===410?'expired':status===403?'account-check':(status===400||status===401)&&(stage==='verify'||stage==='mfa')?'invalid-code':status>=500?'unavailable':'rejected';
@@ -128,36 +131,36 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
  }
  async function signInOperation(data:Record<string,any>,signal:AbortSignal){
   if(data.operation==='signInCancel'){signIn=null;return {};}
-  if(data.operation==='signInStatus')return {active:!!signIn,google:false,email:true};
+  if(data.operation==='signInStatus')return {active:!!signIn,inApp:true,google:false,email:true};
   if(data.operation==='signInStartEmail'){
    const env=environment(data.environment),email=typeof data.email==='string'?data.email.trim().toLowerCase():'';
    if(email.length>320||!/^[^\s@\p{Cc}\p{Cf}]+@[^\s@\p{Cc}\p{Cf}]+\.[^\s@\p{Cc}\p{Cf}]+$/u.test(email))throw signInFailure('invalid-email');
    if(signIn?.busy)throw signInFailure('login-active');
-   if(signIn&&signIn.email===email&&signIn.environment===env&&Date.now()<signIn.resendAt)throw signInFailure('cooldown');
-   const attempt:SignInAttempt={id:randomUUID(),environment:env,email,expiresAt:0,resendAt:0,busy:true};signIn=attempt;
+   if(Date.now()<lastEmailSendAt+60000)throw signInFailure('cooldown');
+   const attempt:SignInAttempt={id:randomUUID(),environment:env,email,verifier:randomBytes(48).toString('base64url'),expiresAt:0,resendAt:0,busy:true,failed:0};signIn=attempt;lastEmailSendAt=Date.now();
    try{
-    const sent=await signInCall(env,'/steward/auth/email/send',{email,tenantId:'elizacloud'},signal);
-    if(sent.status!==200)throw signInFailure(signInStatus('send',sent.status));
-    const reply=sent.data.data&&typeof sent.data.data==='object'?sent.data.data:sent.data,expiresAt=Math.min(Date.parse(reply.expiresAt),Date.now()+15*60*1000);
-    if(!(expiresAt>Date.now()))throw signInFailure('unavailable');
-    attempt.expiresAt=expiresAt;attempt.resendAt=Date.now()+60000;return {attemptId:attempt.id,expiresAt,resendAt:attempt.resendAt};
+    const sent=await signInCall(env,CLOUD_EMAIL_CODE.sendPath,emailCodeSendBody(email,attempt.verifier),signal);
+    if(sent.status!==200&&sent.status!==202)throw signInFailure(signInStatus('send',sent.status));
+    const reply=sent.data.data&&typeof sent.data.data==='object'?sent.data.data:sent.data,expiresAt=emailCodeExpiresAt(reply.expiresAt);
+    attempt.expiresAt=expiresAt;attempt.resendAt=lastEmailSendAt+60000;return {attemptId:attempt.id,expiresAt,resendAt:attempt.resendAt};
    }catch(error){if(signIn===attempt)signIn=null;throw error;}finally{attempt.busy=false;}
   }
   if(data.operation==='signInVerifyEmail'||data.operation==='signInVerifyMfa'){
    const mfa=data.operation==='signInVerifyMfa',attempt=signIn;
    if(!attempt||attempt.id!==data.attemptId||Date.now()>=attempt.expiresAt){signIn=null;throw signInFailure('expired');}
    if(attempt.busy)throw signInFailure('login-active');
+   if(attempt.failed>=MAX_VERIFY_ATTEMPTS){signIn=null;throw signInFailure('attempts-exhausted');}
    if(typeof data.code!=='string'||!/^\d{6}$/.test(data.code))throw signInFailure('invalid-code');
    if(mfa!==!!attempt.mfa)throw signInFailure('expired');
    if(mfa&&!['totp','sms'].includes(attempt.mfa!.type))throw signInFailure('mfa-unsupported');
    attempt.busy=true;
    try{
     const verified=mfa?await signInCall(attempt.environment,`/steward/auth/mfa/${attempt.mfa!.type}/complete`,{challengeId:attempt.mfa!.challengeId,code:data.code},signal)
-     :await signInCall(attempt.environment,'/steward/auth/email/code/verify',{email:attempt.email,code:data.code,tenantId:'elizacloud'},signal);
-    if(verified.status!==200){const code=signInStatus(mfa?'mfa':'verify',verified.status);if(code!=='invalid-code'&&signIn===attempt)signIn=null;throw signInFailure(code);}
+     :await signInCall(attempt.environment,CLOUD_EMAIL_CODE.verifyPath,emailCodeVerifyBody(attempt.email,data.code,attempt.verifier),signal);
+    if(verified.status!==200){let code=signInStatus(mfa?'mfa':'verify',verified.status);if(code==='invalid-code'&&++attempt.failed>=MAX_VERIFY_ATTEMPTS)code='attempts-exhausted';if(code!=='invalid-code'&&signIn===attempt)signIn=null;throw signInFailure(code);}
     if(!mfa&&verified.data.mfaRequired===true){
      const challenge=verified.data.mfa;if(!challenge||!['totp','sms','passkey'].includes(challenge.type)||typeof challenge.challengeId!=='string')throw signInFailure('unavailable');
-     attempt.mfa={type:challenge.type,challengeId:challenge.challengeId};attempt.expiresAt=Math.min(attempt.expiresAt,Date.parse(challenge.expiresAt)||attempt.expiresAt);
+     attempt.mfa={type:challenge.type,challengeId:challenge.challengeId};attempt.failed=0;attempt.expiresAt=Math.min(attempt.expiresAt,Date.parse(challenge.expiresAt)||attempt.expiresAt);
      return {status:'mfa',method:challenge.type,expiresAt:attempt.expiresAt};
     }
     const outcome=await signInComplete(attempt,verified.data,signal);if(signIn===attempt)signIn=null;return outcome;

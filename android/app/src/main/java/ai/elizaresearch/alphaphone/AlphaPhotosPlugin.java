@@ -41,8 +41,7 @@ public class AlphaPhotosPlugin extends Plugin {
  private volatile boolean destroyed;
  private void submit(PluginCall call,Runnable action){
   if(destroyed){call.reject("Photo library closed");return;}
-  try{worker.execute(()->{if(destroyed)call.reject("Photo library closed");else action.run();});}
-  catch(java.util.concurrent.RejectedExecutionException stopped){call.reject("Photo library closed");}
+  PluginWorkers.submit(worker,()->{if(destroyed)call.reject("Photo library closed");else action.run();},()->call.reject("Photo library closed"));
  }
  @Override public void load(){
   // Observation starts only while the Photos grid is open (watchLibrary). Playback grants recheck
@@ -82,13 +81,24 @@ public class AlphaPhotosPlugin extends Plugin {
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
  private String owned(){return owned(false);}
  private String owned(boolean trashed){return MediaStore.MediaColumns.OWNER_PACKAGE_NAME+"=? AND "+MediaStore.MediaColumns.IS_PENDING+"=0"+(Build.VERSION.SDK_INT>=30?" AND "+MediaStore.MediaColumns.IS_TRASHED+"="+(trashed?1:0):"");}
- private String[] fields(){if(Build.VERSION.SDK_INT<30)return FIELDS;String[] result=java.util.Arrays.copyOf(FIELDS,12);result[7]=MediaStore.MediaColumns.IS_TRASHED;result[8]=MediaStore.MediaColumns.DATE_EXPIRES;result[9]=MediaStore.MediaColumns.GENERATION_MODIFIED;result[10]=MediaStore.MediaColumns.IS_FAVORITE;result[11]=MediaStore.MediaColumns.GENERATION_ADDED;return result;}
+ private String[] fields(){
+  String[] result=java.util.Arrays.copyOf(FIELDS,Build.VERSION.SDK_INT<30?8:13);
+  if(Build.VERSION.SDK_INT>=30){result[7]=MediaStore.MediaColumns.IS_TRASHED;result[8]=MediaStore.MediaColumns.DATE_EXPIRES;result[9]=MediaStore.MediaColumns.GENERATION_MODIFIED;result[10]=MediaStore.MediaColumns.IS_FAVORITE;result[11]=MediaStore.MediaColumns.GENERATION_ADDED;}
+  result[result.length-1]=MediaStore.MediaColumns.DATE_MODIFIED;return result;
+ }
+ /**
+  * The item's content as of this read: modified time, byte size and (API 30+) MediaStore's
+  * modification generation. Unlike revision and mutationRevision (the shared editor's format),
+  * it changes when another app rewrites the file in place at the same size, so a photo used as
+  * context is re-read and refused when it differs from the one reviewed.
+  */
+ private String contentRevision(Cursor row){return row.getLong(row.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED))+":"+row.getLong(4)+(Build.VERSION.SDK_INT>=30?":"+row.getLong(9):"");}
  private String mutationRevision(Cursor row){return row.getLong(3)+":"+row.getLong(4)+(Build.VERSION.SDK_INT>=30?":"+row.getLong(9)+":"+row.getInt(7):"");}
  private static final Uri CATALOG=MediaStore.Files.getContentUri("external");
  private static final String MEDIA=" AND media_type IN (1,3)";
  private static final String[] FIELDS={MediaStore.Images.Media._ID,MediaStore.Images.Media.WIDTH,MediaStore.Images.Media.HEIGHT,MediaStore.Images.Media.DATE_ADDED,MediaStore.Images.Media.SIZE,MediaStore.Files.FileColumns.MEDIA_TYPE,MediaStore.Video.VideoColumns.DURATION};
  private JSObject metadata(Cursor row){
-  JSObject item=new JSObject();boolean video=row.getInt(5)==MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO;item.put("id",(video?"v:":"")+row.getLong(0));item.put("kind",video?"video":"image");item.put("duration",video?row.getLong(6)/1000d:0);item.put("width",row.getInt(1));item.put("height",row.getInt(2));item.put("date",row.getLong(3)*1000);String base=row.getLong(3)+":"+row.getLong(4);String marker=mediaVersions.getString((video?"v:":"")+row.getLong(0),"");item.put("revision",base+(Build.VERSION.SDK_INT>=30&&marker.startsWith(base+"|")?"|"+row.getLong(9):""));item.put("mutationRevision",mutationRevision(row));item.put("trashed",Build.VERSION.SDK_INT>=30&&row.getInt(7)==1);item.put("favorite",Build.VERSION.SDK_INT>=30&&row.getInt(10)==1);item.put("expiresAt",Build.VERSION.SDK_INT>=30?row.getLong(8)*1000:0);return item;
+  JSObject item=new JSObject();boolean video=row.getInt(5)==MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO;item.put("id",(video?"v:":"")+row.getLong(0));item.put("kind",video?"video":"image");item.put("duration",video?row.getLong(6)/1000d:0);item.put("width",row.getInt(1));item.put("height",row.getInt(2));item.put("date",row.getLong(3)*1000);String base=row.getLong(3)+":"+row.getLong(4);String marker=mediaVersions.getString((video?"v:":"")+row.getLong(0),"");item.put("revision",base+(Build.VERSION.SDK_INT>=30&&marker.startsWith(base+"|")?"|"+row.getLong(9):""));item.put("mutationRevision",mutationRevision(row));item.put("contentRevision",contentRevision(row));item.put("trashed",Build.VERSION.SDK_INT>=30&&row.getInt(7)==1);item.put("favorite",Build.VERSION.SDK_INT>=30&&row.getInt(10)==1);item.put("expiresAt",Build.VERSION.SDK_INT>=30?row.getLong(8)*1000:0);return item;
  }
  private Uri uri(long id,boolean video){return ContentUris.withAppendedId(video?MediaStore.Video.Media.EXTERNAL_CONTENT_URI:MediaStore.Images.Media.EXTERNAL_CONTENT_URI,id);}
  private long id(String value){long id=Long.parseLong(value.replaceFirst("^v:",""));if(id<=0)throw new IllegalArgumentException();return id;}
@@ -375,5 +385,5 @@ public class AlphaPhotosPlugin extends Plugin {
   }catch(IllegalArgumentException failure){call.reject(failure.getMessage());}catch(Exception failure){call.reject("Album could not be saved. Reload albums before trying again");}
   }
  });}
- @Override protected void handleOnDestroy(){destroyed=true;if(mediaReview!=null)mediaReview.close();if(permitted!=null)permitted.close();if(edits!=null)edits.cancel(null);try{worker.execute(()->{if(edits!=null)edits.close();});}catch(java.util.concurrent.RejectedExecutionException ignored){}worker.shutdown();if(playback!=null)playback.clear();}
+ @Override protected void handleOnDestroy(){destroyed=true;if(mediaReview!=null)mediaReview.close();if(permitted!=null)permitted.close();if(edits!=null)edits.cancel(null);PluginWorkers.submit(worker,()->{if(edits!=null)edits.close();},()->{/* Already stopped: nothing left to close on it. */});worker.shutdown();if(playback!=null)playback.clear();}
 }

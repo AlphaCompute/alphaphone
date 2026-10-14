@@ -47,14 +47,16 @@ test('every subview of a retained view is opened by a state that asserts it is t
   const subviews = [...new Set([...template.matchAll(/data-alpha-subview="([^"]+)"/g)].map(match => match[1]))].filter(id => retained.has(owner(id)));
   assert.ok(subviews.length >= 25, 'the template still marks its subviews');
   // The base list of a view is what its plain state shows; only layered subviews need a named state.
-  // photos-empty is the viewer left open after its photo disappears: not reachable by a tap path.
-  const unreachable = new Set(['photos-empty']);
+  // photos-empty (the viewer left open after its photo disappears) has no tap path; a fixture state
+  // opens it directly and asserts it like the others.
+  const unreachable = new Set();
   const table = states.slice(states.indexOf('const SUBVIEW'), states.indexOf('export const MOCK_STATES'));
   assert.match(states, /\.map\(start => mock\(start, \[\], SUBVIEW\[start\]\)\)/, 'deep-link states assert their subview');
   assert.match(states, /const showing = async[\s\S]*?\[data-alpha-subview="\$\{subview\}"\]:not\(\[inert\]\)[\s\S]*?toBeVisible\(\)/, 'a declared subview is asserted when the state opens');
   const asserted = new Set([
     ...[...table.matchAll(/'[a-z]+:[a-z]+': '([a-zA-Z-]+)'/g)].map(match => match[1]),
     ...[...states.matchAll(/(?:live|mock)\([^\n]*, '([a-zA-Z-]+)'\),/g)].map(match => match[1]),
+    ...[...states.matchAll(/shows: '([a-zA-Z-]+)'/g)].map(match => match[1]),
   ]);
   for (const id of subviews) {
     if (id.endsWith('-list') || unreachable.has(id)) continue;
@@ -90,7 +92,14 @@ test('the sweep applies every dimension and cannot be narrowed silently', () => 
   // Only deliberate truncation is tolerated; nothing else is filtered out of the results.
   assert.equal([...sweep.matchAll(/\.filter\(/g)].length, 2);
   assert.doesNotMatch(sweep, /process\.env/);
-  assert.match(sweep, /lines\.filter\(line => !line\.startsWith\('text-truncated:'\)\)/);
+  assert.match(sweep, /lines\.filter\(line => !line\.startsWith\('text-truncated:'\) \|\| appTitle\(line\)\)/);
+  // A cut app title is never tolerated (AP-15): it names the screen and has room to wrap.
+  assert.match(sweep, /const appTitle = \(line: string\) => \/\^text-truncated: \.\*<\[\^>\]\*\\bdata-alpha-app-title\\b\/\.test\(line\);/);
+  // The fixture lock screen and photos-empty viewer and the launcher presentation run at 100%
+  // and 200% with names, focus, contrast and the dock rules (provider-connected states are in STATES).
+  assert.match(sweep, /for \(const state of \[\.\.\.FIXTURE_STATES, \.\.\.LAUNCHER_STATES\]\) \{\s*for \(const scale of \[1, 2\]\)/);
+  for (const name of ["mock('lock')", "shows: 'photos-empty'", "launcher('Home')", "launcher('All apps'", "connected('Inbox'", "connected('Settings connections'", "name: 'connected Calendar with events'", "CONNECTED_STATES.push(calendarWithEvents)"])
+    assert.ok(states.includes(name), `${name} is swept`);
   // No state is skipped, marked fixme or exempted from a dimension.
   assert.doesNotMatch(sweep, /test\.skip|test\.fixme|\.only\(/);
   assert.doesNotMatch(production, /test\.skip|test\.fixme|\.only\(/);

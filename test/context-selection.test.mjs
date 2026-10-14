@@ -177,3 +177,66 @@ test('a Settings page identity is its section slug; credential pages have none',
  for(const page of ['passwords','vault','unlock','api-keys','Privacy','a b',null,undefined,7])assert.equal(m.settingsSelection({page}),undefined,String(page));
  assert.equal(m.settingsSelection(undefined),undefined);
 });
+
+test('a photo another app rewrote in place is refused at send time',()=>{
+ // Android rows: revision and mutationRevision keep the shared editor's format (added time and size,
+ // plus generation and trash on API 30+); contentRevision adds the modified time and generation.
+ const reviewed={id:'native-camera-7',revision:'1700000000:2048',mutationRevision:'1700000000:2048:12:0',contentRevision:'1700000100:2048:12',trashed:false};
+ assert.equal(m.captureUnchanged(reviewed,{...reviewed}),true,'the same row is unchanged');
+ // Same added time and size (an in-place rewrite on API 29 keeps both); only the content revision moves.
+ assert.equal(m.captureUnchanged(reviewed,{...reviewed,contentRevision:'1700000500:2048:12'}),false,'modified time changed');
+ assert.equal(m.captureUnchanged(reviewed,{...reviewed,mutationRevision:'1700000000:4096:13:0',contentRevision:'1700000500:4096:13'}),false,'size and generation changed');
+ assert.equal(m.captureUnchanged(reviewed,{...reviewed,contentRevision:undefined}),false,'a row that lost its content revision is not the reviewed item');
+ assert.equal(m.captureUnchanged(reviewed,{...reviewed,trashed:true}),false,'trashed');
+ assert.equal(m.captureUnchanged(reviewed,undefined),false,'removed');
+ // The browser build has no content revision; its rows compare as before.
+ const browser={id:'b1',revision:'r1',mutationRevision:'m1'};
+ assert.equal(m.captureUnchanged(browser,{...browser}),true);assert.equal(m.captureUnchanged(browser,{...browser,mutationRevision:'m2'}),false);
+ // The shared identity moves with the content revision, so the old identity is never reused for the rewritten file.
+ const revisions=m.createCaptureRevisions(),before=revisions({kind:'image',...reviewed}),after=revisions({kind:'image',...reviewed,contentRevision:'1700000500:2048:12'});
+ assert.equal(before.id,after.id);assert.notEqual(before.revision,after.revision);
+ // The native list and read report contentRevision from MediaStore DATE_MODIFIED, size and generation.
+ const photos=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaPhotosPlugin.java','utf8');
+ assert.match(photos,/item\.put\("contentRevision",contentRevision\(row\)\);/);
+ assert.match(photos,/private String contentRevision\(Cursor row\)\{return row\.getLong\(row\.getColumnIndexOrThrow\(MediaStore\.MediaColumns\.DATE_MODIFIED\)\)\+":"\+row\.getLong\(4\)\+\(Build\.VERSION\.SDK_INT>=30\?":"\+row\.getLong\(9\):""\);\}/);
+ assert.match(photos,/result\[result\.length-1\]=MediaStore\.MediaColumns\.DATE_MODIFIED;/);
+ const camera=readFileSync('apps/app/src/prototype/camera-adapter.ts','utf8');
+ assert.match(camera,/const unchanged=\(row:SavedPhoto\)=>captureUnchanged\(selected,row\);/,'the send-time re-read uses the content check');
+});
+test('hosted-result, digest and workflow notices are never reviewable; reminder and navigation rows are',()=>{
+ const own={source:'own',id:'n1',revision:'r1',title:'Digest ready',text:'Mail from Dana'};
+ for(const kind of ['hosted-result','workflow','other','digest',''])assert.equal(m.noticeReviewable({...own,kind}),false,kind);
+ assert.equal(m.noticeReviewable({...own,kind:'reminder'}),true);assert.equal(m.noticeReviewable({...own,kind:'navigation'}),true);
+ // Browser rows carry no kind: workflow notices and Focus-held messages are refused by id, reminders and calendar alerts kept.
+ assert.equal(m.noticeReviewable({...own,id:'workflow:run-1'}),false);assert.equal(m.noticeReviewable({...own,id:'focus:key'}),false);
+ assert.equal(m.noticeReviewable({...own,id:'calendar:alert-1'}),true);assert.equal(m.noticeReviewable({...own}),true);
+ assert.equal(m.noticeKind({id:'calendar:x'}),'calendar');assert.equal(m.noticeKind({id:'x',kind:'hosted-result'}),'hosted-result');
+ // The native list returns a kind for every own row, from the posting channel.
+ const plugin=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaNotificationsPlugin.java','utf8');
+ assert.match(plugin,/item\.put\("source","own"\);item\.put\("kind",noticeKind\(n\.getChannelId\(\)\)\);/);
+ const kinds=plugin.slice(plugin.indexOf('static String noticeKind('),plugin.indexOf('@PluginMethod public void list('));
+ assert.match(kinds,/AlphaHostedResultsPlugin\.CHANNEL\.equals\(channel\)\)return "hosted-result";/);
+ assert.match(kinds,/WorkflowNoticePoster\.CHANNEL\.equals\(channel\)\|\|WorkflowNoticePoster\.APPROVAL_CHANNEL\.equals\(channel\)\)return "workflow";/);
+ assert.match(kinds,/return "other";\n \}/,'an unknown channel is not reviewable');
+ for(const kind of [...kinds.matchAll(/return "([a-z-]+)"/g)].map(match=>match[1]))
+  assert.equal(m.ASKABLE_NOTICE_KINDS.includes(kind),['reminder','navigation'].includes(kind),`native kind ${kind}`);
+});
+test('a mail context switched, deleted or changed during its review cannot send a neighbouring message',async()=>{
+ const mail=await import('../apps/app/src/runtime/reviewed-mail-context.ts');
+ const source={accountId:'grant',messageId:'first',revision:'h-1',from:'Sender',to:['reader@example.invalid'],subject:'Reviewed',bodyText:'REVIEWED_BODY'};
+ const destination={ownerId:'owner',agentId:'agent-1',sessionId:'session',origin:'https://agent.example.invalid'};
+ const review=await mail.reviewMailContext(source,destination);
+ assert.match(await mail.validateMailContext(review,structuredClone(source),structuredClone(destination)),/REVIEWED_BODY/);
+ const refused=(current,dest=destination)=>assert.rejects(mail.validateMailContext(review,current,dest),/Message or destination changed/);
+ // Switched to the neighbour in the same thread, or the same id at a new revision or with other text.
+ await refused({...source,messageId:'neighbor',revision:'h-neighbor',bodyText:'NEIGHBOR_BODY_CANARY'});
+ await refused({...source,revision:'h-2'});
+ await refused({...source,bodyText:'REVIEWED_BODY edited'});
+ await refused({...source,accountId:'other-grant'});
+ await refused(source,{...destination,sessionId:'other-session'});
+ // The adapter reads the open message at send time; a deleted message is no source at all.
+ const adapter=readFileSync('apps/app/src/prototype/inbox-cloud-adapter.ts','utf8');
+ assert.match(adapter,/function mailContext\(\):MailContextSource \{if\(!body\|\|!selected\|\|!body\.historyId\)throw new Error\('Refresh this message before sharing'\);/);
+ assert.match(adapter,/const text=await validateMailContext\(review,mailContext\(\),destination\);/);
+ assert.match(adapter,/if \(body\?\.message\.id === id\) \{ body = null;/,'an archived or trashed open message is cleared');
+});

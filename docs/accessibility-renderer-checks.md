@@ -119,16 +119,19 @@ text scale, so its last line is no longer cut by the clamp at 200%.
   may grow), the page measures the drawn text size with a hidden probe and publishes it as
   `--alpha-text-scale` (`runtime/text-scale.ts`). The probe is measured, not assumed:
   `AccessibilityInstrumentedTest` asserts it reads 2 at system font scale 2.0 inside the
-  WebView. That test was compiled at this source and not run.
+  WebView. At `2961bd9e` (class E, developer APKs) the launcher flavor measured 2 and passed
+  the overlap checks; the class then failed at its accessibility-click step on both flavors'
+  runs as recorded in [verification](verification.md).
 - Contrast is not computed for text over photographs, video, gradients or blur; the
   camera, photo and map overlay specs cover those surfaces.
 - The map canvas is a pannable surface: labels and pins outside the frame are not
   failures. Places are also listed in the results sheet.
 - Landscape is checked in a mobile-emulated Chromium viewport. Android rotation, insets
   and state restoration have an instrumentation source (`RotationInstrumentedTest`); it
-  was not run as part of this work, and a device pass is still required.
-- The sweep runs the standalone presentation that a browser shows. The Android HOME
-  (launcher) presentation uses different header sizing and is not swept.
+  passed at `73b973a5` and `6dcdde34` (earlier pins) and was not run at the current pin, and a
+  device pass is still required.
+- The sweep runs the standalone presentation that a browser shows and, since the MVP
+  completion integration, the launcher presentation too.
 - The composer field keeps a pixel line height, and text typed into inputs is not judged
   for clipping; only rendered text nodes are.
 - No zoom above 200% is swept: the largest in-app size with the largest system font
@@ -140,7 +143,8 @@ text scale, so its last line is no longer cut by the clamp at 200%.
   calendar, cloud agent or password provider is not swept; dialogs and flows that need a
   permission are covered by their own accessibility specs. These states run on the
   development server only, so the flag-off production sweep does not include them. The
-  fixture lock screen and the `photos-empty` viewer state are not visited.
+  fixture lock screen, the `photos-empty` viewer state and the launcher presentation are swept
+  at 100% and 200% (`FIXTURE_STATES` and `LAUNCHER_STATES` in `accessibility-states.ts`).
 - The dock rules judge the composer bar, the pill and the resting sheet. Only Home and the
   app library end above the dock; an app page's content still passes under it and is only
   required to be scrollable clear of it. Whether TalkBack's reading order is affected on

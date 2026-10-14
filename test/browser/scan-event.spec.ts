@@ -21,4 +21,22 @@ test('event review rejects nonexistent DST time and can be corrected before hand
  await page.getByLabel('Event start time',{exact:true}).fill('03:30');await page.getByRole('button',{name:'Review in Calendar',exact:true}).click();expect(await page.evaluate(()=>(window as any).drafts)).toHaveLength(1);
 });
 
+// Uncertain OCR dates stay blank in the rendered review, the notes say why, and nothing reaches
+// Calendar until the user enters the date (and, since the time was left blank too, the time).
+for(const [name,poster,reasons] of [
+ ['ambiguous numeric date with a zone abbreviation','Open studio\n10/11/2026 7 PM EST\nVenue: Main hall',['A numeric date such as 10/11 can mean different days in different regions. Enter the date yourself.','Time zone “EST” is ambiguous. Enter the local start time yourself.']],
+ ['weekday that conflicts with the printed date','Open studio\nFriday, October 10, 2026\n7 PM\nVenue: Main hall',['“Friday” does not match the printed date. Enter the date yourself.']],
+] as const)test(`OCR ${name} leaves the date and time blank and writes no draft until they are entered`,async({page})=>{
+ await page.goto('/');await page.evaluate(async poster=>{const {createScanEventReview}=await import('/src/prototype/scan-event-review.ts');(window as any).drafts=[];const details=createScanEventReview(()=>poster,()=>true,draft=>{(window as any).drafts.push(draft);return true;},()=>new Date('2026-10-03T15:00:00Z'));const dialog=document.createElement('dialog');dialog.append(details);document.body.append(dialog);dialog.showModal();details.open=true;},poster);
+ const drafts=()=>page.evaluate(()=>(window as any).drafts.length),review=page.getByRole('button',{name:'Review in Calendar',exact:true});
+ await expect(page.getByLabel('Event title',{exact:true})).toHaveValue('Open studio');await expect(page.getByLabel('Event location',{exact:true})).toHaveValue('Main hall');
+ await expect(page.getByLabel('Event date',{exact:true})).toHaveValue('');await expect(page.getByLabel('Event start time',{exact:true})).toHaveValue('');
+ const notes=page.getByRole('list',{name:'Suggestion notes'});await expect(notes).toBeVisible();for(const reason of reasons)await expect(notes.getByRole('listitem').filter({hasText:reason})).toHaveCount(1);
+ await expect(page.getByRole('region',{name:'Printed time zone'})).toHaveCount(0);await expect(page.getByLabel('Printed time zone')).toBeHidden();
+ await review.click();expect(await drafts()).toBe(0);
+ await page.getByLabel('Event date',{exact:true}).fill('2026-10-11');await review.click();expect(await drafts()).toBe(0);
+ await page.getByLabel('Event start time',{exact:true}).fill('19:00');await review.click();await expect.poll(drafts).toBe(1);
+ const draft=await page.evaluate(()=>(window as any).drafts[0]);expect(draft).toMatchObject({title:'Open studio',where:'Main hall',t:19,id:null,separateCreation:false});expect(draft.creationId).toMatch(/^[0-9a-f-]{36}$/);
+});
+
 test.use({timezoneId:'America/New_York'});

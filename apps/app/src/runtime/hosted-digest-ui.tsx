@@ -16,7 +16,7 @@ import { delegationNative } from "./cloud-delegation-ui";
 import { HostedLiveSourcePicker } from "./hosted-live-source-ui";
 import { hostedResultNative, publishHostedResult, resolveHostedResultTap, type HostedResultBinding } from "./hosted-result-notices";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { connectionController } from "./connection-ui";
+import { connectionController, agentPendingText } from "./connection-ui";
 import { secureConnectionStore } from "./native-connection";
 import { actionScope } from "./device-actions";
 import {
@@ -67,7 +67,7 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
 	const interactiveDevelopment=devSurfacesEnabled&&browserDevProfile&&JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null')?.kind==='development';
 	const [nativeReady,setNativeReady]=useState(false),[nativeSourceProtocol,setNativeSourceProtocol]=useState(false);
     // Agent-advertised features: native evening loops and lapsed-source pausing come from patched plugin-workflow.
-    const [features,setFeatures]=useState<Pick<DigestCapabilities,'nativeEvening'|'sourcePause'>>({nativeEvening:false,sourcePause:false});
+    const [features,setFeatures]=useState<Pick<DigestCapabilities,'nativeEvening'|'sourcePause'|'dossier'>>({nativeEvening:false,sourcePause:false,dossier:false});
 	const [backgroundEnabled,setBackgroundEnabled]=useState(false);
 	const [noticeEnabled,setNoticeEnabled]=useState(false), [focusedRun,setFocusedRun]=useState<string|null>(null), [tap,setTap]=useState<{token:string;runId:string;sessionId:string}|null>(null);
 	const [open, setOpen] = useState(false),
@@ -165,7 +165,10 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
 			if (binding.current !== b || document.hidden) return;
 			setAvailable(supported);
             const nativeSupported=supported&&advertised.nativeSources&&isAndroid&&connection.kind==='resident';
-            setNativeSourceProtocol(nativeSupported);setFeatures({nativeEvening:nativeSupported&&advertised.nativeEvening,sourcePause:supported&&advertised.sourcePause});
+            // The dossier needs native phone sources, which only the resident agent has. That agent is staged
+            // from upstream.lock.json, whose plugin-workflow registers POST /api/workflow/hosted/dossier
+            // (elizaOS/eliza#35906, test/digest-route-registration.test.mjs); /status does not advertise it.
+            setNativeSourceProtocol(nativeSupported);setFeatures({nativeEvening:nativeSupported&&advertised.nativeEvening,sourcePause:supported&&advertised.sourcePause,dossier:nativeSupported});
 			if (!supported) {
 				setMessage("This agent has not enabled scheduled digests.");
 				return;
@@ -204,7 +207,7 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
 		binding.current?.controller.abort();
         questionClose.current?.();
 		binding.current = null;
-		setAvailable(false);setNativeReady(false);setBackgroundEnabled(false);setNoticeEnabled(false);setFeatures({nativeEvening:false,sourcePause:false});
+		setAvailable(false);setNativeReady(false);setBackgroundEnabled(false);setNoticeEnabled(false);setFeatures({nativeEvening:false,sourcePause:false,dossier:false});
 		setResults([]);rememberRetainedDigests(null);setFocusedRun(null);setTap(null);setRenewing(null);
 		setSources([]);
 		setLoops([]);
@@ -214,7 +217,7 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
 		setSourceId("");
 		if (!selected || !connection.session) {
 			setMessage(
-				"Connect an agent with verified scheduled digest support. Results remain scoped to that account and agent.",
+				agentPendingText(connection),
 			);
 			return;
 		}
@@ -330,12 +333,15 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
     // Renewal taps exist only on Android; elsewhere the native plugin is absent and must not replace the sync status.
     const checkRenewal=()=>renewalFlight.current(async()=>{
       const b=binding.current;if(!isAndroid||!b||!canSyncResults()||questionBusy.current||questionClose.current)return;
-      try{const tap=await nativeSources.pendingSourceRenewal();if(!tap.token||!tap.selection||typeof tap.expiresAt!=='number'||binding.current!==b||!b.notices.current()||!canSyncResults())return;
+      // Only a real pending tap may report a failure: a check with no tap (the native record is
+      // unavailable here, or nothing was tapped) leaves the panel's current status untouched.
+      let tapped=false;
+      try{const tap=await nativeSources.pendingSourceRenewal();if(!tap.token||!tap.selection||typeof tap.expiresAt!=='number'||binding.current!==b||!b.notices.current()||!canSyncResults())return;tapped=true;
        const current=()=>mounted.current&&binding.current===b&&b.notices.current()&&canSyncResults()&&!connectionController.getSnapshot().open&&renewalSources.current.some(source=>!source.revoked&&source.live?.provider==='native'&&renewalMatches(tap as SourceRenewalTap,source.live,source.expiresAt));
        if(!current())return;
        if(tap.question){questionBusy.current=true;questionClose.current=reviewSourceRenewalQuestion({tap:tap as SourceRenewalTap,signal:b.controller.signal,current,recheck:()=>nativeSources.pendingSourceRenewal(),settle:discard=>nativeSources.settleSourceRenewal({token:tap.token!,discard}),compose:draft=>composeQuestion?.(draft,b.sessionId)===true,report:setMessage,closed:()=>{questionBusy.current=false;questionClose.current=undefined;}});if(!questionClose.current)questionBusy.current=false;return;}
        await nativeSources.settleSourceRenewal({token:tap.token,discard:false});if(!current()){if(binding.current===b)setMessage('Source renewal changed before review opened. Nothing was renewed; renew it from Sources when it is current.');return;}setOpen(true);renewalStart.current(tap.selection.sourceId);
-      }catch{if(binding.current===b)setMessage('Source renewal is waiting for the matching account and current consent.');}
+      }catch{if(tapped&&binding.current===b)setMessage('Source renewal is waiting for the matching account and current consent.');}
     });
     useEffect(()=>{if(!isAndroid)return;const listener=nativeSources.addListener('renewSource',()=>{void checkRenewal();}).catch(()=>null);void checkRenewal();return()=>{void listener.then(l=>l?.remove());};},[]);
     useEffect(()=>{if(isAndroid)void checkRenewal();},[sources]);
@@ -658,7 +664,7 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
 										))}
 								</select>
 							</label>
-{sources.find(s=>s.id===sourceId)?.live?.provider==='native'&&<button disabled={busy} onClick={()=>{const source=sources.find(s=>s.id===sourceId)!;setReview({path:'dossier',body:{sourceId:source.id,sourceRevision:source.revision,mutationId:crypto.randomUUID(),confirmed:true},summary:`Prepare a dossier now from ${source.label}? This sends one fresh read of your reviewed selected phone sources to this agent’s configured text model. It creates no recurring schedule. Model usage is billed by this agent.`});}}>Review on-demand dossier</button>}
+{features.dossier&&sources.find(s=>s.id===sourceId)?.live?.provider==='native'&&<button disabled={busy} onClick={()=>{const source=sources.find(s=>s.id===sourceId)!;setReview({path:'dossier',body:{sourceId:source.id,sourceRevision:source.revision,mutationId:crypto.randomUUID(),confirmed:true},summary:`Prepare a dossier now from ${source.label}? This sends one fresh read of your reviewed selected phone sources to this agent’s configured text model. It creates no recurring schedule. Model usage is billed by this agent.`});}}>Review on-demand dossier</button>}
 							<label>
 								Time zone
 								<input value={zone} onChange={(e) => setZone(e.target.value)} />

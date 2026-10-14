@@ -33,7 +33,7 @@ non-dev packages).
 | Advisory | Severity | Package and exact path | Ships? | Vulnerable code reachable? | Disposition |
 | --- | --- | --- | --- | --- | --- |
 | GHSA-68fv-2mgg-jv7q, event-loop denial of service through indexed source-map section offsets | high | `source-map-js` 1.2.1 via `vite > postcss > source-map-js` and `@vitejs/plugin-react > vite > postcss > source-map-js` | No. Build tool only. | Only at build time: PostCSS parses a source map that accompanies CSS it processes. Production builds set `sourcemap: false`. A hostile map in a CSS dependency could hang a developer or CI build; it cannot affect a user. | **Fixed.** Lockfile-only bump to 1.2.2, inside PostCSS's declared `^1.2.1`. |
-| GHSA-w5hq-g745-h8pq, uuid missing buffer bounds check in v3/v5/v6 when `buf` is provided | moderate | `uuid` 7.0.3 via `@capacitor/cli > xcode > uuid` | No. CLI tool only. | No. `xcode` calls only `uuid.v4()` with no arguments (`lib/pbxProject.js`). | **Exception until 2027-01-08.** |
+| GHSA-w5hq-g745-h8pq, uuid missing buffer bounds check in v3/v5/v6 when `buf` is provided | moderate | `uuid` 7.0.3 via `@capacitor/cli > xcode > uuid` | No. CLI tool only. | No. `xcode` calls only `uuid.v4()` with no arguments (`lib/pbxProject.js`). | **Exception until 2027-02-08** (re-reviewed 2026-10-11). |
 | same advisory, reported on the parent | moderate | `xcode` 3.0.1 via `@capacitor/cli > xcode` | No | No. `@capacitor/cli` loads `xcode` only in its iOS `migrate uiscene` task. There is no iOS project; the only CLI use is `cap sync android`. | Same exception. |
 | same advisory, reported on the direct dependency | moderate | `@capacitor/cli` 8.5.2 (direct devDependency) | No | No, as above. | Same exception. |
 
@@ -65,16 +65,80 @@ Remove the exception when `@capacitor/cli` drops `xcode` or `xcode` moves to `uu
   - a recorded fix regressed in the lockfile.
 
 Any change to `package-lock.json` therefore needs a fresh `node scripts/dependency-audit.mjs
---write` in the same change. The first date on which the test fails by itself is 2027-01-09,
-when the uuid exception expires.
+--write` in the same change. The first date on which the test fails by itself is 2027-02-09,
+when the uuid exception expires. It was re-reviewed on 2026-10-11: the registry still has no
+`@capacitor/cli` release without `xcode` (latest 8.5.3; 8.5.4 nightly and 9.0.0-alpha.8 are
+prereleases), `xcode` 3.0.1 is still the newest and depends on `uuid ^7.0.3`, the installed
+`xcode` still calls only `uuid.v4()` without a buffer, and `@capacitor/cli` loads it only from
+`dist/tasks/migrate-uiscene.js`. The review date moved by 120 days, the maximum.
 
 `source-map-js` 1.2.2 was exercised with PostCSS 8.5.28 (generate, then consume a previous
 map) in an isolated install. `npm run verify` in the working tree used the shared
 `node_modules`, which still held 1.2.1; a clean `npm ci` installs 1.2.2.
 
-The pinned platform (`vendor/eliza`, `upstream.lock.json`) is outside this audit and was not
-changed. Its own dependencies are resolved by the upstream workspace when the agent runtime
-is prepared; they are not in this repository's lockfile.
+The pinned platform (`vendor/eliza`, `upstream.lock.json`) is outside the root audit and was
+not changed. Its own dependencies are resolved by the upstream workspace when the agent runtime
+is prepared; they are not in this repository's lockfile. The resident audit below covers them.
+
+### Resident runtime advisories
+
+About 550 npm packages reach the APK inside the agent bundle and the workflow worker. The
+root audit does not see them. `node scripts/dependency-audit.mjs --resident` builds its input
+as `name@version` and queries the npm bulk advisory endpoint:
+
+- by default from the pinned upstream lock (`vendor/eliza/bun.lock`): every registry package
+  version of the upstream workspace, a superset of what ships;
+- with `--notices <third-party-notices.json>`, from the npm entries of
+  `generate-licenses.mjs --packaged-runtime` notices, exactly what one staged payload ships.
+
+The result is stored under `resident` in `docs/dependency-audit.snapshot.json`, bound to the
+`upstream.lock.json` commit and to a hash of the input. Its dispositions go under `resident`
+in `docs/dependency-audit.dispositions.json` with the commit they were reviewed at, using the
+same exception fields and 120-day limit. `test/dependency-audit.test.mjs` fails offline when
+the upstream commit or the upstream lock changes without a refreshed resident snapshot
+(`node scripts/dependency-audit.mjs --resident --write`).
+
+Audited 2026-10-12 at upstream `13c98575987a`, from the upstream lock (3689 package
+versions): 103 advisory findings in 34 packages, 3 critical, 42 high, 43 moderate and 15 low.
+The critical ones are `handlebars` 4.7.9 (GHSA-8r5x-fm3f-whwj, GHSA-p8wg-vrv2-v86f) and
+`shell-quote` 1.10.0 (GHSA-pqg4-j6r4-53mv); the high ones include `undici`, `axios`,
+`node-forge`, `@modelcontextprotocol/sdk`, `sharp`, `pacote` and `basic-ftp`.
+
+The reachability review is in
+[security/vulnerability-review-2026-10-12.md](security/vulnerability-review-2026-10-12.md),
+with the prioritized fix plan. A payload staged at the pin ships 550 npm package versions;
+auditing exactly those (`--resident --notices`) leaves 5 findings: `handlebars` 4.7.9 (two
+critical, one moderate), `uuid` 8.3.2 and 9.0.1 (moderate) and `@ai-sdk/provider-utils` 4.0.26
+(low). The other 98 are in packages the mobile agent bundle does not include. Dispositions
+under `resident` in `docs/dependency-audit.dispositions.json`: 86 time-bounded exceptions (the
+98 non-shipping findings, plus `uuid`, which ships but is not reachable, and the low
+`provider-utils` finding, short-dated until its upstream fix) and `pendingUpstreamFixes` for the
+three shipped `handlebars` advisories, which deliberately have no exception. `--resident`
+therefore still exits 1 until upstream moves `handlebars` to 4.7.10 and the pin follows.
+`test/dependency-audit.test.mjs` fails on any other undispositioned resident advisory, on a
+pending fix that is also excepted, and on an exception for a shipped high or critical
+advisory. This is source and registry evidence plus a staged payload on a development
+machine; no APK was built.
+
+Re-audited 2026-10-13 at upstream `bc71e21f3b` (plan step A-3, after elizaOS/eliza#36124 moved
+`handlebars` to 4.7.10 and `@ai-sdk/openai` to 3.0.118): 3687 package versions, 99 findings,
+1 critical (`shell-quote`, not shipped), 42 high, 42 moderate and 14 low. The three `handlebars`
+advisories and GHSA-866g-f22w-33x8 (`@ai-sdk/provider-utils` 4.0.26) are gone; their pending fix
+and their exception were removed, and the other 85 exceptions are unchanged, because every
+remaining finding resolves to the same package versions as at `13c98575987a`.
+`node scripts/dependency-audit.mjs --resident` now exits 0. The shipped-set evidence is still the
+payload staged at `13c98575987a`; the payload was not re-staged at `bc71e21f3b`, so the
+packaged-notices audit (A-4) at this pin has not run.
+
+### Scheduled advisory audit
+
+`.github/workflows/dependency-audit.yml` runs weekly (Mondays 06:17 UTC) and on manual
+dispatch, with `contents: read`, SHA-pinned actions and no secrets. It runs
+`node scripts/dependency-audit.mjs` against the registry, which fails on any advisory path
+without a reviewed disposition, and then the resident audit on the pinned upstream lock
+(fetched by commit). It is not a required check and never runs on a pull request or push
+(`test/ci-required-checks.test.mjs`). Since the pin `bc71e21f3b` the resident step has no
+pending fix and passes while every finding keeps an unexpired disposition.
 
 ## Release SBOM
 
@@ -92,12 +156,11 @@ commit always yields the same bytes (`test/sbom.test.mjs`).
 | npm production packages (web bundle, and the same bundle inside each APK) | `package-lock.json` | registry tarball SHA-512 |
 | Bundled font files | `apps/app/public` | SHA-256 of the committed bytes |
 | OCR WebAssembly cores | `licenses/tesseract-core/sources.json` | SHA-256 |
-| Web speech model and ONNX Runtime Web files | `config/browser-speech.json` | SHA-256 |
 | Android runtime classpath (71 coordinates) | `licenses/android-runtime-classpath.json` | SHA-256 from `android/gradle/verification-metadata.xml`: the archive for 60 coordinates, the metadata file for the 11 that publish no archive |
 | ARM64 embedding host libraries and embedding model | `android/embedding-host/qualified-host.json` | SHA-256 of the reviewed bytes (a pin; the libraries are not in Git) |
-| Speech AAR and native libraries per ABI | `android/local-speech/runtime-manifest.json` | SHA-256 |
-| Speech model and source archives, lexicon | pinned upstream `local-speech` manifests | SHA-256 |
+| libelizainference voice-host libraries per ABI and GGUF speech models (when qualified) | `android/voice-host/qualified-voice-host.json` ([fused speech](fused-speech.md)) | SHA-256 and bytes |
 | elizaOS | `upstream.lock.json` | git commit |
+| Staged resident runtime, with `--packaged-runtime` only: Bun, every bundled agent and workflow-worker npm package, every staged payload file (musl loader, C++ runtime libraries, PGlite) | the staged `assets/agent` payload, its `android-agent-runtime-provenance.json` and `generate-licenses.mjs --packaged-runtime` | SHA-256 of each staged file, checked against the provenance; a bundled package carries the hash of the bundle or the staged `package.json` that holds it |
 
 ### Release-candidate document
 
@@ -152,8 +215,7 @@ after it merges is that evidence, and a failure there names the artifact to add.
 
 Review of sources. The root scripts (`android/settings.gradle`, `android/build.gradle`)
 declare `google()`, `mavenCentral()` and `gradlePluginPortal()` only. The build also
-includes fifteen projects with a `build.gradle` of their own (the app, the speech module,
-the notification fixture, Capacitor from `node_modules` and eleven plugins from the pinned
+includes projects with a `build.gradle` of their own (the app, the notification fixture, Capacitor from `node_modules` and eleven plugins from the pinned
 upstream checkout), and some of those declare repositories too: the same named ones, Maven
 Central by URL (`https://repo.maven.apache.org/maven2`, four upstream plugins) and the
 plugin portal by URL (`https://plugins.gradle.org/m2/`, Capacitor's build script). The
@@ -190,6 +252,12 @@ tools and test libraries) were not fetched a second time.
 Not covered: the two side projects built with their own Gradle root
 (`android/private-peer-fixture`, and the calendar consumer fixture of
 `scripts/test-native-calendar-consumer.mjs`) have no verification metadata. Neither ships.
+
+Both branches of the 2026-10-13 merge had generated a metadata file independently; the merge
+keeps the one described above (with `scripts/gradle-verification.mjs` and its reviewed groups).
+The `:local-speech` project it was generated with has since been removed (P-42), so its entries
+for that project are unused; Gradle accepts unused entries, and the next
+`npm run android:deps:write-verification` drops them.
 
 ## Licence flags (P-09)
 
@@ -416,9 +484,10 @@ Both settings are covered by unit tests of the shared functions
 (`test/font-license.test.mjs`) and the verify-apks wiring by source assertions; neither has
 been run against built APKs in this change.
 
-Five other entries of the committed notices are `license unverified` (the Piper voice model,
-Sherpa-ONNX native build dependencies, the resident runtime payload, the pdf.js QuickJS
-sandbox and the ONNX Runtime Web linked components). They are flagged `unverified`, are not
+Two other entries of the committed notices are `license unverified` (the resident runtime
+payload and the pdf.js QuickJS sandbox; the retired speech engines' entries were removed with
+those engines under P-42). Once the voice-host record exists, the elizaOS voice sources fused
+into libelizainference and any model without a verified licence are also `unverified`. They are flagged `unverified`, are not
 fonts and are not reported by this check. Under P-09 they block nothing; they have not been
 reviewed.
 

@@ -8,7 +8,7 @@ test.describe.configure({timeout:120000});
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));});
 
 test('unavailable chat voice preserves the selected note and returns to typing without sending',async({page})=>{
- let sent=0;page.on('request',request=>{if(request.method()==='POST'&&!new URL(request.url()).pathname.startsWith('/browser-speech/'))sent++;});
+ let sent=0;page.on('request',request=>{if(request.method()==='POST')sent++;});
  await page.goto('/');await silentMicrophone(page);
  await page.getByRole('button',{name:'Notes',exact:true}).click();
  await page.getByRole('button',{name:'New note',exact:true}).click();

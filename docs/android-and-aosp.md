@@ -31,9 +31,9 @@ checkout `npm run android:build:local` runs the whole chain: an input check,
 `agent:build-embedding-host`, `agent:prepare`, `agent:build-workflow-worker`,
 `agent:stage-android`, `licenses:packaged-runtime` and `android:build`. It stops at the second
 step until a person supplies the reviewed embedding host libraries; `npm run
-android:build:inputs` lists every input and who supplies it (see the README). Gradle's
-`:local-speech:preBuild` also needs the speech AAR from
-[local speech setup](../scripts/local-speech/README.md). `npm run android:build` checks all of
+android:build:inputs` lists every input and who supplies it (see the README). On-device speech
+uses only the libelizainference voice host ([fused speech](fused-speech.md), decision P-42); an
+APK without a voice bundle is valid. `npm run android:build` checks all of
 these first (`scripts/android-build-preflight.mjs`) and exits 2 with the command to run instead
 of failing inside Gradle. `npm run android:build -- --allow-unpackaged-runtime` is the developer
 path: it needs only `agent:prepare` and records release APKs without the payload as
@@ -99,20 +99,26 @@ privileged permission whitelist is fabricated for a thin launcher.
 
 ## App Links
 
-**In-app Eliza Cloud sign-in return (active).** MainActivity declares one verified App Link,
-`https://eliza.app/alphaphone/auth/callback` (exact path, `autoVerify`). Test-mocks builds add
+**Build gate.** A default build declares no https `autoVerify` filter. With the Gradle property
+`ELIZAOS_APP_LINK_HOST` set, `android/app/build.gradle` overlays verified filters on that host for
+`/alphaphone/cloud-delegation` (prefix) and `/alphaphone/auth/callback` (exact path, the in-app
+Eliza Cloud sign-in return). Steward returns sign-in only to `eliza.app`, so the sign-in return
+works with `ELIZAOS_APP_LINK_HOST=eliza.app`. Test-mocks builds always add
 `https://staging.eliza.app/alphaphone/auth/callback` from `src/testMocks/AndroidManifest.xml`.
-Steward returns Google sign-in there with a one-time code. AlphaCloudSignInPlugin validates the link
-strictly and exchanges the code natively (docs/architecture.md, "Eliza Cloud sign-in ownership").
+Publish `scripts/render-assetlinks.mjs` output (release signer, never a debug or placeholder
+fingerprint) at `/.well-known/assetlinks.json` on the host before setting the property.
 
-Until `eliza.app` serves `/.well-known/assetlinks.json` with the installed signer's SHA-256
-fingerprint, Android does not verify the link. The return then opens in the browser and Google
-sign-in cannot finish. Email-code sign-in is unaffected. To set it up:
+**In-app Eliza Cloud sign-in return.** Steward returns Google sign-in to the callback with a
+one-time code in the fragment. AlphaCloudSignInPlugin validates it under the shared callback
+contract and exchanges the code natively (docs/architecture.md, "Eliza Cloud sign-in ownership").
+Alpha offers its in-app sign-in only after its readiness probe sees the client registration, the
+redirect allowlist, `assetlinks.json` listing this package and its signing certificate, and (for
+Google) Android reporting the return host verified for Alpha. Until then the Cloud sign-in hand-off
+stays the sign-in path. If the link is not handed to Alpha, Cloud's fallback page brings Alpha
+forward without parameters and Alpha asks the owner to start again; no code is forwarded.
 
-1. Publish `android/app/src/main/assetlinks.template.json` with the release fingerprint
-   (`android/release-signer.json`). Staging also lists the debug fingerprint.
-2. Verify with `adb shell pm get-app-links ai.elizaresearch.alphaphone` on an installed signed build
-   ([runbook](pilot-acceptance-runbook.md#external-integration-runbooks)).
+Check verification with `adb shell pm get-app-links ai.elizaresearch.alphaphone` on an installed
+signed build ([runbook](pilot-acceptance-runbook.md#external-integration-runbooks)).
 
 An APK build, an emulator verification, the AOSP image and the owner's device acceptance are
 separate evidence levels; none of them proves another.
@@ -120,14 +126,16 @@ separate evidence levels; none of them proves another.
 **AOSP image requirements for sign-in:**
 
 - Include `com.android.statementservice` (the App Link verifier, IntentFilterVerifier). Without it
-  `autoVerify` never succeeds and the Google return is not delivered to Alpha.
+  `autoVerify` never succeeds, the readiness probe reports Google unavailable, and only email
+  in-app sign-in (or the hand-off) is offered.
 - Include a browser that provides Custom Tabs (the Alpha Chromium, which answers
   `android.support.customtabs.action.CustomTabsService`). Without one, Alpha falls back to a plain
-  `ACTION_VIEW` browser. With no browser at all, Alpha offers only email sign-in.
+  `ACTION_VIEW` browser.
 - Neither component needs GMS.
 
-**Cloud delegation return (prepared, not active).** It still uses the `alphaphone://cloud-delegation`
-custom scheme. Moving it to an HTTPS App Link is a separate reviewed change.
+**Cloud delegation return.** The `alphaphone://cloud-delegation` custom scheme remains the active
+delegation return path; the https delegation filter exists only in builds with
+`ELIZAOS_APP_LINK_HOST`, and moving the renderer to it is a separate reviewed change.
 
 ## Full AOSP product integration
 
@@ -157,7 +165,9 @@ product or publish a Pixel 10 installer before its device inputs are admitted.
    HOME resolution after reboot, screen/IME/native bridge behavior and absence of crashes.
 8. Validate the same signed release on physical hardware: radios, audio/mic, touch,
    camera, suspend/resume, charging, keys, auth/agent reconnect, accessibility and
-   recovery. Then validate signed OTA and rollback. Record image/APK/source hashes.
+   recovery. Record image/APK/source hashes. Signed OTA and rollback are a future gate: no OTA
+   manifest and no rollback path exist today, `scripts/pilot-update.mjs` refuses a lower
+   versionCode, and the design is blocked on A-06.
 
 An SDK emulator with an installed launcher is useful HOME/app evidence, but is not
 proof that this product makefile built or booted in a custom AOSP image.

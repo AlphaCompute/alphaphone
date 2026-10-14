@@ -61,7 +61,9 @@ test("staging, native check and feature declaration agree", () => {
   const stage = read("scripts/stage-aosp.mjs");
   const call = stage.indexOf("writeImageCapability(output, identity.appId)");
   assert.ok(call > 0, "stage-aosp writes the image capability");
-  assert.ok(call < stage.indexOf("if (production) {"), "development and production images both declare it");
+  // The production-only provisioning overlay comes after the capability (an earlier production branch
+  // only refuses an incomplete product lock), so development and production images both declare it.
+  assert.ok(call < stage.indexOf("writeProvisioningOverlay(output"), "development and production images both declare it");
   const admission = stage.indexOf("\nadmitApk({");
   assert.ok(admission > stage.indexOf("function admitApk("), "the admission call site, not the definition");
   assert.ok(admission > 0 && admission < call, "test-mocks and non-distributable APKs are refused before the capability is written");

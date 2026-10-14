@@ -110,7 +110,18 @@ export function settingsSelection(state: Bag | undefined): { kind: 'settings'; i
   return { kind: 'settings', id: page };
 }
 
-export type Notice = { id: string; revision: string; source: string; title?: string; text?: string; appLabel?: string };
+export type Notice = { id: string; revision: string; source: string; kind?: string; title?: string; text?: string; appLabel?: string };
+/** Own-notice kinds that may be reviewed for a question (AlphaNotificationsPlugin.noticeKind).
+ * Hosted results, scheduled digests and workflow notices can carry mail-derived text and are
+ * never offered; neither is an unrecognized kind. */
+export const ASKABLE_NOTICE_KINDS: readonly string[] = ['reminder', 'calendar', 'navigation'];
+/** Android reports each own row's kind. The browser build's own rows carry none: there they are
+ * reminders, calendar alerts ('calendar:'), workflow notices ('workflow:') and the messages a
+ * workflow Focus block held ('focus:'), which count as workflow notices. */
+export function noticeKind(notice: Pick<Notice, 'id' | 'kind'>): string {
+  if (notice.kind !== undefined) return notice.kind;
+  return /^(workflow|focus):/.test(notice.id) ? 'workflow' : notice.id.startsWith('calendar:') ? 'calendar' : 'reminder';
+}
 /** What Android's AlphaNotificationsPlugin.list returns in place of a row's title and text
  * while the device is locked or the notification is secret (test/context-selection.test.mjs
  * keeps these in step with the Java source). */
@@ -123,10 +134,11 @@ export function noticeHidden(notice: Notice): boolean {
   if (!text) return !title || title === (notice.appLabel || '').trim() || title === HIDDEN_NOTICE_TITLE;
   return title === HIDDEN_NOTICE_TITLE && HIDDEN_NOTICE_TEXTS.includes(text);
 }
-/** Only Alpha Phone's own, unredacted notifications can be reviewed for a question. A row
- * hidden by the lock screen or marked secret carries no content, which is nothing to review. */
+/** Only Alpha Phone's own, unredacted notifications of an askable kind can be reviewed for a
+ * question. A row hidden by the lock screen or marked secret carries no content, which is
+ * nothing to review; a hosted-result, digest or workflow notice may carry mail text. */
 export function noticeReviewable(notice: Notice): boolean {
-  return notice.source === 'own' && OPAQUE.test(notice.id) && OPAQUE.test(notice.revision) && !noticeHidden(notice);
+  return notice.source === 'own' && ASKABLE_NOTICE_KINDS.includes(noticeKind(notice)) && OPAQUE.test(notice.id) && OPAQUE.test(notice.revision) && !noticeHidden(notice);
 }
 /** The exact notification is still listed with the revision that was reviewed. */
 export function noticeCurrent(reviewed: Pick<Notice, 'id' | 'revision' | 'source'>, items: readonly Notice[] | undefined): boolean {
@@ -150,15 +162,28 @@ export function createCaptureRevisions() {
   const seen = new Map<string, { signature: string; revision: number }>();
   const session = sessionMarker();
   let counter = 0;
-  return (row: { kind?: string; id?: unknown; revision?: unknown; mutationRevision?: unknown } | undefined): CaptureSelection | null => {
+  return (row: { kind?: string; id?: unknown; revision?: unknown; mutationRevision?: unknown; contentRevision?: unknown } | undefined): CaptureSelection | null => {
     if (!row || typeof row.id !== 'string' || !OPAQUE.test(row.id) || typeof row.revision !== 'string' || !row.revision) return null;
-    const signature = JSON.stringify([row.revision, typeof row.mutationRevision === 'string' ? row.mutationRevision : null]), previous = seen.get(row.id);
+    const signature = JSON.stringify([row.revision, typeof row.mutationRevision === 'string' ? row.mutationRevision : null, typeof row.contentRevision === 'string' ? row.contentRevision : null]), previous = seen.get(row.id);
     const revision = previous?.signature === signature ? previous.revision : ++counter;
     // Most recently used last. A forgotten item simply gets a new revision when opened again.
     seen.delete(row.id); seen.set(row.id, { signature, revision });
     if (seen.size > CAPTURE_REVISIONS_KEPT) seen.delete(seen.keys().next().value as string);
     return { kind: row.kind === 'video' ? 'video' : 'photo', id: row.id, revision: 'capture-' + session + '-' + revision };
   };
+}
+
+/** A saved photo or video as the library reports it. contentRevision (Android: modified time,
+ * size and modification generation) changes when another app rewrites the file in place. */
+export type CaptureRevisionFields = { trashed?: boolean; revision: string; mutationRevision?: string; contentRevision?: string };
+/** The library's current row is still the item that was reviewed: same trash state, same
+ * mutation (or library) revision and, when the reviewed row carried one, the same content
+ * revision. Anything else, including a row that dropped its content revision, is a changed item
+ * and is never used as context. */
+export function captureUnchanged(reviewed: CaptureRevisionFields, current: CaptureRevisionFields | undefined): boolean {
+  if (!current || !current.trashed !== !reviewed.trashed) return false;
+  if (reviewed.mutationRevision ? current.mutationRevision !== reviewed.mutationRevision : current.revision !== reviewed.revision) return false;
+  return reviewed.contentRevision === undefined || current.contentRevision === reviewed.contentRevision;
 }
 
 export type CaptureQuestion =

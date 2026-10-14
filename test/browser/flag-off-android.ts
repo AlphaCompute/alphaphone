@@ -16,6 +16,8 @@ export interface FlagOffMessage { externalId: string; threadId: string; subject:
 export interface FlagOffAccount { connectionId: string; email: string; connected: boolean; messages: FlagOffMessage[] }
 export interface FlagOffCalendar { id: string; name?: string; account: string }
 export interface FlagOffEvent { id: string; calendarId: string; title: string; begin: number; end: number }
+/** A file the Android document picker offers, as the bytes the selected provider holds. */
+export interface FlagOffDocument { name: string; mimeType: string; text: string }
 export interface FlagOffOptions {
   /** Managed Gmail accounts behind the synthetic Eliza Cloud. Omitted: the account list is refused. */
   accounts?: FlagOffAccount[];
@@ -25,6 +27,25 @@ export interface FlagOffOptions {
   digests?: 'native' | 'renderer';
   /** Device calendar permission and provider rows. Omitted: the calendar read is not granted. */
   calendar?: { access: 'granted' | 'not-granted'; request?: 'granted' | 'denied'; calendars: FlagOffCalendar[]; events: FlagOffEvent[] };
+  /** The Android document picker (DailyApps) and attachment port (AlphaMailAttachments): picking
+   * selects this document, and a retained source reference reopens only its exact bytes. Omitted:
+   * neither is offered. */
+  document?: FlagOffDocument;
+  /** Scheduled digests as the pinned agent's plugin-workflow keeps them (with `digests`): reviewed
+   * sources and loops saved by POST, receipts replayed by mutationId, edits checked against
+   * expectedVersionId, and revocation. Omitted: every schedule or source POST is refused. */
+  schedules?: FlagOffSchedules;
+}
+export interface FlagOffSchedules {
+  /** The first response to a POST on this path is lost after the agent applied it. */
+  dropFirstAck?: 'sources' | 'loops';
+  /** Advertise phone sources (`hostedNativeSourceProtocol`) and accept native selections; stubs
+   * the AlphaHostedResults consent port and AlphaCalendar's workflow calendars. */
+  native?: { evening?: boolean; calendars: { id: string; name: string; account: string }[] };
+  /** Serve POST /hosted/dossier (and advertise `hostedDossierProtocol: 1`). The agent pinned in
+   * upstream.lock.json registers that route without advertising it, and the renderer offers the
+   * dossier with resident phone sources either way; without this flag the stub refuses the POST. */
+  dossier?: boolean;
 }
 export const AGENT_NAME = 'Alpha';
 
@@ -38,14 +59,23 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
     const agent: { conversations: { id: string; title: string }[]; history: Record<string, any[]> } = kept('flag-off-agent', { conversations: [], history: {} });
     // So do the results the agent produced and what the Android result inbox committed.
     const produced: { results: any[]; acked: number; acks: number[]; inbox: any[] } = kept('flag-off-digests', { results: [], acked: 0, acks: [], inbox: [] });
-    const persist = () => { sessionStorage.setItem('flag-off-slots', JSON.stringify(slots)); sessionStorage.setItem('flag-off-agent', JSON.stringify(agent)); sessionStorage.setItem('flag-off-digests', JSON.stringify({ results: f.digests.results, acked: f.digests.acked, acks: f.digests.acks, inbox: f.digests.inbox })); };
+    // Source references Android retained for picked documents: reference -> the bytes' SHA-256.
+    const references: Record<string, string> = kept('flag-off-references', {});
+    const persist = () => { sessionStorage.setItem('flag-off-references', JSON.stringify(references)); sessionStorage.setItem('flag-off-slots', JSON.stringify(slots)); sessionStorage.setItem('flag-off-agent', JSON.stringify(agent)); sessionStorage.setItem('flag-off-digests', JSON.stringify({ results: f.digests.results, acked: f.digests.acked, acks: f.digests.acks, inbox: f.digests.inbox })); };
     const f = w.flagOff = {
-      calls: [] as string[], unexpected: [] as string[], posts: [] as string[], replies: [] as string[], streams: 0,
+      calls: [] as string[], unexpected: [] as string[], installationId: '', posts: [] as string[], replies: [] as string[], streams: 0,
       mail: { accounts: structuredClone(options.accounts ?? null) as any[] | null, accountReads: 0, searches: 0, reads: [] as string[], prepares: [] as any[], dispatches: [] as any[], operations: {} as Record<string, any>, sent: [] as string[] },
       // Results the resident agent has produced, in cursor order. `acked` is the agent's cursor for
       // the renderer route; `inbox` is what the Android result inbox has committed for the native one.
-      digests: { ...produced, pages: 0, syncs: 0, histories: 0, configured: [] as any[], runs: 0, refused: [] as string[] },
+      digests: { ...produced, pages: 0, syncs: 0, histories: 0, configured: [] as any[], runs: 0, refused: [] as string[],
+        // The agent's hosted store (with `schedules`): sources, loops, typed-mutation receipts by
+        // mutationId, every POST it received (path and exact body) and the responses it lost.
+        sources: [] as any[], loops: [] as any[], receipts: {} as Record<string, { request: string; receipt: any }>, posts: [] as { path: string; body: any }[], dropped: [] as string[], dossiers: [] as any[],
+        // AlphaHostedResults phone-source consent: grants by source id, and renewal notices armed or cleared.
+        consents: [] as any[], grants: {} as Record<string, any>, renewals: [] as string[], pendingRenewal: null as string | null },
       calendar: { ...structuredClone(options.calendar ?? { access: 'not-granted', calendars: [], events: [] }), lists: 0, requests: 0 } as any,
+      // Picker requests, reads of the selected bytes, retained references and linked-source opens.
+      documents: { picks: [] as any[], reads: [] as string[], references, opened: [] as any[], forgotten: [] as string[] },
       emit: (plugin: string, event: string, value: unknown = {}) => { listeners.filter(l => l.plugin === plugin && l.event === event).forEach(l => l.callback(value)); },
       slots, persist: () => persist(),
     };
@@ -53,13 +83,16 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
     const emitStream = (streamId: string, event: unknown) => f.emit('Agent', 'alphaAgentStream', { streamId, event });
     const data = (streamId: string, value: unknown) => emitStream(streamId, { type: 'chunk', dataBase64: btoa('data: ' + JSON.stringify(value) + '\n\n') });
     const ok = (value: unknown) => ({ status: 200, data: value });
-    const request = (method: string, path: string, body: any, headers: Record<string, string>): { status: number; data: unknown } => {
+    const request = async (method: string, path: string, body: any, headers: Record<string, string>): Promise<{ status: number; data: unknown }> => {
       if (path === '/api/auth/me') return ok({ identity: { id, kind: 'owner' }, access: { role: 'OWNER', mode: 'local' } });
       if (path === '/api/agents') return ok({ agents: [{ id: agentId, name: agentName, status: 'running' }] });
+      if (path === '/api/client-devices/register') { f.installationId = headers['X-Eliza-Device-Id']; }
       if (path === '/api/client-devices/register') return ok({ installationId: headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: [] });
       if (path === '/api/client-devices/proposals') return ok({ proposals: [] });
       // The agent advertises scheduled digests only; the workflow engine itself is not offered here.
-      if (path === '/api/workflow/status') return ok(options.digests ? { status: 'unavailable', hostedDigestProtocol: 1 } : { status: 'unavailable' });
+      if (path === '/api/workflow/status') return ok(!options.digests ? { status: 'unavailable' } : !options.schedules ? { status: 'unavailable', hostedDigestProtocol: 1 }
+        : { status: 'unavailable', hostedDigestProtocol: 1, hostedDigestSourcePauseProtocol: 1, ...(options.schedules.native ? { hostedNativeSourceProtocol: 1, ...(options.schedules.native.evening ? { hostedNativeEveningProtocol: 1 } : {}) } : {}), ...(options.schedules.dossier ? { hostedDossierProtocol: 1 } : {}) });
+      if (options.digests && options.schedules && path.startsWith('/api/workflow/hosted/') && path !== '/api/workflow/hosted/cloud-delegation/revocations' && !path.startsWith('/api/workflow/hosted/results')) return hosted(method, path.slice('/api/workflow/hosted/'.length), body);
       if (options.digests) {
         if (path === '/api/workflow/hosted/sources') return ok({ sources: [] });
         if (path === '/api/workflow/hosted/loops') return ok({ loops: [] });
@@ -77,6 +110,82 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
       const history = /^\/api\/conversations\/([^/]+)\/messages$/.exec(path.split('?')[0]);
       if (history && method === 'GET') return ok({ messages: (agent.history[history[1]] || []).slice(-200) });
       f.unexpected.push(method + ' ' + path); return { status: 404, data: {} };
+    };
+    // The phone enrollment the resident agent registered (the binding a phone-source consent names).
+    const enrollment = () => ({ ownerId: id, agentId, installationId: f.installationId, enrollmentId: 'fixture-enrollment' });
+    // Hosted digests as the pinned agent's plugin-workflow keeps them (embedded-workflow-service.ts
+    // at upstream.lock.json's commit): same request keys, refusals, receipts and replay rules. It
+    // never runs a schedule or a model; results stay whatever `f.digests.results` holds.
+    const hosted = async (method: string, route: string, body: any): Promise<{ status: number; data: unknown }> => {
+      const d = f.digests, refuse = (status: number, error: string, extra: Record<string, unknown> = {}) => ({ status, data: { error, ...extra } });
+      const keys = (allowed: string[]) => Object.keys(body ?? {}).every(key => allowed.includes(key));
+      const listed = (source: any) => { const { text: _private, ...metadata } = source; return metadata; };
+      const state = (source: any) => !source || source.revoked ? 'revoked' : Date.parse(source.expiresAt) <= Date.now() ? 'expired' : 'current';
+      const lost = (response: { status: number; data: unknown }) => {
+        if (options.schedules!.dropFirstAck !== route || d.dropped.includes(route)) return response;
+        d.dropped.push(route); return { status: 0, data: response.data };
+      };
+      if (method === 'GET' && route === 'sources') return ok({ sources: d.sources.map(listed) });
+      if (method === 'GET' && route === 'loops') return ok({ loops: d.loops.map(loop => ({ ...loop, sourceState: state(d.sources.find(s => s.id === loop.spec.sourceId)) })) });
+      if (method !== 'POST') return refuse(404, 'Hosted digest route not found');
+      d.posts.push({ path: route, body: structuredClone(body) });
+      if (route === 'sources') {
+        if (!keys(['id', 'kind', 'label', 'text', 'observedAt', 'expiresAt', 'confirmed', 'live']) || body.confirmed !== true || !['tasks', 'calendar', 'email', 'notes'].includes(body.kind)) return refuse(400, 'Review and confirm the exact snapshot');
+        const live = body.live;
+        if (live && (live.provider !== 'native' || !options.schedules!.native || body.kind !== 'tasks' || body.text !== undefined)) return refuse(400, 'Live source must match selected kind and cannot include snapshot text');
+        const fields = { id: body.id, kind: body.kind, label: body.label, text: live ? 'Fresh selected-account read is resolved only at the scheduled occurrence.' : body.text, ...(live ? { live } : {}), observedAt: body.observedAt, expiresAt: body.expiresAt };
+        const source = { ...fields, revision: await sha(JSON.stringify(fields)), revoked: false };
+        const prior = d.sources.find(s => s.id === body.id);
+        // The pinned agent answers a save with the whole stored source (text included); only GET lists strip it.
+        if (prior) return prior.revision === source.revision ? lost(ok({ source: structuredClone(prior) })) : refuse(409, 'Snapshot identity conflict');
+        if (live) { const grant = d.grants[live.sourceId]; if (!grant || grant.revoked || grant.revision !== live.revision || Object.entries(enrollment()).some(([key, value]) => live[key] !== value)) return refuse(409, 'Selected source permission changed before saving', { code: 'HOSTED_SOURCE_NOT_SAVED', mutationId: body.id }); }
+        const observed = Date.parse(body.observedAt), expires = Date.parse(body.expiresAt), now = Date.now();
+        if (!Number.isFinite(observed) || !Number.isFinite(expires) || observed > now + 60000 || observed < now - 7 * 86400000 || expires <= now || expires > observed + 7 * 86400000) return refuse(400, 'Source must have a valid explicit freshness window of at most seven days', { code: 'HOSTED_SOURCE_NOT_SAVED', mutationId: body.id });
+        d.sources.push(source);
+        return lost(ok({ source: structuredClone(source) }));
+      }
+      if (route === 'sources/revoke') {
+        if (!keys(['id', 'confirmed']) || body.confirmed !== true) return refuse(400, 'Confirm source revocation');
+        const source = d.sources.find(s => s.id === body.id);
+        if (!source) return refuse(404, 'Digest source not found');
+        source.revoked = true;
+        return lost(ok({ id: source.id, revoked: true }));
+      }
+      if (route === 'dossier' && options.schedules!.dossier) {
+        if (!keys(['sourceId', 'sourceRevision', 'mutationId', 'confirmed']) || body.confirmed !== true) return refuse(400, 'Confirm this on-demand model execution');
+        const source = d.sources.find(s => s.id === body.sourceId);
+        if (!source || source.revision !== body.sourceRevision || source.live?.provider !== 'native' || state(source) !== 'current') return refuse(409, 'Dossier source binding changed');
+        d.dossiers.push(structuredClone(body));
+        return ok({ execution: { id: 'dossier-' + body.mutationId, status: 'running' } });
+      }
+      if (route === 'loops') {
+        if (!keys(['spec', 'id', 'expectedVersionId', 'mutationId', 'confirmed']) || body.confirmed !== true) return refuse(400, 'Review and confirm recurring model execution');
+        const spec = body.spec;
+        if (!spec || spec.version !== 1 || !['morning', 'evening'].includes(spec.template) || typeof spec.enabled !== 'boolean' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(spec.localTime) || Object.keys(spec).some(key => !['version', 'template', 'sourceId', 'sourceRevision', 'timeZone', 'localTime', 'enabled'].includes(key))) return refuse(400, 'Invalid digest specification');
+        const source = d.sources.find(s => s.id === spec.sourceId);
+        if (!source) return refuse(404, 'Digest source not found');
+        if (source.revision !== spec.sourceRevision) return refuse(409, 'Reviewed snapshot revision changed');
+        if (source.live?.provider === 'native' && spec.enabled) {
+          if (state(source) !== 'current') return refuse(409, 'Native source grant expired or revoked');
+          if (d.grants[source.live.sourceId]?.scope.timeZone !== spec.timeZone) return refuse(409, 'Review a native source grant for this schedule time zone');
+          if (spec.template === 'evening' && !options.schedules!.native!.evening) return refuse(400, 'Invalid digest specification');
+        }
+        // A replayed mutationId returns its first receipt; a different request under it is refused.
+        const operation = body.id ? 'edit' : 'create', identity = JSON.stringify({ operation, id: body.id ?? null, expectedVersionId: body.expectedVersionId ?? null, spec });
+        const prior = d.receipts[body.mutationId];
+        if (prior) return prior.request === identity ? lost(ok({ receipt: prior.receipt })) : refuse(409, 'Typed mutation identity conflict');
+        const current = body.id ? d.loops.find(loop => loop.id === body.id) : undefined;
+        if (body.id && !current) return refuse(404, 'Workflow not found');
+        if (current && current.versionId !== body.expectedVersionId) return refuse(409, 'Typed workflow changed before editing', { code: 'WORKFLOW_TYPED_NOT_APPLIED', workflowId: body.id, mutationId: body.mutationId, expectedVersionId: body.expectedVersionId });
+        if (spec.enabled && state(source) !== 'current') return refuse(409, 'Reviewed snapshot unavailable');
+        const workflowId = body.id ?? crypto.randomUUID(), versionId = crypto.randomUUID();
+        const receipt = { mutationId: body.mutationId, workflowId, operation, previousVersionId: body.expectedVersionId ?? null, versionId, specDigest: await sha(JSON.stringify(spec)), compilerRevision: 'fixture-compiler', appliedAt: new Date().toISOString() };
+        d.receipts[body.mutationId] = { request: identity, receipt };
+        const loop = { id: workflowId, versionId, name: (spec.template === 'morning' ? 'Morning' : 'Evening') + ' digest', spec: structuredClone(spec), active: spec.enabled, removed: false };
+        d.loops = current ? d.loops.map(row => row.id === workflowId ? loop : row) : [...d.loops, loop];
+        return lost(ok({ receipt }));
+      }
+      return refuse(404, 'Hosted digest route not found');
     };
     // Synthetic managed Gmail behind Eliza Cloud, in the server's own response shapes. The product's
     // CloudProtocol validates every one of these replies.
@@ -126,14 +235,16 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
       PluginHeaders: [
         { name: 'AlphaDeletions', methods: promise(['pending']) },
         { name: 'DeviceApps', methods: promise(['buildInfo']) },
-        { name: 'DailyApps', methods: withListeners(['surfaceInfo', 'listReminders', 'pendingReminderTap']) },
-        { name: 'Agent', methods: withListeners(['getStatus', 'start', 'stop', 'configureCloudProvider', 'request', 'providerStatus', 'requestStream', 'cancelStream']) },
+        { name: 'DailyApps', methods: withListeners(['surfaceInfo', 'listReminders', 'pendingReminderTap', ...(options.document ? ['perform', 'readSelected', 'forgetSelected', 'describeSelected'] : [])]) },
+        ...(options.document ? [{ name: 'AlphaMailAttachments', methods: promise(['readSelected', 'retainSourceReference', 'openSourceReference', 'cancel']) }] : []),
+        { name: 'Agent', methods: withListeners(['getStatus', 'start', 'stop', 'configureCloudProvider', 'clearProvider', 'request', 'providerStatus', 'requestStream', 'cancelStream']) },
         { name: 'AlphaConnection', methods: promise(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
         { name: 'AlphaActionJournal', methods: promise(['list', 'get']) },
         { name: 'AlphaNotifications', methods: promise(['status', 'crossAppStatus']) },
         { name: 'AlphaVoiceCloud', methods: promise(['checkPermissions']) },
-        ...(options.digests ? [{ name: 'AlphaHostedResults', methods: withListeners(['beginBackground', 'cancelBackground', 'configureBackground', 'disableBackground', 'syncInbox', 'inboxHistory', 'status', 'pendingResult', 'consumeResult', 'pendingSourceRenewal']) }] : []),
-        ...(options.calendar ? [{ name: 'AlphaCalendar', methods: withListeners(['list', 'requestAccess', 'pendingCreations', 'listAlerts']) }] : []),
+        ...(options.digests ? [{ name: 'AlphaHostedResults', methods: withListeners(['beginBackground', 'cancelBackground', 'configureBackground', 'disableBackground', 'syncInbox', 'inboxHistory', 'status', 'pendingResult', 'consumeResult', 'pendingSourceRenewal', 'settleSourceRenewal',
+          ...(options.schedules?.native ? ['nativeSourceIdentity', 'nativeSourceConsent', 'scheduleSourceRenewal', 'clearSourceRenewal'] : [])]) }] : []),
+        ...(options.calendar || options.schedules?.native ? [{ name: 'AlphaCalendar', methods: withListeners(['list', 'requestAccess', 'pendingCreations', 'listAlerts', ...(options.schedules?.native ? ['requestWorkflowReadAccess', 'workflowCalendars'] : [])]) }] : []),
       ],
       nativeCallback: (plugin: string, method: string, input: any, callback: (value: unknown) => void) => { if (method === 'addListener') listeners.push({ plugin, event: input?.eventName, callback }); return String(listeners.length); },
       nativePromise: async (plugin: string, method: string, input: any) => {
@@ -144,6 +255,19 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
         // No reminders are saved on this phone.
         if (plugin === 'DailyApps' && method === 'listReminders') return { reminders: [] };
         if (plugin === 'DailyApps' && method === 'pendingReminderTap') return {};
+        if (options.document && (plugin === 'DailyApps' || plugin === 'AlphaMailAttachments')) {
+          const doc = options.document, d = f.documents, bytes = new TextEncoder().encode(doc.text);
+          const selected = { status: 'selected', action: 'files', selectionId: 'selection-' + (d.picks.length || 1), name: doc.name, mimeType: doc.mimeType, uri: 'content://fixture.documents/' + encodeURIComponent(doc.name) };
+          if (plugin === 'DailyApps' && method === 'perform') { d.picks.push(structuredClone(input)); return input.action === 'files' ? selected : { status: 'cancelled' }; }
+          if (plugin === 'DailyApps' && method === 'describeSelected') return selected;
+          if (plugin === 'DailyApps' && method === 'readSelected') { d.reads.push('text:' + input.selectionId); return { status: 'read', text: doc.text, mimeType: doc.mimeType, bytes: bytes.length }; }
+          if (plugin === 'DailyApps' && method === 'forgetSelected') { d.forgotten.push(input.selectionId); return {}; }
+          if (plugin === 'AlphaMailAttachments' && method === 'readSelected') { d.reads.push('bytes:' + input.selectionId); let binary = ''; bytes.forEach(b => { binary += String.fromCharCode(b); }); return { name: doc.name, mimeType: doc.mimeType, dataBase64: btoa(binary), sha256: await sha(doc.text), size: bytes.length, sourceReferenceVersion: 1 }; }
+          if (plugin === 'AlphaMailAttachments' && method === 'retainSourceReference') { const reference = 'b1:' + crypto.randomUUID(); references[reference] = input.sha256; persist(); return { reference }; }
+          // Android reopens a reference only while the provider still holds the same bytes.
+          if (plugin === 'AlphaMailAttachments' && method === 'openSourceReference') { d.opened.push(structuredClone(input)); if (references[input.reference] !== input.sha256 || input.sha256 !== await sha(doc.text)) throw Error('Source changed'); return { message: 'Opened ' + doc.name + '.' }; }
+          if (plugin === 'AlphaMailAttachments' && method === 'cancel') return {};
+        }
         if (plugin === 'AlphaNotifications') return { permissionGranted: true, appEnabled: true };
         if (plugin === 'AlphaVoiceCloud') return { microphone: 'granted' };
         if (plugin === 'AlphaActionJournal') return method === 'list' ? { entries: [] } : { entry: null };
@@ -159,6 +283,8 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
           }
           if (method === 'pendingCreations') return { status: 'ready', creations: [] };
           if (method === 'listAlerts') return { items: [] };
+          if (method === 'requestWorkflowReadAccess') return { status: 'granted' };
+          if (method === 'workflowCalendars') return { status: 'ready', calendars: options.schedules!.native!.calendars.map(row => ({ ...row, sourceRevision: 'cal-rev-' + row.id })) };
         }
         if (plugin === 'AlphaHostedResults') {
           const d = f.digests;
@@ -168,12 +294,38 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
           if (method === 'syncInbox') { d.syncs++; for (const row of d.results) if (!d.inbox.some(saved => saved.runId === row.runId)) d.inbox.push(structuredClone(row)); persist(); return { entries: structuredClone(d.inbox) }; }
           if (method === 'inboxHistory') { d.histories++; return { entries: structuredClone(d.inbox) }; }
           if (method === 'status') return { enabled: false, backgroundEnabled: false };
-          if (method === 'pendingResult' || method === 'pendingSourceRenewal') return {};
+          // A Renew tap (#485): the native record's token, the exact selection and expiry it was armed
+          // for. It stays pending until the renderer settles it.
+          if (method === 'pendingSourceRenewal') { const source = d.sources.find((row: any) => row.id === d.pendingRenewal); return source?.live ? { token: 'renewal-' + source.id, question: false, selection: source.live, expiresAt: Date.parse(source.expiresAt) } : {}; }
+          if (method === 'settleSourceRenewal') { if (input.token !== 'renewal-' + d.pendingRenewal) throw Error('Renewal tap changed'); d.pendingRenewal = null; return {}; }
+          if (method === 'pendingResult') return {};
+          // The phone enrollment the consent is bound to, and the consent Android records for one source.
+          if (method === 'nativeSourceIdentity') return { provider: 'native', ...enrollment() };
+          if (method === 'nativeSourceConsent') {
+            d.consents.push(structuredClone(input));
+            if (input.confirmed !== true) throw Error('Consent not confirmed');
+            if (input.revoke) { if (d.grants[input.sourceId]) d.grants[input.sourceId].revoked = true; return { sourceId: input.sourceId, revoked: true }; }
+            // A consent is recorded only for the enrollment the user reviewed.
+            if (JSON.stringify(input.expectedBinding) !== JSON.stringify({ provider: 'native', ...enrollment() })) throw Error('Enrollment changed');
+            const grant = { provider: 'native', ...enrollment(), sourceId: input.sourceId, revision: await sha(JSON.stringify([input.sourceId, input.scope, input.expiresAt])) };
+            d.grants[input.sourceId] = { ...grant, scope: structuredClone(input.scope), expiresAt: input.expiresAt, revoked: false };
+            return grant;
+          }
+          if (method === 'scheduleSourceRenewal') { d.renewals.push('arm:' + (input.selection?.sourceId ?? input.sourceId)); return {}; }
+          if (method === 'clearSourceRenewal') { d.renewals.push('clear:' + (input.selection?.sourceId ?? input.sourceId)); return {}; }
         }
         if (plugin === 'Agent') {
           if (method === 'getStatus') return { packaged: true, state: 'stopped', serviceActive: false, socketListening: false };
-          if (method === 'providerStatus') return { provider: 'elizacloud', configured: true, model: 'cerebras/qwen-3.8-27b' };
-          if (method === 'request') { const result = request(input.method || 'GET', input.path, input.body ? JSON.parse(input.body) : {}, input.headers || {}); return { status: result.status, body: JSON.stringify(result.data) }; }
+          // The native provider slot (never renderer-readable): bound by configureCloudProvider, removed by clearProvider.
+          if (method === 'providerStatus') return slots['native:local-agent-provider'] ? { provider: 'elizacloud', configured: true, model: 'cerebras/qwen-3.8-27b' } : { provider: 'elizacloud', configured: false };
+          if (method === 'configureCloudProvider') { slots['native:local-agent-provider'] = String(input.credentialId); persist(); return {}; }
+          if (method === 'clearProvider') { delete slots['native:local-agent-provider']; persist(); return { configured: false }; }
+          if (method === 'request') {
+            const result = await request(input.method || 'GET', input.path, input.body ? JSON.parse(input.body) : {}, input.headers || {});
+            // A lost acknowledgement: the agent applied the request, but its response never arrives.
+            if (result.status === 0) throw Error('Agent response lost');
+            return { status: result.status, body: JSON.stringify(result.data) };
+          }
           if (method === 'requestStream') {
             // The resident agent records the user turn, then streams its reply over native IPC.
             const conversation = /^\/api\/conversations\/([^/]+)\/messages\/stream$/.exec(input.path)![1], body = JSON.parse(input.body), streamId = input.streamId as string;
@@ -230,4 +382,15 @@ export async function residentHome(page: Page) {
   await expect.poll(() => harness(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   await expect(button(page, 'Notes')).toBeVisible();
+}
+/** Decision P-43: Settings › Agent connection opens the "Your agent" dialog (status and AI inference). */
+export async function openYourAgent(page: Page) {
+  // Signed out, the Eliza Cloud sign-in dialog is already open and cannot be dismissed (P-43).
+  const open = page.getByRole('dialog', { name: 'Your agent' });
+  if (await open.isVisible()) return open;
+  await button(page, 'Settings').click();
+  await page.getByRole('button', { name: /Agent connection/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Your agent' });
+  await expect(dialog).toBeVisible();
+  return dialog;
 }

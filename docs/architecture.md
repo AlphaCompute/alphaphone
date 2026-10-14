@@ -124,43 +124,77 @@ production authentication.
 
 ### Eliza Cloud sign-in ownership (in-app, 2026-10-14)
 
-Sign-in happens on Alpha's own screens; no Eliza Cloud web page is part of it.
+Sign-in happens on Alpha's own screens once Cloud is ready for it; no Eliza Cloud web page is part
+of a successful in-app sign-in. Until the readiness probe passes, the Cloud sign-in hand-off stays
+the product path, so shipping Alpha before Cloud is configured never leaves a phone unable to sign in.
 
-- **Native (`AlphaCloudSignInPlugin`, `CloudSignInFlow`)** owns every secret and every
-  sign-in request, using fixed URLs on the Cloud API origin (`ConnectionRoutes.signInRoute`;
-  the renderer transport admits none of them):
-  - Email: `POST /steward/auth/email/send`, then the six-digit code typed into Alpha goes to
-    `POST /steward/auth/email/code/verify`. A second verification uses `/steward/auth/mfa/{totp,sms}/complete`.
-  - Google: Alpha creates a PKCE verifier and state, keeps them in memory and in an
-    encrypted, single-use, ten-minute pending record (`cloud-signin:v1:pending`, a native-only
-    slot), and opens `{api}/steward/auth/oauth/google/authorize` in a Custom Tab. It never uses a
-    WebView. Steward returns to the verified App Link `https://eliza.app/alphaphone/auth/callback`,
-    with code and state in the fragment. The link is matched exactly, the pending record is burned
-    before any request, and the code goes to `POST /steward/auth/oauth/exchange` with the verifier.
+- **Readiness (`CloudSignInReadiness`, `AlphaCloudSignInPlugin.status`)**: in-app sign-in is offered
+  only when all of these hold, checked with a few short requests and cached (6 hours when ready,
+  10 minutes when not; any error, timeout or unexpected answer is "not ready"):
+  - `GET /api/v1/app-auth/mobile/config` confirms the registration for client
+    `ai.elizaresearch.alphaphone`, this environment and the return URL;
+  - Steward's Google authorize route redirects to Google for the return URL (the tenant redirect
+    allowlist admits it; nothing is followed);
+  - `/.well-known/assetlinks.json` on the return host grants `handle_all_urls` to this package and
+    the certificate this APK is signed with;
+  - `GET /steward/auth/providers` offers email without a captcha for `email_otp`, and the email code
+    route exists (an empty-object POST is refused as invalid, not as unknown; no email is sent).
+  Google is offered on top only when Steward offers it and Android reports the return host verified
+  for this package. A refusal from Cloud during an in-app sign-in clears the cache so the next
+  attempt re-checks. The renderer waits at most 6 seconds for the answer, then uses the hand-off.
+- **Native (`AlphaCloudSignInPlugin`, `CloudSignInFlow`, `CloudEmailCode`)** holds the Steward
+  session, codes and PKCE verifiers and makes every sign-in request, using fixed URLs on the Cloud API
+  origin (`ConnectionRoutes.signInRoute`; the renderer transport admits none of them):
+  - Email: the six-digit code endpoints of elizaOS/eliza #36260, kept in one adapter
+    (`CloudEmailCode`, `config/cloud-email-code.json`): `POST /steward/auth/email/code/send`, then
+    the code typed into Alpha goes to `POST /steward/auth/email/code/verify` with a PKCE verifier.
+    No magic link is requested. Five wrong codes end an attempt; one code send a minute per phone.
+    A second verification uses `/steward/auth/mfa/{totp,sms}/complete`.
+  - Google: Alpha creates a PKCE verifier and state, keeps them in memory and in an encrypted,
+    single-use, ten-minute pending record (`cloud-signin:v1:pending`, a native-only slot), and opens
+    `{api}/steward/auth/oauth/google/authorize?...&prompt=select_account` in a Custom Tab (never a
+    WebView). Steward returns to the verified App Link `https://eliza.app/alphaphone/auth/callback`.
+  - Returns follow the shared callback contract
+    (`test/fixtures/alphaphone-auth-callback-contract.json`, the same file in elizaOS/eliza):
+    success is exactly `{code,state}` in the fragment; an error is exactly `{error,state}` (error
+    from a fixed allowlist) in the query or fragment; anything else on the callback, including the
+    parameterless hand-off from Cloud's fallback page, carries no result. The state is compared in
+    constant time before anything is burned: a mismatching return is ignored and cannot cancel a
+    sign-in; the matching return burns the record before the code goes to
+    `POST /steward/auth/oauth/exchange`. A return without a result, or coming back from the browser
+    without a return, ends the waiting step with a retry message but keeps the record until it
+    expires or the owner starts again (or cancels), so a late return still completes.
   - Both paths then run the shared tail. The Steward session goes to
-    `POST /api/v1/app-auth/connect` (`mobile_pkce`, client `ai.elizaresearch.alphaphone`, a
-    second independent state and PKCE pair), then `POST /mobile/token`. Native writes an ack
-    receipt and then the `eliza_mobile_` key to `cloud:<environment>` (AlphaCredentialStore,
-    Keystore AES-GCM, credential-intent rule) and acknowledges with `POST /mobile/ack`. The ack is
-    retried at most three times and resumed on the next start. Finally native revokes the Steward
-    session with `POST /steward/auth/logout`; the Steward refresh token is never stored.
-- **Renderer (`cloud-sign-in.ts`, `cloud-sign-in-ui.tsx`, `CloudProtocol.signInWith*`)** shows
-  the screens. It receives only `{status, environment, expiresAt, accountCreated}`. One sign-in
-  runs at a time (`login-active`). It then runs the unchanged identity, entitlement, redeem and
-  resident-binding path on the stored key, and says so when `accountCreated` is true.
-- **Cloud (elizaOS/eliza `packages/cloud`, `packages/auth`)** owns the accounts:
+    `POST /api/v1/app-auth/connect` (`mobile_pkce`, a second independent state and PKCE pair), then
+    `POST /mobile/token`. Native writes an ack receipt and then the `eliza_mobile_` key to
+    `cloud:<environment>` (AlphaCredentialStore, Keystore AES-GCM, credential-intent rule) and
+    acknowledges with `POST /mobile/ack`, retried at most three times and resumed on the next start.
+    A key it replaced is then revoked once, best effort (`CloudKeyRevocation`). Finally native
+    revokes the Steward session with `POST /steward/auth/logout`; the refresh token is never stored.
+  - The `cloud:<environment>` slot is renderer-readable, like the hand-off's key: the renderer
+    reads the key to send it as its Bearer. So this client stays on Cloud's default 30-day key
+    lifetime. Plugin results carry no secret.
+- **Renderer (`cloud-sign-in.ts`, `cloud-sign-in-ui.tsx`, `CloudProtocol.signInWith*`,
+  `connection-ui.tsx` `beginSignIn`)** shows the screens. Plugin results are only
+  `{status, environment, expiresAt, accountCreated, previousSignIn?}`. One sign-in runs at a time
+  (`login-active`). It then runs the unchanged identity, entitlement, redeem and resident-binding
+  path on the stored key, and says so when `accountCreated` is true.
+- **Cloud sign-in hand-off (`CloudProtocol.login`, `/api/auth/cli-session`, the `cli-login` page)**:
+  the product path until the readiness probe passes, and a **Browser sign-in (diagnostic)** button
+  on the in-app screen in test-mocks builds afterwards.
+- **Cloud (elizaOS/eliza `packages/cloud`, `packages/auth`, `packages/app`)** owns the accounts:
   - Steward links Google and email to the existing user by verified email.
   - Mobile App Auth mints the key, valid for 30 days.
-  - For this to work, Cloud must register `ai.elizaresearch.alphaphone` in
-    `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON`, allowlist the return URL for tenant `elizacloud`, and
-    serve `/.well-known/assetlinks.json` on `eliza.app` (`android/app/src/main/assetlinks.template.json`).
-    `staging.eliza.app` serves the same with the debug certificate added.
-- **Test-mocks only:**
-  - The staging return host (`src/testMocks/AndroidManifest.xml`).
-  - The development Cloud bridge's email sign-in.
-  - For one release, the retired browser hand-off (`legacy-cli-login.ts`: `/api/auth/cli-session`
-    and the `cli-login` page) as a diagnostic fallback. `scripts/audit-production-bundle.mjs`
-    refuses its markers in a production bundle.
+  - For in-app sign-in, Cloud must register `ai.elizaresearch.alphaphone` in
+    `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON`, allowlist the return URL for tenant `elizacloud`, serve
+    `/.well-known/assetlinks.json` on `eliza.app` with the release certificate
+    (`scripts/render-assetlinks.mjs`), and deploy the email code routes. The APK must be built with
+    `ELIZAOS_APP_LINK_HOST=eliza.app` so it declares the return App Link. `staging.eliza.app`
+    serves the same with the debug certificate added.
+  - The callback fallback page (`/alphaphone/auth/callback` when Android did not hand the link to
+    Alpha) forwards no code: it only brings Alpha forward without parameters.
+- **Test-mocks only:** the staging return host (`src/testMocks/AndroidManifest.xml`), the
+  development Cloud bridge's email sign-in, and the diagnostic button.
 
 Third-party web content runs in an isolated native browser surface; it must not
 receive the application's Capacitor bridge. Origin, context revision, consent,
@@ -195,6 +229,17 @@ phone-state permission. Gmail is available in both distributions through Eliza C
 read access first and one incremental change grant (`apps/app/src/runtime/gmail-grants.ts`).
 
 Native reminders use the shared `plugin-native-reminders` engine and bridge.
+The Clock hand-off contract is Alpha's: `apps/app/src/runtime/clock-contract.ts` owns the
+operation and result shapes and the validation of an agent's request, and
+`ClockHandoff.java` builds the Android Clock intents from it. Upstream offers
+`clock.handoff.v1`, `clock.handoff.v2` (repeat days) and `clock.alarms.v1` (alarms owned by
+the host app) in `packages/agent/src/api/device-action-routes.ts` at the pin. Alpha
+advertises `clock.handoff.v1`, adds `clock.handoff.v2` only on Android when the agent offers
+it and the native surface reports `clockRepeatDaysVersion` of at least 1, and never
+advertises `clock.alarms.v1`, because Alpha does not own alarms (A-11). Alpha's one
+restriction on top of upstream's shape, that a repeat-days list is never empty, is stated
+in `clock-contract.ts`.
+
 `AlphaReminders` supplies the product's existing encrypted store, preference and
 channel names, receiver/Activity identities and intent routes. `DailyApps` keeps
 its public Capacitor name and inherits the reminder methods. Reminder test access

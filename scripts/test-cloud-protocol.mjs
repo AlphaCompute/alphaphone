@@ -11,15 +11,16 @@ const { CloudProtocol } = await import('../apps/app/src/runtime/cloud-protocol.t
 // Hosted agents are development infrastructure (#406): the product adapter has no agent route.
 const { DevelopmentCloudAgentProtocol } = await import('../apps/app/src/runtime/development-cloud-agents.ts');
 // The browser hand-off survives only as a test-mocks diagnostic fallback for one release.
-const { LegacyCliLoginProtocol } = await import('../apps/app/src/runtime/legacy-cli-login.ts');
 const { CloudSignInError } = await import('../apps/app/src/runtime/cloud-sign-in.ts');
-assert.equal('login' in CloudProtocol.prototype, false, 'production CloudProtocol has no browser hand-off login');
+assert.equal(typeof CloudProtocol.prototype.login, 'function', 'the Cloud sign-in hand-off stays on the shipped class until the in-app readiness probe passes');
 for (const method of ['listAgents', 'agentDetail', 'personal', 'phoneRequest', 'setPhoneTarget', 'listConversations', 'messages', 'createConversation', 'send'])
   assert.equal(method in CloudProtocol.prototype, false, `production CloudProtocol has no ${method}`);
 const id = '72475cd0-e135-4c42-a9e2-fb5fe0820ada';
 const sessionId = 'd32f7f34-962b-47b7-8f0d-f2fe7f12610a';
 const token = 'synthetic-cloud-session';
 let mode = 'ok', agentReads = 0, polls = 0, saved = null;
+// Order of the replaced key's revocation and the new key's storage.
+const replacement = [];
 const runtimeTargets = [];
 const mail = { externalId: 'mail/id', threadId: 'thread', subject: 'Synthetic subject', from: 'Fixture sender', fromEmail: 'sender@example.invalid', to: ['owner@example.invalid'], snippet: 'Synthetic preview', receivedAt: '2026-09-29T12:00:00Z', isUnread: true };
 const grant = 'grant/one';
@@ -43,6 +44,10 @@ const server = http.createServer(async (req, res) => {
       if (mode === 'pending' || mode === 'expiry') { data = { status: 'pending' }; pendingObserved?.(); }
       else if (mode === 'consumed') data = { status: 'authenticated', message: 'API key already retrieved' };
       else data = { status: 'authenticated', token, apiKey: 'synthetic-legacy-key', expiresAt: new Date(Date.now() + 60000).toISOString() };
+    } else if (req.url === '/api/v1/api-keys/current') {
+      assert.equal(req.method, 'DELETE'); replacement.push('delete ' + req.headers.authorization);
+      if (mode === 'revoke-fails') status = 500;
+      data = mode === 'revoke-fails' ? {} : { success: true, status: 'revoked', credentialId: 'previous-credential', revokedAt: '2026-10-11T00:00:00Z' };
     } else {
       assert.equal(req.headers.authorization, `Bearer ${token}`);
       if (req.url === '/api/v1/eliza/agents') agentReads++;
@@ -59,9 +64,10 @@ const server = http.createServer(async (req, res) => {
       else if (req.url === '/api/v1/eliza/agents') { assert.equal(req.method, 'GET'); data = { success: true, data: [agent()] }; }
       else if (req.url === `/api/v1/eliza/agents/${id}`) { assert.equal(req.method, 'GET'); data = { success: true, data: agent() }; }
       else if (req.url === '/api/v1/eliza/google/connect/initiate') {
+        // Authorizing on an account that already holds send asks for what it holds too: Cloud grants exactly what is named.
         assert.deepEqual(body, { side: 'owner', capabilities: mode === 'gmail-modify'
           ? ['google.basic_identity', 'google.gmail.triage', 'google.gmail.send', 'google.gmail.drafts', 'google.gmail.mailbox']
-          : ['google.basic_identity', 'google.gmail.triage'] });
+          : mode === 'cumulative' ? ['google.basic_identity', 'google.gmail.triage', 'google.gmail.send', 'google.gmail.drafts'] : ['google.basic_identity', 'google.gmail.triage'] });
         data = { authUrl: mode === 'foreign-oauth' ? 'https://attacker.invalid/' : 'https://accounts.google.com/o/oauth2/v2/auth?state=synthetic' };
       } else if (req.url === '/api/v1/eliza/google/accounts?side=owner') data = [{ configured: true, connected: true, reason: 'connected', connectionId: grant, grantedCapabilities: ['google.gmail.triage'], identity: { email: 'owner@example.invalid' } }];
       else if (req.url.startsWith('/api/v1/eliza/google/gmail/')) {
@@ -69,7 +75,7 @@ const server = http.createServer(async (req, res) => {
         if (url.pathname.endsWith('/search')) {
           assert.ok(['in:inbox', 'in:sent'].includes(url.searchParams.get('query'))); assert.ok(['25', '50'].includes(url.searchParams.get('maxResults')));
           const pageToken = url.searchParams.get('pageToken');
-          data = { messages: [mail], syncedAt: '2026-09-29T12:00:00Z', ...(mode === 'paged' ? { nextPageToken: pageToken ? null : 'opaque+/token=' } : mode === 'repeat-token' ? { nextPageToken: pageToken } : {}) };
+          data = { messages: [mail], syncedAt: '2026-09-29T12:00:00Z', ...(mode === 'paged' ? { nextPageToken: pageToken ? null : 'opaque+/token=' } : mode === 'repeat-token' ? { nextPageToken: pageToken } : {}), ...(mode === 'revision' ? { mailboxHistoryId: '18446744073709551615' } : mode === 'bad-revision' ? { mailboxHistoryId: 12345 } : {}) };
         }
         else if (url.pathname.endsWith('/inbox-v1/capabilities')) data = { version: 1, from: 'owner@example.invalid', threads: true, send: false, providerDrafts: false, mailboxMutations: true, attachments: true, providerExactlyOnce: false, atomicDraftReplacement: false, ...(mode === 'read-state' ? { readState: true } : mode === 'bad-read-state' ? { readState: 'yes' } : {}) };
         else if (url.pathname.endsWith('/inbox-v1/thread')) {
@@ -99,7 +105,7 @@ const request = async ({ url, method, headers, body, signal, redirect }) => {
 };
 const store = {
   async read() { return saved; },
-  async write(_environment, value, signal) { signal.throwIfAborted(); saved = structuredClone(value); },
+  async write(_environment, value, signal) { signal.throwIfAborted(); replacement.push('write ' + value.token); saved = structuredClone(value); },
   async clear() { saved = null; },
 };
 const opened = [];
@@ -121,6 +127,9 @@ const host = {
     if (hostMode === 'mfa') return { status: 'mfa', method: 'totp', expiresAt: Date.now() + 300000 };
     if (hostMode === 'foreign') return { status: 'authenticated', environment: 'staging', expiresAt: Date.now() + 60000, accountCreated: null };
     if (hostMode === 'leak') return { status: 'authenticated', environment: 'production', expiresAt: Date.now() + 60000, accountCreated: false, secret: 'eliza_mobile_must-not-cross' };
+    if (hostMode === 'bad-previous') return { status: 'authenticated', environment: 'production', expiresAt: Date.now() + 60000, accountCreated: false, previousSignIn: 'kept' };
+    if (hostMode === 'replaced') { saved = { credentialId: 'local-generation-4', token, expiresAt: Date.now() + 30 * 86400000, serverCredentialId: id };
+      return { status: 'authenticated', environment: 'production', expiresAt: saved.expiresAt, accountCreated: false, previousSignIn: 'unconfirmed' }; }
     saved = { credentialId: 'local-generation-2', token, expiresAt: Date.now() + 30 * 86400000, serverCredentialId: id };
     return { status: 'authenticated', environment: 'production', expiresAt: saved.expiresAt, accountCreated: false }; },
   async verifyMfa(input) { hostCalls.push(['mfa', input.code]); saved = { credentialId: 'local-generation-3', token };
@@ -130,7 +139,6 @@ const host = {
 // Managed services (login, identity, Gmail, revocation) run on the CloudProtocol that product builds ship;
 // only the hosted-agent routes use the development subclass, over the same credential store.
 const make = (environment = 'production', signIn = host) => new CloudProtocol(environment, request, store, browser, { signIn });
-const makeLegacy = (environment = 'production') => new LegacyCliLoginProtocol(environment, request, store, browser);
 const makeAgents = (environment = 'production') => new DevelopmentCloudAgentProtocol(environment, request, store, browser);
 const signal = () => new AbortController().signal;
 try {
@@ -186,6 +194,10 @@ try {
   assert.equal((await client.gmailSearch(grant, 'in:sent', signal(), 25, first.nextPageToken)).nextPageToken, null, 'opaque cursor is sent back exactly');
   mode = 'repeat-token'; await assert.rejects(client.gmailSearch(grant, 'in:inbox', signal(), 25, 'same'), error => error.code === 'invalid-response', 'a repeated cursor cannot loop');
   await assert.rejects(client.gmailSearch(grant, 'in:inbox', signal(), 25, ''), TypeError);
+  // Mailbox revision (elizaOS/eliza#35908): an optional decimal string; absent from older servers.
+  mode = 'ok'; assert.equal('mailboxHistoryId' in await client.gmailSearch(grant, 'in:inbox', signal()), false, 'older servers send no revision');
+  mode = 'revision'; assert.equal((await client.gmailSearch(grant, 'in:inbox', signal())).mailboxHistoryId, '18446744073709551615');
+  mode = 'bad-revision'; await assert.rejects(client.gmailSearch(grant, 'in:inbox', signal()), error => error.code === 'invalid-response', 'a malformed revision is refused');
   mode = 'ok'; assert.equal((await client.gmailInboxCapabilities(grant, signal())).readState, false, 'older servers do not advertise read state');
   mode = 'read-state'; assert.equal((await client.gmailInboxCapabilities(grant, signal())).readState, true);
   mode = 'bad-read-state'; await assert.rejects(client.gmailInboxCapabilities(grant, signal()), error => error.code === 'invalid-response');
@@ -193,6 +205,9 @@ try {
   mode = 'bad-disconnect'; await assert.rejects(client.disconnectGmail(grant, signal()), error => error.code === 'invalid-response');
   mode = 'ok';
   mode = 'foreign-runtime'; await assert.rejects(agents.listAgents(signal()), error => error.code === 'invalid-response');
+  mode = 'cumulative';
+  assert.match(await client.initiateGmail(signal(), 'drafts', ['google.gmail.triage', 'google.gmail.send', 'google.unknown.scope']), /^https:\/\/accounts.google.com\//);
+  mode = 'ok';
   mode = 'foreign-oauth'; await assert.rejects(client.initiateGmail(signal()), error => error.code === 'invalid-response');
   const readsBeforeOutage = agentReads;
   mode = 'outage'; await assert.rejects(agents.listAgents(signal()), error => error.status === 503);
@@ -216,12 +231,16 @@ try {
   hostMode = 'cooldown'; await assert.rejects(client.startEmailSignIn('owner@example.invalid', signal()), error => error.code === 'cooldown');
   hostMode = 'foreign'; await assert.rejects(client.verifyEmailSignIn(sessionId, '123456', signal()), error => error.code === 'unavailable', 'an outcome for another environment is refused');
   hostMode = 'leak'; await assert.rejects(client.verifyEmailSignIn(sessionId, '123456', signal()), error => error.code === 'unavailable', 'an outcome carrying extra fields is refused');
+  // The host revokes a replaced key itself; only its non-secret outcome crosses, from a fixed set.
+  hostMode = 'replaced'; assert.equal((await client.verifyEmailSignIn(sessionId, '123456', signal())).previousSignIn, 'unconfirmed'); await client.disconnect();
+  hostMode = 'bad-previous'; await assert.rejects(client.verifyEmailSignIn(sessionId, '123456', signal()), error => error.code === 'unavailable', 'an unknown replacement outcome is refused');
   hostMode = 'unstored'; await assert.rejects(client.signInWithGoogle(signal()), error => error.code === 'credentials-missing', 'success without a stored key is not a sign-in');
   hostMode = 'ok'; await assert.rejects(make('production', null).signInWithGoogle(signal()), error => error instanceof CloudSignInError && error.code === 'unavailable', 'no host, no sign-in');
   await make('staging').signInWithGoogle(signal()); assert.deepEqual(hostCalls.findLast(call => call[0] === 'google'), ['google', 'staging']);
   await client.disconnect();
-  // Test-mocks diagnostic fallback (one release): the retired browser hand-off still works there.
-  const legacy = makeLegacy();
+  // The Cloud sign-in hand-off: the product path until the in-app readiness probe passes, and the
+  // test-mocks diagnostic afterwards.
+  const legacy = make();
   await legacy.login(signal());
   assert.equal(saved.token, token, 'session token preferred over legacy API key');
   assert.equal(opened.at(-1), `https://eliza.app/auth/cli-login?session=${sessionId}`);
@@ -239,10 +258,31 @@ try {
   await assert.rejects(legacy.login(signal()), error => error.code === 'login-active');
   cancel.abort(); await rejection; assert.equal(saved, null);
   const pollsAtCancel = polls; await new Promise(resolve => setTimeout(resolve, 30)); assert.equal(polls, pollsAtCancel);
-  mode = 'ok'; await makeLegacy('staging').login(signal());
+  // A new sign-in over a saved one revokes the saved key exactly once, before the new key is stored.
+  const replacing = new CloudProtocol('production', request, store, async (url, signal) => { signal.throwIfAborted(); opened.push(url); }, { deleteRequests: true });
+  mode = 'ok'; replacement.length = 0;
+  saved = { token: 'previous-key', credentialId: 'previous-credential' };
+  assert.deepEqual(await replacing.login(signal()), { previousSignIn: 'revoked' });
+  assert.deepEqual(replacement, ['delete Bearer previous-key', 'write ' + token]);
+  // A failed revocation is reported unconfirmed and never blocks the new sign-in.
+  mode = 'revoke-fails'; replacement.length = 0;
+  saved = { token: 'previous-key', credentialId: 'previous-credential' };
+  assert.deepEqual(await replacing.login(signal()), { previousSignIn: 'unconfirmed' });
+  assert.deepEqual(replacement, ['delete Bearer previous-key', 'write ' + token]);
+  assert.equal(saved.token, token);
+  // Nothing saved: nothing to revoke.
+  mode = 'ok'; replacement.length = 0; saved = null;
+  assert.deepEqual(await replacing.login(signal()), {});
+  assert.deepEqual(replacement, ['write ' + token]);
+  // Cloud handing back the key already saved replaces nothing, so the live key is never revoked.
+  replacement.length = 0; saved = { token, credentialId: 'same-credential' };
+  assert.deepEqual(await replacing.login(signal()), {});
+  assert.deepEqual(replacement, ['write ' + token]);
+  saved = null;
+  mode = 'ok'; await make('staging').login(signal());
   assert.equal(opened.at(-1), `https://staging.eliza.app/auth/cli-login?session=${sessionId}`);
   await client.disconnect();
-  process.stdout.write('PASS: synthetic in-app Cloud sign-in (email, MFA, Google, cancellation, one at a time, refused foreign/extra/unstored outcomes), test-mocks browser hand-off fallback, credential preference/storage, restart, agent list/detail, dedicated/shared conversation routing and send, Gmail scopes/status/account/search/read/thread, complete HTML preservation and malformed/oversized HTML handling, search paging, read-state capability, disconnect, URL rejection, outage without retry, consumed claim, expiry, cancellation and staging routing. No live account acceptance.\n');
+  process.stdout.write('PASS: synthetic in-app Cloud sign-in (email, MFA, Google, cancellation, one at a time, refused foreign/extra/unstored outcomes, previous-key revocation outcome), synthetic HTTP Cloud sign-in hand-off, credential preference/storage, restart, revocation of a replaced key before the new one is stored (failed revocation does not block), agent list/detail, dedicated/shared conversation routing and send, Gmail scopes (cumulative grants)/status/account/search/read/thread, complete HTML preservation and malformed/oversized HTML handling, search paging, read-state capability, disconnect, URL rejection, outage without retry, consumed claim, expiry, cancellation and staging routing. No live account acceptance.\n');
 } finally {
   server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
 }

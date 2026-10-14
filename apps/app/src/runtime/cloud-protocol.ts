@@ -6,12 +6,13 @@ import type { CloudMapsRoute } from '../maps/cloud-provider.ts';
 import { authenticated as signInAuthenticated, CloudSignInError, emailStarted, verified as signInVerified, type CloudSignInAuthenticated, type CloudSignInEmailStarted, type CloudSignInMfaRequired, type CloudSignInPort } from './cloud-sign-in.ts';
 import { BILLING_LIMITS_PATH, ENTITLEMENT_KEYS_PATH, ENTITLEMENT_PATH, REDEEM_PATH, fallbackPlanFromLimits, normalizeSubscriptionCode, readServiceLimit, SubscriptionRedeemError, type EntitlementSource, type FallbackPlan, type RedeemResult } from './subscription-entitlement.ts';
 /** Narrow Alpha adapter for Eliza Cloud managed services: sign-in, identity, subscription plan and
- * the connected Google services. Sign-in is in-app (cloud-sign-in.ts): the native host signs in with
- * Steward and mints an `eliza_mobile_` key through Cloud's mobile App Auth routes, so no Eliza Cloud
- * web page is opened. Contracts inspected in cloud/api/v1/app-auth, cloud/api/v1/eliza/google and
+ * the connected Google services. Sign-in is in-app (cloud-sign-in.ts) once the native host reports
+ * Cloud ready for this phone: the host signs in with Steward and mints an `eliza_mobile_` key through
+ * Cloud's mobile App Auth routes, so no Eliza Cloud web page is opened. Until then `login()` keeps the
+ * Cloud sign-in hand-off (v3's cloud/api/auth/cli-session) as the product path. Contracts inspected
+ * in cloud/api/v1/app-auth, cloud/api/auth/cli-session, cloud/api/v1/eliza/google and
  * ui/src/api/client-cloud.ts. Native composition owns HTTP and secure storage. This module never
- * stores credentials in renderer persistence or logs them. The browser hand-off sign-in survives only
- * in legacy-cli-login.ts for ELIZA_DEV_ALLOW_TEST_MOCKS=1 builds.
+ * stores credentials in renderer persistence or logs them.
  * The agent always runs on the phone: this adapter has no hosted-agent discovery, runtime or
  * pairing route. The development-only hosted-agent fixture extends it in
  * development-cloud-agents.ts and is constructed only in ELIZA_DEV_ALLOW_TEST_MOCKS=1 builds. */
@@ -70,6 +71,10 @@ export interface CloudProtocolOptions { deleteRequests?: boolean;
 export type CloudSessionRevocation =
   | { supported: true; revoked: true; credentialId: string | null; revokedAt: string | null }
   | { supported: false; reason: "transport" | "server" | "no-credential" };
+export interface CloudLoginAttempt { sessionId: string; expiresAt: number; browserUrl: string }
+/** What happened to a sign-in this login replaced: absent when none was saved. Only a confirmed
+ * server-side revocation is `revoked`; anything else is reported as unconfirmed. */
+export interface CloudLoginResult { previousSignIn?: "revoked" | "unconfirmed" }
 export interface CloudAgent {
   id: string; name: string | null; status: string; executionTier: string | null;
   /** Only validated REST targets, never internal bridge URLs. Null until available. */
@@ -188,6 +193,7 @@ export function delay(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+const GMAIL_CAPABILITIES: readonly string[] = ["google.basic_identity", "google.gmail.triage", "google.gmail.send", "google.gmail.drafts", "google.gmail.mailbox"];
 export class CloudProtocol {
   protected activeLogin: AbortController | null = null;
   constructor(readonly environment: CloudEnvironment, private readonly request: CloudNativeRequest,
@@ -374,6 +380,75 @@ export class CloudProtocol {
       if (this.activeLogin === controller) this.activeLogin = null;
     }
   }
+  /**
+   * The Cloud sign-in hand-off (cli-session, the hosted cli-login page, then polling). The product
+   * sign-in path until the in-app host reports Cloud ready for this phone (connection-ui
+   * inAppSignInMethods), and a diagnostic fallback in test-mocks builds afterwards. Only one poller
+   * may claim the server's single-consumption credential. A cancelled/lost claim is not retried
+   * automatically; start a fresh login.
+   */
+  async login(signal: AbortSignal, onWaiting?: (attempt: CloudLoginAttempt) => void): Promise<CloudLoginResult> {
+    if (this.activeLogin) throw new CloudProtocolError("login-active");
+    signal.throwIfAborted();
+    const controller = new AbortController();
+    this.activeLogin = controller;
+    const abort = () => controller.abort(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // The server issues the UUID; client-chosen IDs are deliberately ignored.
+      const created = await this.call("/api/auth/cli-session", controller.signal, { body: {} });
+      const sessionId = uuid(created.sessionId);
+      const expiresAt = timestamp(created.expiresAt);
+      if (expiresAt <= Date.now()) throw new CloudProtocolError("expired");
+      expiryTimer = setTimeout(() => controller.abort(new CloudProtocolError("expired")), Math.min(expiresAt - Date.now(), 2_147_483_647));
+      const browserUrl = `${this.authority.web}/auth/cli-login?session=${encodeURIComponent(sessionId)}`;
+      onWaiting?.({ sessionId, expiresAt, browserUrl });
+      await this.openExternal(browserUrl, controller.signal);
+      if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
+      while (true) {
+        controller.signal.throwIfAborted();
+        if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
+        let response: ObjectValue;
+        try { response = await this.call(`/api/auth/cli-session/${sessionId}`, controller.signal, {expiresAt}); }
+        catch (error) {
+          if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
+          if (error instanceof CloudProtocolError && (error.status === 404 || error.status === 410)) throw new CloudProtocolError("expired");
+          throw error;
+        }
+        if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
+        const data = response.data == null ? response : object(response.data);
+        if (data.status === "authenticated") {
+          const token = ["token", "accessToken", "stewardToken", "sessionToken", "apiKey"]
+            .flatMap(key => [response[key], data[key]]).find(value => typeof value === "string" && value.trim());
+          const reference=data.credentialReference ?? response.credentialReference;
+          if(!token && !(this.credentials.acceptsReferences && typeof reference==="string" && /^browser-cloud-reference:[0-9a-f-]{36}$/.test(reference)))throw new CloudProtocolError("credential-consumed");
+          const credential: CloudCredential = token ? {token:string(token)} : {credentialReference:string(reference)};
+          if (data.expiresAt != null) credential.expiresAt = timestamp(data.expiresAt);
+          if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
+          if (data.userId != null) credential.userId = string(data.userId);
+          if (data.organizationId != null) credential.organizationId = string(data.organizationId);
+          controller.signal.throwIfAborted();
+          if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
+          // The new key replaces a saved one. Revoke the old key first, once and best effort: a
+          // failed or unconfirmed revocation never blocks this sign-in. The write below replaces the
+          // old key in place (stores that bind a claim to the key it replaces stay atomic).
+          const previousSignIn = await this.revokeReplaced(controller.signal, credential);
+          controller.signal.throwIfAborted();
+          if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
+          await this.credentials.write(this.environment, credential, controller.signal);
+          return previousSignIn ? { previousSignIn } : {};
+        }
+        if (data.status === "expired") throw new CloudProtocolError("expired");
+        if (data.status !== "pending") throw new CloudProtocolError("invalid-response");
+        await delay(Math.min(1500, Math.max(1, expiresAt - Date.now())), controller.signal);
+      }
+    } finally {
+      clearTimeout(expiryTimer);
+      signal.removeEventListener("abort", abort);
+      this.activeLogin = null;
+    }
+  }
   /** The host stored the key before reporting success; confirm this store now holds a sign-in. */
   private async storedSignIn(outcome: CloudSignInAuthenticated, signal: AbortSignal): Promise<CloudSignInAuthenticated> {
     const credential = await this.credentials.read(this.environment);
@@ -410,6 +485,18 @@ export class CloudProtocol {
     const credential = await this.credentials.read(this.environment);
     signal.throwIfAborted();
     if (!credential) return { supported: false, reason: "no-credential" };
+    return this.revokeStored(credential, signal);
+  }
+  /** One revocation of the saved key a new login is about to replace. Never retried or thrown. */
+  private async revokeReplaced(signal: AbortSignal, issued: CloudCredential): Promise<"revoked" | "unconfirmed" | undefined> {
+    let previous: CloudCredential | null;
+    try { previous = await this.credentials.read(this.environment); } catch { return "unconfirmed"; }
+    // Nothing saved, or Cloud handed back the key already saved: there is nothing to replace.
+    if (!previous || (issued.token !== undefined && previous.token === issued.token) || (issued.credentialReference !== undefined && previous.credentialReference === issued.credentialReference)) return undefined;
+    try { const result = await this.revokeStored(previous, signal, false); return result.supported && result.revoked ? "revoked" : "unconfirmed"; }
+    catch { return "unconfirmed"; }
+  }
+  private async revokeStored(credential: CloudCredential, signal: AbortSignal, clearLocal = true): Promise<CloudSessionRevocation> {
     try {
       if (!this.options.deleteRequests) return { supported: false, reason: "transport" };
       let data: unknown;
@@ -424,7 +511,7 @@ export class CloudProtocol {
       if (result.success !== true || (result.status !== undefined && result.status !== "revoked")) throw new CloudProtocolError("invalid-response");
       return { supported: true, revoked: true, credentialId: typeof result.credentialId === "string" ? result.credentialId : null, revokedAt: typeof result.revokedAt === "string" ? result.revokedAt : null };
     } finally {
-      const current = await this.credentials.read(this.environment);
+      const current = clearLocal ? await this.credentials.read(this.environment) : null;
       if (current?.credentialId === credential.credentialId && current?.token === credential.token) await this.credentials.clear(this.environment);
     }
   }
@@ -499,9 +586,19 @@ export class CloudProtocol {
     });
     return {calendarId,events,syncedAt:string(data.syncedAt)};
   }
-  async initiateGmail(signal: AbortSignal, permission: 'read'|'modify'|'send'|'drafts'|'mailbox' = 'read'): Promise<string> {
+  /** Starts Google consent. `read` asks for read access only; `modify` is the one incremental step
+   * for approved mailbox changes (gmail-grants.ts). The single-capability values remain for callers
+   * that ask for one change capability. Cloud maps exactly the requested capabilities to Google
+   * scopes, so the request also names what the selected account already holds
+   * (`grantedCapabilities`); otherwise a reconnect could drop an earlier grant. Only known Gmail
+   * capabilities are carried over. Callers that pass no grants keep the plain request. */
+  async initiateGmail(signal: AbortSignal, permission: 'read'|'modify'|'send'|'drafts'|'mailbox' = 'read', grantedCapabilities: readonly string[] = []): Promise<string> {
+    const requested = permission === "read" || permission === "modify" ? gmailCapabilitiesFor(permission)
+      : ["google.basic_identity", "google.gmail.triage", permission === "send" ? "google.gmail.send" : permission === "drafts" ? "google.gmail.drafts" : "google.gmail.mailbox"];
+    const kept = grantedCapabilities.filter(capability => GMAIL_CAPABILITIES.includes(capability));
+    const capabilities = [...new Set(["google.basic_identity", "google.gmail.triage", ...kept, ...requested])];
     const response = await this.call("/api/v1/eliza/google/connect/initiate", signal, { authenticated: true,
-      body: { side: "owner", capabilities: permission==="read"||permission==="modify"?gmailCapabilitiesFor(permission):["google.basic_identity", "google.gmail.triage",permission==="send"?"google.gmail.send":permission==="drafts"?"google.gmail.drafts":"google.gmail.mailbox"] } });
+      body: { side: "owner", capabilities } });
     return this.googleAuthUrl(response.authUrl);
   }
 
@@ -527,7 +624,10 @@ export class CloudProtocol {
       ...(data.hasAttachments === undefined ? {} : typeof data.hasAttachments === "boolean" ? { hasAttachments: data.hasAttachments } : (() => { throw new CloudProtocolError("invalid-response"); })()) };
   }
   /** One page of results. `nextPageToken` is the provider's opaque cursor for the same query, or null. */
-  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 10 | 25 | 50 = 25, pageToken?: string): Promise<{ messages: GmailMessage[]; syncedAt: string; nextPageToken: string | null;supportsSpamTrash:boolean }> {
+  /** One search page. `mailboxHistoryId` is the Gmail mailbox revision read before the page was listed
+   * (elizaOS/eliza#35908); two pages of one search with different values came from a changed mailbox.
+   * Older Cloud servers omit it. */
+  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 10 | 25 | 50 = 25, pageToken?: string): Promise<{ messages: GmailMessage[]; syncedAt: string; nextPageToken: string | null; mailboxHistoryId?: string; supportsSpamTrash: boolean }> {
     if (pageToken !== undefined && (typeof pageToken !== "string" || !pageToken || pageToken.length > 4096)) throw new TypeError("Invalid Gmail page token");
     const params = new URLSearchParams({ side: "owner", grantId: string(grantId), query: string(query), maxResults: String(maxResults) });
     if (pageToken !== undefined) params.set("pageToken", pageToken);
@@ -535,8 +635,10 @@ export class CloudProtocol {
     if (!Array.isArray(data.messages)) throw new CloudProtocolError("invalid-response");
     const next = data.nextPageToken;
     if (next != null && (typeof next !== "string" || !next || next.length > 4096 || next === pageToken)) throw new CloudProtocolError("invalid-response");
+    const revision = data.mailboxHistoryId;
+    if (revision != null && (typeof revision !== "string" || !/^\d{1,20}$/.test(revision))) throw new CloudProtocolError("invalid-response");
     if(data.supportsSpamTrash!==undefined&&typeof data.supportsSpamTrash!=='boolean')throw new CloudProtocolError('invalid-response');
-    return { messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt), nextPageToken: next == null ? null : next,supportsSpamTrash:data.supportsSpamTrash===true };
+    return { messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt), nextPageToken: next == null ? null : next, ...(revision == null ? {} : { mailboxHistoryId: revision }), supportsSpamTrash: data.supportsSpamTrash === true };
   }
   /** Revokes Eliza Cloud's stored Google grant for one owner connection. It does not delete mail and
    * cannot remove the app from the user's Google Account permissions; callers verify with gmailAccounts. */

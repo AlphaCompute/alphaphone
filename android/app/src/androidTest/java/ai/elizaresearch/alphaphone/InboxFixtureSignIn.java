@@ -28,5 +28,5 @@ public final class InboxFixtureSignIn extends Plugin {
  @PluginMethod public void startGoogle(PluginCall call){call.reject("browser-unavailable","browser-unavailable");}
  @PluginMethod public void verifyMfa(PluginCall call){call.reject("expired","expired");}
  @PluginMethod public void cancel(PluginCall call){call.resolve();}
- @PluginMethod public void status(PluginCall call){call.resolve(new JSObject().put("active",false).put("google",false).put("email",true));}
+ @PluginMethod public void status(PluginCall call){call.resolve(new JSObject().put("active",false).put("inApp",true).put("google",false).put("email",true));}
 }

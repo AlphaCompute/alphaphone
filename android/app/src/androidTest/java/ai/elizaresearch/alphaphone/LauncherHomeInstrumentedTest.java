@@ -103,13 +103,20 @@ public class LauncherHomeInstrumentedTest {
    AppNavigation.liveMode();
    eval(AppNavigation.request("Home"));
    until(AppNavigation.selected("Home") + "&&!document.querySelector('.os')?.inert", "Home ready");
+   // Rows are identified by component, not label: an image with two Settings activities gives each
+   // its own disambiguated label ("Open Settings (SubSettings)"), so the bare label is not stable.
+   android.content.ComponentName settings = settingsLaunch.getComponent();
+   assertNotNull("Android Settings resolves a launch component", settings);
+   String settingsRow = "[...document.querySelectorAll('[data-alpha-layer=\"drawer\"] [data-launcher-app]')].map(r=>[r.getAttribute('data-launcher-app'),r.querySelector('button')])"
+    + ".filter(([key,b])=>{const id=key.split('#')[0];return (id===" + JSONObject.quote(settings.getPackageName() + "/" + settings.getClassName()) + "||id===" + JSONObject.quote(settings.getPackageName()) + ")"
+    + "&&b&&b.getClientRects().length&&!b.disabled&&!b.closest('[inert]')}).map(([,b])=>b)[0]";
    tap("All apps");
-   until(DRAWER + "&&" + button("Open Settings"), "Installed apps listed, including Android Settings");
+   until(DRAWER + "&&" + settingsRow, "Installed apps listed, including Android Settings by its launch component");
    assertFalse("Alpha never lists itself", "true".equals(eval("[...document.querySelectorAll('[data-alpha-layer=\"drawer\"] button')].some(b=>b.getAttribute('aria-label')==='Open Alpha Phone')")));
    assertEquals("Icons are rendered from the device", "true", eval("!!document.querySelector('[data-alpha-layer=\"drawer\"] img[src^=\"data:image/png;base64,\"]')"));
    eval("(()=>{const input=document.querySelector('[data-alpha-layer=\"drawer\"] input[type=search]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Settings');input.dispatchEvent(new Event('input',{bubbles:true}));})()");
-   until(button("Open Settings") + "&&!" + button("Open Phone"), "Search narrows to Settings");
-   tap("Open Settings");
+   until(settingsRow + "&&!" + button("Open Phone"), "Search narrows to Settings");
+   eval("(" + settingsRow + ").click()");
    awaitForeground("com.android.settings", "Android Settings opens from the drawer");
    returnHome(context);
   }
@@ -235,6 +242,25 @@ public class LauncherHomeInstrumentedTest {
    eval("(" + phone + ").click()");
    awaitForeground(dialerPackage, "The stock dialer opens within two taps");
    returnHome(context);
+  }
+ }
+
+ /** A lost renderer while Alpha is HOME: the recreated activity is the only MainActivity, and the
+  * HOME key still lands on Alpha Home in that instance (RendererRecoveryInstrumentedTest covers
+  * both variants without the role). */
+ @Test public void killedRendererWhileHomeRecoversOneMainActivityAndHomeStillReturns() throws Exception {
+  assumeAlphaIsHome();
+  Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
+   try {
+    AppNavigation.liveMode();
+    eval(AppNavigation.request("Home"));
+    until(AppNavigation.selected("Home") + "&&!document.querySelector('.os')?.inert", "Home ready");
+    android.webkit.WebView dead = RendererRecoveryInstrumentedTest.killHostRenderer();
+    RendererRecoveryInstrumentedTest.awaitRecovered(dead, "while Alpha is HOME");
+    awaitForeground(context.getPackageName(), "Alpha stays in front after renderer recovery");
+    returnHome(context);
+   } finally { RendererRecoveryInstrumentedTest.finishRecreated(); }
   }
  }
 }

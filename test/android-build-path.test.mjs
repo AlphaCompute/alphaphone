@@ -4,8 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync, spawnSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
-import {checkoutProblems, embeddingHostProblems, preparedRuntimeProblems, SPEECH_AAR, SPEECH_MANIFEST} from '../scripts/android-build-preflight.mjs';
+import {checkoutProblems, embeddingHostProblems, preparedRuntimeProblems, VOICE_ASSET_ROOT, VOICE_HOST_MANIFEST} from '../scripts/android-build-preflight.mjs';
 import {TURBO_AGENT_DETECTION_ENV, preparedSourceEnv} from '../scripts/local-agent-source.mjs';
 import {ensurePreparedWorkflowWorker} from '../scripts/prepared-workflow-worker.mjs';
 import {workerHash} from '../scripts/workflow-worker-artifact.mjs';
@@ -48,15 +47,19 @@ function fixture(t) {
 
 test('preflight names the exact command for each missing build input', t => {
   const f = fixture(t);
-  f.write(SPEECH_MANIFEST, JSON.stringify({aarSha256: '0'.repeat(64), noEspeak: true}));
-  let problems = checkoutProblems(f.root);
+  // A distribution build needs the staged on-device voice outputs (speech is on-device only); the explicit
+  // unpackaged developer lane may omit them, and local speech then reports unavailable.
+  assert.match(checkoutProblems(f.root)[0], /On-device voice outputs are not staged in \.eliza\/paradee-voice\/native/);
+  assert.deepEqual(checkoutProblems(f.root, {allowUnpackagedRuntime: true}), []);
+  let problems = checkoutProblems(f.root, {voiceHost: () => { throw Error('Voice bundle lacks the ASR slot'); }});
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /Speech runtime .* is missing .*scripts\/local-speech\/README\.md/);
-
-  f.write(SPEECH_AAR, 'locally built');
-  assert.match(checkoutProblems(f.root)[0], /does not match android\/local-speech\/runtime-manifest\.json/);
-  f.write(SPEECH_MANIFEST, JSON.stringify({aarSha256: createHash('sha256').update('locally built').digest('hex'), noEspeak: true}));
-  assert.deepEqual(checkoutProblems(f.root), []);
+  assert.ok(problems[0].startsWith(`The on-device voice outputs in ${VOICE_ASSET_ROOT} are not admitted by ${VOICE_HOST_MANIFEST} (Voice bundle lacks the ASR slot; Gradle :app:verifyVoiceHost rejects the build).`), problems[0]);
+  assert.match(problems[0], /npm run android:build:local does not produce them: stage them with node scripts\/android-stage-voice-models\.mjs --from <directory of the recorded voice outputs and models> \(see docs\/fused-speech\.md\)\./);
+  // Staged outputs that the record does not admit are refused by the real verifier, never repaired, in either lane.
+  f.write(`${VOICE_ASSET_ROOT}/build-record.json`, '{}');
+  assert.match(checkoutProblems(f.root, {allowUnpackagedRuntime: true})[0], /are not admitted by android\/voice-host\/qualified-voice-host\.json/);
+  fs.rmSync(path.join(f.root, '.eliza'), {recursive: true});
+  assert.deepEqual(checkoutProblems(f.root, {allowUnpackagedRuntime: true}), []);
 
   // A clean checkout: no prepared source. This is what used to fail deep in Gradle.
   problems = preparedRuntimeProblems(f.root, f.source);
@@ -84,7 +87,7 @@ test('preflight rejects an unpinned checkout and android:build stops before sync
   f.write('upstream.lock.json', JSON.stringify({commit: 'f'.repeat(40)}));
   assert.match(checkoutProblems(f.root)[0], /vendor\/eliza is at .*pins f{40}\. Run: git submodule update --init vendor\/eliza/);
   // The real entry point exits with status 2 and the guidance, without starting the build.
-  for (const file of ['embedding-native-contract.mjs', 'paradee-runtime.mjs', 'build-android.mjs', 'android-build-preflight.mjs', 'stage-embedding-host.mjs', 'build-embedding-host.mjs', 'toolchain.mjs', 'copy-file-clone.mjs'])
+  for (const file of ['embedding-native-contract.mjs', 'paradee-runtime.mjs', 'voice-host.mjs', 'build-android.mjs', 'android-build-preflight.mjs', 'stage-embedding-host.mjs', 'build-embedding-host.mjs', 'toolchain.mjs', 'copy-file-clone.mjs'])
     f.write('scripts/' + file, read('scripts/' + file));
   const result = spawnSync(process.execPath, ['scripts/build-android.mjs'], {cwd: f.root, encoding: 'utf8'});
   assert.equal(result.status, 2, result.stderr);

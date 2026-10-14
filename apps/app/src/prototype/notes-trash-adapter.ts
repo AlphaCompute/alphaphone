@@ -6,6 +6,7 @@ import {notesTrashPolicy} from '../runtime/notes-trash-policy';
 import {maintainNotesTrash} from '../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-maintenance.ts';
 import {scheduleNotesTrashMaintenance} from '../../../../.eliza/client-features/plugins/plugin-notes/src/client/notes-trash-schedule.ts';
 import {DailyApps} from '../daily';
+import {releaseUnusedSourceReferences} from './note-source-adapter';
 type Bag=Record<string,any>;
 type Shell=any;
 const kindLabel:Record<string,string>={text:'Note',list:'Checklist',voice:'Voice note',link:'Link'};
@@ -48,6 +49,9 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
   // awaited: it queues for the deletion-effects lock on its own and never delays Trash upkeep.
   try{const recover=voice(shell).recoverVoiceDeletions;if(typeof recover==='function')void Promise.resolve(recover()).catch(()=>{/* The row stays under review. */});}catch{/* Unavailable. */}
   const result=await maintainNotesTrash({policy:notesTrashPolicy,read:readNotesTrash,edit:editNotesTrash,liveNoteIds:savedNoteIds,withLock:work=>withNotesDeletionLock(work),purge:entry=>purge(shell,entry)},now);
+  // Source links of notes that are neither saved nor restorable from Trash give up their grants.
+  // Best effort: a failure keeps every reference and retries on the next pass.
+  try{await withNotesDeletionLock(async()=>releaseUnusedSourceReferences([...await savedNotes(),...(await readNotesTrash()).entries.map(entry=>entry.note)]));}catch{/* Retried. */}
   // A background pass repaints only when it changed Trash; an open Notes view re-reads every time.
   if(!background||result.removed.length)await load(shell);
  }
@@ -68,15 +72,23 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
 
  async function moveToTrash(shell:Shell,note:Bag,index:number){
   if(!ready(shell)){shell.toast(shell.notesPending&&!shell.notesStorageFailed?'Still saving. Try again in a moment. Nothing was deleted.':'Notes storage needs recovery. Nothing was deleted.');return false;}
-  let entry:NotesTrashEntry|undefined;
+  let entry:NotesTrashEntry|undefined,changed=false;
   try{
    const saved=await withNotesDeletionLock(async()=>{
     if(!ready(shell))throw Error('Notes changed');
     const stored=shell.notesStore.list.find((n:Bag)=>n.id===note.id);
     if(JSON.stringify(stored)!==JSON.stringify(note))throw Error('Note changed');
+    // Revision compare-and-swap against authoritative storage, under the origin-wide lock: this view's
+    // copy may be stale. Another view may have edited this note, or deleted a newer revision whose
+    // Trash row is now its only restorable copy and must not be replaced by this older one.
+    const authoritative=(await savedNotes()).find(n=>n.id===note.id);
+    if(!authoritative||JSON.stringify(authoritative)!==JSON.stringify(note)){changed=true;throw Error('Note changed');}
+    const rows=(doc:{entries:NotesTrashEntry[]})=>doc.entries.filter(row=>row.note.id===note.id).map(row=>JSON.stringify(row)).sort().join('\n');
+    const expected=rows(await readNotesTrash());
     entry={id:crypto.randomUUID(),note:stored,target:await shell.notesStore.target(note.id),index,deletedAt:Date.now()};
-    // Write-ahead: the restorable copy is durable before the note leaves the saved list.
-    await editNotesTrash(doc=>addNotesTrashEntry(doc,entry!));
+    // Write-ahead: the restorable copy is durable before the note leaves the saved list. Only rows this
+    // pass read (stale write-ahead rows of a note that is still saved) may be replaced.
+    await editNotesTrash(doc=>{if(rows(doc)!==expected){changed=true;throw Error('Trash changed');}return addNotesTrashEntry(doc,entry!);});
     const list=shell.vget('notes').list.filter((n:Bag)=>n.id!==note.id);
     return await shell.vset('notes',{list,open:null,sheet:null,playing:false,dict:false})===true;
    });
@@ -85,7 +97,7 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
    // A full Trash never silently drops this note or any other: nothing was written, and the
    // person chooses between making room and a separately confirmed permanent deletion.
    if(isNotesTrashFull(error)&&shell.live){refused={note,snapshot:JSON.stringify(note),index};shell.vset('notes',{trashFull:{id:note.id,title:noteTitle(note)},trashConfirm:null});}
-   else shell.toast('Could not move this note to Trash. Nothing was deleted.');
+   else shell.toast(changed?'This note changed in another view. Nothing was deleted.':'Could not move this note to Trash. Nothing was deleted.');
    return false;
   }
   void load(shell);

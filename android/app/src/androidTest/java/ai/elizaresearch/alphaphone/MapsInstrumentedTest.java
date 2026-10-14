@@ -1,7 +1,13 @@
 package ai.elizaresearch.alphaphone;
 
 import android.Manifest;
+import android.content.ContentResolver;
+import android.content.ContentUris;
+import android.content.ContentValues;
+import android.content.Context;
+import android.net.Uri;
 import android.os.SystemClock;
+import android.provider.CalendarContract;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import org.json.JSONObject;
@@ -11,7 +17,11 @@ import org.junit.runner.RunWith;
 import java.util.UUID;
 import static org.junit.Assert.*;
 
-/** Real prototype UI and durable local data. Provider absence is never a route success. */
+/** Real prototype UI and durable local data. Provider absence is never a route success.
+ * calendarLocationReturnsToTheSameEventAndFailsClosed (mapsEventReturn=1) is the J04 hand-off over the
+ * real CalendarProvider: an owned local calendar's event location opens Maps (no provider is
+ * configured, so Maps shows its notice and never invents a place), "Back to event" restores that
+ * exact event, Android Back returns without a second search, and a deleted event fails closed. */
 @RunWith(AndroidJUnit4.class)
 public class MapsInstrumentedTest {
  private String eval(String js)throws Exception{return WebViewTestDriver.evaluate(js);}
@@ -63,6 +73,69 @@ public class MapsInstrumentedTest {
    assertEquals("One-shot fix releases actual native location watch",0,watches.get());
    eval(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));maps();
    assertEquals("Location never resumes implicitly","false",eval("!!document.querySelector('[aria-label=\"Rename place\"]')"));
+  }
+ }
+
+ /** The open event detail (its Edit control is present) shows exactly this title. */
+ private static String detail(String title){return "(!!document.querySelector('[data-screen] button[aria-label=\"Edit event\"]')&&[...document.querySelectorAll('[data-screen] h1')].some(h=>h.textContent.trim()==="+JSONObject.quote(title)+"))";}
+ private void openEvent(String title)throws Exception{
+  String row="[...document.querySelectorAll('[data-screen] button')].find(b=>b.getAttribute('aria-label')?.startsWith("+JSONObject.quote(title+",")+"))";
+  until(row);eval("("+row+").scrollIntoView({block:'center',behavior:'instant'});("+row+").click()");
+  until(detail(title));
+ }
+ private void openLocation(String where)throws Exception{
+  String button="[...document.querySelectorAll('[data-screen] button')].find(b=>b.textContent.trim()==="+JSONObject.quote(where)+")";
+  until(button);eval("("+button+").click()");until(AppNavigation.selected("Maps"));
+  // No provider: the hand-off is a one-use search that reaches only the unconfigured notice.
+  until("document.querySelector('[data-alpha-maps-status]')?.textContent.includes('Connect a Maps provider')");
+  assertEquals("The hand-off filled the search with the event location only",where,new JSONObject("{\"v\":"+eval("document.querySelector('input[aria-label=\"Search places\"]')?.value??''")+"}").getString("v"));
+ }
+ @Test public void calendarLocationReturnsToTheSameEventAndFailsClosed()throws Exception{
+  Assume.assumeTrue("Explicit owned local calendar fixture","1".equals(InstrumentationRegistry.getArguments().getString("mapsEventReturn")));
+  Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();ContentResolver resolver=context.getContentResolver();
+  for(String permission:new String[]{Manifest.permission.READ_CALENDAR,Manifest.permission.WRITE_CALENDAR})InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context.getPackageName(),permission);
+  String suffix=UUID.randomUUID().toString().substring(0,8),account="Alpha maps return fixture "+suffix,title="Maps return event "+suffix,other="Maps return other "+suffix,where="12 Market Street, Test Town "+suffix;
+  Uri calendars=CalendarContract.Calendars.CONTENT_URI.buildUpon().appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER,"true")
+   .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME,account).appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE,CalendarContract.ACCOUNT_TYPE_LOCAL).build();
+  ContentValues c=new ContentValues();
+  c.put(CalendarContract.Calendars.ACCOUNT_NAME,account);c.put(CalendarContract.Calendars.ACCOUNT_TYPE,CalendarContract.ACCOUNT_TYPE_LOCAL);
+  c.put(CalendarContract.Calendars.NAME,account);c.put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,account);c.put(CalendarContract.Calendars.OWNER_ACCOUNT,account);
+  c.put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,CalendarContract.Calendars.CAL_ACCESS_OWNER);c.put(CalendarContract.Calendars.CALENDAR_TIME_ZONE,java.util.TimeZone.getDefault().getID());
+  c.put(CalendarContract.Calendars.VISIBLE,1);c.put(CalendarContract.Calendars.SYNC_EVENTS,1);
+  Uri calendar=resolver.insert(calendars,c);assertNotNull("Fixture calendar inserted",calendar);
+  try{
+   // Two events today with the same location, so a return to the wrong one would be visible.
+   long begin=(System.currentTimeMillis()/60_000L+30)*60_000L;Uri event=null;
+   for(String name:new String[]{title,other}){
+    ContentValues e=new ContentValues();e.put(CalendarContract.Events.CALENDAR_ID,ContentUris.parseId(calendar));e.put(CalendarContract.Events.TITLE,name);e.put(CalendarContract.Events.EVENT_LOCATION,where);
+    e.put(CalendarContract.Events.DTSTART,begin);e.put(CalendarContract.Events.DTEND,begin+30*60_000L);e.put(CalendarContract.Events.EVENT_TIMEZONE,java.util.TimeZone.getDefault().getID());
+    Uri inserted=resolver.insert(CalendarContract.Events.CONTENT_URI,e);assertNotNull("Fixture event inserted",inserted);if(name.equals(title))event=inserted;begin+=60*60_000L;
+   }
+   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+    AppNavigation.liveMode();eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();
+    // 1. Back to event restores exactly this event's detail.
+    openEvent(title);openLocation(where);
+    click("Back to event");until(AppNavigation.selected("Calendar")+"&&"+detail(title));
+    assertEquals("The return consumed the hand-off","false",eval("!!document.querySelector('[data-alpha-maps-event-return]')"));
+    // 2. Android Back from Maps returns to the same event; nothing is searched again.
+    openLocation(where);
+    WebViewTestDriver.pressBack();
+    until(AppNavigation.selected("Calendar")+"&&"+detail(title));
+    eval(AppNavigation.request("Maps"));until(AppNavigation.selected("Maps"));
+    assertEquals("Maps opened again carries no replayed search","\"\"",eval("document.querySelector('input[aria-label=\"Search places\"]')?.value??''"));
+    assertEquals("Maps opened from Home has no event to return to","false",eval("!!document.querySelector('[data-alpha-maps-event-return]')"));
+    // 3. The event is deleted while Maps is open: the return fails closed and Maps stays.
+    eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));openEvent(title);openLocation(where);
+    assertEquals("Deleted exactly the fixture event",1,resolver.delete(event,null,null));
+    click("Back to event");
+    until("document.querySelector('[data-alpha-toast]')?.textContent.includes('That event was deleted or moved')");
+    assertEquals("Maps stays open","true",eval(AppNavigation.selected("Maps")));
+    until("!document.querySelector('[data-alpha-maps-event-return]')");
+    assertNotEquals("The other event is never opened in its place","true",eval(detail(other)));
+   }
+  }finally{
+   resolver.delete(calendar.buildUpon().appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER,"true")
+    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME,account).appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE,CalendarContract.ACCOUNT_TYPE_LOCAL).build(),null,null);
   }
  }
 }

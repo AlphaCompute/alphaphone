@@ -94,7 +94,7 @@ public final class InboxDraftInstrumentedTest {
    nav("Settings");click("Agent connection");click("Sign in with Eliza Cloud");
    until("document.querySelector('.alpha-cloud-sign-in input[name=email]')");js(InboxFixtureSignIn.DRIVE_EMAIL);
    until("document.querySelector('.alpha-cloud-sign-in input[name=one-time-code]')");js(InboxFixtureSignIn.DRIVE_CODE);// The Android account panel names the signed-in state and offers Sign out only once /api/v1/user verified the session.
-   until("document.querySelector('#connection-title')?.textContent==='Your Cloud account'&&"+button("Sign out"));click("Close connection settings");
+   until("document.querySelector('#connection-title')?.textContent==='Your agent'&&"+button("Sign out"));click("Close connection settings");
    // Inbox loads the signed-in mailbox by itself (the old explicit Load Inbox control is gone).
    nav("Inbox");until(button("Fixture a"));until(button("Refresh"));click("Compose");input("To","literal@example.invalid");click("literal@example.invalid");input("Subject","Synthetic saved draft");input("Message","Exact native draft\nSecond line");click("Save draft locally");until("[...document.querySelectorAll('[role=status]')].some(e=>e.textContent==='Saved locally on this device')");
    JSONObject draft=new JSONObject(read(slot()).getString("value"));assertEquals("Exact native draft\nSecond line",draft.getString("body"));
@@ -102,17 +102,11 @@ public final class InboxDraftInstrumentedTest {
    byte[] bytes=Files.readAllBytes(new File(context.getNoBackupFilesDir(),"connection-credentials/"+hash).toPath());assertFalse(new String(bytes,StandardCharsets.ISO_8859_1).contains("Exact native draft"));
   }else{
    JSONObject prior=new JSONObject(new String(Files.readAllBytes(backup.toPath()),java.nio.charset.StandardCharsets.UTF_8));assertNotEquals("Actual new Android process required",prior.getInt("pid"),android.os.Process.myPid());
-   // The prepare phase chose local apps, and that choice is kept across a restart: the saved sign-in is
-   // offered as "Retry saved connection" (a local read) and is not restored without the owner asking.
-   // Until then Inbox asks for Eliza Cloud and shows no draft from the signed-out state.
-   nav("Inbox");until(button("Connect Eliza Cloud"));assertEquals("false",js("Boolean("+button("Restore local draft")+")"));
-   // The panel Inbox opens offers the saved sign-in as the same retry Settings offers, beside a new
-   // sign-in, and claims no account before the owner retries.
-   click("Connect Eliza Cloud");until(button("Retry saved connection"));until(button("Sign in with Eliza Cloud"));
-   assertEquals("No account is shown before the retry","false",js("Boolean(document.querySelector('.alpha-cloud-account-summary'))"));
-   click("Close Cloud account");until("!document.querySelector('.alpha-connection-scrim')");
-   nav("Settings");click("Agent connection");click("Retry saved connection");
-   until("document.querySelector('#connection-title')?.textContent==='Your Cloud account'&&"+button("Sign out"));click("Close connection settings");
+   // Decision P-43: there is no local-apps choice to keep. The resident starts at every app start and
+   // the saved sign-in binds inference and Cloud services, so after the restart Settings shows the
+   // signed-in account without a retry and Inbox offers the saved draft.
+   nav("Settings");click("Agent connection");
+   until("document.querySelector('#connection-title')?.textContent==='Your agent'&&"+button("Sign out"));click("Close connection settings");
    nav("Inbox");click("Restore local draft");until("document.querySelector('textarea[aria-label=Message]')?.value==='Exact native draft\\nSecond line'");assertEquals("\"Synthetic saved draft\"",js("document.querySelector('input[aria-label=Subject]').value"));
    click("Discard local draft");click("Keep draft");assertFalse(read(slot()).isNull("value"));click("Discard local draft");click("Discard permanently");until(button("Refresh"));assertTrue(read(slot()).isNull("value"));
    click("Refresh");click("Synthetic sender, Fixture reply");click("Reply");input("Message","Native reply draft");click("Save draft locally");until("[...document.querySelectorAll('[role=status]')].some(e=>e.textContent==='Saved locally on this device')");

@@ -8,10 +8,10 @@ import { registerPlugin } from '../platform-plugins';
 const attachmentNative=registerPlugin<{openReviewed(input:Record<string,unknown>):Promise<{message:string}>;saveReviewed(input:Record<string,unknown>):Promise<{status:string;message:string}>;cancel():Promise<void>}>('AlphaMailAttachments');
 import {reviewMailContext,validateMailContext,type ReviewedMailContext,type MailContextSource} from '../runtime/reviewed-mail-context';
 import { inboxProviderControls } from './inbox-provider-controls';
-import { presentHomeInboxStatus } from './home-cards';
+import { presentHomeAttention, presentHomeInboxStatus } from './home-cards';
 import { inboxDrafts, type ComposePrefill, type SuggestionTarget } from './inbox-drafts';
-import { classifyGmailFailure, gmailReadable, setGmailReadState, GMAIL_ACCOUNTS_CHANGED, type GmailFailureKind } from '../runtime/gmail-mailbox';
-import { connectionController } from '../runtime/connection-ui';
+import { attachmentReadFailure, classifyGmailFailure, gmailReadable, setGmailReadState, GMAIL_ACCOUNTS_CHANGED, type GmailFailureKind } from '../runtime/gmail-mailbox';
+import { connectionController, agentPendingText } from '../runtime/connection-ui';
 import { gmailGrantChange, gmailInboxAllows, gmailModifyIncomplete, gmailReadCacheKey } from '../runtime/gmail-grants';
 import { safeMailLink, type GmailAccount, type GmailDraftContent, type GmailDraftSummary, type GmailLink, type GmailMessage } from '../runtime/cloud-protocol';
 import { reviewOpaqueAttachment } from '../runtime/inbox-operation';
@@ -26,9 +26,10 @@ export type EmailTarget = SuggestionTarget & { accountId?: string; account?: str
  * no subject, sender or body. `unreadMore` means the bounded query or loaded pages did not see every message. */
 export interface InboxAttention {
   state: 'not-connected' | 'loading' | 'ready' | 'error' | 'stale';
-  unread: number; unreadMore: boolean; source: string | null; updatedAt: string | null;
+  /** Undefined until a page was read: a stale or loading state never claims a count it did not see. */
+  unread: number | undefined; unreadMore: boolean; source: string | null; updatedAt: string | null;
 }
-let attention: InboxAttention = { state: 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null };
+let attention: InboxAttention = { state: 'not-connected', unread: undefined, unreadMore: false, source: null, updatedAt: null };
 const attentionListeners = new Set<() => void>();
 let openInboxHandler: (() => void) | null = null;
 function setAttention(next: Partial<InboxAttention>) {
@@ -79,6 +80,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   type Folder = 'inbox' | 'sent' | 'drafts' | 'archive' | 'trash' | 'starred' | 'all' | 'spam';
   const MAILBOX_CHANGED = 'Newer mail arrived while this list was loading and is not shown yet. Load newer mail to read the list again.';
   let newerMail = false,spamTrashSearch=false;
+  /** Gmail mailbox revision reported with the first page of the loaded list, when the server sends one. */
+  let firstPageRevision: string | null = null;
   const watchSelectedMail=()=>{const binding=connectionController.getCloudClient();if(binding)void configureGmailBackground(binding.credentialId,selected).catch(()=>{});};
   let closeMailQuestion:(()=>void)|undefined;
   let noticeAttempt=0,noAgentNoticeToken='';
@@ -174,7 +177,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
         invalidateList();generation++;operation?.abort();operation=null;
         messages=[];providerDrafts=[];body=null;thread=null;nextPageToken=null;loadedQuery='';hasUnread=false;inboxPreview=null;accountsChecked=false;
         phase='error';status=classified.message;homeFailure='revoked';failure={kind:'revoked',retry:()=>void refreshAccounts()};
-        setAttention({state:'error',unread:0,unreadMore:false,source:null,updatedAt:null});
+        setAttention({state:'error',unread:undefined,unreadMore:false,source:null,updatedAt:null});
         publish({open:null,nativeMailSelection:null});
       });
     }
@@ -219,6 +222,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   /** Read-cache identity of the selected account now; null while nothing it read may be shown. */
   const readKey = (id = selected) => gmailReadCacheKey(connectionController.getCloudClient()?.sessionId, accounts.find(a => a.connectionId === id));
   const accountLabel = (id = selected) => accounts.find(a => a.connectionId === id)?.label || null;
+  const grants = () => accounts.find(a => a.connectionId === selected)?.grantedCapabilities ?? [];
   // `fresh` marks a completed first-page provider read. Later pages and local recounts keep that
   // time, so the time shown is never newer than the oldest data counted; no time is invented.
   const recountUnread = (more=inboxPreview?.more??nextPageToken!==null,fresh=false) => {
@@ -230,7 +234,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   drafts.setFromSwitch({ count: () => readable().length, cycle: () => void switchFrom() });
   provider.setObservers({
     // A provider-confirmed send removes the local copies of exactly the draft it was sent from.
-    sent: (source, proposal, grant) => void drafts.settleSent(source.draftId, proposal, grant), sentNote: source => drafts.sentNote(source.draftId),
+    sent: (source, proposal, grant) => void drafts.settleSent(source.draftId, proposal, grant, (source as { savedRevision?: string }).savedRevision), sentNote: source => drafts.sentNote(source.draftId),
     // A stale review was discarded without dispatch; reload the open message so the user sees its current state.
     stale: () => { if (body) void open(body.message); else void load(); },
     receipt: receipt => {
@@ -248,7 +252,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     noticeAttempt++;
     invalidateList();spamTrashSearch=false;
     providerDrafts = [];
-    setAttention({ state: connectionController.getCloudClient() ? 'loading' : 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null });
+    setAttention({ state: connectionController.getCloudClient() ? 'loading' : 'not-connected', unread: undefined, unreadMore: false, source: null, updatedAt: null });
     void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;provider.reset(); drafts.reset();
     generation++; operation?.abort(); operation = null;
     thread=null; accounts = []; accountsChecked = false;accountsSession=''; messages = []; selected = ''; loadedQuery = ''; nextPageToken = null; body = null; phase = 'idle'; revision = '';
@@ -274,6 +278,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if (valid()) {
         readAhead.invalidate();
         const classified = classifyGmailFailure(error, 'read');
+        // A refused attachment is a decision about one file: the message stays open, Home is not told
+        // that Gmail failed, and no Retry is offered because the same bytes would be refused again.
+        if (classified.kind === 'refused') { status = classified.message; api?.toast(status); publish(); return; }
         homeFailure=classified.kind;
         if(classified.kind==='revoked'){invalidateList();inboxPreview=null;hasUnread=false;messages=[];nextPageToken=null;}
         if (!keep) { messages = []; nextPageToken = null; }
@@ -308,13 +315,13 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if(previous&&grantChange.withdrawn.length)provider.withdrawn();
       if (!accounts.some(a => a.connectionId === selected && a.connected && a.grantedCapabilities.includes('google.gmail.triage'))) selected = accounts.find(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage'))?.connectionId || '';
       const dropped=previous!==selected||(!!previous&&grantChange.dropReadCache);
-      if(dropped){inboxPreview=null;hasUnread=false;if(selected)setAttention({state:'loading',unread:0,unreadMore:false,source:null,updatedAt:null});}
+      if(dropped){inboxPreview=null;hasUnread=false;if(selected)setAttention({state:'loading',unread:undefined,unreadMore:false,source:null,updatedAt:null});}
       if(hint&&hint!==selected)readAhead.invalidate();
       saveGmailAccountChoice(connectionController.getSnapshot().cloudAccount,selected||null);watchSelectedMail();
       const retained=preserveSelection&&!!selected&&!dropped;
       if(!retained){void attachmentNative.cancel().catch(()=>{});attachmentView=null;contextReview=null;thread=null;messages=[];body=null;}
       void provider.bind(selected); void drafts.bind(selected, accounts.find(a => a.connectionId === selected)?.label || '');
-      if(!retained){status = selected ? 'Loading Gmail…' : 'Connect Gmail to read your inbox';nextPageToken=null;loadedQuery='';providerDrafts=[];if(!selected){hasUnread=false;setAttention({state:'not-connected',unread:0,unreadMore:false,source:null,updatedAt:null});}}
+      if(!retained){status = selected ? 'Loading Gmail…' : 'Connect Gmail to read your inbox';nextPageToken=null;loadedQuery='';providerDrafts=[];if(!selected){hasUnread=false;setAttention({state:'not-connected',unread:undefined,unreadMore:false,source:null,updatedAt:null});}}
       loadAfter = !!selected && !retained;
       publish(retained?{}:{ open: null, nativeMailSelection: null });
     }, () => void refreshAccounts(preserveSelection));
@@ -406,11 +413,15 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       // A later page that repeats a loaded message was cut from a mailbox that changed after the
       // earlier pages were read (new mail moved every row down). The repeat is dropped as before,
       // and the list says that it is no longer the whole mailbox.
-      const shifted = !!pageToken && result.messages.some(m => seen.has(m.id));
+      // The mailbox revision says the same for a removed message, which no repeat can show: a later
+      // page whose revision differs from the first page's was listed from a changed mailbox. A server
+      // that sends no revision (older Cloud) leaves only the repeat check.
+      const revisionChanged = !!pageToken && !!firstPageRevision && !!result.mailboxHistoryId && result.mailboxHistoryId !== firstPageRevision;
+      const shifted = !!pageToken && (revisionChanged || result.messages.some(m => seen.has(m.id)));
       // A message the provider lists twice, in one page or across pages, is shown once.
       const fresh = result.messages.filter(m => !seen.has(m.id) && !!seen.add(m.id));
       messages = pageToken ? [...messages, ...fresh] : fresh;
-      if (!pageToken) seenCursors = new Set();
+      if (!pageToken) { seenCursors = new Set(); firstPageRevision = result.mailboxHistoryId ?? null; }
       // A provider cursor that repeats would page forever; treat it as the end of the results.
       const next = result.nextPageToken ?? null;
       nextPageToken = next && !seenCursors.has(next) ? next : null;
@@ -509,12 +520,12 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     },()=>void loadThread(),true);
   }
   function mailContext():MailContextSource {if(!body||!selected||!body.historyId)throw new Error('Refresh this message before sharing');return {accountId:selected,messageId:body.message.id,revision:body.historyId,from:body.message.from,to:body.message.to,subject:body.message.subject,bodyText:body.bodyText};}
-  async function askAgent(){try{const destination=connectionController.getSnapshot().session;if(!destination)throw new Error('Connect an agent first');const source=mailContext(),token=generation;const review=await reviewMailContext(source,destination);if(token!==generation||JSON.stringify(source)!==JSON.stringify(mailContext()))throw new Error('Message changed');contextReview=review;publish();}catch(error){api?.toast((error as Error).message);}}
+  async function askAgent(){try{const destination=connectionController.getSnapshot().session;if(!destination)throw new Error(agentPendingText());const source=mailContext(),token=generation;const review=await reviewMailContext(source,destination);if(token!==generation||JSON.stringify(source)!==JSON.stringify(mailContext()))throw new Error('Message changed');contextReview=review;publish();}catch(error){api?.toast((error as Error).message);}}
   async function sendContext(){if(!contextReview||contextBusy)return;contextBusy=true;publish();try{const review=contextReview,destination=connectionController.getSnapshot().session;if(!destination)throw new Error('Agent disconnected');const text=await validateMailContext(review,mailContext(),destination);if(contextReview!==review)throw new Error('Review closed');contextReview=null;publish();if(!api)throw new Error("Inbox closed");await api.sendReviewedMail(text,destination);}catch(error){api?.toast((error as Error).message);}finally{contextBusy=false;publish();}}
   async function openAttachment(source:NonNullable<typeof body>,attachment:NonNullable<NonNullable<typeof body>['attachments']>[number]){
     if(!source.historyId){api?.toast('Refresh this message before opening its attachments.');return;}
     if(!attachment.supported){await saveOpaque(source,attachment);return;}const accountId=selected;
-    await work('Loading selected attachment…',async({client},signal,valid)=>{const file=await client.gmailAttachment(accountId,source.message.id,attachment.partId,source.historyId!,signal);if(!valid()||accountId!==selected||body!==source)return;const reviewGeneration=generation;const review={name:file.name,text:file.text??`${file.mimeType} · ${file.size} bytes. Open a temporary read-only copy in an installed viewer. The viewer receives this file.`,hash:file.sha256,external:file.text===undefined,open:()=>{if(accountId!==selected||body!==source)return;void attachmentNative.openReviewed({...file,reviewed:true}).then(result=>api?.toast(result.message)).catch(error=>api?.toast(error.message));},saveDisabled:false,saveStatus:'',save:()=>{
+    await work('Loading selected attachment…',async({client},signal,valid)=>{const file=await client.gmailAttachment(accountId,source.message.id,attachment.partId,source.historyId!,signal).catch(error=>{throw attachmentReadFailure(error);});if(!valid()||accountId!==selected||body!==source)return;const reviewGeneration=generation;const review={name:file.name,text:file.text??`${file.mimeType} · ${file.size} bytes. Open a temporary read-only copy in an installed viewer. The viewer receives this file.`,hash:file.sha256,external:file.text===undefined,open:()=>{if(accountId!==selected||body!==source)return;void attachmentNative.openReviewed({...file,reviewed:true}).then(result=>api?.toast(result.message)).catch(error=>api?.toast(error.message));},saveDisabled:false,saveStatus:'',save:()=>{
       if(review.saveDisabled||attachmentView!==review||accountId!==selected||body!==source||generation!==reviewGeneration)return;
       review.saveDisabled=true;review.saveStatus='Saving reviewed attachment…';publish();
       void attachmentNative.saveReviewed({...file,reviewed:true}).then(result=>{if(attachmentView!==review||generation!==reviewGeneration)return;review.saveStatus=result.message;review.saveDisabled=result.status!=='cancelled';publish();}).catch(()=>{if(attachmentView!==review||generation!==reviewGeneration)return;review.saveStatus='Save not confirmed. Inspect Files before trying again.';publish();});
@@ -525,7 +536,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   async function saveOpaque(source:NonNullable<typeof body>,attachment:NonNullable<NonNullable<typeof body>['attachments']>[number]){
     if(!provider.capabilities()?.opaqueAttachments||attachment.size>5*1024*1024){api?.toast('This attachment type cannot be previewed here, and this account cannot save it to Files. Open it in Gmail.');return;}
     const accountId=selected;
-    await work('Loading attachment bytes…',async({client},signal,valid)=>{const file=await client.gmailOpaqueAttachment(accountId,source.message.id,attachment.partId,source.historyId!,signal);const checked=await reviewOpaqueAttachment(file);if(checked.sha256!==file.sha256||checked.size!==file.size)throw new Error('Attachment changed');if(!valid()||accountId!==selected||body!==source)return;const reviewGeneration=generation;
+    await work('Loading attachment bytes…',async({client},signal,valid)=>{const file=await client.gmailOpaqueAttachment(accountId,source.message.id,attachment.partId,source.historyId!,signal).catch(error=>{throw attachmentReadFailure(error);});const checked=await reviewOpaqueAttachment(file);if(checked.sha256!==file.sha256||checked.size!==file.size)throw new Error('Attachment changed');if(!valid()||accountId!==selected||body!==source)return;const reviewGeneration=generation;
       const review={name:file.name,text:`${file.mimeType} · ${file.size} bytes. This type is not previewed or opened by Alpha. Save to Files stores an exact copy of the bytes; nothing is shared with the agent.`,hash:file.sha256,external:false,open:()=>{},saveDisabled:false,saveStatus:'',save:()=>{
         if(review.saveDisabled||attachmentView!==review||accountId!==selected||body!==source||generation!==reviewGeneration)return;
         review.saveDisabled=true;review.saveStatus='Saving exact copy…';publish();
@@ -578,6 +589,10 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     const count=unread.length?`${unread.length}${cached?.more?'+':''} unread`:'';
     // Account and read time of the page the user loaded in Inbox; Home never reads mail to refresh it.
     const homeInboxStatus=presentHomeInboxStatus({failure:!!homeFailure,pending,cached:cached?{more:cached.more,label:accounts.find(a=>a.connectionId===selected)?.label||'',readAt:cached.readAt}:null,connected,unchecked:!!binding&&!accountsChecked,now:Date.now()});
+    // The loaded page was dropped (an account change or disconnect elsewhere) after a real read:
+    // the card says when it last updated, with the last count only in the accessible name.
+    const stale=binding&&!cached&&!homeFailure&&!pending&&attention.state==='stale'&&attention.updatedAt?presentHomeAttention({state:'stale',unread:attention.unread,...(attention.source?{source:attention.source}:{}),updatedAt:attention.updatedAt},Date.now()):null;
+    if(stale)return {...out,homeAttentionLabel:stale.label,homeInboxCount:'',homeInboxRows:[],homeInboxHasRows:false,homeInboxTitle:'Inbox',homeInboxStatus:stale.text,homeInboxDescription:stale.text};
     return {...out,homeAttentionLabel:count?`Open Inbox: ${count} email${unread.length===1?'':'s'}`:!binding||accountsChecked&&!connected?'Connect email':'Open Inbox',
       homeInboxCount:count,homeInboxRows:unread.slice(0,2).map(m=>({subject:m.subject||'(no subject)',from:m.from})),homeInboxHasRows:unread.length>0,
       homeInboxTitle:unread.length?'':homeFailure==='revoked'?'Reconnect email':homeFailure?'Email unavailable':pending?'Loading email…':cached&&!cached.more?'No unread email':!binding||accountsChecked&&!connected?'Connect email':'Inbox',
@@ -754,7 +769,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if (api?.isActive() && !operation) { void refreshAccounts(); return; }
       // Drop provider content now; the next open re-checks accounts and rebinds drafts per account.
       generation++; operation?.abort(); operation = null; messages = []; providerDrafts = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; hasUnread = false; inboxPreview=null;homeFailure=null;accountsChecked=false;failure = null;
-      setAttention({ state: 'stale', unread: 0, unreadMore: false, source: null, updatedAt: null });
+      // Stale, with the count and time of the last real read when there was one; never a zero nobody read.
+      const read = attention.updatedAt !== null && attention.unread !== undefined;
+      setAttention({ state: 'stale', unread: read ? attention.unread : undefined, unreadMore: read && attention.unreadMore, source: read ? attention.source : null, updatedAt: read ? attention.updatedAt : null });
       phase = 'idle'; status = 'Checking Gmail connection…'; publish({ open: null, nativeMailSelection: null });
     };
     window.addEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.addEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
@@ -763,6 +780,6 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     closeMailQuestion?.();closeMailQuestion=undefined;noticeAttempt++;void this.gmailNoticeListener?.then((handle:Bag)=>handle.remove()).catch(()=>{});
     document.removeEventListener('visibilitychange',this.inboxVisibility);
     this.inboxConnectionUnsubscribe?.(); void this.inboxResume?.then((handle: Bag) => handle?.remove()); window.removeEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.removeEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
-    shell = undefined; openInboxHandler = null; clear(); setAttention({ state: 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null }); unmount?.call(this);
+    shell = undefined; openInboxHandler = null; clear(); setAttention({ state: 'not-connected', unread: undefined, unreadMore: false, source: null, updatedAt: null }); unmount?.call(this);
   };
 }

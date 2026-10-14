@@ -12,6 +12,21 @@ const voicePreferencesEvent = 'alpha:voice-preferences';
 export function voicePreferenceKeys() { return { route: voiceRouteKey, speakReplies: speakRepliesKey, event: voicePreferencesEvent }; }
 export type VoiceRouteChoice = 'device' | 'cloud';
 export type VoicePreference = 'default' | 'device' | 'agent' | 'manual';
+/**
+ * When a spoken turn is sent. 'auto-send' (today's behaviour) sends each finished Cloud
+ * conversation transcript as it is; 'review' shows it for editing and an explicit Send first.
+ * The choice is an owner decision (MVP-01, A-04, A-10): this constant is the one switch.
+ */
+export type VoiceSendPolicy = 'auto-send' | 'review';
+const VOICE_SEND_POLICY: VoiceSendPolicy = 'auto-send';
+let voiceSendPolicyForTests: VoiceSendPolicy | undefined;
+export function voiceSendPolicy(): VoiceSendPolicy { return testMocksEnabled && voiceSendPolicyForTests ? voiceSendPolicyForTests : VOICE_SEND_POLICY; }
+/** Test-mocks builds only: exercise either policy. A flag-off build always uses the constant. */
+export function setVoiceSendPolicyForTests(policy?: VoiceSendPolicy): boolean {
+  if (!testMocksEnabled) return false;
+  voiceSendPolicyForTests = policy === 'auto-send' || policy === 'review' ? policy : undefined;
+  return true;
+}
 
 function storage(): Storage | undefined { try { return globalThis.localStorage; } catch { return undefined; } }
 function read(key: string): unknown { try { const raw = storage()?.getItem(key); return raw == null ? null : JSON.parse(raw); } catch { return null; } }
@@ -46,6 +61,7 @@ export function cloudSpeechDisclosure() { return 'Eliza Cloud speech uploads rec
 
 /** Opt-in: replies to voice-originated turns are read aloud. Off unless explicitly enabled. */
 export function speakRepliesEnabled(): boolean { const value = record(read(speakRepliesKey)); return !!value && value.version === 1 && value.enabled === true; }
+/** No Settings control calls this yet (MVP-01); tests use it to seed a retained preference. */
 export function setSpeakReplies(enabled: boolean): boolean { return write(speakRepliesKey, { version: 1, enabled: enabled === true }); }
 
 /** A usable Cloud speech account is signed in for this renderer. */

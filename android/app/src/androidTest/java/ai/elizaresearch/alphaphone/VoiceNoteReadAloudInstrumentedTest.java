@@ -16,7 +16,7 @@ import static org.junit.Assert.*;
  * renderer's local speech calls synthesize note text with the on-device engine
  * (synthesizeLocal, execution "device"), play it with MediaPlayer, finish with playbackEnded,
  * and a stop request ends a longer passage with playbackStopped. Opt-in with -e localSpeech 1
- * and networking disabled, like LocalSpeechInstrumentedTest. This is emulator or device evidence
+ * and networking disabled, like FusedSpeechInstrumentedTest. This is emulator or device evidence
  * for the playback route only, not speaker intelligibility to a listener.
  */
 @RunWith(AndroidJUnit4.class)

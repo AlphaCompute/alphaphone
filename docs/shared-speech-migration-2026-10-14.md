@@ -11,10 +11,12 @@ before allowing another capture.
 
 This is a source migration, not a qualified speech release. The shared ASR API
 accepts a complete 16 kHz PCM array and returns one transcript; Paradee returns a
-complete PCM buffer. No ASR GGUF/mmproj pair has been admitted for this product,
-and no new runtime/model qualification record exists. Historical Sherpa/Piper
-qualification cannot qualify these bytes. Strict release admission must remain
-closed until the new inputs and qualification are present.
+complete PCM buffer. The ASR slot pair is pinned in `android/paradee-voice/asr-inputs.json`
+(Qwen3-ASR-0.6B Q8_0 until Phonon-2 lands, decision P-55), and the engine and every bundle byte
+are recorded in `android/voice-host/qualified-voice-host.json` with `qualified: false`
+([fused speech](fused-speech.md)). Historical Sherpa/Piper qualification cannot qualify these
+bytes. Strict release admission stays closed until on-device qualification and device
+acceptance are recorded.
 
 The separate Transcribe entry now records locally, transcribes after Stop, and
 lets the user edit and append text to the existing draft. It never sends a turn.

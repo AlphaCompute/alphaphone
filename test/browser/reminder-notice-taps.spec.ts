@@ -37,9 +37,10 @@ for(const mode of ['recover','stale','read-failure','draft-race','navigation-rac
  },mode);
  await page.goto('/');
  if(mode==='chooser-close'){
-  await expect(page.getByRole('button',{name:'Continue offline',exact:true})).toBeVisible();
+  // P-43: no offline choice exists; the owner closes the chooser.
+  await expect(page.getByRole('button',{name:'Close connection settings',exact:true})).toBeVisible();
   expect(await page.evaluate(()=>(window as any).reminderTapFixture.consumed)).toEqual([]);
-  await page.getByRole('button',{name:'Continue offline',exact:true}).click();
+  await page.getByRole('button',{name:'Close connection settings',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Original notification reminder',exact:true})).toBeVisible();
   await expect.poll(()=>page.evaluate(()=>(window as any).reminderTapFixture.consumed)).toEqual(['original-token']);expect(errors).toEqual([]);return;
  }

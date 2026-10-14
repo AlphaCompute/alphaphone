@@ -91,4 +91,55 @@ public class SettingsFlowInstrumentedTest {
    }
   }finally{if(monitored)instrumentation.removeMonitor(monitor);shell("dumpsys battery reset");}
  }
+
+ /** A button by its accessible name: aria-label, else its trimmed text. */
+ private void press(String name)throws Exception{
+  String q="[...document.querySelectorAll('[data-screen] button')].find(b=>(b.getAttribute('aria-label')||b.textContent.trim())==="+JSONObject.quote(name)+"&&b.getClientRects().length&&!b.disabled&&!b.closest('[inert]'))";
+  until(q);WebViewTestDriver.evaluate("("+q+").click()");
+ }
+ private static final String BG="getComputedStyle(document.querySelector('.os')).getPropertyValue('--bg').trim().toUpperCase()";
+ private void chooseDarkTheme()throws Exception{
+  AppNavigation.liveMode();
+  WebViewTestDriver.evaluate(AppNavigation.request("Settings"));until(AppNavigation.selected("Settings"));
+  press("Display");press("Theme: Dark");
+  until(BG+"==='#000000'");
+ }
+ private void assertDark(String when)throws Exception{
+  until("document.querySelector('.os')&&"+BG+"==='#000000'");
+  assertEquals("Dark --bg "+when,"\"#000000\"",WebViewTestDriver.evaluate(BG));
+  assertEquals("The saved appearance is dark "+when,"\"dark\"",WebViewTestDriver.evaluate("localStorage.getItem('alpha.appearance.v1')"));
+ }
+
+ /** F18: Display > Theme: Dark applies at once and is still applied after the activity and its
+  * renderer are recreated. The restart runner covers a new process (themeProcessRestartPhase). */
+ @Test public void darkThemeChosenInSettingsSurvivesRecreation()throws Exception{
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   chooseDarkTheme();
+   assertDark("right after choosing it");
+   scenario.recreate();
+   AppNavigation.liveMode();
+   assertDark("after the activity was recreated");
+  }finally{
+   // The saved appearance outlives this method; later methods and classes expect the default Light.
+   try(BoundedActivityScenario<MainActivity> reset=BoundedActivityScenario.launch(MainActivity.class)){
+    until("document.documentElement.dataset.activeView");
+    WebViewTestDriver.evaluate("localStorage.setItem('alpha.appearance.v1','light')");
+   }
+  }
+ }
+
+ /** node scripts/test-native-restart.mjs theme: prepare chooses Dark, the runner force-stops the
+  * app, verify reads it in a new process, cleanup returns to Light through the same control. */
+ @Test public void themeProcessRestartPhase()throws Exception{
+  String phase=InstrumentationRegistry.getArguments().getString("themePhase");
+  org.junit.Assume.assumeTrue("Run by node scripts/test-native-restart.mjs theme","prepare".equals(phase)||"verify".equals(phase)||"cleanup".equals(phase));
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   if("prepare".equals(phase)){chooseDarkTheme();assertDark("before the process stops");return;}
+   AppNavigation.liveMode();
+   if("verify".equals(phase)){assertDark("in a new process");return;}
+   WebViewTestDriver.evaluate(AppNavigation.request("Settings"));until(AppNavigation.selected("Settings"));
+   press("Display");press("Theme: Light");
+   until(BG+"==='#FFFFFF'");
+  }
+ }
 }

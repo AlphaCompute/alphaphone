@@ -13,9 +13,20 @@ final class AlphaParadeeSpeech implements AlphaLocalSpeechEngine.Backend {
  private final NativeAsr asr;
  private final ParadeeVoice voice;
  AlphaParadeeSpeech(Context context)throws Exception{
+  exportAsrBackend();
   VoiceAssets.Bundle bundle=VoiceAssets.install(context);
   ParadeeVoice opened=bundle.openVoice();
   try{asr=bundle.openAsr();voice=opened;}catch(Exception|Error error){opened.close();throw error;}
+ }
+ /**
+  * libelizainference reads ELIZA_ASR_BACKEND when it maps the "asr" region. The APK bundle carries
+  * only Phonon-2, so the build default is parakeet (BuildConfig); an existing process value wins,
+  * as in the pinned ElizaAsrNativeEnv.
+  */
+ static void exportAsrBackend(){
+  String backend=BuildConfig.ELIZA_ASR_BACKEND;
+  if(backend==null||backend.isEmpty())return;
+  try{android.system.Os.setenv("ELIZA_ASR_BACKEND",backend,false);}catch(android.system.ErrnoException unavailable){/* The library then picks from the bundle, which holds Phonon-2 only. */}
  }
  public String transcribe(float[] samples){
   if(samples==null||samples.length<1600||samples.length>16000*60)throw new IllegalArgumentException("Expected 0.1 to 60 seconds of audio");

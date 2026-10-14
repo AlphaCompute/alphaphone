@@ -17,8 +17,9 @@
  *     SHA-256 of its archive (or, for a coordinate with no archive, its metadata file) from
  *     android/gradle/verification-metadata.xml, the checksum Gradle enforces on every build.
  *     Gradle is not run here.
- *   - android/local-speech/runtime-manifest.json and the pinned upstream local-speech manifests:
- *     SHA-256 of the speech AAR, its native libraries per ABI, and the acquired model inputs.
+ *   - android/voice-host/qualified-voice-host.json: SHA-256 and size of each recorded
+ *     libelizainference engine library per ABI and of every voice bundle file (Paradee GGUF, misaki
+ *     lexicon, eSpeak NG data, the ASR slot pair, Silero VAD, notices).
  *   - android/embedding-host/qualified-host.json: SHA-256 of the reviewed ARM64 embedding host
  *     libraries and the pinned embedding model.
  *   - upstream.lock.json: the pinned elizaOS commit.
@@ -43,15 +44,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {AGENT_ASSETS, ANDROID_CLASSPATH, ASR_MODEL_NAMES, ASR_MODEL_PINS, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, collectNotices, fontLicense, fontNames, packagedRuntimePresent, productionLockPackages} from './generate-licenses.mjs';
+import {AGENT_ASSETS, ANDROID_CLASSPATH, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, VOICE_HOST, collectNotices, fontLicense, fontNames, packagedRuntimePresent, pinnedVoiceModels, productionLockPackages, voiceHostProblems} from './generate-licenses.mjs';
 import {METADATA as GRADLE_METADATA, coordinateChecksum, parseVerificationMetadata} from './gradle-verification.mjs';
 import {classifyLicence, flagSummary} from './licence-policy.mjs';
 
 export const LICENCE_NOT_RECORDED = 'not recorded in this inventory';
 
 export const DEFAULT_OUTPUT = 'artifacts/sbom/alphaphone.cdx.json';
-const SPEECH_RUNTIME = 'android/local-speech/runtime-manifest.json';
-const UPSTREAM_SPEECH = 'vendor/eliza/packages/app/scripts/local-speech';
 const NOT_COVERED = 'Staged resident runtime payload (Bun, bundled agent and workflow-worker packages, PGlite, musl loader): present only after agent:stage-android; add it with --packaged-runtime. Verified per APK by scripts/verify-packaged-runtime.py.';
 const EMBEDDING_HOST = 'android/embedding-host/qualified-host.json';
 const JNI_LIBS = 'android/app/src/main/jniLibs';
@@ -223,64 +222,23 @@ function apkComponents(root, directory) {
   });
 }
 
-function asrModelComponents(root) {
-  if (!exists(root, ASR_MODEL_PINS)) return [];
-  return (readJson(root, ASR_MODEL_PINS).asr ?? []).map(pin => ({
-    type: 'machine-learning-model', 'bom-ref': `speech-asr:${pin.path}`, name: ASR_MODEL_NAMES[pin.path] ?? pin.path,
-    version: pin.path, hashes: [{alg: 'SHA-256', content: pin.sha256}], licenses: licenses(UNVERIFIED),
-    properties: [property('ships-in', 'native speech build input; staging and qualification unverified'), property('bytes', pin.bytes), property('source', ASR_MODEL_PINS)],
-  }));
-}
-
-function speechComponents(root) {
-  const source = 'vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json';
-  if (exists(root, source)) return [...Object.entries(readJson(root, source)).map(([name, pin]) => ({
-    type: name === 'paradee' ? 'machine-learning-model' : name === 'espeak' ? 'library' : 'data',
-    'bom-ref': `speech-input:${name}`, name: name === 'espeak' ? 'eSpeak NG' : name,
-    version: pin.version ?? pin.path, hashes: [{alg: 'SHA-256', content: pin.sha256}],
-    licenses: licenses(pin.license),
-    ...(pin.url ? {externalReferences: [{type: 'distribution', url: pin.url}]} : {}),
-    properties: [property('ships-in', 'native speech build input; staging and qualification unverified'), property('bytes', pin.bytes), property('source', source), property('origin', pin.url ?? pin.source)],
-  })), ...asrModelComponents(root)];
-  if (!exists(root, SPEECH_RUNTIME)) return [];
-  const manifest = readJson(root, SPEECH_RUNTIME);
-  const consumer = exists(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle')
-    ? fs.readFileSync(path.join(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle'), 'utf8') : '';
-  const sherpa = consumer.match(/sherpa-onnx-([\d.]+)-no-espeak\.aar/)?.[1] ?? 'unknown';
-  const ort = exists(root, `${UPSTREAM_SPEECH}/onnxruntime-provenance.json`) ? readJson(root, `${UPSTREAM_SPEECH}/onnxruntime-provenance.json`) : [];
-  const out = [{
-    type: 'library', 'bom-ref': 'speech:sherpa-onnx-no-espeak.aar', name: 'Sherpa-ONNX (no-eSpeak Android build)', version: sherpa,
-    hashes: [{alg: 'SHA-256', content: manifest.aarSha256}], licenses: licenses('Apache-2.0'),
-    properties: [property('ships-in', 'apk'), property('source', SPEECH_RUNTIME), property('no-espeak', manifest.noEspeak === true)],
-  }];
-  for (const abi of manifest.qualifiedAbis)
-    for (const native of abi.native) {
-      const runtime = ort.find(item => item.sha256 === native.sha256);
-      out.push({
-        type: 'library', 'bom-ref': `speech-native:${abi.abi}/${native.file}`, name: `${native.file} (${abi.abi})`, version: runtime ? `ONNX Runtime ${runtime.version}` : `Sherpa-ONNX ${sherpa}`,
-        hashes: [{alg: 'SHA-256', content: native.sha256}], licenses: licenses(runtime ? runtime.license : 'Apache-2.0'),
-        properties: [property('ships-in', 'apk'), property('abi', abi.abi), property('bytes', native.bytes), property('source', SPEECH_RUNTIME),
-          ...(runtime ? [property('origin', runtime.origin)] : [property('source-archive-sha256', abi.sourceArchiveSha256), property('patch-sha256', abi.patchSha256)])],
-      });
-    }
-  const downloads = exists(root, `${UPSTREAM_SPEECH}/download-manifest.json`) ? readJson(root, `${UPSTREAM_SPEECH}/download-manifest.json`) : [];
-  for (const item of downloads) {
-    const digest = item.observedSha256 || /^sha256:([0-9a-f]{64})$/.exec(item.digest || '')?.[1];
-    if (!digest) throw new Error(`${UPSTREAM_SPEECH}/download-manifest.json: ${item.name} has no SHA-256`);
-    out.push({
-      type: /\.aar$/.test(item.name) ? 'library' : 'machine-learning-model', 'bom-ref': `speech-input:${item.name}`, name: item.name, hashes: [{alg: 'SHA-256', content: digest}],
-      externalReferences: [{type: 'distribution', url: item.browser_download_url}],
-      properties: [property('ships-in', item.archiveDistributed === false ? 'build-input (archive not distributed; see role)' : 'apk'), property('bytes', item.size), property('role', item.distributionRole ?? 'speech build input'),
-        property('source', `${UPSTREAM_SPEECH}/download-manifest.json`)],
-    });
-  }
-  const reference = exists(root, `${UPSTREAM_SPEECH}/reference-manifest.json`) ? readJson(root, `${UPSTREAM_SPEECH}/reference-manifest.json`) : [];
-  for (const item of reference.filter(entry => !entry.path.startsWith('onnxruntime-headers/') && !/LICENSE|MODEL_CARD|README/.test(entry.path)))
-    out.push({
-      type: 'data', 'bom-ref': `speech-reference:${item.path}`, name: item.path, hashes: [{alg: 'SHA-256', content: item.sha256}],
-      externalReferences: [{type: 'distribution', url: item.url}],
-      properties: [property('ships-in', 'build-input'), property('bytes', item.bytes), property('source', `${UPSTREAM_SPEECH}/reference-manifest.json`)],
-    });
+/** The libelizainference voice host: its recorded engine libraries per ABI and every bundle file it pins. */
+function voiceHostComponents(root) {
+  if (!exists(root, VOICE_HOST)) return [];
+  const record = readJson(root, VOICE_HOST);
+  const problems = voiceHostProblems(record);
+  if (problems.length) throw new Error(problems.join('\n'));
+  const out = [];
+  for (const abi of record.abis)
+    for (const library of abi.libraries)
+      out.push({type: 'library', 'bom-ref': `voice-host:${abi.abi}/${library.name}`, name: `${library.name} (${abi.abi})`, version: `elizaOS llama.cpp fork ${record.forkPin}`,
+        hashes: [{alg: 'SHA-256', content: library.sha256}],
+        properties: [property('ships-in', 'apk'), property('abi', abi.abi), property('bytes', library.bytes), property('source', VOICE_HOST), property('eliza-pin', record.pin), property('qualified', record.qualified === true)]});
+  for (const model of pinnedVoiceModels(record))
+    out.push({type: ['tts-model', 'asr-model', 'asr-mmproj', 'vad-model'].includes(model.role) ? 'machine-learning-model' : 'data', 'bom-ref': `voice-model:${model.path}`, name: model.name, version: model.sha256.slice(0, 12),
+      hashes: [{alg: 'SHA-256', content: model.sha256}], licenses: licenses(!model.license || model.license === 'UNVERIFIED' ? UNVERIFIED : model.license),
+      ...(model.url ? {externalReferences: [{type: 'distribution', url: model.url}]} : {}),
+      properties: [property('ships-in', 'apk'), property('role', model.role), property('bytes', model.bytes), property('path', model.path), property('origin', model.source), property('source', VOICE_HOST)]});
   return out;
 }
 
@@ -324,7 +282,7 @@ export function buildSbom(root = ROOT, {packagedRuntime = false, apks = null} = 
   const lock = JSON.parse(lockText);
   const components = strip(withLicenceFlags(root, [
     ...npmComponents(root, lock), ...fontComponents(root), ...ocrComponents(root),
-    ...gradleComponents(root), ...speechComponents(root), ...embeddingHostComponents(root), upstreamComponent(root),
+    ...gradleComponents(root), ...voiceHostComponents(root), ...embeddingHostComponents(root), upstreamComponent(root),
     ...(packagedRuntime ? residentRuntimeComponents(root) : []), ...(apks ? apkComponents(root, apks) : []),
   ])).sort((a, b) => a['bom-ref'].localeCompare(b['bom-ref']));
   const refs = new Set();

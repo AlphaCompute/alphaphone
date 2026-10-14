@@ -5,7 +5,7 @@ import java.util.*;
 import org.json.*;
 import org.junit.Test;
 import static org.junit.Assert.*;
-/** Notes durability: a distinct storage-full refusal above slot caps, and the encrypted Notes draft
+/** Notes durability: a distinct storage-full refusal above slot caps, the lowered Trash cap, and the encrypted Notes draft
  * surviving a forced commit failure and a fresh Activity/WebView (the renderer state is discarded;
  * the instrumentation process cannot kill its own app process). Unique synthetic content only. */
 public final class NotesStorageDurabilityInstrumentedTest {
@@ -32,6 +32,38 @@ public final class NotesStorageDurabilityInstrumentedTest {
    assertTrue("A fitting CAS still applies",store.compareExchangeCredentialSlot(slot,full,kept));assertEquals(kept,store.readCredentialSlot(slot));
   }finally{store.removeCredentialSlot(slot);}
   assertNull(store.readCredentialSlot(slot));
+ }
+
+ /** The Trash slot cap was lowered to the Trash policy limit (30 MiB). A document written under the
+  * old 32 MiB cap stays readable, a write that shrinks it is accepted, and growth above the new cap
+  * is storage-full (JsonCredentialSlots retained limit, elizaOS/eliza#35910). Disposable: the
+  * device's Trash value is saved first and restored byte for byte. */
+ @Test public void loweredTrashCapKeepsOlderOversizeTrashReadableAndShrinkable()throws Exception{
+  org.junit.Assume.assumeTrue("Explicit disposable Notes qualification","1".equals(InstrumentationRegistry.getArguments().getString("notesStorage")));
+  android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+  AlphaCredentialStore store=new AlphaCredentialStore(context);
+  String slot=AlphaCredentialStore.NOTES_TRASH;int cap=AlphaCredentialStore.slotLimit(slot),retained=AlphaCredentialStore.retainedLimit(slot);
+  assertEquals("Trash cap is the Trash policy byte limit",30*1024*1024,cap);
+  assertEquals("Data written under the earlier cap stays admitted",32*1024*1024,retained);
+  assertEquals("Other slots keep no retained allowance",AlphaCredentialStore.slotLimit(AlphaCredentialStore.NOTES_RECORDS),AlphaCredentialStore.retainedLimit(AlphaCredentialStore.NOTES_RECORDS));
+  // The earlier host: same encrypted store, the old 32 MiB cap for every slot.
+  ai.eliza.plugins.securestore.nativeonly.JsonCredentialSlots older=new ai.eliza.plugins.securestore.nativeonly.JsonCredentialSlots(new java.io.File(context.getNoBackupFilesDir(),"connection-credentials"),"alpha.connection.aes.v1",name->32*1024*1024);
+  String previous=store.readCredentialSlot(slot);
+  try{
+   String oversize=jsonOfBytes(cap+4096);older.write(slot,oversize);
+   assertEquals("Older oversize Trash is readable under the lower cap",oversize,store.readCredentialSlot(slot));
+   try{store.writeCredentialSlot(slot,jsonOfBytes(cap+8192));fail("Growth above the lower cap accepted");}catch(AlphaCredentialStore.StorageFullException expected){}
+   assertEquals("A refused growth writes nothing",oversize,store.readCredentialSlot(slot));
+   try{store.compareExchangeCredentialSlot(slot,oversize,jsonOfBytes(retained+1));fail("A value above the retained cap accepted");}catch(AlphaCredentialStore.StorageFullException expected){}
+   String smaller=jsonOfBytes(cap+1024);
+   assertTrue("A shrink that is still above the lower cap is accepted",store.compareExchangeCredentialSlot(slot,oversize,smaller));
+   assertEquals(smaller,store.readCredentialSlot(slot));
+   String fits=jsonOfBytes(cap);assertTrue("A value at the lower cap is accepted",store.compareExchangeCredentialSlot(slot,smaller,fits));
+   try{store.writeCredentialSlot(slot,jsonOfBytes(cap+1));fail("Once below the cap, growth above it is refused again");}catch(AlphaCredentialStore.StorageFullException expected){}
+  }finally{
+   if(previous==null)store.removeCredentialSlot(slot);else older.write(slot,previous);
+  }
+  assertEquals(previous,store.readCredentialSlot(slot));
  }
 
  private String js(String code)throws Exception{return WebViewTestDriver.evaluate(code);}

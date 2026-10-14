@@ -14,7 +14,7 @@ function launch({route,override,swaps,existingToken=true,runtimeConfigUpdate=fal
  const config=join(profile,'eliza.json');if(route)writeFileSync(config,JSON.stringify({serviceRouting:{llmText:route},fixtureKeep:'preserve'}),{mode:0o600});
  const before=existsSync(config)?readFileSync(config,'utf8'):null;
  let ownedLivePid;
- const env={...process.env,ALPHA_LOCAL_ASR:'off',ALPHA_LOCAL_TTS:'off',ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:'47999',ALPHA_BUN:bun,CEREBRAS_API_KEY:'synthetic-fixture-key'};for(const key of ['ELIZA_SECRET_SWAP_ENABLED','ELIZA_PII_SWAP_ENABLED','CEREBRAS_MODEL'])delete env[key];Object.assign(env,swaps||{});if(override!==undefined)env.CEREBRAS_MODEL=override;
+ const env={...process.env,ELIZA_ASR_ENABLED:'0',ELIZA_PARADEE_ENABLED:'0',ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:'47999',ALPHA_BUN:bun,CEREBRAS_API_KEY:'synthetic-fixture-key'};for(const key of ['ELIZA_SECRET_SWAP_ENABLED','ELIZA_PII_SWAP_ENABLED','CEREBRAS_MODEL'])delete env[key];Object.assign(env,swaps||{});if(override!==undefined)env.CEREBRAS_MODEL=override;
  try {
   let result=spawnSync(process.execPath,[resolve('scripts/start-local-remote.mjs')],{env,encoding:'utf8',timeout:15000});
   const firstChild=existsSync(childReceipt)?JSON.parse(readFileSync(childReceipt,'utf8')):null;

@@ -6,28 +6,24 @@
  *   node scripts/android-build-preflight.mjs --report [--json]     (npm run android:build:inputs)
  *
  * build-android.mjs runs the full check. `--before-prepare` checks only inputs that
- * android:build:local does not produce (the pinned checkout and the speech AAR), so
+ * android:build:local does not produce (the pinned checkout and the on-device voice outputs), so
  * that chain stops before the long runtime preparation instead of after it.
  * `--report` lists every input of the strict distribution build with its state and whether a
  * script or a person supplies it. It reads files only, builds nothing and always exits 0.
  */
 import {execFileSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {usesParadee,verifyParadeeAppLinkage} from './paradee-runtime.mjs';
 import {verifyEmbeddingHost} from './stage-embedding-host.mjs';
+import {VOICE_ASSET_ROOT, VOICE_HOST_MANIFEST, verifyVoiceHost} from './voice-host.mjs';
 import {BUILD_TOOLCHAIN, HUMAN_ACTION, QUALIFIED_HOST, stagedLibraries} from './build-embedding-host.mjs';
 
-export const SPEECH_AAR = 'android/local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar';
-export const SPEECH_MANIFEST = 'android/local-speech/runtime-manifest.json';
-export const SPEECH_QUALIFIED = 'android/local-speech/qualified-runtime-manifest.json';
+export {VOICE_ASSET_ROOT, VOICE_HOST_MANIFEST};
 export const GRADLE_VERIFICATION = 'android/gradle/verification-metadata.xml';
 const FULL_CHAIN = 'npm run android:build:local';
-const SPEECH_GUIDE = 'scripts/local-speech/README.md';
+const VOICE_GUIDE = 'docs/fused-speech.md';
 
-const sha256 = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 function readHead(directory) {
   try {
     return execFileSync('git', ['-C', directory, 'rev-parse', 'HEAD'], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']}).trim();
@@ -36,23 +32,31 @@ function readHead(directory) {
   }
 }
 
-/** Inputs no preparation step produces: the pinned checkout and the speech AAR. */
-export function checkoutProblems(root, {allowUnpackagedRuntime=false}={}) {
+/** Inputs no preparation step produces: the pinned checkout and the on-device voice outputs. */
+export function checkoutProblems(root, {voiceHost = verifyVoiceHost, allowUnpackagedRuntime = false} = {}) {
   const problems = [];
   const pin = JSON.parse(fs.readFileSync(path.join(root, 'upstream.lock.json'), 'utf8')).commit;
   const head = readHead(path.join(root, 'vendor/eliza'));
   if (head !== pin)
     problems.push(`vendor/eliza is ${head ? `at ${head}` : 'not checked out'}; upstream.lock.json pins ${pin}. Run: git submodule update --init vendor/eliza`);
-  if(usesParadee(root)){try{verifyParadeeAppLinkage(root,{allowAbsent:allowUnpackagedRuntime});}catch(error){problems.push(error.message);}return problems;}
-  const aar = path.join(root, SPEECH_AAR);
-  if (!fs.existsSync(aar)) {
-    problems.push(`Speech runtime ${SPEECH_AAR} is missing (Gradle :local-speech:preBuild needs it). Build and install it with the commands in ${SPEECH_GUIDE}. A local rebuild is not the qualified runtime: the reviewed AAR needs a person (npm run android:build:inputs).`);
-  } else {
-    const approved = JSON.parse(fs.readFileSync(path.join(root, SPEECH_MANIFEST), 'utf8')).aarSha256;
-    if (sha256(aar) !== approved)
-      problems.push(`Speech runtime ${SPEECH_AAR} does not match ${SPEECH_MANIFEST} (Gradle :local-speech:preBuild rejects it). Rebuild and install it with the commands in ${SPEECH_GUIDE}.`);
-  }
+  problems.push(...voiceHostProblems(root, {voiceHost, allowUnpackagedRuntime}));
   return problems;
+}
+
+/**
+ * The on-device voice outputs (libelizainference with the shared paradee-voice library: Paradee TTS,
+ * misaki G2P, the ASR slot pair, Silero VAD) in .eliza/paradee-voice/native. A distribution build
+ * needs them (speech is on-device only); the explicit unpackaged developer lane may omit them, and
+ * local speech then reports unavailable. Staged outputs must match
+ * android/voice-host/qualified-voice-host.json byte for byte (Gradle :app:verifyVoiceHost).
+ */
+export function voiceHostProblems(root, {allowUnpackagedRuntime = false, voiceHost = verifyVoiceHost} = {}) {
+  try {
+    voiceHost(root, {allowAbsentRuntime: allowUnpackagedRuntime});
+    return [];
+  } catch (error) {
+    return [`The on-device voice outputs in ${VOICE_ASSET_ROOT} are not admitted by ${VOICE_HOST_MANIFEST} (${error.message}; Gradle :app:verifyVoiceHost rejects the build). ${FULL_CHAIN} does not produce them: stage them with node scripts/android-stage-voice-models.mjs --from <directory of the recorded voice outputs and models> (see ${VOICE_GUIDE}).`];
+  }
 }
 
 /**
@@ -106,32 +110,23 @@ const readJson = (root, rel) => JSON.parse(fs.readFileSync(path.join(root, rel),
  * input from pinned source and 'person' when no script may. `preparedSource` is null while the
  * pinned checkout is absent (its location cannot be resolved then).
  */
-export function strictBuildInputs(root, preparedSource, {env = process.env} = {}) {
+export function strictBuildInputs(root, preparedSource, {env = process.env, voiceHost = verifyVoiceHost} = {}) {
   const rows = [];
   const add = (input, ok, suppliedBy, detail, action) => rows.push({input, state: ok ? 'ready' : 'missing', suppliedBy, detail, action: ok ? null : action});
   const pin = readJson(root, 'upstream.lock.json').commit;
   const head = readHead(path.join(root, 'vendor/eliza'));
   add('pinned upstream checkout', head === pin, 'script', `vendor/eliza ${head ? `at ${head}` : 'not checked out'}; pin ${pin}`, 'git submodule update --init vendor/eliza');
 
-  if(usesParadee(root)){
-    let problem='';try{verifyParadeeAppLinkage(root);}catch(error){problem=error.message;}
-    add('speech runtime installed',!problem,'script',problem||'Pinned Paradee and reviewed ASR inputs verified','Build pinned paradee-voice into .eliza/paradee-voice/native and stage reviewed ASR inputs; see scripts/local-speech/README.md.');
-    add('speech runtime qualified',false,'person','The previous Sherpa qualification does not certify the new Paradee/ASR engine.','Qualify the exact new libraries and models on both ABIs before admitting distribution (#397, #413).');
-  }else{
-  const aar = path.join(root, SPEECH_AAR);
-  const installed = fs.existsSync(aar) ? sha256(aar) : null;
-  const local = readJson(root, SPEECH_MANIFEST);
-  add('speech runtime installed', installed !== null && installed === local.aarSha256, 'script',
-    installed === null ? `${SPEECH_AAR} is absent` : installed === local.aarSha256 ? `${SPEECH_AAR} matches ${SPEECH_MANIFEST}` : `${SPEECH_AAR} does not match ${SPEECH_MANIFEST}`,
-    `the commands in ${SPEECH_GUIDE} (a local rebuild is not the qualified runtime: it installs only with --allow-unqualified-runtime, and its APKs are never distributable)`);
-  const qualified = readJson(root, SPEECH_QUALIFIED);
-  const acceptance = qualified.functionalAcceptance ?? {};
-  const speechProblems = [installed !== qualified.aarSha256 && `the installed AAR is not the reviewed one (${qualified.aarSha256})`,
-    acceptance.passed !== true && `functional acceptance is ${acceptance.state ?? 'not recorded'} (${Object.entries(acceptance.abis ?? {}).map(([abi, value]) => `${abi} ${value.state}`).join(', ')})`].filter(Boolean);
-  add('speech runtime qualified', speechProblems.length === 0, 'person', speechProblems.length ? speechProblems.join('; ') : `reviewed AAR installed and ${SPEECH_QUALIFIED} records functional acceptance passed`,
-    'Needs a person: approved policy requires on-device speech on both shipped ABIs (#397, #413). Supply the reviewed AAR or requalify a rebuilt runtime on both ABIs with functional evidence (scripts/local-speech/README.md); a local rebuild does not reproduce the reviewed bytes.');
-
-  }
+  // On-device voice is the only speech route: a distribution build needs the staged outputs, and
+  // verify-apks records a release without a qualified voice host as distributable:false.
+  let voiceStatus = null;
+  const voice = voiceHostProblems(root, {voiceHost: (...args) => { voiceStatus = voiceHost(...args); return voiceStatus; }});
+  add('on-device voice outputs', voice.length === 0, 'person',
+    voice.length ? voice[0] : `staged outputs match ${VOICE_HOST_MANIFEST}`,
+    `Needs a person to supply the recorded voice outputs and models: node scripts/android-stage-voice-models.mjs --from <directory> (see ${VOICE_GUIDE}).`);
+  add('on-device voice qualified', voiceStatus?.qualified === true, 'person',
+    voiceStatus?.qualified === true ? `${VOICE_HOST_MANIFEST} records device qualification` : `${VOICE_HOST_MANIFEST} is not qualified (no device acceptance recorded)`,
+    'Needs a person: on-device qualification on both ABIs (packages/app/scripts/paradee-voice/qualify) and device acceptance.');
 
   const host = readJson(root, QUALIFIED_HOST), toolchain = readJson(root, BUILD_TOOLCHAIN);
   const libraries = stagedLibraries(root, host);
@@ -168,10 +163,11 @@ export function formatReport(rows) {
   const person = open.filter(row => row.suppliedBy === 'person'), script = open.filter(row => row.suppliedBy === 'script');
   lines.push('', open.length === 0 ? 'Every strict-build input is present. This is an input check, not a build or a distributable APK.'
     : `${script.length} input(s) a script can produce: ${script.map(row => row.input).join(', ') || 'none'}.\n${person.length} input(s) only a person can supply: ${person.map(row => row.input).join(', ') || 'none'}.`);
-  // The embedding host stops the chain; unqualified speech and an unset signer do not stop it, they make its releases non-distributable.
+  // The embedding host stops the chain; an unset signer does not stop it, it makes the chain's releases non-distributable.
   const stopper = open.find(row => row.input === 'embedding host libraries' && row.suppliedBy === 'person');
   if (stopper) lines.push('The chain cannot pass Gradle :app:verifyEmbeddingHost until a person supplies the embedding host libraries.');
-  if (person.some(row => row.input !== 'embedding host libraries')) lines.push('Unqualified speech and an unset release signer do not stop the build: verify-apks records its releases distributable:false and names them.');
+  if (person.some(row => row.input === 'release signer')) lines.push('An unset release signer does not stop the build: verify-apks records its releases distributable:false and names them.');
+  if (person.some(row => row.input === 'on-device voice outputs')) lines.push('Missing or changed voice outputs stop Gradle :app:verifyVoiceHost in a distribution build; an unqualified voice host makes its releases distributable:false.');
   return lines.join('\n');
 }
 
@@ -192,10 +188,10 @@ async function main() {
   if (!problems.length && !args.includes('--before-prepare')) {
     // The source guard imports the pinned checkout, so load it only once that is verified.
     const {sourceDirectory} = await import('./local-agent-source.mjs');
-    problems = preparedRuntimeProblems(root, sourceDirectory(root), {
+    problems = [...preparedRuntimeProblems(root, sourceDirectory(root), {
       allowUnpackagedRuntime: args.includes('--allow-unpackaged-runtime'),
       testMocks: args.includes('--test-mocks'),
-    });
+    })];
   }
   if (problems.length) {
     console.error(formatProblems(problems));

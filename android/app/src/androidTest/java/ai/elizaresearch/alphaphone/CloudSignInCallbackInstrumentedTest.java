@@ -14,7 +14,7 @@ import static org.junit.Assert.*;
 /**
  * In-app Eliza Cloud sign-in return through the actual MainActivity and Capacitor bridge, with
  * owned synthetic links only. No Steward exchange, Cloud request, Google consent or account is
- * involved; a matching return is never delivered here, so nothing reaches the network. This does
+ * involved; an unexpired matching return is never delivered here, so no sign-in request is sent. This does
  * not show that Android verified the App Link: that is `adb shell pm get-app-links
  * ai.elizaresearch.alphaphone` on a device whose eliza.app assetlinks lists the installed signer.
  */
@@ -30,34 +30,50 @@ public final class CloudSignInCallbackInstrumentedTest {
   fail("Pending sign-in record was not burned");
  }
 
- /** The manifest declares the return for MainActivity only, at exactly one host and path. */
+ private static void holdFor(long millis) { SystemClock.sleep(millis); }
+
+ /** The return resolves to MainActivity only, at one exact path; eliza.app only in builds with ELIZAOS_APP_LINK_HOST=eliza.app. */
  @Test public void returnLinkResolvesOnlyToMainActivity() {
   PackageManager packages = context().getPackageManager();
   Intent link = new Intent(Intent.ACTION_VIEW, Uri.parse(callback(CloudSignInFlow.newState()))).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(context().getPackageName());
   List<ResolveInfo> matches = packages.queryIntentActivities(link, 0);
-  assertEquals(1, matches.size());
-  assertEquals(MainActivity.class.getName(), matches.get(0).activityInfo.name);
+  if ("eliza.app".equals(BuildConfig.ELIZAOS_APP_LINK_HOST)) {
+   assertEquals(1, matches.size());
+   assertEquals(MainActivity.class.getName(), matches.get(0).activityInfo.name);
+  } else assertTrue("A build without ELIZAOS_APP_LINK_HOST declares no production return", matches.isEmpty());
   for (String other : new String[]{"https://eliza.app/", "https://eliza.app/alphaphone/auth/callback/extra", "https://eliza.app/auth/callback", "https://api.eliza.app/alphaphone/auth/callback", "http://eliza.app/alphaphone/auth/callback"})
    assertTrue(other, packages.queryIntentActivities(new Intent(Intent.ACTION_VIEW, Uri.parse(other)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(context().getPackageName()), 0).isEmpty());
   boolean staging = !packages.queryIntentActivities(new Intent(Intent.ACTION_VIEW, Uri.parse("https://staging.eliza.app/alphaphone/auth/callback")).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(context().getPackageName()), 0).isEmpty();
   assertEquals("The staging return exists only in test-mocks builds", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS, staging);
  }
 
- /** An unsolicited or mismatching return is ignored, burns any pending record and stores nothing. */
- @Test public void mismatchingReturnBurnsPendingRecordAndStoresNothing() throws Exception {
+ /** A return whose state does not match is ignored: the pending record stays and nothing is stored (shared callback contract). */
+ @Test public void mismatchingReturnLeavesPendingRecordAndStoresNothing() throws Exception {
   gate();
   String cloudBefore = store().readCredentialSlot("cloud:production");
   CloudSignInFlow.Pending pending = CloudSignInFlow.Pending.create(CloudSignInFlow.Environment.PRODUCTION, System.currentTimeMillis());
   store().writeCredentialSlot(AlphaCloudSignInPlugin.PENDING_SLOT, pending.serialize());
   try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(intent(callback(CloudSignInFlow.newState())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK))) {
-   waitForRemoved(AlphaCloudSignInPlugin.PENDING_SLOT);
+   holdFor(3000);
+   assertEquals("A foreign return cannot cancel a sign-in", pending.serialize(), store().readCredentialSlot(AlphaCloudSignInPlugin.PENDING_SLOT));
    assertEquals("No key is written for a mismatching return", cloudBefore, store().readCredentialSlot("cloud:production"));
-   scenario.recreate();
-   assertNull("A recreated activity does not replay the return", store().readCredentialSlot(AlphaCloudSignInPlugin.PENDING_SLOT));
   } finally { store().removeCredentialSlot(AlphaCloudSignInPlugin.PENDING_SLOT); }
  }
 
- /** An expired record never matches, even with the right state. */
+ /** The fallback page's parameterless hand-off carries no result: the pending record stays until expiry or a retry. */
+ @Test public void parameterlessReturnKeepsPendingRecord() throws Exception {
+  gate();
+  String cloudBefore = store().readCredentialSlot("cloud:production");
+  CloudSignInFlow.Pending pending = CloudSignInFlow.Pending.create(CloudSignInFlow.Environment.PRODUCTION, System.currentTimeMillis());
+  store().writeCredentialSlot(AlphaCloudSignInPlugin.PENDING_SLOT, pending.serialize());
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(intent("https://eliza.app/alphaphone/auth/callback").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK))) {
+   holdFor(3000);
+   assertEquals(pending.serialize(), store().readCredentialSlot(AlphaCloudSignInPlugin.PENDING_SLOT));
+   assertEquals(cloudBefore, store().readCredentialSlot("cloud:production"));
+  } finally { store().removeCredentialSlot(AlphaCloudSignInPlugin.PENDING_SLOT); }
+ }
+
+ /** An expired record with the matching state is burned and never used. */
  @Test public void expiredPendingRecordIsNeverUsed() throws Exception {
   gate();
   String cloudBefore = store().readCredentialSlot("cloud:production");
@@ -66,6 +82,8 @@ public final class CloudSignInCallbackInstrumentedTest {
   try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(intent(callback(expired.state)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK))) {
    waitForRemoved(AlphaCloudSignInPlugin.PENDING_SLOT);
    assertEquals(cloudBefore, store().readCredentialSlot("cloud:production"));
+   scenario.recreate();
+   assertNull("A recreated activity does not replay the return", store().readCredentialSlot(AlphaCloudSignInPlugin.PENDING_SLOT));
   } finally { store().removeCredentialSlot(AlphaCloudSignInPlugin.PENDING_SLOT); }
  }
 

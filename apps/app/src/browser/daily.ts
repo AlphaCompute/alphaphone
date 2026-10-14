@@ -129,6 +129,8 @@ export class BrowserDaily extends WebPlugin {
   }
   async clockHandoff(input:ClockRequest){
     if(input.reviewed!==true||!['set','show','dismiss','snooze'].includes(input.action))throw Error('Review the alarm action first.');
+    // Browser alarms are one-time reminders. A reviewed repeat is refused, never saved as a single alarm.
+    if(input.action==='set'&&Object.hasOwn(input,'days'))return {action:input.action,status:'failed' as const,message:'Repeating alarms are not available in this browser. No alarm was saved.'};
     if(input.action==='set'){
       if(!Number.isInteger(input.hour)||input.hour<0||input.hour>23||!Number.isInteger(input.minute)||input.minute<0||input.minute>59||typeof input.label!=='string'||input.label.length>200||input.label.includes('\0'))throw Error('Choose a valid alarm time and label.');
       const date=new Date();date.setHours(input.hour,input.minute,0,0);if(date.getTime()<=Date.now())date.setDate(date.getDate()+1);const saved=await this.scheduleReminder({id:'alarm_'+crypto.randomUUID(),title:input.label||'Alarm',at:date.getTime()});if(saved.status!=='scheduled')throw Error(saved.status==='permission-denied'?'The alarm was saved but notifications are disabled. Enable notifications and review its time.':'The alarm time passed. Choose another time.');

@@ -1,11 +1,10 @@
 import {admitSpeech} from './host-speech-admission.mjs';
-/** Explicit installed, reviewed host assets; readiness belongs to the native worker. */
+import {refuseRetiredSpeechNames, speechMode} from './speech-env.mjs';
+/** Explicit installed, reviewed host assets (upstream names); readiness belongs to the native worker. */
 export function agentTtsEnvironment(env=process.env) {
- const mode=env.ALPHA_LOCAL_TTS || 'auto';
- if(!['auto','off','required'].includes(mode))throw Error('ALPHA_LOCAL_TTS must be auto, off or required');
+ refuseRetiredSpeechNames(env);
+ const mode=speechMode(env,'ELIZA_PARADEE_ENABLED');
  if(mode==='off')return {};
- if(env.ALPHA_TTS_LIBRARY || env.ALPHA_TTS_MODEL_DIR)throw Error('Retired speech configuration: use ELIZA_INFERENCE_LIBRARY, its reviewed SHA-256 and ELIZA_PARADEE_MODEL_DIR');
- const root=env.ELIZA_PARADEE_MODEL_DIR;
- if(!root && mode==='auto')return {};
- return admitSpeech('tts',{...env,ELIZA_PARADEE_MODEL_DIR:root});
+ if(!env.ELIZA_PARADEE_MODEL_DIR && mode==='auto')return {};
+ return admitSpeech('tts',env);
 }

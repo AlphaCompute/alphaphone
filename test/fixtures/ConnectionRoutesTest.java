@@ -66,6 +66,26 @@ public final class ConnectionRoutesTest {
   check(ConnectionRoutes.admittedOrigin(plain.getScheme(),plain.getHost(),plain.getPort(),false),"flag-off admits the parsed Cloud API URL");
   check(ConnectionRoutes.admittedOrigin("https","agent.example.test",8443,true),"test mocks keep a remote agent port");
   check(ConnectionRoutes.admittedOrigin("http","10.0.2.2",2138,true),"test mocks keep the development agent");
+
+  // openExternal: a flag-off build opens Cloud sign-in, top-up and account management, and Google consent only.
+  for(String text:new String[]{"https://eliza.app/auth/cli-login?session=abc","https://cloud.eliza.app/cloud/billing","https://accounts.google.com/o/oauth2/v2/auth?client_id=x","https://ELIZA.APP/auth/cli-login","https://cloud.eliza.app:443/cloud/billing"}){
+   java.net.URI url=java.net.URI.create(text);
+   check(ConnectionRoutes.externalHost(url.getScheme(),url.getHost(),url.getPort(),false),"flag-off opens "+text);
+   check(ConnectionRoutes.externalHost(url.getScheme(),url.getHost(),url.getPort(),true),"test mocks open "+text);
+  }
+  for(String host:new String[]{"staging.eliza.app","cloud-staging.eliza.app","www.eliza.app","api.eliza.app","evil.eliza.app",agent+".cloud.eliza.app","a.b.eliza.app",
+   "eliza.app.","cloud.eliza.app.","eliza.app.evil.example","evil-eliza.app","xeliza.app","accounts.google.com.evil.example","mail.google.com","google.com","example.com","",null})
+   check(!ConnectionRoutes.externalHost("https",host,-1,false),"flag-off refuses to open "+host);
+  for(String host:new String[]{"staging.eliza.app","cloud-staging.eliza.app","www.eliza.app",agent+".cloud.eliza.app"})check(ConnectionRoutes.externalHost("https",host,-1,true),"test mocks open "+host);
+  for(String host:new String[]{".eliza.app","eliza.app.evil.example","evil-eliza.app","a..eliza.app","eliza.app.","evil.example",null})check(!ConnectionRoutes.externalHost("https",host,-1,true),"test mocks still refuse "+host);
+  check(!ConnectionRoutes.externalHost("http","eliza.app",-1,true),"openExternal is HTTPS only");
+  check(!ConnectionRoutes.externalHost("https","eliza.app",8443,true),"openExternal uses the default port only");
+  check(!ConnectionRoutes.externalHost(null,"eliza.app",-1,false),"openExternal needs a scheme");
+  check(ConnectionRoutes.externalCliLogin("eliza.app","/auth/cli-login",false),"production sign-in is a browser handoff");
+  check(!ConnectionRoutes.externalCliLogin("staging.eliza.app","/auth/cli-login",false),"staging sign-in needs test mocks");
+  check(ConnectionRoutes.externalCliLogin("staging.eliza.app","/auth/cli-login",true),"staging sign-in with test mocks");
+  check(!ConnectionRoutes.externalCliLogin("cloud.eliza.app","/auth/cli-login",true),"only the web authority hosts sign-in");
+  check(!ConnectionRoutes.externalCliLogin("eliza.app","/auth/cli-login/",false)&&!ConnectionRoutes.externalCliLogin("eliza.app","/cloud/billing",false)&&!ConnectionRoutes.externalCliLogin(null,"/auth/cli-login",true),"exact sign-in path only");
   for(String route:new String[]{"/api/v1/eliza/agents","/api/v1/eliza/agents/id/api/conversations","/api/auth/pair","/api/conversations","/api/v1/eliza/personal","/api/v1/eliza/google/../agents","/api/v1/%65liza/google/status","/api/v1/eliza/google/status/","/api/v1/eliza/google//status"})for(String method:new String[]{"GET","POST"})check(!ConnectionRoutes.managedService(route,null,method,false,false),"hosted/unreviewed path refused "+route);
   check(ConnectionRoutes.managedService("/api/v1/user",null,"GET",false,false),"owner identity allowed");
   for(String path:new String[]{"/api/v1/eliza/google/calendar/calendars","/api/v1/eliza/google/calendar/feed"}){
@@ -113,6 +133,6 @@ public final class ConnectionRoutesTest {
   check(!ConnectionRoutes.managedService("/api/v1/maps/capabilities","region=x","GET",false,false),"Maps capabilities query refused");
   check(!ConnectionRoutes.managedService("/api/v1/maps/capabilities",null,"POST",true,false),"Maps capabilities write refused");
   for(String path:new String[]{"/api/v1/maps","/api/v1/maps/tiles/1/2/3","/api/v1/maps/places","/api/v1/maps/navigation","/api/v1/maps/%72outes","/api/v1/maps//routes"})for(String method:new String[]{"GET","POST"})check(!ConnectionRoutes.managedService(path,null,method,"POST".equals(method),false),"unreviewed Maps path refused "+path);
-  System.out.println("PASS connection routes: retired pairing, exact Cloud self-revocation and the flag-off Cloud API origin only");
+  System.out.println("PASS connection routes: retired pairing, exact Cloud self-revocation, the flag-off Cloud API origin, managed-service routes (Maps included) and openExternal hosts");
  }
 }

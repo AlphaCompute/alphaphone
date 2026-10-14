@@ -63,11 +63,18 @@
       ]
     },
     {
+      "id": "eliza-cloud-sign-in",
+      "kind": "external-browser",
+      "eligible": false,
+      "owner": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java (openExternal), apps/app/src/runtime/connection-ui.tsx (signInBrowser)",
+      "reason": "The Cloud sign-in hand-off, kept as the sign-in path until the in-app readiness probe passes (and as a test-mocks diagnostic afterwards), opens the user's own browser (AlphaConnectionPlugin.openExternal: ACTION_VIEW with CATEGORY_BROWSABLE, eliza.app hosts only). Alpha declares no general https VIEW handler, so the page never loads in Alpha; credentials are entered and filled by that browser's own manager."
+    },
+    {
       "id": "eliza-cloud-sign-in-google",
       "kind": "external-browser",
       "eligible": false,
       "owner": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaCloudSignInPlugin.java (startGoogle), apps/app/src/runtime/cloud-sign-in-ui.tsx",
-      "reason": "Continue with Google opens Steward's Google authorize URL in a Custom Tab of the user's own browser (never a WebView, never Alpha's browser; plain ACTION_VIEW with CATEGORY_BROWSABLE when no Custom Tabs browser exists). Google's password is entered and filled by that browser's own manager. The only Alpha web handler is the verified App Link https://eliza.app/alphaphone/auth/callback (staging host in test-mocks builds only), which receives a one-time Steward code, never a page."
+      "reason": "Continue with Google opens Steward's Google authorize URL in a Custom Tab of the user's own browser (never a WebView, never Alpha's browser; plain ACTION_VIEW with CATEGORY_BROWSABLE when no Custom Tabs browser exists). Google's password is entered and filled by that browser's own manager. The only Alpha web handler is the verified App Link https://eliza.app/alphaphone/auth/callback (declared only by builds with ELIZAOS_APP_LINK_HOST; staging host in test-mocks builds only), which receives a one-time Steward code, never a page."
     },
     {
       "id": "eliza-cloud-sign-in-code",

@@ -3,7 +3,7 @@
  * One dispatch-only emulator suite of .github/workflows/android-emulator.yml, run inside the
  * hosted runner's disposable emulator:
  *
- *   node scripts/ci/emulator-suite.mjs instrumentation | browser-reading | local-speech
+ *   node scripts/ci/emulator-suite.mjs instrumentation | browser-reading | fused-speech
  *
  * instrumentation   `npm run test:android:instrumentation` with its default classes on both
  *                   distributions of the flag-off developer APKs.
@@ -12,17 +12,17 @@
  *                   BrowserPageQuestion on the flag-off pair, then BrowserReading,
  *                   BrowserSensitiveReading and BrowserIsolatedReading on the test-mocks pair,
  *                   which is the only build that admits their loopback speech route.
- * local-speech      the unchanged LocalSpeechInstrumentedTest through
- *                   `scripts/local-speech/requalify-runtime.py run`, with networking off, against
- *                   the candidate the build job recorded. It writes the x86_64 half of that
- *                   candidate; admission still needs the other ABI and a named reviewer.
+ * fused-speech      the on-device speech classes (fused libelizainference ASR, Kokoro TTS and VAD)
+ *                   with networking off, on developer APKs that carry the voice bundle and the
+ *                   x86_64 voice-qualified engine (scripts/ci/speech-candidate.mjs check). It is
+ *                   the x86_64 half only; arm64-v8a hardware and a named reviewer are still needed.
  *
  * A preparation step that fails stops the suite. Evidence steps are independent: each runs, and
  * the suite fails when any of them did not pass (a failed, skipped or missing class fails the
  * instrumentation runner). `test-results/emulator-suite/<suite>.json` records every step.
  *
- * Emulator-class evidence on developer-override APKs (unpackaged resident runtime, unqualified
- * speech runtime) on an x86_64 SDK image. Not a distributable build, a device or acceptance.
+ * Emulator-class evidence on developer-override APKs (unpackaged resident runtime) on an x86_64
+ * SDK image. Not a distributable build, a device or acceptance.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -31,7 +31,8 @@ import { fileURLToPath } from "node:url";
 
 export const SERIAL = "emulator-5554";
 export const AVD = "test";
-export const SPEECH_WORKSPACE = "test-results/local-speech-ci";
+/** On-device speech classes; each needs the packaged voice bundle and engine (see LocalSpeechInstrumentedTest). */
+export const FUSED_SPEECH_CLASSES = ["LocalSpeech", "LocalSpeechBridge", "SpeechSentenceCancellation", "VoiceNoteReadAloud", "LiveVoiceVad"];
 /** Flag-off classes that need isolated-world injection, and the ones that also need the test-mocks build. */
 export const READING_CLASSES = ["BrowserReadingNavigation", "BrowserPageQuestion"];
 export const READING_TEST_MOCKS_CLASSES = ["BrowserReading", "BrowserSensitiveReading", "BrowserIsolatedReading"];
@@ -54,15 +55,13 @@ export function suitePlan(suite) {
     runner("ci-reading", "--classes", READING_CLASSES.join(",")),
     runner("ci-reading-test-mocks", "--test-mocks", "--classes", READING_TEST_MOCKS_CLASSES.join(",")),
   ];
-  if (suite === "local-speech") return [
+  if (suite === "fused-speech") return [
     prepareEmulator,
-    // The canonical test asserts that the device has no active network.
+    // The speech classes assert that the device has no active network.
     { name: "network-off", kind: "preparation", action: "network-off" },
-    { name: "canonical-speech-x86_64", kind: "evidence", results: `${SPEECH_WORKSPACE}/requalification/candidate.json`,
-      command: ["python3", "scripts/local-speech/requalify-runtime.py", "run", "--serial", SERIAL, "--workspace", SPEECH_WORKSPACE,
-        "--apk", "artifacts/standalone-debug.apk", "--test-apk", "artifacts/instrumentation/standalone-androidTest.apk"] },
+    runner("ci-fused-speech", "--variants", "standalone", "--classes", FUSED_SPEECH_CLASSES.join(",")),
   ];
-  throw new Error(`Unknown suite ${JSON.stringify(suite)}; use instrumentation, browser-reading or local-speech`);
+  throw new Error(`Unknown suite ${JSON.stringify(suite)}; use instrumentation, browser-reading or fused-speech`);
 }
 
 /** Airplane mode, then proof that Android reports no default network. `adb` returns stdout. */
@@ -76,7 +75,7 @@ export function disableEmulatorNetwork(adb, { attempts = 60, sleep = ms => Atomi
     if (state === "none") return { airplaneMode: adb(["shell", "cmd", "connectivity", "airplane-mode"]).trim(), activeDefaultNetwork: state };
     sleep(1000);
   }
-  throw new Error(`The emulator still has a default network (${state}); the canonical speech test would refuse to run`);
+  throw new Error(`The emulator still has a default network (${state}); the on-device speech tests would refuse to run`);
 }
 
 /** Outside a hosted runner emulator-5554 may be someone's emulator; nothing is touched or written. */
@@ -85,13 +84,12 @@ export function requireHostedRunner(environment = process.env) {
     throw new Error("These suites treat emulator-5554 as disposable; they run only on a GitHub-hosted runner");
 }
 
-/** Class rows of an instrumentation results.json, or the speech candidate's x86_64 state. */
+/** Class rows of an instrumentation results.json. */
 function readEvidence(file) {
   if (!fs.existsSync(file)) return null;
   const value = JSON.parse(fs.readFileSync(file, "utf8"));
-  if (Array.isArray(value.classes)) return { passed: value.passed === true, classes: value.classes.map(row => ({ variant: row.variant, class: row.class.split(".").at(-1).replace(/InstrumentedTest$/, ""), status: row.status, ...(row.failed?.length ? { failed: row.failed } : {}) })) };
-  const abi = value.functionalAcceptance?.abis?.x86_64;
-  return abi ? { passed: abi.passed === true, speech: { abi: "x86_64", state: abi.state, testsPassed: abi.testsPassed ?? 0, ...(abi.problems ? { problems: abi.problems } : {}) } } : null;
+  if (!Array.isArray(value.classes)) return null;
+  return { passed: value.passed === true, classes: value.classes.map(row => ({ variant: row.variant, class: row.class.split(".").at(-1).replace(/InstrumentedTest$/, ""), status: row.status, ...(row.failed?.length ? { failed: row.failed } : {}) })) };
 }
 
 /**
@@ -103,7 +101,7 @@ export function runSuite(suite, { execute, adb, record = () => {}, environment =
   requireHostedRunner(environment);
   const steps = suitePlan(suite).map(step => ({ name: step.name, kind: step.kind, ...(step.command ? { command: step.command } : { action: step.action }), status: "not-run" }));
   const report = { suite, commit: environment.GITHUB_SHA ?? null, runId: environment.GITHUB_RUN_ID ?? null, serial: SERIAL, avd: AVD,
-    evidenceClass: "E", notEvidenceFor: ["distributable build", "physical-device acceptance", "user acceptance", "speech runtime admission"], passed: false, steps };
+    evidenceClass: "E", notEvidenceFor: ["distributable build", "physical-device acceptance", "user acceptance", "arm64-v8a speech", "speech intelligibility to a listener"], passed: false, steps };
   let stopped = false;
   for (const [index, step] of suitePlan(suite).entries()) {
     const row = steps[index];
@@ -132,14 +130,12 @@ export function summarize(report) {
   for (const row of report.steps.filter(row => row.evidence?.classes)) {
     lines.push("", `**${row.name}**`, "", "| Distribution | Class | Status |", "| --- | --- | --- |", ...row.evidence.classes.map(item => `| ${item.variant} | ${item.class} | ${item.status} |`));
   }
-  for (const row of report.steps.filter(row => row.evidence?.speech))
-    lines.push("", `**${row.name}**: x86_64 ${row.evidence.speech.state}, ${row.evidence.speech.testsPassed} of 2 canonical tests passed.${row.evidence.speech.problems ? ` ${row.evidence.speech.problems.join("; ")}.` : ""} The other ABI and a named reviewer are still required before admission.`);
   return `${lines.join("\n")}\n`;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const suite = process.argv[2];
-  if (process.argv.length !== 3) throw new Error("Use: node scripts/ci/emulator-suite.mjs instrumentation|browser-reading|local-speech");
+  if (process.argv.length !== 3) throw new Error("Use: node scripts/ci/emulator-suite.mjs instrumentation|browser-reading|fused-speech");
   suitePlan(suite); // Refuse an unknown suite before anything is written.
   requireHostedRunner();
   const output = path.resolve("test-results/emulator-suite", `${suite}.json`);

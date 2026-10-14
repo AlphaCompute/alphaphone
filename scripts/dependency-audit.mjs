@@ -12,6 +12,19 @@
  * snapshot needs an unexpired exception, and every fix recorded there must still hold in the
  * lockfile. test/dependency-audit.test.mjs runs the same check offline. This reads the registry's
  * advisory database only; it installs nothing and changes no dependency.
+ *
+ * Resident runtime (the npm packages the APK carries inside the agent bundle and workflow worker,
+ * which the root lockfile does not list):
+ *
+ *   node scripts/dependency-audit.mjs --resident [--write]           # network: audit the resident input
+ *   node scripts/dependency-audit.mjs --resident --notices <file>    # input from packaged-runtime notices
+ *   node scripts/dependency-audit.mjs --resident --offline           # the committed resident snapshot only
+ *
+ * The input is a list of name@version: by default every package version in the pinned upstream
+ * lock (vendor/eliza/bun.lock, a superset of what ships), or, with --notices, the npm entries of a
+ * `generate-licenses.mjs --packaged-runtime` notices file (exactly what one staged payload ships).
+ * The snapshot (the `resident` key of docs/dependency-audit.snapshot.json) and the `resident` dispositions are
+ * bound to the upstream.lock.json commit, so a new pin needs a fresh resident audit.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -164,6 +177,161 @@ export function loadAndCheck(root = ROOT, today = new Date().toISOString().slice
   return checkDispositions({snapshot: readJson(root, SNAPSHOT), dispositions: readJson(root, DISPOSITIONS), lock: JSON.parse(lockText), lockText, today});
 }
 
+// ---------------------------------------------------------------- resident runtime
+
+export const UPSTREAM_LOCK = 'upstream.lock.json';
+export const UPSTREAM_BUN_LOCK = 'vendor/eliza/bun.lock';
+/** The resident snapshot lives beside the root audit, under this key of docs/dependency-audit.snapshot.json. */
+export const RESIDENT_SNAPSHOT = `${SNAPSHOT} (resident)`;
+export const RESIDENT_REFRESH = 'node scripts/dependency-audit.mjs --resident --write';
+const BULK_ADVISORIES = 'https://registry.npmjs.org/-/npm/v1/security/advisories/bulk';
+const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/;
+
+/** Sorted, de-duplicated "name@version" for every registry package version in a Bun text lockfile. */
+export function bunLockPackages(text) {
+  // bun.lock is JSON with trailing commas.
+  const lock = JSON.parse(text.replace(/,(\s*[}\]])/g, '$1'));
+  const out = new Set();
+  for (const value of Object.values(lock.packages || {})) {
+    const ident = Array.isArray(value) ? value[0] : null;
+    const at = typeof ident === 'string' ? ident.lastIndexOf('@') : -1;
+    // Workspace, link, git and file entries carry no registry version and have no npm advisories.
+    if (at > 0 && SEMVER.test(ident.slice(at + 1))) out.add(ident);
+  }
+  return [...out].sort();
+}
+
+/** "name@version" of every npm package a packaged-runtime notices file lists as bundled in the agent or worker. */
+export function noticePackages(entries) {
+  return [...new Set(entries.filter(entry => /^Bundled in the on-device /.test(entry.text ?? '') && SEMVER.test(entry.version ?? ''))
+    .map(entry => `${entry.name}@${entry.version}`))].sort();
+}
+
+const splitIdent = ident => { const at = ident.lastIndexOf('@'); return [ident.slice(0, at), ident.slice(at + 1)]; };
+
+/**
+ * True when `version` satisfies an advisory range of the form npm publishes (comparators, spaces,
+ * "a - b", ||, *). A comparator this cannot read counts as affected: the finding is then shown for
+ * review instead of silently dropped.
+ */
+export function inRange(version, range) {
+  // A prerelease sorts just below its release (1.0.0-beta < 1.0.0), so "<1.0.0" covers it; its own
+  // identifiers are not compared, which can only count more versions as affected.
+  const parse = text => { const match = /^v?(\d+)\.(\d+)\.(\d+)(-)?/.exec(text); return match && [...match.slice(1, 4).map(Number), match[4] ? -1 : 0]; };
+  const compare = (a, b) => { for (let i = 0; i < 4; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
+  const target = parse(version);
+  if (!target) return false;
+  return String(range).split('||').some(alternative => {
+    // ">= 1.2.0" is one comparator; "1.0.0 - 2.0.0" is ">=1.0.0 <=2.0.0".
+    const normalized = alternative.trim().replace(/(<=|>=|<|>|=)\s+/g, '$1').replace(/^(\S+)\s+-\s+(\S+)$/, '>=$1 <=$2');
+    const comparators = normalized.split(/\s+/).filter(Boolean);
+    return comparators.every(comparator => {
+      if (comparator === '*' || comparator === '') return true;
+      const match = /^(<=|>=|<|>|=)?(.+)$/.exec(comparator);
+      const bound = parse(match[2]);
+      if (!bound) return true;
+      const order = compare(target, bound);
+      return {'<': order < 0, '<=': order <= 0, '>': order > 0, '>=': order >= 0, '=': order === 0, undefined: order === 0}[match[1]];
+    });
+  });
+}
+
+/** Reduce a bulk advisory response to findings: each advisory with the input versions it affects. */
+export function normalizeResident(response, packages) {
+  const versions = new Map();
+  for (const ident of packages) { const [name, version] = splitIdent(ident); if (!versions.has(name)) versions.set(name, []); versions.get(name).push(version); }
+  const findings = [];
+  for (const [name, advisories] of Object.entries(response || {}))
+    for (const advisory of advisories) {
+      const affected = (versions.get(name) || []).filter(version => inRange(version, advisory.vulnerable_versions)).sort();
+      if (!affected.length) continue;
+      findings.push({package: name, versions: affected, severity: advisory.severity,
+        advisory: {id: /GHSA-[0-9a-z-]+/.exec(advisory.url || '')?.[0] || `npm-${advisory.id}`, severity: advisory.severity, vulnerableRange: advisory.vulnerable_versions, title: advisory.title, url: advisory.url}});
+    }
+  findings.sort((a, b) => a.package.localeCompare(b.package) || a.advisory.id.localeCompare(b.advisory.id));
+  const counts = Object.fromEntries(SEVERITY.map(level => [level, findings.filter(row => row.severity === level).length]));
+  return {inputSha256: sha256(packages.join('\n')), packages: packages.length, counts, findings};
+}
+
+/**
+ * @returns {string[]} problems with the resident snapshot and its dispositions for this upstream commit.
+ */
+export function checkResident({snapshot, dispositions, commit, inputSha256, today}) {
+  const problems = [];
+  if (!snapshot) return [`${RESIDENT_SNAPSHOT} is missing; audit the resident runtime with: ${RESIDENT_REFRESH}`];
+  if (snapshot.upstreamCommit !== commit)
+    problems.push(`${RESIDENT_SNAPSHOT} was taken at upstream ${snapshot.upstreamCommit}, but ${UPSTREAM_LOCK} pins ${commit}; re-audit with: ${RESIDENT_REFRESH}`);
+  if (inputSha256 && snapshot.input === UPSTREAM_BUN_LOCK && snapshot.inputSha256 !== inputSha256)
+    problems.push(`${RESIDENT_SNAPSHOT} was taken for a different ${UPSTREAM_BUN_LOCK}; re-audit with: ${RESIDENT_REFRESH}`);
+  if (!DAY.test(snapshot.auditedOn || '')) problems.push(`${RESIDENT_SNAPSHOT}: auditedOn must be YYYY-MM-DD`);
+  const resident = dispositions.resident || {};
+  if (resident.upstreamCommit !== commit)
+    problems.push(`${DISPOSITIONS}: resident dispositions were reviewed at upstream ${resident.upstreamCommit ?? 'none'}, not ${commit}; re-review them against the new snapshot`);
+  const exceptions = resident.exceptions || [], used = new Set();
+  for (const finding of snapshot.findings || []) {
+    const label = `${finding.severity} ${finding.advisory.id} via ${finding.package}@${finding.versions.join(',')}`;
+    const match = exceptions.find(item => item.advisory === finding.advisory.id && item.packages?.includes(finding.package));
+    if (!match) { problems.push(`Unrecorded resident advisory: ${label}. Fix it upstream or record a reviewed exception in ${DISPOSITIONS} (resident).`); continue; }
+    used.add(match);
+    if (SEVERITY.indexOf(finding.severity) > SEVERITY.indexOf(match.severity)) problems.push(`${label}: severity rose from the reviewed ${match.severity} to ${finding.severity}`);
+  }
+  for (const item of exceptions) {
+    const label = `resident exception ${item.advisory}`;
+    if (!used.has(item)) problems.push(`${DISPOSITIONS}: stale ${label}; the resident snapshot no longer reports it`);
+    for (const field of ['reachability', 'justification', 'removeWhen', 'reviewedBy'])
+      if (typeof item[field] !== 'string' || item[field].trim().length < 3) problems.push(`${label}: missing ${field}`);
+    if (!DAY.test(item.reviewedOn || '') || !DAY.test(item.reviewBy || '')) { problems.push(`${label}: reviewedOn and reviewBy must be YYYY-MM-DD`); continue; }
+    const days = (Date.parse(item.reviewBy) - Date.parse(item.reviewedOn)) / 86400000;
+    if (!(days > 0 && days <= MAX_EXCEPTION_DAYS)) problems.push(`${label}: reviewBy must fall within ${MAX_EXCEPTION_DAYS} days after reviewedOn`);
+    if (today > item.reviewBy) problems.push(`${label} expired on ${item.reviewBy}; re-audit (${RESIDENT_REFRESH}) and re-review or fix it`);
+  }
+  return problems;
+}
+
+/** The binding the offline test enforces: the resident snapshot belongs to the pinned commit and lock. */
+export function residentBinding(root = ROOT) {
+  const commit = readJson(root, UPSTREAM_LOCK).commit;
+  const snapshot = readJson(root, SNAPSHOT).resident ?? null;
+  const lockText = fs.existsSync(path.join(root, UPSTREAM_BUN_LOCK)) ? fs.readFileSync(path.join(root, UPSTREAM_BUN_LOCK), 'utf8') : null;
+  return {commit, snapshot, inputSha256: lockText ? sha256(bunLockPackages(lockText).join('\n')) : null};
+}
+
+async function queryBulkAdvisories(packages, fetcher = fetch) {
+  const body = {};
+  for (const ident of packages) { const [name, version] = splitIdent(ident); (body[name] ??= []).push(version); }
+  const response = await fetcher(BULK_ADVISORIES, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
+  if (!response.ok) throw new Error(`npm bulk advisory query failed: HTTP ${response.status}`);
+  return response.json();
+}
+
+async function residentMain(argv) {
+  const today = new Date().toISOString().slice(0, 10);
+  const noticesFile = argv.includes('--notices') ? argv[argv.indexOf('--notices') + 1] : null;
+  const {commit, inputSha256} = residentBinding(ROOT);
+  const dispositions = readJson(ROOT, DISPOSITIONS);
+  let snapshot;
+  if (argv.includes('--offline')) snapshot = residentBinding(ROOT).snapshot;
+  else {
+    const input = noticesFile ? noticePackages(JSON.parse(fs.readFileSync(noticesFile, 'utf8'))) : bunLockPackages(fs.readFileSync(path.join(ROOT, UPSTREAM_BUN_LOCK), 'utf8'));
+    if (!input.length) throw new Error('The resident audit input is empty');
+    snapshot = {
+      description: `Advisories for the resident runtime's npm packages at the pinned upstream commit, from the npm bulk advisory endpoint. Regenerate with: ${RESIDENT_REFRESH}. Dispositions live in ${DISPOSITIONS} under "resident".`,
+      upstreamCommit: commit, input: noticesFile ? 'packaged-runtime notices' : UPSTREAM_BUN_LOCK, auditedOn: today,
+      ...normalizeResident(await queryBulkAdvisories(input), input),
+    };
+    if (argv.includes('--write')) {
+      fs.writeFileSync(path.join(ROOT, SNAPSHOT), `${JSON.stringify({...readJson(ROOT, SNAPSHOT), resident: snapshot}, null, 2)}\n`);
+      console.log(`Wrote ${RESIDENT_SNAPSHOT}`);
+    }
+  }
+  for (const finding of snapshot?.findings ?? []) console.log(`${finding.severity.padEnd(8)} ${finding.package}@${finding.versions.join(',')} ${finding.advisory.id} ${finding.advisory.title}`);
+  if (snapshot) console.log(`Resident findings: ${SEVERITY.filter(level => snapshot.counts[level]).map(level => `${snapshot.counts[level]} ${level}`).join(', ') || 'none'} across ${snapshot.packages} package versions (${snapshot.input}, upstream ${String(snapshot.upstreamCommit).slice(0, 12)})`);
+  const problems = checkResident({snapshot, dispositions, commit, inputSha256: snapshot?.input === UPSTREAM_BUN_LOCK ? inputSha256 : null, today});
+  for (const problem of problems) console.error(`FAIL ${problem}`);
+  if (!problems.length) console.log('PASS every resident advisory has an unexpired reviewed disposition.');
+  return problems.length ? 1 : 0;
+}
+
 function runNpmAudit(root) {
   // npm exits 1 when it finds anything; the JSON report on stdout is the result either way.
   const result = spawnSync('npm', ['audit', '--json', '--package-lock-only'], {cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
@@ -174,14 +342,18 @@ function runNpmAudit(root) {
   return report;
 }
 
-function main(argv) {
-  const known = ['--write', '--offline', '--from'];
+async function main(argv) {
+  const known = ['--write', '--offline', '--from', '--resident', '--notices'];
   const flags = argv.filter(arg => arg.startsWith('--'));
   const from = argv.includes('--from') ? argv[argv.indexOf('--from') + 1] : null;
-  if (flags.some(flag => !known.includes(flag)) || (argv.includes('--from') && !from)) {
-    console.error('Usage: node scripts/dependency-audit.mjs [--write] [--offline | --from <npm-audit.json>]');
+  const notices = argv.includes('--notices') ? argv[argv.indexOf('--notices') + 1] : null;
+  const resident = argv.includes('--resident');
+  if (flags.some(flag => !known.includes(flag)) || (argv.includes('--from') && !from) || (argv.includes('--notices') && (!notices || !resident))
+    || (resident && from) || (argv.includes('--offline') && (from || notices || argv.includes('--write')))) {
+    console.error('Usage: node scripts/dependency-audit.mjs [--write] [--offline | --from <npm-audit.json>]\n       node scripts/dependency-audit.mjs --resident [--write] [--offline | --notices <third-party-notices.json>]');
     return 2;
   }
+  if (resident) return residentMain(argv);
   const today = new Date().toISOString().slice(0, 10);
   const lockText = fs.readFileSync(path.join(ROOT, LOCK), 'utf8');
   const lock = JSON.parse(lockText);
@@ -194,6 +366,9 @@ function main(argv) {
       auditedOn: today,
       ...normalizeAudit(report, lock, lockText),
     };
+    // The resident audit is bound to the upstream commit, not this lockfile; keep it.
+    const resident = fs.existsSync(path.join(ROOT, SNAPSHOT)) ? readJson(ROOT, SNAPSHOT).resident : undefined;
+    if (resident) snapshot.resident = resident;
     if (argv.includes('--write')) {
       fs.writeFileSync(path.join(ROOT, SNAPSHOT), `${JSON.stringify(snapshot, null, 2)}\n`);
       console.log(`Wrote ${SNAPSHOT}`);
@@ -209,4 +384,4 @@ function main(argv) {
   return problems.length ? 1 : 0;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = main(process.argv.slice(2));
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = await main(process.argv.slice(2));

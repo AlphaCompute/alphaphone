@@ -139,7 +139,8 @@ by verification; this policy change does not resolve artifact licensing.
 
 Both `npm run android:build:local` and `npm run android:build` were attempted and
 stopped at preflight because the qualified
-`android/local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar` is missing. Neither
+`android/local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar` was missing (that engine has since
+been removed, P-42; the preflight now checks the libelizainference voice bundle instead). Neither
 APK variant was built or qualified in this review. No new emulator, full-image,
 physical-device or real-service acceptance is claimed.
 

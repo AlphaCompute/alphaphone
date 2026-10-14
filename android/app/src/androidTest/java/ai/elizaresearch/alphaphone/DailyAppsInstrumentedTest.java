@@ -172,7 +172,7 @@ public class DailyAppsInstrumentedTest {
    // A fresh install still shows the first-run sign-in panel. The product keeps the tap while that
    // panel is open and opens the reminder when the owner answers it; it must not open underneath.
    String detail = "document.documentElement.dataset.activeView==='calendar' && [...document.querySelectorAll('[data-screen] h1')].some(h=>h.textContent==="+JSONObject.quote("Device flow test " + id)+") && !!document.querySelector('button[aria-label=\"Edit event\"]')";
-   String offline = "[...document.querySelectorAll('.alpha-connection-scrim button')].find(e=>e.textContent.trim()==="+JSONObject.quote(AppNavigation.offlineLabel())+"&&!e.disabled)";
+   String offline = "[...document.querySelectorAll('.alpha-connection-scrim button')].find(e=>e.getAttribute('aria-label')==="+JSONObject.quote(AppNavigation.CLOSE_CONNECTION)+"&&!e.disabled)";
    if ("true".equals(evaluate(scenario, "!!document.querySelector('.alpha-connection-scrim')"))) {
     SystemClock.sleep(1500);
     assertEquals("The reminder does not open under the sign-in panel", "false", evaluate(scenario, "Boolean("+detail+")"));

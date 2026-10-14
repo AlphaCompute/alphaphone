@@ -7,7 +7,7 @@ import { DailyApps } from '../daily';
 import {calendarFormTimeProblem} from '../runtime/calendar-form-draft';
 import {calendarAgenda,calendarAgendaRows,calendarDayColumns,calendarDayCount,calendarDayLabel,calendarReturnDay,visibleCalendarDays} from './calendar-days';
 import {mapsEventOriginFor} from '../runtime/maps-event-return';
-import {rememberNoteOrigin,forgetNoteOrigin,noteOriginSupported} from './note-origin-adapter';
+import {rememberNoteOrigin,forgetNoteOrigin,noteOriginSupported,eventNoteOriginId} from './note-origin-adapter';
 type Bag = Record<string, any>;
 const calendar = registerPlugin<any>('AlphaCalendar');
 const DAY=86400000;
@@ -87,11 +87,14 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       owner.vset('calendar',{nativeCalendarStatus:status});return;
     }
     agentSelection=undefined;agentSelectionKey='';agentSelectionEpoch++;
+    // When the provider read completed: Home's calendar card shows this, not when it first drew the rows.
+    let readAt:number|null=null;
     const currentOwner=owner,range=desired||rangeFor(owner.vget('calendar')), token=++generation;desired=range;attemptedKey=range.key;runningToken=token;loading=true;loadFailed=false;status='Loading calendars…';currentOwner.vset('calendar',{nativeCalendarStatus:status});
     try {
       if(request) {const permission=await calendar.requestAccess();if(owner!==currentOwner||token!==generation)return;if(permission.status!=='granted'){loadedKey='';status='Calendar access denied';calendars=[];currentOwner.nativeCalendarRows=[];await currentOwner.refreshReminders();return;}}
       const result=await calendar.list({begin:range.begin,end:range.end});
       if(owner!==currentOwner||token!==generation)return;
+      if(result.status==='ready')readAt=Date.now();
       if(result.status!=='ready'){loadedKey='';status='Connect device calendars';calendars=[];currentOwner.nativeCalendarRows=[];await currentOwner.refreshReminders();return;}
       try{await readCreations();}catch{if(owner===currentOwner&&token===generation){creationPending=null;creationRecoveryFailed=true;}}
       if(owner!==currentOwner||token!==generation)return;
@@ -100,7 +103,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       await currentOwner.refreshReminders();
       if(request)currentOwner.calendarWriteUncertain=false;
     }catch{if(owner===currentOwner&&token===generation){loadedKey='';loadFailed=true;status=Capacitor.isNativePlatform()?'Calendar range could not be loaded. Open device calendars to retry.':'App calendar could not be loaded. Retry or open Calendar recovery.';}}
-    finally{if(runningToken===token){loading=false;if(token!==generation&&attemptedKey===range.key)attemptedKey='';}if(owner===currentOwner){currentOwner.vset('calendar',{nativeCalendarStatus:status});if(desired?.key!==attemptedKey)schedule();}}
+    finally{if(runningToken===token){loading=false;if(token!==generation&&attemptedKey===range.key)attemptedKey='';}if(owner===currentOwner){currentOwner.vset('calendar',{nativeCalendarStatus:status,...(token===generation?{nativeCalendarReadAt:loadedKey===range.key?readAt:null}:{})});if(desired?.key!==attemptedKey)schedule();}}
   }
   // One presentation seam over the existing display sources/preferences. These
   // controls never create native agent read grants or change source identities.
@@ -254,6 +257,10 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     if(out.f&&state.form){
       const f=state.form;
       const reviewedDate=wallTime(Number(f.off||0),12);
+      // Android events have no stable identity for a note link yet, so say so before Save rather than drop it silently.
+      // An event Android Calendar saves (the guests, video or alert hand-off) carries no Alpha creationId,
+      // so it cannot be linked back to its note.
+      out.f.noteLinkNotice=f.origin&&!f.alphaReminderId&&f.cal!=='alpha-reminders'&&(!noteOriginSupported('event')||Capacitor.isNativePlatform()&&calendarNeedsHandoff(f))?'This event will not link back to the note on this phone.':'';
       out.f.nativeReviewDate=reviewedDate?reviewedDate.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'Choose a valid local date';
       const destinations=[{id:'local',name:(Capacitor.isNativePlatform()?'On this phone':'In this app')},...calendars.filter(c=>c.writable&&!c.local).map(c=>({id:c.id,name:c.name}))];
       out.f.cals=f.alphaCalendarId ? [{name:(Capacitor.isNativePlatform()?'On this phone':'In this app'),dot:'var(--acc)',css:'background:var(--fg);color:var(--bg)',pick:()=>{}}] : [...out.f.cals.filter((c:Bag)=>c.name==='Reminders'),...destinations.map(c=>({name:c.name,dot:'var(--acc)',css:f.cal===`native:${c.id}`?'background:var(--fg);color:var(--bg)':'background:var(--bg)',pick:()=>api.set({form:{...api.get('calendar').form,cal:`native:${c.id}`,alert:null}})}))];
@@ -297,6 +304,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           const targetDay=Number(current.off||0);
           currentOwner.calendarFormCommitted?.(api.get('calendar').form);
           api.set({form:null,open:null,day:targetDay,month:null});
+          if(current.origin&&noteOriginSupported('event'))void rememberNoteOrigin('event',creationId,current.origin).then(linked=>{if(!linked&&owner===currentOwner&&currentOwner.live)api.toast('Event saved. The link to its note could not be saved.');});
           const ack=await calendar.acknowledgeCreation({creationId});if(ack.status!=='acknowledged')throw Error('Unconfirmed receipt acknowledgement');
           desired=rangeFor({...currentOwner.vget('calendar'),day:targetDay,month:null});await refresh(false,true);
           const saved=currentOwner.nativeCalendarRows?.find((e:Bag)=>e.alphaCalendarId===result.id);
@@ -337,8 +345,10 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           if(result.status==='conflict'){api.toast('This event changed. Reload it before editing. Nothing was overwritten.');return;}
           if(result.status!=='saved')throw Error('Unconfirmed calendar write');
           if(creationId&&result.creationId!==creationId)throw Error('Mismatched creation receipt');
-          // A new event from a note draft keeps a link to that note. The event is already saved either way.
-          if(creationId&&current.origin&&noteOriginSupported('event'))void rememberNoteOrigin('event',String(result.id),current.origin).then(linked=>{if(!linked&&owner===currentOwner&&currentOwner.live)api.toast('Event saved. The link to its note could not be saved.');});
+          // A new event from a note draft keeps a link to that note, keyed by its creationId on Android
+          // (provider row ids can be reused) and by its id in the browser calendar. The event is
+          // already saved either way.
+          if(creationId&&current.origin&&noteOriginSupported('event'))void rememberNoteOrigin('event',Capacitor.isNativePlatform()?creationId:String(result.id),current.origin).then(linked=>{if(!linked&&owner===currentOwner&&currentOwner.live)api.toast('Event saved. The link to its note could not be saved.');});
           const targetDay=Number(current.off||0);
           // Retire only this exact submitted draft before an acknowledgement can be lost.
           currentOwner.calendarFormCommitted?.(api.get('calendar').form);
@@ -426,7 +436,8 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           if(owner!==currentOwner)return;
           if(result.status==='queued'){const current=api.get('calendar');if(!document.hidden&&api.isActive()&&current.open===selected.id&&!current.form){api.set({open:null,openDay:null});api.toast('Deletion queued. Undo is available for 10 seconds.');}refreshDeletionViews();}
           else if(result.status==='deleted'){
-            if(!event.seriesId&&!/:occ:-?\d+$/.test(String(event.id)))void forgetNoteOrigin('event',String(event.id));
+            const linked=Capacitor.isNativePlatform()?eventNoteOriginId(event):!event.seriesId&&!/:occ:-?\d+$/.test(String(event.id))?String(event.id):undefined;
+            if(linked)void forgetNoteOrigin('event',linked);
             // The receipt belongs to the deleted event, not a newer detail or draft.
             const current=api.get('calendar');
             if(!document.hidden&&api.isActive()&&current.open===selected.id&&!current.form){

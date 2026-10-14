@@ -25,17 +25,48 @@ public class MainActivity extends BridgeActivity {
  public int getTopInsetDp() { return topInsetDp; }
  public int getBottomInsetDp() { return bottomInsetDp; }
  protected boolean isAssistantSurface() { return false; }
- // Renderer recovery is process-wide so a crash loop backs off instead of spinning.
- private static final long RECOVERY_WINDOW_MS = 60_000L, RECOVERY_BACKOFF_MS = 5_000L;
- private static final int RECOVERY_BUDGET = 3;
- private static long recoveryWindowStart = 0L;
- private static int recoveriesInWindow = 0;
+ // Renderer recovery is process-wide so a crash loop backs off instead of spinning (RendererRecoveryBudget).
+ private static final RendererRecoveryBudget recoveryBudget = new RendererRecoveryBudget();
  private boolean recoveringRenderer = false;
- /** Returns the delay before recreating after a renderer loss, applying a bounded backoff. */
- static synchronized long rendererRecoveryDelay(long now) {
-  if (recoveryWindowStart == 0L || now - recoveryWindowStart > RECOVERY_WINDOW_MS) { recoveryWindowStart = now; recoveriesInWindow = 0; }
-  recoveriesInWindow++;
-  return recoveriesInWindow > RECOVERY_BUDGET ? RECOVERY_BACKOFF_MS : 0L;
+ /** Alpha is the home activity here: a renderer crash loop must not leave a blank, inescapable HOME. */
+ private boolean showsHome() { return BuildConfig.IS_LAUNCHER && !isAssistantSurface() && startedAsHome; }
+ /**
+  * The native escape view after the recovery budget is used up while Alpha is HOME. Built in code:
+  * it needs no page, no bridge and no layout resource. Each Settings button opens a stock Settings
+  * activity, never one of Alpha's own.
+  */
+ private void showRendererEscape() {
+  android.widget.LinearLayout panel = new android.widget.LinearLayout(this);
+  panel.setOrientation(android.widget.LinearLayout.VERTICAL);
+  panel.setGravity(android.view.Gravity.CENTER);
+  int pad = Math.round(24 * getResources().getDisplayMetrics().density);
+  panel.setPadding(pad, pad, pad, pad);
+  panel.setBackgroundColor(android.graphics.Color.BLACK);
+  android.widget.TextView message = new android.widget.TextView(this);
+  message.setText("Alpha Phone's screen stopped several times in a minute. Reload it, or open Android Settings to choose another Home app.");
+  message.setTextColor(android.graphics.Color.WHITE);
+  message.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18);
+  message.setGravity(android.view.Gravity.CENTER);
+  message.setPadding(0, 0, 0, pad);
+  panel.addView(message);
+  java.util.function.Predicate<String> resolves = action -> new Intent(action).resolveActivity(getPackageManager()) != null;
+  addEscapeButton(panel, "Reload", this::recreate);
+  String settings = RendererRecoveryBudget.settingsAction(resolves), home = RendererRecoveryBudget.homeChoiceAction(resolves);
+  if (settings != null) addEscapeButton(panel, "Open Android Settings", () -> openSettings(settings));
+  if (home != null) addEscapeButton(panel, "Choose Home app", () -> openSettings(home));
+  setContentView(panel);
+  android.util.Log.w("AlphaRenderer", "Renderer recovery budget used up while HOME; showing the native escape view");
+ }
+ private void addEscapeButton(android.widget.LinearLayout panel, String label, Runnable action) {
+  android.widget.Button button = new android.widget.Button(this);
+  button.setText(label);
+  button.setAllCaps(false);
+  button.setOnClickListener(view -> action.run());
+  panel.addView(button, new android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+ }
+ private void openSettings(String action) {
+  try { startActivity(new Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+  catch (RuntimeException unavailable) { android.util.Log.w("AlphaRenderer", "Settings could not be opened: " + unavailable.getClass().getSimpleName()); }
  }
  private final WebViewListener rendererRecovery = new WebViewListener() {
   @Override public void onPageLoaded(WebView view) {
@@ -51,8 +82,9 @@ public class MainActivity extends BridgeActivity {
    recoveringRenderer = true;
    if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
    view.destroy();
-   long delay = rendererRecoveryDelay(SystemClock.elapsedRealtime());
-   getWindow().getDecorView().postDelayed(() -> { if (!isFinishing() && !isDestroyed()) recreate(); }, delay);
+   RendererRecoveryBudget.Action action = recoveryBudget.onLoss(SystemClock.elapsedRealtime(), showsHome());
+   if (action == RendererRecoveryBudget.Action.SHOW_ESCAPE) { showRendererEscape(); return true; }
+   getWindow().getDecorView().postDelayed(() -> { if (!isFinishing() && !isDestroyed()) recreate(); }, RendererRecoveryBudget.delay(action));
    return true;
   }
  };

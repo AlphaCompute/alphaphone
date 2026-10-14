@@ -35,10 +35,13 @@ export function presentHomeAttention(summary: HomeAttentionSummary | null | unde
         text: `${unread ? 'unread' : 'Nothing unread'} · ${source}${updated ? ` · ${whenLabel(updated, now)}` : ''}`,
         // Stable accessible name; source and read time are in the visible text line.
         label: `Open Inbox: ${plural(unread, 'unread email', 'unread emails')}`};
-    case 'stale':
-      return {action: 'inbox' as const, count: unread === null ? '—' : String(unread),
+    case 'stale': {
+      // With no completed read there is no last count to report, whatever number came with it.
+      const last = updated ? unread : null;
+      return {action: 'inbox' as const, count: last === null ? '—' : String(last),
         text: updated ? `Not updated since ${whenLabel(updated, now)}` : 'Not updated recently',
-        label: `Open Inbox: ${source} has not updated${updated ? ` since ${whenLabel(updated, now)}` : ''}${unread === null ? '' : `; ${plural(unread, 'unread email', 'unread emails')} when last read`}`};
+        label: `Open Inbox: ${source} has not updated${updated ? ` since ${whenLabel(updated, now)}` : ''}${last === null ? '' : `; ${plural(last, 'unread email', 'unread emails')} when last read`}`};
+    }
     case 'error': {
       const message = typeof summary.message === 'string' && summary.message.trim() ? summary.message.trim().slice(0, 120) : `${source} could not be checked`;
       return {action: 'inbox' as const, count: '!', text: message, label: `Open Inbox to retry: ${message}`};
@@ -103,6 +106,16 @@ export function presentHomeCalendarSource(input: {state: 'ready' | 'loading' | '
   const name = typeof input.calendar === 'string' && input.calendar.trim() ? input.calendar.trim().slice(0, 60) : '';
   return {origin: name || (native ? 'Device' : 'This app'), read: `Read ${short(readAt)}`,
     description: `${name ? `${name}. ` : ''}Read ${whenLabel(readAt, now)} from ${native ? 'calendars on this device' : 'the calendar saved in this browser'}${input.truncated ? '; only the first 2,000 events were read' : ''}`};
+}
+/** The secondary line of the Home calendar card while an overdue reminder holds it: the first item
+ * that is not overdue, so an overdue reminder never hides the next event. `source` names where and
+ * when that item was read (presentHomeCalendarSource for it), never the reminder's store. */
+export function presentHomeNext(input: {title: string; begin: number; allDay: boolean; now: number; provenance: {origin: string; read: string; description: string}}) {
+  const {begin, now, provenance} = input, date = new Date(begin), today = date.toDateString() === new Date(now).toDateString();
+  const title = input.title.replace(/\s+/g, ' ').trim() || 'Untitled event';
+  const time = begin <= now ? (input.allDay ? 'All day' : 'Now') : input.allDay ? (today ? 'All day' : formatShortDate(date)) : today ? formatTime(date) : `${formatShortDate(date)} ${formatTime(date)}`;
+  return {text: `Next: ${title} ${time}`, source: [provenance.origin, provenance.read].filter(Boolean).join(' · '),
+    description: `Next: ${title}, ${time}${provenance.description ? `. ${provenance.description}` : ''}`};
 }
 /** Name of the calendar an event on the Home card was read from: the display source whose id is
  * the event's `calendarId` in the same completed read. Null when the event names no calendar, when

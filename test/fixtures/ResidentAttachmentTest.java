@@ -41,10 +41,10 @@ public final class ResidentAttachmentTest {
   refused("provider-unadmitted",f->f.currentGeneration=null);
   // The agent always runs: a resident launched without hosted inference (no plan) is attached to
   // while no provider is stored, and a newly bound plan (a new generation) restarts it.
-  ResidentAttachment.Facts unbound=admitted(now);unbound.launchedGeneration="unbound";unbound.currentGeneration="unbound";
+  ResidentAttachment.Facts unbound=admitted(now);unbound.launchedGeneration="no-provider";unbound.currentGeneration="no-provider";
   require(ResidentAttachment.refusal(running(),unbound)==null,"an unbound running resident attaches");
-  refused("provider-changed",f->{f.launchedGeneration="unbound";f.currentGeneration="generation-1";});
-  refused("provider-changed",f->{f.launchedGeneration="generation-1";f.currentGeneration="unbound";});
+  refused("provider-changed",f->{f.launchedGeneration="no-provider";f.currentGeneration="generation-1";});
+  refused("provider-changed",f->{f.launchedGeneration="generation-1";f.currentGeneration="no-provider";});
   for(JSONObject state:new JSONObject[]{null,new JSONObject(),running().put("state","booting"),running().put("state","restarting"),running().put("state","dead"),running().put("serviceActive",false),running().put("socketListening",false)})
    require("runtime-not-running".equals(ResidentAttachment.refusal(state,admitted(now))),"only a listening service attaches: "+state);
   require("unavailable".equals(ResidentAttachment.refusal(running(),null)),"missing facts refuse");
@@ -62,6 +62,17 @@ public final class ResidentAttachmentTest {
   for(int index=0;index<ResidentAttachment.Requests.LIMIT+8;index++)requests.add("request-"+index);
   require(requests.size()==ResidentAttachment.Requests.LIMIT,"attached start memory is bounded");
   require(!requests.remove("request-0")&&requests.remove("request-"+(ResidentAttachment.Requests.LIMIT+7)),"oldest attached starts are forgotten first");
+  // MVP-16 accepted limit: two surfaces that start before enrollment do not share the pending
+  // pairing. While the first surface is still pairing against a running runtime, the second is
+  // refused attachment and takes the ordinary start path; once the first enrollment is stored,
+  // later surfaces attach to it.
+  ResidentAttachment.Facts pairing=admitted(now);pairing.enrolledRoot=null;pairing.ownerToken=null;pairing.ownerIdentity=null;
+  require("not-enrolled".equals(ResidentAttachment.refusal(running(),pairing)),"a pending enrollment is not shared");
+  pairing.enrolledRoot="root-1";
+  require("not-enrolled".equals(ResidentAttachment.refusal(running(),pairing)),"a half-written enrollment is not shared");
+  pairing.ownerToken="owner-session";pairing.ownerIdentity="owner";
+  require(ResidentAttachment.refusal(running(),pairing)==null,"a completed enrollment is attached to");
+  System.out.println("PASS pre-enrollment: a second surface before enrollment starts on its own (accepted limit)");
   System.out.println("PASS resident attachment: admitted running resident attaches; retirement, runtime, enrollment and provider changes restart; bounded cancellation memory");
  }
 }

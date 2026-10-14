@@ -137,7 +137,7 @@ Alpha should budget above the SaaS median **(est.)**. It has a custom OS image, 
 | Infrastructure | Cloudflare (Workers `eliza-cloud-api-prod`, DNS, Tunnel), Railway (`eliza-cloud` Postgres, agent-server, voice services `whisper-stt`, `kokoro-tts`) [repo: cloud-production-validation] | **Yes, if Alpha's entity operates Eliza Cloud**. Otherwise Eliza Cloud is itself a subservice organization. **Scoping decision #1**: see §2.3 |
 | Infrastructure | GitHub (`AlphaCompute/alphaphone`, private), GitHub Actions hosted runners | Yes, as tooling: carved-out vendor plus in-scope configuration |
 | Infrastructure | AOSP build host (Linux x86_64, not yet allocated [repo: android-and-aosp]), signing HSM or KMS, OTA distribution (to be selected) | Yes, once production devices exist |
-| Software | Alpha app/launcher (`ai.elizaresearch.alphaphone`), `vendor/eliza` pinned submodule + `patches/eliza/*.patch`, AOSP product overlay `vendor/alphaphone`, enclave EIF, local speech runtime | Yes |
+| Software | Alpha app/launcher (`ai.elizaresearch.alphaphone`), `vendor/eliza` pinned submodule + `patches/eliza/*.patch` (historical; the series was retired in `34b3c82a` and upstream changes now arrive through a reviewed pin move in `upstream.lock.json`), AOSP product overlay `vendor/alphaphone`, enclave EIF, local speech runtime | Yes |
 | Endpoint | Customer devices | Device *software controls* are in scope. The physical device and user behavior are CUECs |
 | Endpoint | Alpha-owned test, demo and fleet devices; employee laptops | Yes (asset inventory, MDM) |
 | People | Founder/CEO (system owner), engineers, contractors, any agentic coding tools with repo write access | Yes. AI coding agents with commit rights must be treated as privileged identities |
@@ -338,7 +338,7 @@ CC8.1 controls for Alpha:
 - Require PRs; **≥1 approving review from someone other than the author**; dismiss stale approvals; require status checks (`Android foundation`, `Browser MVP`, CodeQL, dependency review); require linear history; block force-push and deletion; include administrators.
 - Rulesets on private repos require GitHub Team or Enterprise ([GitHub rulesets](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets); [community discussion](https://github.com/orgs/community/discussions/184363)). The org must upgrade.
 
-**(2) CODEOWNERS.** Required owners for `patches/eliza/**`, `upstream.lock.json`, `.gitmodules`, `android/**/AndroidManifest.xml`, `scripts/stage-aosp.mjs`, `.github/workflows/**`, Terraform and KMS policy.
+**(2) CODEOWNERS.** Required owners for `patches/eliza/**` (historical; the series was retired in `34b3c82a` and upstream changes now arrive through a reviewed pin move in `upstream.lock.json`), `upstream.lock.json`, `.gitmodules`, `android/**/AndroidManifest.xml`, `scripts/stage-aosp.mjs`, `.github/workflows/**`, Terraform and KMS policy.
 
 **(3) Signed commits** (SSH or gitsign/Sigstore keyless). Require them on `main`. All 144 commits today show `%G?`=`N` [repo].
 
