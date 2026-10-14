@@ -419,3 +419,9 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 .calendar-agenda-event { display:flex; flex-direction:column; gap:4px; width:100%; min-height:48px; padding:12px 16px; margin-bottom:8px; border-radius:14px; background:var(--s2); color:var(--fg); text-align:left; box-sizing:border-box; overflow-wrap:anywhere; }
 .calendar-agenda-event span { font-size:13px; color:var(--mut); }
 .calendar-agenda-event strong { font-size:16px; line-height:1.35; }
+/* Large text in a short canvas (200% text, launcher Home): the header, notices and the day strip
+ * above the agenda can outgrow the screen and leave the day strip under the dock. The whole list
+ * then scrolls as one column whose end clears the dock (runtime/dock-clearance.ts); the agenda
+ * grows with its rows instead of scrolling inside a squeezed box. */
+[data-alpha-subview="calendar-list"]:has(.calendar-agenda) { overflow-y:auto; overscroll-behavior:contain; box-sizing:border-box; padding-bottom:calc(var(--alpha-dock-clearance,102px) + 16px); scroll-padding-bottom:calc(var(--alpha-dock-clearance,102px) + 16px); }
+[data-alpha-subview="calendar-list"] .calendar-agenda { flex:1 0 auto!important; overflow-y:visible!important; padding-bottom:12px!important; }
