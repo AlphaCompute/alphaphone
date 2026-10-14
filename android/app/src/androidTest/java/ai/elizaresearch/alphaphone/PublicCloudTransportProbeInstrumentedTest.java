@@ -13,6 +13,9 @@ public final class PublicCloudTransportProbeInstrumentedTest {
  private static final String TRANSPORT_CODE_PATTERN="^ALPHA_TRANSPORT:(CLI_CREATE|CLI_POLL|IDENTITY|BALANCE|OTHER):(VALIDATE|CONNECT|WRITE|STATUS|READ|PARSE|RESOLVE):(-1|[1-5][0-9]{2}):[A-Za-z_$][A-Za-z0-9_$]*(?:[.][A-Za-z_$][A-Za-z0-9_$]*)*$";
  @Test public void freshSessionCreateAndPendingPoll() throws Exception {
   org.junit.Assume.assumeTrue("Requires explicit publicCloudProbe=1", "1".equals(InstrumentationRegistry.getArguments().getString("publicCloudProbe")));
+  // Product sign-in is in-app (AlphaCloudSignInPlugin); the browser hand-off routes exist only in
+  // test-mocks builds, as a diagnostic fallback for one release.
+  org.junit.Assume.assumeTrue("The CLI session transport is a test-mocks diagnostic route only", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)) {
    long ready=SystemClock.elapsedRealtime()+30000;
    boolean available=false;

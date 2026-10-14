@@ -58,11 +58,14 @@ test('Eliza Cloud staging exists only with test mocks',async()=>{
   const {CloudProtocol,cloudEnvironmentAvailable}=await load(flag,'runtime/cloud-protocol.ts');
   assert.equal(cloudEnvironmentAvailable('production'),true);
   assert.equal(cloudEnvironmentAvailable('staging'),flag);
-  const requests=[],client=new CloudProtocol('staging',async input=>{requests.push(input.url);return {status:200,data:{sessionId:'s',status:'pending',expiresAt:new Date(Date.now()+1000).toISOString()}};},{read:async()=>null,write:async()=>{},clear:async()=>{}},async()=>{});
-  const login=client.login(AbortSignal.timeout(50)).catch(error=>error);
-  const result=await login;
-  if(flag)assert.ok(requests.every(url=>url.startsWith('https://api-staging.eliza.app/')),'staging routes to the staging authority');
-  else{assert.equal(requests.length,0,'no staging request leaves a flag-off build');assert.match(String(result?.message),/unavailable in this build/);}
+  // In-app sign-in names its environment to the native host, which owns the authority. A flag-off
+  // build refuses staging before the host is asked for anything.
+  const requests=[],hosted=[],signIn={startEmail:async input=>{hosted.push(input.environment);throw Object.assign(Error('offline'),{code:'offline'});},startGoogle:async()=>{},verifyEmail:async()=>{},verifyMfa:async()=>{},cancel:async()=>{}};
+  const client=new CloudProtocol('staging',async input=>{requests.push(input.url);return {status:200,data:{}};},{read:async()=>null,write:async()=>{},clear:async()=>{}},async()=>{},{signIn});
+  const result=await client.startEmailSignIn('owner@example.invalid',AbortSignal.timeout(50)).catch(error=>error);
+  assert.equal(requests.length,0,'sign-in never uses the renderer transport');
+  if(flag){assert.deepEqual(hosted,['staging'],'staging sign-in asks the host for staging');assert.equal(result?.code,'offline');}
+  else{assert.deepEqual(hosted,[],'no staging sign-in leaves a flag-off build');assert.match(String(result?.message),/unavailable in this build/);}
  }
 });
 

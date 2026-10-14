@@ -46,7 +46,7 @@ const registered = inventory.surfaces.filter(surface => surface.file);
 test('the inventory covers websites, other apps and every Alpha-owned secret field', () => {
   const ids = new Set(inventory.surfaces.map(surface => surface.id));
   assert.equal(ids.size, inventory.surfaces.length, 'unique surface ids');
-  for (const id of ['browser-website-login', 'third-party-app-login', 'eliza-cloud-sign-in']) assert.ok(ids.has(id), id);
+  for (const id of ['browser-website-login', 'third-party-app-login', 'eliza-cloud-sign-in-google', 'eliza-cloud-sign-in-code']) assert.ok(ids.has(id), id);
   for (const surface of inventory.surfaces) {
     assert.equal(typeof surface.eligible, 'boolean', surface.id);
     if (surface.eligible) {
@@ -164,8 +164,8 @@ test('Alpha-owned native credential fields declare hints and report a website or
   assert.ok(inventory.rules.alphaOwnedAppIdentity);
 });
 
-test('Cloud and Google sign-in leave Alpha for the user\'s own browser', () => {
-  for (const id of ['eliza-cloud-sign-in', 'google-account-authorization']) {
+test('Google sign-in and Google account authorization leave Alpha for the user\'s own browser', () => {
+  for (const id of ['eliza-cloud-sign-in', 'eliza-cloud-sign-in-google', 'google-account-authorization']) {
     const surface = inventory.surfaces.find(s => s.id === id);
     assert.equal(surface?.kind, 'external-browser', id);
     assert.equal(surface.eligible, false, id);
@@ -178,13 +178,25 @@ test('Cloud and Google sign-in leave Alpha for the user\'s own browser', () => {
   const routes = read('android/app/src/main/java/ai/elizaresearch/alphaphone/ConnectionRoutes.java');
   assert.match(routes, /if\("eliza\.app"\.equals\(value\)\|\|"cloud\.eliza\.app"\.equals\(value\)\|\|"accounts\.google\.com"\.equals\(value\)\)return true;/);
   assert.doesNotMatch(open, /setPackage\(getContext\(\)\.getPackageName\(\)\)|AlphaBrowserPlugin/, 'never opened in Alpha\'s own browser');
-  // Alpha registers no general web handler, so a sign-in page cannot resolve back into Alpha.
+  // Alpha registers no general web handler, so a sign-in page cannot resolve back into Alpha. The one
+  // exception is the verified in-app sign-in return: exactly one https host and one exact path.
+  const callback = /^<intent-filter android:autoVerify="true"><action android:name="android\.intent\.action\.VIEW"\/><category android:name="android\.intent\.category\.DEFAULT"\/><category android:name="android\.intent\.category\.BROWSABLE"\/><data android:scheme="https" android:host="(eliza\.app|staging\.eliza\.app)" android:path="\/alphaphone\/auth\/callback"\/><\/intent-filter>$/;
+  const returns = [];
   for (const manifest of walk('android', file => file.endsWith('AndroidManifest.xml') && !/[\\/](test|androidTest|build)[\\/]/.test(file))) {
     const live = read(manifest).replace(/<!--[\s\S]*?-->/g, '');
     for (const filter of live.match(/<intent-filter[\s\S]*?<\/intent-filter>/g) || []) {
-      if (/android\.intent\.action\.VIEW/.test(filter)) assert.doesNotMatch(filter, /android:scheme="https?"/, `${manifest} declares a web VIEW handler`);
+      if (!/android\.intent\.action\.VIEW/.test(filter) || !/android:scheme="https?"/.test(filter)) continue;
+      const match = filter.match(callback);
+      assert.ok(match, `${manifest} declares a web VIEW handler other than the verified sign-in return`);
+      returns.push(`${manifest.split(path.sep).join('/')}:${match[1]}`);
     }
   }
+  assert.deepEqual(returns.sort(), ['android/app/src/testMocks/AndroidManifest.xml:staging.eliza.app'], 'the production return comes only from the ELIZAOS_APP_LINK_HOST overlay (android/app/build.gradle); the staging return exists only in the test-mocks overlay');
+  assert.match(read('android/app/build.gradle'), /android:host="\\\$\{appLinkHost\}" android:path="\/alphaphone\/auth\/callback"\/><\/intent-filter>/, 'the build-gated sign-in return is one exact path');
+  const signIn = read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaCloudSignInPlugin.java');
+  assert.match(signIn, /CustomTabsIntent tab = new CustomTabsIntent\.Builder\(\)/, 'Google consent opens in a Custom Tab');
+  assert.match(signIn, /if \(browser != null && !browser\.equals\(getContext\(\)\.getPackageName\(\)\)\)/, 'never Alpha itself');
+  assert.doesNotMatch(signIn, /WebView|AlphaBrowserPlugin/, 'never an embedded user agent');
   const ui = read('apps/app/src/runtime/google-connection-ui.tsx');
   assert.match(ui, /await openConnectionBrowser\(url,abort\.signal\);/);
 });
