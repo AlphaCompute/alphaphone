@@ -191,6 +191,7 @@ test('system Back from the hand-off returns to that event; a place the user open
   await expect(page.getByRole('heading', {name: 'Harbour meeting', exact: true})).toHaveCount(0);
   expect((await requests(page)).queries).toEqual([address]);
   // A place the user chose from the hand-off results is its own layer: Back closes it, Maps stays.
+  await button(page, 'Back to calendar').click();
   await handOff(page, 'Dock meeting');
   await page.getByRole('button', {name: /^West entrance/}).first().click();
   await systemBack(page);
