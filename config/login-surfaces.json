@@ -1,6 +1,6 @@
 {
   "$comment": "Inventory of every login and secret-entry surface in Alpha (issue #404, policy P-20). test/login-surfaces.test.mjs scans the renderer and native sources and fails when a password field or credential autocomplete token appears that is not registered here. An eligible Alpha-owned login form cannot be registered until it has a provider-owned fill route; see rules below. Status values describe source, never device acceptance.",
-  "reviewed": "2026-10-14: re-inventoried after #438/#430/#476 against renderer sources, every Android module, Cloud/Google connection handoffs, the browser HTTP-auth prompt and the browser's engine-attested field adapter (BrowserLoginFields). No new Alpha-owned login surface; website fields gained an engine-attested per-field origin (WebMessageListener sourceOrigin) on WebViews that support isolated-world scripts.",
+  "reviewed": "2026-10-14: in-app Eliza Cloud sign-in replaced the browser hand-off. Google consent runs in a Custom Tab (external-browser) returning through a verified App Link; the email and second-verification codes are typed into Alpha (one-time codes, not credentials). Website fields gained an engine-attested per-field origin (BrowserLoginFields, WebMessageListener sourceOrigin) on WebViews that support isolated-world scripts. Earlier: re-inventoried after #438/#430/#476 against renderer sources, every Android module, Cloud/Google connection handoffs and the browser HTTP-auth prompt. No new login surface; the HTTP-auth prompt gained an engine-origin binding gate (BrowserHttpAuthOrigin.bind) that refuses with a stated reason on the standard WebView.",
   "rules": {
     "websiteBinding": "Website fills bind to the origin the WebView engine reports for the frame that owns the field (WebMessageListener sourceOrigin, never page script or Alpha's script message), and only when it is committed HTTPS and equals the committed top-level origin of the selected, visible, finished tab (scheme, host and port) for the current navigation. The top-level document and same-origin frames qualify; cross-origin, opaque (sandboxed) and cleartext frames are never offered. Fill values go only to the reporting frame. Without engine support (WEB_MESSAGE_LISTENER and JS_INJECTION_IN_FRAME_AND_WORLD) the integrated vault refuses browser fill and Settings says why. Error, overlay, paused and private-host fields are never offered.",
     "appBinding": "Native app fills bind to the framework-reported package confirmed by PackageManager#hasSigningCertificate against the signer recorded at save time (rotation-aware).",
@@ -74,8 +74,23 @@
       "id": "eliza-cloud-sign-in",
       "kind": "external-browser",
       "eligible": false,
-      "owner": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java (openExternal), apps/app/src/runtime/connection-ui.tsx",
-      "reason": "Eliza Cloud sign-in opens the user's own browser (AlphaConnectionPlugin.openExternal: ACTION_VIEW with CATEGORY_BROWSABLE, eliza.app hosts only). Alpha declares no general https VIEW handler, so the page never loads in Alpha; credentials are entered and filled by that browser's own manager."
+      "owner": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java (openExternal), apps/app/src/runtime/connection-ui.tsx (signInBrowser)",
+      "reason": "The Cloud sign-in hand-off, kept as the sign-in path until the in-app readiness probe passes (and as a test-mocks diagnostic afterwards), opens the user's own browser (AlphaConnectionPlugin.openExternal: ACTION_VIEW with CATEGORY_BROWSABLE, eliza.app hosts only). Alpha declares no general https VIEW handler, so the page never loads in Alpha; credentials are entered and filled by that browser's own manager."
+    },
+    {
+      "id": "eliza-cloud-sign-in-google",
+      "kind": "external-browser",
+      "eligible": false,
+      "owner": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaCloudSignInPlugin.java (startGoogle), apps/app/src/runtime/cloud-sign-in-ui.tsx",
+      "reason": "Continue with Google opens Steward's Google authorize URL in a Custom Tab of the user's own browser (never a WebView, never Alpha's browser; plain ACTION_VIEW with CATEGORY_BROWSABLE when no Custom Tabs browser exists). Google's password is entered and filled by that browser's own manager. The only Alpha web handler is the verified App Link https://eliza.app/alphaphone/auth/callback (declared only by builds with ELIZAOS_APP_LINK_HOST; staging host in test-mocks builds only), which receives a one-time Steward code, never a page."
+    },
+    {
+      "id": "eliza-cloud-sign-in-code",
+      "kind": "alpha-owned",
+      "eligible": false,
+      "file": "apps/app/src/runtime/cloud-sign-in-ui.tsx",
+      "pattern": "autoComplete=\"one-time-code\"",
+      "reason": "The six-digit email or second-verification code of the in-app Eliza Cloud sign-in. A one-time code, not a reusable credential: it is sent once to the native sign-in host, cleared from the field on submit and never stored; Android may offer its own one-time-code suggestion."
     },
     {
       "id": "google-account-authorization",
