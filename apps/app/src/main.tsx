@@ -2,7 +2,7 @@ import {bindBrowserDeletionOwner} from './runtime/deletion-owner';
 import {DEFAULT_PULL_DISTANCE,DEFAULT_PULL_VELOCITY} from "../../../.eliza/client-features/packages/ui/src/gestures/constants";
 import {usePullGesture} from "../../../.eliza/client-features/packages/ui/src/components/shell/use-pull-gesture";
 import {installChatOverlayMotion} from './prototype/chat-overlay-motion-adapter';
-import {installSubviewAccessibility} from './prototype/subview-accessibility';
+import {installSubviewAccessibility,keepFocusOnScreen} from './prototype/subview-accessibility';
 import {installCalendarMonthFocus} from './prototype/calendar-month-focus';
 import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-adapter';
 import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
@@ -60,7 +60,8 @@ import { installHomeLauncher } from './prototype/home-launcher';
 import { setLocalePreferences } from './prototype/locale-time';
 import { installTextScale } from './runtime/text-scale';
 import { installDockClearance } from './runtime/dock-clearance';
-import { canvasGeometry, isEditing, keyboardFreeHeight } from './runtime/canvas-geometry';
+import { canvasGeometry, isEditing, keyboardFreeHeight, publishSurfaceLayout, surfaceLayout } from './runtime/canvas-geometry';
+import { TEXT_SCALE_PROPERTY } from './runtime/text-scale';
 import { installToastLayer } from './runtime/toast-layer';
 import './prototype/prototype.css';
 import './prototype/phone.css';
@@ -182,6 +183,19 @@ function Phone() {
       size();
     }).catch(() => {});
     const freeHeight = keyboardFreeHeight();
+    // List-detail split and Calendar day columns change what surfaces render, so a change in the
+    // measured canvas width or text size renders the shell again (runtime/canvas-geometry.ts).
+    let canvasWidth = 412, desktopCanvas = false;
+    const publishLayout = () => {
+      const textScale = parseFloat(document.documentElement.style.getPropertyValue(TEXT_SCALE_PROPERTY)) || 1;
+      const next = surfaceLayout(canvasWidth, textScale, desktopCanvas);
+      if (!publishSurfaceLayout(next)) return;
+      document.documentElement.classList.toggle('alpha-split', next.split);
+      const focused = document.activeElement;
+      shell?.setState({ surfaceLayoutRevision: Date.now() }, () => keepFocusOnScreen(focused));
+    };
+    const textScaleObserver = new MutationObserver(publishLayout);
+    textScaleObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
     const size = () => {
       // Android WebView can expand innerWidth/visualViewport to overflowing content
       // during rotation. Feeding that back into the phone canvas leaves portrait
@@ -211,11 +225,13 @@ function Phone() {
       document.documentElement.classList.toggle('browser-desktop', desktop);
       document.documentElement.classList.toggle('alpha-landscape', geometry.landscape);
       document.documentElement.classList.toggle('alpha-wide', geometry.wide);
+      canvasWidth = desktop ? 412 : width / geometry.scale; desktopCanvas = desktop;
+      publishLayout();
 
     };
     const bannerObserver=new ResizeObserver(size);const bannerElement=testMocksEnabled&&mock?document.querySelector('.mock-mode-banner'):null;if(bannerElement)bannerObserver.observe(bannerElement);
     size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size); window.visualViewport?.addEventListener('scroll', size);
-    return () => { bannerObserver.disconnect(); window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); window.visualViewport?.removeEventListener('scroll', size); };
+    return () => { textScaleObserver.disconnect(); bannerObserver.disconnect(); window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); window.visualViewport?.removeEventListener('scroll', size); };
   }, []);
   return <>{!mock&&<DeletionUndo/>}{BrowserDeviceControls&&!isAndroid&&!mock&&query.get('tools')==='1'&&<BrowserDeviceControls command={action=>{
     if(!shell)return;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 // Issue #411: the canvas arrangement follows measured window geometry, not screen orientation,
 // and the software keyboard is never mistaken for a rotation.
-const { canvasGeometry, keyboardFreeHeight, WIDE_CANVAS } = await import('../apps/app/src/runtime/canvas-geometry.ts');
+const { canvasGeometry, keyboardFreeHeight, surfaceLayout, WIDE_CANVAS } = await import('../apps/app/src/runtime/canvas-geometry.ts');
 
 const input = (width, height, extra = {}) => ({ width, layoutHeight: height, available: height, desktop: false, fluid: true, launcher: false, screenShort: Math.min(width, height), editing: false, ...extra });
 const fit = (width, height, extra) => canvasGeometry(input(width, height, extra), height);
@@ -39,6 +39,33 @@ test('the keyboard shortens a portrait window without flipping it to landscape',
   // Rotation changes the width, so it is honoured even while a field has focus.
   const turned = keyboardFreeHeight();
   turned(412, 915, true);
-  assert.equal(turned(915, 300, true), 300);
-  assert.equal(canvasGeometry(input(915, 300, { editing: true }), 300).landscape, true);
+  assert.equal(canvasGeometry(input(915, 300, { editing: true }), turned(915, 300, true)).landscape, true);
+  // Turning back while the keyboard stays up: a small phone's portrait window is already shorter
+  // than it is wide, but the sides were swapped, so it is portrait again.
+  assert.equal(canvasGeometry(input(412, 380, { editing: true }), turned(412, 380, true)).landscape, false);
+  // The same on a 360x640 phone, starting in landscape with the keyboard closed.
+  const small = keyboardFreeHeight();
+  small(640, 360, false);
+  assert.equal(canvasGeometry(input(640, 150, { editing: true }), small(640, 150, true)).landscape, true);
+  assert.equal(canvasGeometry(input(360, 330, { editing: true }), small(360, 330, true)).landscape, false);
+  assert.equal(canvasGeometry(input(640, 150, { editing: true }), small(640, 150, true)).landscape, true);
+  // Once the keyboard closes the measured height is used again.
+  assert.equal(small(360, 600, false), 600);
+  // A width change that is not a swap (a resized window) takes the measured height as it is.
+  const resized = keyboardFreeHeight();
+  resized(500, 900, false);
+  assert.equal(resized(700, 400, true), 400);
+});
+
+test('list-detail split and Calendar day columns follow measured width, with an agenda at large text', () => {
+  assert.deepEqual(surfaceLayout(412, 1), { split: false, calendarDays: 1 });
+  assert.deepEqual(surfaceLayout(640, 1), { split: false, calendarDays: 2 });
+  assert.deepEqual(surfaceLayout(800, 1), { split: false, calendarDays: 3 });
+  assert.deepEqual(surfaceLayout(915, 1), { split: false, calendarDays: 3 });
+  assert.deepEqual(surfaceLayout(1024, 1), { split: true, calendarDays: 3 });
+  assert.deepEqual(surfaceLayout(1280, 1), { split: true, calendarDays: 5 });
+  assert.equal(surfaceLayout(4000, 1).calendarDays, 7);
+  // Large text keeps the single-day agenda; the split still follows width.
+  assert.deepEqual(surfaceLayout(1280, 1.3), { split: true, calendarDays: 1 });
+  assert.deepEqual(surfaceLayout(1280, 1, true), { split: false, calendarDays: 1 });
 });

@@ -149,8 +149,8 @@ mocks, installed from a system partition (`FLAG_SYSTEM`), with the `<package>.ao
 system feature that `scripts/stage-aosp.mjs` declares in the image product. The launcher
 flavor, test mocks, URLs and saved state never establish it. Only then does `MainActivity`
 register `AlphaTelephonyPlugin` (read-only contacts through upstream `ContactsReader`, role
-and SIM status, dialer and SMS handoffs); the renderer reads its presence from the injected
-plugin headers (`apps/app/src/runtime/aosp-image.ts`). Standalone APKs declare no contacts or
+and SIM status, dialer and SMS handoffs, SMS/MMS provider reads and reviewed native sends); the
+renderer reads its presence from the injected plugin headers (`apps/app/src/runtime/aosp-image.ts`). Standalone APKs declare no contacts or
 phone-state permission. Gmail is available in both distributions through Eliza Cloud, with
 read access first and one incremental change grant (`apps/app/src/runtime/gmail-grants.ts`).
 
@@ -183,6 +183,45 @@ Contacts uses the bounded AlphaContacts adapter and its native capability respon
 views remain deferred. Telephony contact reads recheck permission, unlock and lifecycle state
 before and after asynchronous provider reads.
 
+### SMS/MMS on the image (#421)
+
+Text messaging has no account or OAuth grant: identity is the device's active subscriptions and
+Android roles. Only the launcher manifest declares `READ_SMS` and `SEND_SMS` (both hard-restricted,
+so an ordinary sideloaded install cannot hold them) and the non-exported `AlphaSmsSendReceiver`;
+the standalone manifest removes them and `scripts/apk.mjs` checks the packaged permissions per flavor.
+`AlphaTelephonyPlugin` adds, behind the same image capability and unlocked-foreground check:
+
+- `listThreads`/`listMessages`: bounded pages (50 rows, 2000 characters per body, 20 addresses) from
+  the Telephony SMS, MMS and conversation providers with `READ_SMS`, cancelled and fenced like Contacts.
+  IDs are `thread:<row>`, `sms:<row>`, `mms:<row>`. Direction is incoming/outgoing; status is
+  received/read or pending/sent/failed/delivered. "delivered" requires the provider's complete delivery
+  report and is never claimed for MMS. Drafts and attachment bytes are not read (`SmsRecords`).
+- `observeMessages`: a ContentObserver on the SMS, MMS and conversation URIs while Alpha is unlocked in
+  the foreground, coalesced to one content-free `messagesChanged` notice per 750 ms; the renderer
+  re-reads a bounded page. Pause, lock and screen-off unregister it.
+- `sendSms`/`smsSendResult`: a reviewed native send when `status.sendMode` is `direct` (`SEND_SMS` held,
+  directly or through the SMS role, and the SIM list readable). Alpha's own native dialog shows the exact
+  recipients, SIM, part count and text; conditions are rechecked at the Send decision. The result follows
+  the shared `sms.send.v1` contract (elizaOS/eliza#36178): the operation ID is the idempotency key and a
+  repeat only reads `SmsSendJournal`; the binding hash covers recipients, text and SIM. The journal is
+  written before the first `SmsManager` call (`createForSubscriptionId`, `divideMessage`, one immutable,
+  package-explicit sent and delivery PendingIntent per part). "sent" comes only from `RESULT_OK` sent
+  callbacks and "delivered" only from delivery reports whose provider row reads complete; an interrupted
+  dispatch or callbacks lost to a restart read "unknown". Nothing is ever resent automatically, and the
+  body is not stored. The journal keeps 200 records; when full it drops the oldest (closed first) and
+  keeps a tombstone of each dropped operation ID, which is then refused rather than sent again; evidence
+  is awaited for at most seven days. Otherwise `composeSms` remains the handoff fallback and never reports a send.
+
+Delivery outcome is read from the provider row the platform writes for a non-default SMS app's send
+(matched by address, Alpha as creator, a date after the journal entry and body hash), because an
+immutable delivery PendingIntent cannot carry the status-report PDU. Each part's report overwrites the
+one row of a multipart message, so multipart delivery stays "unknown" and only single-part messages can
+read "delivered". The Messages
+view, agent `sms_send` proposals and the `sms.send.v1` device capability stay unavailable until the
+shared contract is in the reviewed pin. JVM and renderer tests cover the journal, mapping and contract;
+grants on the image, real provider rows, carrier delivery reports and owned SMS/MMS endpoints remain
+image/device qualification for #421.
+
 ### Reset and the image listener
 
 Before dispatching Android's package-data clear, a pending Alpha reset asks the
@@ -202,10 +241,27 @@ failed-write retry and admission before app initialization. These are source-lev
 checks; actual microphone release, provider IPC, process interruption and both
 image distributions still require native qualification for #409/#424.
 Because the reset fails closed, an installed listener that cannot acknowledge it
-(signer mismatch, LISTENER_CONTROL not granted, missing provider) makes every Alpha
-launch stop again; where Alpha is HOME this presents as a launcher restart loop until
-the listener is fixed or Alpha's storage is cleared in Settings. Qualification must
-exercise that state and record the recovery path; a user-visible recovery surface is
-future work. A consent permission request pending while ConsentActivity is recreated
+(signer mismatch, LISTENER_CONTROL not granted, missing provider) keeps every Alpha
+main-process launch stopping before initialization. Before stopping, a main process
+started for an activity (or for a reason Android does not report; `ApplicationStartInfo`
+on API 35+) opens `ResetRecoveryActivity`; one started for a job, alarm, broadcast,
+push, provider or bound service stops without taking the screen from the app in front.
+The recovery activity runs in its own `:reset_recovery` process, which installs
+none of Alpha's content providers (no WorkManager or startup initializers) and starts
+no agent, renderer or notification code. It states that the reset has not finished
+and Alpha's local data was not deleted, and offers Try reset again (always a fresh
+listener-then-Android attempt), the listener's settings, Phone and Android Settings.
+Automatic attempts at launch are bounded (three per minute; unreadable attempt state
+defers them until the user retries), so Android relaunching HOME no longer repeats
+listener IPC silently. The marker and all Alpha data stay until the listener
+acknowledges and Android accepts the package clear; a new confirmed reset starts a
+fresh budget, and a late failure after Android finished cannot recreate reset state.
+Settings > Clear storage is not a recovery path for this state: it would clear Alpha
+without revoking listener consent. JVM tests cover the relaunch sequence, recovery-
+process admission, bounded attempts, acknowledged-then-refused interruption and
+package-scoped clearing; Android actually resuming the recovery task instead of
+relaunching HOME, the background-start exemption it relies on, and both image
+distributions still require native qualification.
+A consent permission request pending while ConsentActivity is recreated
 (for example on rotation) is restored only within the same process, so a request made
 before a restart can never match the listener's fresh reset generation.

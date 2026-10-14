@@ -38,11 +38,25 @@ const REFERENCE_WIDTH = 412, REFERENCE_HEIGHT = 915;
 /** Canvas width from which lists, settings and readers hold a bounded reading column (phone.css). */
 export const WIDE_CANVAS = 760;
 
-/** Remembers the window height without the keyboard for the current width. */
+/**
+ * Remembers the window height without the keyboard for the current width.
+ *
+ * Android keeps the field focused and the keyboard up through a rotation (MainActivity handles
+ * orientation changes itself and resizes for the keyboard), so the first measurement after turning
+ * a small phone back to portrait can already be shorter than it is wide. When the width changes
+ * while a field has focus and the new width is about the previous keyboard-free height, the sides
+ * were swapped: the previous width stands in for the new keyboard-free height until the keyboard
+ * closes or the field loses focus.
+ */
 export function keyboardFreeHeight() {
   let base = { width: 0, height: 0 };
   return (width: number, height: number, editing: boolean) => {
-    if (width !== base.width || !editing || height > base.height) base = { width, height };
+    if (width === base.width) {
+      if (!editing || height > base.height) base = { width, height };
+    } else {
+      const swapped = editing && base.width > 0 && Math.abs(width - base.height) <= base.height * 0.2;
+      base = { width, height: swapped ? Math.max(height, base.width) : height };
+    }
     return base.height;
   };
 }
@@ -71,4 +85,28 @@ export function isEditing(element: Element | null): boolean {
   if (element instanceof HTMLTextAreaElement) return !element.readOnly;
   if (element instanceof HTMLInputElement) return !element.readOnly && !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file', 'image', 'hidden'].includes(element.type);
   return false;
+}
+
+/** Canvas width from which Inbox, Notes and Files show the open item beside their list. */
+export const SPLIT_CANVAS = 1000;
+/** Narrowest readable Calendar day column; the time gutter takes 76px. */
+const DAY_COLUMN = 240;
+/** Text scale from which Calendar keeps its single-day agenda instead of side-by-side days. */
+const MULTI_DAY_TEXT_LIMIT = 1.3;
+
+/** Layout choices that change what a surface renders, not only how CSS places it. */
+export type SurfaceLayout = { split: boolean; calendarDays: number };
+export function surfaceLayout(canvasWidth: number, textScale: number, desktop = false): SurfaceLayout {
+  if (desktop || !Number.isFinite(canvasWidth)) return { split: false, calendarDays: 1 };
+  const days = textScale >= MULTI_DAY_TEXT_LIMIT ? 1 : Math.floor((canvasWidth - 76) / DAY_COLUMN);
+  return { split: canvasWidth >= SPLIT_CANVAS, calendarDays: Math.max(1, Math.min(7, days)) };
+}
+let published: SurfaceLayout = { split: false, calendarDays: 1 };
+/** The layout surfaces render from; main.tsx publishes it from measured canvas and text size. */
+export const currentSurfaceLayout = (): SurfaceLayout => published;
+/** Returns true when the layout changed and surfaces must render again. */
+export function publishSurfaceLayout(next: SurfaceLayout): boolean {
+  if (next.split === published.split && next.calendarDays === published.calendarDays) return false;
+  published = next;
+  return true;
 }
