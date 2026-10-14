@@ -65,6 +65,11 @@ test('the listener wake phrase opens the assistant surface and starts the on-dev
  await page.waitForTimeout(500);
  await expect(voice(page)).toHaveCount(0);
  expect(await live(page,f=>f.captures.length)).toBe(1);
+ // A second wake phrase while the surface is already in front: native fires the invocation event.
+ await page.evaluate(()=>{(window as any).live.invocations=0;window.dispatchEvent(new Event('alpha:assist-invocation'));});
+ await expect(voice(page)).toHaveAttribute('data-voice-state','listening');
+ expect(await live(page,f=>f.captures.length)).toBe(2);
+ await button(page,'Stop voice conversation').click();
  expect(await live(page,f=>f.forbidden)).toEqual([]);expect(foreign).toEqual([]);
 });
 

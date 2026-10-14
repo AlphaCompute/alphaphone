@@ -161,14 +161,14 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   let inferenceProvider = 'Not reported by agent';
   // The AOSP image's always-on listener (#424): status, Pause and Turn off only. Turning listening on
   // or resuming happens in the listener's own consent screen, never here.
-  let listener: ListenerStatus = { available: false }, listenerBusy = false;
+  let listener: ListenerStatus = { available: false }, listenerBusy = false, listenerSequence = 0;
   async function listenerAction(api: Bag, action: 'pause' | 'turnOff') {
     if (listenerBusy) return;
     listenerBusy = true; changed();
-    const instance = owner;
+    const instance = owner, sequence = ++listenerSequence;
     try {
       const next = await (action === 'pause' ? pauseListener() : turnOffListener());
-      if (owner !== instance) return;
+      if (owner !== instance || sequence !== listenerSequence) return;
       listener = next;
       if (!next.available) api.toast('The listener did not respond. Use its notification or Quick Settings tile to stop listening.');
       else if (next.listening) api.toast('Listening has not stopped. Use the listener notification to stop it.');
@@ -186,8 +186,9 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     try {
       await Promise.allSettled([
         (async () => {
-          const status = await listenerStatus();
-          if (owner === instance && capabilityAbort === abort) listener = status;
+          // A status read older than a Pause or Turn off never replaces that action's result.
+          const sequence = ++listenerSequence, status = await listenerStatus();
+          if (owner === instance && capabilityAbort === abort && sequence === listenerSequence) listener = status;
         })(),
         (async () => {
           if (!browserLocalAgentEnabled) return;
@@ -395,7 +396,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       return [
         info('Always-on listening', listenerBusy ? 'Updating…' : status.label),
         ...(status.listening || status.microphoneOpen ? [action('Pause listening', () => void listenerAction(api, 'pause'))] : []),
-        ...(status.consented ? [action('Turn off listening', () => void listenerAction(api, 'turnOff'))] : []),
+        ...(status.consented && status.state !== 'OFF' ? [action('Turn off listening', () => void listenerAction(api, 'turnOff'))] : []),
         action('Listening settings', () => void openListenerSettings().then(opened => { if (!opened) api.toast('The listener settings are unavailable.'); })),
       ];
     };
