@@ -12,7 +12,8 @@ identify the concrete work left rather than closing broad issues from partial PR
 
 ## Disposition
 
-#415 is the only closure candidate, pending current production boundary checks.
+#415 is the only closure candidate: source/JVM and 32 focused production browser
+checks pass, with closure pending integration.
 The other 27 issues remain open. None of this audit changes the approved scope,
 pricing, quotas, signing authority or hardware target.
 
@@ -37,7 +38,7 @@ pricing, quotas, signing authority or hardware target.
 | [#411](https://github.com/AlphaCompute/alphaphone/issues/411) | PR393/426 accessibility/rotation and PR451 keyboard review clearance; browser landscape/accessibility sweeps and existing native rotation instrumentation. | Matrix-wide both-distribution screen-reader/large-text/keyboard/process recreation and physical rotation/capture/task continuity evidence not complete. Browser geometry and historical limited native rotation tests cannot close the full criterion. |
 | [#412](https://github.com/AlphaCompute/alphaphone/issues/412) | Alpha has regional Maps adapter and local location/navigation/state/review contracts (`apps/app/src/maps`, `runtime/maps-contract.ts`). | No provisioned shared production Cloud Maps provider-neutral service, datasets/coverage/freshness operations, signed plan enforcement, complete agent tools, live Calendar→Maps/physical navigation qualification. Regional adapter is explicitly prototype coverage. Requires upstream Cloud work and provider provisioning. |
 | [#413](https://github.com/AlphaCompute/alphaphone/issues/413) | android/local-speech/qualified-runtime-manifest.json functionalAcceptance.passed=false; x86_64 state not-executed | Current-source both-ABI functional and speed admission, no-egress, real microphone/speaker and thermal/cancellation tests. Historical candidate ARM64 emulator pass is not current admission. |
-| [#415](https://github.com/AlphaCompute/alphaphone/issues/415) | PR428 production local-only selection. `ConnectionRoutes.java`, `managed-service-routes.ts`, `native-connection.ts` use exact origin and service route admission; redirects disabled. `connection-ui.tsx` prevents saved remote/cloud selection reconnection and preserves history/credentials. PR445/#467 separately admit entitlement/key/redeem routes. No Maps route is admitted absent a production service. | Relevant source/JVM route tests pass. Production browser boundary tests pending in this worker; native on-device transport qualification is separate from these engineering criteria. |
+| [#415](https://github.com/AlphaCompute/alphaphone/issues/415) | PR428 production local-only selection. `ConnectionRoutes.java`, `managed-service-routes.ts`, `native-connection.ts` use exact origin and service route admission; redirects disabled. `connection-ui.tsx` prevents saved remote/cloud selection reconnection and preserves history/credentials. PR445/#467 separately admit entitlement/key/redeem routes. No Maps route is admitted absent a production service. | Relevant source/JVM route tests and current flag-off browser boundary tests pass; close after integration. Real resident sign-in remains tracked by #396. |
 | [#416](https://github.com/AlphaCompute/alphaphone/issues/416) | [#443](https://github.com/AlphaCompute/alphaphone/pull/443), [#461](https://github.com/AlphaCompute/alphaphone/pull/461) | Actual AOSP portrait/landscape/lock screenshots, insets, DND, clear/tap and listening integration missing. Ask parity tracked by 449 is partial. Keep open. |
 | [#417](https://github.com/AlphaCompute/alphaphone/issues/417) | [#443](https://github.com/AlphaCompute/alphaphone/pull/443) | Document explicitly says SystemShadeInstrumentedTest not compiled or run at its source; actual AOSP swipe/tap/TalkBack/return with no duplicate open remains. Keep open. |
 | [#418](https://github.com/AlphaCompute/alphaphone/issues/418) | PR454 rejects unknown remote freshness. `CalendarAvailabilityReader.java` and `runtime/calendar-availability.ts` exclude free/cancelled/declined and re-read owner-selected source revisions and interval results before sharing. Remote cached reads explicitly remain unknown. | Real synced invitations, free/busy-only permission, stale/revoked sources, all-day/DST and conflict updates must be qualified; synced freshness contract intentionally remains fail-closed. Existing fixture coverage does not establish these real-provider gates. |
@@ -57,6 +58,8 @@ pricing, quotas, signing authority or hardware target.
   by #462; retain denial of writes, malformed paths and hosted-agent endpoints.
 - #401: bind Clock handler admission to the expected image fingerprint and require
   a system-installed DeskClock, rejecting ordinary replacement APKs.
+- #411: center readable Notes text, checklist and voice-note columns on wide
+  screens while preserving draft, caret, scroll and editor identity across resize.
 - #395: require at least 50 native audio-clock trials with source/model/device
   provenance, cold/warm statistics and the entire last-speech-to-audible interval.
   Legacy renderer stage sums remain diagnostic only. The native collector and real
@@ -65,10 +68,33 @@ pricing, quotas, signing authority or hardware target.
   requirement and Alpha Compute/Shaw release ownership instead of asking for
   decisions already made. Qualification gates are unchanged.
 
+## Native speech implementation boundary
+
+At pinned shared source `13c98575987a121decc45b161b0c8a4ee698554e`,
+`ElizaVoiceNative.java`/`elizavoice-jni.cpp` expose batch ASR and Kokoro IPA synthesis,
+but do not expose the FFI streaming ASR session calls or `cancel_tts`. Clef semantic
+endpointing and heard-content accounting are not implemented in the pinned Android
+path. The batch base64-PCM inference endpoint is not the required native streaming
+pipeline. The current Alpha local plugin uses separate Sherpa Whisper/Piper assets.
+
+The next coherent upstream change needs persistent capability/versioned speech
+sessions, streaming ASR, generation-owned cancellable TTS and bounded native
+AudioRecord/AudioTrack queues. Both ABI libraries and actual ASR/Kokoro/voice/
+phonemizer assets must be pinned and qualified before Alpha consumes that path.
+An embedding-only ARM64 qualification does not establish speech qualification.
+These are remaining implementation and artifact-admission tasks, not only missing
+hardware screenshots. Changing a renderer selector cannot complete them.
+
 ## Validation
 
-Focused checks pass for the initial changes. Combined repository verification,
-production browser boundary checks and exact-head hosted CI are in progress.
+Focused source/JVM regression checks pass. A flag-off production build passed 32
+focused browser tests (legacy connection/owner-history boundaries plus Notes),
+followed by the enhanced Notes regression passing again. The 915×412 screenshot
+was inspected; resize retained the same editor, draft/title, caret selection,
+scroll and checklist roundtrip. Tests used an audited prebuilt production bundle
+after standalone authenticated source preparation, avoiding the local server's
+180-second preparation timeout. These are browser results, not Android acceptance.
+Combined repository verification and exact-head hosted CI are in progress.
 `npm run android:build:local` was attempted and stops before compilation because
 `android/local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar` is absent. No local
 APK, image, hardware, real Gmail/SMS, signing or release acceptance is claimed.
