@@ -90,7 +90,8 @@ export const CLASS_REGISTRY = {
   Rotation: {},
   // Core-loop classes (docs/core-loop-audit.md). Registered so their opt-in gates are passed; none
   // has a recorded run through this runner yet. An unmet device assumption reports "skipped".
-  LocalAgentOfflineApps: {},
+  // Decision P-43 replaced LocalAgentOfflineApps (the retired "without AI" path); written, no recorded run.
+  ResidentAlwaysPresent: { flagOffOnly: true, note: "signed out with the network off: the resident starts, Home shows its state and a send dispatches nothing; not a device or full-image run" },
   LauncherHome: { homeRole: "held", note: "launcher variant with Alpha selected as HOME by --home-role; not boot-time HOME or device acceptance" },
   SettingsRoles: { homeRole: "requests", note: "removes, declines and accepts the HOME role in Android's dialog and restores the previous holder; --home-role proves the restoration" },
   NotesTrashBackstop: {},
@@ -141,7 +142,7 @@ export const CLASS_REGISTRY = {
   PasswordVaultFill: { args: { passwordVaultFill: "1" }, note: "sets and clears a fixture screen-lock PIN and selects Alpha as the Autofill service, restoring the previous service; the other package is Alpha's own (the instrumentation APK holds one package)" },
   // Round-9 journeys and links (WP2, second pass). Compiled into both instrumentation APKs; no recorded run.
   PosterCalendarJourney: { args: { posterJourney: "1" }, note: "J01: a picked poster PNG through DocumentsUI, on-device OCR, the event draft, the Calendar form and Save into the real CalendarProvider (Alpha's own local calendar), then the Home card; the cancel method leaves no row. Calendar access is granted by the class" },
-  JourneyJ05: { args: { journeyJ05: "1" }, flagOffOnly: true, note: "J05 on the flag-off pair, offline: page -> Ask about page -> native review -> composer -> Send with no agent (nothing dispatched) -> a source note for that page across recreation; needs a WebView provider with isolated-world injection; no agent answer" },
+  JourneyJ05: { args: { journeyJ05: "1" }, flagOffOnly: true, note: "J05 on the flag-off pair, offline: page -> Ask about page -> native review -> composer -> Send while inference is unavailable (resident present, P-43; nothing dispatched) -> a source note for that page across recreation; needs a WebView provider with isolated-world injection; no agent answer" },
   NoteOrigin: { note: "storage level: a reminder's note link in note-origins:v1:device, read back exactly and across recreation; needs the slot admitted for compare-and-exchange (WP1). The Calendar 'From note' line is not driven" },
   Maps: { args: { mapsEventReturn: "1" }, note: "calendarLocationReturnsToTheSameEventAndFailsClosed owns a local calendar and grants itself Calendar access; explicitRecenterUsesInjectedNativeLocationAndStopsWatch is skipped without host GPS injection (mapsLatitude/mapsLongitude)" },
   // Self-contained classes with an explicit gate. Registered so the gate is passed.

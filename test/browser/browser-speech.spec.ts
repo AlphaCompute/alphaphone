@@ -20,8 +20,8 @@ test('without a local agent, local speech is unavailable and no engine, model or
   }finally{connectionController.getBrowserSpeechAgent=original;await voice.releaseLocalSpeech();}
  });
  // Recognition readiness names the local agent route and never an in-browser engine or model;
- // read-aloud stays available through the browser's own local voices.
- expect(result.status).toEqual({ready:false,playback:true,execution:'browser',route:'local-agent',reason:'local-agent-required'});
+ // P-43: no Web Speech read-aloud either; replies are read as text until the agent's speech runs.
+ expect(result.status).toEqual({ready:false,playback:false,execution:'browser',route:'local-agent',reason:'local-agent-required'});
  // No silent fallback to Cloud or to an in-browser engine: the clip stays, and the user is told what to connect.
  expect(result.error).toEqual({code:'local-agent-required',message:'Connect the local agent to transcribe on this computer.'});
  expect(result.failure?.kind).toBe('local-agent');expect(result.failure?.message).toMatch(/needs the local agent on this computer.*Your recording is kept/);

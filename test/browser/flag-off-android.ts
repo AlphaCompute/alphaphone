@@ -377,3 +377,11 @@ export async function residentHome(page: Page) {
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   await expect(button(page, 'Notes')).toBeVisible();
 }
+/** Decision P-43: Settings › Agent connection opens the "Your agent" dialog (status and AI inference). */
+export async function openYourAgent(page: Page) {
+  await button(page, 'Settings').click();
+  await page.getByRole('button', { name: /Agent connection/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Your agent' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}

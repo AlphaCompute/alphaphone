@@ -12,7 +12,8 @@ export const DIAGNOSTICS_FORMAT='alpha-diagnostics/v1';
 export const RUNTIME_ASSETS=['agent/alpha-source.json','agent/agent-bundle.js','agent/workflow-worker/manifest.json','agent/workflow-worker/files.sha256'] as const;
 const PERMISSIONS=['Microphone','Location','Camera','Calendar','Notifications'] as const;
 const ROLES=['home','assistant','dialer','sms'] as const;
-const CONNECTIONS=['offline','resident','remote','local','cloud'] as const;
+// 'starting'/'recovering' are the resident before it has a session (P-43); 'offline' only parses older exports.
+const CONNECTIONS=['starting','recovering','offline','resident','remote','local','cloud'] as const;
 // Voice latency records (voice-timing.ts): the same allowlists as its validator and the aggregator.
 export const VOICE_TIMING_FORMAT='alpha-voice-timing-v1';
 const VOICE_MARKS=['recording-end','transcript-ready','send','first-token','final-reply','first-audio'] as const;
@@ -81,7 +82,7 @@ export function buildDiagnostics(input:DiagnosticsInput,now=Date.now()):Diagnost
   format:DIAGNOSTICS_FORMAT,generatedAt:new Date(generatedAt).toISOString(),platform:input.platform==='android'?'android':'web',
   app:{version:text(app.version,version)??null},os:{},
   upstreamPin:text(input.upstreamPin,pin)??null,runtimeHashes:{},permissions:{},roles:[],
-  connection:{kind:one(input.connection?.kind,CONNECTIONS)??'offline',connected:input.connection?.connected===true},
+  connection:{kind:one(input.connection?.kind,CONNECTIONS)??'starting',connected:input.connection?.connected===true},
   crashes:{count:0,recent:[]},
   voiceTiming:{format:VOICE_TIMING_FORMAT,marks:[...VOICE_MARKS],records:voiceTimingRows(input.voiceTiming)},
  };

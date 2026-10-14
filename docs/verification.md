@@ -862,7 +862,7 @@ Results are standalone / launcher, instrumentation set 1 unless a row says other
 | --- | --- | --- |
 | `test-native-restart.mjs notes` | launcher passed 3 of 3, standalone passed 1 of 1 | After the guest reboot. Before it every campaign that writes a fixture through MediaStore failed with `SQLiteException: Exception thrown by custom scalar function` from the provider's insert, on an emulator that had been up for three hours; those attempts are not counted. Three runs do not prove the round 7 timeout closed. |
 | `test-native-restart.mjs document` | standalone passed | The cancellation notice and the import receipt are still observed with the visibility-aware receipts. Launcher not run. |
-| `test-native-restart.mjs inbox` | passed / passed | Includes the round 8 step: after the restart with local apps chosen, Inbox's "Connect Eliza Cloud" panel offers "Retry saved connection" and a new sign-in and shows no account. |
+| `test-native-restart.mjs inbox` | passed / passed | Includes the round 8 step: after the restart with local apps chosen, Inbox's "Connect Eliza Cloud" panel offers "Retry saved connection" and a new sign-in and shows no account. Superseded by P-43 (2026-10-13): the local-apps selection is retired; needs a re-run. |
 | `test-native-permissions.mjs channels` | failed / failed with set 2 (twice); passed / passed with set 3 | Test defect caused by round 8 and missed by its review: the test clicked the first visible button whose text starts with "Notifications", which since round 8 is Home's handle (Home stays laid out under Settings), so it never reached the channel page. `CrossAppNotificationsRestartInstrumentedTest` had the same selector. Both now exclude the handle (`f87850fa`). |
 | `android-workflow-native.mjs --phase=approval-notice` | 4 of 4 cases passed (2 per flavor) | A selection: `selectionPassed` true, `passed` false by design. |
 | `android-workflow-native.mjs` (WorkflowPhoneNative and approval notice, 14 cases) | failed at its first case twice with set 2; **14 of 14 passed** with app APKs B and the final set (`passed: true`) | Test defect in a class that had never run: `privateReadResultSurvivesRecreationButNeverExpandsPassiveHistory` removed its journal fixture through the page's `AlphaConnection.secureRemove` and asserted success, but that bridge refuses native-only journal slots (`RendererCredentialSlots`). The test now asserts the refusal and removes the fixture through the native store (`9a1ca161`). `deniedCalendarGrantReturnsNoEvents` passed on both flavors (B-25, J01-7). |
@@ -957,7 +957,7 @@ Result files: `test-results/r7-camp/<campaign>-<flavor>`, `test-results/calendar
 | --- | --- | --- |
 | `test-native-restart.mjs signin`, `document` | passed / passed | |
 | `test-native-restart.mjs notes` | passed / failed then passed | The first launcher run timed out waiting for "Export saved and exact bytes verified." after the system picker; the rerun passed. Cause not established. |
-| `test-native-restart.mjs inbox` | passed / passed | Was failing. Test: the Android account panel names the signed-in state differently, Inbox loads the mailbox itself, and after a restart with local apps chosen the saved sign-in is offered as "Retry saved connection" in Settings, not restored. |
+| `test-native-restart.mjs inbox` | passed / passed | Was failing. Test: the Android account panel names the signed-in state differently, Inbox loads the mailbox itself, and after a restart with local apps chosen the saved sign-in is offered as "Retry saved connection" in Settings, not restored. Superseded by P-43 (2026-10-13): the local-apps selection is retired; needs a re-run. |
 | `test-native-permissions.mjs channels`, `settings`, `voice-limit`, `voice-revoke` | passed / passed | |
 | `test-native-permissions.mjs camera` | passed / passed | Was failing. Product defect fixed: a second permission dialog opened straight after "Don't allow". |
 | `test-native-permissions.mjs voice` | passed / passed | Was failing. Product defect fixed (the "Open app settings" control the denied message names was missing) and the test now signs in through the closed synthetic Cloud transport, because a build without test mocks records only through Eliza Cloud voice. |
@@ -987,6 +987,11 @@ Result files: `test-results/r7-camp/<campaign>-<flavor>`, `test-results/calendar
 
 - Inbox's "Connect Eliza Cloud" panel offers only a new sign-in when a saved sign-in exists and
   local apps are selected; the saved one is offered in Settings › Agent connection. Owner decision.
+  Superseded by P-43 (2026-10-13, resident agent always present): there is no local-apps
+  selection any more, so this observation and the `test-native-restart.mjs inbox` steps above
+  that restart "with local apps chosen" describe a retired state. The records stand as the
+  evidence of their date; the campaign and `LocalAgentOfflineAppsInstrumentedTest` (replaced by
+  `ResidentAlwaysPresentInstrumentedTest`) need a re-run.
 - On the launcher flavor a swipe from the very top opens Android's shade and a swipe from just
   below it opens Alpha's. Owner decision for the AOSP image.
 - At 200% font the Home card title and app labels overlap or cut (screenshots taken while

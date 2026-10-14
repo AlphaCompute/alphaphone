@@ -5,7 +5,7 @@ import { inboxProviderControls } from './inbox-provider-controls';
 import { presentHomeAttention, presentHomeInboxStatus } from './home-cards';
 import { inboxDrafts, type ComposePrefill, type SuggestionTarget } from './inbox-drafts';
 import { attachmentReadFailure, classifyGmailFailure, disconnectGmailAccount, disconnectMessage, gmailReadable, setGmailReadState, GMAIL_ACCOUNTS_CHANGED, type GmailFailureKind } from '../runtime/gmail-mailbox';
-import { connectionController } from '../runtime/connection-ui';
+import { connectionController, agentPendingText } from '../runtime/connection-ui';
 import { gmailGrantChange, gmailInboxAllows, gmailModifyIncomplete, gmailReadCacheKey } from '../runtime/gmail-grants';
 import { safeMailLink, type GmailAccount, type GmailDraftContent, type GmailDraftSummary, type GmailLink, type GmailMessage } from '../runtime/cloud-protocol';
 import { reviewOpaqueAttachment } from '../runtime/inbox-operation';
@@ -414,7 +414,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     if (opened && opened.message.id === message.id && message.unread && opened.historyId && provider.capabilities()?.readState) void setRead(opened.message, opened.historyId, false, false);
   }
   function mailContext():MailContextSource {if(!body||!selected||!body.historyId)throw new Error('Refresh this message before sharing');return {accountId:selected,messageId:body.message.id,revision:body.historyId,from:body.message.from,to:body.message.to,subject:body.message.subject,bodyText:body.bodyText};}
-  async function askAgent(){try{const destination=connectionController.getSnapshot().session;if(!destination)throw new Error('Connect an agent first');const source=mailContext(),token=generation;const review=await reviewMailContext(source,destination);if(token!==generation||JSON.stringify(source)!==JSON.stringify(mailContext()))throw new Error('Message changed');contextReview=review;publish();}catch(error){api?.toast((error as Error).message);}}
+  async function askAgent(){try{const destination=connectionController.getSnapshot().session;if(!destination)throw new Error(agentPendingText());const source=mailContext(),token=generation;const review=await reviewMailContext(source,destination);if(token!==generation||JSON.stringify(source)!==JSON.stringify(mailContext()))throw new Error('Message changed');contextReview=review;publish();}catch(error){api?.toast((error as Error).message);}}
   async function sendContext(){if(!contextReview||contextBusy)return;contextBusy=true;publish();try{const review=contextReview,destination=connectionController.getSnapshot().session;if(!destination)throw new Error('Agent disconnected');const text=await validateMailContext(review,mailContext(),destination);if(contextReview!==review)throw new Error('Review closed');contextReview=null;publish();if(!api)throw new Error("Inbox closed");await api.sendReviewedMail(text,destination);}catch(error){api?.toast((error as Error).message);}finally{contextBusy=false;publish();}}
   async function openAttachment(source:NonNullable<typeof body>,attachment:NonNullable<NonNullable<typeof body>['attachments']>[number]){
     if(!source.historyId){api?.toast('Refresh this message before opening its attachments.');return;}

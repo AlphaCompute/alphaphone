@@ -10,6 +10,8 @@ import {fontLicenceFindings, fontLicenceLine} from './font-license-blockers.mjs'
 import {licenceFlagLines} from './licence-policy.mjs';
 import {assetLinksProblems} from './render-assetlinks.mjs';
 
+/** Decision P-43: production copy that offered or described a "no agent" state. */
+export const RETIRED_NO_AGENT_TEXT = Object.freeze(['without AI', 'Continue offline', 'continue offline', 'Connect an agent']);
 export const DENYLIST = Object.freeze([
   'Connect remote agent', 'Agent HTTPS address', 'Development Cloud agent infrastructure', 'Dedicated hosting requires a reviewed setup',
   'alpha:force-render-error', 'alpha:render-error-check', 'Forced render failure',
@@ -26,6 +28,9 @@ export const DENYLIST = Object.freeze([
   'demo-only-password', 'Development password provider', 'Add development provider', 'Proton Pass · development',
   // The plain-HTTP Maps emulator gateway (maps/regional-provider.ts, testMocks builds only).
   '10.0.2.2:47850', '127.0.0.1:47850',
+  // Decision P-43 (owner, 2026-10-13): the resident agent is always present. The retired
+  // no-agent choices and empty states must not reach a production bundle.
+  ...RETIRED_NO_AGENT_TEXT,
 ]);
 const TEXT = /\.(?:html?|js|mjs|cjs|css|json|txt|svg|xml|webmanifest)$/i;
 

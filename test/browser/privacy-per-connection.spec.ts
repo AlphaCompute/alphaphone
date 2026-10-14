@@ -8,7 +8,7 @@ const REMOTE = 'https://agent.example.test';
 const REDACTION = {
   resident: 'Secret and contact identifiers are swapped before hosted inference; names and free text are not covered',
   agent: 'Depends on the selected agent; not reported',
-  offline: 'No agent connected; no hosted inference requests',
+  offline: 'No remote agent connected; no hosted inference requests',
 };
 // Former fixture activity rows and claims must never be presented as this phone's history.
 const fixtureActivity = [/Drafted a reply to Maya/, /Filed Jordan's term sheet/, /Moved Gym to 7:30 PM/, /Summarized 14 emails/, /Ran Morning brief/, /Redaction receipt saved/, /Booked Nopa/, /\b\d+ today\b/];
@@ -178,7 +178,7 @@ test('Activity shows an empty connect state and Workflow runs opens Workflows', 
   await openSettings(page, 'Privacy & data');
   await expect(page.getByText(REDACTION.offline, { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Activity', exact: true }).click();
-  await expect(page.getByText('Connect an agent to see activity', { exact: true })).toBeVisible();
+  await expect(page.getByText('Connect your remote agent to see activity', { exact: true })).toBeVisible();
   const text = await page.locator('body').innerText();
   for (const row of fixtureActivity) expect(text).not.toMatch(row);
   await expect(page.locator('html')).toHaveAttribute('data-active-view', 'settings');
@@ -216,7 +216,7 @@ for (const proposals of [true, false]) test(`resident Activity shows history onl
   else { await expect(unread).toBeVisible(); await expect(app.getByRole('button', { name: 'Load phone action history', exact: true })).toBeVisible(); expect(await app.innerText()).not.toContain('No phone actions recorded'); }
   const text = await page.locator('body').innerText();
   for (const row of fixtureActivity) expect(text).not.toMatch(row);
-  expect(text).not.toContain('Connect an agent to see activity');
+  expect(text).not.toContain('Connect your remote agent to see activity');
 });
 
 for (const locationAccess of ['approximate', 'precise'] as const) test(`Privacy shows the native ${locationAccess} location grant without losing connection disclosure`, async ({ page }) => {

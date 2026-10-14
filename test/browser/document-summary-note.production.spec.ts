@@ -119,7 +119,7 @@ test('J03 on Android: a resident session that changes before Save withdraws the 
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await button(page, 'Settings').click();
   await button(page, 'Agent connection').click();
-  await page.getByRole('dialog', { name: 'Your Cloud account' }).getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Your agent' }).getByRole('button', { name: 'Reconnect agent', exact: true }).click();
   await expect.poll(() => harness(page, f => f.calls.filter((call: string) => call === 'Agent.start').length), { timeout: 30_000 }).toBe(2);
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   await button(page, 'Open conversation').click();

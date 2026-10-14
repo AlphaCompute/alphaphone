@@ -32,8 +32,8 @@ Spec: `journey-a-conversation.spec.ts`
 
 | Step | Browser | Native-only | Human or device |
 | --- | --- | --- | --- |
-| Boot to Home with typed and talk entry points, no agent selected | yes | Cold boot into Alpha HOME, HOME role, recovery/emergency routes | Device boot and HOME-role selection |
-| Connection choice (Settings → Agent connection → development profile) | yes (development profile only); the flag-off Android Welcome dialog's sign-in, Cancel, expired session, refused key and zero-balance branches (`resident-first-run.production.spec.ts`) and the start-failure branch (`connection-boundaries.production.spec.ts`) are covered on the production bundle with the bridge stubbed | Native `AlphaConnection` bridge | Cloud sign-in, agent selection/provisioning, remote pairing with a real account (A-02) |
+| Boot to Home with typed and talk entry points, resident agent starting | yes | Cold boot into Alpha HOME, HOME role, recovery/emergency routes | Device boot and HOME-role selection |
+| Connection choice (Settings → Agent connection → development profile) | yes (development profile only); the flag-off Android "Your agent" dialog's sign-in, Cancel, expired session, refused key and zero-balance branches (the resident starts and keeps running in each, P-43) (`resident-first-run.production.spec.ts`) and the start-failure branch (`connection-boundaries.production.spec.ts`) are covered on the production bundle with the bridge stubbed | Native `AlphaConnection` bridge | Cloud sign-in, agent selection/provisioning, remote pairing with a real account (A-02) |
 | Typed conversation | yes | — | Real model quality |
 | Switch Notes / Calendar / Browser and keep the same conversation | yes | — | — |
 | Cancel a pending reply (Stop): the chat says once that the agent may still finish, the composer stays empty and nothing is resent | yes | — | — |

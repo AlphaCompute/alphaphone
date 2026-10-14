@@ -56,13 +56,12 @@ with the synthetic specs that cover each (class S; no real private host has been
 | --- | --- | --- |
 | Remote pairing to a private host over HTTPS | Supported: pair, send, restore and revoke on disconnect | `connection.production.spec.ts`, `connection-boundaries.production.spec.ts` |
 | Refused pairings: wrong role, identity or instance mismatch, expired session, used code, pairing disabled, non-HTTPS address | Refused; nothing is stored or connected | `connection-boundaries.production.spec.ts` |
-| Continue offline (local apps without AI) | Supported | `production-surface.spec.ts` |
 | Eliza Cloud sign-in | Refused: stated as unavailable on this origin; the account page opens in a new tab | `connection.production.spec.ts` |
 | A saved Cloud, staging, mock, plain-HTTP local, development or on-device selection | Refused: the chooser opens signed out and no request is made; a saved Cloud key is removed best effort | `connection-boundaries.production.spec.ts` |
 | Unverified device enrollment | Grants no phone actions; an unconfirmed revocation is reported as unconfirmed | `connection-boundaries.production.spec.ts` |
 | Development agent, local loopback host, credential-reference bridge, mock mode | Test-mocks builds only (`npm run dev`, Playwright) | `dev-connection-setup.spec.ts`, `browser-cloud-dev.spec.ts`, `mock-background-admission.spec.ts` |
 
-Production Android offers only the on-device agent with Eliza Cloud sign-in, or local apps;
+Production Android always runs the on-device agent (P-43); Eliza Cloud sign-in turns on its inference;
 it refuses remote pairing and every origin except `https://api.eliza.app`
 (`ConnectionRoutes.java`). Whether remote pairing stays a supported route is A-02.
 

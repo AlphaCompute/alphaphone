@@ -58,7 +58,8 @@ test('redaction: content, keys, tokens, account and session ids, mail, URLs and 
  assert.deepEqual(report.app,{version:null});assert.deepEqual(report.os,{});assert.deepEqual(report.runtimeHashes,{});
  assert.deepEqual(report.permissions,{Calendar:true});
  assert.deepEqual(report.roles,[{role:'home',held:false,available:true}]);
- assert.deepEqual(report.connection,{kind:'offline',connected:false});
+ // An unparseable kind defaults to the resident starting state (P-43), never "offline".
+ assert.deepEqual(report.connection,{kind:'starting',connected:false});
  // The uncaught entry survives as a class-free record; the bad exit reason and unknown source are dropped.
  assert.deepEqual(report.crashes.recent,[{at:now-3,source:'renderer',kind:'render',errorClass:'TypeError'},{at:now-1,source:'uncaught'}]);
  assert.deepEqual(Object.keys(report).sort(),['app','connection','crashes','format','generatedAt','os','permissions','platform','roles','runtimeHashes','upstreamPin','voiceTiming']);

@@ -1,5 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
 import {localBrowserVoice} from './voice-fixture';
+// Decision P-43 removed the Web Speech (speechSynthesis) read-aloud fallback this drives; re-cover through agent speech (libelizainference) once a browser agent-speech fixture exists.
+test.skip(true,'Decision P-43 removed the Web Speech (speechSynthesis) read-aloud fallback this drives; re-cover through agent speech (libelizainference) once a browser agent-speech fixture exists.');
 
 // Read aloud uses the local browser voice only; editing or leaving the note stops it.
 // The development server is shared and slow on a loaded machine.

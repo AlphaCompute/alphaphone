@@ -336,7 +336,8 @@ public final class BrowserPageQuestionInstrumentedTest {
   }
  }
 
- /** Menu -> Ask about page -> native review -> question editor -> composer -> Send with no agent.
+ /** Menu -> Ask about page -> native review -> question editor -> composer -> Send while inference is
+  * unavailable (decision P-43: the resident is present, starting or offline; nothing is dispatched).
   * Shared with JourneyJ05InstrumentedTest. Returns the reviewed text that reached the composer. */
  String askAboutPageUpToSend(Pages pages, String garden) throws Exception {
     String reviewed = "Reviewed excerpt " + letters(UUID.randomUUID()) + ": twelve raised beds.";
@@ -366,13 +367,15 @@ public final class BrowserPageQuestionInstrumentedTest {
     // Before Send: neither the page text nor the reviewed draft has reached any agent, network or other native call.
     assertEquals("Nothing reaches an agent before Send: " + leaks(reviewed), 0, leaks(reviewed).length());
     assertEquals(0, leaks(ARTICLE).length());
-    // Send with no agent connected: the connection choices open, nothing is dispatched, the draft is kept.
+    // Send while inference is unavailable (the resident is starting, or running with no network): the
+    // refusal says so, no chooser opens, nothing is dispatched and the draft is kept.
     waitFor("document.querySelector('button[aria-label=Send]')&&!document.querySelector('button[aria-label=Send]').disabled");
     js("document.querySelector('button[aria-label=Send]').click()");
-    waitFor("document.querySelector('.alpha-connection-scrim')");
-    assertEquals("No agent is connected in this build", "null", js("document.documentElement.dataset.connectionMode==='mock'?'mock':null"));
-    assertEquals("Send without an agent dispatches nothing: " + leaks(reviewed), 0, leaks(reviewed).length());
-    assertEquals("No reply or summary card can exist without an agent", "false", js("document.body.innerText.includes('Review summary note')"));
+    waitFor("['Nothing is sent until this phone is back online','Nothing was sent'].some(t=>document.body.innerText.includes(t))");
+    assertEquals("No connection chooser opens", "false", js("!!document.querySelector('.alpha-connection-scrim')"));
+    assertEquals("Not mock mode", "null", js("document.documentElement.dataset.connectionMode==='mock'?'mock':null"));
+    assertEquals("Send while inference is unavailable dispatches nothing: " + leaks(reviewed), 0, leaks(reviewed).length());
+    assertEquals("No reply or summary card can exist without inference", "false", js("document.body.innerText.includes('Review summary note')"));
     waitFor("[...document.querySelectorAll('textarea[data-alpha-composer]')].some(e=>e.value.includes(" + JSONObject.quote(reviewed) + "))");
     return reviewed;
  }

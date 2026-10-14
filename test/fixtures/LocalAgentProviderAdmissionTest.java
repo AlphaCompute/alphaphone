@@ -103,6 +103,11 @@ public final class LocalAgentProviderAdmissionTest {
   check(bound.equals(store.provider)&&"elizacloud".equals(new JSONObject(bound).getString("provider"))&&store.rollbacks==0,"Cloud binding admitted");
   check(!bound.contains(TOKEN),"the stored binding carries no Cloud token");
   check(LocalAgentProviderAdmission.currentGeneration(bound,store.cloud)!=null,"the binding has an admission generation");
+  // P-43: a resident launched with no provider slot records its own generation, never an admitted one.
+  check(LocalAgentProviderAdmission.NO_PROVIDER_GENERATION.equals(LocalAgentProviderAdmission.launchGeneration(null,null)),"no provider slot launches with the no-provider generation");
+  check(LocalAgentProviderAdmission.launchGeneration(bound,store.cloud).equals(LocalAgentProviderAdmission.currentGeneration(bound,store.cloud)),"an admitted slot launches with its admission generation");
+  check(!LocalAgentProviderAdmission.NO_PROVIDER_GENERATION.equals(LocalAgentProviderAdmission.currentGeneration(bound,store.cloud)),"an admitted generation is never the no-provider generation");
+  check(LocalAgentProviderAdmission.launchGeneration("{}",null)==null,"an invalid stored admission is never attachable");
   Store expiring=new Store();expiring.provider=directSelection;expiring.cloud=cloud(ID,NOW+60_000);expiring.cloudAfterAdmit=cloud(ID,NOW-1);
   refused(()->LocalAgentProviderAdmission.bindCloudProvider(expiring,ID,"cerebras/qwen-3.8-27b",()->NOW),"credential expired during admission");
   check(expiring.rollbacks==1&&directSelection.equals(expiring.provider),"rollback keeps the previous selection");

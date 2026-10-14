@@ -5,7 +5,7 @@
 // (flag-off-android.ts and resident-stub.ts) is not the native plugins, Eliza Cloud, Google, the
 // resident runtime or a device. Two synthetic accounts stand in for two real ones.
 import { test, expect, type Page } from '@playwright/test';
-import { flagOffAndroid, harness, button, fenceNetwork, expectNoDevelopmentSurface, residentHome } from './flag-off-android';
+import { flagOffAndroid, harness, button, fenceNetwork, expectNoDevelopmentSurface, residentHome, openYourAgent } from './flag-off-android';
 import { residentStub, stub, setStub, type StubAccount } from './resident-stub';
 
 test.beforeEach(({}, testInfo) => { test.skip(testInfo.project.name !== 'production', 'Production bundle only'); });
@@ -27,7 +27,7 @@ async function agentConnection(page: Page) {
   return page.getByRole('dialog');
 }
 
-test('signing out of account A and into account B stops the resident first and uses only B afterwards', async ({ page }) => {
+test('signing out of account A and into account B stops the resident before A is revoked and uses only B afterwards', async ({ page }) => {
   test.setTimeout(150_000);
   const foreign = await fenceNetwork(page);
   await flagOffAndroid(page);
@@ -67,7 +67,10 @@ test('signing out of account A and into account B stops the resident first and u
   expect(order.slice(firstStart, revokeA)).toContain('Agent.stop');
   expect(revokeA).toBeLessThan(removeA);
   expect(removeA).toBeLessThan(storeB);
-  expect(order.slice(signOut, storeB)).toContain('Agent.stop');
+  // P-43: after sign-out the resident runs with no provider, and it keeps running while the owner signs
+  // in as B in the browser; it is stopped only after B's key is stored, then restarted bound to B.
+  expect(order.slice(signOut, storeB)).not.toContain('Agent.stop');
+  expect(order.slice(storeB, lastStart)).toContain('Agent.stop');
   // B's key binds the provider before the agent starts again, with B's credits read first.
   expect(order.indexOf('credits ' + B.email)).toBeGreaterThan(storeB);
   expect(order.indexOf('configureCloudProvider ' + stored.credentialId)).toBeGreaterThan(order.indexOf('credits ' + B.email));
@@ -119,15 +122,19 @@ test('a second sign-in over a saved key revokes that key once, before the new ke
   await residentStub(page, { emptyKeystore: true, accounts: [A, B] });
   await page.goto('/');
   await setStub(page, { nextToken: A.token });
-  let welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+  // P-43: the resident starts signed out; sign-in is offered from Settings › Agent connection.
+  await expect.poll(() => harness(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
+  let welcome = await openYourAgent(page);
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   expect(await stub(page, s => s.order.filter((entry: string) => entry.startsWith('revoke')))).toEqual([]);
   // Eliza Cloud stops accepting A's key; the next start asks for a new sign-in.
   await page.evaluate(() => { const s = (window as any).residentStub; s.accounts[0].userStatus = 401; s.nextToken = 'account-b-key'; s.polls = 0; s.persist(); });
   await page.reload();
-  welcome = page.getByRole('dialog', { name: 'Sign in to Eliza Cloud' });
-  await expect(welcome).toBeVisible({ timeout: 30_000 });
+  // The resident starts again with AI off; Your agent says the saved sign-in is no longer valid.
+  await expect.poll(() => harness(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
+  welcome = await openYourAgent(page);
+  await expect(welcome.getByText('Your saved Cloud sign-in is no longer valid.', { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(welcome).not.toContainText(/pair/i);
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
