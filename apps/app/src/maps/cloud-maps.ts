@@ -1,12 +1,17 @@
-import { MapsFailure } from './contracts';
 import { createCloudMaps } from './cloud-provider';
+import { captureMapsSession } from './cloud-session';
 import { configureMapsProvider } from './runtime';
 import { connectionController } from '../runtime/connection-ui';
 
-/** Product Maps provider: Eliza Cloud Maps through the signed-in account's exact reviewed
- * routes. The phone keeps GPS, the active route and guidance; Cloud supplies data only. */
-export const { initializeCloudMaps, cloudMapsCoverage, cloudMapsDiagnostics } = createCloudMaps((route, signal, body) => {
- const cloud = connectionController.getCloudClient();
- if (!cloud) throw new MapsFailure('unauthorized', 'Sign in to Eliza Cloud to use Maps.');
- return cloud.client.mapsRequest(route, signal, body);
-}, configureMapsProvider);
+/** Cloud supplies data only; retained routes belong to the session that requested them. */
+const maps = createCloudMaps(() => captureMapsSession(() => connectionController.getCloudClient()), configureMapsProvider);
+export const { initializeCloudMaps, cloudMapsCoverage, cloudMapsDiagnostics } = maps;
+let previous = connectionController.getCloudClient();
+connectionController.subscribe(() => {
+ const next = connectionController.getCloudClient();
+ if (previous?.sessionId !== next?.sessionId || previous?.credentialId !== next?.credentialId || previous?.client !== next?.client) {
+  previous = next;
+  // Retry requires an explicit search; a new account never inherits automatic rerouting.
+  if (maps.cloudMapsDiagnostics().configured) maps.retireCloudMaps();
+ }
+});

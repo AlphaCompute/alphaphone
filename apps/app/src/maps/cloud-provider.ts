@@ -46,14 +46,15 @@ export function cloudMapsFailure(error: unknown, signal?: AbortSignal): MapsFail
  * the active route and guidance stay on the phone. Cloud serves no tiles, so the
  * capabilities report no map plane.
  */
-export function createCloudMaps(request: CloudMapsRequest, configure: (config: ProviderConfig, provider: MapsProvider) => void) {
+export function createCloudMaps(captureRequest: () => CloudMapsRequest, configure: (config: ProviderConfig, provider?: MapsProvider) => void) {
+ let generation = 0;
  let coverage: CloudMapsCoverage | undefined;
  const diagnostic = { configured: false, error: '' };
- async function call(route: CloudMapsRoute, signal: AbortSignal, body?: Record<string, unknown>) {
+ async function call(request: CloudMapsRequest, route: CloudMapsRoute, signal: AbortSignal, body?: Record<string, unknown>) {
   try { return await request(route, signal, body); } catch (error) { throw cloudMapsFailure(error, signal); }
  }
  class CloudProvider implements MapsProvider {
-  constructor(readonly providerId: string, readonly connectionId: string) {}
+  constructor(readonly providerId: string, readonly connectionId: string, private readonly request: CloudMapsRequest) {}
   private places(value: unknown): readonly Place[] {
    if (!Array.isArray(value) || value.length > 100) throw new MapsFailure('invalid-response', 'The Maps search response is invalid.');
    return value.map(item => place(item, this.providerId));
@@ -62,15 +63,15 @@ export function createCloudMaps(request: CloudMapsRequest, configure: (config: P
    const text = query.trim();
    if (!text) return [];
    if (text.length > 300) throw new MapsFailure('unsupported', 'Search text is too long.');
-   return this.places((await call('places/search', signal, { query: text })).places);
+   return this.places((await call(this.request, 'places/search', signal, { query: text })).places);
   }
   async detail(id: string, signal: AbortSignal): Promise<Place | null> {
    if (!/^[NWR][1-9][0-9]{0,18}$/.test(id)) return null;
-   const result = (await call('places/details', signal, { id })).place;
+   const result = (await call(this.request, 'places/details', signal, { id })).place;
    return result === null ? null : place(result, this.providerId);
   }
   async route(from: Coordinate, to: Coordinate, mode: TravelMode, signal: AbortSignal): Promise<Route> {
-   const routes = (await call('routes', signal, { from: coordinate(from), to: coordinate(to), mode })).routes;
+   const routes = (await call(this.request, 'routes', signal, { from: coordinate(from), to: coordinate(to), mode })).routes;
    // The controller validates the route's identity, endpoints, geometry and steps.
    if (!Array.isArray(routes) || !routes[0] || typeof routes[0] !== 'object') throw new MapsFailure('invalid-response', 'The Maps route response is invalid.');
    return routes[0] as Route;
@@ -78,9 +79,21 @@ export function createCloudMaps(request: CloudMapsRequest, configure: (config: P
  }
  /** Reads coverage and configures the provider. On failure Maps stays unconfigured; nothing falls back. */
  async function initializeCloudMaps(signal: AbortSignal = new AbortController().signal): Promise<void> {
+  const attempt = ++generation;
+  coverage = undefined;
+  configure({ status: 'unconfigured' });
   diagnostic.configured = true; diagnostic.error = '';
   try {
-   const meta = await call('capabilities', signal);
+   const captured = captureRequest();
+   const request: CloudMapsRequest = async (route, signal, body) => {
+    if (attempt !== generation) throw new MapsFailure('cancelled', 'Maps connection changed.');
+    signal.throwIfAborted();
+    const value = await captured(route, signal, body);
+    signal.throwIfAborted();
+    if (attempt !== generation) throw new MapsFailure('cancelled', 'Maps connection changed.');
+    return value;
+   };
+   const meta = await call(request, 'capabilities', signal);
    const caps = meta.capabilities as Record<string, unknown> | undefined;
    const regions = meta.regions;
    if (typeof meta.providerId !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,79}$/.test(meta.providerId) ||
@@ -95,14 +108,16 @@ export function createCloudMaps(request: CloudMapsRequest, configure: (config: P
     regions: Object.freeze(regions.map(r => Object.freeze({ id: r.id, name: r.name, bounds: Object.freeze([...r.bounds]) as unknown as CloudMapsRegion['bounds'] }))) });
    configure({ status: 'configured', providerId: meta.providerId, connectionId: meta.connectionId, revision: meta.revision as string,
     capabilities: { map: false, search: true, placeDetails: true, modes: [...caps.modes as TravelMode[]], traffic: 'none', transit: 'none', offline: { map: false, search: false, routing: false } } },
-   new CloudProvider(meta.providerId, meta.connectionId));
+   new CloudProvider(meta.providerId, meta.connectionId, request));
   } catch (error) {
+   if (attempt !== generation) return;
    coverage = undefined;
    diagnostic.error = cloudMapsFailure(error, signal).code;
   }
  }
  return {
   initializeCloudMaps,
+  retireCloudMaps: () => { ++generation; coverage = undefined; diagnostic.error = 'unauthorized'; configure({ status: 'unconfigured' }); },
   cloudMapsCoverage: () => coverage,
   cloudMapsDiagnostics: () => ({ ...diagnostic }),
  };
