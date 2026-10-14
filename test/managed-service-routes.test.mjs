@@ -39,3 +39,16 @@ test('compiled test-mocks transports retain development hosts while flag-off tra
   assert.equal(calls.length,testMocksEnabled?2:0);
  }
 });
+
+
+test('Google Calendar admission is confined to body-free reads of the reviewed service routes',()=>{
+ for(const path of ['/api/v1/eliza/google/calendar/calendars','/api/v1/eliza/google/calendar/feed']){
+  const url='https://api.eliza.app'+path;
+  assert.equal(allowed(url+'?grantId=owned','GET'),true);
+  assert.equal(allowed(url,'GET',true),false);
+  for(const method of ['POST','DELETE','PUT','PATCH'])assert.equal(allowed(url,method,true),false);
+  assert.equal(allowed(url+'/','GET'),false);
+  assert.equal(allowed(url.replace('api.eliza.app','agent.cloud.eliza.app'),'GET'),false);
+ }
+ assert.equal(allowed('https://api.eliza.app/api/v1/eliza/google/calendar/events','GET'),false);
+});

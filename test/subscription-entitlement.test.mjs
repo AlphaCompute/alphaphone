@@ -7,7 +7,7 @@ import test from 'node:test';
 import fs from 'node:fs';
 import {webcrypto} from 'node:crypto';
 import {
-  ENTITLEMENT_AUDIENCE, ENTITLEMENT_TYPE, MAX_ENTITLEMENT_LIFETIME_MS, REFRESH_RETRY_MAX_MS, REFRESH_RETRY_MIN_MS,
+  FALLBACK_REFRESH_MS, ENTITLEMENT_AUDIENCE, ENTITLEMENT_TYPE, MAX_ENTITLEMENT_LIFETIME_MS, REFRESH_RETRY_MAX_MS, REFRESH_RETRY_MIN_MS,
   EntitlementError, EntitlementRefresher, allowanceText, checkEntitlement, clearEntitlementKeyCache, decodeEntitlement,
   describeSubscription, isEntitlementSignInFailure, nextRefreshDelay, readServiceLimit, serviceLimitMessage, subscriptionView, verifyEntitlement,
   fallbackPlanFromLimits, normalizeSubscriptionCode, planAdmission, redeemFailureMessage, redeemSuccessMessage, SubscriptionRedeemError,
@@ -402,15 +402,61 @@ test('subscription codes normalize like Cloud and failures share generic copy th
   assert.match(redeemSuccessMessage({replayed: true, grantEndsAt: null, paidPlanTakesPrecedence: true, planName: null}), /current paid plan stays in effect/);
 });
 
-test('a refresher answered by the billing snapshot reports the plan once and stops', async () => {
+test('an outage retry answered by the billing snapshot switches to periodic checks', async () => {
   const timers = fakeTimers();
   const views = [];let checks = 0;
   const refresher = new EntitlementRefresher({timers, retry: true, onView: view => views.push(view), check: async () => {checks++; return {view: {kind: 'active', planName: 'Plus', status: 'active', allowance: null, expiresAt: 0, refreshFailed: false, source: 'billing-limits'}, entitlement: null};}});
   await timers.advance(REFRESH_RETRY_MAX_MS * 4);
-  assert.equal(checks, 1);
+  assert.equal(checks, 4);
   assert.equal(views.at(-1).source, 'billing-limits');
   refresher.refreshNow();await timers.advance(0);
-  assert.equal(checks, 2, 'refreshNow checks again on return');
+  assert.equal(checks, 5, 'refreshNow checks again on return');
   refresher.stop();refresher.refreshNow();
-  assert.equal(checks, 2, 'a stopped refresher never checks');
+  assert.equal(checks, 5, 'a stopped refresher never checks');
+});
+
+
+test('active billing snapshots refresh without foreground events, recover outages, and observe cancellation', async () => {
+  const timers = fakeTimers(), views = [];
+  let checks = 0;
+  let result = {view: {kind: 'active', source: 'billing-limits', planName: 'Plus', status: 'active', allowance: null, expiresAt: NOW + 86400000, refreshFailed: false}, entitlement: null};
+  const refresher = new EntitlementRefresher({timers, fallbackActive: true, onView: view => views.push(view), check: async () => { checks++; return result; }});
+  await timers.advance(FALLBACK_REFRESH_MS - 1);
+  assert.equal(checks, 0);
+  await timers.advance(1);
+  assert.equal(checks, 1);
+  assert.equal(views.at(-1).kind, 'active');
+  result = {view: {kind: 'unavailable', reason: 'outage'}, entitlement: null};
+  await timers.advance(FALLBACK_REFRESH_MS);
+  assert.equal(checks, 2);
+  assert.equal(views.at(-1).kind, 'unavailable');
+  result = {view: {kind: 'inactive', source: 'billing-limits', status: 'canceled', planName: 'Plus'}, entitlement: null};
+  await timers.advance(REFRESH_RETRY_MIN_MS);
+  assert.equal(checks, 3);
+  assert.equal(views.at(-1).kind, 'inactive');
+  await timers.advance(FALLBACK_REFRESH_MS * 3);
+  assert.equal(checks, 3);
+  assert.equal(timers.queue.length, 0);
+  refresher.stop();
+});
+
+test('billing snapshot refresh adopts signed scheduling and discards a late result after detach', async () => {
+  const timers = fakeTimers(), views = [];
+  let checks = 0, release;
+  const signed = entitlementAt(NOW + FALLBACK_REFRESH_MS, NOW + FALLBACK_REFRESH_MS + 400000);
+  const refresher = new EntitlementRefresher({timers, fallbackActive: true, onView: view => views.push(view), check: async () => {
+    checks++;
+    if (checks === 1) return {view: subscriptionView(signed), entitlement: signed};
+    return new Promise(resolve => { release = resolve; });
+  }});
+  await timers.advance(FALLBACK_REFRESH_MS);
+  assert.equal(refresher.current, signed);
+  assert.equal(timers.queue[0].at, signed.refreshAt);
+  await timers.advance(signed.refreshAt - timers.now());
+  assert.equal(checks, 2);
+  refresher.stop();
+  release({view: {kind: 'inactive', status: 'canceled', source: 'billing-limits', planName: 'Plus'}, entitlement: null});
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  assert.equal(views.length, 1);
+  assert.equal(timers.queue.length, 0);
 });

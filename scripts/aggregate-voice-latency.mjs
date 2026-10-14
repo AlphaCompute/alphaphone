@@ -11,10 +11,13 @@
 //   firstAudio          first-audio - send        (only when Speak replies is on)
 //   speechToTokenExcludingReview  recognition + firstToken
 //   speechToAudioExcludingReview  recognition + firstAudio
-// The last two are candidate A-10 measures (end of speech to first response, excluding the
-// user's review and send time). This script reports them; it does not sign off a target.
-// Exit 0: enough complete samples in both cohorts. Exit 2: not enough. Exit 1: bad input.
+// The last two are legacy stage sums, not end-to-end voice-assistant latency.
+// Only native audio-clock exports can satisfy the approved issue #395 boundary.
+// Exit 0: native samples are sufficient and within the latency budget (not device signoff).
+// Exit 2: native evidence insufficient. Exit 3: sufficient samples fail the budget/reliability check.
+// Exit 1: bad input. Legacy exports remain readable.
 import fs from 'node:fs';
+import { aggregateNativeVoice, nativeTimingFormat } from './native-voice-latency.mjs';
 
 const order = ['recording-end', 'transcript-ready', 'send', 'first-token', 'final-reply', 'first-audio'];
 const routes = new Set(['on-device', 'browser', 'local-agent', 'eliza-cloud', 'paired-agent', 'development-agent', 'manual']);
@@ -75,7 +78,8 @@ export const complete = row => !row.outcome && order.slice(0, 5).every(key => ro
 
 export function aggregate(exports, requested = minimumSamples) {
   const required = { warm: Math.max(minimumSamples.warm, requested.warm ?? 0), cold: Math.max(minimumSamples.cold, requested.cold ?? 0) };
-  const { records, invalid } = collectRecords(exports);
+  const native = aggregateNativeVoice(exports.filter(document => document?.format === nativeTimingFormat), required);
+  const { records, invalid } = collectRecords(exports.filter(document => document?.format !== nativeTimingFormat));
   const usable = records.filter(complete), cohorts = {};
   for (const name of ['warm', 'cold']) {
     const rows = usable.filter(row => row.cold === (name === 'cold')), byPhase = {};
@@ -85,8 +89,9 @@ export function aggregate(exports, requested = minimumSamples) {
   return {
     format: 'alpha-voice-latency-summary-v1', units: 'ms',
     records: records.length, complete: usable.length, abandoned: records.filter(row => row.outcome === 'abandoned').length, incomplete: records.filter(row => !row.outcome && !complete(row)).length, invalid,
-    cohorts, sufficient: cohorts.warm.sufficient && cohorts.cold.sufficient,
-    targetSignOff: 'pending A-10: the measurement boundary and target are not decided; this summary is evidence only',
+    cohorts, legacyDiagnosticsSufficient: cohorts.warm.sufficient && cohorts.cold.sufficient,
+    native, sufficient: native.sufficient,
+    targetSignOff: 'Issue #395: at least 50 simple-query native audio trials, last speech sample through first audible response, six-second upper budget. Legacy renderer marks and stage sums cannot qualify this boundary.',
   };
 }
 
@@ -99,5 +104,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   catch (error) { console.error(`Cannot aggregate: ${error.message}`); process.exit(1); }
   const text = JSON.stringify(summary, null, 2);
   if (options.out) fs.writeFileSync(options.out, text + '\n'); else console.log(text);
-  if (!summary.sufficient) { console.error(`Insufficient samples: warm ${summary.cohorts.warm.samples}/${options.warm}, cold ${summary.cohorts.cold.samples}/${options.cold}.`); process.exit(2); }
+  if (!summary.sufficient) { console.error('Insufficient native audio evidence: require at least 50 successful simple-query trials per source/model/device/environment cohort, including the requested warm/cold minimums. Legacy renderer samples are diagnostic only; inspect native.invalid and native.conflictingTrials for rejected records.'); process.exit(2); }
+  if (!summary.native.withinBudget) { console.error('Native audio evidence failed the latency/reliability check: inspect cold/warm max against the 6000 ms upper budget and failures/cancelled counts in native.cohorts.'); process.exit(3); }
+  console.error('Native timing sample and budget checks passed. Clock provenance, microphone/speaker quality and target-device acceptance still require review.');
 }

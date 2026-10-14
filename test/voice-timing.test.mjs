@@ -52,7 +52,7 @@ test('out-of-order and premature marks cannot shorten a phase', () => {
   assert.equal(rows[0].outcome, 'abandoned');
 });
 
-test('the aggregator requires 20 warm and 5 cold complete samples and reports A-10 candidates', () => {
+test('legacy renderer samples remain diagnostic and cannot qualify native audio latency', () => {
   timing.clearVoiceTiming();
   for (let i = 0; i < 19; i++) turn({recognition: 700 + i, audio: 2000 + i});
   for (let i = 0; i < 5; i++) turn({cold: true, recognition: 4000 + i});
@@ -64,12 +64,13 @@ test('the aggregator requires 20 warm and 5 cold complete samples and reports A-
   assert.equal(summary.abandoned, 1);
   assert.equal(summary.cohorts.warm.samples, 20);
   assert.equal(summary.cohorts.cold.samples, 5);
-  assert.equal(summary.sufficient, true);
+  assert.equal(summary.sufficient, false);
+  assert.equal(summary.legacyDiagnosticsSufficient, true);
   assert.equal(summary.cohorts.warm.withAudio, 19);
   assert.equal(summary.cohorts.cold.phases.recognition.p50, 4002);
   assert.equal(summary.cohorts.warm.phases.speechToAudioExcludingReview.n, 19);
   assert.equal(summary.cohorts.warm.phases.review.p50, 3000);
-  assert.match(summary.targetSignOff, /A-10/);
+  assert.match(summary.targetSignOff, /Issue #395/);
   assert.equal(percentile([1, 2, 3, 4], 50), 2);
   // The command reports insufficiency with exit code 2.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'voice-latency-'));
@@ -78,8 +79,7 @@ test('the aggregator requires 20 warm and 5 cold complete samples and reports A-
     fs.writeFileSync(file, JSON.stringify({...exported, records: exported.records.slice(0, 10)}));
     assert.throws(() => execFileSync(process.execPath, ['scripts/aggregate-voice-latency.mjs', file], {stdio: 'pipe'}), error => error.status === 2);
     fs.writeFileSync(file, JSON.stringify(exported));
-    const out = JSON.parse(execFileSync(process.execPath, ['scripts/aggregate-voice-latency.mjs', file], {encoding: 'utf8'}));
-    assert.equal(out.sufficient, true);
+    assert.throws(() => execFileSync(process.execPath, ['scripts/aggregate-voice-latency.mjs', file], {stdio: 'pipe'}), error => error.status === 2 && JSON.parse(error.stdout).legacyDiagnosticsSufficient === true);
     // The required counts can be raised but never lowered below 20 warm and 5 cold.
     assert.throws(() => execFileSync(process.execPath, ['scripts/aggregate-voice-latency.mjs', file, '--warm', '1'], {stdio: 'pipe'}), error => error.status === 1);
     assert.throws(() => execFileSync(process.execPath, ['scripts/aggregate-voice-latency.mjs', file, '--cold', '30'], {stdio: 'pipe'}), error => error.status === 2);
