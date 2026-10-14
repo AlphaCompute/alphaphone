@@ -50,11 +50,15 @@ final class WorkflowNoticePoster implements WorkflowNoticeDelivery.Poster {
   if(timeoutMs<=0)throw new IllegalArgumentException("Approval already expired");
   return new Notification.Builder(context,APPROVAL_CHANNEL).setSmallIcon(R.drawable.notification_icon).setContentTitle(title).setContentText(body).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted(APPROVAL_CHANNEL,"Alpha Phone")).setOnlyAlertOnce(true).setAutoCancel(false).setTimeoutAfter(timeoutMs).setCategory(Notification.CATEGORY_REMINDER).setContentIntent(tap);
  }
+ /** Ask only opens a reviewed draft; there is no RemoteInput, send or decision action. */
+ Notification.Action question(PendingIntent tap){
+  Notification.Action.Builder ask=new Notification.Action.Builder(null,"Ask Alpha",tap);
+  if(Build.VERSION.SDK_INT>=31)ask.setAuthenticationRequired(true);
+  return ask.build();
+ }
  public void post(String id,String title,String body)throws Exception{
   if(!allowed())throw new SecurityException("Notification delivery is disabled");
-  Notification.Action.Builder ask=new Notification.Action.Builder(null,"Ask Alpha",tap(id,true));
-  if(Build.VERSION.SDK_INT>=31)ask.setAuthenticationRequired(true);
-  manager().notify(tag(id),0,step(title,body,tap(id)).addAction(ask.build()).build());awaitListed(id);
+  manager().notify(tag(id),0,step(title,body,tap(id)).addAction(question(tap(id,true))).build());awaitListed(id);
  }
  /** notify() hands the notice to the system asynchronously, so an immediate read of the active list
   * can miss it and the receipt would record "unknown" for a notice Android is about to show. Wait
@@ -68,12 +72,12 @@ final class WorkflowNoticePoster implements WorkflowNoticeDelivery.Poster {
  }
  @Override public void postApproval(String id,String title,String body,long timeoutMs)throws Exception{
   if(!WorkflowNoticeDelivery.approvalId(id)||!approvalsAllowed())throw new SecurityException("Approval notifications are disabled");
-  manager().notify(tag(id),0,approval(title,body,timeoutMs,tap(id)).build());awaitListed(id);
+  manager().notify(tag(id),0,approval(title,body,timeoutMs,tap(id)).addAction(question(tap(id,true))).build());awaitListed(id);
  }
  @Override public void postApprovalQuiet(String id,String title,String body,long timeoutMs)throws Exception{
   if(!WorkflowNoticeDelivery.approvalId(id)||!approvalsAllowed())throw new SecurityException("Approval notifications are disabled");
   // Group children with SUMMARY-only alert behavior cannot sound/vibrate, even on the high channel.
-  manager().notify(tag(id),0,approval(title,body,timeoutMs,tap(id)).setGroup("alpha_quiet_approvals").setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY).build());awaitListed(id);
+  manager().notify(tag(id),0,approval(title,body,timeoutMs,tap(id)).addAction(question(tap(id,true))).setGroup("alpha_quiet_approvals").setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY).build());awaitListed(id);
  }
  @Override public void cancel(String id){
   manager().cancel(tag(id),0);
