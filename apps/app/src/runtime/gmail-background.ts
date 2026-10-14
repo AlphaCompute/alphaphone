@@ -42,4 +42,6 @@ export const gmailNotificationSettings=()=>native.notificationSettings();
 /** Native validates the persisted owner/grant again before returning a tap; renderer validates current UI ownership too. */
 export async function pendingGmailNotice():Promise<GmailNoticeTap|null>{if(!isAndroid)return null;const tap=await native.pending();return typeof tap.token==='string'&&typeof tap.grantId==='string'&&typeof tap.credentialId==='string'&&typeof tap.userId==='string'&&typeof tap.generation==='string'?tap as GmailNoticeTap:null;}
 export async function consumeGmailNotice(token:string){if(isAndroid)await native.consume({token});}
-export function onGmailNotice(handler:()=>void){return isAndroid?native.addListener('pendingMail',handler):Promise.resolve({remove:async()=>{}});}
+const noListener={remove:async()=>{}};
+/** A missing native bridge (older shell, test fixture) means no background taps, never an unhandled rejection. */
+export function onGmailNotice(handler:()=>void):Promise<{remove():Promise<void>}>{if(!isAndroid)return Promise.resolve(noListener);try{return Promise.resolve(native.addListener('pendingMail',handler)).catch(()=>noListener);}catch{return Promise.resolve(noListener);}}

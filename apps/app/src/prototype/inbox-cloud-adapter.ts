@@ -737,7 +737,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     window.addEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.addEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
   };
   p.componentWillUnmount = function () {
-    noticeAttempt++;void this.gmailNoticeListener?.then((handle:Bag)=>handle.remove());
+    noticeAttempt++;void this.gmailNoticeListener?.then((handle:Bag)=>handle.remove()).catch(()=>{});
     document.removeEventListener('visibilitychange',this.inboxVisibility);
     this.inboxConnectionUnsubscribe?.(); void this.inboxResume?.then((handle: Bag) => handle?.remove()); window.removeEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.removeEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
     shell = undefined; openInboxHandler = null; clear(); setAttention({ state: 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null }); unmount?.call(this);
