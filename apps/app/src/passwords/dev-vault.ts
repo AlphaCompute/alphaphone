@@ -57,6 +57,7 @@ export function createDevelopmentVault():ElizaPasswordsPlugin & {readonly select
   async reset(){need();throw fail('invalid','Saved passwords are not damaged');},
   async reveal({id}){need();const r=records.get(id);if(!r)throw fail('invalid','Password no longer exists');surface(r.label,r.secret);return {shown:true as const,hidesAfterMs:30_000};},
   async copy({id}){need();if(!records.get(id))throw fail('invalid','Password no longer exists');return {copied:true as const,clearsAfterMs:45_000};},
+  async openEditor():Promise<never>{throw fail('unavailable','The native password editor requires the Android app.');},
   async openAutofillSettings(){selected='this-app';return {status:'opened' as const,destination:'autofill-picker' as const};},
  };
 }

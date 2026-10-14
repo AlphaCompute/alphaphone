@@ -1,3 +1,7 @@
+> Historical Sherpa qualification notes and reproduction tools. AlphaPhone now
+> builds shared native ASR and Paradee speech; follow [the native speech guide](../../docs/native-speech.md).
+> These records do not qualify the new engine.
+
 # Reproduce local speech assets
 
 The engine and pinned runtime/model tooling live in

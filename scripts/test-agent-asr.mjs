@@ -19,8 +19,8 @@ const status=await json('/api/auth/status');
 const code=await json('/api/auth/pair-code');
 const paired=await json('/api/auth/pair',{code:code.code,instanceId:status.instanceId});
 assert.equal(paired.access,'owner');assert.equal(paired.instanceId,status.instanceId);assert.equal(typeof paired.token,'string');
-const ready=await json('/api/asr/whisper/status',undefined,paired.token);
-assert.equal(ready.ready,true);assert.equal(ready.provider,'standalone-whisper.cpp');
+const ready=await json('/api/asr/libelizainference/status',undefined,paired.token);
+assert.equal(ready.ready,true);assert.equal(ready.provider,'local-inference');
 let proxy;
 let bridgeOrigin;
 if(process.argv.includes('--bridge')){
@@ -37,16 +37,16 @@ const bridge=async(input)=>{
 const directory=await mkdtemp(join(tmpdir(),'alpha-agent-asr-'));
 const run=(exe,args)=>new Promise((resolve,reject)=>{const child=spawn(exe,args,{stdio:'ignore'});child.on('error',reject);child.on('close',code=>code===0?resolve():reject(Error('Synthetic fixture generation failed')));});
 try{
- if(bridgeOrigin){const response=await bridge({path:'/api/asr/whisper/status',method:'GET',ownerId:paired.identityId});assert.equal(response.status,200);assert.equal((await response.json()).ready,true);}
+ if(bridgeOrigin){const response=await bridge({path:'/api/asr/libelizainference/status',method:'GET',ownerId:paired.identityId});assert.equal(response.status,200);assert.equal((await response.json()).ready,true);}
  const phrase='Please remember to water the plants tomorrow morning.';
  const aiff=join(directory,'speech.aiff'),wav=join(directory,'speech.wav'),silence=join(directory,'silence.wav');
  await run('/usr/bin/say',['-v','Samantha','-o',aiff,phrase]);
  await run('/opt/homebrew/bin/ffmpeg',['-v','error','-i',aiff,'-ar','16000','-ac','1','-c:a','pcm_s16le',wav]);
  await run('/opt/homebrew/bin/ffmpeg',['-v','error','-f','lavfi','-i','anullsrc=r=16000:cl=mono','-t','3','-c:a','pcm_s16le',silence]);
  const bytes=await readFile(wav),requestId=randomUUID();
- const post=(body,id=randomUUID(),token=paired.token)=>bridgeOrigin&&token===paired.token?bridge({path:'/api/asr/whisper',method:'POST',ownerId:paired.identityId,requestId:id,audioBase64:Buffer.from(body).toString('base64')}):fetch(base+'/api/asr/whisper',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'audio/wav','X-Request-Id':id},body,signal:AbortSignal.timeout(120000)});
+ const post=(body,id=randomUUID(),token=paired.token)=>bridgeOrigin&&token===paired.token?bridge({path:'/api/asr/libelizainference',method:'POST',ownerId:paired.identityId,requestId:id,audioBase64:Buffer.from(body).toString('base64')}):fetch(base+'/api/asr/libelizainference',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'audio/wav','X-Request-Id':id},body,signal:AbortSignal.timeout(120000)});
  const started=Date.now(),response=await post(bytes,requestId);assert.equal(response.status,200);
- const transcript=await response.json();assert.equal(transcript.local,true);assert.equal(transcript.provider,ready.provider);assert.equal(transcript.requestId,requestId);
+ const transcript=await response.json();assert.equal(transcript.provider,ready.provider);if(bridgeOrigin){assert.equal(transcript.local,true);assert.equal(transcript.requestId,requestId);}
  assert.match(transcript.text.toLowerCase(),/water the plants tomorrow morning/);
  const duplicate=await post(bytes,requestId);assert.equal(duplicate.status,409);
  const invalid=await post(Buffer.from('not a wav'));assert.equal(invalid.status,422);

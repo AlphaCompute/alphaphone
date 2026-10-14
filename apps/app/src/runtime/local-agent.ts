@@ -154,13 +154,13 @@ export class LocalAgentProtocol {
         audioBase64=btoa(binary);
       }
       const requestId=audio?crypto.randomUUID():undefined;
-      const response=await this.bridge.request({path:'/api/asr/whisper'+(audio?'':'/status'),method:audio?'POST':'GET',ownerId:session.ownerId,
+      const response=await this.bridge.request({path:'/api/asr/libelizainference'+(audio?'':'/status'),method:audio?'POST':'GET',ownerId:session.ownerId,
         headers:{},timeoutMs:120000,...(audio?{audioBase64,requestId}:{})},bounded);
       bounded.throwIfAborted();
       if(session!==this.session||generation!==this.generation)throw new DOMException('Voice selection changed','AbortError');
       if(response.status!==200)throw Error(`Local speech failed (HTTP ${response.status}).`);
       const result=JSON.parse(response.body||'{}');
-      if(result.provider!=='standalone-whisper.cpp'||(audio&&(result.local!==true||result.requestId!==requestId||typeof result.text!=='string'||!result.text.trim()||result.text.length>16000)))throw Error('Invalid local speech response.');
+      if(result.provider!=='local-inference'||(audio&&(result.local!==true||result.requestId!==requestId||typeof result.text!=='string'||!result.text.trim()||result.text.length>16000)))throw Error('Invalid local speech response.');
       return result;
     }finally{this.streams.delete(controller);}
   }
@@ -171,11 +171,11 @@ export class LocalAgentProtocol {
     this.streams.add(controller);const bounded=AbortSignal.any([signal,controller.signal]);
     try{
       bounded.throwIfAborted();
-      const response=await this.bridge.request({path:'/api/tts/kokoro',ownerId:session.ownerId,method:'POST',headers:{},requestId,body:JSON.stringify({text}),timeoutMs:45000},bounded);
+      const response=await this.bridge.request({path:'/api/tts/paradee',ownerId:session.ownerId,method:'POST',headers:{},requestId,body:JSON.stringify({text}),timeoutMs:45000},bounded);
       bounded.throwIfAborted();if(session!==this.session||generation!==this.generation)throw new DOMException('Voice selection changed','AbortError');
       if(response.status!==200)throw Error(`Local agent speech unavailable (HTTP ${response.status}).`);
       const result=JSON.parse(response.body||'{}');
-      if(result.requestId!==requestId||result.provider!=='standalone-kokoro'||result.contentType!=='audio/wav'||typeof result.audioBase64!=='string'||result.audioBase64.length>1920060)throw Error('Invalid local speech response.');
+      if(result.requestId!==requestId||result.provider!=='libelizainference-paradee'||result.contentType!=='audio/wav'||typeof result.audioBase64!=='string'||result.audioBase64.length>1920060)throw Error('Invalid local speech response.');
       const bytes=Uint8Array.from(atob(result.audioBase64),c=>c.charCodeAt(0));
       if(bytes.length<44||String.fromCharCode(...bytes.subarray(0,4))!=='RIFF'||String.fromCharCode(...bytes.subarray(8,12))!=='WAVE'||new DataView(bytes.buffer).getUint32(4,true)+8!==bytes.length)throw Error('Invalid local speech audio.');
       return new Blob([bytes],{type:'audio/wav'});

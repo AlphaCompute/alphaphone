@@ -1,6 +1,6 @@
 # Owner-scoped notice suspension
 
-Explicit patch against `13c98575987a121decc45b161b0c8a4ee698554e`.
+Explicit patch against the revision recorded in `native-manifest.json` (`baseCommit`).
 `native-manifest.json` binds the original and resulting Java bytes. The vendor
 checkout remains unchanged; Gradle and host tests use authenticated staged source.
 

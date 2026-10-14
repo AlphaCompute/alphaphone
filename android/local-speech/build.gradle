@@ -1,3 +1,7 @@
-// Engine and build policy come from the reviewed Eliza pin. Product assets stay here.
-ext.elizaSpeechSourceDir = file('../../vendor/eliza/packages/app/platforms/android/local-speech')
-apply from: new File(ext.elizaSpeechSourceDir, 'consumer.gradle')
+// Shared native ASR and Paradee speech, pinned with the product's Eliza source.
+ext.elizaParadeeSourceDir = file('../../vendor/eliza/packages/app/platforms/android/paradee-voice')
+ext.elizaParadeeNativeDir = file('../../artifacts/native-voice')
+apply from: new File(ext.elizaParadeeSourceDir, 'consumer.gradle')
+
+// Product audio bounds and lifecycle adapter, shared with the privileged listener.
+android.sourceSets.main.java.srcDir file('src/main/java')

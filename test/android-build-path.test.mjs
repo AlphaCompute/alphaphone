@@ -1,3 +1,4 @@
+import {stageNativeSpeech} from './fixtures/native-speech-inputs.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -5,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync, spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {checkoutProblems, embeddingHostProblems, preparedRuntimeProblems, SPEECH_AAR, SPEECH_MANIFEST} from '../scripts/android-build-preflight.mjs';
+import {checkoutProblems, embeddingHostProblems, preparedRuntimeProblems} from '../scripts/android-build-preflight.mjs';
 import {TURBO_AGENT_DETECTION_ENV, preparedSourceEnv} from '../scripts/local-agent-source.mjs';
 import {ensurePreparedWorkflowWorker} from '../scripts/prepared-workflow-worker.mjs';
 import {workerHash} from '../scripts/workflow-worker-artifact.mjs';
@@ -48,15 +49,10 @@ function fixture(t) {
 
 test('preflight names the exact command for each missing build input', t => {
   const f = fixture(t);
-  f.write(SPEECH_MANIFEST, JSON.stringify({aarSha256: '0'.repeat(64), noEspeak: true}));
-  let problems = checkoutProblems(f.root);
-  assert.equal(problems.length, 1);
-  assert.match(problems[0], /Speech runtime .* is missing .*scripts\/local-speech\/README\.md/);
-
-  f.write(SPEECH_AAR, 'locally built');
-  assert.match(checkoutProblems(f.root)[0], /does not match android\/local-speech\/runtime-manifest\.json/);
-  f.write(SPEECH_MANIFEST, JSON.stringify({aarSha256: createHash('sha256').update('locally built').digest('hex'), noEspeak: true}));
   assert.deepEqual(checkoutProblems(f.root), []);
+  assert.match(preparedRuntimeProblems(f.root, f.source).join(' '), /Native voice build inputs are missing.*native:speech:build/);
+  stageNativeSpeech(f.root, f.commit);
+  let problems;
 
   // A clean checkout: no prepared source. This is what used to fail deep in Gradle.
   problems = preparedRuntimeProblems(f.root, f.source);
@@ -84,7 +80,7 @@ test('preflight rejects an unpinned checkout and android:build stops before sync
   f.write('upstream.lock.json', JSON.stringify({commit: 'f'.repeat(40)}));
   assert.match(checkoutProblems(f.root)[0], /vendor\/eliza is at .*pins f{40}\. Run: git submodule update --init vendor\/eliza/);
   // The real entry point exits with status 2 and the guidance, without starting the build.
-  for (const file of ['build-android.mjs', 'android-build-preflight.mjs', 'stage-embedding-host.mjs', 'build-embedding-host.mjs', 'toolchain.mjs', 'copy-file-clone.mjs'])
+  for (const file of ['build-android.mjs', 'android-build-preflight.mjs', 'stage-embedding-host.mjs', 'build-embedding-host.mjs', 'toolchain.mjs', 'copy-file-clone.mjs', 'native-speech-inputs.mjs'])
     f.write('scripts/' + file, read('scripts/' + file));
   const result = spawnSync(process.execPath, ['scripts/build-android.mjs'], {cwd: f.root, encoding: 'utf8'});
   assert.equal(result.status, 2, result.stderr);
@@ -127,6 +123,7 @@ test('android:build:local builds the workflow worker before staging and stages b
     'node scripts/android-build-preflight.mjs --before-prepare',
     // Before the long preparation: it either has the reviewed libraries, reproduces them, or
     // stops in under a second naming the person who must supply them.
+    'npm run native:speech:build',
     'npm run agent:build-embedding-host',
     'npm run agent:prepare',
     'npm run agent:build-workflow-worker',
@@ -153,6 +150,7 @@ test('preflight names the embedding host and who must supply it when the build s
   // Gradle's :app:verifyEmbeddingHost failed a fully prepared and staged checkout 18 seconds into
   // the first assemble task: the reviewed libraries are ignored by Git and staged from a receipt.
   const f = fixture(t);
+  stageNativeSpeech(f.root, f.commit);
   f.write(path.relative(f.root, path.join(f.source, '.alpha-runtime-source.json')), '{"stamp":1}\n');
   f.write('android/app/src/main/assets/agent/workflow-worker/manifest.json', '{}');
   f.write('android/app/src/main/assets/agent/alpha-source.json', '{"stamp":1}\n');

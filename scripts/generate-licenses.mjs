@@ -529,7 +529,7 @@ export function androidDependencyFingerprint(root) {
   const files = ['android/variables.gradle', 'android/build.gradle', 'android/app/build.gradle', 'android/local-speech/build.gradle'];
   const app = read(root, 'android/app/build.gradle');
   for (const [, name] of app.matchAll(/^\s*implementation\s+project\('(:[^']+)'\)/gm)) if (modules.has(name)) files.push(path.posix.join(modules.get(name), 'build.gradle'));
-  const consumer = read(root, 'android/local-speech/build.gradle').match(/elizaSpeechSourceDir\s*=\s*file\('([^']+)'\)/);
+  const consumer = read(root, 'android/local-speech/build.gradle').match(/elizaParadeeSourceDir\s*=\s*file\('([^']+)'\)/);
   if (consumer) files.push(path.posix.join('android/local-speech', consumer[1], 'consumer.gradle'));
   const lines = [];
   for (const file of [...new Set(files)].sort()) {
@@ -582,68 +582,27 @@ function androidEntries(root, templates, errors) {
 }
 
 function speechEntries(root, templates, errors) {
-  if (!exists(root, 'android/local-speech/runtime-manifest.json')) return [];
-  const manifest = readJson(root, 'android/local-speech/runtime-manifest.json');
-  const scripts = 'vendor/eliza/packages/app/scripts/local-speech';
-  const consumer = exists(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle') ? read(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle') : '';
-  const sherpaVersion = consumer.match(/sherpa-onnx-([\d.]+)-no-espeak\.aar/)?.[1];
-  if (!sherpaVersion) errors.push('Cannot determine the Sherpa-ONNX version from the pinned local-speech consumer.gradle');
-  const ort = exists(root, `${scripts}/onnxruntime-provenance.json`) ? readJson(root, `${scripts}/onnxruntime-provenance.json`) : [];
-  const ortVersions = [...new Set(ort.map(item => item.version))];
-  if (ortVersions.length !== 1) errors.push('Cannot determine a single ONNX Runtime version from onnxruntime-provenance.json');
-  const reference = exists(root, `${scripts}/reference-manifest.json`) ? readJson(root, `${scripts}/reference-manifest.json`) : [];
-  const pinned = (referencePath, localPath) => {
-    const item = reference.find(entry => entry.path === referencePath);
-    const text = read(root, localPath);
-    if (!item) errors.push(`${referencePath} is not pinned in ${scripts}/reference-manifest.json`);
-    else if (sha256(Buffer.from(text)) !== item.sha256) errors.push(`${localPath} does not match the pinned ${referencePath} sha256`);
-    return normalizeText(text);
-  };
-  const abis = manifest.qualifiedAbis.map(q => q.abi).join(', ');
-  // The qualified runtime is the no-eSpeak build. Any other build links eSpeak NG (GPL), which is listed and flagged.
-  const espeak = manifest.noEspeak === true ? [] : [{name: 'eSpeak NG (linked into the Sherpa-ONNX speech runtime)', version: `built with Sherpa-ONNX ${sherpaVersion}`, license: 'GPL-3.0-or-later',
-    source: 'https://github.com/espeak-ng/espeak-ng', text: templates.canonical('GPL-3.0-or-later') || 'android/local-speech/runtime-manifest.json does not record the no-eSpeak build, so eSpeak NG is linked. Its licence text is not held in licenses/.',
-    ...(templates.canonical('GPL-3.0-or-later') ? {textSource: 'spdx-canonical'} : {}), _flags: ['licence-text-missing-from-package']}];
+  const source = 'vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json';
+  const pins = readJson(root, source);
+  const phonon = readJson(root, 'vendor/eliza/plugins/plugin-local-inference/native/llama.cpp/tools/parakeet/pins.json');
+  const phononText = ['NOTICE','LICENSE-WEIGHTS-CC-BY-4.0.txt'].map(name => {
+    const file = `licenses/native-speech/phonon-2-${name}`, text = read(root,file);
+    if (sha256(Buffer.from(text)) !== phonon.files[name].sha256) errors.push(file+' does not match the pinned Phonon notice');
+    return text;
+  }).join('\n\n');
   return [
-    ...espeak,
-    {name: 'Sherpa-ONNX (no-eSpeak Android build)', version: `${sherpaVersion} (AAR sha256 ${manifest.aarSha256}; ABIs ${abis})`, license: 'Apache-2.0',
-      source: `https://github.com/k2-fsa/sherpa-onnx/tree/v${sherpaVersion}`, text: templates.apache},
-    {name: 'ONNX Runtime', version: ortVersions.join(', '), license: 'MIT', source: `https://github.com/microsoft/onnxruntime/tree/v${ortVersions[0]}`,
-      text: pinned('onnxruntime-LICENSE', 'licenses/onnxruntime-MIT.txt')},
-    {name: 'OpenAI Whisper tiny.en speech recognition model (int8 ONNX conversion by k2-fsa)', version: 'sherpa-onnx-whisper-tiny.en', license: 'MIT',
-      source: 'https://github.com/openai/whisper', text: pinned('whisper-LICENSE', 'licenses/whisper-MIT.txt')},
-    {name: 'CMU Pronouncing Dictionary (speech lexicon)', version: '74790861f652b15e4ac49015a90074ad62a27690', license: 'BSD-2-Clause',
-      source: 'https://github.com/cmusphinx/cmudict', text: pinned('cmudict-LICENSE', 'licenses/cmudict-BSD-2-Clause.txt')},
-    {name: 'Piper LJSpeech medium voice model (int8)', version: 'rhasspy/piper-voices c10ece1aade47bb51c153c893d14e5bf8e5b7117', license: UNVERIFIED,
-      source: 'https://huggingface.co/rhasspy/piper-voices/tree/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/ljspeech/medium',
-      text: `Model card:\n${pinned('ljspeech-MODEL_CARD', 'licenses/piper-ljspeech-medium-MODEL_CARD.txt')}\n\nRepository README:\n${pinned('piper-voices-README.md', 'licenses/piper-voices-README.md')}`},
-    {name: 'Sherpa-ONNX native build dependencies', version: `built with Sherpa-ONNX ${sherpaVersion}`, license: UNVERIFIED,
-      source: `https://github.com/k2-fsa/sherpa-onnx/tree/v${sherpaVersion}/cmake`,
-      text: 'The statically linked native dependencies are discovered during the reproducible speech build. Their license files are copied into the installed model bundle under local-speech/v1/notices/native/ and hash-pinned by its manifest; they are not enumerated in source.'},
-  ];
-}
-
-/** In-browser speech (web build only; Android omits these assets and uses its native recognizer). */
-export const BROWSER_SPEECH_CONFIG = 'config/browser-speech.json';
-function browserSpeechEntries(root, templates, errors) {
-  if (!exists(root, BROWSER_SPEECH_CONFIG)) return [];
-  const config = readJson(root, BROWSER_SPEECH_CONFIG);
-  const pinned = item => {
-    if (!exists(root, item.path)) { errors.push(`${item.path}: missing`); return ''; }
-    const bytes = fs.readFileSync(path.join(root, item.path));
-    if (sha256(bytes) !== item.sha256) errors.push(`${item.path} does not match its sha256 in ${BROWSER_SPEECH_CONFIG}`);
-    return normalizeText(bytes.toString('utf8'));
-  };
-  const files = config.files.map(file => `${file.path} (sha256 ${file.sha256})`).join('\n');
-  return [
-    {name: `OpenAI Whisper tiny.en speech recognition model (int8 ONNX conversion by ${config.source.repository}, web build)`, version: `${config.source.repository}@${config.source.revision}`,
-      license: 'MIT AND Apache-2.0', source: `https://huggingface.co/${config.source.repository}/tree/${config.source.revision}\nFiles shipped under browser-speech/ in the web build:\n${files}`,
-      text: `OpenAI Whisper (model weights and code):\n${normalizeText(read(root, 'licenses/whisper-MIT.txt'))}\n\nONNX conversion model card (declares apache-2.0):\n${pinned(config.source.modelCard)}\n\n${templates.apache}`},
-    {name: 'ONNX Runtime Web WebAssembly (statically linked components)', version: `${config.runtime.package} ${config.runtime.version}`, license: UNVERIFIED,
-      source: config.runtime.notices.source,
-      // The onnxruntime-web and onnxruntime-common npm packages ship no license file; ONNX
-      // Runtime's own MIT license carries the Microsoft copyright notice their entries lack.
-      text: `ONNX Runtime (MIT; the same LICENSE at every release):\n${normalizeText(read(root, 'licenses/onnxruntime-MIT.txt'))}\n\nONNX Runtime ThirdPartyNotices.txt for the components statically linked into the WebAssembly:\n${pinned(config.runtime.notices)}`},
+    ...['paradee','lexicon'].map(key => ({name: key === 'paradee' ? 'Paradee-8M native voice model' : 'misaki English pronunciation lexicon',
+      version: pins[key].sha256, license: pins[key].license, source: pins[key].source,
+      text: templates.canonical(pins[key].license) || templates.apache})),
+    {name:'eSpeak NG native pronunciation fallback',version:pins.espeak.version,license:pins.espeak.license,
+      source:pins.espeak.url,text:templates.canonical(pins.espeak.license)},
+    {name:'Qwen3-ASR-0.6B model assets',version:'5eb144179a02acc5e5ba31e748d22b0cf3e303b0',license:'Apache-2.0',
+      source:'https://huggingface.co/Qwen/Qwen3-ASR-0.6B/tree/5eb144179a02acc5e5ba31e748d22b0cf3e303b0',text:templates.apache},
+    {name:'Phonon-2 optional ASR model',version:phonon.model.revision,license:phonon.model.license,
+      source:`https://huggingface.co/${phonon.model.repo}/tree/${phonon.model.revision}`,text:phononText},
+    {name:'Native ASR training-data terms',version:phonon.model.revision,license:UNVERIFIED,
+      source:'licenses/native-speech/phonon-2-NOTICE',
+      text:'The optional Phonon-2 model NOTICE lists training audio with separate terms, including CHiME-6 and SPGISpeech. Model weights have a declared CC-BY-4.0 license; this source inventory does not establish each training dataset term.'},
   ];
 }
 
@@ -801,7 +760,6 @@ export function collectNotices(root = ROOT, {packagedRuntime = shippedPackagedRu
     elizaEntry(root),
     ...androidEntries(root, templates, errors),
     ...speechEntries(root, templates, errors),
-    ...browserSpeechEntries(root, templates, errors),
     ...payloadEntries(packagedRuntime),
     ...(packagedRuntime ? runtimeEntries(root, templates, errors) : []),
     ...mapDataEntries(root),

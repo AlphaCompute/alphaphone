@@ -110,14 +110,14 @@ export function checkListenerOverlay(configXml, alphaPackages = []) {
 /**
  * The model bundle the listener loads at runtime (SpeechAssets.install). A listener APK without it
  * would sit in SPEECH_UNAVAILABLE forever, so production staging refuses it. `entries` are the
- * APK's zip entry names; `qualifiedAbis` come from android/local-speech/qualified-runtime-manifest.json.
+ * APK's zip entry names; `qualifiedAbis` come from android/local-speech/native-qualification.json.
  */
 export function checkListenerSpeechBundle(entries, qualifiedAbis) {
   const names = new Set(entries);
-  if (!names.has("assets/local-speech/v1/manifest.json"))
-    throw new Error("The listener APK has no assets/local-speech/v1/manifest.json: build it after the speech model bundle is prepared, or it can never listen");
+  if (!names.has("assets/paradee-voice/v1/manifest.json"))
+    throw new Error("The listener APK has no assets/paradee-voice/v1/manifest.json: build it after the speech model bundle is prepared, or it can never listen");
   const abis = (qualifiedAbis ?? []).map(row => row.abi);
-  const packaged = abis.filter(abi => names.has(`lib/${abi}/libsherpa-onnx-jni.so`));
+  const packaged = abis.filter(abi => names.has(`lib/${abi}/libparadeevoicejni.so`));
   if (!packaged.length) throw new Error(`The listener APK packages no qualified speech runtime ABI (${abis.join(", ") || "none qualified"})`);
   return packaged;
 }
@@ -131,7 +131,7 @@ export function checkListenerSpeechNatives(packaged, qualifiedAbis, hashOf) {
     const row = qualifiedAbis.find(item => item.abi === abi);
     for (const lib of row?.native ?? []) {
       const actual = hashOf(`lib/${abi}/${lib.file}`);
-      if (actual !== lib.sha256) throw new Error(`Listener ${abi}/${lib.file} differs from qualified-runtime-manifest.json`);
+      if (actual !== lib.sha256) throw new Error(`Listener ${abi}/${lib.file} differs from native-qualification.json`);
     }
   }
   return true;

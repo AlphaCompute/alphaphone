@@ -54,7 +54,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  String instrumentationBaseUrl;
  String instrumentationCredentialSlot;
  private static final int AUDIO_LIMIT=8*1024*1024;
- private static final class Pending { volatile boolean cancelled; volatile HttpURLConnection connection; volatile JSObject result; volatile String failure,failureCode; void cancel(){cancelled=true;if(connection!=null)connection.disconnect();} }
+ private static final class Pending { volatile boolean cancelled; volatile Runnable cancelSpeech; volatile HttpURLConnection connection; volatile JSObject result; volatile String failure,failureCode; void cancel(){cancelled=true;Runnable speech=cancelSpeech;if(speech!=null)speech.run();if(connection!=null)connection.disconnect();} }
  @Override public void load(){getContext().registerComponentCallbacks(localMemoryCallbacks);capture=new AlphaCloudVoiceCapture(getContext(),v->notifyListeners("recordingStopped",v));File[] stale=getContext().getCacheDir().listFiles((d,n)->n.startsWith("alpha-cloud-tts-"));if(stale!=null)for(File f:stale)f.delete();}
  @PluginMethod public void startRecording(PluginCall call){
   if(isDraining()){call.reject("Voice cancellation is still draining");return;}
@@ -118,7 +118,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   PairedAgentCredential pairedCredential=PairedAgentCredential.resolve(call,store);
   if(pairedCredential.cloud&&asr)throw new IOException("Use on-device transcription for this Cloud connection");
   String token=pairedCredential.token;
-  HttpURLConnection c=(HttpURLConnection)new URL(origin+(asr?"/api/asr/whisper":"/api/tts/local-inference")+(status?"/status":"")).openConnection();request.connection=c;
+  HttpURLConnection c=(HttpURLConnection)new URL(origin+(asr?"/api/asr/libelizainference":"/api/tts/local-inference")+(status?"/status":"")).openConnection();request.connection=c;
   c.setInstanceFollowRedirects(false);c.setConnectTimeout(20000);c.setReadTimeout(120000);c.setUseCaches(false);c.setRequestMethod(status?"GET":"POST");c.setDoOutput(!status);c.setRequestProperty("Authorization","Bearer "+token);
   if(pairedCredential.cloud)c.setRequestProperty("X-Eliza-Phone-Protocol","1");
   if(request.cancelled)throw new IOException();return c;
@@ -128,14 +128,14 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   JSONObject body=new JSONObject(new String(response,StandardCharsets.UTF_8));JSObject value=new JSObject();value.put("ready",Boolean.TRUE.equals(body.opt("ready"))&&"local-inference".equals(body.optString("provider")));if(request.cancelled||destroyed)throw new IOException();request.result=value;
  });}
  @PluginMethod public void pairedTranscriptionStatus(PluginCall call){submit(call,request->{
-  HttpURLConnection c=connectPaired(call,true,request,true);successful(c);byte[] response;try(InputStream in=c.getInputStream()){response=read(in,16384,request);}JSONObject data=new JSONObject(new String(response,StandardCharsets.UTF_8));boolean valid=Boolean.TRUE.equals(data.opt("ready"))&&"standalone-whisper.cpp".equals(data.optString("provider"))&&"pcm16-wav".equals(data.optString("format"))&&data.optInt("sampleRate")==16000&&"en".equals(data.optString("language"));JSObject value=new JSObject();value.put("ready",valid);value.put("provider","standalone-whisper.cpp");if(request.cancelled||destroyed)throw new IOException();request.result=value;
+  HttpURLConnection c=connectPaired(call,true,request,true);successful(c);byte[] response;try(InputStream in=c.getInputStream()){response=read(in,16384,request);}JSONObject data=new JSONObject(new String(response,StandardCharsets.UTF_8));boolean valid=Boolean.TRUE.equals(data.opt("ready"))&&"local-inference".equals(data.optString("provider"))&&"pcm16-wav".equals(data.optString("format"))&&"en".equals(data.optString("language"));JSObject value=new JSObject();value.put("ready",valid);value.put("provider","local-inference");if(request.cancelled||destroyed)throw new IOException();request.result=value;
  });}
  @PluginMethod public void transcribePairedRecording(PluginCall call){submit(call,request->{
   String recordingId=required(call.getString("recordingId"),256);File file=capture.selected(recordingId);if(file==null)throw new IOException();
   // Establish exact saved credential binding before decoding; no user paths or URLs are accepted.
   HttpURLConnection c=connectPaired(call,false,request,true);byte[] audio=AlphaVoicePcm.decode(file,()->request.cancelled||destroyed);
   try{c.setRequestProperty("Content-Type","audio/wav");c.setRequestProperty("X-Request-Id",required(call.getString("requestId"),256));c.setFixedLengthStreamingMode(audio.length);try(OutputStream out=c.getOutputStream()){if(request.cancelled)throw new IOException();out.write(audio);}}finally{Arrays.fill(audio,(byte)0);}
-  successful(c);byte[] response;try(InputStream in=c.getInputStream()){response=read(in,128*1024,request);}JSONObject data=new JSONObject(new String(response,StandardCharsets.UTF_8));Object text=data.opt("text");if(!(text instanceof String)||((String)text).isBlank()||((String)text).length()>16000||!"standalone-whisper.cpp".equals(data.optString("provider"))||!Boolean.TRUE.equals(data.opt("local"))||!Objects.equals(call.getString("requestId"),data.optString("requestId")))throw new IOException();if(request.cancelled||destroyed)throw new IOException();JSObject value=new JSObject();value.put("text",text);value.put("local",true);value.put("provider","standalone-whisper.cpp");request.result=value;
+  successful(c);byte[] response;try(InputStream in=c.getInputStream()){response=read(in,128*1024,request);}JSONObject data=new JSONObject(new String(response,StandardCharsets.UTF_8));Object text=data.opt("text");if(!(text instanceof String)||((String)text).isBlank()||((String)text).length()>16000||!"local-inference".equals(data.optString("provider")))throw new IOException();if(request.cancelled||destroyed)throw new IOException();JSObject value=new JSObject();value.put("text",text);value.put("local",true);value.put("provider","local-inference");request.result=value;
  });}
  @PluginMethod public void synthesizePaired(PluginCall call){synthesizeAudio(call,true);}
  @PluginMethod public void synthesizeBrowserReading(PluginCall call){main.post(()->{try{AlphaBrowserPlugin browser=(AlphaBrowserPlugin)getBridge().getPlugin("AlphaBrowser").getInstance();if("device".equals(call.getString("execution")))throw new IllegalArgumentException();String reviewed=browser.consumeReading(call);synthesizeAudio(call,true,reviewed);}catch(Exception error){call.reject("Reading approval expired");}});}
@@ -171,17 +171,17 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   successful(c);byte[] response;try(InputStream in=c.getInputStream()){response=read(in,256*1024,request);}JSONObject data=new JSONObject(new String(response,StandardCharsets.UTF_8));Object transcript=data.get("transcript");if(!(transcript instanceof String))throw new IOException();
   if(request.cancelled||destroyed)throw new IOException();JSObject result=new JSObject();result.put("text",transcript);result.put("local",false);request.result=result;
  });}
- private void submitLocal(PluginCall call,Work work){submit(call,request->{main.removeCallbacks(localIdleRelease);try{work.run(request);}catch(Exception error){localEngine.release();throw error;}catch(LinkageError|OutOfMemoryError error){localEngine.release();throw new IOException("On-device speech unavailable",error);}finally{if(request.cancelled||destroyed)localEngine.release();else scheduleLocalRelease(speechForeground?120000:30000);}});}
+ private void submitLocal(PluginCall call,Work work){submit(call,request->{request.cancelSpeech=localEngine::cancel;main.removeCallbacks(localIdleRelease);try{work.run(request);}catch(Exception error){localEngine.release();throw error;}catch(LinkageError|OutOfMemoryError error){localEngine.release();throw new IOException("On-device speech unavailable",error);}finally{if(request.cancelled||destroyed)localEngine.release();else scheduleLocalRelease(speechForeground?120000:30000);}});}
  // Local CPU execution has no dependency on an account, URL, or host process.
  @PluginMethod public void localSpeechStatus(PluginCall call){submitLocal(call,request->{
-  localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();return null;});
-  if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",true);out.put("execution","device");out.put("provider","sherpa-onnx-cpu");request.result=out;
+  localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();engine.prepare();return null;});
+  if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",true);out.put("execution","device");out.put("provider","libelizainference");request.result=out;
  });}
  @PluginMethod public void transcribeLocalRecording(PluginCall call){submitLocal(call,request->{
   File file=capture.selected(required(call.getString("recordingId"),256));if(file==null)throw new IOException();byte[] wav=AlphaVoicePcm.decode(file,()->request.cancelled||destroyed);float[] samples;
   try{samples=ai.eliza.speech.LocalSpeechEngine.readMono16kWav(new ByteArrayInputStream(wav));}finally{Arrays.fill(wav,(byte)0);}
   String text;try{text=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();return engine.transcribe(samples);});}finally{Arrays.fill(samples,0);}
-  if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("text",text);out.put("local",true);out.put("execution","device");out.put("provider","sherpa-onnx-cpu");request.result=out;
+  if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("text",text);out.put("local",true);out.put("execution","device");out.put("provider","libelizainference");request.result=out;
  });}
  @PluginMethod public void synthesizeLocal(PluginCall call){main.post(()->{if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&(playbackFile!=null||!pending.isEmpty())){call.reject("Speaker is in use","playback-busy");return;}synthesizeLocalNow(call);});}
  private void synthesizeLocalNow(PluginCall call){synthesizeLocalNow(call,null);}

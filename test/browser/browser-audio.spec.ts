@@ -26,12 +26,8 @@ test('browser voice encodes audio, reviews a transcript, persists audio and relo
   return {...result,stopped};
  },clip.recordingId);
  expect(saved.stopped).toBe(true);expect(saved.transcript).toBe('Reviewed local audio');
- let modelRequested!:()=>void;const requested=new Promise<void>(resolve=>{modelRequested=resolve;});
- await page.route('**/browser-speech/manifest.json',async route=>{modelRequested();await new Promise(resolve=>setTimeout(resolve,5000));await route.continue().catch(()=>{});});
- await page.evaluate(async(id)=>{const {registerPlugin}=await import('/src/platform-plugins.ts');(window as any).cancelledTranscript=registerPlugin<any>('AlphaVoiceCloud').transcribeLocalRecording({recordingId:id}).then(()=>false,(error:Error)=>error.name);},clip.recordingId);
- await requested;
- await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));
- expect(await page.evaluate(()=>(window as any).cancelledTranscript)).toBe('AbortError');
+ const unavailable=await page.evaluate(async(id)=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return registerPlugin<any>('AlphaVoiceCloud').transcribeLocalRecording({recordingId:id}).then(()=>'',(error:Error)=>error.message);},clip.recordingId);
+ expect(unavailable).toContain('Connect a local agent with native speech configured');
  await page.reload();
  const retained=await page.evaluate(async(id)=>{
   const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('alpha.browser.audio.v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});

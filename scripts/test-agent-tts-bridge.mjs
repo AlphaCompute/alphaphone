@@ -16,11 +16,11 @@ const host=http.createServer(async(req,res)=>{
  else if(req.url==='/api/auth/me')value={identity:{id:'owner'},access:{role:'OWNER'},session:{id:token,expiresAt:Date.now()+60000}};
  else{
   calls++;assert.equal(req.headers.authorization,`Bearer ${token}`);
-  if(req.url.endsWith('/status')){assert.equal(req.method,'GET');value={ready:true,provider:'standalone-kokoro'};}
+  if(req.url.endsWith('/status')){assert.equal(req.method,'GET');value={ready:true,provider:'libelizainference-paradee'};}
   else{
    assert.equal(req.method,'POST');assert.equal(req.headers['content-type'],'application/json');assert.deepEqual(JSON.parse(raw),{text:'Synthetic speech'});
    if(mode==='held'){res.on('close',closed);return;}
-   res.writeHead(200,{'Content-Type':mode==='type'?'text/plain':'audio/wav','X-Request-Id':mode==='id'?randomUUID():req.headers['x-request-id'],'X-Eliza-Speech-Provider':mode==='provider'?'other':'standalone-kokoro'});
+   res.writeHead(200,{'Content-Type':mode==='type'?'text/plain':'audio/wav','X-Request-Id':mode==='id'?randomUUID():req.headers['x-request-id'],'X-Eliza-Speech-Provider':mode==='provider'?'other':'libelizainference-paradee'});
    res.end(mode==='oversized'?Buffer.alloc(1440045):mode==='invalid'?Buffer.from('invalid WAV'):wav);return;
   }
  }
@@ -29,12 +29,12 @@ const host=http.createServer(async(req,res)=>{
 const listen=server=>new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));await listen(host);
 const proxy=http.createServer(createLocalAgentDevHandler({origin:`http://127.0.0.1:${host.address().port}`,tokenFile}));await listen(proxy);const origin=`http://127.0.0.1:${proxy.address().port}`;
 const invoke=(input,signal)=>fetch(origin,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},body:JSON.stringify(input),signal});
-const input={path:'/api/tts/kokoro',method:'POST',ownerId:'owner',requestId:randomUUID(),body:JSON.stringify({text:'Synthetic speech'})};
+const input={path:'/api/tts/paradee',method:'POST',ownerId:'owner',requestId:randomUUID(),body:JSON.stringify({text:'Synthetic speech'})};
 try{
- const response=await invoke(input);assert.equal(response.status,200);const envelope=await response.json();assert.equal(envelope.status,200);const result=JSON.parse(envelope.body);assert.deepEqual(Buffer.from(result.audioBase64,'base64'),wav);assert.equal(result.requestId,input.requestId);assert.equal(result.provider,'standalone-kokoro');assert.ok(!JSON.stringify(envelope).includes(token));
- assert.equal((await invoke({path:'/api/tts/kokoro/status',method:'GET',ownerId:'owner'})).status,200);
+ const response=await invoke(input);assert.equal(response.status,200);const envelope=await response.json();assert.equal(envelope.status,200);const result=JSON.parse(envelope.body);assert.deepEqual(Buffer.from(result.audioBase64,'base64'),wav);assert.equal(result.requestId,input.requestId);assert.equal(result.provider,'libelizainference-paradee');assert.ok(!JSON.stringify(envelope).includes(token));
+ assert.equal((await invoke({path:'/api/tts/paradee/status',method:'GET',ownerId:'owner'})).status,200);
  const before=calls;
- for(const patch of [{ownerId:undefined},{requestId:'bad'},{method:'GET'},{body:'{'},{body:JSON.stringify({text:'x'.repeat(501)})},{body:JSON.stringify({text:'Synthetic speech',voice:'other'})},{audioBase64:'AAAA'},{stream:true},{path:'/api/tts/kokoro/other'}])assert.equal((await invoke({...input,...patch})).status,400);
+ for(const patch of [{ownerId:undefined},{requestId:'bad'},{method:'GET'},{body:'{'},{body:JSON.stringify({text:'x'.repeat(501)})},{body:JSON.stringify({text:'Synthetic speech',voice:'other'})},{audioBase64:'AAAA'},{stream:true},{path:'/api/tts/paradee/other'}])assert.equal((await invoke({...input,...patch})).status,400);
  assert.equal((await invoke({...input,ownerId:'other-owner'})).status,409);assert.equal(calls,before);
  for(const bad of ['id','type','provider','invalid','oversized']){mode=bad;const result=await invoke(input);assert.equal(result.status,bad==='oversized'?503:502,bad);assert.ok(!(await result.text()).includes('audioBase64'));}
  mode='held';const controller=new AbortController(),prior=calls,pending=invoke(input,controller.signal);

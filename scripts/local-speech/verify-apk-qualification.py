@@ -49,6 +49,40 @@ def qualify(apk, record, required_abis=('arm64-v8a',)):
     }
 
 
+def qualify_native(apk, record, source_commit, build_record_digest):
+    result = qualify(apk, record)
+    differences = result['differences']
+    if record.get('sourceCommit') != source_commit:
+        differences.append('Native speech qualification uses another source revision')
+    if not build_record_digest or record.get('buildRecordSha256') != build_record_digest:
+        differences.append('Native speech build record is not the qualified record')
+    assets = record.get('assets', [])
+    if not assets or not any(row.get('path') == 'assets/paradee-voice/v1/manifest.json' for row in assets):
+        differences.append('Native speech has no qualified model inventory')
+    with zipfile.ZipFile(apk) as archive:
+        for row in assets:
+            name = row.get('path', '')
+            if not name.startswith('assets/paradee-voice/v1/') or archive.namelist().count(name) != 1:
+                differences.append(name + ': missing or invalid qualified asset')
+                continue
+            digest = hashlib.sha256()
+            size = 0
+            with archive.open(name) as stream:
+                while chunk := stream.read(65536):
+                    size += len(chunk)
+                    digest.update(chunk)
+            if size != row.get('bytes') or digest.hexdigest() != row.get('sha256'):
+                differences.append(name + ': differs from qualified model bytes')
+    result['byteMatch'] = not differences
+    result['qualified'] = result['byteMatch'] and result['functionalPassed']
+    return result
+
+
 if __name__ == '__main__':
-    record = Path(__file__).resolve().parents[2] / 'android/local-speech/qualified-runtime-manifest.json'
-    print(json.dumps(qualify(sys.argv[1], json.loads(record.read_text()))))
+    root = Path(__file__).resolve().parents[2]
+    record = root / 'android/local-speech/native-qualification.json'
+    baseline = json.loads(record.read_text()) if record.is_file() else {'schemaVersion': 2, 'qualifiedAbis': [], 'functionalAcceptance': {'passed': False, 'abis': {}}}
+    pin = json.loads((root / 'upstream.lock.json').read_text())['commit']
+    build = root / 'artifacts/native-voice/build-record.json'
+    digest = hashlib.sha256(build.read_bytes()).hexdigest() if build.is_file() else None
+    print(json.dumps(qualify_native(sys.argv[1], baseline, pin, digest)))

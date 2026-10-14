@@ -151,12 +151,11 @@ For real host inference and speech, follow the separate [local agent setup](docs
 **Settings → Character → Wake assistant** opens the recording UI; recording starts
 only after Start recording is selected.
 
-Voice recording in the web build is transcribed locally by Whisper tiny.en (English only) in a
-browser worker; audio is not uploaded and the transcript is always reviewed before it is saved
-or used. The ~56 MB model is downloaded once at build time by `npm run browser-speech:prepare`
-(run automatically before `build` and the dev servers), self-hosted under `browser-speech/` and
-loaded only on the first transcription. APKs omit it. See
-[in-browser speech recognition](docs/browser-speech-recognition.md).
+Voice capture stays in the browser until the user requests transcription. A connected
+local agent processes it through libelizainference ASR; speech output uses Paradee.
+The browser no longer downloads an ONNX model or uses an ONNX worker. Without a
+configured native speech host, transcription reports unavailable. Transcripts are
+reviewed before use. See [browser speech](docs/browser-speech-recognition.md).
 
 Deleted notes, including voice notes, move to a Trash inside Notes and are erased
 automatically 3 days after deletion; Undo, Restore, Delete forever and Empty Trash are
@@ -176,33 +175,32 @@ recognize the usual macOS Homebrew JDK/Android SDK locations. The Gradle 8.13
 wrapper is hash-pinned. No Eliza root dependency installation or package
 publication is required for this shell.
 
-Before the first Android build, reproduce the pinned speech runtime and model
-assets using [the local speech build instructions](scripts/local-speech/README.md).
-These generated inputs are intentionally absent from Git. Both ARM64 and x86_64
-runtimes are required; Android CI provisions and validates them on a clean checkout.
-The build requires Android NDK r28c (`28.2.13676358`) and CMake 4.0.3 and refuses other
-versions. A local rebuild does not reproduce the qualified hashes in
-`android/local-speech/runtime-manifest.json` (see the instructions for why), so
-`install-generated.py` refuses it unless `--allow-unqualified-runtime` is passed; APKs
-built with such a runtime are build evidence, not release candidates.
+Android speech uses the pinned shared `paradee-voice` module: libelizainference ASR
+and Paradee TTS, with no Sherpa AAR. `npm run native:speech:build` builds both shipped
+ABIs and stages verified models outside the vendor checkout. It requires Android
+NDK r28c (`28.2.13676358`), CMake, Python with the model converter dependencies,
+and pinned ASR assets (set `ALPHA_ASR_MODEL_DIR`, or use the verified local cache).
+See [native speech](docs/native-speech.md). Generated inputs are absent from Git.
+A successful build does not qualify native bytes or functional speech on a device.
 
 Every Android build also needs the prepared resident runtime source in
 `artifacts/local-agent-resident-<commit>` (from `upstream.lock.json`): Gradle's
 `stageLocalAgentSources` step generates the native agent service classes from it.
 Distribution builds also need the staged runtime payload, which in turn needs the
 workflow-worker artifact (`artifacts/mobile-workflow-worker-<commit>`). On a clean
-checkout, after the speech AAR above, one command does all of it:
+checkout, one command runs the preparation chain:
 
 ```sh
 # What the strict build needs, what is there, and whether a script or a person supplies
 # each missing input. Reads files only; always exits 0.
 npm run android:build:inputs
-# Strict distribution chain: check inputs, the embedding host, prepare, build the worker,
+# Strict distribution chain: check inputs, build native speech and the embedding host, prepare the worker,
 # stage the runtime, regenerate the notices for it, then build and verify all four APKs.
 # Safe to rerun: preparation and the worker artifact are reused only when they verify
 # against the current source.
 npm run android:build:local
 # The same chain step by step:
+npm run native:speech:build
 npm run agent:build-embedding-host
 npm run agent:prepare
 npm run agent:build-workflow-worker
@@ -216,7 +214,7 @@ npm run android:build -- --allow-unpackaged-runtime
 
 `npm run android:build` first runs `scripts/android-build-preflight.mjs` and stops
 (exit 2), before the web sync and Gradle, naming the command to run when the pinned
-`vendor/eliza` checkout, the installed speech AAR, the prepared runtime source or (for
+`vendor/eliza` checkout, the native speech bundle, the prepared runtime source or (for
 distribution builds) the staged runtime payload is missing or stale.
 
 Three inputs of a distributable build cannot come from a script, and

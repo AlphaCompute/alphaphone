@@ -1,3 +1,4 @@
+import {stageNativeSpeech} from './fixtures/native-speech-inputs.mjs';
 // What the strict distribution build needs, which of it a script may produce, and which needs a person.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -174,8 +175,8 @@ test('the input report separates what a script produces from what needs a person
   assert.deepEqual(rows.filter(item => item.suppliedBy === 'person').map(item => item.input), ['speech runtime qualified', 'embedding host libraries', 'release signer']);
   assert.ok(rows.every(item => item.state === 'missing' && item.action), 'an empty checkout has nothing ready and an action for every input');
   assert.match(row('pinned upstream checkout').action, /git submodule update --init vendor\/eliza/);
-  assert.match(row('speech runtime qualified').detail, /installed AAR is not the reviewed one.*functional acceptance is failed \(arm64-v8a failed, x86_64 not-executed\)/);
-  assert.match(row('speech runtime qualified').action, /^Needs a person: approved policy requires on-device speech on both shipped ABIs/);
+  assert.match(row('speech runtime qualified').detail, /Native ASR and Paradee require byte admission and functional evidence/);
+  assert.match(row('speech runtime qualified').action, /Qualify the newly built native voice bundle on both shipped ABIs/);
   assert.match(row('embedding host libraries').action, /^Needs a person: /);
   assert.match(row('release signer').action, /^Needs a person: Alpha Compute controls signing and Shaw owns release/);
   assert.match(row('release signer').detail, /says unset; not set in this environment: ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS, ELIZAOS_KEY_PASSWORD/);
@@ -187,7 +188,7 @@ test('the input report separates what a script produces from what needs a person
   assert.match(report, /do not stop the build: verify-apks records its releases distributable:false/);
 
   // A locally built speech runtime is installed but is never the qualified one; values of signing variables are never printed.
-  f.write('android/local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar', 'local build');
+  stageNativeSpeech(f.root, 'c'.repeat(40));
   for (const name of f.names) f.stage(name);
   const prepared = path.join(f.root, 'artifacts/local-agent-resident-' + 'c'.repeat(40));
   f.write(path.relative(f.root, path.join(prepared, '.alpha-runtime-source.json')), 'stamp');

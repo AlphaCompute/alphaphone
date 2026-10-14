@@ -8,7 +8,7 @@ import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
 import {fileURLToPath} from 'node:url';
 
-const source=fs.readFileSync(new URL('../vendor/eliza/packages/app/src/api/standalone-kokoro-service.ts',import.meta.url),'utf8');
+const source=fs.readFileSync(new URL('../vendor/eliza/packages/app/src/api/standalone-speech-service.ts',import.meta.url),'utf8');
 const children=[];
 const imports=new Map([
  ['node:child_process',new vm.SyntheticModule(['spawn'],function(){this.setExport('spawn',()=>{
@@ -19,7 +19,7 @@ const imports=new Map([
 ]);
 const module=new vm.SourceTextModule(stripTypeScriptTypes(source),{initializeImportMeta:meta=>{meta.resolve=()=> 'file:///synthetic-worker.ts';}});
 await module.link(name=>{assert.ok(imports.has(name),`Unexpected service import: ${name}`);return imports.get(name);});await module.evaluate();
-const Service=module.namespace.StandaloneKokoroService;
+const Service=module.namespace.StandaloneTtsService;
 const ready=child=>child.stdio[3].emit('data',Buffer.from('{"ready":true}\n'));
 const id='00000000-0000-0000-0000-000000000001';
 
@@ -44,8 +44,10 @@ for(const phase of ['boot','synthesis'])for(const stream of ['input','output']){
  try{
   const boot=service.initialize(),child=children.at(-1);ready(child);await boot;
   const controller=new AbortController(),pending=service.synthesize(id,'Synthetic speech',controller.signal);await Promise.resolve();
-  const rejected=assert.rejects(pending,/stopped/);controller.abort();await rejected;
-  assert.equal(child.killed,true);assert.equal(service.initialized,false);assert.equal(service.busy,false);
+  const rejected=assert.rejects(pending,/cancelled/);controller.abort();await rejected;
+  assert.equal(child.killed,false);assert.equal(service.busy,true);
+  child.stdio[3].emit('data',Buffer.from(JSON.stringify({id,error:"cancelled"})+"\n"));
+  assert.equal(service.initialized,true);assert.equal(service.busy,false);
  }finally{service.stop();}
 }
 {
@@ -54,12 +56,13 @@ for(const phase of ['boot','synthesis'])for(const stream of ['input','output']){
   const before=children.length,boot=service.initialize(),child=children.at(-1);
   const controller=new AbortController();
   const speech=service.synthesize(id,'First phrase while startup is warming',controller.signal);
-  const rejected=assert.rejects(speech,/stopped/);
+  const rejected=assert.rejects(speech,/cancelled/);
   await Promise.resolve();assert.equal(children.length,before+1,'First request shares the cold startup worker');
   assert.equal(service.initialized,false);assert.equal(service.busy,false);
   ready(child);await boot;await Promise.resolve();
   assert.equal(service.initialized,true);assert.equal(service.busy,true);
-  controller.abort();await rejected;assert.equal(child.killed,true);
+  controller.abort();await rejected;assert.equal(child.killed,false);
+  child.stdio[3].emit('data',Buffer.from(JSON.stringify({id,error:"cancelled"})+"\n"));
  }finally{service.stop();}
 }
 console.log('TTS worker boot/synthesis pipe failures, generation fencing and cancellation passed.');

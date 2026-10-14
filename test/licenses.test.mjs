@@ -35,7 +35,7 @@ test('the committed notices flag what the product ships today, in the JSON and a
   assert.deepEqual(flagged.mediabunny, ['copyleft-weak']);
   assert.deepEqual(flagged['OpenStreetMap data'], ['share-alike-data']);
   assert.deepEqual(flagged['pdf.js QuickJS sandbox'], ['licence-text-missing-from-package', 'unverified']);
-  assert.deepEqual(flagged['Piper LJSpeech medium voice model (int8)'], ['unverified']);
+  assert.deepEqual(flagged['Native ASR training-data terms'], ['unverified']);
   assert.deepEqual(flagged['Denton typeface'], ['proprietary-licence-held-outside-repo']);
   // Packages that ship no licence file carry the canonical text of their declared licence.
   const tr46 = fresh.entries.find(entry => entry.name === 'tr46');
@@ -161,14 +161,14 @@ test('an item with no recorded reason is still listed and flagged; reason files 
   const dir = scratchRoot(t);
   const file = path.join(dir, ALLOWLIST);
   const allowlist = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const piper = result => result.entries.find(entry => entry.name === 'Piper LJSpeech medium voice model (int8)');
-  fs.writeFileSync(file, JSON.stringify({...allowlist, entries: allowlist.entries.filter(entry => !entry.name.startsWith('Piper'))}));
+  const piper = result => result.entries.find(entry => entry.name === 'Native ASR training-data terms');
+  fs.writeFileSync(file, JSON.stringify({...allowlist, entries: allowlist.entries.filter(entry => !entry.name.startsWith('Native ASR'))}));
   let result = collectNotices(dir);
   assert.deepEqual(result.errors, []);
-  assert.ok(result.warnings.some(warning => warning.startsWith('Piper LJSpeech') && warning.includes('no reason recorded')));
+  assert.ok(result.warnings.some(warning => warning.startsWith('Native ASR') && warning.includes('no reason recorded')));
   assert.deepEqual([piper(result).license, piper(result).flags], [UNVERIFIED, ['unverified']]);
-  assert.match(piper(fresh).obligations[0].note, /^The pinned voice model card lists the LJ Speech dataset as public domain/);
-  assert.doesNotMatch(piper(result).obligations[0].note, /LJ Speech/);
+  assert.match(piper(fresh).obligations[0].note, /^The optional Phonon-2 NOTICE/);
+  assert.doesNotMatch(piper(result).obligations[0].note, /SPGISpeech/);
   fs.writeFileSync(file, JSON.stringify({...allowlist, entries: [...allowlist.entries, {name: 'Removed font', reason: 'no longer shipped anywhere in the product'}]}));
   result = collectNotices(dir);
   assert.deepEqual(result.errors, []);
@@ -231,10 +231,11 @@ test('broken input still fails: a corrupted or missing package manifest is an er
   assert.equal(result.errors.length, 2);
 });
 
-test('generation fails when pinned speech license copies drift from the upstream reference manifest', t => {
-  const dir = scratchRoot(t);
-  fs.appendFileSync(path.join(dir, 'licenses/whisper-MIT.txt'), '\nmodified');
-  assert.ok(collectNotices(dir).errors.some(error => error.includes('licenses/whisper-MIT.txt does not match')));
+test('native speech notices preserve the upstream license declarations', () => {
+  const pins = JSON.parse(fs.readFileSync(path.join(ROOT,'vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json')));
+  assert.equal(fresh.entries.find(entry=>entry.name==='eSpeak NG native pronunciation fallback').license,pins.espeak.license);
+  assert.equal(fresh.entries.find(entry=>entry.name==='Paradee-8M native voice model').license,pins.paradee.license);
+  assert.equal(fresh.entries.some(entry=>/Sherpa|Piper LJSpeech|Whisper tiny/.test(entry.name)),false);
 });
 
 function scratchRoot(t, {ownNodeModules = false} = {}) {

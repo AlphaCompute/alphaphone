@@ -9,9 +9,11 @@ export function verifyPinnedUpstream(root) {
 	);
 	const directory = path.join(root, "vendor/eliza");
 	verifyCommittedWorkspace(directory, commit, {
-		// These six Gradle projects are declared in android/settings.gradle. Tracked
+		// Gradle module outputs and the shared native builder cache are generated. Tracked
 		// files are always authenticated, including files inside output directories.
 		generatedDirectories: [
+            ".cache/elizavoice-android",
+            ...[
 			"system",
 			"camera",
 			"location",
@@ -19,6 +21,7 @@ export function verifyPinnedUpstream(root) {
 			"calendar",
 			"reminders",
 		].map((name) => `plugins/plugin-native-${name}/android/build`),
+        ],
 	});
 	return { directory, commit };
 }

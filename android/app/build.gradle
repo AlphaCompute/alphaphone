@@ -38,6 +38,8 @@ android {
  }
  buildFeatures { buildConfig true }
  defaultConfig {
+  buildConfigField 'String', 'ELIZA_ASR_BACKEND', '"auto"'
+  buildConfigField 'String', 'ELIZA_ASR_THREADS', '""'
   buildConfigField 'boolean', 'AOSP_BUILD', 'false'
   buildConfigField 'String', 'ELIZA_CHROMIUM_PACKAGE_NAME', '""'
   buildConfigField 'String', 'ELIZA_CHROMIUM_CERT_SHA256', '""'
@@ -89,16 +91,6 @@ android {
  }
  compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
 }
-// Instrumentation diagnoses the same audited runtime already packaged by local-speech.
-// Extract only its Java API for compilation; do not package a second AAR/JNI runtime.
-def speechTestApiJar = layout.buildDirectory.file('generated/speech-android-test-api/classes.jar')
-def extractSpeechAndroidTestApi = tasks.register('extractSpeechAndroidTestApi', Sync) {
- dependsOn ':local-speech:preBuild'
- from(zipTree(file('../local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar'))) {
-  include 'classes.jar'
- }
- into layout.buildDirectory.dir('generated/speech-android-test-api')
-}
 dependencies {
  implementation project(':eliza-network-policy')
  implementation 'androidx.browser:browser:1.9.0'
@@ -119,7 +111,6 @@ dependencies {
  implementation "androidx.webkit:webkit:$rootProject.ext.androidxWebkitVersion"
  implementation "androidx.appcompat:appcompat:$rootProject.ext.androidxAppCompatVersion"
  implementation "androidx.core:core-splashscreen:$rootProject.ext.coreSplashScreenVersion"
- androidTestCompileOnly files(speechTestApiJar).builtBy(extractSpeechAndroidTestApi)
  androidTestImplementation 'androidx.test:runner:1.6.2'
  androidTestImplementation 'androidx.test.ext:junit:1.3.0'
  // Accessibility (ATF through Espresso) and TalkBack-order/rotation checks over the real UI.
@@ -141,6 +132,31 @@ def verifyEmbeddingHost = tasks.register('verifyEmbeddingHost', Exec) {
  commandLine args
 }
 tasks.named('preBuild').configure { dependsOn verifyEmbeddingHost }
+
+// Speech supplies the one fused inference library. A resident host may use it only
+// when its reviewed copy has exactly the same bytes; never pick an arbitrary duplicate.
+android.sourceSets.main.jniLibs.exclude '**/libelizainference.so', '**/libc++_shared.so'
+def verifySharedInference = tasks.register('verifySharedInference') {
+ doLast {
+  ['arm64-v8a', 'x86_64'].each { abi ->
+   def resident = file("src/main/jniLibs/${abi}/libelizainference.so")
+   if (resident.isFile()) {
+    def speech = file("../../artifacts/native-voice/jniLibs/${abi}/libelizainference.so")
+    if (!speech.isFile() || java.nio.file.Files.mismatch(resident.toPath(), speech.toPath()) != -1L)
+     throw new GradleException("Resident and native speech inference bytes differ for ${abi}; qualify and stage a shared build before packaging both.")
+   }
+   def residentCxx = file("src/main/jniLibs/${abi}/libc++_shared.so")
+   if (residentCxx.isFile()) {
+    def ndk = new File(android.sdkDirectory, "ndk/${project(':local-speech').android.ndkVersion}")
+    def triple = abi == 'arm64-v8a' ? 'aarch64-linux-android' : 'x86_64-linux-android'
+    def candidates = fileTree(new File(ndk, 'toolchains/llvm/prebuilt')).matching { include "*/sysroot/usr/lib/${triple}/libc++_shared.so" }.files
+    if (candidates.size() != 1 || java.nio.file.Files.mismatch(residentCxx.toPath(), candidates.first().toPath()) != -1L)
+     throw new GradleException("Resident C++ runtime differs from the native speech NDK for ${abi}; qualify a shared build before packaging both.")
+   }
+  }
+ }
+}
+tasks.named('preBuild').configure { dependsOn verifySharedInference }
 
 // The authenticated source receipt travels with every application APK, binding audits to built bytes.
 def nativePatchAssets = layout.buildDirectory.dir('generated/native-patch-assets')

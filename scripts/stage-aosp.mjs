@@ -199,7 +199,7 @@ if (listenerApk) {
   if (listenerDescriptor)
     checkListenerDescriptor(JSON.parse(fs.readFileSync(listenerDescriptor, "utf8")), { appId: identity.appId, apkSha256: listenerHash, signer: listenerSigner });
   // A listener without its speech model can never listen; production refuses it.
-  const qualifiedAbis = JSON.parse(fs.readFileSync("android/local-speech/qualified-runtime-manifest.json", "utf8")).qualifiedAbis;
+  const qualifiedAbis = JSON.parse(fs.readFileSync("android/local-speech/native-qualification.json", "utf8")).qualifiedAbis;
   const entries = execFileSync("unzip", ["-Z1", listenerApk], { encoding: "utf8", maxBuffer: 64 << 20 }).split(/\r?\n/).filter(Boolean);
   try {
     const packaged = checkListenerSpeechBundle(entries, qualifiedAbis);

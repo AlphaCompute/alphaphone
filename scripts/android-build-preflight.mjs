@@ -6,7 +6,7 @@
  *   node scripts/android-build-preflight.mjs --report [--json]     (npm run android:build:inputs)
  *
  * build-android.mjs runs the full check. `--before-prepare` checks only inputs that
- * android:build:local does not produce (the pinned checkout and the speech AAR), so
+ * android:build:local does not produce (the pinned checkout), so
  * that chain stops before the long runtime preparation instead of after it.
  * `--report` lists every input of the strict distribution build with its state and whether a
  * script or a person supplies it. It reads files only, builds nothing and always exits 0.
@@ -19,12 +19,9 @@ import {fileURLToPath} from 'node:url';
 import {verifyEmbeddingHost} from './stage-embedding-host.mjs';
 import {BUILD_TOOLCHAIN, HUMAN_ACTION, QUALIFIED_HOST, stagedLibraries} from './build-embedding-host.mjs';
 
-export const SPEECH_AAR = 'android/local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar';
-export const SPEECH_MANIFEST = 'android/local-speech/runtime-manifest.json';
-export const SPEECH_QUALIFIED = 'android/local-speech/qualified-runtime-manifest.json';
+import {nativeSpeechInputs,NATIVE_VOICE_QUALIFICATION,NATIVE_VOICE_RECORD,fileDigest} from './native-speech-inputs.mjs';
 export const GRADLE_VERIFICATION = 'android/gradle/verification-metadata.xml';
 const FULL_CHAIN = 'npm run android:build:local';
-const SPEECH_GUIDE = 'scripts/local-speech/README.md';
 
 const sha256 = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 function readHead(directory) {
@@ -35,21 +32,13 @@ function readHead(directory) {
   }
 }
 
-/** Inputs no preparation step produces: the pinned checkout and the speech AAR. */
+/** Inputs no preparation step produces: the pinned checkout. */
 export function checkoutProblems(root) {
   const problems = [];
   const pin = JSON.parse(fs.readFileSync(path.join(root, 'upstream.lock.json'), 'utf8')).commit;
   const head = readHead(path.join(root, 'vendor/eliza'));
   if (head !== pin)
     problems.push(`vendor/eliza is ${head ? `at ${head}` : 'not checked out'}; upstream.lock.json pins ${pin}. Run: git submodule update --init vendor/eliza`);
-  const aar = path.join(root, SPEECH_AAR);
-  if (!fs.existsSync(aar)) {
-    problems.push(`Speech runtime ${SPEECH_AAR} is missing (Gradle :local-speech:preBuild needs it). Build and install it with the commands in ${SPEECH_GUIDE}. A local rebuild is not the qualified runtime: the reviewed AAR needs a person (npm run android:build:inputs).`);
-  } else {
-    const approved = JSON.parse(fs.readFileSync(path.join(root, SPEECH_MANIFEST), 'utf8')).aarSha256;
-    if (sha256(aar) !== approved)
-      problems.push(`Speech runtime ${SPEECH_AAR} does not match ${SPEECH_MANIFEST} (Gradle :local-speech:preBuild rejects it). Rebuild and install it with the commands in ${SPEECH_GUIDE}.`);
-  }
   return problems;
 }
 
@@ -58,6 +47,8 @@ export function checkoutProblems(root) {
  * directory (sourceDirectory()). Distribution builds also need the staged runtime.
  */
 export function preparedRuntimeProblems(root, preparedSource, {allowUnpackagedRuntime = false, testMocks = false, embeddingHost = verifyEmbeddingHost} = {}) {
+  const voice=nativeSpeechInputs(root);
+  if(!voice.ready)return [...voice.problems,'Run npm run native:speech:build.'];
   const stamp = path.join(preparedSource, '.alpha-runtime-source.json');
   if (!fs.existsSync(stamp))
     return [`Prepared runtime source ${path.relative(root, preparedSource)} is missing (Gradle :app:stageLocalAgentSources reads it). Run: ${FULL_CHAIN} for distributable APKs, or npm run agent:prepare before npm run android:build -- --allow-unpackaged-runtime for developer APKs.`];
@@ -111,18 +102,11 @@ export function strictBuildInputs(root, preparedSource, {env = process.env} = {}
   const head = readHead(path.join(root, 'vendor/eliza'));
   add('pinned upstream checkout', head === pin, 'script', `vendor/eliza ${head ? `at ${head}` : 'not checked out'}; pin ${pin}`, 'git submodule update --init vendor/eliza');
 
-  const aar = path.join(root, SPEECH_AAR);
-  const installed = fs.existsSync(aar) ? sha256(aar) : null;
-  const local = readJson(root, SPEECH_MANIFEST);
-  add('speech runtime installed', installed !== null && installed === local.aarSha256, 'script',
-    installed === null ? `${SPEECH_AAR} is absent` : installed === local.aarSha256 ? `${SPEECH_AAR} matches ${SPEECH_MANIFEST}` : `${SPEECH_AAR} does not match ${SPEECH_MANIFEST}`,
-    `the commands in ${SPEECH_GUIDE} (a local rebuild is not the qualified runtime: it installs only with --allow-unqualified-runtime, and its APKs are never distributable)`);
-  const qualified = readJson(root, SPEECH_QUALIFIED);
-  const acceptance = qualified.functionalAcceptance ?? {};
-  const speechProblems = [installed !== qualified.aarSha256 && `the installed AAR is not the reviewed one (${qualified.aarSha256})`,
-    acceptance.passed !== true && `functional acceptance is ${acceptance.state ?? 'not recorded'} (${Object.entries(acceptance.abis ?? {}).map(([abi, value]) => `${abi} ${value.state}`).join(', ')})`].filter(Boolean);
-  add('speech runtime qualified', speechProblems.length === 0, 'person', speechProblems.length ? speechProblems.join('; ') : `reviewed AAR installed and ${SPEECH_QUALIFIED} records functional acceptance passed`,
-    'Needs a person: approved policy requires on-device speech on both shipped ABIs (#397, #413). Supply the reviewed AAR or requalify a rebuilt runtime on both ABIs with functional evidence (scripts/local-speech/README.md); a local rebuild does not reproduce the reviewed bytes.');
+  const native = nativeSpeechInputs(root);
+  add('speech runtime installed', native.ready, 'script', native.ready ? 'Pinned native voice bundle verified' : native.problems.join('; '), 'npm run native:speech:build');
+  const qualification = fs.existsSync(path.join(root,NATIVE_VOICE_QUALIFICATION)) ? readJson(root,NATIVE_VOICE_QUALIFICATION) : {};
+  const accepted = native.ready && qualification.functionalAcceptance?.passed === true && qualification.sourceCommit === pin && qualification.buildRecordSha256 === fileDigest(path.join(root,NATIVE_VOICE_RECORD)) && ['arm64-v8a','x86_64'].every(abi=>qualification.functionalAcceptance?.abis?.[abi]?.passed === true);
+  add('speech runtime qualified', accepted, 'person', accepted ? 'Native voice qualification recorded' : 'Native ASR and Paradee require byte admission and functional evidence for both shipped ABIs', 'Qualify the newly built native voice bundle on both shipped ABIs; legacy Sherpa evidence does not qualify this engine.');
 
   const host = readJson(root, QUALIFIED_HOST), toolchain = readJson(root, BUILD_TOOLCHAIN);
   const libraries = stagedLibraries(root, host);

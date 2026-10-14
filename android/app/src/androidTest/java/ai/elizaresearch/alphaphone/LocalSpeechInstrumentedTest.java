@@ -40,8 +40,8 @@ public final class LocalSpeechInstrumentedTest {
    LocalSpeechEngine.Audio second=engine.synthesize("Your calendar is ready.");assertFalse("Distinct input must create distinct waveform",Arrays.equals(audio.samples,second.samples));
    LocalSpeechEngine.Audio unusual=engine.synthesize("Zorvexa has 42 notes!");
    try(OutputStream out=new FileOutputStream(new File(folder,"name-and-number.wav"))){out.write(unusual.wav());}
-   evidence.put("nameAndNumberSamples",unusual.samples.length).put("nameAndNumberPolicy","Unknown English words spelled letter by letter; digits spoken individually");
-   try{engine.synthesize("Read https://example.com");fail("Unsupported URL symbols must not disappear");}catch(IllegalArgumentException expected){}
+   evidence.put("nameAndNumberSamples",unusual.samples.length).put("nameAndNumberPolicy","Native misaki G2P with the bundled fallback");
+   assertTrue("Native G2P produces bounded audio for punctuation",engine.synthesize("Read https://example.com").samples.length>0);
    Debug.MemoryInfo memory=new Debug.MemoryInfo();Debug.getMemoryInfo(memory);evidence.put("processPssKb",memory.getTotalPss()).put("nativeHeapBytes",Debug.getNativeHeapAllocatedSize());
   }
   try(LocalSpeechEngine reopened=new LocalSpeechEngine(models)){assertEquals("Same speech survives engine close/reopen",transcript,reopened.transcribe(human));}

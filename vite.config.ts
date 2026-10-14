@@ -1,6 +1,5 @@
 import {browserCloudDevBridge} from './scripts/browser-cloud-dev-bridge.ts';
 import {localOcrAssets} from './scripts/local-ocr-assets.ts';
-import {browserSpeechAssets} from './scripts/browser-speech-vite.ts';
 import { browserPdfAssets } from './scripts/browser-pdf-assets.ts';
 import { browserFullReload } from './scripts/browser-full-reload.ts';
 import { defineConfig, type Plugin } from "vite";
@@ -101,18 +100,12 @@ function productionSurface(): Plugin[] {
 
 export default defineConfig({
   root: "apps/app",
-  plugins: [productionSurface(), localOcrAssets(), browserSpeechAssets(), browserPdfAssets(), browserFullReload(), react(), localAgentDevBridge(), browserCloudDevBridge()],
+  plugins: [productionSurface(), localOcrAssets(), browserPdfAssets(), browserFullReload(), react(), localAgentDevBridge(), browserCloudDevBridge()],
   define: {
     'import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS': JSON.stringify(flagOn ? '1' : ''),
     __APP_VERSION__: JSON.stringify(appVersion),
     'import.meta.env.VITE_ALPHA_DEV_CARTESIA':JSON.stringify(flagOn&&process.env.ALPHA_DEV_CARTESIA==='1'?'1':''),
   },
-  // The speech worker loads ONNX Runtime's WebAssembly from the verified browser-speech/
-  // files; module format lets the runtime import its self-hosted glue at run time.
-  worker: { format: 'es' },
-  // The worker's runtime is not reachable from index.html; optimize it up front so the first
-  // transcription does not trigger a development-server dependency reload.
-  optimizeDeps: { include: ['onnxruntime-web/wasm'] },
   resolve: {
     alias: {
       "@elizaos/ui/voice/voice-session-client": fileURLToPath(new URL("./.eliza/client-features/packages/ui/src/voice/voice-session-client.ts",import.meta.url)),
@@ -122,9 +115,6 @@ export default defineConfig({
       "@elizaos/core/speech": fileURLToPath(new URL("./.eliza/client-features/packages/core/src/speech.ts",import.meta.url)),
       "@elizaos/ui/voice/batch-conversation": fileURLToPath(new URL("./.eliza/client-features/packages/ui/src/voice/batch-conversation.ts",import.meta.url)),
       "@elizaos/contracts/native-notes-query": fileURLToPath(new URL("./.eliza/client-features/packages/contracts/src/native-notes-query.ts",import.meta.url)),
-      // The external-WebAssembly build: the bundled variant would make Vite emit a second,
-      // unverified copy of the 14 MB runtime into assets/ (and so into every APK).
-      "onnxruntime-web/wasm": fileURLToPath(new URL("./node_modules/onnxruntime-web/dist/ort.wasm.min.mjs", import.meta.url)),
       "@eliza-system": fileURLToPath(
         new URL(
           "./vendor/eliza/plugins/plugin-native-system/src/index.ts",

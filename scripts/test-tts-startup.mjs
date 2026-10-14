@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
 
 // Exercise upstream host ownership without native assets or provider credentials.
-const source=fs.readFileSync(process.argv[2] || new URL('../vendor/eliza/packages/app/src/api/standalone-kokoro-routes.ts',import.meta.url),'utf8');
+const source=fs.readFileSync(process.argv[2] || new URL('../vendor/eliza/packages/app/src/api/standalone-speech-routes.ts',import.meta.url),'utf8');
 for(const enabled of [false,true])for(const failure of [false,true]){
  let calls=0,warnings=0,release;
  const services=[];
@@ -16,9 +16,10 @@ for(const enabled of [false,true])for(const failure of [false,true]){
   initialize(){calls++;return calls===1?boot.then(()=>{this.ready=true;}):Promise.resolve().then(()=>{this.ready=true;});}
   stop(){this.ready=false;}
  }
- const context=vm.createContext({URL,Map,WeakMap,WeakSet,Date,process:{env:{ELIZA_KOKORO_ENABLED:enabled?'1':'0'},versions:{bun:'fixture'}},console:{warn:()=>warnings++}});
+ const context=vm.createContext({URL,Map,WeakMap,WeakSet,Date,process:{env:{ELIZA_PARADEE_ENABLED:enabled?'1':'0'},versions:{bun:'fixture'}},console:{warn:()=>warnings++}});
  const dependencies=new Map([
-  ['./standalone-kokoro-service',{StandaloneKokoroService:Service}],
+  ['./standalone-speech-service',{StandaloneTtsService:Service}],
+  ['./standalone-asr-service',{StandaloneAsrService:class {stop(){}},AsrAudioError:class extends Error {},readMonoPcm16Wav:()=>{throw Error('Unexpected ASR');}}],
   ['./auth',{resolveAuthorizedRouteRole:async()=>({ok:true,role:'OWNER',identityId:'synthetic-owner'})}],
   ['./response',{sendJson:(res,status,body)=>Object.assign(res,{status,body})}],
  ]);
@@ -32,23 +33,23 @@ for(const enabled of [false,true])for(const failure of [false,true]){
  await module.evaluate();
  assert.equal(calls,0,'Importing routes cannot create a process-global worker');
  const state={current:{}};
- module.namespace.warmStandaloneKokoro(state);
+ module.namespace.warmStandaloneSpeech(state);
  assert.equal(calls,enabled?1:0,'Only configured hosts warm before any request');
  assert.equal(sanitizerImports,enabled?1:0);
  if(enabled){assert.equal(services[0].initialized,false);release();await new Promise(resolve=>setImmediate(resolve));assert.equal(services[0].initialized,!failure);assert.equal(warnings,failure?1:0);}
  const res={};
- await module.namespace.handleStandaloneKokoroRoute({method:'GET',url:'/api/tts/kokoro/status'},res,state);
+ await module.namespace.handleStandaloneSpeechRoute({method:'GET',url:'/api/tts/paradee/status'},res,state);
  assert.equal(res.status,200);assert.equal(res.body.ready,enabled);
  assert.equal(calls,enabled?2:0,'Failed startup remains retryable; disabled speech stays unloaded');
  const other={current:{}};
- module.namespace.warmStandaloneKokoro(other);
+ module.namespace.warmStandaloneSpeech(other);
  await new Promise(resolve=>setImmediate(resolve));
- module.namespace.closeStandaloneKokoro(state);
- const before=calls;module.namespace.warmStandaloneKokoro(state);
+ module.namespace.closeStandaloneSpeech(state);
+ const before=calls;module.namespace.warmStandaloneSpeech(state);
  assert.equal(calls,before,'Closing a host prevents resurrection');
  if(enabled){assert.equal(services[0].initialized,false);assert.equal(services[1].initialized,true,'Closing one host leaves another host alive');}
- const closed={};await module.namespace.handleStandaloneKokoroRoute({method:'GET',url:'/api/tts/kokoro/status'},closed,state);
+ const closed={};await module.namespace.handleStandaloneSpeechRoute({method:'GET',url:'/api/tts/paradee/status'},closed,state);
  assert.equal(closed.status,503);
- module.namespace.closeStandaloneKokoro(other);
+ module.namespace.closeStandaloneSpeech(other);
 }
-console.log('Kokoro startup warming preserves real readiness, retries, host isolation and close ownership.');
+console.log('Native speech startup warming preserves real readiness, retries, host isolation and close ownership.');

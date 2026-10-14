@@ -5,7 +5,6 @@ import android.content.Context;
 import android.net.ConnectivityManager;
 import android.os.SystemClock;
 import androidx.test.platform.app.InstrumentationRegistry;
-import com.k2fsa.sherpa.onnx.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -34,39 +33,30 @@ public final class SpeechPipelineTraceInstrumentedTest {
  @Test public void tracePackagedSynthesisPipeline()throws Exception{
   org.junit.Assume.assumeTrue("Explicit offline diagnostic", "1".equals(InstrumentationRegistry.getArguments().getString("speechPipelineTrace")));
   String mode=InstrumentationRegistry.getArguments().getString("speechPipelineMode","engine-warm");
-  assertTrue(Arrays.asList("engine-cold","engine-warm","direct-first","direct-second").contains(mode));
+  assertTrue(Arrays.asList("engine-cold","engine-warm").contains(mode));
   Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();assertNull("Networking must be disabled",app.getSystemService(ConnectivityManager.class).getActiveNetwork());
   File dir=new File(app.getExternalFilesDir(null),"speech-pipeline-trace-"+mode+"-"+UUID.randomUUID());assertTrue(dir.mkdirs());
   JSONObject report=new JSONObject().put("diagnosticOnly",true).put("qualityAccepted",false).put("complete",false).put("mode",mode).put("runDirectory",dir.getName());
   JSONArray rows=new JSONArray();report.put("samples",rows);long allStart=SystemClock.elapsedRealtime();
-  LocalSpeechEngine engine=null;OfflineTts direct=null;
+  LocalSpeechEngine engine=null;
   try{
    File models=SpeechAssets.install(app);report.put("bundleManifestSha256",sha(java.nio.file.Files.readAllBytes(new File(models,"manifest.json").toPath())));
-   Set<String> dictionary=new HashSet<>();try(BufferedReader reader=new BufferedReader(new InputStreamReader(new FileInputStream(new File(models,"tts/lexicon.txt")),StandardCharsets.UTF_8))){String line;while((line=reader.readLine())!=null)dictionary.add(line.substring(0,line.indexOf(' ')));}
-   // direct-first constructs no recognizer or hidden TTS before the direct speaker.
-   if(!mode.equals("direct-first"))engine=new LocalSpeechEngine(models);
+   engine=new LocalSpeechEngine(models);
    if(mode.equals("engine-warm")){
     float[] human;try(InputStream in=InstrumentationRegistry.getInstrumentation().getContext().getAssets().open("speech-fixture/0.wav")){human=LocalSpeechEngine.readMono16kWav(in);}
     report.put("humanTranscript",engine.transcribe(human));assertEquals("",engine.transcribe(new float[16000]));
    }
-   if(mode.startsWith("direct-")){
-    OfflineTtsVitsModelConfig vits=new OfflineTtsVitsModelConfig();vits.setModel(new File(models,"tts/model.onnx").getPath());vits.setLexicon(new File(models,"tts/lexicon.txt").getPath());vits.setTokens(new File(models,"tts/tokens.txt").getPath());vits.setDataDir("");
-    report.put("actualVitsConfig",vits.toString());
-    OfflineTtsModelConfig voice=new OfflineTtsModelConfig();voice.setVits(vits);voice.setProvider("cpu");voice.setNumThreads(2);voice.setDebug(false);
-    OfflineTtsConfig config=new OfflineTtsConfig();config.setModel(voice);config.setMaxNumSentences(1);direct=new OfflineTts(null,config);
-   }
-   // Acquire every waveform before creating a recognizer in direct-first mode.
    ArrayList<LocalSpeechEngine.Audio> audioRows=new ArrayList<>();
    for(int round=0;round<3;round++)for(int index=0;index<CORPUS.length;index++){
-    String input=CORPUS[index],prepared=SpeechText.prepare(input,dictionary);long start=SystemClock.elapsedRealtime();LocalSpeechEngine.Audio audio;
-    if(direct==null)audio=engine.synthesize(input);else{GeneratedAudio generated=direct.generate(prepared,0,1.0f);audio=new LocalSpeechEngine.Audio(generated.getSamples(),generated.getSampleRate());}
+    String input=CORPUS[index];long start=SystemClock.elapsedRealtime();LocalSpeechEngine.Audio audio;
+    audio=engine.synthesize(input);
     long ttsMs=SystemClock.elapsedRealtime()-start;assertTrue(audio.sampleRate>=8000&&audio.sampleRate<=48000);assertTrue(audio.samples.length>audio.sampleRate/10&&audio.samples.length<30*audio.sampleRate);
     byte[] wav=audio.wav();String name="r"+round+"-sentence"+index+".wav";try(OutputStream stream=new FileOutputStream(new File(dir,name))){stream.write(wav);}
-    audioRows.add(audio);rows.put(new JSONObject().put("round",round).put("sentence",index).put("input",input).put("prepared",prepared).put("ttsMs",ttsMs).put("samples",audio.samples.length).put("sampleRate",audio.sampleRate).put("waveform",name).put("wavSha256",sha(wav)));save(dir,report);
+    audioRows.add(audio);rows.put(new JSONObject().put("round",round).put("sentence",index).put("input",input).put("ttsMs",ttsMs).put("samples",audio.samples.length).put("sampleRate",audio.sampleRate).put("waveform",name).put("wavSha256",sha(wav)));save(dir,report);
    }
    if(engine==null)engine=new LocalSpeechEngine(models);
    for(int i=0;i<audioRows.size();i++){long start=SystemClock.elapsedRealtime();String transcript=engine.transcribe(resample(audioRows.get(i)));rows.getJSONObject(i).put("transcript",transcript).put("asrMs",SystemClock.elapsedRealtime()-start).put("wordEdits",edits(rows.getJSONObject(i).getString("input"),transcript));save(dir,report);}
    assertEquals(24,rows.length());assertNull(app.getSystemService(ConnectivityManager.class).getActiveNetwork());report.put("complete",true);
-  }finally{if(direct!=null)direct.release();if(engine!=null)engine.close();report.put("elapsedMs",SystemClock.elapsedRealtime()-allStart);save(dir,report);android.util.Log.i("SpeechPipelineTrace",dir.getAbsolutePath());}
+  }finally{if(engine!=null)engine.close();report.put("elapsedMs",SystemClock.elapsedRealtime()-allStart);save(dir,report);android.util.Log.i("SpeechPipelineTrace",dir.getAbsolutePath());}
  }
 }

@@ -96,15 +96,15 @@ test("the privileged listener is pinned by a reviewed descriptor and must carry 
   assert.throws(() => checkListenerDescriptor(good, { appId: APP, apkSha256: "d".repeat(64), signer: SIGNER }), /apkSha256/, "other bytes with the right name and signer are refused");
   assert.throws(() => checkListenerDescriptor(good, { appId: APP, apkSha256: hash, signer: "b".repeat(64) }), /certificateSha256/);
   assert.throws(() => checkListenerDescriptor({ ...good, apkSha256: "x" }, { appId: APP, apkSha256: "x", signer: SIGNER }), /apkSha256/);
-  const qualified = JSON.parse(fs.readFileSync(path.join(root, "android/local-speech/qualified-runtime-manifest.json"), "utf8")).qualifiedAbis;
+  const qualified = [{abi:"arm64-v8a",native:[{file:"libparadeevoicejni.so",sha256:"a".repeat(64)}]}];
   const arm = qualified.find(row => row.abi === "arm64-v8a");
-  const entries = ["AndroidManifest.xml", "classes.dex", "assets/local-speech/v1/manifest.json", ...arm.native.map(lib => `lib/arm64-v8a/${lib.file}`)];
+  const entries = ["AndroidManifest.xml", "classes.dex", "assets/paradee-voice/v1/manifest.json", ...arm.native.map(lib => `lib/arm64-v8a/${lib.file}`)];
   assert.deepEqual(checkListenerSpeechBundle(entries, qualified), ["arm64-v8a"]);
-  assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("assets/local-speech/")), qualified), /no assets\/local-speech\/v1\/manifest\.json/, "an APK without the model can never listen");
+  assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("assets/paradee-voice/")), qualified), /no assets\/paradee-voice\/v1\/manifest\.json/, "an APK without the model can never listen");
   assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("lib/")), qualified), /no qualified speech runtime/);
   const hashes = Object.fromEntries(arm.native.map(lib => [`lib/arm64-v8a/${lib.file}`, lib.sha256]));
   assert.equal(checkListenerSpeechNatives(["arm64-v8a"], qualified, entry => hashes[entry]), true);
-  assert.throws(() => checkListenerSpeechNatives(["arm64-v8a"], qualified, () => "0".repeat(64)), /differs from qualified/);
+  assert.throws(() => checkListenerSpeechNatives(["arm64-v8a"], qualified, () => "0".repeat(64)), /differs from native-qualification/);
 });
 
 test("stage-aosp wires the listener and requires it for production images", () => {

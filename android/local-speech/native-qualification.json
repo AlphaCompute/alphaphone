@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 2,
+  "admission": "not-qualified",
+  "sourceCommit": "a5afdd9825a3bb6c0088c4b7174a78e336ceca93",
+  "buildRecordSha256": null,
+  "qualifiedAbis": [],
+  "functionalAcceptance": {
+    "passed": false,
+    "state": "not-executed",
+    "abis": {}
+  },
+  "note": "Legacy Sherpa qualification does not qualify the fused native ASR and Paradee engine. Record native bytes and device evidence for both shipped ABIs before distribution."
+}

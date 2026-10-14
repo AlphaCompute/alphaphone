@@ -69,14 +69,7 @@ test('fonts, OCR cores and web speech files carry the hashes of the pinned bytes
     assert.equal(font.hashes[0].content, createHash('sha256').update(fs.readFileSync(path.join(ROOT, prop(font, 'source')))).digest('hex'));
   }
   for (const [file, digest] of Object.entries(read('licenses/tesseract-core/sources.json').cores)) assert.equal(byRef.get(`ocr-core:${file}`).hashes[0].content, digest);
-  const speech = read('config/browser-speech.json');
-  for (const file of speech.files) {
-    const component = byRef.get(`browser-speech:${file.path}`);
-    assert.equal(component.hashes[0].content, file.sha256);
-    assert.equal(component.version, speech.source.revision);
-    assert.equal(prop(component, 'ships-in'), 'web', 'Android APKs omit the web speech model');
-  }
-  for (const file of speech.runtime.files) assert.equal(byRef.get(`browser-speech-runtime:${file.path}`).hashes[0].content, file.sha256);
+  assert.equal(sbom.components.some(component=>component['bom-ref']?.startsWith('browser-speech')),false);
 });
 
 test('Android coordinates, speech natives and the upstream pin match their manifests', () => {
@@ -93,14 +86,12 @@ test('Android coordinates, speech natives and the upstream pin match their manif
     assert.equal(/publishes no archive/.test(prop(component, 'hash')), !pinned.archive, component.name);
   }
   assert.equal(prop(sbom.metadata, 'gradle-verification-metadata-sha256'), createHash('sha256').update(fs.readFileSync(path.join(ROOT, GRADLE_METADATA))).digest('hex'));
-  const manifest = read('android/local-speech/runtime-manifest.json');
-  assert.equal(byRef.get('speech:sherpa-onnx-no-espeak.aar').hashes[0].content, manifest.aarSha256);
-  for (const abi of manifest.qualifiedAbis)
-    for (const native of abi.native) {
-      const component = byRef.get(`speech-native:${abi.abi}/${native.file}`);
-      assert.equal(component.hashes[0].content, native.sha256);
-      assert.equal(prop(component, 'bytes'), String(native.bytes));
-    }
+  const manifest = read('vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json');
+  for (const [name, input] of Object.entries(manifest)) {
+    const component = byRef.get(`speech-input:${name}`);
+    assert.equal(component.hashes[0].content, input.sha256);
+    assert.equal(prop(component, 'bytes'), String(input.bytes));
+  }
   assert.ok(sbom.components.some(component => component.type === 'machine-learning-model' && component['bom-ref'].startsWith('speech-input:')));
   const upstream = read('upstream.lock.json');
   assert.equal(sbom.components.find(component => component.name === 'elizaOS').version, upstream.commit);
