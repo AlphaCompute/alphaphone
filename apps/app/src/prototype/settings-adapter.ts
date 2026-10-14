@@ -10,7 +10,7 @@ import { registerPlugin } from '../platform-plugins';
 import { broaderPageNotice, switchValue } from './native-adapter';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
-import { connectionController } from '../runtime/connection-ui';
+import { connectionController, agentPendingText } from '../runtime/connection-ui';
 import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, gmailReadable, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
@@ -156,7 +156,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     capabilityAbort?.abort(); const abort = capabilityAbort = new AbortController();
     const cloud = connectionController.getCloudClient(), workflow = connectionController.getWorkflowClient(), instance = owner;
     gmail = cloud ? 'Checking authorization…' : 'Cloud sign-in required'; gmailAccounts = [];
-    digests = workflow ? 'Checking agent support…' : 'Connect an agent';
+    digests = workflow ? 'Checking agent support…' : agentPendingText();
     changed();
     const timeout = setTimeout(() => { abort.abort(); if (owner === instance && capabilityAbort === abort) { if (gmail === 'Checking authorization…') gmail = 'Authorization not verified'; if (digests === 'Checking agent support…') digests = 'Agent support not verified'; changed(); } }, 10000);
     try {

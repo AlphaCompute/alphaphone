@@ -82,7 +82,7 @@ for (const [kind, text] of Object.entries(KINDS)) for (const frame of ['done', '
 test('without a network the resident says AI needs a connection, sends nothing, and clears the notice when back online', async ({ page, context }) => {
   test.setTimeout(120_000);
   await connected(page);
-  const notice = page.getByText('AI needs a connection. Local apps keep working; nothing is sent until this phone is back online.', { exact: true });
+  const notice = page.getByText('Your agent is running; AI needs a connection. Nothing is sent until this phone is back online.', { exact: true });
   await expect(notice).toHaveCount(0);
   await context.setOffline(true);
   await expect(notice).toBeVisible();

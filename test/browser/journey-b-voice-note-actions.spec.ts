@@ -135,12 +135,11 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  await localBrowserVoice(page);
  await openSavedRecording(page);
  await expect(page.getByText(transcript,{exact:true}).first()).toBeVisible();
+ // P-11: no Web Speech fallback. Without agent speech nothing is spoken and Read aloud stays available.
  await page.getByRole('button',{name:'Read aloud',exact:true}).click();
- await expect.poll(()=>page.evaluate(()=>(window as any).voiceFixture.spoken as string[])).toEqual([`Venue meeting. ${transcript}`]);
- await page.getByRole('button',{name:'Stop reading',exact:true}).click();
  await expect(page.getByRole('button',{name:'Read aloud',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Stop reading',exact:true})).toHaveCount(0);
- expect(await page.evaluate(()=>(window as any).voiceFixture.cancels)).toBeGreaterThan(0);
+ expect(await page.evaluate(()=>(window as any).voiceFixture.spoken as string[])).toEqual([]);
  const recorded=(await notes(page))[0];
 
  // ---- 3. Reviewed transcript question -> reviewed summary and action items ----

@@ -64,7 +64,7 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
  }
  /**
   * Runner-owned, as above. The approval notice belongs to the account and agent that posted it;
-  * after the phone's connection changes (here: the saved selection becomes local-only, so no
+  * after the phone's connection changes (here: a stored offline selection, read as the resident under P-11, so no
   * agent binding matches the notice's scope, origin, owner and agent), its tap is captured but
   * fenced: the renderer shows the other-account state, opens no run and offers no approval, and
   * the durable route stays pending for the original account instead of being consumed.
@@ -81,7 +81,8 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
    assertEquals("succeeded",WorkflowNoticeTapsFactory.delivery(context).postApproval(taps,id,"b".repeat(64),route,now+10*60000L,now));
    Notification notice=active(manager,id);assertNotNull("Approval notice posted",notice);
    String token=taps.token(id);assertNotNull(token);
-   // The account changes: the phone now runs local-only, with no agent for this notice's scope.
+   // The connection changes: an older build's stored "offline" selection now reads as the resident
+   // (decision P-11), which is not the agent this notice's scope, origin, owner and agent name.
    // The saved selection is restored before the activity closes, so later classes see the original.
    String prior=WebViewTestDriver.evaluate("localStorage.getItem('alpha.connection.selection.v1')");
    WebViewTestDriver.evaluate("localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}))");

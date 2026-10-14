@@ -39,6 +39,8 @@ public final class ResidentAttachmentTest {
   refused("provider-changed",f->f.currentGeneration="generation-2");
   refused("provider-unadmitted",f->f.launchedGeneration=null);
   refused("provider-unadmitted",f->f.currentGeneration=null);
+  // P-11: a resident launched with no provider is never attached to once a provider is bound.
+  refused("provider-changed",f->f.launchedGeneration="no-provider");
   for(JSONObject state:new JSONObject[]{null,new JSONObject(),running().put("state","booting"),running().put("state","restarting"),running().put("state","dead"),running().put("serviceActive",false),running().put("socketListening",false)})
    require("runtime-not-running".equals(ResidentAttachment.refusal(state,admitted(now))),"only a listening service attaches: "+state);
   require("unavailable".equals(ResidentAttachment.refusal(running(),null)),"missing facts refuse");

@@ -2,7 +2,7 @@ import {browserDevProfile} from '../browser/dev-profile';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps, type Action, type NativeResult } from '../daily';
 import { registerPlugin } from '../platform-plugins';
-import { connectionController, type ConnectionSnapshot } from '../runtime/connection-ui';
+import { connectionController, agentPendingText, type ConnectionSnapshot } from '../runtime/connection-ui';
 import { modelLabel } from '../runtime/local-agent';
 import { askAboutCapture } from './camera-adapter';
 import { captureQuestion, locationMimeTypes } from './context-selection';
@@ -30,7 +30,10 @@ export function egressPrivacy(connection: Pick<ConnectionSnapshot, 'kind' | 'ses
   if (connection.session && connection.kind === 'resident' && native)
     return { big: 'Identifier swap only', sub: 'Secret and contact identifiers are swapped before hosted inference; names and free text are not covered' };
   if (connection.session || connection.cloudAccount) return { big: 'Not reported', sub: 'Depends on the selected agent; not reported' };
-  return { big: 'Offline', sub: 'No agent connected; no hosted inference requests' };
+  // P-11: no session means the resident is starting or recovering, never "no agent".
+  if (connection.kind === 'recovering') return { big: 'Agent not running', sub: 'No hosted inference requests until your agent is running and AI is set up' };
+  if (connection.kind === 'starting') return { big: 'Agent starting', sub: 'No hosted inference requests until your agent is running and AI is set up' };
+  return { big: 'Offline', sub: 'No remote agent connected; no hosted inference requests' };
 }
 /** Only a verified resident session on Android reports its configured hosted model.
  * Exported for the Settings rows that show it (About and Models). */
@@ -376,7 +379,7 @@ export function installPrototypeNativeAdapters(
             ] : []),
         ];
         const groups: Bag[] = !connection.session
-          ? [{ rows: [info('Connect an agent to see activity', ''), nav('Agent connection', () => connectionController.open())] }]
+          ? [{ rows: [info(connection.kind === 'starting' || connection.kind === 'recovering' ? agentPendingText(connection) + ' Activity appears when it is running.' : 'Connect your remote agent to see activity', ''), nav('Your agent', () => connectionController.open())] }]
           : !connection.phoneActionsAvailable
             ? [{ rows: [info('Phone action history', 'Not reported by agent')] }]
             : connection.actionHistory.length

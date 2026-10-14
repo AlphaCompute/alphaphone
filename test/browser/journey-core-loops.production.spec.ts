@@ -294,8 +294,9 @@ test('loop A on Android: the resident agent answers, the conversation follows ac
   await button(page, 'Settings').click();
   await expect(page.getByRole('button', { name: 'Agent connection', exact: true })).toContainText('Alpha');
   await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
-  const account = page.getByRole('dialog', { name: 'Your Cloud account' });
-  await expect(account).toContainText('Your agent runs on this phone and uses your Eliza Cloud credits for AI.');
+  const account = page.getByRole('dialog', { name: 'Your agent' });
+  await expect(account).toContainText('Running on this device');
+  await expect(account).toContainText('Your agent uses your Eliza Cloud credits for AI.');
   await expect(account.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
   expect(await page.locator('body').innerText()).not.toContain('synthetic-cloud-key');
   await expectNoDevelopmentSurface(page);
@@ -478,7 +479,7 @@ test('loops D and F in the web build: digests and mail name the missing account 
   await button(page, 'Scheduled digests').click();
   const digests = page.getByRole('dialog', { name: 'Scheduled digests', exact: true });
   await expect(digests).toContainText('Choose where your agent runs to set up scheduled digests.');
-  await expect(digests).toContainText('Connect an agent with verified scheduled digest support.');
+  await expect(digests).toContainText('Connect your remote agent in Settings.');
   // None of the development scheduler exists: no snapshot, no schedule review, no "runs while open".
   await expect(digests.getByText('Share a snapshot', { exact: true })).toHaveCount(0);
   await expect(digests.getByRole('button', { name: /^Review (morning|evening) schedule$/ })).toHaveCount(0);
@@ -520,7 +521,7 @@ test('loops E and J05 in the web build: browsing and page review work, an unconn
   await button(page, 'Send').click();
   // No agent is connected: the reviewed draft is kept and the real connection choices open.
   await expect(page.getByRole('status', { name: 'Assistant draft status' })).toHaveText('Not sent. Your message is back in the composer.');
-  await expect(page.locator('.alpha-connection').getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
+  await expect(page.locator('.alpha-connection').getByText('Preview without an on-device agent', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Review summary note/ })).toHaveCount(0);
   await page.locator('.alpha-connection').getByRole('button', { name: 'Close connection settings', exact: true }).click();
   await page.goto('/');
@@ -605,7 +606,7 @@ test('loop J03 in the web build: a chosen document can be reviewed for a questio
   await question.getByRole('button', { name: 'Use in conversation', exact: true }).click();
   await button(page, 'Send').click();
   await expect(page.getByRole('status', { name: 'Assistant draft status' })).toHaveText('Not sent. Your message is back in the composer.');
-  await expect(page.locator('.alpha-connection').getByText('On-device agent unavailable here', { exact: true })).toBeVisible();
+  await expect(page.locator('.alpha-connection').getByText('Preview without an on-device agent', { exact: true })).toBeVisible();
   await expect(page.getByText('Review summary note', { exact: true })).toHaveCount(0);
   await page.locator('.alpha-connection').getByRole('button', { name: 'Close connection settings', exact: true }).click();
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
@@ -772,8 +773,8 @@ test('loop J05 on Android: a page navigation closes the open review, and an agen
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await button(page, 'Settings').click();
   await button(page, 'Agent connection').click();
-  const account = page.getByRole('dialog', { name: 'Your Cloud account' });
-  await account.getByRole('button', { name: 'Continue', exact: true }).click();
+  const account = page.getByRole('dialog', { name: 'Your agent' });
+  await account.getByRole('button', { name: 'Reconnect agent', exact: true }).click();
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   expect(await native(page, f => f.calls.filter((call: string) => call === 'Agent.start').length)).toBe(2);
   await button(page, 'Open conversation').click();
@@ -895,7 +896,7 @@ test('loop B / J02 on Android signed out: voice asks for an Eliza Cloud sign-in 
   const foreign = await fenceNetwork(page);
   await android(page, { signedOut: true });
   await page.goto('/');
-  await page.locator('.alpha-connection').getByRole('button', { name: 'Use local apps without AI', exact: true }).click();
+  // P-11: the resident starts signed out; no Welcome gate or "without AI" choice opens.
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   await button(page, 'Notes').click();
   await button(page, 'Record and transcribe').click();

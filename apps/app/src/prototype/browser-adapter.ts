@@ -6,7 +6,7 @@ import {reviewContentQuestion} from '../browser/content-question';
 import {browserReadingSource} from '../browser/reading-source';
 import {sensitiveReadingText} from '../browser/reading-sensitive';
 import {webSourceOf} from './summary-source';
-import { connectionController } from '../runtime/connection-ui';
+import { connectionController, agentPendingText } from '../runtime/connection-ui';
 import { BrowserReviews } from '../browser/review';
 import { browsingSnapshot, restoreBrowsing, MAX_SAVED_TABS as MAX_TABS, MAX_SAVED_HISTORY as MAX_HISTORY } from '../browser/browsing-session';
 type Bag = Record<string, any>;
@@ -92,7 +92,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       return;
     }
     const voice=createNativeReadingVoice(), binding=voice?.binding;
-    if(!voice || !binding){report(new Error('Connect an agent with available speech to read this page.'));return;}
+    if(!voice || !binding){report(new Error(connectionController.getSnapshot().session?'This agent does not offer speech to read this page.':agentPendingText()));return;}
     if(!info?.committed || info.loading || info.error){report(new Error('Load an HTTPS page before reading.'));return;}
     const controller=new AbortController();reading=controller;
     const valid=()=>{controller.signal.throwIfAborted();if(disposed||document.hidden||shell.S().view!=='browser'||state()?.cur!==id||documentRevisions.get(id)!==revision||!voice.isCurrent()||connectionController.getSnapshot().open)throw new DOMException('Reading cancelled','AbortError');};

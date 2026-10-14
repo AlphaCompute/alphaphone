@@ -83,13 +83,10 @@ const set=(page:Page,patch:Record<string,unknown>)=>page.evaluate(patch=>{const 
 const resume=(page:Page)=>page.evaluate(()=>(window as any).truth.resume());
 const opened=(page:Page)=>page.evaluate(()=>(window as any).truth.calls.filter((c:any)=>c.plugin==='AlphaDevice'&&c.method==='openSettings').map((c:any)=>c.input.page as string));
 const callNames=(page:Page)=>page.evaluate(()=>[...new Set((window as any).truth.calls.map((c:any)=>c.plugin+'.'+c.method))] as string[]);
-/** Production Android starts with the Welcome dialog. Choose the option that needs no account. */
+/** Production Android starts the resident by itself (P-11); no Welcome gate opens. */
 async function start(page:Page){
  await page.goto('/');
- if(await page.evaluate(()=>!!(window as any).truth)){
-  await page.getByRole('button',{name:'Use local apps without AI',exact:true}).click();
-  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
- }
+ if(await page.evaluate(()=>!!(window as any).truth))await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
  await page.getByRole('button',{name:'Settings',exact:true}).waitFor({state:'visible'});
 }
 async function openSettings(page:Page){

@@ -30,7 +30,6 @@ export class BrowserVoice extends WebPlugin {
  private audioChanges=typeof BroadcastChannel!=='undefined'?new BroadcastChannel('alpha.browser.audio.changes'):undefined;
  private playbackGeneration=0;
  private playbackAbort?:AbortController;
- private utterance?:SpeechSynthesisUtterance;
  private activeSpeechId?:string;
  private activeSpeechRequestId?:string;
  constructor(){super();
@@ -45,9 +44,9 @@ export class BrowserVoice extends WebPlugin {
   // The entrypoint binds this facade after browser factories have registered.
   const connectionController=await this.connection;signal.throwIfAborted();
   const agent=connectionController.getBrowserSpeechAgent();if(agent){const result=await agent.speechRequest(undefined,signal);return {ready:result.ready===true,execution:'browser',route:'local-agent'};}
-  // No agent, no local recognition: the browser never loads a model or inference runtime itself.
-  // Read-aloud can still use the browser's own local voices (synthesizeLocal without an agent).
-  return {ready:false,playback:typeof window.speechSynthesis!=='undefined',execution:'browser',route:'local-agent',reason:'local-agent-required'};
+  // No agent speech yet: the browser never loads a model, inference runtime or Web Speech voice
+  // itself (speech runs only through the agent's libelizainference). Replies are read as text.
+  return {ready:false,playback:false,execution:'browser',route:'local-agent',reason:['starting','recovering'].includes(connectionController.getSnapshot().kind??'')?'local-agent-starting':'local-agent-required'};
  });}
  getRecordingMetrics(input:{recordingId:string}){return Promise.resolve(this.capture.metrics(input.recordingId));}
  startRecording(input:{maxDurationMs?:number}={}){return this.capture.start(input);}
@@ -106,9 +105,9 @@ export class BrowserVoice extends WebPlugin {
    while(this.agentAudio.size>8)this.agentAudio.delete(this.agentAudio.keys().next().value!);
    return {playbackId,execution:'browser'};
   }
-  const playbackId=crypto.randomUUID();this.speech.set(playbackId,{text,requestId});
-  while(this.speech.size>8)this.speech.delete(this.speech.keys().next().value!);
-  return {playbackId,execution:'browser'};
+  // No Web Speech fallback: without agent speech the reply is read as text.
+  const starting=['starting','recovering'].includes(connectionController.getSnapshot().kind??'');
+  throw speechError(starting?'local-agent-starting':'local-agent-required',starting?'Your agent is starting. Read the reply as text.':'Speech needs the local agent on this computer. Read the reply as text.');
   },requestId);
  }
  private releaseAudio(audio:HTMLAudioElement){
@@ -144,23 +143,7 @@ export class BrowserVoice extends WebPlugin {
     try{const playing=audio.play();void playing.then(()=>{if(!current())audio.pause();},()=>{});await playbackWait(playing,abort.signal);if(!current())throw new DOMException('Playback cancelled','AbortError');return;}
     catch(error){if(this.audio===audio)finish('playbackFailed');throw error;}
    }
-   const localSpeech=this.speech.get(input.playbackId);if(localSpeech===undefined)throw Error('Prepare speech first.');
-   const engine=window.speechSynthesis;if(!engine)throw Error('Local speech is unavailable. Read the reply as text.');
-   const voices=()=>engine.getVoices().filter(voice=>voice.localService===true);
-   if(!voices().length)await new Promise<void>((resolve,reject)=>{
-    let timer:ReturnType<typeof setTimeout>;
-    const finish=(error?:Error)=>{clearTimeout(timer);engine.removeEventListener('voiceschanged',changed);abort.signal.removeEventListener('abort',cancel);error?reject(error):resolve();};
-    const changed=()=>{if(voices().length)finish();};const cancel=()=>finish(new DOMException('Playback cancelled','AbortError'));
-    timer=setTimeout(()=>finish(),1500);engine.addEventListener('voiceschanged',changed);abort.signal.addEventListener('abort',cancel,{once:true});changed();
-   });
-   if(!current())throw new DOMException('Playback cancelled','AbortError');
-   const local=voices(),language=navigator.language.split('-')[0];
-   const voice=local.find(v=>v.lang===navigator.language)||local.find(v=>v.lang.split('-')[0]===language)||local[0];
-   if(!voice)throw Error('No local browser voice is available. Read the reply as text.');
-   const speech=this.utterance=new SpeechSynthesisUtterance(localSpeech.text);speech.voice=voice;speech.volume=browserMediaVolume();
-   const finish=(event:'playbackEnded'|'playbackFailed')=>{if(!current()||this.utterance!==speech)return;this.utterance=undefined;this.activeSpeechId=undefined;this.activeSpeechRequestId=undefined;speech.onend=null;speech.onerror=null;void this.notifyListeners(event,{playbackId:input.playbackId});};
-   speech.onend=()=>finish('playbackEnded');speech.onerror=()=>finish('playbackFailed');
-   try{engine.speak(speech);}catch(error){finish('playbackFailed');throw error;}return;
+   throw Error('Prepare speech first.');
   }
   this.pendingAudioId=input.audioId;
   const row=await playbackWait(audioRecord(input.audioId!),abort.signal);
@@ -189,7 +172,6 @@ export class BrowserVoice extends WebPlugin {
   const stopped=this.activeSpeechId;this.activeSpeechId=undefined;this.activeSpeechRequestId=undefined;
   if(stopped&&input?.requestId!==undefined){this.agentAudio.delete(stopped);this.speech.delete(stopped);}
   ++this.playbackGeneration;this.pendingAudioId=undefined;this.playbackAbort?.abort();this.playbackAbort=undefined;
-  if(this.utterance){this.utterance.onend=null;this.utterance.onerror=null;this.utterance=undefined;window.speechSynthesis?.cancel();}
   if(this.audio)this.releaseAudio(this.audio);
   if(stopped)void this.notifyListeners('playbackStopped',{playbackId:stopped});
  }

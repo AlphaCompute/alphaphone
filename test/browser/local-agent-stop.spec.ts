@@ -2,8 +2,9 @@ import { test, expect } from '@playwright/test';
 
 // Real rendered connection UI/controller; only the native IPC boundary is synthetic.
 // No runtime, provider key, model request or external account is used.
+// Decision P-11: Stop is replaced by Restart; the agent is never left stopped.
 for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
-  test(`Stop local agent waits for native shutdown: ${scenario}`, async ({ page }) => {
+  test(`Restart local agent waits for native shutdown, then starts again: ${scenario}`, async ({ page }) => {
     await page.addInitScript(() => {
       const w = window as any;
       w.androidBridge = {};
@@ -64,11 +65,11 @@ for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('button', { name: /Agent connection/ }).click();
     chooser = page.locator('.alpha-connection');
-    const stop = chooser.getByRole('button', { name: 'Stop local agent', exact: true });
+    const stop = chooser.getByRole('button', { name: 'Restart local agent', exact: true });
     await expect(stop).toBeEnabled();
     await page.clock.install();
     await stop.click();
-    await expect(chooser.getByText('Stopping the local agent…', { exact: true })).toBeVisible();
+    await expect(chooser.getByText('Restarting your agent…', { exact: true })).toBeVisible();
     await expect(stop).toBeDisabled();
     await expect(chooser.getByText('Local agent stopped.', { exact: true })).toHaveCount(0);
     if (scenario === 'confirmed') {
@@ -85,9 +86,11 @@ for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
       }
       await page.evaluate(() => { (window as any).stopFixture.status = { state: 'stopped', serviceActive: false, socketListening: false }; });
       await page.clock.runFor(400);
-      await expect(chooser.getByText('Local agent stopped.', { exact: true })).toBeVisible();
-      await expect(stop).toHaveCount(0);
-      await expect(chooser.getByRole('button', { name: 'Start local agent', exact: true })).toBeEnabled();
+      // Confirmed shutdown is followed at once by a new start; the dialog closes on the new session.
+      // The fake clock also drives the new start's timers.
+      for (let tick = 0; tick < 40 && await page.evaluate(() => (window as any).stopFixture.starts) < 2; tick++) await page.clock.runFor(500);
+      await expect.poll(() => page.evaluate(() => (window as any).stopFixture.starts)).toBe(2);
+      await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
     } else {
       await page.evaluate(() => { (window as any).stopFixture.status = { state: 'stopped' }; });
       await page.clock.runFor(30_100);
@@ -97,6 +100,6 @@ for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
       await expect(chooser.getByText('Local agent stopped.', { exact: true })).toHaveCount(0);
     }
     const fixture = await page.evaluate(() => (window as any).stopFixture);
-    expect(fixture.starts).toBe(1); expect(fixture.stops).toBe(1); expect(fixture.polls).toBeGreaterThan(1); expect(fixture.unexpected).toEqual([]);
+    expect(fixture.starts).toBe(scenario === 'confirmed' ? 2 : 1); expect(fixture.stops).toBe(1); expect(fixture.polls).toBeGreaterThan(1); expect(fixture.unexpected).toEqual([]);
   });
 }

@@ -40,7 +40,7 @@ import { DailyApps } from '../daily';
 import { isAndroid } from '../native';
 import { registerPlugin } from '../platform-plugins';
 import { SystemBars, SystemBarsStyle } from '@capacitor/core';
-import { connectionController, STOPPED_REPLY_NOTICE, STOPPED_CANCELLED_NOTICE, STOPPED_CONFIRMED_NOTICE, INFERENCE_OFFLINE_NOTICE } from '../runtime/connection-ui';
+import { connectionController, STOPPED_REPLY_NOTICE, STOPPED_CANCELLED_NOTICE, STOPPED_CONFIRMED_NOTICE, INFERENCE_OFFLINE_NOTICE, RESIDENT_STARTING_NOTICE, RESIDENT_RECOVERING_NOTICE, NO_REMOTE_SEND, NO_REMOTE_VOICE, residentAlwaysPresent, agentPendingText } from '../runtime/connection-ui';
 import { broaderPageNotice, honestTiles, handoffGate, watchReturnToApp, tileFactsFromSnapshot, tileSettingsPages, type TileFacts, type TileKey } from './native-adapter';
 const alphaDevice = registerPlugin<{ snapshot(): Promise<Record<string, unknown>>; openSettings(input: { page: string }): Promise<{ status: string; specific?: boolean }> }>('AlphaDevice');
 const elizaSystem = registerPlugin<{ setFlashlight(input: { enabled: boolean }): Promise<{ available: boolean; enabled: boolean }> }>('ElizaSystem');
@@ -53,7 +53,7 @@ type SendAttempt={transportCalled:boolean;preDispatch:boolean;streamed:boolean;s
 /** Refused before any request carrying the message could leave this phone. */
 class NotDispatched extends Error {}
 // connectionController.send refuses these before creating a conversation or posting the message.
-const preDispatchRefusals=new Set(['Finish the connection or history operation before sending.','Wait for the current reply before sending another message.','Connect an agent in Settings to send a message.']);
+const preDispatchRefusals=new Set(['Finish the connection or history operation before sending.','Wait for the current reply before sending another message.',NO_REMOTE_SEND,RESIDENT_STARTING_NOTICE,RESIDENT_RECOVERING_NOTICE]);
 // It also marks every failure that happened before it posted the message (`notDispatched`).
 function isPreDispatchError(error:unknown){return !!error&&typeof error==='object'&&((error as {notDispatched?:unknown}).notDispatched===true||error instanceof Error&&(preDispatchRefusals.has(error.message)||(error as {code?:unknown}).code==='session_expired'));}
 function dispatched(attempt:SendAttempt,error:unknown){return !(error instanceof NotDispatched)&&(attempt.streamed||attempt.transportCalled&&!attempt.preDispatch);}
@@ -509,6 +509,15 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         }, connection.kind === 'local' ? { developmentOrigin: connection.session.origin } : {});
         return;
       }
+      // P-11: where the resident is always present, a send before it has a session waits for the
+      // start already in progress and then says it is starting (or recovering); nothing is sent and
+      // no chooser opens.
+      if (residentAlwaysPresent) {
+        await connectionController.initialize().catch(() => {});
+        const after = connectionController.getSnapshot();
+        if (after.session) return this.connectAgent();
+        throw Object.assign(new Error(after.kind === 'recovering' ? RESIDENT_RECOVERING_NOTICE : RESIDENT_STARTING_NOTICE), { notDispatched: true });
+      }
       // An explicit offline choice never falls through to an old development
       // credential that may still be installed on a test device. Without a
       // saved selection, product builds open the chooser; only test-mocks builds
@@ -889,7 +898,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     out.recoverDraft=()=>{const recovery=this.composerDraft?.recovery();if(!recovery)return;this.draftRecoveryAbort?.abort();const controller=this.draftRecoveryAbort=new AbortController();openDomainRecovery({capture:async signal=>{const captured=await recovery.capture(signal);return {...captured,raw:JSON.stringify({saved:captured.raw,currentDraft:String(this.S().draft||'')})};},reset:recovery.reset},'assistant draft','Assistant draft recovery','Download the saved bytes and current text before resetting this conversation’s draft. Reset does not delete messages or send anything. Reloading discards the current unsaved text.',controller.signal,undefined,Capacitor.getPlatform()==='android'?'device':'browser');};
     // The resident's hosted inference needs a network; local apps keep working without one.
     const connection=connectionController.getSnapshot(),offline=connection.inferenceOffline&&connection.kind==='resident'&&!!connection.session;
-    out.draftRetry=!!draft?.error;out.draftStatus=[draft?.message,offline?INFERENCE_OFFLINE_NOTICE:''].filter(Boolean).join(' ');out.draftConflict=!!draft?.conflict;out.draftSavedText=draft?.savedText||'(Empty saved draft)';out.draftOpening=!!draft?.consuming;
+    // P-11: before the resident has a session the composer says it is starting or recovering.
+    const residentPending=residentAlwaysPresent&&!connection.session?agentPendingText(connection):'';
+    out.draftRetry=!!draft?.error;out.draftStatus=[draft?.message,offline?INFERENCE_OFFLINE_NOTICE:'',residentPending].filter(Boolean).join(' ');out.draftConflict=!!draft?.conflict;out.draftSavedText=draft?.savedText||'(Empty saved draft)';out.draftOpening=!!draft?.consuming;
     out.restoreSavedDraft=()=>this.composerDraft?.restoreSaved();out.keepCurrentDraft=()=>this.composerDraft?.keepCurrent();out.retryDraft=()=>{this.composerDraft?.retire();this.refreshDraftBinding();};
     out.composerPointer=(event:PointerEvent)=>event.stopPropagation();
     out.onKey=(event:KeyboardEvent&{nativeEvent?:KeyboardEvent})=>{
@@ -969,7 +980,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.voiceConversationCurrent = function(prepared:{binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope}){return !alphaClient.getState().context.sensitive&&connectionController.voiceConversationCurrent(prepared.binding)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(prepared.context);};
   p.voiceConversationContext = function(binding:import('../runtime/alpha-client').VoiceConversationBinding){const value=alphaClient.getState().context;if(!this.live||document.hidden||value.sensitive||!connectionController.voiceConversationCurrent(binding))throw Error('The voice conversation changed.');return value;};
   p.prepareVoiceConversation = async function(signal:AbortSignal){
-    if(!connectionController.getSnapshot().session)throw Error('Connect an agent in Settings to start a voice conversation.');
+    if(!connectionController.getSnapshot().session)throw Error(residentAlwaysPresent?(connectionController.getSnapshot().kind==='recovering'?RESIDENT_RECOVERING_NOTICE:RESIDENT_STARTING_NOTICE):NO_REMOTE_VOICE);
     signal.throwIfAborted();context(this);if(alphaClient.getState().context.sensitive)throw Error('Return to Home or another app before starting voice.');const expected=JSON.stringify(alphaClient.getState().context);
     const binding=await connectionController.prepareVoiceConversation(signal);signal.throwIfAborted();
     await this.draftBindingTask;signal.throwIfAborted();context(this);
@@ -1117,7 +1128,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       return { chat, msgs: [...(previous.msgs || []), { id: crypto.randomUUID(), ...identity, from: 'agent', text, card: card || null }] };
     });
   };
-  p.reply = function () { return { text: 'Connect an agent to continue.' }; };
+  p.reply = function () { return { text: agentPendingText() }; };
   p.declineCard = async function (message: Shell) {
     const card = message.card || {};
     if(!card.proposalId||card.done||this.pendingActionApproval||this.decliningProposal)return;

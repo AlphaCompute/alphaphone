@@ -225,6 +225,15 @@ final class LocalAgentProviderAdmission {
   selected.put(GENERATION,generation==null?UUID.randomUUID().toString():generation).put(FINGERPRINT,nextFingerprint);
   return selected.toString();
  }
+ /** Decision P-11: the resident always starts, also with no provider admitted. A process launched
+  * that way carries this generation, distinct from every admitted (UUID) generation, so a later
+  * provider binding never attaches to it and takes the ordinary stop, bind, start path. */
+ static final String NO_PROVIDER_GENERATION="no-provider";
+ /** The generation a launch records: the stored admission's, or NO_PROVIDER_GENERATION when no
+  * provider slot is stored. A stored but invalid admission stays null (never attachable). */
+ static String launchGeneration(String saved,String cloud){
+  return saved==null?NO_PROVIDER_GENERATION:currentGeneration(saved,cloud);
+ }
  /** Never writes, migrates legacy state, or mints an identity. */
  static String currentGeneration(String saved,String cloud){
   try{

@@ -14,7 +14,7 @@ import { delegationNative } from "./cloud-delegation-ui";
 import { HostedLiveSourcePicker } from "./hosted-live-source-ui";
 import { hostedResultNative, publishHostedResult, resolveHostedResultTap, type HostedResultBinding } from "./hosted-result-notices";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { connectionController } from "./connection-ui";
+import { connectionController, agentPendingText } from "./connection-ui";
 import { secureConnectionStore } from "./native-connection";
 import { actionScope } from "./device-actions";
 import {
@@ -193,7 +193,7 @@ export function HostedDigestPanel() {
 		setSourceId("");
 		if (!selected || !connection.session) {
 			setMessage(
-				"Connect an agent with verified scheduled digest support. Results remain scoped to that account and agent.",
+				agentPendingText(connection),
 			);
 			return;
 		}

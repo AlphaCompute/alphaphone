@@ -27,6 +27,8 @@ export function voiceFailure(reason: unknown, context: { transcribing: boolean; 
   // The web build has no in-browser recognizer; local speech needs the local agent (libelizainference).
   if (code === 'local-agent-required')
     return { kind: 'local-agent', message: 'Local transcription needs the local agent on this computer. Connect it and choose Transcribe again, or type the transcript instead. Your recording is kept.' };
+  if (code === 'local-agent-starting')
+    return { kind: 'local-agent', message: 'Your agent is starting. Speech is available once it is running; choose Transcribe again then, or type the transcript instead. Your recording is kept.' };
   if (code === 'recognition-failed')
     return { kind: 'recognition', message: 'Speech recognition failed for this recording. Choose Transcribe again, or type the transcript instead. Your recording is kept.' };
   return null;

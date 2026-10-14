@@ -7,7 +7,7 @@ import { presentHomeWorkflowFreshness } from './home-cards';
 import { alphaClient, type ActionProposal } from '../runtime/alpha-client';
 import { workflowApprovalNotice, type WorkflowPhoneReview } from '../runtime/workflow-device-contract';
 import type { WorkflowNoticeRoute } from '../runtime/device-actions';
-import { connectionController } from '../runtime/connection-ui';
+import { connectionController, agentPendingText, residentAlwaysPresent } from '../runtime/connection-ui';
 import { WorkflowAdmissionRejected, WorkflowMetadataRejected, WorkflowLifecycleRejected, type RemoteWorkflow, type WorkflowRun, type WorkflowApproval, type WorkflowApprovalReceipt } from '../runtime/workflow-protocol';
 type Bag=Record<string,any>;
 // Run-state policy stays local to this module (its boundary fixtures evaluate it without imports).
@@ -55,7 +55,7 @@ export function installWorkflowAdapter(Component:any,views:Bag){
  let detailSession:string|null=null, approvalReceipt:WorkflowApprovalReceipt|null=null, approvalReview:{digest:string;approved:boolean}|null=null;
  const approvalKey=(run:WorkflowRun)=>lockKey(run.workflowId)+':approval:'+run.id;
  const approvalLocked=(run:WorkflowRun)=>intentStore?.locked(approvalKey(run))??true;
- let phase='idle',status='Connect an agent to manage workflows',operation:AbortController|null=null,generation=0,reviewRun=false,reviewActivation=false,reviewCancel=false;
+ let phase='idle',status=agentPendingText(),operation:AbortController|null=null,generation=0,reviewRun=false,reviewActivation=false,reviewCancel=false;
  const lockKey=(id:string)=>{const s=connectionController.getSnapshot().session;if(!s)throw new Error('Workflow account unavailable');return workflowIntentKey(s,id);};
  const locked=(id:string)=>intentStore?.locked(lockKey(id))??true;
  let intentStore:WorkflowIntentStore|null=null,recovery:AbortController|null=null;
@@ -271,7 +271,7 @@ export function installWorkflowAdapter(Component:any,views:Bag){
  view.render=(_state:Bag,current:Bag)=>{api=current;const binding=connectionController.getWorkflowClient();if(!view.automationsManaged&&phase==='idle'&&binding&&current.isActive()){phase='scheduled';queueMicrotask(()=>{if(api?.isActive())void refresh();});}
  const track=(on:boolean)=>current.track(on),kx=(on:boolean)=>current.kx(on);
  const cards:Bag[]=flows.map(f=>({name:f.name,short:f.description||'Agent workflow',statusLabel:f.removed?'Removed':f.active?'Active':'Paused',on:f.active,track:track(f.active),kx:kx(f.active),dim:'',failed:false,open:()=>void open(f.id),toggle:()=>{void open(f.id);current.toast('Open the workflow to review it before pausing.');}}));
- cards.unshift({name:phase==='busy'?'Loading workflows…':binding?status:'Agent connection required',short:binding?'Tap to refresh from this agent':'Connect your local or remote agent to manage workflows',on:false,track:track(false),kx:kx(false),dim:'',failed:false,open:()=>binding?void refresh():connectionController.open(),toggle:()=>binding?void refresh():connectionController.open()});
+ cards.unshift({name:phase==='busy'?'Loading workflows…':binding?status:agentPendingText(connectionController.getSnapshot(),'Agent connection required'),short:binding?'Tap to refresh from this agent':residentAlwaysPresent?'Workflows appear when your agent is running':'Connect your remote agent to manage workflows',on:false,track:track(false),kx:kx(false),dim:'',failed:false,open:()=>binding?void refresh():connectionController.open(),toggle:()=>binding?void refresh():connectionController.open()});
  if(intentStore&&!Capacitor.isNativePlatform())cards.push({name:'Workflow request recovery',short:'Back up or reset this agent’s pending requests',on:false,track:track(false),kx:kx(false),dim:'',failed:false,open:()=>void recoverIntents(),toggle:()=>{}});
  if(lifecycleAvailable)cards.push({name:removedList?'Active workflows':'Removed workflows',short:removedList?'Return to current workflows':'Review removed workflows and retained execution history',on:false,track:track(false),kx:kx(false),dim:'',failed:false,open:()=>{if(operation)return;removedList=!removedList;detail=null;void refresh();},toggle:()=>{}});
  for(const id of operation||phase==='scheduled'?[]:pendingLifecycle())if(!flows.some(f=>f.id===id))cards.push({name:'Pending workflow change',short:'Tap to reconcile this exact removal or restore',on:false,track:track(false),kx:kx(false),dim:'',failed:false,open:()=>void open(id),toggle:()=>{}});
