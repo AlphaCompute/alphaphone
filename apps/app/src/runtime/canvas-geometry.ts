@@ -72,3 +72,27 @@ export function isEditing(element: Element | null): boolean {
   if (element instanceof HTMLInputElement) return !element.readOnly && !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file', 'image', 'hidden'].includes(element.type);
   return false;
 }
+
+/** Canvas width from which Inbox, Notes and Files show the open item beside their list. */
+export const SPLIT_CANVAS = 1000;
+/** Narrowest readable Calendar day column; the time gutter takes 76px. */
+const DAY_COLUMN = 240;
+/** Text scale from which Calendar keeps its single-day agenda instead of side-by-side days. */
+const MULTI_DAY_TEXT_LIMIT = 1.3;
+
+/** Layout choices that change what a surface renders, not only how CSS places it. */
+export type SurfaceLayout = { split: boolean; calendarDays: number };
+export function surfaceLayout(canvasWidth: number, textScale: number, desktop = false): SurfaceLayout {
+  if (desktop || !Number.isFinite(canvasWidth)) return { split: false, calendarDays: 1 };
+  const days = textScale >= MULTI_DAY_TEXT_LIMIT ? 1 : Math.floor((canvasWidth - 76) / DAY_COLUMN);
+  return { split: canvasWidth >= SPLIT_CANVAS, calendarDays: Math.max(1, Math.min(7, days)) };
+}
+let published: SurfaceLayout = { split: false, calendarDays: 1 };
+/** The layout surfaces render from; main.tsx publishes it from measured canvas and text size. */
+export const currentSurfaceLayout = (): SurfaceLayout => published;
+/** Returns true when the layout changed and surfaces must render again. */
+export function publishSurfaceLayout(next: SurfaceLayout): boolean {
+  if (next.split === published.split && next.calendarDays === published.calendarDays) return false;
+  published = next;
+  return true;
+}

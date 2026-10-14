@@ -1,4 +1,7 @@
 import {createInlineModal} from '../runtime/inline-modal';
+import {currentSurfaceLayout} from '../runtime/canvas-geometry';
+/** On a split canvas the open message, note or file sits beside its list, which stays usable. */
+const split=()=>currentSurfaceLayout().split;
 type Bag=Record<string,any>;
 type Popup=[key:string,open:(out:Bag)=>boolean,close:(out:Bag)=>void];
 /**
@@ -34,7 +37,7 @@ export function installSubviewAccessibility(views:Bag){
    if(name==='inbox'){
     contextModal.render(!!out.contextReviewOpen);attachmentModal.render(!!out.attachmentOpen);providerModal.render(!!out.providerReview);
     const review=!!(out.contextReviewOpen||out.attachmentOpen||out.providerReview);
-    return {...out,captureSubviewFocus:focus.capture,contextModal:contextModal.ref,attachmentModal:attachmentModal.ref,providerModal:providerModal.ref,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!!(out.detail||out.composing||review),detailCovered:!!(out.composing||review),composeCovered:review};
+    return {...out,captureSubviewFocus:focus.capture,contextModal:contextModal.ref,attachmentModal:attachmentModal.ref,providerModal:providerModal.ref,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!!((out.detail&&!split())||out.composing||review),detailCovered:!!(out.composing||review),composeCovered:review};
    }
    return {...out,...popups(out),captureSubviewFocus:focus.capture,detailFocus,composeFocus,runFocus,builderFocus,listCovered:!!(out.detail||out.automation?.detail||out.runOpen||out.builder),detailCovered:!!(out.runOpen||out.builder),runCovered:!!out.builder};
   };
@@ -43,8 +46,8 @@ export function installSubviewAccessibility(views:Bag){
   ['calendar',['detail','form'],(out:Bag)=>({listCovered:!!(out.detail||out.form),detailCovered:!!out.form})],
   ['browser',['tabs','library'],(out:Bag)=>({listCovered:!!(out.tabsOpen||out.lib),tabsCovered:!!out.lib})],
   ['photos',['album','viewer','edit','empty'],(out:Bag)=>({listCovered:!!(out.album||out.viewing||out.editing||out.viewEmpty),albumCovered:!!(out.viewing||out.editing||out.viewEmpty),viewerCovered:!!out.editing})],
-  ['notes',['editor','voice','link','recording','trash'],(out:Bag)=>({listCovered:!!(out.isEdit||out.isVoice||out.isLink||out.recording||out.trashOpen),detailCovered:!!(out.recording||out.trashFullOpen),trashCovered:!!out.trashConfirmOpen})],
-  ['files',['folder','preview'],(out:Bag)=>({listCovered:!!(out.inFolder||out.isPreview),detailCovered:!!out.isPreview})],
+  ['notes',['editor','voice','link','recording','trash'],(out:Bag)=>({listCovered:!!((out.isEdit&&!split())||out.isVoice||out.isLink||out.recording||out.trashOpen),detailCovered:!!(out.recording||out.trashFullOpen),trashCovered:!!out.trashConfirmOpen})],
+  ['files',['folder','preview'],(out:Bag)=>({listCovered:!!(out.inFolder||(out.isPreview&&!split())),detailCovered:!!out.isPreview&&!split()})],
  ] as Array<[string,string[],(out:Bag)=>Bag]>){
   const render=views[name].render,focus=focusHistory(),refs=Object.fromEntries(keys.map(key=>[key+'Focus',subviewFocus(focus.read)]));
   let output:Bag={};

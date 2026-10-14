@@ -622,7 +622,7 @@
           <svg class="i" viewBox="0 0 24 24" style="color: var(--acct)"><path d="{{ic.reply}}"></path></svg>
           <svg class="i" viewBox="0 0 24 24"><path d="{{ic.archive}}"></path></svg>
         </div>
-        <button aria-label="{{it.label}}" onClick="{{it.open}}" style="position: relative; width: 100%; display: flex; gap: 14px; padding: 13px 20px; align-items: flex-start; background: var(--bg); transform: translateX({{it.tx}}px); transition: transform .28s cubic-bezier(.19,1,.22,1); box-sizing: border-box">
+        <button aria-label="{{it.label}}" aria-current="{{it.current}}" onClick="{{it.open}}" style="position: relative; width: 100%; display: flex; gap: 14px; padding: 13px 20px; align-items: flex-start; background: var(--bg); transform: translateX({{it.tx}}px); transition: transform .28s cubic-bezier(.19,1,.22,1); box-sizing: border-box">
           <span style="width: 44px; height: 44px; border-radius: 22px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; background: var(--s2); white-space: nowrap">{{it.ini}}</span>
           <div style="flex-grow: 1; min-width: 0">
             <div style="display: flex; align-items: center; gap: 6px">
@@ -903,6 +903,11 @@
     </div>
   </sc-if>
 
+  <sc-if value="{{calendar.multiDay}}">
+    <div data-alpha-calendar-day-heads aria-hidden="true" style="display: grid; grid-template-columns: repeat({{calendar.dayCount}}, minmax(0, 1fr)); padding: 0 16px 6px 60px; flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--mut)">
+      <sc-for list="{{calendar.dayColumns}}" as="c"><span style="padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.label}}</span></sc-for>
+    </div>
+  </sc-if>
   <div class="scr calendar-timeline" role="region" aria-label="Calendar timeline" tabindex="0" onPointerDown="{{calendar.tlDown}}" onPointerUp="{{calendar.tlUp}}" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; border-top: 1px solid var(--line)">
     <div style="position: relative; height: calc(912px * var(--calendar-timeline-scale)); min-height: calc({{calendar.nativeTimelineHeight}} * var(--calendar-timeline-scale)); margin-bottom: 110px">
       <sc-for list="{{calendar.hours}}" as="h">
@@ -919,6 +924,22 @@
           <sc-if value="{{e.showTime}}"><span style="font-size: 12px; opacity: .75; white-space: nowrap">{{e.time}}</span></sc-if>
         </button>
       </sc-for>
+      <sc-if value="{{calendar.multiDay}}">
+        <div data-alpha-calendar-days style="position: absolute; left: 60px; right: 16px; top: 0; bottom: 0; display: grid; grid-template-columns: repeat({{calendar.dayCount}}, minmax(0, 1fr))">
+          <sc-for list="{{calendar.dayColumns}}" as="c">
+            <div role="group" aria-label="{{c.label}}" data-alpha-calendar-day style="position: relative; box-shadow: inset 1px 0 0 var(--line)">
+              <sc-for list="{{c.events}}" as="e">
+                <button onClick="{{e.open}}" aria-label="{{e.title}}, {{e.time}}" style="position: absolute; left: {{e.x}}%; width: calc({{e.wp}}% - 4px); top: calc({{e.top}}px * var(--calendar-timeline-scale)); height: calc({{e.h}}px * var(--calendar-timeline-scale)); border-radius: 14px; padding: 8px 12px 8px 16px; box-sizing: border-box; display: flex; align-items: flex-start; gap: 8px; overflow: hidden; text-align: left; {{e.css}}">
+          <span style="position: absolute; left: 6px; top: 6px; bottom: 6px; width: 3px; border-radius: 2px; background: {{e.stripe}}"></span>
+          <span class="calendar-block-text" style="flex-grow: 1; min-width: 0"><span style="display: block; font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.title}}</span><span style="display: block; font-size: 12px; opacity: .85; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.sub}}</span></span>
+          <sc-if value="{{e.showTime}}"><span style="font-size: 12px; opacity: .75; white-space: nowrap">{{e.time}}</span></sc-if>
+        </button>
+              </sc-for>
+              <sc-if value="{{c.showNow}}"><div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: calc({{c.nowTop}}px * var(--calendar-timeline-scale)); height: 2px; background: var(--acct)"></div></sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
       <sc-if value="{{calendar.showNow}}">
         <div style="position: absolute; left: 54px; right: 16px; top: calc({{calendar.nowTop}}px * var(--calendar-timeline-scale)); height: 2px; background: var(--acct); pointer-events: none">
           <span style="position: absolute; left: -4px; top: -4px; width: 10px; height: 10px; border-radius: 5px; background: var(--acct)"></span>
@@ -2267,7 +2288,7 @@
     <div style="display: flex; gap: 10px; align-items: flex-start">
       <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px">
         <sc-for list="{{notes.colL}}" as="n">
-          <button onClick="{{n.open}}" class="tap" aria-label="Open {{n.title}}" style="display: block; width: 100%; padding: 16px; border-radius: 22px; background: var(--s2); box-sizing: border-box; text-align: left; position: relative">
+          <button onClick="{{n.open}}" class="tap" aria-label="Open {{n.title}}" aria-current="{{n.current}}" style="display: block; width: 100%; padding: 16px; border-radius: 22px; background: var(--s2); box-sizing: border-box; text-align: left; position: relative">
             <sc-if value="{{n.pinned}}"><svg class="i" viewBox="0 0 24 24" style="position: absolute; top: 14px; right: 12px; width: 16px; height: 16px; color: var(--acct)"><path d="{{ic.notesPin}}"></path></svg></sc-if>
             <sc-if value="{{n.isVoice}}">
               <div style="display: flex; align-items: center; gap: 2px; height: 30px; margin-bottom: 12px">
@@ -2294,7 +2315,7 @@
       </div>
       <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px">
         <sc-for list="{{notes.colR}}" as="n">
-          <button onClick="{{n.open}}" class="tap" aria-label="Open {{n.title}}" style="display: block; width: 100%; padding: 16px; border-radius: 22px; background: var(--s2); box-sizing: border-box; text-align: left; position: relative">
+          <button onClick="{{n.open}}" class="tap" aria-label="Open {{n.title}}" aria-current="{{n.current}}" style="display: block; width: 100%; padding: 16px; border-radius: 22px; background: var(--s2); box-sizing: border-box; text-align: left; position: relative">
             <sc-if value="{{n.pinned}}"><svg class="i" viewBox="0 0 24 24" style="position: absolute; top: 14px; right: 12px; width: 16px; height: 16px; color: var(--acct)"><path d="{{ic.notesPin}}"></path></svg></sc-if>
             <sc-if value="{{n.isVoice}}">
               <div style="display: flex; align-items: center; gap: 2px; height: 30px; margin-bottom: 12px">
@@ -3863,9 +3884,9 @@
                 <div style="display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 18px; min-height: 60px; box-sizing: border-box">
                   <sc-if value="{{r.hasIcon}}"><svg class="i" viewBox="0 0 24 24"><path d="{{r.d}}"></path></svg></sc-if>
                   <span style="flex-grow: 1; min-width: 0; font-size: 16px">{{r.label}}</span>
-                  <div style="display: flex; gap: 2px; padding: 3px; border-radius: 23px; background: var(--bg); flex-shrink: 0">
+                  <div style="display: flex; gap: 2px; padding: 3px; border-radius: 25px; background: var(--bg); flex-shrink: 0">
                     <sc-for list="{{r.opts}}" as="o">
-                      <button aria-label="{{o.aria}}" aria-pressed="{{o.on}}" onClick="{{o.pick}}" style="height: 38px; min-width: 52px; padding: 0 12px; border-radius: 19px; font-size: 13.5px; font-weight: 600; transition: background .2s; {{o.css}}">{{o.label}}</button>
+                      <button aria-label="{{o.aria}}" aria-pressed="{{o.on}}" onClick="{{o.pick}}" style="height: 44px; min-width: 52px; padding: 0 14px; border-radius: 22px; font-size: 13.5px; font-weight: 600; transition: background .2s; {{o.css}}">{{o.label}}</button>
                     </sc-for>
                   </div>
                 </div>

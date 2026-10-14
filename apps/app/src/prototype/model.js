@@ -14,6 +14,7 @@ import { isMvpView, DEFERRED_MVP_VIEWS, deferredMvpPrompt } from "./mvp-features
 import { emptyHomeShadePull, pullStart, shadeFallback } from "./system-shade";
 import React from "react";
 import { DCLogic } from "./dc-lite.js";
+import { calendarDayColumns, calendarDayCount, markVisibleWeek, visibleCalendarDays } from "./calendar-days";
 import { WEEKDAYS, MONTHS, formatTime, formatClock, formatHours, formatHoursRange, formatHour, weekdayName, formatShortDate, formatLongDate, formatMonthDay, formatMonthTitle } from "./locale-time";
 
 
@@ -978,7 +979,7 @@ registerView("inbox", {
         dot: unread ? "var(--acct)" : "transparent", clip: !!(m.atts && m.atts.length),
         label: (unread ? "Unread, " : "") + w.name + ", " + m.subj,
         down: s.down, up: s.up,
-        tx: st.slide && st.slide.id === m.id ? st.slide.x : 0,
+        tx: st.slide && st.slide.id === m.id ? st.slide.x : 0, current: st.open === m.id ? "true" : "false",
         open: function () { if (api.swallowed()) return; api.set({ open: m.id, openLocal: true }); }
       };
     });
@@ -1343,8 +1344,9 @@ registerView("calendar", {
       return { l: l, n: dt.getDate(), cs: cs, dot: on(off).length ? (off === 0 ? "var(--acct)" : "var(--mut)") : "transparent", pick: function () { set({ day: off }); } };
     });
 
-    // timeline
-    var evs = on(sel).slice().sort(function (a, b) { return a.t - b.t || b.d - a.d; });
+    // timeline: one day's layout, used for the selected day and for each side-by-side day column
+    var layoutDay = function (day) {
+    var evs = on(day).slice().sort(function (a, b) { return a.t - b.t || b.d - a.d; });
     var lanes = []; var laneOf = {};
     evs.forEach(function (e) { for (var i = 0; i <= lanes.length; i++) { if (lanes[i] == null || lanes[i] <= e.t + 0.001) { lanes[i] = e.t + e.d; laneOf[e.id] = i; break; } } });
     var W = 412 - 60 - 16;
@@ -1360,9 +1362,16 @@ registerView("calendar", {
         css: css + (short ? ";align-items:center;padding-top:0;padding-bottom:0" : ""),
         stripe: e.key || e.hold || pending ? "transparent" : CAL_COLORS[c.color],
         sub: !short && e.d >= 1 ? (e.where || (e.video ? "Video call" : "")) : "", showTime: w >= 150,
-        open: function () { if (api.swallowed()) return; set({ open: e.id, openDay: sel }); }
+        open: function () { if (api.swallowed()) return; set({ open: e.id, openDay: day }); }
       };
     });
+    return events;
+    };
+    var evs = on(sel);
+    var dayEvents = layoutDay(sel);
+    var dayCount = calendarDayCount();
+    var dayOffs = visibleCalendarDays(sel, dayCount);
+    var dayColumns = dayCount > 1 ? dayOffs.map(function (off) { return { off: off, events: off === sel ? dayEvents : layoutDay(off) }; }) : [];
     var hours = []; for (var h = CAL_H0; h <= CAL_H1; h++) hours.push({ top: (h - CAL_H0) * CAL_PX + 8, label: formatHour(h), lt: (h - CAL_H0) * CAL_PX });
     var nowT = api.now.getHours() + api.now.getMinutes() / 60;
     var sw = api.sw(function (dx, dy) { if (Math.abs(dx) < Math.abs(dy) * 1.2) return false; set({ day: sel + (dx < 0 ? 1 : -1) }); }, { axis: "x" });
@@ -1492,8 +1501,13 @@ registerView("calendar", {
       month: monthOpen ? formatMonthTitle(mBase, mBase.getFullYear() !== today.getFullYear()) : formatMonthTitle(selDate, selDate.getFullYear() !== today.getFullYear()),
       dayMode: !monthOpen,
       dayName: calDayName(api, sel),
-      emptyText: sel === 0 ? "Nothing scheduled today" : "Free all day", week: week, events: events, hours: hours, empty: evs.length === 0,
-      showNow: sel === 0 && nowT >= CAL_H0 && nowT <= CAL_H1, nowTop: (nowT - CAL_H0) * CAL_PX + 8,
+      emptyText: dayCount > 1 ? "Free on these days" : sel === 0 ? "Nothing scheduled today" : "Free all day",
+      week: markVisibleWeek(week, sel - sdow, sel, dayCount),
+      events: dayCount > 1 ? [] : dayEvents, dayEvents: dayEvents, hours: hours,
+      empty: dayCount > 1 ? dayColumns.every(function (c) { return !c.events.length; }) : evs.length === 0,
+      multiDay: dayCount > 1, dayCount: dayCount,
+      dayColumns: calendarDayColumns(dayColumns, api.now, (nowT - CAL_H0) * CAL_PX + 8, nowT >= CAL_H0 && nowT <= CAL_H1),
+      showNow: dayCount < 2 && sel === 0 && nowT >= CAL_H0 && nowT <= CAL_H1, nowTop: (nowT - CAL_H0) * CAL_PX + 8,
       tlDown: tlDown, tlUp: tlUp,
       notToday: sel !== 0, goToday: function () { set({ day: 0, month: null }); },
       toggleMonth: function () { set({ month: monthOpen ? null : 0 }); },
@@ -3076,7 +3090,7 @@ registerView("notes", {
         id: n.id, title: n.title || "Untitled", hasTitle: true, body: n.kind === "text" ? String(n.body || "").slice(0, 180) : "", hasBody: n.kind === "text" && !!String(n.body || "").trim(),
         isList: n.kind === "list", isVoice: n.kind === "voice", isLink: n.kind === "link", items: items, more: more > 0 ? "+" + more : "", hasMore: more > 0,
         bars: bars, dur: n.kind === "voice" ? notesFmt(n.dur) + (n.actions && n.actions.length ? " · " + n.actions.length + " to-dos" : "") : "", domain: n.domain || "",
-        pinned: !!n.pinned, open: function () { notesStopTimers(); api.set({ open: n.id, pos: 0, playing: false, sheet: null }); }
+        pinned: !!n.pinned, current: st.open === n.id ? "true" : "false", open: function () { notesStopTimers(); api.set({ open: n.id, pos: 0, playing: false, sheet: null }); }
       };
     });
     var colL = [], colR = [];
