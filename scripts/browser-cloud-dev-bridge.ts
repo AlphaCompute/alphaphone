@@ -15,7 +15,7 @@ function environment(value:unknown):Environment{if(value!=='production'&&value!=
 function refusal(status:number,code:string){return Object.assign(Error(code),{status,code});}
 function requestId(value:unknown):string{if(typeof value!=='string'||!UUID.test(value))throw Error('Invalid request identity');return value;}
 function object(value:unknown):Record<string,any>{if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid Cloud request');return value as Record<string,any>;}
-/** DEV transport only. Canonical Cloud owns login, identity, credits and speech authorization. */
+/** DEV transport only. Canonical Cloud owns login, identity, plan entitlement and speech authorization. */
 export function createBrowserCloudDevHandler(options:{profile:string;request?:typeof fetch}){
  const profile=path.resolve(options.profile),stateFile=path.join(profile,'credentials.json'),initialFile=path.join(profile,'initial-credential.json'),fetchCloud=options.request??fetch;
  let queue:Promise<unknown>=Promise.resolve();
@@ -75,8 +75,11 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
       if(result.expiresAt&&(!Number.isFinite(Date.parse(result.expiresAt))||Date.parse(result.expiresAt)<=Date.now()))throw Error('Cloud credential expired');
       const reference='browser-cloud-reference:'+randomUUID(),claimed:Credential={token,credentialReference:reference,credentialId:randomUUID(),userId:who.id,organizationId:who.organization_id,...(result.expiresAt?{expiresAt:Date.parse(result.expiresAt)}:{})};controller.signal.throwIfAborted();if(login.expiresAt<=Date.now())throw refusal(410,'expired');if(pending.get(id)!==login||((await load())[env]?.credentialReference??null)!==login.previousReference)throw refusal(409,'account-changed');controller.signal.throwIfAborted();claims.set(reference,{environment:env,previousReference:login.previousReference,expiresAt:login.expiresAt,credential:claimed});pending.delete(id);send(res,200,{status:response.status,data:{status:'authenticated',credentialReference:reference,userId:who.id,organizationId:who.organization_id,...(result.expiresAt?{expiresAt:result.expiresAt}:{})}});return;
      }send(res,200,{status:response.status,data:result});return;}
-    if(method!=='GET'||input.body!==undefined||!['/api/v1/user','/api/v1/credits/balance','/api/v1/eliza/google/accounts?side=owner'].includes(route))throw Error('Unsupported Cloud route');
-    const c=await admitted(env,input.credentialReference);active.get(ownedId)!.credentialId=c.credentialId;const response=await canonical(env,route,controller.signal,{},c);let result=await response.json();await current(env,c,controller.signal);if(response.ok&&route==='/api/v1/user'&&result.success===true){const who=object(result.data);result={success:true,data:{id:who.id,organization_id:who.organization_id,...(typeof who.email==='string'?{email:who.email}:{})}};}send(res,200,{status:response.status,data:result});return;
+    // Subscription redemption: exactly {code,idempotencyKey}; the code is forwarded, never logged or stored.
+    const redeem=method==='POST'&&route==='/api/v1/subscription/redeem';
+    if(redeem){const body=object(JSON.parse(input.body??'null'));if(Object.keys(body).sort().join()!=='code,idempotencyKey'||typeof body.code!=='string'||body.code.length>128||typeof body.idempotencyKey!=='string'||!/^[A-Za-z0-9._:-]{8,128}$/.test(body.idempotencyKey))throw Error('Invalid subscription redemption');}
+    else if(method!=='GET'||input.body!==undefined||!['/api/v1/user','/api/v1/billing/limits','/api/v1/subscription/entitlement','/api/v1/subscription/entitlement-keys','/api/v1/eliza/google/accounts?side=owner'].includes(route))throw Error('Unsupported Cloud route');
+    const c=await admitted(env,input.credentialReference);active.get(ownedId)!.credentialId=c.credentialId;const response=await canonical(env,route,controller.signal,redeem?{method:'POST',headers:{'Content-Type':'application/json'},body:input.body}:{},c);let result=await response.json();await current(env,c,controller.signal);if(response.ok&&route==='/api/v1/user'&&result.success===true){const who=object(result.data);result={success:true,data:{id:who.id,organization_id:who.organization_id,...(typeof who.email==='string'?{email:who.email}:{})}};}send(res,200,{status:response.status,data:result});return;
    }
    if(data.operation==='stt'||data.operation==='tts'){
     const c=await admitted(env,data.credentialReference,data.credentialId);active.get(ownedId)!.credentialId=c.credentialId;

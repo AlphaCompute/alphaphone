@@ -27,7 +27,7 @@ test('production preserves the Cloud route regardless of account, legacy prefere
     const v=load(storage(), {account,dev});
     for(const requested of ['default','device','manual','agent']) assert.equal(v.selectVoiceRoute(requested),'cloud');
     assert.equal(v.chooseVoiceRoute('cloud'),false);
-    assert.equal(v.chooseVoiceRoute('cloud',{disclosed:'cloud-speech-uses-credits'}),true);
+    assert.equal(v.chooseVoiceRoute('cloud',{disclosed:'cloud-speech-uses-plan'}),true);
     assert.equal(v.chooseVoiceRoute('device'),true);
     assert.equal(v.selectVoiceRoute(),'cloud','legacy preference cannot silently override current production policy');
     assert.match(v.cloudSpeechDisclosure(),/counts toward your plan allowance/);
@@ -36,7 +36,7 @@ test('production preserves the Cloud route regardless of account, legacy prefere
 
 test('legacy preference persistence detects dropped or unavailable storage', () => {
   for(const store of [{getItem:()=>null,setItem(){}},{getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}}]) {
-    const v=load(store);assert.equal(v.chooseVoiceRoute('cloud',{disclosed:'cloud-speech-uses-credits'}),false);assert.equal(v.selectVoiceRoute(),'cloud');
+    const v=load(store);assert.equal(v.chooseVoiceRoute('cloud',{disclosed:'cloud-speech-uses-plan'}),false);assert.equal(v.selectVoiceRoute(),'cloud');
   }
 });
 

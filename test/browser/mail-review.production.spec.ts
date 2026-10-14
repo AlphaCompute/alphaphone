@@ -107,7 +107,7 @@ async function androidWithMailbox(page: Page) {
             const path = new URL(input.url).pathname;
             if (path === '/api/v1/user') return { status: 200, data: { success: true, data: { id: account } } };
             if (path === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Deployed Cloud has no subscription entitlement route yet.
-            if (path === '/api/v1/credits/balance') return { status: 200, data: { balance: 5 } };
+            if (path === '/api/v1/billing/limits') return { status: 200, data: { success: true, data: { v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } } } } };
             // Synthetic managed Gmail behind Eliza Cloud, in the server's own response shapes. The
             // product's CloudProtocol validates every one of these replies.
             const m = f.mail, google = '/api/v1/eliza/google', body = input.body ? JSON.parse(input.body) : null;
