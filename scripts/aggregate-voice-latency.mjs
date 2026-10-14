@@ -13,8 +13,9 @@
 //   speechToAudioExcludingReview  recognition + firstAudio
 // The last two are legacy stage sums, not end-to-end voice-assistant latency.
 // Only native audio-clock exports can satisfy the approved issue #395 boundary.
-// Exit 0: enough native samples per identity cohort (inspect native.withinBudget separately).
-// Exit 2: native evidence insufficient. Exit 1: bad input. Legacy exports remain readable.
+// Exit 0: native samples are sufficient and within the latency budget (not device signoff).
+// Exit 2: native evidence insufficient. Exit 3: sufficient samples fail the budget/reliability check.
+// Exit 1: bad input. Legacy exports remain readable.
 import fs from 'node:fs';
 import { aggregateNativeVoice, nativeTimingFormat } from './native-voice-latency.mjs';
 
@@ -103,5 +104,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   catch (error) { console.error(`Cannot aggregate: ${error.message}`); process.exit(1); }
   const text = JSON.stringify(summary, null, 2);
   if (options.out) fs.writeFileSync(options.out, text + '\n'); else console.log(text);
-  if (!summary.sufficient) { console.error('Insufficient native audio evidence: require at least 50 successful simple-query trials per source/model/device/environment cohort, including 20 warm and 5 cold. Legacy renderer samples are diagnostic only.'); process.exit(2); }
+  if (!summary.sufficient) { console.error('Insufficient native audio evidence: require at least 50 successful simple-query trials per source/model/device/environment cohort, including the requested warm/cold minimums. Legacy renderer samples are diagnostic only; inspect native.invalid and native.conflictingTrials for rejected records.'); process.exit(2); }
+  if (!summary.native.withinBudget) { console.error('Native audio evidence failed the latency/reliability check: inspect cold/warm p95 against 6000 ms and failures/cancelled counts in native.cohorts.'); process.exit(3); }
+  console.error('Native timing sample and budget checks passed. Clock provenance, microphone/speaker quality and target-device acceptance still require review.');
 }

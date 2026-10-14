@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { aggregateNativeVoice, nativeTimingFormat } from '../scripts/native-voice-latency.mjs';
 import { aggregate } from '../scripts/aggregate-voice-latency.mjs';
 const identity = { sourceSha256: 'a'.repeat(64), engineSha256: 'b'.repeat(64), modelSha256: 'c'.repeat(64), device: 'test-device', abi: 'arm64-v8a', network: 'offline', thermal: 'nominal' };
@@ -46,4 +50,26 @@ test('failures and cancellations remain visible and conflicting duplicate trials
   const conflicting = trial(0, 7000);
   const conflict = aggregateNativeVoice([document(rows), document([conflicting])]);
   assert.equal(conflict.conflictingTrials, 1); assert.equal(conflict.sufficient, false);
+});
+
+
+test('CLI distinguishes insufficient samples, failed budgets and measured timing passes', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'native-voice-latency-'));
+  try {
+    const file = path.join(dir, 'export.json');
+    const run = rows => {
+      fs.writeFileSync(file, JSON.stringify(document(rows)));
+      return spawnSync(process.execPath, ['scripts/aggregate-voice-latency.mjs', file], { encoding: 'utf8' });
+    };
+    const passed = run(samples());
+    assert.equal(passed.status, 0);
+    assert.match(passed.stderr, /target-device acceptance still require review/);
+    assert.equal(run(samples().slice(1)).status, 2);
+    const slow = run(samples().map((_, i) => trial(i, 7000)));
+    assert.equal(slow.status, 3);
+    assert.equal(JSON.parse(slow.stdout).native.withinBudget, false);
+    assert.match(slow.stderr, /failed the latency/);
+    const failed = trial(50); failed.outcome = 'failed';
+    assert.equal(run([...samples(), failed]).status, 3);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
