@@ -4,8 +4,9 @@ import org.json.JSONObject;
 /** Uses the real Back handler and the prototype's actual home icon buttons. */
 final class AppNavigation {
  private AppNavigation() {}
- /** Decision P-43: there is no offline choice. The connection dialog is always closable; its close
-  * button carries this accessible name in every build. */
+ /** Decision P-43: there is no offline choice. The connection dialog's close button carries this
+  * accessible name in every build. Signed out on a flag-off phone (or with a sign-in Cloud rejected)
+  * the dialog has no close button once the start settles: the Eliza Cloud sign-in is required. */
  static final String CLOSE_CONNECTION = "Close connection settings";
  static String closeConnection() { return "document.querySelector('.alpha-connection-scrim button[aria-label=\"" + CLOSE_CONNECTION + "\"]')?.click()"; }
  static void liveMode() throws Exception {
