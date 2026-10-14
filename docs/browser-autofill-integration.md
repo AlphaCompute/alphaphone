@@ -29,6 +29,9 @@ unavailable"). Where the WebView supports `WEB_MESSAGE_LISTENER` and
 `BrowserLoginFields`: the field origin is the engine's `sourceOrigin` for the field's frame,
 admitted only for the top-level site and same-origin frames, and the WebView's own structure is
 then excluded ([browser fill](password-provider-setup.md#browser-fill-engine-attested-field-origins)).
+A field focused before the tab is eligible (an `autofocus` login page that is still loading, or a
+site prompt that is open) is kept for that navigation only and judged again by the same rule when
+the tab becomes eligible, so the user does not have to leave and re-enter the field.
 Otherwise website fills from the integrated vault stay off. Native app fields are filled after a
 fresh unlock, with the signer check described in password-provider-setup.md. Show and Copy remain
 available in Settings. The privileged renderer WebView is excluded, and no field

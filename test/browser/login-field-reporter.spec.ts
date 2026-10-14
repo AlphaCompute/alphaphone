@@ -127,3 +127,19 @@ test('a document that unloads tells native code to end its binding', async ({ pa
   await frame.evaluate(() => { location.href = 'https://a.test/next'; });
   await expect.poll(() => page.evaluate(() => (window as any).__frameSent?.at(-1))).toBe(`gone|${doc}`);
 });
+
+test('a field focused while the page is still loading is reported once, before the load finishes', async ({ page }) => {
+  // Native code keeps this report (BrowserFieldOrigin.Deferred) and offers the field when the tab
+  // becomes eligible, because the script does not report a field again while it stays focused.
+  let release: () => void = () => {};
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await serve(page, { 'https://a.test/login': loginForm('<img src="https://a.test/slow.png"><script>document.getElementById("user").focus()</script>') });
+  await page.route('https://a.test/slow.png', async route => { await held; await route.fulfill({ status: 404, body: '' }); });
+  await page.goto('https://a.test/login', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => sent(page)).toHaveLength(1);
+  expect(await page.evaluate(() => document.readyState)).not.toBe('complete');
+  expect((await sent(page))[0]).toMatch(/^focus\|[0-9a-f]{24}\|1\|1\|2\|username\|current-password\|/);
+  release();
+  await page.waitForLoadState('load');
+  expect(await sent(page)).toHaveLength(1);
+});
