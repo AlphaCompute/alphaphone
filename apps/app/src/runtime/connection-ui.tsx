@@ -144,7 +144,7 @@ function cloudUnreachable(error: unknown): boolean {
   if (error instanceof EntitlementError) return false;
   return error instanceof Error && /^(Connection request failed|Connection timed out|Request cancelled)$/.test(error.message);
 }
-const OFFLINE_NOTICE = 'Eliza Cloud cannot be reached right now. Local apps and on-device speech keep working with your recent plan; your agent starts when Cloud is reachable.';
+const OFFLINE_NOTICE = 'Eliza Cloud cannot be reached right now. Local apps and on-device speech keep working with your recent plan; your agent starts when Cloud is reachable again, checked when the network returns or you come back to Alpha Phone.';
 const listeners = new Set<() => void>();
 let developmentPageSuspended = false;
 let state: ConnectionSnapshot = { startupResolved:false, phoneActionsAvailable:false, phoneCapabilityReason:'', actionHistory: [], conversations: [], history: null, cloudAccount: null, open: false, busy: false, message: '', error: '', kind: 'offline', name: 'Offline', session: null, agents: [] };
@@ -1265,7 +1265,8 @@ export const connectionController = {
   /** Checks the plan again after the owner returns from Eliza Cloud (resume or visibility). */
   recheckPlanOnReturn() {
     if(!residentGate()||operation||state.busy)return;
-    if(state.residentGate==='needs-plan'&&state.cloudAccount){void connectionController.startLocal();return;}
+    // Offline admission started nothing, so returning or reconnecting retries the whole admission.
+    if((state.residentGate==='needs-plan'&&state.cloudAccount)||state.residentGate==='offline'){void connectionController.startLocal();return;}
     entitlementRefresher?.refreshNow();
   },
   async cloudLogin(environment: CloudEnvironment) {
@@ -1547,7 +1548,7 @@ export function ConnectionChooser() {
   const environment = useRef<HTMLSelectElement>(null);
   useEffect(() => { void connectionController.initialize(); }, []);
   // Plan state is checked again when the owner returns (for example from Eliza Cloud's plan page).
-  useEffect(()=>{if(!residentGate())return;const visible=()=>{if(!document.hidden)connectionController.recheckPlanOnReturn();};document.addEventListener('visibilitychange',visible);window.addEventListener('pageshow',visible);return()=>{document.removeEventListener('visibilitychange',visible);window.removeEventListener('pageshow',visible);};},[]);
+  useEffect(()=>{if(!residentGate())return;const visible=()=>{if(!document.hidden)connectionController.recheckPlanOnReturn();};document.addEventListener('visibilitychange',visible);window.addEventListener('pageshow',visible);window.addEventListener('online',visible);return()=>{document.removeEventListener('visibilitychange',visible);window.removeEventListener('pageshow',visible);window.removeEventListener('online',visible);};},[]);
   useEffect(()=>{
     if(isAndroid)return;
     const changed=(event:StorageEvent)=>{
