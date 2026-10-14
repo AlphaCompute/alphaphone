@@ -25,6 +25,8 @@ import {
  digestStatusLabel,
  digestRan,
  digestZoneNote,
+ missedRunNowOffers,
+ type MissedRunNow,
  rememberRetainedDigests,
  DIGEST_SOURCE_MAX_HOURS,
 	type DigestCapabilities,
@@ -44,6 +46,8 @@ type Pending = {
  /** Renewal: after the new source saves, these loops move to it (same mutation IDs on retry). */
  rebind?:Array<{id:string;expectedVersionId:string;mutationId:string;spec:Record<string,unknown>}>;
  renews?:string;
+ /** Run now of this missed record (#394): hidden here once confirmed; the agent returns the same run on repeat. */
+ missedRunId?:string;
 };
 const nativeSources=registerPlugin<{nativeSourceConsent(input:Record<string,unknown>):Promise<Record<string,unknown>>;nativeSourceIdentity(input:{sessionId:string}):Promise<Record<string,unknown>>;scheduleSourceRenewal(input:{sourceId:string;expiresAt:number}):Promise<void>;clearSourceRenewal(input:{sourceId:string}):Promise<void>;pendingSourceRenewal():Promise<{sourceId?:string}>;addListener(event:'renewSource',listener:()=>void):Promise<{remove():Promise<void>}>}>('AlphaHostedResults');
 const nativeCalendars=registerPlugin<{requestWorkflowReadAccess():Promise<{status:string}>;workflowCalendars():Promise<{status:string;calendars:Array<{id:string;name:string;account:string;sourceRevision:string}>}>}>('AlphaCalendar');
@@ -69,6 +73,7 @@ export function HostedDigestPanel() {
 		[review, setReview] = useState<Pending | null>(null),
 		[pending, setPending] = useState<Pending | null>(null),
 		[available, setAvailable] = useState(false);
+	const [ranMissed, setRanMissed] = useState<ReadonlySet<string>>(new Set());
     useEffect(()=>{if(!isAndroid)return;let stopped=false;const listener=delegationNative.addListener('cloudDelegationCallback',()=>{if(!stopped)setOpen(true);}).catch(()=>null);void delegationNative.readDelegationCallback().then(r=>{if(r.callback&&!stopped)setOpen(true);}).catch(()=>{});return()=>{stopped=true;void listener.then(l=>l?.remove());};},[]);
 	const [text, setText] = useState(""),
 		[label, setLabel] = useState("My reviewed tasks"),
@@ -313,6 +318,13 @@ export function HostedDigestPanel() {
     }
     const renewalLoops=(id:string|null)=>id?loops.filter(l=>!l.removed&&l.spec.enabled&&l.spec.sourceId===id).map(l=>({id:l.id,expectedVersionId:l.versionId,mutationId:crypto.randomUUID(),spec:{version:1,template:l.spec.template,timeZone:l.spec.timeZone,localTime:l.spec.localTime,enabled:true}})):[];
     const renewalNote=(id:string|null)=>{const moved=renewalLoops(id);return moved.length?`\nRenewal: ${moved.map(l=>l.spec.template+' at '+l.spec.localTime).join(', ')} ${moved.length===1?'moves':'move'} to this source when you confirm.`:'';};
+    // A missed occurrence is never replayed; Run now is one new, separately reviewed run (#394).
+    const missedOffers=available?missedRunNowOffers(binding.current?.sessionId===connection.session?.sessionId?results:[],loops,sources):new Map<string,MissedRunNow>();
+    function reviewMissedRunNow(offer:MissedRunNow){
+     setMessage('');
+     setReview({path:'dossier',body:{sourceId:offer.sourceId,sourceRevision:offer.sourceRevision,mutationId:offer.mutationId,confirmed:true},missedRunId:offer.runId,summary:`Run the missed ${new Date(offer.scheduledAt).toLocaleString()} morning digest now?\nThis starts one new, separate run that reads ${offer.sourceLabel} as they are now and sends them to this agent’s configured text model. The missed occurrence stays recorded as missed and nothing from that time is replayed. Confirming this again later returns the same run, not another one. Your schedule and next digest do not change. Model usage is billed by this agent.`});
+     requestAnimationFrame(()=>document.getElementById('hosted-digest-review')?.focus());
+    }
 	async function submit(value: Pending) {
 		const b = binding.current;
 		if (!b || busy || mutationBusy.current) return;
@@ -346,6 +358,7 @@ export function HostedDigestPanel() {
             if(value.path==='sources/revoke'&&isAndroid&&typeof body.id==='string')void nativeSources.clearSourceRenewal({sourceId:body.id}).catch(()=>{});
             if(value.nativeConsent&&binding.current===b)setSourceId(value.nativeConsent.sourceId);
             if(value.renews&&binding.current===b)setRenewing(null);
+            if(value.missedRunId&&binding.current===b){const id=value.missedRunId;setRanMissed(prior=>new Set([...prior,id]));}
 			if (binding.current !== b) return;
 			await b.storage.remove(b.slot + ":pending");
 			setPending(null);
@@ -494,7 +507,7 @@ export function HostedDigestPanel() {
 						</button>
 					</section>
 				) : review ? (
-					<section>
+					<section id="hosted-digest-review" tabIndex={-1}>
 						<h2>Review</h2>
 						<p style={{ whiteSpace: "pre-wrap" }}>{review.summary}</p>
 						<button disabled={busy} onClick={() => void submit(review)}>
@@ -705,6 +718,7 @@ export function HostedDigestPanel() {
 								{digestSummaryText(result)}
 							</pre>
                             {digestRan(result)&&result.source.type!=='live_selected_native_read'&&<details><summary>Execution details</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',font:'inherit',width:'100%'}}>{JSON.stringify(result.output,null,2)}</pre></details>}
+                            {missedOffers.has(result.runId)&&!ranMissed.has(result.runId)&&<button disabled={busy||!!pending||!!review} aria-label="Review Run now for this missed digest" onClick={()=>reviewMissedRunNow(missedOffers.get(result.runId)!)}>Run now</button>}
 						</article>
 					))}
 			</section>

@@ -89,24 +89,31 @@ export function isEditing(element: Element | null): boolean {
 
 /** Canvas width from which Inbox, Notes and Files show the open item beside their list. */
 export const SPLIT_CANVAS = 1000;
-/** Narrowest readable Calendar day column; the time gutter takes 76px. */
+/** Narrowest readable Calendar day column at 100% text; the time gutter takes 76px. */
 const DAY_COLUMN = 240;
-/** Text scale from which Calendar keeps its single-day agenda instead of side-by-side days. */
-const MULTI_DAY_TEXT_LIMIT = 1.3;
+/**
+ * Large text (the largest in-app size, 150%, and any larger system font): the list-detail split
+ * returns to one pane and Calendar shows the selected day as an agenda list instead of timed blocks
+ * (responsive-surface matrix: "keep agenda fallback at large text").
+ */
+export const LARGE_TEXT = 1.5;
 
 /** Layout choices that change what a surface renders, not only how CSS places it. */
-export type SurfaceLayout = { split: boolean; calendarDays: number };
+export type SurfaceLayout = { split: boolean; calendarDays: number; agenda: boolean };
 export function surfaceLayout(canvasWidth: number, textScale: number, desktop = false): SurfaceLayout {
-  if (desktop || !Number.isFinite(canvasWidth)) return { split: false, calendarDays: 1 };
-  const days = textScale >= MULTI_DAY_TEXT_LIMIT ? 1 : Math.floor((canvasWidth - 76) / DAY_COLUMN);
-  return { split: canvasWidth >= SPLIT_CANVAS, calendarDays: Math.max(1, Math.min(7, days)) };
+  if (desktop || !Number.isFinite(canvasWidth)) return { split: false, calendarDays: 1, agenda: false };
+  const scale = Number.isFinite(textScale) && textScale > 0 ? textScale : 1;
+  if (scale >= LARGE_TEXT) return { split: false, calendarDays: 1, agenda: true };
+  // Day columns widen with the text they hold, so enlarged text gets fewer, readable columns.
+  const days = Math.floor((canvasWidth - 76) / (DAY_COLUMN * Math.max(1, scale)));
+  return { split: canvasWidth >= SPLIT_CANVAS, calendarDays: Math.max(1, Math.min(7, days)), agenda: false };
 }
-let published: SurfaceLayout = { split: false, calendarDays: 1 };
+let published: SurfaceLayout = { split: false, calendarDays: 1, agenda: false };
 /** The layout surfaces render from; main.tsx publishes it from measured canvas and text size. */
 export const currentSurfaceLayout = (): SurfaceLayout => published;
 /** Returns true when the layout changed and surfaces must render again. */
 export function publishSurfaceLayout(next: SurfaceLayout): boolean {
-  if (next.split === published.split && next.calendarDays === published.calendarDays) return false;
+  if (next.split === published.split && next.calendarDays === published.calendarDays && next.agenda === published.agenda) return false;
   published = next;
   return true;
 }

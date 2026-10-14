@@ -95,6 +95,16 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    return LocalAgentProviderAdmission.currentGeneration(saved,cloud);
   }catch(Exception unavailable){return null;}
  }
+ /**
+  * A system broadcast starts the resident only while no surface is stopping it or changing its
+  * provider. The check and ElizaAgentService.start share lifecycleLock, as start() does, so a stop
+  * cannot slip between them. The epoch is left alone: a running resident is not restarted and its
+  * attached surfaces keep their in-flight calls.
+  */
+ static ResidentScheduleRearm.Decision startResidentIfAdmissible(Context context,String action,boolean userUnlocked,boolean runtimePackaged,boolean ownerEnabled){
+  return ResidentScheduleRearm.admitAndStart(lifecycleLock,action,userUnlocked,runtimePackaged,ownerEnabled,
+   ()->accepting&&!stopping&&credentialMutationEpoch<0&&credentialShutdownRequest==-1,()->ElizaAgentService.start(context));
+ }
  private void rejectPending(PluginCall call,String message){synchronized(lifecycleLock){if(pending.remove(call))call.reject(message);}}
 
  private static final class Superseded extends Exception {}
@@ -153,10 +163,12 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  }
  private void rejectSuperseded(PluginCall call){synchronized(lifecycleLock){if(pending.remove(call))call.reject("Local agent connection changed. A dispatched operation may still have completed; inspect its receipt before retrying.","LOCAL_AGENT_EPOCH_CHANGED");}}
 
- private boolean runtimePackaged() {
+ private boolean runtimePackaged() { return runtimePackaged(getContext()); }
+ /** True when this build carries the on-device runtime bundle and its launcher. */
+ static boolean runtimePackaged(Context context) {
   try {
-   try(var ignored=getContext().getAssets().open("agent/agent-bundle.js")){}
-   return new File(getContext().getApplicationInfo().nativeLibraryDir,"libeliza_bun.so").isFile();
+   try(var ignored=context.getAssets().open("agent/agent-bundle.js")){}
+   return new File(context.getApplicationInfo().nativeLibraryDir,"libeliza_bun.so").isFile();
   } catch(Exception unavailable) { return false; }
  }
  /** Hosted inference stays on Qwen through Cerebras; the model is not selectable. */
