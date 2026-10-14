@@ -98,7 +98,7 @@ test('the sweep applies every dimension and cannot be narrowed silently', () => 
   // The fixture lock screen and photos-empty viewer and the launcher presentation run at 100%
   // and 200% with names, focus, contrast and the dock rules (provider-connected states are in STATES).
   assert.match(sweep, /for \(const state of \[\.\.\.FIXTURE_STATES, \.\.\.LAUNCHER_STATES\]\) \{\s*for \(const scale of \[1, 2\]\)/);
-  for (const name of ["mock('lock')", "shows: 'photos-empty'", "launcher('Home')", "launcher('All apps'", "connected('Inbox'", "connected('Settings connections'", "connected('Calendar with events'"])
+  for (const name of ["mock('lock')", "shows: 'photos-empty'", "launcher('Home')", "launcher('All apps'", "connected('Inbox'", "connected('Settings connections'", "name: 'connected Calendar with events'", "CONNECTED_STATES.push(calendarWithEvents)"])
     assert.ok(states.includes(name), `${name} is swept`);
   // No state is skipped, marked fixme or exempted from a dimension.
   assert.doesNotMatch(sweep, /test\.skip|test\.fixme|\.only\(/);
