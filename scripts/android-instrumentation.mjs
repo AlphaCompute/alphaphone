@@ -111,7 +111,8 @@ export const CLASS_REGISTRY = {
   PasswordBrowserFill: {},
   InboxOperationJournal: { args: { inboxOperationNative: "1" } },
   MailAttachment: { args: { mailAttachmentNative: "1" } },
-  Notifications: {},
+  Notifications: { note: "opens Android's own shade (launcher button, or Android's global action on standalone) and taps the notice there; Alpha draws no shade (#416)" },
+  SystemShade: { note: "launcher Home asks Android for its shade (EXPAND_STATUS_BAR); standalone never does (#416, #417). No recorded run; not AOSP-image or device acceptance" },
   CameraScan: {},
   FilesTree: {},
   // J05-2: native page excerpt -> reviewed question -> composer; a note's web source across recreation.
@@ -134,6 +135,9 @@ export const CLASS_REGISTRY = {
   NotesSecureStorage: { args: { notesSecureStorage: "1" }, note: "the fresh-install migration method (notesSecureMigration=1) has no campaign and is skipped" },
   PdfViewer: { args: { isolatedPdfNative: "1" } },
   PhotosBatch: { args: { photosBatch: "1" } },
+  PhotoLibrary: { args: { photoLibrary: "1" }, note: "grants READ_MEDIA_IMAGES/VIDEO (Android 13+), creates and deletes only its own uniquely named fixtures; permission revoke, selected-only grants and reboot need separate campaigns" },
+  PhotosForeignLibrary: { args: {}, note: "requires an explicit disposable user, separate-UID synthetic ledger and expected permission scope; no implicit media access" },
+  PhotosLibrary: { args: { photosLibrary: "1" }, note: "requires an owned disposable secondary user; synthetic generation fence only, not foreign-media permission acceptance" },
   UiDispatch: { args: { uiDispatch: "1" } },
   LocalSpeech: { args: { localSpeech: "1" }, note: "needs the packaged on-device speech models; recorded as failing functional acceptance on arm64-v8a" },
   LocalSpeechBridge: { args: { localSpeechBridge: "1" }, note: "needs the packaged on-device speech models" },
@@ -151,6 +155,9 @@ export const CLASS_REGISTRY = {
   PhotoFilter: {},
   PhotosMultiShare: {},
   PhotosTrash: {},
+  ReminderDeletionJournal: {},
+  CalendarDeletionReview: { secondaryUser: true, args: { calendarDeletionReview: "1" }, grant: ["READ_CALENDAR", "WRITE_CALENDAR"], note: "Actual native review, Cancel, Undo and expiry against an owned disposable Calendar" },
+  ScopedCalendarDeletion: { secondaryUser: true, args: { scopedCalendarDeletion: "1" }, grant: ["READ_CALENDAR", "WRITE_CALENDAR"], note: "Exact synthetic provider rows in a fresh owned secondary user; no real account integration" },
   ReminderCapacity: {},
   ReminderHeadsUp: { note: "skips unless notifications are enabled for the app and Do Not Disturb is off" },
   ReminderStale: {},
@@ -172,6 +179,7 @@ export const CLASS_REGISTRY = {
  * them counts as reachable; test/android-instrumentation-runner.test.mjs checks it.
  */
 export const CAMPAIGN_RUNNERS = [
+  "scripts/test-native-calendar-deletion-restart.mjs",
   "scripts/test-native-permissions.mjs", "scripts/test-native-restart.mjs", "scripts/test-calendar-regression.mjs",
   "scripts/test-installed-upgrade.mjs", "scripts/test-reminder-one-off.mjs", "scripts/test-reminder-recurrence.mjs",
   "scripts/reminder-recovery-fixture.mjs", "scripts/test-cross-app-notifications.mjs", "scripts/test-cross-app-notifications-restart.mjs",
