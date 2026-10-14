@@ -22,7 +22,7 @@ function fixture({native = true} = {}) {
     localStorage: {getItem: k => f.store.has(k) ? f.store.get(k) : null, setItem: (k, v) => f.store.set(k, String(v)), removeItem: k => f.store.delete(k)},
     window: {dispatchEvent: event => { f.events.push(event.type); return true; }, addEventListener() {}, removeEventListener() {}},
     document: {hidden: false, documentElement: {dataset: {}}, addEventListener() {}, removeEventListener() {}},
-    createOnDeviceVoice: () => ({ready: async () => true}),
+    createOnDeviceVoice: () => ({ready: async () => { throw Error('reading aloud must not use transcription readiness'); }, speakReady: async () => true}),
     createCloudVoice: () => ({speak: async (text,signal,started) => box.speakLocalText(text,signal,started,false,{execution:'cloud'})}),
     planLocalSpeech: text => { if (/🙂/.test(text)) throw Error('Unsupported'); return [text]; },
     speakLocalText: async (text, signal, started, _queue, requirements) => {

@@ -80,24 +80,55 @@ test('no Alpha-owned login form is eligible until it has a provider-owned native
   }
 });
 
-test('the HTTP authentication prompt excludes provider fill without authenticated origin', () => {
+test('the HTTP authentication prompt fills only for an engine-authenticated origin and says why otherwise', () => {
   const auth = read('android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserHttpAuthAutofill.java');
-  // The origin rule itself is executed on the JVM below.
-  assert.match(auth, /static String origin\(String reportedHost,String pendingMain,String documentUrl,boolean committed,java\.util\.Collection<String> otherRequests\)\{ return BrowserHttpAuthOrigin\.forChallenge\(reportedHost,pendingMain,documentUrl,committed,otherRequests\); \}/);
+  const rule = read('android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserHttpAuthOrigin.java');
+  // The decision rule itself is executed on the JVM below (redirects, frames, wrong origin, stale/hidden tabs, revoke).
+  assert.match(rule, /static final EngineChallengeSource STANDARD_WEBVIEW=\(reportedHost,reportedRealm\)->null;/, 'standard WebView reports no challenge origin');
+  assert.match(plugin, /private final BrowserHttpAuthOrigin\.EngineChallengeSource authEngine=BrowserHttpAuthOrigin\.STANDARD_WEBVIEW;/);
+  assert.match(plugin, /BrowserHttpAuthOrigin\.Decision authDecision=BrowserHttpAuthOrigin\.bind\(authEngine\.challenge\(host,realm\),authSnapshot\(t,host,realm\)\);/);
+  // An engine report is never synthesized by Alpha from navigation history, page script or the top-level URL.
+  // Every app source set (flavors and the flag-only testMocks set included), whatever the qualifier
+  // or import: only the class itself names the constructor, and STANDARD_WEBVIEW is the one source.
+  const appSources = walk('android/app/src', file => /\.(java|kt)$/.test(file) && !/[\\/]androidTest[\\/]/.test(file));
+  for (const file of appSources) {
+    const source = read(file);
+    const own = file.endsWith('BrowserHttpAuthOrigin.java');
+    assert.doesNotMatch(source, /new\s+(?:[\w.]+\.)?EngineChallenge\s*\(/, `${file} must not fabricate an engine challenge`);
+    if (!own) assert.doesNotMatch(source, /EngineChallengeSource(?!\s+authEngine=BrowserHttpAuthOrigin\.STANDARD_WEBVIEW;)/, `${file} must not supply another engine source`);
+  }
+  assert.equal((rule.match(/EngineChallenge\(/g) || []).length, 1, 'the only constructor is the declaration');
+  assert.equal((rule.match(/EngineChallengeSource [A-Z_]+=/g) || []).length, 1, 'STANDARD_WEBVIEW is the only engine source');
+  assert.doesNotMatch(plugin, /requestOrigins|recordRequestOrigin/, 'observed request history is not an origin source');
+  // Refusal is stated in the prompt; manual entry stays available.
+  assert.match(plugin, /String managerLine=authOrigin==null\?"\\n"\+authDecision\.refusal:/);
+  // Fields: hints and origin only while bound; revoked or unbound fields drop out and drop late values.
+  assert.match(auth, /static EditText field\(Context context,String origin,BooleanSupplier bound,boolean password\)/);
+  assert.match(auth, /if\(origin==null\)\{field\.setImportantForAutofill\(View\.IMPORTANT_FOR_AUTOFILL_NO\);return field;\}\n\s*field\.setAutofillHints\(password\?View\.AUTOFILL_HINT_PASSWORD:View\.AUTOFILL_HINT_USERNAME\);/);
+  assert.match(auth, /@Override public int getImportantForAutofill\(\)\{return admitted\(\)\?super\.getImportantForAutofill\(\):View\.IMPORTANT_FOR_AUTOFILL_NO;\}/);
+  assert.match(auth, /if\(!admitted\(\)\)\{[^}]*structure\.setAutofillHints\(null\);\n\s*structure\.setAutofillType\(View\.AUTOFILL_TYPE_NONE\);\n\s*structure\.setAutofillValue\(null\);\n\s*structure\.setText\(""\);\n\s*structure\.setDataIsSensitive\(true\);\n\s*return;/, 'an unbound or revoked field reports no typed value, even to a manual request');
+  assert.match(auth, /@Override public int getAutofillType\(\)\{return admitted\(\)\?super\.getAutofillType\(\):View\.AUTOFILL_TYPE_NONE;\}/, 'unbound fields are not autofillable, so typed text is never tracked for save');
+  assert.match(auth, /@Override public AutofillValue getAutofillValue\(\)\{return admitted\(\)\?super\.getAutofillValue\(\):null;\}/);
+  assert.match(auth, /@Override public void autofill\(AutofillValue value\)\{if\(admitted\(\)\)super\.autofill\(value\);\}/);
+  assert.match(plugin, /java\.util\.function\.BooleanSupplier bound=\(\)->authBinding!=null&&authBinding\.admits\(authSnapshot\(t,host,realm\)\)&&siteDialogTab==t;/);
+  assert.match(plugin, /siteDialogRevoke=\(\)->\{if\(authBinding!=null\)authBinding\.revoke\(\);BrowserHttpAuthAutofill\.exclude\(user,pass\);\};/);
+  // Cancel, Back, tab change, navigation and process loss all dismiss through these two paths, which revoke first.
+  assert.match(plugin, /AlertDialog dialog=siteDialog;if\(dialog==null\)return;\n\s*revokeSiteDialogAutofill\(\);/);
+  assert.match(plugin, /dialog\.setOnDismissListener\(d->\{if\(siteDialog!=dialog\)return;revokeSiteDialogAutofill\(\);/);
   assert.match(auth, /InputType\.TYPE_CLASS_TEXT\|\(password\?InputType\.TYPE_TEXT_VARIATION_PASSWORD:InputType\.TYPE_TEXT_FLAG_NO_SUGGESTIONS\)/, 'exactly one password-typed field');
-  assert.doesNotMatch(auth, /getAutofillValue|getText\(\)/, 'Alpha never reads provider values back');
-  // Observed request history is supplied for compatibility, but cannot authenticate a challenge.
-  assert.match(plugin, /String authOrigin=BrowserHttpAuthAutofill\.origin\(host,t\.pendingMain,t\.url,t\.committed,t\.requestOriginsOverflow\?null:t\.requestOrigins\);/);
-  assert.match(plugin, /if \(r\.isForMainFrame\(\)\) t\.pendingMain=r\.getUrl\(\)\.toString\(\); else recordRequestOrigin\(t,r\.getUrl\(\)\.toString\(\)\);/, 'every frame and resource origin is recorded');
-  assert.match(plugin, /if\(t\.requestOrigins\.size\(\)>=MAX_REQUEST_ORIGINS\)t\.requestOriginsOverflow=true;/, 'an overflowed record refuses binding');
+  // The only getAutofillValue is the framework-facing gate above; Alpha never reads values itself.
+  assert.equal((auth.match(/getAutofillValue/g) || []).length, 2, 'getAutofillValue appears only in the bound/unbound gate');
+  assert.doesNotMatch(auth, /getText\(\)/, 'Alpha never reads provider values back');
+  // Renderer loss revokes an open prompt for that tab (and cancels its framework session) immediately.
+  assert.match(plugin, /onRenderProcessGone\(WebView v, RenderProcessGoneDetail detail\) \{[^\n]*t\.dead=true; if\(siteDialogTab==t\)dismissSiteDialogs\(\);[^\n]*v\.destroy\(\);/);
   // No tab is fillable while any site prompt is open, including after a provider unlock resumes the activity.
   const can = plugin.slice(plugin.indexOf('private boolean canAutofill(Tab t)'), plugin.indexOf('private void cancelAutofill(Tab t)'));
   assert.match(can, /state\.overlay=siteDialog!=null;/);
   assert.match(can, /return BrowserAutofillEligibility\.eligible\(state\);/);
-  assert.match(plugin, /dismissSiteDialogs\(\);siteDialog=dialog;siteDialogTab=t;siteDialogCancel=cancel;siteDialogAutofill=false;\n\s*for\(Tab tab:tabs\.values\(\)\)disableAutofill\(tab\);/);
+  assert.match(plugin, /dismissSiteDialogs\(\);siteDialog=dialog;siteDialogTab=t;siteDialogCancel=cancel;siteDialogAutofill=false;siteDialogRevoke=null;\n\s*for\(Tab tab:tabs\.values\(\)\)disableAutofill\(tab\);/);
   // Save waits for the site: Sign in keeps the prompt open; commit() only when the load commits at the bound origin.
   assert.match(plugin, /\.setPositiveButton\("Sign in",null\)\.setNegativeButton\("Cancel",null\)\.create\(\);/);
-  assert.match(plugin, /t\.authSaveOrigin=authOrigin;\n\s*v\.setEnabled\(false\);dialog\.setMessage\(message\+"\\n\\nSigning in…"\);\n\s*handler\.proceed\(u,p\);/);
+  assert.match(plugin, /t\.authSaveOrigin=authOrigin;authBinding\.submitted\(\);\n\s*v\.setEnabled\(false\);dialog\.setMessage\(message\+"\\n\\nSigning in…"\);\n\s*handler\.proceed\(u,p\);/);
   assert.doesNotMatch(plugin.slice(plugin.indexOf('private void httpAuth('), plugin.indexOf('// ---- Camera for capture-enabled')), /\.commit\(\)/, 'the prompt itself never commits');
   const finish = plugin.slice(plugin.indexOf('private void finishAuthSave('), plugin.indexOf('private void finishAuthSave(') + 700);
   assert.match(finish, /boolean accepted=committedUrl!=null&&origin\.equals\(BrowserHttpAuthOrigin\.exactHttps\(committedUrl\)\)&&t\.httpStatus!=401&&t\.httpStatus!=407;/);
@@ -110,6 +141,46 @@ test('the HTTP authentication prompt excludes provider fill without authenticate
   assert.match(plugin, /dialog\.setCancelable\(authOrigin==null\);dialog\.setCanceledOnTouchOutside\(false\);/);
   // The password manager is named only when Android has an Autofill service enabled.
   assert.match(plugin, /boolean autofillOn=authOrigin!=null&&autofillState!=null&&autofillState\.isEnabled\(\);/);
+});
+
+test('Alpha-owned native credential fields declare hints and report a website origin, never Alpha\'s identity', () => {
+  // Any native source that declares username/password Autofill hints must be a registered
+  // alpha-owned-native surface whose fields fail closed (excluded, no hints) without a bound origin.
+  const declaring = walk('android', file => /\.(java|kt|xml)$/.test(file) && !/[\\/](test|androidTest|build)[\\/]/.test(file))
+    .filter(file => /setAutofillHints|AUTOFILL_HINT_(?:PASSWORD|USERNAME)|autofillHints=/.test(read(file)));
+  const nativeSurfaces = inventory.surfaces.filter(s => s.kind === 'alpha-owned-native');
+  assert.deepEqual(declaring.sort(), nativeSurfaces.map(s => s.file).sort(), 'every hint-declaring native file is an inventoried native credential surface');
+  for (const surface of nativeSurfaces) {
+    const source = read(surface.file);
+    assert.ok(inventory.rules[surface.binding], `${surface.id} names a binding rule`);
+    assert.match(source, /field\.setAutofillHints\(password\?View\.AUTOFILL_HINT_PASSWORD:View\.AUTOFILL_HINT_USERNAME\);/, `${surface.id} declares username and password hints`);
+    assert.match(source, /extras\.putString\(PasswordAutofillPolicy\.FIELD_ORIGIN,origin\);/, `${surface.id} reports a per-field website origin`);
+    assert.match(source, /if\(origin==null\)\{field\.setImportantForAutofill\(View\.IMPORTANT_FOR_AUTOFILL_NO\);return field;\}/, `${surface.id} fails closed`);
+    assert.doesNotMatch(source, /getPackageName\(\)|setWebDomain\([^)]*package/i, `${surface.id} never binds to Alpha's package`);
+  }
+  assert.ok(inventory.rules.alphaOwnedAppIdentity);
+});
+
+test('Cloud and Google sign-in leave Alpha for the user\'s own browser', () => {
+  for (const id of ['eliza-cloud-sign-in', 'google-account-authorization']) {
+    const surface = inventory.surfaces.find(s => s.id === id);
+    assert.equal(surface?.kind, 'external-browser', id);
+    assert.equal(surface.eligible, false, id);
+  }
+  const connection = read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java');
+  const open = connection.slice(connection.indexOf('public void openExternal('), connection.indexOf('public void openExternal(') + 900);
+  assert.match(open, /Intent intent = new Intent\(Intent\.ACTION_VIEW, Uri\.parse\(url\.toASCIIString\(\)\)\); intent\.addCategory\(Intent\.CATEGORY_BROWSABLE\);/);
+  assert.match(open, /host\.equals\("eliza\.app"\) \|\| host\.endsWith\("\.eliza\.app"\) \|\| host\.equals\("accounts\.google\.com"\)/);
+  assert.doesNotMatch(open, /setPackage\(getContext\(\)\.getPackageName\(\)\)|AlphaBrowserPlugin/, 'never opened in Alpha\'s own browser');
+  // Alpha registers no general web handler, so a sign-in page cannot resolve back into Alpha.
+  for (const manifest of walk('android', file => file.endsWith('AndroidManifest.xml') && !/[\\/](test|androidTest|build)[\\/]/.test(file))) {
+    const live = read(manifest).replace(/<!--[\s\S]*?-->/g, '');
+    for (const filter of live.match(/<intent-filter[\s\S]*?<\/intent-filter>/g) || []) {
+      if (/android\.intent\.action\.VIEW/.test(filter)) assert.doesNotMatch(filter, /android:scheme="https?"/, `${manifest} declares a web VIEW handler`);
+    }
+  }
+  const ui = read('apps/app/src/runtime/google-connection-ui.tsx');
+  assert.match(ui, /await openConnectionBrowser\(url,abort\.signal\);/);
 });
 
 /** Every detector hit whose line no registered pattern for that file covers (per line, not per file). */

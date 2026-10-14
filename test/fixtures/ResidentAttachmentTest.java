@@ -39,6 +39,12 @@ public final class ResidentAttachmentTest {
   refused("provider-changed",f->f.currentGeneration="generation-2");
   refused("provider-unadmitted",f->f.launchedGeneration=null);
   refused("provider-unadmitted",f->f.currentGeneration=null);
+  // The agent always runs: a resident launched without hosted inference (no plan) is attached to
+  // while no provider is stored, and a newly bound plan (a new generation) restarts it.
+  ResidentAttachment.Facts unbound=admitted(now);unbound.launchedGeneration="unbound";unbound.currentGeneration="unbound";
+  require(ResidentAttachment.refusal(running(),unbound)==null,"an unbound running resident attaches");
+  refused("provider-changed",f->{f.launchedGeneration="unbound";f.currentGeneration="generation-1";});
+  refused("provider-changed",f->{f.launchedGeneration="generation-1";f.currentGeneration="unbound";});
   for(JSONObject state:new JSONObject[]{null,new JSONObject(),running().put("state","booting"),running().put("state","restarting"),running().put("state","dead"),running().put("serviceActive",false),running().put("socketListening",false)})
    require("runtime-not-running".equals(ResidentAttachment.refusal(state,admitted(now))),"only a listening service attaches: "+state);
   require("unavailable".equals(ResidentAttachment.refusal(running(),null)),"missing facts refuse");

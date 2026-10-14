@@ -217,6 +217,48 @@
     "flags": []
   },
   {
+    "name": "Eliza-1 ASR audio projector (Qwen3-ASR mmproj GGUF)",
+    "version": "asr/eliza-1-asr-mmproj.gguf (sha256 41a342b5e4c514e968cb756de6cd1b7be39eff43c44c57a2ef5fc6522e36603d)",
+    "license": "license unverified",
+    "source": "scripts/host-speech-assets.json",
+    "text": "Local speech recognition model input pinned by the reviewed shared speech assets. The Android build takes the ASR pair from android/paradee-voice/asr-inputs.json. Its licence is not recorded in the reviewed pins; this inventory does not establish that the bytes are staged or qualified.",
+    "flags": [
+      "licence-text-missing-from-package",
+      "unverified"
+    ],
+    "obligations": [
+      {
+        "flag": "licence-text-missing-from-package",
+        "note": "The package ships no licence file, and no canonical text for its licence is held in licenses/. The licence text itself is therefore not in this entry."
+      },
+      {
+        "flag": "unverified",
+        "note": "The ASR audio projector GGUF is converted from the same Qwen3-ASR checkpoint as the ASR model. The reviewed pins record path, size and SHA-256 only; its licence has not been confirmed from shipped metadata. The licence has not been verified from shipped metadata. This flag is a record of that, not a clearance."
+      }
+    ]
+  },
+  {
+    "name": "Eliza-1 ASR model (Qwen3-ASR GGUF)",
+    "version": "asr/eliza-1-asr.gguf (sha256 bca259818b50ca7c4c05e9bdb35a5dc04fa039653a6d6f3f0f331f96f6aa1971)",
+    "license": "license unverified",
+    "source": "scripts/host-speech-assets.json",
+    "text": "Local speech recognition model input pinned by the reviewed shared speech assets. The Android build takes the ASR pair from android/paradee-voice/asr-inputs.json. Its licence is not recorded in the reviewed pins; this inventory does not establish that the bytes are staged or qualified.",
+    "flags": [
+      "licence-text-missing-from-package",
+      "unverified"
+    ],
+    "obligations": [
+      {
+        "flag": "licence-text-missing-from-package",
+        "note": "The package ships no licence file, and no canonical text for its licence is held in licenses/. The licence text itself is therefore not in this entry."
+      },
+      {
+        "flag": "unverified",
+        "note": "The shared Eliza-1 ASR GGUF is a conversion of a Qwen3-ASR checkpoint. The reviewed pins record path, size and SHA-256 only; the upstream model licence and any conversion terms have not been confirmed from shipped metadata. The licence has not been verified from shipped metadata. This flag is a record of that, not a clearance."
+      }
+    ]
+  },
+  {
     "name": "elizaOS",
     "version": "2.0.4 (644d56c93df9e410b1ef4297f961cb1df9e7d152)",
     "license": "MIT",
@@ -709,6 +751,27 @@
     "source": "https://registry.npmjs.org/scheduler/-/scheduler-0.28.0.tgz",
     "text": "MIT License\n\nCopyright (c) Meta Platforms, Inc. and affiliates.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
     "flags": []
+  },
+  {
+    "name": "Silero VAD v5 (GGUF)",
+    "version": "vad/silero-vad-v5.gguf (sha256 d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995)",
+    "license": "license unverified",
+    "source": "scripts/host-speech-assets.json",
+    "text": "Local speech recognition model input pinned by the reviewed shared speech assets. The Android build takes the ASR pair from android/paradee-voice/asr-inputs.json. Its licence is not recorded in the reviewed pins; this inventory does not establish that the bytes are staged or qualified.",
+    "flags": [
+      "licence-text-missing-from-package",
+      "unverified"
+    ],
+    "obligations": [
+      {
+        "flag": "licence-text-missing-from-package",
+        "note": "The package ships no licence file, and no canonical text for its licence is held in licenses/. The licence text itself is therefore not in this entry."
+      },
+      {
+        "flag": "unverified",
+        "note": "Silero VAD is published by the Silero team; this GGUF conversion is pinned by path, size and SHA-256 only. The licence of the converted bytes has not been confirmed from shipped metadata. The licence has not been verified from shipped metadata. This flag is a record of that, not a clearance."
+      }
+    ]
   },
   {
     "name": "Tesseract English trained data (tessdata 4.0.0_best_int)",

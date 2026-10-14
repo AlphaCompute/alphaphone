@@ -19,21 +19,24 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
 ## Product boundaries
 
 - The primary agent runs on Android. Browser development uses a private local
-  host. The production Android Welcome dialog offers Cloud sign-in for the on-device
-  agent or local apps without AI. Remote pairing is retired on production Android and
+  host. The on-device agent always runs on production Android (owner directive
+  2026-10-13); the Welcome dialog requires Eliza Cloud sign-in, and the plan decides only
+  whether Cloud inference is bound into the running agent (no agent-less choice). Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The upstream pin in `upstream.lock.json` is `13c9857598`, the merge commit of upstream
-  pull request 34888, reachable from elizaOS `develop` when
-  `scripts/ci/upstream-reachability.json` was recorded (2026-10-11 UTC). It adds the shared
-  notification receipt ledger, which `WorkflowNoticeDelivery` now configures with the
-  deployed slot names and record formats, to the shared password manager, password
-  transfer and Keystore text frames; no local source patch remains (the `patches`
-  directory is gone). Results recorded at the earlier pins `40dbe96bd1`, `945209d3`,
-  `4148a166` and `352d7a08` are historical, and that includes every entry under
-  [current qualification evidence](#current-qualification-evidence) except its first two, the
-  round 8 and round 9 integrations, which are the only ones at the current pin. At the
-  current pin there are source and browser test results, developer APK builds without the
-  resident runtime (not distributable) and one partial emulator campaign on such builds
+- The upstream pin in `upstream.lock.json` is `644d56c93d`, the merge commit of upstream
+  pull request 36179, reachable from elizaOS `develop` when
+  `scripts/ci/upstream-reachability.json` was recorded (2026-10-14 UTC; 33 behind, none
+  ahead). The reviewed local patches in `patches/eliza` (hashes in
+  `patches/eliza/native-manifest.json`) apply to it. No APK, emulator or device result is
+  recorded at this pin: the resident embedding host must be rebuilt and requalified because
+  its JNI build inputs and the llama.cpp fork pin changed, and the Paradee speech inputs are
+  not qualified yet, so only the developer `--allow-unpackaged-runtime` lane builds.
+  Results recorded at the earlier pins `13c9857598`, `40dbe96bd1`, `945209d3`, `4148a166`
+  and `352d7a08` are historical, and that includes every entry under
+  [current qualification evidence](#current-qualification-evidence). The round 8 and round 9
+  integrations were at `13c9857598`; at that pin there are source and browser test results,
+  developer APK builds without the resident runtime (not distributable) and one partial
+  emulator campaign on such builds
   ([verification](verification.md#emulator-results-at-2961bd9e-2026-10-11-round-8-merged-with-round-9));
   no distribution APK build and no device run is recorded: see MVP-08 in the
   [remaining-work inventory](mvp-remaining-work-2026-10-09.md).

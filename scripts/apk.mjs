@@ -186,6 +186,14 @@ export function validateApk(file, identity, wantsHome) {
     throw new Error(`Invalid Contacts read permission for distribution in ${file}`);
   if (data.xml.includes('android.permission.WRITE_CONTACTS'))
     throw new Error(`Unexpected Contacts write permission in ${file}`);
+  // SMS provider reads and reviewed sends (#421) are packaged only for the launcher; Android grants
+  // these hard-restricted permissions only to the preinstalled image app or the SMS role holder.
+  for (const permission of ['READ_SMS', 'SEND_SMS'])
+    if (data.xml.includes(`android.permission.${permission}`) !== wantsHome)
+      throw new Error(`Invalid ${permission} permission for distribution in ${file}`);
+  for (const permission of ['RECEIVE_SMS', 'RECEIVE_MMS', 'CALL_PHONE'])
+    if (data.xml.includes(`android.permission.${permission}`))
+      throw new Error(`Unexpected telephony permission ${permission} in ${file}`);
   // aapt badging distinguishes required hardware from optional feature declarations.
   if (/uses-feature: name='android\.hardware\.camera(?:\.any|\.autofocus)?'/.test(data.badging))
     throw new Error(`Camera hardware must remain optional in ${file}`);

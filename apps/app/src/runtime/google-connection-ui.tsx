@@ -1,3 +1,5 @@
+import {gmailBackgroundStatus,gmailBackgroundMessage,gmailNotificationSettings,GMAIL_BACKGROUND_CHANGED} from './gmail-background';
+import {isAndroid} from '../native';
 import {gmailGrantTier} from './gmail-grants';
 import {useEffect,useRef,useState,useSyncExternalStore} from 'react';
 import {holdPhoneInert} from './modal-inert';
@@ -15,6 +17,8 @@ export function currentGoogleCalendarBinding(connectionId:string):GoogleCalendar
 export function GoogleConnectionsPanel(){
  const open=useSyncExternalStore(googleConnectionController.subscribe,googleConnectionController.getSnapshot);
  const connection=useSyncExternalStore(connectionController.subscribe,connectionController.getSnapshot);
+ const [background,setBackground]=useState('');
+ useEffect(()=>{if(!open)return;let alive=true;const read=()=>void gmailBackgroundStatus().then(value=>{if(alive)setBackground(gmailBackgroundMessage(value));});read();window.addEventListener(GMAIL_BACKGROUND_CHANGED,read);return()=>{alive=false;window.removeEventListener(GMAIL_BACKGROUND_CHANGED,read);};},[open]);
  const [accounts,setAccounts]=useState<GmailAccount[]>([]),[sources,setSources]=useState<GoogleCalendarSource[]>([]),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[confirm,setConfirm]=useState<GmailAccount|null>(null),[revision,setRevision]=useState(0);
  const active=useRef<AbortController|null>(null),panel=useRef<HTMLDivElement>(null);
  const cloud=connectionController.getCloudClient(),key=googleCalendarAccountKey();
@@ -49,6 +53,8 @@ export function GoogleConnectionsPanel(){
   <header><h2 id="google-connections-title">Google accounts</h2><button aria-label="Close Google accounts" onClick={()=>{active.current?.abort();googleConnectionController.close();}}><span aria-hidden="true" data-alpha-icon="/icons/lucide/x.svg" style={icon}/></button></header>
   <p>Connect Gmail and Google Calendar to your signed-in Eliza Cloud account. This does not change your agent’s inference provider.</p>
   <p role="status">{notice}</p>
+  <p>{background}</p>
+  {isAndroid&&<button onClick={()=>void gmailNotificationSettings().catch(()=>setBackground('Android notification settings are unavailable.'))}>Gmail notification settings</button>}
   {accounts.filter(account=>account.connected).map(account=><section className="alpha-connection-current" key={account.connectionId}><strong>{account.label}</strong><span>Connected · Gmail: {account.grantedCapabilities.includes('google.gmail.triage')?'Read access':'Not authorized'} · Calendar: {account.grantedCapabilities.includes('google.calendar.read')?'Read access':'Not authorized'}</span><details><summary>Gmail permissions</summary><p>Extra access is optional. Google will ask you to approve any change.</p>
    <p>{gmailGrantTier(account)==='modify'?'Sending, Gmail drafts and mailbox changes are enabled.':'Gmail changes use one additional consent for sending, drafts, archive, trash and read state.'}</p>
    {gmailGrantTier(account)!=='modify'&&<button disabled={busy} onClick={()=>void connect('modify')}>Enable Gmail changes</button>}

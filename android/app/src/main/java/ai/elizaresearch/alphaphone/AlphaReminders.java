@@ -16,7 +16,7 @@ public final class AlphaReminders {
   "ai.elizaresearch.alphaphone.REMINDER_DECISION", "ai.elizaresearch.alphaphone.OPEN_REMINDER",
   "alpha-reminder:", "alpha-reminder-decision:", "alpha-reminder-tap:",
   "alpha.reminder.id", "alpha.reminder.occurrence", "decision", "",
-  ReminderReceiver.class, MainActivity.class);
+  ReminderReceiver.class, MainActivity.class, "Ask Alpha");
  public static final SecureStringStore.Factory STORAGE = context -> {
   AlphaCredentialStore storage = new AlphaCredentialStore(context);
   return new SecureStringStore() {

@@ -9,7 +9,9 @@ import {isAndroid} from '../native';
 import {NavigationVoice} from '../maps/navigation-voice';
 import {placeShare,routeShare,shareMap,type MapShare} from '../maps/share';
 import { MapPlane } from '../maps/map-plane';
-import { initializeRegionalMaps, regionalMap, regionalDiagnostics } from '../maps/regional-provider';
+import { initializeRegionalMaps, regionalMap, regionalDiagnostics, regionalMapsConfigured } from '../maps/regional-provider';
+import { initializeCloudMaps, cloudMapsCoverage, cloudMapsDiagnostics } from '../maps/cloud-maps';
+import { insideCloudCoverage } from '../maps/cloud-provider';
 import { NativeMapsLocation, type Position } from '../maps/native-location';
 import { publishMapsSelection, clearMapsSelection } from '../maps/agent-context';
 import { MapsController, type MapsState } from '../maps/state';
@@ -21,6 +23,11 @@ type Bag = Record<string, any>;
 type Selection = { editingName?: boolean; label: string; coordinate: Coordinate; savedId?: string; providerId?: string; providerPlaceId?: string; origin: 'manual' | 'location' | 'saved' | 'provider' };
 const PIN = 'M20 10c0 6-8 11-8 11S4 16 4 10a8 8 0 1 1 16 0zM15 10a3 3 0 1 1-6 0a3 3 0 1 1 6 0z';
 const coordLabel = (point: Coordinate) => `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`;
+// Product builds use Eliza Cloud Maps; the regional gateway is a test-mocks prototype.
+const initializeMaps = () => regionalMapsConfigured ? initializeRegionalMaps() : initializeCloudMaps();
+const mapsDiagnostics = () => regionalMapsConfigured ? regionalDiagnostics() : cloudMapsDiagnostics();
+const mapsAttribution = () => regionalMap()?.attribution || cloudMapsCoverage()?.attribution || '';
+const mapsConnected = () => !!(regionalMap() || cloudMapsCoverage());
 
 /** Exact prototype chrome with honest no-provider state and real local/native flows. */
 export function installPrototypeMapsAdapter(_Component: unknown, views: Record<string, Bag>): () => void {
@@ -82,7 +89,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
       const selection = selected, provider = state?.provider;
       const read = provider?.status === 'configured' ? () => {
         if (route && route.mode !== 'transit') return { kind: 'map-route' as const, providerId: provider.providerId, providerRevision: provider.revision, attribution: route.attribution, from: route.from, to: route.to, mode: route.mode, distanceMeters: route.distanceMeters, durationSeconds: route.durationSeconds, traffic: route.traffic };
-        return { kind: 'map-place' as const, providerId: provider.providerId, providerRevision: provider.revision, attribution: regionalMap()?.attribution || state?.selection.value?.attribution || '', label: selection.label, coordinate: selection.coordinate };
+        return { kind: 'map-place' as const, providerId: provider.providerId, providerRevision: provider.revision, attribution: mapsAttribution() || state?.selection.value?.attribution || '', label: selection.label, coordinate: selection.coordinate };
       } : undefined;
       // Route identity changes with origin/mode/provider updates; failed/loading
       // routes expose no stale route read capability.
@@ -93,7 +100,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     queueMicrotask(() => { if (!disposed && token === revision && api?.isActive()) api.set({ nativeMapsRevision: token }); });
   };
   function ensure() {
-    if (!initialized) { initialized=true; initialization=initializeRegionalMaps().finally(()=>{initialization=undefined;invalidate();}); }
+    if (!initialized) { initialized=true; initialization=initializeMaps().finally(()=>{initialization=undefined;invalidate();}); }
     if (controller) return controller;
     const connection = mapsConnection(); controller = new MapsController(connection.config, connection.provider);
     unsubscribe = controller.subscribe(next => {
@@ -165,9 +172,9 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     const requestedQuery=query;
     void (async()=>{
       ensure();
-      if(!initialization&&regionalDiagnostics().configured&&regionalDiagnostics().error){
-        message='Connecting regional Maps…';invalidate();
-        initialization=initializeRegionalMaps().finally(()=>{initialization=undefined;invalidate();});
+      if(!initialization&&mapsDiagnostics().configured&&mapsDiagnostics().error){
+        message='Connecting Maps…';invalidate();
+        initialization=initializeMaps().finally(()=>{initialization=undefined;invalidate();});
       }
       await initialization;
       if(disposed||intent!==searchIntent||!api?.isActive()||query!==requestedQuery)return;
@@ -187,7 +194,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   const back = () => { discardHandoff();++searchIntent;if(originMode){originMode=false;ensure().cancelOriginSearch();message='';invalidate();return true;} if(directions||navigating){directions=false;void stopGuidance().catch(()=>{});message='';invalidate();return true;} if (selected) { selected = undefined; message = ''; invalidate(); return true; } if (searching || query) { searching = false; query = ''; message = ''; void ensure().search(''); invalidate(); return true; } return false; };
   module.back = back; module.onLeave = () => release(); module.ongoing = () => null;
   module.reply = () => null;
-  module.suggestions = () => regionalMap() ? ['Help me with this place', 'Explain regional map coverage'] : ['Help me choose a Maps provider', 'Explain location permissions'];
+  module.suggestions = () => mapsConnected() ? ['Help me with this place', 'Explain Maps coverage'] : ['Help me choose a Maps provider', 'Explain location permissions'];
   module.render = (st: Bag, currentApi: Bag) => {
     api = currentApi; ensure();
     // Cross-app navigation carries a one-use search, not a selected destination.
@@ -208,12 +215,14 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     const error = snapshot.saved.error || snapshot.position.error || (choosingOrigin ? snapshot.originSearch.error : snapshot.search.error) || snapshot.route.error;
     const pending = locating || (choosingOrigin ? snapshot.originSearch.phase === 'loading' : snapshot.search.phase === 'loading');
     const unconfigured = snapshot.provider.status === 'unconfigured';
-    const region=regionalMap(),diagnostic=regionalDiagnostics();
-    const point=selected?.coordinate;
-    const outsideCoverage=!!point&&!!region&&(point.longitude<region.bounds[0]||point.latitude<region.bounds[1]||point.longitude>region.bounds[2]||point.latitude>region.bounds[3]);
+    const region=regionalMap(),cloud=region?undefined:cloudMapsCoverage(),diagnostic=mapsDiagnostics();
+    // Signed out, no subscription, or Cloud Maps not deployed yet: an honest unconnected state, not a fault.
+    const notConnected=diagnostic.error==='unauthorized'||diagnostic.error==='unconfigured';
+    const point=selected?.coordinate,coverageName=region?.region||cloud?.regions.map(item=>item.name).join(', ')||'';
+    const outsideCoverage=!!point&&(region?(point.longitude<region.bounds[0]||point.latitude<region.bounds[1]||point.longitude>region.bounds[2]||point.latitude>region.bounds[3]):!!cloud&&!insideCloudCoverage(cloud,point));
     const locationState=locating?'loading':snapshot.position.phase==='ready'||!!selected?'ready':snapshot.position.error?.code==='permission-denied'?'denied':snapshot.position.phase==='error'?'unavailable':'not-set';
-    const mapState=mapFailed?'error':region?(outsideCoverage?'outside-coverage':planeElement?.dataset.mapReady==='true'?'ready':'loading'):initialization&&diagnostic.configured?'loading':diagnostic.error?'error':'unconfigured';
-    const mapStatus=mapFailed?'Map rendering is unavailable. Retry the map, or use coordinates and saved places.':outsideCoverage?`This location is outside ${region!.region} map coverage. Its coordinates are retained.`:unconfigured&&diagnostic.error?'The configured Maps service is unavailable. Retry the connection or enter coordinates.':unconfigured?'Map tiles are not connected. A Maps provider is needed for the map, search and routes.':mapState==='loading'?'Loading map…':region?.region||'Connected Maps';
+    const mapState=mapFailed?'error':region?(outsideCoverage?'outside-coverage':planeElement?.dataset.mapReady==='true'?'ready':'loading'):cloud?(outsideCoverage?'outside-coverage':'no-tiles'):initialization&&diagnostic.configured?'loading':diagnostic.error&&!notConnected?'error':'unconfigured';
+    const mapStatus=mapFailed?'Map rendering is unavailable. Retry the map, or use coordinates and saved places.':outsideCoverage?`This location is outside ${coverageName} map coverage. Its coordinates are retained.`:unconfigured&&diagnostic.error==='unauthorized'?'Sign in to Eliza Cloud with an active subscription to search places and plan routes.':unconfigured&&diagnostic.error==='unconfigured'?'Eliza Cloud Maps is not available yet. Enter coordinates or use saved places.':unconfigured&&diagnostic.error?'The configured Maps service is unavailable. Retry the connection or enter coordinates.':unconfigured?'Map tiles are not connected. A Maps provider is needed for the map, search and routes.':mapState==='loading'?'Loading map…':cloud?`Eliza Cloud Maps · ${coverageName}. Search and routes are available; map display is not. ${cloud.attribution}`:region?.region||'Connected Maps';
     const status=(choosingOrigin && !snapshot.originSearch.error && snapshot.originSearch.phase !== 'loading' ? message : '')||snapshot.route.error?.message||message||error?.message||(pending?'Finding location…':mapStatus);
     const isPlace = !!selected && !directions && !navigating;
     const isResults = (searching && !isPlace && !directions && !navigating) || choosingOrigin;
@@ -226,8 +235,8 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     const onPin = (id: string) => { const item = pinned.find(value => value.id === id); if (!item) return; if (choosingOrigin) chooseOrigin(item); else showPlace(item); };
     const savedOrigins = choosingOrigin ? controller!.savedMatches(originText) : [];
     Object.assign(data, {
-      rootRef:(element:HTMLElement)=>{if(element)element.dataset.mapDiagnostics=JSON.stringify({...regionalDiagnostics(),lifecycle:{...lifecycle,locating,permissionPending:controller?.awaitingLocationPermission()||navigationLocation.awaitingPermission(),position:state?.position.phase}});},
-      notNative:false, hasNativeMap:!!regionalMap(),mapAttribution:regionalMap()?.attribution||'',attributionBottom:directions?310:isPlace?410:130,
+      rootRef:(element:HTMLElement)=>{if(element)element.dataset.mapDiagnostics=JSON.stringify({...mapsDiagnostics(),lifecycle:{...lifecycle,locating,permissionPending:controller?.awaitingLocationPermission()||navigationLocation.awaitingPermission(),position:state?.position.phase}});},
+      notNative:false, hasNativeMap:!!regionalMap(),mapAttribution:mapsAttribution(),attributionBottom:directions?310:isPlace?410:130,
       mapRef:(element:HTMLElement)=>{if(element&&region){if(element!==planeElement&&!mapFailed){mapObserver?.disconnect();plane?.destroy();planeElement=element;const generation=++mapGeneration;delete element.dataset.mapReady;delete element.dataset.mapError;try{plane=new MapPlane(element,region,()=>{if(generation!==mapGeneration||planeElement!==element||disposed||!api?.isActive())return;mapFailed=true;invalidate();},data.C,id=>pinTap(id));mapObserver=new MutationObserver(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});mapObserver.observe(element,{attributes:true,attributeFilter:['data-map-ready']});}catch{mapFailed=true;element.replaceChildren();queueMicrotask(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});}}pinTap=onPin;plane?.update(outsideCoverage?undefined:selected?.coordinate,snapshot.route.value,overlay);}},
       native: true, nativeStatus: status, nativeStatusTop: directions?232:isPlace ? 128 : searching ? 130 : 174,
       nativeSavedEmpty: !saved.length, nativeLocationBusy: locating, nativeLocation: locate,
@@ -238,7 +247,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
       nativeLocationSettings:()=>{if(disposed||document.hidden||!currentApi.isActive())return;void device.openSettings({page:'privacy'}).catch(()=>{if(!disposed&&currentApi.isActive()){message='Location settings could not be opened. Check device or browser permissions, or enter coordinates.';invalidate();}});},
       nativeManualLocation:()=>{if(disposed||document.hidden||!currentApi.isActive())return;release();query='';searching=false;message='Enter latitude, longitude in Search, then press Enter.';invalidate();queueMicrotask(()=>{if(!disposed&&!document.hidden&&currentApi.isActive())document.querySelector<HTMLInputElement>('input[aria-label="Search places"]')?.focus();});},
       nativeMapRetry:mapFailed||!!diagnostic.error,
-      retryNativeMap:()=>{if(disposed||document.hidden||!currentApi.isActive())return;++mapGeneration;mapObserver?.disconnect();mapObserver=undefined;plane?.destroy();plane=undefined;planeElement=undefined;mapFailed=false;message='';if(diagnostic.error&&!initialization)initialization=initializeRegionalMaps().finally(()=>{initialization=undefined;invalidate();});invalidate();},
+      retryNativeMap:()=>{if(disposed||document.hidden||!currentApi.isActive())return;++mapGeneration;mapObserver?.disconnect();mapObserver=undefined;plane?.destroy();plane=undefined;planeElement=undefined;mapFailed=false;message='';if(diagnostic.error&&!initialization)initialization=initializeMaps().finally(()=>{initialization=undefined;invalidate();});invalidate();},
       mode:navigating?'nav':choosingOrigin?'origin':directions?'dir':isPlace?'place':searching?'results':'base', isBase:!isPlace&&!searching&&!directions&&!navigating,isResults,isPlace,isDir,isNav:navigating,
       showSearch:!directions&&!navigating, showRec:!navigating, grid: '', major: '', fwy: '', water: '', parks: '', rwy: '', routeD: '', doneD: '', hasRoute: false, pins: [], labels: [], meCss: 'display:none;',
       mapDown: () => {}, mapUp: () => {}, q: query, hasQ: !!query, searchLabel: isPlace || searching ? 'Back' : 'Search',
@@ -274,7 +283,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
         canDir: true, min: 'Directions', saved: !!existing,
         saveLabel: existing ? 'Remove from saved' : 'Save', starCss: existing ? 'color:var(--acct)' : '', starFill: existing ? 'fill:currentColor' : '',
         close: () => { selected = undefined; message = ''; invalidate(); }, save,
-        dirs: () => { if(unconfigured){message='Connect a Maps provider to plan a route. No route has been calculated.';}else{directions=true; message='Enter an origin latitude, longitude and press Enter, or explicitly use current location.'; if(item.origin!=='provider'&&snapshot.provider.status==='configured')void ensure().select({providerId:snapshot.provider.providerId,id:item.providerPlaceId||'manual',name:item.label,coordinate:item.coordinate,attribution:regionalMap()!.attribution,fetchedAt:Date.now()},false);} invalidate(); },
+        dirs: () => { if(unconfigured){message='Connect a Maps provider to plan a route. No route has been calculated.';}else{directions=true; message='Enter an origin latitude, longitude and press Enter, or explicitly use current location.'; if(item.origin!=='provider'&&snapshot.provider.status==='configured')void ensure().select({providerId:snapshot.provider.providerId,id:item.providerPlaceId||'manual',name:item.label,coordinate:item.coordinate,attribution:mapsAttribution(),fetchedAt:Date.now()},false);} invalidate(); },
         share: () => share(placeShare(item.label,item.coordinate),()=>!disposed&&!!api?.isActive()&&selected===item),
         nativeName: item.label, nativeEditing: !!item.editingName,
         nativeTitleRole: 'button', nativeTitleTabIndex: 0, nativeTitleLabel: 'Rename place',
@@ -362,7 +371,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   };
   const changed = onMapsConnectionChange(() => {
     const connection=mapsConnection();
-    if(controller&&state?.provider.status==='unconfigured'&&connection.config.status==='configured'&&regionalMap()){lifecycle.providerActivations++;controller.activateProvider(connection.config,connection.provider);}
+    if(controller&&state?.provider.status==='unconfigured'&&connection.config.status==='configured'&&mapsConnected()){lifecycle.providerActivations++;controller.activateProvider(connection.config,connection.provider);}
     else release(false);
     invalidate();
   });

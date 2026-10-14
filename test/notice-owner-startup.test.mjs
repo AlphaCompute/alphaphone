@@ -12,7 +12,7 @@ function fixture({offline=false,credential=null,fail=false}={}){
  const box={EntitlementError,devSurfacesEnabled:false,devProfileQuery:false,testMocksEnabled:false,isAndroid:true,browserLocalAgentEnabled:false,registerPlugin:()=>({}),pauseHostedBackground:async()=>{},retireClockReviews:async()=>{},CloudProtocol:class{},nativeCloudRequest:()=>{throw Error('No provider request');},openConnectionBrowser:()=>{throw Error('No browser');},cloudCredentialStore:{read:async()=>{await read;return credential;}},localStorage:{getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},URL,URLSearchParams,AbortController,DOMException,console,transitions,fail};
  // Only resident transport admission is synthetic. Real initialize/work/update/subscribe and the
  // real coordinator run together; no live credential or provider is involved.
- vm.runInNewContext(coordinatorSource+'\n'+controllerSource+`\nconnectResident=async()=>{if(fail)throw Error('revoked');update({session:{sessionId:'A',origin:'https://a.invalid',ownerId:'A',agentId:'agent'}});};
+ vm.runInNewContext(coordinatorSource+'\n'+controllerSource+`\nconnectResident=async()=>{await cloudCredentialStore.read();if(fail)throw Error('revoked');update({session:{sessionId:'A',origin:'https://a.invalid',ownerId:'A',agentId:'agent'}});};
  let queue=Promise.resolve();const notices=new NoticeOwnerCoordinator({transition:async s=>{transitions.push(s.owner?.ownerId??null);return{};},enqueue:work=>queue=queue.then(work),available:()=>true,restore:async()=>{}});
  const changed=()=>{const s=connectionController.getSnapshot(),a=s.session;notices.update({identity:a?.sessionId??'',owner:a?{origin:a.origin,ownerId:a.ownerId,agentId:a.agentId}:null,hasSession:!!a,startupResolved:s.startupResolved,busy:s.busy});};connectionController.subscribe(changed);changed();globalThis.controller=connectionController;globalThis.drain=()=>queue;`,box);
  return{...box,release,transitions,memory};
@@ -22,11 +22,16 @@ test('cold restoration keeps the old fence until the real controller resolves it
  f.release();await pending;await f.drain();assert.deepEqual(f.transitions,['A']);assert.equal(f.controller.getSnapshot().startupResolved,true);
  await f.controller.initialize();await f.drain();assert.deepEqual(f.transitions,['A'],'settled initialize does not repeat the fence');
 });
-for(const [name,options] of [['no credential',{}],['revoked restoration',{credential:{credentialId:'revoked'},fail:true}]])test('cold '+name+' retires the persisted owner after initialization settles',async()=>{
+// The on-device agent always runs (owner directive 2026-10-13): a phone with no sign-in still starts
+// it, so its owner is fenced in exactly like a signed-in restoration.
+test('cold start without a sign-in still starts the agent and fences in its owner',async()=>{
+ const f=fixture({}),pending=f.controller.initialize();await Promise.resolve();assert.deepEqual(f.transitions,[]);f.release();await pending;await f.drain();assert.deepEqual(f.transitions,['A']);assert.equal(f.controller.getSnapshot().startupResolved,true);
+});
+for(const [name,options] of [['failed start',{credential:{credentialId:'revoked'},fail:true}]])test('cold '+name+' retires the persisted owner after initialization settles',async()=>{
  const f=fixture(options),pending=f.controller.initialize();await Promise.resolve();assert.deepEqual(f.transitions,[]);f.release();await pending;await f.drain();assert.deepEqual(f.transitions,[null]);assert.equal(f.controller.getSnapshot().session,null);assert.equal(f.controller.getSnapshot().startupResolved,true);
 });
 
-test('cold retired local-only choice migrates to the plan gate and restores the kept sign-in',async()=>{
+test('cold retired local-only choice migrates and starts the agent with the kept sign-in',async()=>{
  const f=fixture({offline:true,credential:{credentialId:'kept'}}),pending=f.controller.initialize();await Promise.resolve();assert.deepEqual(f.transitions,[]);f.release();await pending;await f.drain();
  assert.deepEqual(f.transitions,['A']);
  assert.deepEqual(JSON.parse(f.memory.get('alpha.connection.selection.v1')),{kind:'none'},'only the retired preference is replaced');
