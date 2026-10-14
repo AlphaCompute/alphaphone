@@ -107,7 +107,7 @@ recording a clip on the device:
    semantic end-of-turn port and a long gap (1,200 ms) submits; both follow the VAD speech-end,
    which itself trails speech by the gate's ~512 ms hangover. These are engineering defaults
    (local-speech research), not measurements or owner-set constants. **Clef is not in the pin**
-   (`c7a9a0d7e7`: no Clef model, loader or decision head; only the native EOT scorer for the
+   (`87d9bd96477f`: no Clef model, loader or decision head; only the native EOT scorer for the
    Eliza-1 text model), so no semantic port is wired and the documented VAD long-gap fallback
    decides alone. New speech before submission cancels both timers and continues the utterance.
 6. **Send.** The turn goes through the existing voice policy unchanged (`VOICE_SEND_POLICY`

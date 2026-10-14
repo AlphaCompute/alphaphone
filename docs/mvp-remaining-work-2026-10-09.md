@@ -1,5 +1,9 @@
 # MVP remaining-work inventory — policy reconciled October 12, 2026
 
+Current source pin: `87d9bd96477f` (2026-10-14, PR #524), llama.cpp `56e70ff2a0ca`.
+Native source/provenance changed; voice remains unqualified and the prior embedding-host
+receipt remains refused pending requalification. Historical evidence below is not promoted.
+
 The 53 stable inventory IDs remain for traceability. The owner has resolved the
 32 decision issues; implementation checklists live in the
 [approved backlog](owner-approved-mvp-plan-2026-10-12.md). “Current” paragraphs below
