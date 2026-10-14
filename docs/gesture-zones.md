@@ -5,8 +5,10 @@ notifications and quick settings. It records the behaviour in source after the o
 2026-10-12 decisions A-32 and A-33 (issues #416 and #417): `apps/app/src/prototype/model.js`,
 `system-shade.ts`, `template.html`, `phone.css`, `SystemShade.java` and `AlphaDevicePlugin.java`.
 Browser tests are Chromium on a development or production build. They are not emulator,
-TalkBack, AOSP-image or device evidence; the instrumented classes named at the end have not
-been run at this source.
+TalkBack, AOSP-image or device evidence. The instrumented classes named at the end, except
+`NotificationChannelsInstrumentedTest`, ran at `69a4be6c` on an API 35 Google APIs emulator on
+2026-10-14 (class E, developer APKs, [verification](verification.md#emulator-results-at-69a4be6c-2026-10-14-system-shade-416-417));
+that is not AOSP-image, Pixel 10a, real TalkBack or device acceptance.
 
 ## The rule
 
@@ -97,9 +99,10 @@ Android accepted the call.
 | `test/gesture-zones-single-instance.test.mjs` | `npm test` | The swipe handler only asks for Android's shade; the development stand-in is gated; no instrumented test still looks for an Alpha panel. |
 | `test/browser/notifications-handle.spec.ts` | `npm run test:browser` | Standalone: no button, no pull opens anything. Launcher (with the development stand-in): the button's name, size and position; tap, Enter, Space, accessibility click, a pull on the button and a pull on empty Home open it; the status bar band, sideways drags, an open sheet, an app view, a focused composer and a scrolled Home do not; in landscape an overflowing Home still scrolls with touch and a downward touch pull at its top opens the stand-in; the button clears a taller status bar at 360, 412 and 480px; 200% text. |
 | `test/browser/settings-truth.production.spec.ts` | `npm run test:browser:production` | The flag-off bundle with a stubbed Android bridge: no Alpha shade, tiles or brightness; the button and an empty-Home pull call `openNotificationShade`; a focused composer does not; every non-opened outcome shows its fallback; the browser build has no shade or button. |
-| `SystemShadeInstrumentedTest` | emulator | Outcome mapping; EXPAND_STATUS_BAR declared and held by the launcher flavor only; launcher Home's request and empty-Home pull open Android's shade, a focused composer does not; standalone never does. Not compiled or run at this source. |
-| `NotificationsInstrumentedTest`, `NotificationChannelsInstrumentedTest` | emulator | A posted notice is found and tapped in Android's shade (opened from the launcher button, or Android's global action on standalone) and its PendingIntent fires; the page has no Alpha shade. Not compiled or run at this source. |
-| `AccessibilityInstrumentedTest.homeShadeSettingsAndComposerAtDoubleFontScale` | emulator | A top-edge swipe opens Android's shade with no Alpha panel behind it; on the launcher the accessibility click action and a pull from the button open Android's shade; standalone has no button. Not compiled or run at this source. |
+| `SystemShadeInstrumentedTest` | emulator (Home method: test-mocks build) | Outcome mapping; EXPAND_STATUS_BAR declared and held by the launcher flavor only; launcher Home's request and empty-Home pull open Android's shade, each pull must reach Alpha's Home and the shade counts only when Alpha asked for it; a pull with the composer focused makes no request; standalone never asks. Passed on both flavors at `69a4be6c` on the API 35 emulator, and 5 of 5 runs with the launcher flavor selected as HOME. A production build covers Home with the Cloud sign-in gate, so there the Home method is skipped. |
+| `NotificationsInstrumentedTest` (test-mocks build) | emulator | A posted notice is found and tapped on its own row in Android's shade (opened with Android's global action) and its PendingIntent fires; a notice whose target was cancelled dispatches nothing and does not open its neighbour; the page has no Alpha shade. Passed on both flavors at `69a4be6c`, and 5 of 5 runs as HOME. Android 15 bundles two notices into a collapsed automatic group; tapping that group's summary sent nothing and cancelled both, so the test expands the group first, as a person would. |
+| `NotificationChannelsInstrumentedTest` | emulator (campaign `test-native-permissions.mjs channels`) | The recovered channel's notice is tapped in Android's shade. Not run at this source. |
+| `AccessibilityInstrumentedTest.homeShadeSettingsAndComposerAtDoubleFontScale` | emulator | A top-edge swipe opens Android's shade with no Alpha panel behind it; on the launcher the accessibility click action (sent through UiAutomation, not TalkBack itself) and a pull from the button open Android's shade; standalone has no button. Passed on both flavors (test-mocks build) at `69a4be6c`. |
 
 ## Left open
 
