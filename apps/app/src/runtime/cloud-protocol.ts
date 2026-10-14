@@ -59,7 +59,7 @@ export interface CloudCredentialStore {
 export interface CloudNativeRequest {
   (input: { url: string; method: AutomationsMethod; headers: Record<string, string>;
     body?: unknown; credentialReference?: string; signal: AbortSignal; timeoutMs: number; redirect: "error"; expiresAt?: number;
-  }): Promise<{ status: number; data: unknown }>;
+  }): Promise<{ status: number; data: unknown; /** Raw Retry-After header of an error response, when present. */ retryAfter?: string }>;
 }
 /** Optional transport capabilities. The native transport admits only GET and POST today, so
  * credential self-revocation (DELETE) is reported unsupported unless the host opts in. */
@@ -159,7 +159,7 @@ function mailHtml(value: unknown): {bodyHtml?: string} {
     ? {bodyHtml: value} : {};
 }
 export class CloudProtocolError extends Error {
-  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active" | "account-changed", readonly status?: number, readonly data?: unknown) {
+  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active" | "account-changed", readonly status?: number, readonly data?: unknown, readonly retryAfter?: string) {
     super(`Eliza Cloud ${code}${status ? ` (${status})` : ""}`);
     this.name = "CloudProtocolError";
   }
@@ -226,7 +226,7 @@ export class CloudProtocol {
       method: options.method ?? (options.body === undefined ? "GET" : "POST"), headers, body: options.body,
       signal, credentialReference, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error", ...(options.expiresAt === undefined ? {} : {expiresAt:options.expiresAt}) });
     signal.throwIfAborted();
-    if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status, response.data);
+    if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status, response.data, response.retryAfter);
     options.onStatus?.(response.status);
     return response.data;
   }
@@ -275,7 +275,7 @@ export class CloudProtocol {
           if (status === 401) throw error;
           if (status === 400) throw new SubscriptionRedeemError("invalid");
           if (status === 409) throw new SubscriptionRedeemError(body.code === "subscription_grant_already_redeemed" ? "already-redeemed" : "invalid");
-          if (status === 429) throw new SubscriptionRedeemError("rate-limited", readServiceLimit({ status, data: error.data })?.retryAfterMs ?? null);
+          if (status === 429) throw new SubscriptionRedeemError("rate-limited", readServiceLimit({ status, data: error.data, retryAfter: error.retryAfter })?.retryAfterMs ?? null);
           if (status === 403) throw new SubscriptionRedeemError("account");
           throw new SubscriptionRedeemError("unavailable");
         }

@@ -206,6 +206,17 @@ test.describe('plan state binds Cloud inference; the agent always runs',()=>{
   await release(page);
  });
 
+ test('a format v2 entitlement shows the share of the period allowance left, not an amount of money',async({page})=>{
+  const now=Math.floor(Date.now()/1000);
+  // Synthetic micro-dollar figures (Cloud's allowance unit), not a product allowance.
+  await boot(page,await entitlements({ver:2,allowance:undefined,plan_allowance:{unit:'usd_micros',granted:4_000_000,remaining:1_000_000,periodStart:now-86400,resetsAt:now+86400}}));
+  await admitted(page);
+  const panel=await openAgent(page);
+  await expect(panel.getByText(/25% of this billing period's plan allowance is left\. Resets /)).toBeVisible();
+  await expect(panel).not.toContainText('$');
+  await release(page);
+ });
+
  test('a trialing plan is admitted',async({page})=>{
   await boot(page,{...await entitlements(),plan:'trialing'});
   await admitted(page);await openAgent(page);await expect(page.getByText('Synthetic plan · trial',{exact:true})).toBeVisible();await release(page);
