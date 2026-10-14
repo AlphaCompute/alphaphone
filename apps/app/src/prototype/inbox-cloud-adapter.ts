@@ -1,4 +1,6 @@
-import {configureGmailBackground,withdrawGmailBackground,pendingGmailNotice,consumeGmailNotice,onGmailNotice} from '../runtime/gmail-background';
+import {alphaClient} from '../runtime/alpha-client';
+import {reviewOwnNoticeQuestion} from './own-notice-question';
+import {configureGmailBackground,withdrawGmailBackground,releaseGmailQuestion,pendingGmailNotice,consumeGmailNotice,onGmailNotice} from '../runtime/gmail-background';
 import {prepareMailHtml} from '../runtime/mail-html';
 import {readGmailAccountChoice,saveGmailAccountChoice} from '../runtime/gmail-account-selection';
 import {GmailReadAhead} from '../runtime/gmail-read-ahead';
@@ -78,9 +80,10 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const MAILBOX_CHANGED = 'Newer mail arrived while this list was loading and is not shown yet. Load newer mail to read the list again.';
   let newerMail = false,spamTrashSearch=false;
   const watchSelectedMail=()=>{const binding=connectionController.getCloudClient();if(binding)void configureGmailBackground(binding.credentialId,selected).catch(()=>{});};
-  let noticeAttempt=0;
+  let closeMailQuestion:(()=>void)|undefined;
+  let noticeAttempt=0,noAgentNoticeToken='';
   async function openNotice(){
-    if(document.hidden||!shell)return;
+    if(document.hidden||!shell||closeMailQuestion)return;
     const noticeShell=shell,attempt=++noticeAttempt;
     try{
       const tap=await pendingGmailNotice(),binding=connectionController.getCloudClient(),owner=connectionController.getSnapshot().cloudAccount;
@@ -89,6 +92,26 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       const current=()=>!document.hidden&&shell===noticeShell&&attempt===noticeAttempt&&connectionController.getCloudClient()?.sessionId===binding.sessionId&&connectionController.getCloudClient()?.credentialId===tap.credentialId;
       if(!current())return;
       const account=rows.find(row=>row.connectionId===tap.grantId&&gmailReadable(row));if(!account)return;
+      if(tap.question){
+        const agent=connectionController.getSnapshot().session,enrollment=JSON.stringify(connectionController.getWorkflowDeviceTarget());
+        const live=()=>current()&&connectionController.getSnapshot().session===agent&&JSON.stringify(connectionController.getWorkflowDeviceTarget())===enrollment&&!connectionController.getSnapshot().open&&!alphaClient.getState().context.sensitive;
+        if(!agent&&current()&&noAgentNoticeToken!==tap.token){noAgentNoticeToken=tap.token;noticeShell.toast('Select an agent before asking about this message. The notification is retained.');}
+        if(!agent||!tap.messageId||!tap.threadId||!live())return;
+        // Explicit Ask reads the exact current message; background delivery never fetches its body.
+        // Only the subject/snippet selected here enters review, never body or attachments.
+        let read:Awaited<ReturnType<typeof binding.client.gmailRead>>;
+        try{read=await binding.client.gmailRead(tap.grantId,tap.messageId,new AbortController().signal);}
+        catch{if(live()){accounts=rows;accountsChecked=true;accountsSession=binding.sessionId;folder='inbox';spamTrashSearch=false;publish({q:null,open:null});selectAccount(account,true);noticeShell.openView?.('inbox',{open:null,q:null});noticeShell.toast('The notification message is unavailable. Review Inbox; nothing was added to your conversation.');}return;}
+        if(!live()||read.message.id!==tap.messageId||read.message.threadId!==tap.threadId)return;
+        const excerpt={id:tap.messageId,revision:tap.generation,source:'own' as const,appLabel:'Alpha Phone',title:read.message.subject,text:read.message.snippet};
+        const revision=read.historyId;
+        closeMailQuestion=reviewOwnNoticeQuestion({notice:excerpt,current:live,recheck:async()=>{
+          const again=await pendingGmailNotice();if(!live()||again?.token!==tap.token||!again.question||again.generation!==tap.generation)return false;
+          const fresh=await binding.client.gmailRead(tap.grantId,tap.messageId!,new AbortController().signal);
+          return live()&&fresh.historyId===revision&&fresh.message.id===tap.messageId&&fresh.message.threadId===tap.threadId&&fresh.message.subject===excerpt.title&&fresh.message.snippet===excerpt.text;
+        },consume:()=>consumeGmailNotice(tap.token),release:()=>releaseGmailQuestion(tap.token),compose:draft=>noticeShell.api(noticeShell.S().view).composeContentQuestion(draft),report:message=>noticeShell.toast(message),closed:()=>{closeMailQuestion=undefined;}});
+        return;
+      }
       // Consumption rechecks the native generation. A tap opens only the Inbox list, never marks a message read.
       await consumeGmailNotice(tap.token);if(!current()||!shell)return;
       accounts=rows;accountsChecked=true;accountsSession=binding.sessionId;folder='inbox';spamTrashSearch=false;publish({q:null,open:null});selectAccount(account,true);shell.openView?.('inbox',{open:null,q:null});
@@ -721,7 +744,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if (nextAgent !== agentSession) { contextReview=null;agentSession = nextAgent; publish({ nativeMailSelection: null }); }
     });
     this.gmailNoticeListener=onGmailNotice(()=>void openNotice());void openNotice();
-    this.inboxVisibility=()=>{if(document.hidden){readAhead.pause();stopBodyReads();}};
+    this.inboxVisibility=()=>{if(document.hidden){readAhead.pause();stopBodyReads();}else void openNotice();};
     document.addEventListener('visibilitychange',this.inboxVisibility);
     this.inboxResume = DailyApps.addListener('appResumed', () => { void openNotice(); if (api?.isActive()) { if (!operation) void refreshAccounts(true); } }).catch(() => null);
     // Settings can disconnect an account; re-check instead of showing a revoked mailbox.
@@ -737,7 +760,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     window.addEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.addEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
   };
   p.componentWillUnmount = function () {
-    noticeAttempt++;void this.gmailNoticeListener?.then((handle:Bag)=>handle.remove()).catch(()=>{});
+    closeMailQuestion?.();closeMailQuestion=undefined;noticeAttempt++;void this.gmailNoticeListener?.then((handle:Bag)=>handle.remove()).catch(()=>{});
     document.removeEventListener('visibilitychange',this.inboxVisibility);
     this.inboxConnectionUnsubscribe?.(); void this.inboxResume?.then((handle: Bag) => handle?.remove()); window.removeEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.removeEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
     shell = undefined; openInboxHandler = null; clear(); setAttention({ state: 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null }); unmount?.call(this);
