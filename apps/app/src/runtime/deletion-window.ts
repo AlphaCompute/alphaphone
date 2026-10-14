@@ -3,7 +3,7 @@ export const DELETE_UNDO_MS=10_000;
 export type DeletionClock={continuity:string;elapsed:number;wall:number};
 export type DeletionDeadline={continuity:string;createdElapsed:number;expiresElapsed:number;expiresAt:number};
 export type DeletePhase='queued'|'paused'|'dispatching'|'undone'|'deleted'|'conflict'|'permission-required'|'owner-changed'|'unknown';
-export type PendingDeletion<T>={version:1;id:string;owner:string;target:T;deadline:DeletionDeadline;phase:DeletePhase};
+export type PendingDeletion<T>={version:1;id:string;owner:string;target:T;deadline:DeletionDeadline;phase:DeletePhase;acknowledged?:boolean};
 function clockValid(clock:DeletionClock){return !!clock&&typeof clock.continuity==='string'&&clock.continuity.length>0&&clock.continuity.length<=200&&Number.isFinite(clock.elapsed)&&clock.elapsed>=0&&Number.isSafeInteger(clock.wall)&&clock.wall>=0;}
 export function deletionDeadline(clock:DeletionClock):DeletionDeadline{
  if(!clockValid(clock)||clock.wall>Number.MAX_SAFE_INTEGER-DELETE_UNDO_MS)throw Error('Deletion clock unavailable');
@@ -25,3 +25,7 @@ export function claimDeletion<T>(entry:PendingDeletion<T>,owner:string,clock:Del
 const browserContinuity=crypto.randomUUID();
 /** A new renderer cannot prove continuity of an OS clock while it was absent: review again. */
 export const browserDeletionClock=():DeletionClock=>({continuity:browserContinuity,elapsed:performance.now(),wall:Date.now()});
+
+export const UNDO_TOO_LATE='Undo was too late. The deletion already went ahead; check the item before relying on it.';
+/** Undo is confirmed only by a receipt whose phase is 'undone'; a settled deletion is never shown as kept. */
+export function undoConfirmed(result:unknown){return !!result&&typeof result==='object'&&(result as {phase?:unknown}).phase==='undone';}

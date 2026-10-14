@@ -22,3 +22,20 @@ for(const mode of ['undo','expire','restart'])test(`real reminder deletion revie
   stored=await read(page);expect(stored.reminders[0]).toEqual(before);await page.clock.fastForward(12000);expect((await read(page)).reminders[0]).toEqual(before);
  }
 });
+
+test('unknown deletion receipt can refresh and dismiss without changing or retrying the item',async({page})=>{
+ await openReminder(page);const before=(await read(page)).reminders[0];
+ await page.getByRole('button',{name:'Delete event',exact:true}).click();
+ await page.getByRole('dialog',{name:'Delete reminder?',exact:true}).getByRole('button',{name:'Delete reminder',exact:true}).click();
+ await page.evaluate(async()=>{const {reminderDocument}=await import('/src/browser/reminder-store.ts');await reminderDocument.edit(()=>({}),data=>{const entry=Object.values(data.deletions)[0] as any;entry.phase='unknown';delete data.reminders[0].pendingDeletion;});window.dispatchEvent(new Event('alpha:deletions-changed'));});
+ const panel=page.getByRole('complementary',{name:'Pending deletions'});
+ await expect(panel.getByRole('button',{name:'Refresh receipt'})).toBeVisible();
+ await panel.getByRole('button',{name:'Refresh receipt'}).click();
+ expect((await read(page)).reminders[0]).toEqual(before);
+ await panel.getByRole('button',{name:'Dismiss outcome'}).click();
+ await expect(panel.getByRole('button',{name:'Dismiss outcome'})).toHaveCount(0);
+ await page.reload();await page.clock.fastForward(12000);
+ const saved=await read(page),entry:any=Object.values(saved.deletions)[0];
+ expect(entry.phase).toBe('unknown');expect(entry.acknowledged).toBe(true);expect(saved.reminders[0]).toEqual(before);
+ await expect(panel.getByRole('button',{name:'Dismiss outcome'})).toHaveCount(0);
+});

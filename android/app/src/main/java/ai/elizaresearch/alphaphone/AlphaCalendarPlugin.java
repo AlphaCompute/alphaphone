@@ -40,8 +40,17 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
   NativeDeletionCoordinator coordinator=NativeDeletionCoordinator.get(getContext());DeleteOwner captured=operationId==null?null:deleteOwners.remove(operationId);
   if(operationId!=null&&(captured==null||captured.owner==null))throw new SecurityException("Agent deletion review expired");
   org.json.JSONObject owner=captured==null?coordinator.manualOwner():captured.owner;
+  // Owner precondition before the permanent claim: a refusal leaves nothing claimed (reported as a conflict, nothing changed).
+  if(!coordinator.stageAdmissible(owner))throw new SecurityException("Deletion owner changed during review");
+  String id=operationId==null?java.util.UUID.randomUUID().toString():operationId;
   if(captured!=null){NativeDeletionClaim.check(AlphaActionJournal.get(getContext()),captured.identity,operationId,captured.operation,owner,true);target.put("journalBinding",NativeDeletionClaim.binding(AlphaActionJournal.get(getContext()),captured.identity));}
-  return JSObject.fromJSONObject(new org.json.JSONObject().put("status","queued").put("deletion",coordinator.stageCalendar(target,owner,operationId)));
+  try{return JSObject.fromJSONObject(new org.json.JSONObject().put("status","queued").put("deletion",coordinator.stageCalendar(target,owner,id)));}
+  catch(Exception failure){
+   // A stage that persisted before failing (for example while scheduling expiry) is still pending: never report it as unchanged.
+   org.json.JSONObject staged;try{staged=coordinator.receipt("calendar",id);}catch(Exception unreadable){return status("unknown");}
+   if(staged!=null)return JSObject.fromJSONObject(new org.json.JSONObject().put("status","queued").put("deletion",staged));
+   throw failure;
+  }
  }
  @Override @PluginMethod public void executeAgent(PluginCall call){
   JSObject operation=call.getObject("operation");if(operation==null||!"calendar_delete".equals(operation.optString("type"))){super.executeAgent(call);return;}
@@ -153,7 +162,7 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
  /**
   * Free/busy rows of exactly the calendars the owner chose, bound to the source revisions
   * they reviewed. Returns intervals and availability only, never event content. Statuses:
-  * ready, permission-required, timezone-changed, changed, too-many, unavailable.
+  * ready, permission-required, timezone-changed, changed, too-many, unavailable, freshness-unknown.
   */
  @PluginMethod public void readAvailability(PluginCall c){
   if(!readGranted()){c.resolve(status("permission-required"));return;}
@@ -165,8 +174,9 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
    org.json.JSONArray events=CalendarAvailabilityReader.read(getContext().getContentResolver(),chosen==null?null:new org.json.JSONArray(chosen.toString()),c.getString("start"),c.getString("end"),zone);
    if(!readGranted()||!foreground()||!unlocked())throw new IllegalStateException();
    if(!java.time.ZoneId.systemDefault().equals(zone)){c.resolve(status("timezone-changed"));return;}
-   JSObject out=status("ready");out.put("events",events);c.resolve(out);
+   JSObject out=status("ready");out.put("freshness","local");out.put("events",events);c.resolve(out);
   }catch(CalendarAvailabilityReader.SourceChanged changed){c.resolve(status("changed"));}
+  catch(CalendarAvailabilityReader.FreshnessUnknown unknown){c.resolve(status("freshness-unknown"));}
   catch(CalendarAvailabilityReader.TooMany bound){c.resolve(status("too-many"));}
   catch(Exception unavailable){c.resolve(status("unavailable"));}
  }

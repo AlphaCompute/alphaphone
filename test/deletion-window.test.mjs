@@ -8,7 +8,7 @@ import {transformSync} from 'esbuild';
 import {readFileSync} from 'node:fs';
 const root=resolve(import.meta.dirname,'..');
 const src=transformSync(readFileSync(join(root,'apps/app/src/runtime/deletion-window.ts'),'utf8'),{loader:'ts',format:'esm'}).code;
-const {deletionDeadline,deletionWindow,claimDeletion}=await import('data:text/javascript;base64,'+Buffer.from(src).toString('base64'));
+const {deletionDeadline,deletionWindow,claimDeletion,undoConfirmed}=await import('data:text/javascript;base64,'+Buffer.from(src).toString('base64'));
 const clock=(elapsed=100,wall=100000,continuity='boot:1')=>({elapsed,wall,continuity});
 const entry=()=>({version:1,id:'fixture',owner:'owner-A',target:{id:'event',revision:'r1'},deadline:deletionDeadline(clock()),phase:'queued'});
 test('ten seconds uses monotonic time, including exact boundary and wall/timezone changes',()=>{
@@ -38,4 +38,13 @@ test('native deadline agrees on same-boot restart, exact expiry, reboot and inva
  try{const file=join(dir,'DeadlineTest.java');writeFileSync(file,`package ai.elizaresearch.alphaphone; public class DeadlineTest {static void check(boolean v){if(!v)throw new AssertionError();}public static void main(String[] args){DeletionDeadline d=new DeletionDeadline("boot:1",100,100000);check(d.expiresAt==110000);check(d.state("boot:1",10099)==DeletionDeadline.State.OPEN);check(d.state("boot:1",10100)==DeletionDeadline.State.EXPIRED);check(d.state("boot:1",99)==DeletionDeadline.State.CLOCK_CHANGED);check(d.state("boot:2",20000)==DeletionDeadline.State.CLOCK_CHANGED);try{new DeletionDeadline("boot",Long.MAX_VALUE,0);throw new AssertionError();}catch(IllegalArgumentException expected){}System.out.println("PASS deletion deadline");}}`);
  execFileSync(bin('javac'),['--release','11','-d',dir,join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/DeletionDeadline.java'),file],{timeout:60000});assert.match(execFileSync(bin('java'),['-cp',dir,'ai.elizaresearch.alphaphone.DeadlineTest'],{encoding:'utf8',timeout:10000}),/PASS deletion deadline/);
  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('Undo is confirmed only by an undone receipt; a late Undo after dispatch is never shown as kept',()=>{
+ assert.equal(undoConfirmed({phase:'undone'}),true);
+ for(const phase of ['deleted','conflict','dispatching','unknown','queued','paused'])assert.equal(undoConfirmed({phase}),false,phase);
+ assert.equal(undoConfirmed(undefined),false);assert.equal(undoConfirmed(null),false);assert.equal(undoConfirmed('undone'),false);
+ const ui=readFileSync(join(root,'apps/app/src/runtime/deletion-undo.tsx'),'utf8');
+ assert.match(ui,/const result=await deletions\.undo\(\{kind:entry\.kind,id:entry\.id\}\);if\(!undoConfirmed\(result\)\)\{setError\(UNDO_TOO_LATE\)/);
+ const coordinator=readFileSync(join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/NativeDeletionCoordinator.java'),'utf8');
+ assert.match(coordinator,/DeferredDeletionJournal\.requireUndone\(AlphaReminders\.engine\(context\)\.settleDeletion\(id,row\.getString\("owner"\),time,true\)\)/,'native reminder Undo refuses a settled deletion');
 });

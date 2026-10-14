@@ -1,4 +1,4 @@
-import {deletions,refreshDeletionViews} from '../runtime/deletions';
+import {deletions,refreshDeletionViews,reminderDeletionRefusal} from '../runtime/deletions';
 import {BrowserReviews} from '../browser/review';
 import type {ConversationMessageTarget} from '../runtime/alpha-client';
 import {formatDeviceRecordDateTime} from "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts";
@@ -26,6 +26,8 @@ import {isClockOperation,assertClockTimeZone,currentClockTimeZone,validateClockR
 import { Capacitor } from '@capacitor/core';
 import { isMapsOperation } from '../runtime/maps-contract';
 import { readMapsSelection } from '../maps/agent-context';
+import { isLibraryOperation } from '../runtime/photo-library';
+import { deviceLibraryAgent, LibraryAgentRefusal } from './photo-library-adapter';
 import {isReminderOperation,validateReminderResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import { SecureNotesStore, readLegacyDailyNotes, notesDraftBase, applyNotesDraft, notesDraftConflicts, NotesStorageFull, SECURE_NOTES_SLOT, SECURE_NOTES_DRAFT_SLOT, type NotesDraft, type NotesDraftReason } from '../runtime/notes-secure-store';
 import { secureConnectionStore } from '../runtime/native-connection';
@@ -359,6 +361,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if (view === 'photos') {
       const state = shell.vget('photos');
       if (state.open === state.nativePhotoSelection?.id) providerSelection = state.nativePhotoSelection;
+      // Device library: exactly one owner-selected item, by identity and a local revision only.
+      else if (state.album === 'device' && !state.open && state.nativeLibrarySelection) providerSelection = state.nativeLibrarySelection;
     }
     if (view === 'inbox') {
       const state = shell.vget('inbox');
@@ -599,6 +603,20 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Maps context changed');
         return {status:'succeeded',summary:'Shared the exact selected Maps snapshot with approval. Navigation was not started.',mapsResult};
       }
+      if(isLibraryOperation(operation)){
+        // Device library (issue 408): reads stay local and return identity-only rows; select and
+        // review act only on the owner-visible Photos > Device library, never directly on media.
+        const library=deviceLibraryAgent();
+        if(!library||expectedContext.sensitive||expectedContext.view!=='photos'||document.hidden)return {status:'failed',summary:'Open Photos on the unlocked phone to use the device library. Nothing was shared or changed.'};
+        let photoLibraryResult;
+        try{photoLibraryResult=await library.run(operation,signal);}
+        catch(failure){if(failure instanceof LibraryAgentRefusal)return {status:'failed',summary:failure.message};throw failure;}
+        signal.throwIfAborted();context(this);
+        // Selection deliberately changes the selected object; every other operation must leave the context as approved.
+        if(operation.type!=='photo_library_select'&&JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Photos context changed');
+        const summary=photoLibraryResult.kind==='photo_library_search'?`Shared ${photoLibraryResult.items.length} library ${photoLibraryResult.items.length===1?'item':'items'} by id, kind, date and size in pixels. No names, location or pixels were shared.`:photoLibraryResult.kind==='photo_library_inspect'?'Shared one library item by id, kind, date and size in pixels. No name, location or pixels were shared.':photoLibraryResult.kind==='photo_library_select'?`Selected ${photoLibraryResult.selected} ${photoLibraryResult.selected===1?'item':'items'} in Photos. Nothing was changed or shared.`:'Opened the review in Photos > Device library. Nothing changes until you confirm there and in Android.';
+        return {status:'succeeded',summary,photoLibraryResult};
+      }
       if(isCalendarOperation(operation)){
         if(operation.type==='calendar_create_local'||operation.type==='calendar_read_next'){if(Capacitor.getPlatform()!=='android'||expectedContext.sensitive||document.hidden)throw Error('Foreground Android Calendar is required');const permission=await registerPlugin<{requestAccess():Promise<{status:string}>;requestWorkflowReadAccess():Promise<{status:string}>}>('AlphaCalendar')[operation.type==='calendar_create_local'?'requestAccess':'requestWorkflowReadAccess']();signal.throwIfAborted();context(this);if(permission.status!=='granted'||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Calendar permission or phone context changed');}
         const calendar=registerPlugin<{executeAgent(input:{operation:unknown;operationId:string;journalIdentity?:{scope:string;proposalId:string}}):Promise<{status:string;result?:unknown}>;cancelAgent(input:{operationId:string}):Promise<unknown>}>('AlphaCalendar');
@@ -713,6 +731,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(operation.type==='reminder_cancel'){
           const queued=await deletions.reviewAgentReminder({operationId,bindingHash,operation,journalIdentity});
           if(queued.status==='queued')refreshDeletionViews();
+          if(reminderDeletionRefusal(queued.status))return {status:'failed',summary:'Deletion was not queued. Nothing changed.'};
           return {status:queued.status==='cancelled'?'failed':'unknown',summary:queued.status==='queued'?'Deletion queued with 10 seconds to Undo. Final outcome remains pending.':queued.status==='cancelled'?'Deletion cancelled before admission.':'Deletion outcome requires review; it will not be repeated.'};
         }
         const result=await DailyApps.operateReminder({operationId,bindingHash,operation});

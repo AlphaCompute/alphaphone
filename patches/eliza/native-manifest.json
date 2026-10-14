@@ -15,6 +15,42 @@
       ]
     },
     {
+      "file": "notice-owner-suspension.patch",
+      "sha256": "fbc9a4f1846fc2bae8c2b455297f4c27171abe30cb64dd17a312187fab360764",
+      "module": "plugins/plugin-native-notifications/android",
+      "targets": [
+        {
+          "path": "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NoticeDelivery.java",
+          "beforeSha256": "a6944a6f823bc2db1c05fb99cc16cb00e015d99e4ee7a2ccd349e9e397bc4e53",
+          "afterSha256": "4fb3b7c8a9a56ceb3c51c5990b4e41439d031c729f5db221bd19d4a53b7b3bce"
+        }
+      ]
+    },
+    {
+      "file": "system-product-capabilities.patch",
+      "sha256": "236388e42cd10e43b78a2b8c2ad8de9673aa495db36dbc70560f459797c744c1",
+      "module": "plugins/plugin-native-system/android",
+      "targets": [
+        {
+          "path": "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SystemPlugin.kt",
+          "beforeSha256": "a7b615e2a44da2b4c4c76c35bbc731707e4b1fcbe276aa4f80f48509794cf9cd",
+          "afterSha256": "83032a842b700e1c8494ae8837a740889475ca920a353882fd0329b6bf10c622"
+        }
+      ]
+    },
+    {
+      "file": "permitted-photo-copy-source.patch",
+      "sha256": "613ce22e76b9dd383d0a091d4f3065054d5f637faf7dcfe7cc0bec1761f7db91",
+      "module": "plugins/plugin-native-media/android",
+      "targets": [
+        {
+          "path": "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedPhotoEdits.java",
+          "beforeSha256": "adcaba3a54f600bcf9906260ffee605158f0119eb70738f24c68af7c757764c7",
+          "afterSha256": "3f09d9455d95e8bec27699133ecb976466ca6af690f3563a466399bb282e4d48"
+        }
+      ]
+    },
+    {
       "file": "reminder-deletion-window.patch",
       "sha256": "ed9552c8fa50293a7c77050d37bfab055a82ae9a6f120da2116d28b7252fee6a",
       "module": "plugins/plugin-native-reminders/android",

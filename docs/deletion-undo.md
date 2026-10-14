@@ -61,3 +61,9 @@ Calendar provider readback in both distribution variants. A shared-store native
 fixture is registered as `ReminderDeletionJournal`; its fresh-store reconstruction
 is not a substitute for killing and restarting the installed process. Real synced
 Calendar integration and device/user acceptance remain separate.
+
+Uncertain outcomes offer **Refresh receipt**, which re-reads the saved status without repeating
+the provider write. It does not claim a new provider verification. **Dismiss outcome** hides
+the notice for the same owner while retaining the unknown receipt and its no-replay state.
+Dismissal does not restore an item or assert that deletion failed. The canonical deletion
+journal remains the only scheduler and Undo authority in both browser and Android.

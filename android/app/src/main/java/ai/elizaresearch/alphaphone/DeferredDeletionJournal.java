@@ -22,6 +22,19 @@ final class DeferredDeletionJournal {
   if(!d.getString("continuity").equals(continuity)||elapsed<start)return "clock-changed";
   return elapsed<expiry?"open":"expired";
  }
+ // Acknowledgement hides the notice only; its unknown receipt and no-replay state remain intact.
+ synchronized java.util.Set<String> acknowledgements()throws Exception{
+  JSONObject marks=read().optJSONObject("acknowledgements");java.util.Set<String> keys=new java.util.HashSet<>();
+  if(marks!=null)for(java.util.Iterator<String> i=marks.keys();i.hasNext();){String key=i.next();if(marks.optBoolean(key,false))keys.add(key);}return keys;
+ }
+ synchronized boolean acknowledged(String kind,String id)throws Exception{
+  JSONObject marks=read().optJSONObject("acknowledgements");return marks!=null&&marks.optBoolean(kind+":"+id,false);
+ }
+ synchronized void acknowledge(String kind,String id)throws Exception{
+  JSONObject data=read(),marks=data.optJSONObject("acknowledgements");if(marks==null){marks=new JSONObject();data.put("acknowledgements",marks);}
+  if(marks.length()>=1000&&!marks.has(kind+":"+id))throw new IllegalStateException("Deletion acknowledgements require review");
+  marks.put(kind+":"+id,true);store.save(data.toString());
+ }
  synchronized JSONObject stage(String id,JSONObject owner,JSONObject target,DeletionDeadline deadline)throws Exception{
   if(id==null||!id.matches("[A-Za-z0-9_-]{1,128}"))throw new IllegalArgumentException("Deletion identity required");
   JSONObject data=read(),records=data.getJSONObject("records"),prior=records.optJSONObject(id);
@@ -47,9 +60,15 @@ final class DeferredDeletionJournal {
  synchronized JSONObject undo(String id,JSONObject owner,String continuity,long elapsed)throws Exception{
   JSONObject data=read(),row=data.getJSONObject("records").getJSONObject(id);
   if(!same(owner,row.getJSONObject("owner")))throw new SecurityException("Deletion owner changed");
-  String phase=row.getString("phase");if(!"queued".equals(phase)&&!"paused".equals(phase))return copy(row);
+  String phase=row.getString("phase");if(!"queued".equals(phase)&&!"paused".equals(phase))return requireUndone(copy(row));
   if(!"paused".equals(phase)&&"expired".equals(window(row,continuity,elapsed)))throw new IllegalStateException("Undo window ended");
   row.put("phase","undone");store.save(data.toString());return copy(row);
+ }
+ /** Undo succeeds only when the item was kept. A settled (deleted, conflicting or uncertain)
+  * deletion is never reported back as a successful Undo. A repeated Undo stays successful. */
+ static JSONObject requireUndone(JSONObject row)throws Exception{
+  if(!"undone".equals(row.optString("phase")))throw new IllegalStateException("Undo window ended; deletion "+row.optString("phase","unknown"));
+  return row;
  }
  synchronized JSONObject expire(String id,String continuity,long elapsed,Admission admission,Delete deletion)throws Exception{
   JSONObject data=read(),row=data.getJSONObject("records").getJSONObject(id);
