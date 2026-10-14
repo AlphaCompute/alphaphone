@@ -11,7 +11,8 @@ const nativeConnectionHeader=(Capacitor as typeof Capacitor&{PluginHeaders?:{nam
 const browserCloudHost=devSurfacesEnabled&&!Capacitor.isNativePlatform()&&!nativeConnectionHeader;
 
 export interface ConnectionPort {
-  request(input: { requestId: string; url: string; method: string; headers: Record<string,string>; body?: string; credentialReference?:string; expiresAt?: number }): Promise<{status:number;data:unknown}>;
+  /** `retryAfter` is the Retry-After header of an error response (seconds or an HTTP date), when present. */
+  request(input: { requestId: string; url: string; method: string; headers: Record<string,string>; body?: string; credentialReference?:string; expiresAt?: number }): Promise<{status:number;data:unknown;retryAfter?:string}>;
   cancel(input:{requestId:string}):Promise<void>;
   secureRead(input:{slot:string}):Promise<{value:string|null}>;
   secureWrite(input:{slot:string;value:string}):Promise<void>;
@@ -139,7 +140,9 @@ export function createBrowserConnection(options:{fetch?:typeof fetch;secrets?:Br
         if(text.length>2*1024*1024)throw new Error('Connection request failed');
         let data:unknown=null;
         if(text){try{data=JSON.parse(text);}catch(error){if(response.status<400)throw error;}}
-        return {status:response.status,data};
+        // Some Cloud refusals (the Anthropic-style /api/v1/messages body) carry the wait only in this header.
+        const retryAfter=response.status>=400?response.headers.get('retry-after'):null;
+        return {status:response.status,data,...(retryAfter&&/^[A-Za-z0-9 ,:+-]{1,64}$/.test(retryAfter)?{retryAfter}:{})};
       }catch(error){throw new Error(controller.signal.aborted?'Request cancelled':'Connection request failed',{cause:error});}
       finally{requests.delete(input.requestId);}
     },

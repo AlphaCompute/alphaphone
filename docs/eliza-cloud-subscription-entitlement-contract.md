@@ -61,7 +61,9 @@ background. It never reads it once per turn.
 | `nbf` | no | Epoch seconds |
 | `rfa` | no | Suggested refresh time in epoch seconds, between `iat` and `exp`. Without it, the phone refreshes after 75% of the lifetime |
 | `plan` | yes | `{id, name, status}` with `status` one of `active`, `trialing`, `past_due`, `canceled`, `none` |
-| `allowance` | no | `{unit: "requests"|"tokens", period: "day"|"week"|"month", limit?: int, used?: int, resetsAt?: epoch seconds}`. The phone shows only the numbers that are present |
+| `ver` | no | Claim-set version, a positive integer. Absent means v1. Versions only add claims; a breaking change needs a new `typ` |
+| `allowance` | no | v1: `{unit: "requests"|"tokens", period: "day"|"week"|"month", limit?: int, used?: int, resetsAt?: epoch seconds}`. The phone shows only the numbers that are present. Cloud does not issue it |
+| `plan_allowance` | no (v2) | `{unit: "usd_micros", granted: int, remaining: int, periodStart, resetsAt: epoch seconds}`: Cloud's allowance for the current billing period in its own unit, millionths of a US dollar. `remaining` excludes amounts reserved for requests in flight. The phone shows the share left ("49% of this billing period's plan allowance is left"), never an amount of money. An unknown unit or an inconsistent row is not shown, and the plan state stays valid. It has its own name because v1 phones refuse an `allowance` claim in any other unit |
 | `services` | no | The managed services covered, e.g. `["inference","maps"]` |
 
 The phone verifies the signature before it trusts any claim.
@@ -90,8 +92,11 @@ entitlement names an unknown `kid`, which makes key rotation safe.
 
 ### Refusal bodies
 
-The native transport returns the status and the JSON body only. It does not return headers, so
-Cloud must also put any `Retry-After` value in the body:
+The native transport returns the status, the JSON body and, for an error response, the
+`Retry-After` header (seconds or an HTTP date) as `retryAfter`. A retry time in the body wins.
+Cloud's `/api/v1/messages` keeps the Anthropic body `{"type":"error","error":{"type":"rate_limit_error"}}`
+and gives its wait only in `Retry-After`; the phone reads it as a rate limit with that wait. The
+resident agent uses the OpenAI-style routes, whose bodies carry the time:
 
 | Situation | Status | Body |
 |---|---|---|
@@ -122,7 +127,9 @@ retry and reset times only for direct HTTP refusals.
 ## 4. Phone behaviour by condition
 
 Cloud side: elizaOS/eliza PR #36125 (`POST /api/v1/subscription/redeem`, the entitlement and key
-routes, refusal bodies with `retryAfterSeconds`, 402 `allowance_exhausted` with `resetsAt`).
+routes, refusal bodies with `retryAfterSeconds`, 402 `allowance_exhausted` with `resetsAt`), PR
+#36186 (plan burst and sustained buckets) and the format v2 `plan_allowance` claim with Maps plan
+buckets (elizaOS/eliza, issue #410 follow-up).
 
 | Condition | Phone result | Cloud inference bound (the agent runs in every row) |
 |---|---|---|

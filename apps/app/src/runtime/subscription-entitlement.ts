@@ -41,16 +41,29 @@ export const FALLBACK_REFRESH_MS = 5 * 60 * 1000;
 export type PlanStatus = 'active' | 'trialing' | 'past_due' | 'canceled' | 'none';
 export type AllowanceUnit = 'requests' | 'tokens';
 export type AllowancePeriod = 'day' | 'week' | 'month';
-export interface PlanAllowance {
+/** Format v1 `allowance` claim. Cloud has not issued it; it stays accepted. */
+export interface CountAllowance {
   unit: AllowanceUnit; period: AllowancePeriod;
   /** Null when Cloud does not publish the number; the phone never fills one in. */
   limit: number | null; used: number | null; resetsAt: number | null;
 }
+/**
+ * Format v2 `plan_allowance` claim (elizaOS/eliza, entitlement `ver` 2): Cloud's allowance for the
+ * current billing period in its own unit, integer millionths of a US dollar. The phone shows the
+ * share that is left, not a money meter. `remaining` excludes requests still in flight.
+ */
+export interface PeriodAllowance { unit: 'usd_micros'; granted: number; remaining: number; periodStart: number; resetsAt: number }
+export type PlanAllowance = CountAllowance | PeriodAllowance;
+/** Entitlement claim-set versions the phone reads. Tokens without `ver` are v1; later versions only add claims. */
+export const ENTITLEMENT_FORMAT_VERSION = 2;
 export interface SubscriptionEntitlement {
   id: string; keyId: string; issuer: string;
   userId: string; organizationId: string | null;
   plan: { id: string; name: string; status: PlanStatus };
+  /** v2 `plan_allowance` when present and readable, else the v1 `allowance` claim. */
   allowance: PlanAllowance | null;
+  /** `ver` claim; 1 when absent. */
+  formatVersion: number;
   /** Cloud-managed services this entitlement covers, e.g. "inference", "maps". */
   services: string[];
   issuedAt: number; expiresAt: number; refreshAt: number;
@@ -96,6 +109,19 @@ const count = (value: unknown): number | null => {
   return value;
 };
 const PLAN_STATUSES: readonly PlanStatus[] = ['active', 'trialing', 'past_due', 'canceled', 'none'];
+/**
+ * Reads the v2 `plan_allowance` claim. It only adds detail to the plan state, so an unknown unit or
+ * an inconsistent row is not shown (null) instead of making the whole entitlement invalid.
+ */
+function periodAllowance(value: unknown): PeriodAllowance | null {
+  const row = bag(value);
+  if (!row || row.unit !== 'usd_micros') return null;
+  const amount = (item: unknown) => typeof item === 'number' && Number.isSafeInteger(item) && item >= 0 ? item : null;
+  const instant = (item: unknown) => typeof item === 'number' && Number.isSafeInteger(item) && item > 0 ? item * 1000 : null;
+  const granted = amount(row.granted), remaining = amount(row.remaining), periodStart = instant(row.periodStart), resetsAt = instant(row.resetsAt);
+  if (granted === null || remaining === null || periodStart === null || resetsAt === null || granted === 0 || remaining > granted || resetsAt <= periodStart) return null;
+  return { unit: 'usd_micros', granted, remaining, periodStart, resetsAt };
+}
 
 /** Splits a compact JWS. The signature is checked separately by verifyEntitlement. */
 export function decodeEntitlement(token: string): { header: Bag; claims: Bag; signingInput: string; signature: Uint8Array<ArrayBuffer> } {
@@ -125,6 +151,8 @@ export function entitlementClaims(header: Bag, claims: Bag, expected: Entitlemen
   if (expiresAt <= now) throw new EntitlementError('expired');
   const plan = bag(claims.plan);
   if (!plan || !PLAN_STATUSES.includes(plan.status as PlanStatus)) throw new EntitlementError('malformed');
+  if (claims.ver !== undefined && (typeof claims.ver !== 'number' || !Number.isSafeInteger(claims.ver) || claims.ver < 1)) throw new EntitlementError('malformed');
+  const formatVersion = (claims.ver as number | undefined) ?? 1;
   let allowance: PlanAllowance | null = null;
   if (claims.allowance != null) {
     const row = bag(claims.allowance);
@@ -132,6 +160,7 @@ export function entitlementClaims(header: Bag, claims: Bag, expected: Entitlemen
     const limit = count(row.limit), used = count(row.used);
     allowance = { unit: row.unit as AllowanceUnit, period: row.period as AllowancePeriod, limit, used, resetsAt: row.resetsAt == null ? null : seconds(row.resetsAt) };
   }
+  if (formatVersion >= 2) allowance = periodAllowance(claims.plan_allowance) ?? allowance;
   if (claims.services !== undefined && (!Array.isArray(claims.services) || claims.services.length > 16)) throw new EntitlementError('malformed');
   const services = ((claims.services as unknown[] | undefined) ?? []).map(value => text(value, 64));
   // Refresh before expiry: Cloud may ask for an earlier refresh; otherwise at three quarters of the lifetime.
@@ -140,7 +169,7 @@ export function entitlementClaims(header: Bag, claims: Bag, expected: Entitlemen
   const refreshAt = suggested !== null && suggested > issuedAt && suggested < expiresAt ? suggested : fallback;
   return { id: text(claims.jti, 128), keyId, issuer: expected.issuer, userId, organizationId,
     plan: { id: text(plan.id, 128), name: text(plan.name, 80), status: plan.status as PlanStatus },
-    allowance, services, issuedAt, expiresAt, refreshAt };
+    allowance, formatVersion, services, issuedAt, expiresAt, refreshAt };
 }
 
 /** Full verification: ES256 signature against Cloud's published P-256 keys, then claims. */
@@ -181,8 +210,15 @@ function clock(at: number): string {
   try { return new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
   catch { return new Date(at).toISOString(); }
 }
-export function allowanceText(allowance: PlanAllowance | null): string {
+export function allowanceText(allowance: PlanAllowance | null, now: number = Date.now()): string {
   if (!allowance) return 'Plan allowance details are in Eliza Cloud.';
+  if (allowance.unit === 'usd_micros') {
+    // Rounded down, so the phone never shows more than Cloud reports.
+    const reset = allowance.resetsAt > now ? ` Resets ${clock(allowance.resetsAt)}.` : '';
+    if (allowance.remaining === 0) return `This billing period's plan allowance is used up.${reset}`;
+    const percent = Math.floor(allowance.remaining * 100 / allowance.granted);
+    return `${percent < 1 ? 'Less than 1%' : `${percent}%`} of this billing period's plan allowance is left.${reset}`;
+  }
   const per = `this ${allowance.period}`;
   const reset = allowance.resetsAt === null ? '' : ` Resets ${clock(allowance.resetsAt)}.`;
   if (allowance.limit !== null && allowance.used !== null) return `${Math.min(allowance.used, allowance.limit).toLocaleString()} of ${allowance.limit.toLocaleString()} ${allowance.unit} used ${per}.${reset}`;
@@ -410,7 +446,8 @@ export class EntitlementRefresher {
 
 /** A Cloud refusal the owner can act on. */
 export interface ServiceLimit { kind: 'rate-limited' | 'allowance-exhausted' | 'subscription-required' | 'billing-refused'; retryAfterMs: number | null; resetsAt: number | null }
-const RATE_KINDS = new Set(['rate_limited', 'rate-limited', 'rate_limit_exceeded', 'too_many_requests']);
+/** `rate_limit_error` is the Anthropic-style body of Cloud's /api/v1/messages, which carries its wait only in `Retry-After`. */
+const RATE_KINDS = new Set(['rate_limited', 'rate-limited', 'rate_limit_exceeded', 'too_many_requests', 'rate_limit_error']);
 const ALLOWANCE_KINDS = new Set(['allowance_exhausted', 'quota_exceeded', 'usage_limit_reached']);
 const SUBSCRIPTION_KINDS = new Set(['subscription_required', 'subscription_inactive']);
 /**
@@ -429,7 +466,9 @@ function retryFields(row: Bag, now: number): { retryAfterMs: number | null; rese
   let retryAfterMs: number | null = null;
   const ms = finite(row.retryAfterMs), secs = finite(row.retryAfterSeconds ?? row.retry_after ?? row.retryAfter);
   if (ms !== null) retryAfterMs = ms; else if (secs !== null) retryAfterMs = secs * 1000;
-  const at = instant(row.retryAt ?? row.retry_at);
+  // `retryAfter` may be the raw Retry-After header, which is either seconds or an HTTP date.
+  const headerDate = typeof row.retryAfter === 'string' && !/^\s*\d/.test(row.retryAfter) ? row.retryAfter : undefined;
+  const at = instant(row.retryAt ?? row.retry_at ?? headerDate);
   if (retryAfterMs === null && at !== null) retryAfterMs = Math.max(0, at - now);
   const resetsAt = instant(row.resetsAt ?? row.resetAt ?? row.reset_at);
   // A retry hint longer than a day is not presented as a countdown.
@@ -437,8 +476,10 @@ function retryFields(row: Bag, now: number): { retryAfterMs: number | null; rese
   return { retryAfterMs, resetsAt };
 }
 /**
- * Reads a Cloud limit refusal from an HTTP error ({status,data}), a reply's
+ * Reads a Cloud limit refusal from an HTTP error ({status,data,retryAfter}), a reply's
  * failureKind/terminalFailure, or a nested error body. Returns null for anything else.
+ * Retry times in the body win; `retryAfter` (the Retry-After header the transports return)
+ * fills in when the body has none.
  *
  * At the pinned upstream revision a resident-agent reply carries terminalFailure as only
  * {kind, message, transient, code} (chat-routes terminalFailureContentValue), so retry and reset

@@ -225,6 +225,17 @@ test.describe('plan state binds Cloud AI; the agent runs in every state',()=>{
   await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:info.outputPath('signed-plan-resume.png'),animations:'disabled'});
  });
 
+ test('a format v2 entitlement shows the share of the period allowance left, not an amount of money',async({page})=>{
+  const now=Math.floor(Date.now()/1000);
+  // Synthetic micro-dollar figures (Cloud's allowance unit), not a product allowance.
+  await boot(page,await entitlements({ver:2,allowance:undefined,plan_allowance:{unit:'usd_micros',granted:4_000_000,remaining:1_000_000,periodStart:now-86400,resetsAt:now+86400}}));
+  await agentRunning(page,'cloud');
+  await page.evaluate(()=>(window as any).planController.openPlan());
+  const panel=page.getByRole('region',{name:'Eliza Cloud plan'});
+  await expect(panel.getByText(/25% of this billing period's plan allowance is left\. Resets /)).toBeVisible();
+  await expect(panel).not.toContainText('$');
+ });
+
  test('a trialing plan binds Cloud AI',async({page})=>{
   await boot(page,{...await entitlements(),plan:'trialing'});
   await agentRunning(page,'cloud');
