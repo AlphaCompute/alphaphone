@@ -892,6 +892,20 @@
     </div>
   </sc-if>
 
+  <div class="calendar-days-layout" data-alpha-pane-owner="calendar" data-alpha-calendar-wide="{{calendar.wideSchedule}}">
+  <aside data-alpha-subview="calendar-previous" inert="{{calendar.adjacentCovered}}" aria-hidden="{{calendar.adjacentCovered}}" class="calendar-neighbor">
+    <button class="calendar-day-heading" onClick="{{calendar.previousDay.select}}">{{calendar.previousDay.label}}</button>
+    <div class="scr calendar-day-agenda">
+      <sc-for list="{{calendar.previousDay.rows}}" as="e"><button class="calendar-agenda-event" onClick="{{e.open}}" aria-label="{{e.title}}, {{e.agendaTime}}"><span>{{e.agendaTime}}</span><strong>{{e.title}}</strong></button></sc-for>
+      <sc-if value="{{calendar.previousDay.empty}}"><p>{{calendar.previousDay.emptyText}}</p></sc-if>
+    </div>
+  </aside>
+  <div class="calendar-selected-day" data-alpha-subview="calendar-selected" data-alpha-calendar-agenda="{{calendar.agenda}}">
+    <div class="calendar-current-heading">{{calendar.selectedDayLabel}}</div>
+    <div class="scr calendar-selected-agenda" role="region" aria-label="Calendar agenda" tabindex="0">
+      <sc-for list="{{calendar.currentDay.rows}}" as="e"><button class="calendar-agenda-event" onClick="{{e.open}}" aria-label="{{e.title}}, {{e.agendaTime}}"><span>{{e.agendaTime}}</span><strong>{{e.title}}</strong></button></sc-for>
+      <sc-if value="{{calendar.currentDay.empty}}"><p>{{calendar.currentDay.emptyText}}</p></sc-if>
+    </div>
   <sc-if value="{{calendar.hasNativeAllDay}}">
     <div data-alpha-calendar-all-day style="display: flex; gap: 10px; padding: 0 16px 8px 12px; flex-shrink: 0; max-height: 132px; overflow-y: auto">
       <span style="width: 38px; padding-top: 12px; font-size: 11px; text-align: right; color: var(--mut); flex-shrink: 0">All day</span>
@@ -925,6 +939,15 @@
         </div>
       </sc-if>
     </div>
+  </div>
+  </div>
+  <aside data-alpha-subview="calendar-next" inert="{{calendar.adjacentCovered}}" aria-hidden="{{calendar.adjacentCovered}}" class="calendar-neighbor">
+    <button class="calendar-day-heading" onClick="{{calendar.nextDay.select}}">{{calendar.nextDay.label}}</button>
+    <div class="scr calendar-day-agenda">
+      <sc-for list="{{calendar.nextDay.rows}}" as="e"><button class="calendar-agenda-event" onClick="{{e.open}}" aria-label="{{e.title}}, {{e.agendaTime}}"><span>{{e.agendaTime}}</span><strong>{{e.title}}</strong></button></sc-for>
+      <sc-if value="{{calendar.nextDay.empty}}"><p>{{calendar.nextDay.emptyText}}</p></sc-if>
+    </div>
+  </aside>
   </div>
 
   </div>

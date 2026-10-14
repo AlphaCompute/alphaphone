@@ -409,3 +409,21 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 [data-alpha-file-preview-split="true"] > [data-alpha-subview="files-folder"] { left:0!important; right:auto!important; width:var(--source-pane-width); border-right:1px solid var(--s3); box-sizing:border-box; }
 
 [data-alpha-pane-split="true"] [data-alpha-subview="inbox-list"] button[aria-current="true"] { box-shadow:inset 3px 0 0 var(--acct); }
+
+/* Wide Calendar keeps the selected timeline mounted and adds adjacent-day agendas. */
+.calendar-days-layout,.calendar-selected-day { display:flex;flex-direction:column;flex:1;min-height:0;min-width:0; }
+.calendar-neighbor,.calendar-current-heading { display:none; }
+.calendar-days-layout[data-alpha-calendar-wide="true"] { display:grid;grid-template-columns:minmax(240px,1fr) minmax(412px,1.4fr) minmax(240px,1fr);gap:12px;padding:0 16px;box-sizing:border-box; }
+.calendar-days-layout[data-alpha-calendar-wide="true"] .calendar-neighbor { display:flex;flex-direction:column;min-height:0;min-width:0;border:1px solid var(--line);border-radius:16px;overflow:hidden; }
+.calendar-days-layout[data-alpha-calendar-wide="true"] .calendar-current-heading { display:flex;align-items:center;justify-content:center;min-height:48px;font-weight:600; }
+.calendar-day-heading { min-height:48px;padding:8px 12px;flex-shrink:0;font-weight:600; }
+.calendar-day-agenda { overflow:auto;min-height:0;padding:8px 12px 120px; }
+.calendar-day-agenda p { font-size:14px;color:var(--mut);line-height:1.5; }
+.calendar-agenda-event { display:flex;flex-direction:column;gap:6px;width:100%;min-height:48px;padding:12px;margin-bottom:8px;border-radius:12px;background:var(--s2);text-align:left;box-sizing:border-box;overflow-wrap:anywhere; }
+.calendar-agenda-event span { font-size:13px;color:var(--mut); }
+.calendar-agenda-event strong { font-size:16px;line-height:1.35; }
+
+.calendar-selected-agenda { display:none; }
+.calendar-selected-day[data-alpha-calendar-agenda="true"] > .calendar-selected-agenda { display:block;flex:1;min-height:0;overflow:auto;padding:12px 16px 120px; }
+.calendar-selected-day[data-alpha-calendar-agenda="true"] > .calendar-current-heading { display:flex;align-items:center;justify-content:center;min-height:48px;font-weight:600; }
+.calendar-selected-day[data-alpha-calendar-agenda="true"] > :is(.calendar-timeline,[data-alpha-calendar-all-day]) { display:none!important; }

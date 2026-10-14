@@ -22,32 +22,35 @@ function popupFocus(name:string,current:()=>Bag){
 export function installSubviewAccessibility(views:Bag){
  const paneApis:Record<string,Bag>={};
  const pendingFocus=new Map<string,MutationObserver>();
- const widePanes=()=>document.documentElement.classList.contains('alpha-wide') && !document.documentElement.classList.contains('alpha-text-xl') && document.documentElement.clientWidth>=1000;
+ const largeText=()=>(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--alpha-text-scale'))||1)>=1.5;
+ const widePanes=()=>document.documentElement.classList.contains('alpha-wide') && !largeText() && document.documentElement.clientWidth>=1000;
  let split=widePanes();
+ let layoutKey=String(split)+":"+(document.documentElement.clientHeight>=600)+":"+largeText();
  // Canvas fitting and text sizing can change independently of a window resize.
  const refreshPaneLayout=()=>{
-  const next=widePanes();if(next===split)return;split=next;
+  const next=widePanes(),key=String(next)+":"+(document.documentElement.clientHeight>=600)+":"+largeText();if(key===layoutKey)return;layoutKey=key;split=next;
   for(const [name,api] of Object.entries(paneApis)){
    pendingFocus.get(name)?.disconnect();pendingFocus.delete(name);
    if(!api.isActive())continue;
    const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;
-   const restore=!next && previous?.closest(`[data-alpha-pane-owner="${name}"] [data-alpha-subview]`);
+   const nextVisible=next && (name!=='calendar'||document.documentElement.clientHeight>=600);
+   const restore=!nextVisible && previous?.closest(`[data-alpha-pane-owner="${name}"] [data-alpha-subview]`);
    if(restore){
     const afterCover=new MutationObserver(()=>{
      if(!restore.hasAttribute('inert'))return;
      afterCover.disconnect();pendingFocus.delete(name);
-     if(!api.isActive()||widePanes()||document.querySelector('dialog[open]'))return;
+     if(!api.isActive()||(widePanes()&&(name!=='calendar'||document.documentElement.clientHeight>=600))||document.querySelector('dialog[open]'))return;
      if(document.activeElement!==previous&&document.activeElement!==document.body)return;
-     document.querySelector<HTMLElement>(`[data-alpha-pane-owner="${name}"] [data-alpha-subview]:not([inert]) button`)?.focus({preventScroll:true});
+     document.querySelector<HTMLElement>(`[data-alpha-pane-owner="${name}"] [data-alpha-subview]:not([inert]) :is(button,[tabindex="0"])`)?.focus({preventScroll:true});
     });
     pendingFocus.set(name,afterCover);
     afterCover.observe(restore,{attributes:true,attributeFilter:['inert']});
    }
-   api.shell({responsivePaneWide:next});
+   api.shell({responsivePaneLayout:key});
   }
  };
  new ResizeObserver(refreshPaneLayout).observe(document.documentElement);
- new MutationObserver(refreshPaneLayout).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+ new MutationObserver(refreshPaneLayout).observe(document.documentElement,{attributes:true,attributeFilter:['class','style']});
  for(const name of ['inbox','workflows']){
   const render=views[name].render;
   let output:Bag={};
@@ -88,6 +91,7 @@ export function installSubviewAccessibility(views:Bag){
     out.split=split && !!(out.isEdit||out.isVoice||out.isLink) && !out.recording && !out.trashOpen;
     if(out.split)covered.listCovered=false;
    }
+   if(name==='calendar'){paneApis.calendar=api;out.wideSchedule=!!out.hasAdjacentDays && widePanes() && document.documentElement.clientHeight>=600;out.adjacentCovered=!out.wideSchedule;out.agenda=!!out.hasAdjacentDays && largeText();}
    if(name==='files'){
     paneApis.files=api;
     out.split=widePanes() && !!(out.inFolder||out.isPreview);

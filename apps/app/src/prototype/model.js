@@ -1356,7 +1356,7 @@ registerView("calendar", {
       if (pending) css += ";border:1.5px dashed var(--mut);box-shadow:none";
       var h = Math.max(24, e.d * CAL_PX - 4); var short = h < 40;
       return {
-        title: e.title, time: fmtT(e.t), top: (e.t - CAL_H0) * CAL_PX + 8, h: h, left: 60 + laneOf[e.id] * w, w: w - 4,
+        title: e.title, time: fmtT(e.t), agendaTime: fmtT(e.t) + (e.t % 24 < 12 ? " AM" : " PM"), top: (e.t - CAL_H0) * CAL_PX + 8, h: h, left: 60 + laneOf[e.id] * w, w: w - 4,
         css: css + (short ? ";align-items:center;padding-top:0;padding-bottom:0" : ""),
         stripe: e.key || e.hold || pending ? "transparent" : CAL_COLORS[c.color],
         sub: !short && e.d >= 1 ? (e.where || (e.video ? "Video call" : "")) : "", showTime: w >= 150,

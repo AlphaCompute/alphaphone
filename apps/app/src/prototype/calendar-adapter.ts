@@ -157,16 +157,25 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     const timed=(state.events||[]).filter((e:Bag)=>(e.alphaCalendarId||e.googleCalendarRecord)&&!e.allDay);
     const bounds=(off:number)=>{const now=new Date(api.now);return [new Date(now.getFullYear(),now.getMonth(),now.getDate()+off).getTime(),new Date(now.getFullYear(),now.getMonth(),now.getDate()+off+1).getTime()];};
     const timedOn=(off:number)=>{const [start,end]=bounds(off);return timed.filter((e:Bag)=>e.nativeEvent.begin<end&&e.nativeEvent.end>start);};
-    const [dayStart,dayEnd]=bounds(day);
-    const segments=timedOn(day).map((e:Bag)=>{
+    const segmentsFor=(off:number)=>{const [dayStart,dayEnd]=bounds(off);return timedOn(off).map((e:Bag)=>{
       const start=new Date(Math.max(dayStart,e.nativeEvent.begin)),end=new Date(Math.min(dayEnd,e.nativeEvent.end));
       const t=start.getHours()+start.getMinutes()/60,finish=end.getTime()===dayEnd?24:end.getHours()+end.getMinutes()/60;
       // A repeated-hour interval may have a nonpositive wall span. Its visual
       // height uses actual elapsed time; detail always retains original instants.
       const d=Math.min(24-t,Math.max(.25,finish>t?finish-t:(end.getTime()-start.getTime())/3600000));
-      return {...e,off:day,t,d};
-    });
-    const timeline=[...(state.events||[]).filter((e:Bag)=>!e.alphaCalendarId&&!e.googleCalendarRecord),...segments];
+      return {...e,off,t,d};
+    });};
+    const segments=segmentsFor(day);
+    const localEvents=(state.events||[]).filter((e:Bag)=>!e.alphaCalendarId&&!e.googleCalendarRecord);
+    const timeline=[...localEvents,...segments];
+    // Adjacent-day projections retain original identities and occurrence offsets.
+    const agendaFor=(off:number)=>{
+      const projection=render({...state,day:off,add:null,events:[...localEvents,...segmentsFor(off)]},api);
+      const date=new Date(api.now);date.setDate(date.getDate()+off);
+      const rows=[...onDay(off).map((e:Bag)=>({title:e.title,time:'All day',agendaTime:'All day',open:()=>api.set({open:e.id,openDay:off})})),...projection.events];
+      return {label:date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}),rows,empty:rows.length===0,emptyText:out.emptyText,select:()=>api.set({day:off})};
+    };
+    out.previousDay=agendaFor(day-1);out.nextDay=agendaFor(day+1);out.currentDay=agendaFor(day);out.selectedDayLabel=out.currentDay.label;out.hasAdjacentDays=true;
     // Temporary per-day layout only: provider IDs, original timestamps and
     // selected-object identity stay in the durable state, never in split copies.
     if(allDay.length||timed.length)out.events=render({...state,events:timeline},api).events;
