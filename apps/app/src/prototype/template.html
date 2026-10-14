@@ -744,12 +744,14 @@
           </button>
         </sc-if>
         <sc-if value="{{inbox.c.singleFrom}}"><div style="min-height:44px;display:flex;align-items:center;color:var(--mut);font-size:14px;border-bottom:1px solid var(--line);overflow-wrap:anywhere">{{inbox.c.from}}</div></sc-if>
-        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 52px; padding: 6px 0; border-bottom: 1px solid var(--line); box-sizing: border-box">
-          <sc-for list="{{inbox.c.chips}}" as="r">
-            <button class="inbox-recipient-chip" aria-label="Remove {{r.name}}" onClick="{{r.rm}}" style="height: 34px; padding: 0 8px 0 14px; border-radius: 17px; background: var(--s2); display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600"><span>{{r.name}}</span><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; color: var(--mut)"><path d="{{ic.x}}"></path></svg></button>
-          </sc-for>
-          <span style="font-size:14px;color:var(--mut)">To</span>
-          <input aria-label="To" placeholder="{{inbox.c.toPh}}" value="{{inbox.c.toQ}}" onChange="{{inbox.c.onTo}}" onKeyDown="{{inbox.c.toKey}}" style="flex-grow: 1; min-width: 80px; height: 38px; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 16px; padding: 0">
+        <div class="mail-recipient-row">
+          <span class="mail-recipient-label">To</span>
+          <div class="mail-recipient-addresses">
+            <sc-for list="{{inbox.c.chips}}" as="r">
+              <button class="inbox-recipient-chip" aria-label="Remove {{r.name}}" onClick="{{r.rm}}" style="min-height:34px;padding:6px 8px 6px 12px;border-radius:17px;background:var(--s2);display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;max-width:100%"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{r.name}}</span><span aria-hidden="true" class="mail-toolbar-icon" style="width:14px;height:14px;color:var(--mut);mask-image:url('/icons/lucide/x.svg');-webkit-mask-image:url('/icons/lucide/x.svg')"></span></button>
+            </sc-for>
+            <input aria-label="To" placeholder="{{inbox.c.toPh}}" value="{{inbox.c.toQ}}" onChange="{{inbox.c.onTo}}" onKeyDown="{{inbox.c.toKey}}" style="flex:1;min-width:110px;width:100%;height:38px;border:0;outline:0;background:transparent;color:var(--fg);font-size:16px;padding:0">
+          </div>
           <sc-if value="{{inbox.c.local}}"><button class="ib" aria-label="Cc and Bcc" aria-expanded="{{inbox.c.showRecipientDetails}}" onClick="{{inbox.c.toggleRecipientDetails}}"><span aria-hidden="true" class="mail-toolbar-icon" style="mask-image:url('/icons/lucide/chevron-down.svg');-webkit-mask-image:url('/icons/lucide/chevron-down.svg')"></span></button></sc-if>
         </div>
         <sc-if value="{{inbox.c.hasRaw}}">
@@ -769,7 +771,7 @@
         <sc-if value="{{inbox.c.showSendHint}}"><p style="font-size:12px;color:var(--mut);margin:8px 0">Enable Gmail changes in Settings to send. Your draft stays on this device.</p></sc-if>
         <sc-if value="{{inbox.c.canSaveProvider}}"><button onClick="{{inbox.c.saveProvider}}" style="padding:12px 0;text-align:left;color:var(--acct)">Review save to Gmail drafts</button></sc-if>
         <sc-if value="{{inbox.c.local}}"><div role="status" style="font-size:12px;color:var(--mut);padding:8px 0">{{inbox.c.status}}</div></sc-if>
-        <sc-if value="{{inbox.c.local}}"><div role="status" aria-label="Email edit recovery status" style="font-size:12px;color:var(--mut);padding:8px 0">{{inbox.c.retainedStatus}}</div></sc-if>
+        <sc-if value="{{inbox.c.recoveryVisible}}"><div role="status" aria-label="Email edit recovery status" style="font-size:12px;color:var(--mut);padding:8px 0">{{inbox.c.retainedStatus}}</div></sc-if>
         <sc-if value="{{inbox.c.retainedConflict}}"><div><button onClick="{{inbox.c.restoreEdits}}" style="min-height:44px;padding:12px">Restore retained email edits</button><button onClick="{{inbox.c.replaceEdits}}" style="min-height:44px;padding:12px">Replace retained email edits</button></div></sc-if>
         <sc-if value="{{inbox.c.retainedError}}"><div><button onClick="{{inbox.c.retryEdits}}" style="min-height:44px;padding:12px">Retry email recovery storage</button><button onClick="{{inbox.c.recoverEdits}}" style="min-height:44px;padding:12px">Recover email edits</button></div></sc-if>
         <sc-if value="{{inbox.c.staleBase}}"><button onClick="{{inbox.c.useLatest}}" style="min-height:44px;padding:12px">Use latest saved draft</button></sc-if>
