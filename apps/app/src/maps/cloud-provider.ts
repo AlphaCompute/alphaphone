@@ -52,6 +52,9 @@ export function cloudMapsFailure(error: unknown, signal?: AbortSignal): MapsFail
 export function createCloudMaps(captureRequest: () => CloudMapsRequest, configure: (config: ProviderConfig, provider?: MapsProvider) => void) {
  let generation = 0;
  let coverage: CloudMapsCoverage | undefined;
+ // Only a provider this instance installed is retired; another configured provider is left alone.
+ let installed = false;
+ const uninstall = () => { if (installed) { installed = false; configure({ status: 'unconfigured' }); } };
  const diagnostic = { configured: false, error: '' };
  async function call(request: CloudMapsRequest, route: CloudMapsRoute, signal: AbortSignal, body?: Record<string, unknown>) {
   try { return await request(route, signal, body); } catch (error) { throw cloudMapsFailure(error, signal); }
@@ -84,7 +87,7 @@ export function createCloudMaps(captureRequest: () => CloudMapsRequest, configur
  async function initializeCloudMaps(signal: AbortSignal = new AbortController().signal): Promise<void> {
   const attempt = ++generation;
   coverage = undefined;
-  configure({ status: 'unconfigured' });
+  uninstall();
   diagnostic.configured = true; diagnostic.error = '';
   try {
    const captured = captureRequest();
@@ -112,6 +115,7 @@ export function createCloudMaps(captureRequest: () => CloudMapsRequest, configur
    configure({ status: 'configured', providerId: meta.providerId, connectionId: meta.connectionId, revision: meta.revision as string,
     capabilities: { map: false, search: true, placeDetails: true, modes: [...caps.modes as TravelMode[]], traffic: 'none', transit: 'none', offline: { map: false, search: false, routing: false } } },
    new CloudProvider(meta.providerId, meta.connectionId, request));
+   installed = true;
   } catch (error) {
    if (attempt !== generation) return;
    coverage = undefined;
@@ -120,7 +124,7 @@ export function createCloudMaps(captureRequest: () => CloudMapsRequest, configur
  }
  return {
   initializeCloudMaps,
-  retireCloudMaps: () => { ++generation; coverage = undefined; diagnostic.error = 'unauthorized'; configure({ status: 'unconfigured' }); },
+  retireCloudMaps: () => { ++generation; coverage = undefined; diagnostic.error = 'unauthorized'; uninstall(); },
   cloudMapsCoverage: () => coverage,
   cloudMapsDiagnostics: () => ({ ...diagnostic }),
  };

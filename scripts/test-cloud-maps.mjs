@@ -27,7 +27,7 @@ const memory = () => { const values = new Map(); return { getItem: key => values
   let configured = 0;
   const maps = createCloudMaps(() => async () => { throw new MapsFailure('unauthorized', 'Sign in to Eliza Cloud to use Maps.'); }, () => configured++);
   await maps.initializeCloudMaps();
-  assert.equal(configured, 1);
+  assert.equal(configured, 0, 'a provider Cloud never installed is not touched');
   assert.equal(maps.cloudMapsCoverage(), undefined);
   assert.deepEqual(maps.cloudMapsDiagnostics(), { configured: true, error: 'unauthorized' });
 }
@@ -83,7 +83,7 @@ assert.equal(cloudMapsFailure(cloudError(503, 'provider_unavailable'), AbortSign
   let configured = 0;
   const maps = createCloudMaps(() => async () => ({ ...coverage, regions: [] }), () => configured++);
   await maps.initializeCloudMaps();
-  assert.equal(configured, 1);
+  assert.equal(configured, 0, 'a provider Cloud never installed is not touched');
   assert.equal(maps.cloudMapsDiagnostics().error, 'invalid-response');
 }
 console.log('PASS Cloud Maps device provider: coverage, search, details, route, failures');
