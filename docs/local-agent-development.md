@@ -55,7 +55,7 @@ Chat voice, Notes dictation and generic Maps/workflow speech select Eliza Cloud 
 
 The following local Whisper/Kokoro instructions describe optional development asset qualification, not the default product route. The active Mac comparison profile keeps local ASR and TTS off. A private `local-speech.json` may save supported nonsecret asset settings; explicit environment choices take precedence. Never store credentials in that file or run its audio qualification without authorization.
 
-Whisper uses the installed assets described in the review ledger. On macOS, browser development selects the installed CLI's automatic compute backend and runs a private synthetic-silence warm-up before starting the agent. This moves first-use kernel compilation into startup. `ALPHA_WHISPER_BACKEND=cpu` explicitly retains CPU execution; other platforms default to CPU. Automatic selection requires the current reproduced runtime source, and a failed warm-up stops startup rather than reporting readiness. This is host acceleration, not Android speech qualification or a guarantee of the device latency target.
+Host ASR runs through the shared `libelizainference` worker with the pinned Qwen3-ASR GGUF pair and Silero VAD described in `docs/host-speech-migration-2026-10-14.md`. Its readiness belongs to the native worker; this is host development, not Android speech qualification or a guarantee of the device latency target.
 
 When host Kokoro is configured, the agent starts its native worker and loads the speech sanitizer during startup. The worker verifies assets and synthesizes its readiness phrase before reporting ready. The first Listen request shares an in-progress initialization instead of starting another worker. Failed initialization remains retryable, and cancellation still destroys the native context. Disabled host speech does not preload either component. Local playback also prepares sentence-sized chunks, bounded to 300 characters, so the first audio response does not wait for a complete multi-sentence passage. The entire passage is validated before any chunk is submitted; completion still waits for every chunk and Stop cancels the current request without starting the remainder.
 
@@ -81,8 +81,10 @@ Require both speech providers at startup with:
 ```sh
 ALPHA_LOCAL_ASR=required \
 ALPHA_LOCAL_TTS=required \
-ALPHA_TTS_LIBRARY=/absolute/path/to/libelizainference.dylib \
-ALPHA_TTS_MODEL_DIR=/absolute/path/to/kokoro \
+ELIZA_INFERENCE_LIBRARY=/absolute/path/to/libelizainference.dylib \
+ELIZA_INFERENCE_LIBRARY_SHA256=<independently reviewed sha256> \
+ELIZA_PARADEE_MODEL_DIR=/absolute/path/to/paradee \
+ELIZA_ASR_MODEL_DIR=/absolute/path/to/asr \
 npm run dev:local
 ```
 
@@ -95,15 +97,18 @@ permissions (`chmod 600`). For example:
 {
   "ALPHA_LOCAL_ASR": "required",
   "ALPHA_LOCAL_TTS": "required",
-  "ALPHA_TTS_LIBRARY": "/absolute/path/to/libelizainference.dylib",
-  "ALPHA_TTS_MODEL_DIR": "/absolute/path/to/kokoro"
+  "ELIZA_INFERENCE_LIBRARY": "/absolute/path/to/libelizainference.dylib",
+  "ELIZA_INFERENCE_LIBRARY_SHA256": "<independently reviewed sha256>",
+  "ELIZA_PARADEE_MODEL_DIR": "/absolute/path/to/paradee",
+  "ELIZA_ASR_MODEL_DIR": "/absolute/path/to/asr"
 }
 ```
 
 `npm run dev` and `npm run dev:local` read this file at startup. Explicit shell
-environment values take precedence, including `ALPHA_LOCAL_TTS=off`. Optional
-saved keys are `ALPHA_WHISPER_BIN`, `ALPHA_ASR_MODEL` and
-`ALPHA_WHISPER_BACKEND`. Only speech modes and absolute asset paths are accepted;
+environment values take precedence, including `ALPHA_LOCAL_TTS=off`. Retired keys
+(`ALPHA_TTS_LIBRARY`, `ALPHA_TTS_MODEL_DIR`, `ALPHA_ASR_MODEL_DIR`,
+`ALPHA_WHISPER_BIN`, `ALPHA_ASR_MODEL`, `ALPHA_WHISPER_BACKEND`) are rejected.
+Exact asset layouts are in `docs/host-speech-migration-2026-10-14.md`. Only speech modes and absolute asset paths are accepted;
 credentials, arbitrary process settings, symlinks, shared-access files and malformed
 JSON are rejected. With no file, existing environment/default behavior is preserved.
 The file selects installed assets; their existing hash and readiness checks still

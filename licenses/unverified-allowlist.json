@@ -8,6 +8,18 @@
     {
       "name": "pdf.js QuickJS sandbox",
       "reason": "pdfjs-dist ships quickjs-eval.js/.wasm without a license file. The upstream sandbox build and QuickJS itself are believed to be permissively licensed, but no shipped license text establishes it."
+    },
+    {
+      "name": "Eliza-1 ASR model (Qwen3-ASR GGUF)",
+      "reason": "The shared Eliza-1 ASR GGUF is a conversion of a Qwen3-ASR checkpoint. The reviewed pins record path, size and SHA-256 only; the upstream model licence and any conversion terms have not been confirmed from shipped metadata."
+    },
+    {
+      "name": "Eliza-1 ASR audio projector (Qwen3-ASR mmproj GGUF)",
+      "reason": "The ASR audio projector GGUF is converted from the same Qwen3-ASR checkpoint as the ASR model. The reviewed pins record path, size and SHA-256 only; its licence has not been confirmed from shipped metadata."
+    },
+    {
+      "name": "Silero VAD v5 (GGUF)",
+      "reason": "Silero VAD is published by the Silero team; this GGUF conversion is pinned by path, size and SHA-256 only. The licence of the converted bytes has not been confirmed from shipped metadata."
     }
   ]
 }

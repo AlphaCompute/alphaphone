@@ -583,17 +583,38 @@ function androidEntries(root, templates, errors) {
   ];
 }
 
+export const ASR_MODEL_PINS = 'scripts/host-speech-assets.json';
+export const ASR_MODEL_NAMES = {
+  'asr/eliza-1-asr.gguf': 'Eliza-1 ASR model (Qwen3-ASR GGUF)',
+  'asr/eliza-1-asr-mmproj.gguf': 'Eliza-1 ASR audio projector (Qwen3-ASR mmproj GGUF)',
+  'vad/silero-vad-v5.gguf': 'Silero VAD v5 (GGUF)',
+};
+
+// Local ASR model, projector and VAD bytes run through libelizainference. Their licences are not
+// recorded in the reviewed pins, so they are listed and flagged unverified (P-09), never omitted.
+function asrModelEntries(root) {
+  if (!exists(root, ASR_MODEL_PINS)) return [];
+  return (readJson(root, ASR_MODEL_PINS).asr ?? []).map(pin => ({
+    name: ASR_MODEL_NAMES[pin.path] ?? pin.path,
+    version: `${pin.path} (sha256 ${pin.sha256})`,
+    license: UNVERIFIED, source: ASR_MODEL_PINS,
+    text: 'Local speech recognition model input pinned by the reviewed shared speech assets. The Android build takes the ASR pair from android/paradee-voice/asr-inputs.json. Its licence is not recorded in the reviewed pins; this inventory does not establish that the bytes are staged or qualified.',
+    _flags: ['licence-text-missing-from-package'],
+  }));
+}
+
 function speechEntries(root, templates, errors) {
   const paradee = 'vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json';
   if (exists(root, paradee)) {
     const pins = readJson(root, paradee);
-    return Object.entries(pins).map(([name, pin]) => ({
-      name: name === 'espeak' ? 'eSpeak NG (Paradee speech runtime dependency)' : name === 'paradee' ? 'Paradee 8M speech synthesis model' : 'Misaki English lexicon',
+    const names = {espeak: 'eSpeak NG (Paradee speech runtime dependency)', paradee: 'Paradee 8M speech synthesis model', lexicon: 'Misaki English lexicon'};
+    return [...Object.entries(pins).map(([name, pin]) => ({
+      name: names[name] ?? name,
       version: `${pin.version ?? pin.path} (sha256 ${pin.sha256})`,
       license: pin.license, source: pin.url ?? pin.source,
       text: `Declared by the reviewed shared speech inputs. This source inventory does not establish that native/model bytes are staged or qualified.\n\n${templates.canonical(pin.license) || 'Canonical license text unavailable.'}`,
       textSource: 'spdx-canonical', _flags: ['licence-text-missing-from-package'],
-    }));
+    })), ...asrModelEntries(root)];
   }
   if (!exists(root, 'android/local-speech/runtime-manifest.json')) return [];
   const manifest = readJson(root, 'android/local-speech/runtime-manifest.json');

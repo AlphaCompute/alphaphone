@@ -43,7 +43,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {AGENT_ASSETS, ANDROID_CLASSPATH, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, collectNotices, fontLicense, fontNames, packagedRuntimePresent, productionLockPackages} from './generate-licenses.mjs';
+import {AGENT_ASSETS, ANDROID_CLASSPATH, ASR_MODEL_NAMES, ASR_MODEL_PINS, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, collectNotices, fontLicense, fontNames, packagedRuntimePresent, productionLockPackages} from './generate-licenses.mjs';
 import {METADATA as GRADLE_METADATA, coordinateChecksum, parseVerificationMetadata} from './gradle-verification.mjs';
 import {classifyLicence, flagSummary} from './licence-policy.mjs';
 
@@ -223,16 +223,25 @@ function apkComponents(root, directory) {
   });
 }
 
+function asrModelComponents(root) {
+  if (!exists(root, ASR_MODEL_PINS)) return [];
+  return (readJson(root, ASR_MODEL_PINS).asr ?? []).map(pin => ({
+    type: 'machine-learning-model', 'bom-ref': `speech-asr:${pin.path}`, name: ASR_MODEL_NAMES[pin.path] ?? pin.path,
+    version: pin.path, hashes: [{alg: 'SHA-256', content: pin.sha256}], licenses: licenses(UNVERIFIED),
+    properties: [property('ships-in', 'native speech build input; staging and qualification unverified'), property('bytes', pin.bytes), property('source', ASR_MODEL_PINS)],
+  }));
+}
+
 function speechComponents(root) {
   const source = 'vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json';
-  if (exists(root, source)) return Object.entries(readJson(root, source)).map(([name, pin]) => ({
+  if (exists(root, source)) return [...Object.entries(readJson(root, source)).map(([name, pin]) => ({
     type: name === 'paradee' ? 'machine-learning-model' : name === 'espeak' ? 'library' : 'data',
     'bom-ref': `speech-input:${name}`, name: name === 'espeak' ? 'eSpeak NG' : name,
     version: pin.version ?? pin.path, hashes: [{alg: 'SHA-256', content: pin.sha256}],
     licenses: licenses(pin.license),
     ...(pin.url ? {externalReferences: [{type: 'distribution', url: pin.url}]} : {}),
     properties: [property('ships-in', 'native speech build input; staging and qualification unverified'), property('bytes', pin.bytes), property('source', source), property('origin', pin.url ?? pin.source)],
-  }));
+  })), ...asrModelComponents(root)];
   if (!exists(root, SPEECH_RUNTIME)) return [];
   const manifest = readJson(root, SPEECH_RUNTIME);
   const consumer = exists(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle')

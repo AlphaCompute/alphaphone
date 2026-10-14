@@ -13,7 +13,7 @@ export function createNativeReadingVoice(){
   const binding={...resident,expiresAt:Date.now()+120000};
   const isCurrent=()=>JSON.stringify(connectionController.getResidentReadingBinding())===JSON.stringify(resident);
   const check=()=>{if(!isCurrent()||document.hidden||connectionController.getSnapshot().open)throw new DOMException('Reading selection changed','AbortError');};
-  return {binding,isCurrent,ready:voice.ready,async speak(readingToken:string,signal:AbortSignal){
+  return {binding,isCurrent,ready:voice.speakReady,async speak(readingToken:string,signal:AbortSignal){
    check();const owned=new AbortController(),cancel=()=>owned.abort(new DOMException('Reading cancelled','AbortError'));
    const unsubscribe=connectionController.subscribe(()=>{try{check();}catch{cancel();}});
    const hidden=()=>{if(document.hidden)cancel();};document.addEventListener('visibilitychange',hidden);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();

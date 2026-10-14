@@ -54,8 +54,9 @@ export type ClockResult = {action:ClockRequest['action'];status:'opened'|'unavai
 export const DailyApps = registerPlugin<{
   clockHandoff(options:ClockRequest):Promise<ClockResult>;
   surfaceInfo(): Promise<{ developmentBuild: boolean; assistant: boolean; reminderCreationVersion?:1; reminderTapVersion?:1; reminderTimingVersion?: 2; bottomInset?: number; topInset?: number }>;
-  pendingReminderTap():Promise<{token?:string;target?:ReminderTarget;retained?:boolean}>;
+  pendingReminderTap():Promise<{token?:string;target?:ReminderTarget;retained?:boolean;question?:boolean}>;
   consumeReminderTap(options:{token:string}):Promise<void>;
+  releaseReminderQuestion(options:{token:string}):Promise<void>;
   dismissReminderTap(options:{token:string}):Promise<void>;
   addListener(event:"pendingReminderTap",callback:(result:Record<string,never>)=>void):Promise<PluginListenerHandle>;
   closeAssistant(): Promise<{ closed: boolean }>;

@@ -52,6 +52,19 @@ final class ConnectionRoutes {
   return path.matches("/api/auth/cli-session/[0-9a-fA-F-]{36}")||java.util.Set.of("/api/v1/user","/api/v1/billing/limits","/api/v1/subscription/entitlement","/api/v1/subscription/entitlement-keys","/api/v1/eliza/google/accounts","/api/v1/eliza/google/status","/api/v1/eliza/google/calendar/calendars","/api/v1/eliza/google/calendar/feed","/api/v1/eliza/google/gmail/search","/api/v1/eliza/google/gmail/read").contains(path)||path.matches("/api/v1/eliza/google/gmail/inbox-v1/(capabilities|thread|attachment|drafts|draft)")||path.matches("/api/v1/eliza/google/gmail/inbox-v1/operations/[A-Za-z0-9_-]{1,160}");
  }
  /**
+  * Request headers this transport forwards. Product builds talk only to the managed Cloud API, which
+  * takes Accept, Content-Type and the sign-in Authorization. The device-identity, device-capability
+  * and phone-protocol headers declare this phone to a hosted or paired agent runtime; the agent
+  * always runs on the phone (#406), so product builds refuse them before any connection is opened.
+  * The resident agent negotiates its capabilities over the in-process Agent bridge, not here.
+  * Test-mocks builds keep them for development agents. Names must already be lower-case.
+  */
+ static boolean admittedHeader(String name,boolean testMocks){
+  if(name==null)return false;
+  if("accept".equals(name)||"content-type".equals(name)||"authorization".equals(name))return true;
+  return testMocks&&("x-eliza-device-id".equals(name)||"x-eliza-device-key".equals(name)||"x-eliza-device-capabilities".equals(name)||"x-eliza-phone-protocol".equals(name));
+ }
+ /**
   * Cloud self-revocation: the presented sign-in key revokes only itself. Exactly
   * DELETE https://api.eliza.app/api/v1/api-keys/current on the default port, without a query
   * or body. The staging authority exists only in test-mocks builds.
