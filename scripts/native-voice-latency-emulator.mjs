@@ -99,11 +99,13 @@ async function main() {
   }
   fs.writeFileSync(path.join(options.out, 'instrumentation.txt'), output);
   fs.writeFileSync(path.join(options.out, 'injection.txt'), injection);
-  const exported = /nativeVoiceLatencyExport=(\S+)/.exec(output)?.[1];
+  // The harness rewrites its export after every turn; a run the emulator cut short keeps its trials.
+  const exported = /nativeVoiceLatencyExport=(\S+)/.exec(output)?.[1] ?? /nativeVoiceLatencyExportPath=(\S+)/.exec(output)?.[1];
   const report = { campaign: 'issue-395-native-voice-latency-emulator', evidenceClass: 'E', notEvidenceFor: ['device latency', 'acoustic output timing', 'physical microphone', 'voice-assistant acceptance (no language model ran)'], device, options: { source: options.feed ? 'synthetic-feed' : 'virtual-microphone', trials: options.trials, coldEvery: options.coldEvery, gapSeconds: options.gapSeconds, wavs: options.wavs.map(file => path.basename(file)) }, instrumentationExit: status, injectorExit: injectExit ?? null, passed: /OK \(1 test\)/.test(output) };
   if (exported) {
     const local = path.join(options.out, 'native-voice-timing.json');
-    execFileSync('adb', ['-s', options.serial, 'pull', exported, local], { stdio: 'ignore' });
+    try { execFileSync('adb', ['-s', options.serial, 'pull', exported, local], { stdio: 'ignore' }); }
+    catch { report.exportUnavailable = 'the emulator stopped before the export could be pulled'; fs.writeFileSync(path.join(options.out, 'report.json'), JSON.stringify(report, null, 2) + '\n'); throw new Error(report.exportUnavailable); }
     const summary = aggregate([JSON.parse(fs.readFileSync(local, 'utf8'))], { warm: 20, cold: 5 });
     fs.writeFileSync(path.join(options.out, 'summary.json'), JSON.stringify(summary, null, 2) + '\n');
     report.cohorts = nativeTable(summary.native);

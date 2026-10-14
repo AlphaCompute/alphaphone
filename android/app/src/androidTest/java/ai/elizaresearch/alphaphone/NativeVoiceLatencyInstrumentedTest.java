@@ -118,10 +118,14 @@ public final class NativeVoiceLatencyInstrumentedTest {
    }
    public void ended(String captureId,String error){if(error!=null)captureError.set(error);}
   },"harness-no-inference",source);
-  long started=System.currentTimeMillis();
+  started=System.currentTimeMillis();
+  File dir=new File(app.getExternalFilesDir(null),"native-voice-latency");assertTrue(dir.isDirectory()||dir.mkdirs());
+  out=new File(dir,"native-voice-latency-"+UUID.randomUUID()+".json");
+  this.target=target;this.coldEvery=coldEvery;this.feed=feed;
   capture.start();
-  // The campaign driver starts injecting speech when it sees this status.
-  Bundle ready=new Bundle();ready.putString("nativeVoiceLatencyReady","1");instrumentation.sendStatus(1,ready);
+  // The campaign driver starts injecting speech when it sees this status. The export is rewritten
+  // after every turn, so a run cut short (an overloaded host can stall the emulator) keeps its trials.
+  Bundle ready=new Bundle();ready.putString("nativeVoiceLatencyReady","1");ready.putString("nativeVoiceLatencyExportPath",out.getAbsolutePath());instrumentation.sendStatus(1,ready);
   try{
    while(finished.get()<target&&captureError.get()==null&&System.currentTimeMillis()-started<timeoutMs)Thread.sleep(500);
   }finally{
@@ -129,19 +133,29 @@ public final class NativeVoiceLatencyInstrumentedTest {
    worker.submit(this::closeEngines);worker.shutdown();worker.awaitTermination(60,TimeUnit.SECONDS);
    playbackThread.quitSafely();
   }
-  JSONObject export=AlphaVoiceLatencyProbe.export(app);
-  export.put("harness",new JSONObject()
-   .put("pipeline","harness-no-inference").put("source",feed?"synthetic-feed":"microphone")
-   .put("description","AlphaLiveVoiceCapture (AudioRecord + Silero VAD) -> Phonon-2 streaming ASR in the app process -> fixed reply (no language model) -> Paradee-8M -> MediaPlayer; not device latency when environment is emulator")
-   .put("trialsRequested",target).put("coldEvery",coldEvery).put("skippedSegments",skipped.get()).put("captureBatches",batchesSeen.get()).put("maxPeak",(double)maxPeak[0]).put("captureError",captureError.get()==null?JSONObject.NULL:captureError.get())
-   .put("elapsedMs",System.currentTimeMillis()-started).put("turns",turnsLog));
-  File dir=new File(app.getExternalFilesDir(null),"native-voice-latency");assertTrue(dir.isDirectory()||dir.mkdirs());
-  File out=new File(dir,"native-voice-latency-"+UUID.randomUUID()+".json");
-  try(OutputStream stream=new FileOutputStream(out)){stream.write(export.toString(2).getBytes(StandardCharsets.UTF_8));}
+  JSONObject export=writeExport();
   Bundle status=new Bundle();status.putString("nativeVoiceLatencyExport",out.getAbsolutePath());status.putInt("nativeVoiceLatencyTrials",export.getJSONArray("records").length());
   instrumentation.sendStatus(0,status);
   assertNull("capture failed: "+captureError.get(),captureError.get());
   assertTrue("collected "+finished.get()+" of "+target+" trials",finished.get()>=target);
+ }
+
+ private File out;
+ private long started;
+ private int target,coldEvery;
+ private boolean feed;
+ private synchronized JSONObject writeExport()throws Exception{
+  JSONObject export=AlphaVoiceLatencyProbe.export(app);
+  JSONArray turns;synchronized(turnsLog){turns=new JSONArray(turnsLog.toString());}
+  export.put("harness",new JSONObject()
+   .put("pipeline","harness-no-inference").put("source",feed?"synthetic-feed":"microphone")
+   .put("description","AlphaLiveVoiceCapture (AudioRecord + Silero VAD) -> Phonon-2 streaming ASR in the app process -> fixed reply (no language model) -> Paradee-8M -> MediaPlayer; not device latency when environment is emulator")
+   .put("trialsRequested",target).put("coldEvery",coldEvery).put("complete",finished.get()>=target).put("skippedSegments",skipped.get()).put("captureBatches",batchesSeen.get()).put("maxPeak",(double)maxPeak[0]).put("captureError",captureError.get()==null?JSONObject.NULL:captureError.get())
+   .put("elapsedMs",System.currentTimeMillis()-started).put("turns",turns));
+  File partial=new File(out.getPath()+".partial");
+  try(OutputStream stream=new FileOutputStream(partial)){stream.write(export.toString(2).getBytes(StandardCharsets.UTF_8));}
+  assertTrue(partial.renameTo(out));
+  return export;
  }
 
  /** Runs on the single worker: open, feed and decode during speech; finish, reply and play at the endpoint. */
@@ -190,6 +204,7 @@ public final class NativeVoiceLatencyInstrumentedTest {
   log.put("outcome",outcome==null?"pending":outcome);
   synchronized(turnsLog){turnsLog.put(log);}
   turns++;finished.incrementAndGet();
+  try{writeExport();}catch(Exception|Error ignored){/* the final export reports the run */}
   if(turns%coldEvery==0){closeEngines();coldNext=true;}
   busy.set(false);
  }
