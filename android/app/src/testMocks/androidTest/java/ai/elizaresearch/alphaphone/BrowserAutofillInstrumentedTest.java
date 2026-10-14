@@ -100,11 +100,33 @@ public final class BrowserAutofillInstrumentedTest {
  private void form()throws Exception{
   assertEquals("true",browser.child("(()=>{document.body.innerHTML='<form autocomplete=\"on\" onsubmit=\"return false\"><label>Username<input id=\"alpha-user\" name=\"username\" autocomplete=\"username\" style=\"display:block;width:85%;height:48px\"></label><label>Password<input id=\"alpha-password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" style=\"display:block;width:85%;height:48px\"></label></form>';return typeof Capacitor==='undefined' && typeof androidBridge==='undefined'})()"));
  }
+ /** The tab's Autofill eligibility. With engine-attested fields (BrowserLoginFields) the WebView
+  * itself stays excluded and the tab's eligibility flag governs the attested fields instead. */
  private void eligibility(WebView child,int expected)throws Exception{
+  boolean attested=BrowserLoginFields.supported();
   for(int i=0;i<100;i++){
-   java.util.concurrent.atomic.AtomicInteger actual=new java.util.concurrent.atomic.AtomicInteger();BoundedActivityScenario.main(()->actual.set(child.getImportantForAutofill()));
+   java.util.concurrent.atomic.AtomicInteger actual=new java.util.concurrent.atomic.AtomicInteger();
+   BoundedActivityScenario.main(()->actual.set(child.getImportantForAutofill()));
+   // The tab flag is read on the main thread by withActivity itself (never nested in main()).
+   if(attested)actual.set(actual.get()!=View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS?-1:tabAutofillEnabled(child)?View.IMPORTANT_FOR_AUTOFILL_YES:View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
    if(actual.get()==expected)return;SystemClock.sleep(100);
   }fail("Native autofill eligibility did not reach expected state");
+ }
+ /** Reads AlphaBrowserPlugin's private tab state for {@code child} on the main thread. */
+ private static boolean tabAutofillEnabled(WebView child){
+  boolean[] enabled={false};
+  try{WebViewTestDriver.withActivity(MainActivity.class,main->{try{
+   Object plugin=main.getBridge().getPlugin("AlphaBrowser").getInstance();
+   java.lang.reflect.Field tabs=plugin.getClass().getDeclaredField("tabs");tabs.setAccessible(true);
+   for(Object tab:((java.util.Map<?,?>)tabs.get(plugin)).values()){
+    java.lang.reflect.Field web=tab.getClass().getDeclaredField("web");web.setAccessible(true);
+    if(web.get(tab)!=child)continue;
+    java.lang.reflect.Field flag=tab.getClass().getDeclaredField("autofillEnabled");flag.setAccessible(true);
+    enabled[0]=flag.getBoolean(tab);
+   }
+  }catch(ReflectiveOperationException error){throw new AssertionError(error);}});}
+  catch(Exception error){throw new AssertionError(error);}
+  return enabled[0];
  }
  @Test public void frameworkFillsOnlyVisibleCommittedHttpsChild()throws Exception{
   String user=shell("am get-current-user");

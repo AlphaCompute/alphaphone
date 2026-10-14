@@ -79,8 +79,8 @@ public class AlphaBrowserPlugin extends Plugin {
  };
  private void autofillEvent(View view,int virtualId,int event) {
   if(event!=AutofillManager.AutofillCallback.EVENT_INPUT_SHOWN)return;
-  for(Tab tab:tabs.values())if(tab.web==view){
-   tab.autofillVirtualId=virtualId;
+  for(Tab tab:tabs.values())if(tab.web==view||(tab.fields!=null&&tab.fields.anchor==view)){
+   if(tab.web==view)tab.autofillVirtualId=virtualId;
    // A dataset can arrive after the overlay/navigation cancellation. Revoke
    // that late presentation too, using the framework's real virtual-field ID.
    if(!paused && !canAutofill(tab))cancelAutofill(tab);
@@ -159,24 +159,38 @@ public class AlphaBrowserPlugin extends Plugin {
  /** Kept separate from dispatch so resolver changes cannot bypass page/owner checks. */
  private java.util.function.Function<Intent,java.util.List<android.content.pm.ResolveInfo>> externalBrowserResolver =
   intent->getContext().getPackageManager().queryIntentActivities(intent,android.content.pm.PackageManager.MATCH_DEFAULT_ONLY|android.content.pm.PackageManager.GET_RESOLVED_FILTER);
- private static class Tab { BrowserReadingWorld readingWorld; BrowserDownloads.BlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; /** Origin of a submitted HTTP sign-in whose result is pending; Save waits for it. */ String authSaveOrigin; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
+ private static class Tab { BrowserReadingWorld readingWorld; BrowserDownloads.BlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; /** Origin of a submitted HTTP sign-in whose result is pending; Save waits for it. */ String authSaveOrigin; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; /** Engine-attested login fields (null when the WebView cannot attest field origins). */ BrowserLoginFields fields; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
  /** Credentials stay in the framework/provider and the remote document. No bridge API
   * reads fields or replaces Chromium's frame-specific webDomain metadata. The only addition
   * is the committed top-level origin, which the password provider requires to equal the
   * field origin so cross-origin frames are never filled. */
  private boolean canAutofill(Tab t) {
+  BrowserAutofillEligibility.TabState state=autofillState(t);
+  return BrowserAutofillEligibility.eligible(state);
+ }
+ private BrowserAutofillEligibility.TabState autofillState(Tab t) {
   BrowserAutofillEligibility.TabState state=new BrowserAutofillEligibility.TabState();
   state.paused=paused;state.closed=t.dead;state.committed=t.committed;state.loading=t.loading;state.loadError=t.error;
   state.selected=Objects.equals(presentedId,t.id);state.shown=t.web.isShown();
   // A site prompt (HTTP sign-in, permission, camera choice) is an overlay: no tab is fillable
   // while it is open, so the prompt's own fields are the only login structure in the window.
   state.overlay=siteDialog!=null;
-  state.documentUrl=t.url;state.engineUrl=t.web.getUrl();
-  return BrowserAutofillEligibility.eligible(state);
+  state.documentUrl=t.url;state.engineUrl=t.dead?null:t.web.getUrl();
+  return state;
+ }
+ /** What BrowserFieldOrigin.bind needs about this tab: eligibility, committed address and navigation. */
+ private BrowserFieldOrigin.TabSnapshot fieldSnapshot(Tab t) {
+  BrowserFieldOrigin.TabSnapshot snapshot=new BrowserFieldOrigin.TabSnapshot();
+  snapshot.supported=t.fields!=null&&!destroyed&&tabs.get(t.id)==t;
+  snapshot.state=autofillState(t);snapshot.navigation=t.navigation;
+  return snapshot;
  }
 
  private void cancelAutofill(Tab t) {
   t.autofillEnabled=false;
+  // End engine-attested fields first: exiting closes their popup, and cancel() below ends the
+  // session without a Save offer (they are never reported invisible).
+  if(t.fields!=null)t.fields.revoke(true);
   AutofillManager manager=getActivity().getSystemService(AutofillManager.class);
   if(manager!=null) {
    // AOSP keeps the popup anchor in the active session's fillable IDs.
@@ -204,25 +218,29 @@ public class AlphaBrowserPlugin extends Plugin {
   t.autofillEnabled=false;
   AutofillManager manager=getActivity().getSystemService(AutofillManager.class);
   if(manager!=null)manager.commit();
+  // The committed session already holds the submitted values; the binding ends with the page.
+  if(t.fields!=null)t.fields.revoke(false);
   t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
   t.autofillVirtualId=View.NO_ID;
  }
  private void disableAutofill(Tab t) {
   if(t.autofillEnabled)cancelAutofill(t);
-  else t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+  else {if(t.fields!=null)t.fields.revoke(true);t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);}
  }
  private void syncAutofill(Tab t) {
   // Provider authentication can pause this Activity. Keep the same-document
   // session, but never provide/fill fields until this selected tab resumes.
   if(paused) { t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS); return; }
-  if(canAutofill(t)) { t.autofillEnabled=true; t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES); }
+  // With engine-attested fields the WebView's own structure (no per-field origins) is never
+  // offered; the attested anchor is the tab's only Autofill surface.
+  if(canAutofill(t)) { t.autofillEnabled=true; t.web.setImportantForAutofill(t.fields==null?View.IMPORTANT_FOR_AUTOFILL_YES:View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS); if(t.fields!=null)t.fields.retry(); }
   else disableAutofill(t);
  }
  private final class CredentialWebView extends WebView {
   private final Tab tab;
   CredentialWebView(Tab tab) { super(getActivity());this.tab=tab; }
   @Override public void onProvideAutofillVirtualStructure(ViewStructure structure,int flags) {
-   if(canAutofill(tab)) {
+   if(canAutofill(tab)&&tab.fields==null) {
     super.onProvideAutofillVirtualStructure(structure,flags);
     String origin=topOrigin(tab.url);
     if(origin!=null && structure.getExtras()!=null)structure.getExtras().putString(PasswordFormPolicy.TOP_ORIGIN_EXTRA,origin);
@@ -230,11 +248,11 @@ public class AlphaBrowserPlugin extends Plugin {
    else structure.setChildCount(0);
   }
   @Override public void onProvideAutofillStructure(ViewStructure structure,int flags) {
-   if(canAutofill(tab))super.onProvideAutofillStructure(structure,flags);
+   if(canAutofill(tab)&&tab.fields==null)super.onProvideAutofillStructure(structure,flags);
    else structure.setChildCount(0);
   }
   @Override public void autofill(SparseArray<AutofillValue> values) {
-   if(canAutofill(tab))super.autofill(values);
+   if(canAutofill(tab)&&tab.fields==null)super.autofill(values);
   }
  }
  /** Exact https://host[:port] of the committed document, or null. */
@@ -290,6 +308,7 @@ public class AlphaBrowserPlugin extends Plugin {
    androidx.webkit.Profile profile=t.dead?ProfileStore.getInstance().getProfile(t.profile):WebViewCompat.getProfile(t.web);
    if(profile!=null&&ephemeralProfile(profile.getName())&&t.profile.equals(profile.getName()))storage=profile.getWebStorage();
   } catch(Exception unavailable) { /* Pending startup cleanup remains. */ }
+  if(t.fields!=null){t.fields.close();if(t.fields.anchor.getParent()!=null)((ViewGroup)t.fields.anchor.getParent()).removeView(t.fields.anchor);}
   if(!t.dead) {
    t.web.stopLoading();t.web.setWebViewClient(new WebViewClient());t.web.setWebChromeClient(null);
    t.web.destroy();t.dead=true;
@@ -361,6 +380,9 @@ public class AlphaBrowserPlugin extends Plugin {
    t.capture=new BrowserDownloads.BlobCapture(t.web,downloads.captureDirectory());
    t.web.setFindListener((ordinal,count,done)->findResult(t,ordinal,count,done));
    t.frame = new FrameLayout(getActivity()); t.frame.setClipChildren(true); t.frame.setVisibility(View.GONE); t.frame.addView(t.web, new FrameLayout.LayoutParams(-1,-1));
+   // Before any document loads: WebView applies the listener and script only to later documents.
+   t.fields=BrowserLoginFields.install(t.web,()->fieldSnapshot(t));
+   if(t.fields!=null)t.frame.addView(t.fields.anchor, new FrameLayout.LayoutParams(-1,-1));
    t.message = new TextView(getActivity()); t.message.setPadding(24,24,24,24); t.message.setBackgroundColor(0xfffafafa); t.message.setTextColor(0xff222222); t.message.setVisibility(View.GONE); t.frame.addView(t.message, new FrameLayout.LayoutParams(-1,-1));
    t.web.setWebViewClient(new WebViewClient() {
     @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
@@ -387,7 +409,7 @@ public class AlphaBrowserPlugin extends Plugin {
      // retry links and traffic challenges. Transport/TLS failures remain fatal.
      if (r.isForMainFrame()) { t.httpStatus=response.getStatusCode(); emit(t); }
     }
-    @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) { finishAuthSave(t,null); if(t.readingWorld!=null)t.readingWorld.close(); if(reading!=null)reading.cancel();disableAutofill(t); clearTimeout(t); t.dead=true; if(siteDialogTab==t)dismissSiteDialogs(); t.loading=false; t.committed=false; t.error="Browser renderer stopped. Close this tab and open a new one."; t.frame.removeView(v); v.destroy(); t.message.setText(t.error); t.message.setVisibility(View.VISIBLE); JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("sequence",++sequence); event.put("error",t.error); event.put("loading",false); notifyListeners("stateChanged",event); return true; }
+    @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) { finishAuthSave(t,null); if(t.readingWorld!=null)t.readingWorld.close(); if(reading!=null)reading.cancel();disableAutofill(t); if(t.fields!=null)t.fields.close(); clearTimeout(t); t.dead=true; if(siteDialogTab==t)dismissSiteDialogs(); t.loading=false; t.committed=false; t.error="Browser renderer stopped. Close this tab and open a new one."; t.frame.removeView(v); v.destroy(); t.message.setText(t.error); t.message.setVisibility(View.VISIBLE); JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("sequence",++sequence); event.put("error",t.error); event.put("loading",false); notifyListeners("stateChanged",event); return true; }
    });
    t.web.setWebChromeClient(new WebChromeClient() {
     @Override public void onProgressChanged(WebView v,int p) { if(p==100 && t.committed && t.error.isEmpty()) t.loading=false; syncAutofill(t); emit(t); }
@@ -906,6 +928,8 @@ public class AlphaBrowserPlugin extends Plugin {
   try{getActivity().startActivity(chooser);call.resolve();}catch(RuntimeException unavailable){call.reject("The other browser could not be opened. Your page remains in Alpha.");}
  }); }
  @PluginMethod public void downloads(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;String requested=call.getString("session");if(requested==null||(session!=null&&!Objects.equals(session,requested))){call.reject("Expired browser session");return;}session=requested;for(Tab tab:tabs.values())disableAutofill(tab);downloads.show();call.resolve();}); }
+ /** Whether website password fill can work in this browser (no secrets, no tab state). */
+ @PluginMethod public void loginFillStatus(PluginCall call) { JSObject result=new JSObject(); boolean available=BrowserLoginFields.supported(); result.put("available",available); if(!available)result.put("reason",BrowserFieldOrigin.UNSUPPORTED); call.resolve(result); }
  @PluginMethod public void close(PluginCall call) { getActivity().runOnUiThread(() -> {if(closed(call))return; if (!Objects.equals(session,call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t=tabs.remove(call.getString("id")); if(t!=null) dispose(t); call.resolve(); }); }
  @Override protected void handleOnPause() { paused=true;if(reading!=null)reading.cancel();flushCookies();exitFullscreen(true); for(Tab t:tabs.values()) { syncAutofill(t); t.frame.setVisibility(View.GONE); if(!t.dead)t.web.onPause(); } }
  /** Persist normal-tab sign-in cookies promptly; the process may be killed in background. */
