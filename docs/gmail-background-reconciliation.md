@@ -13,8 +13,12 @@ admission. It independently verifies Cloud owner/organization and the selected
 connected Gmail read grant. Selection attempts, credential changes, provider
 changes, reset and worker cancellation fence asynchronous responses. Revalidating
 the same owner/grant preserves the cursor; renderer cold-start hydration cannot
-clear native progress. Explicit Google disconnect retires native state before the
-remote revoke, including uncertain revocations.
+clear native progress. Explicit Google disconnect (Settings or the Google accounts
+panel) starts retiring native state before sending the remote revoke, including
+uncertain revocations. A local withdraw failure never blocks the revoke; it is
+retried once afterwards, and sync and taps re-verify the grant and fail closed.
+Background admission is bound to the Eliza Cloud inference provider's owner
+snapshot; with another provider Settings reports `provider-unsupported`.
 
 `GmailReconciliation` saves event-derived notice records and continuation together
 in the native-only encrypted `gmail-background:v1` slot. Every continuation keeps

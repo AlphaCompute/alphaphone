@@ -15,11 +15,21 @@ export const GMAIL_BACKGROUND_CHANGED='alpha:gmail-background-changed';
 const changed=()=>window.dispatchEvent(new Event(GMAIL_BACKGROUND_CHANGED));
 export async function configureGmailBackground(credentialId:string,grantId:string):Promise<void>{if(!isAndroid)return;try{if(grantId)await native.configure({credentialId,grantId});else await native.withdraw();}finally{changed();}}
 export async function withdrawGmailBackground(grantId?:string):Promise<void>{if(!isAndroid)return;await native.withdraw(grantId?{grantId}:undefined);changed();}
+/**
+ * Retire native state for a grant around an explicit revoke without letting local
+ * bookkeeping block it. Starts immediately; `settled` retries once after the revoke
+ * and never rejects (native sync and taps re-verify the grant and fail closed).
+ */
+export function retireGmailBackground(grantId:string):{settled():Promise<void>}{
+ const first=withdrawGmailBackground(grantId).then(()=>true,()=>false);
+ return {async settled(){if(!(await first))await withdrawGmailBackground(grantId).catch(()=>{});}};
+}
 export async function gmailBackgroundStatus():Promise<GmailBackgroundStatus>{if(!isAndroid)return {status:'web-unavailable'};try{return await native.status();}catch{return {status:'unavailable'};}}
 export function gmailBackgroundMessage(value:GmailBackgroundStatus):string{
  const checked=value.lastSyncAt?` Last successful check: ${new Date(value.lastSyncAt).toLocaleString()}.`:' No successful background check yet.';
  const suffix=checked+' Android may delay checks in Doze or battery saver. Open Inbox to check current mail.';
  if(value.status==='web-unavailable')return 'Background Gmail notices are available in the Android app.';
+ if(value.status==='provider-unsupported')return 'Background Gmail checks currently require Eliza Cloud as this phone\'s agent inference provider. Inbox still checks mail while it is open.';
  if(value.status==='disabled')return 'Open Inbox and select a connected Gmail account to enable background checks.';
  if(value.status==='unsupported')return 'Background Gmail is unavailable on this server. Open Inbox to check mail.'+checked;
  if(value.status==='grant-unavailable')return 'Gmail background checks need the matching Cloud sign-in and Google read access. Recheck the account in Inbox.';

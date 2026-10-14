@@ -1,4 +1,4 @@
-import {withdrawGmailBackground} from './gmail-background';
+import {retireGmailBackground} from './gmail-background';
 import type {GmailAccount} from './cloud-protocol';
 import {disconnectGmailAccount, type GmailDisconnectOutcome} from './gmail-mailbox';
 
@@ -62,26 +62,28 @@ export function createGoogleAccounts(
     async disconnect(connectionId: string, signal: AbortSignal) {
       check(signal);
       if (!connectionId.trim()) throw new TypeError('Choose a Google connection to disconnect.');
-      // Retire native callbacks/notices before attempting a possibly ambiguous remote revoke.
-      await withdrawGmailBackground(connectionId);
-      check(signal);
-      const result = await disconnectGmailAccount({
-        async disconnectGmail(id, requestSignal) {
-          check(requestSignal);
-          await client.disconnectGmail(id, requestSignal);
-          check(requestSignal);
-        },
-        async gmailAccounts(requestSignal) {
-          check(requestSignal);
-          const accounts = await client.gmailAccounts(requestSignal);
-          check(requestSignal);
-          return accounts;
-        },
-      }, connectionId, signal);
-      check(signal);
-      // Even an uncertain mutation needs a fresh account read on the other surfaces.
-      changed();
-      return result;
+      // Start retiring native callbacks/notices first, but never let local bookkeeping
+      // delay or block the privacy-relevant remote revoke on this captured binding.
+      const retirement = retireGmailBackground(connectionId);
+      try {
+        const result = await disconnectGmailAccount({
+          async disconnectGmail(id, requestSignal) {
+            check(requestSignal);
+            await client.disconnectGmail(id, requestSignal);
+            check(requestSignal);
+          },
+          async gmailAccounts(requestSignal) {
+            check(requestSignal);
+            const accounts = await client.gmailAccounts(requestSignal);
+            check(requestSignal);
+            return accounts;
+          },
+        }, connectionId, signal);
+        check(signal);
+        // Even an uncertain mutation needs a fresh account read on the other surfaces.
+        changed();
+        return result;
+      } finally { await retirement.settled(); }
     },
   };
 }

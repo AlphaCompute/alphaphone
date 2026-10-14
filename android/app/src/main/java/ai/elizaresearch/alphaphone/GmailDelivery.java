@@ -45,7 +45,9 @@ final class GmailDelivery {
  /** Credential mutation invalidates old durable callbacks before replacing the Cloud slot. */
  static void credentialsChanged(Context context)throws Exception{get(context).withdraw(null);}
  void resume(){try{synchronized(JsonCredentialSlots.LOCK){if(admittedAttempt!=attempts.get())return;JSONObject s=saved();if(s==null)return;JSONObject binding=s.getJSONObject("binding");current(binding);GmailDeliveryWorker.schedule(context,binding.getString("generation"));}}catch(Exception stale){try{withdraw(null);}catch(Exception ignored){/* Existing callback guards still fail closed. */}}}
- JSONObject status()throws Exception{synchronized(JsonCredentialSlots.LOCK){JSONObject s=saved();if(s==null)return new JSONObject().put("status","disabled");return engine(s.getJSONObject("binding")).status().put("notificationsAllowed",poster.allowed());}}
+ /** Background admission is bound to the Cloud inference provider's owner snapshot; report that coupling instead of an unreachable setup step. */
+ private String unconfiguredStatus(){try{return "elizacloud".equals(store.providerAdmissionSnapshot().optString("provider"))?"disabled":"provider-unsupported";}catch(Exception unavailable){return "disabled";}}
+ JSONObject status()throws Exception{synchronized(JsonCredentialSlots.LOCK){JSONObject s=saved();if(s==null)return new JSONObject().put("status",unconfiguredStatus());return engine(s.getJSONObject("binding")).status().put("notificationsAllowed",poster.allowed());}}
  private static final class HttpFailure extends IOException {final int status;HttpFailure(int status){super("Gmail service unavailable");this.status=status;}}
  private JSONObject get(JSONObject binding,String path,GmailReconciliation.Guard guard)throws Exception{
   // Constructed paths only, with a fixed service authority. No remote-agent host or redirect.
