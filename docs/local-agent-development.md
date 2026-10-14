@@ -91,9 +91,9 @@ libelizainference, and the ASR worker runs with `ELIZA_ASR_BACKEND=parakeet`
 
 `npm run dev` and `npm run dev:local` read this file at startup. A file that still uses the
 earlier Alpha-only keys (`ALPHA_LOCAL_TTS`, `ALPHA_LOCAL_ASR`, `ALPHA_TTS_MODEL_DIR`,
-`ALPHA_ASR_MODEL_DIR`, `ALPHA_TTS_LIBRARY`) is read as the upstream names, with a warning to
-rename them; the retired Whisper and Kokoro keys are ignored. In the environment the earlier names
-are refused with their replacement. Explicit shell environment values take precedence, including
+`ALPHA_ASR_MODEL_DIR`, `ALPHA_TTS_LIBRARY`) is refused with an error naming the upstream
+replacement; the retired Whisper and Kokoro keys are refused too. The environment refuses the
+earlier names the same way. Explicit shell environment values take precedence, including
 `ELIZA_PARADEE_ENABLED=0`. Only speech modes, the digest and absolute asset paths are accepted;
 credentials, arbitrary process settings, symlinks, shared-access files and malformed JSON are
 rejected. The file does not download assets or configure speech on Android. Speech runs on the

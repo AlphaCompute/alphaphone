@@ -49,3 +49,18 @@ export async function browserCloudVoice(input:{environment:string;credentialId:s
  }else response=await browserCloudCall({...values,text:payload},signal);
  signal.throwIfAborted();if(!response.ok){await response.body?.cancel();throw Object.assign(Error('Cloud voice request failed.'),{code:'voice-http-'+response.status,status:response.status});}return response;
 }
+/** Development host in-app sign-in (email code). The host keeps the Steward session and the key;
+ * this page receives only the non-secret outcome. Google needs the phone's App Link return. */
+export class BrowserCloudSignIn extends WebPlugin {
+ private async signIn(data:Record<string,unknown>){
+  const response=await browserCloudCall(data);let body:Record<string,unknown>={};try{body=await response.json();}catch{/* Reported as unavailable. */}
+  if(!response.ok)throw Object.assign(Error('Cloud development sign-in failed'),{code:typeof body.code==='string'?body.code:'unavailable'});
+  return body;
+ }
+ async startGoogle(){throw Object.assign(Error('Google sign-in needs the Android app'),{code:'browser-unavailable'});}
+ async startEmail(input:{environment:string;email:string}){return this.signIn({operation:'signInStartEmail',environment:input.environment,email:input.email});}
+ async verifyEmail(input:{attemptId:string;code:string}){return this.signIn({operation:'signInVerifyEmail',attemptId:input.attemptId,code:input.code});}
+ async verifyMfa(input:{attemptId:string;code:string}){return this.signIn({operation:'signInVerifyMfa',attemptId:input.attemptId,code:input.code});}
+ async cancel(){await this.signIn({operation:'signInCancel'}).catch(()=>{});}
+ async status(){return this.signIn({operation:'signInStatus'});}
+}

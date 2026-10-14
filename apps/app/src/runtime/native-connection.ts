@@ -1,14 +1,24 @@
 import {managedServiceRequest} from './managed-service-routes';
 import {automationsRouteAllowed} from './automations-route-policy';
-import {BrowserCloudConnection} from '../browser/cloud-connection';
+import {BrowserCloudConnection,BrowserCloudSignIn} from '../browser/cloud-connection';
 import {Capacitor} from '@capacitor/core';
 import {devSurfacesEnabled,testMocksEnabled} from '../build-flags';
 import { registerPlugin } from '../platform-plugins';
 import type { CloudNativeRequest, CloudCredentialStore, CloudCredential, CloudEnvironment } from './cloud-protocol';
+import type { CloudSignInPort } from './cloud-sign-in';
 import type { RemoteRequester, RemoteCredentialStore } from './remote-protocol';
 
 const nativeConnectionHeader=(Capacitor as typeof Capacitor&{PluginHeaders?:{name:string}[]}).PluginHeaders?.some(header=>header.name==='AlphaConnection')??false;
 const browserCloudHost=devSurfacesEnabled&&!Capacitor.isNativePlatform()&&!nativeConnectionHeader;
+const nativeSignInHeader=(Capacitor as typeof Capacitor&{PluginHeaders?:{name:string}[]}).PluginHeaders?.some(header=>header.name==='AlphaCloudSignIn')??false;
+/**
+ * In-app Eliza Cloud sign-in host: AlphaCloudSignInPlugin on Android, or the development Cloud bridge
+ * (email code only) in a test-mocks browser build. Undefined where this build has no sign-in.
+ */
+/** Google sign-in needs the phone's App Link return; the browser bridge offers email only. */
+export const cloudSignInGoogle=nativeSignInHeader;
+export const cloudSignIn:CloudSignInPort|undefined=nativeSignInHeader?registerPlugin<CloudSignInPort>('AlphaCloudSignIn')
+  :browserCloudHost?registerPlugin<CloudSignInPort>('AlphaCloudSignIn',{web:()=>new BrowserCloudSignIn()}):undefined;
 
 export interface ConnectionPort {
   request(input: { requestId: string; url: string; method: string; headers: Record<string,string>; body?: string; credentialReference?:string; expiresAt?: number }): Promise<{status:number;data:unknown}>;
