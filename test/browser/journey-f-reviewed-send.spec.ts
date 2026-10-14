@@ -24,13 +24,13 @@ import {test, expect, type Page} from '@playwright/test';
 
 const button = (page: Page, name: string) => page.getByRole('button', {name, exact: true});
 const KEY = 'journey-f-review-provider';
-type Options = {inbox?: string[]; pageSize?: number; strictCursors?: boolean; forward?: boolean; accounts?: number};
+type Options = {inbox?: string[]; pageSize?: number; strictCursors?: boolean; forward?: boolean; accounts?: number; deferPaging?:boolean};
 
 /** Synthetic managed provider. Re-installed after every load; its state lives in localStorage. */
 async function installProvider(page: Page, options: Options = {}) {
   await page.evaluate(async ([KEY, options]) => {
     const {connectionController: c} = await import('/src/runtime/connection-ui.tsx');
-    const {secureConnectionStore: s} = await import('/src/runtime/native-connection.ts');
+    const {inboxLocalStore: s} = await import('/src/runtime/inbox-local-store.ts');
     const {CloudProtocolError} = await import('/src/runtime/cloud-protocol.ts');
     const {reviewMailAttachment} = await import('/src/runtime/inbox-attachment.ts');
     const initial = {slots: {}, receipts: {}, effects: {}, prepared: [], dispatched: [], sent: [], trashed: [], searches: [],
@@ -49,19 +49,20 @@ async function installProvider(page: Page, options: Options = {}) {
     const digest = async (text: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('');
     const size = options.pageSize || 25;
     const client = {
-      gmailAccounts: async () => [{connectionId: 'fixture-grant', label: 'Fixture mailbox', configured: true, connected: true, reason: 'connected', grantedCapabilities: ['google.gmail.triage']},
-        ...(options.accounts === 2 ? [{connectionId: 'second-grant', label: 'Second mailbox', configured: true, connected: true, reason: 'connected', grantedCapabilities: ['google.gmail.triage']}] : [])],
+      gmailAccounts: async () => [{connectionId: 'fixture-grant', label: 'Fixture mailbox', configured: true, connected: true, reason: 'connected', grantedCapabilities: ['google.gmail.triage','google.gmail.send','google.gmail.mailbox']},
+        ...(options.accounts === 2 ? [{connectionId: 'second-grant', label: 'Second mailbox', configured: true, connected: true, reason: 'connected', grantedCapabilities: ['google.gmail.triage','google.gmail.send','google.gmail.mailbox']}] : [])],
       gmailInboxCapabilities: async () => ({version: 1, from: 'owner@example.invalid', threads: true, send: true, providerDrafts: false, mailboxMutations: true, attachments: true, providerExactlyOnce: false, atomicDraftReplacement: false, readState: false, draftsList: false, forwardAttachments: !!options.forward, opaqueAttachments: false, searchTrash: true, attachmentPolicy: {maximumOutgoing: 1, maximumBytes: 5242880, maximumTotalBytes: 5242880}}),
       // Cursors are "revision:offset". A lenient provider keeps serving an old cursor against the
       // current mailbox (rows shift); a strict one refuses a cursor cut from an older revision.
       gmailSearch: async (_grant: string, query: string, _signal: AbortSignal, _max: number, pageToken?: string) => {
+        if(pageToken&&options.deferPaging&&!(window as any).mailPageRaceReleased){await new Promise<void>((resolve,reject)=>{(window as any).releaseMailPage=()=>{(window as any).mailPageRaceReleased=true;resolve();};_signal.addEventListener('abort',()=>reject(_signal.reason),{once:true});});_signal.throwIfAborted();}
         const value = load(); value.searches.push([query, pageToken ?? null]); save(value);
         const ids: string[] = query === 'in:inbox' ? value.inbox : query === 'in:trash' ? value.trashed : [];
         const [cut, start] = pageToken ? pageToken.split(':').map(Number) : [value.revision, 0];
         if (pageToken && options.strictCursors && cut !== value.revision) throw new CloudProtocolError('http', 400, {error: 'Invalid Gmail page token.'});
         return {messages: ids.slice(start, start + size).map(id => mail(id)), syncedAt: '2026-10-08T12:00:00Z', nextPageToken: start + size < ids.length ? `${value.revision}:${start + size}` : null};
       },
-      gmailRead: async (_grant: string, id: string) => ({message: mail(id), bodyText: 'Body of ' + id, links: []}),
+      gmailRead: async (_grant: string, id: string) => ({message: mail(id), bodyText: 'Body of ' + id, links: [],historyId:load().history[id]||'h-'+id,attachments:options.forward?[{partId:'part-1',name:'original-plan.pdf',mimeType:'application/pdf',size:4321,supported:true}]:[]}),
       gmailThread: async (_grant: string, threadId: string) => {
         const id = threadId.replace('thread-', ''), value = load();
         return {messages: [{message: mail(id), bodyText: 'Body of ' + id, historyId: value.history[id] || 'h-' + id, attachments: options.forward ? [{partId: 'part-1', name: 'original-plan.pdf', mimeType: 'application/pdf', size: 4321, supported: true}] : []}], total: 1, offset: 0, historyId: 'thread-history', nextOffset: null};
@@ -333,7 +334,7 @@ test('F-10: a reload between an edit and the discard of its review never lets th
   // The provider stops answering the store, so the discard that follows the edit cannot complete:
   // the first review is still saved when the page reloads, and the edit is in the retained copy.
   await page.evaluate(async () => {
-    const {secureConnectionStore: s} = await import('/src/runtime/native-connection.ts');
+    const {inboxLocalStore: s} = await import('/src/runtime/inbox-local-store.ts');
     s.compareExchange = () => new Promise(() => {});
   });
   await page.getByRole('textbox', {name: 'Message', exact: true}).fill('Second body');
@@ -410,7 +411,7 @@ test('F-13: Trash and its undo are reviewed operations and the restored message 
   await openInbox(page);
   await button(page, 'Sender m1, Subject m1').click();
   await expect(page.getByRole('region', {name: 'Email message'})).toContainText('Body of m1');
-  await button(page, 'Delete').click();
+  await button(page, 'Move to Trash').click();
   const review = page.getByRole('dialog', {name: 'Review mail operation'});
   await expect(review.getByRole('heading', {name: 'Move message to Trash', exact: true})).toBeVisible();
   await expect(review.getByRole('status')).toHaveText('Review this change before confirming. Nothing has been changed.');
@@ -454,7 +455,7 @@ test('F-13: a lost Trash reply is an unknown outcome, handled like an unknown se
   test.setTimeout(180_000);
   await openInbox(page);
   await button(page, 'Sender m2, Subject m2').click();
-  await button(page, 'Delete').click();
+  await button(page, 'Move to Trash').click();
   const review = page.getByRole('dialog', {name: 'Review mail operation'});
   await expect(review.getByRole('button', {name: 'Confirm this change', exact: true})).toBeVisible();
   await setProvider(page, {loseNextReply: true, unsure: true});
@@ -481,7 +482,7 @@ test('F-13: a lost Trash reply is an unknown outcome, handled like an unknown se
   await expect(review.getByRole('button', {name: 'Close receipt', exact: true})).toHaveCount(0);
   await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
   await button(page, 'Sender m1, Subject m1').click();
-  await button(page, 'Delete').click();
+  await button(page, 'Move to Trash').click();
   await expect(review.getByRole('status')).toHaveText('Review the saved operation before starting another.');
   await expect(review).toContainText('Selected message/draft: m2');
   await expect(review.getByRole('button', {name: 'Confirm this change', exact: true})).toHaveCount(0);
@@ -502,11 +503,12 @@ test('F-13: a lost Trash reply is an unknown outcome, handled like an unknown se
 const mailboxChanged = 'Newer mail arrived while this list was loading and is not shown yet. Load newer mail to read the list again.';
 test('F-12: new mail between pages never shows a message twice, and the list says it is no longer the whole mailbox', async ({page}) => {
   test.setTimeout(120_000);
-  await openInbox(page, {inbox: ['m1', 'm2', 'm3', 'm4', 'm5'], pageSize: 2});
+  await openInbox(page, {inbox: ['m1', 'm2', 'm3', 'm4', 'm5'], pageSize: 2,deferPaging:true});
   await expect.poll(() => rows(page)).toEqual(['m1', 'm2']);
+  await page.waitForFunction(()=>!!(window as any).releaseMailPage);
   // A message arrives after page one was read. The provider still serves the old cursor, so its
   // second page starts one row early and repeats m2.
-  await setProvider(page, {inbox: ['m9', 'm1', 'm2', 'm3', 'm4', 'm5'], revision: 2});
+  await setProvider(page, {inbox: ['m9', 'm1', 'm2', 'm3', 'm4', 'm5'], revision: 2});await page.evaluate(()=>{(window as any).releaseMailPage();(window as any).releaseMailPage=null;});
   await button(page, 'Load more').click();
   // The repeat is dropped, every message that was in the mailbox is still listed once, and the
   // list states that newer mail is missing from it and how to load it.
@@ -540,9 +542,9 @@ test('F-12: a message the provider lists twice in one page is shown once', async
 
 test('F-12: a cursor the provider refuses after the mailbox changed keeps the loaded page and says how to reload', async ({page}) => {
   test.setTimeout(120_000);
-  await openInbox(page, {inbox: ['m1', 'm2', 'm3', 'm4'], pageSize: 2, strictCursors: true});
+  await openInbox(page, {inbox: ['m1', 'm2', 'm3', 'm4'], pageSize: 2, strictCursors: true,deferPaging:true});
   await expect.poll(() => rows(page)).toEqual(['m1', 'm2']);
-  await setProvider(page, {inbox: ['m1', 'm3', 'm4'], revision: 2});
+  await page.waitForFunction(()=>!!(window as any).releaseMailPage);await setProvider(page, {inbox: ['m1', 'm3', 'm4'], revision: 2});await page.evaluate(()=>(window as any).releaseMailPage());
   await button(page, 'Load more').click();
   await expect(page.getByText('Gmail is unavailable right now. Retry, or check the connection. The messages already shown were kept. Retry reloads the list from the start.', {exact: true}).first()).toBeVisible();
   // The loaded page stays (it is not silently mixed with a page from the new mailbox) and the

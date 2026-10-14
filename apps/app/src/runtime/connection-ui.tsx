@@ -301,10 +301,10 @@ function errorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'status' in error && error.status === 503) return 'The agent is starting or temporarily unavailable. Try again shortly.';
   return error instanceof Error ? error.message : 'The connection could not be completed.';
 }
-async function work(message: string, action: (signal: AbortSignal) => Promise<void>) {
+async function work(message: string, action: (signal: AbortSignal) => Promise<void>, showDialog = true) {
   if (operation) return;
   const controller = new AbortController(); operation = controller;
-  update({ busy: true, open: true, message, error: '' });
+  update({ busy: true, ...(showDialog ? {open:true} : {}), message, error: '' });
   try { await action(controller.signal); }
   catch (error) {
     if(controller.signal.aborted&&!state.open){update({error:'',message:''});return;}
@@ -313,9 +313,9 @@ async function work(message: string, action: (signal: AbortSignal) => Promise<vo
       try { await previous.cloud.disconnect(); }
       catch { update({ error: 'The expired connection is detached, but its stored credential could not be removed.', open: true, message: '' }); return; }
     }
-    update({ error: errorMessage(error), open: true, message: '' });
+    update({ error: errorMessage(error), ...(!showDialog&&!state.open?{purpose:'cloud-account' as const}:{}), open: true, message: '' });
   }
-  finally { if (operation === controller) operation = null; update({ busy: false }); }
+  finally { if (operation === controller) operation = null; update({ busy: false, ...(!showDialog&&!state.open?{message:''}:{}) }); }
 }
 function activate(next: Active, session: VerifiedSession, name: string) {
   retireReadReplies();
@@ -1127,10 +1127,10 @@ export const connectionController = {
               const current=await cloudCredentialStore.read('production');signal.throwIfAborted();
               if(restoreEpoch!==epoch||current?.credentialId!==expected.credentialId||current?.credentialReference!==expected.credentialReference)throw Error('Cloud account changed. Try again.');
               await verifyService(makeCloud('production'),signal,expected);
-            });
+            },false);
             if(restoreEpoch!==epoch||state.error||service?.identity.credentialId!==expected.credentialId)return;
           }
-        }catch(error){if(canRestore())await work('Checking your Cloud account…',async()=>{throw error;});return;}
+        }catch(error){if(canRestore())await work('Checking your Cloud account…',async()=>{throw error;},false);return;}
       }
       // A build that cannot use Eliza Cloud signs a saved Cloud service out on every start, whatever is selected
       // (an offline choice included): the marker and, best effort and unawaited, the stored Cloud key. Only that
