@@ -97,17 +97,45 @@ of the same bytes it stages and writes a presigned/preprocessed nonprivileged So
 `android_app_import` plus a `PRODUCT_PACKAGES` fragment. No local-agent marker or
 privileged permission whitelist is fabricated for a thin launcher.
 
-## App Links preparation
+## App Links
 
-Verified App Links for the Cloud delegation return are prepared but not active. The
-manifest carries a commented `autoVerify` HTTPS intent filter, and
-`android/app/src/main/assetlinks.template.json` is the `/.well-known/assetlinks.json`
-template for `ai.elizaresearch.alphaphone` with a placeholder certificate fingerprint.
-The `alphaphone://cloud-delegation` custom scheme remains the active return path. To
-activate: choose the owned return host, publish the file with the release signer's
-SHA-256 fingerprint, enable the filter and renderer HTTPS return in a reviewed change,
-then verify with `adb shell pm get-app-links ai.elizaresearch.alphaphone` on an installed
+**Build gate.** A default build declares no https `autoVerify` filter. With the Gradle property
+`ELIZAOS_APP_LINK_HOST` set, `android/app/build.gradle` overlays verified filters on that host for
+`/alphaphone/cloud-delegation` (prefix) and `/alphaphone/auth/callback` (exact path, the in-app
+Eliza Cloud sign-in return). Steward returns sign-in only to `eliza.app`, so the sign-in return
+works with `ELIZAOS_APP_LINK_HOST=eliza.app`. Test-mocks builds always add
+`https://staging.eliza.app/alphaphone/auth/callback` from `src/testMocks/AndroidManifest.xml`.
+Publish `scripts/render-assetlinks.mjs` output (release signer, never a debug or placeholder
+fingerprint) at `/.well-known/assetlinks.json` on the host before setting the property.
+
+**In-app Eliza Cloud sign-in return.** Steward returns Google sign-in to the callback with a
+one-time code in the fragment. AlphaCloudSignInPlugin validates it under the shared callback
+contract and exchanges the code natively (docs/architecture.md, "Eliza Cloud sign-in ownership").
+Alpha offers its in-app sign-in only after its readiness probe sees the client registration, the
+redirect allowlist, `assetlinks.json` listing this package and its signing certificate, and (for
+Google) Android reporting the return host verified for Alpha. Until then the Cloud sign-in hand-off
+stays the sign-in path. If the link is not handed to Alpha, Cloud's fallback page brings Alpha
+forward without parameters and Alpha asks the owner to start again; no code is forwarded.
+
+Check verification with `adb shell pm get-app-links ai.elizaresearch.alphaphone` on an installed
 signed build ([runbook](pilot-acceptance-runbook.md#external-integration-runbooks)).
+
+An APK build, an emulator verification, the AOSP image and the owner's device acceptance are
+separate evidence levels; none of them proves another.
+
+**AOSP image requirements for sign-in:**
+
+- Include `com.android.statementservice` (the App Link verifier, IntentFilterVerifier). Without it
+  `autoVerify` never succeeds, the readiness probe reports Google unavailable, and only email
+  in-app sign-in (or the hand-off) is offered.
+- Include a browser that provides Custom Tabs (the Alpha Chromium, which answers
+  `android.support.customtabs.action.CustomTabsService`). Without one, Alpha falls back to a plain
+  `ACTION_VIEW` browser.
+- Neither component needs GMS.
+
+**Cloud delegation return.** The `alphaphone://cloud-delegation` custom scheme remains the active
+delegation return path; the https delegation filter exists only in builds with
+`ELIZAOS_APP_LINK_HOST`, and moving the renderer to it is a separate reviewed change.
 
 ## Full AOSP product integration
 
