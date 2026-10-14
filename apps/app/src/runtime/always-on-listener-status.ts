@@ -47,3 +47,16 @@ export function parseAssistantInvocation(raw: unknown): AssistantInvocation {
   if (value.assistant !== true) return null;
   return value.invocation === 'listener' ? 'listener' : 'assist';
 }
+
+/** Whether the keyguard was reported as unlocked with the invocation. Missing or malformed is locked. */
+export function parseInvocationUnlocked(raw: unknown): boolean { return record(raw).locked === false; }
+
+/**
+ * Whether a wake-phrase invocation starts the voice assistant now. Only the listener's own
+ * authenticated invocation does (any app can send ACTION_ASSIST, so a plain assist entry opens the
+ * assistant surface without opening the microphone), only while unlocked and visible, never over a
+ * dialog, the connection or sign-in sheet, or a voice session already in progress.
+ */
+export function listenerStartsVoice(input: { invocation: AssistantInvocation; unlocked: boolean; hidden: boolean; dialogOpen: boolean; connectionOpen: boolean; voiceActive: boolean }): boolean {
+  return input.invocation === 'listener' && input.unlocked && !input.hidden && !input.dialogOpen && !input.connectionOpen && !input.voiceActive;
+}
