@@ -1,0 +1,74 @@
+# Gmail background reconciliation
+
+Source implementation for issue #398; the issue remains open for deployed-service
+and real mailbox/device acceptance. The consumer uses the managed owner endpoint
+from [Eliza PR36173](https://github.com/elizaOS/eliza/pull/36173), reviewed at
+`6c8156ab50b00bff5f04092a03f3d4a2b94af157`. An absent endpoint is shown as unavailable,
+not a successful sync. No OAuth grant, credential or send capability is created.
+
+## Ownership and durable progress
+
+`GmailDelivery` uses the existing encrypted production Cloud key and native provider
+admission. It independently verifies Cloud owner/organization and the selected
+connected Gmail read grant. Selection attempts, credential changes, provider
+changes, reset and worker cancellation fence asynchronous responses. Revalidating
+the same owner/grant preserves the cursor; renderer cold-start hydration cannot
+clear native progress. Explicit Google disconnect (Settings or the Google accounts
+panel) starts retiring native state before sending the remote revoke, including
+uncertain revocations. A local withdraw failure never blocks the revoke; it is
+retried once afterwards, and sync and taps re-verify the grant and fail closed.
+Background admission is bound to the Eliza Cloud inference provider's owner
+snapshot; with another provider Settings reports `provider-unsupported`.
+
+`GmailReconciliation` saves event-derived notice records and continuation together
+in the native-only encrypted `gmail-background:v1` slot. Every continuation keeps
+the original decimal history ID; only the final durable page advances it. Decimal
+IDs retain 20-digit precision. A profile baseline or expired-history reset quietly
+starts future observation and explicitly retains incomplete catch-up status. It
+cannot establish that missed mail was fully reconciled.
+
+Message additions require the endpoint's hydrated `messageAvailable` and current
+INBOX/UNREAD labels; deleted, read, Sent, Spam and Trash messages do not alert.
+Notice identities include the durable selection generation, owner, grant and
+message. Dispatch is durably reserved before Android notification creation. A
+bounded active-notification observation distinguishes posted from uncertain;
+ambiguous dispatch is never automatically retried. This deliberately favors
+at-most-once delivery over guaranteed alerts. Pending, active, captured and
+uncertain records remain retained. Terminal records behind an already committed
+checkpoint can be retired; the 1,000-record bound limits unresolved work rather
+than lifetime deliveries. Overflow retains the checkpoint and reports incomplete
+catch-up instead of truncating events.
+
+Notifications contain no sender, subject or body. Taps carry only a ledger key.
+The native bridge and renderer revalidate the owner/grant before consuming the
+one-use tap and opening the Inbox list. Taps clear retained Sent/Trash/search state;
+they never open a message body or mark mail read. Old selection PendingIntents
+cannot match a new selection's ledger.
+
+## Scheduling and user visibility
+
+Ordinary constrained WorkManager checks run at a 15-minute minimum interval with
+bounded four-page jobs and exponential retry. Resume schedules catch-up; pagination
+and pending dispatch survive process recreation. Android Doze and battery saver can
+delay work. Settings show the last successful check, unavailable/retrying state,
+incomplete catch-up and notification denial/uncertainty, plus a link to Android
+channel settings. Delivery is not an exact-time promise.
+
+## Validation and remaining acceptance
+
+Controlled tests execute the real reconciliation engine and native delivery
+coordinator on the JVM, with in-memory durable storage and an HTTP transport
+fixture. They cover pagination/restart, failed persistence, death after notify,
+permission loss, uncertain dispatch, stale owner/grant responses, same-owner
+startup continuity, old tap rejection, expired baseline and 1,100 completed notice
+cycles. The real Inbox adapter fixture covers Sent/search-to-Inbox taps, cold
+hydration and resume retry. Existing grant/read-ahead/draft/notice tests and
+TypeScript checks pass.
+
+The five new Android classes were also compiled against Android 36 and cached
+Capacitor/WorkManager APIs with fixture app plumbing. This is API compilation,
+not a packaged APK or device run. Required release acceptance remains: deployed
+served endpoint/source verification, real owned mailbox arrival and revoke,
+notification permission/channel denial, lock/unlock, Doze, reboot, process death,
+account changes and target-image execution. Upstream fixtures and local test passes
+are not that evidence.
