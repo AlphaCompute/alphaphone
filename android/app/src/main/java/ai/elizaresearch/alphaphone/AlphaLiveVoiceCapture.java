@@ -2,6 +2,7 @@ package ai.elizaresearch.alphaphone;
 
 import ai.eliza.voice.VoiceAssets;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
@@ -70,8 +71,8 @@ final class AlphaLiveVoiceCapture {
   private AcousticEchoCanceler echo;
   private NoiseSuppressor noise;
   private final long bufferDurationMs;
-  MicrophoneSource()throws Exception{this(false);}
-  MicrophoneSource(boolean echoCancel)throws Exception{
+  MicrophoneSource(Context context,boolean echoCancel)throws Exception{
+   if(context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)throw new SecurityException("Microphone permission is required");
    int minimum=AudioRecord.getMinBufferSize(SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);
    int bufferBytes=Math.max(minimum,LiveVadGate.WINDOW*2*16);
    bufferDurationMs=bufferBytes/2*1000L/SAMPLE_RATE;
@@ -104,9 +105,9 @@ final class AlphaLiveVoiceCapture {
  private long startedAt;
 
  AlphaLiveVoiceCapture(Context context,String captureId,Sink sink){this(context,captureId,sink,false);}
- AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,boolean echoCancel){this(context,captureId,sink,echoCancel?"live-voice":"dictation",()->new MicrophoneSource(echoCancel));}
+ AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,boolean echoCancel){this(context,captureId,sink,echoCancel?"live-voice":"dictation",()->new MicrophoneSource(context,echoCancel));}
  /** {@code pipeline} labels the latency trials this capture opens ("live-voice" for the shipped conversation). */
- AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,String pipeline){this(context,captureId,sink,pipeline,MicrophoneSource::new);}
+ AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,String pipeline){this(context,captureId,sink,pipeline,()->new MicrophoneSource(context,false));}
  AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,String pipeline,SourceFactory sources){this.context=context.getApplicationContext();this.captureId=captureId;this.sink=sink;this.pipeline=pipeline;this.sources=sources;AlphaVoiceLatencyProbe.prepareIdentity(this.context);}
  String captureId(){return captureId;}
  /** The platform echo canceller is attached and enabled on this capture (full duplex is safe). */
