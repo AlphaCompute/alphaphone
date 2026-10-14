@@ -139,7 +139,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
    if(Date.now()<lastEmailSendAt+60000)throw signInFailure('cooldown');
    const attempt:SignInAttempt={controller:new AbortController(),id:randomUUID(),environment:env,email,verifier:randomBytes(48).toString('base64url'),expiresAt:0,resendAt:0,busy:true,failed:0};signIn=attempt;lastEmailSendAt=Date.now();signal=AbortSignal.any([signal,attempt.controller.signal]);
    try{
-    const sent=await signInCall(env,CLOUD_EMAIL_CODE.sendPath,emailCodeSendBody(email,attempt.verifier),signal);
+    const sent=await signInCall(env,CLOUD_EMAIL_CODE.sendPath,emailCodeSendBody(env,email,attempt.verifier),signal);
     if(sent.status!==200&&sent.status!==202)throw signInFailure(signInStatus('send',sent.status));
     const reply=sent.data.data&&typeof sent.data.data==='object'?sent.data.data:sent.data,expiresAt=emailCodeExpiresAt(reply.expiresAt);
     attempt.expiresAt=expiresAt;attempt.resendAt=lastEmailSendAt+60000;return {attemptId:attempt.id,expiresAt,resendAt:attempt.resendAt};
@@ -156,7 +156,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
    attempt.busy=true;signal=AbortSignal.any([signal,attempt.controller.signal]);
    try{
     const verified=mfa?await signInCall(attempt.environment,`/steward/auth/mfa/${attempt.mfa!.type}/complete`,{challengeId:attempt.mfa!.challengeId,code:data.code},signal)
-     :await signInCall(attempt.environment,CLOUD_EMAIL_CODE.verifyPath,emailCodeVerifyBody(attempt.email,data.code,attempt.verifier),signal);
+     :await signInCall(attempt.environment,CLOUD_EMAIL_CODE.verifyPath,emailCodeVerifyBody(attempt.environment,attempt.email,data.code,attempt.verifier),signal);
     if(verified.status!==200){let code=signInStatus(mfa?'mfa':'verify',verified.status);if(code==='invalid-code'&&++attempt.failed>=MAX_VERIFY_ATTEMPTS)code='attempts-exhausted';if(code!=='invalid-code'&&signIn===attempt)signIn=null;throw signInFailure(code);}
     if(!mfa&&verified.data.mfaRequired===true){
      const challenge=verified.data.mfa;if(!challenge||!['totp','sms','passkey'].includes(challenge.type)||typeof challenge.challengeId!=='string')throw signInFailure('unavailable');
