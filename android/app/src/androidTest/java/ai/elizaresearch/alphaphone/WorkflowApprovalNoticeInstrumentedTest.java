@@ -98,6 +98,44 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
    assertNull(active(manager,id));assertNull("Route released",WorkflowNoticeTapsFactory.create(context).token(id));
   }finally{manager.cancel("alpha-workflow-"+id,0);store.removeCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT);}
  }
+ /**
+  * Runner-owned, as above. The approval notice belongs to the account and agent that posted it;
+  * after the phone's connection changes (here: a stored offline selection, read as the resident under P-43, so no
+  * agent binding matches the notice's scope, origin, owner and agent), its tap is captured but
+  * fenced: the renderer shows the other-account state, opens no run and offers no approval, and
+  * the durable route stays pending for the original account instead of being consumed.
+  */
+ @Test public void approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval()throws Exception{
+  org.junit.Assume.assumeTrue("Dedicated workflow approval notice campaign","1".equals(InstrumentationRegistry.getArguments().getString("workflowApprovalNotice")));
+  Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();NotificationManager manager=context.getSystemService(NotificationManager.class);AlphaCredentialStore store=new AlphaCredentialStore(context);
+  assertNull("Fresh approval fixture required",store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT));
+  String id=approvalId('e'),run="fixture-run-"+java.util.UUID.randomUUID();long now=System.currentTimeMillis();
+  JSONObject route=new JSONObject().put("scope","a".repeat(64)).put("origin","https://workflow-fixture.invalid").put("ownerId","fixture-owner").put("agentId","fixture-agent").put("workflowId","fixture-flow").put("runId",run).put("versionId","fixture-version");
+  WorkflowNoticeTaps taps=WorkflowNoticeTapsFactory.create(context);
+  try(BoundedActivityScenario<MainActivity> activity=BoundedActivityScenario.launch(MainActivity.class)){
+   AppNavigation.liveMode();
+   assertEquals("succeeded",WorkflowNoticeTapsFactory.delivery(context).postApproval(taps,id,"b".repeat(64),route,now+10*60000L,now));
+   Notification notice=active(manager,id);assertNotNull("Approval notice posted",notice);
+   String token=taps.token(id);assertNotNull(token);
+   // The connection changes: an older build's stored "offline" selection now reads as the resident
+   // (decision P-43), which is not the agent this notice's scope, origin, owner and agent name.
+   // The saved selection is restored before the activity closes, so later classes see the original.
+   String prior=WebViewTestDriver.evaluate("localStorage.getItem('alpha.connection.selection.v1')");
+   WebViewTestDriver.evaluate("localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}))");
+   try{
+   activity.recreate();AppNavigation.liveMode();
+   notice.contentIntent.send();
+   long end=SystemClock.elapsedRealtime()+15000;String shown="false";
+   while(SystemClock.elapsedRealtime()<end&&!"true".equals(shown)){shown=WebViewTestDriver.evaluate("document.body.innerText.includes('Workflow notification saved. Connect its original agent to open it.')");if(!"true".equals(shown))SystemClock.sleep(100);}
+   assertEquals("The tap is routed to the other-account state","true",shown);
+   assertEquals("No run or approval opens for another account","false",WebViewTestDriver.evaluate("[...document.querySelectorAll('[data-screen] button')].some(b=>/^(Approve|Reject|Deny)\\b/.test((b.getAttribute('aria-label')||b.textContent||'').trim())&&b.getClientRects().length)"));
+   assertFalse("No run detail opened",WebViewTestDriver.evaluate("document.body.innerText").contains(run));
+   JSONObject pending=taps.pending();
+   assertEquals("The route stays pending for its own account, not consumed",token,pending.optString("token"));
+   assertTrue(pending.optBoolean("retained"));
+   }finally{WebViewTestDriver.evaluate("null".equals(prior)?"localStorage.removeItem('alpha.connection.selection.v1')":"localStorage.setItem('alpha.connection.selection.v1',"+prior+")");}
+  }finally{manager.cancel("alpha-workflow-"+id,0);store.removeCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT);taps.forget(id);}
+ }
  private static JSONObject route(String owner,String run)throws Exception{return new JSONObject().put("scope","a".repeat(64)).put("origin","https://workflow-fixture.invalid").put("ownerId",owner).put("agentId","fixture-agent").put("workflowId","fixture-flow").put("runId",run).put("versionId","fixture-version");}
  private static StatusBarNotification row(NotificationManager manager,String id){StatusBarNotification found=null;for(StatusBarNotification row:manager.getActiveNotifications())if(("alpha-workflow-"+id).equals(row.getTag())){assertNull("One OS notice per approval",found);assertEquals(0,row.getId());found=row;}return found;}
  /** A cancelled notice leaves the active list asynchronously. */

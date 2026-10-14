@@ -47,7 +47,7 @@ test("the native side reports the capability and refuses a review with the unava
   const review = reading.slice(reading.indexOf("private void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent,boolean question){"));
   const unsupported = review.indexOf("if(world==null||!world.available()){call.reject(UNSUPPORTED,UNSUPPORTED_CODE);return;}");
   const route = review.indexOf('call.reject("Select an available speech route before reading")');
-  const sensitive = review.indexOf('call.reject("Reading unavailable on a sensitive or unverified page")');
+  const sensitive = review.indexOf('call.reject("Reading unavailable on a sensitive or unverified page",SENSITIVE_PAGE)');
   const notReady = review.indexOf('if(!world.ready()){call.reject("This page is not ready for private reading. Reload this page, then try again.","reading-not-ready");return;}');
   const extract = review.indexOf("world.evaluate(EXTRACT,");
   assert.ok(unsupported > 0 && route > unsupported && sensitive > route && notReady > sensitive && extract > notReady, "unsupported, then speech route, sensitive page, not ready, then extraction");

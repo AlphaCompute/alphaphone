@@ -1,5 +1,7 @@
 # 12 — AOSP fork: always-on listening, implementation spec
 
+> **Superseded in part (2026-10-13, [decision P-42](../decisions.md)).** On-device and local speech and inference use only libelizainference (llama.cpp/ggml, GGUF models). ONNX Runtime, sherpa-onnx and ONNX-format models named in this section are historical research context, not a plan.
+
 Builds on [10 — always-on technical feasibility](10-always-on-tech-feasibility.md). Audience: platform/AOSP engineering, security, product and legal.
 
 **Decision context.** The team has decided to fork AOSP into a custom signed image for a Pixel 10-class target. Banking apps, Play Integrity and GMS are out of scope. The goal is always-on listening that works with any app in the foreground, with the screen off and while the device is locked. Audio feeds an on-device ASR → redaction pipeline. A recording indicator must be impossible to hide, and the user must consent.

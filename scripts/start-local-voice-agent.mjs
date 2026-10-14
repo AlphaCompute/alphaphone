@@ -6,10 +6,22 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawn, execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {parseArgs} from 'node:util';
 import {AGENT_MODEL,agentModelEnvironment} from './agent-model.mjs';
-const source = path.resolve(process.env.ALPHA_ELIZA_SOURCE || path.join(os.homedir(), 'eliza-workspace/milady/eliza'));
-const profile = path.resolve(process.env.ALPHA_REMOTE_PROFILE || path.join(os.homedir(), '.local/share/alphaphone/local-voice'));
-const port = Number(process.env.ALPHA_REMOTE_PORT || 47844);
+import {sourceDirectory} from './local-agent-source.mjs';
+// Inputs are flags, not product-specific environment names. The default source is the
+// prepared tree of the pinned commit (vendor/eliza itself has no installed dependencies and is
+// never modified); --source selects another prepared tree of that commit.
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const {values:options} = parseArgs({options:{source:{type:'string'}, profile:{type:'string'}, port:{type:'string'}, bun:{type:'string'}}, strict:true});
+const source = path.resolve(options.source || sourceDirectory(root));
+if (!fs.existsSync(path.join(source,'node_modules'))) {
+  console.error(`No installed runtime source at ${source}. Run \`npm run agent:prepare\` (creates artifacts/local-agent-resident-<commit> from the pinned commit), or pass --source with another prepared checkout of it. Never install into vendor/eliza.`);
+  process.exit(2);
+}
+const profile = path.resolve(options.profile || path.join(os.homedir(), '.local/share/alphaphone/local-voice'));
+const port = Number(options.port || 47844);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
 const keyPath = path.join(os.homedir(), '.config/alphaphone/cerebras-key');
 if ((fs.statSync(keyPath).mode & 0o077) !== 0) throw new Error('Provider key must be owner-only');
@@ -30,7 +42,7 @@ const env = {...baseEnv, ELIZA_HEADLESS:'1', ELIZA_API_BIND:'127.0.0.1', ELIZA_A
 Object.assign(env, admitSpeech('tts'));
 if(process.env.ELIZA_ASR_ENABLED==='1')Object.assign(env,admitSpeech('asr'));
 for (const key of ['ELIZAOS_CLOUD_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY']) delete env[key];
-const child = spawn(process.env.ALPHA_BUN || 'bun', ['--conditions=eliza-source', entry], {cwd:profile, env, stdio:['ignore',log,log]});
+const child = spawn(options.bun || 'bun', ['--conditions=eliza-source', entry], {cwd:profile, env, stdio:['ignore',log,log]});
 const metadata = {pid:child.pid, port, profile, source, revision:execFileSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'}).trim(), startedAt:new Date().toISOString()};
 fs.writeFileSync(path.join(profile,'process.json'), JSON.stringify(metadata,null,2), {mode:0o600});
 console.log(JSON.stringify({...metadata, log:path.join(profile,'server.log')}));

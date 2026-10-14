@@ -40,7 +40,8 @@ hold({action:'set',status:'opened',message:'Clock request sent. Check Clock.'});
  assert.deepEqual(JSON.parse(JSON.stringify(writes.at(-1))).days,[2,4]);writes.pop();// keep later write indexes stable
  chips().find(d=>d.label==='Mon').toggle();chips().find(d=>d.label==='Wed').toggle();assert.equal(f.render().clock.repeatText,'One time');}
 // Without native EXTRA_DAYS support (no clockRepeatDaysVersion) the chips are hidden and a repeat is never sent.
-{repeatVersion=0;const plain=await fixture();assert.equal(plain.render().clock.repeatAvailable,false);assert.deepEqual(JSON.parse(JSON.stringify(plain.render().clock.days)),[]);
+// days is null, not []: the template renders its Repeat group for any array.
+{repeatVersion=0;const plain=await fixture();assert.equal(plain.render().clock.repeatAvailable,false);assert.equal(plain.render().clock.days,null);
  const before=writes.length;plain.render().clock.prepare();assert.equal(plain.render().clock.review.text.includes('repeating'),false);plain.shell.componentWillUnmount();assert.equal(writes.length,before);repeatVersion=1;}
 // All other standard intents require a fresh review; no broad alarm identity is inferred.
 for(const [name,action] of [['Show alarms','show'],['Snooze','snooze'],['Dismiss','dismiss']]){

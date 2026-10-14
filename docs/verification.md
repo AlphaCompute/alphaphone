@@ -8,7 +8,7 @@ and [pilot runbook](pilot-acceptance-runbook.md) for remaining product acceptanc
 ## Source and packaging
 
 Run `npm ci` and `npm run verify` with the toolchain documented in the README.
-Prepare the pinned speech assets using [local speech setup](../scripts/local-speech/README.md),
+Build and stage the libelizainference voice host as described in [fused speech](fused-speech.md),
 then run `npm run agent:prepare`, `npm run agent:build-workflow-worker`,
 `npm run agent:stage-android` and `npm run android:build` with JDK 21 and the configured Android SDK. Plain
 `npm run android:build` requires an earlier `npm run agent:prepare` and, for release
@@ -42,6 +42,19 @@ build type, packaged runtime or signing certificate contradicts the row that adm
 `apk-manifest.json` is an unsigned record: speech qualification and licence blockers cannot be
 re-derived from the APK, so for those the manifest written by `verify-apks` is the evidence and
 must come from the build being installed.
+
+### Speech engine (decision P-42)
+
+On-device and local speech run only on libelizainference ([fused speech](fused-speech.md)).
+Each kind of evidence proves only its own class:
+
+| Check | Class | What it does not prove |
+| --- | --- | --- |
+| `node --test test/llama-cpp-only.test.mjs test/voice-host-record.test.mjs`, `npm run audit:bundle` | S | That any voice-host binary exists or works |
+| `test/browser/browser-speech.spec.ts` (stub agent), `production-surface.spec.ts` | S (browser) | Real agent speech quality |
+| An APK whose staged voice-host libraries match `android/voice-host/qualified-voice-host.json` | B | That speech runs |
+| Voice-host instrumentation on an emulator (x86_64 needs a qualified x86_64 host) | E | A phone, an AOSP image or intelligibility on hardware |
+| The same on a physical phone, with a person judging transcripts and playback | D | Other devices or ABIs |
 
 ## Browser behavior
 
@@ -238,6 +251,242 @@ An SDK emulator test does not establish a custom AOSP image boot.
 Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
+
+## Pin move to c7a9a0d7e7 (2026-10-14): Phonon-2 and live voice
+
+Branch `claude/mvp-final` (not pushed). The pin moved from `644d56c93d` to `c7a9a0d7e7`, the
+elizaOS `develop` head (41 commits) that contains Phonon-2 (#36212, `d06a1aa9c9`), streaming ASR
+(#36213, `d68909cb`), live voice (#36214, `70dc0bbf`) and the voice gap fixes (#36239), with the
+llama.cpp gitlink `5df17a66` (llama.cpp `main` with elizaOS/llama.cpp#79). `vendor/eliza` is a
+standalone clone checked out at the pin; its nested llama.cpp is a fresh shallow clone at the
+gitlink. The nine `patches/eliza` targets are unchanged between the two pins. Development machine
+under heavy load from other sessions (load average 25 to 100). No emulator, device, AOSP image or
+hosted run; nothing installed.
+
+- `npm run upstream:verify`: source verified at `c7a9a0d7e7`; reachability re-recorded
+  (`identical` to `develop`, 2026-10-14) with #36212, #36213, #36214 and #36239 added to the record.
+- Engine and bundle (class B): `packages/app/scripts/paradee-voice/build-native.ts` at the pin
+  (NDK 28.2) built both ABIs with `LLAMA_BUILD_PARAKEET=ON` and eSpeak NG `N_PATH_HOME=1024`
+  (voice ABI 18, `paradee_supported()=1`, `asr_supported()=1`, 83 exports, LOAD alignment 16 KiB)
+  and converted the Paradee GGUF (now `357477…`, the v1_0 metadata of #36239) and the misaki
+  lexicon from pinned sources, both equal to their pins. `scripts/prepare-embedding-host.mjs
+  --build --remap-build-path` built the path-independent engine and the registered
+  `ElizaVoiceNative` JNI for both ABIs (receipt checks passed: ELF ABI, embedding symbols, only
+  `JNI_OnLoad` exported, 16 KiB alignment); those engine bytes are the voice host record's.
+  The Phonon-2 GGUF is the byte-reproducible conversion (`dc552eb7…`, 330,632,256 bytes) of
+  `FermionResearch/Phonon-2@7e153e40` made earlier with the pinned converter's `--verify`.
+- Voice staging: `node scripts/android-stage-voice-models.mjs --from <outputs>` staged both engines
+  and the bundle (Paradee, misaki, eSpeak NG data, Phonon-2, Silero VAD, notices including
+  Fermion's NOTICE and the CC-BY-4.0 text) with every byte equal to
+  `android/voice-host/qualified-voice-host.json`; `scripts/paradee-runtime.mjs --app-linkage` and
+  `scripts/voice-host.mjs --verify` admitted them (`qualified:false`).
+- Gradle `--offline -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1 -x :app:verifyEmbeddingHost`, with the
+  candidate embedding host libraries (not reviewed) copied into the ignored app `jniLibs`:
+  `:app:compileStandaloneDebugJavaWithJavac`, `:app:compileLauncherReleaseJavaWithJavac`,
+  `:app:compileStandaloneReleaseJavaWithJavac`, `:app:compile{Standalone,Launcher}DebugAndroidTestJavaWithJavac`
+  (including `LiveVoiceVadInstrumentedTest`), `:app:compileStandaloneDebugUnitTestJavaWithJavac`
+  and `:sense:compileReleaseJavaWithJavac` BUILD SUCCESSFUL, with `:local-speech:verifySpeechInputs`,
+  `:app:verifyParadeeAppLinkage` and `:app:verifyVoiceHost` passing and 29 pinned local-agent
+  sources staged (now including `BionicAsrStreams` and `ElizaAsrNativeEnv`).
+  `:app:assembleStandaloneDebug` then built a **developer** APK of 413,950,347 bytes (sha256
+  `e68ed8f3…`; 1,044,070,938 bytes with the Qwen3 pair at `644d56c93d`): both ABIs carry the
+  recorded `libelizainference.so`, `libparadeevoicejni.so` and the candidate app JNI, and
+  `assets/paradee-voice/v1` stores (no longer deflates) the GGUFs and lexicon. It has no resident
+  runtime payload and skipped the embedding-host admission: build evidence only, not a
+  distribution build, never installed or run. The candidate libraries were removed afterwards.
+- Live voice (class S): `test/live-voice.test.mjs` (the client against a stub agent speaking the
+  upstream wire format, stale-turn and other-session drops, one final per turn, numbers-only latency
+  in diagnostics, the host-JVM `LiveVadGate` run) and `test/browser/live-voice.spec.ts` (Chromium,
+  stub agent over a routed WebSocket: interim text replaced by each newer partial, cleared at the
+  final, nothing in storage) passed. The Chromium voice, speech and timing specs passed (44 of 44), and the production project's
+  `native-speech.production.spec.ts` and `production-surface.spec.ts` passed (32 of 32).
+  Live voice has not run on an emulator or a device, and interim text does not reach the phone
+  (the agent IPC has no event stream; [fused speech](fused-speech.md#live-voice-android-voice-conversation)).
+- `npm run verify`: exit 0 at the final content (prepare-client, `tsc --noEmit`, node tests 1238 of
+  1238 plus `scripts/test-notes-query-flow.ts`, `npm run build`, `npm run audit:bundle` PASS, 389
+  files, `testMocks=false`). The resident dependency audit was re-run at the pin (`vendor/eliza/bun.lock`
+  is unchanged, so its findings and dispositions are unchanged).
+- Not done: `npm run android:build:local` (the embedding host needs a person to review a receipt at
+  this pin), on-device qualification of the voice host, any APK install, instrumentation run,
+  emulator HOME-role test, AOSP image, live Eliza Cloud or device acceptance. Evidence classes E, I,
+  R and D are absent.
+
+## Pin move to 644d56c93d (2026-10-14): shared voice stack
+
+Branch `claude/mvp-final` (not pushed). alphaphone#493 (`codex/shared-contract-pin-oct14`, not
+merged on `main` on 2026-10-14) was merged in and its speech adapters adopted: the shared
+paradee-voice library (`:local-speech`, `AlphaParadeeSpeech`, `AlphaLocalSpeechEngine`), the host
+Paradee and ASR routes, the registered-JNI embedding contract and its pin `644d56c93d` (elizaOS
+develop, containing #36153, #36157, #36158, #36168 and #36194; llama.cpp gitlink `3f131ab9`,
+voice ABI 18). elizaOS/eliza#36212 (Phonon-2) merged after this pin, so the ASR slot holds Qwen3-ASR (P-55).
+Development machine, load average 25 to 45 from other sessions. No emulator, device or hosted run.
+
+- `npm run upstream:verify`: source verified at `644d56c93d`; reachability re-recorded
+  (`develop` reaches the pin, 36 commits behind, 2026-10-14).
+- `npm run verify`: exit 0, run again at the final content (prepare-client, `tsc --noEmit`, node tests 1170 of 1170 plus
+  `scripts/test-notes-query-flow.ts`, `npm run build`, `npm run audit:bundle` PASS, 389 files,
+  `testMocks=false`).
+- Voice staging (class B inputs): `node scripts/android-stage-voice-models.mjs --from <build-native output> --from <models>`
+  staged both engines and the whole bundle, including the ASR slot pair, with every byte equal to
+  `android/voice-host/qualified-voice-host.json`; `node scripts/paradee-runtime.mjs` and
+  `node scripts/voice-host.mjs --verify` admitted them (`qualified:false`).
+- Gradle `--offline -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1 -x :app:verifyEmbeddingHost`, with the
+  voice outputs staged and the candidate embedding host libraries (the voice host engine plus the
+  registered `ElizaVoiceNative` JNI; not reviewed) copied into the ignored app `jniLibs`:
+  `:app:compile{Standalone,Launcher}DebugAndroidTestJavaWithJavac`,
+  `:app:compile{Standalone,Launcher}ReleaseJavaWithJavac` and `:sense:compileReleaseJavaWithJavac`
+  BUILD SUCCESSFUL, with `:local-speech:verifySpeechInputs`, `:app:verifyParadeeAppLinkage` and
+  `:app:verifyVoiceHost` passing. `:app:assembleStandaloneDebug` then built a **developer** APK
+  (1,044,070,938 bytes): both ABIs carry `libelizainference.so` equal to the record,
+  `libparadeevoicejni.so` (built by Gradle from the pinned JNI source) and the app JNI, and
+  `assets/paradee-voice/v1` carries Paradee, misaki, eSpeak NG data, VAD and the ASR pair. It has
+  no resident runtime payload and skipped the embedding-host admission: build evidence only, not
+  a distribution build, never installed or run. The candidate libraries were removed afterwards.
+- `npm run android:build:local` was not run to completion: its input check passes, and
+  `npm run agent:build-embedding-host` stops because the embedding host needs a person (a
+  reviewed receipt at this pin; see `android/embedding-host/qualified-host.json`). The input
+  report also names the unqualified voice host and the release signer.
+- Playwright `chromium`, the 84 speech, voice, audio and transcription spec files: 694 passed,
+  2 failed, then fixed (the chat review policy region label) and passed when re-run. The seven
+  formerly skipped or fixme Web Speech specs now run through agent speech stubbed at the agent
+  boundary (`agentBrowserVoice`): 57 passed.
+- Playwright `chromium`, full lane (3,241 tests, 2.1 h at load average 30 to 120): 3,167 passed,
+  61 failed, 13 skipped. The 42 failing test locations re-run alone with two workers: 97 passed
+  and 3 failed again, none in speech: `accessibility-sweep.spec.ts` launcher Calendar at 200% text
+  (the day strip sits under the dock), `gmail-grant-recovery.spec.ts` (expects a sentence that is
+  in no source at the previous head, `main` or #493) and the `context-selection.spec.ts` mail
+  neighbor switch (the thread chip it clicks is not rendered after `main`'s Gmail conversation
+  changes, which arrived through #493). They are recorded as open.
+- Playwright `production`: 243 passed, 2 failed (both expected Cloud Notes speech in production);
+  updated for on-device Notes speech, then those files passed 51 of 51.
+- Resident dependency audit at the pin: the same advisory and version set as at `bc71e21f3b`,
+  every finding dispositioned; dispositions carried forward.
+- Not run: any instrumented class (LocalSpeech, LocalSpeechBridge, SpeechSentenceCancellation,
+  VoiceNoteReadAloud, ResidentAlwaysPresent), on-device voice qualification, an emulator, an AOSP
+  image, live Cloud or a device.
+
+## Merge of main into claude/mvp-final (2026-10-13): source, test and compile checks only
+
+Branch `claude/mvp-final` (not pushed) merged `origin/main` at `e4ee4505d` (163 commits, issue work
+for #402 to #425, AOSP capability admission, the Contacts adapter, reviewed Files email
+attachments, Gradle dependency verification, the strict-build input report). The upstream pin
+stays `bc71e21f3b`. Main's product decisions were kept where both sides changed the same behaviour,
+with this branch's fixes re-applied on top:
+
+- Calendar availability: main's fail-closed sync-freshness rule now sits in front of the upstream
+  `SelectedCalendarReader` as `CalendarSyncFreshness.java` (the Alpha reader it was written for is
+  gone at this pin); the JVM reader test covers it.
+- Plugin teardown: main's `clockWork` and mail-attachment `work` helpers and the notice-intent
+  deduplication now hand work over through `PluginWorkers.submit`; main's scanner counts those
+  hand-offs as guarded.
+- Browser reading: main's `reading-unsupported` and `reading-not-ready` answers, with this
+  branch's stable `sensitive-page` and `isolated-world-unavailable` codes.
+- Toasts under dialogs, the floating dock and app titles at large text use main's
+  `toast-layer.ts`, dock audit and `alpha-text-xl` rules; this branch's dialog toast mirror and
+  `focus-under-composer` rule were dropped as duplicates.
+- SBOM and Gradle verification use main's `gradle-verification.mjs` and metadata, with this
+  branch's voice-host components and no web-speech or Sherpa components; the strict-build input
+  report lists the optional on-device voice bundle in place of the removed Sherpa AAR.
+- The explicit native patches (`patches/eliza`) were rebased from `13c9857598` to `bc71e21f3b`
+  (`SystemPlugin.kt` applied unchanged; `JsonCredentialSlots.java` keeps the retained-limit
+  ceiling of the new pin) and the voice projection guard was re-reviewed at the new pin (inputs
+  byte-identical).
+- The engine decision recorded on this branch as P-10 is P-42 (main's P-10 is the schedules
+  decision).
+- Production remote-agent pairing is gone on main, so this branch's flag-off JSON-failure tests
+  that paired a remote agent were dropped.
+
+Evidence (class S, plus a Gradle compile), on a development machine at load average 30 to 300
+(other sessions running): typecheck passed; the full Node suite ran 930 tests twice, once with 929
+passing (the one failure, the 20-second dev-launcher spawn, passed alone) and once with 922 (eight
+runner tests hit their spawn timeouts at load 300; all of them, 83 tests in four files, passed when
+rerun); the docs, reachability, native-patch admission and secure-store memory tests passed again
+after the last edits; `npm run build` and `npm run audit:bundle` passed (387 files, testMocks=false);
+`./gradlew --offline -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1` compiled
+`:app:compileStandaloneDebugJavaWithJavac`, `:app:compileLauncherDebugJavaWithJavac` and both
+`…DebugAndroidTestJavaWithJavac` tasks, BUILD SUCCESSFUL. No APK was assembled or installed, no
+emulator, image or device was used, and no Playwright suite was run for the merge.
+
+## Pin move to bc71e21f3b (2026-10-13): source and compile checks only
+
+Branch `claude/mvp-final` (not pushed), upstream pin `bc71e21f3b` (from `13c9857598`), with the
+upstream changes consumed as listed in [agent integration](agent-integration.md#upstream-changes-in-the-13c9857598-to-bc71e21f3b-move).
+Development machine at load average 60 to 115 (other sessions running). No APK was assembled, no
+emulator was started and no workflow was dispatched: nothing here is class B beyond a compile, or
+E, I, R or D. The latest emulator record is still round 8, below, at `13c9857598`.
+
+- `npm run upstream:verify`: source verified at `bc71e21f3b`; reachability recorded with
+  `--record-reachability` (identical to `develop`, 2026-10-13).
+- `npm run verify`: prepare-client and `tsc --noEmit` clean; node tests 818 of 819 passed. The
+  one failure, `client-feature-preparation.test.mjs` "direct local development launcher", was its
+  20 s spawn timeout under that load; the file passed 6 of 6 when rerun alone. The remaining
+  steps were then run one by one: `scripts/test-notes-query-flow.ts` PASS, `npm run build` exit 0,
+  `npm run audit:bundle` PASS (387 files, `testMocks=false`). An earlier full node run on the same
+  change set before its last test and document fixes passed 815 of 819; the four failures were
+  pin statements, a removed evidence path and the Stop test sandbox, all fixed since.
+- Playwright `chromium` and `production` projects on the seven spec files the consumed changes
+  touch (Stop, Inbox paging, app library, note to calendar hand-off, J04 Android, phone sources
+  and dossier, Gmail scope): 62 passed, 0 failed.
+- Resident dependency audit (plan step A-3): `node scripts/dependency-audit.mjs --resident --write`
+  99 findings, none without a reviewed disposition; `--resident` exits 0
+  ([dependency audit](dependency-audit.md)).
+- `test/calendar-availability-reader.test.mjs`: the upstream `SelectedCalendarReader`
+  availability read on the JVM with the `sqlite3` provider stand-in, PASS.
+- Gradle, compile only, against the prepared source at the pin
+  (`node scripts/prepare-local-agent.mjs --source-only`):
+  `./gradlew --offline -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1` compiled
+  `:app:compileStandaloneDebugJavaWithJavac`, `:app:compileLauncherDebugJavaWithJavac` and both
+  `…DebugAndroidTestJavaWithJavac` tasks: BUILD SUCCESSFUL. No APK, no install.
+- Embedding host: the engine gitlink and `stage-elizavoice-lib.ts` changed, so
+  `android/embedding-host/qualified-host.json` is marked for requalification and
+  `node scripts/stage-embedding-host.mjs --verify` refuses a distribution build. A candidate was
+  built with `node scripts/prepare-embedding-host.mjs --abi arm64-v8a --build` at engine
+  `7efee0037524` (NDK 29.0.13113456): ELF ABI, 16 KiB alignment and every embedding and voice
+  symbol checked by that script. Its hashes are recorded in the file; it was not reviewed, staged
+  or run (class B for the build only).
+- Changed instrumented classes, none run: `LauncherAppsInstrumentedTest` (was
+  `LauncherLibraryInstrumentedTest`), the lowered-Trash-cap method of
+  `NotesStorageDurabilityInstrumentedTest`, the review-text checks of
+  `CalendarAgentCrudInstrumentedTest`, and `CalendarAvailabilityInstrumentedTest` on the upstream
+  reader.
+
+## MVP completion integration (2026-10-12): source, browser and compile checks only
+
+Branch `claude/mvp-completion` at `bfcd47e2`, upstream pin `13c9857598`: the nine work packages
+of the [2026-10-11 audit](mvp-audit-2026-10-11.md) merged ([implementation
+results](mvp-audit-2026-10-11.md#implementation-results)). No APK was assembled, no emulator was
+started and no workflow was dispatched, so nothing here is class B (beyond a compile), E, I, R
+or D. The latest emulator record is still round 8, below.
+
+- `npm run verify` stopped at the since-removed browser speech asset step because that
+  engine's runtime package was not installed in the shared `node_modules`. With a
+  lockfile-identical `node_modules` that had it: the asset step OK, `tsc --noEmit` clean, the nine node test files that had failed
+  for that reason 46 of 46, `scripts/test-notes-query-flow.ts` PASS, `npm run build` exit 0 and
+  `npm run audit:bundle` PASS (395 files, `testMocks=false`).
+- `npm --ignore-scripts test` at load average 130 to 300: 449 passed, 70 failed. 57 failures
+  were spawn timeouts of about 120 s in five native runner suites, which passed 101 of 101
+  rerun at `--test-concurrency=2` under lower load; 13 came from the missing in-browser
+  speech runtime package (removed since, P-42).
+- Playwright `chromium` and `production` projects on the 46 spec files the packages changed:
+  972 passed, 6 failed. Two are the mock calendar block clipped at 200% text
+  (`accessibility-sweep.spec.ts` and the landscape-200 case; they also fail at `2560eead`), one
+  was an `ECONNRESET` in `notes-trash-recovery.spec.ts` that passed 10 of 10 on rerun, and three
+  were the J05 Android negatives, fixed in `bfcd47e2`.
+- Gradle, compile only: both APK scripts exit 2 at their input check (no speech AAR matches the
+  committed digest). With a speech AAR and the prepared resident source supplied only as compile
+  inputs, `./gradlew --offline -x :local-speech:preBuild -x :app:verifyEmbeddingHost`
+  compiled `:app:compileStandaloneDebugJavaWithJavac`, `:app:compileLauncherDebugJavaWithJavac`
+  and both `…DebugAndroidTestJavaWithJavac` tasks: BUILD SUCCESSFUL. No APK, no install.
+- New instrumented classes and phases since round 8, none run: `RendererRecovery`,
+  `ConnectionRoutes`, `ChatContinuity`, `PasswordVaultSettings`, `PasswordVaultFill`,
+  `PosterCalendarJourney`, `JourneyJ05`, `NoteOrigin`, `HomeCalendarCard`, the
+  `notes-secure-migration`, `theme`, `crash-log` and source-reference restart phases, the
+  account-change method of `WorkflowApprovalNotice` and the approval process-death phase of
+  `WorkflowNoticeProcessDeath`. Their commands are in [core loop audit](core-loop-audit.md),
+  "What is still not covered". `BrowserFlow`'s default run is now offline; its live search
+  needs `--live-network`.
+- Not run at this source: `npm run agent:test-digest-restart` (last at `40dbe96bd1`); the new
+  dispatch-only lane `.github/workflows/digest-restart.yml` was not dispatched.
 
 ## Round 10 (2026-10-11): native teardown, live search and reading availability, none run
 
@@ -551,7 +800,7 @@ each fix named here is shown to hold, to fail or to be still unrun.
 - Hosted jobs, linted with `actionlint` and checked by `test/ci-emulator-evidence.test.mjs`,
   never dispatched: `.github/workflows/android-emulator.yml`
   ([CI cost policy](ci-cost-policy.md#emulator-evidence-android-emulatoryml)).
-- Host-runtime evidence, not Android: `npm run agent:test-digest-restart` at pin `40dbe96b`
+- Host-runtime evidence, not Android: `npm run agent:test-digest-restart` at pin `40dbe96bd1`
   (the pin of this branch before it was merged with round 9, which moved the pin to
   `13c9857598`; not repeated there), exit 0, one run ([record](local-agent-development.md#isolated-digest-process-recovery-check)).
 - Source and browser checks on this branch (class S): `npm run verify` exit 0 at `ce8488f2` (672 tests, 668
@@ -771,7 +1020,7 @@ Results are standalone / launcher, instrumentation set 1 unless a row says other
 | --- | --- | --- |
 | `test-native-restart.mjs notes` | launcher passed 3 of 3, standalone passed 1 of 1 | After the guest reboot. Before it every campaign that writes a fixture through MediaStore failed with `SQLiteException: Exception thrown by custom scalar function` from the provider's insert, on an emulator that had been up for three hours; those attempts are not counted. Three runs do not prove the round 7 timeout closed. |
 | `test-native-restart.mjs document` | standalone passed | The cancellation notice and the import receipt are still observed with the visibility-aware receipts. Launcher not run. |
-| `test-native-restart.mjs inbox` | passed / passed | Includes the round 8 step: after the restart with local apps chosen, Inbox's "Connect Eliza Cloud" panel offers "Retry saved connection" and a new sign-in and shows no account. |
+| `test-native-restart.mjs inbox` | passed / passed | Includes the round 8 step: after the restart with local apps chosen, Inbox's "Connect Eliza Cloud" panel offers "Retry saved connection" and a new sign-in and shows no account. Superseded by P-43 (2026-10-13): the local-apps selection is retired; needs a re-run. |
 | `test-native-permissions.mjs channels` | failed / failed with set 2 (twice); passed / passed with set 3 | Test defect caused by round 8 and missed by its review: the test clicked the first visible button whose text starts with "Notifications", which since round 8 is Home's handle (Home stays laid out under Settings), so it never reached the channel page. `CrossAppNotificationsRestartInstrumentedTest` had the same selector. Both now exclude the handle (`f87850fa`). |
 | `android-workflow-native.mjs --phase=approval-notice` | 4 of 4 cases passed (2 per flavor) | A selection: `selectionPassed` true, `passed` false by design. |
 | `android-workflow-native.mjs` (WorkflowPhoneNative and approval notice, 14 cases) | failed at its first case twice with set 2; **14 of 14 passed** with app APKs B and the final set (`passed: true`) | Test defect in a class that had never run: `privateReadResultSurvivesRecreationButNeverExpandsPassiveHistory` removed its journal fixture through the page's `AlphaConnection.secureRemove` and asserted success, but that bridge refuses native-only journal slots (`RendererCredentialSlots`). The test now asserts the refusal and removes the fixture through the native store (`9a1ca161`). `deniedCalendarGrantReturnsNoEvents` passed on both flavors (B-25, J01-7). |
@@ -866,7 +1115,7 @@ Result files: `test-results/r7-camp/<campaign>-<flavor>`, `test-results/calendar
 | --- | --- | --- |
 | `test-native-restart.mjs signin`, `document` | passed / passed | |
 | `test-native-restart.mjs notes` | passed / failed then passed | The first launcher run timed out waiting for "Export saved and exact bytes verified." after the system picker; the rerun passed. Cause not established. |
-| `test-native-restart.mjs inbox` | passed / passed | Was failing. Test: the Android account panel names the signed-in state differently, Inbox loads the mailbox itself, and after a restart with local apps chosen the saved sign-in is offered as "Retry saved connection" in Settings, not restored. |
+| `test-native-restart.mjs inbox` | passed / passed | Was failing. Test: the Android account panel names the signed-in state differently, Inbox loads the mailbox itself, and after a restart with local apps chosen the saved sign-in is offered as "Retry saved connection" in Settings, not restored. Superseded by P-43 (2026-10-13): the local-apps selection is retired; needs a re-run. |
 | `test-native-permissions.mjs channels`, `settings`, `voice-limit`, `voice-revoke` | passed / passed | |
 | `test-native-permissions.mjs camera` | passed / passed | Was failing. Product defect fixed: a second permission dialog opened straight after "Don't allow". |
 | `test-native-permissions.mjs voice` | passed / passed | Was failing. Product defect fixed (the "Open app settings" control the denied message names was missing) and the test now signs in through the closed synthetic Cloud transport, because a build without test mocks records only through Eliza Cloud voice. |
@@ -896,6 +1145,11 @@ Result files: `test-results/r7-camp/<campaign>-<flavor>`, `test-results/calendar
 
 - Inbox's "Connect Eliza Cloud" panel offers only a new sign-in when a saved sign-in exists and
   local apps are selected; the saved one is offered in Settings › Agent connection. Owner decision.
+  Superseded by P-43 (2026-10-13, resident agent always present): there is no local-apps
+  selection any more, so this observation and the `test-native-restart.mjs inbox` steps above
+  that restart "with local apps chosen" describe a retired state. The records stand as the
+  evidence of their date; the campaign and `LocalAgentOfflineAppsInstrumentedTest` (replaced by
+  `ResidentAlwaysPresentInstrumentedTest`) need a re-run.
 - On the launcher flavor a swipe from the very top opens Android's shade and a swipe from just
   below it opens Alpha's. Owner decision for the AOSP image.
 - At 200% font the Home card title and app labels overlap or cut (screenshots taken while
@@ -913,10 +1167,10 @@ stand as what the round-7 APKs do; this records what changed in source afterward
 
 | Round-7 observation | Classification | Change | Evidence at this source |
 | --- | --- | --- | --- |
-| Inbox's "Connect Eliza Cloud" panel offers only a new sign-in when a saved one exists | Plain defect, not an owner decision: the same saved sign-in was already offered in Settings | The Inbox panel offers "Retry saved connection" under the Settings panel's rules (`runtime/connection-ui.tsx`) | `saved-signin-retry.production.spec.ts` (flag-off bundle, stubbed Android bridge, both panels). `InboxDraftInstrumentedTest` restart phase asserts the Inbox offer; compiled, not run |
-| A top-edge swipe opens Android's shade, a swipe just below opens Alpha's | The zones are decided by the PRD and flow audit (the status shade is Android's); what stays with the owner is listed in [core loop status](core-loop-status.md#gesture-zones-and-the-notifications-panel-round-8) | Alpha's notifications open only from a visible handle on Home ([gesture zones](gesture-zones.md)) | `notifications-handle.spec.ts`, the accessibility sweeps. `AccessibilityInstrumentedTest` covers the zones; compiled, not run |
-| At 200% font the Home card title and app labels overlap or cut | Plain defect (PRD AP-15) | Home cards grow with their text, tile grids drop a column when labels stop fitting, both driven by the measured text scale (`runtime/text-scale.ts`, `phone.css`) | `large-text-overlap.spec.ts`; the overlap rules of `accessibility-audit.ts` over every retained view at 100% and 200% (`accessibility-sweep.spec.ts`, production sweep). `AccessibilityInstrumentedTest` reads the measured scale and checks Home overlap in the WebView; compiled, not run |
-| Accepting the HOME role starts a second `MainActivity` | Plain defect: two pages over one store, and the in-flight state stayed in the hidden one | The first live instance is kept and later starts are handed to it (`MainActivity`, "One live MainActivity") | `SettingsRolesInstrumentedTest`, `LauncherHomeInstrumentedTest`; compiled, not run |
+| Inbox's "Connect Eliza Cloud" panel offers only a new sign-in when a saved one exists | Plain defect, not an owner decision: the same saved sign-in was already offered in Settings | The Inbox panel offers "Retry saved connection" under the Settings panel's rules (`runtime/connection-ui.tsx`) | `saved-signin-retry.production.spec.ts` (flag-off bundle, stubbed Android bridge, both panels). `InboxDraftInstrumentedTest` restart phase asserts the Inbox offer; compiled, not run. At `2961bd9e` the `inbox` restart campaign passed on both flavors with the Inbox's "Retry saved connection" step (class E, developer APKs) |
+| A top-edge swipe opens Android's shade, a swipe just below opens Alpha's | The zones are decided by the PRD and flow audit (the status shade is Android's); what stays with the owner is listed in [core loop status](core-loop-status.md#gesture-zones-and-the-notifications-panel-round-8) | Alpha's notifications open only from a visible handle on Home ([gesture zones](gesture-zones.md)) | `notifications-handle.spec.ts`, the accessibility sweeps. `AccessibilityInstrumentedTest` covers the zones. Run at `2961bd9e` (class E, developer APKs): `Notifications` opened the panel through the handle on both flavors, and on the launcher flavor Accessibility passed the two swipe checks and then failed at its accessibility-click step (see that run) |
+| At 200% font the Home card title and app labels overlap or cut | Plain defect (PRD AP-15) | Home cards grow with their text, tile grids drop a column when labels stop fitting, both driven by the measured text scale (`runtime/text-scale.ts`, `phone.css`) | `large-text-overlap.spec.ts`; the overlap rules of `accessibility-audit.ts` over every retained view at 100% and 200% (`accessibility-sweep.spec.ts`, production sweep). `AccessibilityInstrumentedTest` reads the measured scale and checks Home overlap in the WebView. Run at `2961bd9e` (class E, developer APKs): on the launcher flavor the measured scale (2) and the overlap and label-split checks passed; on standalone the class failed at the 200% reading order (the last Home row under the composer), which the MVP completion integration fixed in the renderer and has not rerun |
+| Accepting the HOME role starts a second `MainActivity` | Plain defect: two pages over one store, and the in-flight state stayed in the hidden one | The first live instance is kept and later starts are handed to it (`MainActivity`, "One live MainActivity") | `SettingsRolesInstrumentedTest`, `LauncherHomeInstrumentedTest`. Run at `2961bd9e`/`9a1ca161` (class E, developer APKs): both passed in the `--home-role` phase after two unawaited test conditions were fixed |
 
 Other rows of the tables above, re-read for product defects:
 
@@ -950,7 +1204,7 @@ changed five things:
   Cloud sign-in return is kept, so after a sign-in and then a relaunch (a system font-size
   change, renderer recovery) a home-type instance was treated as standard and a later notice tap
   or sign-in return would have been delivered without Alpha coming to the front. The kind is
-  now kept per task id. `LauncherHomeInstrumentedTest` has a method for it; compiled, not run.
+  now kept per task id. `LauncherHomeInstrumentedTest` has a method for it; it ran with the class at `2961bd9e`/`9a1ca161` (5 methods, passed; class E, developer APKs).
 - The hand-off could repeat without end. If the bring-to-front start missed the live instance,
   the home-type instance still finished and left the home task empty, and Android would start
   HOME again. The process now stops handing starts off when a front start makes a new instance,

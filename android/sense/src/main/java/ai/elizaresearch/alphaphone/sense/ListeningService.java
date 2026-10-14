@@ -31,7 +31,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * The always-on microphone foreground service (type microphone). It runs only while
  * {@link ListenerPolicy#foreground} allows and opens the microphone only while
  * {@link ListenerPolicy#holdsMicrophone} allows. Audio is analysed in RAM: voice activity and turn
- * segmentation ({@link SpeechGate}), then local speech recognition, then {@link WakePhrase}. Every
+ * segmentation ({@link SpeechGate}), then on-device recognition with the fused libelizainference
+ * engine ({@link ai.elizaresearch.alphaphone.ListenerSpeech}), then {@link WakePhrase}. Every
  * audio buffer is zeroed after use and transcripts are dropped after classification. Nothing is
  * written to storage and this package has no network permission.
  *

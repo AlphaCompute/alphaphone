@@ -20,17 +20,23 @@ Browser profiles implement the October 7 owner decision ([decisions](decisions.m
 
 ## Alpha password manager
 
-Alpha's own provider (`ElizaPasswordAutofillService` from the shared password plugin, see
-[password-provider-setup.md](password-provider-setup.md)) treats Alpha as a trusted browser
-only through `CredentialWebView`: when the child is eligible, it adds the committed top-level
-origin (`PasswordFormPolicy.TOP_ORIGIN_EXTRA`, `https://host[:port]` of the presented URL) to
-its own autofill node after Chromium has built the virtual structure. The provider refuses the
-request unless that origin's host equals the single HTTPS web domain of every web node, so a
-cross-origin frame (a second domain) is never filled, and uses that origin (with its port, which
-Android's field metadata lacks) as the exact binding to match. The privileged renderer WebView remains
-excluded, and no field values or vault data are added to the agent bridge. Device
-qualification of real Chromium structures (including cross-origin iframes), provider
-selection, unlock/resume and save prompts remains open.
+Website fills and saves from Alpha's own provider (`ElizaPasswordAutofillService` from the shared
+password plugin, see [password-provider-setup.md](password-provider-setup.md)) are refused in
+Alpha's browser. `CredentialWebView` adds the committed top-level origin
+(`PasswordFormPolicy.TOP_ORIGIN_EXTRA`) to its autofill node, but the pinned
+`PasswordFormPolicy` also requires a native per-field origin for every login field, and Android
+WebView does not supply one, so the request ends with "Field origin unavailable"
+(`android/app/src/main/res/values/eliza_passwords.xml` records this). Only native app fields are
+filled, after a fresh unlock, with the signer check described in password-provider-setup.md. Show
+and Copy remain available in Settings. The privileged renderer WebView is excluded, and no field
+values or vault data are added to the agent bridge.
+
+Evidence: `PasswordBrowserFillInstrumentedTest` passed on both flavors at `2961bd9e` (class E,
+developer APKs); it shows that a cross-origin frame is never offered a fill, not an
+integrated-vault website fill. The vault's own Autofill path into an app has
+`PasswordVaultSettingsInstrumentedTest` and `PasswordVaultFillInstrumentedTest`, which have not
+run. Device qualification of provider selection, unlock and resume, and save prompts remains
+open. Whether recognized third-party browsers are ever trusted is A-14.
 
 ## Proton Pass qualification
 

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 2,
+  "description": "Model-agnostic ASR slot of the on-device voice bundle. libelizainference (built with LLAMA_BUILD_PARAKEET=ON) serves eliza_inference_asr_* and asr_stream_* from whatever sits under <bundle>/asr/: a parakeet-tdt GGUF (one file) or the Qwen3-ASR text + mmproj pair (two files). `backend` names which; `asr/` holds only that backend's files. Changing the ASR model means changing only this record and restaging; scripts/paradee-runtime.mjs admits exactly these files and refuses any other file under asr/.",
+  "slot": "asr",
+  "backend": "parakeet",
+  "runtimeEnv": {
+    "ELIZA_ASR_BACKEND": "parakeet"
+  },
+  "model": "Phonon-2 (Parakeet-TDT 0.6B, five-value weights), the upstream mobile-voice@1.1.0 default ASR (elizaOS/eliza#36212, d06a1aa9c9)",
+  "license": "CC-BY-4.0",
+  "attribution": "Phonon-2 by Fermion Research, CC-BY-4.0, derived from NVIDIA parakeet-tdt-0.6b-v3 (CC-BY-4.0). Fermion's NOTICE ships in the bundle (notices/Phonon-2-NOTICE.txt) and in the app's third-party notices; the GGUF also carries it as parakeet.notice.",
+  "licenseFlags": [
+    "Training audio listed in the Phonon-2 NOTICE includes CHiME-6 (CC-BY-SA-4.0) and SPGISpeech (Kensho terms). Flagged for review, not a build blocker."
+  ],
+  "install": "APK assets (assets/paradee-voice/v1/asr/), copied to app storage and SHA-256 verified on first use by ai.eliza.voice.VoiceAssets.install",
+  "files": [
+    {
+      "path": "asr/phonon-2-fv5.gguf",
+      "role": "asr-model",
+      "bytes": 330632256,
+      "sha256": "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
+      "architecture": "parakeet-tdt",
+      "source": "Converted by elizaOS/llama.cpp tools/parakeet/convert_phonon2_to_gguf.py --archive phonon-2.bps.tar.zst --output phonon-2-fv5.gguf --verify from huggingface.co/FermionResearch/Phonon-2@7e153e4054c0a10db6d47d6fff5c062d4c77c154 (archive sha256 98125795b6dda72f5c6eee9ba33d19815df65dcb18b50a357bf9f73c9935309e); byte-reproducible, equal to the mobile-voice@1.1.0 catalog pin (status unpublished: built locally, never downloaded)"
+    }
+  ]
+}

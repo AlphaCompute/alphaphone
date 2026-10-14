@@ -15,6 +15,10 @@
         <data android:mimeType="image/jpeg" />
       </intent-filter>
     </activity>
+    <!-- Autofill campaign only (PasswordVaultFillInstrumentedTest): a native sign-in form in the
+         test package, which has its own package name and the instrumentation signer. -->
+    <activity android:name="ai.elizaresearch.alphaphone.PasswordFillFixtureActivity"
+      android:exported="true" android:label="Alpha autofill fixture" />
     <!-- Bound only while AccessibilityInstrumentedTest performs its accessibility click, so that
          WebView is in the accessibility mode a screen reader gets. Never part of an app APK. -->
     <service android:name="ai.elizaresearch.alphaphone.ScreenReaderStandInService"

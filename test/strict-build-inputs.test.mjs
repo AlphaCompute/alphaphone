@@ -166,36 +166,38 @@ test('path remapping is opt-in, recorded in the receipt and leaves the default b
 test('the input report separates what a script produces from what needs a person', t => {
   const f = fixture(t);
   f.write('upstream.lock.json', JSON.stringify({commit: 'c'.repeat(40)}));
-  f.write('android/local-speech/runtime-manifest.json', JSON.stringify({aarSha256: sha('local build')}));
-  f.write('android/local-speech/qualified-runtime-manifest.json', JSON.stringify({aarSha256: sha('reviewed'), functionalAcceptance: {passed: false, state: 'failed', abis: {'arm64-v8a': {state: 'failed'}, x86_64: {state: 'not-executed'}}}}));
   f.write('android/release-signer.json', JSON.stringify({schema: 1, signerSha256: 'unset', lastRelease: {versionCode: null}}));
-  let rows = strictBuildInputs(f.root, null, {env: {}});
+  // A staged voice bundle that is not the pinned bytes; the real verifier is exercised in test/voice-host-bundle tests.
+  const badVoice = () => { throw new Error('Voice bundle file missing or changed: asr.gguf'); };
+  let rows = strictBuildInputs(f.root, null, {env: {}, voiceHost: badVoice});
   const row = name => rows.find(item => item.input === name);
-  assert.deepEqual(rows.filter(item => item.suppliedBy === 'person').map(item => item.input), ['speech runtime qualified', 'embedding host libraries', 'release signer']);
+  assert.deepEqual(rows.filter(item => item.suppliedBy === 'person').map(item => item.input), ['on-device voice outputs', 'on-device voice qualified', 'embedding host libraries', 'release signer']);
   assert.ok(rows.every(item => item.state === 'missing' && item.action), 'an empty checkout has nothing ready and an action for every input');
   assert.match(row('pinned upstream checkout').action, /git submodule update --init vendor\/eliza/);
-  assert.match(row('speech runtime qualified').detail, /installed AAR is not the reviewed one.*functional acceptance is failed \(arm64-v8a failed, x86_64 not-executed\)/);
-  assert.match(row('speech runtime qualified').action, /^Needs a person: approved policy requires on-device speech on both shipped ABIs/);
+  assert.match(row('on-device voice outputs').detail, /are not admitted by .*Voice bundle file missing or changed: asr\.gguf/);
+  assert.match(row('on-device voice outputs').action, /^Needs a person to supply the recorded voice outputs and models: node scripts\/android-stage-voice-models\.mjs --from /);
+  assert.match(row('on-device voice qualified').action, /^Needs a person: on-device qualification on both ABIs/);
   assert.match(row('embedding host libraries').action, /^Needs a person: /);
   assert.match(row('release signer').action, /^Needs a person: Alpha Compute controls signing and Shaw owns release/);
   assert.match(row('release signer').detail, /says unset; not set in this environment: ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS, ELIZAOS_KEY_PASSWORD/);
   for (const name of ['prepared resident runtime source', 'workflow worker artifact', 'staged resident runtime payload', 'embedding model', 'Gradle dependency verification metadata'])
     assert.match(row(name).action, /^npm run /, name);
   let report = formatReport(rows);
-  assert.match(report, /3 input\(s\) only a person can supply: speech runtime qualified, embedding host libraries, release signer\./);
+  assert.match(report, /4 input\(s\) only a person can supply: on-device voice outputs, on-device voice qualified, embedding host libraries, release signer\./);
   assert.match(report, /The chain cannot pass Gradle :app:verifyEmbeddingHost until a person supplies the embedding host libraries\./);
-  assert.match(report, /do not stop the build: verify-apks records its releases distributable:false/);
+  assert.match(report, /An unset release signer does not stop the build: verify-apks records its releases distributable:false/);
+  assert.match(report, /Missing or changed voice outputs stop Gradle :app:verifyVoiceHost in a distribution build; an unqualified voice host makes its releases distributable:false\./);
 
-  // A locally built speech runtime is installed but is never the qualified one; values of signing variables are never printed.
-  f.write('android/local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar', 'local build');
+  // Staged, admitted voice outputs are ready (qualification stays a person's); signing values are never printed.
   for (const name of f.names) f.stage(name);
   const prepared = path.join(f.root, 'artifacts/local-agent-resident-' + 'c'.repeat(40));
   f.write(path.relative(f.root, path.join(prepared, '.alpha-runtime-source.json')), 'stamp');
   f.write('android/app/src/main/assets/agent/alpha-source.json', 'stamp');
   f.write('android/app/src/main/assets/agent/workflow-worker/manifest.json', '{}');
-  rows = strictBuildInputs(f.root, prepared, {env: {ELIZAOS_KEYSTORE_PATH: '/secret/path.jks', ELIZAOS_KEYSTORE_PASSWORD: 'hunter2', ELIZAOS_KEY_ALIAS: 'release', ELIZAOS_KEY_PASSWORD: 'hunter2'}});
-  assert.equal(row('speech runtime installed').state, 'ready');
-  assert.equal(row('speech runtime qualified').state, 'missing');
+  rows = strictBuildInputs(f.root, prepared, {env: {ELIZAOS_KEYSTORE_PATH: '/secret/path.jks', ELIZAOS_KEYSTORE_PASSWORD: 'hunter2', ELIZAOS_KEY_ALIAS: 'release', ELIZAOS_KEY_PASSWORD: 'hunter2'}, voiceHost: () => ({status: 'packaged', qualified: false})});
+  assert.equal(row('on-device voice outputs').state, 'ready');
+  assert.match(row('on-device voice outputs').detail, /^staged outputs match android\/voice-host\/qualified-voice-host\.json/);
+  assert.equal(row('on-device voice qualified').state, 'missing');
   assert.equal(row('embedding host libraries').state, 'ready');
   assert.equal(row('staged resident runtime payload').state, 'ready');
   assert.equal(row('release signer').state, 'missing', 'signing variables alone do not make a release signer');
@@ -205,9 +207,9 @@ test('the input report separates what a script produces from what needs a person
 
   // Once the reviewed bytes are reproducible the same row belongs to a script.
   const g = fixture(t, {remapBuildPath: true});
-  for (const file of ['upstream.lock.json', 'android/local-speech/runtime-manifest.json', 'android/local-speech/qualified-runtime-manifest.json', 'android/release-signer.json'])
+  for (const file of ['upstream.lock.json', 'android/release-signer.json'])
     g.write(file, fs.readFileSync(path.join(f.root, file), 'utf8'));
-  const host = strictBuildInputs(g.root, null, {env: {}}).find(item => item.input === 'embedding host libraries');
+  const host = strictBuildInputs(g.root, null, {env: {}, voiceHost: () => ({status: 'not-packaged'})}).find(item => item.input === 'embedding host libraries');
   assert.deepEqual([host.suppliedBy, host.action], ['script', 'npm run agent:build-embedding-host']);
 });
 
@@ -218,15 +220,15 @@ test('the real checkout reports its inputs without failing and without building'
   assert.equal(result.status, 0, result.stderr);
   const rows = JSON.parse(result.stdout);
   const row = name => rows.find(item => item.input === name);
-  assert.deepEqual(rows.map(item => item.input), ['pinned upstream checkout', 'speech runtime installed', 'speech runtime qualified', 'embedding host libraries',
+  assert.deepEqual(rows.map(item => item.input), ['pinned upstream checkout', 'on-device voice outputs', 'on-device voice qualified', 'embedding host libraries',
     'prepared resident runtime source', 'workflow worker artifact', 'staged resident runtime payload', 'embedding model', 'Gradle dependency verification metadata', 'release signer']);
   assert.equal(row('Gradle dependency verification metadata').state, 'ready');
-  // A qualified speech runtime and a release signer are a person's to supply, whatever is staged locally,
-  // and the report follows the committed records: it never calls either ready while they say otherwise.
+  // The pinned voice models and a release signer are a person's to supply, whatever is staged locally,
+  // and the report follows the committed records: it never calls the signer ready while they say otherwise.
   assert.equal(row('release signer').suppliedBy, 'person');
   assert.equal(row('release signer').state, 'missing', 'no signing values in this environment');
-  assert.equal(row('speech runtime qualified').suppliedBy, 'person');
-  if (readJson('android/local-speech/qualified-runtime-manifest.json').functionalAcceptance?.passed !== true) assert.equal(row('speech runtime qualified').state, 'missing');
+  assert.equal(row('on-device voice outputs').suppliedBy, 'person');
+  assert.equal(row('on-device voice qualified').state, 'missing', 'the committed record is not qualified');
   assert.equal(row('embedding host libraries').suppliedBy, readJson(BUILD_TOOLCHAIN).remapBuildPath === true ? 'script' : 'person');
   for (const item of rows) assert.equal(item.action === null, item.state === 'ready', item.input);
 });

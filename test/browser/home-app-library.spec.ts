@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 // Development lane with a native-plugin stub: the page sees an Android Capacitor bridge whose
 // DeviceApps answers and `appsChanged` events come from this file. The stub's inventory is the
 // "device": tests add and remove entries there, never in the renderer. No Android package manager,
-// work profile or HOME role is involved; LauncherLibraryInstrumentedTest and
+// work profile or HOME role is involved; LauncherAppsInstrumentedTest and
 // LauncherHomeInstrumentedTest cover the Android side, and a phone covers acceptance.
 
 type App = { packageName: string; label: string; activityName?: string; user?: string; profile?: string; locked?: boolean; icon?: string };

@@ -1,6 +1,11 @@
 {
-  "description": "Recorded reasons for shipped or staged items whose licence could not be established from shipped metadata. This file gates nothing (docs/decisions.md P-09): each item is listed in the notices and flagged 'unverified' (or, for a font with no record in font-licenses.json, 'proprietary-no-licence-recorded') whether or not it has an entry here, and the reason below is printed as its obligation note. A reason is a record, not legal sign-off. A font entry carries the exact file hash; scripts/font-license-blockers.mjs reports a payload file with those bytes as an unresolved font.",
+  "description": "Recorded reasons for shipped or staged items whose licence could not be established from shipped metadata. This file gates nothing (docs/decisions.md P-09): each item is listed in the notices and flagged 'unverified' (or, for a font with no record in font-licenses.json, 'proprietary-no-licence-recorded') whether or not it has an entry here, and the reason below is printed as its obligation note. A reason is a record, not legal sign-off. A font entry carries the exact file hash; scripts/font-license-blockers.mjs reports a payload file with those bytes as an unresolved font. An entry with `requires` names the record that ships the item; it is reported as stale only once that record exists.",
   "entries": [
+    {
+      "name": "elizaOS voice runtime sources (Paradee graph, kokoro layers, eliza-inference FFI, elizavoice-jni) in libelizainference",
+      "requires": "android/voice-host/qualified-voice-host.json",
+      "reason": "These sources are compiled into libelizainference from the elizaOS llama.cpp fork at the forkPin recorded in android/voice-host/qualified-voice-host.json (tools/paradee, tools/kokoro, tools/misaki-g2p, tools/omnivoice) and the elizavoice-jni bridge from the pinned elizaOS/eliza source. elizaOS is MIT, but the fork vendors third-party voice code whose per-file licences are not enumerated by the voice host record. Flagged, not blocking."
+    },
     {
       "name": "On-device elizaOS agent runtime payload",
       "reason": "The staged runtime can ship in standard Android builds. When it is staged, Bun and the bundled agent and workflow-worker npm packages are enumerated from the prepared source; the remaining payload files (musl loader, libstdc++/libgcc_s, PGlite WebAssembly and data, PostgreSQL extensions, models) are not."
@@ -8,18 +13,6 @@
     {
       "name": "pdf.js QuickJS sandbox",
       "reason": "pdfjs-dist ships quickjs-eval.js/.wasm without a license file. The upstream sandbox build and QuickJS itself are believed to be permissively licensed, but no shipped license text establishes it."
-    },
-    {
-      "name": "Eliza-1 ASR model (Qwen3-ASR GGUF)",
-      "reason": "The shared Eliza-1 ASR GGUF is a conversion of a Qwen3-ASR checkpoint. The reviewed pins record path, size and SHA-256 only; the upstream model licence and any conversion terms have not been confirmed from shipped metadata."
-    },
-    {
-      "name": "Eliza-1 ASR audio projector (Qwen3-ASR mmproj GGUF)",
-      "reason": "The ASR audio projector GGUF is converted from the same Qwen3-ASR checkpoint as the ASR model. The reviewed pins record path, size and SHA-256 only; its licence has not been confirmed from shipped metadata."
-    },
-    {
-      "name": "Silero VAD v5 (GGUF)",
-      "reason": "Silero VAD is published by the Silero team; this GGUF conversion is pinned by path, size and SHA-256 only. The licence of the converted bytes has not been confirmed from shipped metadata."
     }
   ]
 }

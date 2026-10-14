@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
-import {AVD,READING_CLASSES,READING_TEST_MOCKS_CLASSES,SERIAL,SPEECH_WORKSPACE,disableEmulatorNetwork,runSuite,suitePlan,summarize} from '../scripts/ci/emulator-suite.mjs';
-import {CANONICAL_TEST,candidateProblems,packageSpeechRun} from '../scripts/ci/speech-candidate.mjs';
+import {AVD,FUSED_SPEECH_CLASSES,READING_CLASSES,READING_TEST_MOCKS_CLASSES,SERIAL,disableEmulatorNetwork,runSuite,suitePlan,summarize} from '../scripts/ci/emulator-suite.mjs';
+import {CANONICAL_TEST,asrPackaged,candidateProblems,packageSpeechRun} from '../scripts/ci/speech-candidate.mjs';
 import {CLASS_REGISTRY,DEFAULT_CLASSES,parseInstrumentationArgs} from '../scripts/android-instrumentation.mjs';
 import {affected} from '../scripts/ci/affected.mjs';
 
@@ -19,7 +19,7 @@ function jobs(text){
  return Object.fromEntries(names.map((match,index)=>[match[1],body.slice(match.index,names[index+1]?.index??body.length)]));
 }
 const job=jobs(workflow);
-const emulatorJobs=['instrumentation','browser-reading','local-speech'];
+const emulatorJobs=['instrumentation','browser-reading','fused-speech'];
 const hosted={GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'7'};
 
 test('emulator evidence workflow has no trigger but a dispatch that names a suite',()=>{
@@ -70,7 +70,7 @@ test('every emulator job uploads its result directory, also after a failure',()=
   assert.doesNotMatch(job[name],/continue-on-error/,name);
  }
  for(const name of ['instrumentation','browser-reading'])assert.match(job[name],/\n            test-results\/android-instrumentation\/\n/,name);
- assert.match(job['local-speech'],/\n            test-results\/local-speech-x86_64\/\n/);
+ assert.match(job['fused-speech'],/\n            test-results\/fused-speech-x86_64\/\n/);
  // The provider archive is reproduced from its pin, not uploaded again.
  assert.match(job['browser-reading'],/!test-results\/ci-webview-provider\/chromium\.zip\n            !test-results\/ci-webview-provider\/SystemWebView\.apk/);
 });
@@ -85,7 +85,10 @@ test('every action in the emulator evidence workflow is pinned to an exact commi
  // One commit per action across the file, and the first-party pins are the ones the other workflows use.
  const pins=new Map();for(const [,target] of uses){const [name,commit]=target.split('@');assert.equal(pins.get(name)??commit,commit,name);pins.set(name,commit);}
  const others=['android.yml','browser.yml','resident-android.yml'].map(file=>read(path.join('.github/workflows',file))).join('\n');
- for(const [name,commit] of pins)if(name.startsWith('actions/'))assert.ok(others.includes(`${name}@${commit}`),`${name} is pinned to a commit no other workflow uses`);
+ // actions/cache is used only here (the fused-speech voice-model cache) since the browser speech
+ // caches left the other workflows; every other first-party action shares their reviewed pin.
+ for(const [name,commit] of pins)if(name.startsWith('actions/')&&name!=='actions/cache')assert.ok(others.includes(`${name}@${commit}`),`${name} is pinned to a commit no other workflow uses`);
+ assert.equal(others.includes('actions/cache@'),false,'a shared actions/cache must use the same pin in every workflow');
  assert.deepEqual([...pins.keys()].filter(name=>!name.startsWith('actions/')).sort(),['android-actions/setup-android','gradle/actions/setup-gradle','reactivecircus/android-emulator-runner']);
 });
 
@@ -117,21 +120,30 @@ test('a change to the emulator evidence workflow selects no automatic lane of it
  for(const suite of [...emulatorJobs,'all'])assert.ok(policy.includes(`gh workflow run android-emulator.yml --ref <branch> -f suite=${suite}`),suite);
 });
 
-test('the build job records the speech candidate from the runtime it builds and hands over hash-anchored APKs',()=>{
+test('the build job refuses the speech suite until hosted Paradee staging exists and hands over hash-anchored APKs',()=>{
  const build=job.build;
- const order=['scripts/local-speech/build-no-espeak.py','scripts/local-speech/verify-source.py','scripts/local-speech/assemble-runtime.py','scripts/local-speech/requalify-runtime.py record','scripts/local-speech/install-generated.py','npm run android:build -- --allow-unpackaged-runtime','npm run android:build -- --test-mocks','actions/upload-artifact@'].map(text=>build.indexOf(text));
+ const order=['npm run android:build -- --allow-unpackaged-runtime','npm run android:build -- --test-mocks','actions/upload-artifact@'].map(text=>build.indexOf(text));
  assert.ok(order.every(index=>index>0),'every build step is present');assert.deepEqual([...order].sort((a,b)=>a-b),order,'in this order');
- assert.match(build,/for abi in arm64-v8a x86_64; do/,'the candidate is one rebuild of both ABIs');
- assert.match(build,/requalify-runtime\.py record --ndk "\$ANDROID_NDK_HOME" \\\n\s+--candidate test-results\/local-speech-ci\/requalification\/candidate\.json/);
- assert.match(build,/install-generated\.py --repository "\$GITHUB_WORKSPACE" --allow-unqualified-runtime/);
- assert.doesNotMatch(workflow,/requalify-runtime\.py admit|--reviewer/,'admission needs a reviewer named by a person; no job admits');
+ // The fused-speech suite needs staged Paradee outputs and a same-engine embedding host; the hosted job cannot
+ // produce that pair yet, so it refuses instead of building an APK that only proves speech is unavailable.
+ assert.match(build,/- name: Refuse the fused-speech suite until hosted voice staging exists\n        if: inputs\.suite == 'fused-speech' \|\| inputs\.suite == 'all'\n        run: \|\n          echo "::error::[^\n]*"\n          exit 1\n/);
+ assert.ok(build.indexOf('Refuse the fused-speech suite')<build.indexOf('npm run android:build'),'before any build');
+ // No other speech runtime is built, acquired or recorded, and nothing here admits anything by a person's review.
+ assert.doesNotMatch(workflow,/scripts\/local-speech|requalify-runtime|browser-speech|--reviewer|android-voice-lexicon|kokoro/i);
  // The instrumentation APKs are built (no --skip-instrumentation) and the flag-off pair stays flag-off.
  assert.doesNotMatch(build,/--skip-instrumentation/);
  assert.match(build,/ELIZA_DEV_ALLOW_TEST_MOCKS: ""\n          VITE_ELIZA_DEV_ALLOW_TEST_MOCKS: ""\n        run: npm run android:build -- --allow-unpackaged-runtime\n/);
  assert.match(build,/if: inputs\.suite == 'browser-reading' \|\| inputs\.suite == 'all'\n        run: \|\n          before=/,'the test-mocks pair is built only for the suite that needs it');
- for(const file of ['artifacts/apk-manifest.json','artifacts/standalone-debug.apk','artifacts/launcher-debug.apk','artifacts/instrumentation/*.apk','artifacts/test-mocks/apk-manifest.json','test-results/local-speech-ci/requalification/candidate.json'])
+ for(const file of ['artifacts/apk-manifest.json','artifacts/standalone-debug.apk','artifacts/launcher-debug.apk','artifacts/instrumentation/*.apk','artifacts/test-mocks/apk-manifest.json'])
   assert.ok(build.includes(`\n            ${file}\n`),`${file} is handed to the emulator jobs`);
- for(const output of ['manifest_sha256','test_mocks_manifest_sha256','candidate_sha256','artifact_id','source_sha'])assert.match(build,new RegExp(`\\n      ${output}: \\$\\{\\{ `),output);
+ // The record the APK was admitted against travels with the build evidence.
+ for(const file of ['android/voice-host/qualified-voice-host.json','.eliza/paradee-voice/native/build-record.json'])assert.ok(build.includes(`\n            ${file}\n`),file);
+ for(const output of ['manifest_sha256','test_mocks_manifest_sha256','artifact_id','source_sha'])assert.match(build,new RegExp(`\\n      ${output}: \\$\\{\\{ `),output);
+ // The speech job checks the APK it was handed against that record before booting anything.
+ const speech=job['fused-speech'];
+ assert.ok(speech.indexOf('node scripts/ci/speech-candidate.mjs check artifacts/standalone-debug.apk')>0);
+ assert.ok(speech.indexOf('speech-candidate.mjs check')<speech.indexOf('android-emulator-runner@'));
+ assert.match(speech,/node scripts\/ci\/speech-candidate\.mjs package test-results\/android-instrumentation\/ci-fused-speech test-results\/fused-speech-x86_64/);
 });
 
 test('the reading job provisions the pinned WebView on the fixture its provisioner admits',()=>{
@@ -141,7 +153,7 @@ test('the reading job provisions the pinned WebView on the fixture its provision
  assert.match(text,/EXPECTED_TEST_MOCKS_MANIFEST_SHA256: \$\{\{ needs\.build\.outputs\.test_mocks_manifest_sha256 \}\}/);
  assert.match(text,/test -n "\$EXPECTED_TEST_MOCKS_MANIFEST_SHA256"\n\s+test "\$\(sha256sum artifacts\/test-mocks\/apk-manifest\.json/);
  // The other jobs keep the image's own provider: no writable system partition.
- for(const name of ['instrumentation','local-speech'])assert.doesNotMatch(job[name],/-writable-system/,name);
+ for(const name of ['instrumentation','fused-speech'])assert.doesNotMatch(job[name],/-writable-system/,name);
 });
 
 test('suite plans: default classes; reading classes with the builds and gates they need; the canonical speech run',()=>{
@@ -169,14 +181,16 @@ test('suite plans: default classes; reading classes with the builds and gates th
  // The negative class needs a provider WITHOUT isolated worlds; it must not share this fixture.
  assert.ok(![...READING_CLASSES,...READING_TEST_MOCKS_CLASSES].includes('BrowserUnsupportedReading'));
 
- const speech=suitePlan('local-speech');
- assert.deepEqual(speech.map(step=>[step.name,step.kind]),[['prepare-emulator','preparation'],['network-off','preparation'],['canonical-speech-x86_64','evidence']]);
- assert.deepEqual(speech[2].command,['python3','scripts/local-speech/requalify-runtime.py','run','--serial','emulator-5554','--workspace','test-results/local-speech-ci','--apk','artifacts/standalone-debug.apk','--test-apk','artifacts/instrumentation/standalone-androidTest.apk']);
- assert.equal(speech[2].results,`${SPEECH_WORKSPACE}/requalification/candidate.json`);
- // The tool runs the canonical class itself, with its own gate; nothing here selects methods or edits the test.
- const tool=read('scripts/local-speech/requalify-runtime.py');
- assert.match(tool,/'-e', 'localSpeech', '1', '-e', 'class', CANONICAL_CLASS, RUNNER/);
- assert.ok(tool.includes(`CANONICAL_TEST = '${CANONICAL_TEST}'`));
+ const speech=suitePlan('fused-speech');
+ assert.deepEqual(speech.map(step=>[step.name,step.kind]),[['prepare-emulator','preparation'],['network-off','preparation'],['ci-fused-speech','evidence']]);
+ assert.equal(speech[1].action,'network-off');
+ const fused=parseInstrumentationArgs(speech[2].command.slice(4));
+ assert.deepEqual(fused.variants,['standalone']);assert.equal(fused.testMocks,false);
+ assert.deepEqual(fused.classes.map(name=>name.split('.').at(-1)),FUSED_SPEECH_CLASSES.map(name=>name+'InstrumentedTest'));
+ // Each speech class is registered with its own gate; nothing here selects methods.
+ assert.deepEqual(Object.fromEntries(FUSED_SPEECH_CLASSES.map(name=>[name,CLASS_REGISTRY[name].args])),{LocalSpeech:{localSpeech:'1'},LocalSpeechBridge:{localSpeechBridge:'1'},SpeechSentenceCancellation:{speechSentenceCancellation:'1'},VoiceNoteReadAloud:{localSpeech:'1'},LiveVoiceVad:{localSpeech:'1'}});
+ assert.equal(speech[2].results,'test-results/android-instrumentation/ci-fused-speech/results.json');
+ assert.ok(read(CANONICAL_TEST).includes('"1".equals(InstrumentationRegistry.getArguments().getString("localSpeech"))'));
  assert.throws(()=>suitePlan('all'),/Unknown suite/);assert.throws(()=>suitePlan('resident'),/Unknown suite/);
  assert.equal(SERIAL,'emulator-5554');assert.equal(AVD,'test');
 });
@@ -242,83 +256,90 @@ test('suite run: preparation failure stops it; evidence steps are independent; a
  assert.throws(()=>runSuite('instrumentation',{environment:{},execute:()=>{throw new Error('must not run');}}),/only on a GitHub-hosted runner/);
 });
 
-test('speech suite: networking is proven off before the canonical test, and only the candidate decides the result',t=>{
+test('speech suite: networking is proven off before the speech classes, and only their record decides the result',t=>{
  const root=inDirectory(t);
- const candidate=(state)=>{const file=path.join(root,SPEECH_WORKSPACE,'requalification/candidate.json');fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,JSON.stringify({functionalAcceptance:{passed:false,abis:{'arm64-v8a':{passed:false,state:'not-executed'},x86_64:state}}}));};
+ const step=suitePlan('fused-speech')[2];
  const log=[];
  const adb=online=>args=>{log.push(args.join(' '));if(args.includes('dumpsys'))return `Idle timers:\nActive default network: ${online.shift()??'none'}\n`;if(args.at(-1)==='airplane-mode')return 'enabled\n';return '';};
- candidate({passed:false,state:'not-executed'});
- const passed=runSuite('local-speech',{environment:hosted,network:{sleep:()=>{}},adb:adb(['100','none']),execute:command=>{if(command[0]==='python3')candidate({passed:true,state:'passed',testsPassed:2});return 0;}});
+ const all=status=>Object.fromEntries(FUSED_SPEECH_CLASSES.map(name=>[name,status]));
+ const passed=runSuite('fused-speech',{environment:hosted,network:{sleep:()=>{}},adb:adb(['100','none']),execute:command=>{if(command[0]==='npm')results(root,step,all('passed'));return 0;}});
  assert.deepEqual(passed.steps.map(row=>row.status),['passed','passed','passed']);assert.equal(passed.passed,true);
  assert.deepEqual(passed.steps[1].observed,{airplaneMode:'enabled',activeDefaultNetwork:'none'});
  assert.deepEqual(log.slice(0,3),['shell cmd connectivity airplane-mode enable','shell svc wifi disable','shell svc data disable']);
  assert.equal(log.filter(line=>line==='shell dumpsys connectivity').length,2,'polled until Android reported no default network');
- assert.match(summarize(passed),/x86_64 passed, 2 of 2 canonical tests passed\. The other ABI and a named reviewer are still required before admission\./);
- assert.ok(passed.notEvidenceFor.includes('speech runtime admission'));
-
- // The tool exits 3 and records the failure: reported as failed with its problems.
- candidate({passed:false,state:'not-executed'});
- const failed=runSuite('local-speech',{environment:hosted,adb:adb([]),execute:command=>{if(command[0]==='python3'){candidate({passed:false,state:'failed',testsPassed:1,problems:['nativeModelsTranscribeAndSynthesizeWithNoNetwork: failed']});return 3;}return 0;}});
- assert.equal(failed.passed,false);assert.equal(failed.steps[2].evidence.speech.state,'failed');assert.match(summarize(failed),/nativeModelsTranscribeAndSynthesizeWithNoNetwork: failed/);
- // Exit 0 without a recorded pass (the tool crashed before ingest) is not a pass.
- candidate({passed:false,state:'not-executed'});
- const unrecorded=runSuite('local-speech',{environment:hosted,adb:adb([]),execute:()=>0});
+ assert.ok(passed.notEvidenceFor.includes('arm64-v8a speech'));assert.equal(passed.evidenceClass,'E');
+ // A failed or skipped speech class fails the suite, whatever the exit status says.
+ for(const status of ['failed','skipped']){
+  fs.rmSync(path.join(root,'test-results'),{recursive:true,force:true});
+  const report=runSuite('fused-speech',{environment:hosted,adb:adb([]),execute:command=>{if(command[0]==='npm')results(root,step,{...all('passed'),FusedSpeech:status});return 0;}});
+  assert.equal(report.passed,false,status);assert.equal(report.steps[2].status,'failed',status);
+ }
+ // A run that left no record is not a pass.
+ fs.rmSync(path.join(root,'test-results'),{recursive:true,force:true});
+ const unrecorded=runSuite('fused-speech',{environment:hosted,adb:adb([]),execute:()=>0});
  assert.equal(unrecorded.passed,false);assert.equal(unrecorded.steps[2].status,'failed');
- // A network that stays up stops the suite before the test is started.
+ // A network that stays up stops the suite before any class is started.
  let ran=false;
- const online=runSuite('local-speech',{environment:hosted,network:{attempts:3,sleep:()=>{}},adb:args=>args.includes('dumpsys')?'Active default network: 100\n':'',execute:command=>{if(command[0]==='python3')ran=true;return 0;}});
+ const online=runSuite('fused-speech',{environment:hosted,network:{attempts:3,sleep:()=>{}},adb:args=>args.includes('dumpsys')?'Active default network: 100\n':'',execute:command=>{if(command[0]==='npm')ran=true;return 0;}});
  assert.equal(ran,false);assert.deepEqual(online.steps.map(row=>row.status),['passed','failed','not-run']);
  assert.throws(()=>disableEmulatorNetwork(()=>'no such line',{attempts:2,sleep:()=>{}}),/still has a default network \(not reported\)/);
 });
 
 const sha=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-test('speech candidate check refuses another test, another pin, a missing ABI and a candidate that already ran',()=>{
- const bound={canonicalTestSha256:'c'.repeat(64),upstreamCommit:'d'.repeat(40)};
- const good=()=>({admission:'requalification-candidate',provenance:{canonicalTestSha256:bound.canonicalTestSha256,upstreamCommit:bound.upstreamCommit},qualifiedAbis:[{abi:'arm64-v8a',native:[{file:'a.so'}]},{abi:'x86_64',native:[{file:'a.so'}]}],functionalAcceptance:{passed:false,abis:{'arm64-v8a':{state:'not-executed'},x86_64:{state:'not-executed'}}}});
- assert.deepEqual(candidateProblems(good(),bound),[]);
- const cases=[[c=>{c.provenance.canonicalTestSha256='e'.repeat(64);},/canonical test differs/],[c=>{c.provenance.upstreamCommit='f'.repeat(40);},/another upstream pin/],[c=>{c.qualifiedAbis.pop();},/x86_64 is not part of this rebuild/],
-  [c=>{c.functionalAcceptance.abis.x86_64.state='passed';},/already recorded as passed/],[c=>{c.functionalAcceptance.passed=true;},/cannot arrive already passed/],[c=>{c.admission='requalified-independent-rebuild';},/not a requalification candidate/]];
- for(const [change,expected] of cases){const candidate=good();change(candidate);assert.match(candidateProblems(candidate,bound).join('; '),expected);}
- assert.ok(candidateProblems(null,bound).length>=4);
- // The command binds to this checkout's canonical test and pin.
+const bytesSha=bytes=>createHash('sha256').update(bytes).digest('hex');
+test('speech candidate check refuses an APK whose voice bundle or x86_64 engine is not the recorded bytes',()=>{
+ const model=Buffer.from('paradee'),lexicon=Buffer.from('misaki'),vad=Buffer.from('silero'),engine=Buffer.from('engine'),asr=Buffer.from('asr');
+ const row=(file,role,bytes)=>({path:file,role,sha256:bytesSha(bytes),bytes:bytes.length});
+ const host={models:[row('tts/paradee/paradee-8m-v1_0.gguf','tts-model',model),row('tts/paradee/misaki-en-us.lex','g2p-lexicon',lexicon),row('vad/silero-vad-v5.gguf','vad-model',vad),
+  row('asr/phonon-2-fv5.gguf','asr-model',asr)],
+  abis:[{abi:'x86_64',libraries:[{name:'libelizainference.so',sha256:bytesSha(engine),bytes:engine.length}]}]};
+ const apk=(change=()=>{},withAsr=false)=>{
+  const listed=host.models.filter(entry=>withAsr||!entry.path.startsWith('asr/'));
+  const files={'lib/x86_64/libelizainference.so':engine,'lib/x86_64/libparadeevoicejni.so':Buffer.from('jni'),
+   'assets/paradee-voice/v1/manifest.json':Buffer.from(JSON.stringify({format:'eliza-paradee-voice-v1',files:listed.map(({path:file,sha256,bytes})=>({path:file,sha256,bytes}))}))};
+  for(const entry of listed)files[`assets/paradee-voice/v1/${entry.path}`]={'tts/paradee/paradee-8m-v1_0.gguf':model,'tts/paradee/misaki-en-us.lex':lexicon,'vad/silero-vad-v5.gguf':vad,'asr/phonon-2-fv5.gguf':asr}[entry.path];
+  change(files);return {names:Object.keys(files),read:entry=>files[entry]??null};
+ };
+ // Without the ASR slot file (Phonon-2) the run still exercises Paradee and cancellation; it is admitted and says it has no ASR.
+ assert.deepEqual(candidateProblems(apk(),host),[]);
+ assert.equal(asrPackaged(apk()),false);
+ assert.deepEqual(candidateProblems(apk(()=>{},true),host),[]);
+ assert.equal(asrPackaged(apk(()=>{},true)),true);
+ assert.equal(asrPackaged(apk(files=>{files['assets/paradee-voice/v1/manifest.json']=Buffer.from('not json');})),false);
+ const cases=[[files=>{delete files['assets/paradee-voice/v1/manifest.json'];},/carries no on-device voice bundle/],[files=>{files['assets/paradee-voice/v1/vad/silero-vad-v5.gguf']=Buffer.from('other');},/vad\/silero-vad-v5\.gguf is not a recorded voice file/],
+  [files=>{files['lib/x86_64/libelizainference.so']=Buffer.from('rebuilt');},/lib\/x86_64\/libelizainference\.so differs from the recorded engine/],[files=>{delete files['lib/x86_64/libparadeevoicejni.so'];},/libparadeevoicejni\.so is not packaged/]];
+ for(const [change,expected] of cases)assert.match(candidateProblems(apk(change),host).join('; '),expected);
+ assert.match(candidateProblems(apk(),{...host,abis:[]}).join('; '),/x86_64 has no recorded engine/);
+ // The committed record is not qualified, so a passing emulator run never qualifies it by itself.
+ assert.equal(JSON.parse(read('android/voice-host/qualified-voice-host.json')).qualified,false);
  assert.ok(fs.existsSync(CANONICAL_TEST));
- const committed=JSON.parse(read('android/local-speech/requalification/candidate-20261009.json'));
- const run=spawnSync(process.execPath,['scripts/ci/speech-candidate.mjs','check','android/local-speech/requalification/candidate-20261009.json'],{encoding:'utf8'});
- assert.equal(run.status,1,'the committed candidate is from an earlier pin and already ran arm64; it is not this run\'s candidate');
- assert.match(run.stderr,/Speech candidate refused/);
- assert.notEqual(committed.provenance.canonicalTestSha256,sha(CANONICAL_TEST),'Paradee test changes cannot reuse the historical Sherpa candidate');
- assert.match(run.stderr,/canonical test differs/);
 });
 
-test('speech package holds what ingest reads and reports only what the candidate records',t=>{
+test('speech package copies the run and its APK pair and reports only what the record shows',t=>{
  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'speech-package-')));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const put=(name,text)=>{fs.mkdirSync(path.dirname(path.join(root,name)),{recursive:true});fs.writeFileSync(path.join(root,name),text);};
- const candidate=x86=>JSON.stringify({aarSha256:'a'.repeat(64),provenance:{upstreamCommit:'d'.repeat(40)},functionalAcceptance:{passed:false,abis:{'arm64-v8a':{passed:false,state:'not-executed'},x86_64:x86}}});
- put('ws/requalification/candidate.json',candidate({passed:true,state:'passed',testsPassed:2,appAPKSha256:'b'.repeat(64)}));
- put('ws/candidate-before-run.json',candidate({passed:false,state:'not-executed'}));
- put('ws/requalification/x86_64/instrumentation.log','OK (2 tests)\n');put('ws/requalification/x86_64/local-speech-evidence/result.json','{"pass":true}');put('ws/requalification/x86_64/local-speech-evidence/holder-result.json','{"pass":true}');
+ const record=(statuses,passed=true)=>put('runs/ci-fused-speech/results.json',JSON.stringify({passed,classes:Object.entries(statuses).map(([name,status])=>({variant:'standalone',class:`ai.elizaresearch.alphaphone.${name}InstrumentedTest`,status}))}));
+ record(Object.fromEntries(FUSED_SPEECH_CLASSES.map(name=>[name,'passed'])));
  put('artifacts/standalone-debug.apk','app');put('artifacts/instrumentation/standalone-androidTest.apk','test');
- const result=packageSpeechRun({workspace:'ws',output:'out',repository:root,environment:{GITHUB_SHA:'9'.repeat(40),GITHUB_RUN_ID:'12'}});
- assert.equal(result.passed,true);assert.equal(result.state,'passed');assert.deepEqual(result.missing,[]);assert.deepEqual(result.otherAbis,{'arm64-v8a':'not-executed'});
- assert.match(result.admission,/^not admitted/);assert.ok(result.notEvidenceFor.includes('arm64-v8a'));
- assert.deepEqual(Object.keys(result.files).sort(),['candidate-before-run.json','candidate.json','standalone-androidTest.apk','standalone-debug.apk','x86_64/instrumentation.log','x86_64/local-speech-evidence/holder-result.json','x86_64/local-speech-evidence/result.json']);
+ const result=packageSpeechRun({results:'runs/ci-fused-speech',output:'out',repository:root,environment:{GITHUB_SHA:'9'.repeat(40),GITHUB_RUN_ID:'12'},asr:true});
+ assert.equal(result.passed,true);assert.deepEqual(result.missing,[]);assert.equal(result.abi,'x86_64');assert.equal(result.evidenceClass,'E');assert.equal(result.commit,'9'.repeat(40));
+ assert.match(result.admission,/^not admitted/);for(const item of ['arm64-v8a','Paradee intelligibility','physical-device acceptance'])assert.ok(result.notEvidenceFor.includes(item),item);
+ assert.equal(result.asrPackaged,true);assert.ok(!result.notEvidenceFor.some(item=>/transcription/.test(item)));
+ assert.deepEqual(Object.keys(result.files).sort(),['instrumentation/results.json','standalone-androidTest.apk','standalone-debug.apk']);
  assert.equal(result.files['standalone-debug.apk'],sha(path.join(root,'artifacts/standalone-debug.apk')));
- // The ingest command names exactly the options the tool requires, and files that are in the package.
- for(const option of ['--abi x86_64','--device-abi x86_64','--apk DIR/standalone-debug.apk','--log DIR/x86_64/instrumentation.log','--evidence DIR/x86_64/local-speech-evidence','--candidate DIR/candidate-ingest.json'])assert.ok(result.ingest.includes(option),option);
- assert.match(read('scripts/local-speech/requalify-runtime.py'),/ingest needs --abi, --device-abi, --apk, --log and --evidence/);
  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'out/result.json'),'utf8')),result);
- assert.throws(()=>packageSpeechRun({workspace:'ws',output:'out',repository:root}),/already exists/);
-
- // A run that never produced its log is packaged as incomplete, never as a pass.
- fs.rmSync(path.join(root,'ws/requalification/x86_64'),{recursive:true});
- const partial=packageSpeechRun({workspace:'ws',output:'out-partial',repository:root});
- assert.equal(partial.passed,false);assert.deepEqual(partial.missing,['x86_64/instrumentation.log','x86_64/local-speech-evidence']);
- put('ws/requalification/candidate.json',candidate({passed:false,state:'failed',problems:['modelHolderReusesAndReleasesOnItsWorker: failed']}));
- const failed=packageSpeechRun({workspace:'ws',output:'out-failed',repository:root});
- assert.equal(failed.passed,false);assert.equal(failed.state,'failed');assert.deepEqual(failed.recorded.problems,['modelHolderReusesAndReleasesOnItsWorker: failed']);
- fs.rmSync(path.join(root,'ws'),{recursive:true});
- const empty=packageSpeechRun({workspace:'ws',output:'out-empty',repository:root});
- assert.equal(empty.passed,false);assert.equal(empty.state,'no-candidate');
+ assert.throws(()=>packageSpeechRun({results:'runs/ci-fused-speech',output:'out',repository:root}),/already exists/);
+ // A class that did not pass, or one that never ran, is packaged as a failure.
+ // Without an ASR pair (or with an unreadable APK) transcription is named as not evidenced.
+ for(const [asr,output] of [[false,'out-no-asr'],[null,'out-unknown-asr']]){const run=packageSpeechRun({results:'runs/ci-fused-speech',output,repository:root,asr});assert.equal(run.asrPackaged,asr);assert.ok(run.notEvidenceFor.some(item=>/^on-device transcription/.test(item)),output);}
+ record({...Object.fromEntries(FUSED_SPEECH_CLASSES.map(name=>[name,'passed'])),LocalSpeech:'failed'},false);
+ assert.equal(packageSpeechRun({results:'runs/ci-fused-speech',output:'out-failed',repository:root}).passed,false);
+ record({LocalSpeech:'passed'});
+ assert.equal(packageSpeechRun({results:'runs/ci-fused-speech',output:'out-partial',repository:root}).passed,false);
+ // A run that never produced its record is packaged as incomplete, never as a pass.
+ fs.rmSync(path.join(root,'runs'),{recursive:true});
+ const empty=packageSpeechRun({results:'runs/ci-fused-speech',output:'out-empty',repository:root});
+ assert.equal(empty.passed,false);assert.deepEqual(empty.missing,['instrumentation']);
 });
 
 test('the suite command refuses to start, and writes nothing, outside a hosted runner',t=>{

@@ -13,8 +13,10 @@ Only synthetic text/audio was used. No bearer appears in the evidence.
 
 ## Source fixes and reproducibility
 
-`patches/eliza/0002-paired-local-voice.patch` has exact base and SHA256 in
-`patches/eliza/local-voice-source-base.json`. It was applied only to the isolated
+Upstream changes arrive as reviewed upstream commits through a pin move in `upstream.lock.json`, or as an explicit tested native patch admitted by `patches/eliza/native-manifest.json` (`scripts/prepare-patched-native.mjs`, rebased onto `bc71e21f3b` on 2026-10-13). The earlier voice patch series was retired in `34b3c82a` (2026-10-03) and `55c2944f` (2026-10-04), and its last reference went in `530d3b26` (2026-10-10), each when the pinned upstream already carried the change. The run below was made with the patch and is kept as history; it has not been repeated at the current pin.
+
+Historical record: `patches/eliza/0002-paired-local-voice.patch` (historical; retired in `34b3c82a`) had its exact base and SHA256 in
+`patches/eliza/local-voice-source-base.json` (historical, retired with it). It was applied only to the isolated
 upstream worktree, never `vendor/eliza`. Four changed upstream files pass Biome;
 a clean-base patch applicability check passes. Full upstream typecheck was not
 run. The actual source runtime loaded and served the patched routes.
@@ -31,11 +33,11 @@ is registration availability; successful audio is separately tested.
 Start with explicit, already-installed voice assets and native library:
 
 ```sh
-ALPHA_ELIZA_SOURCE=/absolute/patched/eliza \
+npm run agent:prepare   # artifacts/local-agent-resident-<pinned commit>
 ELIZA_INFERENCE_LIBRARY=/absolute/libelizainference.dylib \
 ELIZA_KOKORO_MODEL_DIR=/absolute/kokoro \
-node scripts/start-local-voice-agent.mjs
-bun scripts/test-paired-local-voice.mjs
+node scripts/start-local-voice-agent.mjs   # optional: --source <prepared tree> --profile <dir> --port <n> --bun <path>
+# test-paired-local-voice.mjs (Kokoro era) was deleted on 2026-10-14
 ```
 
 The launcher uses the normal protected AlphaPhone Cerebras key file and a
@@ -61,9 +63,9 @@ still needs authenticated binary requests, AAC-to-mono-PCM-WAV conversion,
 account/lifecycle cancellation and real playback testing, gated by selected
 server capability. Cloud voice remains separately account/authentication gated.
 Local Notes audio plus manual transcript is already a separate supported flow. The browser
-build now also transcribes locally with in-browser Whisper tiny.en
-([browser-speech-recognition.md](browser-speech-recognition.md)); the development local-agent
-route above stays an explicit, flag-only alternative.
+build has no speech engine of its own (P-42): local transcription in a browser goes through the
+local agent above, and without it reports `local-agent-required`
+([browser-speech-recognition.md](browser-speech-recognition.md)).
 
 ## Notes playback implementation (next Android verification)
 

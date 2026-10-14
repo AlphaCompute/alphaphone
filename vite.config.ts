@@ -106,6 +106,8 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(appVersion),
     'import.meta.env.VITE_ALPHA_DEV_CARTESIA':JSON.stringify(flagOn&&process.env.ALPHA_DEV_CARTESIA==='1'?'1':''),
   },
+  // Module workers (the MapLibre worker). The web build has no speech worker or in-browser
+  // inference runtime: local speech runs on the local agent's native libelizainference.
   worker: { format: 'es' },
   resolve: {
     alias: {
@@ -116,9 +118,6 @@ export default defineConfig({
       "@elizaos/core/speech": fileURLToPath(new URL("./.eliza/client-features/packages/core/src/speech.ts",import.meta.url)),
       "@elizaos/ui/voice/batch-conversation": fileURLToPath(new URL("./.eliza/client-features/packages/ui/src/voice/batch-conversation.ts",import.meta.url)),
       "@elizaos/contracts/native-notes-query": fileURLToPath(new URL("./.eliza/client-features/packages/contracts/src/native-notes-query.ts",import.meta.url)),
-      // The external-WebAssembly build: the bundled variant would make Vite emit a second,
-      // unverified copy of the 14 MB runtime into assets/ (and so into every APK).
-      "onnxruntime-web/wasm": fileURLToPath(new URL("./node_modules/onnxruntime-web/dist/ort.wasm.min.mjs", import.meta.url)),
       "@eliza-system": fileURLToPath(
         new URL(
           "./vendor/eliza/plugins/plugin-native-system/src/index.ts",

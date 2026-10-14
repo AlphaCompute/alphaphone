@@ -22,30 +22,25 @@ test('cold restoration keeps the old fence until the real controller resolves it
  f.release();await pending;await f.drain();assert.deepEqual(f.transitions,['A']);assert.equal(f.controller.getSnapshot().startupResolved,true);
  await f.controller.initialize();await f.drain();assert.deepEqual(f.transitions,['A'],'settled initialize does not repeat the fence');
 });
-// The on-device agent always runs (owner directive 2026-10-13): a phone with no sign-in still starts
-// it, so its owner is fenced in exactly like a signed-in restoration.
+// The on-device agent always runs (P-43): a phone with no sign-in still starts it, so its owner is
+// fenced in exactly like a signed-in restoration.
 test('cold start without a sign-in still starts the agent and fences in its owner',async()=>{
  const f=fixture({}),pending=f.controller.initialize();await Promise.resolve();assert.deepEqual(f.transitions,[]);f.release();await pending;await f.drain();assert.deepEqual(f.transitions,['A']);assert.equal(f.controller.getSnapshot().startupResolved,true);
+});
+test('cold retired local-only choice migrates to the resident and starts it with the kept sign-in',async()=>{
+ const f=fixture({offline:true,credential:{credentialId:'kept'}}),pending=f.controller.initialize();await Promise.resolve();assert.deepEqual(f.transitions,[]);f.release();await pending;await f.drain();
+ assert.deepEqual(f.transitions,['A']);
+ assert.deepEqual(JSON.parse(f.memory.get('alpha.connection.selection.v1')),{kind:'resident'},'only the retired preference is replaced');
 });
 for(const [name,options] of [['failed start',{credential:{credentialId:'revoked'},fail:true}]])test('cold '+name+' retires the persisted owner after initialization settles',async()=>{
  const f=fixture(options),pending=f.controller.initialize();await Promise.resolve();assert.deepEqual(f.transitions,[]);f.release();await pending;await f.drain();assert.deepEqual(f.transitions,[null]);assert.equal(f.controller.getSnapshot().session,null);assert.equal(f.controller.getSnapshot().startupResolved,true);
 });
 
-test('cold retired local-only choice migrates and starts the agent with the kept sign-in',async()=>{
- const f=fixture({offline:true,credential:{credentialId:'kept'}}),pending=f.controller.initialize();await Promise.resolve();assert.deepEqual(f.transitions,[]);f.release();await pending;await f.drain();
- assert.deepEqual(f.transitions,['A']);
- assert.deepEqual(JSON.parse(f.memory.get('alpha.connection.selection.v1')),{kind:'none'},'only the retired preference is replaced');
-});
 test('reconnects retire the session while busy, and the notice owner update carries that state',async()=>{
  // The real controller marks the connection busy before Continue / Check plan again / pairing
  // retires the session; the coordinator (tested directly) defers a null owner until it settles.
  const controller=readFileSync('apps/app/src/runtime/connection-ui.tsx','utf8'),adapter=readFileSync('apps/app/src/prototype/workflow-adapter.ts','utf8');
- const f=fixture({credential:{credentialId:'synthetic'}}),startup=f.controller.initialize();f.release();await startup;await f.drain();assert.deepEqual(f.transitions,['A']);
- await f.work('Fixture reconnection',async()=>{
-  assert.equal(f.controller.getSnapshot().busy,true);assert.equal(f.controller.getSnapshot().open,true);
-  f.retire();await f.drain();assert.equal(f.controller.getSnapshot().session,null);assert.deepEqual(f.transitions,['A'],'the notice owner stays fenced while the reconnection is busy');
- });
- await f.drain();assert.equal(f.controller.getSnapshot().error,'');assert.deepEqual(f.transitions,['A',null],'the settled missing session retires the notice owner');
- assert.match(controller,/async startLocal\(\) \{ await work\('Starting the local agent…', signal => \{ retire\(\);/);
+ assert.match(controller,/update\(\{ busy: true, \.\.\.\(background \? \{\} : \{ open: true \}\), message, error: '' \}\);\s*try \{ await action\(controller\.signal\); \}/);
+ assert.match(controller,/async startLocal\(\) \{ if \(residentAlwaysPresent\) \{ if \(!operation\) \{ retire\(\); await startResident\('Starting the local agent…', false\); \} return; \} await work\('Starting the local agent…', signal => \{ retire\(\);/);
  assert.match(adapter,/startupResolved:connectionController\.getSnapshot\(\)\.startupResolved,busy:connectionController\.getSnapshot\(\)\.busy\}\)/);
 });

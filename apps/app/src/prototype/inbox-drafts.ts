@@ -14,7 +14,10 @@ export type ComposePrefill = {to:string[];cc?:string[];bcc?:string[];subject:str
  moved?:boolean};
 /** Source attachments a forward carries, bound to the selected message and its historyId. */
 export type ForwardSource = {messageId:string;historyId:string;parts:{partId:string;name:string;mimeType:string;size:number}[]};
-type Draft = {version:1;id:string;revision:string;owner:string;to:string[];cc?:string[];bcc?:string[];attachments?:MailAttachment[];forward?:ForwardSource;provider?:{draftId:string;providerDigest:string};subject:string;body:string;mode?:'compose'|'reply'|'reply-all'|'forward';reply?:{messageId:string;threadId:string}};
+type Draft = {version:1;id:string;revision:string;owner:string;to:string[];cc?:string[];bcc?:string[];attachments?:MailAttachment[];forward?:ForwardSource;provider?:{draftId:string;providerDigest:string};subject:string;body:string;mode?:'compose'|'reply'|'reply-all'|'forward';reply?:{messageId:string;threadId:string};
+ /** Set on a saved draft whose local draft was later sent with different text: an earlier version of a
+  * sent email. It is kept, labelled, and reused only after a confirmation. */
+ earlierThanSent?:true};
 /** The destination of a reviewed assistant suggestion, as shown to the user before inserting it. */
 export type SuggestionTarget={ready:false;reason:string;token:string}|{ready:true;kind:'draft'|'reply'|'new';append:boolean;reply:boolean;subject:string;to:string[];from?:string;
  /** A draft that was set aside: it exists but its composer is not on screen. */
@@ -26,9 +29,9 @@ export type SuggestionTarget={ready:false;reason:string;token:string}|{ready:tru
 type Policy={maximumOutgoing:number;maximumTotalBytes:number};
 const forwardValid=(f:any)=>f===undefined||(!!f&&typeof f.messageId==='string'&&typeof f.historyId==='string'&&Array.isArray(f.parts)&&f.parts.length<=outgoingAttachmentLimits.maximumFiles&&f.parts.every((p:any)=>p&&typeof p.partId==='string'&&typeof p.name==='string'&&typeof p.mimeType==='string'&&typeof p.size==='number'));
 const address=(v:string)=>v.length<=254&&/^[^\s<>@,;]+@[^\s<>@,;]+\.[^\s<>@,;]+$/.test(v);
-const valid=(v:any,owner:string):v is Draft=>!!v&&v.version===1&&v.owner===owner&&typeof v.id==='string'&&typeof v.revision==='string'&&Array.isArray(v.to)&&v.to.length<=20&&v.to.every((a:any)=>typeof a==='string'&&address(a))&&[v.cc||[],v.bcc||[]].every((list:any)=>Array.isArray(list)&&list.length<=20&&list.every((a:any)=>typeof a==='string'&&address(a)))&&typeof v.subject==='string'&&v.subject.length<=998&&!/[\r\n]/.test(v.subject)&&typeof v.body==='string'&&v.body.length<=64000&&(!v.reply||(typeof v.reply.messageId==='string'&&typeof v.reply.threadId==='string'))&&(v.attachments===undefined||(Array.isArray(v.attachments)&&v.attachments.length<=outgoingAttachmentLimits.maximumFiles))&&forwardValid(v.forward);
+const valid=(v:any,owner:string):v is Draft=>!!v&&v.version===1&&v.owner===owner&&typeof v.id==='string'&&typeof v.revision==='string'&&Array.isArray(v.to)&&v.to.length<=20&&v.to.every((a:any)=>typeof a==='string'&&address(a))&&[v.cc||[],v.bcc||[]].every((list:any)=>Array.isArray(list)&&list.length<=20&&list.every((a:any)=>typeof a==='string'&&address(a)))&&typeof v.subject==='string'&&v.subject.length<=998&&!/[\r\n]/.test(v.subject)&&typeof v.body==='string'&&v.body.length<=64000&&(!v.reply||(typeof v.reply.messageId==='string'&&typeof v.reply.threadId==='string'))&&(v.attachments===undefined||(Array.isArray(v.attachments)&&v.attachments.length<=outgoingAttachmentLimits.maximumFiles))&&forwardValid(v.forward)&&(v.earlierThanSent===undefined||v.earlierThanSent===true);
 /** Local encrypted drafts remain separate from explicitly reviewed provider operations. */
-export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider?:{prepare(proposal:Bag,source?:{draftId:string}):Promise<void>;capabilities():{send:boolean;providerDrafts:boolean;from?:string;forwardAttachments?:boolean;attachmentPolicy?:Policy}|null}) {
+export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider?:{prepare(proposal:Bag,source?:{draftId:string;savedRevision?:string}):Promise<void>;capabilities():{send:boolean;providerDrafts:boolean;from?:string;forwardAttachments?:boolean;attachmentPolicy?:Policy}|null}) {
  /** Servers without the multi-attachment policy accept one file. */
  const policy=():Policy=>provider?.capabilities()?.attachmentPolicy||{maximumOutgoing:1,maximumTotalBytes:outgoingAttachmentLimits.maximumTotalBytes};
  const forwardProposal=(d:Draft)=>d.forward&&d.forward.parts.length?{forwardAttachments:{messageId:d.forward.messageId,historyId:d.forward.historyId,partIds:d.forward.parts.map(p=>p.partId)}}:{};
@@ -43,7 +46,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
  let loading=false,ready=false,busy=false,open=false,confirm=false,toQ='',label='',status='',recipientDetails=false;
  let fromSwitch:{count():number;cycle():void}|null=null;
  /** A provider-confirmed send waiting for this account's local copies to load. */
- let sent:{draftId:string;proposal:Bag;account:string}|null=null;
+ let sent:{draftId:string;proposal:Bag;account:string;savedRevision?:string}|null=null,earlier='';
  const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
  /** True only when a local copy holds exactly the content the provider confirmed as sent. */
  const sentContent=(d:Bag,p:Bag,withForward:boolean)=>(d.mode||(d.reply?'reply':'compose'))===p.mode&&same(d.to,p.to)&&same(d.cc||[],p.cc||[])&&same(d.bcc||[],p.bcc||[])&&d.subject===p.subject&&d.body===p.bodyText&&same(d.attachments||[],p.attachments||[])&&d.reply?.messageId===p.replyMessageId&&(!withForward||same(forwardProposal(d as Draft),p.forwardAttachments?{forwardAttachments:p.forwardAttachments}:{}));
@@ -55,7 +58,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
  async function settleSent(){
   const target=sent;if(!target||!ready||busy)return;sent=null;
   if(target.account!==account)return;
-  const {draftId,proposal}=target,token=epoch,key=slot();
+  const {draftId,proposal,savedRevision}=target,token=epoch,key=slot();
   // An open or retained copy that was edited after the send is in use: nothing of it is removed.
   if(draft?.id===draftId&&(toQ.trim()||!sentContent(draft,proposal,true)))return;
   const kept=retained?.peek();
@@ -75,18 +78,30 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
    if(expected&&expected.id===draftId&&sentContent(expected,proposal,true)){
     try{const receipt=await inboxLocalStore.compareExchange(key,expected,null);if(token!==epoch)return;if(receipt.status==='saved'){saved=null;baseRevision=null;removed=true;}}catch{}
     if(token!==epoch)return;
+   }else if(expected&&expected.id===draftId&&!!savedRevision&&expected.revision===savedRevision){
+    // The saved copy of the sent draft is the one that existed when Send was reviewed and holds other
+    // text: an earlier version. It is never removed automatically; it is labelled (in storage, so the
+    // label survives a reload) and reusing it takes an explicit, confirmed choice. A copy saved after
+    // that, here or in another window, is not called an earlier version.
+    earlier=draftId;
+    if(!expected.earlierThanSent){const marked:Draft={...expected,earlierThanSent:true};try{const receipt=await inboxLocalStore.compareExchange(key,expected,marked);if(token!==epoch)return;if(receipt.status==='saved')saved=marked;}catch{}if(token!==epoch)return;}
    }
-   if(removed)status='Sent. The local copy of this email was removed from this device.';
+   if(removed)status=saved?.id===draftId?'Sent. The sent copy was removed from this device; an earlier saved version of this email is kept.':'Sent. The local copy of this email was removed from this device.';
   }finally{if(token===epoch){busy=false;publish();}}
  }
  const slot=()=>`inbox-drafts:v1:${owner}`;
- function reset(){sent=null;account='';retained?.retire();retained=null;baseRevision=null;staleBase=false;pendingEdits.clear();epoch++;owner='';session='';saved=draft=null;loading=ready=busy=open=confirm=recipientDetails=false;toQ='';status='';}
+ /** The saved draft is an earlier version of a sent email (marked in storage, or in this session when
+  * the mark could not be written). */
+ const earlierVersion=()=>!!saved&&(saved.earlierThanSent===true||saved.id===earlier);
+ /** The saved draft as an editable copy; the earlier-version mark stays with the saved copy. */
+ const fromSaved=()=>{const {earlierThanSent:_earlier,...copy}=structuredClone(saved!);return copy as Draft;};
+ function reset(){sent=null;earlier='';account='';retained?.retire();retained=null;baseRevision=null;staleBase=false;pendingEdits.clear();epoch++;owner='';session='';saved=draft=null;loading=ready=busy=open=confirm=recipientDetails=false;toQ='';status='';}
  async function bind(account_:string,accountLabel:string){
   const identity=connectionController.getSnapshot().cloudAccount, binding=connectionController.getCloudClient();
   const next=identity&&binding?.sessionId===identity.sessionId&&account_?JSON.stringify([identity.environment,identity.userId,identity.organizationId||'',account_]):'';
   if(next===owner&&binding?.sessionId===session&&ready)return;
   if(draft)pendingEdits.set(owner,{draft:structuredClone(draft),toQ,baseRevision});
-  if(next!==owner)sent=null;
+  if(next!==owner){sent=null;earlier='';}
   retained?.retire();retained=null;baseRevision=null;staleBase=false;
   epoch++;saved=draft=null;loading=ready=busy=open=confirm=recipientDetails=false;toQ='';status='';owner=next;account=next?account_:'';session=binding?.sessionId||'';label=accountLabel;
   if(!owner)return;
@@ -143,7 +158,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   const token=epoch,key=slot(),expected=saved;busy=true;publish();
   try{const receipt=await inboxLocalStore.compareExchange(key,expected,value);if(token!==epoch)return;
    if(receipt.status!=='saved'){status='Draft changed in another window. Close this composer and reload before replacing it.';ready=false;toast(status);return;}
-   pendingEdits.delete(owner);saved=value;let cleared=true;try{await retained?.clear();}catch{cleared=false;}if(token!==epoch)return;baseRevision=value?.revision||null;staleBase=false;draft=value?structuredClone(value):cleared?null:draft;status=cleared?(remove?'Local draft discarded':'Saved locally on this device'):(remove?'Saved local draft removed; retained edits could not be cleared. Review recovery before closing.':'Saved locally; retained edits could not be cleared. Review recovery before closing.');confirm=false;if(remove&&cleared)open=false;toast(status);
+   pendingEdits.delete(owner);saved=value;earlier='';let cleared=true;try{await retained?.clear();}catch{cleared=false;}if(token!==epoch)return;baseRevision=value?.revision||null;staleBase=false;draft=value?structuredClone(value):cleared?null:draft;status=cleared?(remove?'Local draft discarded':'Saved locally on this device'):(remove?'Saved local draft removed; retained edits could not be cleared. Review recovery before closing.':'Saved locally; retained edits could not be cleared. Review recovery before closing.');confirm=false;if(remove&&cleared)open=false;toast(status);
   }catch{if(token===epoch){status='Local draft update failed. Your edits remain here.';toast(status);}}
   finally{if(token===epoch){busy=false;publish();void settleSent();}}
  }
@@ -216,16 +231,19 @@ setFromSwitch(value:typeof fromSwitch){fromSwitch=value;},get ready(){return rea
    * From account, so the identity also names the account. */
   email():{draftId:string;proposal:Bag}|null{const proposal=this.proposal();return draft&&proposal?{draftId:draft.id,proposal}:null;},
   chips(chip:(label:string,action:()=>void)=>Bag){return ready?[
-   ...(draft?[chip('Continue draft',()=>{open=true;publish();})]:retained?.available?[chip('Resume unsaved email',()=>retained?.resume())]:saved?[chip('Restore local draft',()=>{draft=structuredClone(saved!);baseRevision=saved!.revision;staleBase=false;open=true;confirm=false;toQ='';publish();})]:[]),
+   ...(draft?[chip('Continue draft',()=>{open=true;publish();})]:retained?.available?[chip('Resume unsaved email',()=>retained?.resume())]:saved?[chip(earlierVersion()?'Earlier version of a sent email':'Restore local draft',()=>{
+    const reuse=earlierVersion();
+    if(reuse&&!window.confirm('This saved draft is an earlier version of an email that was already sent.\n\nOpen it to edit or send? Sending it creates another message.'))return;
+    draft=fromSaved();baseRevision=saved!.revision;staleBase=false;open=true;confirm=false;toQ='';if(reuse)status='Earlier version of a sent email. Sending it creates another message; nothing has been sent.';publish();})]:[]),
    ...(retained?.error?[chip('Recover email edits',()=>retained?.recover(draft))]:[]),
   ]:[];},
   /** Called for a provider-confirmed send that recorded its source draft; safe to repeat. */
-  settleSent(draftId:string,proposal:Bag,grant:string){if(!grant||grant!==account)return Promise.resolve();sent={draftId,proposal:structuredClone(proposal),account:grant};return settleSent();},
+  settleSent(draftId:string,proposal:Bag,grant:string,savedRevision?:string){if(!grant||grant!==account)return Promise.resolve();sent={draftId,proposal:structuredClone(proposal),account:grant,...(savedRevision?{savedRevision}:{})};return settleSent();},
   /** What the receipt may say about local copies of the sent draft. */
-  sentNote(draftId:string){if(!ready||busy||sent)return 'Checking the local copy of this email on this device.';return draft?.id===draftId||retained?.peek()?.draft.id===draftId||saved?.id===draftId?'A local copy of this email is still on this device because it was edited after sending or could not be removed. Sending it creates another message.':'The local draft and unsaved copy of this sent email were removed from this device.';},
+  sentNote(draftId:string){if(!ready||busy||sent)return 'Checking the local copy of this email on this device.';if(draft?.id!==draftId&&retained?.peek()?.draft.id!==draftId&&saved?.id===draftId&&earlierVersion())return 'An earlier saved version of this email is still on this device. It is kept until you discard it; sending it creates another message.';return draft?.id===draftId||retained?.peek()?.draft.id===draftId||saved?.id===draftId?'A local copy of this email is still on this device because it was edited after sending or could not be removed. Sending it creates another message.':'The local draft and unsaved copy of this sent email were removed from this device.';},
   render(){return {composeDisabled:loading||busy,composing:open&&!!draft,c: draft?{
-   local:true,status,busy,confirm,recoveryVisible:!!retained?.error||!!retained?.conflict,sendDisabled:busy||!provider?.capabilities()?.send,showSendHint:!!provider?.capabilities()&&!provider.capabilities()?.send,heading:draft.mode==='reply-all'?'Reply all':draft.mode==='reply'?'Reply':draft.mode==='forward'?'Forward':'New message',showRecipientDetails:recipientDetails||!!draft.cc?.length||!!draft.bcc?.length,toggleRecipientDetails:()=>{recipientDetails=!recipientDetails;publish();},retainedStatus:retained?.status,retainedConflict:retained?.conflict,retainedError:retained?.error,restoreEdits:()=>retained?.resume(),replaceEdits:()=>{if(window.confirm('Replace the retained email edits with this composer?'))retained?.replace();},retryEdits:()=>void retained?.retry(),recoverEdits:()=>retained?.recover({draft,toQ}),staleBase,useLatest:async()=>{if(!window.confirm('Discard these edits and review the latest saved local draft?'))return;const token=epoch;try{await retained?.clear();if(token!==epoch)return;draft=saved?structuredClone(saved):null;toQ='';baseRevision=saved?.revision||null;staleBase=false;open=!!draft;status='Review the latest saved local draft.';publish();}catch{if(token===epoch)toast('Retained edits changed. Review recovery before discarding them.');}},save:()=>void update(),discard:()=>{if(!busy){confirm=true;publish();}},cancelDiscard:()=>{confirm=false;publish();},confirmDiscard:()=>void update(true),
-   send:()=>{if(!provider?.capabilities()?.send){toast('Sending is unavailable for this account. Save locally; no email has been sent.');return;}if(toQ.trim()){add();if(toQ.trim())return;}void provider.prepare({kind:'send',mode:draft!.mode||(draft!.reply?'reply':'compose'),to:[...draft!.to],cc:[...(draft!.cc||[])],bcc:[...(draft!.bcc||[])],subject:draft!.subject,bodyText:draft!.body,attachments:[...(draft!.attachments||[])],...forwardProposal(draft!),...(draft!.reply?{replyMessageId:draft!.reply.messageId}:{})},{draftId:draft!.id});},
+   local:true,status,busy,confirm,recoveryVisible:!!retained?.error||!!retained?.conflict,sendDisabled:busy||!provider?.capabilities()?.send,showSendHint:!!provider?.capabilities()&&!provider.capabilities()?.send,heading:draft.mode==='reply-all'?'Reply all':draft.mode==='reply'?'Reply':draft.mode==='forward'?'Forward':'New message',showRecipientDetails:recipientDetails||!!draft.cc?.length||!!draft.bcc?.length,toggleRecipientDetails:()=>{recipientDetails=!recipientDetails;publish();},retainedStatus:retained?.status,retainedConflict:retained?.conflict,retainedError:retained?.error,restoreEdits:()=>retained?.resume(),replaceEdits:()=>{if(window.confirm('Replace the retained email edits with this composer?'))retained?.replace();},retryEdits:()=>void retained?.retry(),recoverEdits:()=>retained?.recover({draft,toQ}),staleBase,useLatest:async()=>{if(!window.confirm('Discard these edits and review the latest saved local draft?'))return;const token=epoch;try{await retained?.clear();if(token!==epoch)return;draft=saved?fromSaved():null;toQ='';baseRevision=saved?.revision||null;staleBase=false;open=!!draft;status='Review the latest saved local draft.';publish();}catch{if(token===epoch)toast('Retained edits changed. Review recovery before discarding them.');}},save:()=>void update(),discard:()=>{if(!busy){confirm=true;publish();}},cancelDiscard:()=>{confirm=false;publish();},confirmDiscard:()=>void update(true),
+   send:()=>{if(!provider?.capabilities()?.send){toast('Sending is unavailable for this account. Save locally; no email has been sent.');return;}if(toQ.trim()){add();if(toQ.trim())return;}void provider.prepare({kind:'send',mode:draft!.mode||(draft!.reply?'reply':'compose'),to:[...draft!.to],cc:[...(draft!.cc||[])],bcc:[...(draft!.bcc||[])],subject:draft!.subject,bodyText:draft!.body,attachments:[...(draft!.attachments||[])],...forwardProposal(draft!),...(draft!.reply?{replyMessageId:draft!.reply.messageId}:{})},{draftId:draft!.id,...(saved?.id===draft!.id?{savedRevision:saved.revision}:{})});},
    canSaveProvider:!!provider?.capabilities()?.providerDrafts,saveProvider:()=>{if(toQ.trim()){add();if(toQ.trim())return;}void provider?.prepare({kind:draft!.provider?'draft-replace':'draft-create',...(draft!.provider?{draftId:draft!.provider.draftId,expectedDigest:draft!.provider.providerDigest,acceptNonAtomicReplacement:true}:{}),mode:draft!.mode||(draft!.reply?'reply':'compose'),to:[...draft!.to],cc:[...(draft!.cc||[])],bcc:[...(draft!.bcc||[])],subject:draft!.subject,bodyText:draft!.body,attachments:[...(draft!.attachments||[])],...forwardProposal(draft!),...(draft!.reply?{replyMessageId:draft!.reply.messageId}:{})},{draftId:draft!.id});},singleFrom:(fromSwitch?.count()||0)<=1,multi:(fromSwitch?.count()||0)>1,from:label?`From ${label}`:'',cycleFrom:()=>{if(busy)return;if(fromSwitch&&fromSwitch.count()>1)fromSwitch.cycle();else toast('Only one Gmail account is connected.');},
    chips:draft.to.map(name=>({name,rm:()=>{if(!busy){draft!.to=draft!.to.filter(a=>a!==name);status='Unsaved local draft';persist();publish();}}})),
    toQ,toPh:'Email address',onTo:(e:Bag)=>{if(!busy){toQ=String(e.target.value);status='Unsaved local draft';persist();publish();}},toKey:(e:Bag)=>{if(e.key==='Enter'){e.preventDefault();add();}},hasRaw:!!toQ.trim(),rawAddr:toQ.trim(),addRaw:add,hasSugg:false,sugg:[],

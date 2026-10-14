@@ -260,4 +260,91 @@ public class SelectedDocumentInstrumentedTest {
   }
  }
 
+ // J03 note source references: AlphaMailAttachments.retainSourceReference keeps a reference to a
+ // document the owner selected in the real DocumentsUI (only while Android's persisted read grant
+ // exists), and openSourceReference hands a viewer exactly the bytes that were reviewed, or nothing.
+ private static String sha256(byte[] bytes)throws Exception{StringBuilder hex=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(bytes))hex.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return hex.toString();}
+ private JSONObject plugin(BoundedActivityScenario<MainActivity> scenario,String method,JSONObject args)throws Exception{
+  eval(scenario,"window.__sourceReference=null;Capacitor.Plugins.AlphaMailAttachments."+method+"("+args+").then(v=>window.__sourceReference={ok:true,value:v??{}},e=>window.__sourceReference={ok:false,message:String(e?.message??'')})");
+  waitFor(scenario,"window.__sourceReference!==null");
+  return new JSONObject(eval(scenario,"window.__sourceReference"));
+ }
+ /** Opens the reference with an intercepted viewer and returns the bytes the viewer was given, or null when refused. */
+ private byte[] openReference(BoundedActivityScenario<MainActivity> scenario,String reference,String sha,int size,String mime)throws Exception{
+  android.app.Instrumentation instrumentation=InstrumentationRegistry.getInstrumentation();AtomicReference<Intent> viewer=new AtomicReference<>();
+  android.app.Instrumentation.ActivityMonitor monitor=new android.app.Instrumentation.ActivityMonitor(){
+   @Override public android.app.Instrumentation.ActivityResult onStartActivity(Intent intent){
+    if(!Intent.ACTION_VIEW.equals(intent.getAction()))return null;
+    viewer.set(new Intent(intent));return new android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED,null);
+   }
+  };
+  instrumentation.addMonitor(monitor);
+  try{
+   JSONObject result=plugin(scenario,"openSourceReference",new JSONObject().put("reference",reference).put("sha256",sha).put("size",size).put("mimeType",mime));
+   if(!result.getBoolean("ok")){assertNull("A refused reference starts no viewer",viewer.get());return null;}
+   assertNotNull("The viewer was started",viewer.get());
+   Uri copy=viewer.get().getData();assertNotNull(copy);assertTrue("Read-only grant",(viewer.get().getFlags()&Intent.FLAG_GRANT_READ_URI_PERMISSION)!=0);assertEquals(mime,viewer.get().getType());
+   try(java.io.InputStream in=InstrumentationRegistry.getInstrumentation().getTargetContext().getContentResolver().openInputStream(copy)){assertNotNull(in);return in.readAllBytes();}
+  }finally{instrumentation.removeMonitor(monitor);}
+ }
+ @Test public void sourceReferenceOpensExactBytesAndFailsClosedOnChangeDeletionOrReleasedGrant()throws Exception{
+  Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();ContentResolver resolver=context.getContentResolver();
+  String suffix=UUID.randomUUID().toString(),name="alpha-source-"+suffix+".txt",text="Reviewed note source "+suffix;byte[] bytes=text.getBytes(StandardCharsets.UTF_8);String sha=sha256(bytes);
+  Uri file=fixture(resolver,name,text);String selectionId=null;boolean deleted=false;
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   openFiles(scenario);click(scenario,"Downloads");selectDocument(name);preview(scenario,name,text);
+   com.getcapacitor.JSObject selected=SelectedDocumentAccess.restore(context);selectionId=selected.getString("selectionId");Uri grant=Uri.parse(selected.getString("uri"));
+   JSONObject retained=plugin(scenario,"retainSourceReference",new JSONObject().put("selectionId",selectionId).put("sha256",sha));
+   assertTrue("Retained: "+retained.optString("message"),retained.getBoolean("ok"));
+   String reference=retained.getJSONObject("value").optString("reference",null);
+   assertNotNull("A persisted DocumentsUI grant yields a reference",reference);assertTrue(reference.matches("a1:[a-f0-9]{64}"));
+   // A stale review (another hash) never retains a reference.
+   assertFalse("Retaining with other bytes' hash is refused",plugin(scenario,"retainSourceReference",new JSONObject().put("selectionId",selectionId).put("sha256","0".repeat(64))).getBoolean("ok"));
+   byte[] opened=openReference(scenario,reference,sha,bytes.length,"text/plain");
+   assertNotNull("The linked source opens",opened);assertArrayEquals("The viewer receives exactly the reviewed bytes",bytes,opened);
+   assertNull("A different expected hash is refused",openReference(scenario,reference,"f".repeat(64),bytes.length,"text/plain"));
+   // Modified bytes fail closed.
+   try(OutputStream out=resolver.openOutputStream(file,"wt")){assertNotNull(out);out.write((text+" changed").getBytes(StandardCharsets.UTF_8));}
+   assertNull("Changed bytes fail closed",openReference(scenario,reference,sha,bytes.length,"text/plain"));
+   try(OutputStream out=resolver.openOutputStream(file,"wt")){assertNotNull(out);out.write(bytes);}
+   assertArrayEquals("Restored bytes open again",bytes,openReference(scenario,reference,sha,bytes.length,"text/plain"));
+   // A released grant fails closed.
+   resolver.releasePersistableUriPermission(grant,Intent.FLAG_GRANT_READ_URI_PERMISSION);
+   assertNull("A released grant fails closed",openReference(scenario,reference,sha,bytes.length,"text/plain"));
+   // A deleted file fails closed (a fresh selection and reference first, so only deletion differs).
+   click(scenario,"Back");waitFor(scenario,"!document.querySelector('button[aria-label=Rename]')");
+   click(scenario,"Downloads");selectDocument(name);preview(scenario,name,text);selectionId=SelectedDocumentAccess.restore(context).getString("selectionId");
+   String second=plugin(scenario,"retainSourceReference",new JSONObject().put("selectionId",selectionId).put("sha256",sha)).getJSONObject("value").optString("reference",null);
+   assertNotNull(second);assertArrayEquals(bytes,openReference(scenario,second,sha,bytes.length,"text/plain"));
+   assertEquals(1,resolver.delete(file,null,null));deleted=true;
+   assertNull("A deleted source fails closed",openReference(scenario,second,sha,bytes.length,"text/plain"));
+  }finally{if(selectionId!=null)SelectedDocumentAccess.forget(selectionId);if(!deleted)resolver.delete(file,null,null);}
+ }
+ /** node scripts/test-native-restart.mjs source-reference: prepare retains a reference in one
+  * process; verify (a new process) reopens exactly the same bytes through it; cleanup releases. */
+ @Test public void sourceReferenceProcessRestartPhase()throws Exception{
+  String phase=InstrumentationRegistry.getArguments().getString("sourceReferencePhase");
+  org.junit.Assume.assumeTrue("Explicit process-restart runner only","prepare".equals(phase)||"verify".equals(phase)||"cleanup".equals(phase));
+  Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();ContentResolver resolver=context.getContentResolver();android.content.SharedPreferences fixture=context.getSharedPreferences("source-reference-restart-fixture",0);
+  if("cleanup".equals(phase)){
+   String id=fixture.getString("selectionId",null),uri=fixture.getString("fixtureUri",null);if(id!=null){SelectedDocumentAccess.initialize(context);SelectedDocumentAccess.forget(id);}if(uri!=null)resolver.delete(Uri.parse(uri),null,null);assertTrue(fixture.edit().clear().commit());return;
+  }
+  if("prepare".equals(phase)){
+   assertFalse("Prior restart fixture must be cleaned first",fixture.contains("fixtureUri"));String name="alpha-source-restart-"+UUID.randomUUID()+".txt",text="Source restart fixture "+UUID.randomUUID();Uri uri=fixture(resolver,name,text);
+   assertTrue(fixture.edit().putString("fixtureUri",uri.toString()).putString("name",name).putString("text",text).putInt("pid",android.os.Process.myPid()).commit());
+   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+    openFiles(scenario);click(scenario,"Downloads");selectDocument(name);preview(scenario,name,text);String id=SelectedDocumentAccess.restore(context).getString("selectionId");
+    assertTrue(fixture.edit().putString("selectionId",id).commit());
+    JSONObject retained=plugin(scenario,"retainSourceReference",new JSONObject().put("selectionId",id).put("sha256",sha256(text.getBytes(StandardCharsets.UTF_8))));
+    String reference=retained.getJSONObject("value").optString("reference",null);assertNotNull("Reference retained",reference);
+    assertTrue(fixture.edit().putString("reference",reference).commit());
+   }return;
+  }
+  assertTrue("Fixture setup completed",fixture.contains("reference"));assertNotEquals("Actual process restart, not Activity recreation",fixture.getInt("pid",-1),android.os.Process.myPid());
+  byte[] bytes=fixture.getString("text","").getBytes(StandardCharsets.UTF_8);
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   waitFor(scenario,"window.Capacitor?.Plugins?.AlphaMailAttachments&&document.documentElement.dataset.activeView");
+   assertArrayEquals("A new process reopens exactly the reviewed bytes",bytes,openReference(scenario,fixture.getString("reference",""),sha256(bytes),bytes.length,"text/plain"));
+  }
+ }
 }

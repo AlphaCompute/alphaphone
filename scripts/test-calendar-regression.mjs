@@ -1,6 +1,8 @@
 /** Alpha Calendar scenarios; upstream owns leased APK and disposable-user lifecycles.
  * Each case is one class, or one exact method of it, run in a fresh secondary user that is granted
- * READ_CALENDAR and WRITE_CALENDAR. `--case=` takes a class name (every case of that class) or
+ * READ_CALENDAR and WRITE_CALENDAR, except a case marked `revoked`, whose user has both revoked
+ * before the process starts (revoking a runtime permission kills the app process, so a test cannot
+ * revoke its own). `--case=` takes a class name (every case of that class) or
  * `Class#method`; `--variant=` takes standalone or launcher. A class listed with two methods keeps
  * the class-named result folder for its first case and adds `-<method>` for the others.
  * Emulator-class evidence only: no synced account, no live calendar and no device acceptance. */
@@ -29,10 +31,14 @@ const cases=external?[['CalendarExternalEditorInstrumentedTest','externalCalenda
  // The free/busy reader beneath the reviewed availability check. It has no opt-in argument: it skips
  // unless both calendar permissions are granted, which this runner does before every case.
  ['CalendarAvailabilityInstrumentedTest','calendarAvailability',4],
- ['CalendarRangeInstrumentedTest','calendarRange',1,'distantDatesLoadRealRowsAndNewestNavigationWins'],['CalendarTruncationInstrumentedTest','calendarRange',1,'realInstanceLimitCannotClaimAnUnreturnedDateIsFree']];
+ ['CalendarRangeInstrumentedTest','calendarRange',1,'distantDatesLoadRealRowsAndNewestNavigationWins'],['CalendarTruncationInstrumentedTest','calendarRange',1,'realInstanceLimitCannotClaimAnUnreturnedDateIsFree'],
+ // AP-07: the Home calendar card over the provider, then its access-off state with access revoked.
+ ['HomeCalendarCardInstrumentedTest','homeCalendar',1,'nextProviderEventShowsTitleCalendarNameAndReadTime'],
+ ['HomeCalendarCardInstrumentedTest','homeCalendar',1,'revokedAccessShowsTheAccessOffState',{value:'revoked',revoked:true}]];
 const requestedCase=args.find(arg=>arg.startsWith('--case='))?.slice(7),requestedVariant=args.find(arg=>arg.startsWith('--variant='))?.slice(10);
 const selects=([name,,,method])=>!requestedCase||name===requestedCase||`${name}#${method}`===requestedCase;
 const folder=([name,,,method])=>cases.find(([first])=>first===name)[3]===method?name:`${name}-${method}`;
+const optionsOf=([,,,,options])=>options??{};
 assert.ok(!requestedCase||cases.some(selects),'Unknown Calendar case');assert.ok(!requestedVariant||['standalone','launcher'].includes(requestedVariant),'Unknown variant');
 const output=path.join(root,'test-results',`calendar-regression-${Date.now()}-${process.pid}`),cancellation=new AbortController(),cancel=()=>cancellation.abort();
 const call=(...args)=>execFileSync(adb,['-s',serial,...args],{encoding:'utf8',timeout:120000,maxBuffer:16*1024*1024}).trim();
@@ -40,10 +46,10 @@ const lease=await acquireDeviceLease(`android:${serial}`,{waitMs:0,ttlMs:Number.
 process.once('SIGINT',cancel);process.once('SIGTERM',cancel);
 try{
  fs.mkdirSync(output,{recursive:true});
- for(const variant of ['standalone','launcher'].filter(v=>!requestedVariant||v===requestedVariant))for(const [testClass,flag,count,testMethod]of cases.filter(selects)){
+ for(const variant of ['standalone','launcher'].filter(v=>!requestedVariant||v===requestedVariant))for(const selected of cases.filter(selects)){const [testClass,flag,count,testMethod]=selected,{value='1',revoked=false}=optionsOf(selected);
   cancellation.signal.throwIfAborted();
   const directory=path.join(output,`${variant}-${folder([testClass,flag,count,testMethod])}`);fs.mkdirSync(directory);
-  const record={serial,avd,abi,variant,testClass,...(testMethod?{testMethod}:{}),gate:flag,expectedTests:count,passed:false};let failure;
+  const record={serial,avd,abi,variant,testClass,...(testMethod?{testMethod}:{}),gate:flag,...(value==='1'?{}:{gateValue:value}),...(revoked?{calendarPermissions:'revoked'}:{}),expectedTests:count,passed:false};let failure;
   const persist=()=>fs.writeFileSync(path.join(directory,'result.json'),JSON.stringify(record,null,2)+'\n');
   try{
    const installed=call('shell','pm','list','packages','-u','--user','all').split(/\r?\n/);
@@ -51,8 +57,8 @@ try{
    await withIsolatedAndroidUser({serial,deviceLease:lease,expectedAvdName:avd,homePackage:process.env.ALPHA_TEST_HOME_PACKAGE??'com.android.launcher3',name:`calendar-${variant}-${Date.now()}`,signal:cancellation.signal,execute:args=>call(...args),record:state=>{record.userLifecycle=state;persist();},run:async({user})=>{
     record.user=user;
     try{
-     record.result=await runIsolatedAndroidTest({serial,adb,aapt,packageName:pkg,additionalInstrumentationRunners:[pkg+'.WorkflowNoticeProcessRunner'],testClass:`${pkg}.${testClass}`,testMethod,expectedTests:count,requiredAbi:abi,expectedAvdName:avd,androidUser:user,deviceLease:lease,directory,signal:cancellation.signal,commandTimeoutMs:120000,instrumentationTimeoutMs:external?300000:['calendarRange','calendarCrud','calendarAgent','calendarOptions','calendarAvailability'].includes(flag)?240000:120000,cleanupTimeoutMs:120000,
-      variants:[{name:variant,apk:path.join(root,'artifacts',`${variant}-debug.apk`),testApk:path.join(root,'android/app/build/outputs/apk/androidTest',variant,'debug',`app-${variant}-debug-androidTest.apk`)}],companionApks:external?[companion]:[],runnerArgs:['-e',flag,external?'true':'1'],
+     record.result=await runIsolatedAndroidTest({serial,adb,aapt,packageName:pkg,additionalInstrumentationRunners:[pkg+'.WorkflowNoticeProcessRunner'],testClass:`${pkg}.${testClass}`,testMethod,expectedTests:count,requiredAbi:abi,expectedAvdName:avd,androidUser:user,deviceLease:lease,directory,signal:cancellation.signal,commandTimeoutMs:120000,instrumentationTimeoutMs:external?300000:['calendarRange','calendarCrud','calendarAgent','calendarOptions','calendarAvailability','homeCalendar'].includes(flag)?240000:120000,cleanupTimeoutMs:120000,
+      variants:[{name:variant,apk:path.join(root,'artifacts',`${variant}-debug.apk`),testApk:path.join(root,'android/app/build/outputs/apk/androidTest',variant,'debug',`app-${variant}-debug-androidTest.apk`)}],companionApks:external?[companion]:[],runnerArgs:['-e',flag,external?'true':value],
       evidence:'Alpha Calendar regression in an owned secondary emulator user. No live account acceptance.',
       collectVariant:external?()=>{
        const receipt=JSON.parse(call('shell','run-as',pkg,'--user',String(user),'cat','files/external-calendar-result.json'));
@@ -60,7 +66,11 @@ try{
        assert.equal(receipt.etarVersion,57);assert.equal(receipt.signerSha256,'3f3176c3ce189c98054ff9e1d32daecf00a41572f4c7bd2b2f80607252ddb06e');
        record.externalEditorReceipt=receipt;persist();
       }:undefined,
-      prepareVariant:()=>{for(const name of [pkg,...(external?[companion.packageName]:[])])for(const permission of ['READ_CALENDAR','WRITE_CALENDAR'])call('shell','pm','grant','--user',String(user),name,`android.permission.${permission}`);},
+      prepareVariant:()=>{for(const name of [pkg,...(external?[companion.packageName]:[])])for(const permission of ['READ_CALENDAR','WRITE_CALENDAR']){
+       call('shell','pm',revoked?'revoke':'grant','--user',String(user),name,`android.permission.${permission}`);
+       // A revoked case must still see Android's own prompt: no user-fixed denial is left behind.
+       if(revoked)call('shell','pm','clear-permission-flags','--user',String(user),name,`android.permission.${permission}`,'user-set','user-fixed');
+      }},
      });
     }catch(error){failure=error;record.error=error.message;}
     let proof;try{proof=JSON.parse(fs.readFileSync(path.join(directory,'verification.json'),'utf8'));}catch{/* Missing cleanup evidence preserves the owned user. */}

@@ -1,6 +1,6 @@
 import {FEED_FILTERS,passesFilter,type FeedFilter} from '../../../../.eliza/client-features/packages/ui/src/utils/automation-feed-filter';
 import {AutomationsProtocol,AutomationOutcomeError,automationIssue,automationLocalDateInput,mergeAutomationRows,type AutomationRow,type AutomationIssue,type PromptDraft,type ReminderDraft,type AutomationRequest,type ScheduledVerb} from '../runtime/automations-protocol';
-import {connectionController} from '../runtime/connection-ui';
+import {connectionController,agentPendingText} from '../runtime/connection-ui';
 import {DailyApps,type Reminder} from '../daily';
 import {WorkflowIntentStore,workflowIntentKey} from '../runtime/workflow-intents';
 import {presentHomeWorkflowFreshness} from './home-cards';
@@ -30,8 +30,8 @@ export function installAutomationsAdapter(Component:any,views:Bag){
  let intentStore:WorkflowIntentStore|null=null,suspended=document.hidden;
  let homeCache:{sessionId:string;rows:Array<{name:string;status:string}>;total:number;partial:boolean;stale:boolean;error:boolean;loadedAt:number}|null=null;
  const binding=():Binding|null=>(connectionController as typeof connectionController & {getAutomationsClient():Binding|null}).getAutomationsClient();
- const reminderBlock=()=>!binding()?'Connect an agent for its reminders.':loadedSession!==binding()?.sessionId||state!=='ready'?'Refresh agent reminders before creating or changing one.':issues.find(issue=>issue.source==='reminders')?.message||'';
- const automationBlock=()=>!binding()?'Connect an agent for its automations.':loadedSession!==binding()?.sessionId||state!=='ready'?'Refresh agent automations before creating one.':issues.find(issue=>issue.source==='automations'&&issue.unavailable)?.message||'';
+ const reminderBlock=()=>!binding()?agentPendingText():loadedSession!==binding()?.sessionId||state!=='ready'?'Refresh agent reminders before creating or changing one.':issues.find(issue=>issue.source==='reminders')?.message||'';
+ const automationBlock=()=>!binding()?agentPendingText():loadedSession!==binding()?.sessionId||state!=='ready'?'Refresh agent automations before creating one.':issues.find(issue=>issue.source==='automations'&&issue.unavailable)?.message||'';
  const publish=()=>{if(owner?.live&&!suspended&&!document.hidden)owner.vset('workflows',{automationTick:Date.now()});};
  const retire=(clear=false)=>{epoch++;controller?.abort();controller=null;detail=null;editor=null;creating=false;review=null;message='';if(clear){rows=[];issues=[];intentStore=null;state='idle';loadedSession=null;}publish();};
  const requestKey=(id:string)=>{const owner=connectionController.getSnapshot().session;return owner?workflowIntentKey(owner,'automation:'+id):'offline:'+id;};
@@ -52,7 +52,7 @@ export function installAutomationsAdapter(Component:any,views:Bag){
    intentStore=store;if(pending.status==='rejected')failures.push({source:'automations',unavailable:false,message:'Pending requests could not be checked. Changes stay blocked until this agent’s request history is available.'});
    rows=mergeAutomationRows(next);issues=failures;state='ready';loadedSession=selected?.sessionId||'offline';
    homeCache={sessionId:loadedSession,rows:rows.map(row=>({name:row.title,status:rowStatus(row)})),total:rows.length,partial:failures.some(issue=>!issue.unavailable||issue.source==='device'),stale:false,error:false,loadedAt:Date.now()};
-   if(!selected)message=ownerContext?'Reminders on this phone stay available.':'Connect an agent for its automations. Reminders on this phone stay available.';
+   if(!selected)message=ownerContext?'Reminders on this phone stay available.':agentPendingText()+' Reminders on this phone stay available.';
    if(detail)detail=rows.find(row=>row.key===detail!.key)||null;
   }catch{if(valid()){state='failed';if(homeCache)homeCache.error=true;message='Automations could not refresh. Retry to check their current state.';}}
   finally{if(ticket===epoch){controller=null;publish();}}

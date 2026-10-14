@@ -6,7 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import os from 'node:os';
 import {spawnSync} from 'node:child_process';
-import {ROOT, collectNotices, productionLockPackages} from '../scripts/generate-licenses.mjs';
+import {ROOT, VOICE_HOST, collectNotices, productionLockPackages} from '../scripts/generate-licenses.mjs';
 import {LICENCE_NOT_RECORDED, buildSbom, integrityHash, renderSbom} from '../scripts/generate-sbom.mjs';
 import {METADATA as GRADLE_METADATA, coordinateChecksum, parseVerificationMetadata} from '../scripts/gradle-verification.mjs';
 import {packagedRuntimePresent} from '../scripts/generate-licenses.mjs';
@@ -53,7 +53,7 @@ test('every shipped npm package is listed with its lockfile integrity, and no de
   assert.equal(prop(sbom.metadata, 'package-lock-sha256'), createHash('sha256').update(fs.readFileSync(path.join(ROOT, 'package-lock.json'))).digest('hex'));
 });
 
-test('fonts, OCR cores and web speech files carry the hashes of the pinned bytes', () => {
+test('fonts and OCR cores carry the hashes of the pinned bytes, and no web speech files ship', () => {
   const denton = byRef.get('font:apps/app/public/denton-300.woff2');
   assert.deepEqual(denton.hashes, [{alg: 'SHA-256', content: read('licenses/font-licenses.json').entries.find(entry => entry.name === 'Denton typeface').sha256[0]}]);
   // Proprietary, recorded on the owner's statement: never an open-source identifier, and flagged so nobody assumes it is redistributable.
@@ -69,10 +69,11 @@ test('fonts, OCR cores and web speech files carry the hashes of the pinned bytes
     assert.equal(font.hashes[0].content, createHash('sha256').update(fs.readFileSync(path.join(ROOT, prop(font, 'source')))).digest('hex'));
   }
   for (const [file, digest] of Object.entries(read('licenses/tesseract-core/sources.json').cores)) assert.equal(byRef.get(`ocr-core:${file}`).hashes[0].content, digest);
-  assert.equal(sbom.components.some(component=>component['bom-ref'].startsWith('browser-speech')),false);
+  // The web build ships no speech model or inference runtime: local speech runs on the agent's libelizainference.
+  assert.deepEqual(sbom.components.filter(component => /^browser-speech/.test(component['bom-ref']) || prop(component, 'ships-in') === 'web').map(component => component['bom-ref']), []);
 });
 
-test('Android coordinates, speech natives and the upstream pin match their manifests', () => {
+test('Android coordinates, the voice host and the upstream pin match their records', () => {
   const classpath = read('licenses/android-runtime-classpath.json');
   const maven = sbom.components.filter(component => component.purl?.startsWith('pkg:maven/'));
   assert.deepEqual(maven.map(component => `${component.group}:${component.name}:${component.version}`).sort(), [...classpath.coordinates].sort());
@@ -86,15 +87,15 @@ test('Android coordinates, speech natives and the upstream pin match their manif
     assert.equal(/publishes no archive/.test(prop(component, 'hash')), !pinned.archive, component.name);
   }
   assert.equal(prop(sbom.metadata, 'gradle-verification-metadata-sha256'), createHash('sha256').update(fs.readFileSync(path.join(ROOT, GRADLE_METADATA))).digest('hex'));
-  const inputs = read('vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json');
-  assert.equal(byRef.has('speech:sherpa-onnx-no-espeak.aar'), false);
-  for (const [name, pin] of Object.entries(inputs)) {
-    const component = byRef.get(`speech-input:${name}`);
-    assert.equal(component.hashes[0].content, pin.sha256);
-    assert.equal(prop(component, 'bytes'), String(pin.bytes));
-    assert.match(prop(component, 'ships-in'), /qualification unverified/);
-  }
-  assert.deepEqual(byRef.get('speech-input:espeak').licenses, [{expression: 'GPL-3.0-or-later'}]);
+  // Speech is the libelizainference voice host only (fixture coverage: test/voice-host-record.test.mjs).
+  const banned = new RegExp(['on' + 'nx', 'sher' + 'pa', 'k2' + 'fsa', 'ort-' + 'wasm'].join('|'), 'i');
+  assert.deepEqual(sbom.components.filter(component => banned.test(JSON.stringify(component))).map(component => component['bom-ref']), []);
+  if (fs.existsSync(path.join(ROOT, VOICE_HOST))) {
+    const record = read(VOICE_HOST);
+    for (const abi of record.abis) for (const library of abi.libraries) assert.equal(byRef.get(`voice-host:${abi.abi}/${library.name}`).hashes[0].content, library.sha256);
+    // Every recorded bundle file (Paradee, misaki, eSpeak NG data, the ASR slot, VAD, notices) is a component.
+    for (const model of record.models) assert.equal(byRef.get(`voice-model:${model.path}`).hashes[0].content, model.sha256, model.path);
+  } else assert.deepEqual(sbom.components.filter(component => /^voice-(host|model):/.test(component['bom-ref'])), []);
   const upstream = read('upstream.lock.json');
   assert.equal(sbom.components.find(component => component.name === 'elizaOS').version, upstream.commit);
   assert.match(prop(sbom.metadata, 'not-covered'), /resident runtime payload/);

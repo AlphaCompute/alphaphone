@@ -37,19 +37,36 @@ async function fenceNetwork(page: Page, allowed: string[] = []) {
 }
 
 /** Production Android as the renderer sees it: funded Cloud account, packaged resident agent that
- * keeps its conversations across a page reload, and an intercepted Clock handoff. */
-async function android(page: Page, options: { clock?: 'opened' | 'unavailable' | 'unknown' } = {}) {
+ * keeps its conversations across a page reload, an intercepted Clock handoff and a native browser
+ * whose pages are synthetic (no WebView loads anything). `voice` adds the native recorder whose
+ * Cloud transcription returns that text, retained note audio, native reminders and one writable
+ * device calendar; `signedOut` starts with no Cloud sign-in. */
+async function android(page: Page, options: { clock?: 'opened' | 'unavailable' | 'unknown'; voice?: string; signedOut?: boolean } = {}) {
   await page.addInitScript(({ options }) => {
     const w = window as any; w.androidBridge = {};
     const id = '9f1dc45a-4011-4e44-947a-30d999d24fa5', agentId = '6f1d3c3e-8c55-4c1b-9d1f-2b6f0b0d3a11';
     const kept = (key: string, initial: unknown) => { try { return JSON.parse(sessionStorage.getItem(key) || 'null') ?? initial; } catch { return initial; } };
     // Keystore-backed slots and the resident agent's own store both survive a reload of the page.
-    const slots: Record<string, string> = kept('core-loops-slots', { 'cloud:production': JSON.stringify({ token: 'synthetic-cloud-key', credentialId: id, expiresAt: Date.now() + 86_400_000 }) });
+    const slots: Record<string, string> = kept('core-loops-slots', options.signedOut ? {} : { 'cloud:production': JSON.stringify({ token: 'synthetic-cloud-key', credentialId: id, expiresAt: Date.now() + 86_400_000 }) });
+    // What the native side keeps across a reload: scheduled reminders and device calendar rows.
+    const device: { reminders: any[]; events: any[] } = kept('core-loops-device', { reminders: [], events: [] });
     const agent: { conversations: { id: string; title: string }[]; history: Record<string, any[]> } = kept('core-loops-agent', { conversations: [], history: {} });
-    const persist = () => { sessionStorage.setItem('core-loops-slots', JSON.stringify(slots)); sessionStorage.setItem('core-loops-agent', JSON.stringify(agent)); };
-    const f = w.coreLoops = { calls: [] as string[], posts: [] as string[], views: [] as string[], streams: 0, cancelled: 0, aborts: 0, clock: [] as unknown[], hold: false, release: null as null | (() => void), unexpected: [] as string[] };
+    const persist = () => { sessionStorage.setItem('core-loops-slots', JSON.stringify(slots)); sessionStorage.setItem('core-loops-agent', JSON.stringify(agent)); sessionStorage.setItem('core-loops-device', JSON.stringify(device)); };
+    const f = w.coreLoops = { calls: [] as string[], posts: [] as string[], views: [] as string[], conversations: [] as string[], bodies: [] as string[], replies: [] as string[], streams: 0, cancelled: 0, aborts: 0, clock: [] as unknown[], hold: false, release: null as null | (() => void), unexpected: [] as string[],
+      // AlphaBrowser: tabs the renderer created, with the address and navigation number each one
+      // committed; `excerpt` is what reviewQuestion returns, and `questions` records its arguments.
+      browser: { tabs: {} as Record<string, { session: string; url: string; navigation: number }>, sequence: 0, created: [] as string[], navigations: [] as string[], questions: [] as unknown[], excerpt: '', title: 'Harbour report' },
+      // Commits a navigation of a tab, as WebView does after it loads a page (or the page navigates itself).
+      commit: (tab: string, url: string) => {}, slots, device,
+      // The native recorder and Cloud transcription, and every reminder or calendar write this page asked for.
+      voice: { starts: 0, stops: 0, transcriptions: [] as any[], saved: [] as any[] }, writes: { reminders: [] as any[], events: [] as any[] } };
     const listeners: Array<{ plugin: string; event: string; callback: (value: unknown) => void }> = [];
     const emit = (streamId: string, event: unknown) => listeners.filter(l => l.plugin === 'Agent' && l.event === 'alphaAgentStream').forEach(l => l.callback({ streamId, event }));
+    f.commit = (tab: string, url: string) => {
+      const b = f.browser, row = b.tabs[tab]; row.url = url; row.navigation++;
+      const state = { session: row.session, id: tab, sequence: ++b.sequence, url, title: b.title, loading: false, committed: true, error: '', navigation: row.navigation, canBack: row.navigation > 1, canForward: false, private: false };
+      listeners.filter(l => l.plugin === 'AlphaBrowser' && l.event === 'stateChanged').forEach(l => l.callback(state));
+    };
     const data = (streamId: string, value: unknown) => emit(streamId, { type: 'chunk', dataBase64: btoa('data: ' + JSON.stringify(value) + '\n\n') });
     const request = (method: string, path: string, body: any, headers: Record<string, string>): { status: number; data: unknown } => {
       const ok = (value: unknown) => ({ status: 200, data: value });
@@ -70,22 +87,62 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
     w.Capacitor = {
       PluginHeaders: [
         { name: 'DeviceApps', methods: promise(['buildInfo']) },
-        { name: 'DailyApps', methods: withListeners(['surfaceInfo', 'clockHandoff']) },
+        { name: 'DailyApps', methods: withListeners(['surfaceInfo', 'clockHandoff', ...(options.voice ? ['listReminders', 'scheduleReminder', 'pendingReminderTap'] : [])]) },
         { name: 'Agent', methods: withListeners(['getStatus', 'start', 'stop', 'configureCloudProvider', 'request', 'providerStatus', 'requestStream', 'cancelStream']) },
         { name: 'AlphaConnection', methods: promise(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
         { name: 'AlphaActionJournal', methods: promise(['list', 'get']) },
         { name: 'AlphaNotifications', methods: promise(['status', 'crossAppStatus']) },
-        { name: 'AlphaVoiceCloud', methods: promise(['checkPermissions']) },
+        { name: 'AlphaVoiceCloud', methods: options.voice || options.signedOut ? withListeners(['checkPermissions', 'startRecording', 'stopRecording', 'getRecordingMetrics', 'cancelRecording', 'transcribeRecording', 'localSpeechStatus', 'transcribeLocalRecording', 'saveRecording', 'cancel', 'synthesize', 'play', 'stopPlayback']) : promise(['checkPermissions']) },
+        ...(options.voice ? [{ name: 'AlphaNoteAudio', methods: promise(['play', 'stop', 'state', 'describe']) },
+          { name: 'AlphaCalendar', methods: withListeners(['list', 'requestAccess', 'pendingCreations', 'listAlerts', 'save', 'acknowledgeCreation']) }] : []),
+        { name: 'AlphaBrowser', methods: withListeners(['create', 'navigate', 'present', 'close', 'command', 'bookmarks', 'setBookmark', 'browsingState', 'saveBrowsingState', 'cancelReading', 'reviewQuestion']) },
       ],
       nativeCallback: (plugin: string, method: string, input: any, callback: (value: unknown) => void) => { if (method === 'addListener') listeners.push({ plugin, event: input?.eventName, callback }); return String(listeners.length); },
       nativePromise: async (plugin: string, method: string, input: any) => {
         f.calls.push(plugin + '.' + method);
         if (plugin === 'DeviceApps') return { launcher: true, version: 'core-loops' };
         if (plugin === 'AlphaNotifications') return { permissionGranted: true, appEnabled: true };
-        if (plugin === 'AlphaVoiceCloud') return { microphone: 'granted' };
+        if (plugin === 'AlphaVoiceCloud') {
+          const v = f.voice;
+          if (method === 'checkPermissions') return { microphone: 'granted' };
+          if (method === 'startRecording') { v.starts++; return { recordingId: 'recording-' + v.starts, maxDurationMs: 59000 }; }
+          if (method === 'getRecordingMetrics') return { recordingId: input.recordingId, peak: 0.4, rms: 0.2 };
+          if (method === 'stopRecording') { v.stops++; return { recordingId: 'recording-' + v.starts, durationMs: 3000 }; }
+          // Eliza Cloud transcription, answered for the signed-in account only.
+          if (method === 'transcribeRecording') { v.transcriptions.push(structuredClone(input)); if (input.environment !== 'production' || input.credentialId !== id) throw Error('Wrong synthetic Cloud account'); return { text: options.voice, local: false }; }
+          // On-device speech (P-43): the native libelizainference voice host answers status and batch ASR.
+          if (method === 'localSpeechStatus') return options.voice ? { ready: true, playback: true, execution: 'device', provider: 'fused-paradee-asr' } : { ready: false, playback: false, execution: 'device', provider: 'fused-paradee-asr' };
+          if (method === 'transcribeLocalRecording') { v.transcriptions.push(structuredClone(input)); return { text: options.voice, local: true, execution: 'device', provider: 'fused-paradee-asr' }; }
+          if (method === 'saveRecording') { const audio = { audioId: input.recordingId, noteId: input.noteId, durationMs: 3000, transcript: input.transcript }; v.saved.push(audio); return audio; }
+          if (['cancelRecording', 'cancel', 'stopPlayback'].includes(method)) return {};
+        }
+        if (plugin === 'AlphaNoteAudio') {
+          if (method === 'describe') return f.voice.saved.find((audio: any) => audio.audioId === input.audioId) ?? { audioId: input.audioId, noteId: '', durationMs: 3000, transcript: '' };
+          if (method === 'state') return { playing: false, positionMs: 0 };
+          return {};
+        }
+        if (plugin === 'AlphaCalendar') {
+          // One writable device calendar; rows are what CalendarProvider holds after a save.
+          if (method === 'requestAccess') return { status: 'granted' };
+          if (method === 'list') return { status: 'ready', calendars: [{ id: '7', name: 'Personal', writable: true, account: 'owner@example.invalid', local: false }],
+            events: device.events.filter((row: any) => row.end > input.begin && row.begin < input.end), truncated: false };
+          if (method === 'pendingCreations') return { status: 'ready', creations: [] };
+          if (method === 'listAlerts') return { items: [] };
+          if (method === 'save') { f.writes.events.push(structuredClone(input)); const row = { id: String(100 + device.events.length), calendarId: input.calendarId, title: input.title, body: input.body, location: input.location, begin: input.begin, end: input.end, allDay: false, recurring: false }; device.events.push(row); persist(); return { status: 'saved', id: row.id, creationId: input.creationId }; }
+          if (method === 'acknowledgeCreation') return { status: 'acknowledged' };
+        }
         if (plugin === 'AlphaActionJournal') return method === 'list' ? { entries: [] } : { entry: null };
         if (plugin === 'DailyApps') {
-          if (method === 'surfaceInfo') return { developmentBuild: false, assistant: false };
+          if (method === 'surfaceInfo') return { developmentBuild: false, assistant: false, ...(options.voice ? { reminderTimingVersion: 2 } : {}) };
+          if (method === 'listReminders') return { reminders: structuredClone(device.reminders) };
+          if (method === 'pendingReminderTap') return {};
+          // Android keeps the reminder and schedules its alert inexactly; one with no alert stays pending.
+          if (method === 'scheduleReminder') {
+            f.writes.reminders.push(structuredClone(input));
+            const silent = input.alertMinutes === null, status = silent ? 'pending' : 'scheduled', mode = silent ? 'none' : 'inexact';
+            device.reminders.push({ id: input.id, title: input.title, body: input.body ?? '', at: input.at, dueAt: input.dueAt, alertMinutes: input.alertMinutes, ...(input.recurrence ? { recurrence: input.recurrence } : {}), status, mode, occurrenceId: input.id + ':' + input.at, createdAt: Date.now() }); persist();
+            return { status, id: input.id, mode };
+          }
           f.clock.push(input);
           if (options.clock === 'unknown') return { action: input.action, status: 'unknown', message: 'Clock result is unknown. Check Clock before repeating the request.' };
           return options.clock === 'unavailable' ? { action: input.action, status: 'unavailable', message: 'No Clock app can handle this request.' }
@@ -99,9 +156,9 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
           if (method === 'requestStream') {
             // The resident agent records the user turn, then streams its reply over native IPC.
             const conversation = /^\/api\/conversations\/([^/]+)\/messages\/stream$/.exec(input.path)![1], body = JSON.parse(input.body), streamId = input.streamId as string;
-            f.streams++; f.posts.push(String(body.text).split('[USER MESSAGE]\n').pop()); f.views.push(/"view":"([a-z-]+)"/.exec(String(body.text))?.[1] ?? '');
+            f.streams++; f.posts.push(String(body.text).split('[USER MESSAGE]\n').pop()); f.views.push(/"view":"([a-z-]+)"/.exec(String(body.text))?.[1] ?? ''); f.conversations.push(conversation); f.bodies.push(input.body);
             agent.history[conversation].push({ id: crypto.randomUUID(), role: 'user', text: body.text, timestamp: Date.now() }); persist();
-            const reply = 'Resident reply ' + f.streams;
+            const reply = f.replies.shift() ?? 'Resident reply ' + f.streams;
             const finish = () => {
               agent.history[conversation].push({ id: crypto.randomUUID(), role: 'assistant', text: reply, timestamp: Date.now() + 1 }); persist();
               data(streamId, { type: 'token', text: reply }); data(streamId, { type: 'done', fullText: reply, agentName: 'Alpha' }); emit(streamId, { type: 'complete' });
@@ -110,6 +167,17 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
             return { streamId };
           }
           return {};
+        }
+        if (plugin === 'AlphaBrowser') {
+          const b = f.browser;
+          if (method === 'bookmarks' || method === 'setBookmark') return { urls: [] };
+          // Nothing saved: a cold start opens one new tab.
+          if (method === 'browsingState') return { history: [], tabs: [] };
+          if (['saveBrowsingState', 'present', 'cancelReading', 'close', 'command'].includes(method)) return {};
+          if (method === 'create') { b.created.push(input.id); b.tabs[input.id] = { session: input.session, url: '', navigation: 0 }; return {}; }
+          // Only a synthetic public page "loads"; the stub commits it after the call returns.
+          if (method === 'navigate') { b.navigations.push(input.url); setTimeout(() => f.commit(input.id, input.url), 0); return {}; }
+          if (method === 'reviewQuestion') { b.questions.push(structuredClone(input)); const tab = b.tabs[input.id]; if (!tab || tab.url !== input.url || tab.navigation !== input.navigation) throw Error('Page changed'); return { text: b.excerpt }; }
         }
         if (plugin === 'AlphaConnection') {
           if (method === 'secureRead') return { value: slots[input.slot] ?? null };
@@ -131,6 +199,20 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
     };
   }, { options });
 }
+/** READ-ONLY: the web build's saved calendar document (the browser document store in IndexedDB). */
+const storedEvents = (page: Page) => page.evaluate(async () => !(await indexedDB.databases()).some(row => row.name === 'alpha.browser.documents.v1') ? [] : new Promise<any[]>((resolve, reject) => {
+  // Opened only once it exists: opening first would create it without the store's own upgrade.
+  const open = indexedDB.open('alpha.browser.documents.v1');
+  open.onerror = () => reject(open.error);
+  open.onsuccess = () => {
+    const db = open.result;
+    if (!db.objectStoreNames.contains('documents')) { db.close(); resolve([]); return; }
+    const read = db.transaction('documents', 'readonly').objectStore('documents').get('alpha.browser.calendar.v1');
+    // The record holds the domain envelope, whose value is the calendar document's own bytes.
+    read.onsuccess = () => { db.close(); const value = read.result?.raw ? JSON.parse(read.result.raw).value : null; resolve(value ? JSON.parse(value).events : []); };
+    read.onerror = () => { db.close(); reject(read.error); };
+  };
+}));
 const native = <T>(page: Page, read: (f: any) => T) => page.evaluate(`(${read.toString()})(window.coreLoops)`) as Promise<T>;
 const bubble = (page: Page, text: string) => page.getByRole('button', { name: 'Message actions: ' + text, exact: true });
 /** A funded resident account connects by itself; no Welcome dialog and no chooser remain. */
@@ -160,16 +242,24 @@ test('loop A on Android: the resident agent answers, the conversation follows ac
   await expect(bubble(page, 'Resident reply 1')).toHaveCount(1);
   expect(await native(page, f => f.posts)).toEqual(['Flag-off first request']);
 
-  // The same conversation is open from Notes and Calendar.
-  for (const app of ['Notes', 'Calendar']) {
+  // The same conversation is open from Notes, Calendar and Browser, and a message sent from Notes
+  // and one sent from Browser both join it.
+  const shown = ['Flag-off first request', 'Resident reply 1'];
+  for (const app of ['Notes', 'Calendar', 'Browser']) {
     await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
     await expect(page.locator('html')).toHaveAttribute('data-active-view', 'home');
     await button(page, app).click();
     await expect(page.locator('html')).toHaveAttribute('data-active-view', app.toLowerCase());
     await button(page, 'Open conversation').click();
-    await expect(bubble(page, 'Flag-off first request')).toHaveCount(1);
-    await expect(bubble(page, 'Resident reply 1')).toHaveCount(1);
+    for (const text of shown) await expect(bubble(page, text)).toHaveCount(1);
+    if (app === 'Calendar') continue;
+    const sent = `Flag-off ${app.toLowerCase()} request`;
+    await message.fill(sent); await message.press('Enter');
+    shown.push(sent, `Resident reply ${shown.length / 2 + 1}`);
+    for (const text of shown) await expect(bubble(page, text)).toHaveCount(1);
   }
+  // Opening Browser asked only for its saved bookmarks and tabs; no page was created or loaded.
+  expect(await native(page, f => [f.browser.created, f.browser.navigations])).toEqual([[], []]);
   // Stop while the resident agent holds its reply: the stream is cancelled, the chat says the agent may
   // still finish, the text is not returned for a blind resend and nothing is posted again.
   await native(page, f => { f.hold = true; });
@@ -182,21 +272,25 @@ test('loop A on Android: the resident agent answers, the conversation follows ac
   await expect(page.locator('[data-alpha-layer="conversation"]').getByText('The agent may still finish this reply. Alpha Phone will check once and show it here if it does.', { exact: true })).toHaveCount(1);
   await expect(message).toHaveValue('');
   await expect.poll(() => native(page, f => f.cancelled)).toBeGreaterThan(0);
-  expect(await native(page, f => f.posts)).toEqual(['Flag-off first request', 'Flag-off stopped request']);
+  expect(await native(page, f => f.posts)).toEqual(['Flag-off first request', 'Flag-off notes request', 'Flag-off browser request', 'Flag-off stopped request']);
   // The resident agent finishes anyway; the one automatic check shows its reply exactly once.
   await native(page, f => { f.hold = false; f.release(); });
-  await expect(bubble(page, 'Resident reply 2')).toHaveCount(1, { timeout: 60_000 });
+  await expect(bubble(page, 'Resident reply 4')).toHaveCount(1, { timeout: 60_000 });
   await expect(bubble(page, 'Flag-off stopped request')).toHaveCount(1);
-  expect(await native(page, f => f.streams)).toBe(2);
-  // Each request carried the screen it was sent from as its current-turn context.
-  expect(await native(page, f => f.views)).toEqual(['home', 'calendar']);
+  expect(await native(page, f => f.streams)).toBe(4);
+  // Each request carried the screen it was sent from as its current-turn context, and every one
+  // went to the same resident conversation.
+  expect(await native(page, f => f.views)).toEqual(['home', 'notes', 'browser', 'browser']);
+  const conversations = await native(page, f => f.conversations) as string[];
+  expect(conversations).toHaveLength(4);
+  expect(new Set(conversations).size).toBe(1);
 
   // Restart: the saved conversation comes back by itself. There is no "Load conversations" step here.
   await page.reload();
   await expect.poll(() => native(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   await button(page, 'Open conversation').click();
-  for (const text of ['Flag-off first request', 'Resident reply 1', 'Flag-off stopped request', 'Resident reply 2']) await expect(bubble(page, text)).toHaveCount(1, { timeout: 30_000 });
+  for (const text of [...shown, 'Flag-off stopped request', 'Resident reply 4']) await expect(bubble(page, text)).toHaveCount(1, { timeout: 30_000 });
   // Restoring reads history; it posts nothing.
   expect(await native(page, f => f.streams)).toBe(0);
   // The connection names the agent and where it runs, and no credential is rendered anywhere.
@@ -204,8 +298,9 @@ test('loop A on Android: the resident agent answers, the conversation follows ac
   await button(page, 'Settings').click();
   await expect(page.getByRole('button', { name: 'Agent connection', exact: true })).toContainText('Alpha');
   await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
-  const account = page.getByRole('dialog', { name: 'Your Cloud account' });
-  await expect(account).toContainText('Your agent runs on this phone and uses your Eliza Cloud plan for AI.');
+  const account = page.getByRole('dialog', { name: 'Your agent' });
+  await expect(account).toContainText('Running on this device');
+  await expect(account).toContainText('Your agent uses your Eliza Cloud plan for AI.');
   await expect(account.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
   expect(await page.locator('body').innerText()).not.toContain('synthetic-cloud-key');
   await expectNoDevelopmentSurface(page);
@@ -360,8 +455,23 @@ test('loops B, C and J04 in the web build: local calendar and alarm records are 
   await expect(clock.getByText('Flag-off web alarm', { exact: true })).toHaveCount(1);
   await clock.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: /^Flag-off meeting,/ }).click();
+  expect((await storedEvents(page)).map(row => row.title)).toEqual(['Flag-off meeting']);
   await button(page, 'Delete event').click();
+  // Delete is reviewed first: the dialog names the event, and nothing is removed until it is confirmed.
+  const review = page.getByRole('dialog', { name: 'Delete calendar event?' });
+  await expect(review).toContainText('Flag-off meeting');
+  await expect(review).toContainText('Deletion waits 10 seconds. You can Undo during that time.');
+  expect((await storedEvents(page)).map(row => row.title)).toEqual(['Flag-off meeting']);
+  await review.getByRole('button', { name: 'Delete event', exact: true }).click();
+  await expect(review).toHaveCount(0);
+  // The deletion is queued with Undo for 10 seconds, then removes exactly the reviewed event.
+  await expect(page.getByRole('complementary', { name: 'Pending deletions' }).getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
+  await expect.poll(() => storedEvents(page), { timeout: 30_000 }).toEqual([]);
+  // After a restart the event is gone from the list and from the saved calendar document.
+  await page.reload();
+  await button(page, 'Calendar').click();
   await expect(page.getByRole('button', { name: /^Flag-off meeting,/ })).toHaveCount(0);
+  expect(await storedEvents(page)).toEqual([]);
   await expectNoDevelopmentSurface(page);
   expect(foreign).toEqual([]);
 });
@@ -375,7 +485,7 @@ test('loops D and F in the web build: digests and mail name the missing account 
   await button(page, 'Scheduled digests').click();
   const digests = page.getByRole('dialog', { name: 'Scheduled digests', exact: true });
   await expect(digests).toContainText('Choose where your agent runs to set up scheduled digests.');
-  await expect(digests).toContainText('Connect an agent with verified scheduled digest support.');
+  await expect(digests).toContainText('Connect your remote agent in Settings.');
   // None of the development scheduler exists: no snapshot, no schedule review, no "runs while open".
   await expect(digests.getByText('Share a snapshot', { exact: true })).toHaveCount(0);
   await expect(digests.getByRole('button', { name: /^Review (morning|evening) schedule$/ })).toHaveCount(0);
@@ -434,7 +544,7 @@ test('loops E and J05 in the web build: browsing and page review work, an unconn
 
 test('loop J01 in the web build: a scanned poster becomes exactly one reviewed calendar event with no development profile', async ({ page }) => {
   test.setTimeout(300_000);
-  const poster = 'Open studio\nOctober 10, 2026\nTime: 6:30 PM - 8:00 PM\nVenue: Main hall';
+  const foreign = await fenceNetwork(page);
   await page.clock.setFixedTime(new Date('2026-10-09T15:00:00Z'));
   await page.addInitScript(offline);
   await page.addInitScript(() => {
@@ -451,22 +561,40 @@ test('loop J01 in the web build: a scanned poster becomes exactly one reviewed c
   const dialog = page.getByRole('dialog', { name: 'Review scanned text' }), text = dialog.getByRole('textbox', { name: 'Scanned text' });
   await expect(text).toBeEnabled({ timeout: 120_000 });
   await expect(text).toHaveValue(/October 10, 2026/);
-  await text.fill(poster);
+  // The suggestions come from the local OCR result as recognized; the text is not corrected first.
+  const recognized = await text.inputValue();
   await dialog.locator('summary').filter({ hasText: 'Create event draft' }).click();
   await expect(dialog.getByLabel('Event title', { exact: true })).toHaveValue('Open studio');
   await expect(dialog.getByLabel('Event date', { exact: true })).toHaveValue('2026-10-10');
   await expect(dialog.getByLabel('Event start time', { exact: true })).toHaveValue('18:30');
+  await expect(dialog.getByLabel('Event location', { exact: true })).toHaveValue('Main hall');
   await dialog.getByLabel('Event title', { exact: true }).fill('Reviewed studio visit');
   await dialog.getByRole('button', { name: 'Review in Calendar', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Reviewed studio visit');
+  // Suggesting and handing off saved nothing; only the Calendar form's Save writes.
+  expect(await storedEvents(page)).toEqual([]);
   await button(page, 'Save event').click();
   await expect(page.getByRole('heading', { name: 'Reviewed studio visit', level: 1 })).toBeVisible();
   await page.reload();
   await expect(button(page, 'Settings')).toBeVisible();
-  await button(page, 'Calendar').click();
+  const saved = await storedEvents(page);
+  expect(saved).toHaveLength(1);
+  // 18:30 to 20:00 on October 10 in the phone's own zone.
+  const [begin, end] = await page.evaluate(() => [new Date(2026, 9, 10, 18, 30).getTime(), new Date(2026, 9, 10, 20, 0).getTime()]);
+  expect(saved[0]).toMatchObject({ calendarId: 'local', title: 'Reviewed studio visit', location: 'Main hall', body: recognized, begin, end });
+  // Home's agenda card names the saved event and opens that same event.
+  const card = page.getByRole('button', { name: /^Open calendar event: Reviewed studio visit,/ });
+  await expect(card).toHaveCount(1);
+  await card.click();
+  await expect(page.getByRole('heading', { name: 'Reviewed studio visit', level: 1 })).toBeVisible();
+  await expect(button(page, 'Main hall')).toBeVisible();
+  await button(page, 'Back to calendar').last().click();
   await button(page, 'Day 10').click();
   await expect(page.getByRole('button', { name: /^Reviewed studio visit,/ })).toHaveCount(1);
+  expect(await storedEvents(page)).toHaveLength(1);
   await expectNoDevelopmentSurface(page);
+  // Capture, OCR and the calendar are all local: nothing left the preview server.
+  expect(foreign).toEqual([]);
 });
 
 test('loop J03 in the web build: a chosen document can be reviewed for a question, and with no agent nothing is sent or saved', async ({ page }) => {
@@ -494,6 +622,305 @@ test('loop J03 in the web build: a chosen document can be reviewed for a questio
   // The development Inbox simulator that feeds journey J03 does not exist here.
   await expect(button(page, 'Incoming email')).toHaveCount(0);
   await expectNoDevelopmentSurface(page);
+  expect(foreign).toEqual([]);
+});
+
+const HARBOUR = 'https://public-fixture.test/harbour';
+/** Opens Browser on the stubbed native browser and loads the synthetic public page. */
+async function openHarbour(page: Page) {
+  await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
+  await button(page, 'Browser').click();
+  await page.getByRole('button', { name: 'Search or type address' }).first().click();
+  await page.getByRole('textbox', { name: 'Address', exact: true }).fill(HARBOUR);
+  await page.getByRole('textbox', { name: 'Address', exact: true }).press('Enter');
+  // The committed HTTPS page is reported by the native browser, which alone can claim TLS.
+  await expect(page.getByRole('img', { name: 'Secure connection', exact: true })).toBeVisible();
+  const tab = await native(page, f => f.browser.created.at(-1)) as string;
+  expect(await native(page, f => f.browser.navigations)).toEqual([HARBOUR]);
+  return tab;
+}
+async function askAboutHarbour(page: Page) {
+  await button(page, 'Menu').click();
+  await button(page, 'Ask about page').click();
+}
+/** The notes saved in the Keystore-backed Notes slot of the stub (its envelope holds the collection's bytes). */
+const savedNotes = (page: Page) => native(page, f => { const slot = f.slots['notes-records:v1:device']; return slot ? JSON.parse(JSON.parse(slot).currentRaw).records : []; }) as Promise<any[]>;
+
+test('loop J05 on Android: a reviewed native page excerpt, a resident answer and an explicit Save leave one web-linked note', async ({ page }) => {
+  test.setTimeout(180_000);
+  const foreign = await fenceNetwork(page);
+  await android(page);
+  await residentHome(page);
+  const tab = await openHarbour(page);
+  await native(page, f => { f.browser.excerpt = 'The ferry leaves at nine from pier four.\nOMIT THIS: internal planning detail.'; f.replies.push('The ferry leaves at nine.'); });
+  await askAboutHarbour(page);
+  const review = page.getByRole('dialog', { name: 'Ask about selected content' });
+  const excerpt = review.getByRole('textbox', { name: 'Content excerpt' });
+  await expect(excerpt).toHaveValue(/OMIT THIS/);
+  // The native reviewed read is bound to the session, the tab and the exact committed navigation.
+  const session = (await native(page, f => f.browser.tabs[f.browser.created.at(-1)].session)) as string;
+  expect(await native(page, f => f.browser.questions)).toEqual([{ session, id: tab, url: HARBOUR, navigation: 1 }]);
+  await excerpt.fill('The ferry leaves at nine from pier four.');
+  await review.getByRole('textbox', { name: 'Question about content' }).fill('When does the ferry leave?');
+  await review.getByRole('button', { name: 'Use in conversation', exact: true }).click();
+  await expect(review).toHaveCount(0);
+  // Composed only: nothing reaches the agent before Send.
+  expect(await native(page, f => f.streams)).toBe(0);
+  await button(page, 'Send').click();
+  await expect(bubble(page, 'The ferry leaves at nine.')).toHaveCount(1);
+  // Exactly one turn, carrying the question, the page it came from and only the reviewed excerpt.
+  expect(await native(page, f => f.posts)).toEqual(['When does the ferry leave?\n\nSource: Harbour report\n\nThe ferry leaves at nine from pier four.']);
+  expect(await native(page, f => f.bodies.join('\n'))).not.toContain('OMIT THIS');
+  // An answer alone saves nothing.
+  expect(await savedNotes(page)).toEqual([]);
+  const card = page.getByRole('button', { name: /^Review summary note/ });
+  await expect(card).toHaveCount(1);
+  await card.click();
+  const summary = page.getByRole('dialog', { name: 'Save reviewed summary note' });
+  await expect(summary).toContainText('The note will link to Harbour report.');
+  await expect(summary.getByRole('textbox', { name: 'Summary note text' })).toHaveValue('The ferry leaves at nine.');
+  await summary.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(summary).toHaveCount(0);
+  expect(await savedNotes(page)).toEqual([]);
+  await card.click();
+  await summary.getByRole('textbox', { name: 'Summary note title' }).fill('Harbour summary');
+  await summary.getByRole('button', { name: 'Save reviewed note', exact: true }).click();
+  await expect(summary).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Summary note saved/ })).toHaveCount(1);
+  await expect(card).toHaveCount(0);
+  const saved = await savedNotes(page);
+  expect(saved).toHaveLength(1);
+  expect(saved[0]).toMatchObject({ title: 'Harbour summary', body: 'The ferry leaves at nine.', webSource: { kind: 'web-page', version: 1, url: HARBOUR } });
+  expect(JSON.stringify(saved)).not.toContain('OMIT THIS');
+
+  // After a restart the note is still the only one and reopens with its web source.
+  await page.reload();
+  await expect.poll(() => native(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
+  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
+  await button(page, 'Notes').click();
+  await expect(page.getByRole('region', { name: 'Notes' }).getByRole('button', { name: /^Open (?!Trash$)/ })).toHaveCount(1);
+  await button(page, 'Open Harbour summary').click();
+  await expect(page.getByRole('textbox', { name: 'Note', exact: true })).toHaveValue('The ferry leaves at nine.');
+  await button(page, 'Web source linked').click();
+  await expect(page.getByRole('dialog', { name: 'Note web source' })).toContainText(HARBOUR);
+  expect(await native(page, f => f.streams)).toBe(0);
+  await expectNoDevelopmentSurface(page);
+  expect(await native(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
+});
+
+// An unusable excerpt (too long or empty) is not a refusal: the review opens with an empty excerpt and
+// Continue disabled until the user pastes, as the web CORS-denied path does (J05-5). Nothing is sent.
+for (const [name, text] of [['too long', 'Harbour '.repeat(626)], ['empty', '  ']] as const) {
+  test(`loop J05 on Android: a native page excerpt that is ${name} opens the review empty, with nothing sent`, async ({ page }) => {
+    test.setTimeout(120_000);
+    const foreign = await fenceNetwork(page);
+    await android(page);
+    await residentHome(page);
+    await openHarbour(page);
+    await page.evaluate(value => { (window as any).coreLoops.browser.excerpt = value; }, text);
+    await askAboutHarbour(page);
+    const review = page.getByRole('dialog', { name: 'Ask about selected content' });
+    await expect(review).toBeVisible();
+    await expect(review.getByRole('textbox', { name: 'Content excerpt' })).toHaveValue('');
+    await expect(review.getByRole('button', { name: 'Use in conversation', exact: true })).toBeDisabled();
+    await review.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(review).toHaveCount(0);
+    expect(await native(page, f => f.browser.questions.length)).toBe(1);
+    expect(await native(page, f => f.streams)).toBe(0);
+    await expectNoDevelopmentSurface(page);
+    expect(await native(page, f => f.unexpected)).toEqual([]);
+    expect(foreign).toEqual([]);
+  });
+}
+
+test('loop J05 on Android: a native page excerpt that looks like credentials is refused before any review opens', async ({ page }) => {
+  test.setTimeout(120_000);
+  const foreign = await fenceNetwork(page);
+  await android(page);
+  await residentHome(page);
+  await openHarbour(page);
+  await page.evaluate(() => { (window as any).coreLoops.browser.excerpt = 'Enter the verification code 123456 to continue.'; });
+  await askAboutHarbour(page);
+  await expect(page.locator('[data-alpha-toast]')).toContainText('This page may contain credentials or verification codes. Open a different page.');
+  await expect(page.getByRole('dialog', { name: 'Ask about selected content' })).toHaveCount(0);
+  expect(await native(page, f => f.browser.questions.length)).toBe(1);
+  expect(await native(page, f => f.streams)).toBe(0);
+  await expectNoDevelopmentSurface(page);
+  expect(await native(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
+});
+
+test('loop J05 on Android: a page navigation closes the open review, and an agent reconnect before Save refuses the summary', async ({ page }) => {
+  test.setTimeout(180_000);
+  const foreign = await fenceNetwork(page);
+  await android(page);
+  await residentHome(page);
+  const tab = await openHarbour(page);
+  await native(page, f => { f.browser.excerpt = 'The ferry leaves at nine from pier four.'; });
+  await askAboutHarbour(page);
+  const review = page.getByRole('dialog', { name: 'Ask about selected content' });
+  await expect(review).toBeVisible();
+  // The page navigates itself while the excerpt is under review: the review closes with nothing composed.
+  await page.evaluate(id => (window as any).coreLoops.commit(id, 'https://public-fixture.test/timetable'), tab);
+  await expect(review).toHaveCount(0);
+  expect(await native(page, f => f.streams)).toBe(0);
+
+  // Asked again on the new page, sent and answered.
+  await native(page, f => { f.replies.push('The ferry leaves at nine.'); });
+  await askAboutHarbour(page);
+  await expect.poll(() => native(page, f => f.browser.questions.length)).toBe(2);
+  expect(await native(page, f => f.browser.questions[1])).toMatchObject({ url: 'https://public-fixture.test/timetable', navigation: 2 });
+  await review.getByRole('button', { name: 'Use in conversation', exact: true }).click();
+  await button(page, 'Send').click();
+  await expect(bubble(page, 'The ferry leaves at nine.')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /^Review summary note/ })).toHaveCount(1);
+  // The resident agent is reconnected (a new verified session) before the answer is saved.
+  await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
+  await button(page, 'Settings').click();
+  await button(page, 'Agent connection').click();
+  const account = page.getByRole('dialog', { name: 'Your agent' });
+  await account.getByRole('button', { name: 'Reconnect agent', exact: true }).click();
+  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
+  expect(await native(page, f => f.calls.filter((call: string) => call === 'Agent.start').length)).toBe(2);
+  await button(page, 'Open conversation').click();
+  const card = page.getByRole('button', { name: /^Review summary note/ });
+  // The restored conversation keeps the answer, but the review bound to the previous session is
+  // withdrawn: there is nothing left to save under the new one.
+  await expect(bubble(page, 'The ferry leaves at nine.')).toHaveCount(1, { timeout: 30_000 });
+  await expect(card).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Summary note saved/ })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Save reviewed summary note' })).toHaveCount(0);
+  expect(await savedNotes(page)).toEqual([]);
+  await expectNoDevelopmentSurface(page);
+  expect(await native(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
+});
+
+const TRANSCRIPT = 'Meeting: we agreed to book the venue for Friday and email the caterer.';
+const SUMMARY = 'The team agreed to book the venue.';
+const ACTIONS = 'Book the venue\nEmail the caterer';
+
+test('loop B / J02 on Android: a recorded note, a resident summary and reviewed hand-offs save one reminder and one device event, each only on Save', async ({ page }) => {
+  test.setTimeout(240_000);
+  const foreign = await fenceNetwork(page);
+  await android(page, { voice: TRANSCRIPT });
+  await residentHome(page);
+  const writes = () => native(page, f => ({ reminders: f.writes.reminders.length, events: f.writes.events.length }));
+
+  // 1. Record with the native recorder, transcribe on the phone (on-device voice host), review and save the note.
+  await button(page, 'Notes').click();
+  await button(page, 'Record and transcribe').click();
+  await button(page, 'Start recording').click();
+  await expect(button(page, 'Stop recording')).toBeVisible();
+  await button(page, 'Stop recording').click();
+  await button(page, 'Transcribe on this phone').click();
+  await expect(page.getByRole('textbox', { name: 'Review transcript', exact: true })).toHaveValue(TRANSCRIPT);
+  // One on-device transcription of this recording, no Cloud upload; nothing is saved before Save note.
+  expect(await native(page, f => f.voice.transcriptions.map((row: any) => row.recordingId))).toEqual(['recording-1']);
+  expect(await native(page, f => f.calls.filter((call: string) => call === 'AlphaVoiceCloud.transcribeRecording'))).toEqual([]);
+  expect(await savedNotes(page)).toEqual([]);
+  await button(page, 'Save note').click();
+  await expect(button(page, 'Play recording')).toBeVisible();
+  await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Venue meeting');
+  await expect.poll(async () => (await savedNotes(page)).filter(n => n.kind === 'voice' && n.title === 'Venue meeting' && n.body === TRANSCRIPT && !!n.audio?.audioId).length).toBe(1);
+  const recorded = (await savedNotes(page))[0];
+
+  // 2. Review the transcript with the resident agent; its answer is a summary and action items.
+  await page.evaluate(reply => { (window as any).coreLoops.replies = [reply]; }, JSON.stringify({ summary: SUMMARY, actions: ACTIONS.split('\n') }));
+  await button(page, 'Review transcript with Alpha').click();
+  const question = page.getByRole('dialog', { name: 'Ask about selected content' });
+  await expect(question.getByRole('textbox', { name: 'Content excerpt' })).toHaveValue(TRANSCRIPT);
+  await question.getByRole('button', { name: 'Use in conversation', exact: true }).click();
+  await button(page, 'Send').click();
+  const card = page.getByRole('button', { name: /^Review summary note/ });
+  await expect(card).toHaveCount(1, { timeout: 20_000 });
+  expect(await native(page, f => f.posts.length)).toBe(1);
+  expect(await native(page, f => f.posts[0])).toContain(TRANSCRIPT);
+  await card.click();
+  const summary = page.getByRole('dialog', { name: 'Save reviewed summary note' });
+  await expect(summary.getByRole('textbox', { name: 'Summary note text' })).toHaveValue(SUMMARY);
+  await expect(summary.getByRole('textbox', { name: 'Action items, one per line' })).toHaveValue(ACTIONS);
+  expect((await savedNotes(page))[0]).toEqual(recorded);
+  await summary.getByRole('button', { name: 'Save recording summary', exact: true }).click();
+  await expect(summary).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Recording summary saved/ })).toHaveCount(1);
+  expect((await savedNotes(page))[0]).toMatchObject({ id: recorded.id, audio: recorded.audio, body: TRANSCRIPT, summary: [SUMMARY], actions: [{ t: 'Book the venue', done: false }, { t: 'Email the caterer', done: false }] });
+  // Saving the summary schedules nothing.
+  expect(await writes()).toEqual({ reminders: 0, events: 0 });
+
+  // 3. Reminder draft from the note: reviewed in Calendar, written once on Save.
+  await button(page, 'Minimize chat').click();
+  await button(page, 'Review reminder draft').click();
+  await expect(page.getByRole('textbox', { name: 'Notes', exact: true })).toHaveValue(ACTIONS);
+  expect(await writes()).toEqual({ reminders: 0, events: 0 });
+  await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Book the venue');
+  await button(page, 'Save event').click();
+  await expect.poll(writes).toEqual({ reminders: 1, events: 0 });
+  const reminder = (await native(page, f => f.writes.reminders))[0];
+  expect(reminder).toMatchObject({ title: 'Book the venue', body: ACTIONS });
+  await page.getByRole('button', { name: /^Book the venue,/ }).click();
+  await expect(page.getByText('From note: Venue meeting', { exact: true })).toBeVisible();
+
+  // 4. Calendar event draft from the note: written once to the device calendar on Save.
+  await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
+  await button(page, 'Notes').click();
+  await button(page, 'Open Venue meeting').click();
+  await button(page, 'Review calendar event draft').click();
+  await expect(page.getByRole('textbox', { name: 'Notes', exact: true })).toHaveValue(ACTIONS);
+  expect(await writes()).toEqual({ reminders: 1, events: 0 });
+  await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Venue walkthrough');
+  await button(page, 'Save event').click();
+  await expect(page.getByRole('heading', { name: 'Venue walkthrough', level: 1 })).toBeVisible();
+  await expect.poll(writes).toEqual({ reminders: 1, events: 1 });
+  const event = (await native(page, f => f.writes.events))[0];
+  // The note draft targets the phone's own local calendar (form calendar 'native:local').
+  expect(event).toMatchObject({ calendarId: 'local', title: 'Venue walkthrough', body: ACTIONS, begin: reminder.dueAt, end: reminder.dueAt + 3_600_000 });
+  // The event's review shows no note link before the reload below.
+  await expect(page.getByText(/From note/)).toHaveCount(0);
+
+  // 5. Reload once: both records are still there, exactly once, and nothing is written again.
+  await page.reload();
+  await expect.poll(() => native(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
+  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
+  // Home's agenda card opens the next item; Back shows that item's day.
+  await page.getByRole('button', { name: /^Open calendar event: (Book the venue|Venue walkthrough),/ }).click();
+  await button(page, 'Back to calendar').last().click();
+  await expect(page.getByRole('button', { name: /^Book the venue,/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /^Venue walkthrough,/ })).toHaveCount(1);
+  await page.getByRole('button', { name: /^Book the venue,/ }).click();
+  await expect(page.getByText('From note: Venue meeting', { exact: true })).toBeVisible();
+  expect(await writes()).toEqual({ reminders: 0, events: 0 });
+  expect(await native(page, f => [f.device.reminders.length, f.device.events.length])).toEqual([1, 1]);
+  // Both saved records link back to the note: the reminder by its id, the device event by the creation
+  // id the upstream calendar plugin returns for events the host created (elizaOS/eliza#35912).
+  const links = Object.keys(await native(page, f => JSON.parse(f.slots['note-origins:v1:device']).links));
+  expect(links).toHaveLength(2);
+  expect(links).toContain('reminder:' + reminder.id);
+  expect(links.filter(key => /^event:[0-9a-f-]{36}$/.test(key))).toHaveLength(1);
+  await expectNoDevelopmentSurface(page);
+  expect(await native(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
+});
+
+test('loop B / J02 on Android signed out: the Eliza Cloud sign-in comes first and nothing is captured', async ({ page }) => {
+  test.setTimeout(120_000);
+  const foreign = await fenceNetwork(page);
+  await android(page, { signedOut: true });
+  await page.goto('/');
+  // P-43 with #410: the resident starts signed out and the sign-in dialog, which every Alpha Phone
+  // needs, opens by itself and cannot be dismissed; no "without AI" choice is offered.
+  const dialog = page.getByRole('dialog', { name: 'Your agent', exact: true });
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  await expect(dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Close connection settings', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Use local apps without AI', exact: true })).toHaveCount(0);
+  await expect(button(page, 'Start recording')).toHaveCount(0);
+  expect(await native(page, f => [f.voice.starts, f.voice.transcriptions.length])).toEqual([0, 0]);
+  expect(await native(page, f => f.calls.filter((call: string) => call.startsWith('AlphaVoiceCloud.') && call !== 'AlphaVoiceCloud.checkPermissions'))).toEqual([]);
+  expect(await savedNotes(page)).toEqual([]);
+  await expectNoDevelopmentSurface(page);
+  expect(await native(page, f => f.unexpected)).toEqual([]);
   expect(foreign).toEqual([]);
 });
 

@@ -30,7 +30,7 @@ public class AlphaFilesPlugin extends Plugin {
  private static final class Entry { final String id=UUID.randomUUID().toString();Uri uri;final String parent;long touched;Entry(Uri uri,String parent){this.uri=uri;this.parent=parent;} }
  private interface Work {JSObject run()throws Exception;}
  private JSObject result(String status,String message){JSObject out=new JSObject();out.put("status",status);out.put("message",message);return out;}
- private void run(PluginCall call,Work task){try{worker.execute(()->{try{call.resolve(task.run());}catch(SecurityException e){entries.clear();rootId=null;call.resolve(result("revoked","Folder access expired. Choose the folder again."));}catch(Exception e){call.resolve(result("failed","The document provider could not confirm this operation. Refresh before retrying."));}});}catch(RejectedExecutionException e){call.resolve(result("unavailable","Files closed. Reopen Files to continue."));}}
+ private void run(PluginCall call,Work task){PluginWorkers.submit(worker,()->{try{call.resolve(task.run());}catch(SecurityException e){entries.clear();rootId=null;call.resolve(result("revoked","Folder access expired. Choose the folder again."));}catch(Exception e){call.resolve(result("failed","The document provider could not confirm this operation. Refresh before retrying."));}},()->call.resolve(result("unavailable","Files closed. Reopen Files to continue.")));}
  private ContentResolver resolver(){return getContext().getContentResolver();}
  private boolean retained(boolean write){if(tree==null)return false;for(android.content.UriPermission p:resolver().getPersistedUriPermissions())if(tree.equals(p.getUri())&&p.isReadPermission()&&(!write||p.isWritePermission()))return true;return false;}
  private Entry root(){

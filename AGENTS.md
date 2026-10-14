@@ -7,8 +7,8 @@ use a reviewed upstream commit or an explicit tested patch in `patches/eliza`.
 `upstream.lock.json` records the shared source revision; `docs/architecture.md` defines ownership.
 `apps/app` owns this product's renderer; `android` owns its Android packaging.
 Run `npm run verify` and the Android build: `npm run android:build:local` (input check,
-`agent:prepare`, `agent:build-workflow-worker`, `agent:stage-android`, `android:build`; speech
-AAR first, see README); verify both distribution variants. Plain `npm run android:build` exits 2
+`agent:prepare`, `agent:build-workflow-worker`, `agent:stage-android`, `android:build`; staged
+on-device voice outputs first, see README and docs/fused-speech.md); verify both distribution variants. Plain `npm run android:build` exits 2
 before Gradle with the command to run when an input is missing; `-- --allow-unpackaged-runtime`
 builds non-distributable developer APKs. Mocks, fixtures and developer surfaces exist only with
 `ELIZA_DEV_ALLOW_TEST_MOCKS=1`; production builds must pass `scripts/audit-production-bundle.mjs`.

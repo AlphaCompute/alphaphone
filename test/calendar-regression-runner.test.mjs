@@ -63,3 +63,19 @@ test('Calendar availability runs the whole class with both calendar permissions 
 test('Calendar availability rejects a run in which a method is missing or the class was skipped',()=>{
  for(const mode of ['missing-method','skipped']){const r=exercise(mode,'availability');assert.notEqual(r.code,0,mode);assert.equal(r.record.passed,false,mode);}
 });
+test('Home calendar card runs its granted case, then its access-off case with both calendar permissions revoked before it starts',()=>{
+ const granted=exercise('pass','home-card');assert.equal(granted.code,0,granted.stderr);assert.equal(granted.record.passed,true);
+ const run=granted.commands.find(a=>a.includes('instrument'));
+ assert.equal(run[run.indexOf('class')+1],'ai.elizaresearch.alphaphone.HomeCalendarCardInstrumentedTest#nextProviderEventShowsTitleCalendarNameAndReadTime');
+ assert.equal(run[run.indexOf('homeCalendar')+1],'1');
+ assert.deepEqual(granted.commands.filter(a=>a.includes('grant')||a.includes('revoke')).map(a=>a[2]),['grant','grant']);
+ const revoked=exercise('pass','home-card-revoked');assert.equal(revoked.code,0,revoked.stderr);assert.equal(revoked.record.passed,true);
+ assert.equal(revoked.record.gateValue,'revoked');assert.equal(revoked.record.calendarPermissions,'revoked');
+ const denied=revoked.commands.find(a=>a.includes('instrument'));
+ assert.equal(denied[denied.indexOf('class')+1],'ai.elizaresearch.alphaphone.HomeCalendarCardInstrumentedTest#revokedAccessShowsTheAccessOffState');
+ assert.equal(denied[denied.indexOf('homeCalendar')+1],'revoked');
+ const permissions=revoked.commands.filter(a=>a.includes('grant')||a.includes('revoke')||a.includes('clear-permission-flags'));
+ assert.ok(permissions.length===4&&!permissions.some(a=>a[2]==='grant'),'no grant reaches the revoked case');
+ assert.ok(revoked.commands.findIndex(a=>a.includes('revoke'))<revoked.commands.indexOf(denied),'revoked before the process starts');
+ assert.ok(permissions.every(a=>a[a.indexOf('--user')+1]==='10'));
+});

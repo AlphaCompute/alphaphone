@@ -7,9 +7,9 @@
 // plugin; this guard covers every Java source the app ships.
 //
 // Rule: work is handed to an executor only where a stopped executor is answered, not thrown. That
-// means the hand-off sits in a try block that catches RejectedExecutionException (or a wider
-// type), and no lambda or anonymous class body lies between the two, because code in such a body
-// runs later, outside that try.
+// means the hand-off goes through PluginWorkers.submit, or sits in a try block that catches
+// RejectedExecutionException (or a wider type) with no lambda or anonymous class body between the
+// two, because code in such a body runs later, outside that try.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -91,6 +91,12 @@ function handOffs(name, code) {
     }
     sites.push({ file: name, line: code.slice(0, at).split("\n").length, receiver: match[1], method: match[2], guarded });
   }
+  // PluginWorkers.submit(worker, work, refused) answers a stopped or full worker by running refused
+  // (test/plugin-worker-guard.test.mjs runs it on the JVM), so each such hand-off is guarded.
+  for (const match of code.matchAll(/\bPluginWorkers\.submit\((\w+(?:\(\))?),/g)) {
+    if (!fields.has(match[1])) continue;
+    sites.push({ file: name, line: code.slice(0, match.index).split("\n").length, receiver: match[1], method: "PluginWorkers.submit", guarded: true });
+  }
   return sites;
 }
 
@@ -137,14 +143,14 @@ test("the workers that plugins stop on destroy are reached through one rejecting
     return source.slice(at, source.indexOf("\n }", at));
   };
   const mail = read("AlphaMailAttachmentsPlugin.java");
-  assert.match(helper("AlphaMailAttachmentsPlugin.java", "private void work(PluginCall call,Runnable task){"), /try\{worker\.execute\(task\);\}\s*catch\(RejectedExecutionException \w+\)\{call\.reject\(/);
+  assert.match(helper("AlphaMailAttachmentsPlugin.java", "private void work(PluginCall call,Runnable task){"), /PluginWorkers\.submit\(worker,task,\(\)->call\.reject\(/);
   for (const method of ["readSelected", "retainSourceReference", "openSourceReference"])
     assert.match(mail, new RegExp(`@PluginMethod public void ${method}\\(PluginCall call\\)\\{int token=generation\\.get\\(\\);work\\(call,`), `${method} uses the helper`);
   assert.match(mail, /private void openReviewedAt\(PluginCall call,int token\)\{work\(call,/);
   assert.match(mail, /handleOnDestroy\(\)\{[^\n]*worker\.shutdown\(\);/, "the worker is still stopped with the plugin");
 
   const journal = read("AlphaActionJournalPlugin.java");
-  assert.match(helper("AlphaActionJournalPlugin.java", "private void clockWork(PluginCall call,Runnable task){"), /try\{worker\(\)\.execute\(task\);\}\s*catch\(java\.util\.concurrent\.RejectedExecutionException \w+\)\{call\.reject\(/);
+  assert.match(helper("AlphaActionJournalPlugin.java", "private void clockWork(PluginCall call,Runnable task){"), /PluginWorkers\.submit\(worker\(\),task,\(\)->call\.reject\(/);
   assert.match(journal, /public void reviewClock\(PluginCall call\)\{\s*clockWork\(call,/);
   assert.match(journal, /public void confirmClock\(PluginCall call\)\{[\s\S]{0,400}?\n\s*clockWork\(call,/);
 

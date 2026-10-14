@@ -32,6 +32,19 @@ export function verifyParadeeFfi(root){
   return {forkPin:expected,headerSha256:digest(bytes)};
  }catch(error){throw Error('Paradee FFI source unavailable or changed. '+guidance,{cause:error});}
 }
+/**
+ * The ASR slot (android/paradee-voice/asr-inputs.json). One backend's files only:
+ * parakeet = one parakeet-tdt GGUF (Phonon-2); qwen3 = the Qwen3-ASR text GGUF and its mmproj.
+ */
+export const ASR_BACKEND_ROLES=Object.freeze({parakeet:Object.freeze(['asr-model']),qwen3:Object.freeze(['asr-model','asr-mmproj'])});
+export function asrSlotFiles(slot){
+ const roles=ASR_BACKEND_ROLES[slot?.backend];
+ if(!roles)throw Error('ASR slot backend must be parakeet or qwen3');
+ if(!Array.isArray(slot.files)||slot.files.length!==roles.length||new Set(slot.files.map(row=>row?.path)).size!==roles.length)throw Error(`ASR slot pins are incomplete for the ${slot.backend} backend`);
+ if(roles.some(role=>slot.files.filter(row=>row.role===role).length!==1))throw Error(`ASR slot roles must be ${roles.join(' and ')}`);
+ for(const pin of slot.files)if(typeof pin.path!=='string'||!pin.path.startsWith('asr/')||!pin.path.endsWith('.gguf'))throw Error('Invalid ASR pin');
+ return slot.files;
+}
 /** Integrity only. This never establishes functional, device or release qualification. */
 export function verifyParadeeRuntime(root,{allowAbsent=false}={}){
  const native=path.join(root,PARADEE_NATIVE);
@@ -54,10 +67,12 @@ export function verifyParadeeRuntime(root,{allowAbsent=false}={}){
  for(const pin of [inputs.paradee,inputs.lexicon]){const entry=manifest.files.find(row=>row.path===pin.path);if(!entry||entry.sha256!==pin.sha256||entry.bytes!==pin.bytes)throw Error('Pinned speech model or lexicon changed');}
  // The upstream builder currently produces TTS only. Never call that complete local speech.
  const asrPin=path.join(root,'android/paradee-voice/asr-inputs.json');
- if(!fs.existsSync(asrPin))throw Error('Reviewed ASR model/projector pins are missing; TTS-only output is not complete local speech.');
- const asr=JSON.parse(fs.readFileSync(asrPin,'utf8'));
- if(!Array.isArray(asr.files)||asr.files.length!==2||new Set(asr.files.map(row=>row.path)).size!==2)throw Error('ASR model/projector pins are incomplete');
- for(const pin of asr.files){if(!pin.path?.startsWith('asr/')||!pin.path.endsWith('.gguf'))throw Error('Invalid ASR pin');checkedFile(path.join(native,bundle),pin);const entry=manifest.files.find(row=>row.path===pin.path);if(!entry||entry.sha256!==pin.sha256||entry.bytes!==pin.bytes)throw Error('Reviewed ASR model/projector changed');}
+ if(!fs.existsSync(asrPin))throw Error('Reviewed ASR slot pins are missing; TTS-only output is not complete local speech.');
+ const asr=asrSlotFiles(JSON.parse(fs.readFileSync(asrPin,'utf8')));
+ for(const pin of asr){checkedFile(path.join(native,bundle),pin);const entry=manifest.files.find(row=>row.path===pin.path);if(!entry||entry.sha256!==pin.sha256||entry.bytes!==pin.bytes)throw Error('Reviewed ASR model changed');}
+ // asr/ holds exactly one backend's files: libelizainference would pick a stray parakeet GGUF over the slot.
+ const slotPaths=new Set(asr.map(pin=>pin.path));
+ if(manifest.files.some(row=>row.path.startsWith('asr/')&&!slotPaths.has(row.path)))throw Error('Voice bundle carries an ASR file outside the reviewed slot');
  return {packaged:true,qualified:false};
 }
 /** The app omits the voice bundle's engine and must package those same reviewed bytes via its host. */

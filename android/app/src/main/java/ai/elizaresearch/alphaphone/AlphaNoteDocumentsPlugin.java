@@ -49,7 +49,7 @@ public final class AlphaNoteDocumentsPlugin extends Plugin {
   if(response.getResultCode()!=Activity.RESULT_OK||response.getData()==null){busy.set(false);call.resolve(result("cancelled","Document selection cancelled. Nothing imported or exported."));return null;}
   Uri uri=response.getData().getData();if(uri==null||!"content".equals(uri.getScheme())){busy.set(false);call.resolve(result("unavailable","The document provider returned no accessible document."));return null;}return uri;
  }
- private void run(PluginCall call,Runnable operation){try{worker.execute(()->{try{if(closed)call.resolve(result("cancelled","Document operation closed."));else operation.run();}finally{busy.set(false);}});}catch(RejectedExecutionException error){busy.set(false);call.resolve(result("cancelled","Document operation closed."));}}
+ private void run(PluginCall call,Runnable operation){PluginWorkers.submit(worker,()->{try{if(closed)call.resolve(result("cancelled","Document operation closed."));else operation.run();}finally{busy.set(false);}},()->{busy.set(false);call.resolve(result("cancelled","Document operation closed."));});}
  @ActivityCallback private void imported(PluginCall call,ActivityResult response){Uri uri=chosen(call,response);if(uri==null)return;run(call,()->{
   try{
    JSObject value=SelectedDocumentAccess.readTransientText(getContext(),uri);

@@ -7,7 +7,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
 
-/** Startup -> offline -> Settings -> mock -> restart -> exit, using rendered controls. */
+/** Startup -> close the chooser -> Settings -> mock -> restart -> exit, using rendered controls.
+ * Decision P-43: no "Continue offline" choice exists and none is saved; test-mocks builds only. */
 @RunWith(AndroidJUnit4.class)
 public class ConnectionChooserInstrumentedTest {
  private void until(String expression)throws Exception{
@@ -34,10 +35,13 @@ public class ConnectionChooserInstrumentedTest {
     // The old document may already show this dialog. Require the new navigation first.
     until("performance.timeOrigin!=="+previousDocument+"&&document.querySelector('.os')&&document.querySelector('.alpha-connection-scrim')");
     assertEquals("Underlying phone is inert during connection choice","true",NotesSecureFixture.evaluate("document.querySelector('.os').inert"));
-    click("Continue offline");
+    NotesSecureFixture.evaluate(AppNavigation.closeConnection());
     until("!document.querySelector('.alpha-connection-scrim')&&!document.querySelector('.os').inert");
-    scenario.recreate();until("document.documentElement.dataset.activeView==='home'");
-    assertEquals("Offline choice survives restart","false",NotesSecureFixture.evaluate("!!document.querySelector('.alpha-connection-scrim')"));
+    // P-43: closing saves no "no agent" choice, so the chooser opens again after a restart.
+    scenario.recreate();until("document.documentElement.dataset.activeView==='home'&&document.querySelector('.alpha-connection-scrim')");
+    assertEquals("No offline choice is saved","null",NotesSecureFixture.evaluate("localStorage.getItem('alpha.connection.selection.v1')"));
+    NotesSecureFixture.evaluate(AppNavigation.closeConnection());
+    until("!document.querySelector('.alpha-connection-scrim')&&!document.querySelector('.os').inert");
     NotesSecureFixture.evaluate(AppNavigation.request("Settings"));until(AppNavigation.selected("Settings"));
     until("window.__alphaTestNavigation?.status==='complete'&&!!document.querySelector('button[aria-label=\"Agent connection\"]')&&!document.querySelector('button[aria-label=\"Agent connection\"]').disabled");
     NotesSecureFixture.evaluate("document.querySelector('button[aria-label=\"Agent connection\"]').click()");

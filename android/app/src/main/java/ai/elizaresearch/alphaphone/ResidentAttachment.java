@@ -39,6 +39,11 @@ final class ResidentAttachment {
   if(bootState==null||!"listening".equals(bootState.optString("state"))
      ||!bootState.optBoolean("serviceActive",false)||!bootState.optBoolean("socketListening",false))return "runtime-not-running";
   if(empty(facts.currentRoot))return "runtime-token-unavailable";
+  // MVP-16 accepted limit: a pending, not-yet-completed enrollment is never shared. Until one
+  // surface's pairing has stored an owner session, a second surface (Home or ACTION_ASSIST) takes
+  // the ordinary start path and supersedes the first, and the next open after the last surface is
+  // destroyed pairs again. Sharing would let a surface issue requests on a session it did not see
+  // complete; refusing costs only one extra pairing.
   if(empty(facts.enrolledRoot)||empty(facts.ownerToken)||empty(facts.ownerIdentity))return "not-enrolled";
   if(!facts.currentRoot.equals(facts.enrolledRoot))return "runtime-changed";
   if(facts.expiresAt<=facts.now+ENROLLMENT_MARGIN_MS)return "enrollment-expiring";

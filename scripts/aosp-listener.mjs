@@ -7,7 +7,7 @@
  * capture), its package name and that it shares the launcher's signer, and the overlay keeps the
  * emergency and camera power gestures and clears every indicator-exempt role. Production staging
  * also requires a reviewed listener descriptor pinning the APK hash and signer, and a packaged,
- * qualified speech bundle. This is staging output only: the privilege grants, the
+ * qualified fused voice bundle (libelizainference; no other speech runtime). This is staging output only: the privilege grants, the
  * indicator and press-and-hold invocation are proven only by booting the built image.
  */
 import fs from "node:fs";
@@ -107,33 +107,45 @@ export function checkListenerOverlay(configXml, alphaPackages = []) {
   return true;
 }
 
+export const VOICE_HOST_RECORD = "android/voice-host/qualified-voice-host.json";
+export const LISTENER_BUNDLE_MANIFEST = "assets/paradee-voice/v1/manifest.json";
+
 /**
- * The model bundle the listener loads at runtime (SpeechAssets.install). A listener APK without it
+ * The voice bundle the listener loads at runtime (ai.eliza.voice.VoiceAssets then NativeAsr: the
+ * same libelizainference engine and bundle as Alpha). A listener APK without the ASR slot pair
  * would sit in SPEECH_UNAVAILABLE forever, so production staging refuses it. `entries` are the
- * APK's zip entry names; `qualifiedAbis` come from android/local-speech/qualified-runtime-manifest.json.
+ * APK's zip entry names; `voiceHost` is android/voice-host/qualified-voice-host.json (schema 2);
+ * `readEntry(name)` returns an entry's text. Returns the ABIs that package the engine and JNI.
  */
-export function checkListenerSpeechBundle(entries, qualifiedAbis) {
+export function checkListenerSpeechBundle(entries, voiceHost, readEntry) {
   const names = new Set(entries);
-  if (names.has("assets/paradee-voice/v1/manifest.json"))
-    throw new Error("Paradee listener runtime needs a new reviewed ASR and native qualification record; legacy Sherpa qualification cannot certify it");
-  if (!names.has("assets/local-speech/v1/manifest.json"))
-    throw new Error("The listener APK has no assets/local-speech/v1/manifest.json: build it after the speech model bundle is prepared, or it can never listen");
-  const abis = (qualifiedAbis ?? []).map(row => row.abi);
-  const packaged = abis.filter(abi => names.has(`lib/${abi}/libsherpa-onnx-jni.so`));
-  if (!packaged.length) throw new Error(`The listener APK packages no qualified speech runtime ABI (${abis.join(", ") || "none qualified"})`);
+  if (!names.has(LISTENER_BUNDLE_MANIFEST))
+    throw new Error(`The listener APK has no ${LISTENER_BUNDLE_MANIFEST}: build it after the voice outputs are staged (node scripts/android-stage-voice-models.mjs), or it can never listen`);
+  if (readEntry) {
+    let paths;
+    try { paths = new Set(JSON.parse(readEntry(LISTENER_BUNDLE_MANIFEST)).files.map(row => row.path)); }
+    catch { throw new Error("The listener APK's voice bundle manifest is unreadable"); }
+    const missing = (voiceHost?.asrSlot?.paths ?? []).filter(file => !paths.has(file));
+    if (!voiceHost?.asrSlot?.paths?.length || missing.length) throw new Error(`The listener APK's voice bundle has no ${missing.join(", ") || "ASR slot"}: it can never recognise speech`);
+  }
+  const abis = (voiceHost?.abis ?? []).map(row => row.abi);
+  const packaged = abis.filter(abi => names.has(`lib/${abi}/libelizainference.so`) && names.has(`lib/${abi}/libparadeevoicejni.so`));
+  if (!packaged.length) throw new Error(`The listener APK packages no recorded voice host ABI (${abis.join(", ") || "none recorded"})`);
   return packaged;
 }
 
 /**
- * Native libraries the listener packages must be the qualified bytes. `hashOf(entry)` returns the
- * SHA-256 of a zip entry. Only ABIs present in the APK are checked.
+ * The engine libraries the listener packages must be the recorded bytes (the voice host row's
+ * libraries). The JNI bridge is compiled by Gradle from the pinned source and is not pinned here.
+ * `hashOf(entry)` returns the SHA-256 of a zip entry. Only packaged ABIs are checked.
  */
-export function checkListenerSpeechNatives(packaged, qualifiedAbis, hashOf) {
+export function checkListenerSpeechNatives(packaged, voiceHost, hashOf) {
   for (const abi of packaged) {
-    const row = qualifiedAbis.find(item => item.abi === abi);
-    for (const lib of row?.native ?? []) {
-      const actual = hashOf(`lib/${abi}/${lib.file}`);
-      if (actual !== lib.sha256) throw new Error(`Listener ${abi}/${lib.file} differs from qualified-runtime-manifest.json`);
+    const libraries = (voiceHost?.abis ?? []).find(item => item.abi === abi)?.libraries ?? [];
+    if (!libraries.length) throw new Error(`No voice host libraries are recorded for ${abi}`);
+    for (const lib of libraries) {
+      const actual = hashOf(`lib/${abi}/${lib.name}`);
+      if (actual !== lib.sha256) throw new Error(`Listener ${abi}/${lib.name} differs from the recorded voice host library`);
     }
   }
   return true;

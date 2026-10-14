@@ -17,7 +17,8 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.Assert.*;
 
-/** Synthetic article in a real isolated HTTPS child; actual private HTTP and MediaPlayer. */
+/** Synthetic article in a real isolated HTTPS child; actual private HTTP and MediaPlayer. The
+ * resident (execution 'device') path is covered by residentReadingTokenIsSingleUseAndBound. */
 public final class BrowserReadingInstrumentedTest {
  private final BrowserFlowInstrumentedTest child=new BrowserFlowInstrumentedTest();
  private String js(String code)throws Exception{return WebViewTestDriver.evaluate(code);}
@@ -67,6 +68,71 @@ public final class BrowserReadingInstrumentedTest {
     js("window.__readingEnded=false;Capacitor.Plugins.AlphaVoiceCloud.addListener('playbackEnded',()=>window.__readingEnded=true)");assertFalse(call("Capacitor.Plugins.AlphaVoiceCloud.play({playbackId:"+JSONObject.quote(audio.getString("playbackId"))+"})").has("error"));waitFor("window.__readingEnded===true");assertTrue(call(synth).has("error"));assertEquals(1,server.bodies.size());
    }catch(Exception|AssertionError failure){primary=failure;throw failure;}finally{
     try{call("Capacitor.Plugins.AlphaVoiceCloud.stopPlayback()");call("Capacitor.Plugins.AlphaBrowser.cancelReading(window.__readingTab||{})");call("Capacitor.Plugins.AlphaConnection.secureRemove({slot:"+JSONObject.quote(slot)+"})");if(installed)assertEquals("true",child.child("(()=>{const old=window["+JSONObject.quote(key)+"];if(!old)return false;document.body.replaceWith(old);delete window["+JSONObject.quote(key)+"];return !window["+JSONObject.quote(key)+"];})()"));js("if(window.__readingNative)Capacitor.nativePromise=window.__readingNative;for(const k of ['__readingNative','__readingTab','__readingArgs','__readingResult','__readingEnded'])delete window[k]");}catch(Exception|AssertionError failure){if(primary!=null)primary.addSuppressed(failure);else throw failure;}
+   }
+  }
+ }
+
+ /** {ok, message} of a plugin call, so refusals can be told apart from a later speech failure. */
+ private JSONObject settle(String code)throws Exception{
+  js("window.__readingSettled=null;Promise.resolve("+code+").then(v=>window.__readingSettled={ok:true,value:v??{}},e=>window.__readingSettled={ok:false,message:String(e?.message??'')})");
+  waitFor("window.__readingSettled!==null");return new JSONObject(js("window.__readingSettled"));
+ }
+ private static final String EXPIRED="Reading approval expired";
+ /** Review and approve one device reading; returns its token. */
+ private String approveDevice(BoundedActivityScenario<MainActivity> scenario,String binding)throws Exception{
+  invoke("Capacitor.Plugins.AlphaBrowser.reviewReading({...window.__readingArgs,execution:'device',"+binding+"})");
+  AlertDialog approved=dialog(scenario);
+  BoundedActivityScenario.main(()->approved.getButton(AlertDialog.BUTTON_POSITIVE).performClick());
+  JSONObject review=result();assertFalse("Device reading approved: "+review,review.has("error"));return review.getString("readingToken");
+ }
+ /**
+  * The resident path production uses (createNativeReadingVoice prefers the resident binding and
+  * calls AlphaVoiceCloud.synthesizeLocalBrowserReading with execution 'device'). One approved token:
+  * execution other than 'device', a wrong session, a wrong owner and an unknown token are refused
+  * without spending it; the exact binding is accepted once (synthesis may then fail on an image
+  * without the packaged speech models, which is a later, different error); a replay is refused. An
+  * expired binding and a cancelled review are refused too. Nothing is sent to any host.
+  */
+ @Test public void residentReadingTokenIsSingleUseAndBound()throws Exception{
+  org.junit.Assume.assumeTrue("Explicit browser reading fixture", "1".equals(InstrumentationRegistry.getArguments().getString("browserReading")));
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   String key="__alphaReading"+UUID.randomUUID().toString().replace("-",""),article="Synthetic article for resident reading.";boolean installed=false;Throwable primary=null;
+   try{
+    AppNavigation.liveMode();js(AppNavigation.request("Browser"));waitFor(AppNavigation.selected("Browser"));waitFor("window.__alphaTestNavigation?.status==='complete'");
+    AppNavigation.declineStartupAccess();
+    js("window.__readingNative=Capacitor.nativePromise;Capacitor.nativePromise=function(p,m,a){if(p==='AlphaBrowser'&&m==='present'&&a.id)window.__readingTab={session:a.session,id:a.id};return window.__readingNative.apply(this,arguments);}");
+    js("(()=>{const e=document.querySelector('input[aria-label=Address]');if(e){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'https://example.com/');e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}else [...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Edit address').click();})()");
+    if("true".equals(js("!!document.querySelector('input[aria-label=Address]')")))js("(()=>{const e=document.querySelector('input[aria-label=Address]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'https://example.com/');e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));})()");
+    waitFor("window.__readingTab&&document.querySelector('[role=img][aria-label=\"Secure connection\"]')");
+    assertEquals("true",child.child("(()=>{if(window["+JSONObject.quote(key)+"])return false;const old=document.body;window["+JSONObject.quote(key)+"]=old;const next=document.createElement('body');next.innerHTML="+JSONObject.quote("<article><p>"+article+"</p></article>")+";old.replaceWith(next);return true;})()"));installed=true;
+    js("window.__readingArgs=null;Capacitor.Plugins.AlphaBrowser.command({...window.__readingTab,command:'stop'}).then(v=>window.__readingArgs={session:v.session,id:v.id,navigation:v.navigation,url:v.url})");waitFor("window.__readingArgs");
+    long expiry=System.currentTimeMillis()+100_000;
+    String binding="ownerId:'synthetic-resident-owner',sessionId:'synthetic-resident-session',expiresAt:"+expiry;
+    String token=approveDevice(scenario,binding);
+    String local="Capacitor.Plugins.AlphaVoiceCloud.synthesizeLocalBrowserReading({ownerId:%s,sessionId:%s,expiresAt:"+expiry+",readingToken:%s,execution:%s,requestId:'resident-reading-'+Date.now()})";
+    java.util.function.BiFunction<String[],String,String> with=(parts,tok)->String.format(local,JSONObject.quote(parts[0]),JSONObject.quote(parts[1]),JSONObject.quote(tok),JSONObject.quote(parts[2]));
+    String[] exact={"synthetic-resident-owner","synthetic-resident-session","device"};
+    // Refusals that never spend the approval.
+    assertEquals("Not device execution",EXPIRED,settle(with.apply(new String[]{exact[0],exact[1],"agent"},token)).optString("message"));
+    assertEquals("Wrong session",EXPIRED,settle(with.apply(new String[]{exact[0],"other-session",exact[2]},token)).optString("message"));
+    assertEquals("Wrong owner",EXPIRED,settle(with.apply(new String[]{"other-owner",exact[1],exact[2]},token)).optString("message"));
+    assertEquals("Unknown token",EXPIRED,settle(with.apply(exact,UUID.randomUUID().toString())).optString("message"));
+    // The exact binding is accepted once; any later failure is synthesis, never the approval.
+    JSONObject accepted=settle(with.apply(exact,token));
+    assertFalse("The valid token is accepted: "+accepted,!accepted.getBoolean("ok")&&EXPIRED.equals(accepted.optString("message")));
+    call("Capacitor.Plugins.AlphaVoiceCloud.stopPlayback()");call("Capacitor.Plugins.AlphaBrowser.cancelReading(window.__readingTab||{})");
+    assertEquals("A replayed token is refused",EXPIRED,settle(with.apply(exact,token)).optString("message"));
+    // Expired: the binding's own expiry passes before the token is used.
+    long soon=System.currentTimeMillis()+4000;
+    String expiring=approveDevice(scenario,"ownerId:'synthetic-resident-owner',sessionId:'synthetic-resident-session',expiresAt:"+soon);
+    SystemClock.sleep(Math.max(0,soon-System.currentTimeMillis())+500);
+    assertEquals("An expired binding is refused",EXPIRED,settle(String.format("Capacitor.Plugins.AlphaVoiceCloud.synthesizeLocalBrowserReading({ownerId:'synthetic-resident-owner',sessionId:'synthetic-resident-session',expiresAt:"+soon+",readingToken:%s,execution:'device',requestId:'resident-expired'})",JSONObject.quote(expiring))).optString("message"));
+    // Cancelled: cancelling the approved review withdraws its token.
+    String cancelled=approveDevice(scenario,binding);
+    assertFalse(call("Capacitor.Plugins.AlphaBrowser.cancelReading(window.__readingTab||{})").has("error"));
+    assertEquals("A cancelled review's token is refused",EXPIRED,settle(with.apply(exact,cancelled)).optString("message"));
+   }catch(Exception|AssertionError failure){primary=failure;throw failure;}finally{
+    try{call("Capacitor.Plugins.AlphaVoiceCloud.stopPlayback()");call("Capacitor.Plugins.AlphaBrowser.cancelReading(window.__readingTab||{})");if(installed)assertEquals("true",child.child("(()=>{const old=window["+JSONObject.quote(key)+"];if(!old)return false;document.body.replaceWith(old);delete window["+JSONObject.quote(key)+"];return !window["+JSONObject.quote(key)+"];})()"));js("if(window.__readingNative)Capacitor.nativePromise=window.__readingNative;for(const k of ['__readingNative','__readingTab','__readingArgs','__readingResult','__readingSettled'])delete window[k]");}catch(Exception|AssertionError failure){if(primary!=null)primary.addSuppressed(failure);else throw failure;}
    }
   }
  }

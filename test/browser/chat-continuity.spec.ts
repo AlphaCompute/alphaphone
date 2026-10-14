@@ -444,3 +444,57 @@ test('Stop is offered while an agent has not produced its first chunk, and a lat
   // the outcome after Stop is covered by the connection-backed tests above.
   expect(await page.evaluate(() => (window as any).silent.posts)).toBe(1);
 });
+
+// Back and HOME during a reply. Collapsing the chat (Back from full to sheet, HOME while Home is the
+// current app) is not a Stop: the reply keeps arriving and is shown once. HOME from another app
+// changes the screen the turn was asked from, which is an explicit Stop with its one reconciliation.
+for (const step of ['Back from full to sheet', 'HOME on Home'] as const) {
+  test(`${step} during a reply keeps it: the finished reply appears once and nothing is resent`, async ({ page }) => {
+    test.setTimeout(90_000);
+    await connected(page);
+    await typeDraft(page, `Keep replying after ${step}`);
+    await composer(page).press('Enter');
+    await expect.poll(() => fixture(page, f => f.posts), { timeout: 15_000 }).toBe(1);
+    await expect(stop(page)).toBeVisible();
+    if (step === 'Back from full to sheet') {
+      await page.getByRole('button', { name: 'Expand chat', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Shrink chat', exact: true })).toBeVisible();
+      await page.evaluate(() => window.dispatchEvent(new Event('alpha-back', { cancelable: true })));
+      await expect(page.getByRole('button', { name: 'Expand chat', exact: true })).toBeVisible();
+    } else {
+      await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
+      await expect(conversation(page)).toHaveAttribute('aria-hidden', 'true');
+    }
+    // The reply arrives on the still-open request and brings the conversation sheet back.
+    await fixture(page, f => { f.finish('Finished while collapsed'); f.release('Finished while collapsed'); });
+    await expect(conversation(page).getByText('Finished while collapsed', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText(`Keep replying after ${step}`, { exact: true })).toHaveCount(1);
+    await expect(page.getByText(MAY_FINISH, { exact: true })).toHaveCount(0);
+    await expect(page.getByText(UNKNOWN, { exact: true })).toHaveCount(0);
+    await page.waitForTimeout(1_000);
+    expect(await fixture(page, f => ({ posts: f.posts, aborts: f.aborts, reads: f.historyReads }))).toEqual({ posts: 1, aborts: 0, reads: 0 });
+  });
+}
+
+test('HOME from another app during a reply is a Stop: one cancel, the reconciliation statement, and no resend', async ({ page }) => {
+  test.setTimeout(120_000);
+  await connected(page, { abortRoute: true });
+  await page.getByRole('button', { name: 'Notes', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-active-view', 'notes');
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click();
+  await typeDraft(page, 'Asked from Notes');
+  await composer(page).press('Enter');
+  await expect.poll(() => fixture(page, f => f.posts), { timeout: 15_000 }).toBe(1);
+  await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
+  await expect(page.locator('html')).toHaveAttribute('data-active-view', 'home');
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click();
+  await expect(conversation(page).getByText(MAY_FINISH, { exact: true })).toBeVisible();
+  await expect(stop(page)).toHaveCount(0);
+  await expect.poll(() => fixture(page, f => f.aborts)).toBe(1);
+  // The agent finishes anyway; the late transport reply is discarded and the one check shows it once.
+  await fixture(page, f => { f.release('Finished after HOME'); f.finish('Finished after HOME'); });
+  await expect(conversation(page).getByText('Finished after HOME', { exact: true })).toHaveCount(1, { timeout: 40_000 });
+  await expect(conversation(page).getByText('Asked from Notes', { exact: true })).toHaveCount(1);
+  await page.waitForTimeout(1_000);
+  expect(await fixture(page, f => ({ posts: f.posts, aborts: f.aborts, reads: f.historyReads }))).toEqual({ posts: 1, aborts: 1, reads: 1 });
+});

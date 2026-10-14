@@ -119,4 +119,62 @@ public final class WorkflowNoticeProcessDeathInstrumentedTest {
    // Runner removes this entire fresh user; do not race main's encrypted ledger with cleanup writes.
   }
  }
+ private static StatusBarNotification approvalNotice(NotificationManager manager,String id){
+  StatusBarNotification found=null;
+  for(StatusBarNotification row:manager.getActiveNotifications())if(("alpha-workflow-"+id).equals(row.getTag())){assertNull("One notice per approval",found);found=row;}
+  assertNotNull("Approval notice is not active",found);return found;
+ }
+ /**
+  * A pending approval's notice survives an ordinary process death, and its original OS-owned
+  * PendingIntent then opens exactly that approval: a second approval posted beside it stays
+  * untouched. Run by scripts/ci/pending-recovery-ui.py phase workflow-approval-process-death
+  * (workflowNoticeProcessDeath=approval) in the separate WorkflowNoticeProcessRunner process.
+  */
+ @Test public void approvalNoticeOpensOnlyItsApprovalAfterProcessDeath()throws Exception {
+  org.junit.Assume.assumeTrue("Explicit isolated approval process-death campaign","approval".equals(InstrumentationRegistry.getArguments().getString("workflowNoticeProcessDeath")));
+  assertEquals(APP+":workflowNoticeTest",Application.getProcessName());assertTrue(android.os.Process.myUid()/100000>0);
+  Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();AlphaCredentialStore store=new AlphaCredentialStore(context);
+  assertNull("Fresh route ledger required",store.readCredentialSlot(WorkflowNoticeTaps.SLOT));assertNull("Fresh approval ledger required",store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT));
+  NotificationManager manager=context.getSystemService(NotificationManager.class);
+  WorkflowNoticeTaps taps=WorkflowNoticeTapsFactory.create(context);WorkflowNoticeDelivery delivery=WorkflowNoticeTapsFactory.delivery(context);
+  String chosen="approval-"+"e".repeat(64),other="approval-"+"f".repeat(64),run="approval-run-"+UUID.randomUUID(),otherRun="approval-run-"+UUID.randomUUID();
+  long now=System.currentTimeMillis(),expiresAt=now+10*60000L;
+  JSONObject route=new JSONObject().put("scope","a".repeat(64)).put("origin","https://workflow-fixture.invalid").put("ownerId","fixture-owner").put("agentId","fixture-agent").put("workflowId","fixture-flow").put("runId",run).put("versionId","fixture-version");
+  JSONObject otherRoute=new JSONObject(route.toString()).put("runId",otherRun);
+  try{
+   assertEquals("succeeded",delivery.postApproval(taps,chosen,"b".repeat(64),route,expiresAt,now));
+   assertEquals("succeeded",delivery.postApproval(taps,other,"c".repeat(64),otherRoute,expiresAt,now));
+   String token=taps.token(chosen),otherToken=taps.token(other);assertNotNull(token);assertNotNull(otherToken);assertNotEquals(token,otherToken);
+   StatusBarNotification original=approvalNotice(manager,chosen);PendingIntent pending=original.getNotification().contentIntent;assertNotNull(pending);
+   String ledger=store.readCredentialSlot(WorkflowNoticeTaps.SLOT),approvals=store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT);
+   Intent initial=context.getPackageManager().getLaunchIntentForPackage(APP);assertNotNull(initial);context.startActivity(initial);
+   Identity before=awaitMain(context);
+   for(ActivityManager.AppTask task:context.getSystemService(ActivityManager.class).getAppTasks()){
+    ActivityManager.RecentTaskInfo info=task.getTaskInfo();assertNotNull(info.baseIntent.getComponent());assertEquals(APP,info.baseIntent.getComponent().getPackageName());task.finishAndRemoveTask();
+   }
+   long taskEnd=SystemClock.elapsedRealtime()+10000;
+   while(!context.getSystemService(ActivityManager.class).getAppTasks().isEmpty()&&SystemClock.elapsedRealtime()<taskEnd)SystemClock.sleep(50);
+   assertTrue("Main tasks still active",context.getSystemService(ActivityManager.class).getAppTasks().isEmpty());
+   before.exact();Os.kill(before.pid,OsConstants.SIGKILL);
+   long deathEnd=SystemClock.elapsedRealtime()+10000;
+   while((Files.exists(Path.of("/proc/"+before.pid))||!mainPids(context).isEmpty())&&SystemClock.elapsedRealtime()<deathEnd)SystemClock.sleep(50);
+   assertFalse("Original process did not die",Files.exists(Path.of("/proc/"+before.pid)));
+   assertTrue("Main restarted before notification tap",mainPids(context).isEmpty());
+   assertEquals("Process death changed no route",ledger,store.readCredentialSlot(WorkflowNoticeTaps.SLOT));
+   assertEquals("Process death changed no approval",approvals,store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT));
+   StatusBarNotification retained=approvalNotice(manager,chosen);assertEquals(original.getKey(),retained.getKey());assertEquals(original.getPostTime(),retained.getPostTime());
+   pending.send();Identity after=awaitMain(context);assertTrue(before.pid!=after.pid||!before.start.equals(after.start));
+   JSONObject captured=null;long captureEnd=SystemClock.elapsedRealtime()+15000;
+   do{captured=taps.pending();if(token.equals(captured.optString("token")))break;SystemClock.sleep(50);}while(SystemClock.elapsedRealtime()<captureEnd);
+   assertEquals("The tap captures exactly its approval",token,captured.getString("token"));assertTrue(captured.getBoolean("retained"));
+   assertEquals(chosen,captured.getString("operationId"));assertEquals(run,captured.getString("runId"));
+   JSONObject rows=new JSONObject(store.readCredentialSlot(WorkflowNoticeTaps.SLOT));
+   assertEquals("pending",rows.getJSONObject(chosen).getString("state"));
+   assertEquals("The other approval was not opened","new",rows.getJSONObject(other).getString("state"));
+   approvalNotice(manager,other);
+   android.os.Bundle evidence=new android.os.Bundle();evidence.putString("workflowApprovalProcessDeath",new JSONObject().put("beforePid",before.pid).put("beforeStart",before.start).put("afterPid",after.pid).put("afterStart",after.start).put("uid",after.uid).put("postTime",original.getPostTime()).put("openedApprovals",1).put("untouchedApprovals",1).toString());InstrumentationRegistry.getInstrumentation().addResults(evidence);
+  }finally{
+   manager.cancel("alpha-workflow-"+chosen,0);manager.cancel("alpha-workflow-"+other,0);
+  }
+ }
 }

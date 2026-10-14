@@ -34,6 +34,12 @@ does not install this adapter or its native actions.
 The prototype Notes layout and Share sheet styling are reused; the two new
 production-only affordances are conditional and do not change reference fixtures.
 
+## Note to calendar and reminder hand-offs
+
+A saved voice note can start a calendar event or reminder draft; the saved record keeps an
+identity-only link back to the note. The contract, including the Android limits, is in
+[calendar and reminder contracts](calendar-reminder-contract.md#note-origin-and-the-note-hand-offs).
+
 ## Verification
 
 Run `npm run typecheck` and `node scripts/test-notes-documents-browser.mjs`.

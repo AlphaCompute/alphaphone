@@ -46,7 +46,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private void queueLocalRelease(){
   main.removeCallbacks(localIdleRelease);
   if(!localReleaseQueued.compareAndSet(false,true))return;
-  try{workers.execute(()->{try{localEngine.release();}finally{localReleaseQueued.set(false);}});}catch(RejectedExecutionException ignored){localReleaseQueued.set(false);}
+  PluginWorkers.submit(workers,()->{try{localEngine.release();}finally{localReleaseQueued.set(false);}},()->localReleaseQueued.set(false));
  }
  private void scheduleLocalRelease(long delay){main.removeCallbacks(localIdleRelease);if(!destroyed)main.postDelayed(localIdleRelease,delay);}
  @PluginMethod public void workflowPresentationCapabilities(PluginCall call){JSObject result=new JSObject();result.put("protocol",2);call.resolve(result);}
@@ -86,8 +86,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   main.post(()->{
    try{capture.cancel();}catch(RuntimeException error){finishDrain(false,"Recording cancellation failed");return;}
    // Never wait on the UI thread. The serial worker barrier follows cancelled work and its cleanup.
-   try{workers.execute(()->main.post(()->{finishDrain(true,destroyed?"Voice unavailable":null);}));}
-   catch(RejectedExecutionException error){finishDrain(false,"Voice cancellation is unavailable");}
+   PluginWorkers.submit(workers,()->main.post(()->{finishDrain(true,destroyed?"Voice unavailable":null);}),()->finishDrain(false,"Voice cancellation is unavailable"));
   });
  }
  private static String required(String value,int max){if(value==null||value.isBlank()||value.length()>max)throw new IllegalArgumentException();return value;}
@@ -151,12 +150,12 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   final String id;try{id=required(call.getString("requestId"),256);}catch(Exception error){call.reject("Invalid request");return;}
   Pending request=new Pending();synchronized(pending){if(destroyed||draining||!pending.isEmpty()){if(!destroyed&&!draining&&Boolean.FALSE.equals(call.getBoolean("replace",true)))call.reject("Speaker is in use","playback-busy");else call.reject("Voice request already active or unavailable");return;}pending.put(id,request);}
   Runnable deadline=request::cancel;main.postDelayed(deadline,120000);
-  try{workers.execute(()->{
+  PluginWorkers.submit(workers,()->{
    try{if(request.cancelled)throw new IOException();work.run(request);}catch(Exception error){request.failure=request.cancelled?"Voice request cancelled":"Voice request failed";if(!request.cancelled&&error instanceof VoiceHttpException)request.failureCode="voice-http-"+((VoiceHttpException)error).status;}
    finally{try{if(request.connection!=null)request.connection.disconnect();}catch(RuntimeException error){request.failure="Voice request cleanup failed";}finally{pending.remove(id,request);main.removeCallbacks(deadline);}}
    // A continuation may submit immediately when this resolves: release admission first.
    if(request.cancelled||destroyed)call.reject("Voice request cancelled");else if(request.failure!=null){if(request.failureCode!=null)call.reject(request.failure,request.failureCode);else call.reject(request.failure);}else if(request.result==null)call.reject("Voice request failed");else call.resolve(request.result);
-  });}catch(RejectedExecutionException error){main.removeCallbacks(deadline);pending.remove(id,request);call.reject("Voice unavailable");}
+  },()->{main.removeCallbacks(deadline);pending.remove(id,request);call.reject("Voice unavailable");});
  }
  private static final class VoiceHttpException extends IOException {
   final int status;
@@ -177,6 +176,10 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  });}
  private void submitLocal(PluginCall call,Work work){submit(call,request->{main.removeCallbacks(localIdleRelease);synchronized(localCancellationGate){localActiveRequest=request;request.cancelNative=()->{synchronized(localCancellationGate){if(localActiveRequest==request)localEngine.cancel();}};}try{if(request.cancelled||!speechForeground)throw new IOException("Voice cancelled");work.run(request);}catch(Exception error){localEngine.release();throw error;}catch(LinkageError|OutOfMemoryError error){localEngine.release();throw new IOException("On-device speech unavailable",error);}finally{synchronized(localCancellationGate){if(localActiveRequest==request)localActiveRequest=null;request.cancelNative=null;}if(request.cancelled||destroyed)localEngine.release();else scheduleLocalRelease(speechForeground?120000:30000);}});}
  // Local CPU execution has no dependency on an account, URL, or host process.
+ // The status resolves only when the native pair loads, the ABI is at least 16, every bundle file
+ // verifies and a context opens. `ready` (recognition) needs the bundle ASR slot, Paradee-8M TTS and VAD; `playback`
+ // (read-aloud) needs Paradee-8M only, so a bundle without a qualified ASR pair still reads aloud.
+ // A build without the voice bundle answers "unavailable" without loading any native library.
  @PluginMethod public void localSpeechStatus(PluginCall call){submitLocal(call,request->{
   localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();return null;});
   if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",true);out.put("execution","device");out.put("provider","fused-paradee-asr");request.result=out;
@@ -210,8 +213,41 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  @PluginMethod public void stopPlayback(PluginCall call){String requestId=call.getString("requestId");main.post(()->{if(requestId==null||Objects.equals(playbackRequestId,requestId))clearPlayback();call.resolve();});}
  @PluginMethod public void cancel(PluginCall call){Pending request=pending.get(call.getString("requestId",""));if(request!=null)request.cancel();call.resolve();}
  @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
- @Override protected void handleOnPause(){speechForeground=false;scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();for(Pending request:pending.values())request.cancel();main.post(this::clearPlayback);super.handleOnPause();}
- @Override protected void handleOnDestroy(){destroyed=true;finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);try{workers.execute(localEngine::close);}catch(RejectedExecutionException ignored){}workers.shutdown();super.handleOnDestroy();}
+ // Live voice (live-voice.ts / native-live-voice.ts): app-process capture with Silero VAD. One capture at a time.
+ private final ExecutorService liveWorker=Executors.newSingleThreadExecutor();
+ private AlphaLiveVoiceCapture live; // Guarded by liveWorker (all access runs on it).
+ private final Map<String,Long> livePermissionEpochs=new ConcurrentHashMap<>();
+ @PluginMethod public void liveCaptureStatus(PluginCall call){
+  boolean permitted=getPermissionState("microphone")==PermissionState.GRANTED;
+  PluginWorkers.submit(liveWorker,()->{JSObject result=new JSObject();result.put("permission",permitted);result.put("available",!destroyed&&AlphaLiveVoiceCapture.vadAvailable(getContext()));call.resolve(result);},()->call.resolve(new JSObject().put("permission",permitted).put("available",false)));
+ }
+ @PluginMethod public void startLiveCapture(PluginCall call){
+  String id=call.getString("captureId","");
+  if(!id.matches("[0-9a-fA-F-]{36}")){call.reject("Invalid live capture");return;}
+  if(isDraining()||destroyed||!speechForeground){call.reject("Recording cancelled");return;}
+  if(getPermissionState("microphone")!=PermissionState.GRANTED){livePermissionEpochs.put(call.getCallbackId(),epoch.get());if(!LateLaunch.ask(call,()->requestPermissionForAlias("microphone",call,"liveMicrophonePermission")))livePermissionEpochs.remove(call.getCallbackId());return;}
+  startLive(call,id,epoch.get());
+ }
+ @PermissionCallback private void liveMicrophonePermission(PluginCall call){Long e=livePermissionEpochs.remove(call.getCallbackId());if(e==null||e!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startLive(call,call.getString("captureId",""),e);}
+ private void startLive(PluginCall call,String id,long e){
+  PluginWorkers.submit(liveWorker,()->{
+   if(destroyed||!speechForeground||e!=epoch.get()){call.reject("Recording cancelled");return;}
+   if(live!=null){live.stop();live=null;}
+   AlphaLiveVoiceCapture next=new AlphaLiveVoiceCapture(getContext(),id,new AlphaLiveVoiceCapture.Sink(){
+    public void frames(String captureId,JSArray frames,JSArray vad,float peak){notifyListeners("liveCaptureFrames",new JSObject().put("captureId",captureId).put("frames",frames).put("vad",vad).put("peak",peak));}
+    public void ended(String captureId,String error){JSObject event=new JSObject().put("captureId",captureId);if(error!=null)event.put("error",error);notifyListeners("liveCaptureEnded",event);}
+   });
+   try{next.start();live=next;call.resolve(new JSObject().put("captureId",id).put("sampleRate",AlphaLiveVoiceCapture.SAMPLE_RATE));}
+   catch(Exception|Error error){call.reject("Live capture could not start","capture");}
+  },()->call.reject("Voice unavailable"));
+ }
+ @PluginMethod public void stopLiveCapture(PluginCall call){
+  String id=call.getString("captureId","");
+  PluginWorkers.submit(liveWorker,()->{if(live==null||!live.captureId().equals(id)){call.resolve(new JSObject().put("captureId",id).put("durationMs",0));return;}long duration=live.stop();live=null;call.resolve(new JSObject().put("captureId",id).put("durationMs",duration));},()->call.resolve(new JSObject().put("captureId",id).put("durationMs",0)));
+ }
+ private void stopLiveCapture(){PluginWorkers.submit(liveWorker,()->{if(live!=null){live.stop();live=null;}},()->{/* Already shut down: its last task stopped the capture. */});}
+ @Override protected void handleOnPause(){speechForeground=false;stopLiveCapture();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();for(Pending request:pending.values())request.cancel();main.post(this::clearPlayback);super.handleOnPause();}
+ @Override protected void handleOnDestroy(){destroyed=true;stopLiveCapture();liveWorker.shutdown();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);PluginWorkers.submit(workers,localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();}
 }
 
 /** One foreground-only private audio draft. Capture and upload are separate user actions. */

@@ -20,7 +20,7 @@ const CONVERSATIONS='alpha.connection.conversations.v1',CLOUD_SERVICE='alpha.con
 function fixture(testMocksEnabled,seed){
  const memory=new Map(Object.entries(seed)),writes=[];
  const localStorage={getItem:key=>memory.get(key)??null,setItem:(key,value)=>{writes.push(key);memory.set(key,String(value));},removeItem:key=>{writes.push(key);memory.delete(key);}};
- const context=vm.createContext({localStorage,testMocksEnabled,SELECTION,browserDevProfile:false,developmentProfiles:[],cloudEnvironmentAllowed:value=>value==='production'||(testMocksEnabled&&value==='staging'),JSON});
+ const context=vm.createContext({localStorage,testMocksEnabled,residentAlwaysPresent:!testMocksEnabled,SELECTION,browserDevProfile:false,developmentProfiles:[],cloudEnvironmentAllowed:value=>value==='production'||(testMocksEnabled&&value==='staging'),JSON});
  vm.runInContext(code+'\nglobalThis.api={selection,migrate:migrateLegacyHostedSelection,LEGACY_HOSTED_SELECTION};',context);
  return {api:context.api,memory,writes};
 }

@@ -17,7 +17,7 @@ const EMPTY: Record<View, RegExp> = {
   Maps: /Sign in to Eliza Cloud with an active subscription to search places and plan routes/,
   Notes: /No notes yet/,
   Files: /No recent files/,
-  Workflows: /Connect an agent for its automations/,
+  Workflows: /Connect your remote agent in Settings\. Reminders on this phone stay available/,
   Settings: /Not signed in/,
   Reminders: /No visible events or reminders/,
   Notifications: /No notifications/,

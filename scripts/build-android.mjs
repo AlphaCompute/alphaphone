@@ -5,7 +5,7 @@
  *   npm run android:build -- --test-mocks
  *
  * Inputs are checked first (scripts/android-build-preflight.mjs): the pinned
- * checkout, the installed speech AAR, the prepared runtime source and, for
+ * checkout, the staged on-device voice outputs, the prepared runtime source and, for
  * distribution builds, the staged resident runtime. `npm run android:build:local`
  * prepares and stages the runtime before calling this script.
  *

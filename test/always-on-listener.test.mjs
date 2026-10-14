@@ -101,7 +101,10 @@ test('the listener is an image-only APK, never part of the standalone or launche
  assert.doesNotMatch(read('android/app/build.gradle'),/:sense/,':app never depends on the listener');
  const build=read('android/sense/build.gradle');
  assert.match(build,/applicationId "\$\{identity\.appId\}\.sense"/);
- assert.match(build,/implementation project\(':local-speech'\)/,'same audited local speech runtime');
+ assert.doesNotMatch(build,/sherpa|on{2}x|kokoro/i,'no other speech runtime');
+ assert.match(build,/implementation project\(':local-speech'\)/,'the same shared paradee-voice library on libelizainference as Alpha');
+ assert.match(build,/\.eliza\/paradee-voice\/native\/jniLibs/,'it packages its own copy of the staged engine');
+ assert.match(read('android/sense/src/main/java/ai/elizaresearch/alphaphone/sense/ListeningService.java'),/ai\.eliza\.voice\.VoiceAssets\.install\(this\)\.openAsr\(\)/);
  assert.doesNotMatch(build,/ALPHA_[A-Z_]+/,'no invented ALPHA_ variables');
  assert.doesNotMatch(build,/okhttp|retrofit|firebase|play-services/i);
  const app=read('android/app/src/main/AndroidManifest.xml');

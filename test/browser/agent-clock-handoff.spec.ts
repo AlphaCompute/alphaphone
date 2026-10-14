@@ -204,3 +204,28 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
 
   });
 }
+
+// Browser development profile: agent-adapter passes an approved Clock operation to
+// BrowserDaily.clockHandoff as `{...request,reviewed:true}` (the operation without `type`).
+// The browser host never negotiates clock.handoff.v1, so this replays that exact call shape and
+// result mapping rather than a protocol proposal. A repeat must not become one saved alarm.
+test('agent Clock handoff: browser development refuses a repeat instead of saving a one-time alarm',async({page})=>{
+  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+  await page.goto('/?mode=dev');
+  const outcome=await page.evaluate(async()=>{
+    const {validateClockOperation,validateClockResult,currentClockTimeZone}=await import('/src/runtime/clock-contract.ts');
+    const {DailyApps}=await import('/src/daily.ts');
+    const operation=validateClockOperation({type:'clock_handoff',action:'set',hour:7,minute:0,label:'Weekday wake',timeZone:currentClockTimeZone(),days:[6,2,3,4,5]});
+    const {type,...request}=operation as any;
+    const result=await DailyApps.clockHandoff({...request,reviewed:true});
+    const clockResult=validateClockResult(operation,{kind:'clock-handoff',action:result.action,status:result.status});
+    const alarms=(await DailyApps.listReminders()).reminders.filter((row:any)=>row.id.startsWith('alarm_'));
+    return {days:request.days,status:result.status,message:result.message,clockStatus:clockResult.status,alarms:alarms.length};
+  });
+  expect(outcome).toEqual({days:[2,3,4,5,6],status:'failed',message:'Repeating alarms are not available in this browser. No alarm was saved.',clockStatus:'failed',alarms:0});
+  expect(outcome.message).not.toContain('Alarm saved.');
+  // A one-time request through the same call still saves exactly one alarm.
+  expect(await page.evaluate(async()=>{const {DailyApps}=await import('/src/daily.ts');const result=await DailyApps.clockHandoff({action:'set',hour:7,minute:0,label:'Once',reviewed:true});return [result.message,(await DailyApps.listReminders()).reminders.filter((row:any)=>row.id.startsWith('alarm_')).length];})).toEqual(['Alarm saved.',1]);
+  await page.getByRole('button',{name:'Calendar',exact:true}).click();await page.getByRole('button',{name:'Clock alarms',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Clock alarms',exact:true});await expect(dialog.getByText('Once',{exact:true})).toBeVisible();await expect(dialog.getByText('Weekday wake',{exact:true})).toHaveCount(0);
+});

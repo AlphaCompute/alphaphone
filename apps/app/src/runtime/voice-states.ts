@@ -1,5 +1,5 @@
-/** Pure recorder state helpers: failure classification, progress text and transcript provenance. */
-export type VoiceFailure = 'denied' | 'no-microphone' | 'no-speech' | 'model' | 'recognition';
+/** Pure recorder state helpers: failure classification and transcript provenance. */
+export type VoiceFailure = 'denied' | 'no-microphone' | 'no-speech' | 'local-agent' | 'recognition';
 export type TranscriptProvenance = { route: string; engine?: string; model?: string; modelRevision?: string; runtime?: string; language?: string };
 type Reason = { name?: unknown; code?: unknown } | null | undefined;
 
@@ -7,7 +7,7 @@ type Reason = { name?: unknown; code?: unknown } | null | undefined;
  * Failures with their own state and guidance. Anything else keeps the caller's generic,
  * route-specific message. Cancellation is never reported as a failure here.
  */
-export function voiceFailure(reason: unknown, context: { transcribing: boolean; browser: boolean }): { kind: VoiceFailure; message: string } | null {
+export function voiceFailure(reason: unknown, context: { transcribing: boolean; browser: boolean; cloud?: boolean }): { kind: VoiceFailure; message: string } | null {
   const value = (reason && typeof reason === 'object' ? reason : undefined) as Reason;
   const name = typeof value?.name === 'string' ? value.name : '', code = typeof value?.code === 'string' ? value.code : '';
   if (name === 'AbortError') return null;
@@ -18,10 +18,17 @@ export function voiceFailure(reason: unknown, context: { transcribing: boolean; 
       : 'Microphone access is off. Choose Open app settings and allow the microphone for Alpha in Android settings, then choose Start recording again, or use the keyboard instead. Nothing was recorded.' };
   if (!context.transcribing && (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'NotReadableError'))
     return { kind: 'no-microphone', message: 'No usable microphone was found. Connect or enable a microphone, then choose Start recording again.' };
+  // The Cloud route renders no typing choice (MVP-01 decides whether it should), so its
+  // wording offers only what is on screen: the kept clip, Transcribe again and Record again.
+  if (code === 'no-speech' && context.cloud)
+    return { kind: 'no-speech', message: 'Eliza Cloud heard no speech in this recording. Your recording is kept. Choose Transcribe with Eliza Cloud to try again, or Record again.' };
   if (code === 'no-speech')
     return { kind: 'no-speech', message: 'No speech was detected in this recording. Record again, or type the transcript instead.' };
-  if (code === 'model-load-failed')
-    return { kind: 'model', message: 'The speech model could not be loaded. Check your connection to this app and choose Transcribe again, or type the transcript instead. Your recording is kept.' };
+  // The web build has no in-browser recognizer; local speech needs the local agent (libelizainference).
+  if (code === 'local-agent-required')
+    return { kind: 'local-agent', message: 'Local transcription needs the local agent on this computer. Connect it and choose Transcribe again, or type the transcript instead. Your recording is kept.' };
+  if (code === 'local-agent-starting')
+    return { kind: 'local-agent', message: 'Your agent is starting. Speech is available once it is running; choose Transcribe again then, or type the transcript instead. Your recording is kept.' };
   if (code === 'recognition-failed')
     return { kind: 'recognition', message: 'Speech recognition failed for this recording. Choose Transcribe again, or type the transcript instead. Your recording is kept.' };
   return null;
@@ -35,16 +42,6 @@ export function voiceFailure(reason: unknown, context: { transcribing: boolean; 
 export const DENIED_SETTINGS_LABEL = 'Open app settings';
 export function deniedSettingsChoice(input: { failure: string; stage: string; busy: boolean; native: boolean }): boolean {
   return input.native && input.failure === 'denied' && input.stage === 'ready' && !input.busy;
-}
-
-const megabytes = (bytes: number) => Math.max(0, Math.round(bytes / 1_000_000));
-/** Status text for the in-browser recognizer: model download, model start-up, recognition. */
-export function speechProgressMessage(progress?: { phase: string; loaded?: number; total?: number }) {
-  if (progress?.phase === 'download' && Number.isFinite(progress.loaded) && Number.isFinite(progress.total) && progress.total! > 0)
-    return `Loading the speech model from this app: ${megabytes(progress.loaded!)} of ${megabytes(progress.total!)} MB. Nothing is uploaded.`;
-  if (progress?.phase === 'download') return 'Loading the speech model from this app. Nothing is uploaded.';
-  if (progress?.phase === 'initialize') return 'Starting the speech model on this device. Nothing is uploaded.';
-  return 'Transcribing on this device. Nothing has been saved or uploaded.';
 }
 
 const field = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 128 ? value : undefined;

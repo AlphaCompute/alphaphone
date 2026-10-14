@@ -120,3 +120,26 @@ test('chat brand Home preserves the existing conversation and unsent draft',asyn
  await expect(page.locator('html')).toHaveAttribute('data-active-view','home');await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toHaveValue('Unsent after the original response');await page.getByRole('button',{name:'Open conversation',exact:true}).click();
  await expect(agent(page)).toHaveText(answer);await expect(page.locator('[data-alpha-message-text]').filter({hasText:'My original request'})).toHaveText('My original request');await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('Unsent after the original response');
 });
+test('transcript reading position survives a keyboard resize, Back from full and HOME then reopen; bottom-follow holds at the bottom',async({page})=>{
+ test.setTimeout(90_000);
+ await conversation(page);await page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');const {LocalAgentProtocol:P}=await import('/src/runtime/local-agent.ts');const rows=Array.from({length:48},(_,i)=>({id:crypto.randomUUID(),role:i%2?'assistant':'user',text:`Historical ${i}: complete synthetic text for scroll continuity. More text stays on this message.`}));P.prototype.messages=async()=>({messages:structuredClone(rows)});P.prototype.listConversations=async()=>[{id:(window as any).messageActionsRoom,title:'Synthetic scroll fixture'}];await c.restoreHistory((window as any).messageActionsRoom);});
+ const transcript=page.locator('[data-alpha-transcript]'),layer=page.locator('[data-alpha-layer="conversation"]');await expect(transcript.locator('[data-alpha-message-id]')).toHaveCount(48);
+ const settle=async()=>{await layer.evaluate(element=>Promise.all(element.getAnimations({subtree:true}).map(animation=>animation.finished.catch(()=>{}))));await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));};
+ await expect(page.getByRole('button',{name:'Shrink chat',exact:true})).toBeVisible();await settle();
+ // Offset of a message from the top of the visible transcript, and the distance from the bottom.
+ const offset=(id:string)=>transcript.evaluate((element,id)=>element.querySelector(`[data-alpha-message-id="${id}"]`)!.getBoundingClientRect().top-element.getBoundingClientRect().top,id);
+ const fromBottom=()=>transcript.evaluate(element=>element.scrollHeight-element.clientHeight-element.scrollTop);
+ const steps:Array<[string,()=>Promise<unknown>]>=[
+  ['keyboard resize',async()=>{await page.setViewportSize({width:412,height:520});await settle();}],
+  ['keyboard closed',async()=>{await page.setViewportSize({width:412,height:915});await settle();}],
+  ['Back from full',async()=>{await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();await settle();}],
+  ['HOME then reopen',async()=>{await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));await expect(layer).toHaveAttribute('aria-hidden','true');await settle();await page.getByRole('button',{name:'Open conversation',exact:true}).click();await expect(layer).not.toHaveAttribute('aria-hidden','true');await settle();}],
+ ];
+ // Reading older history: the anchored message stays where it was after every step.
+ const before=await transcript.evaluate(element=>{element.scrollTop=element.scrollHeight/3;const top=element.getBoundingClientRect().top;const anchor=Array.from(element.querySelectorAll('[data-alpha-message-id]')).find(row=>row.getBoundingClientRect().bottom>top)!;return {id:anchor.getAttribute('data-alpha-message-id')!,y:anchor.getBoundingClientRect().top-top};});
+ for(const [name,step] of steps){await step();expect(Math.abs(await offset(before.id)-before.y),name).toBeLessThan(2);}
+ // At the bottom: every step keeps following the newest message.
+ await page.getByRole('button',{name:'Expand chat',exact:true}).click();await settle();
+ await transcript.evaluate(element=>element.scrollTop=element.scrollHeight);await settle();
+ for(const [name,step] of steps){await step();expect(await fromBottom(),name).toBeLessThan(2);}
+});
