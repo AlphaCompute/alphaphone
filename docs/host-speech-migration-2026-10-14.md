@@ -10,10 +10,11 @@ For `start-local-remote.mjs`, choose `ALPHA_LOCAL_TTS` and `ALPHA_LOCAL_ASR`
 directory. Supply the absolute `ELIZA_INFERENCE_LIBRARY` and its independently
 reviewed `ELIZA_INFERENCE_LIBRARY_SHA256`; the launcher never converts an
 arbitrary installed library's current hash into a trusted hash. Supply
-`ALPHA_TTS_MODEL_DIR` and/or `ALPHA_ASR_MODEL_DIR`. The private profile's
+`ELIZA_PARADEE_MODEL_DIR` and/or `ELIZA_ASR_MODEL_DIR`. The private profile's
 `local-speech.json` accepts these same nonsecret values, including the digest.
 Explicit environment values override saved settings. Old Whisper executable,
-backend, single-model, and `ALPHA_TTS_LIBRARY` selections are rejected.
+backend, single-model, `ALPHA_TTS_LIBRARY`, `ALPHA_TTS_MODEL_DIR` and
+`ALPHA_ASR_MODEL_DIR` selections are rejected.
 
 The TTS directory contains the shared pinned Paradee GGUF and Misaki lexicon.
 If `espeak-ng-data` is present its English data pins are checked too; without
