@@ -216,6 +216,14 @@ engine (`.eliza/paradee-voice/native/jniLibs`). `stage-aosp --production` refuse
 without the bundle manifest, without the Phonon-2 ASR file or whose engine is not the recorded bytes
 (`scripts/aosp-listener.mjs`). No listener APK with a voice bundle has been built, staged or booted.
 
+The listener only decides whether the user addressed Alpha: energy VAD (`SpeechGate`), batch
+Phonon-2 recognition of the utterance in RAM, then `WakePhrase`. It has no network permission and
+keeps no audio or transcript. On the wake phrase it opens `AlphaAssistActivity`, and the renderer
+starts the voice assistant above (Silero VAD, streaming Phonon-2 through the resident agent on this
+phone, Paradee replies, barge-in) when the invocation is the listener's, the phone is unlocked and
+the surface is visible (`installListenerInvocation`, `listenerStartsVoice`). The listener releases
+the microphone while Alpha records and ignores speech while Alpha speaks.
+
 ## Evidence
 
 Class B only. At `c7a9a0d7e7` the engine and JNI libraries were built for both ABIs on
