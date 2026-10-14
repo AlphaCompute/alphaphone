@@ -19,7 +19,10 @@ the development chooser) against the environment you pick:
 | | Staging | Production (test-mocks build) |
 |---|---|---|
 | API and entitlement issuer | `https://api-staging.eliza.app` | `https://api.eliza.app` |
-| Sign-in page | `https://staging.eliza.app/auth/cli-login` | `https://eliza.app/auth/cli-login` |
+| Sign-in (once ready) | In-app: email code, or Google in a Custom Tab via `https://api-staging.eliza.app/steward/auth/oauth/google/authorize` | In-app: email code, or Google via `https://api.eliza.app/steward/auth/oauth/google/authorize` |
+| Google return (verified App Link) | `https://staging.eliza.app/alphaphone/auth/callback` (test-mocks manifest only) | `https://eliza.app/alphaphone/auth/callback` |
+| Key | `eliza_mobile_` from `/api/v1/app-auth/mobile/token`, environment `staging`, client `ai.elizaresearch.alphaphone` | same, environment `production` |
+| Hand-off (until the readiness probe passes; afterwards the **Browser sign-in (diagnostic)** button) | `https://staging.eliza.app/auth/cli-login` | `https://eliza.app/auth/cli-login` |
 | Choose a plan | `https://cloud-staging.eliza.app/cloud/billing` | `https://cloud.eliza.app/cloud/billing` |
 | Secure slot | `cloud:staging` | `cloud:production` |
 | After plan admission | Stops with "Plan admitted on staging (subscription gate QA)". The agent is not started: the native resident inference binding reads only `cloud:production`. | Android: binds the resident agent to Cloud inference and starts it, as in a distribution build. Browser: stops after admission. |
@@ -52,6 +55,21 @@ adb install -r artifacts/test-mocks/launcher-debug.apk
 (flag-off) build, which cannot reach staging; use the sequence above for the QA APK. Never
 install a test-mocks APK on a real user's phone.
 
+Google sign-in needs the App Link to be verified for the installed signer. Staging's
+`/.well-known/assetlinks.json` lists the debug and release certificates. For another debug keystore,
+approve the host by hand:
+
+```sh
+adb shell pm set-app-links-user-selection --user cur --package ai.elizaresearch.alphaphone true staging.eliza.app
+adb shell pm get-app-links ai.elizaresearch.alphaphone     # shows the verification state per host
+```
+
+Email code sign-in does not depend on the App Link, but the readiness probe does: Alpha offers its
+in-app screens only after Cloud reports the client registration, the redirect allowlist admits the
+return URL, and the return host's `assetlinks.json` lists this APK's package and signing certificate.
+Until then **Sign in with Eliza Cloud** opens the Cloud sign-in hand-off in the browser. The answer is
+cached (6 hours when ready, 10 minutes when not); clearing Alpha's app data resets it.
+
 On the phone: **Settings › Agent connection › Subscription gate QA**, choose **Staging**, then
 **Start subscription gate QA**. The app reloads into the gate. **Leave subscription gate QA** at
 the bottom of the gate returns to the development chooser.
@@ -66,8 +84,11 @@ Open `http://127.0.0.1:5317/`, then **Settings › Agent connection › Subscrip
 Staging › Start subscription gate QA**. Cloud requests go through the development Cloud bridge
 (`scripts/browser-cloud-dev-bridge.ts`), which keeps the staging sign-in key on the Mac in
 `$ALPHA_BROWSER_CLOUD_PROFILE` (default `~/.local/share/alphaphone/browser-cloud`) and never in
-the browser. The bridge admits the plan routes (identity, entitlement and keys, billing snapshot,
-code redemption) and nothing else new. The browser run stops after plan admission.
+the browser. The bridge runs the in-app email-code sign-in itself (Steward email send and verify,
+mobile App Auth connect, token and ack); the page receives only the outcome and a reference.
+Google needs the phone's App Link, so the browser offers email only. The bridge also admits the
+plan routes (identity, entitlement and keys, billing snapshot, code redemption). The browser run
+stops after plan admission.
 
 ## End-to-end checklist
 
@@ -78,7 +99,25 @@ not reuse production codes.
 
 1. First run shows **Welcome to Alpha** with **Sign in with Eliza Cloud** only; Back/Escape do not
    dismiss it.
-2. Sign in. With no plan, the gate shows **Choose a plan** with Redeem code, Choose a plan and
+2. Sign in on Alpha's own screen (**Sign in to Eliza Cloud**). No Eliza Cloud web page opens.
+   Check each row and record the result:
+
+   | Case | Expected |
+   |---|---|
+   | Email: valid address, **Email me a code** | Code screen names the address. **Resend code** stays disabled for 60 s. |
+   | Email: wrong code | "That code did not work"; the field is cleared; the step stays. |
+   | Email: right code | Signed in; the plan gate continues below. |
+   | Account with an authenticator app or SMS second step | **Enter your verification code** screen; the right code signs in. |
+   | **Continue with Google** | A Custom Tab shows Google's own page (not Eliza's). After consent it returns straight to Alpha and signs in. |
+   | Google: close the tab without finishing | "Google sign-in was closed before it finished"; nothing is stored. |
+   | **Cancel sign-in** while waiting | Back to the choice screen; the pending attempt is burned; nothing is stored. |
+   | A second sign-in while one runs | Refused ("already in progress"). |
+   | A brand-new email or Google account | Signed in, and the account panel says "This sign-in created a new Eliza Cloud account". |
+   | Existing account (e.g. the owner's) via Google and via email | Same Cloud user and organization both ways; no "new account" notice. |
+   | Airplane mode, then **Email me a code** | "Alpha could not reach Eliza Cloud"; nothing is stored. |
+   | Reopen an old return link (copied from history) | Ignored; nothing is stored. |
+
+   With no plan, the gate shows **Choose a plan** with Redeem code, Choose a plan and
    Check plan again; the agent does not start.
 3. Redeem an invalid code: one generic answer. Redeem more than five times in 15 minutes: "Too
    many attempts. Try again in …" with Cloud's retry time.
@@ -98,8 +137,8 @@ not reuse production codes.
    never-admitted sign-in: the agent runs without Cloud AI and the same notice is shown.
 10. **Reset Alpha data**: the local reset completes; the old key no longer authenticates
     (`GET /api/v1/user` with it returns 401) when Cloud was reachable.
-11. Sign-in key expiry warning: shown within 14 days of the key's `expiresAt` (CLI keys last 90
-    days); **Approve this phone again** opens a fresh sign-in.
+11. Sign-in key expiry warning: shown within 14 days of the key's `expiresAt` (in-app sign-in
+    keys last 30 days); **Approve this phone again** opens the in-app sign-in screen.
 
 ## Automated coverage (no real account)
 
@@ -110,7 +149,39 @@ not reuse production codes.
 - `scripts/test-cloud-subscription.mjs`, `test/subscription-entitlement.test.mjs`: protocol and
   presentation; `test/connection-routes.test.mjs` with `test/fixtures/ConnectionRoutesTest.java`:
   native allowlist, reset revocation target, direct-provider gating.
+- `test/browser/native-cloud-signin.spec.ts`: in-app sign-in screens on the flag-off Android
+  composition:
+  - email code with a wrong code and the resend cooldown;
+  - Google;
+  - the account-created notice;
+  - cancellation, which burns the pending attempt;
+  - a second verification step;
+  - offline.
+
+  The native sign-in host is synthetic.
+- `test/cloud-sign-in-flow.test.mjs` with `test/fixtures/CloudSignInFlowTest.java`:
+  - PKCE and state;
+  - the exact authorize URL;
+  - strict App Link return validation (host, path, port, userinfo, query and fragment,
+    duplicated or extra parameters, unknown or expired state);
+  - the pending record;
+  - the ack retry policy and the route allowlist;
+  - source checks: store before ack, pending burned before exchange, nothing logged, legacy flow
+    gated.
+- `scripts/test-cloud-protocol.mjs`, `test/browser-cloud-dev-bridge.test.mjs`: renderer sign-in
+  contract and the development bridge's email sign-in.
+- `CloudSignInCallbackInstrumentedTest` (emulator, `-e cloudSignInNative 1`):
+  - the return link resolves only to MainActivity;
+  - a mismatching or expired return burns the pending record and stores nothing.
 - Production lane specs (`*.production.spec.ts`) run the flag-off bundle.
 
 These are an APK-independent renderer and JVM check. They are not an emulator, device, staging or
-real-account result.
+real-account result. Keep these evidence levels separate:
+
+- an APK build;
+- emulator App Link verification (`adb shell pm get-app-links ai.elizaresearch.alphaphone` shows
+  `verified` for `eliza.app` only once Cloud serves assetlinks for the installed signer);
+- an AOSP image;
+- the owner's real-account acceptance on a device.
+
+None of them proves another.

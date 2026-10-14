@@ -37,6 +37,33 @@ final class ConnectionRoutes {
   if(testMocks)return true;
   return "https".equals(scheme)&&"api.eliza.app".equals(host)&&(port==-1||port==443);
  }
+ /**
+  * In-app Eliza Cloud sign-in (AlphaCloudSignInPlugin). These fixed routes are sent only by the
+  * native sign-in client with URLs it builds itself; the renderer transport never admits them, so
+  * no Steward session, authorization code or PKCE verifier crosses the bridge (the minted key is
+  * stored in the renderer-readable cloud:<environment> slot, like the hand-off's key). The Cloud
+  * sign-in hand-off (/api/auth/cli-session, managedService) stays a product route until the in-app
+  * readiness probe passes. GETs are the readiness probe's reads; the email code paths match
+  * CloudEmailCode and config/cloud-email-code.json.
+  */
+ static boolean signInRoute(String path,String method,boolean hasBody){
+  if(path==null)return false;
+  if("GET".equals(method))return !hasBody&&java.util.Set.of("/api/v1/app-auth/mobile/config","/steward/auth/providers","/steward/auth/oauth/google/authorize").contains(path);
+  if(!"POST".equals(method)||!hasBody)return false;
+  return java.util.Set.of("/steward/auth/email/code/send","/steward/auth/email/code/verify","/steward/auth/oauth/exchange",
+   "/steward/auth/mfa/totp/complete","/steward/auth/mfa/sms/complete","/steward/auth/logout",
+   "/api/v1/app-auth/connect","/api/v1/app-auth/mobile/token","/api/v1/app-auth/mobile/ack").contains(path);
+ }
+ /** The readiness probe's one read on the return host: its Digital Asset Links statement list. */
+ static boolean signInAssetLinks(String scheme,String host,int port,String rawPath,String rawQuery,boolean testMocks){
+  if(!"https".equals(scheme)||(port!=-1&&port!=443)||rawQuery!=null||!"/.well-known/assetlinks.json".equals(rawPath))return false;
+  return "eliza.app".equals(host)||testMocks&&"staging.eliza.app".equals(host);
+ }
+ /** The sign-in client's origin: exactly the environment's Cloud API on the default port. */
+ static boolean signInOrigin(String scheme,String host,int port,boolean testMocks){
+  if(!"https".equals(scheme)||(port!=-1&&port!=443))return false;
+  return "api.eliza.app".equals(host)||testMocks&&"api-staging.eliza.app".equals(host);
+ }
  /** P-22/P-31: allow current managed APIs; new services need explicit route review. */
  static boolean managedService(String path,String query,String method,boolean hasBody,boolean testMocks){
   if(testMocks)return true;
