@@ -22,12 +22,13 @@ async function setup(page:Page,options:Options={}){
   const all=()=>Object.values(store).flat(2);
   const digest=async(text:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
   const receipts:Record<string,any>={};
+  let deferredPage=false;
   const client={
    gmailAccounts:async()=>structuredClone(f.accounts),
    gmailInboxCapabilities:async()=>({version:1,from:'owner@example.test',threads:true,send:false,providerDrafts:false,mailboxMutations:true,attachments:true,providerExactlyOnce:false,atomicDraftReplacement:false,readState:options.readState!==false}),
    gmailSearch:async(grant:string,query:string,_signal:AbortSignal,size:number,pageToken?:string)=>{
     f.searches.push({grant,query,size,pageToken:pageToken??null});
-    if(pageToken&&options.deferPaging){await new Promise<void>((resolve,reject)=>{(f as any).releasePage=resolve;_signal.addEventListener('abort',()=>reject(_signal.reason),{once:true});});_signal.throwIfAborted();}
+    if(pageToken&&options.deferPaging&&!deferredPage){deferredPage=true;await new Promise<void>((resolve,reject)=>{(f as any).releasePage=resolve;_signal.addEventListener('abort',()=>reject(_signal.reason),{once:true});});_signal.throwIfAborted();}
     if(f.fail){const kind=f.fail;f.fail=null;if(kind==='offline')throw new TypeError('Failed to fetch');throw new CloudProtocolError('http',kind);}
     if(pageToken&&f.failCursor){f.failCursor=false;throw new CloudProtocolError('http',400,{error:'Invalid Gmail page token.'});}
     const pages=store[query]||[[]],index=pageToken?Number(pageToken.split(':')[1]):0;
