@@ -64,6 +64,13 @@ public final class ConnectionRoutesTest {
   check(ConnectionRoutes.admittedOrigin("http","10.0.2.2",2138,true),"test mocks keep the development agent");
   for(String route:new String[]{"/api/v1/eliza/agents","/api/v1/eliza/agents/id/api/conversations","/api/auth/pair","/api/conversations","/api/v1/eliza/personal","/api/v1/eliza/google/../agents","/api/v1/%65liza/google/status","/api/v1/eliza/google/status/","/api/v1/eliza/google//status"})for(String method:new String[]{"GET","POST"})check(!ConnectionRoutes.managedService(route,null,method,false,false),"hosted/unreviewed path refused "+route);
   check(ConnectionRoutes.managedService("/api/v1/user",null,"GET",false,false),"owner identity allowed");
+  for(String path:new String[]{"/api/v1/eliza/google/calendar/calendars","/api/v1/eliza/google/calendar/feed"}){
+   check(ConnectionRoutes.managedService(path,"grantId=owned","GET",false,false),"owner Google Calendar read allowed");
+   for(String method:new String[]{"POST","DELETE","PUT","PATCH"})check(!ConnectionRoutes.managedService(path,null,method,true,false),"Google Calendar mutation refused");
+   check(!ConnectionRoutes.managedService(path,null,"GET",true,false),"Google Calendar GET body refused");
+   check(!ConnectionRoutes.managedService(path+"/",null,"GET",false,false),"Google Calendar trailing slash refused");
+  }
+  check(!ConnectionRoutes.managedService("/api/v1/eliza/google/calendar/events",null,"GET",false,false),"unreviewed Google Calendar route refused");
   // Subscription plan gate (#410): code redemption is one POST with a body; the billing snapshot is read-only; credits are retired.
   check(ConnectionRoutes.managedService("/api/v1/subscription/redeem",null,"POST",true,false),"subscription code redemption allowed");
   check(!ConnectionRoutes.managedService("/api/v1/subscription/redeem",null,"POST",false,false),"redemption needs a body");
