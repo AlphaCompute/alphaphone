@@ -15,4 +15,14 @@ final class AssistInvocation {
  static String origin(String launchedFromPackage,boolean sameSigner){
   return LISTENER_PACKAGE.equals(launchedFromPackage)&&sameSigner?LISTENER:ASSIST;
  }
+ /** A listener invocation starts a voice turn only this soon after it arrived (monotonic clock). */
+ static final long LISTENER_WINDOW_MS=5000;
+ /**
+  * The origin a read reports. A listener invocation counts only while fresh and only if the keyguard
+  * was not showing when it arrived, so one that waited (hidden page, locked phone) can never open the
+  * microphone later.
+  */
+ static String take(String origin,long arrivedAt,long now,boolean lockedAtArrival){
+  return LISTENER.equals(origin)&&!lockedAtArrival&&now>=arrivedAt&&now-arrivedAt<=LISTENER_WINDOW_MS?LISTENER:ASSIST;
+ }
 }

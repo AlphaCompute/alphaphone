@@ -51,6 +51,19 @@ export function locate(from, row, candidates, {acceptOther = false} = {}) {
   return null;
 }
 
+/** A rebuilt engine must carry its own matching source and byte provenance before admission. */
+function verifyEngineBuild(source, directories, record, actual) {
+  const directory = directories.find(directory => record.abis.some(abi =>
+    [`jniLibs/${abi.abi}/libelizainference.so`, `${abi.abi}/libelizainference.so`].some(relative => path.join(directory, relative) === source)));
+  const filename = path.join(directory, 'build-record.json');
+  if (!fs.existsSync(filename) || !fs.lstatSync(filename).isFile()) throw Error('Rebuilt engine source build record is missing or nonregular');
+  const build = JSON.parse(fs.readFileSync(filename, 'utf8'));
+  if (build.sourceCommit !== record.pin || build.nativeCommit !== record.forkPin) throw Error('Rebuilt engine source revisions do not match the pinned source revisions');
+  const relative = path.relative(directory, source);
+  const rows = Array.isArray(build.files) ? build.files.filter(row => row.path === relative) : [];
+  if (rows.length !== 1 || rows[0].sha256 !== actual.sha256 || rows[0].bytes !== actual.bytes) throw Error('Rebuilt engine bytes do not match its source build record');
+}
+
 export function stageVoiceModels(productRoot, {from, unrecordedEngine = false}) {
   const record = readVoiceHost(productRoot);
   const directories = from.map(directory => path.resolve(directory));
@@ -66,6 +79,7 @@ export function stageVoiceModels(productRoot, {from, unrecordedEngine = false}) 
     const source = locate(directories, engine, [`jniLibs/${abi.abi}/${engine.name}`, `${abi.abi}/${engine.name}`], {acceptOther: unrecordedEngine});
     if (!source) throw Error(`Missing ${abi.abi}/${engine.name} in ${from.join(', ')}`);
     const actual = {sha256: digest(source), bytes: fs.statSync(source).size};
+    if (unrecordedEngine) verifyEngineBuild(source, directories, record, actual);
     if (actual.sha256 !== engine.sha256 || actual.bytes !== engine.bytes) {
       // Only reachable with --unrecorded-engine: this workspace's record names the rebuilt bytes.
       Object.assign(engine, actual);abi.engineAdmission = 'unreviewed workspace build (hosted CI; never commit this record)';

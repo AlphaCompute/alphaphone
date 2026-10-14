@@ -39,8 +39,16 @@ public final class AlphaResetPlugin extends Plugin {
   authenticationCall=null;
   try{AlphaDataReset.record(getContext());}
   catch(Exception failure){result(call,"unavailable","Reset could not be prepared. Close and reopen Alpha before trying again.");if(AlphaDataReset.pending(getContext()))AlphaDataReset.dispatchAndExit(getContext());return;}
-  // The reset is recorded first, so it completes on the next launch whatever happens below.
+  // The reset is recorded first, so it completes on the next launch whatever happens below; that
+  // launch revokes the Cloud key the same way (AlphaApplication) before anything is wiped.
+  // Keep the reset visible while its bounded, best-effort revocation runs.
+  showRevocationNotice();
   revokeCloudKeysThenReset(getContext().getApplicationContext());
+ }
+ /** Keep the confirmed reset visible until Android dispatches it. */
+ private void showRevocationNotice(){
+  try{if(review!=null)review.dismiss();new AlertDialog.Builder(getActivity()).setTitle("Resetting Alpha").setMessage("Signing out of Eliza Cloud… Alpha closes in a few seconds.").setCancelable(false).create().show();}
+  catch(RuntimeException unavailable){/* The reset proceeds either way. */}
  }
  /** Best effort, bounded and off the main thread: revoke this phone's Eliza Cloud sign-in key(s),
   * then reset. A failed, slow or offline revocation never blocks or cancels the local reset. */
@@ -50,15 +58,9 @@ public final class AlphaResetPlugin extends Plugin {
   final android.os.Handler main=new android.os.Handler(android.os.Looper.getMainLooper());
   main.postDelayed(reset,REVOCATION_DEADLINE_MS);
   Thread revocation=new Thread(()->{
-   try{
-    AlphaCredentialStore store=new AlphaCredentialStore(context);
-    for(String environment:CloudKeyRevocation.environments(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)){
-     if(dispatched.get())break;
-     try{String saved=store.readCredentialSlot("cloud:"+environment);if(saved!=null)CloudKeyRevocation.revoke(environment,new org.json.JSONObject(saved).optString("token",null),BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);}
-     catch(Exception ignored){/* Unreadable or absent: nothing to revoke. */}
-    }
-   }finally{main.post(reset);}
-  },"alpha-reset-cloud-revocation");
+   try{ResetCloudRevocation.revoke(context,REVOCATION_DEADLINE_MS-500);}
+   finally{main.post(reset);}
+  },"alpha-reset-cloud-revocation-owner");
   revocation.setDaemon(true);revocation.start();
  }
  static final long REVOCATION_DEADLINE_MS=8000;

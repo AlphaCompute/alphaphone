@@ -59,7 +59,7 @@ export interface CloudCredentialStore {
 export interface CloudNativeRequest {
   (input: { url: string; method: AutomationsMethod; headers: Record<string, string>;
     body?: unknown; credentialReference?: string; signal: AbortSignal; timeoutMs: number; redirect: "error"; expiresAt?: number;
-  }): Promise<{ status: number; data: unknown }>;
+  }): Promise<{ status: number; data: unknown; /** Raw Retry-After header of an error response, when present. */ retryAfter?: string }>;
 }
 /** Optional transport capabilities. The native transport admits only GET and POST today, so
  * credential self-revocation (DELETE) is reported unsupported unless the host opts in. */
@@ -159,7 +159,7 @@ function mailHtml(value: unknown): {bodyHtml?: string} {
     ? {bodyHtml: value} : {};
 }
 export class CloudProtocolError extends Error {
-  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active" | "account-changed", readonly status?: number, readonly data?: unknown) {
+  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active" | "account-changed", readonly status?: number, readonly data?: unknown, readonly retryAfter?: string) {
     super(`Eliza Cloud ${code}${status ? ` (${status})` : ""}`);
     this.name = "CloudProtocolError";
   }
@@ -226,7 +226,7 @@ export class CloudProtocol {
       method: options.method ?? (options.body === undefined ? "GET" : "POST"), headers, body: options.body,
       signal, credentialReference, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error", ...(options.expiresAt === undefined ? {} : {expiresAt:options.expiresAt}) });
     signal.throwIfAborted();
-    if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status, response.data);
+    if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status, response.data, response.retryAfter);
     options.onStatus?.(response.status);
     return response.data;
   }
@@ -275,7 +275,7 @@ export class CloudProtocol {
           if (status === 401) throw error;
           if (status === 400) throw new SubscriptionRedeemError("invalid");
           if (status === 409) throw new SubscriptionRedeemError(body.code === "subscription_grant_already_redeemed" ? "already-redeemed" : "invalid");
-          if (status === 429) throw new SubscriptionRedeemError("rate-limited", readServiceLimit({ status, data: error.data })?.retryAfterMs ?? null);
+          if (status === 429) throw new SubscriptionRedeemError("rate-limited", readServiceLimit({ status, data: error.data, retryAfter: error.retryAfter })?.retryAfterMs ?? null);
           if (status === 403) throw new SubscriptionRedeemError("account");
           throw new SubscriptionRedeemError("unavailable");
         }
@@ -288,11 +288,13 @@ export class CloudProtocol {
     await this.assertSameCredential(credential.credentialId, signal);
     const grant = data.grant && typeof data.grant === "object" && !Array.isArray(data.grant) ? data.grant as ObjectValue : null;
     if (data.success !== true || !grant || typeof data.replayed !== "boolean") throw new SubscriptionRedeemError("unavailable");
+    if (grant.revoked === true) throw new SubscriptionRedeemError("invalid");
     const endsAt = typeof grant.endsAt === "string" ? Date.parse(grant.endsAt) : NaN;
     const summary = data.entitlement && typeof data.entitlement === "object" ? data.entitlement as ObjectValue : null;
     const plan = summary?.plan && typeof summary.plan === "object" ? summary.plan as ObjectValue : null;
     const planName = typeof plan?.name === "string" && plan.name.trim() && plan.name.length <= 80 && !/[\x00-\x1f\x7f]/.test(plan.name) ? plan.name.trim() : null;
-    return { replayed: data.replayed, grantEndsAt: Number.isFinite(endsAt) ? endsAt : null, paidPlanTakesPrecedence: grant.paidPlanTakesPrecedence === true, planName };
+    const until = typeof summary?.effectiveUntil === "string" ? Date.parse(summary.effectiveUntil) : NaN;
+    return { planEndsAt: Number.isFinite(until) ? until : grant.paidPlanTakesPrecedence === true || !Number.isFinite(endsAt) ? null : endsAt, replayed: data.replayed, grantEndsAt: Number.isFinite(endsAt) ? endsAt : null, paidPlanTakesPrecedence: grant.paidPlanTakesPrecedence === true, planName };
   }
   private async assertSameCredential(credentialId: string, signal: AbortSignal) {
     const current = await this.credentials.read(this.environment);

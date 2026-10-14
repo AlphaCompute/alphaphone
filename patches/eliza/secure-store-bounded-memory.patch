@@ -8,6 +8,17 @@
  import java.io.File;
  import java.io.FileOutputStream;
  import java.io.FileNotFoundException;
+@@ -103,8 +102,8 @@
+     synchronized (LOCK) {
+      if (plain.length > limit) {
+       // Above the current limit only while shrinking data written under the older limit.
+-      String stored = read(name);
+-      if (stored == null || stored.getBytes(StandardCharsets.UTF_8).length < plain.length) throw new CapacityException();
++      long stored = storedPlaintextLength(slot);
++      if (stored < plain.length) throw new CapacityException();
+      }
+      Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key());
+      cipher.updateAAD(slot.getBytes(StandardCharsets.US_ASCII));
 @@ -115,10 +114,9 @@
        out.getFD().sync(); file.finishWrite(out);
        out = null;
@@ -22,7 +33,7 @@
        }
       } catch (Exception error) { if (out != null) file.failWrite(out); throw error; }
      }
-@@ -128,17 +126,41 @@
+@@ -128,18 +126,42 @@
   public String read(String name) throws Exception {
    String slot=slotHash(name);int limit=retainedLimit(name);
    synchronized(LOCK) {
@@ -40,7 +51,7 @@
 +   if(value!=null)parseJson(value);
 +   return value;
    }
-+ }
+  }
 + /** End the ciphertext/plaintext buffer lifetimes before parsing nested JSON strings. */
 + private String readAuthenticated(String slot,int limit)throws Exception {
 +   AtomicFile file=slotFile(slot);
@@ -71,10 +82,11 @@
 +     finally{Arrays.fill(joined,(byte)0);}
 +    }finally{Arrays.fill(buffer,(byte)0);for(byte[] piece:pieces)Arrays.fill(piece,(byte)0);}
 +   }catch(FileNotFoundException missing){if(file.getBaseFile().exists()||new File(file.getBaseFile().getPath()+".bak").exists())throw missing;return null;}
-  }
++ }
   public void remove(String name)throws Exception {
    synchronized(LOCK){
-@@ -153,13 +175,14 @@
+    AtomicFile file=slotFile(slotHash(name));file.delete();
+@@ -153,13 +175,30 @@
     return true;
    }
   }
@@ -84,6 +96,22 @@
 -  while ((count = input.read(buffer)) != -1) {
 -   if (output.size() + count > limit) throw new IllegalArgumentException();
 -   output.write(buffer, 0, count);
++ /**
++  * The stored value's UTF-8 length, from the committed v1 file: AES/GCM ciphertext is the plaintext
++  * plus its 16-byte tag. Counted in chunks, so a shrink check above the current limit holds no second
++  * decrypted copy, String or byte array of a slot-sized value beside the one being written. It decides
++  * admission only, never returns plaintext; the value written replaces the whole file. -1 when absent.
++  */
++ private long storedPlaintextLength(String slot)throws Exception{
++  AtomicFile file=slotFile(slot);
++  try(InputStream input=file.openRead()){
++   if(input.read()!=1||input.read()!=12)throw new IllegalArgumentException();
++   byte[] buffer=new byte[8192];long count=0;int read;
++   while((read=input.read(buffer))!=-1)count+=read;
++   if(count<12+16)throw new IllegalArgumentException();
++   return count-12-16;
++  }catch(FileNotFoundException missing){if(file.getBaseFile().exists()||new File(file.getBaseFile().getPath()+".bak").exists())throw missing;return -1;}
++ }
 + /** Verify the committed ciphertext without another slot-sized array or slice. */
 + private static void verifyBytes(InputStream input,byte[] expected)throws Exception{
 +  byte[] buffer=new byte[8192];int offset=0;

@@ -92,9 +92,13 @@ public class PosterCalendarJourneyInstrumentedTest {
   }
   return ids;
  }
- private void gate() {
+ private void gate() throws Exception {
   Assume.assumeTrue("Explicit J01 journey campaign", "1".equals(InstrumentationRegistry.getArguments().getString("posterJourney")));
-  for (String permission : new String[]{Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR})
+  AppNavigation.assumeNoRequiredSignIn("J01 (poster to calendar)");
+  // Scan mode lives in the Camera view, whose preview starts first: without CAMERA it asks Android
+  // for it, and the system permission dialog stays in front of "Starting camera…" (an owner grants
+  // it once; the picked poster still comes from DocumentsUI, never the camera).
+  for (String permission : new String[]{Manifest.permission.CAMERA, Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR})
    InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context().getPackageName(), permission);
  }
  /** Accepts Calendar's confirm prompts the way a person would, recording each message. */

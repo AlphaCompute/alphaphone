@@ -542,6 +542,18 @@ test("round-9 registrations: new classes, campaigns and removed reasons", () => 
   // A fixture PIN that was set is cleared even when its own verification fails (no close() follows a throwing constructor).
   const fixture = fs.readFileSync(ROOTS.map(root => path.join(root, "ai/elizaresearch/alphaphone/PasswordVaultFixture.java")).find(file => fs.existsSync(file)), "utf8");
   assert.match(fixture, /set = true;[\s\S]*catch \(Throwable failed\) \{ close\(\); throw failed; \}/);
+  // The prompt is its credential field, not the SystemUI package (the status bar is SystemUI): a
+  // PIN typed before that field holds focus was lost and failed verification on the emulator.
+  assert.match(fixture, /systemui:id\/lockPassword/);
+  assert.match(fixture, /isFocused\(\)[\s\S]*field\.setText\(PIN\)/);
+  assert.doesNotMatch(fixture, /input text " \+ PIN/);
+  // Closing is the prompt going away; a save sheet finishes itself, so Alpha in front is not required.
+  assert.doesNotMatch(fixture, /By\.pkg\(BuildConfig\.APPLICATION_ID\)\.depth\(0\)/);
+  // Every save and every fill asks for the credential, so the Fill class requires the prompt each time.
+  const fill = sourceOf("PasswordVaultFill");
+  assert.doesNotMatch(fill, /By\.pkg\(Pattern\.compile\("com\\\\\.android/);
+  assert.equal((fill.match(/^\s+PasswordVaultFixture\.confirmDeviceCredential\(\);$/gm) ?? []).length, 3);
+  assert.match(fill, /asks for the device credential before listing sign-ins", PasswordVaultFixture\.credentialPromptShown\(10_000\)/);
 });
 
 test("restart runner wires the migration, crash-log, theme and source-reference phases to real methods and gates", () => {

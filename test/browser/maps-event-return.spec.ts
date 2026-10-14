@@ -180,3 +180,30 @@ test('a refused or failed calendar read keeps Back to event and never claims the
   await expect(page.getByRole('heading', {name: 'Harbour meeting', exact: true})).toBeVisible();
   await expect(view(page)).toHaveAttribute('data-active-view', 'calendar');
 });
+
+test('system Back from the hand-off returns to that event; a place the user opened is unwound first; nothing is searched again', async ({page}) => {
+  await setup(page);
+  // The hand-off search alone: one system Back returns to the originating event.
+  await handOff(page, 'Dock meeting');
+  await systemBack(page);
+  await expect(view(page)).toHaveAttribute('data-active-view', 'calendar');
+  await expect(page.getByRole('heading', {name: 'Dock meeting', exact: true})).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'Harbour meeting', exact: true})).toHaveCount(0);
+  expect((await requests(page)).queries).toEqual([address]);
+  // A place the user chose from the hand-off results is its own layer: Back closes it, Maps stays.
+  await handOff(page, 'Dock meeting');
+  await page.getByRole('button', {name: /^West entrance/}).first().click();
+  await systemBack(page);
+  await expect(view(page)).toHaveAttribute('data-active-view', 'maps');
+  await expect(page.getByRole('textbox', {name: 'Search places', exact: true})).toHaveValue(address);
+  await systemBack(page);
+  await expect(view(page)).toHaveAttribute('data-active-view', 'calendar');
+  await expect(page.getByRole('heading', {name: 'Dock meeting', exact: true})).toBeVisible();
+  expect((await requests(page)).queries).toEqual([address, address]);
+  // Maps opened afterwards carries no replayed search and no event to return to.
+  await returnToApps(page);
+  await button(page, 'Maps').click();
+  await expect(page.getByRole('textbox', {name: 'Search places', exact: true})).toHaveValue('');
+  await expect(back(page)).toHaveCount(0);
+  expect((await requests(page)).queries).toEqual([address, address]);
+});
