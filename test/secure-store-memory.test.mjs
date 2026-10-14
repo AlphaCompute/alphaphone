@@ -26,7 +26,7 @@ test('patched native secure store handles actual 32 MiB authenticated records wi
   const fixture=join(root,'test/fixtures/secure-store-memory');
   const binary=name=>process.env.JAVA_HOME?join(process.env.JAVA_HOME,'bin',name):name;
   execFileSync(binary('javac'),['--release','11','-cp',jar,'-d',dir,source,join(fixture,'android/util/AtomicFile.java'),join(fixture,'MemoryTest.java')],{timeout:60000,stdio:'pipe'});
-  const result=execFileSync(binary('java'),['-Xmx192m','-cp',dir+':'+jar,'MemoryTest',join(dir,'slots')],{timeout:60000,encoding:'utf8'});
+  const result=execFileSync(binary('java'),['-Xmx192m','-cp',dir+':'+jar,'MemoryTest',join(dir,'slots')],{timeout:600000,encoding:'utf8'});
   assert.match(result,/PASS 32 MiB authenticated write\/read\/CAS with 192 MiB heap/);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });

@@ -56,6 +56,13 @@ public final class BrowserPageQuestionInstrumentedTest {
  private static void gate() {
   org.junit.Assume.assumeTrue("Explicit native page question campaign", "1".equals(InstrumentationRegistry.getArguments().getString("browserPageQuestion")));
  }
+ /** The native page review extracts text only in the WebView's isolated world (BrowserReading.review
+  * refuses first without it). A provider without JS_INJECTION_IN_FRAME_AND_WORLD (the emulator's
+  * WebView 133) cannot show it at all; BrowserReadingNavigationInstrumentedTest's
+  * providerWithoutIsolatedWorldSaysReadingIsUnavailableAndInjectsNothing asserts that refusal instead. */
+ static void assumeIsolatedReading() {
+  org.junit.Assume.assumeTrue("This WebView provider has no isolated-world injection (JS_INJECTION_IN_FRAME_AND_WORLD), so the native page review cannot open; providerWithoutIsolatedWorldSaysReadingIsUnavailableAndInjectsNothing covers this provider", BrowserReadingWorld.supported());
+ }
  private String js(String code) throws Exception { return WebViewTestDriver.evaluate(code); }
  private void waitFor(String condition) throws Exception {
   for (int i = 0; i < 300; i++) { if ("true".equals(js("Boolean(" + condition + ")"))) return; SystemClock.sleep(100); }
@@ -197,7 +204,7 @@ public final class BrowserPageQuestionInstrumentedTest {
  }
 
  @Test public void excerptIsBoundToTheCommittedDocumentAndNavigationRetiresIt() throws Exception {
-  gate();
+  gate(); assumeIsolatedReading();
   try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
    Pages pages = null; Throwable primary = null;
    try {
@@ -268,7 +275,7 @@ public final class BrowserPageQuestionInstrumentedTest {
  }
 
  @Test public void sensitiveAddressOrContentYieldsNoExcerpt() throws Exception {
-  gate();
+  gate(); assumeIsolatedReading();
   try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
    Pages pages = null; Throwable primary = null;
    try {
@@ -326,7 +333,7 @@ public final class BrowserPageQuestionInstrumentedTest {
  private static final String QUESTION = "document.querySelector('dialog[aria-label=\"Ask about selected content\"]')";
 
  @Test public void reviewedExcerptReachesOnlyTheComposerAndNothingIsSentWithoutAnAgent() throws Exception {
-  gate();
+  gate(); assumeIsolatedReading();
   try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
    Pages pages = null; Throwable primary = null;
    try {
