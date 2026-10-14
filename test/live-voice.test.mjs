@@ -128,8 +128,9 @@ test('the live client and adapter never store, log or send interim text and keep
   for (const line of adapter.split('\n').filter(line => /conversationInterim/.test(line)))
     assert.doesNotMatch(line, /draft|setItem|sendVoiceTurn|sendVoiceEntry|console\./, 'interim text is display only');
   assert.match(fs.readFileSync(new URL('../apps/app/src/runtime/voice-selection.ts', import.meta.url), 'utf8'), /const VOICE_SEND_POLICY: VoiceSendPolicy = 'auto-send';/);
-  // The final goes through the existing voice policy boundary.
-  assert.match(adapter, /if\(live\)\{[\s\S]{0,400}return heard\.text;/);
+  // Every final goes through the existing voice policy boundary: the assistant and the recorded loop share one send.
+  assert.match(adapter, /const sendTurn=async\([\s\S]{0,400}sendVoiceEntry\(\{policy:voiceSendPolicy\(\)/);
+  assert.equal((adapter.match(/send:sendTurn/g) || []).length, 2);
 });
 
 test('Android: Silero VAD runs in the app process and only the live ASR routes are added to the agent bridge', () => {

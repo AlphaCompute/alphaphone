@@ -6,7 +6,7 @@ public final class AlphaApplication extends android.app.Application {
   super.attachBaseContext(base);
   // Runs before ContentProvider/AndroidX Startup initialization, including WorkManager.
   // The provider-free reset recovery process shows the unfinished reset and must not stop itself.
-  if(!android.os.Process.isIsolated()&&!resetRecoveryProcess()&&AlphaDataReset.pending(this))AlphaDataReset.admitAndExit(this);
+  if(!android.os.Process.isIsolated()&&!resetRecoveryProcess()&&AlphaDataReset.pending(this)){ResetCloudRevocation.revoke(base,ResetCloudRevocation.PENDING_DEADLINE_MS);AlphaDataReset.admitAndExit(this);}
  }
  private boolean resetRecoveryProcess(){return (getPackageName()+ResetRecoveryActivity.PROCESS_SUFFIX).equals(getProcessName());}
  @Override public void onCreate(){

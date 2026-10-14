@@ -28,6 +28,9 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private volatile File playbackFile;
  private String playbackId;
  private String playbackRequestId;
+ // Issue #395: the prepared clip is a local spoken reply, and where its first audible sample is.
+ private boolean playbackLocalReply;
+ private int playbackLeadIn=-1,playbackFrames,playbackRate;
  private MediaPlayer player;
  private PluginCall preparingPlayback;
  private volatile boolean destroyed;
@@ -194,10 +197,15 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private void synthesizeLocalNow(PluginCall call){synthesizeLocalNow(call,null);}
  private void synthesizeLocalNow(PluginCall call,String reviewed){submitLocal(call,request->{
   String text=reviewed==null?required(call.getString("text"),500):reviewed;byte[] audio;
-  audio=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();if(reviewed!=null)return engine.synthesizePassage(text,()->request.cancelled||destroyed);AlphaLocalSpeechEngine.Audio generated=engine.synthesize(text,()->request.cancelled||destroyed);try{return generated.wav();}finally{Arrays.fill(generated.samples,0);}});
+  // A reply to a live turn: stage marks and a cold engine load belong to the open latency trial.
+  boolean reply=reviewed==null;int[] clip={-1,0,0};
+  int loadsBefore=localEngine.loads();
+  if(reply)AlphaVoiceLatencyProbe.TRIALS.mark("tts-start",System.nanoTime());
+  audio=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();if(reviewed!=null)return engine.synthesizePassage(text,()->request.cancelled||destroyed);AlphaLocalSpeechEngine.Audio generated=engine.synthesize(text,()->request.cancelled||destroyed);try{clip[0]=AlphaVoiceLatencyProbe.leadInFrames(generated.samples);clip[1]=generated.samples.length;clip[2]=generated.sampleRate;return generated.wav();}finally{Arrays.fill(generated.samples,0);}});
+  if(reply){AlphaVoiceLatencyProbe.TRIALS.mark("tts-ready",System.nanoTime());if(localEngine.loads()!=loadsBefore)AlphaVoiceLatencyProbe.TRIALS.engineLoaded("tts-load");}
   if(request.cancelled||destroyed){Arrays.fill(audio,(byte)0);throw new IOException();}
   File file=File.createTempFile("alpha-cloud-tts-",".wav",getContext().getCacheDir());CountDownLatch completed=new CountDownLatch(1);
-  try{try(OutputStream out=new FileOutputStream(file)){out.write(audio);}main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackFile!=null){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject out=new JSObject();out.put("playbackId",playbackId);out.put("execution","device");request.result=out;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});if(!completed.await(10,TimeUnit.SECONDS)){request.cancel();file.delete();throw new IOException("Playback preparation timed out");}}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
+  try{try(OutputStream out=new FileOutputStream(file)){out.write(audio);}main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackFile!=null){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();playbackLocalReply=reply;playbackLeadIn=clip[0];playbackFrames=clip[1];playbackRate=clip[2];JSObject out=new JSObject();out.put("playbackId",playbackId);out.put("execution","device");request.result=out;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});if(!completed.await(10,TimeUnit.SECONDS)){request.cancel();file.delete();throw new IOException("Playback preparation timed out");}}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
  });}
  @PluginMethod public void synthesize(PluginCall call){if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&(playbackFile!=null||!pending.isEmpty())){call.reject("Speaker is in use","playback-busy");return;}synthesizeAudio(call,false);}
  private void synthesizeAudio(PluginCall call,boolean paired){synthesizeAudio(call,paired,null);}
@@ -207,10 +215,21 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   CountDownLatch completed=new CountDownLatch(1);
   File file=File.createTempFile("alpha-cloud-tts-",".audio",getContext().getCacheDir());try{try(FileOutputStream out=new FileOutputStream(file)){out.write(audio);}if(request.cancelled||destroyed)throw new IOException();main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackFile!=null){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject value=new JSObject();value.put("playbackId",playbackId);request.result=value;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});completed.await();}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
  });}
- @PluginMethod public void play(PluginCall call){main.post(()->{try{if(playbackFile==null||!Objects.equals(playbackId,call.getString("playbackId"))){call.reject("Playback unavailable");return;}if(player!=null){player.release();player=null;}if(preparingPlayback!=null)preparingPlayback.reject("Playback replaced");preparingPlayback=call;MediaPlayer next=new MediaPlayer();player=next;next.setDataSource(playbackFile.getAbsolutePath());final String activePlaybackId=playbackId;next.setOnCompletionListener(p->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackEnded",event);}});next.setOnErrorListener((p,w,e)->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackFailed",event);}return true;});next.setOnPreparedListener(p->{if(player==p&&!destroyed){try{p.start();preparingPlayback=null;call.resolve();}catch(RuntimeException error){clearPlayback();}}else call.reject("Playback cancelled");});next.prepareAsync();}catch(Exception error){clearPlayback();call.reject("Playback unavailable");}});}
+ @PluginMethod public void play(PluginCall call){main.post(()->{try{if(playbackFile==null||!Objects.equals(playbackId,call.getString("playbackId"))){call.reject("Playback unavailable");return;}if(player!=null){player.release();player=null;}if(preparingPlayback!=null)preparingPlayback.reject("Playback replaced");preparingPlayback=call;MediaPlayer next=new MediaPlayer();player=next;next.setDataSource(playbackFile.getAbsolutePath());final String activePlaybackId=playbackId;next.setOnCompletionListener(p->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackEnded",event);}});next.setOnErrorListener((p,w,e)->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackFailed",event);}return true;});next.setOnPreparedListener(p->{if(player==p&&!destroyed){try{p.start();if(playbackLocalReply)AlphaVoiceLatencyProbe.playbackStarted(getContext(),p,main,playbackLeadIn,playbackFrames,playbackRate,()->player==p&&!destroyed);preparingPlayback=null;call.resolve();}catch(RuntimeException error){clearPlayback();}}else call.reject("Playback cancelled");});next.prepareAsync();}catch(Exception error){clearPlayback();call.reject("Playback unavailable");}});}
  private void clearPlayback(){clearPlayback(true);}
- private void clearPlayback(boolean stopped){String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
+ private void clearPlayback(boolean stopped){String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;playbackLocalReply=false;playbackLeadIn=-1;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
  @PluginMethod public void stopPlayback(PluginCall call){String requestId=call.getString("requestId");main.post(()->{if(requestId==null||Objects.equals(playbackRequestId,requestId))clearPlayback();call.resolve();});}
+ /**
+  * Issue #395: the finished native latency trials (alpha-native-voice-timing-v2, numbers, fixed
+  * labels and build/model identity only) for the diagnostics export.
+  */
+ @PluginMethod public void nativeVoiceTiming(PluginCall call){
+  // Off the live capture worker: the first export may still be hashing the engine.
+  android.content.Context app=getContext().getApplicationContext();
+  Thread export=new Thread(()->{try{call.resolve(JSObject.fromJSONObject(AlphaVoiceLatencyProbe.export(app)));}catch(Exception error){call.reject("Voice timing unavailable");}},"alpha-voice-timing-export");
+  export.setDaemon(true);export.start();
+ }
+ @PluginMethod public void clearNativeVoiceTiming(PluginCall call){AlphaVoiceLatencyProbe.TRIALS.clear();call.resolve();}
  @PluginMethod public void cancel(PluginCall call){Pending request=pending.get(call.getString("requestId",""));if(request!=null)request.cancel();call.resolve();}
  @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
  // Live voice (live-voice.ts / native-live-voice.ts): app-process capture with Silero VAD. One capture at a time.
@@ -236,8 +255,8 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
    AlphaLiveVoiceCapture next=new AlphaLiveVoiceCapture(getContext(),id,new AlphaLiveVoiceCapture.Sink(){
     public void frames(String captureId,JSArray frames,JSArray vad,float peak){notifyListeners("liveCaptureFrames",new JSObject().put("captureId",captureId).put("frames",frames).put("vad",vad).put("peak",peak));}
     public void ended(String captureId,String error){JSObject event=new JSObject().put("captureId",captureId);if(error!=null)event.put("error",error);notifyListeners("liveCaptureEnded",event);}
-   });
-   try{next.start();live=next;call.resolve(new JSObject().put("captureId",id).put("sampleRate",AlphaLiveVoiceCapture.SAMPLE_RATE));}
+   },Boolean.TRUE.equals(call.getBoolean("echoCancel",false)));
+   try{next.start();live=next;call.resolve(new JSObject().put("captureId",id).put("sampleRate",AlphaLiveVoiceCapture.SAMPLE_RATE).put("echoCancelled",next.echoCancelled()));}
    catch(Exception|Error error){call.reject("Live capture could not start","capture");}
   },()->call.reject("Voice unavailable"));
  }

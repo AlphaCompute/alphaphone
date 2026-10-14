@@ -157,3 +157,34 @@ test('the renderer contract never reports listening from a malformed or non-list
  const adapter=read('apps/app/src/runtime/always-on-listener.ts');
  assert.doesNotMatch(adapter.replace(/\/\*\*[\s\S]*?\*\//g,''),/resume|enable|grant/i,'the renderer cannot turn listening on');
 });
+
+test('a wake-phrase invocation starts the on-device voice assistant only when unlocked, visible and free',async()=>{
+ const {listenerStartsVoice,parseInvocationUnlocked}=await import('../apps/app/src/runtime/always-on-listener-status.ts');
+ const base={invocation:'listener',unlocked:true,hidden:false,dialogOpen:false,connectionOpen:false,voiceActive:false};
+ assert.equal(listenerStartsVoice(base),true);
+ for(const change of [{invocation:'assist'},{invocation:null},{unlocked:false},{hidden:true},{dialogOpen:true},{connectionOpen:true},{voiceActive:true}])
+  assert.equal(listenerStartsVoice({...base,...change}),false,JSON.stringify(change));
+ assert.equal(parseInvocationUnlocked({locked:false}),true);
+ for(const raw of [{locked:true},{},null,{locked:'false'}])assert.equal(parseInvocationUnlocked(raw),false,'missing or malformed keyguard state counts as locked');
+ const plugin=read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java');
+ assert.match(plugin,/boolean locked=keyguard==null\|\|keyguard\.isKeyguardLocked\(\);/);
+ const main=read('apps/app/src/main.tsx');
+ assert.match(main,/if \(isAndroid && assistantSurface\) installListenerInvocation\(/,'only the assistant surface consumes the invocation');
+ const runtime=read('apps/app/src/runtime/always-on-listener.ts');
+ assert.match(runtime,/if \(start\) void current\.startVoice\(\);/,'the turn runs in the voice assistant (local VAD, ASR and TTS), not in the listener');
+ assert.match(runtime,/state\.connectionOpen\(\) \|\| !state\.connected\(\)\) return;\s*checking = true;/,'the one-shot origin is read only once the connection has settled');
+ assert.match(runtime,/\[role="dialog"\]\[aria-modal="true"\]/,'ARIA modal dialogs block the microphone too');
+ const activity=read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaAssistActivity.java');
+ assert.match(activity,/AssistInvocation\.take\(invocation, invocationAt, android\.os\.SystemClock\.elapsedRealtime\(\), invocationLocked\)/,'unread listener origins expire and remember the keyguard at arrival');
+ assert.match(activity,/triggerWindowJSEvent\(INVOCATION_EVENT\)/);
+});
+
+test('Settings shows the listener status and offers only Pause, Turn off and the listener settings',()=>{
+ const settings=read('apps/app/src/prototype/settings-adapter.ts');
+ assert.match(settings,/info\('Always-on listening'/);
+ assert.match(settings,/action\('Pause listening'/);
+ assert.match(settings,/status\.consented && status\.state !== 'OFF' \? \[action\('Turn off listening'/);
+ assert.match(settings,/action\('Listening settings'/);
+ assert.doesNotMatch(settings,/Resume listening|Turn on listening|resumeListener/,'Alpha cannot turn listening on or resume it');
+ assert.match(settings,/testMocksEnabled\?'Eliza Cloud \(counts toward your plan\)':'On this device'/,'production speech is described as on this device');
+});

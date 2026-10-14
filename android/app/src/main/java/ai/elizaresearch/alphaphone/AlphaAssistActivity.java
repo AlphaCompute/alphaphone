@@ -13,6 +13,10 @@ public final class AlphaAssistActivity extends MainActivity {
  private String newIntentCaller;
  /** This launch's origin until the renderer takes it; see {@link #takeInvocation}. */
  private String invocation;
+ private long invocationAt;
+ private boolean invocationLocked;
+ /** Window event the renderer listens for: a new invocation reached the already open surface. */
+ static final String INVOCATION_EVENT = "alpha:assist-invocation";
  @Override public void onCreate(Bundle state) {
   // A recreated activity (configuration change, process restore) is not a new invocation: the
   // launching package Android reports is still the original one, so it is ignored.
@@ -30,6 +34,8 @@ public final class AlphaAssistActivity extends MainActivity {
   newIntentCaller = null;
   setIntent(clean);
   super.onNewIntent(clean);
+  // The surface may already be in front (no visibility change): tell the renderer to read it now.
+  if (getBridge() != null) getBridge().triggerWindowJSEvent(INVOCATION_EVENT);
  }
  /** The only extra: a product-set launch flag the renderer may read. Caller extras are dropped. */
  static final String EXTRA_ASSISTANT = "alpha.assistant";
@@ -39,7 +45,7 @@ public final class AlphaAssistActivity extends MainActivity {
   * it cannot fire twice.
   */
  synchronized String takeInvocation() {
-  String origin = AssistInvocation.LISTENER.equals(invocation) ? AssistInvocation.LISTENER : AssistInvocation.ASSIST;
+  String origin = AssistInvocation.take(invocation, invocationAt, android.os.SystemClock.elapsedRealtime(), invocationLocked);
   invocation = AssistInvocation.ASSIST;
   return origin;
  }
@@ -49,7 +55,12 @@ public final class AlphaAssistActivity extends MainActivity {
   */
  private Intent cleanIntent(String caller) {
   boolean sameSigner = caller != null && getPackageManager().checkSignatures(getPackageName(), caller) == PackageManager.SIGNATURE_MATCH;
-  synchronized (this) { invocation = AssistInvocation.origin(caller, sameSigner); }
+  android.app.KeyguardManager keyguard = getSystemService(android.app.KeyguardManager.class);
+  synchronized (this) {
+   invocation = AssistInvocation.origin(caller, sameSigner);
+   invocationAt = android.os.SystemClock.elapsedRealtime();
+   invocationLocked = keyguard == null || keyguard.isKeyguardLocked();
+  }
   return new Intent(this, AlphaAssistActivity.class).setAction(Intent.ACTION_ASSIST).putExtra(EXTRA_ASSISTANT, true);
  }
 }
