@@ -11,21 +11,22 @@ import com.getcapacitor.*;
 final class AlphaContactsCatalog {
  private final ContentResolver resolver;
  AlphaContactsCatalog(Context context){resolver=context.getContentResolver();}
- private static final String[] FIELDS={ContactsContract.Contacts._ID,ContactsContract.Contacts.LOOKUP_KEY,ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP};
+ private static final String[] FIELDS={ContactsContract.Contacts._ID,ContactsContract.Contacts.LOOKUP_KEY,ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP,ContactsContract.Contacts.STARRED};
  private static String text(String value){if(value==null)return "";if(value.length()>1024)throw new IllegalArgumentException("Contact field too large");return value;}
  static void queryBounds(String query,int limit){if(query==null||query.length()>128||query.indexOf('\0')>=0||limit<1||limit>200)throw new IllegalArgumentException("Invalid Contacts query");}
  static Uri searchUri(String query){return query.isBlank()?ContactsContract.Contacts.CONTENT_URI:Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_FILTER_URI,Uri.encode(query.trim()));}
  static int admitRecordBytes(int used,String record){int next=used+record.getBytes(java.nio.charset.StandardCharsets.UTF_8).length+1;if(next>1024*1024)throw new IllegalStateException("Contact page too large; narrow the search");return next;}
- JSObject list(String query,int limit)throws Exception{
+ JSObject list(String query,int limit)throws Exception{return list(query,limit,new CancellationSignal());}
+ JSObject list(String query,int limit,CancellationSignal signal)throws Exception{
   queryBounds(query,limit);Uri uri=searchUri(query);int bytes=64;
   JSArray records=new JSArray();boolean more=false;
-  CancellationSignal signal=new CancellationSignal();Handler main=new Handler(Looper.getMainLooper());Runnable timeout=signal::cancel;main.postDelayed(timeout,5000);
+  Handler main=new Handler(Looper.getMainLooper());Runnable timeout=signal::cancel;main.postDelayed(timeout,5000);
   try(Cursor rows=resolver.query(uri,FIELDS,null,null,ContactsContract.Contacts.DISPLAY_NAME_PRIMARY+" COLLATE LOCALIZED ASC, "+ContactsContract.Contacts._ID+" ASC",signal)){
    if(rows==null)throw new IllegalStateException("Contacts provider unavailable");
    while(rows.moveToNext()){
     if(records.length()==limit){more=true;break;}
     JSObject row=new JSObject();String id=rows.getString(0),lookup=text(rows.getString(1)),updated=rows.getString(3);
-    row.put("id",id);row.put("lookup",lookup);row.put("name",text(rows.getString(2)));row.put("revision",updated);
+    row.put("id",id);row.put("lookup",lookup);row.put("name",text(rows.getString(2)));row.put("revision",updated);row.put("starred",rows.getInt(4)!=0);
     row.put("phones",details(id,ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE,signal));row.put("emails",details(id,ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE,signal));bytes=admitRecordBytes(bytes,row.toString());records.put(row);
    }
   }finally{main.removeCallbacks(timeout);}
