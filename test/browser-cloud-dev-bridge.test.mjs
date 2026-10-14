@@ -204,8 +204,8 @@ test('development host email sign-in mints a mobile key server-side and commits 
    if(!path.startsWith('/steward/')&&!path.startsWith('/api/v1/app-auth/')&&!(path==='/api/v1/user'&&new Headers(input.headers).get('Authorization')==='Bearer '+minted))return null;
    order.push(path);const body=input.body?JSON.parse(input.body):undefined,auth=new Headers(input.headers).get('Authorization');assert.equal(input.redirect,'error');
    // The six-digit code adapter (config/cloud-email-code.json): no magic link is requested.
-   if(path==='/steward/auth/email/code/send'){assert.deepEqual(Object.keys(body).sort(),['client','email','pkce','tenant']);assert.equal(body.email,'owner@example.invalid');assert.equal(body.tenant,'elizacloud');assert.equal(body.client,'ai.elizaresearch.alphaphone');assert.equal(body.pkce.codeChallengeMethod,'S256');assert.match(body.pkce.codeChallenge,/^[A-Za-z0-9_-]{43}$/);emailChallenge=body.pkce.codeChallenge;assert.equal(auth,null);return Response.json({ok:true,data:{expiresAt:new Date(Date.now()+600000).toISOString(),challengeId:'c',pollSecret:'p'}});}
-   if(path==='/steward/auth/email/code/verify'){assert.equal(body.tenant,'elizacloud');assert.equal(body.client,'ai.elizaresearch.alphaphone');assert.equal(createHash('sha256').update(body.pkce.codeVerifier).digest('base64url'),emailChallenge,'the verify call proves the phone that asked for the code');if(body.code!=='123456')return Response.json({ok:false,error:'Invalid code'},{status:401});return Response.json({ok:true,token:steward,refreshToken:'synthetic-refresh-0001',expiresIn:900,user:{id:'u'}});}
+   if(path==='/steward/auth/email/code/send'){assert.deepEqual(Object.keys(body).sort(),['client','email','pkce','tenantId']);assert.equal(body.email,'owner@example.invalid');assert.equal(body.tenantId,'elizacloud');assert.equal(body.client,'ai.elizaresearch.alphaphone');assert.equal(body.pkce.codeChallengeMethod,'S256');assert.match(body.pkce.codeChallenge,/^[A-Za-z0-9_-]{43}$/);emailChallenge=body.pkce.codeChallenge;assert.equal(auth,null);return Response.json({ok:true,data:{expiresAt:new Date(Date.now()+600000).toISOString(),challengeId:'c',pollSecret:'p'}});}
+   if(path==='/steward/auth/email/code/verify'){assert.equal(body.tenantId,'elizacloud');assert.equal(body.client,'ai.elizaresearch.alphaphone');assert.equal(createHash('sha256').update(body.pkce.codeVerifier).digest('base64url'),emailChallenge,'the verify call proves the phone that asked for the code');if(body.code!=='123456')return Response.json({ok:false,error:'Invalid code'},{status:401});return Response.json({ok:true,token:steward,refreshToken:'synthetic-refresh-0001',expiresIn:900,user:{id:'u'}});}
    if(path==='/api/v1/app-auth/connect'){assert.equal(auth,'Bearer '+steward);assert.equal(body.flow,'mobile_pkce');assert.equal(body.clientId,'ai.elizaresearch.alphaphone');assert.equal(body.environment,'production');assert.equal(body.redirectUri,'https://eliza.app/alphaphone/auth/callback');assert.equal(body.codeChallengeMethod,'S256');assert.match(body.state,/^[A-Za-z0-9_-]{43}$/);challenge=body.codeChallenge;stateSeen=body.state;return Response.json({success:true,code:'emac_'+'a'.repeat(64),codeType:'mobile_app_auth_code',expiresAt:new Date(Date.now()+300000).toISOString(),expiresIn:300,accountCreated:true});}
    if(path==='/api/v1/app-auth/mobile/token'){assert.equal(auth,null);assert.equal(body.state,stateSeen);assert.equal(createHash('sha256').update(body.codeVerifier).digest('base64url'),challenge,'PKCE verifier matches the challenge');return Response.json({success:true,credentialId:serverId,secret:minted,tokenType:'Bearer',expiresAt:new Date(Date.now()+30*86400000).toISOString(),expiresIn:2592000,scopes:['cloud:user'],acknowledgementRequired:true,acknowledgeBy:new Date(Date.now()+300000).toISOString()});}
    if(path==='/api/v1/app-auth/mobile/ack'){assert.equal(body.secret,minted);assert.equal(body.credentialId,serverId);return Response.json({success:true,status:'acknowledged',credentialId:serverId,expiresAt:new Date(Date.now()+30*86400000).toISOString(),scopes:['cloud:user']});}
@@ -233,4 +233,31 @@ test('development host email sign-in mints a mobile key server-side and commits 
    await assert.rejects(client.verifyEmailSignIn(started.attemptId,'123456',new AbortController().signal),error=>error.code==='expired','an attempt is single use');
   }finally{globalThis.fetch=original;}
  }finally{await f.close();}
+});
+
+test('cancelling an in-flight email verification keeps the existing account and never mints a key',async()=>{
+ const f=await fixture();let release;
+ try{
+  let entered;const waiting=new Promise(resolve=>{entered=resolve;});
+  f.setSignIn(async path=>{
+   if(path==='/steward/auth/email/code/send')return Response.json({ok:true,data:{expiresAt:new Date(Date.now()+600000).toISOString()}});
+   if(path==='/steward/auth/email/code/verify'){
+    entered();await new Promise(resolve=>{release=resolve;});
+    // Deliberately ignores the aborted transport, like a response already in flight.
+    return Response.json({ok:true,token:'synthetic-steward-session-token-0001'});
+   }
+   return null;
+  });
+  const started=await f.rpc({operation:'signInStartEmail',environment:'production',email:'owner@example.invalid'});
+  assert.equal(started.status,200);
+  const pending=f.rpc({operation:'signInVerifyEmail',attemptId:started.data.attemptId,code:'123456'});
+  await waiting;
+  assert.equal((await f.rpc({operation:'signInCancel'})).status,200);
+  release();
+  assert.notEqual((await pending).status,200);
+  assert.equal(f.calls.some(call=>new URL(call.url).pathname.startsWith('/api/v1/app-auth/')),false);
+  const saved=JSON.parse((await f.rpc({operation:'secureRead',slot:'cloud:production'})).data.value);
+  assert.equal(saved.credentialId,credentialId);
+  assert.equal((await f.rpc({operation:'signInStatus'})).data.active,false);
+ }finally{release?.();await f.close();}
 });
