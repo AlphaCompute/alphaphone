@@ -9,7 +9,7 @@ const controllerSource=stripTypeScriptTypes(readFileSync('apps/app/src/runtime/c
 function fixture({offline=false,credential=null,fail=false}={}){
  let release;const read=new Promise(resolve=>release=resolve),transitions=[];
  const memory=new Map(offline?[['alpha.connection.selection.v1',JSON.stringify({kind:'offline',localApps:true})]]:[]);
- const box={EntitlementError,devSurfacesEnabled:false,devProfileQuery:false,testMocksEnabled:false,isAndroid:true,browserLocalAgentEnabled:false,registerPlugin:()=>({}),CloudProtocol:class{},nativeCloudRequest:()=>{throw Error('No provider request');},openConnectionBrowser:()=>{throw Error('No browser');},cloudCredentialStore:{read:async()=>{await read;return credential;}},localStorage:{getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},URL,URLSearchParams,AbortController,DOMException,console,transitions,fail};
+ const box={EntitlementError,devSurfacesEnabled:false,devProfileQuery:false,testMocksEnabled:false,isAndroid:true,browserLocalAgentEnabled:false,registerPlugin:()=>({}),pauseHostedBackground:async()=>{},retireClockReviews:async()=>{},CloudProtocol:class{},nativeCloudRequest:()=>{throw Error('No provider request');},openConnectionBrowser:()=>{throw Error('No browser');},cloudCredentialStore:{read:async()=>{await read;return credential;}},localStorage:{getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},URL,URLSearchParams,AbortController,DOMException,console,transitions,fail};
  // Only resident transport admission is synthetic. Real initialize/work/update/subscribe and the
  // real coordinator run together; no live credential or provider is involved.
  vm.runInNewContext(coordinatorSource+'\n'+controllerSource+`\nconnectResident=async()=>{if(fail)throw Error('revoked');update({session:{sessionId:'A',origin:'https://a.invalid',ownerId:'A',agentId:'agent'}});};
@@ -31,11 +31,16 @@ test('cold retired local-only choice migrates to the plan gate and restores the 
  assert.deepEqual(f.transitions,['A']);
  assert.deepEqual(JSON.parse(f.memory.get('alpha.connection.selection.v1')),{kind:'none'},'only the retired preference is replaced');
 });
-test('reconnects retire the session while busy, and the notice owner update carries that state',()=>{
+test('reconnects retire the session while busy, and the notice owner update carries that state',async()=>{
  // The real controller marks the connection busy before Continue / Check plan again / pairing
  // retires the session; the coordinator (tested directly) defers a null owner until it settles.
  const controller=readFileSync('apps/app/src/runtime/connection-ui.tsx','utf8'),adapter=readFileSync('apps/app/src/prototype/workflow-adapter.ts','utf8');
- assert.match(controller,/update\(\{ busy: true, open: true, message, error: '' \}\);\s*try \{ await action\(controller\.signal\); \}/);
+ const f=fixture({credential:{credentialId:'synthetic'}}),startup=f.controller.initialize();f.release();await startup;await f.drain();assert.deepEqual(f.transitions,['A']);
+ await f.work('Fixture reconnection',async()=>{
+  assert.equal(f.controller.getSnapshot().busy,true);assert.equal(f.controller.getSnapshot().open,true);
+  f.retire();await f.drain();assert.equal(f.controller.getSnapshot().session,null);assert.deepEqual(f.transitions,['A'],'the notice owner stays fenced while the reconnection is busy');
+ });
+ await f.drain();assert.equal(f.controller.getSnapshot().error,'');assert.deepEqual(f.transitions,['A',null],'the settled missing session retires the notice owner');
  assert.match(controller,/async startLocal\(\) \{ await work\('Starting the local agent…', signal => \{ retire\(\);/);
  assert.match(adapter,/startupResolved:connectionController\.getSnapshot\(\)\.startupResolved,busy:connectionController\.getSnapshot\(\)\.busy\}\)/);
 });
