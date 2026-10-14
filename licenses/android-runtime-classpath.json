@@ -5,7 +5,7 @@
     "standaloneDebugRuntimeClasspath",
     "launcherDebugRuntimeClasspath"
   ],
-  "inputFingerprint": "708e0e326aad262830e713974972747118ece94bbeb2d4f8b4901e8b63fd7263",
+  "inputFingerprint": "4707c45720330b4982aae5d63244c950e6c5aea9209c6901a3c979cac37e239c",
   "coordinates": [
     "androidx.activity:activity:1.10.1",
     "androidx.annotation:annotation-experimental:1.4.1",

@@ -1,0 +1,82 @@
+// Alpha Phone always-on listener: a separate, network-less APK that ships only in the Alpha AOSP
+// image as a privileged persistent app (docs/adr/0001-privileged-listener.md). It is never part of
+// the standalone or launcher APK and never a dependency of :app. Build it explicitly:
+//   ./gradlew :sense:assembleRelease
+// It recognises speech with the same fused llama.cpp engine as Alpha (libelizainference ASR and
+// Silero VAD through the relocated libelizavoicejni), from the same qualified bytes: the native
+// libraries in android/app/src/main/jniLibs and the voice bundle in android/app/src/main/assets/voice,
+// both admitted against android/voice-host/qualified-voice-host.json. No other speech runtime exists.
+apply plugin: 'com.android.application'
+def identity = new groovy.json.JsonSlurper().parse(file('../../app.config.json'))
+def envValue = { String name -> def value = System.getenv(name); value == null || value.trim().isEmpty() ? null : value.trim() }
+// Same upstream signing names and all-or-none rule as :app. The listener must share Alpha's signer:
+// its LISTENER_CONTROL permission is signature-level and invocation checks the signatures match.
+def releaseSigningNames = ['ELIZAOS_KEYSTORE_PATH', 'ELIZAOS_KEYSTORE_PASSWORD', 'ELIZAOS_KEY_ALIAS', 'ELIZAOS_KEY_PASSWORD']
+def releaseSigningMissing = releaseSigningNames.findAll { envValue(it) == null }
+def releaseSigningReady = releaseSigningMissing.isEmpty()
+if (!releaseSigningReady && releaseSigningMissing.size() < releaseSigningNames.size())
+ throw new GradleException("[release-signing] incomplete signing environment. Missing: ${releaseSigningMissing.join(', ')}.")
+android {
+ namespace 'ai.elizaresearch.alphaphone.sense'
+ compileSdk rootProject.ext.compileSdkVersion
+ defaultConfig {
+  applicationId "${identity.appId}.sense"
+  // Image-only component: the Alpha AOSP target is Android 17; 34 is the lowest API whose
+  // invocation-identity and notification-authentication APIs this code uses.
+  minSdk 34
+  targetSdk rootProject.ext.targetSdkVersion
+  versionCode identity.versionCode
+  versionName identity.version
+ }
+ signingConfigs {
+  if (releaseSigningReady) {
+   release {
+    storeFile file(envValue('ELIZAOS_KEYSTORE_PATH'))
+    storePassword envValue('ELIZAOS_KEYSTORE_PASSWORD')
+    keyAlias envValue('ELIZAOS_KEY_ALIAS')
+    keyPassword envValue('ELIZAOS_KEY_PASSWORD')
+   }
+  }
+ }
+ buildTypes {
+  debug { ndk { abiFilters 'arm64-v8a', 'x86_64' } }
+  release {
+   minifyEnabled false
+   ndk { abiFilters 'arm64-v8a' }
+   if (releaseSigningReady) signingConfig signingConfigs.release
+  }
+ }
+ lint { abortOnError true; disable 'ProtectedPermissions', 'SystemPermissionTypo' }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+// The fused speech Java surface is compiled from :app's sources (one implementation, no copy kept in
+// git): the generated ElizaVoiceNative (its JNI symbols name that class) and the AlphaFusedSpeech
+// classes. ListenerSpeech (this module) is the only entry point the listener uses.
+def appProject = project(':app')
+def fusedSpeechSources = layout.buildDirectory.dir('generated/fused-speech/java')
+def stageFusedSpeechSources = tasks.register('stageFusedSpeechSources', Copy) {
+ dependsOn ':app:stageLocalAgentSources'
+ from(new File(appProject.projectDir, 'build/generated/local-agent/java')) { include 'ai/elizaresearch/alphaphone/ElizaVoiceNative.java' }
+ from(new File(appProject.projectDir, 'src/main/java')) {
+  include 'ai/elizaresearch/alphaphone/AlphaFusedSpeech.java', 'ai/elizaresearch/alphaphone/AlphaFusedSpeechAssets.java',
+   'ai/elizaresearch/alphaphone/AlphaSpeechText.java', 'ai/elizaresearch/alphaphone/AlphaKokoroG2p.java'
+ }
+ into fusedSpeechSources
+}
+// The voice bundle is packaged only from bytes stage-embedding-host.mjs --verify-voice admits. An APK
+// without it is valid: the listener then reports speech unavailable and never listens.
+def listenerVoiceAssets = layout.buildDirectory.dir('generated/listener-voice-assets')
+def stageListenerVoiceAssets = tasks.register('stageListenerVoiceAssets', Copy) {
+ from(new File(appProject.projectDir, 'src/main/assets/voice')) { into 'voice' }
+ into listenerVoiceAssets
+}
+def verifyListenerVoiceHost = tasks.register('verifyListenerVoiceHost', Exec) {
+ workingDir rootProject.projectDir.parentFile
+ def args = ['node', 'scripts/stage-embedding-host.mjs', '--verify-voice']
+ if (project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME') == '1') args += '--allow-unpackaged-runtime'
+ commandLine args
+}
+android.sourceSets.main.java.srcDir(fusedSpeechSources)
+android.sourceSets.main.assets.srcDir(listenerVoiceAssets)
+android.sourceSets.main.jniLibs.srcDir(new File(appProject.projectDir, 'src/main/jniLibs'))
+tasks.named('preBuild').configure { dependsOn stageFusedSpeechSources, stageListenerVoiceAssets, verifyListenerVoiceHost }

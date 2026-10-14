@@ -256,7 +256,9 @@ public class MainActivity extends BridgeActivity {
   registerPlugin(ai.eliza.plugins.location.LocationPlugin.class);
   registerPlugin(AlphaBrowserPlugin.class);
   registerPlugin(AlphaCalendarPlugin.class);
+  registerPlugin(AlphaDeletionsPlugin.class);
   registerPlugin(AlphaPhotosPlugin.class);
+  registerPlugin(AlphaPhotoLibraryPlugin.class);
   registerPlugin(AlphaFilesPlugin.class);
   registerPlugin(AlphaMailAttachmentsPlugin.class);
   registerPlugin(AlphaDevicePlugin.class);
@@ -268,8 +270,11 @@ public class MainActivity extends BridgeActivity {
   registerPlugin(AlphaNoteDocumentsPlugin.class);
   registerPlugin(AlphaNotificationsPlugin.class);
   registerPlugin(AlphaHostedResultsPlugin.class);
+  registerPlugin(AlphaListenerPlugin.class);
   registerPlugin(ai.eliza.plugins.passwords.PasswordsPlugin.class);
   if(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)registerPlugin(ai.eliza.plugins.passwords.PasswordTransferPlugin.class);
+  // The native image gate is checked again by every telephony operation.
+  if (AlphaImageCapability.verified(this)) registerPlugin(AlphaTelephonyPlugin.class);
   if (BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS) {
    // Present only in debug builds made with -PELIZA_DEV_ALLOW_TEST_MOCKS=1 (src/testMocks).
    try { registerPlugin(Class.forName("ai.elizaresearch.alphaphone.DevelopmentAgentPlugin").asSubclass(com.getcapacitor.Plugin.class)); }

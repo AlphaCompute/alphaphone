@@ -112,7 +112,7 @@ test('first run: Cloud refusing the new key (401 on the account read) removes it
   await nothingLeft(page, welcome);
 });
 
-test('first run: a zero balance keeps the sign-in for a top-up but starts no agent', async ({ page }) => {
+test('first run: an account Cloud reports unable to use AI keeps the sign-in but starts no agent', async ({ page }) => {
   test.setTimeout(90_000);
   await fenceNetwork(page);
   await flagOffAndroid(page);
@@ -121,10 +121,11 @@ test('first run: a zero balance keeps the sign-in for a top-up but starts no age
   await setStub(page, { nextToken: account.token });
   const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
-  // The sign-in itself succeeded: the account is kept so credits can be added and checked again.
+  // The sign-in itself succeeded: the account is kept so the plan can be fixed in Cloud and checked
+  // again. Cloud's plan page opens only on request; nothing is purchased here (subscription-entitlement.ts).
   const account_ = page.getByRole('dialog', { name: 'Your Cloud account' });
-  await expect(account_).toContainText('Add credits to continue', { timeout: 30_000 });
-  await expect(account_.getByRole('button', { name: 'Add credits in Eliza Cloud', exact: true })).toBeVisible();
+  await expect(account_).toContainText('AI is unavailable for this Eliza Cloud account', { timeout: 30_000 });
+  await expect(account_.getByRole('button', { name: 'Open Eliza Cloud billing', exact: true })).toBeVisible();
   await expect(account_.getByRole('button', { name: 'Use local apps without AI', exact: true })).toBeEnabled();
   expect(await harness(page, f => f.calls.includes('Agent.start'))).toBe(false);
   expect(await stub(page, s => s.order.some((entry: string) => entry.startsWith('configureCloudProvider')))).toBe(false);

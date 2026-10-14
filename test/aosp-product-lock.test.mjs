@@ -81,7 +81,8 @@ test("stage-aosp --production refuses an incomplete lock before reading any APK 
   t.after(() => fs.rmSync(unset, { recursive: true, force: true }));
   for (const rel of ["app.config.json", "android/release-signer.json", ...fs.readdirSync(path.join(root, "android/aosp")).map(name => `android/aosp/${name}`)]) {
     fs.mkdirSync(path.dirname(path.join(unset, rel)), { recursive: true });
-    fs.copyFileSync(path.join(root, rel), path.join(unset, rel));
+    // android/aosp also holds directories (the listener image configuration).
+    fs.cpSync(path.join(root, rel), path.join(unset, rel), { recursive: true });
   }
   // The committed (unset) product: refused, naming the gaps, without touching the APK path.
   let out = stage(unset, ["--apk", "absent.apk", "--descriptor", "reviewed.json", "--production"]);

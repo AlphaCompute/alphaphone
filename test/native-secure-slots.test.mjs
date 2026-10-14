@@ -49,6 +49,11 @@ function evaluate(expression,text,depth=0){
  if((match=expression.match(/^(['"])([^'"]*)\1$/)))return [match[2]];
  if((match=expression.match(/^`([^`]*)`$/)))return [match[1].replace(/\$\{[^}]*\}/g,SAMPLE)];
  if((match=expression.match(/^(['"])([^'"]*)\1\s*\+\s*\w+$/)))return [match[2]+SAMPLE];
+ // A static key derivation (Class.method(args)) resolves through its one-line return.
+ if((match=expression.match(/^(?!this\.)\w+\.(\w+)\([^()]*\)$/))){
+  const body=text.match(new RegExp(`static\\s+(?:async\\s+)?${match[1]}\\s*\\([^)]*\\)\\s*\\{\\s*return\\s+([^;]+);`));
+  assert.ok(body,`static slot function ${match[1]} resolves`);return evaluate(body[1],text,depth+1);
+ }
  if((match=expression.match(/^(?:this\.)?(\w+)\(\)$/))){
   const body=text.match(new RegExp(`(?:\\b${match[1]}\\s*\\(\\)\\s*\\{\\s*return\\s+([^;]+);|\\b${match[1]}\\s*=\\s*\\(\\)\\s*=>\\s*([^;,]+))`));
   assert.ok(body,`slot function ${match[1]} resolves`);return evaluate(body[1]??body[2],text,depth+1);
@@ -66,7 +71,7 @@ function evaluate(expression,text,depth=0){
 
 // Receivers that reach the native secure store. Browser-only stores are listed so a new receiver
 // must be classified here before it can ship.
-const nativeReceivers=new Set(['secureConnectionStore','vault','storage','this.deps.store']);
+const nativeReceivers=new Set(['secureConnectionStore','vault','storage','this.deps.store','store']);
 const browserOnly=new Set(['this.documents','browserDocuments','backend','store()','slot']);
 function rendererSlots(){
  const found=[];
@@ -78,6 +83,12 @@ function rendererSlots(){
    assert.ok(nativeReceivers.has(receiver),`${where}: classify compareExchange receiver ${receiver}`);
    // The capacity wrapper passes its caller's key through; the shared store's slot is checked below.
    if(where.endsWith('runtime/notes-secure-store.ts')&&match[2].trim()==='key')continue;
+   // InboxOperation.discardUnsent writes the same per-owner slot as the instance's key() (one storeKey).
+   if(where.endsWith('runtime/inbox-operation.ts')&&match[2].trim()==='key'){
+    assert.match(text,/const key = await InboxOperation\.storeKey\(owner, grantId\);/);
+    for(const slot of evaluate('InboxOperation.storeKey(owner, grantId)',text))found.push({slot,where});
+    continue;
+   }
    for(const slot of evaluate(match[2],text))found.push({slot,where});
   }
  }

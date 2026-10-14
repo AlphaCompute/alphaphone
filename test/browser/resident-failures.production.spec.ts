@@ -29,7 +29,8 @@ async function connected(page: Page) {
 async function send(page: Page, text: string) { await composer(page).fill(text); await composer(page).press('Enter'); }
 
 const KINDS = {
-  insufficient_credits: 'Your Eliza Cloud credits are used up. Add credits in Eliza Cloud, then send again. Nothing was retried.',
+  // Cloud's billing refusal is a service limit (subscription-entitlement.ts): nothing is bought or upgraded.
+  insufficient_credits: "Eliza Cloud declined this AI request for your account's billing. Check your account in Settings. Alpha Phone did not retry your message, and nothing is purchased automatically. Local apps and on-device speech keep working.",
   provider_issue: 'Hosted inference (Eliza Cloud / Cerebras) could not be reached; nothing was retried.',
   generation_timeout: 'Hosted inference (Eliza Cloud / Cerebras) could not be reached; nothing was retried.',
   no_provider: 'AI is not set up for your agent. Sign in with Eliza Cloud to set up hosted inference; nothing was retried.',
@@ -48,20 +49,15 @@ for (const [kind, text] of Object.entries(KINDS)) for (const frame of ['done', '
     await expect(page.getByText(UNKNOWN, { exact: true })).toHaveCount(0);
     await expect(bubble(page, `Failing ${kind}`)).toHaveCount(1);
     if (kind === 'insufficient_credits') {
-      // The balance is read again, and the top-up opens Cloud billing only when the owner asks.
-      await expect.poll(() => stub(page, s => s.order.filter((item: string) => item.startsWith('credits')).length)).toBe(2);
-      const topUp = page.getByRole('button', { name: /^Add credits in Eliza Cloud/ });
-      await expect(topUp).toHaveCount(1);
+      // Cloud's plan page opens only when the owner asks; no purchase or upgrade is started here.
+      const manage = page.getByRole('button', { name: /^Manage plan in Eliza Cloud/ });
+      await expect(manage).toHaveCount(1);
       expect(await stub(page, s => s.opened)).toEqual([]);
-      await topUp.click();
+      await manage.click();
       await expect.poll(() => stub(page, s => s.opened)).toEqual(['https://cloud.eliza.app/cloud/billing']);
-      const dialog = page.getByRole('dialog');
-      await expect(dialog).toContainText('Add credits to continue');
-      await expect(dialog.getByRole('button', { name: 'Add credits in Eliza Cloud', exact: true })).toBeVisible();
-      await expect(dialog).not.toContainText(/Connected|Credits available/);
     } else {
       if (kind === 'no_provider') await expect(page.getByRole('button', { name: /^Set up AI/ })).toHaveCount(1);
-      else await expect(page.getByRole('button', { name: /^(Add credits|Set up AI)/ })).toHaveCount(0);
+      else await expect(page.getByRole('button', { name: /^(Manage plan|Set up AI)/ })).toHaveCount(0);
       // Agent connection no longer says the agent is ready.
       await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
       await button(page, 'Settings').click();

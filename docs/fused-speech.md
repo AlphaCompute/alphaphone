@@ -112,6 +112,18 @@ and their tests read. There is one schema, version 1:
 - A pin bump must re-record this file before any voice-packaged build; `readVoiceHost` requires
   `pin` to equal `upstream.lock.json`.
 
+## Always-on listener (`:sense`)
+
+The AOSP-image-only listener APK (`android/sense`, docs/adr/0001-privileged-listener.md) uses the
+same engine: `ListenerSpeech` opens `AlphaFusedSpeech` (Silero VAD, then the ASR pair) over the
+listener's own copy of the voice bundle. Its build compiles the same `AlphaFusedSpeech` sources and
+the generated `ElizaVoiceNative` from `:app`, packages the same `jniLibs` and `assets/voice` bytes,
+and runs the same `--verify-voice` admission. A bundle without the ASR pair and VAD refuses to open,
+so the listener reports speech unavailable and never listens. `stage-aosp --production` refuses a
+listener APK without a voice-verified ABI, the bundle roles it needs, or the qualified library
+bytes (`scripts/aosp-listener.mjs`). Evidence: source tests and a Gradle Java compile only (class S); no listener APK
+with a voice bundle has been built, staged or booted.
+
 ## Upstream gaps
 
 These are upstream (elizaOS) work. Alpha does not edit `vendor/eliza`; it consumes reviewed commits.
