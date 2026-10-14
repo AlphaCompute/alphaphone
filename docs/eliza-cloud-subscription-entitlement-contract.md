@@ -158,13 +158,17 @@ The 7-day offline grace is an engineering bound for offline use, not a billing d
 refuses every AI request without a plan. The record behind it (`alpha.connection.plan-admission.v1`)
 holds the environment, local credential generation id, user and organization ids, plan name and
 status, and the verification time; no credential. A failed background refresh does not renew that
-verification time, even while the previous entitlement remains valid.
+verification time, even while the previous entitlement remains valid. A reported plan window
+that has ended cannot retain a Cloud binding under this grace. The resident keeps running.
 
 Background refresh happens at `rfa`, or after 75% of the lifetime. After a failure it retries
-after 30 s, then doubles the wait up to 5 minutes. It also runs when the owner returns to the app.
+after 30 s, then doubles the wait up to 5 minutes. It also runs when the owner returns to the app, at most once per minute for automatic
+returns. Explicit retries and the first return from plan management bypass that throttle.
+A resident billing refusal requests a background plan refresh, also at most once per minute;
+it never retries the failed turn.
 It stops whenever the Cloud account is detached (every sign-out, expiry, account change or
-re-admission path), on a plan with no access, on a rejected sign-in or account mismatch, or when
-the plan state came from the billing snapshot.
+re-admission path), on a plan with no access, or on a rejected sign-in or account mismatch.
+Admitted billing snapshots refresh every five minutes until a signed entitlement is available.
 
 ## 5. Subscription codes
 
