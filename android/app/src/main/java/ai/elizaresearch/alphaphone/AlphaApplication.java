@@ -5,10 +5,13 @@ public final class AlphaApplication extends android.app.Application {
  @Override protected void attachBaseContext(android.content.Context base){
   super.attachBaseContext(base);
   // Runs before ContentProvider/AndroidX Startup initialization, including WorkManager.
-  if(!android.os.Process.isIsolated()&&AlphaDataReset.pending(this))AlphaDataReset.dispatchAndExit(this);
+  // The provider-free reset recovery process shows the unfinished reset and must not stop itself.
+  if(!android.os.Process.isIsolated()&&!resetRecoveryProcess()&&AlphaDataReset.pending(this))AlphaDataReset.admitAndExit(this);
  }
+ private boolean resetRecoveryProcess(){return (getPackageName()+ResetRecoveryActivity.PROCESS_SUFFIX).equals(getProcessName());}
  @Override public void onCreate(){
-  super.onCreate();NativeDigestHost host=new NativeDigestHost(this);NativeSourceHost.configure(host::read);NativeOwnerReminderHost owner=new NativeOwnerReminderHost(this);NativeSourceHost.configureOwnerReminderContext(owner::read);
+  super.onCreate();
+  if(resetRecoveryProcess())return;NativeDigestHost host=new NativeDigestHost(this);NativeSourceHost.configure(host::read);NativeOwnerReminderHost owner=new NativeOwnerReminderHost(this);NativeSourceHost.configureOwnerReminderContext(owner::read);
   // Isolated helper processes have no app storage; only the main process keeps the problem log and schedules upkeep.
   if(android.os.Process.isIsolated()||!getPackageName().equals(getProcessName()))return;
   AlphaCrashLog.install(this);
