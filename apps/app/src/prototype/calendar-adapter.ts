@@ -5,7 +5,7 @@ import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import {calendarFormTimeProblem} from '../runtime/calendar-form-draft';
-import {calendarDayColumns,calendarDayCount,calendarDayLabel,calendarReturnDay,visibleCalendarDays} from './calendar-days';
+import {calendarAgenda,calendarAgendaRows,calendarDayColumns,calendarDayCount,calendarDayLabel,calendarReturnDay,visibleCalendarDays} from './calendar-days';
 import {mapsEventOriginFor} from '../runtime/maps-event-return';
 import {rememberNoteOrigin,forgetNoteOrigin,noteOriginSupported} from './note-origin-adapter';
 type Bag = Record<string, any>;
@@ -206,13 +206,17 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     if(dayCount>1){
       out.nativeAllDay=visibleDays.flatMap(off=>onDay(off).map((e:Bag)=>({title:`${calendarDayLabel(api.now,off)} · ${e.title}`,open:()=>api.set({open:e.id,openDay:off})})));
       const now=new Date(api.now),time=now.getHours()+now.getMinutes()/60;
-      out.dayColumns=calendarDayColumns(columns,api.now,out.nowTop,time>=first&&time<=last);
+      out.dayColumns=calendarDayColumns(columns,api.now,out.nowTop,time>=first&&time<=last,day);
       out.multiDay=true;out.dayCount=dayCount;out.showNow=false;
       out.empty=(!rangeReady&&!state.open&&!state.form)||(columns.every(column=>!column.events.length)&&!out.nativeAllDay.length);
       if(out.empty&&rangeReady)out.emptyText='No visible events or reminders for these days.';
     }
     out.hasNativeAllDay=out.nativeAllDay.length>0;
     if(out.hasNativeAllDay)out.empty=false;
+    // Large text lists the selected day instead of drawing timed blocks; the timeline stays mounted
+    // (hidden) so its scroll position survives returning to normal text.
+    out.agenda=calendarAgenda();
+    out.agendaRows=out.agenda?calendarAgendaRows(out.nativeAllDay,out.dayEvents):[];
     const selectedDate=new Date(api.now);selectedDate.setDate(selectedDate.getDate()+day);
     const weekStart=day-(selectedDate.getDay()+6)%7;
     out.week=out.week.map((w:Bag,i:number)=>occupied(weekStart+i)?{...w,dot:weekStart+i===0?'var(--acct)':'var(--mut)'}:w);

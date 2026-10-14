@@ -285,6 +285,20 @@ test('Notes opens beside its list on a wide canvas and keeps each draft through 
     await expect.poll(() => inert(list)).toBe(viewport.width < 1000);
     await page.screenshot({ animations: 'disabled', path: test.info().outputPath(`notes-split-${viewport.width}x${viewport.height}.png`) });
   }
+  // Large text returns to one pane on a wide canvas, with the same editor and draft.
+  const probe = (size: string) => page.evaluate(value => { document.querySelector<HTMLElement>('[data-alpha-text-probe]')!.style.fontSize = value; }, size);
+  await resize(page, TABLET_LANDSCAPE);
+  await expect.poll(() => inert(list)).toBe(false);
+  await probe('150px');
+  await expect.poll(() => inert(list)).toBe(true);
+  expect(await body.evaluate((element, previous) => element === previous, original)).toBe(true);
+  await expect(body).toHaveValue('The second note, typed beside the list.');
+  await probe('100px');
+  await expect.poll(() => inert(list)).toBe(false);
+  // Focus left on the list when it is covered moves to the open note's controls.
+  await page.getByRole('button', { name: 'Open First draft', exact: true }).focus();
+  await resize(page, PORTRAIT);
+  await expect(page.getByRole('button', { name: 'Back to notes', exact: true })).toBeFocused();
 });
 
 test('switching notes beside the list leaves the previous one as Back does', async ({ page }) => {
@@ -315,16 +329,20 @@ test('Calendar shows readable day columns on wide screens, a single-day agenda a
   const columns = page.locator('[data-alpha-calendar-day]');
   await expect(columns).toHaveCount(5);
   for (const column of await columns.all()) expect((await box(column)).width).toBeGreaterThanOrEqual(200);
+  // From three columns the previous day leads; the selected day is marked.
+  const selected = columns.nth(1);
+  await expect(selected).toHaveAttribute('aria-current', 'date');
+  await expect(columns.first()).toHaveAttribute('aria-current', 'false');
   await page.getByRole('button', { name: 'New event', exact: true }).click();
   await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Column check');
   await page.getByRole('button', { name: 'Save event', exact: true }).click();
   await expect(page.getByText('Column check').first()).toBeVisible();
   const back = page.getByRole('button', { name: /^Back/ }).filter({ visible: true }).first();
   if (await page.locator('[data-alpha-subview="calendar-detail"]').count()) await back.click();
-  const event = columns.first().getByRole('button', { name: /^Column check, / });
+  const event = selected.getByRole('button', { name: /^Column check, / });
   await expect(event).toBeVisible();
-  const eventBox = await box(event), first = await box(columns.first());
-  expect(eventBox.x).toBeGreaterThanOrEqual(first.x - 1); expect(eventBox.x + eventBox.width).toBeLessThanOrEqual(first.x + first.width + 1);
+  const eventBox = await box(event), column = await box(selected);
+  expect(eventBox.x).toBeGreaterThanOrEqual(column.x - 1); expect(eventBox.x + eventBox.width).toBeLessThanOrEqual(column.x + column.width + 1);
   await event.click();
   const detail = page.locator('[data-alpha-subview="calendar-detail"]');
   await expect(detail).toContainText('Column check');
@@ -337,11 +355,30 @@ test('Calendar shows readable day columns on wide screens, a single-day agenda a
   await resize(page, PORTRAIT);
   await expect(columns).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Column check, / })).toBeVisible();
-  // Large text: the side-by-side days give way to the single-day agenda even on a wide screen.
+  // Enlarged text below 150% keeps fewer, wider columns.
   await resize(page, TABLET_LANDSCAPE);
   await expect(columns).toHaveCount(5);
-  await page.evaluate(() => { document.querySelector<HTMLElement>('[data-alpha-text-probe]')!.style.fontSize = '200px'; });
+  const probe = (size: string) => page.evaluate(value => { document.querySelector<HTMLElement>('[data-alpha-text-probe]')!.style.fontSize = value; }, size);
+  await probe('130px');
+  await expect(columns).toHaveCount(3);
+  // Large text: the days give way to the selected day's agenda list even on a wide screen. The
+  // timeline stays mounted, hidden, and comes back with its scroll position.
+  const timeline = page.getByRole('region', { name: 'Calendar timeline', exact: true });
+  await timeline.evaluate(element => { element.scrollTop = 120; });
+  const original = await timeline.elementHandle();
+  await probe('200px');
+  const agenda = page.getByRole('region', { name: 'Calendar agenda', exact: true });
+  await expect(agenda).toBeVisible();
   await expect(columns).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /^Column check, / })).toBeVisible();
+  await expect(timeline).toBeHidden();
+  await expect(agenda.getByRole('button', { name: /^Column check, / })).toBeVisible();
   await page.screenshot({ animations: 'disabled', path: test.info().outputPath('calendar-large-text.png') });
+  await agenda.getByRole('button', { name: /^Column check, / }).click();
+  await expect(detail).toContainText('Column check');
+  await page.getByRole('button', { name: /^Back/ }).filter({ visible: true }).first().click();
+  await probe('100px');
+  await expect(agenda).toHaveCount(0);
+  await expect(timeline).toBeVisible();
+  expect(await timeline.evaluate((element, previous) => element === previous, original)).toBe(true);
+  expect(await timeline.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
 });
