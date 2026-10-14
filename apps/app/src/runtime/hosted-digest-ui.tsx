@@ -332,12 +332,15 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
     const renewalStart=useRef(startRenewal);renewalStart.current=startRenewal;
     const checkRenewal=()=>renewalFlight.current(async()=>{
       const b=binding.current;if(!b||!canSyncResults()||questionBusy.current||questionClose.current)return;
-      try{const tap=await nativeSources.pendingSourceRenewal();if(!tap.token||!tap.selection||typeof tap.expiresAt!=='number'||binding.current!==b||!b.notices.current()||!canSyncResults())return;
+      // Only a real pending tap may report a failure: a check with no tap (the native record is
+      // unavailable here, or nothing was tapped) leaves the panel's current status untouched.
+      let tapped=false;
+      try{const tap=await nativeSources.pendingSourceRenewal();if(!tap.token||!tap.selection||typeof tap.expiresAt!=='number'||binding.current!==b||!b.notices.current()||!canSyncResults())return;tapped=true;
        const current=()=>mounted.current&&binding.current===b&&b.notices.current()&&canSyncResults()&&!connectionController.getSnapshot().open&&renewalSources.current.some(source=>!source.revoked&&source.live?.provider==='native'&&renewalMatches(tap as SourceRenewalTap,source.live,source.expiresAt));
        if(!current())return;
        if(tap.question){questionBusy.current=true;questionClose.current=reviewSourceRenewalQuestion({tap:tap as SourceRenewalTap,signal:b.controller.signal,current,recheck:()=>nativeSources.pendingSourceRenewal(),settle:discard=>nativeSources.settleSourceRenewal({token:tap.token!,discard}),compose:draft=>composeQuestion?.(draft,b.sessionId)===true,report:setMessage,closed:()=>{questionBusy.current=false;questionClose.current=undefined;}});if(!questionClose.current)questionBusy.current=false;return;}
        await nativeSources.settleSourceRenewal({token:tap.token,discard:false});if(!current()){if(binding.current===b)setMessage('Source renewal changed before review opened. Nothing was renewed; renew it from Sources when it is current.');return;}setOpen(true);renewalStart.current(tap.selection.sourceId);
-      }catch{if(binding.current===b)setMessage('Source renewal is waiting for the matching account and current consent.');}
+      }catch{if(tapped&&binding.current===b)setMessage('Source renewal is waiting for the matching account and current consent.');}
     });
     useEffect(()=>{if(!isAndroid)return;const listener=nativeSources.addListener('renewSource',()=>{void checkRenewal();}).catch(()=>null);void checkRenewal();return()=>{void listener.then(l=>l?.remove());};},[]);
     useEffect(()=>{if(isAndroid)void checkRenewal();},[sources]);
