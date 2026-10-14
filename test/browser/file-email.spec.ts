@@ -7,7 +7,7 @@ async function setup(page:Page,reviewFile=true){
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
   const {Component}=await import('/src/prototype/model.js');
   // Synthetic restartable native-slot stand-in; browser production intentionally has no Inbox secret slots.
-  const {secureConnectionStore:s}=await import('/src/runtime/native-connection.ts');
+  const {inboxLocalStore:s}=await import('/src/runtime/inbox-local-store.ts');
   s.read=async(key:string)=>structuredClone(JSON.parse(sessionStorage.getItem('file-email-slots')||'{}')[key]??null) as any;
   s.compareExchange=async(key:string,prior:unknown,next:unknown)=>{const slots=JSON.parse(sessionStorage.getItem('file-email-slots')||'{}');if(JSON.stringify(slots[key]??null)!==JSON.stringify(prior))return {status:'conflict'} as any;slots[key]=next;sessionStorage.setItem('file-email-slots',JSON.stringify(slots));return {status:'saved'} as any;};
   const {registerPlugin}=await import('/src/platform-plugins.ts');
@@ -41,7 +41,7 @@ test('selected Files require explicit attachment review, retain exact bytes and 
  await page.getByRole('button',{name:'Save draft locally',exact:true}).click();
  await expect(page.getByText('Saved locally on this device',{exact:true}).first()).toBeVisible();
  expect(await page.evaluate(()=>(window as any).fileEmail.writes)).toBe(0);
- const saved=()=>page.evaluate(async()=>{const {secureConnectionStore}=await import('/src/runtime/native-connection.ts');return await secureConnectionStore.read<any>('inbox-drafts:v1:'+JSON.stringify(['production','file-owner','','file-grant']));});
+ const saved=()=>page.evaluate(async()=>{const {inboxLocalStore}=await import('/src/runtime/inbox-local-store.ts');return await inboxLocalStore.read<any>('inbox-drafts:v1:'+JSON.stringify(['production','file-owner','','file-grant']));});
  expect((await saved()).attachments).toEqual([{name:'selected.txt',mimeType:'text/plain',dataBase64:Buffer.from('Café\nExact bytes').toString('base64')}]);
  await setup(page,false);await page.getByRole('button',{name:'Restore local draft',exact:true}).click();
  await expect(page.getByRole('button',{name:'Remove selected.txt',exact:true})).toBeVisible();

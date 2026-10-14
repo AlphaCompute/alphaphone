@@ -202,10 +202,27 @@ failed-write retry and admission before app initialization. These are source-lev
 checks; actual microphone release, provider IPC, process interruption and both
 image distributions still require native qualification for #409/#424.
 Because the reset fails closed, an installed listener that cannot acknowledge it
-(signer mismatch, LISTENER_CONTROL not granted, missing provider) makes every Alpha
-launch stop again; where Alpha is HOME this presents as a launcher restart loop until
-the listener is fixed or Alpha's storage is cleared in Settings. Qualification must
-exercise that state and record the recovery path; a user-visible recovery surface is
-future work. A consent permission request pending while ConsentActivity is recreated
+(signer mismatch, LISTENER_CONTROL not granted, missing provider) keeps every Alpha
+main-process launch stopping before initialization. Before stopping, a main process
+started for an activity (or for a reason Android does not report; `ApplicationStartInfo`
+on API 35+) opens `ResetRecoveryActivity`; one started for a job, alarm, broadcast,
+push, provider or bound service stops without taking the screen from the app in front.
+The recovery activity runs in its own `:reset_recovery` process, which installs
+none of Alpha's content providers (no WorkManager or startup initializers) and starts
+no agent, renderer or notification code. It states that the reset has not finished
+and Alpha's local data was not deleted, and offers Try reset again (always a fresh
+listener-then-Android attempt), the listener's settings, Phone and Android Settings.
+Automatic attempts at launch are bounded (three per minute; unreadable attempt state
+defers them until the user retries), so Android relaunching HOME no longer repeats
+listener IPC silently. The marker and all Alpha data stay until the listener
+acknowledges and Android accepts the package clear; a new confirmed reset starts a
+fresh budget, and a late failure after Android finished cannot recreate reset state.
+Settings > Clear storage is not a recovery path for this state: it would clear Alpha
+without revoking listener consent. JVM tests cover the relaunch sequence, recovery-
+process admission, bounded attempts, acknowledged-then-refused interruption and
+package-scoped clearing; Android actually resuming the recovery task instead of
+relaunching HOME, the background-start exemption it relies on, and both image
+distributions still require native qualification.
+A consent permission request pending while ConsentActivity is recreated
 (for example on rotation) is restored only within the same process, so a request made
 before a restart can never match the listener's fresh reset generation.
