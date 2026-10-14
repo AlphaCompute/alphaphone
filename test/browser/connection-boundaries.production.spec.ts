@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
+import { addSyntheticEntitlement } from './synthetic-entitlement';
 // Flag-off production bundle only. Android cases stub the Capacitor bridge in a desktop browser and
 // saved remote selections must never reconnect. Nothing here contacts
 // Eliza Cloud, a deployed agent, an Android device or the native AlphaConnection plugin; those
@@ -28,6 +29,7 @@ interface NativeCall { plugin: string; method: string; slot?: string; url?: stri
 interface AndroidOptions { selection?: unknown; remoteCredential?: boolean; cloudCredential?: boolean; balance?: number; revoke?: RevokeMode; packaged?: boolean }
 /** Production Android as the renderer sees it: resident Agent plugin plus AlphaConnection storage and transport. */
 async function android(page: Page, options: AndroidOptions) {
+  await addSyntheticEntitlement(page);
   await page.addInitScript(({ options, SELECTION, origin, owner, token }) => {
     const w = window as any; w.androidBridge = {}; w.nativeCalls = [];
     const id = '9f1dc45a-4011-4e44-947a-30d999d24fa5';
@@ -76,9 +78,8 @@ async function android(page: Page, options: AndroidOptions) {
         // Only the fixed Cloud authority answers; any other host is a transport failure.
         if (url.origin !== 'https://api.eliza.app') throw Error('Connection request failed');
         if (url.pathname === '/api/v1/user') return { status: 200, data: { success: true, data: { id } } };
-        if (url.pathname === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Entitlement route absent: the billing snapshot answers.
-        // `balance` > 0 stands for an account holding an active plan; otherwise the account has no plan.
-        if (url.pathname === '/api/v1/billing/limits') return { status: 200, data: { success: true, data: { v2: { subscription: (options.balance ?? 0) > 0 ? { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } : { status: 'not_applicable', reason: 'no_organization_subscription' } } } } };
+        // `balance` > 0 stands for an account holding an active plan (a synthetic signed entitlement); otherwise no plan.
+        { const answer = await w.__syntheticEntitlement.answer(url.pathname, id, (options.balance ?? 0) > 0 ? 'active' : 'none'); if (answer) return answer; }
         if (url.pathname === '/api/v1/api-keys/current' && input.method === 'DELETE') {
           if (options.revoke === 'failed') throw Error('Connection request failed');
           if (options.revoke === 'revoked') return { status: 200, data: { success: true, status: 'revoked', credentialId: id, revokedAt: new Date().toISOString() } };
@@ -148,7 +149,8 @@ test('production Android with a Cloud sign-in starts the resident agent instead 
   expect(agentCalls).toContain('configureCloudProvider');
   // Cloud authorizes the provider (identity, plan) and account services; it is never the agent runtime.
   const routes = [...new Set(calls.filter(call => call.plugin === 'AlphaConnection' && call.method === 'request').map(call => new URL(call.url!).origin + new URL(call.url!).pathname))];
-  expect(routes).toEqual(expect.arrayContaining(['https://api.eliza.app/api/v1/billing/limits', 'https://api.eliza.app/api/v1/user']));
+  expect(routes).toEqual(expect.arrayContaining(['https://api.eliza.app/api/v1/subscription/entitlement', 'https://api.eliza.app/api/v1/user']));
+  expect(routes).not.toContain('https://api.eliza.app/api/v1/billing/limits');
   expect(routes).not.toContain('https://api.eliza.app/api/v1/credits/balance');
   expect(routes.filter(route => !route.startsWith('https://api.eliza.app/api/v1/') || /\/(agents|personal|conversations|messages)(\/|$)/.test(route))).toEqual([]);
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual({ kind: 'resident' });

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { addSyntheticEntitlement } from './synthetic-entitlement';
 
 // Reviewed send on the FLAG-OFF bundle with the Android bridge stubbed (docs/core-loop-audit.md
 // F-5, F-10). The mailbox is a synthetic managed Gmail answered at the native HTTP boundary
@@ -14,6 +15,7 @@ test.beforeEach(({}, testInfo) => { test.skip(testInfo.project.name !== 'product
 const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true });
 
 async function androidWithMailbox(page: Page) {
+  await addSyntheticEntitlement(page);
   await page.addInitScript(({ agentId }) => {
     const w = window as any;
     w.androidBridge = {};
@@ -106,8 +108,7 @@ async function androidWithMailbox(page: Page) {
           if (method === 'request') {
             const path = new URL(input.url).pathname;
             if (path === '/api/v1/user') return { status: 200, data: { success: true, data: { id: account } } };
-            if (path === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Deployed Cloud has no subscription entitlement route yet.
-            if (path === '/api/v1/billing/limits') return { status: 200, data: { success: true, data: { v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } } } } };
+            { const answer = await (window as any).__syntheticEntitlement.answer(path, account); if (answer) return answer; } // Synthetic signed active plan.
             // Synthetic managed Gmail behind Eliza Cloud, in the server's own response shapes. The
             // product's CloudProtocol validates every one of these replies.
             const m = f.mail, google = '/api/v1/eliza/google', body = input.body ? JSON.parse(input.body) : null;

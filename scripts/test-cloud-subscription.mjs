@@ -1,5 +1,5 @@
 // Synthetic CloudProtocol exercise of the subscription plan gate routes (#410): code redemption,
-// the billing snapshot fallback and the hosted plan page. A fake native transport answers in the
+// the absent-route answer (no unsigned fallback), replaced-key revocation and the hosted plan page. A fake native transport answers in the
 // shapes of elizaOS/eliza PR #36125; nothing leaves this process. This is not evidence of a real
 // Cloud account, a real code, staging or a device.
 import assert from 'node:assert/strict';
@@ -30,7 +30,7 @@ const refused = async (promise, code) => assert.rejects(promise, error => error 
 {
   const { cloud, calls } = client(() => granted);
   const result = await cloud.redeemSubscriptionCode(`  ${CODE} `, 'submission-key-0001', signal());
-  assert.deepEqual(result, { replayed: false, grantEndsAt: Date.parse('2027-04-14T00:00:00.000Z'), paidPlanTakesPrecedence: false, planName: 'Plus' });
+  assert.deepEqual(result, { replayed: false, grantEndsAt: Date.parse('2027-04-14T00:00:00.000Z'), paidPlanTakesPrecedence: false, planName: 'Plus', planEndsAt: Date.parse('2027-04-14T00:00:00.000Z') });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, 'https://api.eliza.app/api/v1/subscription/redeem');
   assert.equal(calls[0].method, 'POST');
@@ -44,6 +44,19 @@ const refused = async (promise, code) => assert.rejects(promise, error => error 
   assert.equal(result.replayed, true);
   assert.equal(result.paidPlanTakesPrecedence, true);
   assert.equal(result.planName, null);
+  assert.equal(result.planEndsAt, null, 'a paid plan with no reported window shows no end');
+}
+// The plan end is the window Cloud reports as serving the plan (effectiveUntil), e.g. a paid period.
+{
+  const { cloud } = client(() => ({ status: 200, data: { ...granted.data, grant: { ...granted.data.grant, paidPlanTakesPrecedence: true }, entitlement: { plan: { id: 'pro_monthly', name: 'Pro', status: 'active' }, source: 'subscription', effectiveUntil: '2026-11-30T00:00:00.000Z' } } }));
+  const result = await cloud.redeemSubscriptionCode(CODE, 'submission-key-0011', signal());
+  assert.equal(result.planEndsAt, Date.parse('2026-11-30T00:00:00.000Z'));
+  assert.equal(result.grantEndsAt, Date.parse('2027-04-14T00:00:00.000Z'));
+}
+// A replay of a grant support revoked grants nothing: the generic refusal, never "redeemed".
+{
+  const { cloud } = client(() => ({ status: 200, data: { ...granted.data, replayed: true, grant: { ...granted.data.grant, revoked: true } } }));
+  await refused(cloud.redeemSubscriptionCode(CODE, 'submission-key-0012', signal()), 'invalid');
 }
 // Transport failure (the request may have arrived): exactly one replay with the same key.
 {
@@ -93,18 +106,35 @@ for (const [status, data, code] of [
   await refused(cloud.redeemSubscriptionCode(CODE, 'submission-key-0009', signal()), 'unavailable');
 }
 
-// Entitlement route absent: the billing snapshot fallback, then unknown.
+// Entitlement route absent: null (plan state unknown). No billing snapshot is read.
 {
-  const limits = { status: 200, data: { success: true, data: { schemaVersion: 2, v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: 'past_due', currentPeriodEnd: '2026-11-12T00:00:00.000Z' } } } } } };
-  const { cloud, calls } = client(input => new URL(input.url).pathname === '/api/v1/billing/limits' ? limits : { status: 404, data: {} });
+  const { cloud, calls } = client(() => ({ status: 404, data: {} }));
   assert.equal(await cloud.subscriptionEntitlement(signal()), null);
-  assert.deepEqual(await cloud.billingFallbackPlan(signal()), { status: 'past_due', planName: 'Plus', periodEnd: Date.parse('2026-11-12T00:00:00.000Z') });
-  assert.deepEqual(calls.map(call => [call.method, new URL(call.url).pathname]), [['GET', '/api/v1/subscription/entitlement'], ['GET', '/api/v1/billing/limits']]);
-  const absent = client(() => ({ status: 404, data: {} }));
-  assert.equal(await absent.cloud.billingFallbackPlan(signal()), null);
-  const outage = client(() => ({ status: 503, data: {} }));
-  await assert.rejects(outage.cloud.billingFallbackPlan(signal()), error => error instanceof CloudProtocolError && error.status === 503);
+  assert.deepEqual(calls.map(call => [call.method, new URL(call.url).pathname]), [['GET', '/api/v1/subscription/entitlement']]);
+  assert.equal(typeof cloud.billingFallbackPlan, 'undefined', 'the unsigned billing snapshot fallback is retired');
+  assert.equal('fallbackPlan' in cloud.entitlementSource(), false);
   assert.equal(typeof cloud.creditBalance, 'undefined', 'the credit balance check is retired');
+}
+// Re-approval: the key a new sign-in replaced revokes itself once, presented explicitly. The new
+// stored key is never sent, and nothing is sent without a replaced key or a DELETE-capable transport.
+{
+  const replaced = { credentialId: '33333333-3333-4333-8333-333333333333', token: 'synthetic-old-key', expiresAt: Date.now() + 600_000 };
+  const calls = [];
+  const transport = async input => { calls.push({ url: input.url, method: input.method, authorization: input.headers.Authorization, body: input.body }); return { status: 200, data: { success: true, status: 'revoked', credentialId: 'server-id' } }; };
+  const cloud = new CloudProtocol('production', transport, store, async () => {}, { deleteRequests: true });
+  assert.equal(await cloud.revokeReplacedCredential(replaced, signal()), true);
+  assert.deepEqual(calls, [{ url: 'https://api.eliza.app/api/v1/api-keys/current', method: 'DELETE', authorization: 'Bearer synthetic-old-key', body: undefined }]);
+  // The stored key is the one being presented: never revoked from here.
+  assert.equal(await cloud.revokeReplacedCredential({ ...credential }, signal()), false);
+  assert.equal(await cloud.revokeReplacedCredential({ ...replaced, credentialId: credential.credentialId }, signal()), false);
+  // Expired, absent, or a transport without DELETE: nothing is sent.
+  assert.equal(await cloud.revokeReplacedCredential({ ...replaced, expiresAt: Date.now() - 1 }, signal()), false);
+  assert.equal(await cloud.revokeReplacedCredential(null, signal()), false);
+  assert.equal(await new CloudProtocol('production', transport, store, async () => {}).revokeReplacedCredential(replaced, signal()), false);
+  assert.equal(calls.length, 1);
+  // Failures and unconfirmed answers are false, never thrown.
+  for (const answer of [() => { throw new Error('Connection request failed'); }, () => ({ status: 404, data: {} }), () => ({ status: 200, data: { success: false } })])
+    assert.equal(await new CloudProtocol('production', async () => answer(), store, async () => {}, { deleteRequests: true }).revokeReplacedCredential(replaced, signal()), false);
 }
 // Choose a plan opens exactly the allowlisted hosted page, nothing else.
 {
@@ -127,4 +157,4 @@ for (const [status, data, code] of [
   assert.deepEqual(calls, ['https://api-staging.eliza.app/api/v1/subscription/redeem']);
   assert.equal(staging.entitlementIssuer, 'https://api-staging.eliza.app');
 }
-console.log('PASS: subscription redemption (success, replay, transport replay with the same key, generic refusals, rate limit, sign-in), billing snapshot fallback and the exact plan page');
+console.log('PASS: subscription redemption (success, replay, revoked replay, plan end, transport replay with the same key, generic refusals, rate limit, sign-in), absent entitlement route without fallback, replaced-key revocation and the exact plan page');

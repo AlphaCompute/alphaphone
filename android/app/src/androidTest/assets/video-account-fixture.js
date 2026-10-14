@@ -8,6 +8,19 @@
   let credential = null, binding = null, running = false;
   const calls = [];
   window.__alphaVideoAccount = { calls };
+  // Synthetic signed plan: a throwaway ES256 key generated here; the product admits only a
+  // verified entitlement. Nothing is a real key, plan or account.
+  const b64 = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const encode = value => b64(new TextEncoder().encode(JSON.stringify(value)));
+  const signing = crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']).then(async pair => {
+    const jwk = await crypto.subtle.exportKey('jwk', pair.publicKey);
+    return { privateKey: pair.privateKey, jwk: { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y, kid: 'synthetic-video-key' } };
+  });
+  const entitlement = async () => {
+    const { privateKey } = await signing, now = Math.floor(Date.now() / 1000);
+    const input = encode({ alg: 'ES256', typ: 'eliza-entitlement+jwt', kid: 'synthetic-video-key' }) + '.' + encode({ iss: 'https://api.eliza.app', aud: 'eliza-alpha-phone', sub: id, jti: 'synthetic-video-entitlement', iat: now, exp: now + 3000, plan: { id: 'synthetic-plan', name: 'Synthetic plan', status: 'active' }, services: ['inference'] });
+    return input + '.' + b64(new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privateKey, new TextEncoder().encode(input))));
+  };
   Capacitor.nativePromise = async function(plugin, method, input = {}) {
     if (plugin === 'AlphaConnection') {
       if (input.slot === 'cloud:production') {
@@ -26,11 +39,12 @@
         calls.push(path);
         if (path === '/api/auth/cli-session' && input.method === 'POST') return { status: 200, data: { sessionId: session, expiresAt: new Date(Date.now() + 60000).toISOString() } };
         if (path === `/api/auth/cli-session/${session}` && input.method === 'GET') return { status: 200, data: { status: 'authenticated', token: 'synthetic-video-account-only' } };
+        // Public verification keys: the one route read without the account key.
+        if (path === '/api/v1/subscription/entitlement-keys' && input.method === 'GET') return { status: 200, data: { keys: [(await signing).jwk] } };
         const saved = credential && JSON.parse(credential);
         if (!saved || input.headers?.Authorization !== `Bearer ${saved.token}` || input.method !== 'GET') throw Error('Unbound account request');
         if (path === '/api/v1/user') return { status: 200, data: { success: true, data: { id } } };
-        if (path === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Entitlement route absent: the billing snapshot answers.
-        if (path === '/api/v1/billing/limits') return { status: 200, data: { success: true, data: { v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } } } } };
+        if (path === '/api/v1/subscription/entitlement') return { status: 200, data: { entitlement: await entitlement() } };
         throw Error('Unexpected account request');
       }
     }

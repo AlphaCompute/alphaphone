@@ -22,6 +22,8 @@ export const DENYLIST = Object.freeze([
   'Development vault secret', 'synthetic-dev-',
   // Subscription gate QA (test-mocks builds only, docs/cloud-subscription-qa.md).
   'gate QA', 'resident-qa.v1',
+  // Bring-your-own provider key entry: production phones use Eliza Cloud only (test-mocks builds only).
+  'Cerebras API key',
 ]);
 const TEXT = /\.(?:html?|js|mjs|cjs|css|json|txt|svg|xml|webmanifest)$/i;
 

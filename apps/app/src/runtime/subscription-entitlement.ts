@@ -11,9 +11,11 @@
  *  - Every Alpha Phone signs in to Eliza Cloud and holds a plan (owner decision, issue #410). The
  *    plan gate admits the resident agent for an active or trialing plan, admits a past-due plan
  *    with a warning, and shows "needs plan" (Redeem code / Choose a plan) for a canceled plan or
- *    no plan without starting the agent. Unknown plan state is "needs plan" with a retry.
- *  - Once a plan was verified recently on this phone, a billing outage or an offline start keeps
- *    local apps, on-device speech and local tools available (see connection-ui's admission cache).
+ *    no plan without starting the agent. An invalid answer is "needs plan" with a retry.
+ *  - Only a verified signed entitlement admits the agent. There is no unsigned fallback: when
+ *    Cloud cannot be reached, answers 5xx/429, or does not serve the entitlement route, plan state
+ *    is unknown. Local apps and on-device speech stay available and the agent is not started,
+ *    unless a plan was verified on this phone recently (see connection-ui's admission cache).
  *
  * Nothing here selects a price, quota, allowance or burst/sustained limit. Every number shown to
  * the owner comes from a verified Cloud entitlement or a Cloud refusal body. The proposed Cloud
@@ -25,8 +27,6 @@
 export const ENTITLEMENT_PATH = '/api/v1/subscription/entitlement';
 export const ENTITLEMENT_KEYS_PATH = '/api/v1/subscription/entitlement-keys';
 export const REDEEM_PATH = '/api/v1/subscription/redeem';
-/** Read-only organization billing snapshot; used only while the entitlement route is absent. */
-export const BILLING_LIMITS_PATH = '/api/v1/billing/limits';
 export const ENTITLEMENT_TYPE = 'eliza-entitlement+jwt';
 export const ENTITLEMENT_AUDIENCE = 'eliza-alpha-phone';
 /** Client acceptance ceiling for "short-lived": an engineering bound, not a billing decision. */
@@ -160,17 +160,17 @@ export async function verifyEntitlement(token: string, keys: readonly JsonWebKey
 /** What the owner sees. Built from verified Cloud data only. */
 export type SubscriptionView =
   | { kind: 'checking' }
-  /** `source` 'billing-limits' is the unsigned billing snapshot used while the entitlement route is absent. */
-  | { kind: 'active'; planName: string; status: 'active' | 'trialing' | 'past_due'; allowance: PlanAllowance | null; expiresAt: number; refreshFailed: boolean; source?: 'billing-limits' }
-  | { kind: 'inactive'; planName: string | null; status: 'canceled' | 'none'; source: 'entitlement' | 'billing-limits' }
-  /** Billing status could not be read: an outage, no published plan source, or an invalid answer. */
+  | { kind: 'active'; planName: string; status: 'active' | 'trialing' | 'past_due'; allowance: PlanAllowance | null; expiresAt: number; refreshFailed: boolean }
+  | { kind: 'inactive'; planName: string | null; status: 'canceled' | 'none' }
+  /** Billing status could not be read: an outage (no network, 5xx, 429), a Cloud without the
+   * entitlement route ('not-published'), or an invalid answer. */
   | { kind: 'unavailable'; reason: 'outage' | 'not-published' | 'invalid' }
   /** A previously verified entitlement lapsed while refresh kept failing. */
   | { kind: 'expired'; planName: string };
 
 export function subscriptionView(entitlement: SubscriptionEntitlement, refreshFailed = false): SubscriptionView {
   const { status, name } = entitlement.plan;
-  if (status === 'canceled' || status === 'none') return { kind: 'inactive', planName: status === 'none' ? null : name, status, source: 'entitlement' };
+  if (status === 'canceled' || status === 'none') return { kind: 'inactive', planName: status === 'none' ? null : name, status };
   return { kind: 'active', planName: name, status, allowance: entitlement.allowance, expiresAt: entitlement.expiresAt, refreshFailed };
 }
 
@@ -191,12 +191,18 @@ export function allowanceText(allowance: PlanAllowance | null): string {
 const LOCAL_KEEPS_WORKING = 'Local apps and on-device speech keep working.';
 export const MANAGE_PLAN_LABEL = 'Manage plan in Eliza Cloud';
 export const CHOOSE_PLAN_LABEL = 'Choose a plan';
-/** What the plan gate does with a view. Only the gate decides; turns never read billing. */
-export type PlanAdmission = 'admit' | 'admit-with-warning' | 'needs-plan' | 'unknown';
+/**
+ * What the plan gate does with a view. Only the gate decides; turns never read billing.
+ * 'unreachable': Cloud could not answer (no network, 5xx, 429, or no entitlement route). That is
+ * not a refusal of the plan: local apps stay available and the agent waits for a check. 'unknown':
+ * Cloud answered with something that cannot be verified; the plan gate asks to check again.
+ */
+export type PlanAdmission = 'admit' | 'admit-with-warning' | 'needs-plan' | 'unreachable' | 'unknown';
 export function planAdmission(view: SubscriptionView | null | undefined): PlanAdmission {
   if (!view || view.kind === 'checking') return 'unknown';
   if (view.kind === 'active') return view.status === 'past_due' ? 'admit-with-warning' : 'admit';
   if (view.kind === 'inactive') return 'needs-plan';
+  if (view.kind === 'unavailable' && view.reason !== 'invalid') return 'unreachable';
   return 'unknown';
 }
 export function describeSubscription(view: SubscriptionView | null | undefined): { headline: string; detail: string; manage: boolean; manageLabel: string } {
@@ -204,46 +210,24 @@ export function describeSubscription(view: SubscriptionView | null | undefined):
   switch (view.kind) {
     case 'active': return {
       headline: view.status === 'past_due' ? `${view.planName} · payment due` : view.status === 'trialing' ? `${view.planName} · trial` : view.planName,
-      detail: [view.source === 'billing-limits' ? '' : allowanceText(view.allowance), view.status === 'past_due' ? 'Payment is past due. Update payment in Eliza Cloud to keep AI available.' : '', view.refreshFailed ? 'Plan status could not be refreshed; Eliza Cloud still decides each AI request.' : ''].filter(Boolean).join(' '),
+      detail: [allowanceText(view.allowance), view.status === 'past_due' ? 'Payment is past due. Update payment in Eliza Cloud to keep AI available.' : '', view.refreshFailed ? 'Plan status could not be refreshed; Eliza Cloud still decides each AI request.' : ''].filter(Boolean).join(' '),
       manage: view.status === 'past_due', manageLabel: MANAGE_PLAN_LABEL };
     case 'inactive':
       return { headline: view.status === 'canceled' ? `${view.planName ?? 'Your plan'} has ended` : 'No active plan', detail: 'Alpha Phone needs an active Eliza Cloud plan. Redeem a subscription code or choose a plan in Eliza Cloud. Nothing is purchased automatically, and your data on this phone is kept.', manage: true, manageLabel: CHOOSE_PLAN_LABEL };
     case 'expired': return { headline: view.planName, detail: `Plan status is out of date and could not be refreshed. Eliza Cloud still decides each AI request. ${LOCAL_KEEPS_WORKING}`, manage: false, manageLabel: MANAGE_PLAN_LABEL };
-    case 'unavailable': return { headline: 'Plan status unavailable', detail: view.reason === 'not-published' ? 'Eliza Cloud did not report a plan for this account. Check again, redeem a subscription code or choose a plan. Your data on this phone is kept.' : `Plan status could not be checked right now. Eliza Cloud still decides each AI request. ${LOCAL_KEEPS_WORKING}`, manage: false, manageLabel: MANAGE_PLAN_LABEL };
+    case 'unavailable': return { headline: 'Plan status unavailable', detail: view.reason === 'invalid' ? 'Eliza Cloud could not confirm a plan for this account right now. Check again, redeem a subscription code or choose a plan. Your data on this phone is kept.' : `Plan status could not be checked right now. ${LOCAL_KEEPS_WORKING} Your agent starts when Eliza Cloud confirms your plan.`, manage: false, manageLabel: MANAGE_PLAN_LABEL };
   }
 }
 
 /** Ports the admission check uses; CloudProtocol implements them over the native transport. */
 export interface EntitlementSource {
-  /** `null` when Cloud has not deployed the entitlement route (404/405/501). */
+  /** `null` when Cloud does not serve the entitlement route (404/405/501). Never a reason to
+   * admit: plan state is then unknown. */
   entitlement(signal: AbortSignal): Promise<string | null>;
   entitlementKeys(signal: AbortSignal): Promise<JsonWebKey[]>;
-  /** The billing snapshot's subscription section, read only while the entitlement route is absent.
-   * `null` when that snapshot is unavailable or does not say. */
-  fallbackPlan?(signal: AbortSignal): Promise<FallbackPlan | null>;
   readonly issuer: string;
 }
 export type EntitlementCheck = { view: SubscriptionView; entitlement: SubscriptionEntitlement | null };
-/** Plan state from the unsigned billing snapshot. Only known states are reported. */
-export interface FallbackPlan { status: PlanStatus; planName: string | null; periodEnd: number | null }
-/** Cloud billing subscription states (billing-subscriptions schema) mapped to the entitlement's plan status. */
-const BILLING_STATES: Readonly<Record<string, PlanStatus>> = { trialing: 'trialing', active: 'active', grace: 'past_due', past_due: 'past_due', unpaid: 'past_due', canceled: 'canceled', incomplete_expired: 'canceled' };
-const PLAN_NAMES: Readonly<Record<string, string>> = { plus_monthly: 'Plus', pro_monthly: 'Pro' };
-/**
- * Reads `data.v2.subscription` of GET /api/v1/billing/limits. `not_applicable` means the
- * organization has no subscription (plan none). Pending, incomplete, paused, unavailable or
- * malformed answers return null: plan state is unknown and the gate asks to check again.
- */
-export function fallbackPlanFromLimits(value: unknown): FallbackPlan | null {
-  const subscription = bag(bag(bag(bag(value)?.data)?.v2)?.subscription);
-  if (!subscription) return null;
-  if (subscription.status === 'not_applicable') return { status: 'none', planName: null, periodEnd: null };
-  const row = subscription.status === 'available' ? bag(subscription.value) : null;
-  if (!row || typeof row.state !== 'string' || !Object.hasOwn(BILLING_STATES, row.state)) return null;
-  const key = typeof row.planKey === 'string' ? row.planKey : '';
-  const end = typeof row.currentPeriodEnd === 'string' ? Date.parse(row.currentPeriodEnd) : NaN;
-  return { status: BILLING_STATES[row.state], planName: Object.hasOwn(PLAN_NAMES, key) ? PLAN_NAMES[key] : null, periodEnd: Number.isFinite(end) ? end : null };
-}
 const keyCache = new Map<string, { keys: JsonWebKey[]; fetchedAt: number }>();
 const KEY_CACHE_MS = 60 * 60 * 1000;
 /** Forgets cached public signing keys. Called when the Cloud account is detached. */
@@ -266,15 +250,8 @@ export async function checkEntitlement(source: EntitlementSource, expected: Omit
   try { token = await source.entitlement(signal); }
   catch (error) { signal.throwIfAborted(); if (isAuthFailure(error)) throw error; return { view: { kind: 'unavailable', reason: 'outage' }, entitlement: null }; }
   signal.throwIfAborted();
-  if (token === null) {
-    if (!source.fallbackPlan) return { view: { kind: 'unavailable', reason: 'not-published' }, entitlement: null };
-    let plan: FallbackPlan | null;
-    try { plan = await source.fallbackPlan(signal); signal.throwIfAborted(); }
-    catch (error) { signal.throwIfAborted(); if (isAuthFailure(error)) throw error; return { view: { kind: 'unavailable', reason: 'outage' }, entitlement: null }; }
-    if (!plan) return { view: { kind: 'unavailable', reason: 'not-published' }, entitlement: null };
-    if (plan.status === 'canceled' || plan.status === 'none') return { view: { kind: 'inactive', planName: plan.status === 'none' ? null : plan.planName, status: plan.status, source: 'billing-limits' }, entitlement: null };
-    return { view: { kind: 'active', planName: plan.planName ?? 'Eliza Cloud plan', status: plan.status, allowance: null, expiresAt: plan.periodEnd ?? 0, refreshFailed: false, source: 'billing-limits' }, entitlement: null };
-  }
+  // No unsigned fallback: a Cloud without the route leaves plan state unknown.
+  if (token === null) return { view: { kind: 'unavailable', reason: 'not-published' }, entitlement: null };
   try {
     const { header } = decodeEntitlement(token);
     const keys = await keysFor(source, header.kid, signal, now());
@@ -381,9 +358,8 @@ export class EntitlementRefresher {
       const result = await this.check(controller.signal);
       if (this.stopped || controller.signal.aborted) return;
       if (result.entitlement) { this.entitlement = result.entitlement; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); }
-      // Terminal until the next explicit check: no plan, a Cloud without the route, or the
-      // billing-snapshot answer used while the route is absent.
-      else if (result.view.kind === 'inactive' || result.view.kind === 'active' || (result.view.kind === 'unavailable' && result.view.reason === 'not-published')) { this.entitlement = null; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); return; }
+      // Terminal until the next explicit check: no plan.
+      else if (result.view.kind === 'inactive') { this.entitlement = null; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); return; }
       else {
         this.failures++;
         if (this.entitlement && this.entitlement.expiresAt > this.timers.now()) this.onView(subscriptionView(this.entitlement, true));
@@ -498,7 +474,8 @@ export class SubscriptionRedeemError extends Error {
   readonly code: RedeemFailureCode; readonly retryAfterMs: number | null;
   constructor(code: RedeemFailureCode, retryAfterMs: number | null = null) { super(`Subscription code ${code}`); this.name = 'SubscriptionRedeemError'; this.code = code; this.retryAfterMs = retryAfterMs; }
 }
-export interface RedeemResult { replayed: boolean; grantEndsAt: number | null; paidPlanTakesPrecedence: boolean; planName: string | null }
+/** `planEndsAt`: the end of the window now serving the plan (Cloud's effectiveUntil, else the grant's end unless a paid plan takes precedence). */
+export interface RedeemResult { replayed: boolean; grantEndsAt: number | null; paidPlanTakesPrecedence: boolean; planName: string | null; planEndsAt: number | null }
 /** Owner-facing redemption copy. Unknown, expired, disabled and used-up codes share one answer. */
 export function redeemFailureMessage(error: unknown): string {
   if (error instanceof SubscriptionRedeemError) {

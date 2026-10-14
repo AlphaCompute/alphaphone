@@ -45,6 +45,10 @@ final class AlphaCredentialStore {
  String slotHash(String name)throws Exception{return slots.slotHash(name);}
  AtomicFile slotFile(String hash)throws Exception{return slots.slotFile(hash);}
  String readCredentialSlot(String name)throws Exception{return slots.read(name);}
+ /** Reads one slot with only a base context, before the Application exists (pending reset launch). */
+ static String readSlotBeforeAttach(Context base,String name)throws Exception{
+  return new JsonCredentialSlots(new File(base.getNoBackupFilesDir(),"connection-credentials"),"alpha.connection.aes.v1",AlphaCredentialStore::slotLimit).read(name);
+ }
  /** Critical credential changes cannot leave a child process using the old environment. */
  void writeCredentialSlot(String name,String value)throws Exception{if(value==null)throw new IllegalArgumentException("Credential value required");requireCapacity(name,value);mutateSlot(name,null,value,false);}
  void removeCredentialSlot(String name)throws Exception{mutateSlot(name,null,null,false);}

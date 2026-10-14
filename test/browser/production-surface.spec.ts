@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { addSyntheticEntitlement } from './synthetic-entitlement';
 // Runs only in the `production` project: a flag-off `vite build` served by `vite preview`.
 // It proves the shipped web bundle exposes no mock, fixture or developer surface.
 // It does not prove Android packaging, which is audited separately per APK.
@@ -292,6 +293,7 @@ test('production signed-out voice requires Cloud without capture, upload or loca
 });
 for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpackaged','legacy-offline'] as const) {
  test(`resident billing onboarding: ${mode}`,async({page})=>{
+  await addSyntheticEntitlement(page);
   await page.addInitScript(mode=>{
    const w=window as any;w.androidBridge={};w.residentCalls=[];
    const id='9f1dc45a-4011-4e44-947a-30d999d24fa5';
@@ -326,8 +328,9 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
     if(method==='request'){
      const path=new URL(input.url).pathname;
      if(path==='/api/v1/user')return{status:200,data:{success:true,data:{id}}};
-     if(path==='/api/v1/subscription/entitlement')return { status: 404, data: {} }; // Entitlement route absent: the billing snapshot answers.
-     if(path==='/api/v1/billing/limits')return mode==='unavailable'?{status:503,data:{error:'temporary'}}:{status:200,data:{success:true,data:{v2:{subscription:mode==='funded'||mode==='replaced'?{status:'available',value:{planKey:'plus_monthly',state:'active',currentPeriodEnd:'2099-01-01T00:00:00.000Z'}}:{status:'not_applicable',reason:'no_organization_subscription'}}}}};
+     // Synthetic signed entitlement: an active plan, no plan, or a Cloud billing outage (503).
+     if(path==='/api/v1/subscription/entitlement'&&mode==='unavailable')return{status:503,data:{success:false,code:'service_unavailable'}};
+     {const answer=await w.__syntheticEntitlement.answer(path,id,mode==='empty'?'none':'active');if(answer)return answer;}
      throw Error('Unexpected Cloud route: '+path);
     }
     return {};
@@ -336,13 +339,24 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
   await page.goto('/');
   // Every Alpha Phone signs in to Eliza Cloud and holds a plan: no local-only bypass in any state.
   if(mode==='signed-out'||mode==='unpackaged'||mode==='legacy-offline'){await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'Welcome to Alpha'})).toBeVisible();}
-  // No plan, or a plan state Cloud cannot confirm: "needs plan" with Redeem code and Choose a plan.
-  if(mode==='empty'||mode==='unavailable'){
+  // No plan: "needs plan" with Redeem code and Choose a plan, and no way around it.
+  if(mode==='empty'){
    const gate=page.getByRole('dialog',{name:'Choose a plan',exact:true});await expect(gate).toBeVisible();
    await expect(gate.getByRole('button',{name:'Redeem code',exact:true})).toBeVisible();
    await expect(gate.getByRole('button',{name:'Choose a plan',exact:true})).toBeVisible();
-   await expect(gate.getByText(mode==='empty'?'No active plan':'Plan status unavailable',{exact:true})).toBeVisible();
+   await expect(gate.getByText('No active plan',{exact:true})).toBeVisible();
    await page.keyboard.press('Escape');await expect(gate).toBeVisible();
+  }
+  // A Cloud billing outage is not a refusal: a closable Offline notice says the plan could not be
+  // checked, never "Choose a plan"; local apps stay reachable and the agent waits.
+  if(mode==='unavailable'){
+   const notice=page.getByRole('dialog',{name:'Offline',exact:true});await expect(notice).toBeVisible();
+   await expect(notice.getByText('Plan status unavailable',{exact:true})).toBeVisible();
+   await expect(notice.getByRole('button',{name:'Check plan again',exact:true})).toBeVisible();
+   await expect(notice.getByRole('button',{name:'Choose a plan',exact:true})).toHaveCount(0);
+   await expect(notice.getByRole('button',{name:'Redeem code',exact:true})).toHaveCount(0);
+   await page.keyboard.press('Escape');await expect(notice).toHaveCount(0);
+   await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
   }
   const admitted=mode==='funded';
   if(mode==='funded')await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
@@ -416,14 +430,53 @@ test('an earlier local-only choice with a saved sign-in migrates to the gate and
  });
  await page.goto('/');
  // The retired choice is replaced by the gate on this launch; the saved sign-in is checked (offline
- // here, with no recently verified plan), stays offered, and nothing is started.
- const welcome=page.getByRole('dialog',{name:'Reconnect Eliza Cloud'});
- await expect(welcome.getByRole('button',{name:'Retry saved connection',exact:true})).toBeVisible();
- await expect(welcome.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(0);
+ // here, and this phone has no plan-admission record yet). Offline is not a refusal: the notice
+ // closes, local apps stay reachable, and nothing is started.
+ const notice=page.getByRole('dialog',{name:'Offline',exact:true});
+ await expect(notice.getByRole('button',{name:'Try again',exact:true})).toBeVisible();
+ await expect(notice.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(0);
  await page.keyboard.press('Escape');
- await expect(welcome).toBeVisible();
+ await expect(notice).toHaveCount(0);
+ await page.getByRole('button',{name:'Notes',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Notes',exact:true}).first()).toBeVisible();
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.connection.selection.v1')!))).toEqual({kind:'none'});
  const calls=await page.evaluate(()=>(window as any).residentCalls);
  expect(calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method)).not.toContain('start');
  expect(calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method)).not.toContain('configureCloudProvider');
+});
+test('an earlier local-only choice without a sign-in keeps local apps while Cloud is unreachable and offers sign-in',async({page})=>{
+ await page.addInitScript(()=>{
+  const w=window as any;w.androidBridge={};w.residentCalls=[];
+  if(!sessionStorage.getItem('seeded')){sessionStorage.setItem('seeded','1');localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline',localApps:true}));}
+  const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
+  w.Capacitor={PluginHeaders:[
+   {name:'DeviceApps',methods:methods(['buildInfo'])},
+   {name:'Agent',methods:methods(['getStatus','start','stop','request'])},
+   {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureRemove','secureCompareExchange','request','cancel','openExternal'])},
+   {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+   {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
+  ],nativePromise:async(plugin:string,method:string,input:any)=>{
+   w.residentCalls.push({plugin,method,url:input?.url});
+   if(plugin==='AlphaVoiceCloud')return{microphone:'granted'};
+   if(plugin==='DeviceApps')return{launcher:false,version:'local-apps-fixture'};
+   if(plugin==='AlphaNotifications')return{permissionGranted:true,appEnabled:true};
+   if(plugin==='Agent'&&method==='getStatus')return{packaged:true,state:'stopped',serviceActive:false,socketListening:false};
+   if(method==='secureRead')return{value:null};
+   // Network is off: every Cloud request fails.
+   if(plugin==='AlphaConnection'&&method==='request')throw Error('Connection request failed');
+   return {};
+  }};
+ });
+ await page.goto('/');
+ const notice=page.getByRole('dialog',{name:'Offline',exact:true});
+ await expect(notice).toBeVisible();
+ await expect(notice.getByText('Eliza Cloud cannot be reached right now. Local apps keep working. Sign in to Eliza Cloud when you are online to use your agent.',{exact:true})).toBeVisible();
+ await expect(notice.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();
+ await page.keyboard.press('Escape');
+ await expect(notice).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
+ const calls=await page.evaluate(()=>(window as any).residentCalls);
+ // One unauthenticated reachability read of the public entitlement keys; nothing else.
+ expect(calls.filter((c:any)=>c.method==='request').map((c:any)=>new URL(c.url).pathname)).toEqual(['/api/v1/subscription/entitlement-keys']);
+ expect(calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method)).not.toContain('start');
 });

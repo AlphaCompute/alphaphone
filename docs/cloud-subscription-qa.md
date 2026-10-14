@@ -66,8 +66,8 @@ Open `http://127.0.0.1:5317/`, then **Settings › Agent connection › Subscrip
 Staging › Start subscription gate QA**. Cloud requests go through the development Cloud bridge
 (`scripts/browser-cloud-dev-bridge.ts`), which keeps the staging sign-in key on the Mac in
 `$ALPHA_BROWSER_CLOUD_PROFILE` (default `~/.local/share/alphaphone/browser-cloud`) and never in
-the browser. The bridge admits the plan routes (identity, entitlement and keys, billing snapshot,
-code redemption) and nothing else new. The browser run stops after plan admission.
+the browser. The bridge admits the plan routes (identity, entitlement and keys, code redemption) and
+nothing else new; the unsigned billing snapshot is not admitted. The browser run stops after plan admission.
 
 ## End-to-end checklist
 
@@ -92,18 +92,28 @@ not reuse production codes.
 8. Revoke the grant with `revoke-subscription-grants.ts`; on the next return to the app or
    refresh, the gate shows **Choose a plan** or **Your plan has ended** and the agent stops.
 9. Airplane mode after a successful admission, then relaunch: **Offline** notice, closable, local
-   apps work, no agent. Airplane mode on a never-admitted sign-in: the gate stays.
-10. **Reset Alpha data**: the local reset completes; the old key no longer authenticates
-    (`GET /api/v1/user` with it returns 401) when Cloud was reachable.
-11. Sign-in key expiry warning: shown within 14 days of the key's `expiresAt` (CLI keys last 90
+   apps work, no agent. The same with a kept sign-in that was never admitted (for example the
+   first launch after updating from a build before the plan gate). Turning airplane mode off
+   checks again on its own (at most once a minute) and starts the agent when the plan admits.
+10. With staging entitlement signing unconfigured (the entitlement route answers 503), a signed-in
+    owner sees a closable **Offline** notice ("Plan status unavailable"), never **Choose a plan**.
+11. Approve this phone again (or any re-sign-in): afterwards the old key no longer authenticates
+    (`GET /api/v1/user` with it returns 401) and the new one does.
+12. **Reset Alpha data**: a notice that cannot be dismissed covers Alpha until it closes; the local
+    reset completes; the old key no longer authenticates (`GET /api/v1/user` with it returns 401)
+    when Cloud was reachable. Force-stopping Alpha during that notice and relaunching still
+    revokes the key before the data is wiped.
+13. Sign-in key expiry warning: shown within 14 days of the key's `expiresAt` (CLI keys last 90
     days); **Approve this phone again** opens a fresh sign-in.
 
 ## Automated coverage (no real account)
 
 - `test/browser/native-cloud-subscription.spec.ts`: first-run gate, legacy local-only migration,
-  every plan state, billing snapshot fallback, outage and offline grace, redeem success, invalid,
-  rate-limited, already redeemed and transport replay, plan panel and Settings data, sign-in
-  expiry warning (flag-off Android composition, synthetic native ports and ES256 tokens).
+  every plan state, absent entitlement route (no unsigned fallback), outage, rate limit and offline
+  (closable notice, no agent), the 7-day grace and its end, stopping an agent another surface
+  started, return-check throttling and network recovery, redeem success, invalid (code kept,
+  marked invalid), revoked replay, rate-limited, already redeemed and transport replay, plan panel
+  and Settings data, sign-in expiry warning and re-approval revoking the replaced key (flag-off Android composition, synthetic native ports and ES256 tokens).
 - `scripts/test-cloud-subscription.mjs`, `test/subscription-entitlement.test.mjs`: protocol and
   presentation; `test/connection-routes.test.mjs` with `test/fixtures/ConnectionRoutesTest.java`:
   native allowlist, reset revocation target, direct-provider gating.

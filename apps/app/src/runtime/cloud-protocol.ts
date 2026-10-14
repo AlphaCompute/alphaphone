@@ -4,7 +4,7 @@ import { CloudPersonalProtocol, PersonalProtocolError } from './cloud-personal-p
 import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
 import { reviewOpaqueAttachment, type OpaqueMailAttachment } from './inbox-operation.ts';
 import { gmailCapabilitiesFor } from './gmail-grants.ts';
-import { BILLING_LIMITS_PATH, ENTITLEMENT_KEYS_PATH, ENTITLEMENT_PATH, REDEEM_PATH, fallbackPlanFromLimits, normalizeSubscriptionCode, readServiceLimit, SubscriptionRedeemError, type EntitlementSource, type FallbackPlan, type RedeemResult } from './subscription-entitlement.ts';
+import { ENTITLEMENT_KEYS_PATH, ENTITLEMENT_PATH, REDEEM_PATH, normalizeSubscriptionCode, readServiceLimit, SubscriptionRedeemError, type EntitlementSource, type RedeemResult } from './subscription-entitlement.ts';
 /** Narrow Alpha adapter for Eliza Cloud. Contracts inspected in v3's
  * cloud/api/auth/cli-session, cloud/api/v1/eliza/{agents,google}, and
  * ui/src/api/client-cloud.ts. Native composition owns HTTP and secure storage.
@@ -218,23 +218,6 @@ export class CloudProtocol {
   private async call(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
     return object(await this.requestData(path, signal, options));
   }
-  /** Plan state from the read-only billing snapshot, used only while the entitlement route is
-   * absent. `null` when the snapshot route is absent too or does not report a known plan state. */
-  async billingFallbackPlan(signal: AbortSignal): Promise<FallbackPlan | null> {
-    signal.throwIfAborted();
-    const credential = await this.credentials.read(this.environment);
-    signal.throwIfAborted();
-    if (!credential?.credentialId) throw new CloudProtocolError("credentials-missing");
-    let data: ObjectValue;
-    try { data = await this.call(BILLING_LIMITS_PATH, signal, { authenticated: true, credentialId: credential.credentialId }); }
-    catch (error) {
-      if (error instanceof CloudProtocolError && error.code === "http" && [404, 405, 501].includes(error.status ?? 0)) return null;
-      throw error;
-    }
-    await this.assertSameCredential(credential.credentialId, signal);
-    if (data.success !== true) return null;
-    return fallbackPlanFromLimits(data);
-  }
   /**
    * Redeems a subscription grant code for the signed-in account. `idempotencyKey` is fresh for
    * each owner submission; a transport failure (the request may have arrived) is retried once
@@ -273,11 +256,16 @@ export class CloudProtocol {
     await this.assertSameCredential(credential.credentialId, signal);
     const grant = data.grant && typeof data.grant === "object" && !Array.isArray(data.grant) ? data.grant as ObjectValue : null;
     if (data.success !== true || !grant || typeof data.replayed !== "boolean") throw new SubscriptionRedeemError("unavailable");
+    // A replay of a grant support revoked is not a redemption: it grants nothing.
+    if (grant.revoked === true) throw new SubscriptionRedeemError("invalid");
     const endsAt = typeof grant.endsAt === "string" ? Date.parse(grant.endsAt) : NaN;
     const summary = data.entitlement && typeof data.entitlement === "object" ? data.entitlement as ObjectValue : null;
     const plan = summary?.plan && typeof summary.plan === "object" ? summary.plan as ObjectValue : null;
     const planName = typeof plan?.name === "string" && plan.name.trim() && plan.name.length <= 80 && !/[\x00-\x1f\x7f]/.test(plan.name) ? plan.name.trim() : null;
-    return { replayed: data.replayed, grantEndsAt: Number.isFinite(endsAt) ? endsAt : null, paidPlanTakesPrecedence: grant.paidPlanTakesPrecedence === true, planName };
+    // The end of the window that now serves the plan (paid period or grant), when Cloud reported it.
+    const until = typeof summary?.effectiveUntil === "string" ? Date.parse(summary.effectiveUntil) : NaN;
+    return { replayed: data.replayed, grantEndsAt: Number.isFinite(endsAt) ? endsAt : null, paidPlanTakesPrecedence: grant.paidPlanTakesPrecedence === true, planName,
+      planEndsAt: Number.isFinite(until) ? until : grant.paidPlanTakesPrecedence === true || !Number.isFinite(endsAt) ? null : endsAt };
   }
   private async assertSameCredential(credentialId: string, signal: AbortSignal) {
     const current = await this.credentials.read(this.environment);
@@ -317,8 +305,7 @@ export class CloudProtocol {
   entitlementSource(): EntitlementSource {
     return { issuer: this.entitlementIssuer,
       entitlement: signal => this.subscriptionEntitlement(signal),
-      entitlementKeys: signal => this.subscriptionEntitlementKeys(signal),
-      fallbackPlan: signal => this.billingFallbackPlan(signal) };
+      entitlementKeys: signal => this.subscriptionEntitlementKeys(signal) };
   }
   /** Opens Cloud's hosted plan page (exactly planManagementUrl) in the system browser. No
    * checkout, upgrade or overage purchase is created here; the owner chooses a plan in Cloud. */
@@ -449,6 +436,26 @@ export class CloudProtocol {
       const current = await this.credentials.read(this.environment);
       if (current?.credentialId === credential.credentialId && current?.token === credential.token) await this.credentials.clear(this.environment);
     }
+  }
+  /**
+   * Best-effort revocation of a sign-in key this phone no longer holds, after a new sign-in
+   * replaced it (for example "Approve this phone again" before the old key expires). The old key
+   * revokes itself through the same self-revocation route sign-out uses, presented explicitly:
+   * the stored (new) credential is never sent. One attempt, never retried. Returns true only for
+   * a confirmed revocation; every failure is reported as false, never thrown.
+   */
+  async revokeReplacedCredential(previous: CloudCredential | null, signal: AbortSignal): Promise<boolean> {
+    if (!this.options.deleteRequests || !previous?.token) return false;
+    const current = await this.credentials.read(this.environment);
+    // Only a key that was actually replaced; never the key this phone still uses.
+    if (!current || current.token === previous.token || (previous.credentialId !== undefined && current.credentialId === previous.credentialId)) return false;
+    if (previous.expiresAt !== undefined && previous.expiresAt <= Date.now()) return false;
+    try {
+      const response = await this.request({ url: this.authority.api + "/api/v1/api-keys/current", method: "DELETE",
+        headers: { Accept: "application/json", Authorization: `Bearer ${previous.token}` }, signal, timeoutMs: 10_000, redirect: "error" });
+      const data = response.data && typeof response.data === "object" ? response.data as ObjectValue : null;
+      return response.status >= 200 && response.status < 300 && data?.success === true && (data.status === undefined || data.status === "revoked");
+    } catch { return false; }
   }
   private runtimeUrl(value: unknown, id: string, tier: string | null): string | null {
     if (value == null) return tier === "shared" ? `${this.authority.api}/api/v1/eliza/agents/${id}` : null;

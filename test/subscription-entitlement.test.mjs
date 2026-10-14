@@ -10,7 +10,7 @@ import {
   ENTITLEMENT_AUDIENCE, ENTITLEMENT_TYPE, MAX_ENTITLEMENT_LIFETIME_MS, REFRESH_RETRY_MAX_MS, REFRESH_RETRY_MIN_MS,
   EntitlementError, EntitlementRefresher, allowanceText, checkEntitlement, clearEntitlementKeyCache, decodeEntitlement,
   describeSubscription, isEntitlementSignInFailure, nextRefreshDelay, readServiceLimit, serviceLimitMessage, subscriptionView, verifyEntitlement,
-  fallbackPlanFromLimits, normalizeSubscriptionCode, planAdmission, redeemFailureMessage, redeemSuccessMessage, SubscriptionRedeemError,
+  normalizeSubscriptionCode, planAdmission, redeemFailureMessage, redeemSuccessMessage, SubscriptionRedeemError,
 } from '../apps/app/src/runtime/subscription-entitlement.ts';
 
 const ISSUER = 'https://api.eliza.app';
@@ -97,8 +97,8 @@ test('presentation uses only Cloud numbers and never mentions credits or top-ups
     {kind: 'checking'},
     {kind: 'active', planName: 'Synthetic plan', status: 'active', allowance: null, expiresAt: NOW, refreshFailed: false},
     {kind: 'active', planName: 'Synthetic plan', status: 'past_due', allowance: null, expiresAt: NOW, refreshFailed: true},
-    {kind: 'inactive', planName: null, status: 'none', source: 'billing-limits'},
-    {kind: 'inactive', planName: 'Synthetic plan', status: 'canceled', source: 'entitlement'},
+    {kind: 'inactive', planName: null, status: 'none'},
+    {kind: 'inactive', planName: 'Synthetic plan', status: 'canceled'},
     {kind: 'unavailable', reason: 'outage'}, {kind: 'unavailable', reason: 'not-published'}, {kind: 'unavailable', reason: 'invalid'},
     {kind: 'expired', planName: 'Synthetic plan'},
   ];
@@ -114,33 +114,32 @@ test('presentation uses only Cloud numbers and never mentions credits or top-ups
   assert.equal(describeSubscription(views[4]).headline, 'Synthetic plan has ended');
   assert.equal(describeSubscription(views[2]).manage, true);
   assert.match(describeSubscription(views[5]).detail, /Local apps and on-device speech keep working/);
+  // A Cloud without the entitlement route is an unchecked plan, never a request to buy one.
+  assert.match(describeSubscription(views[6]).detail, /Local apps and on-device speech keep working/);
+  assert.equal(describeSubscription(views[6]).manage, false);
+  assert.match(describeSubscription(views[7]).detail, /redeem a subscription code or choose a plan/);
   // Only an explicit no-plan answer stops Cloud-backed AI from starting.
 });
 
-function source({token = null, keys = [], fallback, fail, keyCalls = {n: 0}} = {}) {
+function source({token = null, keys = [], fail, keyCalls = {n: 0}} = {}) {
   return {issuer: ISSUER,
     entitlement: async () => { if (fail) throw fail; return token; },
-    entitlementKeys: async () => { keyCalls.n++; return keys; },
-    ...(fallback === undefined ? {} : {fallbackPlan: async () => { if (fallback instanceof Error) throw fallback; return fallback; }})};
+    entitlementKeys: async () => { keyCalls.n++; return keys; }};
 }
 const signal = () => new AbortController().signal;
 const exp = {userId: USER, organizationId: ORG};
 
-test('admission check: outage, unpublished route, billing snapshot fallback, invalid token and account change', async () => {
+test('admission check: outage, unpublished route (no unsigned fallback), invalid token and account change', async () => {
   clearEntitlementKeyCache();
   const {jwk, sign} = await keyPair();
   const now = () => NOW;
   assert.deepEqual((await checkEntitlement(source({fail: Object.assign(Error('offline'))}), exp, signal(), now)).view, {kind: 'unavailable', reason: 'outage'});
   assert.deepEqual((await checkEntitlement(source({fail: {code: 'http', status: 503}}), exp, signal(), now)).view, {kind: 'unavailable', reason: 'outage'});
   assert.deepEqual((await checkEntitlement(source(), exp, signal(), now)).view, {kind: 'unavailable', reason: 'not-published'});
-  // Entitlement route absent (404/405/501): the billing snapshot's subscription section, else unknown.
-  assert.deepEqual((await checkEntitlement(source({fallback: {status: 'none', planName: null, periodEnd: null}}), exp, signal(), now)).view, {kind: 'inactive', planName: null, status: 'none', source: 'billing-limits'});
-  assert.deepEqual((await checkEntitlement(source({fallback: {status: 'canceled', planName: 'Plus', periodEnd: NOW}}), exp, signal(), now)).view, {kind: 'inactive', planName: 'Plus', status: 'canceled', source: 'billing-limits'});
-  assert.deepEqual((await checkEntitlement(source({fallback: {status: 'active', planName: 'Plus', periodEnd: NOW + 1000}}), exp, signal(), now)).view, {kind: 'active', planName: 'Plus', status: 'active', allowance: null, expiresAt: NOW + 1000, refreshFailed: false, source: 'billing-limits'});
-  assert.deepEqual((await checkEntitlement(source({fallback: null}), exp, signal(), now)).view, {kind: 'unavailable', reason: 'not-published'});
-  assert.deepEqual((await checkEntitlement(source({fallback: Object.assign(Error('503'), {status: 503})}), exp, signal(), now)).view, {kind: 'unavailable', reason: 'outage'});
+  // A 429 is a Cloud limit, not a plan answer.
+  assert.deepEqual((await checkEntitlement(source({fail: {code: 'http', status: 429}}), exp, signal(), now)).view, {kind: 'unavailable', reason: 'outage'});
   await assert.rejects(checkEntitlement(source({fail: Object.assign(Error('401'), {status: 401})}), exp, signal(), now));
-  await assert.rejects(checkEntitlement(source({fallback: Object.assign(Error('changed'), {code: 'account-changed'})}), exp, signal(), now));
+  await assert.rejects(checkEntitlement(source({fail: Object.assign(Error('changed'), {code: 'account-changed'})}), exp, signal(), now));
   await assert.rejects(checkEntitlement(source({token: await sign(claims({sub: '33333333-3333-4333-8333-333333333333'})), keys: [jwk]}), exp, signal(), now), error => error.code === 'account-mismatch');
   const other = await keyPair();
   clearEntitlementKeyCache();
@@ -261,12 +260,14 @@ test('revocation to no plan stops refreshing, and a rejected sign-in stops the r
   assert.equal(isEntitlementSignInFailure(new EntitlementError('signature')), false);
   assert.equal(isEntitlementSignInFailure({status: 503}), false);
 
-  // A Cloud without the route is not polled.
+  // A Cloud without the route is retried with the bounded outage backoff, so a deployed route is
+  // picked up without a relaunch; it never polls faster than the backoff allows.
   const legacyTimers = fakeTimers();
   let legacyChecks = 0;
-  new EntitlementRefresher({timers: legacyTimers, retry: true, onView: () => {}, check: async () => { legacyChecks++; return {view: {kind: 'unavailable', reason: 'not-published'}, entitlement: null}; }});
+  const legacy = new EntitlementRefresher({timers: legacyTimers, retry: true, onView: () => {}, check: async () => { legacyChecks++; return {view: {kind: 'unavailable', reason: 'not-published'}, entitlement: null}; }});
   await legacyTimers.advance(3600000);
-  assert.equal(legacyChecks, 1);
+  assert.ok(legacyChecks > 1 && legacyChecks <= 3600000 / REFRESH_RETRY_MAX_MS + 5, String(legacyChecks));
+  legacy.stop();
 });
 
 test('Cloud limit refusals carry retry information and never imply a purchase or an automatic retry', () => {
@@ -354,33 +355,26 @@ test('cached tokens past their refresh hint cannot cause a zero-delay refresh lo
   for (const status of ['none', 'canceled']) assert.equal(nextRefreshDelay(entitlementAt(NOW, NOW + 100000, status), NOW, 0), null);
 });
 
-test('plan gate decisions: active/trialing admit, past_due admits with a warning, canceled/none and unknown need a plan', () => {
+test('plan gate decisions: active/trialing admit, past_due admits with a warning, canceled/none and invalid need a plan, an unreachable Cloud is not a refusal', () => {
   const active = status => ({kind: 'active', planName: 'Synthetic plan', status, allowance: null, expiresAt: NOW, refreshFailed: false});
   assert.equal(planAdmission(active('active')), 'admit');
   assert.equal(planAdmission(active('trialing')), 'admit');
   assert.equal(planAdmission(active('past_due')), 'admit-with-warning');
   assert.match(describeSubscription(active('past_due')).detail, /Payment is past due/);
   assert.equal(describeSubscription(active('past_due')).manage, true);
-  for (const status of ['canceled', 'none']) assert.equal(planAdmission({kind: 'inactive', planName: null, status, source: 'entitlement'}), 'needs-plan');
-  for (const reason of ['outage', 'not-published', 'invalid']) assert.equal(planAdmission({kind: 'unavailable', reason}), 'unknown');
+  for (const status of ['canceled', 'none']) assert.equal(planAdmission({kind: 'inactive', planName: null, status}), 'needs-plan');
+  // An outage, a rate limit or a Cloud without the route: local apps stay, the agent waits.
+  for (const reason of ['outage', 'not-published']) assert.equal(planAdmission({kind: 'unavailable', reason}), 'unreachable');
+  assert.equal(planAdmission({kind: 'unavailable', reason: 'invalid'}), 'unknown');
   assert.equal(planAdmission(null), 'unknown');
   assert.equal(planAdmission({kind: 'checking'}), 'unknown');
   assert.equal(planAdmission({kind: 'expired', planName: 'x'}), 'unknown');
 });
 
-test('billing snapshot fallback reads only known subscription states', () => {
-  const limits = subscription => ({success: true, data: {v2: {subscription}}});
-  const value = (state, extra = {}) => limits({status: 'available', value: {planKey: 'plus_monthly', state, currentPeriodEnd: '2026-11-12T00:00:00.000Z', ...extra}});
-  assert.deepEqual(fallbackPlanFromLimits(value('active')), {status: 'active', planName: 'Plus', periodEnd: Date.parse('2026-11-12T00:00:00.000Z')});
-  assert.equal(fallbackPlanFromLimits(value('trialing')).status, 'trialing');
-  for (const state of ['past_due', 'grace', 'unpaid']) assert.equal(fallbackPlanFromLimits(value(state)).status, 'past_due', state);
-  for (const state of ['canceled', 'incomplete_expired']) assert.equal(fallbackPlanFromLimits(value(state)).status, 'canceled', state);
-  for (const state of ['pending', 'incomplete', 'paused', 'unknown', 7]) assert.equal(fallbackPlanFromLimits(value(state)), null, String(state));
-  assert.deepEqual(fallbackPlanFromLimits(limits({status: 'not_applicable', reason: 'no_organization_subscription'})), {status: 'none', planName: null, periodEnd: null});
-  assert.equal(fallbackPlanFromLimits(limits({status: 'unavailable', error: {code: 'x'}})), null);
-  assert.equal(fallbackPlanFromLimits({success: true, data: {}}), null);
-  assert.equal(fallbackPlanFromLimits(null), null);
-  assert.equal(fallbackPlanFromLimits(value('active', {planKey: 'unlisted_plan', currentPeriodEnd: 'not a date'})).planName, null);
+test('the unsigned billing snapshot is gone: the entitlement module has no fallback plan source', () => {
+  const module = fs.readFileSync('apps/app/src/runtime/subscription-entitlement.ts', 'utf8');
+  const protocol = fs.readFileSync('apps/app/src/runtime/cloud-protocol.ts', 'utf8');
+  for (const source of [module, protocol]) assert.doesNotMatch(source, /billing\/limits|fallbackPlan|BILLING_STATES|billingFallbackPlan/);
 });
 
 test('subscription codes normalize like Cloud and failures share generic copy that never echoes the code', () => {
@@ -398,19 +392,17 @@ test('subscription codes normalize like Cloud and failures share generic copy th
   assert.equal(redeemFailureMessage(new SubscriptionRedeemError('invalid')), 'This code could not be redeemed. Check the code and try again.');
   assert.match(redeemFailureMessage(new SubscriptionRedeemError('rate-limited', 90_000)), /^Too many attempts\. Try again in about 2 minutes\.$/);
   assert.match(redeemFailureMessage(new SubscriptionRedeemError('rate-limited', null)), /Try again in about 60 seconds/);
-  assert.match(redeemSuccessMessage({replayed: false, grantEndsAt: Date.UTC(2027, 3, 14), paidPlanTakesPrecedence: false, planName: 'Plus'}), /^Code redeemed for Plus\. It runs until /);
-  assert.match(redeemSuccessMessage({replayed: true, grantEndsAt: null, paidPlanTakesPrecedence: true, planName: null}), /current paid plan stays in effect/);
+  assert.match(redeemSuccessMessage({replayed: false, grantEndsAt: Date.UTC(2027, 3, 14), paidPlanTakesPrecedence: false, planName: 'Plus', planEndsAt: Date.UTC(2027, 3, 14)}), /^Code redeemed for Plus\. It runs until /);
+  assert.match(redeemSuccessMessage({replayed: true, grantEndsAt: null, paidPlanTakesPrecedence: true, planName: null, planEndsAt: null}), /current paid plan stays in effect/);
 });
 
-test('a refresher answered by the billing snapshot reports the plan once and stops', async () => {
+test('refreshNow checks again on return and a stopped refresher never checks', async () => {
   const timers = fakeTimers();
-  const views = [];let checks = 0;
-  const refresher = new EntitlementRefresher({timers, retry: true, onView: view => views.push(view), check: async () => {checks++; return {view: {kind: 'active', planName: 'Plus', status: 'active', allowance: null, expiresAt: 0, refreshFailed: false, source: 'billing-limits'}, entitlement: null};}});
-  await timers.advance(REFRESH_RETRY_MAX_MS * 4);
-  assert.equal(checks, 1);
-  assert.equal(views.at(-1).source, 'billing-limits');
+  let checks = 0;
+  const refresher = new EntitlementRefresher({timers, onView: () => {}, check: async () => {checks++; return {view: {kind: 'inactive', planName: null, status: 'none'}, entitlement: null};}});
+  assert.equal(checks, 0);
   refresher.refreshNow();await timers.advance(0);
-  assert.equal(checks, 2, 'refreshNow checks again on return');
+  assert.equal(checks, 1, 'refreshNow checks again on return');
   refresher.stop();refresher.refreshNow();
-  assert.equal(checks, 2, 'a stopped refresher never checks');
+  assert.equal(checks, 1, 'a stopped refresher never checks');
 });

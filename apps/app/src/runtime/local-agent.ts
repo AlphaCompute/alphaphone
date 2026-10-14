@@ -326,6 +326,15 @@ export async function configureLocalCloudProvider(credentialId:string) {
   await native.configureCloudProvider({credentialId,model:'cerebras/qwen-3.8-27b'});
 }
 
+/**
+ * Whether the native on-device agent is running or still shutting down, whoever started it. The
+ * agent is a foreground service that outlives a renderer (activity recreate, WebView crash, the
+ * assistant surface), so a renderer that is not attached to it still reads this.
+ */
+export async function localAgentRunning():Promise<boolean> {
+  if(!Capacitor.isNativePlatform()||!native.getStatus)return false;
+  try{const status=await native.getStatus();return !!status&&status.packaged!==false&&(status.serviceActive===true||status.socketListening===true||['starting','running','stopping'].includes(status.state??''));}catch{return false;}
+}
 export async function stopLocalAgent() {
   if(!Capacitor.isNativePlatform()||!native.stop)throw Error('Stop browser development with Ctrl-C in its terminal.');
   await native.stop();

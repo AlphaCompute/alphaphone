@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { addSyntheticEntitlement } from './synthetic-entitlement';
 
 // B-13 on the FLAG-OFF bundle with the Android bridge stubbed (docs/core-loop-audit.md).
 //
@@ -29,6 +30,7 @@ const card = [
 ];
 
 async function residentAgent(page: Page, operation: unknown, capabilities: string[]) {
+  await addSyntheticEntitlement(page);
   await page.addInitScript(({ agentId, operation, capabilities }) => {
     const w = window as any;
     w.androidBridge = {};
@@ -129,8 +131,7 @@ async function residentAgent(page: Page, operation: unknown, capabilities: strin
           if (method === 'request') {
             const path = new URL(input.url).pathname;
             if (path === '/api/v1/user') return { status: 200, data: { success: true, data: { id: account } } };
-            if (path === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Deployed Cloud has no subscription entitlement route yet.
-            if (path === '/api/v1/billing/limits') return { status: 200, data: { success: true, data: { v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } } } } };
+            { const answer = await (window as any).__syntheticEntitlement.answer(path, account); if (answer) return answer; } // Synthetic signed active plan.
             f.unexpected.push('cloud ' + path); return { status: 404, data: {} };
           }
           return {};

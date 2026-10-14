@@ -18,8 +18,10 @@ Alpha source: `apps/app/src/runtime/subscription-entitlement.ts`, `cloud-protoco
   request from its own cached quota or token bucket.
 - Every Alpha Phone signs in to Eliza Cloud and holds a plan (owner decision, October 2026). The
   plan gate runs at admission and on return to the app; a turn never does.
-- Once a plan was verified on the phone recently, local apps, on-device speech and local tools do
-  not depend on an online billing check (offline grace, section 4).
+- Only a verified signed entitlement admits the agent; there is no unsigned fallback. Local apps
+  and on-device speech never depend on an online billing check: when Cloud cannot answer, the phone
+  shows a closable Offline notice and the agent waits (section 4). A plan verified on the phone
+  within 7 days keeps the agent admitted through such an outage.
 - Nothing is purchased automatically: no overage purchase, upgrade or retry that spends money.
 
 ## 1. Entitlement read
@@ -30,9 +32,10 @@ with `Authorization: Bearer <the phone's Cloud CLI key>` and `Accept: applicatio
 - `200 {"entitlement": "<compact JWS>"}` returns the current entitlement. The JWS is at most
   8192 characters.
 - `401` means the sign-in is invalid. The phone shows the sign-in action.
-- `404`, `405` or `501` means the route is not deployed. The phone then reads the subscription
-  section of `GET /api/v1/billing/limits` (section 4).
-- Any other status, or a transport failure, is a billing outage (section 4).
+- `404`, `405` or `501` means the route is not deployed (or is misrouted). Plan state is then
+  unknown: the phone reads no other billing source and treats it like an outage (section 4).
+- Any other status (including `429` and the `503` Cloud returns while signing is unconfigured), or
+  a transport failure, is a billing outage (section 4).
 
 The phone reads the entitlement when the resident agent is admitted, then refreshes it in the
 background. It never reads it once per turn.
@@ -124,11 +127,11 @@ routes, refusal bodies with `retryAfterSeconds`, 402 `allowance_exhausted` with 
 | Valid entitlement, plan `active` or `trialing` | Plan name and the Cloud allowance | yes |
 | Valid entitlement, plan `past_due` | Plan name, "Payment is past due" warning and "Manage plan in Eliza Cloud" | yes |
 | Valid entitlement, plan `canceled` or `none` | "Needs plan" gate: "<plan> has ended" or "No active plan", with Redeem code, Choose a plan (hosted page) and Check plan again | no |
-| Route absent (404/405/501) | `GET /api/v1/billing/limits`, `data.v2.subscription`: `trialing`/`active` admit, `grace`/`past_due`/`unpaid` admit with the warning, `canceled`/`incomplete_expired`/`not_applicable` need a plan | as mapped |
-| Route absent and the billing snapshot is absent or reports no known state | "Plan status unavailable" with Check plan again, Redeem code and Choose a plan | no |
-| Billing outage (5xx, timeout) after identity succeeded | Admitted when this sign-in had an admitting plan verified within the last 7 days ("Plan status unavailable"); otherwise the needs-plan gate with a retry | as stated |
-| Cloud unreachable at start (identity read fails in transport) | With a plan verified for this sign-in within 7 days: "Offline" notice, closable; local apps and on-device speech work, no agent starts. Otherwise the sign-in gate with the error | no |
+| Route absent (404/405/501), billing outage (5xx, timeout) or rate limit (429) after identity succeeded | Admitted when this sign-in had an admitting plan verified within the last 7 days whose window has not ended ("Plan status unavailable"). Otherwise a closable "Offline" notice ("Plan status unavailable", Check plan again); local apps and on-device speech work, no agent runs, never "Choose a plan" | as stated |
+| Cloud unreachable at start (identity read fails in transport, 5xx or 429) with a kept sign-in | "Offline" notice, closable; local apps and on-device speech work, no agent starts. This includes a phone updated from a build before the plan gate (no admission record yet). An agent another surface started is stopped unless a plan was verified within 7 days | no |
+| Pre-gate "Use local apps without AI" choice, no kept sign-in, Cloud unreachable | "Offline" notice, closable, with Sign in; local apps work. Once Cloud is reachable the sign-in gate applies | no |
 | Bad signature, unknown key or bad claims | Reported as unavailable (`invalid`), never trusted; needs-plan gate with a retry | no |
+| Any gate that does not admit (needs plan, Offline, signed out) | The on-device agent is stopped even when this renderer did not start it (activity recreate, WebView crash, assistant surface) | stopped |
 | Entitlement issued for another account, at admission | An error asking the owner to sign in again | no |
 | Plan reported `canceled`/`none` by a background refresh or a return to the app | The resident agent is stopped and the needs-plan gate is shown | stopped |
 | Entitlement issued for another account, during background refresh | Refresh stops, the Cloud-bound resident agent is stopped, the Cloud account is detached and the same sign-in error is shown | stopped |
@@ -137,16 +140,24 @@ routes, refusal bodies with `retryAfterSeconds`, 402 `allowance_exhausted` with 
 | Sign-in rejected (401), during background refresh | Same as an account mismatch during refresh: agent stopped, sign-in shown | stopped |
 | Cloud sign-in key expires within 14 days (`expiresAt` from the CLI login) | Warning in the account panel and Settings, with "Approve this phone again" (a fresh CLI sign-in) | unchanged |
 
-The 7-day offline grace is an engineering bound for offline use, not a billing decision: Cloud
-refuses every AI request without a plan. The record behind it (`alpha.connection.plan-admission.v1`)
-holds the environment, local credential generation id, user and organization ids, plan name and
-status, and the verification time; no credential.
+The 7-day grace is an engineering bound, not a billing decision: Cloud refuses every AI request
+without a plan. The record behind it (`alpha.connection.plan-admission.v1`) holds the environment,
+local credential generation id, user and organization ids, plan name and status, the plan window's
+end when known, and the verification time; no credential. Only a freshly verified signed
+entitlement writes `verifiedAt` (a failed refresh never extends it), and a record whose plan
+window has ended admits nothing. When an admitted agent's plan stays unconfirmed past the window
+(or its verified entitlement lapses), the agent is stopped and the Offline notice is shown.
+
+Return checks (visibility, page show, the network coming back) run at most once a minute, except
+the first return after "Choose a plan" or "Manage plan" opened the browser. A resident turn that
+Cloud refuses for billing (`insufficient_credits`, `subscription_required`, a bare 402) triggers a
+plan check, also at most once a minute, so a plan that ended mid-session reaches the gate.
 
 Background refresh happens at `rfa`, or after 75% of the lifetime. After a failure it retries
 after 30 s, then doubles the wait up to 5 minutes. It also runs when the owner returns to the app.
 It stops whenever the Cloud account is detached (every sign-out, expiry, account change or
-re-admission path), on a plan with no access, on a rejected sign-in or account mismatch, or when
-the plan state came from the billing snapshot.
+re-admission path), on a plan with no access, or on a rejected sign-in or account mismatch. A Cloud
+without the entitlement route is retried with the same bounded backoff.
 
 ## 5. Subscription codes
 
@@ -162,10 +173,16 @@ the plan state came from the billing snapshot.
   again in …" from `retryAfterSeconds`. `403`: account copy. Anything else: try again later.
 - The code is never logged, stored, put in an error or echoed.
 - On success the phone reads the entitlement again and admits the agent when the plan allows.
-  When a paid plan takes precedence, the copy says so.
+  When a paid plan takes precedence, the copy says so. A replay that reports `grant.revoked: true`
+  is refused with the generic copy and changes nothing.
+- The plan end shown afterwards is `entitlement.effectiveUntil` from the response (the window now
+  serving the plan), else the grant's `endsAt` unless a paid plan takes precedence.
+- The field keeps the code after a refusal (Cloud allows 5 attempts per 15 minutes), marks itself
+  invalid and names the error; it is cleared only on success. It uses `autocomplete="one-time-code"`.
 
 The native transport and the renderer allowlist admit exactly this POST (body required, no query),
-and `GET /api/v1/billing/limits`. The credit balance route is no longer admitted.
+The unsigned billing snapshot (`GET /api/v1/billing/limits`) and the credit balance route are no
+longer admitted.
 
 ## 6. Plan management
 
@@ -175,10 +192,17 @@ in the system browser. The phone creates no checkout, upgrade or purchase, and c
 again when the owner returns.
 
 Settings › Eliza Cloud account & plan shows the account, plan, the plan's end when Cloud reported
-it (billing snapshot period end or redeemed grant end), the sign-in expiry, and Redeem code,
-Manage plan and Sign out. Reset Alpha data asks Cloud to revoke this phone's key
+it, the sign-in expiry, and Redeem code, Manage plan and Sign out. The signed entitlement carries no
+end-date claim, so the plan end appears only after a redemption on this phone (from the redeem
+response); a plan bought on the web or redeemed elsewhere shows no end date until Cloud adds one.
+
+"Approve this phone again" is a fresh CLI sign-in. After the new key is stored, the key it replaced
+revokes itself once (`DELETE /api/v1/api-keys/current` presenting the old key), best effort; the
+new sign-in never waits on it. Reset Alpha data asks Cloud to revoke this phone's key
 (`DELETE /api/v1/api-keys/current`, one attempt, 3 s timeouts, 8 s overall deadline) after the
-reset is recorded; a failure never blocks the local reset.
+reset is recorded, behind a notice that cannot be dismissed, so nothing new is signed in meanwhile.
+A reset interrupted after it was recorded (process killed, reboot) revokes the same way on the next
+launch, bounded at 4 s, before anything is wiped. A failure never blocks the local reset.
 
 ## Gates that remain open
 

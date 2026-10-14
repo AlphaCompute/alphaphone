@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { addSyntheticEntitlement } from './synthetic-entitlement';
 
 // A Cloud sign-in kept on the phone, with the retired "local apps without AI" choice stored by an
 // earlier build, after a restart. Every Alpha Phone now signs in and holds a plan (#410): the next
@@ -12,6 +13,7 @@ type Mode = 'offline' | 'rejected' | 'funded';
 type Call = { plugin: string; method: string; path?: string; url?: string };
 
 async function boot(page: Page, mode: Mode) {
+  await addSyntheticEntitlement(page);
   await page.addInitScript(mode => {
     const w = window as any; w.androidBridge = {}; w.residentCalls = [];
     const id = '9f1dc45a-4011-4e44-947a-30d999d24fa5';
@@ -50,8 +52,7 @@ async function boot(page: Page, mode: Mode) {
         // Cloud no longer accepts the kept sign-in.
         if (mode === 'rejected') return { status: 401, data: { error: 'unauthorized' } };
         if (path === '/api/v1/user') return { status: 200, data: { success: true, data: { id } } };
-        if (path === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Deployed Cloud has no subscription entitlement route yet.
-        if (path === '/api/v1/billing/limits') return { status: 200, data: { success: true, data: { v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } } } } };
+        { const answer = await (window as any).__syntheticEntitlement.answer(path, id); if (answer) return answer; } // Synthetic signed active plan.
         throw Error('Unexpected Cloud route: ' + path);
       }
       return {};
@@ -71,24 +72,30 @@ test('the retired local-only choice migrates to the gate: a kept sign-in with a 
   // Identity and plan were read. Once signed in, Inbox may read its Gmail accounts. No Cloud-hosted
   // agent is listed, provisioned or restored and no remote session is opened.
   const paths = await cloudRequests(page);
-  expect(paths).toEqual(expect.arrayContaining(['/api/v1/user', '/api/v1/billing/limits']));
-  expect(paths.filter(path => !['/api/v1/user', '/api/v1/subscription/entitlement', '/api/v1/billing/limits', '/api/v1/eliza/google/accounts'].includes(path))).toEqual([]);
+  expect(paths).toEqual(expect.arrayContaining(['/api/v1/user', '/api/v1/subscription/entitlement', '/api/v1/subscription/entitlement-keys']));
+  expect(paths.filter(path => !['/api/v1/user', '/api/v1/subscription/entitlement', '/api/v1/subscription/entitlement-keys', '/api/v1/eliza/google/accounts'].includes(path))).toEqual([]);
+  expect(paths, 'the unsigned billing snapshot is never read').not.toContain('/api/v1/billing/limits');
   const native = await agentCalls(page);
   expect(native).toContain('configureCloudProvider');
   expect(native).toContain('start');
   expect(await selection(page)).toEqual({ kind: 'resident' });
 });
 
-test('a kept sign-in that cannot reach Cloud, with no recently verified plan, stays at the gate and offers the retry', async ({ page }) => {
+test('an update from the pre-gate build that cannot reach Cloud keeps local apps reachable and starts no agent', async ({ page }) => {
+  // No plan-admission record exists yet (the previous build never wrote one). Offline is not a
+  // refusal: the Offline notice closes, Notes and the other local apps stay reachable, and the
+  // agent waits until Eliza Cloud confirms the plan.
   await boot(page, 'offline');
-  const dialog = page.getByRole('dialog', { name: 'Reconnect Eliza Cloud' });
-  await expect(dialog.getByRole('alert')).toContainText('Connection request failed');
-  await expect(dialog.getByRole('button', { name: 'Retry saved connection', exact: true })).toBeEnabled();
-  await expect(dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeEnabled();
+  const dialog = page.getByRole('dialog', { name: 'Offline', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('status').first()).toContainText('Eliza Cloud cannot be reached right now. Local apps and on-device speech keep working');
+  await expect(dialog.getByRole('button', { name: 'Try again', exact: true })).toBeEnabled();
   await expect(dialog.getByRole('button', { name: 'Use local apps without AI', exact: true })).toHaveCount(0);
   await expect(dialog.getByText(/Signed in|Your Cloud account|Connected/)).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole('button', { name: 'Notes', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Notes', exact: true }).first()).toBeVisible();
   expect(await agentCalls(page)).not.toContain('start');
   expect(await agentCalls(page)).not.toContain('configureCloudProvider');
   expect(await selection(page)).toEqual({ kind: 'none' });

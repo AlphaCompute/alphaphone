@@ -12,6 +12,7 @@
 // says the shipped renderer takes the real path or shows an honest unavailable state; it never
 // says the native side of that path works. See docs/core-loop-audit.md.
 import { test, expect, type Page } from '@playwright/test';
+import { addSyntheticEntitlement } from './synthetic-entitlement';
 
 test.beforeEach(({}, testInfo) => { test.skip(testInfo.project.name !== 'production', 'Production bundle only'); });
 
@@ -39,6 +40,7 @@ async function fenceNetwork(page: Page, allowed: string[] = []) {
 /** Production Android as the renderer sees it: funded Cloud account, packaged resident agent that
  * keeps its conversations across a page reload, and an intercepted Clock handoff. */
 async function android(page: Page, options: { clock?: 'opened' | 'unavailable' | 'unknown' } = {}) {
+  await addSyntheticEntitlement(page);
   await page.addInitScript(({ options }) => {
     const w = window as any; w.androidBridge = {};
     const id = '9f1dc45a-4011-4e44-947a-30d999d24fa5', agentId = '6f1d3c3e-8c55-4c1b-9d1f-2b6f0b0d3a11';
@@ -120,8 +122,7 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
             const url = new URL(input.url);
             if (url.origin !== 'https://api.eliza.app') throw Error('Connection request failed');
             if (url.pathname === '/api/v1/user') return { status: 200, data: { success: true, data: { id } } };
-            if (url.pathname === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Deployed Cloud has no subscription entitlement route yet.
-            if (url.pathname === '/api/v1/billing/limits') return { status: 200, data: { success: true, data: { v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } } } } };
+            { const answer = await (window as any).__syntheticEntitlement.answer(url.pathname, id); if (answer) return answer; } // Synthetic signed active plan.
             return { status: 404, data: {} };
           }
           return {};

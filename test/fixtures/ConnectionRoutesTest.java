@@ -64,14 +64,13 @@ public final class ConnectionRoutesTest {
   check(ConnectionRoutes.admittedOrigin("http","10.0.2.2",2138,true),"test mocks keep the development agent");
   for(String route:new String[]{"/api/v1/eliza/agents","/api/v1/eliza/agents/id/api/conversations","/api/auth/pair","/api/conversations","/api/v1/eliza/personal","/api/v1/eliza/google/../agents","/api/v1/%65liza/google/status","/api/v1/eliza/google/status/","/api/v1/eliza/google//status"})for(String method:new String[]{"GET","POST"})check(!ConnectionRoutes.managedService(route,null,method,false,false),"hosted/unreviewed path refused "+route);
   check(ConnectionRoutes.managedService("/api/v1/user",null,"GET",false,false),"owner identity allowed");
-  // Subscription plan gate (#410): code redemption is one POST with a body; the billing snapshot is read-only; credits are retired.
+  // Subscription plan gate (#410): code redemption is one POST with a body; the unsigned billing snapshot and credits are retired.
   check(ConnectionRoutes.managedService("/api/v1/subscription/redeem",null,"POST",true,false),"subscription code redemption allowed");
   check(!ConnectionRoutes.managedService("/api/v1/subscription/redeem",null,"POST",false,false),"redemption needs a body");
   check(!ConnectionRoutes.managedService("/api/v1/subscription/redeem","code=x","POST",true,false),"redemption never carries a query");
   check(!ConnectionRoutes.managedService("/api/v1/subscription/redeem",null,"GET",false,false),"redemption is POST only");
   check(!ConnectionRoutes.managedService("/api/v1/subscription/redeem/",null,"POST",true,false)&&!ConnectionRoutes.managedService("/api/v1/subscription/redeem/x",null,"POST",true,false),"neighbouring redemption paths refused");
-  check(ConnectionRoutes.managedService("/api/v1/billing/limits",null,"GET",false,false),"billing snapshot read allowed");
-  check(!ConnectionRoutes.managedService("/api/v1/billing/limits",null,"POST",true,false),"billing snapshot write refused");
+  check(!ConnectionRoutes.managedService("/api/v1/billing/limits",null,"GET",false,false)&&!ConnectionRoutes.managedService("/api/v1/billing/limits",null,"POST",true,false),"unsigned billing snapshot retired"); 
   check(!ConnectionRoutes.managedService("/api/v1/credits/balance",null,"GET",false,false),"credit balance retired");
   // Reset Alpha data revokes only the presented key, at the exact self-revocation route.
   check(java.util.Arrays.equals(CloudKeyRevocation.environments(false),new String[]{"production"}),"flag-off reset revokes production only");

@@ -78,7 +78,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
     // Subscription redemption: exactly {code,idempotencyKey}; the code is forwarded, never logged or stored.
     const redeem=method==='POST'&&route==='/api/v1/subscription/redeem';
     if(redeem){const body=object(JSON.parse(input.body??'null'));if(Object.keys(body).sort().join()!=='code,idempotencyKey'||typeof body.code!=='string'||body.code.length>128||typeof body.idempotencyKey!=='string'||!/^[A-Za-z0-9._:-]{8,128}$/.test(body.idempotencyKey))throw Error('Invalid subscription redemption');}
-    else if(method!=='GET'||input.body!==undefined||!['/api/v1/user','/api/v1/billing/limits','/api/v1/subscription/entitlement','/api/v1/subscription/entitlement-keys','/api/v1/eliza/google/accounts?side=owner'].includes(route))throw Error('Unsupported Cloud route');
+    else if(method!=='GET'||input.body!==undefined||!['/api/v1/user','/api/v1/subscription/entitlement','/api/v1/subscription/entitlement-keys','/api/v1/eliza/google/accounts?side=owner'].includes(route))throw Error('Unsupported Cloud route');
     const c=await admitted(env,input.credentialReference);active.get(ownedId)!.credentialId=c.credentialId;const response=await canonical(env,route,controller.signal,redeem?{method:'POST',headers:{'Content-Type':'application/json'},body:input.body}:{},c);let result=await response.json();await current(env,c,controller.signal);if(response.ok&&route==='/api/v1/user'&&result.success===true){const who=object(result.data);result={success:true,data:{id:who.id,organization_id:who.organization_id,...(typeof who.email==='string'?{email:who.email}:{})}};}send(res,200,{status:response.status,data:result});return;
    }
    if(data.operation==='stt'||data.operation==='tts'){
