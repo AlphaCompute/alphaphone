@@ -54,6 +54,7 @@ export interface AlphaTelephonyPlugin {
   listMessages(options: { threadId: string; limit: number; before?: number; cursor?: string }): Promise<unknown>;
   observeMessages(options: { enabled: boolean }): Promise<unknown>;
   sendSms(options: { operationId: string; recipients: string[]; body: string; subscriptionId: number }): Promise<unknown>;
+  cancelSmsReview(options:{operationId:string}):Promise<unknown>;
   smsSendHistory(): Promise<unknown>;
   smsSendResult(options: { operationId: string }): Promise<unknown>;
   addListener?(event: 'messagesChanged' | 'smsSendUpdated', listener: (data: unknown) => void): Promise<{ remove(): Promise<void> | void }>;
