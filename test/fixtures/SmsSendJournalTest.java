@@ -50,20 +50,25 @@ public final class SmsSendJournalTest {
   require(!journal.sentResult("send-1", 0, false), "the first sent answer per part stands");
   journal.sentResult("send-1", 3, true);
   require("sent".equals(r.status()), "sent after every sent callback");
-  // Delivery: a report alone is not an outcome; the provider status decides, per recipient.
-  journal.deliveryReported("send-1", 0); journal.deliveryReported("send-1", 1);
-  require(!journal.providerStatus("send-1", 0, SmsSendJournal.STATUS_PENDING), "pending status changes nothing");
-  journal.providerStatus("send-1", 0, SmsSendJournal.STATUS_COMPLETE);
-  journal.providerStatus("send-1", 1, SmsSendJournal.STATUS_COMPLETE);
-  require("sent".equals(r.status()) && r.delivery[2] == SmsSendJournal.UNKNOWN, "no delivery without that part's report");
-  journal.deliveryReported("send-1", 2); journal.deliveryReported("send-1", 3);
-  journal.providerStatus("send-1", 1, SmsSendJournal.STATUS_COMPLETE);
-  require("delivered".equals(r.status()), "delivered after every report");
+  // Multipart: one provider row whose status each part's report overwrites, so it proves nothing per part.
+  for (int i = 0; i < 4; i++) journal.deliveryReported("send-1", i);
+  require(!journal.providerStatus("send-1", 0, SmsSendJournal.STATUS_COMPLETE) && !journal.providerStatus("send-1", 1, SmsSendJournal.STATUS_FAILED), "multipart delivery is never inferred from the shared row");
+  require("sent".equals(r.status()) && r.delivery[0] == SmsSendJournal.UNKNOWN, "multipart stays sent");
+  // Single part per recipient: a report alone is not an outcome; the provider status decides.
+  SmsSendJournal.Record single = journal.beginDispatch("send-1s", two, "hello", 3, new int[] { 1, 1 }, 2500, 7);
+  journal.endDispatch("send-1s", true); journal.sentResult("send-1s", 0, true); journal.sentResult("send-1s", 1, true);
+  journal.deliveryReported("send-1s", 0);
+  require(!journal.providerStatus("send-1s", 0, SmsSendJournal.STATUS_PENDING), "pending status changes nothing");
+  require(!journal.providerStatus("send-1s", 1, SmsSendJournal.STATUS_COMPLETE), "no delivery without that part's report");
+  journal.providerStatus("send-1s", 0, SmsSendJournal.STATUS_COMPLETE);
+  require("sent".equals(single.status()), "delivered needs every recipient");
+  journal.deliveryReported("send-1s", 1); journal.providerStatus("send-1s", 1, SmsSendJournal.STATUS_COMPLETE);
+  require("delivered".equals(single.status()) && !single.open(7, 2500), "delivered after every report");
 
   // A failed part makes the send failed; never retried.
   SmsSendJournal.Record f = journal.beginDispatch("send-2", one, "x", 3, new int[] { 1 }, 3000, 7);
   journal.endDispatch("send-2", true); journal.sentResult("send-2", 0, false);
-  require("failed".equals(f.status()) && !f.open(), "failed is closed");
+  require("failed".equals(f.status()) && !f.open(7, 3000), "failed is closed");
   // Delivery failure is recorded in the part, the send stays sent.
   SmsSendJournal.Record d = journal.beginDispatch("send-3", one, "y", 3, new int[] { 1 }, 3000, 7);
   journal.endDispatch("send-3", true); journal.sentResult("send-3", 0, true); journal.deliveryReported("send-3", 0);
@@ -86,10 +91,42 @@ public final class SmsSendJournalTest {
   require("submitted".equals(reloaded.get("send-6").status()), "same boot: callbacks may still arrive");
   reloaded.reconcile(8, true);
   require("unknown".equals(reloaded.get("send-6").status()), "after a restart, missing sent callbacks are unknown");
-  require("delivered".equals(reloaded.get("send-1").status()) && "failed".equals(reloaded.get("send-2").status()) && "cancelled".equals(reloaded.get("cancel-1").status()), "states survive reload");
+  require("delivered".equals(reloaded.get("send-1s").status()) && "sent".equals(reloaded.get("send-1").status()) && "failed".equals(reloaded.get("send-2").status()) && "cancelled".equals(reloaded.get("cancel-1").status()), "states survive reload");
   require(reloaded.get("send-1").bindingHash.equals(expectedHash), "binding persisted");
   String stored = new String(Files.readAllBytes(file.toPath()), "UTF-8");
   require(!stored.contains("Running late") && !stored.contains("\"5\""), "the body is never stored");
+  // Evidence is awaited only while it can still arrive: same boot, or a report whose status is unread, and at most MAX_OPEN_MS.
+  require(reloaded.get("send-1").open(8, 2000) && !reloaded.get("send-1").open(8, 2000 + SmsSendJournal.MAX_OPEN_MS + 1), "old records close");
+  require(!reloaded.get("send-6").open(8, 6000) && !reloaded.get("send-3").open(7, 6000), "no callback can arrive after a restart; resolved records are closed");
+
+  // A record that cannot be made durable is forgotten, never left reading "unknown" for a send that never happened.
+  File blocked = new File(dir, "blocked"); blocked.mkdir();
+  SmsSendJournal unwritable = new SmsSendJournal(new File(blocked, "journal"));
+  blocked.setWritable(false);
+  if (!blocked.canWrite()) {
+   throwsOn(() -> { try { unwritable.beginDispatch("send-x", one, "x", 3, new int[] { 1 }, 1, 7); } catch (java.io.IOException e) { throw new RuntimeException(e); } }, "an unwritable journal refuses the dispatch");
+   require(unwritable.get("send-x") == null, "the failed record is not kept in memory");
+  }
+  blocked.setWritable(true);
+
+  // The bound never blocks sending, even when every record still awaits delivery reports, and a dropped
+  // operation ID is refused rather than sent again.
+  File boundFile = new File(dir, "bound");
+  SmsSendJournal bound = new SmsSendJournal(boundFile);
+  for (int i = 0; i < SmsSendJournal.MAX_RECORDS + 5; i++) {
+   bound.beginDispatch("b" + i, one, "m" + i, 3, new int[] { 1 }, 10_000 + i, 7);
+   bound.endDispatch("b" + i, true); bound.sentResult("b" + i, 0, true);
+  }
+  require(bound.get("b0") == null && bound.get("b" + (SmsSendJournal.MAX_RECORDS + 4)) != null, "oldest open records make room");
+  String b0 = SmsSendJournal.sha256(SmsSendJournal.bindingText(one, "m0", 3));
+  boolean expired = false; try { bound.existing("b0", b0); } catch (SmsSendJournal.Expired expected) { expired = true; }
+  require(expired, "a dropped ID with the same binding reads expired");
+  throwsOn(() -> bound.existing("b0", SmsSendJournal.sha256(SmsSendJournal.bindingText(one, "other", 3))), "a dropped ID with other content is refused");
+  throwsOn(() -> { try { bound.beginDispatch("b0", one, "m0", 3, new int[] { 1 }, 1, 7); } catch (java.io.IOException e) { throw new RuntimeException(e); } }, "a dropped ID is never dispatched again");
+  SmsSendJournal boundReloaded = new SmsSendJournal(boundFile);
+  throwsOn(() -> boundReloaded.existing("b0", b0), "tombstones survive reload");
+  require(boundReloaded.existing("b" + (SmsSendJournal.MAX_RECORDS + 4), SmsSendJournal.sha256(SmsSendJournal.bindingText(one, "m" + (SmsSendJournal.MAX_RECORDS + 4), 3))) != null, "kept records survive reload");
+
   // A damaged journal is an error, never an empty journal that would allow a resend.
   Files.write(file.toPath(), "v1|broken\n".getBytes("UTF-8"));
   throwsOn(() -> { try { new SmsSendJournal(file); } catch (java.io.IOException e) { throw new RuntimeException(e); } }, "damaged journal refused");
@@ -105,7 +142,7 @@ public final class SmsSendJournalTest {
   require(SmsRecords.threadRow("thread:12") == 12 && SmsRecords.threadRow("thread:0") == -1 && SmsRecords.threadRow("thread:1 OR 1=1") == -1 && SmsRecords.threadRow(null) == -1, "thread IDs");
   require(SmsRecords.clip("ab😀", 3).equals("ab"), "clip keeps surrogate pairs whole");
   require(SmsRecords.mmsMillis(1700000000L) == 1700000000000L, "MMS seconds");
-  for (File each : dir.listFiles()) each.delete(); dir.delete();
+  for (File each : dir.listFiles()) { if (each.isDirectory()) for (File inner : each.listFiles()) inner.delete(); each.delete(); } dir.delete();
   System.out.println("PASS sms send journal");
  }
 }

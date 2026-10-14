@@ -208,11 +208,15 @@ the standalone manifest removes them and `scripts/apk.mjs` checks the packaged p
   package-explicit sent and delivery PendingIntent per part). "sent" comes only from `RESULT_OK` sent
   callbacks and "delivered" only from delivery reports whose provider row reads complete; an interrupted
   dispatch or callbacks lost to a restart read "unknown". Nothing is ever resent automatically, and the
-  body is not stored. Otherwise `composeSms` remains the handoff fallback and never reports a send.
+  body is not stored. The journal keeps 200 records; when full it drops the oldest (closed first) and
+  keeps a tombstone of each dropped operation ID, which is then refused rather than sent again; evidence
+  is awaited for at most seven days. Otherwise `composeSms` remains the handoff fallback and never reports a send.
 
 Delivery outcome is read from the provider row the platform writes for a non-default SMS app's send
-(matched by address, time and body hash), because an immutable delivery PendingIntent cannot carry the
-status-report PDU; for a multipart message that row holds the platform's aggregate status. The Messages
+(matched by address, Alpha as creator, a date after the journal entry and body hash), because an
+immutable delivery PendingIntent cannot carry the status-report PDU. Each part's report overwrites the
+one row of a multipart message, so multipart delivery stays "unknown" and only single-part messages can
+read "delivered". The Messages
 view, agent `sms_send` proposals and the `sms.send.v1` device capability stay unavailable until the
 shared contract is in the reviewed pin. JVM and renderer tests cover the journal, mapping and contract;
 grants on the image, real provider rows, carrier delivery reports and owned SMS/MMS endpoints remain

@@ -26,9 +26,18 @@ import java.util.regex.Pattern;
  * "delivered" a delivery report for every part whose provider status reads complete. A record that was
  * being dispatched when the process died, or whose sent callbacks cannot arrive any more because the
  * phone restarted, becomes "unknown". The message body is never stored, only its SHA-256.
+ *
+ * Bounds: at most {@link #MAX_RECORDS} records. When full, the oldest closed records are dropped, then
+ * the oldest records still waiting for evidence, so a carrier that never sends delivery reports cannot
+ * block sending. A dropped record leaves a tombstone of its operation ID and binding (at most
+ * {@link #MAX_TOMBSTONES}), and a repeated ID with a tombstone is refused, never sent again.
  */
 final class SmsSendJournal {
- static final int MAX_RECIPIENTS = 5, MAX_BODY = 1600, MAX_PARTS_PER_RECIPIENT = 10, MAX_RECORDS = 200;
+ static final int MAX_RECIPIENTS = 5, MAX_BODY = 1600, MAX_PARTS_PER_RECIPIENT = 10, MAX_RECORDS = 200, MAX_TOMBSTONES = 1000;
+ /** After this, no more evidence is awaited for a record: delivery reports are not retried for longer. */
+ static final long MAX_OPEN_MS = 7L * 24 * 60 * 60 * 1000;
+ /** A repeated operation ID whose record was dropped from the bounded journal. Nothing is sent for it. */
+ static final class Expired extends IllegalStateException { Expired() { super("operation expired"); } }
  static final Pattern OPERATION = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$");
  static final Pattern NUMBER = Pattern.compile("^\\+?[0-9]{2,20}$");
  static final char UNKNOWN = 'u', SUCCESS = 's', FAILED = 'f';
@@ -72,16 +81,25 @@ final class SmsSendJournal {
    if (unknown || dispatching) return "unknown";
    return submitted ? "submitted" : "unknown";
   }
-  /** Further evidence can still change this record. */
-  boolean open() {
-   if (decision != null) return false;
-   for (int i = 0; i < parts(); i++) if (sent[i] == UNKNOWN || (sent[i] == SUCCESS && delivery[i] == UNKNOWN)) return true;
+  /**
+   * Further evidence can still change this record. Callbacks cannot arrive after a restart, so a part
+   * waits across one only when its delivery report already arrived and the provider status is unread.
+   */
+  boolean open(long currentBoot, long now) {
+   if (decision != null || now - createdAt > MAX_OPEN_MS) return false;
+   boolean sameBoot = boot == currentBoot;
+   for (int i = 0; i < parts(); i++) {
+    if (sent[i] == UNKNOWN && sameBoot) return true;
+    if (sent[i] == SUCCESS && delivery[i] == UNKNOWN && (sameBoot || reported[i])) return true;
+   }
    return false;
   }
  }
 
  private final File file;
  private final Map<String, Record> records = new LinkedHashMap<>();
+ /** Operation ID to binding hash of records dropped by the bound, oldest first. */
+ private final Map<String, String> tombstones = new LinkedHashMap<>();
  SmsSendJournal(File file) throws IOException { this.file = file; load(); }
 
  // ---- Validation and binding ------------------------------------------------------------------
@@ -144,6 +162,8 @@ final class SmsSendJournal {
  /** The existing record for a repeated ID, or null for a new one. A reused ID with different content is refused. */
  synchronized Record existing(String operationId, String bindingHash) {
   Record found = records.get(operationId);
+  String dropped = found == null ? tombstones.get(operationId) : null;
+  if (dropped != null) { if (!dropped.equals(bindingHash)) throw new IllegalStateException("operation reused"); throw new Expired(); }
   if (found != null && !found.bindingHash.equals(bindingHash)) throw new IllegalStateException("operation reused");
   return found;
  }
@@ -153,7 +173,7 @@ final class SmsSendJournal {
   if (!"cancelled".equals(decision) && !"denied".equals(decision)) throw new IllegalArgumentException("decision");
   Record record = create(operationId, recipients, body, subscriptionId, now, boot);
   record.decision = decision;
-  save();
+  persistNew(record);
   return record;
  }
 
@@ -167,13 +187,17 @@ final class SmsSendJournal {
   record.sent = new char[total]; record.delivery = new char[total]; record.reported = new boolean[total];
   java.util.Arrays.fill(record.sent, UNKNOWN); java.util.Arrays.fill(record.delivery, UNKNOWN);
   record.dispatching = true;
-  save();
+  persistNew(record);
   return record;
+ }
+ /** A new record that cannot be made durable is forgotten, so it never reads as a send that may have happened. */
+ private void persistNew(Record record) throws IOException {
+  try { save(); } catch (IOException | RuntimeException failed) { records.remove(record.operationId); throw failed; }
  }
  private Record create(String operationId, String[] recipients, String body, int subscriptionId, long now, long boot) {
   validate(operationId, recipients, body, subscriptionId);
-  if (records.containsKey(operationId)) throw new IllegalStateException("operation exists");
-  prune();
+  if (records.containsKey(operationId) || tombstones.containsKey(operationId)) throw new IllegalStateException("operation exists");
+  prune(boot, now);
   Record record = new Record(operationId, subscriptionId, sha256(bindingText(recipients, body, subscriptionId)), sha256(body), recipients.clone(), now, boot);
   records.put(operationId, record);
   return record;
@@ -215,12 +239,16 @@ final class SmsSendJournal {
  }
 
  /**
-  * Applies the provider's delivery status to the parts of one recipient whose delivery report has
+  * Applies the provider's delivery status to the part of one recipient whose delivery report has
   * arrived and whose sent callback succeeded. Pending or absent status changes nothing.
+  *
+  * Only single-part messages: the platform keeps one provider row per multipart message and each
+  * part's status report overwrites its status, so the row cannot say which part was delivered or
+  * failed. Multipart delivery therefore stays unknown rather than being inferred from the last report.
   */
  synchronized boolean providerStatus(String operationId, int recipient, int status) throws IOException {
   Record record = records.get(operationId);
-  if (record == null || recipient < 0 || recipient >= record.partsPerRecipient.length) return false;
+  if (record == null || recipient < 0 || recipient >= record.partsPerRecipient.length || record.partsPerRecipient[recipient] != 1) return false;
   char outcome = status == STATUS_COMPLETE ? SUCCESS : status >= STATUS_FAILED ? FAILED : UNKNOWN;
   if (outcome == UNKNOWN) return false;
   boolean changed = false;
@@ -247,9 +275,9 @@ final class SmsSendJournal {
   return changed;
  }
 
- synchronized List<Record> open() {
+ synchronized List<Record> open(long boot, long now) {
   List<Record> found = new ArrayList<>();
-  for (Record record : records.values()) if (record.open()) found.add(record);
+  for (Record record : records.values()) if (record.open(boot, now)) found.add(record);
   return found;
  }
 
@@ -260,11 +288,23 @@ final class SmsSendJournal {
   return all.subList(0, Math.min(limit, all.size()));
  }
 
- /** Removes the oldest closed records beyond the bound. Open records are kept until they close. */
- private void prune() {
-  if (records.size() < MAX_RECORDS) return;
-  java.util.Iterator<Record> each = records.values().iterator();
-  while (records.size() >= MAX_RECORDS && each.hasNext()) { Record record = each.next(); if (!record.open() && !record.dispatching) each.remove(); }
+ /**
+  * Makes room for one record: drops the oldest closed records, then the oldest still awaiting evidence
+  * (never one being dispatched), each leaving a tombstone so its operation ID is never sent again.
+  */
+ private void prune(long boot, long now) {
+  for (int pass = 0; pass < 2 && records.size() >= MAX_RECORDS; pass++) {
+   java.util.Iterator<Record> each = records.values().iterator();
+   while (records.size() >= MAX_RECORDS && each.hasNext()) {
+    Record record = each.next();
+    if (record.dispatching || (pass == 0 && record.open(boot, now))) continue;
+    each.remove();
+    tombstones.remove(record.operationId);
+    tombstones.put(record.operationId, record.bindingHash);
+   }
+  }
+  java.util.Iterator<String> oldest = tombstones.keySet().iterator();
+  while (tombstones.size() > MAX_TOMBSTONES && oldest.hasNext()) { oldest.next(); oldest.remove(); }
   if (records.size() >= MAX_RECORDS) throw new IllegalStateException("journal full");
  }
 
@@ -310,12 +350,19 @@ final class SmsSendJournal {
   // A damaged journal is an error, never an empty one: an empty journal would allow a resend.
   for (String line : new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8).split("\n")) {
    if (line.isEmpty()) continue;
+   if (line.startsWith("t1|")) {
+    String[] f = line.split("\\|", -1);
+    if (f.length != 3 || !OPERATION.matcher(f[1]).matches() || !f[2].matches("[0-9a-f]{64}")) throw new IllegalArgumentException("record");
+    tombstones.put(f[1], f[2]);
+    continue;
+   }
    Record record = decode(line);
    records.put(record.operationId, record);
   }
  }
  private void save() throws IOException {
   StringBuilder out = new StringBuilder();
+  for (Map.Entry<String, String> dropped : tombstones.entrySet()) out.append("t1|").append(dropped.getKey()).append('|').append(dropped.getValue()).append('\n');
   for (Record record : records.values()) out.append(encode(record)).append('\n');
   File temp = new File(file.getPath() + ".tmp");
   try (FileOutputStream stream = new FileOutputStream(temp)) { stream.write(out.toString().getBytes(StandardCharsets.UTF_8)); stream.getFD().sync(); }

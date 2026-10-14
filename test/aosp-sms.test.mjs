@@ -175,6 +175,15 @@ test("native boundary: image-only plugin methods, immutable explicit callbacks, 
   assert.match(plugin, /divideMessage\(body\)/);
   assert.doesNotMatch(sms + plugin + receiver, /\bresend|retry\(/i, "no automatic resend path");
   assert.match(receiver, /if \(intent == null \|\| !AlphaImageCapability\.verified\(context\)\) return;/);
+  // Provider-row matching: only rows the platform wrote for Alpha (creator), after the journal entry and
+  // within a bounded window, so an identical text from another app or the owner is never claimed.
+  const find = sms.slice(sms.indexOf("private static long findRow("));
+  assert.match(find, /Telephony\.Sms\.CREATOR \+ " = \?/, "the row must be Alpha's own");
+  assert.match(find, /Long\.toString\(record\.createdAt\), Long\.toString\(record\.createdAt \+ ROW_WINDOW_MS\)/, "no row from before the journal entry");
+  assert.doesNotMatch(find, /createdAt - /);
+  // The owner's Send tap cannot be steered by an overlay; an expired operation ID is refused, never resent.
+  assert.match(plugin, /send\.setFilterTouchesWhenObscured\(true\)/);
+  assert.match(plugin, /catch \(SmsSendJournal\.Expired expired\) \{ call\.reject\(/);
   assert.match(receiver, /getResultCode\(\) == Activity\.RESULT_OK/, "sent only from a successful sent callback");
   for (const method of ["listThreads", "listMessages", "observeMessages", "sendSms", "smsSendResult"])
     assert.match(plugin, new RegExp(`@PluginMethod public void ${method}\\(PluginCall call\\) \\{\\n  if \\(refused\\(call\\)\\) return;`), `${method} re-checks the image capability first`);

@@ -454,7 +454,8 @@ public class AlphaTelephonyPlugin extends Plugin {
   try {
    journal = AlphaSms.journal(getContext());
    existing = journal.existing(operationId, SmsSendJournal.sha256(SmsSendJournal.bindingText(recipients, body, subscriptionId)));
-  } catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
+  } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
+  catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
   catch (Exception unreadable) { call.reject("The send record could not be read. Nothing was sent.", "unavailable"); return; }
   if (existing != null) { call.resolve(AlphaSms.result(existing)); return; }
   if (review != null) { call.reject("Another message is waiting for review", "busy"); return; }
@@ -496,6 +497,9 @@ public class AlphaTelephonyPlugin extends Plugin {
     .create();
    review.setOnDismissListener(dialog -> { if (reviewCall == call) cancelReview(); });
    review.show();
+   // An overlay must not be able to steer the owner's Send tap.
+   android.widget.Button send = review.getButton(android.content.DialogInterface.BUTTON_POSITIVE);
+   if (send != null) send.setFilterTouchesWhenObscured(true);
   } catch (RuntimeException closed) { review = null; reviewCall = null; reviewCancelled = null; call.reject(LateLaunch.CLOSED); }
  }
  private void decide(PluginCall call, SmsSendJournal journal, String operationId, String[] recipients, String body, int subscriptionId, String decision, long now, long boot) {

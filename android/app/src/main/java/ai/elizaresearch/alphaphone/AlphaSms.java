@@ -114,11 +114,15 @@ final class AlphaSms {
  }
  private static java.util.Map<String, String> canonicalAddresses(ContentResolver resolver, Set<String> ids, CancellationSignal cancel) {
   java.util.Map<String, String> found = new java.util.HashMap<>();
-  if (ids.isEmpty()) return found;
-  StringBuilder in = new StringBuilder();
-  for (int i = 0; i < ids.size(); i++) in.append(i == 0 ? "?" : ",?");
-  try (Cursor c = query(resolver, CANONICAL_ADDRESSES, new String[] { "_id", "address" }, "_id IN (" + in + ")", ids.toArray(new String[0]), null, cancel)) {
-   while (c != null && c.moveToNext() && found.size() < ids.size()) found.put(Long.toString(longAt(c, "_id")), textAt(c, "address"));
+  // Up to 50 threads x 20 members: chunked below SQLite's 999 bound-argument limit.
+  List<String> all = new ArrayList<>(ids);
+  for (int start = 0; start < all.size(); start += 500) {
+   List<String> chunk = all.subList(start, Math.min(all.size(), start + 500));
+   StringBuilder in = new StringBuilder();
+   for (int i = 0; i < chunk.size(); i++) in.append(i == 0 ? "?" : ",?");
+   try (Cursor c = query(resolver, CANONICAL_ADDRESSES, new String[] { "_id", "address" }, "_id IN (" + in + ")", chunk.toArray(new String[0]), null, cancel)) {
+    while (c != null && c.moveToNext() && found.size() < ids.size()) found.put(Long.toString(longAt(c, "_id")), textAt(c, "address"));
+   }
   }
   return found;
  }
@@ -293,14 +297,14 @@ final class AlphaSms {
    ContentResolver resolver = context.getContentResolver();
    Set<Long> claimed = new HashSet<>();
    for (SmsSendJournal.Record r : journal.recent(SmsSendJournal.MAX_RECORDS)) for (long row : r.providerRow) if (row > 0) claimed.add(row);
-   for (SmsSendJournal.Record record : journal.open()) {
+   for (SmsSendJournal.Record record : journal.open(boot(context), System.currentTimeMillis())) {
     for (int recipient = 0; recipient < record.recipients.length; recipient++) {
      int first = record.firstPart(recipient), count = record.partsPerRecipient[recipient];
      boolean allSent = true, reported = false;
      for (int i = first; i < first + count; i++) { allSent &= record.sent[i] == SmsSendJournal.SUCCESS; reported |= record.reported[i] && record.delivery[i] == SmsSendJournal.UNKNOWN; }
      if (!allSent) continue;
      if (record.providerRow[recipient] == 0) {
-      long row = findRow(resolver, record, recipient, claimed);
+      long row = findRow(resolver, context.getPackageName(), record, recipient, claimed);
       if (row > 0) { journal.providerRow(record.operationId, recipient, row); claimed.add(row); }
      }
      if (!reported || record.providerRow[recipient] == 0) continue;
@@ -314,10 +318,16 @@ final class AlphaSms {
   }
   return changed;
  }
- private static long findRow(ContentResolver resolver, SmsSendJournal.Record record, int recipient, Set<Long> claimed) {
-  String where = Telephony.Sms.ADDRESS + " = ? AND " + Telephony.Sms.DATE + " >= ? AND " + Telephony.Sms.TYPE + " IN (2,4,5,6)";
+ /**
+  * The platform writes the row for a non-default app's send with that app as creator, after the
+  * journal entry (same wall clock) and within moments of the call. Rows written by another app or by
+  * the owner, and rows from before the journal entry, are never matched, even with the same text.
+  */
+ private static final long ROW_WINDOW_MS = 10 * 60_000L;
+ private static long findRow(ContentResolver resolver, String creator, SmsSendJournal.Record record, int recipient, Set<Long> claimed) {
+  String where = Telephony.Sms.ADDRESS + " = ? AND " + Telephony.Sms.CREATOR + " = ? AND " + Telephony.Sms.DATE + " >= ? AND " + Telephony.Sms.DATE + " <= ? AND " + Telephony.Sms.TYPE + " IN (2,4,5,6)";
   try (Cursor c = resolver.query(Telephony.Sms.CONTENT_URI, new String[] { Telephony.Sms._ID, Telephony.Sms.BODY }, where,
-    new String[] { record.recipients[recipient], Long.toString(record.createdAt - 60_000L) }, Telephony.Sms._ID + " ASC")) {
+    new String[] { record.recipients[recipient], creator, Long.toString(record.createdAt), Long.toString(record.createdAt + ROW_WINDOW_MS) }, Telephony.Sms._ID + " ASC")) {
    int seen = 0;
    while (c != null && c.moveToNext() && seen++ < 20) {
     long id = longAt(c, Telephony.Sms._ID); String body = textAt(c, Telephony.Sms.BODY);
