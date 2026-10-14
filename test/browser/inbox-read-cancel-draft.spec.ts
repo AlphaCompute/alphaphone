@@ -17,8 +17,8 @@ for(const request of ['Refresh inbox','Search Gmail','Check connection'])for(con
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
  await expect(page.getByRole('button',{name:'Refresh inbox',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Compose',exact:true}).click();
- await page.getByPlaceholder('To',{exact:true}).fill('fixture@example.invalid');
- await page.getByPlaceholder('To',{exact:true}).press('Enter');
+ await page.getByRole('textbox',{name:'To',exact:true}).fill('fixture@example.invalid');
+ await page.getByRole('textbox',{name:'To',exact:true}).press('Enter');
  await page.getByRole('textbox',{name:'Subject',exact:true}).fill('Retained subject');
  await page.getByRole('textbox',{name:'Message',exact:true}).fill('Original text');
  if(saved)await page.getByRole('button',{name:'Save draft locally',exact:true}).click();

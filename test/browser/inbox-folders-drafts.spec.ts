@@ -73,8 +73,8 @@ test('Drafts, Archive and Trash load their lists; a Gmail draft opens for editin
 test('Send opens the exact review and nothing is sent until it is confirmed',async({page})=>{
  await install(page,{});
  await page.getByRole('button',{name:'Compose',exact:true}).click();
- await page.getByPlaceholder('To',{exact:true}).fill('friend@example.invalid');
- await page.getByPlaceholder('To',{exact:true}).press('Enter');
+ await page.getByRole('textbox',{name:'To',exact:true}).fill('friend@example.invalid');
+ await page.getByRole('textbox',{name:'To',exact:true}).press('Enter');
  await page.getByRole('textbox',{name:'Subject',exact:true}).fill('Reviewed subject');
  await page.getByRole('textbox',{name:'Message',exact:true}).fill('Reviewed body');
  await page.getByRole('button',{name:'Send email',exact:true}).click();
