@@ -53,8 +53,13 @@ test('plan state never stops or withholds the on-device agent', () => {
   // the process already matches the binding, otherwise it restarts once).
   const login = between(ui, 'async residentCloudLogin()', 'async residentManagePlan()');
   assert.ok(!login.includes('stopLocalAgent('));
-  assert.ok(login.indexOf('cloud.login(') >= 0 && login.indexOf('connectResident(signal)') > login.indexOf('cloud.login('), 'reconnect only after the browser sign-in returned');
-  assert.match(login, /catch\(error\)\{if\(kept\)residentRebindQueued=true;throw error;\}/, 'a cancelled sign-in re-admits a kept sign-in');
+  // In-app sign-in (owner directive 2026-10-14) once Cloud is ready; the browser hand-off until then.
+  assert.ok(login.includes('async residentCloudLogin() { await connectionController.beginSignIn(residentEnvironment()); }'));
+  const browser = between(ui, 'async residentBrowserLogin()', 'async residentManagePlan()');
+  assert.ok(browser.indexOf('cloud.login(') >= 0 && browser.indexOf('connectResident(signal)') > browser.indexOf('cloud.login('), 'reconnect only after the browser sign-in returned');
+  assert.match(browser, /catch\(error\)\{if\(kept\)residentRebindQueued=true;throw error;\}/, 'a cancelled sign-in re-admits a kept sign-in');
+  const signedIn = between(ui, 'async function signedIn(', '/** The development hosted-agent client.');
+  assert.ok(!signedIn.includes('stopLocalAgent(') && signedIn.indexOf('retire();') >= 0 && signedIn.indexOf('await connectResident(signal)') > signedIn.indexOf('retire();'), 'the in-app sign-in reconnects once the key is stored');
   const signOut = between(ui, 'async cloudSignOut()', 'async mock()');
   assert.ok(!signOut.includes('stopLocalAgent(') && signOut.includes('else{retire();try{await connectResident(signal);}'));
   // Cloud inference is unbound (native stops a process holding the key) before the key is revoked.
@@ -119,7 +124,8 @@ test('the plan surface is a notice beside the running agent, not a gate', () => 
   assert.ok(between(ui, 'async function admitCloudResident(', 'function residentPlanEnded(').includes("update({residentSubscription:view,residentPlanNotice:'needs-plan',planEndsAt:null});\n    return {binding:'unbound',account};"));
   assert.ok(chooser.includes("const residentMustSignIn=residentCloudFlow()&&!snapshot.cloudAccount&&snapshot.residentPlanNotice!=='offline'&&!snapshot.residentStarting;"));
   assert.ok(chooser.includes('{!residentMustSignIn&&<button aria-label="Close connection settings"'));
-  assert.match(ui, /close\(\) \{\n\s+if\(residentSignInRequired\(\)\)\{/);
+  // Back from the in-app sign-in screen returns to the gate; the gate itself still cannot be dismissed.
+  assert.match(ui, /close\(\) \{\n(\s+\/\/[^\n]*\n)*\s+if\(state\.signIn&&!state\.busy\)\{connectionController\.cancelSignIn\(\);return;\}\n\s+if\(residentSignInRequired\(\)\)\{/);
   // No agent-less product choice remains in the phone's flow.
   const resident = between(chooser, 'if(residentCloudFlow())return', 'if(browserOnly)return');
   assert.doesNotMatch(resident, /Use local apps without AI|without AI|No agent connected/);

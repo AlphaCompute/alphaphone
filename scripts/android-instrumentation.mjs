@@ -65,6 +65,7 @@ export const CLASS_REGISTRY = {
   Shell: {},
   StartupReadiness: { args: { startupReadiness: "1" } },
   TextScale: { note: "textScaleProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs text-scale" },
+  CloudSignInCallback: { args: { cloudSignInNative: "1" }, note: "Synthetic in-app sign-in returns through MainActivity; a matching return is never delivered, so nothing reaches Steward or Cloud. Not App Link verification (adb shell pm get-app-links) or real-account sign-in" },
   BrowserExternalHandoff: { note: "Synthetic committed HTTPS child and resolver fixture; intercepts chooser dispatch, no external page is opened" },
   ResetPolicy: { note: "Non-destructive cancellation, migration refusal and isolated marker checks; not a system reset proof" },
   BrowserCookiePolicy: { note: "Synthetic intercepted HTTPS origins; private method requires scoped WebView deletion support" },
