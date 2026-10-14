@@ -1,4 +1,5 @@
 import {aospImage} from '../runtime/aosp-image';
+import {smsSubscriptionRevision} from '../runtime/sms-subscription-revision';
 import {createAospTelephony,type AlphaTelephonyPlugin} from '../runtime/aosp-telephony';
 import {isSmsSend,validateSmsResult,smsAgentHash,smsDeviceStatus} from '../runtime/sms-agent-contract';
 import {receiptLabel} from '../runtime/image-sms';
@@ -607,7 +608,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const current=()=>{signal.throwIfAborted();context(this);if(!ownerSession||connectionController.getSnapshot().session!==ownerSession||JSON.stringify(connectionController.getWorkflowDeviceTarget())!==ownerTarget||!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('SMS review context changed');};
         const status=await client.status();current();
         const selectedSim=status.subscriptions?.find(sim=>sim.id===operation.subscriptionId);
-        if(!selectedSim||expectedContext.selectedObject.revision!==JSON.stringify([selectedSim.slot,selectedSim.carrierName]))throw Error('The selected SIM changed; refresh Messages and select it again');
+        if(!selectedSim||expectedContext.selectedObject.revision!==smsSubscriptionRevision(selectedSim))throw Error('The selected SIM changed; refresh Messages and select it again');
         const cancel=()=>{void plugin.cancelSmsReview({operationId}).catch(()=>{});};
         signal.addEventListener('abort',cancel,{once:true});
         try{current();const native=await client.sendSms(operation,operationId);const smsResult=validateSmsResult(operation,native,operationId,await smsAgentHash(operation));return {status:smsDeviceStatus(smsResult),smsResult,summary:receiptLabel(smsResult.status)};}
