@@ -14,8 +14,8 @@ import java.nio.charset.StandardCharsets;
  *
  * Fail closed: Alpha's data is never cleared before an installed image listener durably
  * acknowledges consent revocation, and the old runtime never resumes while the marker exists.
- * When the reset cannot finish, the main process still stops, but first opens
- * {@link ResetRecoveryActivity} in its own provider-free process. Where Alpha is HOME, that
+ * When the reset cannot finish, the main process still stops, but a start the user is looking at
+ * first opens {@link ResetRecoveryActivity} in its own provider-free process. Where Alpha is HOME, that
  * visible surface replaces a silent stop that Android would immediately relaunch. Automatic
  * attempts are bounded; the recovery surface's Try again is always a fresh attempt. */
 final class AlphaDataReset {
@@ -41,8 +41,12 @@ final class AlphaDataReset {
   * until a user-initiated attempt from the recovery surface starts a new window. */
  static long[] failureState(Context context){
   AtomicFile file=failures(context);if(!exists(file))return new long[]{0,0};
-  try{String[] parts=new String(file.readFully(),StandardCharsets.US_ASCII).trim().split(":");return new long[]{Long.parseLong(parts[0]),Long.parseLong(parts[1])};}
-  catch(Exception unreadable){return new long[]{AUTOMATIC_ATTEMPTS,-1};}
+  try{String[] parts=new String(file.readFully(),StandardCharsets.US_ASCII).trim().split(":");
+   long count=Long.parseLong(parts[0]),first=Long.parseLong(parts[1]);
+   // A negative or overflowing count would otherwise grant unbounded automatic attempts.
+   if(parts.length==2&&count>=0&&count<=Integer.MAX_VALUE&&first>=0)return new long[]{count,first};
+  }catch(Exception unreadable){/* Treated as exhausted below. */}
+  return new long[]{AUTOMATIC_ATTEMPTS,-1};
  }
  static boolean automaticAttemptAllowed(long[] state,long now){
   if(state[0]<AUTOMATIC_ATTEMPTS)return true;
@@ -54,7 +58,7 @@ final class AlphaDataReset {
   // A late result after Android finished the clear must not recreate state in fresh data.
   if(!pending(context))return;
   long[] state=failureState(context);
-  long[] next=state[0]==0||now<state[1]||now-state[1]>=AUTOMATIC_WINDOW_MS?new long[]{1,now}:new long[]{state[0]+1,state[1]};
+  long[] next=state[0]==0||now<state[1]||now-state[1]>=AUTOMATIC_WINDOW_MS?new long[]{1,now}:new long[]{Math.min(state[0]+1,Integer.MAX_VALUE),state[1]};
   try{write(failures(context),(next[0]+":"+next[1]).getBytes(StandardCharsets.US_ASCII));}
   catch(Exception unavailable){/* The pending marker, not this counter, keeps the reset fail-closed. */}
  }
@@ -70,13 +74,42 @@ final class AlphaDataReset {
   if(outcome!=Outcome.DISPATCHED)recordFailure(context,now);
   return outcome;
  }
+ /** The user just confirmed the reset in Alpha, so an unfinished reset always opens recovery. */
+ static void dispatchAndExit(Context context){dispatchAndExit(context,true);}
+ /** Startup admission, before any provider or initializer. Android also starts Alpha's process
+  * for jobs, alarms, broadcasts, pushes, providers and bound services (the notification listener,
+  * autofill). Such a start is not a launch the user is looking at: opening recovery from it would
+  * take the screen from the app in front, including Phone or Settings opened from recovery. The
+  * process still stops; recovery opens on the next activity start. When Android cannot say why
+  * this process started, recovery opens. */
+ static void admitAndExit(Context context){
+  boolean visible;
+  try{visible=userVisibleStart(context);}catch(RuntimeException|LinkageError unknown){visible=true;}
+  dispatchAndExit(context,visible);
+ }
+ private static boolean userVisibleStart(Context context){
+  if(android.os.Build.VERSION.SDK_INT<35)return true;
+  ActivityManager manager=context.getSystemService(ActivityManager.class);if(manager==null)return true;
+  java.util.List<android.app.ApplicationStartInfo> starts=manager.getHistoricalProcessStartReasons(1);
+  if(starts==null||starts.isEmpty()||starts.get(0).getPid()!=android.os.Process.myPid())return true;
+  return !backgroundStart(starts.get(0).getReason());
+ }
+ static boolean backgroundStart(int reason){
+  switch(reason){
+   case android.app.ApplicationStartInfo.START_REASON_ALARM: case android.app.ApplicationStartInfo.START_REASON_BACKUP:
+   case android.app.ApplicationStartInfo.START_REASON_BOOT_COMPLETE: case android.app.ApplicationStartInfo.START_REASON_BROADCAST:
+   case android.app.ApplicationStartInfo.START_REASON_CONTENT_PROVIDER: case android.app.ApplicationStartInfo.START_REASON_JOB:
+   case android.app.ApplicationStartInfo.START_REASON_PUSH: case android.app.ApplicationStartInfo.START_REASON_SERVICE:return true;
+   default:return false;
+  }
+ }
  /** Never resumes the old runtime, including when Android refuses or the Binder call fails. */
- static void dispatchAndExit(Context context){
+ private static void dispatchAndExit(Context context,boolean showRecovery){
   try{
    long now=System.currentTimeMillis();
    Outcome outcome=automaticAttemptAllowed(failureState(context),now)?attempt(context,now):Outcome.DEFERRED;
-   if(outcome!=Outcome.DISPATCHED){android.util.Log.w("AlphaReset","Reset not finished ("+outcome+"); showing recovery");showRecovery(context);}
-  }catch(RuntimeException failure){android.util.Log.w("AlphaReset","Reset admission failed; showing recovery");showRecovery(context);}
+   if(outcome!=Outcome.DISPATCHED){android.util.Log.w("AlphaReset","Reset not finished ("+outcome+")"+(showRecovery?"; showing recovery":"; background start"));if(showRecovery)showRecovery(context);}
+  }catch(RuntimeException failure){android.util.Log.w("AlphaReset","Reset admission failed");if(showRecovery)showRecovery(context);}
   finally{android.os.Process.killProcess(android.os.Process.myPid());System.exit(0);}
  }
  private static void showRecovery(Context context){

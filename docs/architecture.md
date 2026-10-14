@@ -203,8 +203,11 @@ checks; actual microphone release, provider IPC, process interruption and both
 image distributions still require native qualification for #409/#424.
 Because the reset fails closed, an installed listener that cannot acknowledge it
 (signer mismatch, LISTENER_CONTROL not granted, missing provider) keeps every Alpha
-main-process launch stopping before initialization. Before stopping, the main process
-opens `ResetRecoveryActivity` in its own `:reset_recovery` process, which installs
+main-process launch stopping before initialization. Before stopping, a main process
+started for an activity (or for a reason Android does not report; `ApplicationStartInfo`
+on API 35+) opens `ResetRecoveryActivity`; one started for a job, alarm, broadcast,
+push, provider or bound service stops without taking the screen from the app in front.
+The recovery activity runs in its own `:reset_recovery` process, which installs
 none of Alpha's content providers (no WorkManager or startup initializers) and starts
 no agent, renderer or notification code. It states that the reset has not finished
 and Alpha's local data was not deleted, and offers Try reset again (always a fresh
