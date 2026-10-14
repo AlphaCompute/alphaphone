@@ -233,7 +233,7 @@ public class AlphaBrowserPlugin extends Plugin {
   if(paused) { t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS); return; }
   // With engine-attested fields the WebView's own structure (no per-field origins) is never
   // offered; the attested anchor is the tab's only Autofill surface.
-  if(canAutofill(t)) { t.autofillEnabled=true; t.web.setImportantForAutofill(t.fields==null?View.IMPORTANT_FOR_AUTOFILL_YES:View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS); }
+  if(canAutofill(t)) { t.autofillEnabled=true; t.web.setImportantForAutofill(t.fields==null?View.IMPORTANT_FOR_AUTOFILL_YES:View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS); if(t.fields!=null)t.fields.retry(); }
   else disableAutofill(t);
  }
  private final class CredentialWebView extends WebView {
