@@ -118,7 +118,7 @@ configuration and outbound-context policy. Production builds do not accept remot
 billed inference for the resident agent; it does not select a hosted agent. Existing
 remote credentials and history are retained without automatically reconnecting.
 Remote browser transports are available only with the explicit test-mocks switch and remain non-product development infrastructure.
-The production AlphaConnection boundary admits exact managed-service origin and path/method pairs for account sign-in, identity, balance, self-revocation and owner Gmail. Dedicated hosts and agent/provisioning paths on the Cloud API origin are refused before network dispatch. Native resident inference remains on its separately admitted provider route; new Maps or billing APIs require explicit service-route review. Debug host forwarding (the DevelopmentAgent bridge, present only in test-mocks
+The production AlphaConnection boundary admits exact managed-service origin and path/method pairs for account sign-in, identity, balance, self-revocation and owner Gmail. Dedicated hosts and agent/provisioning paths on the Cloud API origin are refused before network dispatch. Native resident inference remains on its separately admitted provider route; the Eliza Cloud Maps data routes (`GET /api/v1/maps/capabilities` and body-only `POST /api/v1/maps/{geocode,reverse,places/search,places/details,routes}`, #412) are admitted exactly, and other new service APIs require explicit route review. GPS, the active route and guidance stay on the phone. Debug host forwarding (the DevelopmentAgent bridge, present only in test-mocks
 builds) is development infrastructure, not evidence of a resident runtime or
 production authentication.
 

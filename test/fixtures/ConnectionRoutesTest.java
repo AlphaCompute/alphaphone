@@ -96,6 +96,19 @@ public final class ConnectionRoutesTest {
   check(!ConnectionRoutes.managedService("/api/v1/user",null,"POST",true,false),"identity write refused");
   check(!ConnectionRoutes.managedService("/api/v1/user",null,"GET",true,false),"GET body refused");
   check(ConnectionRoutes.managedService("/api/agents",null,"GET",false,true),"separate development infrastructure retained");
+  // Eliza Cloud Maps (#412): exact routes; location only in a POST body, capabilities a bare GET.
+  check(ConnectionRoutes.managedService("/api/v1/maps/capabilities",null,"GET",false,false),"Maps capabilities read allowed");
+  for(String route:new String[]{"geocode","reverse","places/search","places/details","routes"}){
+   String path="/api/v1/maps/"+route;
+   check(ConnectionRoutes.managedService(path,null,"POST",true,false),"Maps "+route+" allowed");
+   check(!ConnectionRoutes.managedService(path,null,"POST",false,false),"Maps "+route+" needs a body");
+   check(!ConnectionRoutes.managedService(path,"lat=1","POST",true,false),"Maps "+route+" never carries a query");
+   check(!ConnectionRoutes.managedService(path,"q=x","GET",false,false),"Maps "+route+" is POST only");
+   check(!ConnectionRoutes.managedService(path+"/",null,"POST",true,false),"Maps "+route+" trailing slash refused");
+  }
+  check(!ConnectionRoutes.managedService("/api/v1/maps/capabilities","region=x","GET",false,false),"Maps capabilities query refused");
+  check(!ConnectionRoutes.managedService("/api/v1/maps/capabilities",null,"POST",true,false),"Maps capabilities write refused");
+  for(String path:new String[]{"/api/v1/maps","/api/v1/maps/tiles/1/2/3","/api/v1/maps/places","/api/v1/maps/navigation","/api/v1/maps/%72outes","/api/v1/maps//routes"})for(String method:new String[]{"GET","POST"})check(!ConnectionRoutes.managedService(path,null,method,"POST".equals(method),false),"unreviewed Maps path refused "+path);
   System.out.println("PASS connection routes: retired pairing, exact Cloud self-revocation and the flag-off Cloud API origin only");
  }
 }
