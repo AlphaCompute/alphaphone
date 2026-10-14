@@ -26,10 +26,13 @@ export function cloudMapsFailure(error: unknown, signal?: AbortSignal): MapsFail
  if (signal?.aborted) return new MapsFailure('cancelled', 'Maps request cancelled.');
  const failure = error as { name?: unknown; code?: unknown; status?: unknown; data?: unknown } | null;
  if (failure && typeof failure === 'object' && failure.name === 'CloudProtocolError') {
+  if (failure.code === 'invalid-response') return new MapsFailure('invalid-response', 'Eliza Cloud Maps sent an invalid response.');
   if (failure.code !== 'http') return new MapsFailure('unauthorized', 'Sign in to Eliza Cloud to use Maps.');
   const code = failure.data && typeof failure.data === 'object' ? (failure.data as { code?: unknown }).code : undefined;
   switch (failure.status) {
    case 401: return new MapsFailure('unauthorized', 'Sign in to Eliza Cloud to use Maps.');
+   // An authenticated 404 means this Cloud deployment does not serve Maps yet (#412).
+   case 404: return new MapsFailure('unconfigured', 'Eliza Cloud Maps is not available yet.');
    case 403: return new MapsFailure('unauthorized', code === 'subscription_required' ? 'Maps needs an active Eliza subscription.' : 'Eliza Cloud refused this Maps request.');
    case 429: return new MapsFailure('rate-limited', 'Maps request limit reached. Try again later.');
    case 422: return new MapsFailure('unsupported', code === 'no_route' ? 'No route is available between these places.' : code === 'unsupported_mode' ? 'This travel mode is not available from Eliza Cloud Maps.' : 'This location is outside Eliza Cloud Maps coverage.');

@@ -72,6 +72,10 @@ const memory = () => { const values = new Map(); return { getItem: key => values
 for (const [status, code, expected] of [[403, 'subscription_required', 'unauthorized'], [422, 'no_route', 'unsupported'], [422, 'unsupported_region', 'unsupported'], [429, 'rate_limited', 'rate-limited'], [503, 'maps_not_configured', 'unconfigured'], [503, 'provider_unavailable', 'unavailable'], [502, 'provider_invalid_response', 'invalid-response']])
   assert.equal(cloudMapsFailure(cloudError(status, code)).code, expected, `${status} ${code}`);
 assert.equal(cloudMapsFailure(Object.assign(new Error('x'), { name: 'CloudProtocolError', code: 'credentials-missing' })).code, 'unauthorized');
+// Before Cloud Maps is deployed an authenticated read finds no route: Maps is honestly not available yet.
+assert.equal(cloudMapsFailure(cloudError(404, undefined)).code, 'unconfigured');
+// A malformed Cloud body is an invalid response, never a sign-in prompt.
+assert.equal(cloudMapsFailure(Object.assign(new Error('x'), { name: 'CloudProtocolError', code: 'invalid-response' })).code, 'invalid-response');
 assert.equal(cloudMapsFailure(cloudError(503, 'provider_unavailable'), AbortSignal.abort()).code, 'cancelled');
 
 // Invalid coverage leaves Maps unconfigured.
