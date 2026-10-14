@@ -90,6 +90,11 @@ export interface AgentReply {
   proposals?: ActionProposal[];
   /** Owner-facing reasons a pending phone action cannot be reviewed from this screen. Display only. */
   notices?: string[];
+  /**
+   * The on-device agent answered without Eliza Cloud inference (no plan, Cloud unreachable or
+   * signed out). `text` is the honest owner-facing answer; this names the action offered with it.
+   */
+  planAction?: 'plan' | 'retry' | 'sign-in';
 }
 export interface OperationReceipt {
   proposalId: string;
@@ -344,6 +349,8 @@ export class AlphaClient {
     return this.run(async(transport,context,signal)=>{
       const reply=await transport.send({requestId:crypto.randomUUID(),text,context,signal});
       if(signal.aborted)throw new AlphaClientError('cancelled','Request cancelled.');
+      // Without Eliza Cloud inference there is no generated text: the step fails with the honest reason.
+      if(reply&&(reply as AgentReply).planAction)throw new AlphaClientError('unconfigured',typeof reply.text==='string'&&reply.text.length<=1000?reply.text:'AI replies need an Eliza Cloud plan.');
       if(!reply||typeof reply.text!=='string'||!reply.text.trim()||reply.text.length>16000||(reply.proposals!==undefined&&(!Array.isArray(reply.proposals)||reply.proposals.length>0)))throw new AlphaClientError('invalid-response','The workflow needs a text result without action proposals, up to 16000 characters.');
       return reply.text;
     },signal,automatic);
@@ -404,6 +411,7 @@ export class AlphaClient {
         ...(result.messageBinding?{messageBinding:result.messageBinding}:{}),
         ...(Array.isArray(result.actionResults)?{actionResults:result.actionResults}:{}),
         proposals: [...next.values()].map((p) => ({ ...p })),
+        ...(result.planAction==='plan'||result.planAction==='retry'||result.planAction==='sign-in'?{planAction:result.planAction}:{}),
         ...(Array.isArray(result.notices)?{notices:result.notices.filter((notice):notice is string=>typeof notice==='string'&&!!notice.trim()&&notice.length<=500).slice(0,5)}:{}),
       };
     },options?.signal);

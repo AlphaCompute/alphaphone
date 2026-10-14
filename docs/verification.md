@@ -653,6 +653,51 @@ list. Not swept: the launcher presentation of the app views, zoom above 200%, co
 states other than a mailbox. An app page's own content still scrolls under the composer by
 design; only Home and the app library end above it.
 
+## Emulator results at 69a4be6c (2026-10-14, system shade #416 #417)
+
+Class E only (emulator instrumentation), for these exact APKs. Not distributable-build, AOSP
+image, Pixel 10a, real TalkBack, real-integration or user acceptance, and not evidence for any
+later source. The result files under `test-results/` are not committed.
+
+- Source: `69a4be6c` (branch `claude/issue-417-shade-instrumented`, on `main` at `8aa3e3e8`,
+  upstream pin `13c98575987a`). Its two commits change instrumented test source and the runner
+  registry only; no product source changed. The first runs below were at `8aa3e3e8` and at the
+  intermediate `5edd0b6e`, as stated in their rows.
+- APKs: **developer builds, never distributable**: `npm run agent:prepare -- --source-only`,
+  then `ALPHA_ANDROID_LOW_DISK=1 npm run android:build -- --allow-unpackaged-runtime`, with and
+  without `--test-mocks`, resident runtime not packaged, with the unqualified local speech AAR
+  `528507c0…` and a developer-override `runtime-manifest.json` (the
+  `baselines/qualified-runtime-manifest-before-20261008.json` record), not committed, so every
+  result file says `dirty: true`. Test-mocks app / instrumentation: standalone `06ccecd5…` /
+  `d73adc1d…`, launcher `3b3696ea…` / `066438b1…`. Production (flag off) app / instrumentation:
+  standalone `21151086…` / `170f012c…`, launcher `a50c2f57…` / `063d9e9c…`.
+- Emulator: AVD `Pixel_API_35` started read-only for this run on serial `emulator-5600` and shut
+  down afterwards, `system-images;android-35-ext15;google_apis;arm64-v8a`
+  (`google/sdk_gphone64_arm64/emu64a:15/AE3A.240806.046.B2/13139635:userdebug`), WebView
+  `com.google.android.webview` 124.0.6367.219, stock HOME `com.google.android.apps.nexuslauncher`
+  read back after every HOME change; no Alpha package left installed. Host load average 40 to 150.
+
+| Run | Result | Classification |
+| --- | --- | --- |
+| SystemShade, Notifications on the production pair at `8aa3e3e8` | standalone SystemShade passed (3 of 3), launcher SystemShade failed 1 of 3, Notifications failed 2 of 2 on both flavors | Test defect (environment of the class). A production Android build opens the Eliza Cloud sign-in gate over Home; it cannot be passed without an account and `AppNavigation` has no offline choice there. Notifications timed out waiting for the panel to go. SystemShade's launcher button request returned `opened` and Android's shade was observed, but the empty-Home pull landed on the panel; the standalone pass was vacuous for the same reason. Now: Notifications is a test-mocks class (the runner refuses it otherwise), SystemShade's Home method is skipped by assumption on a flag-off build and waits for Home with no connection panel over it. |
+| SystemShade, Notifications on the test-mocks pair at `8aa3e3e8` | SystemShade passed on both flavors; Notifications: `actualNotificationsAppearAndOpenInAndroidsShade` passed, `goneTargetNeverDispatchesOrOpensItsNeighbor` failed ("The neighbor remains posted"), both flavors | Test defect. Android 15 bundles the two notices into an automatic group (`ranker_group`), shown collapsed in the shade. `AndroidShade.tap` clicked the first clickable ancestor of the title, the group's summary row: nothing was dispatched and both notices were cancelled. The tap now clicks only the notice's own `expandableNotificationRow`, expanding a collapsed group first (`5edd0b6e`). What a person's tap on a collapsed group's summary does with Alpha's own notices is a product question this run did not change. |
+| SystemShade with the launcher selected as HOME, `5edd0b6e` | 2 of 3 runs passed; one failed "A pull with the composer focused does not open Android's shade" | Test defect, found with a page probe. In 18 runs of diagnostic test builds (not recorded) the composer-focused swipe, made right after the shade collapsed, never reached the page (no `touchstart`) and Alpha made no `openNotificationShade` request; in 2 of them Android reopened its own shade. The same probe recorded the empty-Home pull reaching the page and making one request. SystemUI's collapsing shade window still took the touch. When the assertion passed it was vacuous. Each pull is now retried until a touch reaches Alpha's Home, and the page counts Alpha's requests: one for the empty-Home pull, none with the composer focused (focus checked at the touch) and none on standalone (`69a4be6c`). |
+| `npm run test:android:instrumentation -- --test-mocks --classes SystemShade,Notifications,Accessibility`, `69a4be6c` | **passed**, both flavors: SystemShade 3 of 3, Notifications 2 of 2, Accessibility 1 of 1 per flavor (12 of 12 tests) | Covers: the outcome mapping including `permission-missing` and `unsupported`; EXPAND_STATUS_BAR declared and held by the launcher only; the launcher request returns `opened` and Android's shade opens, standalone returns `standalone` and it does not; an empty-Home pull reaches Home, makes one request and opens Android's shade with no Alpha panel; a composer-focused pull makes none; posted notices are tapped in Android's shade and fire their PendingIntents; a cancelled target dispatches nothing and does not dispatch or remove its neighbour; a top-edge swipe opens Android's shade with no Alpha panel; the accessibility click action (UiAutomation, not TalkBack) and a pull from the button open it; standalone has no button. Home fit the screen (`data-alpha-home-fits="true"`) in every pull, so the overflowing-Home path was not exercised. |
+| The same launcher test-mocks pair with Alpha selected as HOME (`cmd role add-role-holder`, HOME key, `am instrument` per class), `69a4be6c` | SystemShade 5 of 5 runs passed (3 tests each), Notifications 5 of 5 (2 tests each) | Run by hand, not through the runner's `--home-role` phase (neither class is a HOME-role class there); the original HOME holder was restored and read back. |
+| `npm run test:android:instrumentation -- --classes SystemShade` on the production pair, `69a4be6c` | passed, both flavors: 2 of 3 run, `homeAsksAndroidForItsShadeOnTheLauncherOnly` skipped by assumption | The outcome mapping and the launcher-only permission on flag-off builds. `--classes Notifications` without `--test-mocks` is refused by the runner, as intended. |
+
+Manual checks on the launcher test-mocks build as HOME (adb input, read back with `dumpsys window`):
+a swipe from the top edge opened Android's `NotificationShade`; with the real keyboard up after a
+tap on the composer, 5 of 5 downward swipes on Home above it did not open the shade; after Back
+hid the keyboard the composer kept focus and 5 of 5 pulls also did not (documented: a focused text
+field owns the pull); on a fresh Home 3 of 3 pulls opened it; 3 upward swipes left Alpha in front.
+
+Not established here: the `not-in-front` outcome and a launcher installed without
+EXPAND_STATUS_BAR on a device (the outcome mapping is exercised with a fake status bar, and the
+fallback texts by `settings-truth.production.spec.ts` in Chromium); real TalkBack; an overflowing
+Home (landscape, large display size) on Android; `NotificationChannelsInstrumentedTest` (its
+`channels` campaign was not run); the Pixel 10a and the AOSP image (#416, #417 stay open).
+
 ## Emulator results at 2961bd9e (2026-10-11, round 8 merged with round 9)
 
 Class E only (emulator instrumentation), for these exact APKs. Not distributable-build,
