@@ -5,6 +5,8 @@ import android.content.Context;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.media.audiofx.AcousticEchoCanceler;
+import android.media.audiofx.NoiseSuppressor;
 import android.util.Base64;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -16,6 +18,12 @@ import java.util.ArrayDeque;
  * each speech segment with its edges handed to the renderer, which forwards them to the resident
  * agent's on-device live ASR route. Audio outside a segment (beyond the short pre-roll) is never
  * forwarded, and nothing is written to storage. One capture runs at a time.
+ *
+ * <p>The voice assistant listens while it speaks (barge-in), so it asks for echo cancellation:
+ * the communication source with the platform AcousticEchoCanceler (and NoiseSuppressor) when the
+ * device has one ({@link LiveCaptureSource}). Dictation keeps the unprocessed recognition source.
+ * Stopping flushes the frames of an open segment that were read before the stop, so a transcript
+ * holds the audio up to the stop; nothing read after it is forwarded.
  */
 final class AlphaLiveVoiceCapture {
  interface Sink {
@@ -44,11 +52,13 @@ final class AlphaLiveVoiceCapture {
  private final Context context;
  private final String captureId;
  private final Sink sink;
+ private final boolean echoCancel;
  private volatile boolean running;
  private Thread thread;
  private long startedAt;
 
- AlphaLiveVoiceCapture(Context context,String captureId,Sink sink){this.context=context.getApplicationContext();this.captureId=captureId;this.sink=sink;}
+ AlphaLiveVoiceCapture(Context context,String captureId,Sink sink){this(context,captureId,sink,false);}
+ AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,boolean echoCancel){this.context=context.getApplicationContext();this.captureId=captureId;this.sink=sink;this.echoCancel=echoCancel;}
  String captureId(){return captureId;}
 
  synchronized void start()throws Exception{
@@ -56,13 +66,25 @@ final class AlphaLiveVoiceCapture {
   long vad=openVad(context);
   int minimum=AudioRecord.getMinBufferSize(SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);
   AudioRecord recorder;
-  try{recorder=new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION,SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,Math.max(minimum,LiveVadGate.WINDOW*2*16));}
+  int source=LiveCaptureSource.select(echoCancel,AcousticEchoCanceler.isAvailable(),MediaRecorder.AudioSource.VOICE_RECOGNITION,MediaRecorder.AudioSource.VOICE_COMMUNICATION);
+  try{recorder=new AudioRecord(source,SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,Math.max(minimum,LiveVadGate.WINDOW*2*16));}
   catch(SecurityException|IllegalArgumentException error){ElizaVoiceNative.nativeVadClose(vad);throw error;}
   if(recorder.getState()!=AudioRecord.STATE_INITIALIZED){recorder.release();ElizaVoiceNative.nativeVadClose(vad);throw new IllegalStateException("Microphone unavailable");}
-  try{recorder.startRecording();}catch(RuntimeException error){recorder.release();ElizaVoiceNative.nativeVadClose(vad);throw error;}
+  AcousticEchoCanceler echo=null;NoiseSuppressor noise=null;
+  if(source==MediaRecorder.AudioSource.VOICE_COMMUNICATION){
+   try{echo=AcousticEchoCanceler.create(recorder.getAudioSessionId());if(echo!=null)echo.setEnabled(true);}catch(RuntimeException unavailable){echo=null;}
+   try{if(NoiseSuppressor.isAvailable()){noise=NoiseSuppressor.create(recorder.getAudioSessionId());if(noise!=null)noise.setEnabled(true);}}catch(RuntimeException unavailable){noise=null;}
+  }
+  try{recorder.startRecording();}catch(RuntimeException error){release(echo,noise);recorder.release();ElizaVoiceNative.nativeVadClose(vad);throw error;}
   running=true;startedAt=System.currentTimeMillis();
-  thread=new Thread(()->loop(recorder,vad),"alpha-live-voice");
+  final AcousticEchoCanceler effectEcho=echo;final NoiseSuppressor effectNoise=noise;
+  thread=new Thread(()->{try{loop(recorder,vad);}finally{release(effectEcho,effectNoise);}},"alpha-live-voice");
   thread.start();
+ }
+
+ private static void release(AcousticEchoCanceler echo,NoiseSuppressor noise){
+  if(echo!=null)try{echo.release();}catch(RuntimeException ignored){}
+  if(noise!=null)try{noise.release();}catch(RuntimeException ignored){}
  }
 
  /** Stops capture; returns the capture duration. The renderer closes an open segment itself. */
@@ -105,6 +127,8 @@ final class AlphaLiveVoiceCapture {
      frames=new JSArray();edges=new JSArray();windows=0;peak=0f;
     }
    }
+   // Frames of an open segment read before the stop still belong to the utterance.
+   if(frames.length()>0||edges.length()>0)sink.frames(captureId,frames,edges,Math.min(1f,peak));
   }catch(Exception|Error failure){error="capture";}
   finally{
    try{recorder.stop();}catch(RuntimeException ignored){}

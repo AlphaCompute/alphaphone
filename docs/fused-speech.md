@@ -68,25 +68,55 @@ are in the generated third-party notices that Settings shows under Open source l
 CHiME-6 (CC-BY-SA-4.0) and SPGISpeech (Kensho terms) training audio; the entry is flagged
 `unverified` for review and never blocks a build (P-09).
 
-## Live voice (Android voice conversation)
+## Live voice (Android): Transcribe and the voice assistant
 
-The voice conversation streams instead of recording a clip when both halves are ready
-(`apps/app/src/runtime/native-live-voice.ts`, `nativeLiveVoiceReady`):
+Two separate controls use the native live capture when both halves are ready
+(`apps/app/src/runtime/native-live-voice.ts`, `nativeLiveVoiceReady`); otherwise each falls back to
+recording a clip on the device:
+
+- **Transcribe** (composer "Transcribe into draft"): records until Stop and puts the transcript in
+  an editable review, then into the unsent draft. Nothing is sent to the agent until Send.
+- **Voice assistant** (composer "Talk", title "Voice assistant"): listens continuously, sends each
+  finished spoken turn and speaks the reply (`apps/app/src/runtime/voice-assistant.ts`, #423).
 
 1. **App process.** `AlphaVoiceCloud.startLiveCapture` opens `AudioRecord` (16 kHz mono PCM16)
    and runs Silero VAD on every 32 ms window through libelizainference
    (`AlphaLiveVoiceCapture`, `ElizaVoiceNative.nativeVadProcessBatch`). `LiveVadGate` opens a
    segment after two windows at P ≥ 0.5 and closes it after 16 windows (about 512 ms) below 0.35,
-   with a 320 ms pre-roll. Only segment audio is forwarded; nothing is written to storage.
-2. **Renderer.** `live-voice.ts` forwards the frames (the upstream `AudioFrameEvent` wire format,
-   base64 LE s16) and VAD edges in order to the resident agent's
+   with a 320 ms pre-roll. Only segment audio is forwarded; nothing is written to storage. The
+   assistant asks for `echoCancel`: the communication source with the platform
+   `AcousticEchoCanceler` (and `NoiseSuppressor`) when the device has one (`LiveCaptureSource`), so
+   the microphone can stay open while the reply plays. Transcribe keeps the recognition source.
+   Stopping flushes the frames of an open segment that were read before the stop.
+2. **Renderer.** `live-segment-stream.ts` and `live-voice.ts` forward the frames (the upstream
+   `AudioFrameEvent` wire format, base64 LE s16) and VAD edges in order to the resident agent's
    `POST /api/asr/local-inference/live` through the owner-authenticated agent bridge
    (`AlphaLocalAgentPlugin` admits exactly `/api/asr/local-inference/live` and `/live/status`).
+   The transport refuses every request once the resident session changed, so audio never reaches
+   another owner's agent. Each closed segment yields exactly one result.
 3. **Agent.** The live route (elizaOS #36213, #36214) decodes with the Phonon-2 streaming decoder
    through the bionic host (`BionicAsrStreams`, staged from the pin) and returns
    `final.text` in the response to the request that carries `speech-end`.
-4. **Send.** `final.text` goes through the existing voice policy unchanged (`VOICE_SEND_POLICY`
-   in `voice-selection.ts`, MVP-01/P-01): auto-send sends it, review shows it for editing first.
+4. **Stop reconciliation.** Stop (Transcribe), Mute and the end of a conversation cut the capture
+   at the tap: frames stamped later are dropped, an open segment is closed at the tap and its final
+   is awaited, so a transcript holds exactly the audio up to the stop. Cancel discards everything.
+5. **Endpointing (assistant).** After the last segment's final, a short gap (300 ms) asks a
+   semantic end-of-turn port and a long gap (1,200 ms) submits; both follow the VAD speech-end,
+   which itself trails speech by the gate's ~512 ms hangover. These are engineering defaults
+   (local-speech research), not measurements or owner-set constants. **Clef is not in the pin**
+   (`c7a9a0d7e7`: no Clef model, loader or decision head; only the native EOT scorer for the
+   Eliza-1 text model), so no semantic port is wired and the documented VAD long-gap fallback
+   decides alone. New speech before submission cancels both timers and continues the utterance.
+6. **Send.** The turn goes through the existing voice policy unchanged (`VOICE_SEND_POLICY`
+   in `voice-selection.ts`, MVP-01/P-01). A reply carrying action proposals ends voice for review in
+   the conversation: automatic submission never approves a side effect.
+7. **Barge-in and heard content.** Speech that starts while a reply is pending or playing cancels
+   that request or playback (generation ids drop its late callbacks) and becomes the next turn; the
+   earlier turn is never resent. Replies play one sentence at a time and only sentences whose
+   playback completed count as heard: the conversation keeps that text and marks the rest
+   "(Interrupted. The rest of this reply was not played.)". Stop speaking does the same by button.
+   **Upstream gap:** the agent's own memory still holds the full reply; there is no route to record
+   the heard portion (the agent marks interrupted generations only when the request itself is cut).
 
 Interim text: the agent publishes ephemeral `voice-transcript` events (`speech-start`, `partial`
 with the full running text, `final`, `error`) on its WebSocket event stream. `live-voice.ts`
@@ -96,13 +126,18 @@ stale turns, delivers each final once and shows the interim text in the conversa
 draft or sent. **Upstream gap:** the Android agent is port-free and its IPC carries only
 `http_request`/`http_request_stream`, so no event stream reaches the phone and the phone shows the
 final transcript only; interim text appears where a transport carries the event stream (the
-browser spec's stub agent). An IPC event channel or partials in the live response would close it.
+browser spec's stub agent). An IPC event channel or partials in the live response would close it:
+`residentLiveTransport()` passes a `subscribe` method of the resident connection straight through,
+so the assistant's interim line lights up once the IPC carries events. Nothing synthesizes a
+partial in the meantime.
 
 Latency is recorded per turn as numbers only (`voice-timing.ts` `live`: ASR mode, partial count,
 speech-start to first partial, speech-end to final on the client and the agent's own last-frame to
 final) and appears in the diagnostics export. Evidence: class S (node tests
-`test/live-voice.test.mjs`, the Playwright spec `test/browser/live-voice.spec.ts` with a stub
-agent) and Gradle compilation; not run on an emulator or a device.
+`test/live-voice.test.mjs` and `test/voice-assistant.test.mjs`, the Playwright specs
+`test/browser/live-voice.spec.ts` with a stub agent and `test/browser/voice-assistant.production.spec.ts`
+on the flag-off renderer with synthetic native ports) and Gradle compilation; not run on an emulator
+or a device. Echo, barge-in timing, lock, calls and Bluetooth need device acceptance.
 
 ## Records
 

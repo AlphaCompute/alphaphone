@@ -236,7 +236,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
    AlphaLiveVoiceCapture next=new AlphaLiveVoiceCapture(getContext(),id,new AlphaLiveVoiceCapture.Sink(){
     public void frames(String captureId,JSArray frames,JSArray vad,float peak){notifyListeners("liveCaptureFrames",new JSObject().put("captureId",captureId).put("frames",frames).put("vad",vad).put("peak",peak));}
     public void ended(String captureId,String error){JSObject event=new JSObject().put("captureId",captureId);if(error!=null)event.put("error",error);notifyListeners("liveCaptureEnded",event);}
-   });
+   },Boolean.TRUE.equals(call.getBoolean("echoCancel",false)));
    try{next.start();live=next;call.resolve(new JSObject().put("captureId",id).put("sampleRate",AlphaLiveVoiceCapture.SAMPLE_RATE));}
    catch(Exception|Error error){call.reject("Live capture could not start","capture");}
   },()->call.reject("Voice unavailable"));
