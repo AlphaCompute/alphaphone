@@ -25,7 +25,6 @@ import java.util.Map;
  */
 final class CloudSignInFlow {
  private CloudSignInFlow() {}
- static final String TENANT = "elizacloud";
  static final String CLIENT_ID = "ai.elizaresearch.alphaphone";
  static final String DEVICE_NAME = "Alpha Phone";
  /** A pending Google sign-in is single use and expires after ten minutes. */
@@ -48,10 +47,11 @@ final class CloudSignInFlow {
 
  /** Fixed authorities. Staging exists only in ELIZA_DEV_ALLOW_TEST_MOCKS=1 builds. */
  enum Environment {
-  PRODUCTION("production", "api.eliza.app", "eliza.app"),
-  STAGING("staging", "api-staging.eliza.app", "staging.eliza.app");
-  final String name, apiHost, callbackHost;
-  Environment(String name, String apiHost, String callbackHost) { this.name = name; this.apiHost = apiHost; this.callbackHost = callbackHost; }
+  PRODUCTION("production", "api.eliza.app", "eliza.app", "elizacloud"),
+  STAGING("staging", "api-staging.eliza.app", "staging.eliza.app", "elizacloud-staging");
+  final String name, apiHost, callbackHost, tenant;
+  /** Steward tenant: staging Cloud only accepts tokens from its own tenant. */
+  Environment(String name, String apiHost, String callbackHost, String tenant) { this.name = name; this.apiHost = apiHost; this.callbackHost = callbackHost; this.tenant = tenant; }
   String api() { return "https://" + apiHost; }
   /** The verified App Link Steward returns to; also the mobile App Auth binding string. */
   String callback() { return "https://" + callbackHost + CALLBACK_PATH; }
@@ -83,7 +83,7 @@ final class CloudSignInFlow {
  /** The exact Steward authorize URL. Parameters are base64url or fixed ASCII, so none needs escaping. */
  static String authorizeUrl(Environment environment, String challenge, String state) {
   if (!validState(state) || challenge == null || !challenge.matches("[A-Za-z0-9_-]{43}")) throw new IllegalArgumentException();
-  return environment.api() + "/steward/auth/oauth/google/authorize?response_type=code&tenant_id=" + TENANT
+  return environment.api() + "/steward/auth/oauth/google/authorize?response_type=code&tenant_id=" + environment.tenant
    + "&redirect_uri=" + percent(environment.callback()) + "&code_challenge=" + challenge
    + "&code_challenge_method=S256&state=" + state + "&prompt=" + PROMPT;
  }
