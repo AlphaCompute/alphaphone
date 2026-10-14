@@ -11,7 +11,7 @@ import { BrowserAudioCapture } from './audio-capture';
 import { WebPlugin } from '@capacitor/core';
 // Recordings stay local until transcription is requested. The selected Cloud or
 // explicit local/development route owns processing; provider credentials stay off-page.
-// There is no in-browser speech engine: local recognition and Kokoro playback run on the
+// There is no in-browser speech engine: local recognition and Paradee-8M playback run on the
 // private local agent, which uses the native llama.cpp-based libelizainference stack.
 export class BrowserVoice extends WebPlugin {
  private connection=Promise.resolve(connectionController).then(connectionController=>{

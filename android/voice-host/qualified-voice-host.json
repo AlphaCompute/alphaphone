@@ -20,7 +20,7 @@
       "asr/eliza-1-asr-mmproj.gguf"
     ],
     "current": "Qwen3-ASR-0.6B Q8_0",
-    "intended": "Phonon-2 (elizaOS/eliza#36212, open)"
+    "intended": "Phonon-2 (elizaOS/eliza#36212, merged upstream as d06a1aa9c9 after the 644d56c93d pin; not consumed yet)"
   },
   "abis": [
     {

@@ -4,7 +4,7 @@
   "slot": "asr",
   "model": "Qwen3-ASR-0.6B Q8_0 (ggml-org/Qwen3-ASR-0.6B-GGUF@928ab958557df9aa2ef1c93e0e83c7ad0933fae2), the upstream mobile-voice@1.0.0 ASR entry",
   "license": "Apache-2.0",
-  "intended": "Phonon-2 (elizaOS/eliza#36212: Phonon-2 default mobile ASR, streaming ASR JNI, llama.cpp main 533d0d89). Open and not merged on 2026-10-14; when it lands at the pinned develop commit, replace these rows with the Phonon-2 GGUF pair from that bundle record. Phonon-2 weights are CC-BY-4.0 (attribution required; flag, do not block).",
+  "intended": "Phonon-2 (elizaOS/eliza#36212: Phonon-2 default mobile ASR, streaming ASR JNI, llama.cpp main 533d0d89). Merged upstream on 2026-10-14 as d06a1aa9c9, after this pin (644d56c93d), so it is not consumed yet; when the pin moves to a develop commit that contains it (the engine is rebuilt on its llama.cpp gitlink), replace these rows with the Phonon-2 GGUF pair from that bundle record. Phonon-2 weights are CC-BY-4.0 (attribution required; flag, do not block).",
   "install": "APK assets (assets/paradee-voice/v1/asr/), copied to app storage and SHA-256 verified on first use by ai.eliza.voice.VoiceAssets.install",
   "files": [
     {

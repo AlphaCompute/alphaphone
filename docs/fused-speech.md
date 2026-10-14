@@ -44,10 +44,10 @@ verified first-run copy above; there is no network install path.
 
 libelizainference picks the ASR pair by the canonical names under `asr/`, so the slot does not
 depend on the model. `android/paradee-voice/asr-inputs.json` pins the pair that fills it (paths,
-sizes, SHA-256, sources) and records the intended model, **Phonon-2** (elizaOS/eliza#36212, open on
-2026-10-14). When #36212 is merged and the pin moves to a develop commit that contains it, change
+sizes, SHA-256, sources) and records the intended model, **Phonon-2** (elizaOS/eliza#36212, merged
+upstream on 2026-10-14 as `d06a1aa9c9`, after the `644d56c93d` pin). When the pin moves to a develop commit that contains it, change
 `asr-inputs.json` and the ASR rows of `android/voice-host/qualified-voice-host.json` to the
-Phonon-2 files from that bundle record and restage; no code changes. Phonon-2 weights are
+Phonon-2 files from that bundle record, rebuild the engine on that pin's llama.cpp gitlink and restage; no Alpha code change is expected. Phonon-2 weights are
 CC-BY-4.0 and will be flagged in the notices.
 
 ## Records
@@ -123,7 +123,7 @@ still required.
 
 ## Upstream gaps
 
-- Phonon-2 (elizaOS/eliza#36212) and streaming ASR are not merged; ASR is batch (`NativeAsr.transcribe`
+- Phonon-2 and streaming ASR (elizaOS/eliza#36212) merged after the pin and are not consumed; ASR is batch (`NativeAsr.transcribe`
   on a complete 16 kHz buffer) and Paradee returns a complete buffer.
 - AOSP bootstrap passes no eSpeak data to `eliza_inference_paradee_load`, and the mobile voice
   catalog names `paradee-8m-v1.0.gguf` while the library expects `paradee-8m-v1_0.gguf`.

@@ -259,7 +259,7 @@ merged on `main` on 2026-10-14) was merged in and its speech adapters adopted: t
 paradee-voice library (`:local-speech`, `AlphaParadeeSpeech`, `AlphaLocalSpeechEngine`), the host
 Paradee and ASR routes, the registered-JNI embedding contract and its pin `644d56c93d` (elizaOS
 develop, containing #36153, #36157, #36158, #36168 and #36194; llama.cpp gitlink `3f131ab9`,
-voice ABI 18). elizaOS/eliza#36212 (Phonon-2) is open, so the ASR slot holds Qwen3-ASR (P-55).
+voice ABI 18). elizaOS/eliza#36212 (Phonon-2) merged after this pin, so the ASR slot holds Qwen3-ASR (P-55).
 Development machine, load average 25 to 45 from other sessions. No emulator, device or hosted run.
 
 - `npm run upstream:verify`: source verified at `644d56c93d`; reachability re-recorded

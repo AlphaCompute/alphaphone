@@ -177,8 +177,8 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private void submitLocal(PluginCall call,Work work){submit(call,request->{main.removeCallbacks(localIdleRelease);synchronized(localCancellationGate){localActiveRequest=request;request.cancelNative=()->{synchronized(localCancellationGate){if(localActiveRequest==request)localEngine.cancel();}};}try{if(request.cancelled||!speechForeground)throw new IOException("Voice cancelled");work.run(request);}catch(Exception error){localEngine.release();throw error;}catch(LinkageError|OutOfMemoryError error){localEngine.release();throw new IOException("On-device speech unavailable",error);}finally{synchronized(localCancellationGate){if(localActiveRequest==request)localActiveRequest=null;request.cancelNative=null;}if(request.cancelled||destroyed)localEngine.release();else scheduleLocalRelease(speechForeground?120000:30000);}});}
  // Local CPU execution has no dependency on an account, URL, or host process.
  // The status resolves only when the native pair loads, the ABI is at least 16, every bundle file
- // verifies and a context opens. `ready` (recognition) needs ASR, Kokoro TTS and VAD; `playback`
- // (read-aloud) needs Kokoro only, so a bundle without a qualified ASR pair still reads aloud.
+ // verifies and a context opens. `ready` (recognition) needs the bundle ASR slot, Paradee-8M TTS and VAD; `playback`
+ // (read-aloud) needs Paradee-8M only, so a bundle without a qualified ASR pair still reads aloud.
  // A build without the voice bundle answers "unavailable" without loading any native library.
  @PluginMethod public void localSpeechStatus(PluginCall call){submitLocal(call,request->{
   localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();return null;});
