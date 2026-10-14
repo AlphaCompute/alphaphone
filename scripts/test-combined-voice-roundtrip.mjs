@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './retired-host-speech-proof.mjs';
 /** Synthetic Kokoro -> real WAV -> ffmpeg PCM -> real Whisper. Never starts or pairs a host. */
 import fs from 'node:fs';
 import path from 'node:path';

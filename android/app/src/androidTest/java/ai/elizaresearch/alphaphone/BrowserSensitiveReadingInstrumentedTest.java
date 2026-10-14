@@ -133,7 +133,7 @@ public final class BrowserSensitiveReadingInstrumentedTest {
     invoke(review);AlertDialog approved=dialog(scenario);assertEquals(0,server.bodies.size());
     child.child("document.querySelector('article p').textContent='Changed after review';true");
     BoundedActivityScenario.main(()->approved.getButton(AlertDialog.BUTTON_POSITIVE).performClick());String token=result().getString("readingToken");
-    String synth="Capacitor.Plugins.AlphaVoiceCloud.synthesizeBrowserReading({"+binding+",readingToken:"+JSONObject.quote(token)+",requestId:'browser-reading-test'})";
+    String synth="Capacitor.Plugins.AlphaVoiceCloud.synthesizeBrowserReading({"+binding+",readingToken:"+JSONObject.quote(token)+",requestId:'69f8b4b6-cfe5-4de0-96ef-cdd304f4e4b2'})";
     JSONObject audio=call(synth);assertFalse(audio.toString(),audio.has("error"));assertEquals(1,server.bodies.size());assertEquals(article,new JSONObject(server.bodies.get(0)).getString("text"));assertFalse(server.bodies.get(0).contains(secret));
     js("window.__readingEnded=false;Capacitor.Plugins.AlphaVoiceCloud.addListener('playbackEnded',()=>window.__readingEnded=true)");assertFalse(call("Capacitor.Plugins.AlphaVoiceCloud.play({playbackId:"+JSONObject.quote(audio.getString("playbackId"))+"})").has("error"));waitFor("window.__readingEnded===true");assertTrue(call(synth).has("error"));assertEquals(1,server.bodies.size());
    }catch(Exception|AssertionError failure){primary=failure;throw failure;}finally{

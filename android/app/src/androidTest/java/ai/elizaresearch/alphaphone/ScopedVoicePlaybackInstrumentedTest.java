@@ -69,8 +69,9 @@ public class ScopedVoicePlaybackInstrumentedTest {
                 if (head.size() > 16384) throw new IOException("Header bound");
               }
               String headers = head.toString(StandardCharsets.US_ASCII);
-              if (!headers.startsWith("POST /api/tts/local-inference HTTP/1.1\r\n"))
+              if (!headers.startsWith("POST /api/tts/paradee HTTP/1.1\r\n"))
                 throw new IOException("Unexpected local fixture route");
+              String requestId="";for(String line:headers.split("\r\n"))if(line.toLowerCase(Locale.ROOT).startsWith("x-request-id:"))requestId=line.substring(13).trim();
               int length = -1;
               boolean authorized = false;
               for (String line : headers.split("\r\n")) {
@@ -82,12 +83,12 @@ public class ScopedVoicePlaybackInstrumentedTest {
               byte[] body = in.readNBytes(length);
               if (body.length != length) throw new EOFException("Incomplete fixture body");
               JSONObject request = new JSONObject(new String(body, StandardCharsets.UTF_8));
-              if (!"wav".equals(request.getString("format"))) throw new IOException("Fixture format");
+              if (request.length()!=1) throw new IOException("Fixture format");
               texts.add(request.getString("text"));
               byte[] response = wav();
               OutputStream out = socket.getOutputStream();
               out.write(("HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\nContent-Length: "
-                  + response.length + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                  + response.length + "\r\nX-Request-Id: "+requestId+"\r\nX-Eliza-Speech-Provider: libelizainference-paradee\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
               out.write(response); out.flush();
             } finally { active = null; }
           }
@@ -114,8 +115,8 @@ public class ScopedVoicePlaybackInstrumentedTest {
       assertEquals("true", WebViewTestDriver.evaluate("Boolean(window.Capacitor?.Plugins?.AlphaVoiceCloud)"));
       String origin = "http://127.0.0.1:" + fixture.server.getLocalPort();
       String slot = "remote:" + origin;
-      String oldRequest = "scoped-old-" + UUID.randomUUID();
-      String newRequest = "scoped-new-" + UUID.randomUUID();
+      String oldRequest = UUID.randomUUID().toString();
+      String newRequest = UUID.randomUUID().toString();
       long expires = System.currentTimeMillis() + 600000;
       String binding = "sessionId:" + JSONObject.quote(UUID.randomUUID().toString())
           + ",origin:" + JSONObject.quote(origin) + ",ownerId:'synthetic-scoped-owner',expiresAt:" + expires;

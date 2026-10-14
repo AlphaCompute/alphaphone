@@ -55,7 +55,7 @@
          // Validate the wire value before triggering an Android permission prompt.
          // JSONObject's boolean getter also accepts strings; this API requires a boolean.
          if (call.data.opt("enabled") !is Boolean) {
-@@ -305,6 +319,10 @@
+@@ -362,6 +376,10 @@
      @PluginMethod
      fun resolveDefaultApp(call: PluginCall) {
          val role = call.getString("role")
@@ -66,7 +66,7 @@
          val handler = try {
              SystemLauncherApps.resolveDefault(context, role)
          } catch (error: IllegalArgumentException) {
-@@ -326,6 +344,10 @@
+@@ -383,6 +401,10 @@
      @PluginMethod
      fun openDefaultApp(call: PluginCall) {
          val role = call.getString("role")
@@ -77,7 +77,7 @@
          val intent = try {
              SystemLauncherApps.defaultLaunchIntent(context, role)
          } catch (error: IllegalArgumentException) {
-@@ -361,6 +383,7 @@
+@@ -421,6 +443,7 @@
          result.put("packageName", status.packageName)
          val roles = JSArray()
          for (role in status.roles) {

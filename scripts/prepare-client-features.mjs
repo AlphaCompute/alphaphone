@@ -56,7 +56,6 @@ export const CLIENT_FEATURE_PATHS = [
   'packages/ui/src/voice/speech-segments.ts',
   'packages/voice/src/turn.ts',
   'packages/voice/src/browser-capture',
-  'packages/voice/src/browser-speech',
   'packages/voice/src/respond-gate.ts',
   'packages/voice/src/voice-eot.ts',
   'packages/core/src/speech.ts',
@@ -105,7 +104,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   if(projectVoice){
   // Browser consumer projections retain the canonical implementations and exact type declarations.
   // The dashboard transport is unavailable here: Alpha must inject its owned, private fetch.
-  if (upstream.pin !== '13c98575987a121decc45b161b0c8a4ee698554e') throw Error('Review voice projections for the new upstream pin.');
+  if (upstream.pin !== '644d56c93df9e410b1ef4297f961cb1df9e7d152') throw Error('Review voice projections for the new upstream pin.');
   const projectionInputs={
     'packages/ui/src/voice/voice-session-client.ts':'1de275fc7c6bc1871d13d37ee42298db3cbb2ec546795417ed9df512606b4081',
     'packages/ui/src/voice/voice-chat-types.ts':'043e9a3cd224bc78c67e460070f4e3006120d87db50149f5e2515572eab1cd21',

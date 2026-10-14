@@ -43,6 +43,11 @@ android {
    if (releaseSigningReady) signingConfig signingConfigs.release
   }
  }
+ // :local-speech omits inference JNI to avoid duplicating :app's resident host.
+ // This separate APK has no resident host and must package its own reviewed bytes.
+ if (file('../../vendor/eliza/packages/app/platforms/android/paradee-voice/consumer.gradle').isFile()) {
+  sourceSets.main.jniLibs.srcDirs += [file('../../.eliza/paradee-voice/native/jniLibs')]
+ }
  lint { abortOnError true; disable 'ProtectedPermissions', 'SystemPermissionTypo' }
  compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
 }

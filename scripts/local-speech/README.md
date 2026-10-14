@@ -1,3 +1,41 @@
+## Paradee migration at newer upstream pins
+
+Pins containing `packages/app/platforms/android/paradee-voice` use its native
+Java API and JNI bridge. They do not use the Sherpa AAR procedures below. The
+older qualified manifests are historical evidence and do not certify Paradee.
+
+Build the exact pinned shared source into product-owned
+`.eliza/paradee-voice/native` with the shared `paradee-voice/build-native.ts`
+builder. Keep its downloads/workspace and outputs outside `vendor/eliza`; build
+in an isolated checkout at the reviewed pin. Preserve the generated build record
+and notices. Both Android ABIs are required. The shared builder currently stages
+TTS only: a reviewed ASR GGUF model/projector pair, with exact file paths, byte
+sizes and SHA-256 values in `android/paradee-voice/asr-inputs.json`, must also be
+included in the voice manifest and build record before strict input admission.
+That ASR pin file is intentionally absent until the model selection is reviewed.
+
+`node scripts/paradee-runtime.mjs` checks complete recorded outputs and model
+pins; it never grants qualification. `--allow-absent` permits only entirely
+absent native outputs for the explicit unpackaged developer lane. That lane
+compiles the actual shared Java API but packages no speech engine or models;
+local speech must report unavailable. Partial or modified outputs fail.
+
+Strict JNI compilation also needs the exact nested FFI source checkout. Initialize it explicitly before building (this is source acquisition, not runtime qualification):
+
+```sh
+git -C vendor/eliza submodule update --init plugins/plugin-local-inference/native/llama.cpp
+```
+
+Admission verifies the parent's gitlink, nested HEAD, clean source, and exact FFI header bytes. The Java-only unpackaged lane with entirely absent native outputs does not need this checkout.
+
+The app additionally runs `node scripts/paradee-runtime.mjs --app-linkage`: both packaged ABI inference libraries must byte-match the voice build record. The listener packages its own verified copy and does not depend on app staging. Matching bytes establish linkage integrity only, not functional qualification.
+
+The new fused library also requires new embedding-host qualification; prior
+Sherpa/embedding bytes cannot be relabeled. Device/ABI speech functionality,
+quality, interruption and latency evidence remain required before distribution.
+
+## Legacy Sherpa instructions
+
 # Reproduce local speech assets
 
 The engine and pinned runtime/model tooling live in

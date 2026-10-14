@@ -16,6 +16,7 @@ import {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {usesParadee,verifyParadeeAppLinkage} from './paradee-runtime.mjs';
 import {verifyEmbeddingHost} from './stage-embedding-host.mjs';
 import {BUILD_TOOLCHAIN, HUMAN_ACTION, QUALIFIED_HOST, stagedLibraries} from './build-embedding-host.mjs';
 
@@ -36,12 +37,13 @@ function readHead(directory) {
 }
 
 /** Inputs no preparation step produces: the pinned checkout and the speech AAR. */
-export function checkoutProblems(root) {
+export function checkoutProblems(root, {allowUnpackagedRuntime=false}={}) {
   const problems = [];
   const pin = JSON.parse(fs.readFileSync(path.join(root, 'upstream.lock.json'), 'utf8')).commit;
   const head = readHead(path.join(root, 'vendor/eliza'));
   if (head !== pin)
     problems.push(`vendor/eliza is ${head ? `at ${head}` : 'not checked out'}; upstream.lock.json pins ${pin}. Run: git submodule update --init vendor/eliza`);
+  if(usesParadee(root)){try{verifyParadeeAppLinkage(root,{allowAbsent:allowUnpackagedRuntime});}catch(error){problems.push(error.message);}return problems;}
   const aar = path.join(root, SPEECH_AAR);
   if (!fs.existsSync(aar)) {
     problems.push(`Speech runtime ${SPEECH_AAR} is missing (Gradle :local-speech:preBuild needs it). Build and install it with the commands in ${SPEECH_GUIDE}. A local rebuild is not the qualified runtime: the reviewed AAR needs a person (npm run android:build:inputs).`);
@@ -111,6 +113,11 @@ export function strictBuildInputs(root, preparedSource, {env = process.env} = {}
   const head = readHead(path.join(root, 'vendor/eliza'));
   add('pinned upstream checkout', head === pin, 'script', `vendor/eliza ${head ? `at ${head}` : 'not checked out'}; pin ${pin}`, 'git submodule update --init vendor/eliza');
 
+  if(usesParadee(root)){
+    let problem='';try{verifyParadeeAppLinkage(root);}catch(error){problem=error.message;}
+    add('speech runtime installed',!problem,'script',problem||'Pinned Paradee and reviewed ASR inputs verified','Build pinned paradee-voice into .eliza/paradee-voice/native and stage reviewed ASR inputs; see scripts/local-speech/README.md.');
+    add('speech runtime qualified',false,'person','The previous Sherpa qualification does not certify the new Paradee/ASR engine.','Qualify the exact new libraries and models on both ABIs before admitting distribution (#397, #413).');
+  }else{
   const aar = path.join(root, SPEECH_AAR);
   const installed = fs.existsSync(aar) ? sha256(aar) : null;
   const local = readJson(root, SPEECH_MANIFEST);
@@ -123,6 +130,8 @@ export function strictBuildInputs(root, preparedSource, {env = process.env} = {}
     acceptance.passed !== true && `functional acceptance is ${acceptance.state ?? 'not recorded'} (${Object.entries(acceptance.abis ?? {}).map(([abi, value]) => `${abi} ${value.state}`).join(', ')})`].filter(Boolean);
   add('speech runtime qualified', speechProblems.length === 0, 'person', speechProblems.length ? speechProblems.join('; ') : `reviewed AAR installed and ${SPEECH_QUALIFIED} records functional acceptance passed`,
     'Needs a person: approved policy requires on-device speech on both shipped ABIs (#397, #413). Supply the reviewed AAR or requalify a rebuilt runtime on both ABIs with functional evidence (scripts/local-speech/README.md); a local rebuild does not reproduce the reviewed bytes.');
+
+  }
 
   const host = readJson(root, QUALIFIED_HOST), toolchain = readJson(root, BUILD_TOOLCHAIN);
   const libraries = stagedLibraries(root, host);
@@ -179,7 +188,7 @@ async function main() {
     console.log(args.includes('--json') ? JSON.stringify(rows, null, 2) : formatReport(rows));
     return;
   }
-  let problems = checkoutProblems(root);
+  let problems = checkoutProblems(root,{allowUnpackagedRuntime:args.includes('--allow-unpackaged-runtime')});
   if (!problems.length && !args.includes('--before-prepare')) {
     // The source guard imports the pinned checkout, so load it only once that is verified.
     const {sourceDirectory} = await import('./local-agent-source.mjs');

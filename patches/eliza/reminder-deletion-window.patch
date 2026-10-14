@@ -134,13 +134,13 @@
     }
 @@ -246,6 +327,7 @@
   }
- 
+
   private void postNotification(Context context,String id,JSONObject value,String occurrence)throws JSONException{
 +   if(deletionSuspended(read(context,id)))return;
     final String token;
     try { token = new ReminderTaps(context,this).prepare(selectedRow(context, id, value)); }
     catch (Exception unavailable) { throw new IllegalStateException("Reminder route could not be saved", unavailable); }
-@@ -289,7 +371,7 @@
+@@ -299,7 +381,7 @@
   synchronized JSONObject decide(Context context,String id,String occurrence,String action)throws JSONException {
    if(!validId(id)||occurrence==null)throw new IllegalArgumentException("Select the current reminder occurrence");
    JSONObject value=read(context,id);
@@ -149,7 +149,7 @@
    if(!action.equals("done")&&!action.equals("snooze"))throw new IllegalArgumentException("Unknown reminder action");
    // Undated to-dos have no instant or alert: Done/Snooze would arm an alarm. Use todoDecision.
    if(value.optBoolean("undated"))throw new IllegalArgumentException("Change undated to-dos from the to-do list");
-@@ -345,7 +427,7 @@
+@@ -355,7 +437,7 @@
    if(preferences.getAll().size()>=LIMIT){
     long oldestAt=Long.MAX_VALUE;
     for(String key:preferences.getAll().keySet()){
@@ -158,7 +158,7 @@
      catch(JSONException|ClassCastException invalid){/* Preserve damaged neighbors. */}
     }
     if(reclaimedId==null)throw new StorageFull();
-@@ -360,7 +442,7 @@
+@@ -370,7 +452,7 @@
   synchronized JSONObject todoDecision(Context context,JSONObject target,String action)throws JSONException{
    if(target==null||action==null||!java.util.Arrays.asList("done","reopen","cancel").contains(action))throw new IllegalArgumentException("Unknown to-do action");
    String id=target.getString("reminderId");JSONObject row=read(context,id);
@@ -167,7 +167,7 @@
    if(!canonical(target).equals(canonical(selected(context,id))))throw new IllegalArgumentException("Selected reminder changed");
    String status=row.getString("status");long now=System.currentTimeMillis();
    if("cancelled".equals(status))throw new IllegalArgumentException("To-do is no longer active");
-@@ -416,6 +498,7 @@
+@@ -426,6 +508,7 @@
    String id=creating?operationId:target.getString("reminderId");
    if(creating){if(store.value.getJSONObject("records").has(id))throw new IllegalArgumentException("Reminder creation ID already exists");}
    else if(!canonical(target).equals(canonical(selected(context,id))))throw new IllegalArgumentException("Selected reminder changed");

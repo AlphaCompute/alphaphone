@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './retired-host-speech-proof.mjs';
 /** Actual local synthesized speech -> local ASR. No user audio or remote upload. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
