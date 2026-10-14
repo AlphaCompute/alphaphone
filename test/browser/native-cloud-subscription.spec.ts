@@ -316,6 +316,14 @@ test.describe('entitlement route unavailable: billing snapshot fallback, never c
 });
 
 test.describe('outages and offline use',()=>{
+ test('a failed background refresh does not renew the verified plan timestamp',async({page})=>{
+  await boot(page,{...await entitlements({rfa:Math.floor(Date.now()/1000)+4}),holdProvider:false});
+  await expect.poll(()=>configured(page)).toBe(1);await idle(page);
+  const before=await page.evaluate(()=>localStorage.getItem('alpha.connection.plan-admission.v1'));
+  await fixture(page,{route:'503'});
+  await expect.poll(()=>page.evaluate(()=>(window as any).planController.getSnapshot().residentSubscription?.refreshFailed),{timeout:10000}).toBe(true);
+  expect(await page.evaluate(()=>localStorage.getItem('alpha.connection.plan-admission.v1'))).toBe(before);
+ });
  test('a billing outage without a recent plan is "needs plan" with a retry',async({page})=>{
   await boot(page,{route:'503'});
   await needsPlan(page);await started(page);
@@ -389,7 +397,9 @@ test.describe('redeem a subscription code',()=>{
   await page.getByRole('button',{name:'Redeem code',exact:true}).click();
   await expect(page.getByRole('alert')).toHaveText('This code could not be redeemed. Check the code and try again.');
   expect(await page.evaluate(()=>(window as any).planFixture.bodies.length)).toBe(1);
-  await expect(page.getByRole('textbox',{name:'Subscription code'})).toHaveValue('');
+  await expect(page.getByRole('textbox',{name:'Subscription code'})).toHaveValue(CODE);
+  await expect(page.getByRole('textbox',{name:'Subscription code'})).toHaveAttribute('aria-invalid','true');
+  await expect(page.getByRole('textbox',{name:'Subscription code'})).toHaveAttribute('aria-describedby','alpha-redeem-error');
   expect(await configured(page)).toBe(0);
   // Text that cannot be a code is refused locally with the same answer; nothing is sent.
   await page.getByRole('textbox',{name:'Subscription code'}).fill('not-a-code');

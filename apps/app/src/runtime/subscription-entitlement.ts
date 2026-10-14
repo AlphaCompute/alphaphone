@@ -550,7 +550,7 @@ export class SubscriptionRedeemError extends Error {
   readonly code: RedeemFailureCode; readonly retryAfterMs: number | null;
   constructor(code: RedeemFailureCode, retryAfterMs: number | null = null) { super(`Subscription code ${code}`); this.name = 'SubscriptionRedeemError'; this.code = code; this.retryAfterMs = retryAfterMs; }
 }
-export interface RedeemResult { replayed: boolean; grantEndsAt: number | null; paidPlanTakesPrecedence: boolean; planName: string | null }
+export interface RedeemResult { planEndsAt: number | null; replayed: boolean; grantEndsAt: number | null; paidPlanTakesPrecedence: boolean; planName: string | null }
 /** Owner-facing redemption copy. Unknown, expired, disabled and used-up codes share one answer. */
 export function redeemFailureMessage(error: unknown): string {
   if (error instanceof SubscriptionRedeemError) {
