@@ -736,7 +736,7 @@ async function admitCloudResident(signal:AbortSignal):Promise<ResidentAdmission>
     check:refreshSignal=>checkEntitlement(client.entitlementSource(),expected,refreshSignal),
     onView:next=>{if(service!==account)return;update({residentSubscription:next});
       const nextDecision=planAdmission(next);
-      if(next.kind==='active')writePlanAdmission({version:1,environment,credentialId:account.identity.credentialId,userId:account.identity.userId,organizationId:account.identity.organizationId??null,status:next.status,planName:next.planName,verifiedAt:Date.now(),endsAt:state.planEndsAt??null});
+      if(next.kind==='active'&&!next.refreshFailed)writePlanAdmission({version:1,environment,credentialId:account.identity.credentialId,userId:account.identity.userId,organizationId:account.identity.organizationId??null,status:next.status,planName:next.planName,verifiedAt:Date.now(),endsAt:state.planEndsAt??null});
       if(nextDecision==='needs-plan')residentPlanEnded(account,next);},
     onAuthFailure:error=>{if(service===account)residentRefreshRefused(account,error);}});
   return {binding:'cloud',credentialId:account.identity.credentialId,account};
@@ -1887,8 +1887,9 @@ export const connectionController = {
    * the agent when the plan allows. Each submission gets a fresh idempotency key; only a transport
    * retry inside the protocol reuses it. The code is never stored, logged or echoed.
    */
-  async residentRedeem(code:string) {
-    if(operation)return;
+  async residentRedeem(code:string):Promise<boolean> {
+    if(operation)return false;
+    let redeemed=false;
     const idempotencyKey=crypto.randomUUID();
     update({redeemError:'',redeemNotice:''});
     await work('Redeeming your code…',async signal=>{
@@ -1898,9 +1899,10 @@ export const connectionController = {
       try{result=await account.client.redeemSubscriptionCode(code,idempotencyKey,signal);}
       catch(error){if(error instanceof SubscriptionRedeemError){update({redeemError:redeemFailureMessage(error),message:''});return;}throw error;}
       if(service!==account)throw Error('Cloud account changed. Sign in again.');
-      if(result.grantEndsAt!==null&&!result.paidPlanTakesPrecedence)update({planEndsAt:result.grantEndsAt});
+      redeemed=true;
+      update({planEndsAt:result.planEndsAt});
       update({redeemNotice:redeemSuccessMessage(result)});
-      const endsAt=result.paidPlanTakesPrecedence?null:result.grantEndsAt;
+      const endsAt=result.planEndsAt;
       // Bind Eliza Cloud inference into the agent: attaches when the process already matches,
       // otherwise a clean restart. Conversation history stays in the agent and is restored.
       const notice=state.redeemNotice;
@@ -1910,6 +1912,7 @@ export const connectionController = {
       // The code was redeemed from the plan panel: show its outcome there beside the running agent.
       if(!state.error)update({open:true,purpose:'plan',redeemNotice:notice,message:''});
     });
+    return redeemed;
   },
   /** Checks the plan again after the owner returns from Eliza Cloud (resume or visibility). */
   recheckPlanOnReturn() {
@@ -2348,8 +2351,8 @@ export function ConnectionChooser() {
   const keyExpiresAt=snapshot.cloudAccount?.expiresAt;
   const keyExpiring=keyExpiresAt!==undefined&&keyExpiresAt-Date.now()<=CLOUD_KEY_EXPIRY_WARNING_MS;
   const day=(at:number)=>new Date(at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
-  const redeemForm=<form className="alpha-connection-redeem" aria-label="Redeem a subscription code" onSubmit={event=>{event.preventDefault();const input=redeemCode.current;const value=input?.value||'';if(input)input.value='';void connectionController.residentRedeem(value);}}>
-    <label>Subscription code<input ref={redeemCode} name="subscription-code" autoComplete="off" autoCapitalize="characters" autoCorrect="off" spellCheck={false} maxLength={64} required disabled={snapshot.busy} placeholder="XXXX-XXXX-XXXX-XXXX"/></label>
+  const redeemForm=<form className="alpha-connection-redeem" aria-label="Redeem a subscription code" onSubmit={event=>{event.preventDefault();const value=redeemCode.current?.value||'';void connectionController.residentRedeem(value).then(redeemed=>{const input=redeemCode.current;if(!input)return;if(redeemed)input.value='';else input.focus();});}}>
+    <label>Subscription code<input ref={redeemCode} name="subscription-code" autoComplete="one-time-code" aria-invalid={snapshot.redeemError?true:undefined} aria-describedby={snapshot.redeemError?'alpha-redeem-error':undefined} data-autofill-ignore="true" autoCapitalize="characters" autoCorrect="off" spellCheck={false} maxLength={64} required disabled={snapshot.busy} placeholder="XXXX-XXXX-XXXX-XXXX"/></label>
     <button disabled={snapshot.busy}>Redeem code</button>
   </form>;
   if(residentCloudFlow())return <div className="alpha-connection-scrim"><div className="alpha-connection alpha-connection-native alpha-connection-resume" role="dialog" aria-modal="true" aria-labelledby="connection-title" aria-busy={snapshot.residentStarting||undefined} tabIndex={-1} ref={panel}>
@@ -2366,7 +2369,7 @@ export function ConnectionChooser() {
         {residentNeedsPlan&&<p role="status">{NEEDS_PLAN_NOTICE}</p>}
         {keyExpiring&&<section aria-label="Eliza Cloud sign-in"><p role="status">{keyExpiresAt<=Date.now()?'Your Eliza Cloud sign-in on this phone has expired.':`Your Eliza Cloud sign-in on this phone expires ${day(keyExpiresAt)}.`} Approve this phone again to keep AI available.</p><button disabled={snapshot.busy} onClick={()=>void connectionController.residentCloudLogin()}>Approve this phone again</button></section>}
         {(residentNeedsPlan||planPanel)&&redeemForm}
-        {snapshot.redeemError&&<p role="alert" className="alpha-connection-error">{snapshot.redeemError}</p>}
+        {snapshot.redeemError&&<p id="alpha-redeem-error" role="alert" className="alpha-connection-error">{snapshot.redeemError}</p>}
         {snapshot.redeemNotice&&<p role="status">{snapshot.redeemNotice}</p>}
       </>:<p>{residentSignInRejected?(snapshot.error?'Sign in to Eliza Cloud again to turn AI back on.':'Your saved Cloud sign-in is no longer valid.'):residentAiOff}</p>}
       {residentOffline&&<p role="status">{OFFLINE_NOTICE}</p>}
