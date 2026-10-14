@@ -1,0 +1,1 @@
+package ai.elizaresearch.alphaphone;import android.content.Context;class GmailDeliveryWorker{static int schedules,cancels;static void schedule(Context c,String g){schedules++;}static void cancel(Context c){cancels++;}}

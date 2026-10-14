@@ -17,6 +17,7 @@ import { browserLocalAgentEnabled } from '../runtime/local-agent';
 import {developmentCartesiaVoiceEnabled} from '../runtime/development-cartesia-conversation';
 import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
+import { retireGmailBackground } from '../runtime/gmail-background';
 import { gmailGrantLabel, gmailGrantTier } from '../runtime/gmail-grants';
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
 import { buildDiagnostics, diagnosticsFileName, diagnosticsText } from '../runtime/diagnostics-export';
@@ -193,6 +194,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     if (!cloud || !account.connectionId || gmailBusy) return;
     if (!window.confirm(googleDisconnectConfirmation(account.label))) return;
     gmailBusy = account.connectionId; gmailNotice = ''; changed();
+    // Native background state is retired alongside the revoke; it never gates it.
+    const retirement = retireGmailBackground(account.connectionId);
     try {
       const result = await disconnectGmailAccount(cloud.client, account.connectionId, new AbortController().signal);
       if (owner !== instance || connectionController.getCloudClient()?.sessionId !== cloud.sessionId) return;
@@ -203,7 +206,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       window.dispatchEvent(new CustomEvent(GMAIL_ACCOUNTS_CHANGED, { detail: { source: 'settings' } }));
       window.dispatchEvent(new Event(GOOGLE_ACCOUNTS_CHANGED));
     } catch { if (owner === instance) { gmailNotice = disconnectMessage('unconfirmed', account.label); gmail = 'Authorization not verified'; } }
-    finally { gmailBusy = ''; if (owner === instance) changed(); }
+    finally { await retirement.settled(); gmailBusy = ''; if (owner === instance) changed(); }
   }
   async function checkSpeech() {
     if (speechChecking) return;
