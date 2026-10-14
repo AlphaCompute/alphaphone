@@ -56,7 +56,7 @@ test('direct local development launcher prepares a clean client tree before star
  for(const file of ['scripts/dev-local.mjs','scripts/dev-speech-settings.mjs','scripts/local-agent-source.mjs','scripts/copy-file-clone.mjs','scripts/prepare-client-features.mjs','scripts/upstream-native-source.mjs']){const target=path.join(root,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(file,target);}
  // The generic copier fixture explicitly tests the non-voice projection path.
  const prep=path.join(root,'scripts/prepare-client-features.mjs');fs.writeFileSync(prep,fs.readFileSync(prep,'utf8').replace('projectVoice = true','projectVoice = false'));
- const result=spawnSync(process.execPath,[path.join(root,'scripts/dev-local.mjs')],{cwd:root,env:{...process.env,ALPHA_REMOTE_PORT:'0'},encoding:'utf8',timeout:20000});
+ const result=spawnSync(process.execPath,[path.join(root,'scripts/dev-local.mjs')],{cwd:root,env:{...process.env,ALPHA_REMOTE_PORT:'0',ALPHA_REMOTE_PROFILE:path.join(root,'empty-profile')},encoding:'utf8',timeout:20000});
  assert.equal(result.status,1);assert.match(result.stderr,/Invalid local agent port/);
  assert.equal(JSON.parse(fs.readFileSync(path.join(root,'.eliza/client-features/.source.json'))).baseCommit,commit);
  // Development uses authenticated upstream source without a patch cache.
@@ -69,7 +69,7 @@ test('voice projection refuses an unreviewed pin by default',()=>fixture(({root}
 }));
 test('actual pinned voice projection authenticates source and output hashes and excludes dashboard transport',()=>{
  const source=prepareClientFeatures(),stamp=JSON.parse(fs.readFileSync(path.join(source,'.source.json')));
- assert.equal(stamp.baseCommit,'13c98575987a121decc45b161b0c8a4ee698554e');assert.equal(stamp.projectionVersion,1);
+ assert.equal(stamp.baseCommit,'644d56c93df9e410b1ef4297f961cb1df9e7d152');assert.equal(stamp.projectionVersion,1);
  const client='packages/ui/src/voice/voice-session-client.ts',text=fs.readFileSync(path.join(source,client),'utf8');
  assert.match(text,/requires an injected session fetch/);assert.doesNotMatch(text,/import\("\.\/voice-session-fetch"\)/);
  assert.notEqual(stamp.sourceFiles[client],stamp.files[client]);

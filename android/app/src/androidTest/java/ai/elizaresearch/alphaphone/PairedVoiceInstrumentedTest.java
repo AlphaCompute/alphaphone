@@ -29,9 +29,10 @@ public class PairedVoiceInstrumentedTest {
   Fixture()throws Exception {task=worker.submit(()->{try{for(int index=0;index<4;index++)try(Socket socket=server.accept()){
    socket.setSoTimeout(10000);InputStream in=socket.getInputStream();ByteArrayOutputStream head=new ByteArrayOutputStream();int c;while((c=in.read())!=-1){head.write(c);byte[] b=head.toByteArray();int n=b.length;if(n>=4&&b[n-4]==13&&b[n-3]==10&&b[n-2]==13&&b[n-1]==10)break;if(n>16384)throw new IOException();}
    String h=head.toString(StandardCharsets.US_ASCII);int length=0;for(String line:h.split("\r\n"))if(line.toLowerCase(Locale.ROOT).startsWith("content-length:"))length=Integer.parseInt(line.substring(15).trim());requests.add(h);byte[] body=in.readNBytes(length);bodies.add(body);
-   byte[] response=index==0?"{\"ready\":true,\"provider\":\"local-inference\"}".getBytes(StandardCharsets.UTF_8):index==1?wav():"no audio".getBytes(StandardCharsets.US_ASCII);
+   String requestId="";for(String line:h.split("\r\n"))if(line.toLowerCase(Locale.ROOT).startsWith("x-request-id:"))requestId=line.substring(13).trim();
+   byte[] response=index==0?"{\"ready\":true,\"provider\":\"libelizainference-paradee\",\"format\":\"pcm16-wav\",\"sampleRate\":24000,\"maxCharacters\":500}".getBytes(StandardCharsets.UTF_8):index==1?wav():"no audio".getBytes(StandardCharsets.US_ASCII);
    String status=index==3?"302 Found":"200 OK";String type=index==0?"application/json":index==1?"audio/wav":"text/html";
-   OutputStream out=socket.getOutputStream();out.write(("HTTP/1.1 "+status+"\r\nContent-Type: "+type+"\r\nContent-Length: "+response.length+"\r\nLocation: https://example.com/\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.write(response);out.flush();
+   OutputStream out=socket.getOutputStream();out.write(("HTTP/1.1 "+status+"\r\nContent-Type: "+type+"\r\nContent-Length: "+response.length+"\r\nX-Request-Id: "+requestId+"\r\nX-Eliza-Speech-Provider: libelizainference-paradee\r\nLocation: https://example.com/\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.write(response);out.flush();
   }}catch(IOException e){if(!server.isClosed())throw new RuntimeException(e);}});}
   public void close()throws Exception{server.close();worker.shutdownNow();}
  }
@@ -51,17 +52,17 @@ public class PairedVoiceInstrumentedTest {
     assertTrue("Malformed session is rejected",call("Capacitor.Plugins.AlphaVoiceCloud.pairedVoiceStatus({"+binding+",sessionId:'bad/session',requestId:'invalid-session'})").has("error"));
     assertEquals(0,fixture.requests.size());
     assertTrue(call("Capacitor.Plugins.AlphaVoiceCloud.pairedVoiceStatus({"+binding+",requestId:'status'})").getBoolean("ready"));
-    assertTrue(fixture.requests.get(0).contains("GET /api/tts/local-inference/status"));
-    JSONObject speech=call("Capacitor.Plugins.AlphaVoiceCloud.synthesizePaired({"+binding+",text:'synthetic paired playback',requestId:'tts'})");assertTrue(speech.toString(),speech.has("playbackId"));assertFalse(speech.has("token"));
-    assertTrue(fixture.requests.get(1).contains("POST /api/tts/local-inference "));assertTrue(fixture.requests.get(1).contains("Bearer synthetic-test-only"));
+    assertTrue(fixture.requests.get(0).contains("GET /api/tts/paradee/status"));
+    JSONObject speech=call("Capacitor.Plugins.AlphaVoiceCloud.synthesizePaired({"+binding+",text:'synthetic paired playback',requestId:crypto.randomUUID()})");assertTrue(speech.toString(),speech.has("playbackId"));assertFalse(speech.has("token"));
+    assertTrue(fixture.requests.get(1).contains("POST /api/tts/paradee "));assertTrue(fixture.requests.get(1).contains("Bearer synthetic-test-only"));
     assertEquals("synthetic paired playback",new JSONObject(new String(fixture.bodies.get(1),StandardCharsets.UTF_8)).getString("text"));
     WebViewTestDriver.evaluate("window.__pairedPlaybackEnded=false;Capacitor.Plugins.AlphaVoiceCloud.addListener('playbackEnded',()=>window.__pairedPlaybackEnded=true)");
     assertFalse(call("Capacitor.Plugins.AlphaVoiceCloud.play({playbackId:"+JSONObject.quote(speech.getString("playbackId"))+"})").has("error"));
     for(int i=0;i<80&&!"true".equals(WebViewTestDriver.evaluate("window.__pairedPlaybackEnded"));i++)SystemClock.sleep(50);
     assertEquals("true",WebViewTestDriver.evaluate("window.__pairedPlaybackEnded"));
     assertTrue(call("Capacitor.Plugins.AlphaVoiceCloud.play({playbackId:"+JSONObject.quote(speech.getString("playbackId"))+"})").has("error"));
-    assertTrue(call("Capacitor.Plugins.AlphaVoiceCloud.synthesizePaired({"+binding+",text:'reject html',requestId:'mime'})").has("error"));
-    assertTrue(call("Capacitor.Plugins.AlphaVoiceCloud.synthesizePaired({"+binding+",text:'reject redirect',requestId:'redirect'})").has("error"));
+    assertTrue(call("Capacitor.Plugins.AlphaVoiceCloud.synthesizePaired({"+binding+",text:'reject html',requestId:crypto.randomUUID()})").has("error"));
+    assertTrue(call("Capacitor.Plugins.AlphaVoiceCloud.synthesizePaired({"+binding+",text:'reject redirect',requestId:crypto.randomUUID()})").has("error"));
     assertEquals(4,fixture.requests.size());fixture.task.get(5,TimeUnit.SECONDS);
    }finally{call("Capacitor.Plugins.AlphaVoiceCloud.stopPlayback()");call("Capacitor.Plugins.AlphaConnection.secureRemove({slot:"+JSONObject.quote(slot)+"})");}
   }

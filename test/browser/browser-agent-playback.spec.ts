@@ -33,7 +33,7 @@ test('first host speech request plays without a readiness probe',async({page})=>
    return {playing,completed,firstPlaybackMs};
   }finally{await listener.remove();await voice.releaseLocalSpeech();}
  });
- expect(speechRequests).toEqual(['/api/tts/kokoro']);
+ expect(speechRequests).toEqual(['/api/tts/paradee']);
  expect(result.playing).toBe(true);expect(result.completed).toBe(true);
  await test.info().attach('first-host-playback',{body:JSON.stringify(result),contentType:'application/json'});
 });

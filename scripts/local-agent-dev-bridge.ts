@@ -12,8 +12,8 @@ export const LOCAL_AGENT_BRIDGE_PATH='/__alpha-local-agent';
 export const LOCAL_VOICE_WS_PATH='/__alpha-local-voice/ws';
 const LIMIT=2*1024*1024;
 const AUDIO_ENVELOPE_LIMIT=3*1024*1024;
-const ASR_PATH='/api/asr/whisper';
-const TTS_PATH='/api/tts/kokoro';
+const ASR_PATH='/api/asr/libelizainference';
+const TTS_PATH='/api/tts/paradee';
 const VOICE_PATH='/api/v1/voice/session';
 const VOICE_AGENT_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VOICE_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -140,7 +140,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       if(ttsAudio){headers['X-Request-Id']=input.requestId;headers.Accept='audio/wav';}
       const result=await request(origin.origin+input.path,{method:input.method,headers,body:audio??input.body,redirect:'error',
         signal:AbortSignal.any([abort.signal,AbortSignal.timeout(voice?10000:120000)])});
-      if(ttsAudio&&result.ok&&(result.headers.get('content-type')!=='audio/wav'||result.headers.get('x-request-id')!==input.requestId||result.headers.get('x-eliza-speech-provider')!=='standalone-kokoro')){await result.body?.cancel();fail(502,'Invalid local speech response');return;}
+      if(ttsAudio&&result.ok&&(result.headers.get('content-type')!=='audio/wav'||result.headers.get('x-request-id')!==input.requestId||result.headers.get('x-eliza-speech-provider')!=='libelizainference-paradee')){await result.body?.cancel();fail(502,'Invalid local speech response');return;}
       if(input.stream===true){
         if(result.status===401)pairing=undefined;
         if(!result.ok||!result.body||!result.headers.get('content-type')?.startsWith('text/event-stream')){
@@ -157,7 +157,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       if(abort.signal.aborted)return;
       const bytes=Buffer.concat(output);
       if(ttsAudio&&result.ok&&(bytes.length<44||bytes.toString('ascii',0,4)!=='RIFF'||bytes.toString('ascii',8,12)!=='WAVE'||bytes.readUInt32LE(4)+8!==bytes.length)){fail(502,'Invalid local speech audio');return;}
-      let body=ttsAudio&&result.ok?JSON.stringify({audioBase64:bytes.toString('base64'),requestId:input.requestId,provider:'standalone-kokoro',contentType:'audio/wav'}):bytes.toString('utf8');
+      let body=ttsAudio&&result.ok?JSON.stringify({audioBase64:bytes.toString('base64'),requestId:input.requestId,provider:'libelizainference-paradee',contentType:'audio/wav'}):bytes.toString('utf8');
       // The upstream machine session ID is its bearer token. Keep it on the host.
       if(voice){try{if(readFileSync(options.tokenFile,'utf8').trim()!==token||credential.expiresAt<=Date.now())throw Error('Voice owner changed');const projected=voiceControlResponse(voice,input,result.status,body,origin);
         if(result.ok&&voice==='mint'){for(const [id,ticket]of tickets)if(ticket.expiresAt<=Date.now()){ticket.close?.();tickets.delete(id);}if(tickets.size>=32)throw Error('Voice capacity reached');tickets.set(projected.sessionId,{root:token,ownerId:credential.ownerId,expiresAt:projected.expiresAt,claimed:false});projected.wsUrl=`ws://${host}${LOCAL_VOICE_WS_PATH}?sessionId=${projected.sessionId}`;}

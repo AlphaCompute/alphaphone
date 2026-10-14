@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import './retired-host-speech-proof.mjs';
 /** Real local Kokoro -> WAV -> Whisper qualification; no user text or network. */
 import assert from 'node:assert/strict';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';

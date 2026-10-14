@@ -4,7 +4,7 @@ import { registerPlugin } from '../platform-plugins';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { connectionController } from './connection-ui';
 const native = registerPlugin<{
-  localSpeechStatus(input: { requestId: string }): Promise<{ ready: boolean; execution: string }>;
+  localSpeechStatus(input: { requestId: string }): Promise<{ ready: boolean; execution: string; synthesisReady?: boolean }>;
   transcribeLocalRecording(input: { recordingId: string; requestId: string }): Promise<LocalTranscript>;
   addListener(event: 'speechProgress', callback: (event: SpeechProgressEvent) => void): Promise<PluginListenerHandle>;
   releaseLocalSpeech(): Promise<void>;
@@ -49,7 +49,11 @@ export function createOnDeviceVoice() {
     finally { modeChanged?.disconnect(); signal.removeEventListener('abort', cancel); document.removeEventListener('visibilitychange', visibility); unsubscribe(); }
   }
   return {
+    /** Transcription readiness. */
     async ready(signal: AbortSignal) { return operation(signal, async (requestId, interrupted) => { const result = await Promise.race([native.localSpeechStatus({ requestId }), interrupted]); return result.ready === true && result.execution === (Capacitor.isNativePlatform()?'device':'browser'); }); },
+    /** Synthesis readiness. The browser reports it separately because local speechSynthesis can
+     *  read aloud while no local transcriber is selected; native reports one engine status. */
+    async speakReady(signal: AbortSignal) { return operation(signal, async (requestId, interrupted) => { const result = await Promise.race([native.localSpeechStatus({ requestId }), interrupted]); return (result.synthesisReady ?? result.ready) === true && result.execution === (Capacitor.isNativePlatform()?'device':'browser'); }); },
     async transcribe(recordingId: string, signal: AbortSignal, progress?: (event: SpeechProgressEvent) => void) { return operation(signal, async (requestId, interrupted) => {
       // Progress is advisory and bound to this request; a missing listener never blocks transcription.
       let handle: PluginListenerHandle | undefined, closed = false;
@@ -60,12 +64,15 @@ export function createOnDeviceVoice() {
         return result;
       } finally { closed = true; void handle?.remove(); }
     }); },
-    async speak(text: string, signal: AbortSignal) {
+    async speak(text: string, signal: AbortSignal, onStarted?:()=>void, strictDrain=false, options?:{queue?:boolean;assertCurrent?:()=>void}) {
       const chunks = planLocalSpeech(text);
       return operation(signal, async (_requestId, interrupted, ownedSignal) => {
+        let started=false;
         for (const chunk of chunks) {
-          check(); ownedSignal.throwIfAborted();
-          await Promise.race([speakLocalText(chunk, ownedSignal, undefined, false, {execution:Capacitor.isNativePlatform()?'device':'browser',assertCurrent:check}), interrupted]);
+          check(); options?.assertCurrent?.(); ownedSignal.throwIfAborted();
+          const playback=speakLocalText(chunk, ownedSignal, ()=>{if(!started){started=true;onStarted?.();}}, options?.queue??false, {execution:Capacitor.isNativePlatform()?'device':'browser',assertCurrent:()=>{check();options?.assertCurrent?.();}},strictDrain);
+          // Conversation capture may resume only after the native speaker confirms cleanup.
+          if(strictDrain)await playback;else await Promise.race([playback,interrupted]);
         }
       });
     },

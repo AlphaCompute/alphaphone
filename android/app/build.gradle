@@ -91,14 +91,15 @@ android {
 }
 // Instrumentation diagnoses the same audited runtime already packaged by local-speech.
 // Extract only its Java API for compilation; do not package a second AAR/JNI runtime.
+def legacySpeech = !file('../../vendor/eliza/packages/app/platforms/android/paradee-voice').isDirectory()
 def speechTestApiJar = layout.buildDirectory.file('generated/speech-android-test-api/classes.jar')
-def extractSpeechAndroidTestApi = tasks.register('extractSpeechAndroidTestApi', Sync) {
+def extractSpeechAndroidTestApi = legacySpeech ? tasks.register('extractSpeechAndroidTestApi', Sync) {
  dependsOn ':local-speech:preBuild'
  from(zipTree(file('../local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar'))) {
   include 'classes.jar'
  }
  into layout.buildDirectory.dir('generated/speech-android-test-api')
-}
+} : null
 dependencies {
  implementation project(':eliza-network-policy')
  implementation 'androidx.browser:browser:1.9.0'
@@ -119,7 +120,7 @@ dependencies {
  implementation "androidx.webkit:webkit:$rootProject.ext.androidxWebkitVersion"
  implementation "androidx.appcompat:appcompat:$rootProject.ext.androidxAppCompatVersion"
  implementation "androidx.core:core-splashscreen:$rootProject.ext.coreSplashScreenVersion"
- androidTestCompileOnly files(speechTestApiJar).builtBy(extractSpeechAndroidTestApi)
+ if (legacySpeech) androidTestCompileOnly files(speechTestApiJar).builtBy(extractSpeechAndroidTestApi)
  androidTestImplementation 'androidx.test:runner:1.6.2'
  androidTestImplementation 'androidx.test.ext:junit:1.3.0'
  // Accessibility (ATF through Espresso) and TalkBack-order/rotation checks over the real UI.
@@ -150,3 +151,15 @@ def stageNativePatchReceipt = tasks.register('stageNativePatchReceipt', Copy) {
  into(nativePatchAssets)
 }
 tasks.named('preBuild').configure { dependsOn stageNativePatchReceipt }
+
+// The app uses its resident host's engine while :local-speech links the Paradee copy.
+// Require identical inference bytes; the image-only listener APK packages its own verified voice engine.
+if (!legacySpeech) {
+ def verifyParadeeAppLinkage = tasks.register('verifyParadeeAppLinkage', Exec) {
+  workingDir rootProject.projectDir.parentFile
+  def args = ['node', 'scripts/paradee-runtime.mjs', '--app-linkage']
+  if (project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME')?.toString() == '1') args += '--allow-absent'
+  commandLine args
+ }
+ tasks.named('preBuild').configure { dependsOn verifyParadeeAppLinkage }
+}

@@ -1,7 +1,5 @@
 package ai.elizaresearch.alphaphone;
 
-import ai.eliza.speech.LocalSpeechEngine;
-import ai.eliza.speech.SpeechAssets;
 import android.os.Bundle;
 import android.os.SystemClock;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -11,51 +9,21 @@ import java.util.concurrent.atomic.*;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
-/** Real packaged-model sentence callbacks; no Activity, microphone, HTTP or playback. */
+/** Opt-in native cancellation acquisition; this is not streaming callback or audible-stop evidence. */
 public final class SpeechSentenceCancellationInstrumentedTest {
- private static final String TEXT="The morning is bright. The garden is green. The evening is quiet.";
- private static void discard(LocalSpeechEngine.Audio audio){assertTrue(audio.samples.length>0);Arrays.fill(audio.samples,0);}
- @Test public void nativeSentenceCancellationAndRecovery()throws Exception{
+ @Test public void nativeCancellationAndRecovery()throws Exception{
   org.junit.Assume.assumeTrue("Explicit real-model campaign required","1".equals(InstrumentationRegistry.getArguments().getString("speechSentenceCancellation")));
-  Class<?> callback=Class.forName("ai.eliza.speech.LocalSpeechEngine$SynthesisCallback");
-  assertEquals("Exact Sherpa JNI callback return descriptor",Integer.class,callback.getDeclaredMethod("invoke",float[].class).getReturnType());
-  assertTrue("Function1 erased bridge remains",callback.getDeclaredMethod("invoke",Object.class).isBridge());
-  ExecutorService worker=Executors.newSingleThreadExecutor();AtomicReference<LocalSpeechEngine> engine=new AtomicReference<>();
-  CountDownLatch boundary=new CountDownLatch(1),release=new CountDownLatch(1);AtomicBoolean cancelled=new AtomicBoolean();AtomicInteger checks=new AtomicInteger();
-  Throwable primary=null;
+  ExecutorService worker=Executors.newSingleThreadExecutor();AlphaParadeeSpeech engine=new AlphaParadeeSpeech(InstrumentationRegistry.getInstrumentation().getTargetContext());
+  AtomicBoolean cancelled=new AtomicBoolean();CountDownLatch entered=new CountDownLatch(1);
   try{
-   worker.submit(()->{try{engine.set(new LocalSpeechEngine(SpeechAssets.install(InstrumentationRegistry.getInstrumentation().getTargetContext())));}catch(Exception e){throw new RuntimeException(e);}}).get(120,TimeUnit.SECONDS);
-   // Prove this exact frontend/model splits the text into multiple native batches.
-   AtomicInteger controlChecks=new AtomicInteger();
-   discard(worker.submit(()->engine.get().synthesize(TEXT,()->{controlChecks.incrementAndGet();return false;})).get(120,TimeUnit.SECONDS));
-   assertTrue("Pre/post checks plus at least two real native callbacks",controlChecks.get()>=4);
-   Future<LocalSpeechEngine.Audio> pending=worker.submit(()->engine.get().synthesize(TEXT,()->{
-    int n=checks.incrementAndGet();
-    if(n==2){ // first invocation is the preflight, second is the first real JNI callback
-     boundary.countDown();
-     try{if(!release.await(10,TimeUnit.SECONDS))throw new IllegalStateException("Cancellation handshake timed out");}
-     catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}
-    }
-    return cancelled.get();
-   }));
-   assertTrue("Reached actual first sentence callback",boundary.await(120,TimeUnit.SECONDS));
-   long cancelAt=SystemClock.elapsedRealtime();cancelled.set(true);release.countDown();
-   try{discard(pending.get(120,TimeUnit.SECONDS));fail("Cancelled generation must not publish partial audio");}
-   catch(ExecutionException expected){assertTrue("Explicit cancellation",expected.getCause() instanceof CancellationException);}
-   assertEquals("Only preflight and first callback; native skipped subsequent batches",2,checks.get());
-   Bundle timing=new Bundle();timing.putLong("sentenceCancelToReturnMs",SystemClock.elapsedRealtime()-cancelAt);timing.putInt("controlNativeCallbacks",controlChecks.get()-2);InstrumentationRegistry.getInstrumentation().sendStatus(0,timing);
-   // Same handles remain usable; default compatibility API still works.
-   discard(worker.submit(()->engine.get().synthesize("The morning is bright.")).get(120,TimeUnit.SECONDS));
-   AtomicInteger throwingChecks=new AtomicInteger();
-   try{discard(worker.submit(()->engine.get().synthesize(TEXT,()->{if(throwingChecks.incrementAndGet()==2)throw new IllegalStateException("Synthetic predicate failure");return false;})).get(120,TimeUnit.SECONDS));fail("Predicate failure must reject");}
-   catch(ExecutionException expected){assertTrue(expected.getCause() instanceof IllegalStateException);assertEquals("Speech cancellation check failed",expected.getCause().getMessage());}
-   assertEquals("Throwing callback also stops further batches",2,throwingChecks.get());
-   discard(worker.submit(()->engine.get().synthesize("The evening is quiet.")).get(120,TimeUnit.SECONDS));
-  }catch(Exception|AssertionError error){primary=error;throw error;}finally{
-   cancelled.set(true);release.countDown();
-   // Never free handles concurrently with native inference, including on failure.
-   worker.shutdown();if(worker.awaitTermination(120,TimeUnit.SECONDS)){if(engine.get()!=null)engine.get().close();}
-   else{AssertionError cleanup=new AssertionError("Native worker did not terminate; handles deliberately not freed concurrently");if(primary!=null)primary.addSuppressed(cleanup);else throw cleanup;}
-  }
+   Future<AlphaLocalSpeechEngine.Audio> pending=worker.submit(()->{entered.countDown();return engine.synthesize("The morning is bright. The garden is green. The evening is quiet.",cancelled::get);});
+   assertTrue(entered.await(120,TimeUnit.SECONDS));long cancelAt=SystemClock.elapsedRealtime();cancelled.set(true);engine.cancel();
+   // Reissue cancellation until the worker observes it; a call may still be entering native code.
+   while(!pending.isDone()&&SystemClock.elapsedRealtime()-cancelAt<120000){engine.cancel();Thread.sleep(10);}
+   try{AlphaLocalSpeechEngine.Audio audio=pending.get(1,TimeUnit.SECONDS);Arrays.fill(audio.samples,0);fail("Campaign did not interrupt synthesis before completion; retry with longer text");}
+   catch(ExecutionException expected){assertTrue(expected.getCause() instanceof CancellationException);}
+   Bundle timing=new Bundle();timing.putLong("nativeCancelToReturnMs",SystemClock.elapsedRealtime()-cancelAt);timing.putBoolean("physicalAudibleStopMeasured",false);InstrumentationRegistry.getInstrumentation().sendStatus(0,timing);
+   AlphaLocalSpeechEngine.Audio recovered=worker.submit(()->engine.synthesize("The morning is bright.")).get(120,TimeUnit.SECONDS);assertTrue(recovered.samples.length>0);Arrays.fill(recovered.samples,0);
+  }finally{cancelled.set(true);engine.cancel();worker.shutdown();if(worker.awaitTermination(120,TimeUnit.SECONDS))engine.close();else throw new AssertionError("Native worker did not drain; handles retained to avoid concurrent free");}
  }
 }

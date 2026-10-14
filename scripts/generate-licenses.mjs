@@ -530,7 +530,9 @@ export function androidDependencyFingerprint(root) {
   const app = read(root, 'android/app/build.gradle');
   for (const [, name] of app.matchAll(/^\s*implementation\s+project\('(:[^']+)'\)/gm)) if (modules.has(name)) files.push(path.posix.join(modules.get(name), 'build.gradle'));
   const consumer = read(root, 'android/local-speech/build.gradle').match(/elizaSpeechSourceDir\s*=\s*file\('([^']+)'\)/);
-  if (consumer) files.push(path.posix.join('android/local-speech', consumer[1], 'consumer.gradle'));
+  const paradeeConsumer = 'vendor/eliza/packages/app/platforms/android/paradee-voice/consumer.gradle';
+  if (exists(root, paradeeConsumer)) files.push(paradeeConsumer);
+  else if (consumer) files.push(path.posix.join('android/local-speech', consumer[1], 'consumer.gradle'));
   const lines = [];
   for (const file of [...new Set(files)].sort()) {
     if (!exists(root, file)) { lines.push(`${file}: missing`); continue; }
@@ -581,7 +583,39 @@ function androidEntries(root, templates, errors) {
   ];
 }
 
+export const ASR_MODEL_PINS = 'scripts/host-speech-assets.json';
+export const ASR_MODEL_NAMES = {
+  'asr/eliza-1-asr.gguf': 'Eliza-1 ASR model (Qwen3-ASR GGUF)',
+  'asr/eliza-1-asr-mmproj.gguf': 'Eliza-1 ASR audio projector (Qwen3-ASR mmproj GGUF)',
+  'vad/silero-vad-v5.gguf': 'Silero VAD v5 (GGUF)',
+};
+
+// Local ASR model, projector and VAD bytes run through libelizainference. Their licences are not
+// recorded in the reviewed pins, so they are listed and flagged unverified (P-09), never omitted.
+function asrModelEntries(root) {
+  if (!exists(root, ASR_MODEL_PINS)) return [];
+  return (readJson(root, ASR_MODEL_PINS).asr ?? []).map(pin => ({
+    name: ASR_MODEL_NAMES[pin.path] ?? pin.path,
+    version: `${pin.path} (sha256 ${pin.sha256})`,
+    license: UNVERIFIED, source: ASR_MODEL_PINS,
+    text: 'Local speech recognition model input pinned by the reviewed shared speech assets. The Android build takes the ASR pair from android/paradee-voice/asr-inputs.json. Its licence is not recorded in the reviewed pins; this inventory does not establish that the bytes are staged or qualified.',
+    _flags: ['licence-text-missing-from-package'],
+  }));
+}
+
 function speechEntries(root, templates, errors) {
+  const paradee = 'vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json';
+  if (exists(root, paradee)) {
+    const pins = readJson(root, paradee);
+    const names = {espeak: 'eSpeak NG (Paradee speech runtime dependency)', paradee: 'Paradee 8M speech synthesis model', lexicon: 'Misaki English lexicon'};
+    return [...Object.entries(pins).map(([name, pin]) => ({
+      name: names[name] ?? name,
+      version: `${pin.version ?? pin.path} (sha256 ${pin.sha256})`,
+      license: pin.license, source: pin.url ?? pin.source,
+      text: `Declared by the reviewed shared speech inputs. This source inventory does not establish that native/model bytes are staged or qualified.\n\n${templates.canonical(pin.license) || 'Canonical license text unavailable.'}`,
+      textSource: 'spdx-canonical', _flags: ['licence-text-missing-from-package'],
+    })), ...asrModelEntries(root)];
+  }
   if (!exists(root, 'android/local-speech/runtime-manifest.json')) return [];
   const manifest = readJson(root, 'android/local-speech/runtime-manifest.json');
   const scripts = 'vendor/eliza/packages/app/scripts/local-speech';
@@ -620,30 +654,6 @@ function speechEntries(root, templates, errors) {
     {name: 'Sherpa-ONNX native build dependencies', version: `built with Sherpa-ONNX ${sherpaVersion}`, license: UNVERIFIED,
       source: `https://github.com/k2-fsa/sherpa-onnx/tree/v${sherpaVersion}/cmake`,
       text: 'The statically linked native dependencies are discovered during the reproducible speech build. Their license files are copied into the installed model bundle under local-speech/v1/notices/native/ and hash-pinned by its manifest; they are not enumerated in source.'},
-  ];
-}
-
-/** In-browser speech (web build only; Android omits these assets and uses its native recognizer). */
-export const BROWSER_SPEECH_CONFIG = 'config/browser-speech.json';
-function browserSpeechEntries(root, templates, errors) {
-  if (!exists(root, BROWSER_SPEECH_CONFIG)) return [];
-  const config = readJson(root, BROWSER_SPEECH_CONFIG);
-  const pinned = item => {
-    if (!exists(root, item.path)) { errors.push(`${item.path}: missing`); return ''; }
-    const bytes = fs.readFileSync(path.join(root, item.path));
-    if (sha256(bytes) !== item.sha256) errors.push(`${item.path} does not match its sha256 in ${BROWSER_SPEECH_CONFIG}`);
-    return normalizeText(bytes.toString('utf8'));
-  };
-  const files = config.files.map(file => `${file.path} (sha256 ${file.sha256})`).join('\n');
-  return [
-    {name: `OpenAI Whisper tiny.en speech recognition model (int8 ONNX conversion by ${config.source.repository}, web build)`, version: `${config.source.repository}@${config.source.revision}`,
-      license: 'MIT AND Apache-2.0', source: `https://huggingface.co/${config.source.repository}/tree/${config.source.revision}\nFiles shipped under browser-speech/ in the web build:\n${files}`,
-      text: `OpenAI Whisper (model weights and code):\n${normalizeText(read(root, 'licenses/whisper-MIT.txt'))}\n\nONNX conversion model card (declares apache-2.0):\n${pinned(config.source.modelCard)}\n\n${templates.apache}`},
-    {name: 'ONNX Runtime Web WebAssembly (statically linked components)', version: `${config.runtime.package} ${config.runtime.version}`, license: UNVERIFIED,
-      source: config.runtime.notices.source,
-      // The onnxruntime-web and onnxruntime-common npm packages ship no license file; ONNX
-      // Runtime's own MIT license carries the Microsoft copyright notice their entries lack.
-      text: `ONNX Runtime (MIT; the same LICENSE at every release):\n${normalizeText(read(root, 'licenses/onnxruntime-MIT.txt'))}\n\nONNX Runtime ThirdPartyNotices.txt for the components statically linked into the WebAssembly:\n${pinned(config.runtime.notices)}`},
   ];
 }
 
@@ -801,7 +811,6 @@ export function collectNotices(root = ROOT, {packagedRuntime = shippedPackagedRu
     elizaEntry(root),
     ...androidEntries(root, templates, errors),
     ...speechEntries(root, templates, errors),
-    ...browserSpeechEntries(root, templates, errors),
     ...payloadEntries(packagedRuntime),
     ...(packagedRuntime ? runtimeEntries(root, templates, errors) : []),
     ...mapDataEntries(root),

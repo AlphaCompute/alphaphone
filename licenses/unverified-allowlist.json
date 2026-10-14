@@ -2,14 +2,6 @@
   "description": "Recorded reasons for shipped or staged items whose licence could not be established from shipped metadata. This file gates nothing (docs/decisions.md P-09): each item is listed in the notices and flagged 'unverified' (or, for a font with no record in font-licenses.json, 'proprietary-no-licence-recorded') whether or not it has an entry here, and the reason below is printed as its obligation note. A reason is a record, not legal sign-off. A font entry carries the exact file hash; scripts/font-license-blockers.mjs reports a payload file with those bytes as an unresolved font.",
   "entries": [
     {
-      "name": "Piper LJSpeech medium voice model (int8)",
-      "reason": "The pinned voice model card lists the LJ Speech dataset as public domain and the piper-voices repository metadata declares MIT, but the card states no license for the trained voice itself."
-    },
-    {
-      "name": "Sherpa-ONNX native build dependencies",
-      "reason": "Statically linked native dependencies are discovered during the reproducible speech build and their license files ship inside the hash-pinned model bundle; they are not enumerated in source, so their identifiers are not checked here."
-    },
-    {
       "name": "On-device elizaOS agent runtime payload",
       "reason": "The staged runtime can ship in standard Android builds. When it is staged, Bun and the bundled agent and workflow-worker npm packages are enumerated from the prepared source; the remaining payload files (musl loader, libstdc++/libgcc_s, PGlite WebAssembly and data, PostgreSQL extensions, models) are not."
     },
@@ -18,8 +10,16 @@
       "reason": "pdfjs-dist ships quickjs-eval.js/.wasm without a license file. The upstream sandbox build and QuickJS itself are believed to be permissively licensed, but no shipped license text establishes it."
     },
     {
-      "name": "ONNX Runtime Web WebAssembly (statically linked components)",
-      "reason": "The onnxruntime-web WebAssembly binary used for in-browser speech statically links third-party libraries listed in ONNX Runtime's ThirdPartyNotices.txt (pinned at v1.30.0 and shipped verbatim here). Those notices span several licenses and are not enumerated per component, so their identifiers are not checked here."
+      "name": "Eliza-1 ASR model (Qwen3-ASR GGUF)",
+      "reason": "The shared Eliza-1 ASR GGUF is a conversion of a Qwen3-ASR checkpoint. The reviewed pins record path, size and SHA-256 only; the upstream model licence and any conversion terms have not been confirmed from shipped metadata."
+    },
+    {
+      "name": "Eliza-1 ASR audio projector (Qwen3-ASR mmproj GGUF)",
+      "reason": "The ASR audio projector GGUF is converted from the same Qwen3-ASR checkpoint as the ASR model. The reviewed pins record path, size and SHA-256 only; its licence has not been confirmed from shipped metadata."
+    },
+    {
+      "name": "Silero VAD v5 (GGUF)",
+      "reason": "Silero VAD is published by the Silero team; this GGUF conversion is pinned by path, size and SHA-256 only. The licence of the converted bytes has not been confirmed from shipped metadata."
     }
   ]
 }

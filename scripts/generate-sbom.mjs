@@ -13,7 +13,6 @@
  *   - package-lock.json production packages: registry tarball SHA-512 (lock integrity).
  *   - apps/app/public font files: SHA-256 of the committed bytes.
  *   - licenses/tesseract-core/sources.json: SHA-256 of the shipped OCR WebAssembly cores.
- *   - config/browser-speech.json: SHA-256 of the web build's speech model and ONNX Runtime files.
  *   - licenses/android-runtime-classpath.json: resolved Gradle runtime coordinates, each with the
  *     SHA-256 of its archive (or, for a coordinate with no archive, its metadata file) from
  *     android/gradle/verification-metadata.xml, the checksum Gradle enforces on every build.
@@ -44,7 +43,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {AGENT_ASSETS, ANDROID_CLASSPATH, BROWSER_SPEECH_CONFIG, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, collectNotices, fontLicense, fontNames, packagedRuntimePresent, productionLockPackages} from './generate-licenses.mjs';
+import {AGENT_ASSETS, ANDROID_CLASSPATH, ASR_MODEL_NAMES, ASR_MODEL_PINS, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, collectNotices, fontLicense, fontNames, packagedRuntimePresent, productionLockPackages} from './generate-licenses.mjs';
 import {METADATA as GRADLE_METADATA, coordinateChecksum, parseVerificationMetadata} from './gradle-verification.mjs';
 import {classifyLicence, flagSummary} from './licence-policy.mjs';
 
@@ -122,21 +121,6 @@ function ocrComponents(root) {
   }));
 }
 
-function browserSpeechComponents(root) {
-  const config = readJson(root, BROWSER_SPEECH_CONFIG);
-  const model = config.files.map(file => ({
-    type: file.role === 'encoder' || file.role === 'decoder' ? 'machine-learning-model' : 'data', 'bom-ref': `browser-speech:${file.path}`,
-    name: `${config.source.repository} ${file.path}`, version: config.source.revision, hashes: [{alg: 'SHA-256', content: file.sha256}], licenses: licenses('MIT'),
-    properties: [property('ships-in', 'web'), property('bytes', file.bytes), property('source', `${BROWSER_SPEECH_CONFIG} (${config.source.url}${file.path})`)],
-  }));
-  const runtime = config.runtime.files.map(file => ({
-    type: 'file', 'bom-ref': `browser-speech-runtime:${file.path}`, name: `${config.runtime.package} ${file.path}`, version: config.runtime.version,
-    hashes: [{alg: 'SHA-256', content: file.sha256}], licenses: licenses('MIT'),
-    properties: [property('ships-in', 'web'), property('bytes', file.bytes), property('source', BROWSER_SPEECH_CONFIG)],
-  }));
-  return [...model, ...runtime];
-}
-
 function gradleComponents(root) {
   const snapshot = readJson(root, ANDROID_CLASSPATH);
   const metadata = exists(root, GRADLE_METADATA) ? parseVerificationMetadata(fs.readFileSync(path.join(root, GRADLE_METADATA), 'utf8')) : null;
@@ -163,12 +147,13 @@ const WITH_RESIDENT_RUNTIME = 'apk (only one that packages the resident runtime)
 function embeddingHostComponents(root) {
   if (!exists(root, EMBEDDING_HOST)) return [];
   const host = readJson(root, EMBEDDING_HOST);
+  const hostScope = exists(root, 'vendor/eliza/packages/app/platforms/android/paradee-voice/consumer.gradle') ? 'legacy qualification record; incompatible with current Paradee engine; not current packaged bytes' : WITH_RESIDENT_RUNTIME;
   const source = `${EMBEDDING_HOST} (elizaOS ${host.pin}, engine ${host.forkPin}, qualification receipt sha256 ${host.qualificationReceiptSha256})`;
   return [
     ...host.libraries.map(library => ({
       type: 'library', 'bom-ref': `embedding-host:${host.abi}/${library.name}`, name: `${library.name} (${host.abi})`, version: library.name === 'libc++_shared.so' ? 'Android NDK C++ runtime' : `engine ${host.forkPin}`,
       hashes: [{alg: 'SHA-256', content: library.sha256}], licenses: library.name === 'libc++_shared.so' ? licenses('Apache-2.0 WITH LLVM-exception') : undefined,
-      properties: [property('ships-in', WITH_RESIDENT_RUNTIME), property('abi', host.abi), property('bytes', library.bytes), property('source', source)],
+      properties: [property('ships-in', hostScope), property('abi', host.abi), property('bytes', library.bytes), property('source', source)],
     })),
     {type: 'machine-learning-model', 'bom-ref': `embedding-model:${path.basename(host.model.path)}`, name: path.basename(host.model.path), version: `${host.model.dimensions} dimensions`,
       hashes: [{alg: 'SHA-256', content: host.model.sha256}],
@@ -238,7 +223,25 @@ function apkComponents(root, directory) {
   });
 }
 
+function asrModelComponents(root) {
+  if (!exists(root, ASR_MODEL_PINS)) return [];
+  return (readJson(root, ASR_MODEL_PINS).asr ?? []).map(pin => ({
+    type: 'machine-learning-model', 'bom-ref': `speech-asr:${pin.path}`, name: ASR_MODEL_NAMES[pin.path] ?? pin.path,
+    version: pin.path, hashes: [{alg: 'SHA-256', content: pin.sha256}], licenses: licenses(UNVERIFIED),
+    properties: [property('ships-in', 'native speech build input; staging and qualification unverified'), property('bytes', pin.bytes), property('source', ASR_MODEL_PINS)],
+  }));
+}
+
 function speechComponents(root) {
+  const source = 'vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json';
+  if (exists(root, source)) return [...Object.entries(readJson(root, source)).map(([name, pin]) => ({
+    type: name === 'paradee' ? 'machine-learning-model' : name === 'espeak' ? 'library' : 'data',
+    'bom-ref': `speech-input:${name}`, name: name === 'espeak' ? 'eSpeak NG' : name,
+    version: pin.version ?? pin.path, hashes: [{alg: 'SHA-256', content: pin.sha256}],
+    licenses: licenses(pin.license),
+    ...(pin.url ? {externalReferences: [{type: 'distribution', url: pin.url}]} : {}),
+    properties: [property('ships-in', 'native speech build input; staging and qualification unverified'), property('bytes', pin.bytes), property('source', source), property('origin', pin.url ?? pin.source)],
+  })), ...asrModelComponents(root)];
   if (!exists(root, SPEECH_RUNTIME)) return [];
   const manifest = readJson(root, SPEECH_RUNTIME);
   const consumer = exists(root, 'vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle')
@@ -320,7 +323,7 @@ export function buildSbom(root = ROOT, {packagedRuntime = false, apks = null} = 
   const lockText = fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8');
   const lock = JSON.parse(lockText);
   const components = strip(withLicenceFlags(root, [
-    ...npmComponents(root, lock), ...fontComponents(root), ...ocrComponents(root), ...browserSpeechComponents(root),
+    ...npmComponents(root, lock), ...fontComponents(root), ...ocrComponents(root),
     ...gradleComponents(root), ...speechComponents(root), ...embeddingHostComponents(root), upstreamComponent(root),
     ...(packagedRuntime ? residentRuntimeComponents(root) : []), ...(apks ? apkComponents(root, apks) : []),
   ])).sort((a, b) => a['bom-ref'].localeCompare(b['bom-ref']));
