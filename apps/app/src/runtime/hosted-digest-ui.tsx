@@ -49,7 +49,7 @@ type Pending = {
 const nativeSources=registerPlugin<{nativeSourceConsent(input:Record<string,unknown>):Promise<Record<string,unknown>>;nativeSourceIdentity(input:{sessionId:string}):Promise<Record<string,unknown>>;scheduleSourceRenewal(input:{sourceId:string;expiresAt:number}):Promise<void>;clearSourceRenewal(input:{sourceId:string}):Promise<void>;pendingSourceRenewal():Promise<{sourceId?:string}>;addListener(event:'renewSource',listener:()=>void):Promise<{remove():Promise<void>}>}>('AlphaHostedResults');
 const nativeCalendars=registerPlugin<{requestWorkflowReadAccess():Promise<{status:string}>;workflowCalendars():Promise<{status:string;calendars:Array<{id:string;name:string;account:string;sourceRevision:string}>}>}>('AlphaCalendar');
 function canSyncResults(){return !document.hidden&&(isAndroid||(document.documentElement.dataset.devBackground!=='true'&&!browserScreenLocked()));}
-export function HostedDigestPanel({composeQuestion}:{composeQuestion?:(draft:string,sessionId:string)=>boolean}={}) {
+export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQuestion?:(draft:string,sessionId:string)=>boolean;canComposeQuestion?:(sessionId:string)=>boolean}={}) {
  const questionClose=useRef<undefined|(()=>void)>(undefined);
  const questionBusy=useRef(false);
  const resolveTap=useRef(hostedTapResolver());
@@ -119,14 +119,18 @@ export function HostedDigestPanel({composeQuestion}:{composeQuestion?:(draft:str
             const result=await resolveHostedResultTap(hostedResultNative,b?.notices ?? null,requestSignal ?? b?.controller.signal ?? new AbortController().signal);
             if(result.kind==='none'||!canSyncResults()||requestSignal?.aborted)return;
             if(b && binding.current!==b)return;
+            let unreviewable=false;
             if(result.kind==='ready' && b&&result.question){
                 const current=()=>mounted.current&&binding.current===b&&b.notices.current()&&canSyncResults()&&!connectionController.getSnapshot().open;
+                // Failures after the dialog closes stay visible beside the saved result instead of in a closed panel.
+                const report=(value:string)=>{if(!mounted.current||binding.current!==b)return;setOpen(true);setFocusedRun(result.result.runId);setMessage(value);};
                 questionBusy.current=true;
-                questionClose.current=reviewHostedNoticeQuestion({signal:b.controller.signal,result,current,recheck:()=>resolveHostedResultTap(hostedResultNative,b.notices,b.controller.signal),consume:()=>hostedResultNative.consumeResult({token:result.token}),discard:async()=>{if(!hostedResultNative.releaseResultQuestion)throw Error('Question release unavailable');await hostedResultNative.releaseResultQuestion({token:result.token});},compose:draft=>{if(!composeQuestion?.(draft,b.sessionId))throw Error('Conversation unavailable');setOpen(false);},report:setMessage,closed:()=>{questionBusy.current=false;questionClose.current=undefined;}});
+                questionClose.current=reviewHostedNoticeQuestion({signal:b.controller.signal,result,current,recheck:()=>resolveHostedResultTap(hostedResultNative,b.notices,b.controller.signal),canCompose:()=>canComposeQuestion?.(b.sessionId)??false,consume:()=>hostedResultNative.consumeResult({token:result.token}),discard:async()=>{if(!hostedResultNative.releaseResultQuestion)throw Error('Question release unavailable');await hostedResultNative.releaseResultQuestion({token:result.token});},compose:draft=>{if(!composeQuestion?.(draft,b.sessionId))throw Error('Conversation unavailable');setOpen(false);},report,unreviewable:()=>{unreviewable=true;},closed:()=>{questionBusy.current=false;questionClose.current=undefined;}});
                 if(!questionClose.current)questionBusy.current=false;
-                return;
+                // An unreviewable Ask opens like an ordinary tap, which consumes it instead of re-reporting on every poll.
+                if(!unreviewable)return;
             }
-            if(result.kind==='ready' && b){const history=await b.inbox.history();if(binding.current!==b||!canSyncResults())return;setOpen(true);setResults(history);setFocusedRun(result.result.runId);setTap({token:result.token,runId:result.result.runId,sessionId:b.sessionId});setMessage('Opened the saved result from this account and agent.');}
+            if(result.kind==='ready' && b){const history=await b.inbox.history();if(binding.current!==b||!canSyncResults())return;setOpen(true);setResults(history);setFocusedRun(result.result.runId);setTap({token:result.token,runId:result.result.runId,sessionId:b.sessionId});setMessage(unreviewable?'This result cannot be reviewed for a question here, so its saved history is open instead.':'Opened the saved result from this account and agent.');}
             else {setOpen(true);setMessage(result.kind==='other-account'?'Connect the matching account and agent to open this saved result. No account was switched.':'This result link needs a verified connection and retained history. No workflow was restarted.');}
         } catch { if(!b || binding.current===b)setMessage('Result link is waiting for a verified connection.'); }
     });
