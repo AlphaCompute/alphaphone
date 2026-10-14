@@ -28,7 +28,13 @@ the operator's index of build, provisioning, release and support material is the
   agent runs behind it, and the plan decides only whether Cloud inference is bound into the
   running agent. There is no "without AI" or offline mode. Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The upstream pin in `upstream.lock.json` is `c7a9a0d7e7` (moved on 2026-10-14, branch
+- The upstream pin in `upstream.lock.json` is `fb62325230` (moved on 2026-10-14, branch
+  `claude/pin-eliza-develop-fb62325`), the elizaOS `develop` head after the live agent-event feed over
+  the private agent IPC (elizaOS/eliza#36261, `f7f3765d0a`) and the Alpha Phone sign-in callback
+  contract (#36271, `d4de8c1cd7`), with the llama.cpp gitlink `56e70ff2` (llama.cpp `main` after
+  elizaOS/llama.cpp#72, the upstream runtime integration; voice ABI 18 unchanged). The patch targets
+  are unchanged. See [verification](verification.md#pin-move-to-fb62325230-2026-10-14-agent-event-ipc).
+  The previous pin was `c7a9a0d7e7` (moved on 2026-10-14, branch
   `claude/mvp-final`), the elizaOS `develop` head that contains Phonon-2 as the default mobile
   ASR (elizaOS/eliza#36212, `d06a1aa9c9`), streaming ASR (#36213, `d68909cb`), live voice with the
   `POST /api/asr/local-inference/live` route and ephemeral `voice-transcript` events (#36214,

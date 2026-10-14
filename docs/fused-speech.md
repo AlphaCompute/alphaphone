@@ -1,8 +1,8 @@
 # Fused speech: libelizainference on the device and on the local agent
 
 Alpha Phone has one local speech engine: **libelizainference**, the llama.cpp-based native
-library from the elizaOS llama.cpp fork (decision P-42). At the pin `c7a9a0d7e7` (llama.cpp
-gitlink `5df17a66`, voice ABI 18, built with `LLAMA_BUILD_PARAKEET=ON`) it contains ggml, the
+library from the elizaOS llama.cpp fork (decision P-42). At the pin `fb62325230` (llama.cpp
+gitlink `56e70ff2`, voice ABI 18, built with `LLAMA_BUILD_PARAKEET=ON`) it contains ggml, the
 **Parakeet-TDT** decoder that runs **Phonon-2** ASR in batch and streaming mode (P-55), mtmd (the
 Qwen3-ASR alternative, not shipped), the **Paradee-8M** speech graph on the shared kokoro layers
 (P-54), the native **misaki** English G2P, **eSpeak NG 1.52.0** (statically linked, used only for
@@ -122,9 +122,11 @@ agent) and Gradle compilation; not run on an emulator or a device.
    (NDK 28.2; it converts the Paradee GGUF and misaki lexicon from pinned sources and checks them):
    `node vendor/eliza/packages/app/scripts/paradee-voice/build-native.ts --workspace <dir> --out <dir>`.
    The bundle assets recorded today were built this way at eliza `c7a9a0d7e7` (llama.cpp
-   `5df17a66`) on 2026-10-14; the engine bytes recorded for both ABIs come from
-   `node scripts/prepare-embedding-host.mjs --build --remap-build-path` at the same source, so the
-   voice host and the embedding host name the same, path-independent engine.
+   `5df17a66`) on 2026-10-14; their converters and pinned sources are unchanged at `fb62325230`.
+   The engine bytes recorded for both ABIs come from
+   `node scripts/prepare-embedding-host.mjs --build --remap-build-path` at `fb62325230` (llama.cpp
+   `56e70ff2`, 2026-10-14), so the voice host and the embedding host name the same,
+   path-independent engine.
 2. Put the Phonon-2 GGUF, its NOTICE and licence text, and Silero VAD in a directory (their
    pinned sources are in the record).
 3. Stage: `node scripts/android-stage-voice-models.mjs --from <build-native output> --from <model directory>`.
@@ -169,7 +171,11 @@ without the bundle manifest, without the Phonon-2 ASR file or whose engine is no
 
 ## Evidence
 
-Class B only. At `c7a9a0d7e7` the engine and JNI libraries were built for both ABIs on
+Class B only. At `fb62325230` (llama.cpp `56e70ff2`) the engine and the app JNI library were
+rebuilt for both ABIs on 2026-10-14 and symbol-checked (voice ABI 18, `paradee_supported` and
+`asr_supported` exported, 85 `eliza_inference_*` exports including the six `asr_stream_*`, eSpeak NG
+linked, 16 KiB alignment, only `JNI_OnLoad` exported); the exported functions were not called. At
+`c7a9a0d7e7` the engine and JNI libraries were built for both ABIs on
 2026-10-14 and symbol-checked (voice ABI 18, `paradee_supported()=1`, `asr_supported()=1`, 83
 `eliza_inference_*` exports including the six `asr_stream_*`, `parakeet_lib` and eSpeak NG linked,
 16 KiB alignment, only `JNI_OnLoad` exported by the JNI bridges). The host gates were not rerun at
