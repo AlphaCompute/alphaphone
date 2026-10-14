@@ -349,7 +349,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const connection = connectionController.getSnapshot();
     const account = connection.cloudAccount;
     const target = connection.session ? connection.name : 'Not connected';
-    const runtimeLocation=!connection.session?'Not connected':connection.kind==='resident'?(Capacitor.isNativePlatform()?'On this device':'On this computer · development'):'Remote agent';
+    const runtimeLocation=!connection.session?'Not connected':connection.kind==='resident'?(Capacitor.isNativePlatform()?'On this device':'On this computer · development'):testMocksEnabled?'Remote agent':'Unsupported connection';
     const cloudLabel = account ? account.email||`Account ${account.userId.slice(0, 8)}` : 'Not signed in';
     const manage = (page: string) => () => void device.openSettings({ page }).then(opened => { const notice = broaderPageNotice(page, opened); if (notice) api.toast(notice); }, () => api.toast('This Android settings page is unavailable.'));
     const info = (label: string, val: string): Bag => ({ kInfo: true, label, val, hasVal: true, noAB: true });
