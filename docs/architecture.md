@@ -201,3 +201,11 @@ Focused JVM tests cover durable revocation, invalidated recognition tickets,
 failed-write retry and admission before app initialization. These are source-level
 checks; actual microphone release, provider IPC, process interruption and both
 image distributions still require native qualification for #409/#424.
+Because the reset fails closed, an installed listener that cannot acknowledge it
+(signer mismatch, LISTENER_CONTROL not granted, missing provider) makes every Alpha
+launch stop again; where Alpha is HOME this presents as a launcher restart loop until
+the listener is fixed or Alpha's storage is cleared in Settings. Qualification must
+exercise that state and record the recovery path; a user-visible recovery surface is
+future work. A consent permission request pending while ConsentActivity is recreated
+(for example on rotation) is restored only within the same process, so a request made
+before a restart can never match the listener's fresh reset generation.

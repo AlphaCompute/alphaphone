@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Process;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.TypedValue;
@@ -34,11 +35,21 @@ public final class ConsentActivity extends Activity {
   +"• After a process or phone restart, unlock and turn listening on here again.\n\n"
   +"People near you may be heard. Only turn this on where that is lawful and appropriate.";
 
+ private static final String PENDING_GENERATION="pendingConsentGeneration";
+ private static final String PENDING_PROCESS="pendingConsentProcess";
  private LinearLayout column;
  private long pendingConsentGeneration=-1;
 
+ /**
+  * The generation counter lives in this process, so a saved request is only restored into the
+  * same process: after a restart the counter starts again and an old value must never match it.
+  */
+ private static long processIdentity(){return ((long)Process.myPid()<<40)^Process.getStartElapsedRealtime();}
+
  @Override protected void onCreate(Bundle state){
   super.onCreate(state);
+  // A recreated activity (rotation while the permission dialog shows) keeps its pending request.
+  if(state!=null&&state.getLong(PENDING_PROCESS,0)==processIdentity())pendingConsentGeneration=state.getLong(PENDING_GENERATION,-1);
   setTitle("Always-on listening");
   getWindow().setHideOverlayWindows(true);
   ScrollView scroll=new ScrollView(this);
@@ -52,6 +63,11 @@ public final class ConsentActivity extends Activity {
  }
 
  @Override protected void onResume(){super.onResume();render();}
+
+ @Override protected void onSaveInstanceState(Bundle out){
+  super.onSaveInstanceState(out);
+  if(pendingConsentGeneration>=0){out.putLong(PENDING_GENERATION,pendingConsentGeneration);out.putLong(PENDING_PROCESS,processIdentity());}
+ }
 
  private int dp(int value){return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,value,getResources().getDisplayMetrics()));}
 
