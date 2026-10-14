@@ -17,7 +17,7 @@ test('search, archive, undo and delete preserve their local state through reload
  await page.getByRole('button',{name:'Close search',exact:true}).click();await page.getByRole('button',{name:/Sender One, Planning notes/}).click();
  await page.getByRole('button',{name:'Archive',exact:true}).click();expect((await stored(page)).mails[0].arch).toBe(true);
  await page.getByRole('button',{name:'Undo',exact:true}).click();expect((await stored(page)).mails[0].arch).not.toBe(true);
- await page.getByRole('button',{name:'Delete',exact:true}).click();expect((await stored(page)).mails[0].del).toBe(true);
+ await page.getByRole('button',{name:'Move to Trash',exact:true}).click();expect((await stored(page)).mails[0].del).toBe(true);
  await page.reload();await page.getByRole('button',{name:'Inbox',exact:true}).click();await expect(page.getByRole('button',{name:/Sender One, Planning notes/})).toHaveCount(0);await expect(page.getByRole('button',{name:/Sender Two, Travel details/})).toBeVisible();
 });
 test('reply saves its source identity and sending marks only that source as replied',async({page})=>{

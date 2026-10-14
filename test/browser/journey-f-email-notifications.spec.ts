@@ -41,7 +41,7 @@ const PROVIDER = 'journey-f-provider';
 async function installProvider(page: Page) {
   await page.evaluate(async KEY => {
     const {connectionController: c} = await import('/src/runtime/connection-ui.tsx');
-    const {secureConnectionStore: s} = await import('/src/runtime/native-connection.ts');
+    const {inboxLocalStore: s} = await import('/src/runtime/inbox-local-store.ts');
     const load = () => JSON.parse(localStorage.getItem(KEY) || '{"slots":{},"receipts":{},"sent":[],"dispatches":0,"prepares":0,"loseNextReply":false,"unsure":false}');
     const save = (value: unknown) => localStorage.setItem(KEY, JSON.stringify(value));
     s.read = async (key: string) => structuredClone(load().slots[key] ?? null);
@@ -56,7 +56,7 @@ async function installProvider(page: Page) {
     const digest = async (text: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('');
     const everything = () => [...inbox, ...load().sent];
     const client = {
-      gmailAccounts: async () => [{connectionId: 'fixture-grant', label: 'Fixture mailbox', configured: true, connected: true, reason: 'connected', grantedCapabilities: ['google.gmail.triage']}],
+      gmailAccounts: async () => [{connectionId: 'fixture-grant', label: 'Fixture mailbox', configured: true, connected: true, reason: 'connected', grantedCapabilities: ['google.gmail.triage','google.gmail.send','google.gmail.mailbox']}],
       gmailInboxCapabilities: async () => ({version: 1, from: 'owner@example.invalid', threads: true, send: true, providerDrafts: false, mailboxMutations: false, attachments: true, providerExactlyOnce: false, atomicDraftReplacement: false, readState: false, draftsList: false, forwardAttachments: false, opaqueAttachments: false, searchTrash: false, attachmentPolicy: {maximumOutgoing: 1, maximumBytes: 5242880, maximumTotalBytes: 5242880}}),
       gmailSearch: async (_grant: string, query: string) => ({messages: query === 'in:sent' ? load().sent : query === 'in:inbox' ? inbox : [], syncedAt: '2026-10-08T12:00:00Z', nextPageToken: null}),
       gmailRead: async (_grant: string, id: string) => ({message: everything().find((m: any) => m.id === id), bodyText: 'Body of ' + id, links: []}),
@@ -100,7 +100,7 @@ async function openProviderInbox(page: Page, reload = false) {
   await installProvider(page);
   await button(page, 'Inbox').click();
   // A saved operation reopens its review over the list, so either surface proves the mailbox loaded.
-  await expect(button(page, 'Refresh').or(page.getByRole('dialog', {name: 'Review mail operation'}))).toBeVisible();
+  await expect(button(page, 'Refresh inbox').or(page.getByRole('dialog', {name: 'Review mail operation'}))).toBeVisible();
 }
 async function compose(page: Page, subject: string, body: string) {
   await button(page, 'Compose').click();
