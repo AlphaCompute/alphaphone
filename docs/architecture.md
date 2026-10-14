@@ -149,8 +149,8 @@ mocks, installed from a system partition (`FLAG_SYSTEM`), with the `<package>.ao
 system feature that `scripts/stage-aosp.mjs` declares in the image product. The launcher
 flavor, test mocks, URLs and saved state never establish it. Only then does `MainActivity`
 register `AlphaTelephonyPlugin` (read-only contacts through upstream `ContactsReader`, role
-and SIM status, dialer and SMS handoffs); the renderer reads its presence from the injected
-plugin headers (`apps/app/src/runtime/aosp-image.ts`). Standalone APKs declare no contacts or
+and SIM status, dialer and SMS handoffs, SMS/MMS provider reads and reviewed native sends); the
+renderer reads its presence from the injected plugin headers (`apps/app/src/runtime/aosp-image.ts`). Standalone APKs declare no contacts or
 phone-state permission. Gmail is available in both distributions through Eliza Cloud, with
 read access first and one incremental change grant (`apps/app/src/runtime/gmail-grants.ts`).
 
@@ -182,6 +182,41 @@ The feature XML is an additional telephony contract marker, never an alternative
 Contacts uses the bounded AlphaContacts adapter and its native capability response; Phone and SMS
 views remain deferred. Telephony contact reads recheck permission, unlock and lifecycle state
 before and after asynchronous provider reads.
+
+### SMS/MMS on the image (#421)
+
+Text messaging has no account or OAuth grant: identity is the device's active subscriptions and
+Android roles. Only the launcher manifest declares `READ_SMS` and `SEND_SMS` (both hard-restricted,
+so an ordinary sideloaded install cannot hold them) and the non-exported `AlphaSmsSendReceiver`;
+the standalone manifest removes them and `scripts/apk.mjs` checks the packaged permissions per flavor.
+`AlphaTelephonyPlugin` adds, behind the same image capability and unlocked-foreground check:
+
+- `listThreads`/`listMessages`: bounded pages (50 rows, 2000 characters per body, 20 addresses) from
+  the Telephony SMS, MMS and conversation providers with `READ_SMS`, cancelled and fenced like Contacts.
+  IDs are `thread:<row>`, `sms:<row>`, `mms:<row>`. Direction is incoming/outgoing; status is
+  received/read or pending/sent/failed/delivered. "delivered" requires the provider's complete delivery
+  report and is never claimed for MMS. Drafts and attachment bytes are not read (`SmsRecords`).
+- `observeMessages`: a ContentObserver on the SMS, MMS and conversation URIs while Alpha is unlocked in
+  the foreground, coalesced to one content-free `messagesChanged` notice per 750 ms; the renderer
+  re-reads a bounded page. Pause, lock and screen-off unregister it.
+- `sendSms`/`smsSendResult`: a reviewed native send when `status.sendMode` is `direct` (`SEND_SMS` held,
+  directly or through the SMS role, and the SIM list readable). Alpha's own native dialog shows the exact
+  recipients, SIM, part count and text; conditions are rechecked at the Send decision. The result follows
+  the shared `sms.send.v1` contract (elizaOS/eliza#36178): the operation ID is the idempotency key and a
+  repeat only reads `SmsSendJournal`; the binding hash covers recipients, text and SIM. The journal is
+  written before the first `SmsManager` call (`createForSubscriptionId`, `divideMessage`, one immutable,
+  package-explicit sent and delivery PendingIntent per part). "sent" comes only from `RESULT_OK` sent
+  callbacks and "delivered" only from delivery reports whose provider row reads complete; an interrupted
+  dispatch or callbacks lost to a restart read "unknown". Nothing is ever resent automatically, and the
+  body is not stored. Otherwise `composeSms` remains the handoff fallback and never reports a send.
+
+Delivery outcome is read from the provider row the platform writes for a non-default SMS app's send
+(matched by address, time and body hash), because an immutable delivery PendingIntent cannot carry the
+status-report PDU; for a multipart message that row holds the platform's aggregate status. The Messages
+view, agent `sms_send` proposals and the `sms.send.v1` device capability stay unavailable until the
+shared contract is in the reviewed pin. JVM and renderer tests cover the journal, mapping and contract;
+grants on the image, real provider rows, carrier delivery reports and owned SMS/MMS endpoints remain
+image/device qualification for #421.
 
 ### Reset and the image listener
 

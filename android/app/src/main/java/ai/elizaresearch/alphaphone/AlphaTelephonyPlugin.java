@@ -24,6 +24,7 @@ import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -36,16 +37,24 @@ import org.json.JSONObject;
  * or a sideloaded launcher APK has no such plugin; each method checks the capability again.
  *
  * Reads: the device's own Telecom/SMS roles, default handlers and active subscriptions (SIM slot and
- * carrier; phone-state access required) and contacts through the shared bounded AlphaContactsCatalog
- * (contacts access required, read-only). Effects are handoffs: the user's dialer opens with the
- * number and the user's SMS app opens with the reviewed recipients and text. Alpha never places a
- * call or sends a message itself here, and never reports one as placed or sent. Emergency numbers go
- * to the system dialer like any other number. Roles are requested only through Android's own dialog
- * and only when Alpha declares the components the role needs.
+ * carrier; phone-state access required), contacts through the shared bounded AlphaContactsCatalog
+ * (contacts access required, read-only) and SMS/MMS threads and messages through the Telephony
+ * providers (SMS access required, bounded pages, cancelled on background, lock and permission change).
+ *
+ * Effects: dialing is always a handoff to the user's dialer. A text is sent natively only when SEND_SMS
+ * is held (granted on the image, or through the SMS role) and the owner confirms Alpha's own native
+ * review of the exact recipients, text, subscription and part count on the unlocked phone; the send
+ * then follows {@link SmsSendJournal}: "sent" only from sent callbacks, "delivered" only from delivery
+ * reports, never resent automatically. Without that permission the SMS app handoff remains, and Alpha
+ * never reports a handoff as sent. Emergency numbers go to the system dialer like any other number.
+ * Roles are requested only through Android's own dialog and only when Alpha declares the components
+ * the role needs.
  */
 @CapacitorPlugin(name = "AlphaTelephony", permissions = {
  @Permission(alias = "contacts", strings = { Manifest.permission.READ_CONTACTS }),
- @Permission(alias = "phoneState", strings = { Manifest.permission.READ_PHONE_STATE })
+ @Permission(alias = "phoneState", strings = { Manifest.permission.READ_PHONE_STATE }),
+ @Permission(alias = "sms", strings = { Manifest.permission.READ_SMS }),
+ @Permission(alias = "sendSms", strings = { Manifest.permission.SEND_SMS })
 })
 public class AlphaTelephonyPlugin extends Plugin {
  static final Pattern NUMBER = Pattern.compile("^\\+?[0-9]{2,20}$");
@@ -58,8 +67,18 @@ public class AlphaTelephonyPlugin extends Plugin {
  private final android.content.BroadcastReceiver screenOff = new android.content.BroadcastReceiver() {
   @Override public void onReceive(android.content.Context context, Intent intent) { invalidateReads(); }
  };
+ private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+ private final AlphaSms.Listener sendListener = operationId -> main.post(() -> {
+  if (AlphaImageCapability.verified(getContext()) && unlockedForeground()) { JSObject value = new JSObject(); value.put("operationId", operationId); notifyListeners("smsSendUpdated", value); }
+ });
  @Override public void load() {
   androidx.core.content.ContextCompat.registerReceiver(getContext(), screenOff, new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
+  if (AlphaImageCapability.verified(getContext())) {
+   AlphaSms.listen(sendListener);
+   // Startup reconciliation: an interrupted dispatch becomes unknown; delivery evidence is re-read.
+   final android.content.Context app = getContext().getApplicationContext();
+   try { AlphaSms.WORK.execute(() -> { for (String id : AlphaSms.reconcile(app)) AlphaSms.updated(id); }); } catch (java.util.concurrent.RejectedExecutionException ignored) { }
+  }
  }
  private boolean unlockedForeground() {
   android.app.KeyguardManager lock = getContext().getSystemService(android.app.KeyguardManager.class);
@@ -67,9 +86,9 @@ public class AlphaTelephonyPlugin extends Plugin {
   return !closed && foreground && lock != null && !lock.isDeviceLocked() && users != null && users.isUserUnlocked()
    && (android.os.Build.VERSION.SDK_INT < 31 || users.isUserForeground()) && getActivity() != null && !getActivity().isFinishing() && !getActivity().isDestroyed();
  }
- private void invalidateReads() { generation.incrementAndGet(); for (android.os.CancellationSignal read : reads) read.cancel(); }
+ private void invalidateReads() { generation.incrementAndGet(); for (android.os.CancellationSignal read : reads) read.cancel(); stopObserving(); cancelReview(); }
  @Override protected void handleOnPause() { foreground = false; invalidateReads(); super.handleOnPause(); }
- @Override protected void handleOnResume() { foreground = true; invalidateReads(); super.handleOnResume(); }
+ @Override protected void handleOnResume() { foreground = true; invalidateReads(); resumeObserving(); super.handleOnResume(); }
  private boolean refused(PluginCall call) {
   if (call == null) return true;
   if (AlphaImageCapability.verified(getContext()) && unlockedForeground()) return false;
@@ -122,24 +141,39 @@ public class AlphaTelephonyPlugin extends Plugin {
   TelephonyManager telephony = getContext().getSystemService(TelephonyManager.class);
   TelecomManager telecom = getContext().getSystemService(TelecomManager.class);
   RoleManager roles = getContext().getSystemService(RoleManager.class);
-  value.put("version", 1);
+  value.put("version", 2);
   value.put("voiceCapable", telephony != null && telephony.isVoiceCapable());
   value.put("smsCapable", telephony != null && telephony.isSmsCapable());
   JSObject permissions = new JSObject();
   PermissionState contacts = getPermissionState("contacts"), phoneState = getPermissionState("phoneState");
+  PermissionState sms = getPermissionState("sms"), sendSms = getPermissionState("sendSms");
   permissions.put("contacts", contacts.toString());
   permissions.put("phoneState", phoneState.toString());
+  permissions.put("sms", sms.toString());
+  permissions.put("sendSms", sendSms.toString());
   value.put("permissions", permissions);
+  // Direct sends need SEND_SMS (granted, or held through the SMS role) and phone-state access to
+  // confirm the reviewed SIM is active. Otherwise the SMS app handoff is the only path.
+  boolean direct = telephony != null && telephony.isSmsCapable() && sendSms == PermissionState.GRANTED && phoneState == PermissionState.GRANTED;
+  value.put("sendMode", direct ? "direct" : "handoff");
   JSObject roleStates = new JSObject();
   roleStates.put("dialer", roleState(roles, RoleManager.ROLE_DIALER, eligibleFor(RoleManager.ROLE_DIALER)));
   roleStates.put("sms", roleState(roles, RoleManager.ROLE_SMS, eligibleFor(RoleManager.ROLE_SMS)));
   value.put("roles", roleStates);
-  String dialer = null, sms = null;
+  String dialer = null, smsApp = null;
   try { dialer = telecom == null ? null : telecom.getDefaultDialerPackage(); } catch (RuntimeException unreadable) { dialer = null; }
-  try { sms = Telephony.Sms.getDefaultSmsPackage(getContext()); } catch (RuntimeException unreadable) { sms = null; }
+  try { smsApp = Telephony.Sms.getDefaultSmsPackage(getContext()); } catch (RuntimeException unreadable) { smsApp = null; }
   value.put("defaultDialer", dialer == null ? JSONObject.NULL : dialer);
-  value.put("defaultSms", sms == null ? JSONObject.NULL : sms);
-  value.put("subscriptions", phoneState == PermissionState.GRANTED ? subscriptions() : JSONObject.NULL);
+  value.put("defaultSms", smsApp == null ? JSONObject.NULL : smsApp);
+  Object subscriptions = phoneState == PermissionState.GRANTED ? subscriptions() : JSONObject.NULL;
+  value.put("subscriptions", subscriptions);
+  // The system default SMS subscription, only when it is one of the active SIMs read above.
+  Object defaultSubscription = JSONObject.NULL;
+  if (subscriptions instanceof JSArray) {
+   JSArray rows = (JSArray) subscriptions;
+   for (int i = 0; i < rows.length(); i++) { org.json.JSONObject row = rows.optJSONObject(i); if (row != null && row.optBoolean("defaultSms")) defaultSubscription = row.optInt("id"); }
+  }
+  value.put("defaultSmsSubscriptionId", defaultSubscription);
   return value;
  }
  /** Active SIM subscriptions, or JSON null when Android refuses the read: never an empty list in its place. */
@@ -168,7 +202,7 @@ public class AlphaTelephonyPlugin extends Plugin {
  @PluginMethod public void requestAccess(PluginCall call) {
   if (refused(call)) return;
   String access = call.getString("access", "");
-  if (!"contacts".equals(access) && !"phoneState".equals(access)) { call.reject("Choose contacts or phone-state access", "invalid"); return; }
+  if (!"contacts".equals(access) && !"phoneState".equals(access) && !"sms".equals(access) && !"sendSms".equals(access)) { call.reject("Choose contacts, phone-state, SMS or send access", "invalid"); return; }
   if (getPermissionState(access) == PermissionState.GRANTED) { call.resolve(statusObject()); return; }
   LateLaunch.ask(call, () -> requestPermissionForAlias(access, call, "accessResult"));
  }
@@ -269,5 +303,216 @@ public class AlphaTelephonyPlugin extends Plugin {
   open(call, intent, "sms", "Your messaging app is open with the reviewed text. Send it there; Alpha has not sent anything.");
  }
 
- @Override protected void handleOnDestroy() { closed = true; invalidateReads(); getContext().unregisterReceiver(screenOff); reader.shutdown(); super.handleOnDestroy(); }
+ // ---- SMS/MMS provider reads (READ_SMS, image only) --------------------------------------------
+
+ private boolean smsAccess(long access, android.os.CancellationSignal cancel) {
+  return !cancel.isCanceled() && generation.current(access, "sms", "sms", unlockedForeground())
+   && AlphaImageCapability.verified(getContext()) && getPermissionState("sms") == PermissionState.GRANTED;
+ }
+ private interface SmsRead { JSObject read(android.os.CancellationSignal cancel) throws Exception; }
+ /** One bounded provider read, cancelled on background, lock, screen-off and permission change, and fenced again before publication. */
+ private void readSms(PluginCall call, SmsRead read) {
+  if (getPermissionState("sms") != PermissionState.GRANTED) { call.reject("Messages access is not granted", "permission-required"); return; }
+  final long access = generation.get();
+  final android.os.CancellationSignal cancel = new android.os.CancellationSignal(); reads.add(cancel);
+  try {
+   reader.execute(() -> {
+    try {
+     if (!smsAccess(access, cancel)) throw new SecurityException();
+     JSObject value = read.read(cancel);
+     getActivity().runOnUiThread(() -> {
+      if (!smsAccess(access, cancel)) call.reject("Messages access changed. Refresh after unlocking.", "unavailable");
+      else call.resolve(value);
+     });
+    } catch (Exception unreadable) { call.reject("Messages could not be read. Check access and refresh.", "unavailable"); }
+    finally { reads.remove(cancel); }
+   });
+  } catch (java.util.concurrent.RejectedExecutionException closed) { reads.remove(cancel); call.reject(LateLaunch.CLOSED); }
+ }
+ private static long before(PluginCall call) {
+  Object raw = call.getData().opt("before");
+  if (raw == null || raw == JSONObject.NULL) return 0;
+  if (!(raw instanceof Number)) return -1;
+  double value = ((Number) raw).doubleValue();
+  return Double.isFinite(value) && value == Math.rint(value) && value > 0 && value < 9.0e15 ? (long) value : -1;
+ }
+
+ /** Conversation threads, newest first. */
+ @PluginMethod public void listThreads(PluginCall call) {
+  if (refused(call)) return;
+  Integer limit = call.getInt("limit", 20); long before = before(call);
+  if (limit == null || limit < 1 || limit > SmsRecords.MAX_THREADS || before < 0) { call.reject("Invalid thread page", "invalid"); return; }
+  readSms(call, cancel -> AlphaSms.threads(getContext(), limit, before, cancel));
+ }
+
+ /** Messages of one thread, SMS and MMS, newest first. */
+ @PluginMethod public void listMessages(PluginCall call) {
+  if (refused(call)) return;
+  Integer limit = call.getInt("limit", 25); long before = before(call); long thread = SmsRecords.threadRow(call.getString("threadId", ""));
+  if (limit == null || limit < 1 || limit > SmsRecords.MAX_MESSAGES || before < 0 || thread < 1) { call.reject("Invalid message page", "invalid"); return; }
+  readSms(call, cancel -> AlphaSms.messages(getContext(), thread, limit, before, cancel));
+ }
+
+ // ---- Incoming/outgoing change observation ----------------------------------------------------
+
+ private boolean observeWanted, observing;
+ private long observedSequence;
+ private final Runnable emitChange = () -> {
+  if (!observing || !unlockedForeground() || !AlphaImageCapability.verified(getContext()) || getPermissionState("sms") != PermissionState.GRANTED) return;
+  JSObject value = new JSObject(); value.put("sequence", ++observedSequence);
+  // No content leaves here: the renderer re-reads a bounded page.
+  notifyListeners("messagesChanged", value);
+  final android.content.Context app = getContext().getApplicationContext();
+  try { AlphaSms.WORK.execute(() -> { for (String id : AlphaSms.reconcile(app)) AlphaSms.updated(id); }); } catch (java.util.concurrent.RejectedExecutionException ignored) { }
+ };
+ private final android.database.ContentObserver providerObserver = new android.database.ContentObserver(main) {
+  // Coalesced: at most one notice per 750 ms however many rows change.
+  @Override public void onChange(boolean self) { main.removeCallbacks(emitChange); main.postDelayed(emitChange, 750); }
+ };
+ private void startObserving() {
+  if (observing) return;
+  android.content.ContentResolver resolver = getContext().getContentResolver();
+  try {
+   resolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, providerObserver);
+   resolver.registerContentObserver(Telephony.Mms.CONTENT_URI, true, providerObserver);
+   resolver.registerContentObserver(Telephony.MmsSms.CONTENT_URI, true, providerObserver);
+   observing = true;
+  } catch (RuntimeException refusedObserver) { resolver.unregisterContentObserver(providerObserver); observing = false; }
+ }
+ private void stopObserving() {
+  main.removeCallbacks(emitChange);
+  if (!observing) return;
+  observing = false;
+  getContext().getContentResolver().unregisterContentObserver(providerObserver);
+ }
+ private void resumeObserving() {
+  if (!observeWanted || !AlphaImageCapability.verified(getContext()) || getPermissionState("sms") != PermissionState.GRANTED || !unlockedForeground()) return;
+  startObserving();
+  main.removeCallbacks(emitChange); main.post(emitChange);
+ }
+
+ /** Starts or stops change notices ("messagesChanged") while Alpha is unlocked in the foreground. */
+ @PluginMethod public void observeMessages(PluginCall call) {
+  if (refused(call)) return;
+  Boolean enabled = call.getBoolean("enabled", false);
+  if (enabled == null || !enabled) { observeWanted = false; stopObserving(); call.resolve(); return; }
+  if (getPermissionState("sms") != PermissionState.GRANTED) { call.reject("Messages access is not granted", "permission-required"); return; }
+  observeWanted = true; startObserving();
+  if (!observing) { observeWanted = false; call.reject("Messages could not be observed", "unavailable"); return; }
+  call.resolve();
+ }
+
+ // ---- Reviewed native sends ------------------------------------------------------------------
+
+ private android.app.AlertDialog review;
+ private PluginCall reviewCall;
+ private Runnable reviewCancelled;
+ private void cancelReview() {
+  android.app.AlertDialog open = review; Runnable cancelled = reviewCancelled;
+  review = null; reviewCall = null; reviewCancelled = null;
+  if (open != null) { open.setOnDismissListener(null); open.dismiss(); }
+  if (cancelled != null) cancelled.run();
+ }
+ /** Why a direct send is not permitted now, or null. Nothing is sent when this is non-null. */
+ private String sendBlocker(int subscriptionId) {
+  TelephonyManager telephony = getContext().getSystemService(TelephonyManager.class);
+  if (telephony == null || !telephony.isSmsCapable()) return "This phone cannot send text messages.";
+  if (getPermissionState("sendSms") != PermissionState.GRANTED) return "Alpha Phone may not send texts. Use your messaging app.";
+  if (getPermissionState("phoneState") != PermissionState.GRANTED) return "Allow phone-state access so Alpha can confirm the SIM.";
+  return activeSubscription(subscriptionId) == null ? "That SIM is not active now. Review the message again." : null;
+ }
+ private SubscriptionInfo activeSubscription(int id) {
+  SubscriptionManager manager = getContext().getSystemService(SubscriptionManager.class);
+  if (manager == null) return null;
+  try { List<SubscriptionInfo> active = manager.getActiveSubscriptionInfoList(); if (active != null) for (SubscriptionInfo info : active) if (info != null && info.getSubscriptionId() == id && info.getSimSlotIndex() >= 0) return info; }
+  catch (SecurityException denied) { return null; }
+  return null;
+ }
+ private static String[] numbers(JSArray recipients) {
+  if (recipients == null) return null;
+  String[] out = new String[recipients.length()];
+  for (int i = 0; i < out.length; i++) { Object value = recipients.opt(i); if (!(value instanceof String)) return null; out[i] = (String) value; }
+  return out;
+ }
+
+ /**
+  * Sends a reviewed text natively. The operation ID is the caller's idempotency key: a repeated ID
+  * returns its journaled result and never sends again. The owner confirms the exact recipients, text,
+  * SIM and part count in Alpha's native dialog on the unlocked phone; declining records "cancelled".
+  * The result is the shared `SmsSendResult`; "submitted" proves only that Android accepted the request.
+  */
+ @PluginMethod public void sendSms(PluginCall call) {
+  if (refused(call)) return;
+  String operationId = call.getString("operationId"), body = call.getString("body");
+  String[] recipients = numbers(call.getArray("recipients"));
+  Object rawSubscription = call.getData().opt("subscriptionId");
+  int subscriptionId = rawSubscription instanceof Integer ? (Integer) rawSubscription : -1;
+  try { SmsSendJournal.validate(operationId, recipients, body, subscriptionId); }
+  catch (IllegalArgumentException invalid) { call.reject("Invalid reviewed message", "invalid"); return; }
+  final SmsSendJournal journal;
+  final SmsSendJournal.Record existing;
+  try {
+   journal = AlphaSms.journal(getContext());
+   existing = journal.existing(operationId, SmsSendJournal.sha256(SmsSendJournal.bindingText(recipients, body, subscriptionId)));
+  } catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
+  catch (Exception unreadable) { call.reject("The send record could not be read. Nothing was sent.", "unavailable"); return; }
+  if (existing != null) { call.resolve(AlphaSms.result(existing)); return; }
+  if (review != null) { call.reject("Another message is waiting for review", "busy"); return; }
+  final long now = System.currentTimeMillis(), boot = AlphaSms.boot(getContext());
+  String blocked = sendBlocker(subscriptionId);
+  if (blocked != null) { decide(call, journal, operationId, recipients, body, subscriptionId, "denied", now, boot); return; }
+  final ArrayList<String> parts;
+  try { parts = AlphaSms.manager(getContext(), subscriptionId).divideMessage(body); }
+  catch (RuntimeException unavailable) { decide(call, journal, operationId, recipients, body, subscriptionId, "denied", now, boot); return; }
+  if (parts == null || parts.isEmpty() || parts.size() > SmsSendJournal.MAX_PARTS_PER_RECIPIENT) { call.reject("This text is too long to send as SMS. Shorten it and review again.", "too-long"); return; }
+  SubscriptionInfo sim = activeSubscription(subscriptionId);
+  if (sim == null) { decide(call, journal, operationId, recipients, body, subscriptionId, "denied", now, boot); return; }
+  StringBuilder message = new StringBuilder();
+  message.append("To: ").append(String.join(", ", recipients)).append('\n');
+  message.append("From: SIM ").append(sim.getSimSlotIndex() + 1).append(" · ").append(clip(sim.getDisplayName())).append(" (").append(clip(sim.getCarrierName())).append(")\n");
+  if (recipients.length > 1) message.append("Each recipient gets a separate text, not a group message.\n");
+  if (parts.size() > 1) message.append("Sent as ").append(parts.size()).append(" linked texts per recipient.\n");
+  message.append("Carrier charges may apply.\n\n").append(body);
+  final String[] to = recipients; final int sub = subscriptionId;
+  reviewCall = call;
+  reviewCancelled = () -> decide(call, journal, operationId, to, body, sub, "cancelled", now, boot);
+  try {
+   review = new android.app.AlertDialog.Builder(getActivity())
+    .setTitle(recipients.length > 1 ? "Send " + recipients.length + " text messages?" : "Send text message?")
+    .setMessage(message.toString())
+    .setNegativeButton("Cancel", null)
+    .setPositiveButton("Send", (dialog, which) -> {
+     if (reviewCall != call) return;
+     review = null; reviewCall = null; reviewCancelled = null;
+     // Recheck everything at the moment of the owner's decision.
+     if (!AlphaImageCapability.verified(getContext()) || !unlockedForeground() || sendBlocker(sub) != null) { decide(call, journal, operationId, to, body, sub, "denied", now, boot); return; }
+     try { call.resolve(AlphaSms.result(AlphaSms.dispatch(getContext(), journal, operationId, to, body, sub, parts))); }
+     catch (Exception unrecorded) {
+      SmsSendJournal.Record record = journal.get(operationId);
+      if (record != null) call.resolve(AlphaSms.result(record));
+      else call.reject("The send could not be recorded. Nothing was sent.", "unavailable");
+     }
+    })
+    .create();
+   review.setOnDismissListener(dialog -> { if (reviewCall == call) cancelReview(); });
+   review.show();
+  } catch (RuntimeException closed) { review = null; reviewCall = null; reviewCancelled = null; call.reject(LateLaunch.CLOSED); }
+ }
+ private void decide(PluginCall call, SmsSendJournal journal, String operationId, String[] recipients, String body, int subscriptionId, String decision, long now, long boot) {
+  try { call.resolve(AlphaSms.result(journal.decide(operationId, recipients, body, subscriptionId, decision, now, boot))); }
+  catch (Exception unrecorded) { call.reject("Nothing was sent.", "unavailable"); }
+ }
+
+ /** The journaled result of a reviewed send. Reading never sends. */
+ @PluginMethod public void smsSendResult(PluginCall call) {
+  if (refused(call)) return;
+  String operationId = call.getString("operationId", "");
+  if (operationId == null || !SmsSendJournal.OPERATION.matcher(operationId).matches()) { call.reject("Invalid send", "invalid"); return; }
+  try {
+   SmsSendJournal.Record record = AlphaSms.journal(getContext()).get(operationId);
+   if (record == null) call.reject("No send with this ID", "not-found"); else call.resolve(AlphaSms.result(record));
+  } catch (Exception unreadable) { call.reject("The send record could not be read.", "unavailable"); }
+ }
+
+ @Override protected void handleOnDestroy() { closed = true; invalidateReads(); AlphaSms.stopListening(sendListener); getContext().unregisterReceiver(screenOff); reader.shutdown(); super.handleOnDestroy(); }
 }
