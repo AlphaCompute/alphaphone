@@ -61,11 +61,15 @@ const RUNNER = "androidx.test.runner.AndroidJUnitRunner";
  */
 export const CLASS_REGISTRY = {
   NoMockProduct: {},
+  BrowserInstalledResolver: { note: "Real installed generic HTTPS filter visibility only; no external launch or network request" },
   Shell: {},
   StartupReadiness: { args: { startupReadiness: "1" } },
   TextScale: { note: "textScaleProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs text-scale" },
+  BrowserExternalHandoff: { note: "Synthetic committed HTTPS child and resolver fixture; intercepts chooser dispatch, no external page is opened" },
+  ResetPolicy: { note: "Non-destructive cancellation, migration refusal and isolated marker checks; not a system reset proof" },
+  BrowserCookiePolicy: { note: "Synthetic intercepted HTTPS origins; private method requires scoped WebView deletion support" },
   BrowserSignins: { note: "signinProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs signin" },
-  BrowserFlow: { liveArgs: { browserFlowLive: "1" }, note: "loopback fixture methods need --test-mocks; by default the search method asserts the submitted www.google.com/search URL and the javascript: refusal offline, and only --live-network (browserFlowLive=1) waits for the live results page" },
+  BrowserFlow: { liveArgs: { browserFlowLive: "1" }, note: "loopback fixture methods need --test-mocks; by default the search method asserts the submitted www.google.com/search URL and the javascript: refusal offline; only --live-network (browserFlowLive=1) needs live HTTPS to www.google.com and records INSTRUMENTATION_STATUS browserFlowSearch=results or provider-check (the provider's own check page for that exact search)" },
   BrowserContinuity: { note: "bookmarkProcessRestartPhase is skipped here; run node scripts/test-native-restart.mjs bookmark" },
   BrowserDownload: { note: "needs --test-mocks (loopback HTTP fixtures); skipped on any other build, so it is not a default class" },
   // src/testMocks/androidTest: compiled only into the test-mocks instrumentation APK.
@@ -80,6 +84,8 @@ export const CLASS_REGISTRY = {
   RealClock: { args: { realClock: "1", clockExclusive: "1" }, requires: "--clock-exclusive", grantOther: { "com.android.deskclock": ["POST_NOTIFICATIONS"] },
     note: "fixture qualified for API 35 only (it asserts the SDK level); the runner grants AOSP Clock its notification permission, which the class requires for real firing evidence" },
   Accessibility: {},
+  ContactsCatalog: { note: "Owned disposable-profile ContactsProvider fixture only; no image admission or contacts activity" },
+  ImageCapabilities: { note: "ordinary APK denial only; no AOSP image or real telephony acceptance" },
   SettingsSystemFacts: { note: "read-only comparison with this image's settings; not device acceptance of the Settings handoffs" },
   Rotation: {},
   // Core-loop classes (docs/core-loop-audit.md). Registered so their opt-in gates are passed; none
@@ -91,6 +97,7 @@ export const CLASS_REGISTRY = {
   // Added by the round-2 integration (PR 388); no recorded run.
   AssistantResidentReuse: { note: "synthetic runtime observation, enrollment and streams; not evidence that a live resident stream survives" },
   LauncherApps: { note: "upstream SystemLauncherApps through Alpha's identity; resolves against this image's package manager only; two methods skip when the image has no other launchable app" },
+  NotesDocument: { note: "Production migration refusal and unchanged Notes; test-mocks builds exercise SAF migration. Restart phase requires the explicit notes development campaign." },
   NotesStorageDurability: { args: { notesStorage: "1" } },
   DailyApps: {},
   ReminderLifecycle: { note: "the re-post method skips unless notifications are enabled for the app" },
@@ -105,7 +112,7 @@ export const CLASS_REGISTRY = {
   BrowserReading: { args: { browserReading: "1" }, requiresTestMocksBuild: true, note: "needs a WebView provider with isolated-world injection" },
   BrowserSensitiveReading: { args: { browserSensitiveReading: "1" }, requiresTestMocksBuild: true },
   BrowserIsolatedReading: { args: { browserIsolatedReading: "1" }, requiresTestMocksBuild: true, note: "needs a WebView provider with isolated-world injection" },
-  BrowserReadingNavigation: { args: { browserIsolatedReading: "1" }, note: "needs a WebView provider with isolated-world injection" },
+  BrowserReadingNavigation: { args: { browserIsolatedReading: "1" }, note: "one method per provider: the stale-document method needs isolated-world injection; without it only the reading-unavailable method runs and the other is listed as skipped (INSTRUMENTATION_STATUS browserReadingProvider says which)" },
   PasswordBrowserFill: {},
   InboxOperationJournal: { args: { inboxOperationNative: "1" } },
   MailAttachment: { args: { mailAttachmentNative: "1" } },
@@ -171,6 +178,7 @@ export const CLASS_REGISTRY = {
   ResidentEgressRedaction: { campaign: "ALPHA_RESIDENT_DISPOSABLE_EMULATOR=1 node scripts/android-resident-instrumentation.mjs <app.apk> <androidTest.apk> (owner-only provider key fixture, ARM64)" },
   ReminderTapProcessDeath: { campaign: "python3 scripts/ci/pending-recovery-ui.py (external process death)" },
   WorkflowNoticeProcessDeath: { campaign: "python3 scripts/ci/pending-recovery-ui.py (external process death)" },
+  WorkflowApprovalNoticeProcessDeath: { campaign: "ALPHA_BUILD_ARCHIVE=<archive> node scripts/android-workflow-native.mjs --phase=approval-notice-recovery (kills the main process from the WorkflowNoticeProcessRunner helper process, in an owned secondary user)" },
   NotificationChannels: { campaign: "node scripts/test-native-permissions.mjs channels APP.apk TEST.apk OUTPUT (permission-restoring runner)" },
   VoicePermissionDenied: { campaign: "node scripts/test-native-permissions.mjs voice APP.apk TEST.apk OUTPUT (RECORD_AUDIO revoked before the app starts)" },
   VoicePermissionRevoke: { campaign: "node scripts/test-native-permissions.mjs voice-revoke APP.apk TEST.apk OUTPUT (RECORD_AUDIO revoked while recording; the process is killed)" },
@@ -201,6 +209,7 @@ export const CAMPAIGN_RUNNERS = [
  * gained a registry entry or a campaign, and for any new class that has neither.
  */
 export const NOT_RUN_BY_A_RUNNER = {
+  ResetExternalFixture: "requires an external host controller, disposable non-owner user, synthetic device credential and separate companion/media sentinels; reset kills instrumentation, so phases cannot run as a single generic campaign (see docs/evidence/reset-native-2026-10-12.json)",
   AllViewAgentContext: "needs a real local agent with inference and a forwarding observer on the host (agentContext=true); its runner was removed with the smoke suites in 49b1bf4c",
   CombinedAgent: "needs the combined host runtime with a provider key at 10.0.2.2:47859 (scripts/start-combined-agent.mjs); no Android runner starts or pairs it",
   CombinedAgentRestart: "same combined host runtime, in prepare/verify/cleanup phases around a host restart; compiled, never executed",

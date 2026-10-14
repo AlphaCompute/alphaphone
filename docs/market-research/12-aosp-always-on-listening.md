@@ -1,6 +1,6 @@
 # 12 — AOSP fork: always-on listening, implementation spec
 
-> **Superseded in part (2026-10-13, [decision P-10](../decisions.md)).** On-device and local speech and inference use only libelizainference (llama.cpp/ggml, GGUF models). ONNX Runtime, sherpa-onnx and ONNX-format models named in this section are historical research context, not a plan.
+> **Superseded in part (2026-10-13, [decision P-42](../decisions.md)).** On-device and local speech and inference use only libelizainference (llama.cpp/ggml, GGUF models). ONNX Runtime, sherpa-onnx and ONNX-format models named in this section are historical research context, not a plan.
 
 Builds on [10 — always-on technical feasibility](10-always-on-tech-feasibility.md). Audience: platform/AOSP engineering, security, product and legal.
 

@@ -74,6 +74,9 @@ final class BrowserReading {
  return {text,truncated};
  })()
  """;
+ /** Shown when the WebView provider has no isolated script world. Engineering default wording; the renderer says the same before a review starts. */
+ static final String UNSUPPORTED="Read aloud and Ask about page are unavailable on this device: its Android System WebView cannot read a page privately. Update Android System WebView.";
+ static final String UNSUPPORTED_CODE="reading-unsupported";
  private final android.app.Activity activity;
  private final Consumer<String> cancelSpeech;
  private AlertDialog dialog;
@@ -106,9 +109,11 @@ final class BrowserReading {
  private static final String ISOLATED_MESSAGE="Isolated page reading is unavailable. Update Android System WebView, then reload this page.";
  private void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent,boolean question){
   cancel();final long expected=generation;
+  // The provider cannot read in isolation: say so before anything else. No speech route, other page or reload can help, and nothing falls back to the page's own world.
+  if(world==null||!world.available()){call.reject(UNSUPPORTED,UNSUPPORTED_CODE);return;}
   try{if(!question)binding=binding(call);}catch(Exception error){call.reject("Select an available speech route before reading");return;}
   if(sensitiveUrl(web.getUrl())){call.reject("Reading unavailable on a sensitive or unverified page",SENSITIVE_PAGE);return;}
-  if(world==null||!world.ready()){call.reject(ISOLATED_MESSAGE,ISOLATED_WORLD_UNAVAILABLE);return;}
+  if(!world.ready()){call.reject("This page is not ready for private reading. Reload this page, then try again.","reading-not-ready");return;}
   current=stillCurrent;pending=call;expires=System.currentTimeMillis()+120000;
   scheduleTimeout(expected,120000);
   world.evaluate(EXTRACT,encoded->{

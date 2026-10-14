@@ -10,7 +10,7 @@ runtime and no speech worker. Speech in a browser takes one of two routes:
   **P-07** in [decisions.md](decisions.md)). In a browser build it is available only on
   development surfaces; flag-off builds select Cloud as described in P-07.
 
-Decision **P-10** removed the earlier in-browser recognizer: one local engine,
+Decision **P-42** removed the earlier in-browser recognizer: one local engine,
 libelizainference, because the earlier runtimes were too slow and used too much memory. Chat
 **Talk** opens voice inside the chat sheet and keeps the current app and draft. Notes uses the
 same recorder with a Notes destination. A recording stays in the app until the user chooses to

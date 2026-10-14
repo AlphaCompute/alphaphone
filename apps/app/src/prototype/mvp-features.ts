@@ -1,19 +1,16 @@
 import { browserDevProfile } from '../browser/dev-profile';
-// Scope decision: docs/mvp-scope-and-gap-report.md; Wallet: docs/implementation-plan.md AP9.
-// Sep 15 notes, paragraph 2283: https://docs.google.com/document/d/1Wgz0wWZh_nvICFzmxPpPa2_H-pvHLAF12FZriMQXf_I/
-// Alpha Phone MVP scope: user-provided September 15 biweekly notes defer
-// calls/SMS/Contacts. Wallet remains outside the supplied core MVP definition.
-// Restore calls/SMS/Contacts only after an approved scope change and native
-// permission, recipient, denied-role and return-to-HOME flow acceptance.
-// Restore Wallet only after AP9 provider/security decisions and payment acceptance.
-// Reference definitions, template, assets and saved user data are deliberately retained.
+// Approved October 12 scope: docs/implementation-plan.md and issue #422.
+// Wallet is removed from MVP, including AOSP: no payment/provider activation.
+// #420: Phone/SMS/Contacts require an admitted Alpha AOSP image and real adapters.
+// Contacts is admitted only by the native image capability; Phone/SMS adapters remain unavailable.
+// Reference definitions and saved user data are retained; development fixtures are non-product.
 export const ENABLED_MVP_VIEWS = new Set([
-  // "phone", // Deferred: September 15 notes, calls/SMS/Contacts deprioritized.
-  // "messages", // Deferred: SMS UI; this does not defer email/Telegram/Discord.
+  // "phone", // AOSP-only; Telecom adapter pending.
+  // "messages", // AOSP-only SMS adapter pending; email/Telegram/Discord are separate.
   "inbox", "calendar", "browser", "camera", "photos", "maps", "notes",
-  // "contacts", // Deferred: no directory access or Contacts adapter effects.
+  // "contacts", // AOSP-only; Admitted dynamically by the image Contacts capability.
   "files",
-  // "wallet", // Deferred: not in the authoritative core MVP; no payment flow.
+  // "wallet", // Removed from MVP in both distributions and AOSP; no payment flow.
   "workflows", "settings",
 ]);
 export const DEFERRED_MVP_VIEWS = new Set(["phone", "messages", "contacts", "wallet"]);
@@ -21,5 +18,9 @@ export const DEFERRED_MVP_VIEWS = new Set(["phone", "messages", "contacts", "wal
 if(browserDevProfile){for(const view of DEFERRED_MVP_VIEWS)ENABLED_MVP_VIEWS.add(view);DEFERRED_MVP_VIEWS.clear();}
 export function isMvpView(view: string) { return ENABLED_MVP_VIEWS.has(view); }
 export function deferredMvpPrompt(text: unknown) {
+  if(isMvpView("contacts")&&/^(?:open|show|go to|launch)\s+(?:the\s+)?contacts\b/i.test(String(text).trim()))return false;
   return /^(?:(?:open|show|go to|launch)\s+(?:the\s+)?(?:phone|dialer|sms|messages|contacts|wallet)(?:\b)|(?:call|dial|text|sms|pay)\b|(?:send|write)\s+(?:an?\s+)?(?:sms|text message)\b)/i.test(String(text).trim());
 }
+
+/** Native image admission enables only implemented adapters; Phone/SMS remain unavailable. */
+export function admitImageContacts(admitted:boolean){if(browserDevProfile)return;if(admitted){ENABLED_MVP_VIEWS.add("contacts");DEFERRED_MVP_VIEWS.delete("contacts");}else{ENABLED_MVP_VIEWS.delete("contacts");DEFERRED_MVP_VIEWS.add("contacts");}}

@@ -10,7 +10,7 @@ navigation, process death and full storage on hardware remain device acceptance 
 
 | Spec | Lane | Scope |
 | --- | --- | --- |
-| `test/browser/accessibility-sweep.spec.ts` | `npm run test:browser` | Every state in `test/browser/accessibility-states.ts`: live (no connection, no data), fixture (populated lists, open subviews, menus, search fields, sheets and the Undo toast) and the two recovery screens |
+| `test/browser/accessibility-sweep.spec.ts` | `npm run test:browser` | Every state in `test/browser/accessibility-states.ts`: live (no connection, no data), fixture (populated lists, open subviews, menus, search fields, sheets and the Undo toast), provider-connected (a signed-in account with a connected mailbox, synthetic, round 10) and the two recovery screens |
 | `test/browser/accessibility-sweep.production.spec.ts` | `npm run test:browser:production` | The live states against the flag-off production bundle |
 | `test/browser/accessibility-audit.spec.ts` | `npm run test:browser` | Each rule fires on a seeded defect and stays quiet on corrected markup |
 | `test/browser/accessibility-resilience.spec.ts` | `npm run test:browser` | Behaviour behind the defects the sweep found |
@@ -41,6 +41,9 @@ announces are not exercised here. Geometry, contrast and clipping are measured i
 | `label-word-broken` | A short word in a control's label is split across lines ("Calenda" / "r") |
 | `control-overlap` | Two controls share more than a few pixels and neither is behind an opaque layer |
 | `control-clipped` | A control is cut through by a box that does not scroll |
+| `obscured-by-dock` | A control or a line of text is painted under the floating dock (the composer bar with anything stacked on it, the pill, the resting conversation sheet). On Home and in the app library any overlap with the composer or pill fails. In an app's own scroller, which passes under the dock by design, it fails when the scroller has too little range left to bring the item wholly above the dock (round 10) |
+| `focus-obscured` | A tab stop took focus with part of its painted box under the dock. A focusable scroll region is exempt: it is the scroller, and its content is judged by `obscured-by-dock` (round 10) |
+| `toast-not-announced`, `toast-covered` | A toast on screen is inert (under a top-layer dialog, so removed from the accessibility tree), or something is painted over it (round 10) |
 | `text-truncated` | Reported, not failed: a deliberate ellipsis or line clamp |
 
 Menus and sheets drawn over a scrim (browser menu and share, photo info and share, note
@@ -51,10 +54,32 @@ control still exists. Their scrim stays exposed as a named close control for tou
 
 Toasts ("Saved", refusals, "Deleted … Undo") are written into a polite live region that
 is always present, and an open menu or inline dialog does not take that region out of
-the accessibility tree. Whether TalkBack speaks them is a device check. A top-layer
-`<dialog>` makes the region inert while it is open, so since the MVP completion
-integration a toast raised under one is also written into a polite region inside that dialog
-(`runtime/inline-modal.ts`; an aria snapshot in `accessibility-resilience.spec.ts`).
+the accessibility tree. A top-layer `<dialog>` makes the page, and that region with it,
+inert. While one is open it therefore has a live region of its own
+(`runtime/toast-layer.ts`): an element inside the dialog, present and empty from the moment
+the dialog opens, shown as a manual popover so it is drawn above the dialog. A toast raised
+meanwhile is copied into the region of the topmost modal dialog, and its Undo runs the
+page's Undo. Whether TalkBack speaks either region is a device check.
+
+## The floating dock
+
+The composer bar and the pill float over the page. Round 8's emulator run found Home's last
+row drawn under the composer at 200% text, and TalkBack read the composer after controls
+that sat lower on the screen. Since round 10:
+
+- Home and the app library end above the dock. The dock's footprint is measured
+  (`runtime/dock-clearance.ts`, published as `--alpha-dock-clearance`) rather than assumed
+  to be 108px, because Android's navigation inset raises the dock and a status line or a
+  longer draft makes it taller. 108px stays the minimum, so Home is unchanged wherever it
+  already fitted. Home lays its rows out against the bar at rest (`--alpha-dock-rest`), so a
+  status line that comes and goes above the bar shortens what is visible of Home and does
+  not move every row. In landscape the dock is beside Home and nothing changes.
+- An app's own page still scrolls under the dock, by design. A control that takes keyboard
+  or switch focus there is scrolled wholly above the dock (scroll padding on the app
+  scrollers, and `focusAppContent` for the rest). Focus that comes from a pointer is not
+  moved: scrolling a pressed row out from under the finger loses the tap.
+- The email composer's fields end above the dock too; its message field ran 16px under the
+  pill (found by the provider-connected states).
 
 The recovery screen dismisses any open modal dialog when it appears. A modal dialog is
 drawn above everything else and would otherwise leave Reload covered and unfocusable.
@@ -65,22 +90,25 @@ These are the sizes the sweep holds the renderer to. They are test definitions, 
 product commitment; the landscape decision is still A-22 in `docs/decisions.md`.
 
 - Portrait 412 by 915, light and dark: all rules.
-- Text at 200%, portrait: clipping and overlap rules and names. Android applies large text as WebView
+- Text at 200%, portrait: clipping, overlap and dock rules, names, and no tab stop left under
+  the dock. Android applies large text as WebView
   text zoom (the in-app text size multiplied by the system font scale), so 200% is the
   system's largest font at the default in-app size. The existing large-text specs cover
   150%, the largest in-app size.
-- Landscape 915 by 412 on a touch phone: clipping rules, names and tab order.
-- Landscape at 200% text (MVP completion integration): clipping and overlap rules and names.
-  The mock calendar's Standup block is clipped vertically there and in portrait at 200%; that
-  case is open (A-22 scope).
+- Landscape 915 by 412 on a touch phone: clipping, overlap and dock rules, names and tab order.
+- Landscape 915 by 412 at 200% text: the same rules (round 10). It passed for every state
+  without a layout change of its own.
 
 Truncation policy: a single-line ellipsis or line clamp on a preview of user content
 (a mail snippet, a file name in a list, a note preview) is allowed, because the full text
 is one tap away and is exposed whole to assistive technology. Text that is cut through
-without an ellipsis is a failure. At 200% the app titles in the Camera and Photos headers
-wrap instead of being shortened, and a cut title marked `data-alpha-app-title` fails the sweep
-(MVP completion integration). The Home calendar card title is no longer shortened at 200%: the
-card grows with it (round 8).
+without an ellipsis is a failure. A screen's own title is not user content and is not
+shortened: above 150% text (`alpha-text-xl`, set by `runtime/text-scale.ts`; 150% is the
+largest in-app size, so this is reached only with a large system font) the title takes a
+row of its own under the header's buttons and wraps there if it has to. "Photos", "Camera"
+and "Password manager" were shortened with an ellipsis at 200% before round 10. The Home
+calendar card grows with its title (round 8) and the title's line height now opens with the
+text scale, so its last line is no longer cut by the clamp at 200%.
 
 ## Limits
 
@@ -108,11 +136,22 @@ card grows with it (round 8).
   for clipping; only rendered text nodes are.
 - No zoom above 200% is swept: the largest in-app size with the largest system font
   multiplies to 300%.
-- The sweep visits states reachable without a provider, permission or account. Dialogs
-  and flows that need one are covered by their own accessibility specs. Connected-provider states are visited with synthetic providers on the development
-  server only. The fixture lock screen and the `photos-empty` viewer state are not visited.
-- A focused control partly under the floating composer is reported (MVP completion
-  integration, with `scroll-padding-bottom` applied so focus scrolls clear of it).
+- Provider-connected states are one synthetic mailbox held at the provider boundary
+  (`connectMailbox` in `accessibility-states.ts`): Home with its unread card, the Inbox
+  list, an empty folder, search, an open message, a long subject, compose, and Settings with
+  its accounts and connections pages. No account, OAuth or mail exists. A connected
+  calendar, cloud agent or password provider is not swept; dialogs and flows that need a
+  permission are covered by their own accessibility specs. These states run on the
+  development server only, so the flag-off production sweep does not include them. The
+  fixture lock screen, the `photos-empty` viewer state and the launcher presentation are swept
+  at 100% and 200% (`FIXTURE_STATES` and `LAUNCHER_STATES` in `accessibility-states.ts`).
+- The dock rules judge the composer bar, the pill and the resting sheet. Only Home and the
+  app library end above the dock; an app page's content still passes under it and is only
+  required to be scrollable clear of it. Whether TalkBack's reading order is affected on
+  such a page is an emulator and device question (`AccessibilityInstrumentedTest` checks
+  Settings).
+- The dock's footprint is measured after layout. On Android it depends on insets the WebView
+  reports; that path is not exercised in Chromium beyond setting the same custom property.
 - A state is a screen as it opens. Flows inside a state (typing, multi-step dialogs,
   drag gestures) are not walked beyond the tab order. The scan fixture is checked once its
   result has arrived; the "Looking for a page" status shown for a second before it is not.

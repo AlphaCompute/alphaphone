@@ -55,6 +55,13 @@ shards. Each main push runs in its own concurrency group, so a later push neithe
 cancels it nor drops it while queued; PR runs still cancel superseded runs. Resident
 push and nightly runs use their own groups too and never cancel a dispatched run. The repository ruleset requires PRs.
 
+Round 10 added no job, step or network access to any run. Gradle dependency verification
+(`android/gradle/verification-metadata.xml`) is enforced by the Gradle build the Android
+foundation job already runs; its offline check and the SBOM tests are part of `npm test`;
+and the build writes `artifacts/sbom/alphaphone.cdx.json` offline, uploaded with the
+existing build evidence. Rewriting the metadata (`npm run android:deps:write-verification`)
+is a local command and is never run by a workflow.
+
 The production browser project runs `test/browser/production-surface.spec.ts` and every
 `test/browser/<name>.production.spec.ts` against the flag-off build. A package that
 adds a flag-off assertion adds such a file; no configuration change is needed.

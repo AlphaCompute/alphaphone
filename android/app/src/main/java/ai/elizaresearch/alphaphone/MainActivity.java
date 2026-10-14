@@ -15,7 +15,6 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.WebViewListener;
-import ai.eliza.plugins.system.SystemPlugin;
 
 /** Derived from packages/app/scripts/mobile/android/templates/main-activity.ts.
  * Product shell: local assets, Eliza's system bridge, no cloud-auth or implicit kiosk policy.
@@ -247,8 +246,10 @@ public class MainActivity extends BridgeActivity {
    if (task == -1 || task != liveTaskId) { liveTaskId = task; liveTaskHome = isHomeTypeStart(getIntent()); }
    startedAsHome = liveTaskHome;
   }
-  registerPlugin(SystemPlugin.class);
-  registerPlugin(DeviceAppsPlugin.class);
+  registerPlugin(AlphaSystemPlugin.class);
+  registerPlugin(AlphaResetPlugin.class);
+  registerPlugin(AlphaDeviceAppsPlugin.class);
+  registerPlugin(AlphaContactsPlugin.class);
   registerPlugin(DailyAppsPlugin.class);
   registerPlugin(AlphaMapsTransportPlugin.class);
   registerPlugin(ai.eliza.plugins.camera.CameraPlugin.class);
@@ -268,7 +269,7 @@ public class MainActivity extends BridgeActivity {
   registerPlugin(AlphaNotificationsPlugin.class);
   registerPlugin(AlphaHostedResultsPlugin.class);
   registerPlugin(ai.eliza.plugins.passwords.PasswordsPlugin.class);
-  registerPlugin(ai.eliza.plugins.passwords.PasswordTransferPlugin.class);
+  if(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)registerPlugin(ai.eliza.plugins.passwords.PasswordTransferPlugin.class);
   if (BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS) {
    // Present only in debug builds made with -PELIZA_DEV_ALLOW_TEST_MOCKS=1 (src/testMocks).
    try { registerPlugin(Class.forName("ai.elizaresearch.alphaphone.DevelopmentAgentPlugin").asSubclass(com.getcapacitor.Plugin.class)); }
@@ -284,6 +285,8 @@ public class MainActivity extends BridgeActivity {
   getBridge().addWebViewListener(rendererRecovery);
   WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
   getBridge().getWebView().getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+  // The privileged app host never participates in third-party browser sessions.
+  android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(getBridge().getWebView(),false);
   AlphaDevicePlugin.applyTextScale(this);
   // Launcher reference layouts include system-bar space. Standalone and assist
   // content must fit inside the real bars/cutout, including enforced edge-to-edge.

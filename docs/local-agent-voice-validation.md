@@ -13,7 +13,7 @@ Only synthetic text/audio was used. No bearer appears in the evidence.
 
 ## Source fixes and reproducibility
 
-Upstream changes now arrive only through a reviewed pin move in `upstream.lock.json`; the product's `patches/eliza` series is historical: this repository retired it in `34b3c82a` (2026-10-03) and `55c2944f` (2026-10-04), and the last reference went in `530d3b26` (2026-10-10), each when the pinned upstream already carried the change. The run below was made with the patch and is kept as history; it has not been repeated at the current pin.
+Upstream changes arrive as reviewed upstream commits through a pin move in `upstream.lock.json`, or as an explicit tested native patch admitted by `patches/eliza/native-manifest.json` (`scripts/prepare-patched-native.mjs`, rebased onto `bc71e21f3b` on 2026-10-13). The earlier voice patch series was retired in `34b3c82a` (2026-10-03) and `55c2944f` (2026-10-04), and its last reference went in `530d3b26` (2026-10-10), each when the pinned upstream already carried the change. The run below was made with the patch and is kept as history; it has not been repeated at the current pin.
 
 Historical record: `patches/eliza/0002-paired-local-voice.patch` (historical; retired in `34b3c82a`) had its exact base and SHA256 in
 `patches/eliza/local-voice-source-base.json` (historical, retired with it). It was applied only to the isolated
@@ -63,7 +63,7 @@ still needs authenticated binary requests, AAC-to-mono-PCM-WAV conversion,
 account/lifecycle cancellation and real playback testing, gated by selected
 server capability. Cloud voice remains separately account/authentication gated.
 Local Notes audio plus manual transcript is already a separate supported flow. The browser
-build has no speech engine of its own (P-10): local transcription in a browser goes through the
+build has no speech engine of its own (P-42): local transcription in a browser goes through the
 local agent above, and without it reports `local-agent-required`
 ([browser-speech-recognition.md](browser-speech-recognition.md)).
 

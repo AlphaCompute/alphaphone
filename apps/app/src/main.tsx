@@ -7,6 +7,8 @@ import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-a
 import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
 // Register browser implementations before any runtime module claims plugin identity.
 import './browser/register';
+import { installContactsAdapter } from './prototype/contacts-adapter';
+import { admitImageContacts } from './prototype/mvp-features';
 import {bindBrowserSpeechConnection} from './browser/agent-speech';
 import { testMocksEnabled, devSurfacesEnabled } from './build-flags';
 import { RootErrorBoundary, installGlobalErrorRecovery } from './runtime/error-boundary';
@@ -30,7 +32,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { StartupPermissions } from './startup-permissions';
 import { reopenStartupPermissions } from './startup-permission-flow';
 import { createRoot } from 'react-dom/client';
-import { Component, VIEWS } from './prototype/model.js';
+import { Component, VIEWS, ORDER } from './prototype/model.js';
 import { installReminderAdapter } from './prototype/reminder-adapter';
 import { installNoteOriginAdapter } from './prototype/note-origin-adapter';
 import { installAgentAdapter } from './prototype/agent-adapter';
@@ -52,7 +54,8 @@ import { latestRetainedDigest, subscribeRetainedDigest } from './runtime/hosted-
 import { installHomeLauncher } from './prototype/home-launcher';
 import { setLocalePreferences } from './prototype/locale-time';
 import { installTextScale } from './runtime/text-scale';
-import { installModalToastMirror } from './runtime/inline-modal';
+import { installDockClearance } from './runtime/dock-clearance';
+import { installToastLayer } from './runtime/toast-layer';
 import './prototype/prototype.css';
 import './prototype/phone.css';
 installGlobalErrorRecovery();
@@ -89,6 +92,7 @@ if (!fixture) {
   installAgentAdapter(Component, VIEWS);
   installReminderAdapter(Component, VIEWS);
   installCalendarAdapter(Component, VIEWS);
+  if(isAndroid)installContactsAdapter(Component,VIEWS);
   installCalendarFormDraftAdapter(Component, VIEWS);
   installCalendarEditDraftAdapter(Component, VIEWS);
   installNoteOriginAdapter(Component, VIEWS);
@@ -165,30 +169,39 @@ function Phone() {
       size();
     }).catch(() => {});
     const size = () => {
-      const height = window.visualViewport?.height || window.innerHeight;
+      // Android WebView can expand innerWidth/visualViewport to overflowing content
+      // during rotation. Feeding that back into the phone canvas leaves portrait
+      // content at landscape width. The root client box is the fitted WebView;
+      // a smaller visual viewport still supplies the keyboard's usable height.
+      const width = document.documentElement.clientWidth || window.innerWidth;
+      const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
+      const height = Math.min(layoutHeight, window.visualViewport?.height || layoutHeight);
+      const viewportTop = Math.max(0, Math.min(window.visualViewport?.offsetTop || 0, layoutHeight - height));
+      document.documentElement.style.setProperty('--alpha-visible-height', `${height}px`);
+      document.documentElement.style.setProperty('--alpha-visible-top', `${viewportTop}px`);
       const coarse = !isAndroid && window.matchMedia('(pointer: coarse)').matches;
-      const desktop = !isAndroid && window.innerWidth > 600 && !coarse;
+      const desktop = !isAndroid && width > 600 && !coarse;
       const banner = testMocksEnabled && mock ? document.querySelector('.mock-mode-banner')?.getBoundingClientRect().bottom || 36 : 0;
       const tools = devSurfacesEnabled && !isAndroid && !mock ? document.querySelector<HTMLElement>('.alpha-dev-tools') : null;
       const toolsInset = tools ? Math.max(56, Math.ceil(tools.getBoundingClientRect().height + (parseFloat(getComputedStyle(tools).bottom) || 0) + 2)) : 0;
       const available = Math.max(1, height - banner - (desktop ? 48 : 0) - toolsInset);
       // Standalone Android uses the available width without magnifying the
       // portrait canvas in landscape. Keep the launcher presentation unchanged.
-      const landscape = !desktop && window.screen.width > window.screen.height && window.innerWidth > window.innerHeight;
+      const landscape = !desktop && window.screen.width > window.screen.height && width > layoutHeight;
       const fluidNative = isAndroid && !launcherPresentation;
-      const scale = desktop ? Math.min(1, available / 915) : landscape ? Math.max(0.1, Math.min(window.innerWidth, window.screen.height) / 412) : fluidNative ? Math.min(1, window.innerWidth / 412) : window.innerWidth / 412;
+      const scale = desktop ? Math.min(1, available / 915) : landscape ? Math.max(0.1, Math.min(width, window.screen.height) / 412) : fluidNative ? Math.min(1, width / 412) : width / 412;
       document.documentElement.style.setProperty('--phone-scale', String(scale));
-      document.documentElement.style.setProperty('--phone-width', landscape ? `calc(100vw / ${scale})` : `${fluidNative ? window.innerWidth / scale : 412}px`);
+      document.documentElement.style.setProperty('--phone-width', landscape ? `calc(100vw / ${scale})` : `${fluidNative ? width / scale : 412}px`);
       document.documentElement.style.setProperty('--phone-height', `${desktop ? 915 : available / scale}px`);
-      document.documentElement.style.setProperty('--phone-left', `${desktop ? (window.innerWidth - 412 * scale) / 2 : 0}px`);
+      document.documentElement.style.setProperty('--phone-left', `${desktop ? (width - 412 * scale) / 2 : 0}px`);
       document.documentElement.style.setProperty('--phone-top', `${banner + (desktop ? 24 : 0)}px`);
       document.documentElement.classList.toggle('browser-desktop', desktop);
       document.documentElement.classList.toggle('alpha-landscape', landscape);
 
     };
     const bannerObserver=new ResizeObserver(size);const bannerElement=testMocksEnabled&&mock?document.querySelector('.mock-mode-banner'):null;if(bannerElement)bannerObserver.observe(bannerElement);
-    size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size);
-    return () => { bannerObserver.disconnect(); window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); };
+    size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size); window.visualViewport?.addEventListener('scroll', size);
+    return () => { bannerObserver.disconnect(); window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); window.visualViewport?.removeEventListener('scroll', size); };
   }, []);
   return <>{BrowserDeviceControls&&!isAndroid&&!mock&&query.get('tools')==='1'&&<BrowserDeviceControls command={action=>{
     if(!shell)return;
@@ -222,8 +235,10 @@ async function mountPhone() {
       DeviceApps.launchInfo().then(info => info.assistant === true).catch(() => false),
     ]);
     assistantSurface = surface || launch;
+    const refreshImage=async()=>{const image=await DeviceApps.platformCapabilities().catch(()=>({aospImage:false,contacts:false}));const admitted=image.aospImage===true&&image.contacts===true;admitImageContacts(admitted);const index=ORDER.indexOf('contacts');if(admitted&&index<0)ORDER.push('contacts');else if(!admitted&&index>=0)ORDER.splice(index,1);if(!admitted&&shell?.S().view==='contacts')shell.goHome();};
+    await refreshImage();
     await applyDeviceLocale();
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) void applyDeviceLocale().then(() => shell?.setState({ localeRevision: Date.now() })); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) void refreshImage().then(()=>applyDeviceLocale()).then(() => shell?.setState({ localeRevision: Date.now() })); });
   } else if (devSurfacesEnabled && query.get('surface') === 'assistant') {
     // Development server only: preview the ACTION_ASSIST surface without an Android host.
     assistantSurface = true;
@@ -232,8 +247,10 @@ async function mountPhone() {
   document.documentElement.classList.toggle('standalone-app', !launcherPresentation);
   // Large text is measured, not declared: layout rules read --alpha-text-scale (runtime/text-scale.ts).
   installTextScale();
-  // A toast raised under a showModal() dialog is repeated inside it (runtime/inline-modal.ts).
-  installModalToastMirror();
+  // The floating dock's footprint is measured too: Home ends above it (runtime/dock-clearance.ts).
+  installDockClearance();
+  // A toast raised under a top-layer dialog is shown and announced inside that dialog (runtime/toast-layer.ts).
+  installToastLayer();
   if (testMocksEnabled && mock && isAndroid) {
     const { pauseLiveActivityForMock } = await import('./runtime/mock-admission');
     const root=document.getElementById('root')!;

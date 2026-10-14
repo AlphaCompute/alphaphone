@@ -104,12 +104,16 @@ export default defineConfig({
   define: {
     'import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS': JSON.stringify(flagOn ? '1' : ''),
     __APP_VERSION__: JSON.stringify(appVersion),
+    'import.meta.env.VITE_ALPHA_DEV_CARTESIA':JSON.stringify(flagOn&&process.env.ALPHA_DEV_CARTESIA==='1'?'1':''),
   },
   // Module workers (the MapLibre worker). The web build has no speech worker or in-browser
   // inference runtime: local speech runs on the local agent's native libelizainference.
   worker: { format: 'es' },
   resolve: {
     alias: {
+      "@elizaos/ui/voice/voice-session-client": fileURLToPath(new URL("./.eliza/client-features/packages/ui/src/voice/voice-session-client.ts",import.meta.url)),
+      "@elizaos/host/protocol": fileURLToPath(new URL("./.eliza/client-features/packages/host/src/voice.ts",import.meta.url)),
+      "@elizaos/core/protocol": fileURLToPath(new URL("./.eliza/client-features/alpha-voice-core-protocol.ts",import.meta.url)),
       "@elizaos/voice/turn": fileURLToPath(new URL("./.eliza/client-features/packages/voice/src/turn.ts",import.meta.url)),
       "@elizaos/core/speech": fileURLToPath(new URL("./.eliza/client-features/packages/core/src/speech.ts",import.meta.url)),
       "@elizaos/ui/voice/batch-conversation": fileURLToPath(new URL("./.eliza/client-features/packages/ui/src/voice/batch-conversation.ts",import.meta.url)),

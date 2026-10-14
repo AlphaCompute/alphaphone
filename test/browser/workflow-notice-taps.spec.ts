@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 // Production renderer and authenticated connection; controlled transport/native queue, no real notification.
-for(const scenario of ['two','other-owner','wrong-version','unconfirmed','navigation-race','owner-race','reconnect','queue-changed','builder-race','new-tap-during-read'] as const){
+for(const scenario of ['two','other-owner','wrong-version','unconfirmed','navigation-race','owner-race','reconnect','owner-change','queue-changed','builder-race','new-tap-during-read'] as const){
  test('scoped native workflow tap '+scenario,async({page})=>{
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(scenario=>{
@@ -16,7 +16,7 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
     {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureCompareExchange','secureRemove','cancel','addListener','removeListener','pauseNotificationCollection'])},
     {name:'AlphaActionJournal',methods:methods(['list'])},
     {name:'DeviceApps',methods:methods(['buildInfo'])},
-    {name:'AlphaHostedResults',methods:methods(['beginBackground','cancelBackground','configureBackground','disableBackground','inboxHistory','syncInbox','status','setBackgroundPolling','enable','pendingResult','addListener','removeListener'])},
+    {name:'AlphaHostedResults',methods:methods(['beginBackground','cancelBackground','configureBackground','disableBackground','inboxHistory','syncInbox','status','setBackgroundPolling','enable','pendingResult','withdrawOtherOwnerApprovalNotices','addListener','removeListener'])},
    ],nativePromise:async(plugin:string,method:string,input:any)=>{
     if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
     if(plugin==='AlphaNotifications'){
@@ -34,7 +34,7 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
       if(path.startsWith('/api/workflow/executions/')){f.reads=(f.reads||0)+1;if(f.queueChanged){f.taps.reverse();f.queueChanged=false;}if(f.hold)await new Promise(r=>f.release=r);body={execution:{id:path.split('/').at(-1),workflowId:'flow',workflowVersionId:f.wrongVersion?'v2':'v1',status:'completed',finished:true,startedAt:'2026-10-01T12:00:00Z',output:'Verified retained result '+path.split('/').at(-1),events:[]}};return {status:200,body:JSON.stringify(body)};}
       if(path==='/api/workflow/workflows/flow')return {status:200,body:JSON.stringify({id:'flow',name:'Notice workflow',versionId:'v1',active:false,steps:[]})};
 
-      if(path==='/api/auth/me')body={identity:{kind:'owner',id:'fixture-owner'},access:{role:'OWNER',mode:'session'}};
+      if(path==='/api/auth/me')body={identity:{kind:'owner',id:f.owner||'fixture-owner'},access:{role:'OWNER',mode:'session'}};
       else if(path==='/api/agents')body={agents:[{id:'fixture-agent',name:'Resident fixture',status:'running'}]};
       else if(path==='/api/client-devices/register')body={installationId:input.headers['X-Eliza-Device-Id'],enrollmentId:'fixture-enrollment',capabilities:[]};
       else if(path==='/api/conversations')body={conversations:[]};
@@ -73,18 +73,22 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
      if(method==='status')return {enabled:f.notifications,backgroundEnabled:f.enabled&&f.polling};
      if(method==='setBackgroundPolling'){f.polling=input.enabled;return {backgroundEnabled:f.enabled&&f.polling};}
      if(method==='enable'){f.notifications=true;return {enabled:true};}
+     // The owner-change withdrawal of approval notices: only the connected owner's ID crosses the bridge.
+     if(method==='withdrawOtherOwnerApprovalNotices'){f.ownerWithdrawals=(f.ownerWithdrawals||[]);f.ownerWithdrawals.push(input);if(w.__ownerWithdrawalFault&&f.ownerWithdrawals.length===1)throw Error('Synthetic withdrawal failure');return {withdrawn:0};}
      return {};
     }
     return {};
    }};
   },'ready');
+ // One scenario fails the first owner-change withdrawal, which the next connection change repeats.
+ await page.addInitScript(fault=>{(window as any).__ownerWithdrawalFault=fault;},scenario==='reconnect');
 
  await page.goto('/');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
  if(scenario==='builder-race'){await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));await page.getByRole('button',{name:'Workflows',exact:true}).click();}
  await page.evaluate(async(scenario)=>{
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');const s=c.getSnapshot().session!,b=c.getWorkflowClient()!,f=(window as any).deliveryFixture;
   const tap=(id:string)=>({scope:b.scope,origin:s.origin,ownerId:s.ownerId,agentId:s.agentId,workflowId:'flow',runId:id,versionId:'v1',token:id,operationId:'operation-'+id,bindingHash:'b'.repeat(64),retained:true});
-  f.pendingReads=0;f.taps=scenario==='two'?[tap('run1')]:[tap('run1'),tap('run2')];f.second=tap('run2');if(scenario==='other-owner')f.taps[0].ownerId='another-owner';if(scenario==='wrong-version')f.wrongVersion=true;if(scenario==='queue-changed')f.queueChanged=true;if(scenario==='unconfirmed')f.taps[0].retained=false;if(['navigation-race','owner-race','reconnect','builder-race','new-tap-during-read'].includes(scenario))f.hold=true;
+  f.pendingReads=0;f.taps=scenario==='two'?[tap('run1')]:[tap('run1'),tap('run2')];f.second=tap('run2');if(scenario==='other-owner')f.taps[0].ownerId='another-owner';if(scenario==='wrong-version')f.wrongVersion=true;if(scenario==='queue-changed')f.queueChanged=true;if(scenario==='unconfirmed')f.taps[0].retained=false;if(['navigation-race','owner-race','reconnect','owner-change','builder-race','new-tap-during-read'].includes(scenario))f.hold=true;
   document.dispatchEvent(new Event('visibilitychange'));
  },scenario);
  if(scenario==='two'){
@@ -116,6 +120,20 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
    await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
    await expect(page.getByText('Verified retained result run1',{exact:true})).toBeVisible();
   }
+ }else if(scenario==='owner-change'){
+  // The first owner's read is still in flight when the session ends; a different owner then connects.
+  await expect.poll(()=>page.evaluate(()=>Boolean((window as any).deliveryFixture.release))).toBe(true);
+  await page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');await c.offline();const w=window as any,f=w.deliveryFixture;f.release();f.hold=false;f.owner='next-owner';
+   // The toast is transient; record every notice text shown from here on.
+   w.__noticeToasts=[];new MutationObserver(()=>{const shown=document.body.innerText.match(/Workflow notification saved\.[^\n]*/)?.[0];if(shown&&!w.__noticeToasts.includes(shown))w.__noticeToasts.push(shown);}).observe(document.body,{subtree:true,childList:true,characterData:true});});
+  // Ending the session alone withdraws nothing: no owner is connected to compare against.
+  expect(await page.evaluate(()=>(window as any).deliveryFixture.ownerWithdrawals)).toEqual([{ownerId:'fixture-owner'}]);
+  await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+  expect(await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().session?.ownerId)).toBe('next-owner');
+  // The first owner's retained tap never opens under the next owner, and nothing is consumed.
+  await expect.poll(()=>page.evaluate(()=>(window as any).__noticeToasts)).toEqual(['Workflow notification saved. Connect its original agent to open it.']);
+  await expect(page.getByText('Verified retained result run1',{exact:true})).toHaveCount(0);
+  expect(await page.evaluate(()=>({taps:(window as any).deliveryFixture.taps.length,consumed:(window as any).deliveryFixture.consumed?.length||0}))).toEqual({taps:2,consumed:0});
  }else if(scenario==='navigation-race'){
   await expect.poll(()=>page.evaluate(()=>Boolean((window as any).deliveryFixture.release))).toBe(true);
   await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));await expect(page.locator('html')).toHaveAttribute('data-active-view','home');
@@ -126,6 +144,9 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
   expect(await page.evaluate(()=>(window as any).deliveryFixture.taps.length)).toBe(2);
   expect(await page.evaluate(()=>(window as any).deliveryFixture.consumed?.length||0)).toBe(0);
  }
+ // Connecting an owner withdraws the approval notices posted for any other owner, once per owner: the
+ // native ledger is asked with exactly the connected owner's ID, and a failed request is repeated.
+ await expect.poll(()=>page.evaluate(()=>(window as any).deliveryFixture.ownerWithdrawals||[])).toEqual(scenario==='reconnect'?[{ownerId:'fixture-owner'},{ownerId:'fixture-owner'}]:scenario==='owner-change'?[{ownerId:'fixture-owner'},{ownerId:'next-owner'}]:[{ownerId:'fixture-owner'}]);
  expect(errors).toEqual([]);
  });
 }

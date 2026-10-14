@@ -5,6 +5,7 @@ import { createNativeReadingVoice } from '../runtime/native-reading-voice';
 import {reviewContentQuestion} from '../browser/content-question';
 import {browserReadingSource} from '../browser/reading-source';
 import {sensitiveReadingText} from '../browser/reading-sensitive';
+import {createReadingSupport, READING_UNSUPPORTED_MESSAGE} from '../browser/reading-capability';
 import {webSourceOf} from './summary-source';
 import { connectionController } from '../runtime/connection-ui';
 import { BrowserReviews } from '../browser/review';
@@ -77,6 +78,15 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   const refresh = () => shell?.vset('browser', { nativeRevision: Date.now() });
   const report = (error: unknown) => !disposed && shell?.toast(error instanceof Error ? error.message : 'Browser unavailable');
   let reading: AbortController | undefined, questionReview=false;
+  // Android only: whether this WebView provider can read a page in isolation. The web build
+  // reviews a fetched copy instead and has no such limit.
+  const readingSupport = Capacitor.isNativePlatform() ? createReadingSupport(() => Browser.readingSupport(), () => refresh()) : undefined;
+  /** Says so, with the menu closed, when page reading cannot work on this device. */
+  async function readingUnsupported() {
+    if (!readingSupport || await readingSupport.check() !== 'unavailable') return false;
+    if (!disposed) { shell?.vset('browser', {menu: false}); report(new Error(READING_UNSUPPORTED_MESSAGE)); }
+    return true;
+  }
   function stopReading() { const active=reading; reading=undefined; active?.abort(); void Browser.cancelReading({session}).catch(()=>{}); }
   const unsubscribeReading = connectionController.subscribe(()=>{ if(reading && (connectionController.getSnapshot().open || document.hidden)) stopReading(); });
   async function readPage() {
@@ -91,6 +101,9 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       catch(error){if(!controller.signal.aborted)report(error);}finally{if(reading===controller)reading=undefined;}
       return;
     }
+    // Before any speech route is asked for: without isolated reading there is nothing to read.
+    if(await readingUnsupported())return;
+    if(reading||disposed||state()?.cur!==id||documentRevisions.get(id)!==revision)return;
     const voice=createNativeReadingVoice(), binding=voice?.binding;
     if(!voice || !binding){report(new Error('Connect an agent with available speech to read this page.'));return;}
     if(!info?.committed || info.loading || info.error){report(new Error('Load an HTTPS page before reading.'));return;}
@@ -107,6 +120,8 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   }
   async function askPage() {
     stopReading();
+    if(await readingUnsupported())return;
+    if(reading||disposed)return;
     const id=state()?.cur,info=metadata.get(id),revision=documentRevisions.get(id);
     const source=webSourceOf({kind:'web-page',version:1,name:String(info?.title||info?.url||'Web page').replace(/[\x00-\x1f\x7f]/g,' ').trim().slice(0,120),url:info?.url});
     if(!source||!info?.committed||info.loading||info.error){shell.vset('browser',{menu:false});report(new Error('Load a public HTTPS page before asking about it.'));return;}
@@ -164,15 +179,21 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       }
     } catch { if (approvedSignal) throw new Error('Invalid approved browser destination'); report(new Error('Enter search words or a valid HTTP or HTTPS address without credentials.')); return; }
     const s = state(); if (!s) { if (approvedSignal) throw new Error('Browser unavailable'); return; }
+    const selectedTab=s.cur;
     const id = newTab ? newTabId() : s.cur, priv = newTab ? privateTab : isPrivate(id);
     // Keep the last committed address durable while a restored page is loading or fails.
     const saved = restored.get(id);
     if (saved) metadata.set(id, { ...metadata.get(id), savedUrl: saved.url, title: saved.title });
     restored.delete(id);
     try {
-      await ensure(id, priv);
+      const creation=ensure(id, priv);
+      await creation;
+      if(newTab&&(approvedSignal?.aborted||disposed)&&created.get(id)===creation){created.delete(id);void Browser.close({session,id}).catch(report);}
       approvedSignal?.throwIfAborted();
       if (disposed) { if (approvedSignal) throw new Error('Browser closed'); return; }
+      const current=state();
+      if(created.get(id)!==creation||!current||(!newTab&&!current.tabs.some((tab:Bag)=>tab.id===id))){void Browser.close({session,id}).catch(report);if(approvedSignal)throw new Error('Browser tab closed');return;}
+      if(!background&&current.cur!==selectedTab){if(newTab){created.delete(id);void Browser.close({session,id}).catch(report);}if(approvedSignal)throw new Error('Browser tab changed');return;}
       if (newTab) shell.vset('browser', { tabs: [...state().tabs, { id, hist: ['newtab'], pos: 0, ...(priv ? {priv: true} : {}) }], cur: id });
       metadata.set(id, { ...metadata.get(id), url: url.href, loading: true, committed: false, error: '' });
       documentRevisions.set(id, (documentRevisions.get(id) || 0) + 1);
@@ -237,6 +258,26 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       lastGeometry='';await update();
       await Browser.share({session,id,navigation:info.navigation,url:info.url});
     } catch(error){report(error);} finally {sharing=false;}
+  }
+  async function openExternalBrowser() {
+    if (sharing || confirming || disposed || !shell) return;
+    const id = state()?.cur, info = metadata.get(id), revision = documentRevisions.get(id);
+    if (!info?.committed || info.loading || info.error || !info.url?.startsWith('https://')) { report(new Error('Load an HTTPS page before opening another browser.')); return; }
+    sharing = true;
+    try {
+      const priv = isPrivate(id);
+      shell.vset('browser', {menu:false});
+      if (priv) {
+        confirming = true; lastGeometry = ''; await update();
+        const approved = await reviews.confirm('external-browser', 'Leave private browsing?', `Only this address will be sent to another browser:\n${info.url}\n\nThe other browser may save it in its history and use its own signed-in accounts. Alpha cookies and private tab data are not transferred.`, 'Choose browser');
+        confirming = false;
+        if (!approved) return;
+      }
+      if (disposed || document.hidden || shell.S().view!=='browser' || state()?.cur!==id || documentRevisions.get(id)!==revision) throw new Error('The page changed. Review it again before leaving Alpha.');
+      lastGeometry=''; await update();
+      await Browser.openExternalBrowser({session,id,navigation:info.navigation,url:info.url,privateConfirmed:priv});
+    } catch (error) { report(error); }
+    finally { sharing=false; confirming=false; lastGeometry=''; await update(); }
   }
   /** Remove renderer tabs whose native WebView is already gone. */
   function forgetTabs(ids: string[]) {
@@ -342,9 +383,9 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
         onKey:(e:KeyboardEvent)=>{if(e.key==='Enter'){e.preventDefault();findStep(!e.shiftKey);}else if(e.key==='Escape'){e.preventDefault();closeFind();}},
         next:()=>findStep(true),prev:()=>findStep(false),close:()=>closeFind(),nextOp:s.findCount?1:0.3,prevOp:s.findCount?1:0.3},
       host:url?.host || 'Search or type address',path:url ? url.pathname + url.search : '', hasLock:Capacitor.isNativePlatform() && !!url && url.protocol==='https:' && !!info?.committed && !info?.loading && !info?.error,
-      nativeControls:true,openPasswordProvider:()=>{api.set({menu:false});api.open('settings',{page:'password-provider'});},openDownloads:()=>{api.set({menu:false});void Browser.downloads({session}).catch(report);},reload:()=>{api.set({menu:false});void command('reload');},stopLoading:()=>{api.set({menu:false});void command('stop');},loading:!!info?.loading,goBack:()=>void command('back'),goFwd:()=>void command('forward'),backOp:info?.canBack?1:0.3,fwdOp:info?.canForward?1:0.3,
+      nativeControls:true,externalBrowserAvailable:Capacitor.isNativePlatform(),openExternalBrowser:()=>void openExternalBrowser(),openPasswordProvider:()=>{api.set({menu:false});api.open('settings',{page:'password-provider'});},openDownloads:()=>{api.set({menu:false});void Browser.downloads({session}).catch(report);},reload:()=>{api.set({menu:false});void command('reload');},stopLoading:()=>{api.set({menu:false});void command('stop');},loading:!!info?.loading,goBack:()=>void command('back'),goFwd:()=>void command('forward'),backOp:info?.canBack?1:0.3,fwdOp:info?.canForward?1:0.3,
       startEdit:()=>api.set({editing:true,addr:info?.url||'',menu:false}),onAddrKey:(e:KeyboardEvent)=>{ if(e.key==='Enter'){e.preventDefault();void navigate((e.target as HTMLInputElement).value);} else if(e.key==='Escape')api.set({editing:false}); },
-      toggleMark:()=>{if(!info?.committed || info.loading || info.error || url?.protocol!=='https:'){api.toast('Load an HTTPS page before bookmarking it.');return;}saveBookmark(info.url);},markLabel:s.marks.includes(info?.url)?'Bookmarked':'Bookmark',markFill:s.marks.includes(info?.url)?'currentColor':'none',libRows:[...(bookmarkRecovery&&s.lib!=='history'?[{title:'Recover saved bookmarks',host:'Saved bookmarks could not be opened. Their original data is retained.',ini:'!',go:openBookmarkRecovery,canRemove:false,removeAria:'',remove:()=>{}}]:[]),...(s.lib==='history'?s.visits:s.marks).map((u:string)=>({title:u,host:u,ini:new URL(u).hostname[0],go:()=>void navigate(u),canRemove:s.lib!=='history',removeAria:'Remove bookmark',remove:()=>saveBookmark(u,false)}))],libEmpty:!(bookmarkRecovery&&s.lib!=='history')&&!(s.lib==='history'?s.visits:s.marks).length,newTab:()=>openNew(false),askPage:()=>void askPage(),readAloud:()=>void readPage(),bookNow:unavailable,cfOk:unavailable,openShare:()=>void sharePage(),
+      toggleMark:()=>{if(!info?.committed || info.loading || info.error || url?.protocol!=='https:'){api.toast('Load an HTTPS page before bookmarking it.');return;}saveBookmark(info.url);},markLabel:s.marks.includes(info?.url)?'Bookmarked':'Bookmark',markFill:s.marks.includes(info?.url)?'currentColor':'none',libRows:[...(bookmarkRecovery&&s.lib!=='history'?[{title:'Recover saved bookmarks',host:'Saved bookmarks could not be opened. Their original data is retained.',ini:'!',go:openBookmarkRecovery,canRemove:false,removeAria:'',remove:()=>{}}]:[]),...(s.lib==='history'?s.visits:s.marks).map((u:string)=>({title:u,host:u,ini:new URL(u).hostname[0],go:()=>void navigate(u),canRemove:s.lib!=='history',removeAria:'Remove bookmark',remove:()=>saveBookmark(u,false)}))],libEmpty:!(bookmarkRecovery&&s.lib!=='history')&&!(s.lib==='history'?s.visits:s.marks).length,newTab:()=>openNew(false),askPage:()=>void askPage(),readAloud:()=>void readPage(),readingUnavailable:readingSupport?.state==='unavailable',readingNote:READING_UNSUPPORTED_MESSAGE,bookNow:unavailable,cfOk:unavailable,openShare:()=>void sharePage(),
       tabCards:s.tabs.map((tab:Bag)=>{const page=known(tab.id),label=page?.title||(tab.priv?'New private tab':'New tab');return {title:page?.title || page?.url || (tab.priv?'New private tab':'New tab'),host:(tab.priv?'Private · ':'')+(page?.url||''),css:tab.id===s.cur?'box-shadow:inset 0 0 0 2px var(--acc)':'',prev:tab.priv?'background:var(--fg);opacity:.85':'background:var(--s2)',aria:'Switch to '+(tab.priv?'private tab ':'')+label,closeAria:tab.priv?'Close private tab':'Close tab',pick:()=>api.set({cur:tab.id,tabsOpen:false}),close:()=>{ const rest=state().tabs.filter((t:Bag)=>t.id!==tab.id); const fallback=newTabId();if(created.has(tab.id))void Browser.close({session,id:tab.id}).catch(report);created.delete(tab.id);metadata.delete(tab.id);restored.delete(tab.id);api.set({tabs:rest.length?rest:[{id:fallback,hist:['newtab'],pos:0}],cur:state().cur===tab.id?(rest[0]?.id||fallback):state().cur}); }};}),
       rootRef:(element:HTMLElement)=>{out.rootRef?.(element); if(!element)return; const viewport=element.querySelector('[data-bscroll]'); if(viewport){viewport.setAttribute('data-native-browser-viewport','true'); viewport.setAttribute('aria-label',info?.error || (info?.loading?'Loading website':'Browser page'));} },
     };
@@ -353,6 +394,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   Component.prototype.renderVals = function(){shell=this;
     const browserActive = this.S().view === 'browser';
     if (!initialBookmarkRead || (browserActive && !browserWasActive)) { initialBookmarkRead = true; refreshBookmarks(); }
+    if (browserActive && !browserWasActive) void readingSupport?.check();
     if (!sessionRead && this.vget('browser')?.tabs) void restoreSession();
     browserWasActive = browserActive;
     this.browserNavigateApproved = async (raw: string, signal: AbortSignal) => {

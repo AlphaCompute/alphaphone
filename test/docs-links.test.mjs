@@ -79,10 +79,8 @@ test('an upstream-relative script path needs its upstream directory named in the
 // Stale references in documents this check does not yet own. Each entry must still be
 // stale; remove it as soon as the document is corrected.
 const knownStale = new Map([
-  ['docs/implementation-plan.md|scripts/mobile/targets/android.ts', 'upstream packages/app/scripts/mobile has no targets/android.ts at the pin'],
   // Dated snapshots stay as written; the removed speech toolchain is replaced by docs/fused-speech.md.
   ['docs/mvp-audit-2026-10-11.md|scripts/local-speech/requalify-runtime.py', 'dated audit snapshot; the earlier speech toolchain was removed for the fused libelizainference engine'],
-  ['docs/mvp-remaining-work-2026-10-09.md|scripts/local-speech/README.md', 'dated snapshot; the earlier speech toolchain was removed for the fused libelizainference engine'],
 ]);
 
 test('every scripts/... path in README.md and docs/ exists in this repository or the pinned upstream', () => {

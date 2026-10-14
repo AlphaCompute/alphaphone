@@ -10,9 +10,9 @@ import {execFileSync} from 'node:child_process';
 import {VOICE_FUSED_SYMBOLS,missingSymbols,voiceJniSymbols} from './stage-embedding-host.mjs';
 const root=path.resolve(import.meta.dirname,'..'),upstream=path.join(root,'vendor/eliza');
 const args=process.argv.slice(2),option=name=>{const i=args.indexOf(name);return i<0?undefined:args[i+1];};
-for(let i=0;i<args.length;i++){if(args[i]==='--build')continue;if(['--fork','--output','--abi'].includes(args[i])){if(!args[++i]||args[i].startsWith('--'))throw Error('Missing option value');}else throw Error('Unknown option');}
+for(let i=0;i<args.length;i++){if(args[i]==='--build'||args[i]==='--remap-build-path')continue;if(['--fork','--output','--abi'].includes(args[i])){if(!args[++i]||args[i].startsWith('--'))throw Error('Missing option value');}else throw Error('Unknown option');}
 const abi=option('--abi')||'arm64-v8a',forkInput=option('--fork'),outputInput=option('--output');
-if(!['arm64-v8a','x86_64'].includes(abi)||!forkInput||!outputInput)throw Error('Usage: node scripts/prepare-embedding-host.mjs --fork <existing pinned checkout> --output <new isolated directory> [--abi arm64-v8a|x86_64] [--build]');
+if(!['arm64-v8a','x86_64'].includes(abi)||!forkInput||!outputInput)throw Error('Usage: node scripts/prepare-embedding-host.mjs --fork <existing pinned checkout> --output <new isolated directory> [--abi arm64-v8a|x86_64] [--build] [--remap-build-path]');
 const fork=fs.realpathSync(forkInput),output=path.resolve(outputInput);
 const within=(parent,child)=>{const relative=path.relative(parent,child);return relative===''||!relative.startsWith('..'+path.sep)&&relative!=='..'&&!path.isAbsolute(relative);};
 for(let p=output;p!==path.dirname(p);p=path.dirname(p))if(fs.existsSync(p)&&fs.lstatSync(p).isSymbolicLink())throw Error('Output must not traverse a symlink');
@@ -51,7 +51,14 @@ const commands=[
  ['cmake','-S',nativeSource,'-B',path.join(output,'jni-build'),'-G','Ninja',`-DCMAKE_TOOLCHAIN_FILE=${toolchain}`,`-DANDROID_ABI=${abi}`,'-DANDROID_PLATFORM=android-23','-DCMAKE_BUILD_TYPE=Release',`-DELIZAVOICE_FFI_INCLUDE_DIR=${path.join(fork,'tools/omnivoice/include')}`],
  ['cmake','--build',path.join(output,'jni-build'),'--target','elizavoicejni','-j','2'],
 ];
-const receipt={pin,forkPin,identity,abi,inputs,commands,env:{ANDROID_HOME:sdk,ELIZA_NDK_VERSION:ndkVersion,CMAKE_BUILD_PARALLEL_LEVEL:'2'},built:false,packaged:false,runtimePolicyChanged:false};
+// Without a remap the compiler embeds this output directory in the libraries (__FILE__ in the
+// engine's assertions), so the bytes can only be reproduced at the same absolute path.
+// --remap-build-path rewrites it to a fixed name through clang's CCC_OVERRIDE_OPTIONS (the NDK
+// toolchain file ignores CFLAGS). Bytes built with and without it differ; a receipt records which.
+const remap=args.includes('--remap-build-path'),REMAPPED_ROOT='/alphaphone-embedding-host';
+if(remap&&[staging,fork].some(directory=>/\s/.test(directory)))throw Error('Build path remapping needs paths without whitespace');
+const remapEnv=remap?{CCC_OVERRIDE_OPTIONS:['#',...[[staging,REMAPPED_ROOT],[fork,REMAPPED_ROOT+'/'+forkPath],[path.join(output,'jni-build'),REMAPPED_ROOT+'/jni-build']].map(([from,to])=>`+-ffile-prefix-map=${from}=${to}`)].join(' ')}:{};
+const receipt={pin,forkPin,identity,abi,inputs,commands,env:{ANDROID_HOME:sdk,ELIZA_NDK_VERSION:ndkVersion,CMAKE_BUILD_PARALLEL_LEVEL:'2',...remapEnv},buildPathRemapped:remap,built:false,packaged:false,runtimePolicyChanged:false};
 fs.writeFileSync(path.join(output,'PREPARATION.json'),JSON.stringify(receipt,null,2)+'\n');
 if(args.includes('--build')){
  for(const [executable,...argv] of commands)execFileSync(executable,argv,{cwd:staging,env:{...process.env,...receipt.env},stdio:'inherit'});

@@ -86,9 +86,10 @@ test('find-in-page clears on navigation and tab change; fullscreen exits with Ba
   assert.match(adapter, /if \(s\.finding\) \{ closeFind\(\); return true; \}/, 'Back closes the find bar first');
 });
 
-test('passkeys use WebView browser mode where supported and are reported where not', () => {
-  assert.match(plugin, /WebSettingsCompat\.setWebAuthenticationSupport\(settings,WebSettingsCompat\.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER\)/);
-  assert.match(plugin, /Passkeys are not available in this browser on this device\./);
+test('passkeys stay disabled and the native browser offers an honest external remedy', () => {
+  assert.match(plugin, /WebSettingsCompat\.setWebAuthenticationSupport\(settings,WebSettingsCompat\.WEB_AUTHENTICATION_SUPPORT_NONE\)/);
+  assert.doesNotMatch(plugin, /WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER/);
+  assert.match(plugin, /Passkeys are not supported in Alpha Browser\./);
 });
 
 test('a page-initiated navigation commits the selected tab autofill session so the provider can offer Save', () => {
@@ -99,4 +100,13 @@ test('a page-initiated navigation commits the selected tab autofill session so t
   assert.match(fill, /ai\.eliza\.plugins\.passwords\.ElizaPasswordAutofillService/);
   assert.match(fill, /No password offer for a cross-origin iframe/);
   assert.match(fill, /event\.preventDefault\(\);location\.href=/, 'the synthetic sign-in never submits its fields to the network');
+});
+
+// The executable cross-site iframe contract lives in BrowserCookiePolicyInstrumentedTest.
+test('P-19 changes only child-tab third-party policy after assigning an isolated profile', () => {
+  assert.match(plugin, /WebViewCompat\.setProfile\(t\.web, t\.profile\)/);
+  assert.match(plugin, /setAcceptThirdPartyCookies\(t\.web, !priv\)/);
+  assert.doesNotMatch(plugin, /setAcceptCookie\(/, 'never change the process-wide first-party policy');
+  assert.ok(plugin.indexOf('WebViewCompat.setProfile(t.web, t.profile)') < plugin.indexOf('setAcceptThirdPartyCookies(t.web, !priv)'));
+  assert.match(plugin, /priv \? namespace \+ "_" \+ id : PERSISTENT_PROFILE/);
 });

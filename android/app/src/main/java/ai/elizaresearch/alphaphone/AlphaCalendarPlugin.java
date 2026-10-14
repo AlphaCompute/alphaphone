@@ -28,6 +28,11 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
  static final CalendarOptionCreationStore OPTION_CREATIONS=new CalendarOptionCreationStore(CONFIGURATION);
  public AlphaCalendarPlugin(){super(CONFIGURATION);}
  private boolean granted(){return getPermissionState("calendar")==PermissionState.GRANTED;}
+ /** Capacitor's own permission request launches through the activity; see {@link LateLaunch}. */
+ @Override @PluginMethod public void requestPermissions(PluginCall call){LateLaunch.ask(call,()->super.requestPermissions(call));}
+ /** The shared calendar plugin asks for its permissions inside these two methods; see {@link LateLaunch}. */
+ @Override @PluginMethod public void requestAccess(PluginCall call){LateLaunch.ask(call,()->super.requestAccess(call));}
+ @Override @PluginMethod public void requestWorkflowReadAccess(PluginCall call){LateLaunch.ask(call,()->super.requestWorkflowReadAccess(call));}
  private static JSObject status(String value){JSObject out=new JSObject();out.put("status",value);return out;}
  private boolean foreground(){return getActivity()!=null&&!getActivity().isFinishing()&&!getActivity().isDestroyed()&&getActivity().hasWindowFocus();}
  /**
@@ -113,7 +118,7 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
  /**
   * Free/busy rows of exactly the calendars the owner chose, bound to the source revisions
   * they reviewed. Returns intervals and availability only, never event content. Statuses:
-  * ready, permission-required, timezone-changed, changed, too-many, unavailable.
+  * ready, permission-required, timezone-changed, changed, too-many, unavailable, freshness-unknown.
   */
  @PluginMethod public void readAvailability(PluginCall c){
   if(!readGranted()){c.resolve(status("permission-required"));return;}
@@ -122,11 +127,17 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
   if(!CalendarZones.sameZone(c.getString("timeZone"),zone)){c.resolve(status("timezone-changed"));return;}
   try{
    JSArray chosen=c.getArray("calendars");
-   org.json.JSONArray events=ai.eliza.plugins.calendar.read.SelectedCalendarReader.readAvailability(getContext().getContentResolver(),chosen==null?null:new org.json.JSONArray(chosen.toString()),c.getString("start"),c.getString("end"),zone);
+   org.json.JSONArray selected=chosen==null?null:new org.json.JSONArray(chosen.toString());
+   // A changed source is reported as changed before freshness is judged; an unknown-freshness
+   // source refuses the whole read before any instance is queried.
+   if(selected!=null)ai.eliza.plugins.calendar.read.SelectedCalendarReader.assertSourceIdentities(getContext().getContentResolver(),selected);
+   CalendarSyncFreshness.requireLocal(getContext().getContentResolver(),selected);
+   org.json.JSONArray events=ai.eliza.plugins.calendar.read.SelectedCalendarReader.readAvailability(getContext().getContentResolver(),selected,c.getString("start"),c.getString("end"),zone);
    if(!readGranted()||!foreground()||!unlocked())throw new IllegalStateException();
    if(!java.time.ZoneId.systemDefault().equals(zone)){c.resolve(status("timezone-changed"));return;}
-   JSObject out=status("ready");out.put("events",events);c.resolve(out);
+   JSObject out=status("ready");out.put("freshness","local");out.put("events",events);c.resolve(out);
   }catch(ai.eliza.plugins.calendar.read.SelectedCalendarReader.SourceChanged changed){c.resolve(status("changed"));}
+  catch(CalendarSyncFreshness.FreshnessUnknown unknown){c.resolve(status("freshness-unknown"));}
   catch(ai.eliza.plugins.calendar.read.SelectedCalendarReader.TooMany bound){c.resolve(status("too-many"));}
   catch(Exception unavailable){c.resolve(status("unavailable"));}
  }

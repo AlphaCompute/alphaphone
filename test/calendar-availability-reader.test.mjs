@@ -18,7 +18,7 @@ test('Android free/busy reader: chosen calendars only, provider availability, ci
  const shared=name=>join(root,'vendor/eliza/plugins/plugin-native-calendar',name);
  try{
   execFileSync(binary('javac'),['--release','11','-cp',jsonJar,'-d',temporary,
-   join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarZones.java'),join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarAvailabilityJournalResult.java'),
+   join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarZones.java'),join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarSyncFreshness.java'),join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarAvailabilityJournalResult.java'),
    shared('android/src/main/java/ai/eliza/plugins/calendar/read/CalendarSourceIdentity.java'),shared('android/src/main/java/ai/eliza/plugins/calendar/read/SelectedCalendarReader.java'),
    ...['content/ContentResolver.java','content/ContentUris.java','content/ContentValues.java','database/Cursor.java','net/Uri.java'].map(name=>shared('test/jvm/android/'+name)),
    join(root,'test/fixtures/calendar-provider-jvm/android/provider/CalendarContract.java'),join(root,'test/fixtures/CalendarAvailabilityReaderTest.java')],{timeout:180000,stdio:'pipe'});

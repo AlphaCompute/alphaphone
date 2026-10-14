@@ -245,6 +245,17 @@ public class BrowserFlowInstrumentedTest {
   * Nothing here needs the public page to load, so the default campaign can pass offline.
   * browserFlowLive=1 (an emulator with network) also waits for the real results page and checks
   * that the provider cannot reach the app bridge; rounds 7 and 8 failed only on that live load. */
+ /** The address the shown page's history entry was first asked for, before any redirect the provider made. */
+ private String requestedAddress()throws Exception{
+  AtomicReference<String> value=new AtomicReference<>();
+  WebViewTestDriver.withActivity(MainActivity.class,main->{List<WebView> children=new ArrayList<>();collect(main.getWindow().getDecorView(),children,main.getBridge().getWebView());for(WebView web:children)if(web.isShown()){android.webkit.WebHistoryItem item=web.copyBackForwardList().getCurrentItem();value.set(item==null?null:item.getOriginalUrl());break;}});
+  return value.get();
+ }
+ /** Failure-only: which kind of page answered the search. Host and path class only; no query, page text or cookies. */
+ private String searchDiagnostics(){
+  try{return "search="+child("JSON.stringify({host:location.hostname==='www.google.com'?'www.google.com':location.hostname==='consent.google.com'?'consent.google.com':/(^|\\.)google\\.[a-z.]{2,6}$/.test(location.hostname)?'other-google':'other',path:location.pathname==='/search'?'/search':location.pathname.startsWith('/sorry/')?'/sorry/':'other',hasQ:new URL(location.href).searchParams.has('q'),hasContinue:new URL(location.href).searchParams.has('continue'),textLength:document.body?document.body.innerText.trim().length:-1})");}
+  catch(Throwable error){return "search-diagnostic-unavailable:"+error.getClass().getSimpleName();}
+ }
  @Test public void submittedSearchUsesRealProviderAndRejectsExecutableAddress()throws Exception{
   boolean live="1".equals(androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("browserFlowLive"));
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
@@ -254,7 +265,7 @@ public class BrowserFlowInstrumentedTest {
    assertEquals("Rejected address cannot create a page","null",child("true"));
    String rejected=childUrl();
    assertFalse("Rejected address is never handed to a WebView",rejected!=null&&rejected.toLowerCase(java.util.Locale.ROOT).startsWith("javascript:"));
-   String query="android calendar documentation";address(query);
+   String query="android calendar documentation",quoted=JSONObject.quote(query);address(query);
    String submitted=null;
    for(int i=0;i<150;i++){submitted=childUrl();if(submitted!=null&&submitted.startsWith("https:"))break;SystemClock.sleep(100);}
    if(submitted==null||!submitted.startsWith("https:"))fail("Search must create a child page with an HTTPS address; "+diagnostics());
@@ -264,13 +275,33 @@ public class BrowserFlowInstrumentedTest {
    assertEquals("Search query is the typed text, unchanged",query,uri.getQueryParameter("q"));
    assertNull("No credentials in the submitted address",uri.getUserInfo());
    if(!live)return;
-   boolean loaded=false;
-   for(int i=0;i<300;i++){
-    if("true".equals(child("location.protocol==='https:' && location.hostname==='www.google.com' && location.pathname==='/search' && new URL(location.href).searchParams.get('q')==="+JSONObject.quote(query)+" && document.readyState==='complete' && !!document.body && document.body.innerText.trim().length>20"))){loaded=true;break;}
-    SystemClock.sleep(100);
+   // The product decides the request; the provider decides the answer. Both recorded emulator
+   // campaigns loaded a complete HTTPS page that was not the results address, and the saved
+   // diagnostics did not say which. Google answers some networks (emulators, shared or data-centre
+   // addresses, some regions) with its own check or consent page, which names the search it
+   // interrupted in `continue`. That answer is accepted only from Google's own host, over HTTPS,
+   // and only when `continue` is this exact search; anything else still fails.
+   String loaded=" && document.readyState==='complete' && !!document.body && document.body.innerText.trim().length>20";
+   String results="location.protocol==='https:' && location.hostname==='www.google.com' && location.pathname==='/search' && new URL(location.href).searchParams.get('q')==="+quoted+loaded;
+   String interrupted="(()=>{try{const here=new URL(location.href);if(here.protocol!=='https:'||!((here.hostname==='www.google.com'&&here.pathname.startsWith('/sorry/'))||here.hostname==='consent.google.com'))return false;const next=new URL(here.searchParams.get('continue'));return next.protocol==='https:'&&next.hostname==='www.google.com'&&next.pathname==='/search'&&next.searchParams.get('q')==="+quoted+";}catch(error){return false;}})()"+loaded;
+   String outcome=null;
+   for(int i=0;i<300&&outcome==null;i++){
+    if("true".equals(child(results)))outcome="results";
+    else if("true".equals(child(interrupted)))outcome="provider-check";
+    else SystemClock.sleep(100);
    }
-   if(!loaded)fail("Search must load its actual HTTPS results page; "+diagnostics());
+   if(outcome==null)fail("Search must load its actual HTTPS results page, or the provider's own check page for that exact search; "+searchDiagnostics()+"; "+diagnostics());
+   // Whatever the provider answered, the request the product made is exact: HTTPS, the search
+   // provider's host and path, and the typed words as the query.
+   String requested=requestedAddress();assertNotNull("The page's history entry records the requested address; "+searchDiagnostics(),requested);
+   android.net.Uri request=android.net.Uri.parse(requested);
+   assertEquals("Search is requested over HTTPS","https",request.getScheme());
+   assertEquals("Search is requested from the search provider","www.google.com",request.getHost());
+   assertEquals("Search is requested at the provider's search path","/search",request.getPath());
+   assertEquals("The typed words are the query, unchanged",query,request.getQueryParameter("q"));
    assertEquals("Search provider cannot access app bridge","true",child("typeof Capacitor==='undefined' && typeof androidBridge==='undefined'"));
+   // Recorded with the run, so a pass says which answer it saw: "results" or "provider-check".
+   Bundle seen=new Bundle();seen.putString("browserFlowSearch",outcome);androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().sendStatus(0,seen);
   }
  }
 

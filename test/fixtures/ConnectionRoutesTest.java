@@ -82,6 +82,13 @@ public final class ConnectionRoutesTest {
   check(ConnectionRoutes.externalCliLogin("staging.eliza.app","/auth/cli-login",true),"staging sign-in with test mocks");
   check(!ConnectionRoutes.externalCliLogin("cloud.eliza.app","/auth/cli-login",true),"only the web authority hosts sign-in");
   check(!ConnectionRoutes.externalCliLogin("eliza.app","/auth/cli-login/",false)&&!ConnectionRoutes.externalCliLogin("eliza.app","/cloud/billing",false)&&!ConnectionRoutes.externalCliLogin(null,"/auth/cli-login",true),"exact sign-in path only");
-  System.out.println("PASS connection routes: retired pairing, exact Cloud self-revocation, the flag-off Cloud API origin and openExternal hosts");
+  for(String route:new String[]{"/api/v1/eliza/agents","/api/v1/eliza/agents/id/api/conversations","/api/auth/pair","/api/conversations","/api/v1/eliza/personal","/api/v1/eliza/google/../agents","/api/v1/%65liza/google/status","/api/v1/eliza/google/status/","/api/v1/eliza/google//status"})for(String method:new String[]{"GET","POST"})check(!ConnectionRoutes.managedService(route,null,method,false,false),"hosted/unreviewed path refused "+route);
+  check(ConnectionRoutes.managedService("/api/v1/user",null,"GET",false,false),"owner identity allowed");
+  check(ConnectionRoutes.managedService("/api/v1/eliza/google/gmail/inbox-v1/thread","grantId=owned", "GET",false,false),"owner Gmail route allowed");
+  check(ConnectionRoutes.managedService("/api/v1/eliza/google/gmail/inbox-v1/operations/owned-id/dispatch",null,"POST",true,false),"reviewed Gmail dispatch allowed");
+  check(!ConnectionRoutes.managedService("/api/v1/user",null,"POST",true,false),"identity write refused");
+  check(!ConnectionRoutes.managedService("/api/v1/user",null,"GET",true,false),"GET body refused");
+  check(ConnectionRoutes.managedService("/api/agents",null,"GET",false,true),"separate development infrastructure retained");
+  System.out.println("PASS connection routes: retired pairing, exact Cloud self-revocation, the flag-off Cloud API origin, managed-service routes and openExternal hosts");
  }
 }

@@ -31,6 +31,24 @@ The development host launches Bun with `--conditions=eliza-source` and `--no-ins
 
 Workflow drafts in local browser development persist in the private host profile, separately scoped to the selected owner/agent. Atomic compare-and-exchange rejects stale-tab changes. These development drafts are not encrypted; the editor says so. Android continues to use its encrypted native draft store. Draft storage does not save or execute a workflow on the agent until the separate reviewed submission.
 
+## Isolated Mac provider QA
+
+Use separate `ALPHA_REMOTE_PROFILE`, `ALPHA_REMOTE_PORT` and Vite `--port` values
+when comparing a developer runtime with an existing preview. Reuse a verified
+prepared source through `ALPHA_ELIZA_SOURCE`; never restart another preview's host.
+
+`ALPHA_DEV_CARTESIA=1` explicitly enables the pinned runtime's self-hosted Cartesia
+speech service. Supply `CARTESIA_API_KEY_FILE` as an absolute reference to an existing
+owner-only regular file. The launcher passes only that reference to the host;
+it does not read the key into the renderer or accept a `VITE_` credential.
+This opt-in does not change the app's Cloud voice controls. Server health,
+selected app voice, actual recording/playback and Android acceptance are separate
+checks. Leave microphone and playback tests to an explicitly authorized session.
+
+The developer Models page reads the active host's inference provider. A saved
+Cloud account is independent of this selection, and an unreported model name
+stays unknown.
+
 ## Speech routes and optional local development
 
 Chat voice, Notes dictation and generic Maps/workflow speech select Eliza Cloud in the product. A valid saved Cloud account is required; opening voice must reuse that account rather than request a new sign-in unnecessarily. Notes recordings remain local until the user explicitly requests transcription. Chat voice has a separate conversation controller and does not open Notes. Actual microphone, playback, backend STT selection and Android permission acceptance require their own qualification; text inference readiness does not prove them.
@@ -147,7 +165,7 @@ Iterate on UI at `http://127.0.0.1:5199/` with `bun run dev --port 5199`. This d
 
 The staging command builds the Android mobile agent bundle, runs upstream's host-Bun module initialization check, and stages pinned ARM64 and x86_64 Bun/musl/runtime artifacts. Executables are packaged as extracted JNI libraries for an ordinary APK; it does not require root, writable-directory execution or disabling SELinux. The upstream staging step includes its small embedding artifact, not an offline text-generation model. Generated assets and binaries are ignored by Git and reproducible from the checked-in scripts and manifests.
 
-When an APK build is wanted, `npm run android:build:local` checks the pinned checkout (and any staged voice bundle against `android/voice-host/qualified-voice-host.json`), then runs preparation, `agent:build-workflow-worker`, staging and the existing build/verification of both standalone and launcher variants. Rerunning it reuses the prepared source and worker artifact only when they verify against the current source stamp; a stale worker artifact is reported, never rebuilt over. The ordinary `android:build` uses whatever payload has already been staged and stops before Gradle, naming the command to run, when the prepared source or (for distribution builds) the staged payload is missing or was staged from a different preparation. Unpackaged developer artifacts never qualify resident acceptance. Signing, speech functionality and overall release acceptance remain separate from a successful packaging check. Preparation, worker build and staging start their children in the prepared checkout without the AI-agent variables Turborepo detects (`AI_AGENT`, `CLAUDECODE` and others, see `TURBO_AGENT_DETECTION_ENV` in `scripts/local-agent-source.mjs`), so Turborepo does not append agent guidance to that checkout's `AGENTS.md`.
+When an APK build is wanted, `npm run android:build:local` checks the pinned checkout (and any staged voice bundle against `android/voice-host/qualified-voice-host.json`), checks that the reviewed embedding host libraries are staged (it stops there, naming the person who must supply them, when they are not; `npm run android:build:inputs` lists every input), then runs preparation, `agent:build-workflow-worker`, staging, the packaged-runtime notices and the existing build/verification of both standalone and launcher variants. Rerunning it reuses the prepared source and worker artifact only when they verify against the current source stamp; a stale worker artifact is reported, never rebuilt over. The ordinary `android:build` uses whatever payload has already been staged and stops before Gradle, naming the command to run, when the prepared source or (for distribution builds) the staged payload is missing or was staged from a different preparation. Unpackaged developer artifacts never qualify resident acceptance. Signing, speech functionality and overall release acceptance remain separate from a successful packaging check. Preparation, worker build and staging start their children in the prepared checkout without the AI-agent variables Turborepo detects (`AI_AGENT`, `CLAUDECODE` and others, see `TURBO_AGENT_DETECTION_ENV` in `scripts/local-agent-source.mjs`), so Turborepo does not append agent guidance to that checkout's `AGENTS.md`.
 
 In the standalone Android app, use the existing Eliza Cloud account flow. The app checks real account-bound credits before local access setup; top-up opens that account's Cloud page. It binds a credential reference to the supported Cloud model in native encrypted storage and reuses the saved account on restart. No provider key belongs in the renderer or source, and no hosted agent is provisioned. Account/logout changes retire the old binding and runtime; changed provider selections require a new admitted runtime launch.
 

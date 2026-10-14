@@ -1,5 +1,12 @@
 # Android and AOSP build contract
 
+> Policy update 2026-10-12: [owner-approved TODOs](owner-approved-mvp-plan-2026-10-12.md)
+> and [active implementation plan](implementation-plan.md) supersede conflicting
+> requirements below. Local agent only; all speech on-device; subscription services;
+> Pixel 10a Android 17; Phone/Contacts/SMS and always-on listening in AOSP MVP only;
+> no Wallet or app-data import/export. Historical implementation evidence is unchanged.
+
+
 ## Artifact identities
 
 Package: `ai.elizaresearch.alphaphone`. Version source: `app.config.json`, overridden by
@@ -20,10 +27,13 @@ strings alone.
 Gradle's `stageLocalAgentSources` step reads the prepared resident runtime source in
 `artifacts/local-agent-resident-<commit>`, and release verification requires the staged
 runtime payload (without it `scripts/verify-packaged-runtime.py` exits 3). On a clean
-checkout `npm run android:build:local` runs the whole chain: an input check, `agent:prepare`,
-`agent:build-workflow-worker`, `agent:stage-android` and `android:build`. On-device speech
-uses only the libelizainference voice host ([fused speech](fused-speech.md), decision P-10).
-`npm run android:build` checks all of
+checkout `npm run android:build:local` runs the whole chain: an input check,
+`agent:build-embedding-host`, `agent:prepare`, `agent:build-workflow-worker`,
+`agent:stage-android`, `licenses:packaged-runtime` and `android:build`. It stops at the second
+step until a person supplies the reviewed embedding host libraries; `npm run
+android:build:inputs` lists every input and who supplies it (see the README). On-device speech
+uses only the libelizainference voice host ([fused speech](fused-speech.md), decision P-42); an
+APK without a voice bundle is valid. `npm run android:build` checks all of
 these first (`scripts/android-build-preflight.mjs`) and exits 2 with the command to run instead
 of failing inside Gradle. `npm run android:build -- --allow-unpackaged-runtime` is the developer
 path: it needs only `agent:prepare` and records release APKs without the payload as
@@ -76,7 +86,8 @@ by setup. Pin app certificate and versionCode across APK and OS releases.
 
 ```sh
 npm run aosp:stage -- --apk /absolute/signed-launcher.apk \
-  --descriptor /absolute/reviewed-launcher.json --output /absolute/new-overlay
+  --descriptor /absolute/reviewed-launcher.json --aosp-source /absolute/reviewed-aosp \
+  --output /absolute/new-overlay
 ```
 
 The upstream helper rejects a package/hash/signer mismatch, absent HOME filter,
@@ -145,7 +156,8 @@ and `npm run android:build:local` commands above. Preserve the four APKs, instru
 APKs, lint results, runtime provenance and `artifacts/apk-manifest.json`. Current speech
 functional acceptance is a separate gate; do not bypass APK admission to stage a release.
 
-Use `npm run aosp:stage` with the admitted launcher and reviewed signer descriptor.
+Use `npm run aosp:stage` with the admitted launcher, reviewed signer descriptor and
+explicit `--aosp-source` path to the reviewed source checkout.
 Inherit the generated Alpha product fragment in the pinned Cuttlefish product, build
 the image and use its matching Cuttlefish host package. Verify boot, `/product` package
 placement, signer, HOME routing, resident startup, authenticated inference, native
@@ -271,3 +283,115 @@ ANDROID_SERIAL=<exact-serial> ALPHA_ANDROID_USER=<user-id> node scripts/verify-a
 The check requires enabled `com.android.deskclock` and its set/show/snooze/dismiss activity handlers. It does not launch an alarm, change permissions, provision a device, or prove ringing. Alpha's shared manifest declares the caller SET_ALARM permission and visibility queries; Clock's own notifications/exact-alarm access remains separately verified on the image. Confirm actual set/fire/snooze/dismiss, permission denial, reboot, time-zone/DST, cancellation and DND/physical audio before claiming alarm MVP completion.
 
 DeskClock is the real AOSP module defined in `packages/apps/DeskClock/Android.bp` and included by the standard handheld product. Pin its source through the selected image manifest; do not substitute an unreviewed downloaded APK.
+
+## Read-only Cuttlefish launcher verification
+
+After booting a development image, bind the observation to its independently retained
+staging descriptor and expected build fingerprint:
+
+```sh
+node scripts/verify-cuttlefish-launcher.mjs --serial 127.0.0.1:6520 --user 0 \
+  --descriptor /absolute/staged-overlay/launcher.json \
+  --fingerprint 'exact expected build fingerprint' \
+  --apk-path /product/app/AlphaPhone/AlphaPhone.apk --out /absolute/new-report.json
+```
+
+This makes no device changes. It requires a booted Cuttlefish image, the selected
+foreground unlocked user, enforcing SELinux, exact system APK bytes, Alpha HOME,
+an enabled system recovery HOME, DeskClock handlers and a current WebView provider.
+A data-installed override, wrong image or APK, missing recovery launcher, or a reboot
+or replacement during observation fails. Keep the descriptor from staging rather
+than creating the expected hash from whatever happens to be installed. The reported
+certificate is inherited from that descriptor via identical APK bytes, not a fresh
+signature check. The output file must be new; failures are retained too.
+
+This checks installed image configuration only. It does not qualify resident-agent
+execution, live accounts, alarm ringing, browser security/provider freshness,
+physical hardware, production signing or update/rollback. A pass on an older image
+cannot qualify a newer app revision.
+
+## AOSP product capability admission
+
+The approved Phone/Contacts/SMS scope (#420) is restricted to the Alpha AOSP
+image. A launcher APK or HOME role does not establish that capability. Native
+admission requires all of: launcher distribution, a non-debug build with test
+mocks off, Android's system-installed package flag, and the production image
+resource marker. A standalone APK fails even if installed as an update on the
+image. Every call reads the marker again; missing resources fail closed.
+
+`aosp:stage --production` emits `AlphaImageCapabilityOverlay`, a product-partition
+runtime resource overlay targeting `AlphaImageProvisioning`. The APK's marker
+is false by default and is overlayable only from system/product partitions.
+A runtime overlay is needed because the launcher APK is presigned/preprocessed;
+an ordinary source resource overlay cannot modify that prebuilt APK. Existing
+release, signing and reviewed descriptor gates apply before staging. Development
+staging never emits this capability overlay.
+
+The capability is an OS-provisioning boundary, not remote image attestation or
+proof that an image was built and booted. A privileged image builder can control
+its system/product partitions. A real image must separately verify installation,
+RRO activation, signing and the expected build fingerprint.
+
+Telecom and SMS adapters remain unavailable on all images. Alpha's shared System bridge hides and refuses dialer/SMS roles;
+its role callback rechecks the product policy. Product-owned empty-dial-pad
+shortcuts and both native default-app bridge entry points require image
+admission. The ordinary installed-app drawer and Android's own emergency access
+are preserved. Agent view/workflow and native DailyApps routes continue to deny
+Phone/SMS. Contacts navigation is admitted only by the native image capability;
+READ_CONTACTS is requested explicitly inside that admitted view. No phone or SMS
+permissions are declared.
+
+The shared extension is an explicit hash-admitted patch in
+`patches/eliza/system-product-capabilities.patch`; default hooks preserve
+upstream behavior for other products. Kotlin targets receive the same source,
+patch, output and packaged-receipt verification as Java targets. The vendor
+checkout remains pristine. `ImageCapabilitiesInstrumentedTest` exercises
+ordinary-APK denials without performing a call, message or role selection.
+Positive image admission and real Contacts/Telecom/SMS behavior remain open in
+#420, including roles, owned endpoints, carrier identity and unknown-send recovery.
+
+Contacts adapter work adds same-profile, permission-gated bounded provider reads only
+inside the admitted image. Contact rows remain in renderer memory. Creation and editing
+use a pinned system Contacts editor with account selection and save handled by Android;
+Alpha has no WRITE_CONTACTS permission or import/export path. Native selection checks bind
+provider ID, lookup key and last-update revision before edit handoff. Phone and SMS adapters
+remain disabled. The ContactsCatalog instrumentation class creates and cleans only its
+own synthetic contacts in a disposable profile; this provider test is not image admission,
+real address-book acceptance, or a Telecom/SMS result.
+## System secure camera
+
+The approved lockscreen camera is AOSP Camera2, reached through the standard
+SystemUI double-press-power gesture. Alpha does not own a lockscreen camera
+activity. Staging adds `Camera2` and resource overlays selecting
+`com.android.camera2` and enabling the framework gesture. User settings can
+still disable the gesture.
+
+All non-development staging requires `--aosp-source PATH` in addition to the
+existing distributable APK and reviewed descriptor gates. The source verifier
+checks the exact module revisions and selected file hashes in
+`docs/aosp-secure-camera-source.json`, and rejects dirty, untracked or ignored module
+inputs and index flags that can hide tracked edits. Linked module roots in repo shadow workspaces are supported; files
+must remain inside each resolved module. Source revisions and byte checks are
+recorded in the staged `secure-camera/source-evidence.json`. Development
+staging without a source path records `sourceVerified: false` explicitly.
+
+```sh
+node scripts/verify-aosp-secure-camera.mjs --aosp-source /path/to/aosp
+# On a separately authorized booted target, read-only checks:
+ANDROID_SERIAL=explicit-serial ALPHA_ANDROID_USER=10 \
+  ALPHA_EXPECTED_FINGERPRINT='exact/reviewed/image/fingerprint' \
+  node scripts/verify-aosp-secure-camera.mjs
+```
+
+The image check requires enabled system Camera2, both secure intent handlers,
+the effective framework/SystemUI gesture resources, a camera feature and an
+enabled gesture for the selected user. It launches nothing and changes no
+permissions, settings or files. A caller-supplied fingerprint binds the check
+to a target; it does not authenticate that target's build inputs.
+
+The pinned local AOSP source is evidence for the source contract only. Neither
+that check nor staging proves that an image consumed the overlay. The local
+Cuttlefish baseline is not approved Pixel 10a Android 17 device acceptance.
+Locked capture, absence of pre-unlock gallery/account access, return after
+unlock, permission denial and physical gesture behavior require separate
+image/device tests. These remain open acceptance work for issue #407.

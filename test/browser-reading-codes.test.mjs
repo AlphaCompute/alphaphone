@@ -12,9 +12,12 @@ test('isolated-world and sensitive-page refusals use distinct codes and keep the
  assert.match(source,/ISOLATED_MESSAGE="Isolated page reading is unavailable\. Update Android System WebView, then reload this page\.";/,'the existing message is kept');
  const review=source.slice(source.indexOf('private void review(PluginCall call'),source.indexOf('private void scheduleTimeout('));
  assert.match(review,/if\(sensitiveUrl\(web\.getUrl\(\)\)\)\{call\.reject\("Reading unavailable on a sensitive or unverified page",SENSITIVE_PAGE\);return;\}/);
- assert.match(review,/if\(world==null\|\|!world\.ready\(\)\)\{call\.reject\(ISOLATED_MESSAGE,ISOLATED_WORLD_UNAVAILABLE\);return;\}/);
+ // A world that exists but has not started yet asks for a reload (its own code); a provider with no
+ // isolated-world capability is refused first, as reading-unsupported (test/browser-reading-capability.test.mjs).
+ assert.match(review,/if\(!world\.ready\(\)\)\{call\.reject\("This page is not ready for private reading\. Reload this page, then try again\.","reading-not-ready"\);return;\}/);
  assert.match(review,/rejected\.reject\("Reading unavailable on a sensitive or ambiguous page",SENSITIVE_PAGE\);/,'a page the extractor blocks is a sensitive refusal');
  assert.match(review,/if\(rejected!=null\)rejected\.reject\(ISOLATED_MESSAGE,ISOLATED_WORLD_UNAVAILABLE\);/,'an isolated world that fails to run is unavailable, not sensitive');
- // The sensitive check runs first: a sensitive page is never reported as merely unavailable.
+ // The sensitive check runs first: a sensitive page is never reported as merely unavailable or not ready.
+ assert.ok(review.indexOf('SENSITIVE_PAGE')<review.indexOf('reading-not-ready'));
  assert.ok(review.indexOf('SENSITIVE_PAGE')<review.indexOf('ISOLATED_WORLD_UNAVAILABLE'));
 });

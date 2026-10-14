@@ -5,6 +5,49 @@ navigation, presentation, capability policy and storage configuration. Shared
 runtime, browser features, native plugins and OS tooling come from the exact
 revision in `upstream.lock.json` and `vendor/eliza`.
 
+## October 12 approved runtime and distribution policy
+
+[Owner decisions](decisions.md#october-12-owner-decisions) and the
+[implementation plan](implementation-plan.md) govern pending changes. Only a local
+resident agent is allowed; no hosted-agent connection, creation, pairing or fallback.
+Eliza Cloud supplies text inference, subscriptions, Gmail and shared Maps services.
+All STT/TTS is on-device through native Eliza inference/llama.cpp integration;
+Cloud speech is retired policy and its current code must be migrated, not claimed local.
+
+AOSP targets Pixel 10a / Android 17. Phone, Contacts and SMS are AOSP-only and need
+an image capability distinct from the launcher flavor. Wallet is outside MVP.
+The isolated always-on listener is an AOSP MVP requirement and the narrowly scoped
+exception to nonprivileged packaging; the main app stays nonprivileged. Shared
+engine/JNI work goes upstream; product policy remains in Alpha.
+
+Subscription authorization is asynchronously refreshed and cached, with server-side
+bounded quotas on existing service requests. Local speech has no billing dependency.
+Photos offers full permitted library access to the local agent; resets erase Alpha
+private state without implying remote/provider or device-wide media deletion.
+No app-data backup/import/export/transfer feature is planned.
+
+Reset Alpha data uses a native disclosure followed by fresh Android device-credential
+confirmation. The renderer cannot supply reset authority. Before dispatch, Alpha
+persists a device-protected request and retries it before runtime callbacks or upkeep
+on a subsequent launch. Android's own `clearApplicationUserData()` scopes deletion
+to this package/user, force-stops package processes, cancels its jobs/alarms and
+notifications, clears private app data and its UID Keystore namespace. Alpha does
+not enumerate or delete shared media, another app's storage, remote Gmail/Cloud
+data or subscriptions. It does not report a returned request as completed deletion.
+The pending marker covers interruption before dispatch; it is itself app data and
+is not a guarantee of atomic filesystem deletion or recovery from power loss midway
+through Android's clear operation. Installed self-clear acceptance must be observed
+externally on a disposable package/user, since the reset kills its own instrumentation.
+The future separate AOSP listener package requires its own reviewed reset contract
+before that package ships; clearing Alpha cannot clear a different package's state.
+
+Production Notes and vault migration controls are disabled, including their native
+entry points. Damaged-data notices retain saved bytes and drafts without backup or
+per-store reset controls; fitting Notes edits still recover through the existing
+merge path. Explicit test-mocks builds retain migration fixtures. Ordinary Files,
+Gmail attachments and PDF file creation remain available.
+
+
 ## Source boundaries
 
 | Path | Responsibility |
@@ -19,8 +62,11 @@ revision in `upstream.lock.json` and `vendor/eliza`.
 
 Maps, Files and Notes implementations are copied from authenticated upstream
 source into a generated cache outside the submodule. Gradle includes the shared
-password manager and secure store directly from the reviewed pin. No source
-patch is applied during client, worker or resident-runtime builds. Photo edits, capture publication, the opt-in notification mirror and the delivery-receipt
+password manager directly from the reviewed pin. The secure store uses the explicit
+reviewed patch in `patches/eliza/native-manifest.json`: admission authenticates the pin,
+patch digest, target before/after hashes and complete staged module inventory. Gradle
+compiles the generated copy under `.eliza/patched-native`, never a modified submodule.
+No source patch is applied during client, worker or resident-runtime builds. Photo edits, capture publication, the opt-in notification mirror and the delivery-receipt
 ledger for Alpha's own workflow and approval notices (`NoticeDelivery`, configured by
 `WorkflowNoticeDelivery`) also use shared native modules. Alpha wrappers retain installed storage names, media paths and Android components.
 Browser policy helpers are staged from the same authenticated pin. Gradle writes shared
@@ -67,10 +113,11 @@ Playwright and explicit test-mocks builds, and off for `npm run build`,
 
 The primary agent runs on Android. Local orchestration, durable state and tool
 approvals are separate from model inference: hosted inference requires explicit
-configuration and outbound-context policy. Production Android does not accept remote phone pairing. Cloud sign-in authorizes
+configuration and outbound-context policy. Production builds do not accept remote pairing or hosted-agent provisioning, discovery, adoption or restore. Cloud sign-in authorizes
 billed inference for the resident agent; it does not select a hosted agent. Existing
 remote credentials and history are retained without automatically reconnecting.
-Browser and test-mocks transports remain development infrastructure. Debug host forwarding (the DevelopmentAgent bridge, present only in test-mocks
+Remote browser transports are available only with the explicit test-mocks switch and remain non-product development infrastructure.
+The production AlphaConnection boundary admits exact managed-service origin and path/method pairs for account sign-in, identity, balance, self-revocation and owner Gmail. Dedicated hosts and agent/provisioning paths on the Cloud API origin are refused before network dispatch. Native resident inference remains on its separately admitted provider route; new Maps or billing APIs require explicit service-route review. Debug host forwarding (the DevelopmentAgent bridge, present only in test-mocks
 builds) is development infrastructure, not evidence of a resident runtime or
 production authentication.
 
@@ -84,8 +131,7 @@ Alpha owns the installed alias, directory, per-slot byte limits and renderer
 namespace restrictions. Saved passwords use the separate authentication-bound vault of
 the shared password plugin; see [password-provider-setup.md](password-provider-setup.md). The ciphertext frame, hashed filename and slot AAD remain
 unchanged; writers in separate Android processes are outside this contract. Renderer preferences
-hold nonsecret selections and identifiers. Backup remains disabled until its
-key and retention policy is defined.
+hold nonsecret selections and identifiers. Backup remains disabled by the reset-only policy; no app-data transfer is planned.
 
 Standalone and launcher APKs share `ai.elizaresearch.alphaphone` and replace one
 another. Only the launcher variant declares HOME. Release outputs require

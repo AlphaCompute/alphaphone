@@ -29,18 +29,19 @@ public class AlphaNotificationsPlugin extends Plugin {
   PluginWorkers.submit(NOTICE_IO,()->{try{requireNoticeForeground();work.run();}catch(InterruptedException interrupted){Thread.currentThread().interrupt();call.reject(failure);}catch(Exception unavailable){call.reject(failure);}},()->call.reject(failure));
  }
  private void noticeChanged(){noticeMain.post(()->{if(!noticeDestroyed)notifyListeners("pendingWorkflowTap",new JSObject(),true);});}
- private void clearCapturedIntent(android.content.Intent intent,String token){noticeMain.post(()->{if((WorkflowNoticeTaps.PREFIX+token).equals(intent.getDataString()))intent.setData(null);});}
- private final LinkedHashMap<String,android.content.Intent> uncapturedWorkflowTaps=new LinkedHashMap<>();
+ private final WorkflowNoticeIntentDedup<android.content.Intent> workflowIntentDedup=new WorkflowNoticeIntentDedup<>();
+ private void clearCapturedIntent(android.content.Intent intent,String token){noticeMain.post(()->{if((WorkflowNoticeTaps.PREFIX+token).equals(intent.getDataString()))intent.setData(null);workflowIntentDedup.release(intent,token);});}
+ private final LinkedHashMap<String,List<android.content.Intent>> uncapturedWorkflowTaps=new LinkedHashMap<>();
  private WorkflowNoticeTaps workflowTaps(){return WorkflowNoticeTapsFactory.create(getContext());}
  @Override public void load(){captureWorkflowTap(getActivity().getIntent());}
  @Override protected void handleOnNewIntent(android.content.Intent intent){captureWorkflowTap(intent);}
  @Override protected void handleOnResume(){PluginWorkers.submit(NOTICE_IO,()->{drainWorkflowTaps();noticeChanged();},()->{/* Intents remain retained for retry. */});}
  private int drainWorkflowTaps(){
-  int failed=0;Iterator<Map.Entry<String,android.content.Intent>> entries=uncapturedWorkflowTaps.entrySet().iterator();
+  int failed=0;Iterator<Map.Entry<String,List<android.content.Intent>>> entries=uncapturedWorkflowTaps.entrySet().iterator();
   while(entries.hasNext()){
-   Map.Entry<String,android.content.Intent> entry=entries.next();
-   try{workflowTaps().capture(entry.getKey());clearCapturedIntent(entry.getValue(),entry.getKey());entries.remove();}
-   catch(WorkflowNoticeTaps.UnknownTap unknown){clearCapturedIntent(entry.getValue(),entry.getKey());entries.remove();}
+   Map.Entry<String,List<android.content.Intent>> entry=entries.next();
+   try{workflowTaps().capture(entry.getKey());for(android.content.Intent intent:entry.getValue())clearCapturedIntent(intent,entry.getKey());entries.remove();}
+   catch(WorkflowNoticeTaps.UnknownTap unknown){for(android.content.Intent intent:entry.getValue())clearCapturedIntent(intent,entry.getKey());entries.remove();}
    catch(Exception unavailable){failed++;/* Retain this exact token; another confirmed tap may still progress. */}
   }
   return failed;
@@ -53,7 +54,11 @@ public class AlphaNotificationsPlugin extends Plugin {
   // intent until its encrypted capture commits. OS notices do not auto-cancel,
   // so failed persistence plus process death still leaves an explicit retry.
   getActivity().setIntent(intent);
-  PluginWorkers.submit(NOTICE_IO,()->{if(!uncapturedWorkflowTaps.containsKey(token)&&uncapturedWorkflowTaps.size()<512)uncapturedWorkflowTaps.put(token,intent);drainWorkflowTaps();noticeChanged();},()->{/* Intent and OS notice remain available for explicit retry. */});
+  // load(), resume and renderer polling may observe the same Intent before the
+  // worker's successful capture is cleared on main. Queue that object only once.
+  if(!workflowIntentDedup.retain(intent,token))return;
+  PluginWorkers.submit(NOTICE_IO,()->{uncapturedWorkflowTaps.computeIfAbsent(token,key->new ArrayList<>()).add(intent);drainWorkflowTaps();noticeChanged();},
+   ()->{workflowIntentDedup.release(intent,token);/* Intent and OS notice remain available for explicit retry. */});
  }
  @PluginMethod public void pendingWorkflowTap(PluginCall call){noticeMain.post(()->{try{foreground();captureWorkflowTap(getActivity().getIntent());noticeWork(call,"Workflow notification link unavailable; retry after unlocking.",()->{int failed=drainWorkflowTaps();org.json.JSONObject pending=workflowTaps().pending();if(failed>0&&!pending.has("token"))throw new IllegalStateException("Uncaptured workflow notice retained");call.resolve(new JSObject(pending.toString()));});}catch(Exception unavailable){call.reject("Workflow notification link unavailable; retry after unlocking.");}});}
  @PluginMethod public void consumeWorkflowTap(PluginCall call){noticeWork(call,"Workflow notification link was retained; retry.",()->consumePendingWorkflowTap(call));}

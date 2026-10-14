@@ -76,7 +76,7 @@ the current source says so in its own document, and the gaps named below are ope
   update and AOSP staging: [`scripts/release-blockers.mjs`](../scripts/release-blockers.mjs).
 - Speech engine qualification: the libelizainference voice-host record
   [`android/voice-host/qualified-voice-host.json`](../android/voice-host/qualified-voice-host.json)
-  ([fused speech](fused-speech.md), decision P-10). The
+  ([fused speech](fused-speech.md), decision P-42). The
   retired Sherpa runtime's functional acceptance had failed on arm64-v8a; no acceptance has run
   on the new engine.
 - Installed-data upgrade check: [`scripts/test-installed-upgrade.mjs`](../scripts/test-installed-upgrade.mjs).

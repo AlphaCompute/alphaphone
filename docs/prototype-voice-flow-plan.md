@@ -188,7 +188,7 @@ Concurrent note changes block application; persistence failure retains the revie
 
 ## Browser build recognition (2026-10-07, superseded 2026-10-12)
 
-Superseded by decision P-10: the in-browser recognizer described below was removed, and local
+Superseded by decision P-42: the in-browser recognizer described below was removed, and local
 browser transcription now goes through the local agent
 ([browser-speech-recognition.md](browser-speech-recognition.md)). Historical record:
 

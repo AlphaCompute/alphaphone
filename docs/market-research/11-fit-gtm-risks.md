@@ -1,6 +1,6 @@
 # 11 — Product fit, opportunity ranking, GTM, risks and blind spots
 
-> **Superseded in part (2026-10-13, [decision P-10](../decisions.md)).** On-device and local speech and inference use only libelizainference (llama.cpp/ggml, GGUF models). ONNX Runtime, sherpa-onnx and ONNX-format models named in this section are historical research context, not a plan.
+> **Superseded in part (2026-10-13, [decision P-42](../decisions.md)).** On-device and local speech and inference use only libelizainference (llama.cpp/ggml, GGUF models). ONNX Runtime, sherpa-onnx and ONNX-format models named in this section are historical research context, not a plan.
 
 Every product capability statement below is tied to a repository file and uses the repository's own evidence vocabulary (§1). Every external number carries a source URL. **(est.)** marks an estimate or proposal, not a sourced fact; **(unverified)** marks a figure not confirmed against a primary source. Where a sibling file (01–10) covers a topic in depth, this file cross-references it rather than repeating it.
 

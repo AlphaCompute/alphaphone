@@ -42,11 +42,13 @@ import { packagedGzipProblems } from "./android-gzip-assets.mjs";
 import { appLinkFilters } from "./render-assetlinks.mjs";
 import { readVoiceHost, VOICE_BUNDLE_FORMAT } from "./stage-embedding-host.mjs";
 
+import { preparePatchedNative, nativePatchReceipt, verifyNativePatchReceipt } from './prepare-patched-native.mjs';
 const USAGE = "Usage: node scripts/verify-apks.mjs [--test-mocks] [--allow-unpackaged-runtime]";
 const args = process.argv.slice(2);
 for (const arg of args)
   if (!["--test-mocks", "--allow-unpackaged-runtime"].includes(arg)) throw new Error(`Unknown option ${arg}. ${USAGE}`);
 const testMocks = args.includes("--test-mocks");
+const admittedNativePatches = preparePatchedNative();
 const allowUnpackaged = args.includes("--allow-unpackaged-runtime");
 const directory = testMocks ? "artifacts/test-mocks" : "artifacts";
 const manifestFile = path.join(directory, "apk-manifest.json");
@@ -145,6 +147,8 @@ for (const variant of ["standalone", "launcher"])
     } finally {
       fs.rmSync(payload.root, { recursive: true, force: true });
     }
+    try { verifyNativePatchReceipt(execFileSync('unzip', ['-p', file, 'assets/native-patches.json'], {encoding:'utf8',stdio:['ignore','pipe','pipe']}), admittedNativePatches); }
+    catch (error) { problems.push(`Native patch provenance: ${error.message}`); }
     let signerSha256 = null;
     if (signed) {
       try { signerSha256 = signerDigest(file); }
@@ -274,6 +278,7 @@ fs.writeFileSync(
       mappings,
       instrumentation,
       upstream: JSON.parse(fs.readFileSync("upstream.lock.json")),
+      nativePatches: nativePatchReceipt(admittedNativePatches),
       results,
       runtimePackaging,
     },

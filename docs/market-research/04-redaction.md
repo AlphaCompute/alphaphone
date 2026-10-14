@@ -1,6 +1,6 @@
 # 04 — Redaction and PII/DLP technology, and a redaction design for Alpha Phone
 
-> **Superseded in part (2026-10-13, [decision P-10](../decisions.md)).** On-device and local speech and inference use only libelizainference (llama.cpp/ggml, GGUF models). ONNX Runtime, sherpa-onnx and ONNX-format models named in this section are historical research context, not a plan.
+> **Superseded in part (2026-10-13, [decision P-42](../decisions.md)).** On-device and local speech and inference use only libelizainference (llama.cpp/ggml, GGUF models). ONNX Runtime, sherpa-onnx and ONNX-format models named in this section are historical research context, not a plan.
 
 Alpha Phone has no redaction pipeline today. "Redaction" is named as a shared upstream contract in ADR-02 (`docs/architecture.md`), and E5 in `docs/implementation-plan.md` requires "secret redaction before remote transport" and "no passwords/OTP/token values in transcripts, screenshots, model input or logs". Everything in Part C is a proposed design, not built.
 

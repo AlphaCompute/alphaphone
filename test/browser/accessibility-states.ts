@@ -159,6 +159,78 @@ export const MOCK_STATES: State[] = [
   mock('settings:accounts', ['you@gmail.example']),
 ]);
 
+/**
+ * A signed-in phone with one connected mailbox, held at the provider boundary: the product's own
+ * Inbox, Home and Settings adapters render against a synthetic cloud client. No account, OAuth
+ * or mail exists; the names and subjects are invented. Development server only, because the
+ * boundary is replaced by importing the page's own modules.
+ */
+async function connectMailbox(page: Page) {
+  await page.evaluate(async () => {
+    const { connectionController: controller } = await import('/src/runtime/connection-ui.tsx' as string);
+    const { secureConnectionStore: store } = await import('/src/runtime/native-connection.ts' as string);
+    const slots: Record<string, unknown> = {};
+    store.read = async (key: string) => structuredClone(slots[key] ?? null) as any;
+    store.compareExchange = async (key: string, prior: unknown, next: unknown) => {
+      if (JSON.stringify(slots[key] ?? null) !== JSON.stringify(prior)) return { status: 'conflict' };
+      if (next === null) delete slots[key]; else slots[key] = structuredClone(next);
+      return { status: 'saved' };
+    };
+    const mail = (id: string, subject: string, extra: Record<string, unknown> = {}) => ({
+      id, threadId: `thread-${id}`, subject, from: `Synthetic Sender ${id.toUpperCase()}`, fromEmail: `sender-${id}@example.test`, to: ['owner@example.test'], cc: [], replyTo: null,
+      snippet: `A synthetic preview line that is long enough to need more than one row of the list (${id}).`, receivedAt: '2026-10-06T12:00:00Z', unread: false, ...extra,
+    });
+    const inbox = [
+      mail('a', 'Quarterly planning review and budget notes', { unread: true }), mail('b', 'Re: Friday'), mail('c', 'A subject long enough that it cannot fit on one line of a phone at any text size', { unread: true }),
+      mail('d', 'Receipt'), mail('e', 'Itinerary for the offsite'), mail('f', 'Notes'), mail('g', 'Invitation: design review'), mail('h', 'Welcome'),
+    ];
+    const client = {
+      gmailAccounts: async () => [{ connectionId: 'grant-0', label: 'owner@example.test', configured: true, connected: true, reason: 'connected', grantedCapabilities: ['google.gmail.triage'] }],
+      gmailInboxCapabilities: async () => ({ version: 1, from: 'owner@example.test', threads: true, send: false, providerDrafts: false, mailboxMutations: true, attachments: true, providerExactlyOnce: false, atomicDraftReplacement: false, readState: true }),
+      gmailSearch: async (_grant: string, query: string) => ({ messages: query === 'in:inbox' ? structuredClone(inbox) : [], syncedAt: 'fixture', nextPageToken: null }),
+      gmailRead: async (_grant: string, id: string) => ({ message: inbox.find(item => item.id === id), bodyText: `Synthetic body of ${id}.`, links: [] }),
+      gmailThread: async (_grant: string, threadId: string) => {
+        const message = inbox.find(item => item.threadId === threadId)!;
+        return { messages: [{ message, bodyText: `Synthetic body paragraph for ${message.id}. `.repeat(40), historyId: `h-${message.id}`, attachments: [] }], total: 1, offset: 0, historyId: 'thread-history', nextOffset: null };
+      },
+      initiateGmail: async () => { throw Error('No live OAuth in fixture'); },
+    };
+    controller.getCloudClient = () => ({ client, sessionId: 'fixture-cloud', credentialId: 'fixture' } as any);
+    const snapshot = { ...controller.getSnapshot(), cloudAccount: { environment: 'production', userId: 'fixture-owner', sessionId: 'fixture-cloud', credentialId: 'fixture' } } as any;
+    controller.getSnapshot = () => snapshot;
+  });
+}
+const connected = (name: string, steps: Array<string | RegExp> = [], options: { shows?: string; home?: boolean } = {}): State => ({
+  name: `connected ${name}`, shows: options.shows,
+  open: async (page, theme) => {
+    await page.addInitScript(offline);
+    await page.goto(theme ? `/?theme=${theme}` : '/');
+    await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+    await connectMailbox(page);
+    // The mailbox is read when Inbox opens; Home's card and badge come from that read.
+    await page.getByRole('button', { name: 'Inbox', exact: true }).click();
+    await expect(page.getByRole('button', { name: /^Unread, Synthetic Sender A/ })).toBeVisible();
+    if (options.home) { await page.getByRole('button', { name: 'Back to apps', exact: true }).click(); await expect(page.locator('[data-alpha-home-inbox]')).toContainText('2 unread'); }
+    for (const step of steps) await page.getByRole('button', { name: step, exact: typeof step === 'string' }).first().click();
+    await settle(page);
+    await showing(page, options.shows);
+  },
+});
+
+/** Provider-connected screens: a signed-in account with a connected mailbox (synthetic, see connectMailbox). */
+export const CONNECTED_STATES: State[] = [
+  connected('Home', [], { home: true }),
+  connected('Inbox'),
+  connected('Inbox sent (empty)', ['Sent']),
+  connected('Inbox search', ['Search email']),
+  connected('Inbox message', [/^Unread, Synthetic Sender A/], { shows: 'inbox-detail' }),
+  connected('Inbox long subject', [/^Unread, Synthetic Sender C/], { shows: 'inbox-detail' }),
+  connected('Inbox compose', ['Compose'], { shows: 'inbox-composing' }),
+  connected('Settings', ['Settings'], { home: true }),
+  connected('Settings accounts', ['Settings', 'Accounts'], { home: true }),
+  connected('Settings connections', ['Settings', 'Connections'], { home: true }),
+];
+
 /** Live states that exist only on the development server (developer surfaces). */
 export const DEVELOPMENT_STATES: State[] = [
   live('Settings developer', ['Settings', 'Developer']),

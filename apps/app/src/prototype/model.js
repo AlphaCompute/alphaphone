@@ -3454,6 +3454,7 @@ registerView("contacts", {
     };
     var canSave = editing && !!(form.first.trim() || form.last.trim() || form.phone.trim());
     return {
+      nativePrototype: true,
       q: st.q || "", hasQ: !!q, qRaw: (st.q || "").trim(),
       searching: !!st.searching, notSearching: !st.searching,
       openSearch: function () { api.set({ searching: true }); },
@@ -5585,7 +5586,11 @@ class Component extends DCLogic {
       tiles: tiles, bright: S.bright, brightHandoff: true, brightSlider: false, onBright: function () { self.openView("settings", { page: "display" }); }, shadeN: shadeN, shadeY: isOn && S.shade ? "0" : "-100%",
       closeShade: function () { self.setState({ shade: false }); }, openShade: function () { self.openShade(); },
       shadeKey: function (event) { if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); self.setState({ shade: false }); } }, clearAll: function () { self.setState({ nGone: NOTIFS.map(function (n) { return n.id; }), shade: false }); },
-      lockCamera: function () { self.setState({ screen: "home", secure: true }); self.openView("camera"); },
+      // Policy P-23: on Android the system Keyguard owns the secure camera; Alpha never
+      // opens its own camera, gallery or agent from a locked state. Only the simulated
+      // phone frame (no OS lock screen) keeps the prototype's lock-screen camera.
+      lockCameraOffered: !P.nativeSystemChrome, noLockCamera: !!P.nativeSystemChrome,
+      lockCamera: function () { if (P.nativeSystemChrome) return; self.setState({ screen: "home", secure: true }); self.openView("camera"); },
       msgs: msgs, typing: S.typing, sugg: sugg, showSugg: panelOpen && !S.draft && !S.typing && !voiceOn,
       panelComposer: panelOpen && !voiceOn,
       panelH: !isOn ? 0 : (S.chat === "full" ? 915 : (S.chat === "sheet" ? 560 : 0)), panelR: S.chat === "full" ? "0px" : "30px 30px 0 0",

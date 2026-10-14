@@ -60,8 +60,16 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
   JSObject out=new JSObject();out.put("result",clock!=null&&clock.has("result")?clock.getJSONObject("result"):ClockAgentReview.result(action,"unknown"));return out;
  }
  private JSONObject clockMarker(JSONObject entry,String phase)throws Exception{return new JSONObject().put("phase",phase).put("attemptId",entry.getString("attemptId")).put("operationHash",entry.getString("operationHash"));}
+ /**
+  * The shared plugin stops its worker in handleOnDestroy. A Clock call the page made just before
+  * that can arrive afterwards; the stopped executor then throws on the bridge thread, which ends
+  * the process. Such a call is rejected: nothing was reviewed, approved or handed to Clock.
+  */
+ private void clockWork(PluginCall call,Runnable task){
+  PluginWorkers.submit(worker(),task,()->call.reject("Clock review closed before this step started; nothing was sent to Clock"));
+ }
  @PluginMethod public void reviewClock(PluginCall call){
-  PluginWorkers.submit(worker(),()->{try{
+  clockWork(call,()->{try{
    String scope=field(call.getString("scope"),"[a-f0-9]{64}"),id=field(call.getString("proposalId"),"[A-Za-z0-9_-]{1,128}"),operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");
    ActionJournal store=journal();JSONObject approved;
    synchronized(store.lock()){JSONObject entry=clockEntry(store,scope,id,operationId);approved=entry.getJSONObject("record").getJSONObject("operation");if(!sameJson(approved,call.getObject("operation")))throw new IllegalStateException();
@@ -76,7 +84,7 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
      }}catch(Exception refusal){if(!destroyed())call.reject("Clock review expired or was retired");}},()->call.reject("Clock review retired"));});
     return null;
    });
-  }catch(Exception refusal){call.reject("Exact approved Clock review unavailable");}},()->call.reject("Clock review is not available"));
+  }catch(Exception refusal){call.reject("Exact approved Clock review unavailable");}});
  }
  @PluginMethod public void cancelClock(PluginCall call){work(call,true,(store,scope,id)->{synchronized(store.lock()){
   String operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");JSONObject entry=read(store,scope,id);
@@ -89,7 +97,7 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
  @PluginMethod public void confirmClock(PluginCall call){
   // Serialize exact approval and durable dispatch intent on the journal worker.
   // Only the foreground check and Android handoff run on the Activity thread.
-  PluginWorkers.submit(worker(),()->{try{ActionJournal store=journal();synchronized(store.lock()){
+  clockWork(call,()->{try{ActionJournal store=journal();synchronized(store.lock()){
    if(destroyed())throw new IllegalStateException();
    String scope=field(call.getString("scope"),"[a-f0-9]{64}"),id=field(call.getString("proposalId"),"[A-Za-z0-9_-]{1,128}"),operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");
    JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview"),operation=entry.getJSONObject("record").getJSONObject("operation");
@@ -99,7 +107,7 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
    clock.put("phase","dispatching").remove("reviewToken");store.update(scope,id,previous->entry);
    long expiresAt=entry.getJSONObject("record").getLong("expiresAt");
    JSObject result=clockUi(()->{if(expiresAt<=System.currentTimeMillis())return ClockAgentReview.result(operation.getString("action"),"failed");return ClockAgentReview.dispatch(getActivity(),operation);});clock.put("phase","finished").put("result",result);store.update(scope,id,previous->entry);call.resolve(clockReply(clock,operation.getString("action")));
-  }}catch(Exception uncertain){call.reject("Clock handoff result is unconfirmed; do not repeat it");}},()->call.reject("Clock handoff is not available; nothing was sent"));
+  }}catch(Exception uncertain){call.reject("Clock handoff result is unconfirmed; do not repeat it");}});
  }
  @Override protected void handleOnDestroy(){super.handleOnDestroy();ClockAgentReview.abandon();}
 }

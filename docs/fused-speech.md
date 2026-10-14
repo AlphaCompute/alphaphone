@@ -3,7 +3,7 @@
 Alpha Phone has one local speech engine: **libelizainference**, the llama.cpp-based native
 library from the elizaOS fused fork. It contains ggml and mtmd (the audio-LLM path used for
 ASR), OmniVoice, `kokoro_lib` (Kokoro TTS) and Silero VAD, and it loads GGUF models only.
-The owner removed every other local engine (decision P-10), because the earlier runtimes were
+The owner removed every other local engine (decision P-42), because the earlier runtimes were
 too slow and used too much memory on phones. No build ships another inference runtime, model
 format or in-browser recognizer. `test/llama-cpp-only.test.mjs` and the bundle audit
 (`scripts/audit-production-bundle.mjs`) enforce this.

@@ -1,10 +1,16 @@
 /** Archived workflow scenarios; upstream owns leased APK and disposable-user lifecycles.
- * Phases: `workflow` (phone-step reads and drafts) and `approval-notice` (phone-step approval
- * notice builders, OS posting, tap route and withdrawal, and the tap fenced after an account change). Every case runs on both distributions
- * from one hash-admitted archive pair; any failed, skipped or missing case fails the campaign.
- * `--variant=standalone|launcher` and `--phase=workflow|approval-notice` run part of it, for the
- * cases left after a failure stopped an earlier run: the report then carries `selection` and
- * `selectionPassed`, and `passed` (the whole campaign) stays false.
+ * Phases: `workflow` (phone-step reads and drafts), `approval-notice` (phone-step approval
+ * notice builders, OS posting, tap route and withdrawal, and the tap fenced after an account change) and `approval-notice-recovery` (a pending
+ * approval notice across the death of the app's main process, and across an owner change). Every
+ * case runs on both distributions from one hash-admitted archive pair; any failed, skipped or
+ * missing case fails the campaign.
+ * `--variant=standalone|launcher` and `--phase=workflow|approval-notice|approval-notice-recovery`
+ * run part of it, for the cases left after a failure stopped an earlier run: the report then
+ * carries `selection` and `selectionPassed`, and `passed` (the whole campaign) stays false.
+ * The process-death case runs under the instrumentation APK's second runner
+ * (WorkflowNoticeProcessRunner, a helper process of the app), so the test outlives the main
+ * process it kills; every other case uses AndroidJUnitRunner. Both are declared by the same
+ * admitted instrumentation APK.
  * The archive is `node scripts/build-archive.mjs` output, or for developer APKs the folder
  * `node scripts/developer-archive.mjs` assembles from a verified `artifacts/` build.
  * Emulator-class evidence only: no paired host, live workflow, account or device acceptance. */
@@ -21,10 +27,11 @@ verifyPinnedUpstream(repository);
 const {runIsolatedAndroidTest}=await import('../vendor/eliza/packages/app/scripts/lib/isolated-android-test.mjs');
 const {withIsolatedAndroidUser}=await import('../vendor/eliza/packages/app/scripts/lib/isolated-android-user.mjs');
 const {acquireDeviceLease}=await import('../vendor/eliza/packages/app/scripts/lib/device-lease.ts');
+const PHASES=['workflow','approval-notice','approval-notice-recovery'];
 const options=process.argv.slice(2);
 assert.ok(options.every(arg=>/^--(?:variant|phase)=.+$/.test(arg)),'Unknown workflow campaign option');assert.equal(new Set(options.map(arg=>arg.split('=')[0])).size,options.length,'Duplicate workflow campaign option');
 const requestedVariant=options.find(arg=>arg.startsWith('--variant='))?.slice(10),requestedPhase=options.find(arg=>arg.startsWith('--phase='))?.slice(8);
-assert.ok(!requestedVariant||['standalone','launcher'].includes(requestedVariant),'Unknown variant');assert.ok(!requestedPhase||['workflow','approval-notice'].includes(requestedPhase),'Unknown phase');
+assert.ok(!requestedVariant||['standalone','launcher'].includes(requestedVariant),'Unknown variant');assert.ok(!requestedPhase||PHASES.includes(requestedPhase),'Unknown phase');
 const serial=process.env.ANDROID_SERIAL,avd=process.env.ALPHA_WORKFLOW_TEST_AVD,abi=process.env.ALPHA_WORKFLOW_TEST_ABI;
 assert.match(serial??'',/^emulator-\d+$/);assert.match(avd??'',/^[A-Za-z0-9_.-]+$/);assert.ok(['x86_64','arm64-v8a'].includes(abi),'Explicit owned emulator ABI required');
 assert.ok(process.env.ALPHA_BUILD_ARCHIVE,'Set ALPHA_BUILD_ARCHIVE');
@@ -42,9 +49,17 @@ const cases=[{class:'WorkflowPhoneNativeInstrumentedTest',method:'privateReadRes
  // The OS post and tap need the runtime notification permission in the owned secondary user.
  {class:'WorkflowApprovalNoticeInstrumentedTest',method:'approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision',gate:'workflowApprovalNotice',grant:false,notifications:true,phase:'approval-notice'},
  // MVP-18: a tap after the account changed is fenced to the other-account state; no stale approval opens.
- // Its process-death counterpart needs the separate runner process: scripts/ci/pending-recovery-ui.py
- // phase workflow-approval-process-death (WorkflowNoticeProcessDeathInstrumentedTest).
- {class:'WorkflowApprovalNoticeInstrumentedTest',method:'approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval',gate:'workflowApprovalNotice',grant:false,notifications:true,phase:'approval-notice'}];
+ // The process-death counterpart is WorkflowApprovalNoticeProcessDeathInstrumentedTest in the approval-notice-recovery phase below.
+ {class:'WorkflowApprovalNoticeInstrumentedTest',method:'approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval',gate:'workflowApprovalNotice',grant:false,notifications:true,phase:'approval-notice'},
+ // A pending approval notice while the main process dies: the helper-process runner keeps the test alive.
+ {class:'WorkflowApprovalNoticeProcessDeathInstrumentedTest',method:'pendingApprovalNoticeSurvivesProcessDeathAndOpensItsExactApprovalOnce',gate:'workflowApprovalNoticeProcessDeath',grant:false,notifications:true,phase:'approval-notice-recovery',runner:'WorkflowNoticeProcessRunner'},
+ // A pending approval notice while the connected owner changes (synthetic owner IDs; no account).
+ {class:'WorkflowApprovalNoticeInstrumentedTest',method:'ownerChangeWithdrawsThePendingApprovalNoticeAndItsTapOpensNothing',gate:'workflowApprovalNotice',grant:false,notifications:true,phase:'approval-notice-recovery'}];
+assert.ok(cases.every(test=>PHASES.includes(test.phase??'workflow')),'Every case belongs to a named phase');
+// The two instrumentation components of the admitted test APK. A case names the one it runs under; the other is declared as additional, so upstream admits exactly this pair for every case.
+const runners=['androidx.test.runner.AndroidJUnitRunner',pkg+'.WorkflowNoticeProcessRunner'];
+const runnerOf=test=>test.runner?pkg+'.'+test.runner:runners[0];
+assert.ok(cases.every(test=>runners.includes(runnerOf(test))),'Every case names a declared runner');
 const phaseOf=test=>test.phase??'workflow';
 const cancellation=new AbortController(),cancel=()=>cancellation.abort();
 const execute=promisify(execFile);
@@ -66,14 +81,14 @@ try{
  for(const variant of selectedVariants)for(const test of selectedCases){
   cancellation.signal.throwIfAborted();
   const directory=path.join(output,variant+'-'+test.method);fs.mkdirSync(directory);
-  const record={variant,phase:phaseOf(test),method:test.class+'#'+test.method,...apks[variant],passed:false};report.results.push(record);let failure;
+  const record={variant,phase:phaseOf(test),method:test.class+'#'+test.method,runner:runnerOf(test),...apks[variant],passed:false};report.results.push(record);let failure;
   try{
    const installed=(await call(['shell','pm','list','packages','-u','--user','all'],cancellation.signal)).split(/\r?\n/);
    assert.ok(![pkg,pkg+'.test'].some(name=>installed.includes('package:'+name)),'Existing package registration; refusing replacement');
    await withIsolatedAndroidUser({serial,deviceLease:lease,expectedAvdName:avd,homePackage:process.env.ALPHA_TEST_HOME_PACKAGE??'com.android.launcher3',name:`workflow-${variant}-${Date.now()}`,signal:cancellation.signal,execute:(args,{signal})=>call(args,signal),record:state=>{record.userLifecycle=state;persist();},run:async({user})=>{
     record.user=user;
     try{
-     record.result=await runIsolatedAndroidTest({serial,adb,aapt,env,packageName:pkg,additionalInstrumentationRunners:[pkg+'.WorkflowNoticeProcessRunner'],testClass:pkg+'.'+test.class,testMethod:test.method,expectedTests:1,requiredAbi:abi,expectedAvdName:avd,androidUser:user,deviceLease:lease,directory,signal:cancellation.signal,commandTimeoutMs:120000,instrumentationTimeoutMs:240000,cleanupTimeoutMs:120000,
+     record.result=await runIsolatedAndroidTest({serial,adb,aapt,env,packageName:pkg,runner:runnerOf(test),additionalInstrumentationRunners:runners.filter(name=>name!==runnerOf(test)),testClass:pkg+'.'+test.class,testMethod:test.method,expectedTests:1,requiredAbi:abi,expectedAvdName:avd,androidUser:user,deviceLease:lease,directory,signal:cancellation.signal,commandTimeoutMs:120000,instrumentationTimeoutMs:240000,cleanupTimeoutMs:120000,
       variants:[{name:variant,apk:path.join(archive,variant+'-debug.apk'),testApk:path.join(archive,variant+'-androidTest.apk')}],runnerArgs:['-e',test.gate,'1'],
       evidence:'Synthetic native workflow fixture in an owned secondary emulator user; no paired host or live workflow acceptance.',
       // The bytes upstream pins and installs are the manifest pair this report records, checked before any install.

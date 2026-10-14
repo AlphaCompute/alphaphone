@@ -8,7 +8,7 @@ import { CONNECTED_STATES, DEVELOPMENT_STATES, FAILURE_STATES, FIXTURE_STATES, L
 // TalkBack, Switch Access, physical large-font, rotation or device pass; those remain open.
 test.describe.configure({ mode: 'parallel' });
 
-const STATES = [...LIVE_STATES, ...DEVELOPMENT_STATES, ...MOCK_STATES, ...FAILURE_STATES];
+const STATES = [...LIVE_STATES, ...DEVELOPMENT_STATES, ...MOCK_STATES, ...CONNECTED_STATES, ...FAILURE_STATES];
 // Deliberate single-line ellipsis and line clamps on previews of user content are allowed: the
 // full text is one tap away and is exposed whole to assistive technology. Hard clipping is not, and
 // neither is a cut app title: it names the screen and has room to wrap.
@@ -21,7 +21,7 @@ for (const theme of ['light', 'dark'] as const) {
       await state.open(page, theme);
       const found = format([
         ...await auditTree(page),
-        ...await auditPage(page, { contrast: true, targetSize: 24, clipping: true, overlap: true }),
+        ...await auditPage(page, { contrast: true, targetSize: 24, clipping: true, overlap: true, dock: true }),
         ...await auditTabOrder(page),
       ]);
       expect(blocking(found), blocking(found).join('\n')).toEqual([]);
@@ -35,12 +35,16 @@ for (const state of STATES) {
     await setTextScale(page, 2);
     // Clipping and overlap: nothing is cut, nothing is printed over anything else, no label is
     // split mid-word and no control sits on or is cut by another box (accessibility-audit.ts rule 7).
-    const found = format(await auditPage(page, { clipping: true, overlap: true }));
+    // Nothing on Home is under the composer, and whatever an app scrolls under it can be scrolled clear.
+    const found = format(await auditPage(page, { clipping: true, overlap: true, dock: true }));
     await info.attach('truncated', { body: found.filter(line => line.startsWith('text-truncated:')).join('\n') || 'none', contentType: 'text/plain' });
     expect(blocking(found), blocking(found).join('\n')).toEqual([]);
     // Names and focusability must survive the reflow too.
     const tree = format(await auditTree(page));
     expect(tree, tree.join('\n')).toEqual([]);
+    // The tab order survives it as well, and no stop is left partly under the composer.
+    const focus = format(await auditTabOrder(page));
+    expect(focus, focus.join('\n')).toEqual([]);
   });
 }
 
@@ -52,37 +56,32 @@ test.describe('landscape', () => {
       await state.open(page, 'light');
       // The landscape layout is what is being checked, not a scaled-down portrait canvas.
       await expect(page.locator('html')).toHaveClass(/alpha-landscape/);
-      const found = blocking(format([...await auditPage(page, { clipping: true, overlap: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
+      const found = blocking(format([...await auditPage(page, { clipping: true, overlap: true, dock: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
       expect(blocking(found), blocking(found).join('\n')).toEqual([]);
     });
   }
-});
-
-test.describe('landscape at 200% text', () => {
-  test.use({ hasTouch: true, isMobile: true, viewport: { width: 915, height: 412 } });
-  for (const state of [...LIVE_STATES, ...MOCK_STATES]) {
-    test(`landscape at 200% text keeps every control on screen, named and uncut: ${state.name}`, async ({ page }) => {
+  // The two together: a phone on its side with the system's largest font (round 10).
+  for (const state of STATES) {
+    test(`landscape at 200% text keeps every control on screen: ${state.name}`, async ({ page }) => {
       await state.open(page, 'light');
       await expect(page.locator('html')).toHaveClass(/alpha-landscape/);
       await setTextScale(page, 2);
-      await expect(page.locator('html')).toHaveClass(/alpha-large-text/);
-      // Clipping covers control-off-screen and control-unreachable; the tree covers names.
-      const found = blocking(format([...await auditPage(page, { clipping: true, overlap: true }), ...await auditTree(page)]));
+      const found = blocking(format([...await auditPage(page, { clipping: true, overlap: true, dock: true }), ...await auditTree(page), ...await auditTabOrder(page)]));
       expect(found, found.join('\n')).toEqual([]);
     });
   }
 });
 
-// Screens the states above do not reach: the fixture lock screen and photos-empty viewer, the
-// Android HOME (launcher) presentation, and states with a synthetic provider connected.
-for (const state of [...FIXTURE_STATES, ...LAUNCHER_STATES, ...CONNECTED_STATES]) {
+// Screens the states above do not reach: the fixture lock screen and photos-empty viewer and the
+// Android HOME (launcher) presentation. Provider-connected states are in STATES.
+for (const state of [...FIXTURE_STATES, ...LAUNCHER_STATES]) {
   for (const scale of [1, 2]) {
     test(`${scale * 100}% text, names, focus and contrast: ${state.name}`, async ({ page }) => {
       await state.open(page, 'light');
       if (scale !== 1) await setTextScale(page, scale);
       const found = blocking(format([
         ...await auditTree(page),
-        ...await auditPage(page, scale === 1 ? { contrast: true, targetSize: 24, clipping: true, overlap: true } : { clipping: true, overlap: true }),
+        ...await auditPage(page, scale === 1 ? { contrast: true, targetSize: 24, clipping: true, overlap: true, dock: true } : { clipping: true, overlap: true, dock: true }),
         ...await auditTabOrder(page),
       ]));
       expect(found, found.join('\n')).toEqual([]);
