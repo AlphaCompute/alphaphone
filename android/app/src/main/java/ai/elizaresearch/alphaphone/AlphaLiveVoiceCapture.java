@@ -16,6 +16,9 @@ import java.util.ArrayDeque;
  * each speech segment with its edges handed to the renderer, which forwards them to the resident
  * agent's on-device live ASR route. Audio outside a segment (beyond the short pre-roll) is never
  * forwarded, and nothing is written to storage. One capture runs at a time.
+ *
+ * <p>Each closed segment also opens an issue #395 latency trial ({@link AlphaVoiceLatencyProbe}):
+ * the capture time of its last speech window from AudioRecord.getTimestamp, and the endpoint time.
  */
 final class AlphaLiveVoiceCapture {
  interface Sink {
@@ -44,11 +47,14 @@ final class AlphaLiveVoiceCapture {
  private final Context context;
  private final String captureId;
  private final Sink sink;
+ private final String pipeline;
  private volatile boolean running;
  private Thread thread;
  private long startedAt;
 
- AlphaLiveVoiceCapture(Context context,String captureId,Sink sink){this.context=context.getApplicationContext();this.captureId=captureId;this.sink=sink;}
+ AlphaLiveVoiceCapture(Context context,String captureId,Sink sink){this(context,captureId,sink,"live-voice");}
+ /** {@code pipeline} labels the latency trials this capture opens ("live-voice" for the shipped conversation). */
+ AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,String pipeline){this.context=context.getApplicationContext();this.captureId=captureId;this.sink=sink;this.pipeline=pipeline;AlphaVoiceLatencyProbe.prepareIdentity(this.context);}
  String captureId(){return captureId;}
 
  synchronized void start()throws Exception{
@@ -81,6 +87,11 @@ final class AlphaLiveVoiceCapture {
   float[] pcm=new float[LiveVadGate.WINDOW];
   byte[] bytes=new byte[LiveVadGate.WINDOW*2];
   int windows=0;float peak=0f;
+  // Issue #395 collector: capture time of the last sample of the last window the gate still counts as
+  // speech. Speech can end anywhere inside that 32 ms window, so the latency is understated by at
+  // most one window; frames the platform drops would overstate it instead.
+  android.media.AudioTimestamp stamp=new android.media.AudioTimestamp();
+  long framesRead=0,lastSpeechNs=VoiceLatencyTrials.UNSET;String lastSpeechClock="audiorecord-timestamp";
   try{
    ElizaVoiceNative.nativeVadReset(vad);
    while(running){
@@ -88,11 +99,18 @@ final class AlphaLiveVoiceCapture {
     while(filled<window.length&&running){int read=recorder.read(window,filled,window.length-filled);if(read<0)throw new IllegalStateException("Microphone read failed");filled+=read;}
     if(!running)break;
     long at=System.currentTimeMillis();
+    framesRead+=window.length;
+    long windowEndNs=AlphaVoiceLatencyProbe.captureTimeNs(recorder,stamp,framesRead-1,SAMPLE_RATE);
+    String windowClock="audiorecord-timestamp";
+    if(windowEndNs==VoiceLatencyTrials.UNSET){windowEndNs=System.nanoTime();windowClock="read-return";}
     for(int i=0;i<window.length;i++){short sample=window[i];pcm[i]=sample/32768f;bytes[i*2]=(byte)(sample&0xff);bytes[i*2+1]=(byte)((sample>>8)&0xff);peak=Math.max(peak,Math.abs(pcm[i]));}
     float[] probability=ElizaVoiceNative.nativeVadProcessBatch(vad,pcm);
     JSObject frame=new JSObject();
     frame.put("pcm16",Base64.encodeToString(bytes,Base64.NO_WRAP));frame.put("sampleRate",SAMPLE_RATE);frame.put("channels",1);frame.put("samples",window.length);frame.put("timestamp",at);
-    LiveVadGate.Edge edge=gate.accept(probability!=null&&probability.length>0?probability[0]:0f);
+    float speech=probability!=null&&probability.length>0?probability[0]:0f;
+    LiveVadGate.Edge edge=gate.accept(speech);
+    if((gate.speaking()||edge==LiveVadGate.Edge.SPEECH_START)&&speech>=LiveVadGate.END){lastSpeechNs=windowEndNs;lastSpeechClock=windowClock;}
+    if(edge==LiveVadGate.Edge.SPEECH_END){AlphaVoiceLatencyProbe.TRIALS.speechEnded(lastSpeechNs,System.nanoTime(),lastSpeechClock,pipeline);lastSpeechNs=VoiceLatencyTrials.UNSET;}
     if(edge==LiveVadGate.Edge.SPEECH_START){
      edges.put(new JSObject().put("type","speech-start").put("timestampMs",at-(long)(LiveVadGate.START_WINDOWS-1)*32));
      while(!preroll.isEmpty())frames.put(preroll.removeFirst());

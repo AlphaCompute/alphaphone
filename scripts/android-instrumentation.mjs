@@ -196,6 +196,7 @@ export const CLASS_REGISTRY = {
   LocalVoiceRecordingLimit: { campaign: "node scripts/test-native-permissions.mjs voice-limit APP.apk TEST.apk OUTPUT (RECORD_AUDIO granted before the app starts)" },
   WorkflowLegacyReminderUpgrade: { campaign: "node scripts/test-installed-upgrade.mjs (installed-upgrade campaign; runs upgradedLegacyOneOffReminderIsIncludedInNativeDigest after the candidate verify phase)" },
   SettingsCrashLog: { campaign: "node scripts/test-native-restart.mjs crash-log APP.apk TEST.apk OUTPUT (the crash phase kills the process; readback in a new one)" },
+  NativeVoiceLatency: { campaign: "node scripts/native-voice-latency-emulator.mjs --serial <owned emulator> --avd <name> --python <grpc venv python> --wav <speech.wav> --out <dir> (issue #395; injects speech into the virtual microphone while the harness runs)" },
   HomeCalendarCard: { campaign: "node scripts/test-calendar-regression.mjs --case=HomeCalendarCardInstrumentedTest (granted, then with calendar access revoked before the process starts)" },
 };
 

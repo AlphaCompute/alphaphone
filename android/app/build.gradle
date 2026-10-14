@@ -75,6 +75,16 @@ android {
   def elizaAsrThreads = (System.getenv('ELIZA_ASR_THREADS') ?: '').trim()
   buildConfigField 'String', 'ELIZA_ASR_BACKEND', "\"${elizaAsrBackend in ['auto', 'parakeet', 'qwen3', 'mtmd'] ? elizaAsrBackend : 'parakeet'}\""
   buildConfigField 'String', 'ELIZA_ASR_THREADS', "\"${elizaAsrThreads ==~ /[0-9]{1,2}/ ? elizaAsrThreads : ''}\""
+  // The source commit each voice latency trial records (issue #395, AlphaVoiceLatencyProbe).
+  // A tree with tracked changes is recorded as dirty; the aggregator never accepts dirty trials.
+  def sourceGit = { List<String> command ->
+   try { providers.exec { commandLine(['git', '-C', rootProject.projectDir.parentFile.absolutePath] + command); ignoreExitValue = true }.standardOutput.asText.get().trim() }
+   catch (Exception unavailable) { null }
+  }
+  def elizaSourceCommit = sourceGit(['rev-parse', 'HEAD']) ?: ''
+  def elizaSourceStatus = sourceGit(['status', '--porcelain', '--untracked-files=no'])
+  buildConfigField 'String', 'ELIZA_SOURCE_COMMIT', "\"${elizaSourceCommit ==~ /[0-9a-f]{40}/ ? elizaSourceCommit : 'unknown'}\""
+  buildConfigField 'boolean', 'ELIZA_SOURCE_DIRTY', elizaSourceStatus == null || !elizaSourceStatus.isEmpty() ? 'true' : 'false'
  }
  // Developer hooks (DevelopmentAgentPlugin, DevelopmentVoiceCapture, SyntheticAutofillService,
  // loopback cleartext config, peer-fixture visibility) are attached to debug variants only
