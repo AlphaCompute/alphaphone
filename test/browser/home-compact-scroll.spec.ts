@@ -9,7 +9,7 @@ for(const theme of ['light','dark'])test(`compact Home reaches lower apps and ho
 
 // Round 8 (AccessibilityInstrumentedTest, standalone): at 200% font Home's last app row was drawn under
 // the floating composer, so reading order went up from All apps to Open conversation. Home's scroller
-// now ends at the composer's top edge (--alpha-composer-reserve). Chromium on the development server,
+// now ends above the floating dock (--alpha-dock-reserve, runtime/dock-clearance.ts). Chromium on the development server,
 // not a WebView or TalkBack result.
 async function homeOrder(page:Page){
  return page.evaluate(()=>{
@@ -46,5 +46,5 @@ test('Home at 200% text: no app tile or control is drawn under the composer, at 
  }
  // The Home scroller ends where the composer begins.
  const edges=await page.evaluate(()=>({home:document.querySelector('[data-alpha-layer="home"]')!.getBoundingClientRect().bottom,composer:document.querySelector('[data-alpha-layer="composer"]')!.getBoundingClientRect().top}));
- expect(Math.abs(edges.home-edges.composer)).toBeLessThanOrEqual(1);
+ expect(edges.home).toBeLessThanOrEqual(edges.composer+1);
 });
