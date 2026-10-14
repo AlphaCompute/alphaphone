@@ -27,8 +27,10 @@ import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
 
 /** Real WebView boundary for the integrated provider. Standard WebView omits native
- * per-field origins, so both top-level and framed forms must receive an explicit
- * framework unavailable result. Synthetic input is never submitted to a server.
+ * per-field origins, so without engine-attested fields (BrowserLoginFields) both top-level
+ * and framed forms must receive an explicit framework unavailable result. When the WebView
+ * supports engine-attested fields, the top-level form is offered (the offer is never chosen)
+ * and the cross-origin frame is still never offered. Synthetic input is never submitted to a server.
  * Run only on the owned disposable emulator admitted by the acceptance runner. */
 @RunWith(AndroidJUnit4.class)
 public final class PasswordBrowserFillInstrumentedTest {
@@ -227,6 +229,15 @@ public final class PasswordBrowserFillInstrumentedTest {
      observationManager.set(actual);actual.registerCallback(callback);
     }catch(Exception error){throw new AssertionError(error);}});
 
+    boolean attested=BrowserLoginFields.supported();
+    if(attested){
+     // Engine-attested origin for the top-level document: the provider offers its locked
+     // dataset. It is not chosen, and the form never navigates, so nothing is filled or saved.
+     form(false);tapField("alpha-user");
+     for(int i=0;i<150&&withText(OFFER,false)==null;i++)SystemClock.sleep(100);
+     assertNotNull("Engine-attested top-level login field is offered",withText(OFFER,false));
+     type("alpha-user",username);
+    }else{
     form(true);tapField("alpha-user");
     refused(unavailable,0);
     type("alpha-user",username);
@@ -237,6 +248,7 @@ public final class PasswordBrowserFillInstrumentedTest {
     SystemClock.sleep(2500);
     assertNull("No Save offer without native field origins",withText("Alpha Phone passwords",false));
     assertNull("No provider Save sheet",withText("Save password?",false));
+    }
 
     int beforeFrame=unavailable.get();
     // A login form only inside a cross-origin iframe: focused for real, never offered.
@@ -253,7 +265,8 @@ public final class PasswordBrowserFillInstrumentedTest {
      if("true".equals(browser.child("window.__alphaFrameFocus==='alpha-frame-focus:alpha-frame-user'")))break;
     }
     assertEquals("The cross-origin frame's username field received a real focus","true",browser.child("window.__alphaFrameFocus==='alpha-frame-focus:alpha-frame-user'"));
-    refused(unavailable,beforeFrame);
+    if(attested)SystemClock.sleep(3000);
+    else refused(unavailable,beforeFrame);
     assertNull("No password offer for a cross-origin iframe",withText(OFFER,false));
     assertNull("No picker for a cross-origin iframe",withText("Choose a sign-in",false));
     }finally{

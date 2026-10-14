@@ -149,7 +149,10 @@ test('Alpha-owned native credential fields declare hints and report a website or
   const declaring = walk('android', file => /\.(java|kt|xml)$/.test(file) && !/[\\/](test|androidTest|build)[\\/]/.test(file))
     .filter(file => /setAutofillHints|AUTOFILL_HINT_(?:PASSWORD|USERNAME)|autofillHints=/.test(read(file)));
   const nativeSurfaces = inventory.surfaces.filter(s => s.kind === 'alpha-owned-native');
-  assert.deepEqual(declaring.sort(), nativeSurfaces.map(s => s.file).sort(), 'every hint-declaring native file is an inventoried native credential surface');
+  // The browser's engine-attested field adapter declares hints for website fields; it is the
+  // inventoried website surface's file and is guarded in its own test below.
+  const websiteAdapters = inventory.surfaces.filter(s => s.kind === 'website' && s.file);
+  assert.deepEqual(declaring.sort(), [...nativeSurfaces, ...websiteAdapters].map(s => s.file).sort(), 'every hint-declaring native file is an inventoried credential surface');
   for (const surface of nativeSurfaces) {
     const source = read(surface.file);
     assert.ok(inventory.rules[surface.binding], `${surface.id} names a binding rule`);
@@ -234,10 +237,12 @@ test('native Alpha UI declares no unregistered credential fields', () => {
 test('website fills bind to the committed HTTPS top-level origin of an eligible tab', () => {
   assert.match(plugin, /getBridge\(\)\.getWebView\(\)\.setImportantForAutofill\(View\.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS\);/, 'the privileged renderer WebView is never an Autofill target');
   const credential = plugin.slice(plugin.indexOf('private final class CredentialWebView'), plugin.indexOf('static String topOrigin('));
-  assert.match(credential, /onProvideAutofillVirtualStructure\(ViewStructure structure,int flags\) \{\n\s*if\(canAutofill\(tab\)\) \{/);
+  // With engine-attested fields the WebView's own structure (no per-field origins) is never offered.
+  assert.match(credential, /onProvideAutofillVirtualStructure\(ViewStructure structure,int flags\) \{\n\s*if\(canAutofill\(tab\)&&tab\.fields==null\) \{/);
+  assert.match(credential, /onProvideAutofillStructure\(ViewStructure structure,int flags\) \{\n\s*if\(canAutofill\(tab\)&&tab\.fields==null\)super\.onProvideAutofillStructure/);
   assert.match(credential, /String origin=topOrigin\(tab\.url\);\n\s*if\(origin!=null && structure\.getExtras\(\)!=null\)structure\.getExtras\(\)\.putString\(PasswordFormPolicy\.TOP_ORIGIN_EXTRA,origin\);/);
   assert.match(credential, /else structure\.setChildCount\(0\);/, 'an ineligible tab exposes no fields');
-  assert.match(credential, /public void autofill\(SparseArray<AutofillValue> values\) \{\n\s*if\(canAutofill\(tab\)\)super\.autofill\(values\);/, 'late values for an ineligible tab are dropped');
+  assert.match(credential, /public void autofill\(SparseArray<AutofillValue> values\) \{\n\s*if\(canAutofill\(tab\)&&tab\.fields==null\)super\.autofill\(values\);/, 'late values for an ineligible tab are dropped');
   const top = plugin.slice(plugin.indexOf('static String topOrigin('));
   assert.match(top.slice(0, 600), /https/, 'only HTTPS origins are reported');
   // Upstream policy: cross-origin frames and missing per-field origins are refused for the integrated vault.
@@ -257,7 +262,7 @@ test('secrets stay out of observations, transcripts and logs', () => {
   for (const file of ['apps/app/src/passwords/password-manager.ts', 'apps/app/src/browser/password-provider.ts', 'apps/app/src/prototype/browser-adapter.ts']) {
     assert.doesNotMatch(read(file), /console\.(log|info|warn|error|debug)\(/, `${file} does not log`);
   }
-  for (const file of ['AlphaBrowserPlugin.java', 'PasswordProviderSupport.java', 'BrowserPasskeys.java']) {
+  for (const file of ['AlphaBrowserPlugin.java', 'PasswordProviderSupport.java', 'BrowserPasskeys.java', 'BrowserLoginFields.java', 'BrowserFieldOrigin.java']) {
     const text = read('android/app/src/main/java/ai/elizaresearch/alphaphone/' + file);
     const logs = [...text.matchAll(/(?:android\.util\.)?Log\.[vdiwe]\([^;]*;/g)].map(match => match[0]);
     for (const line of logs) assert.doesNotMatch(line, /url|value|password|username|structure|getText|origin/i, `${file}: ${line}`);
@@ -282,5 +287,108 @@ test('the pinned password policy admits the HTTP auth prompt only for its exact 
       'vendor/eliza/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserWebOrigin.java',
       'test/fixtures/LoginBindingTest.java'], {timeout: 60000});
     assert.match(execFileSync(binary('java'), ['-cp', temporary, 'ai.elizaresearch.alphaphone.LoginBindingTest'], {encoding: 'utf8', timeout: 60000}), /^PASS login binding \d+/);
+  } finally { fs.rmSync(temporary, {recursive: true, force: true}); }
+});
+
+// Engine-attested field origins for the browser's website logins (BrowserFieldOrigin,
+// BrowserLoginFields). These guards keep the only origin source the WebView engine's
+// sourceOrigin; the rule itself runs on the JVM below and the injected script in
+// test/browser/login-field-reporter.spec.ts. Neither establishes device behaviour.
+const strip = text => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+const fieldsSource = read('android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserLoginFields.java');
+const ruleSource = read('android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserFieldOrigin.java');
+const reporterScript = read('android/app/src/main/res/raw/browser_login_fields.js');
+
+test('website field origins come only from the engine\'s sourceOrigin, never from page or script content', () => {
+  const code = strip(fieldsSource);
+  // The listener signature WebView calls, and the single place an engine source is built: from its arguments.
+  assert.match(code, /private void onPostMessage\(WebView view,WebMessageCompat message,android\.net\.Uri sourceOrigin,boolean isMainFrame,JavaScriptReplyProxy reply\)\{/);
+  assert.match(code, /new BrowserFieldOrigin\.EngineSource\(sourceOrigin==null\?null:sourceOrigin\.toString\(\),isMainFrame\)/);
+  // Every app source set: only this file builds an engine source or a binding, and only once each.
+  const appSources = walk('android/app/src', file => /\.(java|kt)$/.test(file) && !/[\\/]androidTest[\\/]/.test(file));
+  for (const file of appSources) {
+    const own = file.endsWith('BrowserLoginFields.java'), rule = file.endsWith('BrowserFieldOrigin.java');
+    const text = strip(read(file));
+    if (!own && !rule) {
+      assert.doesNotMatch(text, /EngineSource\s*\(|new\s+(?:[\w.]+\.)?Binding\s*\(\s*decision|BrowserFieldOrigin\.Binding\s*\(/, `${file} must not fabricate a field-origin engine source or binding`);
+      // Per-field origins are written only by this adapter and by the engine-bound HTTP-auth prompt.
+      if (!file.endsWith('BrowserHttpAuthAutofill.java')) assert.doesNotMatch(text, /FIELD_ORIGIN/, `${file} must not write per-field origins`);
+    }
+  }
+  assert.equal((code.match(/new BrowserFieldOrigin\.EngineSource\(/g) || []).length, 1, 'one engine source, built in the listener');
+  assert.equal((code.match(/new BrowserFieldOrigin\.Binding\(/g) || []).length, 1, 'one binding site');
+  assert.match(code, /if\(!decision\.fillable\(\)\)return;\n\s*binding=new BrowserFieldOrigin\.Binding\(decision\.origin,now\.navigation,report\);\n\s*proxy=reply;focus=report;/, 'binds only an admitted engine origin, and replies only to the reporting frame');
+  // The script report carries no origin, URL or frame: the parser accepts no such field.
+  const report = strip(ruleSource.slice(ruleSource.indexOf('static final class Report')));
+  const declared = [...report.matchAll(/(?<!static )\bfinal \w+ ([\w,]+);/g)].flatMap(match => match[1].split(','));
+  assert.deepEqual(declared.sort(), ['document', 'focused', 'height', 'kind', 'password', 'passwordAutocomplete', 'passwordValue', 'username', 'usernameAutocomplete', 'usernameValue', 'viewportWidth', 'width', 'x', 'y'].sort(), 'the script message has no origin, address or frame field');
+  assert.doesNotMatch(report, /origin|frame|location|getHost|URI\b|Uri\b/i, 'the parser never reads an address');
+  const bind = strip(ruleSource.slice(ruleSource.indexOf('static Decision bind('), ruleSource.indexOf('static final class Binding')));
+  assert.doesNotMatch(bind, /Report|message/, 'the decision reads only the engine source and the tab');
+  assert.match(bind, /if\(!origin\.equals\(top\)\)return refuse\(engine\.mainFrame\?MISMATCH:FRAME\);/, 'cross-origin frames are denied');
+  // Per-field origins are the binding's engine origin; the committed top-level URL fills only the host extra.
+  assert.match(code, /extras\.putString\(PasswordAutofillPolicy\.FIELD_ORIGIN,origin\);/);
+  assert.match(code, /child\(structure\.newChild\(index\+\+\),parent,base\+1,current\.origin,false,/);
+  assert.doesNotMatch(code, /notifyViewVisibilityChanged/, 'fields are never reported invisible (a provider may save when all fields disappear)');
+  assert.match(code, /child\(structure\.newChild\(index\),parent,base\+2,current\.origin,true,/);
+  assert.match(code, /String top=BrowserFieldOrigin\.exactHttps\(host\.snapshot\(\)\.state\.documentUrl\);[\s\S]{0,200}extras\.putString\(PasswordFormPolicy\.TOP_ORIGIN_EXTRA,top\);/);
+  assert.equal((code.match(/FIELD_ORIGIN/g) || []).length, 1, 'FIELD_ORIGIN is written in one place');
+  // Fail closed: no binding or no admission, no fields; late values are dropped.
+  assert.match(code, /if\(current==null\|\|!admitted\(\)\)\{structure\.setChildCount\(0\);return;\}/);
+  assert.match(code, /public int getImportantForAutofill\(\)\{return admitted\(\)\?View\.IMPORTANT_FOR_AUTOFILL_YES:View\.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS;\}/);
+  assert.match(code, /if\(values==null\|\|target==null\|\|!admitted\(\)\)return;/);
+  assert.match(code, /private boolean admitted\(\)\{BrowserFieldOrigin\.Binding current=binding;return !closed&&current!=null&&proxy!=null&&current\.admits\(host\.snapshot\(\)\);\}/);
+  // Values go only to the reporting frame's reply proxy, with the binding's origin for the script's own check.
+  assert.equal((code.match(/\.postMessage\(/g) || []).length, 1, 'one outbound message');
+  assert.match(code, /target\.postMessage\(message\.toString\(\)\);/);
+  assert.match(code, /message\.put\("t","fill"\)\.put\("d",current\.document\)\.put\("o",current\.origin\);/);
+  // Submitted values reach only the framework session (the provider asks the user before saving).
+  assert.match(code, /if\(binding==null\|\|!binding\.sameFrame\(engine,report\)\|\|!binding\.admits\(now\)\)return;/);
+  // Isolated world only: page script cannot reach the channel or the script, and no page-world injection exists.
+  assert.match(code, /WebViewCompat\.addWebMessageListener\(web,CHANNEL,Set\.of\("\*"\),fields\.world,fields::onPostMessage\);/);
+  assert.match(code, /WebViewCompat\.addJavaScriptOnEvent\(web,source,WebViewCompat\.INJECTION_EVENT_DOCUMENT_START,Set\.of\("\*"\),fields\.world\);/);
+  assert.doesNotMatch(code, /addDocumentStartJavaScript|addJavascriptInterface|evaluateJavascript|PAGE_WORLD/);
+  assert.match(code, /WebViewFeature\.isFeatureSupported\(WebViewFeature\.WEB_MESSAGE_LISTENER\)&&WebViewFeature\.isFeatureSupported\(WebViewFeature\.JS_INJECTION_IN_FRAME_AND_WORLD\)/, 'runtime feature check');
+  // No logging or persistence of anything here.
+  for (const [name, text] of [['BrowserLoginFields', fieldsSource], ['BrowserFieldOrigin', ruleSource]]) {
+    assert.doesNotMatch(strip(text), /\bLog\.[vdiwe]\(|printStackTrace|System\.(?:out|err)|SharedPreferences|FileOutputStream/, name);
+  }
+  // The browser installs the adapter before any load and makes it the tab's only Autofill surface.
+  assert.match(plugin, /t\.fields=BrowserLoginFields\.install\(t\.web,\(\)->fieldSnapshot\(t\)\);\n\s*if\(t\.fields!=null\)t\.frame\.addView\(t\.fields\.anchor, new FrameLayout\.LayoutParams\(-1,-1\)\);/);
+  assert.ok(plugin.indexOf('t.fields=BrowserLoginFields.install(') < plugin.indexOf('t.web.setWebViewClient(new WebViewClient() {'), 'installed before the tab can load');
+  assert.match(plugin, /t\.web\.setImportantForAutofill\(t\.fields==null\?View\.IMPORTANT_FOR_AUTOFILL_YES:View\.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS\);/);
+  assert.match(plugin, /snapshot\.supported=t\.fields!=null&&!destroyed&&tabs\.get\(t\.id\)==t;\n\s*snapshot\.state=autofillState\(t\);snapshot\.navigation=t\.navigation;/);
+  // Revocation: cancel (tab change, overlay, navigation, error, close) hides first; commit ends after Save values are taken.
+  assert.match(plugin, /private void cancelAutofill\(Tab t\) \{\n\s*t\.autofillEnabled=false;(?:\n\s*\/\/[^\n]*)*\n\s*if\(t\.fields!=null\)t\.fields\.revoke\(true\);/);
+  assert.match(plugin, /if\(manager!=null\)manager\.commit\(\);\n[^\n]*\n\s*if\(t\.fields!=null\)t\.fields\.revoke\(false\);/);
+  assert.match(plugin, /else \{if\(t\.fields!=null\)t\.fields\.revoke\(true\);t\.web\.setImportantForAutofill\(View\.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS\);\}/);
+  assert.match(plugin, /if\(t\.fields!=null\)\{t\.fields\.close\(\);/, 'closed with the tab');
+  assert.match(plugin, /disableAutofill\(t\); if\(t\.fields!=null\)t\.fields\.close\(\);/, 'closed on renderer loss');
+});
+
+test('the injected reporter sends no origin and fills only its own registered fields', () => {
+  const code = strip(reporterScript);
+  assert.ok((code.match(/send\(`[^`]*`\)/g) || []).length >= 5, 'every report kind is checked');
+  for (const send of code.match(/send\(`[^`]*`\)/g) || []) assert.doesNotMatch(send, /location|origin|href|document\.URL|top\b/, send);
+  assert.match(code, /if \(!event\.isTrusted\) return;/, 'trusted events only');
+  assert.match(code, /data\.d !== documentId \|\| data\.o !== location\.origin\) return;/);
+  assert.match(code, /const channel = globalThis\.__alphaLoginFields;/);
+  assert.doesNotMatch(code, /console\.|localStorage|sessionStorage|indexedDB|fetch\(|XMLHttpRequest|sendBeacon|postMessage\((?!message)/);
+  assert.match(fieldsSource, /static final String CHANNEL="__alphaLoginFields";/);
+});
+
+test('the field-origin rule and the pinned password policy run on the JVM', () => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'field-origin-'));
+  const java = process.env.JAVA_HOME || (process.platform === 'darwin' ? '/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home' : '');
+  const binary = name => java ? path.join(java, 'bin', name) : name;
+  try {
+    execFileSync(binary('javac'), ['--release', '17', '-d', temporary,
+      'android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserFieldOrigin.java',
+      'vendor/eliza/plugins/plugin-native-passwords/android/src/main/java/ai/eliza/plugins/passwords/PasswordFormPolicy.java',
+      'vendor/eliza/plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/PasswordFacets.java',
+      'vendor/eliza/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserAutofillEligibility.java',
+      'vendor/eliza/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserWebOrigin.java',
+      'test/fixtures/FieldOriginBindingTest.java'], {timeout: 60000});
+    assert.match(execFileSync(binary('java'), ['-cp', temporary, 'ai.elizaresearch.alphaphone.FieldOriginBindingTest'], {encoding: 'utf8', timeout: 60000}), /^PASS field origin binding \d+/);
   } finally { fs.rmSync(temporary, {recursive: true, force: true}); }
 });
