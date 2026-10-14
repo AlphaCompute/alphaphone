@@ -81,7 +81,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let newerMail = false,spamTrashSearch=false;
   const watchSelectedMail=()=>{const binding=connectionController.getCloudClient();if(binding)void configureGmailBackground(binding.credentialId,selected).catch(()=>{});};
   let closeMailQuestion:(()=>void)|undefined;
-  let noticeAttempt=0;
+  let noticeAttempt=0,noAgentNoticeToken='';
   async function openNotice(){
     if(document.hidden||!shell||closeMailQuestion)return;
     const noticeShell=shell,attempt=++noticeAttempt;
@@ -95,6 +95,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if(tap.question){
         const agent=connectionController.getSnapshot().session,enrollment=JSON.stringify(connectionController.getWorkflowDeviceTarget());
         const live=()=>current()&&connectionController.getSnapshot().session===agent&&JSON.stringify(connectionController.getWorkflowDeviceTarget())===enrollment&&!connectionController.getSnapshot().open&&!alphaClient.getState().context.sensitive;
+        if(!agent&&current()&&noAgentNoticeToken!==tap.token){noAgentNoticeToken=tap.token;noticeShell.toast('Select an agent before asking about this message. The notification is retained.');}
         if(!agent||!tap.messageId||!tap.threadId||!live())return;
         // Explicit Ask reads the exact current message; background delivery never fetches its body.
         // Only the subject/snippet selected here enters review, never body or attachments.

@@ -68,7 +68,9 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         closeNoticeQuestion=reviewOwnNoticeQuestion({notice:{id:selected.id,revision:pending.target.revision,source:'own',title:selected.title,text:selected.body||'',appLabel:'Alpha Phone'},current:live,recheck:async()=>{
           const again=await DailyApps.pendingReminderTap();if(!live()||again.token!==pending.token||!again.question||!again.retained||!sameTarget(again.target,pending.target))return false;
           const fresh=await DailyApps.listReminders();return live()&&fresh.reminders.some(row=>sameTarget(row.target,pending.target)&&row.title===selected.title&&(row.body||'')===(selected.body||''));
-        },consume:()=>DailyApps.consumeReminderTap({token:pending.token!}),release:()=>DailyApps.releaseReminderQuestion({token:pending.token!}),compose:draft=>shell.api(shell.S().view).composeContentQuestion(draft),report:message=>shell.toast(message),closed:()=>{closeNoticeQuestion=undefined;}});
+        },consume:()=>DailyApps.consumeReminderTap({token:pending.token!}),release:()=>DailyApps.releaseReminderQuestion({token:pending.token!}),compose:draft=>shell.api(shell.S().view).composeContentQuestion(draft),report:message=>shell.toast(message),closed:()=>{closeNoticeQuestion=undefined;
+          // Refresh only the saved-link banner from native; never reopen the review here.
+          void DailyApps.pendingReminderTap().then(next=>{if(owner===shell&&shell.live)shell.vset('calendar',{reminderTapPending:!!next.token,reminderTapToken:next.token});}).catch(()=>{});}});
         return;
       }
       await DailyApps.consumeReminderTap({token:pending.token});
