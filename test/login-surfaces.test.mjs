@@ -61,6 +61,20 @@ test('the inventory covers websites, other apps and every Alpha-owned secret fie
   assert.equal(inventory.surfaces.find(s => s.id === 'third-party-app-login').binding, 'appBinding');
 });
 
+test('subscription redemption is inventoried but excluded from password-provider fill', () => {
+  const surface = inventory.surfaces.find(s => s.id === 'eliza-cloud-subscription-code');
+  assert.ok(surface, 'subscription grant entry must remain explicitly inventoried');
+  assert.equal(surface.kind, 'alpha-owned');
+  assert.equal(surface.eligible, false, 'a redemption code is not a reusable credential');
+  assert.equal(surface.binding, undefined, 'never bind a grant code to a website or app password');
+  assert.equal(surface.providers, undefined, 'no password-provider fill route');
+  const field = read(surface.file).match(/<input[^\n]*name="subscription-code"[^\n]*\/>/);
+  assert.ok(field, 'the inventoried redemption input exists');
+  assert.match(field[0], /autoComplete="one-time-code"/);
+  assert.match(field[0], /data-autofill-ignore="true"/);
+  assert.match(plugin, /getBridge\(\)\.getWebView\(\)\.setImportantForAutofill\(View\.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS\);/, 'framework exclusion, not the HTML marker, prevents native password fill');
+});
+
 test('no Alpha-owned login form is eligible until it has a provider-owned native fill route', () => {
   // The renderer WebView is excluded from Autofill, so registering an Alpha-owned form as
   // eligible without a native credential surface would be a false claim.
