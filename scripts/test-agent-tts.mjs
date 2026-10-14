@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './retired-host-speech-proof.mjs';
 /** Real authenticated agent TTS, intelligibility, isolation and worker cancellation. */
 import assert from 'node:assert/strict';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';

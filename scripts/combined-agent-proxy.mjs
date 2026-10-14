@@ -52,7 +52,7 @@ export function createCombinedAgentProxy({host, getActive, timeout = 180000, max
         }
         if (reply.statusCode === 429) active.providerFailure = true;
         if (successful && post) {
-          if (req.url === '/api/asr/whisper') active.asr++;
+          if (req.url === '/api/asr/libelizainference') active.asr++;
           if (req.url === '/api/tts/local-inference') active.tts++;
           if (req.url.startsWith('/api/client-devices/')) {
             if (req.url.endsWith('/decision')) active.deviceDecisions++;

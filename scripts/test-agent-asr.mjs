@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './retired-host-speech-proof.mjs';
 /** Verify synthetic speech against the real authenticated local agent ASR route. */
 import assert from 'node:assert/strict';
 import {readFile,mkdtemp,rm,writeFile,mkdir} from 'node:fs/promises';
