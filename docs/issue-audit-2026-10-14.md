@@ -15,7 +15,9 @@ identify the concrete work left rather than closing broad issues from partial PR
 #415 closed after PR468 integrated the source/JVM repairs and 32 focused production
 browser checks. PR469 separately corrects Clock caller admission; physical Clock
 acceptance remains open.
-The other 27 issues remain open. None of this audit changes the approved scope,
+Eight audited issues are now closed for tracking (#396, #401, #405, #407, #408,
+#415, #418 and #425); 20 remain open. Except for #415's source boundary, those
+closures consolidate unmet acceptance in [the #378 qualification ledger](https://github.com/AlphaCompute/alphaphone/issues/378#issuecomment-6161377036); they do not establish device/provider qualification. None of this audit changes the approved scope,
 pricing, quotas, signing authority or hardware target.
 
 | Issue | Existing implementation / evidence | Remaining requirement |
@@ -26,7 +28,7 @@ pricing, quotas, signing authority or hardware target.
 | [#395](https://github.com/AlphaCompute/alphaphone/issues/395) | scripts/aggregate-voice-latency.mjs originally accepted 25 renderer/text samples, excluded manual review and called policy undecided; new native-voice-latency.mjs validates native sample boundary and cohort evidence | Native instrumentation not yet connected to capture/playback; at least 50 actual simple-query trials at exact source/model hashes, physical audible boundary and thermal/network evidence. New parser is tooling only; synthetic regression inputs are not acceptance. |
 | [#396](https://github.com/AlphaCompute/alphaphone/issues/396) | PR428 production hosted pairing/restore removal and retained legacy history; native owner/generation-bound credential store; PR445/467 subscription binding/gate. | Real resident sign-in, expiry/revoke, wrong-origin callbacks and account isolation with deployed Cloud services still require live qualification. |
 | [#397](https://github.com/AlphaCompute/alphaphone/issues/397) | apps/app/src/runtime/voice-selection.ts production selectVoiceRoute returns cloud; apps/app/src/prototype/voice-adapter.ts directly constructs Cloud voice; docs/local-speech-research-2026-10-12.md | Reviewed shared native inference STT/TTS integration and candidate benchmarking; Cloud removal across every entrypoint. A selector flip alone would retain chat uploads or break functionality. |
-| [#398](https://github.com/AlphaCompute/alphaphone/issues/398) | Native Gmail consumer now binds encrypted checkpoint/notice metadata to owner, credential and selected grant generation; WorkManager/resume checks, redacted at-most-once notices and validated Inbox taps. Cloud history contract: [Eliza PR36173](https://github.com/elizaOS/eliza/pull/36173), head `6c8156ab50b00bff5f04092a03f3d4a2b94af157`. See [consumer evidence](gmail-background-reconciliation.md). | Endpoint deployment and real mailbox/device Doze/denial/lock/reboot/process-death qualification remain missing. Quiet initial/expired baselines explicitly do not claim complete missed-mail backfill. Keep open. |
+| [#398](https://github.com/AlphaCompute/alphaphone/issues/398) | Native Gmail consumer now binds encrypted checkpoint/notice metadata to owner, credential and selected grant generation; WorkManager/resume checks, redacted at-most-once notices and validated Inbox taps. Cloud history contract: [Eliza PR36173](https://github.com/elizaOS/eliza/pull/36173), with deployment still unverified. See [consumer evidence](gmail-background-reconciliation.md). | Endpoint deployment and real mailbox/device Doze/denial/lock/reboot/process-death qualification remain missing. Quiet initial/expired baselines explicitly do not claim complete missed-mail backfill. Keep open. |
 | [#399](https://github.com/AlphaCompute/alphaphone/issues/399) | docs/implementation-plan.md approved Pixel10a Android17 target; android/release-signer.json unset; Android strict build fails for absent speech AAR | Admit exact physical source/firmware/SKU hash lock; four packaged variants with qualifying assets; Cuttlefish, Pixel device/update/recovery/user acceptance separately. |
 | [#400](https://github.com/AlphaCompute/alphaphone/issues/400) | android/release-signer.json signerSha256=unset | Alpha-controlled managed/hardware key, certificate descriptor, update channel/recovery image and signed/interrupted-update/rollback drills. Owner assigned; custody and evidence absent. |
 | [#401](https://github.com/AlphaCompute/alphaphone/issues/401) | ClockHandoff.java uses reviewed create/show intents with dispatch-only receipts; reminders remain separate. stage-aosp.mjs appends clockProductRequirement from scripts/aosp-clock-contract.mjs, explicitly shipping DeskClock in an additive Alpha-only launcher overlay. Commit 8dfb937e4 hardens read-only image admission to require enabled system DeskClock and explicit expected image fingerprint; 2 behavioral tests pass. | Actual target-image alarm creation, return-to-Alpha, ring/snooze/dismiss/reboot/DST/time-zone/DND acceptance remains. Image source verification must not be confused with physical ringing. Keep open. |
@@ -100,7 +102,17 @@ Combined repository verification and exact-head hosted CI are in progress.
 `android/local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar` is absent. No local
 APK, image, hardware, real Gmail/SMS, signing or release acceptance is claimed.
 
-Latest upstream Java/JNI speech inspection still establishes batch ASR and Kokoro,
-not JNI streaming ASR, `cancel_tts`, or Clef. Native speech requires implementation
-and qualified assets; this Gmail work does not change that boundary or close any
-of the other 27 audited issues.
+The audited pin `13c98575987a121decc45b161b0c8a4ee698554e` establishes batch ASR
+and Kokoro, not JNI streaming ASR, `cancel_tts`, or Clef. New upstream work in
+[PR36168](https://github.com/elizaOS/eliza/pull/36168) and
+[PR36177](https://github.com/elizaOS/eliza/pull/36177) must be reviewed at its served
+source and qualified assets; this audit does not establish voice acceptance.
+
+## Own-notification Ask inventory
+
+Workflow result Ask already exists; PR472 adds approval/quiet approval Ask. Shared
+[Reminder PR36179](https://github.com/elizaOS/eliza/pull/36179) and its Alpha adapter
+add exact-source reminder review with reusable cancellation. Gmail, hosted result
+and source-renewal publishers are separate follow-ups; navigation progress has no
+qualified immutable question source yet. External Calendar notifications and OS
+DownloadManager notifications are not Alpha-owned publishers. #449 stays open.

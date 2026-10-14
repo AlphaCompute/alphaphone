@@ -2,8 +2,7 @@
 
 Source implementation for issue #398; the issue remains open for deployed-service
 and real mailbox/device acceptance. The consumer uses the managed owner endpoint
-from [Eliza PR36173](https://github.com/elizaOS/eliza/pull/36173), reviewed at
-`6c8156ab50b00bff5f04092a03f3d4a2b94af157`. An absent endpoint is shown as unavailable,
+from [Eliza PR36173](https://github.com/elizaOS/eliza/pull/36173), with its deployed served source still requiring verification. An absent endpoint is shown as unavailable,
 not a successful sync. No OAuth grant, credential or send capability is created.
 
 ## Ownership and durable progress
