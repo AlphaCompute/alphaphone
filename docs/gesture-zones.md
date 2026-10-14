@@ -5,8 +5,9 @@ notifications and quick settings. It records the behaviour in source after the o
 2026-10-12 decisions A-32 and A-33 (issues #416 and #417): `apps/app/src/prototype/model.js`,
 `system-shade.ts`, `template.html`, `phone.css`, `SystemShade.java` and `AlphaDevicePlugin.java`.
 Browser tests are Chromium on a development or production build. They are not emulator,
-TalkBack, AOSP-image or device evidence. The instrumented classes named at the end ran on an
-API 35 Google APIs emulator on 2026-10-14 (class E, [verification](verification.md#emulator-results-at-69a4be6c-2026-10-14-system-shade-416-417));
+TalkBack, AOSP-image or device evidence. The instrumented classes named at the end, except
+`NotificationChannelsInstrumentedTest`, ran at `69a4be6c` on an API 35 Google APIs emulator on
+2026-10-14 (class E, developer APKs, [verification](verification.md#emulator-results-at-69a4be6c-2026-10-14-system-shade-416-417));
 that is not AOSP-image, Pixel 10a, real TalkBack or device acceptance.
 
 ## The rule
