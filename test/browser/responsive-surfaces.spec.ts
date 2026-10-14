@@ -122,6 +122,18 @@ test('Inbox shows the open message beside its list on a wide canvas and keeps th
   // The message it replaced is left read, as Back leaves it, and is no longer the open row.
   await expect(jordan).not.toHaveAttribute('aria-label', /^Unread, /);
   await expect(jordan).toHaveAttribute('aria-current', 'false');
+  // A reply covers both panes, and its draft survives collapsing and widening again.
+  await page.getByRole('button', { name: 'Reply', exact: true }).click();
+  await expect.poll(() => inert(list)).toBe(true);
+  const reply = page.getByRole('region', { name: 'Email draft fields', exact: true }).getByRole('textbox').last();
+  await reply.fill('Do not lose this reply while the layout changes.');
+  await resize(page, { width: 412, height: 915 });
+  await expect(reply).toHaveValue('Do not lose this reply while the layout changes.');
+  await resize(page, { width: 1280, height: 800 });
+  await expect(reply).toHaveValue('Do not lose this reply while the layout changes.');
+  await expect.poll(() => inert(list)).toBe(true);
+  await page.getByRole('button', { name: 'Back from draft', exact: true }).click();
+  await expect.poll(() => inert(list)).toBe(false);
   // Focus on the list when the split collapses moves into the open message that now covers it.
   await jordan.focus();
   await resize(page, { width: 412, height: 915 });
@@ -162,13 +174,15 @@ test('Calendar day columns open the occurrence of the column that was tapped and
   const labels = await columns.evaluateAll(list => list.map(column => column.getAttribute('aria-label')));
   // The weekday Standup repeats, so the same event is in several columns: the tapped column's
   // occurrence opens, not the first one.
+  // From three columns the previous day leads, so column i shows the day i - 1 from today.
+  await expect(columns.nth(1)).toHaveAttribute('aria-current', 'date');
   let index = -1;
-  for (let i = labels.length - 1; i >= 2 && index < 0; i--) if (await columns.nth(i).getByRole('button', { name: /^Standup, / }).count()) index = i;
-  expect(index).toBeGreaterThanOrEqual(2);
+  for (let i = labels.length - 1; i >= 3 && index < 0; i--) if (await columns.nth(i).getByRole('button', { name: /^Standup, / }).count()) index = i;
+  expect(index).toBeGreaterThanOrEqual(3);
   await columns.nth(index).getByRole('button', { name: /^Standup, / }).click();
   const detail = page.locator('[data-alpha-subview="calendar-detail"]');
   await expect(detail).toContainText('Standup');
-  const day = await page.evaluate(offset => { const date = new Date(); date.setDate(date.getDate() + offset); return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date); }, index);
+  const day = await page.evaluate(offset => { const date = new Date(); date.setDate(date.getDate() + offset); return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date); }, index - 1);
   await expect(detail).toContainText(day);
   await resize(page, { width: 412, height: 915 });
   await expect(detail).toContainText('Standup');
@@ -178,4 +192,48 @@ test('Calendar day columns open the occurrence of the column that was tapped and
   await page.getByRole('button', { name: 'Back to calendar', exact: true }).click();
   await expect(detail).toHaveCount(0);
   await expect.poll(() => columns.evaluateAll(list => list.map(column => column.getAttribute('aria-label')))).toEqual(labels);
+});
+
+test('voice and link notes open beside the Notes list on a wide canvas', async ({ page }) => {
+  await openMock(page, 'Notes');
+  await resize(page, { width: 1280, height: 800 });
+  const list = page.locator('[data-alpha-subview="notes-list"]');
+  await page.getByRole('button', { name: 'Open Design sync', exact: true }).click();
+  const voice = page.locator('[data-alpha-subview="notes-voice"]');
+  await expect(voice).toBeVisible();
+  await expect.poll(() => inert(list)).toBe(false);
+  expect((await box(list)).x + (await box(list)).width).toBeLessThanOrEqual((await box(voice)).x + 1);
+  await expect(page.getByRole('button', { name: 'Open Design sync', exact: true })).toHaveAttribute('aria-current', 'true');
+  await page.getByRole('button', { name: 'Open The case for on-device agents', exact: true }).click();
+  const link = page.locator('[data-alpha-subview="notes-link"]');
+  await expect(link).toBeVisible();
+  await expect(voice).toHaveCount(0);
+  await expect.poll(() => inert(list)).toBe(false);
+  await resize(page, { width: 412, height: 915 });
+  await expect.poll(() => inert(list)).toBe(true);
+  await expect(link).toBeVisible();
+});
+
+test('Files keeps folder entries beside the same selected preview and moves focus off a covered folder', async ({ page }) => {
+  await page.goto('/?mode=dev');
+  await page.evaluate(async () => { const { registerPlugin } = await import('/src/platform-plugins.ts'); await registerPlugin<any>('AlphaFiles').importFile(new File(['A retained selected document.'], 'panes.txt', { type: 'text/plain' })); });
+  await resize(page, { width: 1280, height: 800 });
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
+  await page.getByRole('button', { name: 'App files', exact: true }).last().click();
+  const root = page.locator('[data-alpha-subview="files-list"]'), folder = page.locator('[data-alpha-subview="files-folder"]');
+  await page.getByRole('button', { name: 'Open panes.txt', exact: true }).click();
+  const preview = page.locator('[data-alpha-subview="files-preview"]');
+  await expect(preview).toContainText('panes.txt');
+  const original = await preview.elementHandle();
+  await expect.poll(() => inert(folder)).toBe(false);
+  await expect.poll(() => inert(root)).toBe(true);
+  expect((await box(folder)).x + (await box(folder)).width).toBeLessThanOrEqual((await box(preview)).x + 1);
+  await page.getByRole('button', { name: 'Open panes.txt', exact: true }).focus();
+  await resize(page, { width: 412, height: 915 });
+  await expect.poll(() => inert(folder)).toBe(true);
+  await expect.poll(() => preview.evaluate(element => element.contains(document.activeElement))).toBe(true);
+  expect(await preview.evaluate((element, previous) => element === previous, original)).toBe(true);
+  await resize(page, { width: 1280, height: 800 });
+  await expect.poll(() => inert(folder)).toBe(false);
+  expect(await preview.evaluate((element, previous) => element === previous, original)).toBe(true);
 });

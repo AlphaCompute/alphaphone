@@ -52,3 +52,14 @@ test('Google Calendar admission is confined to body-free reads of the reviewed s
  }
  assert.equal(allowed('https://api.eliza.app/api/v1/eliza/google/calendar/events','GET'),false);
 });
+
+test('Eliza Cloud Maps admission is the exact reviewed routes with location data only in a POST body',()=>{
+ const base='https://api.eliza.app/api/v1/maps/';
+ assert.equal(allowed(base+'capabilities','GET'),true);
+ for(const [url,method,body] of [[base+'capabilities?region=x','GET',false],[base+'capabilities','GET',true],[base+'capabilities','POST',true],[base+'capabilities/','GET',false]])assert.equal(allowed(url,method,body),false,`${method} ${url}`);
+ for(const route of ['geocode','reverse','places/search','places/details','routes']){
+  assert.equal(allowed(base+route,'POST',true),true,route);
+  for(const [url,method,body] of [[base+route,'POST',false],[base+route+'?lat=1','POST',true],[base+route+'?q=x','GET',false],[base+route,'GET',false],[base+route+'/','POST',true],[base.replace('api.eliza.app','api-staging.eliza.app')+route,'POST',true],[base.replace('api.eliza.app','agent.cloud.eliza.app')+route,'POST',true]])assert.equal(allowed(url,method,body),false,`${method} ${url}`);
+ }
+ for(const path of ['/api/v1/maps','/api/v1/maps/tiles/1/2/3','/api/v1/maps/places','/api/v1/maps/navigation','/api/v1/maps/%72outes','/api/v1/maps//routes'])for(const method of ['GET','POST'])assert.equal(allowed('https://api.eliza.app'+path,method,method==='POST'),false,path);
+});

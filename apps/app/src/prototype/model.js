@@ -1361,7 +1361,7 @@ registerView("calendar", {
       if (pending) css += ";border:1.5px dashed var(--mut);box-shadow:none";
       var h = Math.max(24, e.d * CAL_PX - 4); var short = h < 40;
       return {
-        title: e.title, time: fmtT(e.t), top: (e.t - CAL_H0) * CAL_PX + 8, h: h, left: 60 + laneOf[e.id] * w, w: w - 4,
+        title: e.title, time: fmtT(e.t), agendaTime: formatHours(e.t), top: (e.t - CAL_H0) * CAL_PX + 8, h: h, left: 60 + laneOf[e.id] * w, w: w - 4,
         css: css + (short ? ";align-items:center;padding-top:0;padding-bottom:0" : ""),
         stripe: e.key || e.hold || pending ? "transparent" : CAL_COLORS[c.color],
         sub: !short && e.d >= 1 ? (e.where || (e.video ? "Video call" : "")) : "", showTime: w >= 150,
@@ -1509,7 +1509,7 @@ registerView("calendar", {
       events: dayCount > 1 ? [] : dayEvents, dayEvents: dayEvents, hours: hours,
       empty: dayCount > 1 ? dayColumns.every(function (c) { return !c.events.length; }) : evs.length === 0,
       multiDay: dayCount > 1, dayCount: dayCount,
-      dayColumns: calendarDayColumns(dayColumns, api.now, (nowT - CAL_H0) * CAL_PX + 8, nowT >= CAL_H0 && nowT <= CAL_H1),
+      dayColumns: calendarDayColumns(dayColumns, api.now, (nowT - CAL_H0) * CAL_PX + 8, nowT >= CAL_H0 && nowT <= CAL_H1, sel),
       showNow: dayCount < 2 && sel === 0 && nowT >= CAL_H0 && nowT <= CAL_H1, nowTop: (nowT - CAL_H0) * CAL_PX + 8,
       tlDown: tlDown, tlUp: tlUp,
       notToday: sel !== 0, goToday: function () { set({ day: 0, month: null }); },

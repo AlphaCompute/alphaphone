@@ -4,6 +4,7 @@ import { CloudPersonalProtocol, PersonalProtocolError } from './cloud-personal-p
 import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
 import { reviewOpaqueAttachment, type OpaqueMailAttachment } from './inbox-operation.ts';
 import { gmailCapabilitiesFor } from './gmail-grants.ts';
+import type { CloudMapsRoute } from '../maps/cloud-provider.ts';
 import { BILLING_LIMITS_PATH, ENTITLEMENT_KEYS_PATH, ENTITLEMENT_PATH, REDEEM_PATH, fallbackPlanFromLimits, normalizeSubscriptionCode, readServiceLimit, SubscriptionRedeemError, type EntitlementSource, type FallbackPlan, type RedeemResult } from './subscription-entitlement.ts';
 /** Narrow Alpha adapter for Eliza Cloud. Contracts inspected in v3's
  * cloud/api/auth/cli-session, cloud/api/v1/eliza/{agents,google}, and
@@ -556,7 +557,7 @@ export class CloudProtocol {
   async initiateGoogle(signal:AbortSignal, calendarPermission:'read'|'write'='read', gmailPermission:'read'|'modify'|'send'|'drafts'|'mailbox'='read'):Promise<string> {
     if(!['read','write'].includes(calendarPermission))throw new TypeError('Invalid Calendar permission');
     if(!['read','modify','send','drafts','mailbox'].includes(gmailPermission))throw new TypeError('Invalid Gmail permission');
-    const response=object(await this.googleRequest('/api/v1/eliza/google/connect/initiate',signal,{side:'owner',capabilities:[
+    const response=object(await this.accountRequest('/api/v1/eliza/google/connect/initiate',signal,{side:'owner',capabilities:[
       ...gmailCapabilitiesFor(gmailPermission==='modify'?'modify':'read'),'google.calendar.read',...(calendarPermission==='write'?['google.calendar.write']:[]),
       ...(['read','modify'].includes(gmailPermission)?[]:[gmailPermission==='send'?'google.gmail.send':gmailPermission==='drafts'?'google.gmail.drafts':'google.gmail.mailbox']),
     ]}));
@@ -568,7 +569,7 @@ export class CloudProtocol {
     return url.href;
   }
   /** Reject responses from an account that changed while its request was in flight. */
-  private async googleRequest(path:string,signal:AbortSignal,body?:unknown):Promise<unknown> {
+  private async accountRequest(path:string,signal:AbortSignal,body?:unknown):Promise<unknown> {
     const credential=await this.credentials.read(this.environment);signal.throwIfAborted();
     if(!credential)throw new CloudProtocolError('credentials-missing');
     const binding=JSON.stringify([credential.credentialId,credential.credentialReference,credential.token,credential.userId,credential.organizationId]);
@@ -577,9 +578,15 @@ export class CloudProtocol {
     if(!current||JSON.stringify([current.credentialId,current.credentialReference,current.token,current.userId,current.organizationId])!==binding)throw new CloudProtocolError('account-changed');
     return data;
   }
+  /** Eliza Cloud Maps data (#412) on the exact reviewed routes. Queries and coordinates
+   * travel only in the JSON body; capabilities is a bare read. GPS and navigation stay on the phone. */
+  async mapsRequest(route:CloudMapsRoute,signal:AbortSignal,body?:Record<string,unknown>):Promise<Record<string,unknown>> {
+    if(!['capabilities','geocode','reverse','places/search','places/details','routes'].includes(route)||(route==='capabilities')!==(body===undefined))throw new CloudProtocolError('invalid-response');
+    return object(await this.accountRequest(`/api/v1/maps/${route}`,signal,body));
+  }
   async googleCalendars(grantId:string,signal:AbortSignal):Promise<GoogleCalendarSummary[]> {
     const params=new URLSearchParams({side:'owner',grantId:uuid(grantId)});
-    const data=await this.googleRequest(`/api/v1/eliza/google/calendar/calendars?${params}`,signal);
+    const data=await this.accountRequest(`/api/v1/eliza/google/calendar/calendars?${params}`,signal);
     if(!Array.isArray(data))throw new CloudProtocolError('invalid-response');
     const seen=new Set<string>();
     return data.map(value=>{
@@ -594,7 +601,7 @@ export class CloudProtocol {
     if(timestamp(range.timeMax)<=timestamp(range.timeMin))throw new TypeError('Calendar range must end after it starts');
     try{new Intl.DateTimeFormat('en-US',{timeZone:range.timeZone}).format();}catch{throw new TypeError('Invalid Calendar time zone');}
     const params=new URLSearchParams({side:'owner',grantId,calendarId,timeMin:range.timeMin,timeMax:range.timeMax,timeZone:range.timeZone});
-    const data=object(await this.googleRequest(`/api/v1/eliza/google/calendar/feed?${params}`,signal));
+    const data=object(await this.accountRequest(`/api/v1/eliza/google/calendar/feed?${params}`,signal));
     if(data.calendarId!==calendarId||!Array.isArray(data.events)||data.nextPageToken!=null||data.truncated===true)throw new CloudProtocolError('invalid-response');
     timestamp(data.syncedAt);
     const plain=(value:unknown)=>{if(typeof value!=='string')throw new CloudProtocolError('invalid-response');return value;};
