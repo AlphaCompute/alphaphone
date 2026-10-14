@@ -1,6 +1,6 @@
 import {type Page} from '@playwright/test';
 // Renderer contract only. The synthetic bridge does not qualify Android permissions or MediaStore.
-export async function photosBridge(page:Page,scope='full'){
+export async function photosBridge(page:Page,scope='full',openPhotos=true){
  await page.addInitScript(scope=>{
   localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
   const w=window as any;w.androidBridge={};const calls:any[]=[];const listeners:Record<string,()=>void>={};
@@ -36,5 +36,5 @@ export async function photosBridge(page:Page,scope='full'){
     return {};
    }};
  },scope);
- await page.goto('/');await page.getByRole('button',{name:'Photos',exact:true}).click();
+ await page.goto('/');if(openPhotos)await page.getByRole('button',{name:'Photos',exact:true}).click();
 }

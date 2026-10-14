@@ -2,7 +2,8 @@ import {test,expect,type Page} from '@playwright/test';
 import {photosBridge} from './helpers/photos-bridge';
 const dialog=(page:Page)=>page.getByRole('dialog',{name:'Use selected file in email',exact:true});
 async function setup(page:Page){
- await photosBridge(page);
+ // Start from Home: Inbox must load its reviewed draft target before Photos hands it a source.
+ await photosBridge(page,'full',false);
  await page.evaluate(async()=>{
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
   const {Component}=await import('/src/prototype/model.js');
