@@ -1,7 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {cloudNotesVoiceFixture,notesRecorder,openNotesRecorder,recordClosedClip,noPhysicalOrLocalVoice} from './cloud-notes-voice-fixture';
-// Default Notes UI is Cloud-only. Optional real Whisper qualification remains
-// separately in browser-speech-engine.spec.ts; it is not exercised by these ports.
+// Explicit development Cloud ports remain separate from production native speech.
 test('unsigned Notes voice offers Cloud sign-in before any capture or local preparation',async({page})=>{
  const f=await cloudNotesVoiceFixture(page,false);await openNotesRecorder(page);await expect(notesRecorder(page).getByRole('button',{name:'Connect Eliza Cloud',exact:true})).toBeEnabled();await expect(page.getByRole('button',{name:/Start recording|Record without transcription|Use browser voice|Use development voice/})).toHaveCount(0);await noPhysicalOrLocalVoice(page);expect(f.foreign).toEqual([]);
 });

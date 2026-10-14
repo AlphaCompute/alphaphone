@@ -3,13 +3,14 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {nativeInputPaths,nativeJavaPath,nativeBinding,nativeInputs,nativeGenerated,verifyNativeJava} from './embedding-native-contract.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const hash=file=>sha(fs.readFileSync(file));
 const names=['libelizainference.so','libelizavoicejni.so','libc++_shared.so'];
 const model={path:'android/app/src/main/assets/agent/models/bge-small-en-v1.5-f16.gguf',sha256:'f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999',dimensions:384};
 const forkPath='plugins/plugin-local-inference/native/llama.cpp';
-const inputPaths=['packages/app/scripts/stage-elizavoice-lib.ts','packages/app/scripts/build-helpers/arm64-simd.ts','packages/app/scripts/build-helpers/verify-fused-symbols.ts','packages/app/platforms/android/app/src/main/elizavoice-jni/CMakeLists.txt','packages/app/platforms/android/app/src/main/elizavoice-jni/elizavoice-jni.cpp'];
+
 const isCommit=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value)&&value!=='0'.repeat(40);
 /** A new runtime pin may reuse reviewed binaries only when every native build input is exact. */
 export function verifyEmbeddingInputs(productRoot,qualification) {
@@ -17,17 +18,24 @@ export function verifyEmbeddingInputs(productRoot,qualification) {
  const identity=JSON.parse(fs.readFileSync(path.join(productRoot,'app.config.json'),'utf8')).appId;
  if(!isCommit(pin)||!isCommit(qualification.pin)||!isCommit(qualification.forkPin)||qualification.identity!==identity||qualification.abi!=='arm64-v8a')throw Error('Embedding host source or identity admission changed');
  const inputs=qualification.inputs;
- if(!Array.isArray(inputs)||inputs.length!==inputPaths.length||new Set(inputs.map(row=>row?.path)).size!==inputPaths.length||inputs.some(row=>!inputPaths.includes(row?.path)||!/^[a-f0-9]{64}$/.test(row.sourceSha256)||!/^[a-f0-9]{64}$/.test(row.generatedSha256)))throw Error('Embedding host build input qualification missing or changed');
+
  const vendor=path.join(productRoot,'vendor/eliza');
  const git=(...args)=>execFileSync('git',['-C',vendor,...args],{maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']});
  try {
   if(git('rev-parse','HEAD').toString().trim()!==pin)throw Error('Locked vendor pin is not checked out');
+  const source=relative=>git('show',pin+':'+relative).toString();
+  const cpp=source(nativeInputPaths.at(-1)),cmake=source(nativeInputPaths.at(-2)),binding=nativeBinding(cpp,cmake,identity),inputPaths=nativeInputs(binding);
+  if(!Array.isArray(inputs)||inputs.length!==inputPaths.length||new Set(inputs.map(row=>row?.path)).size!==inputPaths.length||inputs.some(row=>!inputPaths.includes(row?.path)||!/^[a-f0-9]{64}$/.test(row.sourceSha256)||!/^[a-f0-9]{64}$/.test(row.generatedSha256)))throw Error('Embedding host build input qualification missing or changed');
+  if(binding.mode==='registered'){
+   if(!qualification.jniBinding||Object.keys(qualification.jniBinding).length!==3||Object.entries(binding).some(([key,value])=>qualification.jniBinding[key]!==value))throw Error('Native registration identity qualification missing or changed');
+   verifyNativeJava(cpp,source(nativeJavaPath));
+  }
   git('diff','--quiet','HEAD','--',...inputPaths,forkPath);
   const fork=git('ls-tree',pin,forkPath).toString().match(/^160000 commit ([a-f0-9]{40})\t/)?.[1];
   if(fork!==qualification.forkPin)throw Error('Native engine gitlink changed');
   for(const row of inputs){
    const source=git('show',pin+':'+row.path);
-   const generated=row.path.endsWith('.cpp')?source.toString('utf8').replaceAll('Java_ai_elizaos_app_','Java_'+identity.replaceAll('.','_')+'_').replaceAll('ai/elizaos/app/',identity.replaceAll('.','/')+'/'):source;
+   const generated=nativeGenerated(row.path,source.toString('utf8'),identity,binding);
    if(sha(source)!==row.sourceSha256||sha(generated)!==row.generatedSha256)throw Error('Native build input changed: '+row.path);
   }
  } catch(error){throw Error('Embedding host source admission changed: '+error.message,{cause:error});}
@@ -76,7 +84,7 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
   // agent:stage-android stages the model with the runtime payload; this command only checks it.
   if(!fs.existsSync(path.join(root,model.path)))throw Error('Pinned BGE model is not staged: run npm run agent:prepare, npm run agent:build-workflow-worker and npm run agent:stage-android first');
   if(hash(path.join(root,model.path))!==model.sha256)throw Error('Pinned BGE model bytes changed');
-  const manifest={pin:receipt.pin,forkPin:receipt.forkPin,identity,abi:receipt.abi,model,libraries:libraries.map(({source,target,...row})=>row),qualificationReceiptSha256:hash(args[1]),jniIdentityRelocated:true,inputs:receipt.inputs};
+  const manifest={pin:receipt.pin,forkPin:receipt.forkPin,identity,abi:receipt.abi,model,libraries:libraries.map(({source,target,...row})=>row),qualificationReceiptSha256:hash(args[1]),jniIdentityRelocated:true,inputs:receipt.inputs,...(receipt.jniBinding?{jniBinding:receipt.jniBinding}:{})};
   const manifestFile=path.join(root,'android/embedding-host/qualified-host.json');
   if(fs.existsSync(manifestFile)&&fs.readFileSync(manifestFile,'utf8')!==JSON.stringify(manifest,null,2)+'\n')throw Error('Existing embedding qualification differs; review before replacing');
   for(const row of libraries){fs.mkdirSync(path.dirname(row.target),{recursive:true});if(!fs.existsSync(row.target))fs.copyFileSync(row.source,row.target,fs.constants.COPYFILE_EXCL);}

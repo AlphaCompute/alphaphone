@@ -100,6 +100,7 @@ test("the privileged listener is pinned by a reviewed descriptor and must carry 
   const arm = qualified.find(row => row.abi === "arm64-v8a");
   const entries = ["AndroidManifest.xml", "classes.dex", "assets/local-speech/v1/manifest.json", ...arm.native.map(lib => `lib/arm64-v8a/${lib.file}`)];
   assert.deepEqual(checkListenerSpeechBundle(entries, qualified), ["arm64-v8a"]);
+  assert.throws(() => checkListenerSpeechBundle([...entries, "assets/paradee-voice/v1/manifest.json"], qualified), /legacy Sherpa qualification cannot certify/);
   assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("assets/local-speech/")), qualified), /no assets\/local-speech\/v1\/manifest\.json/, "an APK without the model can never listen");
   assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("lib/")), qualified), /no qualified speech runtime/);
   const hashes = Object.fromEntries(arm.native.map(lib => [`lib/arm64-v8a/${lib.file}`, lib.sha256]));

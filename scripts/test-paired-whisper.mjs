@@ -1,4 +1,5 @@
 /** Actual owner-paired standalone whisper.cpp HTTP, synthetic Kokoro speech only. */
+import './retired-host-speech-proof.mjs';
 import fs from 'node:fs';import http from 'node:http';import crypto from 'node:crypto';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';import os from 'node:os';import path from 'node:path';import {RemoteProtocol} from '../apps/app/src/runtime/remote-protocol.ts';
 const origin='http://127.0.0.1:47846',out='test-results/paired-whisper';fs.mkdirSync(out,{recursive:true});
 const raw=input=>new Promise((resolve,reject)=>{const request=http.request(input.url,{method:input.method,headers:{...input.headers,Host:'10.0.2.2:47846'},signal:input.signal},response=>{const chunks=[];let size=0;response.on('data',chunk=>{size+=chunk.length;if(size>8*1024*1024)request.destroy(Error('Response bound'));else chunks.push(chunk);});response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,bytes:Buffer.concat(chunks)}));response.on('error',reject);});request.on('error',reject);request.end(input.body);});
