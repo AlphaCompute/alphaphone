@@ -337,8 +337,10 @@ shortcuts and both native default-app bridge entry points require image
 admission. The ordinary installed-app drawer and Android's own emergency access
 are preserved. Agent view/workflow and native DailyApps routes continue to deny
 Phone/SMS. Contacts navigation is admitted only by the native image capability;
-READ_CONTACTS is requested explicitly inside that admitted view. No phone or SMS
-permissions are declared.
+READ_CONTACTS is requested explicitly inside that admitted view. No phone permission is
+declared. The launcher flavor alone declares `READ_SMS` and `SEND_SMS` for the image-only SMS/MMS
+reads and reviewed sends described in [architecture](architecture.md#smsmms-on-the-image-421);
+the standalone flavor removes them and no flavor declares `RECEIVE_SMS`, `RECEIVE_MMS` or `CALL_PHONE`.
 
 The shared extension is an explicit hash-admitted patch in
 `patches/eliza/system-product-capabilities.patch`; default hooks preserve
@@ -353,8 +355,8 @@ Contacts adapter work adds same-profile, permission-gated bounded provider reads
 inside the admitted image. Contact rows remain in renderer memory. Creation and editing
 use a pinned system Contacts editor with account selection and save handled by Android;
 Alpha has no WRITE_CONTACTS permission or import/export path. Native selection checks bind
-provider ID, lookup key and last-update revision before edit handoff. Phone and SMS adapters
-remain disabled. The ContactsCatalog instrumentation class creates and cleans only its
+provider ID, lookup key and last-update revision before edit handoff. Phone and SMS views
+remain disabled; the native SMS contract exists only behind the image capability. The ContactsCatalog instrumentation class creates and cleans only its
 own synthetic contacts in a disposable profile; this provider test is not image admission,
 real address-book acceptance, or a Telecom/SMS result.
 ## System secure camera

@@ -84,10 +84,11 @@ test("the telephony plugin is registered and answers only on the verified image"
   // Every @PluginMethod, overrides of Capacitor's inherited permission methods included.
   const methods = [...plugin.matchAll(/@PluginMethod public void (\w+)\(PluginCall call\)\s*\{\s*([^\n]*)/g)];
   assert.equal(methods.length, (plugin.match(/@PluginMethod/g) || []).length, "no plugin method escapes the check");
-  assert.deepEqual(methods.map(m => m[1]).sort(), ["checkPermissions", "composeSms", "dial", "imageCapability", "requestAccess", "requestPermissions", "requestRole", "searchContacts", "status"]);
+  assert.deepEqual(methods.map(m => m[1]).sort(), ["checkPermissions", "composeSms", "dial", "imageCapability", "listMessages", "listThreads", "observeMessages", "requestAccess", "requestPermissions", "requestRole", "searchContacts", "sendSms", "smsSendResult", "status"]);
   for (const [, name, first] of methods) assert.match(first, /^if \(!?refused\(call\)\)/, `${name} re-checks the capability before anything else`);
   for (const callback of plugin.matchAll(/@(?:Permission|Activity)Callback private void (\w+)\([^)]*\) \{ (.*)/g)) assert.match(callback[2], /refused\(call\)/, `${callback[1]} re-checks the capability`);
-  assert.doesNotMatch(plugin, /SmsManager|sendTextMessage|ACTION_CALL\b|placeCall|WRITE_CONTACTS|insert\(|applyBatch/, "no direct call, send or contact write");
+  assert.doesNotMatch(plugin, /sendTextMessage|sendMultipartTextMessage|ACTION_CALL\b|placeCall|WRITE_CONTACTS|insert\(|applyBatch/, "no direct call or contact write; native SMS dispatch lives only in AlphaSms behind the native review");
+  assert.equal((plugin.match(/AlphaSms\.dispatch\(/g) || []).length, 1, "one dispatch site, inside the owner's Send decision");
   assert.match(plugin, /Intent\.ACTION_DIAL/); assert.match(plugin, /Intent\.ACTION_SENDTO/);
   assert.match(plugin, /if \(!eligibleFor\(role\)\)/, "a role request Android could only refuse is never shown");
 });
@@ -112,8 +113,13 @@ test("permissions: standalone has none, the launcher declares read access only, 
   }
   assert.ok(removed(main).includes("android.permission.WRITE_CONTACTS"), "contact writes are removed from every build");
   for (const xml of [main, launcher, standalone])
-    for (const permission of ["SEND_SMS", "READ_SMS", "RECEIVE_SMS", "CALL_PHONE", "READ_CALL_LOG", "WRITE_CALL_LOG", "ANSWER_PHONE_CALLS"])
+    for (const permission of ["RECEIVE_SMS", "RECEIVE_MMS", "RECEIVE_WAP_PUSH", "CALL_PHONE", "READ_CALL_LOG", "WRITE_CALL_LOG", "ANSWER_PHONE_CALLS"])
       assert.ok(!declared(xml).includes(`android.permission.${permission}`), `${permission} is not declared`);
+  // SMS reads and reviewed sends (#421): launcher flavor only, never main or standalone.
+  for (const permission of ["SEND_SMS", "READ_SMS"]) {
+    assert.ok(!declared(main).includes(`android.permission.${permission}`) && !declared(standalone).includes(`android.permission.${permission}`), `${permission} is launcher-only`);
+    assert.ok(declared(launcher).includes(`android.permission.${permission}`), `launcher declares ${permission}`);
+  }
   assert.match(launcher, /android\.intent\.action\.SENDTO"\/><data android:scheme="smsto"/);
   assert.doesNotMatch(main, /<intent><action android:name="android\.intent\.action\.SENDTO"\/><data android:scheme="smsto"\/><\/intent>/, "only the image-capable flavor can see SMS handlers");
 });
