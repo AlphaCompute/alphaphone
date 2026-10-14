@@ -155,3 +155,17 @@ test('the Android collector times capture from AudioRecord and playback from the
   // The trial carries numbers and labels only: no text reaches the collector.
   for (const source of [probe, read('VoiceLatencyTrials.java')]) assert.doesNotMatch(source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, ''), /transcript|\btext\b/i);
 });
+
+test('duplicate trial provenance changes cannot replace an accepted record', () => {
+  for (const mutate of [row => { row.identity.sourceDirty = true; }, row => { row.thermal = 'severe'; }, row => { row.network = 'cellular'; }, row => { row.audibleClock = 'start-call'; }, row => { row.reason = 'no-response'; }]) {
+    const rows = samples(), changed = structuredClone(rows[0]); mutate(changed);
+    for (const docs of [[document(rows), document([changed])], [document([changed]), document(rows)]]) {
+      const result = aggregateNativeVoice(docs);
+      assert.equal(result.conflictingTrials, 1);
+      assert.equal(result.withinBudget, false);
+    }
+  }
+  const rows = samples(); rows.forEach(row => { row.audibleClock = 'start-call'; });
+  assert.equal(aggregateNativeVoice([document(rows)]).sufficient, false);
+  assert.equal(rejection({ ...trial(0), pipeline: 'toString' }), 'pipeline');
+});

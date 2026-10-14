@@ -106,6 +106,7 @@ export async function openNativeLiveStream(input: {
   let ended!: () => void;
   const endedPromise = new Promise<void>(resolve => { ended = resolve; });
   const detach = () => Promise.all(handles.splice(0).map(handle => handle.remove().catch(() => {})));
+  try {
   handles.push(await plugin.addListener('liveCaptureFrames', event => {
     if (!accepting || event?.captureId !== captureId) return;
     const frames = Array.isArray(event.frames) ? event.frames.filter(isFrame) : [];
@@ -118,6 +119,7 @@ export async function openNativeLiveStream(input: {
     ended();
     if (!stopping) { accepting = false; lose(Object.assign(Error('The microphone stopped.'), { code: 'capture', ...(typeof event.error === 'string' ? { reason: event.error } : {}) })); }
   }));
+  } catch (error) { stream.cancel(); await detach(); throw error; }
   let stopped: Promise<void> | undefined;
   const stopNative = () => stopped ??= (async () => {
     stopping = true;

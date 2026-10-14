@@ -38,7 +38,7 @@ const label = value => typeof value === 'string' && value.length > 0 && value.le
 export function rejection(row) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) return 'not an object';
   if (!label(row.id)) return 'id';
-  if (!(row.pipeline in pipelines)) return 'pipeline';
+  if (!Object.hasOwn(pipelines, row.pipeline)) return 'pipeline';
   if (row.clock !== 'native-monotonic-ms' || !captureClocks.includes(row.captureClock)) return 'clock';
   if (typeof row.cold !== 'boolean' || !outcomes.includes(row.outcome)) return 'cold/outcome';
   const id = row.identity;
@@ -93,7 +93,7 @@ export function aggregateNativeVoice(documents, required = { warm: 20, cold: 5 }
       const reason = rejection(row);
       if (reason) { invalid++; rejected[reason] = (rejected[reason] ?? 0) + 1; continue; }
       // IDs identify trials globally. Conflicting exports cannot quietly keep an earlier success.
-      const canonical = JSON.stringify([row.pipeline, row.cold, row.outcome, row.captureClock, identityKeys.map(key => row.identity[key]), marks.map(key => row.marks[key] ?? null)]);
+      const canonical = JSON.stringify([row.pipeline, row.cold, row.outcome, row.captureClock, row.audibleClock, row.reason, row.coldReason, row.network, row.thermal, row.thermalHeadroom, row.identity.sourceDirty, identityKeys.map(key => row.identity[key]), marks.map(key => row.marks[key] ?? null)]);
       const prior = records.get(row.id);
       if (prior && prior.canonical !== canonical) conflicts.add(row.id);
       else records.set(row.id, { row, canonical });
@@ -111,7 +111,7 @@ export function aggregateNativeVoice(documents, required = { warm: 20, cold: 5 }
   const cohorts = [...groups.values()].map(({ pipeline, network, identity, models, rows }) => {
     const passed = rows.filter(row => row.outcome === 'passed');
     const eligible = pipelines[pipeline] === 'voice-assistant' && identity.environment === 'device' && identity.abi === 'arm64-v8a'
-      && /-release$/.test(identity.build) && identity.sourceDirty === false && passed.every(row => row.captureClock === 'audiorecord-timestamp');
+      && /-release$/.test(identity.build) && identity.sourceDirty === false && passed.every(row => row.captureClock === 'audiorecord-timestamp' && row.audibleClock === 'mediaplayer-timestamp');
     const result = {
       pipeline, network, identity, models,
       class: eligible ? 'acceptance-candidate' : identity.environment === 'emulator' ? 'emulator-diagnostic' : 'diagnostic',
