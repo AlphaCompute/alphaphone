@@ -10,13 +10,25 @@ physical hardware, real providers and release acceptance are separate gates.
 Historical evidence remains bound to its recorded source/artifact. The rows below
 identify the concrete work left rather than closing broad issues from partial PRs.
 
+## Current integration update
+
+The rows below record the initial audit evidence, not a claim that all described
+source gaps still exist. PR493 advances shared contracts to
+`644d56c93df9e410b1ef4297f961cb1df9e7d152`, migrates native/host speech to
+Paradee and shared ASR, removes production Cloud speech selection, and adds
+separate editable dictation. See [current speech boundaries](shared-speech-migration-2026-10-14.md).
+Its source tests do not qualify runtime/model bytes, streaming ASR/Clef, both ABIs,
+or physical devices. Current dependency PRs must pass their exact-head CI and
+merge before these changes count as main-branch completion.
+
 ## Disposition
 
 #415 closed after PR468 integrated the source/JVM repairs and 32 focused production
 browser checks. PR469 separately corrects Clock caller admission; physical Clock
 acceptance remains open.
-Eight audited issues are now closed for tracking (#396, #401, #405, #407, #408,
-#415, #418 and #425); 20 remain open. Except for #415's source boundary, those
+Nine audited issues are now closed for tracking (#396, #401, #405, #407, #408,
+#409, #415, #418 and #425); 19 remain open. #409 closed after the reset recovery
+source fixes in PR475; its actual-image/reset/interruption acceptance remains in #378. Except for #415's source boundary, those
 closures consolidate unmet acceptance in [the #378 qualification ledger](https://github.com/AlphaCompute/alphaphone/issues/378#issuecomment-6161377036); they do not establish device/provider qualification. None of this audit changes the approved scope,
 pricing, quotas, signing authority or hardware target.
 
