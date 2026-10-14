@@ -103,7 +103,7 @@ public final class NativeVoiceLatencyInstrumentedTest {
   HandlerThread playbackThread=new HandlerThread("latency-playback");playbackThread.start();playback=new Handler(playbackThread.getLooper());
   // Warm start: the first trial is still marked cold (first turn of the process).
   worker.submit(()->{try{asr=bundle.openAsr();assertTrue(asr.supportsStreaming());voice=bundle.openVoice();}catch(Exception error){throw new RuntimeException(error);}}).get(300,TimeUnit.SECONDS);
-  AlphaLiveVoiceCapture.SourceFactory source=feed?feedSource(new File(app.getFilesDir(),"latency-feed"),gapSeconds):AlphaLiveVoiceCapture.MicrophoneSource::new;
+  AlphaLiveVoiceCapture.SourceFactory source=feed?feedSource(new File(app.getFilesDir(),"latency-feed"),gapSeconds):()->new AlphaLiveVoiceCapture.MicrophoneSource(app,false);
   AlphaLiveVoiceCapture capture=new AlphaLiveVoiceCapture(app,UUID.randomUUID().toString(),new AlphaLiveVoiceCapture.Sink(){
    public void frames(String captureId,JSArray frames,JSArray vad,float peak){
     batchesSeen.incrementAndGet();synchronized(maxPeak){if(peak>maxPeak[0])maxPeak[0]=peak;}

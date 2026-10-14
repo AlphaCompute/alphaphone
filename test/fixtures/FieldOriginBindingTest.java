@@ -169,6 +169,30 @@ public final class FieldOriginBindingTest {
   eq(false, binding.sameFrame(engine("https://example.com", true), focus("blur|" + DOC)), "revoked binding owns no frame");
   eq(false, binding.admits(null), "no tab");
 
+  // --- Deferred focus: a field focused before the tab is eligible (autofocus during load) ---
+  BrowserFieldOrigin.EngineSource top = engine("https://example.com", true);
+  BrowserFieldOrigin.TabSnapshot early = tab(page, 7); early.state.loading = true;
+  BrowserFieldOrigin.Deferred deferred = BrowserFieldOrigin.Deferred.of(top, report, early, BrowserFieldOrigin.bind(top, early));
+  eq(true, deferred != null, "focus while the page loads is kept for retry");
+  BrowserFieldOrigin.TabSnapshot finished = tab(page, 7);
+  eq(true, deferred.current(finished), "same navigation once the load finishes");
+  eq("https://example.com", origin(deferred.engine, finished), "retry binds through the full rule once eligible");
+  BrowserFieldOrigin.TabSnapshot prompt = tab(page, 7); prompt.state.overlay = true;
+  eq(true, BrowserFieldOrigin.Deferred.of(top, report, prompt, BrowserFieldOrigin.bind(top, prompt)) != null, "focus while a site prompt is open is kept");
+  eq(false, deferred.current(tab(page, 8)), "a later navigation never inherits the deferred field");
+  eq(true, deferred.sameFrame(top, focus("blur|" + DOC)), "blur of the same document ends the wait");
+  eq(false, deferred.sameFrame(engine("https://evil.example", false), focus("blur|" + DOC)), "another frame cannot end the wait");
+  eq(false, deferred.sameFrame(top, focus("blur|fedcba9876543210")), "another document cannot end the wait");
+  BrowserFieldOrigin.EngineSource frame = engine("https://evil.example", false);
+  BrowserFieldOrigin.Deferred framed = BrowserFieldOrigin.Deferred.of(frame, report, early, BrowserFieldOrigin.bind(frame, early));
+  eq(true, framed != null, "a cross-origin frame focused during load is only kept, never bound");
+  eq(BrowserFieldOrigin.FRAME, refusal(framed.engine, finished), "and is still refused once the tab is eligible");
+  eq(null, BrowserFieldOrigin.Deferred.of(frame, report, finished, BrowserFieldOrigin.bind(frame, finished)), "a final refusal is not retried");
+  BrowserFieldOrigin.TabSnapshot unsupported = tab(page, 7); unsupported.supported = false;
+  eq(null, BrowserFieldOrigin.Deferred.of(top, report, unsupported, BrowserFieldOrigin.bind(top, unsupported)), "unsupported WebView is not retried");
+  eq(null, BrowserFieldOrigin.Deferred.of(top, focus("blur|" + DOC), early, BrowserFieldOrigin.bind(top, early)), "only focus reports are kept");
+  eq(null, BrowserFieldOrigin.Deferred.of(top, report, finished, BrowserFieldOrigin.bind(top, finished)), "an admitted focus needs no retry");
+
   // --- The pinned upstream policy with the anchor's structure ---
   String bound = "https://example.com:8443";
   PasswordFormPolicy.Target fill = PasswordFormPolicy.evaluate(HOST, HOST, true, activity(anchor(bound, bound, true, null, null)), p -> false, false);
