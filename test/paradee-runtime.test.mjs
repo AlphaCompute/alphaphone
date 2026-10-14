@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {verifyParadeeRuntime,PARADEE_SOURCE,PARADEE_NATIVE} from '../scripts/paradee-runtime.mjs';
+import {verifyParadeeRuntime,verifyParadeeAppLinkage,PARADEE_SOURCE,PARADEE_NATIVE} from '../scripts/paradee-runtime.mjs';
 function fixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-paradee-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;}
 function write(root,name,value){const file=path.join(root,name);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,value);return {path:name,bytes:Buffer.byteLength(value),sha256:createHash('sha256').update(value).digest('hex')};}
 function ffi(root){
@@ -39,3 +39,12 @@ test('staged runtime requires an exact clean nested FFI checkout',t=>{const root
  const saved=fork+'-saved';fs.renameSync(fork,saved);fs.mkdirSync(fork);assert.throws(()=>verifyParadeeRuntime(root),/submodule update/);fs.rmdirSync(fork);fs.renameSync(saved,fork);
  execFileSync('git',['-C',fork,'-c','user.name=Fixture','-c','user.email=fixture@example.test','commit','--allow-empty','-m','wrong head'],{stdio:'pipe'});assert.throws(()=>verifyParadeeRuntime(root),/FFI source/);
 });
+
+test('app packaging requires the exact inference bytes for both ABIs, independent of sense admission',t=>{
+ const root=fixture(t),{native}=complete(root);assert.deepEqual(verifyParadeeRuntime(root),{packaged:true,qualified:false});
+ assert.throws(()=>verifyParadeeAppLinkage(root),/App inference/);
+ for(const abi of ['arm64-v8a','x86_64'])write(root,`android/app/src/main/jniLibs/${abi}/libelizainference.so`,fs.readFileSync(path.join(native,`jniLibs/${abi}/libelizainference.so`)));
+ assert.deepEqual(verifyParadeeAppLinkage(root),{packaged:true,qualified:false});
+ write(root,'android/app/src/main/jniLibs/x86_64/libelizainference.so','different');assert.throws(()=>verifyParadeeAppLinkage(root,{allowAbsent:true}),/x86_64/);
+});
+test('app Java-only allowance never admits a partial Paradee output',t=>{const root=fixture(t);assert.deepEqual(verifyParadeeAppLinkage(root,{allowAbsent:true}),{packaged:false,qualified:false});fs.mkdirSync(path.join(root,PARADEE_NATIVE),{recursive:true});assert.throws(()=>verifyParadeeAppLinkage(root,{allowAbsent:true}),/missing/);});

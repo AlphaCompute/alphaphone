@@ -60,7 +60,18 @@ export function verifyParadeeRuntime(root,{allowAbsent=false}={}){
  for(const pin of asr.files){if(!pin.path?.startsWith('asr/')||!pin.path.endsWith('.gguf'))throw Error('Invalid ASR pin');checkedFile(path.join(native,bundle),pin);const entry=manifest.files.find(row=>row.path===pin.path);if(!entry||entry.sha256!==pin.sha256||entry.bytes!==pin.bytes)throw Error('Reviewed ASR model/projector changed');}
  return {packaged:true,qualified:false};
 }
+/** The app omits the voice bundle's engine and must package those same reviewed bytes via its host. */
+export function verifyParadeeAppLinkage(root,options={}){
+ const result=verifyParadeeRuntime(root,options);if(!result.packaged)return result;
+ const native=path.join(root,PARADEE_NATIVE),record=JSON.parse(fs.readFileSync(path.join(native,'build-record.json'),'utf8'));
+ for(const abi of ['arm64-v8a','x86_64']){
+  const entry=record.files.find(row=>row.path===`jniLibs/${abi}/libelizainference.so`);
+  try{checkedFile(root,{...entry,path:`android/app/src/main/jniLibs/${abi}/libelizainference.so`});}
+  catch(error){throw Error('App inference library must match the Paradee build record for '+abi,{cause:error});}
+ }
+ return result; // Integrity/linkage only; functional qualification is still false.
+}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const args=process.argv.slice(2);if(args.some(arg=>arg!=='--allow-absent'))throw Error('Unknown Paradee verification option');
- console.log(JSON.stringify(verifyParadeeRuntime(path.resolve(import.meta.dirname,'..'),{allowAbsent:args.includes('--allow-absent')})));
+ const args=process.argv.slice(2);if(args.some(arg=>arg!=='--allow-absent'&&arg!=='--app-linkage'))throw Error('Unknown Paradee verification option');
+ console.log(JSON.stringify((args.includes('--app-linkage')?verifyParadeeAppLinkage:verifyParadeeRuntime)(path.resolve(import.meta.dirname,'..'),{allowAbsent:args.includes('--allow-absent')})));
 }

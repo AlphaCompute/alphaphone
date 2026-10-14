@@ -28,6 +28,8 @@ git -C vendor/eliza submodule update --init plugins/plugin-local-inference/nativ
 
 Admission verifies the parent's gitlink, nested HEAD, clean source, and exact FFI header bytes. The Java-only unpackaged lane with entirely absent native outputs does not need this checkout.
 
+The app additionally runs `node scripts/paradee-runtime.mjs --app-linkage`: both packaged ABI inference libraries must byte-match the voice build record. The listener packages its own verified copy and does not depend on app staging. Matching bytes establish linkage integrity only, not functional qualification.
+
 The new fused library also requires new embedding-host qualification; prior
 Sherpa/embedding bytes cannot be relabeled. Device/ABI speech functionality,
 quality, interruption and latency evidence remain required before distribution.
