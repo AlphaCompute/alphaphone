@@ -8,6 +8,7 @@ import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-a
 import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
 // Register browser implementations before any runtime module claims plugin identity.
 import './browser/register';
+import { installSmsAdapter } from './prototype/sms-adapter';
 import { installContactsAdapter } from './prototype/contacts-adapter';
 import { admitImageContacts } from './prototype/mvp-features';
 import {DeletionUndo} from './runtime/deletion-undo';
@@ -103,7 +104,7 @@ if (!fixture) {
   installAgentAdapter(Component, VIEWS);
   installReminderAdapter(Component, VIEWS);
   installCalendarAdapter(Component, VIEWS);
-  if(isAndroid)installContactsAdapter(Component,VIEWS);
+  if(isAndroid){installContactsAdapter(Component,VIEWS);installSmsAdapter(Component,VIEWS);}
   installCalendarFormDraftAdapter(Component, VIEWS);
   installCalendarEditDraftAdapter(Component, VIEWS);
   installGoogleCalendarViewAdapter(Component, VIEWS);
@@ -157,6 +158,8 @@ function installBrowserCapabilityTiles(Component:any){
   };
 }
 let shell: any;
+/** A hosted-notice question may fill only the live conversation of the same verified session. */
+function questionTarget(sessionId:string){const snapshot=connectionController.getSnapshot();return Boolean(shell?.live&&!document.hidden&&!snapshot.open&&snapshot.session?.sessionId===sessionId);}
 let launcherPresentation = false;
 /** Opened through ACTION_ASSIST (AlphaAssistActivity): chat and close only. */
 let assistantSurface = false;
@@ -246,7 +249,7 @@ function Phone() {
     else if(action==='resume'){delete document.documentElement.dataset.devBackground;shell.unlock();window.dispatchEvent(new Event('focus'));}
     if(['power','unlock','boot','background','resume'].includes(action))window.dispatchEvent(new Event('alpha:device-state'));
   }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component configureChatPull={(surface:{input:boolean;scale:number})=>setPullSurface(current=>current.input===surface.input&&current.scale===surface.scale?current:surface)} chatPullBinding={chatPullBinding} phoneSurface assistantSurface={assistantSurface} onCloseAssistant={closeAssistant} onReopenStartupAccess={isAndroid && !fixture && !assistantSurface ? reopenStartupPermissions : undefined} systemShell={launcherPresentation} systemShade={systemShade} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
-{!fixture && <><ConnectionChooser /><GoogleConnectionsPanel />{!assistantSurface && <><HostedDigestPanel />{!connection.open && <StartupPermissions />}</>}</>}</>;
+{!fixture && <><ConnectionChooser /><GoogleConnectionsPanel />{!assistantSurface && <><HostedDigestPanel canComposeQuestion={questionTarget} composeQuestion={(draft,sessionId)=>{if(!questionTarget(sessionId))return false;shell.api(shell.S().view).composeContentQuestion(draft);return true;}} />{!connection.open && <StartupPermissions />}</>}</>}</>;
 }
 /** Android's locale and 24-hour setting; WebView Intl alone does not follow the latter. */
 async function applyDeviceLocale() {

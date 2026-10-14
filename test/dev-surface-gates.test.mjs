@@ -111,7 +111,7 @@ async function regional({testMocks,devSurfaces,baseUrl,native=false,developmentB
  return {...context.result,diagnostic:context.result.regionalDiagnostics(),fetched,configured};
 }
 
-test('regional Maps accepts loopback HTTP and the emulator gateway only with test mocks',async()=>{
+test('regional Maps is a test-mocks prototype; loopback HTTP and the emulator gateway exist only there',async()=>{
  const unset=await regional({testMocks:false,devSurfaces:false,baseUrl:undefined});
  assert.equal(unset.diagnostic.stage,'no-configuration');assert.equal(unset.diagnostic.configured,false);assert.deepEqual(unset.fetched,[]);
  assert.equal(unset.regionalDataset.providerId,'alpha-osm-monaco');assert.equal(unset.regionalDataset.coverage.region,'Monaco');
@@ -124,8 +124,12 @@ test('regional Maps accepts loopback HTTP and the emulator gateway only with tes
  assert.deepEqual(devWeb.fetched,['http://127.0.0.1:47850/capabilities'],'development server may use the loopback gateway');
  const releaseNative=await regional({testMocks:true,devSurfaces:false,baseUrl:'http://10.0.2.2:47850',native:true,developmentBuild:false});
  assert.deepEqual(releaseNative.fetched,[],'a non-development native build never uses the emulator gateway');
+ // The regional gateway is a development prototype (#412): product builds use Eliza Cloud Maps.
  const https=await regional({testMocks:false,devSurfaces:false,baseUrl:'https://maps.example/'});
- assert.deepEqual(https.fetched,['https://maps.example/capabilities']);
+ assert.deepEqual(https.fetched,[],'flag-off builds never contact a regional gateway');
+ assert.equal(https.diagnostic.configured,false);
+ const httpsDev=await regional({testMocks:true,devSurfaces:false,baseUrl:'https://maps.example/'});
+ assert.deepEqual(httpsDev.fetched,['https://maps.example/capabilities']);
 });
 
 test('production Wallet saved routes and direct open/pay requests cannot enter the prototype payment flow',async()=>{

@@ -12,6 +12,10 @@ public final class ConnectionRoutesTest {
   // Session checks, pair-code display and unrelated routes are not the pairing mutation.
   for(String path:new String[]{"/api/auth/me","/api/auth/pair-code","/api/auth/status","/api/auth/logout","/api/auth/pairing","/api/v1/user","/",null})check(!ConnectionRoutes.retiredPairing(path,false),"flag-off keeps "+path);
   check(!ConnectionRoutes.retiredPairing("/api/auth/pair",true),"test-mocks builds keep development pairing");
+  // #406: product builds declare nothing to a hosted or paired agent runtime over this transport.
+  for(String name:new String[]{"accept","content-type","authorization"}){check(ConnectionRoutes.admittedHeader(name,false),"flag-off admits "+name);check(ConnectionRoutes.admittedHeader(name,true),"test mocks admit "+name);}
+  for(String name:new String[]{"x-eliza-device-id","x-eliza-device-key","x-eliza-device-capabilities","x-eliza-phone-protocol"}){check(!ConnectionRoutes.admittedHeader(name,false),"flag-off refuses "+name);check(ConnectionRoutes.admittedHeader(name,true),"test mocks keep "+name);}
+  for(String name:new String[]{"cookie","x-eliza-agent-id","Authorization","X-Eliza-Phone-Protocol","",null})check(!ConnectionRoutes.admittedHeader(name,true)&&!ConnectionRoutes.admittedHeader(name,false),"header "+name);
 
   check(revoke("https","api.eliza.app",-1,"/api/v1/api-keys/current",null,"DELETE",false,false),"production self-revocation");
   check(revoke("https","api.eliza.app",443,"/api/v1/api-keys/current",null,"DELETE",false,false),"explicit default port");
@@ -96,6 +100,19 @@ public final class ConnectionRoutesTest {
   check(!ConnectionRoutes.managedService("/api/v1/user",null,"POST",true,false),"identity write refused");
   check(!ConnectionRoutes.managedService("/api/v1/user",null,"GET",true,false),"GET body refused");
   check(ConnectionRoutes.managedService("/api/agents",null,"GET",false,true),"separate development infrastructure retained");
+  // Eliza Cloud Maps (#412): exact routes; location only in a POST body, capabilities a bare GET.
+  check(ConnectionRoutes.managedService("/api/v1/maps/capabilities",null,"GET",false,false),"Maps capabilities read allowed");
+  for(String route:new String[]{"geocode","reverse","places/search","places/details","routes"}){
+   String path="/api/v1/maps/"+route;
+   check(ConnectionRoutes.managedService(path,null,"POST",true,false),"Maps "+route+" allowed");
+   check(!ConnectionRoutes.managedService(path,null,"POST",false,false),"Maps "+route+" needs a body");
+   check(!ConnectionRoutes.managedService(path,"lat=1","POST",true,false),"Maps "+route+" never carries a query");
+   check(!ConnectionRoutes.managedService(path,"q=x","GET",false,false),"Maps "+route+" is POST only");
+   check(!ConnectionRoutes.managedService(path+"/",null,"POST",true,false),"Maps "+route+" trailing slash refused");
+  }
+  check(!ConnectionRoutes.managedService("/api/v1/maps/capabilities","region=x","GET",false,false),"Maps capabilities query refused");
+  check(!ConnectionRoutes.managedService("/api/v1/maps/capabilities",null,"POST",true,false),"Maps capabilities write refused");
+  for(String path:new String[]{"/api/v1/maps","/api/v1/maps/tiles/1/2/3","/api/v1/maps/places","/api/v1/maps/navigation","/api/v1/maps/%72outes","/api/v1/maps//routes"})for(String method:new String[]{"GET","POST"})check(!ConnectionRoutes.managedService(path,null,method,"POST".equals(method),false),"unreviewed Maps path refused "+path);
   System.out.println("PASS connection routes: retired pairing, exact Cloud self-revocation and the flag-off Cloud API origin only");
  }
 }

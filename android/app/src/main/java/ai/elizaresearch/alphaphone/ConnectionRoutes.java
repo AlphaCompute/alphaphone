@@ -26,7 +26,7 @@ final class ConnectionRoutes {
   * build legitimately sends here (sign-in, identity, subscription entitlement and its public keys,
   * subscription code redemption, the billing snapshot read while the entitlement
   * route is absent, key self-revocation, the connected
-  * services under /api/v1/eliza/) goes to the Cloud API, so the only admitted origin is exactly
+  * services under /api/v1/eliza/, Maps data under /api/v1/maps/) goes to the Cloud API, so the only admitted origin is exactly
   * https://api.eliza.app on the default port. A dedicated Cloud agent runtime
   * (https://&lt;agent-uuid&gt;.cloud.eliza.app) is always refused in product builds (P-22/P-31). A paired remote agent's origin
   * is refused even when the renderer presents a saved credential for it; the refusal is decided from
@@ -42,11 +42,27 @@ final class ConnectionRoutes {
   if(testMocks)return true;
   if(path==null||path.contains("%")||path.contains("\\")||path.contains("//"))return false;
   if("DELETE".equals(method))return "/api/v1/api-keys/current".equals(path)&&query==null&&!hasBody;
+  // Eliza Cloud Maps (#412): queries and coordinates travel only in a JSON body; capabilities is a bare read.
+  if("POST".equals(method)&&path.matches("/api/v1/maps/(geocode|reverse|places/search|places/details|routes)"))return query==null&&hasBody;
+  if("/api/v1/maps/capabilities".equals(path))return "GET".equals(method)&&query==null&&!hasBody;
   // Subscription code redemption carries its code and idempotency key in the JSON body only.
   if("POST".equals(method)&&"/api/v1/subscription/redeem".equals(path))return query==null&&hasBody;
   if("POST".equals(method))return query==null&&(java.util.Set.of("/api/auth/cli-session","/api/v1/eliza/google/connect/initiate","/api/v1/eliza/google/disconnect","/api/v1/eliza/google/gmail/inbox-v1/operations").contains(path)||path.matches("/api/v1/eliza/google/gmail/inbox-v1/operations/[A-Za-z0-9_-]{1,160}/dispatch"));
   if(!"GET".equals(method)||hasBody)return false;
   return path.matches("/api/auth/cli-session/[0-9a-fA-F-]{36}")||java.util.Set.of("/api/v1/user","/api/v1/billing/limits","/api/v1/subscription/entitlement","/api/v1/subscription/entitlement-keys","/api/v1/eliza/google/accounts","/api/v1/eliza/google/status","/api/v1/eliza/google/calendar/calendars","/api/v1/eliza/google/calendar/feed","/api/v1/eliza/google/gmail/search","/api/v1/eliza/google/gmail/read").contains(path)||path.matches("/api/v1/eliza/google/gmail/inbox-v1/(capabilities|thread|attachment|drafts|draft)")||path.matches("/api/v1/eliza/google/gmail/inbox-v1/operations/[A-Za-z0-9_-]{1,160}");
+ }
+ /**
+  * Request headers this transport forwards. Product builds talk only to the managed Cloud API, which
+  * takes Accept, Content-Type and the sign-in Authorization. The device-identity, device-capability
+  * and phone-protocol headers declare this phone to a hosted or paired agent runtime; the agent
+  * always runs on the phone (#406), so product builds refuse them before any connection is opened.
+  * The resident agent negotiates its capabilities over the in-process Agent bridge, not here.
+  * Test-mocks builds keep them for development agents. Names must already be lower-case.
+  */
+ static boolean admittedHeader(String name,boolean testMocks){
+  if(name==null)return false;
+  if("accept".equals(name)||"content-type".equals(name)||"authorization".equals(name))return true;
+  return testMocks&&("x-eliza-device-id".equals(name)||"x-eliza-device-key".equals(name)||"x-eliza-device-capabilities".equals(name)||"x-eliza-phone-protocol".equals(name));
  }
  /**
   * Cloud self-revocation: the presented sign-in key revokes only itself. Exactly

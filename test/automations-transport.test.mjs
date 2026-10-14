@@ -15,7 +15,7 @@ if(!process.execArgv.some((arg,index)=>arg==='--import'&&process.execArgv[index+
  if(child.error)throw child.error;
  process.exit(child.status??1);
 }
-const {CloudProtocol}=await import('../apps/app/src/runtime/cloud-protocol.ts');
+const {DevelopmentCloudAgentProtocol}=await import('../apps/app/src/runtime/development-cloud-agents.ts');
 const {LocalAgentProtocol}=await import('../apps/app/src/runtime/local-agent.ts');
 const {createLocalAgentDevHandler}=await import('../scripts/local-agent-dev-bridge.ts');
 const owner='11111111-1111-4111-8111-111111111111',org='22222222-2222-4222-8222-222222222222',agent='33333333-3333-4333-8333-333333333333';
@@ -24,7 +24,7 @@ const signal=()=>new AbortController().signal;
 function cloudFixture(){
  let credential={credentialId:'one',token:'synthetic-token'};const calls=[];let respond=async()=>({status:200,data:{ok:true}});
  const target={agentId:agent,origin:`https://${agent}.cloud.eliza.app`,userId:owner,organizationId:org,credentialId:'one',headers:{'X-Eliza-Device-Id':'device'}};
- const client=new CloudProtocol('production',async req=>{
+ const client=new DevelopmentCloudAgentProtocol('production',async req=>{
   calls.push(req);if(req.url.endsWith('/api/v1/user'))return {status:200,data:{success:true,data:{id:owner,organization_id:org}}};
   if(req.url.endsWith('/api/v1/eliza/agents/'+agent))return {status:200,data:{success:true,data:{id:agent,agentName:'Synthetic',status:'running',executionTier:'dedicated-always',webUiUrl:target.origin}}};
   return respond(req);
