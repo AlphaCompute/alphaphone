@@ -238,15 +238,11 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    call.resolve(new JSObject(ResidentAttachment.describe(refusal).toString()));
   }catch(Exception unavailable){call.resolve(new JSObject().put("attachable",false).put("reason","unavailable"));}},()->{call.reject("Local agent bridge is closed.");});
  }
- /**
-  * Direct Cerebras key (the retained profile; decision A-20, usage metering and key supply). This
-  * native route stays admitted in a flag-off build, gated only by a packaged runtime, although the
-  * production UI shows no key form: scripts/android-resident-instrumentation.mjs runs
-  * ResidentAgentInstrumentedTest, which configures the resident through it on a retained-profile
-  * build, and gating it on ELIZA_DEV_ALLOW_TEST_MOCKS would break that harness. The key is verified
-  * against Cerebras and the model is always qwen-3.8-27b.
-  */
+ /** A direct (bring-your-own) Cerebras key is a test-mocks developer surface only. Product phones use
+  * the owner's Eliza Cloud plan through configureCloudProvider; production refuses before reading the key. */
+ static boolean directProviderAllowed(boolean testMocks){return testMocks;}
  @PluginMethod public void configureProvider(PluginCall call) {
+  if(!directProviderAllowed(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)){call.reject("Alpha Phone uses your Eliza Cloud plan for AI.");return;}
   if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
   String key=call.getString("apiKey",""),model=call.getString("model",CEREBRAS_PROVIDER_MODEL);
   if(!validProviderToken(key,1024)||!model.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,127}")){call.reject("Enter a valid Cerebras key.");return;}

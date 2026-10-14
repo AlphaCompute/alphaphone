@@ -22,8 +22,13 @@ test('the connection controller has no local-apps-only mode and migrates old sel
   // Saving a no-agent choice there stores the resident instead.
   assert.match(connection, /residentAlwaysPresent && \(selection\.kind === 'none' \|\| selection\.kind === 'offline'\) \? \{ kind: 'resident' \}/);
   // Android production startup always starts the resident; Cloud admission never stops it.
-  assert.match(connection, /if \(isAndroid && !testMocksEnabled\) \{[\s\S]{0,400}await startResident\(\);/);
+  assert.match(connection, /if \(residentGate\(\)\) \{ await startResidentGate\(\); return; \}/);
+  assert.match(connection, /async function startResidentGate\(\)\{[\s\S]{0,200}await startResident\(\);\s*\}/);
+  assert.match(connection, /function residentGate\(\): boolean \{ return \(isAndroid && !testMocksEnabled\) \|\| residentQa\(\) !== null; \}/);
   assert.doesNotMatch(connection, /credits\.balance<=0\)\{await stopLocalAgent\(\)/);
+  // Plan state never stops or retires the agent: no "Plan required" retirement and no gate return.
+  assert.doesNotMatch(connection, /retire\('Plan required'\)/);
+  assert.doesNotMatch(connection, /if\(!await admitCloudResident\(signal\)\)return;/);
   assert.doesNotMatch(connection, /async stopLocal\(\)/);
   assert.match(connection, /async restartLocal\(\)/);
 });

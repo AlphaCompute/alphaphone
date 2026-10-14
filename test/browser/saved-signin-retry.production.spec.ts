@@ -54,7 +54,7 @@ async function boot(page: Page, mode: Mode) {
         if (mode === 'rejected') return { status: 401, data: { error: 'unauthorized' } };
         if (path === '/api/v1/user') return { status: 200, data: { success: true, data: { id } } };
         if (path === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Deployed Cloud has no subscription entitlement route yet.
-        if (path === '/api/v1/credits/balance') return { status: 200, data: { balance: 5 } };
+        if (path === '/api/v1/billing/limits') return { status: 200, data: { success: true, data: { v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } } } } };
         if (path === '/api/v1/eliza/google/accounts') return { status: 200, data: { accounts: [] } };
         throw Error('Unexpected Cloud route: ' + path);
       }
@@ -63,9 +63,9 @@ async function boot(page: Page, mode: Mode) {
   }, mode);
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
-  // P-43: the resident starts by itself and no panel opens.
+  // P-43: the resident starts by itself. Only a sign-in Cloud rejects opens the sign-in dialog.
   await expect.poll(() => agentCalls(page)).toContain('start');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  if (mode !== 'rejected') await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await selection(page)).toEqual({ kind: 'resident' });
 }
 const calls = (page: Page) => page.evaluate(() => (window as any).residentCalls as Call[]);
@@ -76,6 +76,7 @@ const selection = (page: Page) => page.evaluate(() => JSON.parse(localStorage.ge
 const PANELS = {
   Inbox: {
     heading: 'Eliza Cloud',
+    retry: 'Retry saved connection',
     open: async (page: Page) => {
       await page.getByRole('button', { name: 'Inbox', exact: true }).click();
       await expect(page.locator('html')).toHaveAttribute('data-active-view', 'inbox');
@@ -85,6 +86,7 @@ const PANELS = {
   },
   Settings: {
     heading: 'Your agent',
+    retry: 'Try again',
     open: async (page: Page) => {
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
       await page.getByRole('button', { name: /Agent connection/ }).click();
@@ -99,32 +101,34 @@ for (const [name, panel] of Object.entries(PANELS)) {
       expect(await agentCalls(page)).not.toContain('configureCloudProvider');
       await panel.open(page);
       const dialog = page.getByRole('dialog', { name: panel.heading });
-      await expect(dialog.getByRole('button', { name: 'Retry saved connection', exact: true })).toBeVisible();
-      await expect(dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
-      await expect(dialog.getByText('Connection request failed', { exact: true })).toBeVisible();
+      await expect(dialog.getByRole('button', { name: panel.retry, exact: true })).toBeVisible();
+      await expect(dialog.getByText(/Eliza Cloud cannot be reached right now/)).toBeVisible();
       // Nothing claims an account: no account summary, no "Signed in", no credits.
       await expect(dialog.locator('.alpha-cloud-account-summary')).toHaveCount(0);
       await expect(dialog.getByText(/Signed in|Credits available/)).toHaveCount(0);
       const starts = (await agentCalls(page)).filter(call => call === 'start').length;
-      await dialog.getByRole('button', { name: 'Retry saved connection', exact: true }).click();
+      await dialog.getByRole('button', { name: panel.retry, exact: true }).click();
       // The retry restarts the resident and tries the sign-in once more; it fails the same way.
       await expect.poll(async () => (await agentCalls(page)).filter(call => call === 'start').length).toBeGreaterThan(starts);
       expect(await agentCalls(page)).not.toContain('configureCloudProvider');
       expect(await selection(page)).toEqual({ kind: 'resident' });
     });
 
-    test('a kept sign-in Cloud rejects is reported as no longer valid and not offered again; the agent keeps running', async ({ page }) => {
-      await boot(page, 'rejected');
-      await panel.open(page);
-      const dialog = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }) });
-      await expect(dialog.getByText('Your saved Cloud sign-in is no longer valid.', { exact: true })).toBeVisible();
-      await expect(dialog.getByRole('button', { name: 'Retry saved connection', exact: true })).toHaveCount(0);
-      await expect(dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeEnabled();
-      await expect(dialog.locator('.alpha-cloud-account-summary')).toHaveCount(0);
-      expect(await agentCalls(page)).not.toContain('configureCloudProvider');
-    });
   });
 }
+
+test('a kept sign-in Cloud rejects is reported as no longer valid in the sign-in dialog that opens by itself; the agent keeps running', async ({ page }) => {
+  await boot(page, 'rejected');
+  // Every Alpha Phone needs an Eliza Cloud account: the sign-in dialog opens and cannot be dismissed.
+  const dialog = page.getByRole('dialog', { name: 'Your agent' });
+  await expect(dialog.getByText('Your saved Cloud sign-in is no longer valid.', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Retry saved connection', exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Close connection settings', exact: true })).toHaveCount(0);
+  await expect(dialog.locator('.alpha-cloud-account-summary')).toHaveCount(0);
+  await expect.poll(() => agentCalls(page)).toContain('start');
+  expect(await agentCalls(page)).not.toContain('configureCloudProvider');
+});
 
 test('a kept sign-in Cloud admits binds inference at start and runs the on-device agent only', async ({ page }) => {
   await boot(page, 'funded');
@@ -132,8 +136,8 @@ test('a kept sign-in Cloud admits binds inference at start and runs the on-devic
   // Cloud-hosted agent is listed, provisioned or restored and no remote session is opened.
   await expect.poll(() => agentCalls(page)).toContain('configureCloudProvider');
   const paths = await cloudRequests(page);
-  expect(paths).toEqual(expect.arrayContaining(['/api/v1/user', '/api/v1/credits/balance']));
-  expect(paths.filter(path => !['/api/v1/user', '/api/v1/subscription/entitlement', '/api/v1/credits/balance', '/api/v1/eliza/google/accounts'].includes(path))).toEqual([]);
+  expect(paths).toEqual(expect.arrayContaining(['/api/v1/user', '/api/v1/billing/limits']));
+  expect(paths.filter(path => !['/api/v1/user', '/api/v1/subscription/entitlement', '/api/v1/billing/limits', '/api/v1/eliza/google/accounts'].includes(path))).toEqual([]);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: /Agent connection/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Your agent' });

@@ -46,7 +46,8 @@ test('signing out of account A and into account B stops the resident before A is
   await expect(page.getByText(A.email, { exact: true })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await button(page, 'Inbox').click();
-  await expect(page.getByText(A.inbox!, { exact: false }).first()).toBeVisible({ timeout: 30_000 });
+  // Inbox reads A's Gmail accounts with A's key (the account label is shown only beside a second account).
+  await expect.poll(() => stub(page, s => s.cloud.filter((row: any) => row.path === '/api/v1/eliza/google/accounts' && row.auth === 'Bearer ' + 'account-a-key').length), { timeout: 30_000 }).toBeGreaterThan(0);
 
   // Sign out of A: the resident stops before A's key is revoked and removed.
   let dialog = await agentConnection(page);
@@ -71,9 +72,9 @@ test('signing out of account A and into account B stops the resident before A is
   // in as B in the browser; it is stopped only after B's key is stored, then restarted bound to B.
   expect(order.slice(signOut, storeB)).not.toContain('Agent.stop');
   expect(order.slice(storeB, lastStart)).toContain('Agent.stop');
-  // B's key binds the provider before the agent starts again, with B's credits read first.
-  expect(order.indexOf('credits ' + B.email)).toBeGreaterThan(storeB);
-  expect(order.indexOf('configureCloudProvider ' + stored.credentialId)).toBeGreaterThan(order.indexOf('credits ' + B.email));
+  // B's key binds the provider before the agent starts again, with B's plan read first.
+  expect(order.indexOf('plan ' + B.email)).toBeGreaterThan(storeB);
+  expect(order.indexOf('configureCloudProvider ' + stored.credentialId)).toBeGreaterThan(order.indexOf('plan ' + B.email));
   expect(lastStart).toBeGreaterThan(order.indexOf('configureCloudProvider ' + stored.credentialId));
   // A's key never binds the provider again, and was signed out once (sign-out, not the new sign-in).
   expect(order.filter(entry => entry.startsWith('revoke'))).toEqual(['revoke Bearer ' + A.token]);
@@ -83,13 +84,12 @@ test('signing out of account A and into account B stops the resident before A is
   await expect(page.getByText(B.email, { exact: true })).toBeVisible();
   await expect(page.getByText(A.email, { exact: true })).toHaveCount(0);
   dialog = await agentConnection(page);
-  await expect(dialog).toContainText('Plan status unavailable');
+  await expect(dialog.getByRole('region', { name: 'Eliza Cloud plan' })).toContainText('Plus');
   await expect(dialog).not.toContainText(/Credits available|Add credits/);
   await dialog.getByRole('button', { name: 'Close connection settings', exact: true }).click();
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await button(page, 'Inbox').click();
   await expect.poll(() => stub(page, s => s.cloud.filter((row: any) => row.path === '/api/v1/eliza/google/accounts' && row.auth === 'Bearer account-b-key').length), { timeout: 30_000 }).toBeGreaterThan(0);
-  await expect(page.getByText(B.inbox!, { exact: false }).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(A.inbox!, { exact: false })).toHaveCount(0);
   // After A's sign-out, no Cloud request carried A's key, and A's personal-setup intent was neither
   // read nor removed; no digest delegation was asked for.

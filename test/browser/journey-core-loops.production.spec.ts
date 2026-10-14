@@ -186,7 +186,7 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
             if (url.origin !== 'https://api.eliza.app') throw Error('Connection request failed');
             if (url.pathname === '/api/v1/user') return { status: 200, data: { success: true, data: { id } } };
             if (url.pathname === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Deployed Cloud has no subscription entitlement route yet.
-            if (url.pathname === '/api/v1/credits/balance') return { status: 200, data: { balance: 5 } };
+            if (url.pathname === '/api/v1/billing/limits') return { status: 200, data: { success: true, data: { v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } } } } };
             return { status: 404, data: {} };
           }
           return {};
@@ -496,7 +496,7 @@ test('loops D and F in the web build: digests and mail name the missing account 
   await expect(page.getByText('Dinner Friday?', { exact: true })).toHaveCount(0);
   await button(page, 'Compose').click();
   await expect(page.getByText('Connect a Gmail account first.', { exact: true })).toBeVisible();
-  await expect(page.getByPlaceholder('To', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('textbox', {name: 'To', exact: true})).toHaveCount(0);
   await expect(button(page, 'Send email')).toHaveCount(0);
   await expectNoDevelopmentSurface(page);
   expect(foreign).toEqual([]);
@@ -899,17 +899,18 @@ test('loop B / J02 on Android: a recorded note, a resident summary and reviewed 
   expect(foreign).toEqual([]);
 });
 
-test('loop B / J02 on Android signed out: voice asks for an Eliza Cloud sign-in and nothing is captured', async ({ page }) => {
+test('loop B / J02 on Android signed out: the Eliza Cloud sign-in comes first and nothing is captured', async ({ page }) => {
   test.setTimeout(120_000);
   const foreign = await fenceNetwork(page);
   await android(page, { signedOut: true });
   await page.goto('/');
-  // P-43: the resident starts signed out; no Welcome gate or "without AI" choice opens.
-  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
-  await button(page, 'Notes').click();
-  await button(page, 'Record and transcribe').click();
-  // The recorder states the missing sign-in and offers no way to start capturing.
-  await expect(page.getByText('Sign in to Eliza Cloud to use voice.', { exact: true })).toBeVisible();
+  // P-43 with #410: the resident starts signed out and the sign-in dialog, which every Alpha Phone
+  // needs, opens by itself and cannot be dismissed; no "without AI" choice is offered.
+  const dialog = page.getByRole('dialog', { name: 'Your agent', exact: true });
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  await expect(dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Close connection settings', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Use local apps without AI', exact: true })).toHaveCount(0);
   await expect(button(page, 'Start recording')).toHaveCount(0);
   expect(await native(page, f => [f.voice.starts, f.voice.transcriptions.length])).toEqual([0, 0]);
   expect(await native(page, f => f.calls.filter((call: string) => call.startsWith('AlphaVoiceCloud.') && call !== 'AlphaVoiceCloud.checkPermissions'))).toEqual([]);

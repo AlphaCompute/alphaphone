@@ -177,7 +177,7 @@ test('the input report separates what a script produces from what needs a person
   assert.match(row('on-device voice bundle').detail, /is not admitted by .*Voice bundle file missing or changed: asr\.gguf/);
   assert.match(row('on-device voice bundle').action, /^Needs a person to supply the pinned voice model files: node scripts\/android-stage-voice-models\.mjs --from /);
   assert.match(row('embedding host libraries').action, /^Needs a person: /);
-  assert.match(row('release signer').action, /^Needs a person: decision A-06/);
+  assert.match(row('release signer').action, /^Needs a person: Alpha Compute controls signing and Shaw owns release/);
   assert.match(row('release signer').detail, /says unset; not set in this environment: ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS, ELIZAOS_KEY_PASSWORD/);
   for (const name of ['prepared resident runtime source', 'workflow worker artifact', 'staged resident runtime payload', 'embedding model', 'Gradle dependency verification metadata'])
     assert.match(row(name).action, /^npm run /, name);

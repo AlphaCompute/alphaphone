@@ -197,7 +197,7 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
       if (url.origin !== 'https://api.eliza.app') throw Error('Connection request failed');
       if (path === '/api/v1/user') return { status: 200, data: { success: true, data: { id } } };
       if (path === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Deployed Cloud has no subscription entitlement route yet.
-      if (path === '/api/v1/credits/balance') return { status: 200, data: { balance: 5 } };
+      if (path === '/api/v1/billing/limits') return { status: 200, data: { success: true, data: { v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } } } } }; // Synthetic active plan from the billing snapshot.
       if (!m.accounts) return { status: 404, data: {} };
       const grant = () => m.accounts!.find(a => a.connectionId === (url.searchParams.get('grantId') ?? body?.grantId) && a.connected);
       if (path === google + '/accounts') { m.accountReads++; return { status: 200, data: m.accounts.map(a => ({ configured: true, connected: a.connected, reason: a.connected ? 'connected' : 'needs_reauth', connectionId: a.connectionId, grantedCapabilities: a.connected ? ['google.gmail.triage'] : [], identity: { email: a.email } })) }; }
@@ -379,6 +379,9 @@ export async function residentHome(page: Page) {
 }
 /** Decision P-43: Settings › Agent connection opens the "Your agent" dialog (status and AI inference). */
 export async function openYourAgent(page: Page) {
+  // Signed out, the Eliza Cloud sign-in dialog is already open and cannot be dismissed (P-43).
+  const open = page.getByRole('dialog', { name: 'Your agent' });
+  if (await open.isVisible()) return open;
   await button(page, 'Settings').click();
   await page.getByRole('button', { name: /Agent connection/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Your agent' });

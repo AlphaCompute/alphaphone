@@ -10,7 +10,7 @@ test('Cloud and direct environments, expiry, credential match, identity and roll
  assert.match(runJvm([nativeSource('LocalAgentProviderAdmission.java'),fixture('LocalAgentProviderAdmissionTest.java')],'ai.elizaresearch.alphaphone.LocalAgentProviderAdmissionTest',{json:true}),/^PASS local agent provider admission/);
 });
 
-test('the plugin delegates provider rules to the admission class and keeps the A-20 direct route',()=>{
+test('the plugin delegates provider rules to the admission class and keeps the direct key a test-mocks route',()=>{
  const source=readFileSync(nativeSource('AlphaLocalAgentPlugin.java'),'utf8');
  assert.match(source,/static void applyProviderEnvironment\([^)]*\) throws Exception \{LocalAgentProviderAdmission\.applyProviderEnvironment\(provider,cloudSaved,env,now\);\}/);
  assert.match(source,/static String cloudProviderToken\([^)]*\) throws Exception \{return LocalAgentProviderAdmission\.cloudProviderToken\(saved,credentialId,now\);\}/);
@@ -22,8 +22,10 @@ test('the plugin delegates provider rules to the admission class and keeps the A
  assert.doesNotMatch(admission,/com\.getcapacitor|android\./,'the admission class is host-testable');
  assert.match(admission,/CEREBRAS_PROVIDER_MODEL="qwen-3\.8-27b"/);
  assert.match(admission,/CLOUD_PROVIDER_MODEL="cerebras\/qwen-3\.8-27b"/);
- const direct=source.slice(source.indexOf('* Direct Cerebras key'),source.indexOf('@PluginMethod public void clearProvider('));
- assert.match(direct,/decision A-20/);
+ // #410 (main, 2026-10-13): product phones use the Eliza Cloud plan; a direct (bring-your-own)
+ // Cerebras key is a test-mocks developer route, refused in production before the key is read.
+ const direct=source.slice(source.indexOf('static boolean directProviderAllowed('),source.indexOf('@PluginMethod public void clearProvider('));
+ assert.match(direct,/static boolean directProviderAllowed\(boolean testMocks\)\{return testMocks;\}/);
+ assert.match(direct,/if\(!directProviderAllowed\(BuildConfig\.ELIZA_DEV_ALLOW_TEST_MOCKS\)\)/);
  assert.match(direct,/if\(!runtimePackaged\(\)\)/);
- assert.doesNotMatch(direct,/ELIZA_DEV_ALLOW_TEST_MOCKS\)/,'the retained direct profile is not gated on test mocks (A-20)');
 });

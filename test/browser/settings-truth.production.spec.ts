@@ -10,8 +10,12 @@ type Fixture={snapshot?:Record<string,unknown>;drop?:string[]};
 async function nativeStub(page:Page,fixture:Fixture={}){
  await page.addInitScript(({snapshot,drop})=>{
   const w=window as any;w.androidBridge={};
-  try{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));}catch{/* covered elsewhere */}
   const now=Date.now(),store=new Map<string,string>();
+  // A signed-in phone whose plan was verified recently, started offline: the plan gate keeps local apps
+  // and Settings available (Cloud is unreachable, so no agent starts). Synthetic sign-in, not a real key.
+  const credentialId='5c1f2a9e-3b4d-4e6f-8a7b-9c0d1e2f3a4b';
+  store.set('cloud:production',JSON.stringify({token:'synthetic-settings-key',credentialId,expiresAt:now+60*24*3600_000}));
+  try{localStorage.setItem('alpha.connection.plan-admission.v1',JSON.stringify({version:1,environment:'production',credentialId,userId:'9f1dc45a-4011-4e44-947a-30d999d24fa5',organizationId:null,status:'active',planName:'Synthetic plan',verifiedAt:now,endsAt:null}));}catch{/* covered elsewhere */}
   const listeners:Array<{plugin:string;event:string;callback:(value:unknown)=>void}>=[];
   const state={
    // Android's answers. Tests change these, then resume, to prove the renderer reads them again.
@@ -32,7 +36,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
     {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','notificationHistory','list','open','dismiss','clear','openChannelSettings','openAppSettings','addListener','removeListener'])},
     {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
     {name:'Agent',methods:methods(['getStatus','start','stop','providerStatus'])},
-    {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureCompareExchange','secureRemove','addListener','removeListener'])},
+    {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureCompareExchange','secureRemove','request','cancel','addListener','removeListener'])},
     {name:'DeviceApps',methods:methods(['buildInfo'])},
     {name:'ElizaSystem',methods:methods(['getStatus','requestRole','getDeviceSettings','setFlashlight'])},
     {name:'AlphaDevice',methods:methods(['snapshot','crashLog','clearCrashLog','recordRendererFailure','diagnosticsFacts','shareDiagnostics','openSettings','openNotificationShade'])},
@@ -57,6 +61,8 @@ async function nativeStub(page:Page,fixture:Fixture={}){
      if(method==='secureRead')return {value:store.get(input.slot)??null};
      if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);return {status:'saved'};}
      if(method==='secureWrite'){store.set(input.slot,input.value);return {};}
+     // No network in this fixture: every Cloud request fails before an answer.
+     if(method==='request')throw Error('Connection request failed');
      return {};
     }
     if(plugin==='DeviceApps')return {launcher:true,version:'0.1.0'};
@@ -87,7 +93,7 @@ const set=(page:Page,patch:Record<string,unknown>)=>page.evaluate(patch=>{const 
 const resume=(page:Page)=>page.evaluate(()=>(window as any).truth.resume());
 const opened=(page:Page)=>page.evaluate(()=>(window as any).truth.calls.filter((c:any)=>c.plugin==='AlphaDevice'&&c.method==='openSettings').map((c:any)=>c.input.page as string));
 const callNames=(page:Page)=>page.evaluate(()=>[...new Set((window as any).truth.calls.map((c:any)=>c.plugin+'.'+c.method))] as string[]);
-/** Production Android starts the resident by itself (P-43); no Welcome gate opens. */
+/** Production Android starts the resident by itself (P-43). Offline with a saved sign-in, nothing gates it and no dialog opens. */
 async function start(page:Page){
  await page.goto('/');
  if(await page.evaluate(()=>!!(window as any).truth))await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
@@ -332,4 +338,20 @@ test('the browser build of Settings shows no fixture value and no radio or senso
  await drag(page,{x:206,y:420},240);
  await expect(alphaShade(page)).toHaveCount(0);
  expect(await page.locator('[aria-pressed]').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')))).toEqual([]);
+});
+
+test('Settings › Eliza Cloud account & plan reports the offline plan state and offers a real plan check',async({page})=>{
+ await nativeStub(page);
+ await openSettings(page);
+ const row=current(page).getByRole('button',{name:/Eliza Cloud account & plan/});
+ await expect(row).toBeVisible();
+ await expect(row).toContainText('Synthetic plan · offline');
+ await row.click();
+ const plan=current(page);
+ await expect(plan.getByText('Eliza Cloud unreachable',{exact:true})).toBeVisible();
+ await expect(plan.getByText('Synthetic plan · offline',{exact:true})).toBeVisible();
+ // The plan check is the real gate: it opens the account panel and asks Cloud again (no network here).
+ await plan.getByRole('button',{name:'Check plan again',exact:true}).click();
+ await expect(page.locator('.alpha-connection-scrim')).toBeVisible();
+ await expect.poll(()=>page.evaluate(()=>(window as any).truth.calls.filter((c:any)=>c.plugin==='AlphaConnection'&&c.method==='request').length)).toBeGreaterThan(1);
 });

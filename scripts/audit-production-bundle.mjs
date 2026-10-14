@@ -31,6 +31,8 @@ export const DENYLIST = Object.freeze([
   // Decision P-43 (owner, 2026-10-13): the resident agent is always present. The retired
   // no-agent choices and empty states must not reach a production bundle.
   ...RETIRED_NO_AGENT_TEXT,
+  // Subscription gate QA (test-mocks builds only, docs/cloud-subscription-qa.md).
+  'gate QA', 'resident-qa.v1',
 ]);
 const TEXT = /\.(?:html?|js|mjs|cjs|css|json|txt|svg|xml|webmanifest)$/i;
 

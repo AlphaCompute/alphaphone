@@ -71,7 +71,8 @@ function evaluate(expression,text,depth=0){
 
 // Receivers that reach the native secure store. Browser-only stores are listed so a new receiver
 // must be classified here before it can ship.
-const nativeReceivers=new Set(['secureConnectionStore','vault','storage','this.deps.store','store']);
+// inboxLocalStore delegates to secureConnectionStore with the same slot on Android (runtime/inbox-local-store.ts).
+const nativeReceivers=new Set(['secureConnectionStore','inboxLocalStore','vault','storage','this.deps.store','store']);
 const browserOnly=new Set(['this.documents','browserDocuments','backend','store()','slot']);
 function rendererSlots(){
  const found=[];
@@ -83,6 +84,8 @@ function rendererSlots(){
    assert.ok(nativeReceivers.has(receiver),`${where}: classify compareExchange receiver ${receiver}`);
    // The capacity wrapper passes its caller's key through; the shared store's slot is checked below.
    if(where.endsWith('runtime/notes-secure-store.ts')&&match[2].trim()==='key')continue;
+   // The Inbox local store passes its caller's slot through; its callers' slots are checked.
+   if(where.endsWith('runtime/inbox-local-store.ts')&&match[2].trim()==='slot')continue;
    // InboxOperation.discardUnsent writes the same per-owner slot as the instance's key() (one storeKey).
    if(where.endsWith('runtime/inbox-operation.ts')&&match[2].trim()==='key'){
     assert.match(text,/const key = await InboxOperation\.storeKey\(owner, grantId\);/);

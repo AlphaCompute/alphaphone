@@ -82,8 +82,9 @@ async function android(page: Page, options: AndroidOptions) {
         // Only the fixed Cloud authority answers; any other host is a transport failure.
         if (url.origin !== 'https://api.eliza.app') throw Error('Connection request failed');
         if (url.pathname === '/api/v1/user') return { status: 200, data: { success: true, data: { id } } };
-        if (url.pathname === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Deployed Cloud has no subscription entitlement route yet.
-        if (url.pathname === '/api/v1/credits/balance') return { status: 200, data: { balance: options.balance ?? 0 } };
+        if (url.pathname === '/api/v1/subscription/entitlement') return { status: 404, data: {} }; // Entitlement route absent: the billing snapshot answers.
+        // `balance` > 0 stands for an account holding an active plan; otherwise the account has no plan.
+        if (url.pathname === '/api/v1/billing/limits') return { status: 200, data: { success: true, data: { v2: { subscription: (options.balance ?? 0) > 0 ? { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } : { status: 'not_applicable', reason: 'no_organization_subscription' } } } } };
         if (url.pathname === '/api/v1/api-keys/current' && input.method === 'DELETE') {
           if (options.revoke === 'failed') throw Error('Connection request failed');
           if (options.revoke === 'revoked') return { status: 200, data: { success: true, status: 'revoked', credentialId: id, revokedAt: new Date().toISOString() } };
@@ -116,25 +117,27 @@ for (const legacy of [{ name: 'remote agent', selection: { kind: 'remote', origi
     const foreign = await fenceNetwork(page);
     await android(page, { selection: legacy.selection, remoteCredential: true });
     await page.goto('/');
-    // P-43: the resident starts in place of the saved agent, signed out; no Welcome gate opens.
-    await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
+    // P-43: the resident starts in place of the saved agent, signed out. Every Alpha Phone needs an
+    // Eliza Cloud account, so the sign-in dialog opens and cannot be dismissed while the agent runs.
     await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
-    await expect(page.getByRole('dialog')).toHaveCount(0);
     const saved = await secureValues(page);
-    const welcome = await openYourAgent(page);
+    const welcome = page.getByRole('dialog', { name: 'Your agent' });
+    await expect(welcome).toBeVisible();
     // The retired route has no entry: no address, code or connect control, and no fake remote state.
     await expect(welcome.getByLabel('Agent HTTPS address')).toHaveCount(0);
     await expect(welcome.getByLabel('Pairing code')).toHaveCount(0);
     await expect(welcome.getByRole('button', { name: /Connect (remote|local) agent/ })).toHaveCount(0);
     await expect(welcome.getByText(/Remote agent|Connected ·/)).toHaveCount(0);
     await expect(welcome.getByText('Running on this device', { exact: true })).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(welcome).toHaveCount(0);
+    // Every Alpha Phone signs in to Eliza Cloud: no local-only bypass and no close while signed out.
+    await expect(welcome.getByRole('button', { name: 'Use local apps without AI', exact: true })).toHaveCount(0);
+    await expect(welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
+    await expect(welcome.getByRole('button', { name: 'Close connection settings', exact: true })).toHaveCount(0);
     expectRemoteUntouched(await nativeCalls(page));
     expect((await secureValues(page))[remoteSlot]).toBe(saved[remoteSlot]);
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual({ kind: 'resident' });
     await page.reload();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: 'Your agent' })).toBeVisible();
     await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
     const calls = await nativeCalls(page);
     expectRemoteUntouched(calls);
@@ -156,9 +159,10 @@ test('production Android with a Cloud sign-in starts the resident agent instead 
   expectRemoteUntouched(calls);
   const agentCalls = calls.filter(call => call.plugin === 'Agent').map(call => call.method);
   expect(agentCalls).toContain('configureCloudProvider');
-  // Cloud authorizes the provider (identity, credits) and account services; it is never the agent runtime.
+  // Cloud authorizes the provider (identity, plan) and account services; it is never the agent runtime.
   const routes = [...new Set(calls.filter(call => call.plugin === 'AlphaConnection' && call.method === 'request').map(call => new URL(call.url!).origin + new URL(call.url!).pathname))];
-  expect(routes).toEqual(expect.arrayContaining(['https://api.eliza.app/api/v1/credits/balance', 'https://api.eliza.app/api/v1/user']));
+  expect(routes).toEqual(expect.arrayContaining(['https://api.eliza.app/api/v1/billing/limits', 'https://api.eliza.app/api/v1/user']));
+  expect(routes).not.toContain('https://api.eliza.app/api/v1/credits/balance');
   expect(routes.filter(route => !route.startsWith('https://api.eliza.app/api/v1/') || /\/(agents|personal|conversations|messages)(\/|$)/.test(route))).toEqual([]);
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual({ kind: 'resident' });
   expect((await secureValues(page))[remoteSlot]).toContain(token);
@@ -212,14 +216,14 @@ for (const [start, text] of [['reject', 'Local agent failed to start.'], ['start
 for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-revoked-status', 'no-content', 'unauthorized', 'server-error', 'cancelled'] as const) {
   test(`production Android Cloud sign-out states only the revocation that happened: ${mode}`, async ({ page }) => {
     const foreign = await fenceNetwork(page);
-    // Billing status never stops the resident (P-43). Open account settings explicitly to sign out.
-    await android(page, { cloudCredential: true, balance: 0, revoke: mode });
+    // Plan state never stops the resident (P-43). Open account settings explicitly to sign out.
+    await android(page, { cloudCredential: true, balance: 5, revoke: mode });
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
     await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('button', { name: /Agent connection/ }).click();
-    await expect(page.getByRole('button', { name: 'Open Eliza Cloud billing', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
     const before = (await nativeCalls(page)).length;
     if (mode === 'cancelled') await page.evaluate(() => { (window as any).holdStop = true; });
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
@@ -251,7 +255,8 @@ for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-
     // P-43: sign-out unbinds inference only; the resident restarted and the outcome says so.
     if (mode !== 'cancelled') await expect(status).toContainText('Your agent is running. Sign in to Eliza Cloud to turn AI back on.');
     await page.reload();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    // Signed out after a restart: the sign-in dialog opens by itself while the resident runs.
+    await expect(page.getByRole('dialog', { name: 'Your agent', exact: true })).toBeVisible();
     expect((await nativeCalls(page)).filter(call => call.plugin === 'AlphaConnection' && call.method === 'request')).toEqual([]);
     expect(foreign).toEqual([]);
   });
@@ -291,7 +296,8 @@ for (const legacy of legacyWeb) {
     await chooser.getByRole('button', { name: 'Open local apps', exact: true }).click();
     await expect(chooser).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
-    expect(await page.evaluate(key => localStorage.getItem(key) ?? '', SELECTION)).not.toContain('offline');
+    // A-27 interim: the web preview runs no agent; it keeps the choice to open its local apps.
+    expect(await page.evaluate(key => localStorage.getItem(key) ?? '', SELECTION)).toBe(JSON.stringify({ kind: 'offline' }));
     expect(foreign).toEqual([]);
   });
 }
@@ -384,9 +390,10 @@ test('the web build\'s forced sign-out does not create a secret store in a brows
 // scripts/test-connection-history.mjs as explicitly non-product development infrastructure.
 
 test('an unavailable deletion receipt status does not block account settings controls', async ({ page }) => {
-  await android(page, { cloudCredential: true, balance: 0, revoke: 'revoked' });
+  await android(page, { cloudCredential: true, balance: 5, revoke: 'revoked' });
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
+  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
   await page.evaluate(() => {
     const bridge = (window as any).Capacitor, original = bridge.nativePromise;
     bridge.nativePromise = (plugin: string, method: string, input: unknown) => {

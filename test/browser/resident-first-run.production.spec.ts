@@ -28,14 +28,15 @@ async function firstRun(page: Page, overrides: Partial<StubAccount> = {}) {
   await residentStub(page, { emptyKeystore: true, accounts: [{ ...account, ...overrides }] });
   await page.goto('/');
   await setStub(page, { nextToken: account.token });
-  // P-43: the resident starts by itself, signed out; no dialog opens.
+  // P-43: the resident starts by itself, signed out. Every Alpha Phone needs an Eliza Cloud account,
+  // so the sign-in dialog opens by itself and cannot be dismissed while the agent runs.
   await expect.poll(() => starts(page), { timeout: 30_000 }).toBe(1);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(button(page, 'Notes')).toBeVisible();
+  const welcome = page.getByRole('dialog', { name: 'Your agent', exact: true });
+  await expect(welcome).toBeVisible();
+  await expect(welcome.getByRole('button', { name: 'Close connection settings', exact: true })).toHaveCount(0);
   expect(await harness(page, f => f.slots['cloud:production'] ?? null)).toBeNull();
   expect(await stub(page, s => s.order.some((entry: string) => entry.startsWith('configureCloudProvider')))).toBe(false);
-  const welcome = await openYourAgent(page);
-  await expect(welcome.getByText('AI is off. Sign in to Eliza Cloud to use your credits for AI.', { exact: true })).toBeVisible();
+  await expect(welcome.getByText('Alpha Phone needs an Eliza Cloud account with a plan. Your agent runs on this phone meanwhile, with AI off until you sign in.', { exact: true })).toBeVisible();
   await expect(welcome.getByRole('button', { name: 'Use local apps without AI', exact: true })).toHaveCount(0);
   return { foreign, welcome };
 }
@@ -65,22 +66,22 @@ test('first run: Cloud sign-in in the browser, credits, provider binding, then t
   const order = await stub(page, s => s.order) as string[];
   const stored = JSON.parse(await harness(page, f => f.slots['cloud:production']));
   expect(stored.token).toBe(account.token);
-  // In call order: the browser hand-off, one pending poll, the key stored, credits read, the provider
+  // In call order: the browser hand-off, one pending poll, the key stored, the plan read, the provider
   // bound to that key, and only then the agent started. Nothing was revoked (no key was saved before).
   const at = (entry: string) => order.indexOf(entry);
   expect(order.filter(entry => entry.startsWith('openExternal'))).toEqual(['openExternal https://eliza.app']);
   expect(order.filter(entry => entry.startsWith('poll'))).toEqual(['poll pending', 'poll authenticated']);
   expect(at('openExternal https://eliza.app')).toBeLessThan(at('poll pending'));
   expect(at('poll authenticated')).toBeLessThan(at('store first-run-key'));
-  expect(at('store first-run-key')).toBeLessThan(at('credits new-owner@example.invalid'));
-  expect(at('credits new-owner@example.invalid')).toBeLessThan(at('configureCloudProvider ' + stored.credentialId));
+  expect(at('store first-run-key')).toBeLessThan(at('plan new-owner@example.invalid'));
+  expect(at('plan new-owner@example.invalid')).toBeLessThan(at('configureCloudProvider ' + stored.credentialId));
   // The resident restarts after the provider is bound to the new key.
   expect(at('configureCloudProvider ' + stored.credentialId)).toBeLessThan(order.lastIndexOf('Agent.start'));
   expect(order.indexOf('Agent.start')).toBeLessThan(at('openExternal https://eliza.app'));
   expect(order.filter(entry => entry.startsWith('revoke'))).toEqual([]);
   expect(await stub(page, s => s.opened)).toEqual(['https://eliza.app/auth/cli-login?session=b7a2c1d0-5e4f-4a3b-8c2d-1e0f9a8b7c6d']);
   // Every Cloud request went to the Cloud API through the native transport.
-  expect((await stub(page, s => s.cloud) as Array<{ path: string }>).map(row => row.path)).toEqual(expect.arrayContaining(['/api/auth/cli-session', '/api/v1/user', '/api/v1/credits/balance']));
+  expect((await stub(page, s => s.cloud) as Array<{ path: string }>).map(row => row.path)).toEqual(expect.arrayContaining(['/api/auth/cli-session', '/api/v1/user', '/api/v1/billing/limits']));
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.selection.v1')!))).toEqual({ kind: 'resident' });
 
   const ask = page.getByRole('textbox', { name: 'Ask Alpha', exact: true });
