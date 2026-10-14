@@ -86,7 +86,8 @@ export function createDeviceLibrary(port: PhotoLibraryPort = nativePort, availab
       const dropped = selection.reconcile(catalog);
       if (dropped.dropped || dropped.changed) status = 'Some selected items changed or left the library and were unselected.';
     } catch (failure) {
-      if (token === epoch) error = (failure as { code?: string })?.code === 'LIBRARY_DENIED' ? '' : 'The device library could not be loaded. Try again.';
+      if (token !== epoch) return;
+      error = (failure as { code?: string })?.code === 'LIBRARY_DENIED' ? '' : 'The device library could not be loaded. Try again.';
       if ((failure as { code?: string })?.code === 'LIBRARY_DENIED') { catalog.reset(); selection.clear(); await readScope(); }
     } finally { if (token === epoch) { busy = false; refresh(); } }
   }

@@ -150,4 +150,16 @@ for (const operation of ['changes', 'validate']) {
  assert.equal(view.count,'Not allowed');assert.equal(view.items.length,0,'pre-revocation page cannot restore removed media');
  library.dispose();
 }
+{
+ const {state,port}=fakePort(),{api}=fakeApi(),library=createDeviceLibrary(port,()=>true);
+ let reject;
+ const page=port.page;
+ port.page=()=>new Promise((resolve,fail)=>{reject=fail;});
+ library.tile(api);library.album({},api);await tick();
+ assert.equal(typeof reject,'function','old page pending');
+ library.leave();port.page=page;state.rows=[4,3,2,1];library.tile(api).open();await tick();
+ reject(Object.assign(Error('old grant denied'),{code:'LIBRARY_DENIED'}));await tick();
+ assert.deepEqual(library.album({},api).items.map(row=>row.nativeMediaId),state.rows.map(row=>item(row).id),'an old denial must not clear a fresh catalog');
+ library.dispose();
+}
 console.log('PASS photo library adapter');
