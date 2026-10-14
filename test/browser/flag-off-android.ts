@@ -124,6 +124,7 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
     const withListeners = (names: string[]) => [...promise(names), { name: 'addListener', rtype: 'callback' }, { name: 'removeListener', rtype: 'callback' }];
     w.Capacitor = {
       PluginHeaders: [
+        { name: 'AlphaDeletions', methods: promise(['pending']) },
         { name: 'DeviceApps', methods: promise(['buildInfo']) },
         { name: 'DailyApps', methods: withListeners(['surfaceInfo', 'listReminders', 'pendingReminderTap']) },
         { name: 'Agent', methods: withListeners(['getStatus', 'start', 'stop', 'configureCloudProvider', 'request', 'providerStatus', 'requestStream', 'cancelStream']) },
@@ -136,6 +137,7 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
       ],
       nativeCallback: (plugin: string, method: string, input: any, callback: (value: unknown) => void) => { if (method === 'addListener') listeners.push({ plugin, event: input?.eventName, callback }); return String(listeners.length); },
       nativePromise: async (plugin: string, method: string, input: any) => {
+        if (plugin === 'AlphaDeletions' && method === 'pending') return { deletions: [] };
         f.calls.push(plugin + '.' + method);
         if (plugin === 'DeviceApps') return { launcher: true, version: 'flag-off-harness' };
         if (plugin === 'DailyApps' && method === 'surfaceInfo') return { developmentBuild: false, assistant: false };

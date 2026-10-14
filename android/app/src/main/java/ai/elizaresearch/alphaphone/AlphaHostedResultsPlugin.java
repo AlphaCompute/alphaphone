@@ -59,8 +59,11 @@ public class AlphaHostedResultsPlugin extends Plugin {
  /** Persisted owner fence; valid suspended notices are revalidated by the matching session before resume. */
  @PluginMethod public void withdrawOtherOwnerApprovalNotices(PluginCall call){submit(call,()->{try{
   if(!call.getData().has("owner"))throw new IllegalArgumentException("Explicit owner or sign-out required");JSONObject rawOwner=call.getObject("owner");if(!call.getData().isNull("owner")&&rawOwner==null)throw new IllegalArgumentException("Owner must be an object or explicit null");JSONObject owner=call.getData().isNull("owner")?null:NoticeOwner.identity(rawOwner);
-  int withdrawn=WorkflowNoticeTapsFactory.delivery(getContext()).withdrawOtherOwners(WorkflowNoticeTapsFactory.create(getContext()),owner,System.currentTimeMillis());
-  notices().withdrawOtherOwners(owner);
+  // Both privacy fences always run: a failed workflow cancellation never leaves the hosted digest fence unwritten.
+  int withdrawn=0;Exception failed=null;
+  try{withdrawn=WorkflowNoticeTapsFactory.delivery(getContext()).withdrawOtherOwners(WorkflowNoticeTapsFactory.create(getContext()),owner,System.currentTimeMillis());}catch(Exception workflowFailure){failed=workflowFailure;}
+  try{notices().withdrawOtherOwners(owner);}catch(Exception digestFailure){if(failed==null)failed=digestFailure;}
+  if(failed!=null)throw failed;
   JSObject out=new JSObject();out.put("withdrawn",withdrawn);out.put("suspended",WorkflowNoticeTapsFactory.create(getContext()).suspendedApprovals(owner,System.currentTimeMillis()));call.resolve(out);
  }catch(Exception error){call.reject("Another owner's approval notices could not be withdrawn; they expire with their approvals");}});}
  @PluginMethod public void resumeWorkflowApprovalNotice(PluginCall call){submit(call,()->{try{

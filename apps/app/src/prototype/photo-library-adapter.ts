@@ -25,6 +25,14 @@ export type PhotoLibraryPort = {
   addListener(event: 'libraryChanged' | 'scopeChanged', listener: (value: Bag) => void): Promise<PluginListenerHandle>;
 };
 const nativePort = registerPlugin<PhotoLibraryPort>('AlphaPhotoLibrary');
+const CHANGED_OUTCOMES = ['favorited', 'unfavorited', 'trashed', 'restored', 'unchanged'];
+/** Owner-facing summary of a native batch change result (never reports an unverified item as changed). */
+export function describeLibraryChange(result: { status: string; outcomes?: { id: string; status: string }[] }, requested: number) {
+  const outcomes = Array.isArray(result.outcomes) ? result.outcomes : [];
+  const verified = outcomes.filter(row => CHANGED_OUTCOMES.includes(row.status)).length, stale = outcomes.filter(row => row.status === 'stale').length;
+  if (result.status === 'complete' && verified === requested) return `${verified} ${verified === 1 ? 'item' : 'items'} changed and verified.`;
+  return `${verified} of ${requested} changes verified${stale ? `; ${stale} changed elsewhere and ${stale === 1 ? 'was' : 'were'} skipped` : ''}. Reload to see the current library.`;
+}
 const device = registerPlugin<{ openSettings(options: { page: 'privacy' }): Promise<{ status: string }> }>('AlphaDevice');
 export const deviceLibraryAvailable = () => Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('AlphaPhotoLibrary');
 
@@ -147,13 +155,18 @@ export function createDeviceLibrary(port: PhotoLibraryPort = nativePort, availab
         const result = await port.share({ items: pending.items });
         status = result.status === 'opened' ? `Android share sheet opened for ${result.count} ${result.count === 1 ? 'item' : 'items'}. Nothing is sent until you pick an app.` : 'Sharing did not open.';
       } else {
+        // Native (PermittedMediaReview) resolves only after Android approved: {status:'complete'|'partial',
+        // outcomes:[{status:'favorited'|'unfavorited'|'trashed'|'restored'|'unchanged'|'stale'|'unverified'}]}.
+        // A cancelled review rejects with LIBRARY_DECLINED and a revision changed before review with LIBRARY_STALE.
         const result = await port.requestChange({ operation: pending.action, items: pending.items });
-        const verified = result.outcomes?.filter(row => ['verified','favorited','unfavorited','trashed','unchanged'].includes(row.status)).length ?? 0;
-        status = result.status === 'declined' ? 'Android review was cancelled. Nothing changed.' : ['applied','complete'].includes(result.status) ? `${verified} ${verified === 1 ? 'item' : 'items'} changed and verified.` : `${verified} of ${pending.items.length} changes verified. Reload to see the current library.`;
-        if (result.status !== 'declined') { selection.clear(); await revalidate(); }
+        status = describeLibraryChange(result, pending.items.length);
+        selection.clear(); await revalidate();
       }
     } catch (failure) {
-      status = (failure as { code?: string })?.code === 'LIBRARY_STALE' ? 'An item changed before Android review. Nothing changed; review again.' : 'The action could not be completed. Reload the library before retrying.';
+      const code = (failure as { code?: string })?.code;
+      if (code === 'LIBRARY_DECLINED') status = 'Android review was cancelled. Nothing changed.';
+      else if (code === 'LIBRARY_STALE') { status = 'An item changed before Android review. Nothing changed; review again.'; try { await revalidate(); } catch { /* status already asks for a new review */ } }
+      else status = 'The action could not be completed. Reload the library before retrying.';
     } finally { acting = false; refresh(); }
   }
 

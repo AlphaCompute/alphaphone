@@ -6,6 +6,7 @@ import android.app.KeyguardManager;
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.ContentObserver;
 import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
@@ -18,6 +19,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.util.Log;
 import java.util.Arrays;
 import java.util.List;
@@ -56,6 +58,21 @@ public final class ListeningService extends Service {
  private ai.eliza.speech.LocalSpeechEngine engine;
  private AudioManager audio;
  private final Runnable reapply=this::apply;
+ /**
+  * Android reports neither a channel lowered to silent/hidden nor the lock-screen notification
+  * setting changing, so while the microphone is held the indicator is re-checked on a short timer;
+  * losing it converges the service (and closes the microphone) through {@link #apply}.
+  */
+ private final Runnable indicatorCheck=new Runnable(){
+  @Override public void run(){
+   if(destroyed)return;
+   if(!ListenerNotifications.indicatorVisible(ListeningService.this))apply();
+   else main.postDelayed(this,ListenerPolicy.INDICATOR_RECHECK_MS);
+  }
+ };
+ private final ContentObserver lockScreenSetting=new ContentObserver(main){
+  @Override public void onChange(boolean selfChange){main.post(reapply);}
+ };
 
  private final AudioManager.OnModeChangedListener modes=mode->{
   // Ringing counts: the listener stops transcribing as soon as the phone rings (see ListenerPolicy.callMode).
@@ -101,6 +118,8 @@ public final class ListeningService extends Service {
   updateRecordings(audio.getActiveRecordingConfigurations());
   audio.registerAudioPlaybackCallback(playback,main);
   updatePlayback(audio.getActivePlaybackConfigurations());
+  try{getContentResolver().registerContentObserver(Settings.Secure.getUriFor(ListenerNotifications.LOCK_SCREEN_SHOW_NOTIFICATIONS),false,lockScreenSetting);}
+  catch(RuntimeException unavailable){/* the periodic indicator check still applies */}
  }
 
  @Override public int onStartCommand(Intent intent,int flags,int startId){apply();return START_STICKY;}
@@ -110,6 +129,8 @@ public final class ListeningService extends Service {
  @Override public void onDestroy(){
   destroyed=true;
   main.removeCallbacks(reapply);
+  main.removeCallbacks(indicatorCheck);
+  try{getContentResolver().unregisterContentObserver(lockScreenSetting);}catch(RuntimeException ignored){}
   stopCapture();
   audio.removeOnModeChangedListener(modes);
   audio.unregisterAudioRecordingCallback(recordings);
@@ -128,6 +149,7 @@ public final class ListeningService extends Service {
   if(destroyed)return;
   Listener.epoch.invalidate();
   main.removeCallbacks(reapply);
+  main.removeCallbacks(indicatorCheck);
   ListenerPolicy.State state=Listener.state(this);
   if(!ListenerPolicy.foreground(state)){
    stopCapture();
@@ -145,7 +167,8 @@ public final class ListeningService extends Service {
   }
   ListenerNotifications.showStatus(this,state);
   analyse=ListenerPolicy.processesAudio(state);
-  if(ListenerPolicy.holdsMicrophone(state))startCapture();else stopCapture();
+  if(ListenerPolicy.holdsMicrophone(state)){startCapture();main.postDelayed(indicatorCheck,ListenerPolicy.INDICATOR_RECHECK_MS);}
+  else stopCapture();
   long until=new ListenerStore(this).pausedUntil(),now=SystemClock.elapsedRealtime();
   if(state==ListenerPolicy.State.PAUSED_USER&&until!=ListenerPolicy.PAUSE_UNTIL_RESUMED)main.postDelayed(reapply,Math.max(1000,until-now));
   Listener.epoch.renew(analyse);
@@ -242,6 +265,8 @@ public final class ListeningService extends Service {
      ai.eliza.speech.LocalSpeechEngine local;
      synchronized(engineLock){local=engine;}
      if(local==null||!analyse||!Listener.epoch.current(ticket))return;
+     // Never recognise speech while the listener's own indicator is hidden; converge on the main thread.
+     if(!ListenerNotifications.indicatorVisible(this)){main.post(reapply);return;}
      text=local.transcribe(samples);
      WakePhrase.Action action=WakePhrase.classify(text);
      text=null;

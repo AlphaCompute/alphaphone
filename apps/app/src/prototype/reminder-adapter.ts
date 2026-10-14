@@ -1,4 +1,4 @@
-import {deletions,refreshDeletionViews} from '../runtime/deletions';
+import {deletions,refreshDeletionViews,reminderDeletionRefusal} from '../runtime/deletions';
 import { alphaClient } from '../runtime/alpha-client';
 import { connectionController } from '../runtime/connection-ui';
 import {reminderCreations,retainReminderCreation,discardUndispatchedCreation,checkReminderCreation,reconcileReminderCreations,retireRefusedCreation,isReminderRefusal,reminderWallTime,reminderEvents,overdueReminders,undatedTodos,reminderRefusalMessage,reopenSchedule,isUndatedReminder,reminderDueAt as dueOf,type ReminderCreation,type ReminderRefusal} from '../runtime/reminder-creations';
@@ -430,6 +430,9 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
             const reviewed=await deletions.reviewReminder({target:renderedTarget});
             if(reviewed.status==='queued'){if(stillSelected())api.set({open:null});refreshDeletionViews();api.toast('Reminder alert paused. Undo is available for 10 seconds.');return;}
             if(reviewed.status==='cancelled')return;
+            // Definite refusals before admission: nothing was staged, so no uncertain outcome is reported.
+            const refusal=reminderDeletionRefusal(reviewed.status);
+            if(refusal){if(reviewed.status==='stale'&&owner===deleteOwner&&deleteOwner.live)await deleteOwner.refreshReminders();if(owner===deleteOwner&&deleteOwner.live)api.toast(refusal);return;}
             throw Error('Deletion outcome requires review.');
           }
           // Older uncertain operations retain their original receipt-only reconciliation.

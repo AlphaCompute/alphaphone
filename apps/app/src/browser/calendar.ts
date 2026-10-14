@@ -39,12 +39,12 @@ export class BrowserCalendar extends WebPlugin {
     const operation=validateCalendarOperation(input.operation);
     if(operation.type==='calendar_create_local'||operation.type==='calendar_read_next')return {status:'unsupported'};
     const deletionOwner=operation.type==='calendar_delete'?browserDeletionOwner():null;
-    const operationHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');
     const binding=JSON.stringify(operation),identity=operation.type==='calendar_create'?operation.source:operation.target;
     if(this.active.has(input.operationId))return {status:'busy'};
     const ticket={cancelled:false,controller:new AbortController()};this.active.set(input.operationId,ticket);
     const fields=(row:EventRow):CalendarFields=>({title:row.title,description:row.body,location:row.location,start:new Date(row.begin).toISOString(),end:new Date(row.end).toISOString(),timeZone:row.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone});
     try {
+      const operationHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');
       const data=(await calendarDocument.read(initial,ticket.controller.signal)),row=operation.type==='calendar_create'?undefined:calendarRecord(data.events,operation.target.eventId);
       if(operation.type==='calendar_delete'&&data.deleteClaims?.[input.operationId])return {status:'unknown'};
       const prior=data.receipts?.[input.operationId];
@@ -217,7 +217,14 @@ export class BrowserCalendar extends WebPlugin {
     return calendarDocument.edit(initial,data=>{const row=calendarRecord(data.events,input.id);if(!row||row.calendarId!==input.calendarId||row.revision!==input.revision||!matches(row,input.expected))return {status:'conflict'};const deletion=stageCalendarDeletion(data,row,'event','manual:'+data.sourceRevision);return {status:'queued',deletion};});}
   async deletionReceipt(id:string){const data=await calendarDocument.read(initial);return data.deletions?.[id]||null;}
   async pendingDeletions(){const data=await calendarDocument.read(initial),clock=browserDeletionClock();return Object.values(data.deletions||{}).filter(e=>!e.acknowledged&&['queued','paused','unknown','dispatching'].includes(e.phase)&&browserDeletionOwnerVisible(e.owner)).map(e=>({...e,kind:'calendar',window:e.phase==='queued'?deletionWindow(e.deadline,clock):undefined}));}
-  async settleDeletions(){await calendarDocument.edit(initial,data=>settleCalendarDeletions(data,browserDeletionOwnerCurrent));}
+  async settleDeletions(){
+    // Undo polling runs every 500ms. Only an expired queued deletion may change the
+    // document; any other edit would replace the receipt held by recovery and editors.
+    const raw=await calendarDocument.readRaw();if(raw===null)return;
+    const data:State=JSON.parse(raw),clock=browserDeletionClock();
+    if(!Object.values(data.deletions||{}).some(entry=>entry.phase==='queued'&&deletionWindow(entry.deadline,clock)==='expired'))return;
+    await calendarDocument.edit(initial,data=>settleCalendarDeletions(data,browserDeletionOwnerCurrent));
+  }
   async dismissDeletion(id:string){return calendarDocument.edit(initial,data=>{const entry=data.deletions?.[id];if(!entry||!browserDeletionOwnerVisible(entry.owner)||!['unknown','dispatching'].includes(entry.phase))throw Error('Uncertain deletion is unavailable.');entry.acknowledged=true;return {status:'acknowledged'};});}
   async undoDeletion(id:string){return calendarDocument.edit(initial,data=>undoCalendarDeletion(data,id,browserDeletionOwnerVisible));}
   async readWorkflowRange(input:{calendarIds:string[];start:string;end:string;maximumEvents:number}) {const {events}=await this.list({begin:Date.parse(input.start),end:Date.parse(input.end)});return {status:'ready',events:events.filter(e=>input.calendarIds.includes(e.calendarId)).slice(0,input.maximumEvents).map(e=>({...e,start:new Date(e.begin).toISOString(),end:new Date(e.end).toISOString(),allDay:!!e.allDay}))};}

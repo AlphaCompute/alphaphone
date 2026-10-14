@@ -41,6 +41,7 @@ async function android(page: Page, options: AndroidOptions) {
     w.secureValues = () => ({ ...values });
     const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
     w.Capacitor = { PluginHeaders: [
+        { name: 'AlphaDeletions', methods: methods(['pending']) },
       { name: 'DeviceApps', methods: methods(['buildInfo']) },
       { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'configureCloudProvider', 'request']) },
       { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
@@ -48,6 +49,7 @@ async function android(page: Page, options: AndroidOptions) {
       { name: 'AlphaHostedResults', methods: methods(['disableBackground']) },
       { name: 'AlphaVoiceCloud', methods: methods(['checkPermissions']) },
     ], nativePromise: async (plugin: string, method: string, input: any) => {
+        if (plugin === 'AlphaDeletions' && method === 'pending') return { deletions: [] };
       w.nativeCalls.push({ plugin, method, slot: input?.slot, url: input?.url, http: input?.method, authorization: input?.headers?.Authorization, path: input?.path });
       if (plugin === 'DeviceApps') return { launcher: false, version: 'connection-boundaries' };
       if (plugin === 'AlphaNotifications') return { permissionGranted: true, appEnabled: true };
@@ -183,7 +185,7 @@ for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       await page.evaluate(() => { (window as any).holdStop = false; (window as any).releaseStop(); });
     }
-    const status = page.getByRole('status');
+    const status = page.locator('.alpha-connection').getByRole('status').filter({ hasText: /Signed out|sign-in token was removed/ });
     if (mode === 'revoked') await expect(status).toContainText('Signed out of Eliza Cloud. This sign-in was revoked.');
     else {
       await expect(status).toContainText('The sign-in token was removed here; Eliza Cloud did not confirm revoking it.');
@@ -336,3 +338,30 @@ test('the web build\'s forced sign-out does not create a secret store in a brows
 // Production no longer offers remote pairing. Protocol-level wrong-owner, expired-session,
 // revocation and history tests remain in scripts/test-remote-protocol.mjs and
 // scripts/test-connection-history.mjs as explicitly non-product development infrastructure.
+
+test('an unavailable deletion receipt status does not block account settings controls', async ({ page }) => {
+  await android(page, { cloudCredential: true, balance: 0, revoke: 'revoked' });
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    const bridge = (window as any).Capacitor, original = bridge.nativePromise;
+    bridge.nativePromise = (plugin: string, method: string, input: unknown) => {
+      if (plugin === 'AlphaDeletions' && method === 'pending') return Promise.reject(Error('Receipt store unavailable'));
+      return original(plugin, method, input);
+    };
+    window.dispatchEvent(new Event('alpha:deletions-changed'));
+  });
+  const notice = page.getByRole('complementary', { name: 'Pending deletions' });
+  await expect(notice).toContainText('Pending deletion status is unavailable');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: /Agent connection/ }).click();
+  const signout = page.getByRole('button', { name: 'Sign out', exact: true });
+  // Force geometric overlap without forcing the click: informational text must not consume it.
+  await signout.evaluate(button => {
+    const banner = document.querySelector<HTMLElement>('.alpha-deletion-undo')!, rect = button.getBoundingClientRect();
+    Object.assign(banner.style, { top: `${rect.top}px`, left: `${rect.left}px`, right: 'auto', bottom: 'auto', width: `${rect.width}px` });
+  });
+  await signout.click();
+  await expect(page.locator('.alpha-connection').getByRole('status').filter({ hasText: 'Signed out of Eliza Cloud. This sign-in was revoked.' })).toBeVisible();
+  await expect(notice).toContainText('Pending deletion status is unavailable');
+});
