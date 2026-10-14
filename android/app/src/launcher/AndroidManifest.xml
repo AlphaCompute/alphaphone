@@ -4,6 +4,13 @@
       the image. A sideloaded launcher APK declares them but never asks for them. -->
  <uses-permission android:name="android.permission.READ_CONTACTS" />
  <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+ <!-- SMS/MMS provider reads and reviewed native sends (#421), on the verified image only. Both are
+      hard-restricted: Android grants them to the preinstalled image app or the SMS role holder, never
+      to a sideloaded launcher APK. AlphaTelephonyPlugin requests them only on the verified image. -->
+ <uses-permission android:name="android.permission.READ_SMS" />
+ <uses-permission android:name="android.permission.SEND_SMS" />
+ <!-- SMS permissions imply telephony hardware; keep it optional so no install is filtered by it. -->
+ <uses-feature android:name="android.hardware.telephony" android:required="false" />
  <queries>
   <intent><action android:name="android.intent.action.SENDTO"/><data android:scheme="smsto"/></intent>
  </queries>
@@ -13,5 +20,9 @@
  <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
  <application><activity android:name=".MainActivity" android:exported="true">
   <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.HOME"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>
- </activity></application>
+ </activity>
+  <!-- Sent and delivery results of reviewed native SMS sends: explicit PendingIntents only, no filter,
+       not exported. The receiver ignores every broadcast unless the image capability holds. -->
+  <receiver android:name=".AlphaSmsSendReceiver" android:exported="false" />
+ </application>
 </manifest>
