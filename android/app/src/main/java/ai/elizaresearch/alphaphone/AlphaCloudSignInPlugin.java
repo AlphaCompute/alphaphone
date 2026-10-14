@@ -515,7 +515,7 @@ public final class AlphaCloudSignInPlugin extends Plugin {
    // The key this sign-in replaces, if any, is revoked after the new one is active (as CloudProtocol.login does).
    String previous = previousToken(receipts, environment, secret);
    long intent = AlphaLocalAgentPlugin.reserveCredentialIntent();
-   AlphaCredentialStore credentials = new AlphaCredentialStore(getContext(), () -> { if (destroyed) throw new IllegalStateException("Sign-in closed"); AlphaLocalAgentPlugin.requireCredentialIntent(intent); });
+   AlphaCredentialStore credentials = new AlphaCredentialStore(getContext(), () -> { if (destroyed || current.cancelled) throw new IllegalStateException("Sign-in closed"); AlphaLocalAgentPlugin.requireCredentialIntent(intent); });
    JSONObject saved = new JSONObject().put("credentialId", UUID.randomUUID().toString()).put("token", secret).put("expiresAt", expiresAt).put("serverCredentialId", credentialId);
    credentials.writeCredentialSlot("cloud:" + environment.name, saved.toString());
    // Commit point: the key is stored. Cancelling now cannot unstore it; activation proceeds.

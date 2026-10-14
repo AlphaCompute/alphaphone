@@ -58,7 +58,7 @@ async function boot(page:Page,initial:{signIn?:SignInMode;tokens?:Record<string,
   const w=window as any;
   if(!sessionStorage.getItem('signin-fixture-seeded')){sessionStorage.setItem('signin-fixture-seeded','1');localStorage.setItem('alpha.startup-permissions.v1',JSON.stringify({dismissed:true,attempted:{}}));}
   const f=w.signInFixture={signIn:'ok',...initial,saved:false as boolean,credential:null as any,running:false,bound:false,calls:[] as any[],release:null as null|((error:unknown)=>void)};
-  const names={AlphaConnection:['secureRead','secureWrite','secureRemove','request','cancel','openExternal'],AlphaCloudSignIn:['startGoogle','startEmail','verifyEmail','verifyMfa','cancel','status'],Agent:['start','stop','getStatus','configureCloudProvider','clearProvider','providerStatus','residentAttachment','request','addListener','requestStream','cancelStream'],DailyApps:['addListener','removeListener'],AlphaNotifications:['status'],AlphaVoiceCloud:['checkPermissions'],AlphaHostedResults:['disableBackground']};
+  const names={AlphaConnection:['secureRead','secureWrite','secureRemove','request','cancel','openExternal'],AlphaCloudSignIn:['startGoogle','startEmail','verifyEmail','verifyMfa','cancel','status','addListener','removeListener'],Agent:['start','stop','getStatus','configureCloudProvider','clearProvider','providerStatus','residentAttachment','request','addListener','requestStream','cancelStream'],DailyApps:['addListener','removeListener'],AlphaNotifications:['status'],AlphaVoiceCloud:['checkPermissions'],AlphaHostedResults:['disableBackground']};
   const fail=(code:string)=>Object.assign(new Error(code),{code});
   // The native host stores the key before reporting success and returns only non-secret fields.
   const store=()=>{f.saved=true;f.credential={credentialId:crypto.randomUUID(),token:'synthetic-mobile-key',expiresAt:Date.now()+30*24*3600*1000,serverCredentialId:'55555555-5555-4555-8555-555555555555'};return {status:'authenticated',environment:'production',expiresAt:f.credential.expiresAt,accountCreated:f.signIn==='created'};};
@@ -66,6 +66,7 @@ async function boot(page:Page,initial:{signIn?:SignInMode;tokens?:Record<string,
   w.Capacitor={PluginHeaders:Object.entries(names).map(([name,methods])=>({name,methods:methods.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin:string,method:string,input:any)=>{
    f.calls.push({plugin,method,path:input?.url?new URL(input.url).pathname:input?.path,email:input?.email,environment:input?.environment});
    if(plugin==='AlphaCloudSignIn'){
+    if(method==='addListener'||method==='removeListener')return {};
     if(method==='cancel'){f.release?.(fail('cancelled'));f.release=null;return {};}
     if(method==='status')return f.signIn==='not-ready'?{active:false,inApp:false,google:false,email:false}:{active:false,inApp:true,google:true,email:true};
     if(method==='startGoogle'){if(f.signIn==='hold')return new Promise((_,reject)=>{f.release=reject;});return store();}
@@ -109,7 +110,8 @@ async function boot(page:Page,initial:{signIn?:SignInMode;tokens?:Record<string,
   }};
  },initial);
  await page.goto(origin+'/subscription-composition');
- await expect.poll(()=>page.evaluate(()=>(window as any).planFlags)).toEqual({native:'android',mocks:false});
+ // The composition imports the complete runtime before publishing its readiness marker.
+ await expect.poll(()=>page.evaluate(()=>(window as any).planFlags),{timeout:30000}).toEqual({native:'android',mocks:false});
 }
 type Call={plugin:string;method:string;path?:string;email?:string;environment?:string};
 const calls=(page:Page)=>page.evaluate(()=>(window as any).signInFixture.calls as Call[]);
@@ -128,7 +130,7 @@ const signInDialog=(page:Page)=>page.getByRole('dialog',{name:'Sign in to Eliza 
 test.describe('in-app Eliza Cloud sign-in on the production Android composition',()=>{
  test('email code sign-in stays in Alpha, retries a wrong code, waits out resend and binds Cloud AI',async({page},info)=>{
   await boot(page,await entitlements());
-  await expect(page.getByRole('dialog',{name:'Welcome to Alpha',exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog',{name:'Your agent',exact:true})).toBeVisible();
   await agent(page,'unavailable');
   await page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
   const dialog=signInDialog(page);await expect(dialog).toBeVisible();
@@ -182,7 +184,7 @@ test.describe('in-app Eliza Cloud sign-in on the production Android composition'
   await agent(page,'unavailable');
   // Back leaves the sign-in screen for the sign-in gate, which still cannot be dismissed.
   await dialog.getByRole('button',{name:'Back',exact:true}).click();
-  await expect(page.getByRole('dialog',{name:'Welcome to Alpha',exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog',{name:'Your agent',exact:true})).toBeVisible();
   await noHandOff(page);
  });
 
