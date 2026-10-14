@@ -383,9 +383,14 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   try {
   // Decision P-43: the resident always runs. With no provider slot it launches with no hosted
   // provider environment; upstream then reports no_provider for each turn.
-  String saved=new AlphaCredentialStore(context).readCredentialSlot("local-agent-provider:v1");
-  JSONObject provider=saved==null?null:new JSONObject(saved);
-  String cloudSaved=provider!=null&&"elizacloud".equals(provider.optString("provider"))?new AlphaCredentialStore(context).readCredentialSlot("cloud:production"):null;
+  // An unreadable or malformed provider slot (or Cloud credential) never blocks the resident: it
+  // launches unbound, exactly as for a provider that cannot be applied below.
+  String saved=null,cloudSaved=null;JSONObject provider=null;
+  try{
+   saved=new AlphaCredentialStore(context).readCredentialSlot("local-agent-provider:v1");
+   provider=saved==null?null:new JSONObject(saved);
+   cloudSaved=provider!=null&&"elizacloud".equals(provider.optString("provider"))?new AlphaCredentialStore(context).readCredentialSlot("cloud:production"):null;
+  }catch(Exception unreadable){saved=null;provider=null;cloudSaved=null;}
   if(provider!=null){
    // A stored provider whose Cloud sign-in is gone or expired cannot be applied; the resident still
    // launches, with no provider, under the no-provider generation (never attachable to a binding).
