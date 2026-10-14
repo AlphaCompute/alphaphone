@@ -24,7 +24,12 @@ test('host asset manifest matches the current shared worker pins, including opti
  assert.deepEqual(speechAssets.asr,[...parse(asr.split('ASR_ASSETS:')[1].split('];')[0]),...parse(asr.split('const VAD_ASSET')[1].split('};')[0])]);
 });
 test('historical proof entrypoints refuse before credentials, network or native assets',()=>{
- for(const name of ['test-cold-kokoro','test-paired-whisper','test-combined-voice-roundtrip','test-agent-asr','test-agent-tts']){
+ for(const name of ['test-cold-kokoro','test-paired-whisper','test-combined-voice-roundtrip','test-agent-asr','test-agent-tts','test-host-kokoro','test-local-asr']){
   assert.throws(()=>execFileSync(process.execPath,['--import','tsx','scripts/'+name+'.mjs'],{env:{PATH:process.env.PATH},stdio:'pipe'}),error=>error.stderr.toString().includes('Historical Kokoro/Whisper campaign is retired'));
  }
+});
+test('frozen combined source admits only the current reviewed native gitlink',()=>{
+ const source=readFileSync(new URL('../scripts/combined-agent-source.mjs',import.meta.url),'utf8');
+ const actual=execFileSync('git',['-C','vendor/eliza','ls-tree','HEAD','plugins/plugin-local-inference/native/llama.cpp'],{encoding:'utf8'}).match(/^160000 commit ([a-f0-9]{40})\t/)[1];
+ assert.ok(source.includes("'plugins/plugin-local-inference/native/llama.cpp':'"+actual+"'"));
 });

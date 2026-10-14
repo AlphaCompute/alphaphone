@@ -45,3 +45,12 @@ service lifecycle, protocol and proxy tests exercise source behavior with
 synthetic inputs; new installed-asset, intelligibility, cold-start latency and
 physical-device campaigns remain necessary. No new runtime qualification is
 claimed by this migration.
+
+The loopback development agent's `/transcribe` endpoint also uses the shared
+ASR service. It requires Bun, canonical `ELIZA_ASR_MODEL_DIR` configuration,
+and a prepared source tree verified against the product pin before importing
+the service. WAV is validated directly by the shared parser; compressed audio
+still uses bounded local ffmpeg conversion. `/health` reports local ASR ready
+only after native worker initialization. Shutdown stops the worker, and
+cancelled or late recognition cannot return a successful transcript. The Node
+only diagnostic server does not advertise native ASR availability.
