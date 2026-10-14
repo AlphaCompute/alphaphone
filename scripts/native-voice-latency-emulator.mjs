@@ -64,9 +64,9 @@ async function main() {
   for (const name of [PACKAGE, `${PACKAGE}.test`]) if (!adb('shell', 'pm', 'path', name).startsWith('package:')) throw new Error(`${name} is not installed on ${options.serial}`);
   fs.mkdirSync(options.out, { recursive: true });
   if (options.feed) {
-    const feed = `/storage/emulated/0/Android/data/${PACKAGE}/files/feed`;
-    adb('shell', 'rm', '-rf', feed); adb('shell', 'mkdir', '-p', feed);
-    options.wavs.forEach((file, index) => adb('push', file, `${feed}/${String(index).padStart(3, '0')}.wav`));
+    // Into the debuggable app's own files: shared storage created by the shell is not readable by the app.
+    adb('shell', 'run-as', PACKAGE, 'sh', '-c', 'rm -rf files/latency-feed && mkdir -p files/latency-feed');
+    options.wavs.forEach((file, index) => execFileSync('adb', ['-s', options.serial, 'exec-in', 'run-as', PACKAGE, 'sh', '-c', `cat > files/latency-feed/${String(index).padStart(3, '0')}.wav`], { input: fs.readFileSync(file) }));
   }
   const device = { serial: options.serial, avd, abi: adb('shell', 'getprop', 'ro.product.cpu.abi'), sdk: adb('shell', 'getprop', 'ro.build.version.sdk'), fingerprint: adb('shell', 'getprop', 'ro.build.fingerprint'), qemu: adb('shell', 'getprop', 'ro.kernel.qemu') || adb('shell', 'getprop', 'ro.boot.qemu') };
   const instrument = spawn('adb', ['-s', options.serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', CLASS, '-e', 'nativeVoiceLatency', '1', '-e', 'trials', String(options.trials), '-e', 'coldEvery', String(options.coldEvery), ...(options.feed ? ['-e', 'feed', '1', '-e', 'gapSeconds', String(options.gapSeconds)] : []), `${PACKAGE}.test/androidx.test.runner.AndroidJUnitRunner`]);

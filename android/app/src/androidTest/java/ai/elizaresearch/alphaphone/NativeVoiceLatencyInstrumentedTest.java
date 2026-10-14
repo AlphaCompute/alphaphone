@@ -52,7 +52,7 @@ import static org.junit.Assert.*;
  *
  * <p>Opt-in: {@code -e nativeVoiceLatency 1 [-e trials 60] [-e coldEvery 6] [-e timeoutMs 1800000]}.
  * {@code -e feed 1 [-e gapSeconds 8]} replaces the microphone with a paced feed of the WAVs pushed to
- * {@code <external files>/feed/} (for emulators whose virtual microphone delivers silence); those
+ * {@code <files>/latency-feed/} (debug build: {@code adb exec-in run-as}; for emulators whose virtual microphone delivers silence); those
  * trials carry the {@code synthetic-feed} capture clock and measure from the fed last speech sample.
  * Every trial is recorded with pipeline {@code harness-no-inference}. Writes the
  * alpha-native-voice-timing-v2 export plus harness details (transcripts on an emulator only) to
@@ -103,7 +103,7 @@ public final class NativeVoiceLatencyInstrumentedTest {
   HandlerThread playbackThread=new HandlerThread("latency-playback");playbackThread.start();playback=new Handler(playbackThread.getLooper());
   // Warm start: the first trial is still marked cold (first turn of the process).
   worker.submit(()->{try{asr=bundle.openAsr();assertTrue(asr.supportsStreaming());voice=bundle.openVoice();}catch(Exception error){throw new RuntimeException(error);}}).get(300,TimeUnit.SECONDS);
-  AlphaLiveVoiceCapture.SourceFactory source=feed?feedSource(new File(app.getExternalFilesDir(null),"feed"),gapSeconds):AlphaLiveVoiceCapture.MicrophoneSource::new;
+  AlphaLiveVoiceCapture.SourceFactory source=feed?feedSource(new File(app.getFilesDir(),"latency-feed"),gapSeconds):AlphaLiveVoiceCapture.MicrophoneSource::new;
   AlphaLiveVoiceCapture capture=new AlphaLiveVoiceCapture(app,UUID.randomUUID().toString(),new AlphaLiveVoiceCapture.Sink(){
    public void frames(String captureId,JSArray frames,JSArray vad,float peak){
     batchesSeen.incrementAndGet();synchronized(maxPeak){if(peak>maxPeak[0])maxPeak[0]=peak;}
