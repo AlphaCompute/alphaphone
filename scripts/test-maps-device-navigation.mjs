@@ -242,6 +242,34 @@ function screen(maps, options = {}) {
  await failsWith(pending, 'MAPS_DEVICE_UNAVAILABLE', /cancelled/);
 }
 
+// User actions during asynchronous presentation or GPS always retain ownership of the route.
+{
+ for (const operation of ['select', 'start']) {
+  const phone = screen(provider()), nav = new AlphaMapsDeviceNavigation(phone.surface, owner);
+  await nav.start({ destination: portRef, travelMode: 'drive' });
+  const gate = deferred();
+  phone.surface.present = () => gate.promise;
+  const pending = operation === 'select' ? nav.select(portRef) : nav.start({ destination: portRef, travelMode: 'walk' });
+  phone.userStarts({ coordinate: CASINO, accuracyMeters: 8, timestamp: Date.now(), precision: 'precise' });
+  const active = phone.surface.guidance();
+  gate.resolve(true);
+  await failsWith(pending, 'MAPS_INVALID_INPUT', /Navigation started/);
+  assert.deepEqual(phone.surface.guidance(), active);
+  assert.equal(phone.surface.sheet(), 'navigation');
+ }
+ for (const change of ['mode', 'selection']) {
+  const fix = deferred(), maps = provider(), phone = screen(maps, { locate: () => fix.promise });
+  const nav = new AlphaMapsDeviceNavigation(phone.surface, owner);
+  const pending = nav.start({ destination: portRef, travelMode: 'drive' });
+  while (!phone.located.length) await new Promise(resolve => setTimeout(resolve, 1));
+  if (change === 'mode') phone.controller.setMode('walk');
+  else await phone.controller.select({ ...phone.controller.snapshot().selection.value, id: 'coordinates', coordinate: PALACE }, false);
+  fix.resolve({ coordinate: CASINO, accuracyMeters: 8, timestamp: Date.now(), precision: 'precise' });
+  await failsWith(pending, 'MAPS_DEVICE_UNAVAILABLE', /Maps changed/);
+  assert.equal(maps.calls.some(([kind]) => kind === 'route'), false, 'a delayed fix never replans a changed sheet');
+ }
+}
+
 // Registration: offered only while Eliza Cloud Maps is installed for the signed-in account; an account change retires it.
 {
  const listeners = new Set(), registered = [];

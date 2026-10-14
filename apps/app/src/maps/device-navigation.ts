@@ -165,6 +165,7 @@ export class AlphaMapsDeviceNavigation implements MapsDeviceNavigation {
    // Selecting another place would replace the route of active guidance; the user ends it first.
    if (this.surface.guidance()) throw new DeviceNavigationFailure('MAPS_INVALID_INPUT', 'Navigation is active on the phone. End it before selecting another place.');
    await this.present(run.check);
+   if (this.surface.guidance()) throw new DeviceNavigationFailure('MAPS_INVALID_INPUT', 'Navigation started on the phone. End it before selecting another place.');
    await this.surface.showPlace(place, resolveDetails);
    run.check();
    return { state: 'selected', placeName: this.selected(place).name };
@@ -184,16 +185,22 @@ export class AlphaMapsDeviceNavigation implements MapsDeviceNavigation {
    const { place, resolveDetails } = this.destination(request.destination);
    if (this.surface.guidance()) throw new DeviceNavigationFailure('MAPS_INVALID_INPUT', 'Navigation is already active on the phone. End it before starting another route.');
    const provider = await this.present(run.check);
+   if (this.surface.guidance()) throw new DeviceNavigationFailure('MAPS_INVALID_INPUT', 'Navigation started on the phone. End it before starting another route.');
    if (!provider.capabilities.modes.includes(travelMode)) throw new DeviceNavigationFailure('MAPS_UNSUPPORTED_REGION', `Eliza Cloud Maps does not plan ${travelMode} routes.`);
    await this.surface.showDirections(place, travelMode, resolveDetails);
    run.check();
    const destination = this.selected(place), status = { placeName: destination.name, travelMode };
+   const selectionRevision = this.surface.snapshot()?.revision;
    // No permission prompt from an agent request; the route sheet offers "Use current location".
    if (!(await this.surface.locationGranted())) { run.check(); return { state: 'awaiting-location', ...status }; }
    run.check();
    const fix = await this.freshFix(run.signal);
    run.check();
    if (!fix) return { state: 'awaiting-location', ...status };
+   // The user may have changed the route sheet or started guidance while GPS was pending.
+   const shown = this.surface.snapshot();
+   if (this.surface.guidance() || shown?.revision !== selectionRevision || shown?.mode !== travelMode)
+    throw unavailable('Maps changed on the phone while location was pending. The current route was kept.');
    await this.surface.planFrom(fix.coordinate);
    run.check();
    const route = this.surface.snapshot()?.route;
