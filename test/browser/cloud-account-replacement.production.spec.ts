@@ -75,12 +75,13 @@ test('signing out of account A and into account B stops the resident first and u
   // A's key never binds the provider again, and was signed out once (sign-out, not the new sign-in).
   expect(order.filter(entry => entry.startsWith('revoke'))).toEqual(['revoke Bearer ' + A.token]);
 
-  // Account copy, credits and the connected Inbox account are B's.
+  // Account copy, plan status and the connected Inbox account are B's (subscription-entitlement.ts).
   await accounts(page);
   await expect(page.getByText(B.email, { exact: true })).toBeVisible();
   await expect(page.getByText(A.email, { exact: true })).toHaveCount(0);
   dialog = await agentConnection(page);
-  await expect(dialog).toContainText('Credits available');
+  await expect(dialog).toContainText('Plan status unavailable');
+  await expect(dialog).not.toContainText(/Credits available|Add credits/);
   await dialog.getByRole('button', { name: 'Close connection settings', exact: true }).click();
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await button(page, 'Inbox').click();
