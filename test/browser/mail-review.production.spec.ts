@@ -163,9 +163,12 @@ test('Android: the send review shows Cc and Bcc, an edit after review is reviewe
   await button(page, 'Inbox').click();
   await expect(button(page, 'Synthetic sender, Harbour schedule')).toBeVisible({ timeout: 30_000 });
   await button(page, 'Compose').click();
-  await page.getByPlaceholder('To', { exact: true }).fill('friend@example.invalid');
-  await page.getByPlaceholder('To', { exact: true }).press('Enter');
-  await page.getByRole('textbox', { name: 'Cc', exact: true }).fill('carol@example.invalid');
+  await page.getByRole('textbox', {name: 'To', exact: true}).fill('friend@example.invalid');
+  await page.getByRole('textbox', {name: 'To', exact: true}).press('Enter');
+  await expect(page.getByRole('textbox', {name: 'Cc', exact: true})).toHaveCount(0);
+  await expect(page.getByRole('textbox', {name: 'Bcc', exact: true})).toHaveCount(0);
+  await page.getByRole('button', {name: 'Cc and Bcc', exact: true}).click();
+  await page.getByRole('textbox', {name: 'Cc', exact: true}).fill('carol@example.invalid');
   await page.getByRole('textbox', { name: 'Bcc', exact: true }).fill('audit@example.invalid');
   await page.getByRole('textbox', { name: 'Subject', exact: true }).fill('Flag-off reviewed send');
   await page.getByRole('textbox', { name: 'Message', exact: true }).fill('First body');

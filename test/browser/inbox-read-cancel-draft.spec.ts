@@ -23,7 +23,8 @@ for(const request of ['Refresh inbox','Search Gmail','Check connection'])for(con
  await page.getByRole('textbox',{name:'Message',exact:true}).fill('Original text');
  if(saved)await page.getByRole('button',{name:'Save draft locally',exact:true}).click();
  await page.getByRole('textbox',{name:'Message',exact:true}).fill('Unsaved important text');
- await page.getByRole('textbox',{name:'Cc',exact:true}).fill('copy@example.invalid');
+ await page.getByRole('button', {name: 'Cc and Bcc', exact: true}).click();
+  await page.getByRole('textbox', {name: 'Cc', exact: true}).fill('copy@example.invalid');
  await page.getByRole('textbox',{name:'Bcc',exact:true}).fill('blind@example.invalid');
  await page.getByRole('button',{name:'Back from draft',exact:true}).click();
  if(request==='Search Gmail'){
