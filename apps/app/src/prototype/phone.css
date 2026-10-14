@@ -390,3 +390,12 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
  * keyboard and Stop controls are the same elements, so rotation never restarts a session. */
 .alpha-landscape [data-alpha-voice-panel] { left:auto!important; right:16px!important; width:calc(var(--alpha-dock-width) - 16px); box-sizing:border-box; }
 .alpha-wide:not(.alpha-landscape) [data-alpha-voice-panel] { right:0!important; left:0!important; margin-inline:auto; max-width:560px; box-sizing:border-box; }
+
+/* Notes keeps its mounted editor beside its mounted source list when both fit. */
+.notes-workspace[data-alpha-notes-split="true"] { --notes-list-width:320px; }
+.notes-workspace[data-alpha-notes-split="true"] > [data-alpha-subview="notes-list"] { width:var(--notes-list-width); border-right:1px solid var(--s3); box-sizing:border-box; }
+.notes-workspace[data-alpha-notes-split="true"] > [data-alpha-subview="notes-editor"],
+.notes-workspace[data-alpha-notes-split="true"] > [data-alpha-subview="notes-voice"],
+.notes-workspace[data-alpha-notes-split="true"] > [data-alpha-subview="notes-link"] { left:var(--notes-list-width)!important; }
+
+.notes-workspace[data-alpha-notes-split="true"] [data-alpha-subview="notes-list"] button[aria-current="true"] { box-shadow:inset 0 0 0 2px var(--acct); }

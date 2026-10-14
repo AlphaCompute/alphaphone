@@ -20,6 +20,29 @@ function popupFocus(name:string,current:()=>Bag){
 }
 /** Full-screen subviews replace their covered content in accessibility navigation. */
 export function installSubviewAccessibility(views:Bag){
+ let notesApi:Bag|undefined;
+ const notesSplit=()=>document.documentElement.classList.contains('alpha-wide') && !document.documentElement.classList.contains('alpha-text-xl') && document.documentElement.clientWidth>=1000;
+ let split=notesSplit();
+ // Canvas fitting and text sizing can change independently of a window resize.
+ const refreshNotesLayout=()=>{
+  const next=notesSplit();if(next===split)return;split=next;
+  if(!notesApi?.isActive())return;
+  const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;
+  const restore=!next && previous?.closest('[data-alpha-subview="notes-list"]');
+  if(restore){
+   const afterCover=new MutationObserver(()=>{
+    if(!restore.hasAttribute('inert'))return;
+    afterCover.disconnect();
+    if(!notesApi?.isActive()||notesSplit()||document.querySelector('dialog[open]'))return;
+    if(document.activeElement!==previous&&document.activeElement!==document.body)return;
+    document.querySelector<HTMLElement>('.notes-workspace > [data-alpha-subview]:not([inert]):not([data-alpha-subview="notes-list"]) button')?.focus({preventScroll:true});
+   });
+   afterCover.observe(restore,{attributes:true,attributeFilter:['inert']});
+  }
+  notesApi.shell({notesSplitLayout:next});
+ };
+ new ResizeObserver(refreshNotesLayout).observe(document.documentElement);
+ new MutationObserver(refreshNotesLayout).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
  for(const name of ['inbox','workflows']){
   const render=views[name].render;
   let output:Bag={};
@@ -52,7 +75,13 @@ export function installSubviewAccessibility(views:Bag){
   const popups=popupFocus(name,()=>output);
   views[name].render=(state:Bag,api:Bag)=>{
    const out=output=render(state,api);deleteModal?.render(!!(out.emptyOpen||out.trashConfirmOpen));
-   return {...out,...refs,...popups(out),emptyModal:deleteModal?.ref,captureSubviewFocus:focus.capture,...coverage(out)};
+   const covered=coverage(out);
+   if(name==='notes'){
+    notesApi=api; split=notesSplit();
+    out.split=split && !!(out.isEdit||out.isVoice||out.isLink) && !out.recording && !out.trashOpen;
+    if(out.split)covered.listCovered=false;
+   }
+   return {...out,...refs,...popups(out),emptyModal:deleteModal?.ref,captureSubviewFocus:focus.capture,...covered};
   };
  }
  {

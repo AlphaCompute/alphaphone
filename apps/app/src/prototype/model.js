@@ -3073,10 +3073,10 @@ registerView("notes", {
       var more = (n.items || []).length - items.length;
       var bars = NOTES_WAVE.slice(0, 22);
       return {
-        id: n.id, title: n.title || "Untitled", hasTitle: true, body: n.kind === "text" ? String(n.body || "").slice(0, 180) : "", hasBody: n.kind === "text" && !!String(n.body || "").trim(),
+        id: n.id, selected: n.id === st.open, title: n.title || "Untitled", hasTitle: true, body: n.kind === "text" ? String(n.body || "").slice(0, 180) : "", hasBody: n.kind === "text" && !!String(n.body || "").trim(),
         isList: n.kind === "list", isVoice: n.kind === "voice", isLink: n.kind === "link", items: items, more: more > 0 ? "+" + more : "", hasMore: more > 0,
         bars: bars, dur: n.kind === "voice" ? notesFmt(n.dur) + (n.actions && n.actions.length ? " · " + n.actions.length + " to-dos" : "") : "", domain: n.domain || "",
-        pinned: !!n.pinned, open: function () { notesStopTimers(); api.set({ open: n.id, pos: 0, playing: false, sheet: null }); }
+        pinned: !!n.pinned, open: function () { notesStopTimers(); api.set({ open: n.id, pos: 0, playing: false, dict: false, sheet: null }); }
       };
     });
     var colL = [], colR = [];
