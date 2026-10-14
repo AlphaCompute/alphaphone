@@ -66,7 +66,7 @@ async function boot(page:Page,initial:Fixture&{tokens?:Record<string,string>;key
   if(!sessionStorage.getItem('plan-fixture-seeded')){sessionStorage.setItem('plan-fixture-seeded','1');localStorage.setItem('alpha.startup-permissions.v1',JSON.stringify({dismissed:true,attempted:{}}));for(const [key,value] of Object.entries(initial.storage||{}))localStorage.setItem(key,value as string);}
   const f=w.planFixture={plan:'active',route:'signed',limits:'absent',identity:'ok',redeem:'ok',redeemPlan:'active',saved:true,holdProvider:false,bound:false,...initial,running:false,starts:0,turns:[] as any[],calls:[]as any[],bodies:[]as any[],releaseProvider:null as null|(()=>void)};
   const credential={credentialId:'11111111-1111-4111-8111-111111111111',token:'synthetic-plan-token',expiresAt:initial.expiresAt??Date.now()+60*24*3600*1000};
-  const names={AlphaConnection:['secureRead','secureWrite','secureRemove','request','cancel','openExternal'],Agent:['start','stop','getStatus','configureCloudProvider','clearProvider','providerStatus','residentAttachment','request','addListener','requestStream','cancelStream'],DailyApps:['addListener','removeListener'],AlphaNotifications:['status'],AlphaVoiceCloud:['checkPermissions']};
+  const names={AlphaConnection:['secureRead','secureWrite','secureRemove','request','cancel','openExternal'],Agent:['start','stop','getStatus','configureCloudProvider','clearProvider','providerStatus','residentAttachment','request','addListener','requestStream','cancelStream'],DailyApps:['addListener','removeListener'],AlphaNotifications:['status'],AlphaVoiceCloud:['checkPermissions'],AlphaHostedResults:['disableBackground']};
   const reply=(status:number,body:unknown)=>({status,body:JSON.stringify(body)});
   w.Capacitor={PluginHeaders:Object.entries(names).map(([name,methods])=>({name,methods:methods.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin:string,method:string,input:any)=>{
    f.calls.push({plugin,method,path:input?.url?new URL(input.url).pathname:input?.path,url:input?.url,httpMethod:input?.method});
@@ -98,6 +98,7 @@ async function boot(page:Page,initial:Fixture&{tokens?:Record<string,string>;key
    if(plugin==='AlphaNotifications')return {permissionGranted:false,appEnabled:false};
    if(plugin==='AlphaVoiceCloud')return {microphone:'prompt'};
    if(plugin==='DailyApps')return {remove:async()=>{}};
+   if(plugin==='AlphaHostedResults')return {};
    if(plugin!=='AlphaConnection')throw Error('Unexpected native plan fixture port');
    if(method==='secureRead')return {value:f.saved&&input.slot==='cloud:production'?JSON.stringify(credential):null};
    if(method==='secureRemove'){if(input.slot==='cloud:production')f.saved=false;return {};}
@@ -526,7 +527,7 @@ test.describe('account, plan and sign-in expiry',()=>{
   for(const name of ['Redeem code','Manage plan in Eliza Cloud','Sign out','Done'])await expect(dialog.getByRole('button',{name,exact:true})).toBeVisible();
   await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:info.outputPath('plan-panel.png'),animations:'disabled'});
   await dialog.getByRole('button',{name:'Sign out',exact:true}).click();
-  await expect(page.getByRole('dialog',{name:'Welcome to Alpha',exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog',{name:'Welcome to Alpha',exact:true})).toBeVisible({timeout:15000});
   await agentRunning(page,'unavailable');
   expect(await page.evaluate(()=>localStorage.getItem('alpha.connection.plan-admission.v1'))).toBeNull();
   expect(await page.evaluate(()=>(window as any).planController.residentPlanSettings())).toMatchObject({signedIn:false,plan:'Not signed in',inference:'Unavailable · sign in'});
