@@ -13,9 +13,9 @@ launcher never converts an arbitrary installed library's current hash into a tru
 `ELIZA_PARADEE_MODEL_DIR` and/or `ELIZA_ASR_MODEL_DIR`. The private profile's `local-speech.json`
 accepts these same nonsecret values, including the digest. Explicit environment values override
 saved settings. The earlier Alpha-only names (`ALPHA_LOCAL_TTS`, `ALPHA_LOCAL_ASR`,
-`ALPHA_TTS_MODEL_DIR`, `ALPHA_ASR_MODEL_DIR`, `ALPHA_TTS_LIBRARY`) are refused in the environment
-with their replacement and read as their replacement (with a warning) from a saved file; the
-Whisper executable, backend and single-model settings are retired.
+`ALPHA_TTS_MODEL_DIR`, `ALPHA_ASR_MODEL_DIR`, `ALPHA_TTS_LIBRARY`) are refused with their
+replacement, both in the environment and in a saved file; the Whisper executable, backend and
+single-model settings are retired and refused.
 
 The TTS directory contains the shared pinned Paradee GGUF and Misaki lexicon.
 If `espeak-ng-data` is present its English data pins are checked too; without
