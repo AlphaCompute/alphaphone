@@ -65,6 +65,9 @@ final class AlphaCredentialStore {
     if(conflict)return false;
     if(LocalAgentProviderAdmission.PROVIDER_SLOT.equals(name))return before!=null||value!=null;
     if(java.util.Objects.equals(before,value))return false;
+    // No stored provider: the running agent was launched unbound (removing a provider stops it),
+    // so no process holds a Cloud key and a sign-in change never needs to stop the agent.
+    if(provider==null)return false;
     String environment=provider==null?"production":new org.json.JSONObject(provider).optString("environment","production");
     return name.equals("cloud:"+environment)&&!LocalAgentProviderAdmission.sameCloudCredential(before,value);
    }

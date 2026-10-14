@@ -1,4 +1,5 @@
 import {browserDevProfile} from '../browser/dev-profile';
+import { testMocksEnabled } from '../build-flags';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps, type Action, type NativeResult } from '../daily';
 import { registerPlugin } from '../platform-plugins';
@@ -29,6 +30,9 @@ export function egressPrivacy(connection: Pick<ConnectionSnapshot, 'kind' | 'ses
   if (connection.session && connection.kind === 'resident' && native)
     return { big: 'Identifier swap only', sub: 'Secret and contact identifiers are swapped before hosted inference; names and free text are not covered' };
   if (connection.session || connection.cloudAccount) return { big: 'Not reported', sub: 'Depends on the selected agent; not reported' };
+  // On a product phone the on-device agent always runs; until its session is verified nothing is
+  // sent. Test-mocks builds keep their explicit offline developer choice.
+  if (native && !testMocksEnabled) return { big: 'Starting', sub: 'Your on-device agent is starting; no hosted inference requests yet' };
   return { big: 'Offline', sub: 'No agent connected; no hosted inference requests' };
 }
 /** Only a verified resident session on Android reports its configured hosted model.

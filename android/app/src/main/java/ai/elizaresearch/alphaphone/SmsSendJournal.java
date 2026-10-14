@@ -29,11 +29,20 @@ import java.util.regex.Pattern;
  *
  * Bounds: at most {@link #MAX_RECORDS} records. When full, the oldest closed records are dropped, then
  * the oldest records still waiting for evidence, so a carrier that never sends delivery reports cannot
- * block sending until the lifetime ID capacity is reached. A dropped record leaves a tombstone of its operation ID and binding (at most
- * {@link #MAX_TOMBSTONES}), and a repeated ID with a tombstone is refused, never sent again. New sends fail closed at capacity; tombstones are never deleted.
+ * block sending. A dropped record leaves a tombstone of its operation ID and binding (the newest
+ * {@link #MAX_TOMBSTONES}); older tombstones are folded into a fixed-size filter of operation-ID
+ * hashes. No operation ID is ever forgotten: a repeated ID that matches a record, a tombstone or the
+ * filter is refused and never sent again. The filter has no false negatives; a false positive only
+ * refuses one fresh ID (the caller starts a new review with a new ID), so storage stays bounded and
+ * sending is never permanently locked out.
  */
 final class SmsSendJournal {
  static final int MAX_RECIPIENTS = 5, MAX_BODY = 1600, MAX_PARTS_PER_RECIPIENT = 10, MAX_RECORDS = 200, MAX_TOMBSTONES = 1000;
+ /**
+  * Retired-ID filter: 2^20 bits (128 KiB), 8 probes from SHA-256 of the ID. At 20,000 retired IDs a
+  * fresh ID is refused with probability about 1e-6; at 100,000 about 0.3%. Never a false negative.
+  */
+ static final int FILTER_BITS = 1 << 20, FILTER_PROBES = 8;
  /** After this, no more evidence is awaited for a record: delivery reports are not retried for longer. */
  static final long MAX_OPEN_MS = 7L * 24 * 60 * 60 * 1000;
  /** A repeated operation ID whose record was dropped from the bounded journal. Nothing is sent for it. */
@@ -101,6 +110,14 @@ final class SmsSendJournal {
  private final Map<String, Record> records = new LinkedHashMap<>();
  /** Operation ID to binding hash of records dropped by the bound, oldest first. */
  private final Map<String, String> tombstones = new LinkedHashMap<>();
+ /** Bloom filter of operation IDs whose tombstones were compacted. Allocated on first compaction. */
+ private byte[] retired;
+ private long retiredCount;
+ /**
+  * Latest creation time of any record dropped by the bound (Long.MIN_VALUE when none). Pruned records
+  * keep no address metadata, so provider-row attribution near or after this time is ambiguous.
+  */
+ private long prunedThrough = Long.MIN_VALUE;
  SmsSendJournal(Storage storage) throws IOException { this.storage = storage; load(); }
  /** File adapter is used only by the JVM tests; Android supplies encrypted credential storage. */
  SmsSendJournal(File file) throws IOException { this(new Storage() {
@@ -174,6 +191,8 @@ final class SmsSendJournal {
   Record found = records.get(operationId);
   String dropped = found == null ? tombstones.get(operationId) : null;
   if (dropped != null) { if (!dropped.equals(bindingHash)) throw new IllegalStateException("operation reused"); throw new Expired(); }
+  // A compacted ID keeps no binding: it can never be sent again, whatever the content.
+  if (found == null && isRetired(operationId)) throw new Expired();
   if (found != null && !found.bindingHash.equals(bindingHash)) throw new IllegalStateException("operation reused");
   return found;
  }
@@ -206,8 +225,7 @@ final class SmsSendJournal {
  }
  private Record create(String operationId, String[] recipients, String body, int subscriptionId, long now, long boot) {
   validate(operationId, recipients, body, subscriptionId);
-  if (records.containsKey(operationId) || tombstones.containsKey(operationId)) throw new IllegalStateException("operation exists");
-  if (records.size() + tombstones.size() >= MAX_RECORDS + MAX_TOMBSTONES) throw new IllegalStateException("SMS journal capacity reached; existing IDs remain protected");
+  if (records.containsKey(operationId) || tombstones.containsKey(operationId) || isRetired(operationId)) throw new IllegalStateException("operation exists");
   prune(boot, now);
   Record record = new Record(operationId, subscriptionId, sha256(bindingText(recipients, body, subscriptionId)), sha256(body), recipients.clone(), now, boot);
   records.put(operationId, record);
@@ -312,11 +330,36 @@ final class SmsSendJournal {
     each.remove();
     tombstones.remove(record.operationId);
     tombstones.put(record.operationId, record.bindingHash);
+    // Only dispatched records can own provider rows; cancelled or denied ones never reached Android.
+    if (record.decision == null) prunedThrough = Math.max(prunedThrough, record.createdAt);
    }
   }
-  // Never discard an idempotency tombstone. Capacity refuses new work instead.
+  // Older tombstones are compacted, never discarded: their IDs stay refused through the filter.
+  java.util.Iterator<String> oldest = tombstones.keySet().iterator();
+  while (tombstones.size() > MAX_TOMBSTONES && oldest.hasNext()) { retire(oldest.next()); oldest.remove(); }
   if (records.size() >= MAX_RECORDS) throw new IllegalStateException("journal full");
  }
+
+ private static int[] probes(String operationId) {
+  byte[] digest;
+  try { digest = MessageDigest.getInstance("SHA-256").digest(("alpha-sms-operation:v1:" + operationId).getBytes(StandardCharsets.UTF_8)); }
+  catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+  int[] bits = new int[FILTER_PROBES];
+  for (int k = 0; k < FILTER_PROBES; k++) bits[k] = (((digest[3 * k] & 0xff) << 16) | ((digest[3 * k + 1] & 0xff) << 8) | (digest[3 * k + 2] & 0xff)) & (FILTER_BITS - 1);
+  return bits;
+ }
+ private void retire(String operationId) {
+  if (retired == null) retired = new byte[FILTER_BITS / 8];
+  for (int bit : probes(operationId)) retired[bit >>> 3] |= (byte) (1 << (bit & 7));
+  retiredCount++;
+ }
+ /** True when the ID was compacted (or, rarely, collides with compacted IDs). Either way it is refused. */
+ synchronized boolean isRetired(String operationId) {
+  if (retired == null) return false;
+  for (int bit : probes(operationId)) if ((retired[bit >>> 3] & (1 << (bit & 7))) == 0) return false;
+  return true;
+ }
+ synchronized long retiredCount() { return retiredCount; }
 
  /** Matching by content is unsafe when another operation could own the provider row. */
  synchronized boolean ambiguousProviderOwner(Record record, int recipient, long window) {
@@ -324,9 +367,10 @@ final class SmsSendJournal {
    if (other == record || other.decision != null || other.subscriptionId != record.subscriptionId || !other.bodyHash.equals(record.bodyHash) || Math.abs(other.createdAt - record.createdAt) > window) continue;
    for (String address : other.recipients) if (address.equals(record.recipients[recipient])) return true;
   }
-  // Pruned operations lack address/time metadata. Once any are pruned, content-based attribution
-  // cannot exclude them. Sending remains possible, but delivery stays unknown.
-  return !tombstones.isEmpty();
+  // Pruned operations keep no address metadata, so they cannot be excluded for a record created within
+  // the window of (or before) the latest pruned record. Later records attribute normally. Sending is
+  // never blocked by this; ambiguous delivery stays unknown.
+  return prunedThrough != Long.MIN_VALUE && record.createdAt - window <= prunedThrough;
  }
  /** At most one matching provider row, with complete enumeration and no previous owner. */
  static final class ProviderMatch {
@@ -379,9 +423,25 @@ final class SmsSendJournal {
  private void load() throws IOException {
   String saved = storage.read();
   if (saved == null) return;
+  boolean watermark = false;
   // A damaged journal is an error, never an empty one: an empty journal would allow a resend.
   for (String line : saved.split("\n")) {
    if (line.isEmpty()) continue;
+   if (line.startsWith("w1|")) {
+    String[] f = line.split("\\|", -1);
+    if (f.length != 2 || watermark) throw new IllegalArgumentException("record");
+    prunedThrough = Long.parseLong(f[1]); watermark = true;
+    continue;
+   }
+   if (line.startsWith("r1|")) {
+    String[] f = line.split("\\|", -1);
+    if (f.length != 3 || retired != null) throw new IllegalArgumentException("record");
+    byte[] filter = java.util.Base64.getDecoder().decode(f[2]);
+    long count = Long.parseLong(f[1]);
+    if (filter.length != FILTER_BITS / 8 || count < 1) throw new IllegalArgumentException("record");
+    retired = filter; retiredCount = count;
+    continue;
+   }
    if (line.startsWith("t1|")) {
     String[] f = line.split("\\|", -1);
     if (f.length != 3 || !OPERATION.matcher(f[1]).matches() || !f[2].matches("[0-9a-f]{64}")) throw new IllegalArgumentException("record");
@@ -391,9 +451,14 @@ final class SmsSendJournal {
    Record record = decode(line);
    records.put(record.operationId, record);
   }
+  // A journal written before the watermark existed has pruned records of unknown time: attribution
+  // stays off for it rather than guessing.
+  if (!watermark && (!tombstones.isEmpty() || retired != null)) prunedThrough = Long.MAX_VALUE;
  }
  private void save() throws IOException {
   StringBuilder out = new StringBuilder();
+  if (prunedThrough != Long.MIN_VALUE) out.append("w1|").append(prunedThrough).append('\n');
+  if (retired != null) out.append("r1|").append(retiredCount).append('|').append(java.util.Base64.getEncoder().encodeToString(retired)).append('\n');
   for (Map.Entry<String, String> dropped : tombstones.entrySet()) out.append("t1|").append(dropped.getKey()).append('|').append(dropped.getValue()).append('\n');
   for (Record record : records.values()) out.append(encode(record)).append('\n');
   storage.write(out.toString());

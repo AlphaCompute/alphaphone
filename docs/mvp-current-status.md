@@ -19,8 +19,9 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
 ## Product boundaries
 
 - The primary agent runs on Android. Browser development uses a private local
-  host. The production Android Welcome dialog offers Cloud sign-in for the on-device
-  agent or local apps without AI. Remote pairing is retired on production Android and
+  host. The on-device agent always runs on production Android (owner directive
+  2026-10-13); the Welcome dialog requires Eliza Cloud sign-in, and the plan decides only
+  whether Cloud inference is bound into the running agent (no agent-less choice). Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
 - The upstream pin in `upstream.lock.json` is `13c9857598`, the merge commit of upstream
   pull request 34888, reachable from elizaOS `develop` when

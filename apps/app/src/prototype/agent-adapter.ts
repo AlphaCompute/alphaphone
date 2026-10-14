@@ -77,6 +77,13 @@ async function transportSettled(attempt:SendAttempt){
   if(!attempt.settled)return;
   await Promise.race([attempt.settled,new Promise(resolve=>setTimeout(resolve,5000))]);
 }
+/** The action offered with the on-device agent's answer while Eliza Cloud AI is not connected. */
+function planActionCard(action:unknown):Shell|undefined{
+  if(action==='plan')return {type:'generic',icon:'info',title:'Redeem code or choose a plan',sub:'Opens Eliza Cloud account & plan. Nothing is purchased automatically.',planAction:'plan'};
+  if(action==='sign-in')return {type:'generic',icon:'info',title:'Sign in with Eliza Cloud',sub:'Connects AI to your plan. Your agent keeps running on this phone.',planAction:'sign-in'};
+  if(action==='retry')return {type:'generic',icon:'info',title:'Check Eliza Cloud again',sub:'AI replies return when Cloud is reachable.',planAction:'retry'};
+  return undefined;
+}
 /** Context notices for proposals that exist but are not reviewable on this screen. */
 function replyNotices(reply:unknown):string[]{
   const notices=reply&&typeof reply==='object'?(reply as {notices?:unknown}).notices:undefined;
@@ -1028,7 +1035,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const reply=await alphaClient.send(text,value=>{current();streamed=true;this.setState((previous:Shell)=>belongs()?{msgs:previous.msgs.some((m:Shell)=>m.id===streamId)?previous.msgs.map((m:Shell)=>m.id===streamId?{...m,text:value}:m):[...previous.msgs,{id:streamId,from:'agent',text:value,streaming:true}]}:null);},undefined,undefined,{channelType:'VOICE_DM',requestId:turnId,signal,expectedConversationId:binding.conversationId,voiceTurnSignal:input.voiceTurnSignal});
       current();const identity=reply.messageBinding;
       if(!reply.messageId||!reply.userMessageId||!identity||identity.conversationId!==binding.conversationId||JSON.stringify(identity.session)!==JSON.stringify(binding.session)||!reply.text.trim())throw Error('The voice reply could not be matched to this conversation. Check history before speaking again.');
-      await new Promise<void>(resolve=>this.setState((previous:Shell)=>belongs()?{msgs:[...previous.msgs.filter((m:Shell)=>m.id!==streamId).map((m:Shell)=>m.id===userId?{...m,id:reply.userMessageId,messageBinding:identity}:m),{id:reply.messageId,from:'agent',text:reply.text,messageBinding:identity,streaming:false}]}:null,resolve));current();
+      await new Promise<void>(resolve=>this.setState((previous:Shell)=>belongs()?{msgs:[...previous.msgs.filter((m:Shell)=>m.id!==streamId).map((m:Shell)=>m.id===userId?{...m,id:reply.userMessageId,messageBinding:identity}:m),{id:reply.messageId,from:'agent',text:reply.text,messageBinding:identity,streaming:false,card:planActionCard(reply.planAction)??null}]}:null,resolve));current();
       const delivered=await deliverChatNavigation(this,navigation,reply.actionResults,current,input.navigation);
       const nextContext=input.navigation?.finish(delivered);if(nextContext)acceptedContext=nextContext;
       current();
@@ -1097,7 +1104,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       await this.composerDraft?.commit();
       if (!this.live||!sameChat()) return;
       const identity=reply.messageBinding;
-      if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===streamedId?{...m,id:reply.messageId||m.id,messageBinding:reply.messageId?identity:undefined,text:reply.text,streaming:false}:m)}));else this.agentSay(reply.text,undefined,reply.messageId&&identity?{id:reply.messageId,messageBinding:identity}:undefined);
+      const planCard=planActionCard(reply.planAction);
+      if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===streamedId?{...m,id:reply.messageId||m.id,messageBinding:reply.messageId?identity:undefined,text:reply.text,streaming:false,...(planCard?{card:planCard}:{})}:m)}));else this.agentSay(reply.text,planCard,reply.messageId&&identity?{id:reply.messageId,messageBinding:identity}:undefined);
       if(reply.userMessageId&&identity)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===userId?{...m,id:reply.userMessageId,messageBinding:identity}:m)}));
       if(this.messageReplyTarget===replyTarget)this.messageReplyTarget=undefined;
       for(const notice of replyNotices(reply))this.agentSay(notice,{type:'generic',icon:'info',title:'Phone action not shown here',sub:notice,systemNotice:true,done:true});
@@ -1161,6 +1169,14 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.cardAct = async function (message: Shell) {
     const card = message.card || {};
     if(card.systemNotice)return;
+    // The running agent has no Eliza Cloud AI: open the plan panel (Redeem code, Choose a plan),
+    // sign in, or check Cloud again. Nothing is purchased or sent from here.
+    if(card.planAction){
+      if(card.planAction==='plan')connectionController.openPlan();
+      else if(card.planAction==='sign-in')void connectionController.residentCloudLogin();
+      else connectionController.recheckPlanOnReturn();
+      return;
+    }
     if(card.checkReply&&!card.done){
       const session=connectionController.getSnapshot().session;
       if(!session||session.sessionId!==card.checkReply.sessionId){this.toast('The agent changed. Open its saved conversations in Settings instead. Nothing was sent.');return;}

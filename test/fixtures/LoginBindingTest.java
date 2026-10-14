@@ -3,7 +3,6 @@ package ai.elizaresearch.alphaphone;
 import ai.eliza.plugins.browsersurface.BrowserAutofillEligibility;
 import ai.eliza.plugins.passwords.PasswordFormPolicy;
 import ai.eliza.plugins.passwords.PasswordFormPolicy.Node;
-import java.util.Set;
 
 /**
  * Plain-JVM check (issue #404) that the HTTP authentication prompt's origin rule and the
@@ -63,37 +62,100 @@ public final class LoginBindingTest {
   catch (PasswordFormPolicy.Rejected r) { return r.getMessage(); }
  }
 
+ static BrowserHttpAuthOrigin.EngineChallenge engine(String url, String realm, boolean topLevel, boolean tls, long navigation) {
+  return new BrowserHttpAuthOrigin.EngineChallenge(url, realm, topLevel, tls, navigation);
+ }
+ static BrowserHttpAuthOrigin.TabSnapshot tab(String host, String realm, String pendingMain, long navigation) {
+  BrowserHttpAuthOrigin.TabSnapshot t = new BrowserHttpAuthOrigin.TabSnapshot();
+  t.reportedHost = host; t.reportedRealm = realm; t.pendingMain = pendingMain; t.navigation = navigation; t.selected = true; t.shown = true;
+  return t;
+ }
+ static String origin(BrowserHttpAuthOrigin.EngineChallenge e, BrowserHttpAuthOrigin.TabSnapshot t) {
+  BrowserHttpAuthOrigin.Decision d = BrowserHttpAuthOrigin.bind(e, t);
+  if (d.fillable() == (d.refusal != null)) throw new AssertionError("decision is exactly one of origin or refusal");
+  return d.origin;
+ }
+ static String refusal(BrowserHttpAuthOrigin.EngineChallenge e, BrowserHttpAuthOrigin.TabSnapshot t) {
+  BrowserHttpAuthOrigin.Decision d = BrowserHttpAuthOrigin.bind(e, t);
+  if (d.origin != null) throw new AssertionError("expected refusal, bound " + d.origin);
+  return d.refusal;
+ }
+
  public static void main(String[] args) throws Exception {
-  // --- Origin rule for the challenge ---
-  // forChallenge(reportedHost, pendingMain, documentUrl, committed, otherRequestOrigins)
-  Set<String> none = Set.of();
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/login", "https://example.com/login", false, none), "first load, not committed");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com:8443/a", "https://example.com:8443/a", false, none), "port taken from the main-frame load, not the challenge");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com:443", "https://Example.com/a", "https://Example.com/a", false, none), "default port normalised");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com:8443", "https://example.com/a", "https://example.com/a", false, none), "reported port contradicts the load");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com:8443/b", "https://example.com/a", false, none), "redirect to another port before commit");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "http://example.com/a", "http://example.com/a", false, none), "cleartext load");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "http://example.com/b", "https://example.com/a", false, none), "redirect to cleartext");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/b", "https://other.example/a", true, none), "page-initiated load from another site");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://other.example/a", "https://other.example/a", true, none), "no pending load for this host");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://user:pw@example.com/a", "https://user:pw@example.com/a", false, none), "user info");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("", "https://example.com/", "https://example.com/", false, none), "missing host");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("accounts.example.com", "https://example.com/", "https://example.com/", false, none), "subdomain is a different binding");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/", "https://example.com/", false, null), "request record unavailable or overflowed");
-  // Frames and resources: WebView reports no port and no frame for a challenge.
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/", "https://example.com/", true, Set.of("https://example.com:8443")),
-     "committed page plus a same-host frame on another port: never bound to the page origin");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/", "https://example.com/", true, none),
-     "committed page and no pending main-frame load: a resource or frame is asking, not filled");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/admin", "https://example.com/", true, Set.of("https://example.com:8443", "https://cdn.example")),
-     "pending same-host load while a frame on another port is live");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/", "https://other.example/", true, Set.of("http://example.com")),
-     "a cleartext request to the host is a different origin");
-  eq(null, BrowserHttpAuthOrigin.forChallenge("example.com", "https://example.com/admin", "https://example.com/", true, Set.of("https://example.com", "https://cdn.example:8443")),
-     "same-origin resources and other hosts do not block the pending main-frame load");
+  // --- Origin rule for the challenge: BrowserHttpAuthOrigin.bind(engineReport, tabSnapshot) ---
+  String E = "https://example.com/admin";
+  // Standard WebView: no engine report, so even a perfectly consistent tab is refused, with a stated reason.
+  eq(BrowserHttpAuthOrigin.NO_ENGINE_ORIGIN, refusal(BrowserHttpAuthOrigin.STANDARD_WEBVIEW.challenge("example.com", "Admin"), tab("example.com", "Admin", E, 7)), "standard WebView reports nothing");
+  // An engine-authenticated, top-level, validated HTTPS challenge on the selected visible tab.
+  eq("https://example.com", origin(engine(E, "Admin", true, true, 7), tab("example.com", "Admin", E, 7)), "engine-bound top-level challenge");
+  eq("https://example.com:8443", origin(engine("https://example.com:8443/a", "Admin", true, true, 7), tab("example.com", "Admin", "https://example.com:8443/a", 7)), "port comes from the engine's request, not WebView's bare host");
+  eq("https://example.com:8443", origin(engine("https://example.com:8443/a", "Admin", true, true, 7), tab("example.com:8443", "Admin", "https://example.com:8443/a", 7)), "explicit WebView port agrees");
+  eq("https://example.com", origin(engine("https://Example.com:443/a", "Admin", true, true, 7), tab("example.com:443", "Admin", "https://example.com/a", 7)), "default port normalised");
+  // Wrong origin.
+  eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine("https://example.com/a", "Admin", true, true, 7), tab("example.com:8443", "Admin", "https://example.com/a", 7)), "WebView port contradicts the engine");
+  eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine("https://example.com/a", "Admin", true, true, 7), tab("accounts.example.com", "Admin", "https://example.com/a", 7)), "subdomain is a different binding");
+  eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine("https://evil.example/a", "Admin", true, true, 7), tab("example.com", "Admin", "https://evil.example/a", 7)), "engine challenge for another host");
+  eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine(E, "Other", true, true, 7), tab("example.com", "Admin", E, 7)), "realm differs");
+  eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine(E, null, true, true, 7), tab("example.com", null, E, 7)), "no realm");
+  eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine("https://user:pw@example.com/a", "Admin", true, true, 7), tab("example.com", "Admin", "https://example.com/a", 7)), "user info");
+  eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine(E, "Admin", true, true, 7), tab("", "Admin", E, 7)), "missing host");
+  eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine("ftp://example.com/", "Admin", true, true, 7), tab("example.com", "Admin", E, 7)), "non-HTTP request");
+  // Insecure transport.
+  eq(BrowserHttpAuthOrigin.INSECURE, refusal(engine("http://example.com/a", "Admin", true, true, 7), tab("example.com", "Admin", "http://example.com/a", 7)), "cleartext request");
+  eq(BrowserHttpAuthOrigin.INSECURE, refusal(engine(E, "Admin", true, false, 7), tab("example.com", "Admin", E, 7)), "TLS not validated by the engine");
+  // Redirects: the engine reports the final request; a later main-frame target refuses.
+  eq("https://example.com", origin(engine("https://example.com/after-redirect", "Admin", true, true, 7), tab("example.com", "Admin", "https://example.com/after-redirect", 7)), "same-origin redirect is bound to its final request");
+  eq(BrowserHttpAuthOrigin.REDIRECTED, refusal(engine(E, "Admin", true, true, 7), tab("example.com", "Admin", "https://example.com:8443/b", 7)), "main frame moved to another port");
+  eq(BrowserHttpAuthOrigin.REDIRECTED, refusal(engine(E, "Admin", true, true, 7), tab("example.com", "Admin", "https://other.example/", 7)), "main frame moved to another site");
+  eq(BrowserHttpAuthOrigin.INSECURE, refusal(engine("http://example.com/b", "Admin", true, true, 7), tab("example.com", "Admin", "http://example.com/b", 7)), "redirect to cleartext");
+  eq(BrowserHttpAuthOrigin.REDIRECTED, refusal(engine(E, "Admin", true, true, 7), tab("example.com", "Admin", null, 7)), "no observed main-frame request");
+  // Frames and resources.
+  eq(BrowserHttpAuthOrigin.FRAME, refusal(engine(E, "Admin", false, true, 7), tab("example.com", "Admin", E, 7)), "same-origin frame or resource");
+  eq(BrowserHttpAuthOrigin.FRAME, refusal(engine("https://example.com:8443/frame", "Admin", false, true, 7), tab("example.com", "Admin", E, 7)), "same-host frame on another port");
+  // Stale or hidden tabs.
+  eq(BrowserHttpAuthOrigin.STALE, refusal(engine(E, "Admin", true, true, 6), tab("example.com", "Admin", E, 7)), "challenge from an earlier navigation");
+  BrowserHttpAuthOrigin.TabSnapshot hidden = tab("example.com", "Admin", E, 7); hidden.shown = false;
+  eq(BrowserHttpAuthOrigin.HIDDEN, refusal(engine(E, "Admin", true, true, 7), hidden), "tab not shown");
+  BrowserHttpAuthOrigin.TabSnapshot background = tab("example.com", "Admin", E, 7); background.selected = false;
+  eq(BrowserHttpAuthOrigin.HIDDEN, refusal(engine(E, "Admin", true, true, 7), background), "tab not selected");
+  BrowserHttpAuthOrigin.TabSnapshot paused = tab("example.com", "Admin", E, 7); paused.paused = true;
+  eq(BrowserHttpAuthOrigin.HIDDEN, refusal(engine(E, "Admin", true, true, 7), paused), "Activity paused (screen locked or backgrounded)");
+  BrowserHttpAuthOrigin.TabSnapshot closed = tab("example.com", "Admin", E, 7); closed.closed = true;
+  eq(BrowserHttpAuthOrigin.HIDDEN, refusal(engine(E, "Admin", true, true, 7), closed), "closed tab");
+  BrowserHttpAuthOrigin.TabSnapshot failed = tab("example.com", "Admin", E, 7); failed.error = "Page could not load.";
+  eq(BrowserHttpAuthOrigin.HIDDEN, refusal(engine(E, "Admin", true, true, 7), failed), "tab showing an error");
+  BrowserHttpAuthOrigin.TabSnapshot overlaid = tab("example.com", "Admin", E, 7); overlaid.otherPrompt = true;
+  eq(BrowserHttpAuthOrigin.HIDDEN, refusal(engine(E, "Admin", true, true, 7), overlaid), "another site prompt is open");
+  eq(BrowserHttpAuthOrigin.HIDDEN, refusal(engine(E, "Admin", true, true, 7), null), "no tab");
+
+  // --- Binding lifetime: lock/unlock, cancel, navigation, tab change ---
+  BrowserHttpAuthOrigin.Binding binding = new BrowserHttpAuthOrigin.Binding("https://example.com", 7);
+  BrowserHttpAuthOrigin.TabSnapshot now = tab("example.com", "Admin", E, 7);
+  eq(true, binding.admits(now), "bound prompt on its tab");
+  now.paused = true; now.shown = false;
+  eq(true, binding.admits(now), "provider unlock pauses Alpha; the open prompt keeps its binding");
+  now.paused = false; now.shown = true; now.navigation = 8;
+  eq(false, binding.admits(now), "a new navigation invalidates the binding");
+  BrowserHttpAuthOrigin.Binding signingIn = new BrowserHttpAuthOrigin.Binding("https://example.com", 7);
+  signingIn.submitted();
+  eq(true, signingIn.admits(now), "after Sign in, the site's answer may navigate the same tab until the host resolves it");
+  now.navigation = 6;
+  eq(false, signingIn.admits(now), "never an older navigation");
+  signingIn.revoke(); now.navigation = 8;
+  eq(false, signingIn.admits(now), "resolved or dismissed: revoked");
+  now.navigation = 7; now.selected = false;
+  eq(false, binding.admits(now), "another tab selected");
+  now.selected = true; now.closed = true;
+  eq(false, binding.admits(now), "tab closed");
+  now.closed = false;
+  binding.revoke();
+  eq(false, binding.admits(now), "cancel or dismissal revokes; late fill values are dropped");
+  eq(false, binding.admits(null), "no tab");
+
   eq("https://example.com:8443", BrowserHttpAuthOrigin.requestOrigin("https://EXAMPLE.com:8443/x?y"), "request origin keeps a non-default port");
   eq("http://example.com", BrowserHttpAuthOrigin.requestOrigin("http://example.com:80/"), "http default port omitted");
-  eq(null, BrowserHttpAuthOrigin.requestOrigin("blob:https://example.com/1"), "non-network requests are not recorded");
+  eq(null, BrowserHttpAuthOrigin.requestOrigin("blob:https://example.com/1"), "non-network requests have no origin");
+  eq(null, BrowserHttpAuthOrigin.exactHttps("http://example.com/"), "exactHttps refuses cleartext");
 
   // --- No tab is fillable while a site prompt is open (canAutofill sets overlay) ---
   BrowserAutofillEligibility.TabState tab = new BrowserAutofillEligibility.TabState();
@@ -103,7 +165,9 @@ public final class LoginBindingTest {
   eq(false, BrowserAutofillEligibility.eligible(tab), "the same tab while the HTTP sign-in prompt is open");
 
   // --- Shared upstream policy with Alpha's field shape ---
-  String origin = "https://example.com:8443";
+  // The origin the prompt reports is exactly what bind() admitted from the engine report.
+  String origin = origin(engine("https://example.com:8443/admin", "Admin", true, true, 3), tab("example.com", "Admin", "https://example.com:8443/admin", 3));
+  eq("https://example.com:8443", origin, "engine-bound origin keeps its port");
   PasswordFormPolicy.Target fill = PasswordFormPolicy.evaluate(HOST, HOST, true, prompt(origin, null, null), p -> false, false);
   eq(origin, fill.webOrigin, "fill binds to the exact origin, port included");
   eq(null, fill.appPackage, "never bound to Alpha's app identity");

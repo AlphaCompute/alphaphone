@@ -504,7 +504,9 @@ public class AlphaTelephonyPlugin extends Plugin {
      catch (Exception unrecorded) {
       SmsSendJournal.Record record = journal.get(operationId);
       if (record != null) call.resolve(AlphaSms.result(record));
-      else call.reject("The send could not be recorded. Nothing was sent.", "unavailable");
+      // Nothing reached Android (access or the reviewed SIM changed, or the journal refused it):
+      // close the ID as denied so it is never sent later; decide() rejects if even that cannot be recorded.
+      else decide(call, journal, operationId, to, body, sub, "denied", now, boot);
      }
     })
     .create();
