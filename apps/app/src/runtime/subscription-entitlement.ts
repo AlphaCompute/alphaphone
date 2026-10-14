@@ -35,6 +35,8 @@ export const CLOCK_SKEW_MS = 60 * 1000;
 /** Background refresh after a failure: first retry, then doubling up to the cap. */
 export const REFRESH_RETRY_MIN_MS = 30 * 1000;
 export const REFRESH_RETRY_MAX_MS = 5 * 60 * 1000;
+/** Poll an admitted billing snapshot off the turn path until signed entitlements are available. */
+export const FALLBACK_REFRESH_MS = 5 * 60 * 1000;
 
 export type PlanStatus = 'active' | 'trialing' | 'past_due' | 'canceled' | 'none';
 export type AllowanceUnit = 'requests' | 'tokens';
@@ -327,6 +329,7 @@ export class EntitlementRefresher {
   private readonly onAuthFailure: (error: unknown) => void;
   private readonly timers: RefresherTimers;
   private entitlement: SubscriptionEntitlement | null;
+  private fallbackActive = false;
   /** Plan name of a verified entitlement that lapsed while refresh kept failing. */
   private lapsedPlanName: string | null = null;
   constructor(options: {
@@ -336,6 +339,8 @@ export class EntitlementRefresher {
     timers?: RefresherTimers;
     /** The entitlement verified at admission, if any. */
     entitlement?: SubscriptionEntitlement | null;
+    /** Admission used an active billing snapshot, which has no signed refresh hint. */
+    fallbackActive?: boolean;
     /** The admission check failed transiently: retry in the background with backoff. */
     retry?: boolean;
   }) {
@@ -343,6 +348,7 @@ export class EntitlementRefresher {
     this.onAuthFailure = options.onAuthFailure ?? (() => {});
     this.timers = options.timers ?? { setTimeout: (handler, ms) => globalThis.setTimeout(handler, ms), clearTimeout: handle => globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>), now: () => Date.now() };
     this.entitlement = options.entitlement ?? null;
+    this.fallbackActive = !this.entitlement && options.fallbackActive === true;
     if (options.retry && !this.entitlement) this.failures = 1;
     this.schedule();
   }
@@ -370,6 +376,7 @@ export class EntitlementRefresher {
       this.entitlement = null;
     }
     let delay = nextRefreshDelay(this.entitlement, now, this.failures);
+    if (delay === null && this.fallbackActive) delay = FALLBACK_REFRESH_MS;
     if (delay === null) return;
     if (this.entitlement && this.failures > 0) delay = Math.min(delay, Math.max(0, this.entitlement.expiresAt - now));
     this.timer = this.timers.setTimeout(() => { this.timer = null; void this.run(); }, delay);
@@ -380,10 +387,12 @@ export class EntitlementRefresher {
     try {
       const result = await this.check(controller.signal);
       if (this.stopped || controller.signal.aborted) return;
-      if (result.entitlement) { this.entitlement = result.entitlement; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); }
-      // Terminal until the next explicit check: no plan, a Cloud without the route, or the
-      // billing-snapshot answer used while the route is absent.
-      else if (result.view.kind === 'inactive' || result.view.kind === 'active' || (result.view.kind === 'unavailable' && result.view.reason === 'not-published')) { this.entitlement = null; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); return; }
+      if (result.entitlement) { this.fallbackActive = false; this.entitlement = result.entitlement; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); }
+      // An active billing snapshot needs periodic refresh too: the owner can cancel a plan
+      // while Alpha stays foregrounded, or Cloud can deploy the signed entitlement route.
+      else if (result.view.kind === 'active') { this.fallbackActive = true; this.entitlement = null; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); }
+      // No plan or no published source remains terminal until the next explicit check.
+      else if (result.view.kind === 'inactive' || (result.view.kind === 'unavailable' && result.view.reason === 'not-published')) { this.fallbackActive = false; this.entitlement = null; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); return; }
       else {
         this.failures++;
         if (this.entitlement && this.entitlement.expiresAt > this.timers.now()) this.onView(subscriptionView(this.entitlement, true));

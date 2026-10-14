@@ -454,7 +454,7 @@ async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
   }
   // Background refresh: it updates what the owner sees, never interrupts a turn, and applies the
   // plan gate again when Cloud reports the plan ended. Revocation is enforced by Cloud immediately.
-  entitlementRefresher=new EntitlementRefresher({entitlement:checked.entitlement,retry:checked.view.kind==='unavailable'&&checked.view.reason!=='not-published',
+  entitlementRefresher=new EntitlementRefresher({entitlement:checked.entitlement,fallbackActive:checked.view.kind==='active'&&checked.view.source==='billing-limits',retry:checked.view.kind==='unavailable'&&checked.view.reason!=='not-published',
     check:refreshSignal=>checkEntitlement(client.entitlementSource(),expected,refreshSignal),
     onView:next=>{if(service!==account)return;update({residentSubscription:next});
       const nextDecision=planAdmission(next);
