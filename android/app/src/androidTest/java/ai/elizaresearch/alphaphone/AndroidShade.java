@@ -18,7 +18,16 @@ final class AndroidShade {
  /** The page draws no Alpha notification shade at all (no stand-in outside a browser). */
  static final String ALPHA_SHADE_ABSENT = "document.querySelector('[data-alpha-layer=\"shade\"]')===null";
 
- private static UiAutomation ui() { return InstrumentationRegistry.getInstrumentation().getUiAutomation(); }
+ /**
+  * The flags of the caller's UiAutomation connection. Instrumentation.getUiAutomation(flags) drops and
+  * reconnects the shared connection whenever the flags differ, and a connection without
+  * FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES suspends every accessibility service. A test that holds
+  * a flagged connection (AccessibilityInstrumentedTest and its stand-in screen reader) sets its flags
+  * here for as long as it holds it, so observing the shade never unbinds that service.
+  */
+ private static volatile int automationFlags = 0;
+ static void useAutomationFlags(int flags) { automationFlags = flags; }
+ private static UiAutomation ui() { return InstrumentationRegistry.getInstrumentation().getUiAutomation(automationFlags); }
  private static boolean systemUi(AccessibilityNodeInfo node) { return node != null && SYSTEM_UI.contentEquals(node.getPackageName() == null ? "" : node.getPackageName()); }
 
  static boolean isOpen() { return systemUi(ui().getRootInActiveWindow()); }
@@ -42,13 +51,18 @@ final class AndroidShade {
   return ui().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS) && waitOpen(5000);
  }
 
- /** Collapses the shade (Back, then the shell's statusbar command) and waits for Alpha's window. */
+ /**
+  * Collapses the shade (one Back, then the shell's statusbar command) and waits for Alpha's window.
+  * Only one Back is ever sent: SystemUI keeps the active window while its collapse animation runs,
+  * so a second Back sent on a slow emulator reached the app behind it instead, and the standalone
+  * app's root Back finishes its task (measured on the API 36 emulator: "Alpha is in front again
+  * after Android's shade closes" failed after that stray Back).
+  */
  static void collapse() throws Exception {
-  for (int attempt = 0; attempt < 3 && isOpen(); attempt++) {
-   ui().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
-   SystemClock.sleep(250);
-  }
-  if (isOpen()) ui().executeShellCommand("cmd statusbar collapse").close();
+  if (!isOpen()) return;
+  ui().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
+  if (waitClosed(3000)) return;
+  try (java.io.InputStream done = new android.os.ParcelFileDescriptor.AutoCloseInputStream(ui().executeShellCommand("cmd statusbar collapse"))) { done.readAllBytes(); }
   if (!waitClosed(5000)) throw new AssertionError("Android's notification shade did not close");
  }
 

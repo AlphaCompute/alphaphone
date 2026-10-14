@@ -223,6 +223,10 @@ public final class AccessibilityInstrumentedTest {
   androidx.test.uiautomator.Configurator configurator=androidx.test.uiautomator.Configurator.getInstance();
   int previousFlags=configurator.getUiAutomationFlags();
   configurator.setUiAutomationFlags(AUTOMATION_FLAGS);
+  // AndroidShade shares the same connection: with its default flags each shade check reconnected
+  // UiAutomation with accessibility services suppressed, which unbound the stand-in screen reader in
+  // the middle of the click loop (emulator campaign of 2026-10-14: "running services: []" after 19 attempts).
+  AndroidShade.useAutomationFlags(AUTOMATION_FLAGS);
   String previous=shell("settings get system font_scale");
   UiDevice device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
   try{
@@ -306,6 +310,7 @@ public final class AccessibilityInstrumentedTest {
   }finally{
    shell("settings put system font_scale "+(previous.isEmpty()||"null".equals(previous)?"1.0":previous));
    configurator.setUiAutomationFlags(previousFlags);
+   AndroidShade.useAutomationFlags(0);
   }
  }
 }

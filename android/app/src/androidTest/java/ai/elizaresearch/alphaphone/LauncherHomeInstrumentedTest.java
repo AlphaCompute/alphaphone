@@ -39,10 +39,10 @@ public class LauncherHomeInstrumentedTest {
 
  private static void assumeAlphaIsHome() {
   Assume.assumeTrue("HOME qualification exists only in the launcher variant", BuildConfig.IS_LAUNCHER);
-  Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-  ResolveInfo home = context.getPackageManager().resolveActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY);
+  // RoleManager, not the HOME resolver: package visibility hides the stock launcher from Alpha, so
+  // the resolver names Alpha even while the stock launcher holds the role (ChatContinuityInstrumentedTest.alphaIsHome).
   Assume.assumeTrue("Alpha must already be the selected HOME app; this test never changes roles",
-   home != null && home.activityInfo != null && context.getPackageName().equals(home.activityInfo.packageName));
+   ChatContinuityInstrumentedTest.alphaIsHome(InstrumentationRegistry.getInstrumentation().getTargetContext()));
  }
  private static String eval(String js) throws Exception { return WebViewTestDriver.evaluate(js); }
  private static void until(String condition, String message) throws Exception {

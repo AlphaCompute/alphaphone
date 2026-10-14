@@ -12,11 +12,14 @@ import { MapPlane } from '../maps/map-plane';
 import { initializeRegionalMaps, regionalMap, regionalDiagnostics, regionalMapsConfigured } from '../maps/regional-provider';
 import { initializeCloudMaps, cloudMapsCoverage, cloudMapsDiagnostics } from '../maps/cloud-maps';
 import { insideCloudCoverage } from '../maps/cloud-provider';
-import { NativeMapsLocation, type Position } from '../maps/native-location';
+import { NativeMapsLocation, locationPermissionGranted, type Position } from '../maps/native-location';
+import { bindAgentNavigation, residentMapsNavigationPort } from '../maps/agent-navigation';
+import type { MapsNavigationSurface } from '../maps/device-navigation';
 import { publishMapsSelection, clearMapsSelection } from '../maps/agent-context';
 import { MapsController, type MapsState } from '../maps/state';
 import { mapsConnection, onMapsConnectionChange } from '../maps/runtime';
-import { coordinate, failure, type Coordinate, type Place } from '../maps/contracts';
+import { connectionController } from '../runtime/connection-ui';
+import { coordinate, failure, MapsFailure, type Coordinate, type Place, type TravelMode } from '../maps/contracts';
 import type { SavedPlace } from '../maps/saved-places';
 
 type Bag = Record<string, any>;
@@ -30,7 +33,7 @@ const mapsAttribution = () => regionalMap()?.attribution || cloudMapsCoverage()?
 const mapsConnected = () => !!(regionalMap() || cloudMapsCoverage());
 
 /** Exact prototype chrome with honest no-provider state and real local/native flows. */
-export function installPrototypeMapsAdapter(_Component: unknown, views: Record<string, Bag>): () => void {
+export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views: Record<string, Bag>): () => void {
   const device=registerPlugin<{openSettings(input:{page:string}):Promise<unknown>}>('AlphaDevice');
   const module = views.maps; if (!module) return () => {};
   const original = { render: module.render, back: module.back, onLeave: module.onLeave, reply: module.reply, suggestions: module.suggestions, ongoing: module.ongoing };
@@ -48,6 +51,9 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   const navigationVoice=new NavigationVoice(error=>{message=(error instanceof Error?error.message+' ':'')+'Voice guidance paused. Tap Enable voice guidance to retry.';invalidate();});
   const searchIdentity = {};
   /** Ends guidance, its location watch and any screen-off session, once per Start. */
+  // The agent's navigation requests (device-navigation.ts) are cancelled whenever Maps is released.
+  const releaseListeners=new Set<()=>void>();
+  const agentLocation=new NativeMapsLocation();
   function stopGuidance(){
     navigationVoice.pause();navigating=false;rerouting=false;offRoute=false;navFix=undefined;navRouteId='';backgroundRunning=false;++navSession;
     void background.stop();
@@ -145,6 +151,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   }
   function release(cancelIntent=true) {
     sharing?.abort.abort();sharing=undefined;navigationVoice.pause();
+    for(const listener of [...releaseListeners])listener();void agentLocation.stop().catch(()=>{});
     lifecycle.releases++;lifecycle.lastRelease=cancelIntent?'leave-or-background':'provider-switch';message='';
     if(cancelIntent){++searchIntent;discardHandoff();eventQuery='';mapsApp=undefined;}
     ++mapGeneration;mapObserver?.disconnect();mapObserver=undefined;mapFailed=false;    plane?.destroy(); plane=undefined; planeElement=undefined; directions=false; originMode=false; void stopGuidance().catch(()=>{});
@@ -157,6 +164,12 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   function showPlace(place: Place) {
     selected = { label: place.name, coordinate: place.coordinate, providerId: place.providerId, providerPlaceId: place.id, origin: 'provider' };
     searching = false; message = ''; void ensure().select(place); invalidate();
+  }
+  /** "Reroute from here": replans the active session from a device coordinate; the session is kept. */
+  function rerouteFrom(from: Coordinate): Promise<void>|undefined {
+    if(!navigating||rerouting)return undefined;
+    rerouting=true;rerouteCleared=false;offRoute=false;navigationVoice.pause();originText=coordLabel(from);message='Planning a new route from here…';
+    const pending=ensure().reroute(from);invalidate();return pending;
   }
   let pinTap: (id: string) => void = () => {};
   /** A chosen origin (saved or regional place) replaces the typed text and replans. */
@@ -251,7 +264,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     const onPin = (id: string) => { const item = pinned.find(value => value.id === id); if (!item) return; if (choosingOrigin) chooseOrigin(item); else showPlace(item); };
     const savedOrigins = choosingOrigin ? controller!.savedMatches(originText) : [];
     Object.assign(data, {
-      rootRef:(element:HTMLElement)=>{if(element)element.dataset.mapDiagnostics=JSON.stringify({...mapsDiagnostics(),lifecycle:{...lifecycle,locating,permissionPending:controller?.awaitingLocationPermission()||navigationLocation.awaitingPermission(),position:state?.position.phase}});},
+      rootRef:(element:HTMLElement)=>{if(element)element.dataset.mapDiagnostics=JSON.stringify({...mapsDiagnostics(),agentNavigation:{offered:agentNavigation.registered(),relay:residentMapsNavigationPort.relay},lifecycle:{...lifecycle,locating,permissionPending:controller?.awaitingLocationPermission()||navigationLocation.awaitingPermission(),position:state?.position.phase}});},
       notNative:false, hasNativeMap:!!regionalMap(),mapAttribution:mapsAttribution(),attributionBottom:directions?310:isPlace?410:130,
       mapRef:(element:HTMLElement)=>{if(element&&region){if(element!==planeElement&&!mapFailed){mapObserver?.disconnect();plane?.destroy();planeElement=element;const generation=++mapGeneration;delete element.dataset.mapReady;delete element.dataset.mapError;try{plane=new MapPlane(element,region,()=>{if(generation!==mapGeneration||planeElement!==element||disposed||!api?.isActive())return;mapFailed=true;invalidate();},data.C,id=>pinTap(id));mapObserver=new MutationObserver(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});mapObserver.observe(element,{attributes:true,attributeFilter:['data-map-ready']});}catch{mapFailed=true;element.replaceChildren();queueMicrotask(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});}}pinTap=onPin;plane?.update(outsideCoverage?undefined:selected?.coordinate,snapshot.route.value,overlay);}},
       native: true, nativeStatus: status, nativeStatusTop: directions?232:isPlace ? 128 : searching ? 130 : 174,
@@ -354,11 +367,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
         }
         invalidate();
       };
-      const reroute=()=>{
-        const from=navFix?.coordinate;if(!navigating||!from||rerouting)return;
-        rerouting=true;rerouteCleared=false;offRoute=false;navigationVoice.pause();originText=coordLabel(from);message='Planning a new route from here…';
-        void ensure().reroute(from);invalidate();
-      };
+      const reroute=()=>{const from=navFix?.coordinate;if(from)void rerouteFrom(from);};
       data.dr={name:selected.label,close:()=>back(),min:route?Math.max(1,Math.round(route.durationSeconds/60))+' min':snapshot.route.phase==='loading'?'Planning…':'No route',meta:route?(route.distanceMeters/1000).toFixed(1)+' km · no live traffic':'Regional route',via:route?(snapshot.originLabel?'From '+snapshot.originLabel+' · ':'')+(route.steps[0]?.instruction||''):'Choose a real origin to calculate a route.',shareLabel:'Share route',shareEta:()=>{if(route&&snapshot.route.phase==='ready'){const target=selected;share(routeShare(target!.label,route),()=>!disposed&&!!api?.isActive()&&selected===target&&!!directions&&state?.route.phase==='ready'&&state.route.value===route);}},
        modes:data.nativeModeMetadata.map((reference:{mode:'drive'|'walk'|'bike'|'transit';label:string;d:string})=>{const mode=reference.mode==='bike'?'bicycle':reference.mode;const {label,d}=reference;return {label,t:label,d,on:snapshot.mode===mode,css:snapshot.mode===mode?'background:var(--acc);color:#fff':'background:var(--s2);color:var(--fg)',go:()=>{if(!ensure().capabilities().modes.includes(mode)){message=mode==='transit'?'Transit schedules are not available for this region.':`${label} directions are not available from this Maps provider.`;invalidate();return;}ensure().setMode(mode);message='';if(snapshot.origin)void ensure().planRoute();}};}),
        start:()=>{
@@ -391,6 +400,77 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     return data;
   };
   function unconfiguredNow(){return state?.provider.status==='unconfigured';}
+  // The shell instance opens Maps for an agent request, exactly as a user's open would.
+  let shell: Bag | undefined;
+  const renderVals=Component.prototype.renderVals;
+  // Later adapters wrap renderVals too, so disposal leaves this wrapper in place as a pass-through.
+  Component.prototype.renderVals=function(this: Bag,...args: unknown[]){if(!disposed)shell=this;return renderVals.apply(this,args);};
+  /** Selects the agent's destination; the provider's own place name replaces the agent's once read. */
+  async function showAgentPlace(place:Place,resolveDetails:boolean){
+    const item:Selection={label:place.name,coordinate:place.coordinate,providerId:place.providerId,...(resolveDetails?{providerPlaceId:place.id}:{}),origin:resolveDetails?'provider':'manual'};
+    selected=item;const pending=ensure().select(place,resolveDetails);invalidate();await pending;
+    const detail=state?.selection.phase==='ready'?state.selection.value:null;
+    if(selected===item&&detail&&detail.id===place.id&&detail.providerId===place.providerId){item.label=detail.name;item.coordinate=detail.coordinate;invalidate();}
+  }
+  /** The agent's requests use this screen's own state: selection, route sheet, Start, Reroute and End. */
+  const surface: MapsNavigationSurface = {
+    // Maps opens only over Home or itself, on an unlocked, visible, non-sensitive launcher screen.
+    // Any other app keeps the screen; the agent hears that the phone cannot show Maps now.
+    async present(){
+      const showable=()=>{
+        const value=shell?.S?.();
+        return !disposed&&!document.hidden&&!!shell?.live&&!!value&&value.screen==='home'&&!value.secure&&!value.shade&&!shell.pageSuspended&&
+          !shell.props?.assistantSurface&&!connectionController.getSnapshot().open&&(!value.view||value.view==='home'||value.view==='maps');
+      };
+      if(!showable())return false;
+      if(!api?.isActive()){
+        shell!.openView('maps');
+        await Promise.race([new Promise<void>(resolve=>shell!.setState({},()=>resolve())),new Promise<void>(resolve=>setTimeout(resolve,2000))]);
+      }
+      return showable()&&shell!.S().view==='maps'&&!!api?.isActive()&&!!controller&&!!state;
+    },
+    snapshot:()=>state,
+    showPlace(place,resolveDetails){
+      discardHandoff();++searchIntent;directions=false;originMode=false;searching=false;locating=false;message='';
+      return showAgentPlace(place,resolveDetails);
+    },
+    showDirections(place,travelMode:TravelMode,resolveDetails){
+      discardHandoff();++searchIntent;originMode=false;searching=false;locating=false;originText='';
+      const maps=ensure();maps.clearOrigin();maps.setMode(travelMode);directions=true;
+      message='Your agent asked for directions. Use current location or enter an origin to plan the route, then tap Start.';
+      return showAgentPlace(place,resolveDetails);
+    },
+    locationGranted:locationPermissionGranted,
+    async locate(signal){
+      // Checked again right before the watch starts: an agent request never shows a permission prompt.
+      if(!(await locationPermissionGranted()))throw new MapsFailure('permission-denied','Location is not granted.');
+      return new Promise<Position>((resolve,reject)=>{
+        const finish=()=>{signal.removeEventListener('abort',abort);void agentLocation.stop().catch(()=>{});};
+        const abort=()=>{finish();reject(new MapsFailure('cancelled','Location request cancelled.'));};
+        if(signal.aborted){abort();return;}
+        signal.addEventListener('abort',abort,{once:true});
+        agentLocation.start(true,fix=>{finish();resolve(fix);},error=>{finish();reject(error);}).catch(error=>{finish();reject(error);});
+      });
+    },
+    planFrom(origin){
+      const maps=ensure();originMode=false;originText=coordLabel(origin);maps.setOrigin(origin);message='';
+      const pending=maps.planRoute();invalidate();return pending;
+    },
+    // The session lasts from Start to End, including while rerouting and after arrival.
+    guidance(){
+      return navigating&&selected&&state?{routeId:navRouteId,placeName:selected.label,travelMode:state.mode,rerouting,arrived,...(navFix?{fix:navFix}:{})}:null;
+    },
+    reroute(from){return rerouteFrom(from)??Promise.reject(new MapsFailure('unavailable','The phone is already planning a new route.'));},
+    stop(){const active=navigating,pending=stopGuidance();if(active&&api?.isActive())message='Navigation stopped.';invalidate();return pending;},
+    onRelease(listener){releaseListeners.add(listener);return()=>{releaseListeners.delete(listener);};},
+  };
+  // Offered to the agent only while Eliza Cloud Maps is installed for the signed-in account.
+  const agentNavigation=bindAgentNavigation({
+    // Eliza Cloud Maps in the launcher renderer only; never the regional gateway or the assistant window.
+    enabled:()=>!regionalMapsConfigured&&!shell?.props?.assistantSurface&&!document.documentElement.classList.contains('alpha-assistant-surface'),
+    installation:()=>{const coverage=cloudMapsCoverage();return coverage&&{providerId:coverage.providerId,attribution:coverage.attribution};},
+    connection:mapsConnection,onChange:onMapsConnectionChange,surface,port:residentMapsNavigationPort,
+  });
   const changed = onMapsConnectionChange(() => {
     const connection=mapsConnection();
     if(controller&&state?.provider.status==='unconfigured'&&connection.config.status==='configured'&&mapsConnected()){lifecycle.providerActivations++;controller.activateProvider(connection.config,connection.provider);}
@@ -403,5 +483,5 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   const shareEvents=['launcher-home','alpha:device-state','alpha:dev-incoming-call'];for(const event of shareEvents)window.addEventListener(event,retireShare);
   const visibility = () => { if(document.hidden){retireShare();lifecycle.hidden++;if(continuing()){lifecycle.backgroundNavigation++;invalidate();return;}if(controller?.awaitingLocationPermission()||navigationLocation.awaitingPermission()){lifecycle.permissionHeld++;invalidate();return;}release();}else invalidate(); };
   const pagehide=()=>release();window.addEventListener('pagehide', pagehide); document.addEventListener('visibilitychange', visibility);
-  return () => { disposed = true; for(const event of shareEvents)window.removeEventListener(event,retireShare); changed(); release(); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibility); Object.assign(module, original); };
+  return () => { disposed = true; agentNavigation.dispose(); shell=undefined; for(const event of shareEvents)window.removeEventListener(event,retireShare); changed(); release(); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibility); Object.assign(module, original); };
 }
