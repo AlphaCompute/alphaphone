@@ -40,8 +40,9 @@ export function inboxProviderControls(publish:()=>void,toast:(message:string)=>v
   reset();if(!binding||!account||!grant||document.documentElement.dataset.connectionMode==='mock')return;
   selected=grant;session=binding.sessionId;const token=epoch,read=capabilityRead=new AbortController();owner=JSON.stringify([account.environment,account.userId,account.organizationId||'']);
   operation=new InboxOperation({owner,grantId:grant,store:inboxLocalStore,client:binding.client,active:()=>epoch===token&&session===connectionController.getCloudClient()?.sessionId&&document.documentElement.dataset.connectionMode!=='mock'});
-  try{await operation.load();if(token!==epoch||capabilityRead!==read)return;
+  try{await operation.load();if(token!==epoch)return;
    if(operation.snapshot()){status='Saved mail operation. Check its exact review and receipt before continuing.';visible=true;settleSent(operation);}
+   if(capabilityRead!==read){publish();return;}
    const next=await binding.client.gmailInboxCapabilities(grant,read.signal);if(token!==epoch||capabilityRead!==read)return;caps=next;
   }catch{if(token===epoch&&capabilityRead===read)status='Provider actions unavailable. Your local drafts remain on this device.';}
   if(token===epoch)publish();

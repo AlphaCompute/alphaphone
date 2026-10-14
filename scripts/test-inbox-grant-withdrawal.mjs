@@ -28,7 +28,7 @@ function device() {
     gmailOperation: async () => null,
   };
   const store = {
-    read: async key => structuredClone(slots.get(key) ?? null),
+    read: async key => { if (remote.readHold) await remote.readHold; return structuredClone(slots.get(key) ?? null); },
     compareExchange: async (key, prior, next) => {
       if (JSON.stringify(slots.get(key) ?? null) !== JSON.stringify(prior)) return {status: 'conflict'};
       if (next === null) slots.delete(key); else slots.set(key, structuredClone(next)); return {status: 'saved'};
@@ -127,3 +127,17 @@ for (const staleFailure of [false, true]) {
   assert.equal(d.provider.capabilities(), null, 'teardown never restores capabilities');
 }
 console.log('PASS: capability refresh rejects stale success/failure, initial-bind overlap and account teardown.');
+
+// A newer capability refresh does not cancel restoration of a saved review.
+{
+  const d = device(); await d.bind(); await d.provider.prepare(archive);
+  assert.equal(d.slot().phase, 'review'); d.provider.reset();
+  let release; d.remote.readHold = new Promise(resolve => { release = resolve; });
+  const initial = d.provider.bind('grant-a'); await tick();
+  d.remote.caps.send = false; await d.provider.bind('grant-a');
+  release(); d.remote.readHold = null; await initial;
+  assert.equal(d.provider.capabilities().send, false);
+  assert.equal(d.provider.render().providerReview, true, 'saved review is restored despite an overlapping refresh');
+  assert.equal(d.provider.render().provider.canConfirm, true);
+}
+console.log('PASS: overlapping capabilities preserve saved review restoration.');
