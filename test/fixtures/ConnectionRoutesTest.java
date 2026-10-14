@@ -96,6 +96,10 @@ public final class ConnectionRoutesTest {
   check(!ConnectionRoutes.managedService("/api/v1/user",null,"POST",true,false),"identity write refused");
   check(!ConnectionRoutes.managedService("/api/v1/user",null,"GET",true,false),"GET body refused");
   check(ConnectionRoutes.managedService("/api/agents",null,"GET",false,true),"separate development infrastructure retained");
-  System.out.println("PASS connection routes: retired pairing, exact Cloud self-revocation and the flag-off Cloud API origin only");
+  // #406: product builds declare nothing to a hosted or paired agent runtime over this transport.
+  for(String name:new String[]{"accept","content-type","authorization"}){check(ConnectionRoutes.admittedHeader(name,false),"flag-off admits "+name);check(ConnectionRoutes.admittedHeader(name,true),"test mocks admit "+name);}
+  for(String name:new String[]{"x-eliza-device-id","x-eliza-device-key","x-eliza-device-capabilities","x-eliza-phone-protocol"}){check(!ConnectionRoutes.admittedHeader(name,false),"flag-off refuses "+name);check(ConnectionRoutes.admittedHeader(name,true),"test mocks keep "+name);}
+  for(String name:new String[]{"cookie","x-eliza-agent-id","Authorization","X-Eliza-Phone-Protocol","",null})check(!ConnectionRoutes.admittedHeader(name,true)&&!ConnectionRoutes.admittedHeader(name,false),"header "+name);
+  System.out.println("PASS connection routes: retired pairing, exact Cloud self-revocation, the flag-off Cloud API origin and no hosted-agent declaration headers");
  }
 }

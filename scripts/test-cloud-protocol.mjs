@@ -8,6 +8,10 @@ if (!process.execArgv.includes('--experimental-transform-types')) {
   process.exit(child.status ?? 1);
 }
 const { CloudProtocol } = await import('../apps/app/src/runtime/cloud-protocol.ts');
+// Hosted agents are development infrastructure (#406): the product adapter has no agent route.
+const { DevelopmentCloudAgentProtocol } = await import('../apps/app/src/runtime/development-cloud-agents.ts');
+for (const method of ['listAgents', 'agentDetail', 'personal', 'phoneRequest', 'setPhoneTarget', 'listConversations', 'messages', 'createConversation', 'send'])
+  assert.equal(method in CloudProtocol.prototype, false, `production CloudProtocol has no ${method}`);
 const id = '72475cd0-e135-4c42-a9e2-fb5fe0820ada';
 const sessionId = 'd32f7f34-962b-47b7-8f0d-f2fe7f12610a';
 const token = 'synthetic-cloud-session';
@@ -95,7 +99,7 @@ const store = {
   async clear() { saved = null; },
 };
 const opened = [];
-const make = (environment = 'production') => new CloudProtocol(environment, request, store, async (url, signal) => { signal.throwIfAborted(); opened.push(url); });
+const make = (environment = 'production') => new DevelopmentCloudAgentProtocol(environment, request, store, async (url, signal) => { signal.throwIfAborted(); opened.push(url); });
 const signal = () => new AbortController().signal;
 try {
   const client = make();

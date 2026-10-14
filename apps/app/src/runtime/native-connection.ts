@@ -105,7 +105,9 @@ function webSecrets():BrowserSecretBackend{
 }
 /** Plain-HTTP loopback agents are a test-mocks surface; flag-off bundles accept HTTPS only. */
 const webDevelopmentHttp:boolean=import.meta.env!==undefined&&import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS==='1';
-const allowedHeaders=new Set(['accept','content-type','authorization','x-eliza-device-id','x-eliza-device-key','x-eliza-device-capabilities','x-eliza-phone-protocol']);
+/** Product builds send managed Cloud requests only. Device and phone-protocol headers declare this
+ * phone to a hosted or paired agent runtime, which exists only in test-mocks builds (#406). */
+const allowedHeaders=new Set(['accept','content-type','authorization',...(testMocksEnabled?['x-eliza-device-id','x-eliza-device-key','x-eliza-device-capabilities','x-eliza-phone-protocol']:[])]);
 /** Browser AlphaConnection: managed-service HTTPS without redirects or cookies.
  * Remote connections are available only in explicitly enabled development builds. */
 export function createBrowserConnection(options:{fetch?:typeof fetch;secrets?:BrowserSecretBackend;open?:(url:string)=>boolean;allowHttp?:boolean}={}):ConnectionPort{
@@ -208,7 +210,7 @@ export const remoteCredentialStore:RemoteCredentialStore={
 };
 export const nativeCloudRequest:CloudNativeRequest=async input=>{
   input.signal.throwIfAborted();
-  if(!testMocksEnabled&&!managedServiceRequest(input.url,input.method,input.body!==undefined))throw new Error('Only managed Cloud services are available. Remote agents are unsupported.');
+  if(!testMocksEnabled&&!managedServiceRequest(input.url,input.method,input.body!==undefined))throw new Error('Only managed Cloud services are available.');
   const requestId=crypto.randomUUID();
   let rejectAbort:(reason:unknown)=>void=()=>{};
   const interrupted=new Promise<never>((_,reject)=>{rejectAbort=reject;});

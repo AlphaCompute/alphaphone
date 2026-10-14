@@ -37,7 +37,8 @@ import { DeviceActions, actionScope, type DeviceCredential, type DeviceExecutor,
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isAndroid } from '../native';
 import type { ActionProposal, OperationReceipt, ContextEnvelope, VerifiedSession } from './alpha-client';
-import { CloudProtocol, CloudProtocolError, type CloudAgent, type CloudEnvironment, type CloudPhoneTarget } from './cloud-protocol';
+import { CloudProtocol, CloudProtocolError, type CloudAgent, type CloudEnvironment } from './cloud-protocol';
+import { DevelopmentCloudAgentProtocol, type CloudPhoneTarget } from './development-cloud-agents';
 import { checkEntitlement, clearEntitlementKeyCache, describeSubscription, EntitlementError, EntitlementRefresher, isEntitlementSignInFailure, CHOOSE_PLAN_LABEL, MANAGE_PLAN_LABEL, planAdmission, readServiceLimit, redeemFailureMessage, redeemSuccessMessage, serviceLimitMessage, SubscriptionRedeemError, type SubscriptionView } from './subscription-entitlement';
 import { RemoteProtocol, RemoteProtocolError } from './remote-protocol';
 import { phoneContextMessage } from './phone-context';
@@ -93,14 +94,12 @@ export interface ConnectionSnapshot {
 /** `revokeDevice` revokes this phone's enrollment on the agent; `deviceSlot` names its installation key. */
 type Enrollment = { revokeDevice?: (signal: AbortSignal) => Promise<boolean>; deviceSlot?: string; deviceHeaders?: Record<string,string> };
 type DeviceRequest=(path:string,body:unknown|undefined,signal:AbortSignal)=>Promise<unknown>;
-type Active = ({ kind: 'resident'; remote: LocalAgentProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2; userTextFormatVersion?:1 } | { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string; actions?: DeviceActions; workflowProtocol?: 1|2; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number }) & Enrollment & { request?:DeviceRequest; viewNavigation?:ViewNavigationClient };
+type Active = ({ kind: 'resident'; remote: LocalAgentProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2; userTextFormatVersion?:1 } | { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'cloud'; cloud: DevelopmentCloudAgentProtocol; agentId: string; actions?: DeviceActions; workflowProtocol?: 1|2; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number }) & Enrollment & { request?:DeviceRequest; viewNavigation?:ViewNavigationClient };
 const SELECTION = 'alpha.connection.selection.v1';
 // The development chooser exists only on an explicitly flagged development server.
 const browserDevProfile = devSurfacesEnabled && devProfileQuery;
 /** Production builds offer only the production Cloud environment. */
 const cloudEnvironmentAllowed = (environment: unknown): environment is CloudEnvironment => environment === 'production' || (testMocksEnabled && environment === 'staging');
-/** Every product build is local-agent-only; remote infrastructure is development-only. */
-const remotePairingRetired = !testMocksEnabled;
 /** Eliza Cloud admits no request from the production web origin, so no Cloud route is started there. */
 const webCloudUnavailable = () => !testMocksEnabled && !isAndroid && !browserLocalAgentEnabled;
 const CLOUD_SERVICE = 'alpha.connection.cloud-service.v1';
@@ -237,7 +236,7 @@ async function inspectPersonal(signal:AbortSignal){
  if(!testMocksEnabled)throw Error(PAIRING_RETIRED);
  const generation=personalGeneration,serviceId=service?.identity.sessionId;
  if(!serviceId)throw Error('Sign in with Eliza Cloud first.');
- const client=await cloud.personal(signal);signal.throwIfAborted();
+ const client=await developmentCloud().personal(signal);signal.throwIfAborted();
  if(generation!==personalGeneration||service?.identity.sessionId!==serviceId||service.identity.credentialId!==client.owner.credentialId||service.identity.userId!==client.owner.userId||service.identity.organizationId!==client.owner.organizationId)throw Error('Cloud account changed. Refresh status.');
  const binding={client,serviceId};personalSetup=binding;
  try{const expected=await personalIntent(client.owner,signal);
@@ -279,16 +278,19 @@ async function personalWork(message:string,action:(binding:NonNullable<typeof pe
   }
  });
 }
-function detachCloudTarget() { if (active?.kind === 'cloud') retire(); }
+function detachCloudTarget() { if (testMocksEnabled && active?.kind === 'cloud') retire(); }
 // Only the Android transport admits Cloud's self-revocation DELETE; elsewhere sign-out reports a local removal.
-function makeCloud(environment: CloudEnvironment) { return new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: isAndroid }); }
+// Product builds construct only the managed-services adapter; the hosted-agent fixture exists only with test mocks.
+function makeCloud(environment: CloudEnvironment): CloudProtocol { return testMocksEnabled ? new DevelopmentCloudAgentProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: isAndroid }) : new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: isAndroid }); }
+/** The development hosted-agent client. Product builds have none (#406). */
+function developmentCloud(): DevelopmentCloudAgentProtocol { if (!testMocksEnabled || !(cloud instanceof DevelopmentCloudAgentProtocol)) throw Error(PAIRING_RETIRED); return cloud; }
 function update(patch: Partial<ConnectionSnapshot>) { state = { ...state, ...patch }; if (!developmentPageSuspended) listeners.forEach(listener => listener()); }
 function save(selection: Selection) { localStorage.setItem(SELECTION, JSON.stringify(selection)); }
 function retire(name = 'Offline') {
   retireReadReplies();
   const retirement=Promise.allSettled([state.session?pauseHostedBackground(state.session.sessionId):Promise.resolve(),retireClockReviews()]).then(results=>{const failed=results.find(result=>result.status==='rejected');if(failed?.status==='rejected')throw failed.reason;});
   void retirement.catch(()=>update({error:'Background delivery could not be retired. Reconnect to reset it.'}));
-  if (active?.kind === 'cloud') { active.cloud.setPhoneTarget(null); if (state.session) void secureConnectionStore.remove(`cloud-runtime:${state.session.sessionId}`).catch(()=>{}); }
+  if (testMocksEnabled && active?.kind === 'cloud') { active.cloud.setPhoneTarget(null); if (state.session) void secureConnectionStore.remove(`cloud-runtime:${state.session.sessionId}`).catch(()=>{}); }
   active?.viewNavigation?.dispose();
   actionReceipts.clear();
   conversationMemory.clear();
@@ -320,8 +322,9 @@ function selection(): Selection | null {
     if (value?.kind === 'offline') return value.localApps === true ? { kind: 'offline', localApps: true } : { kind: 'offline' };
     if (value?.kind === 'resident' || value?.kind === 'none') return value;
     if (testMocksEnabled && value?.kind === 'mock') return value;
-    if (value?.kind === 'remote' && typeof value.origin === 'string') return value;
-    if (testMocksEnabled && value?.kind === 'local' && typeof value.origin === 'string') return value;
+    // Product builds have no hosted or paired agent (#406): a saved one reads as the resident agent.
+    if (!testMocksEnabled) return legacyHostedKind(value?.kind) ? { kind: 'resident' } : null;
+    if ((value?.kind === 'remote' || value?.kind === 'local') && typeof value.origin === 'string') return value;
     if (value?.kind === 'cloud' && cloudEnvironmentAllowed(value.environment) && typeof value.agentId === 'string') return value;
   } catch { /* Invalid nonsecret preferences do not authenticate a connection. */ }
   return null;
@@ -346,7 +349,7 @@ async function work(message: string, action: (signal: AbortSignal) => Promise<vo
   try { await action(controller.signal); }
   catch (error) {
     if(controller.signal.aborted&&!state.open){update({error:'',message:''});return;}
-    if (expired(error) && active?.kind === 'cloud' && active.cloud.environment === cloud.environment) {
+    if (testMocksEnabled && expired(error) && active?.kind === 'cloud' && active.cloud.environment === cloud.environment) {
       const previous = active; retire('Sign-in required'); detachService();
       try { await previous.cloud.disconnect(); }
       catch { update({ error: 'The expired connection is detached, but its stored credential could not be removed.', open: true, message: '' }); return; }
@@ -397,7 +400,7 @@ async function remoteIdentity(remote: RemoteProtocol, signal: AbortSignal) {
 }
 async function connectRemote(kind: 'remote' | 'local', origin: string, code: string, signal: AbortSignal) {
   // Fences every caller, including restore: no request is made and the saved credential is kept.
-  if (remotePairingRetired) throw new Error(PAIRING_RETIRED);
+  if (!testMocksEnabled) throw new Error(PAIRING_RETIRED);
   let deviceHeaders: Record<string, string> = {};
   const remote = new RemoteProtocol(origin.trim(), input => nativeRemoteRequest({ ...input, headers: { ...input.headers, ...deviceHeaders } }), remoteCredentialStore, { developmentOrigins: kind === 'local' ? [new URL(origin).origin] : [] });
   if (code.trim()) await remote.pair(code.trim(), signal);
@@ -620,7 +623,7 @@ async function connectResident(signal: AbortSignal) {
     if(testMocksEnabled&&!residentBindable()){update({open:true,message:`Plan ${admission.binding==='cloud'?'admitted':'not admitted'} on ${residentEnvironment()} (subscription gate QA). The on-device agent is not started in this mode.`,error:''});return;}
     bound=await applyResidentBinding(admission,signal);
   }
-  if (!await localAgentPackaged()) throw new Error(remotePairingRetired ? 'The on-device agent is not included in this build.' : webCloudUnavailable() ? 'The local agent is unavailable here. Connect a remote agent or continue offline.' : 'The local agent is unavailable here. Connect a remote agent, sign in with Eliza Cloud, or continue offline.');
+  if (!await localAgentPackaged()) throw new Error(testMocksEnabled ? 'The local agent is unavailable here. Start the development agent, use a development connection, or continue offline.' : 'The on-device agent is not included in this build.');
   signal.throwIfAborted();
   const client = new LocalAgentProtocol();
   const { session, name } = await client.connect(signal);
@@ -674,10 +677,9 @@ async function connectResident(signal: AbortSignal) {
   }
 }
 async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?: string, expectedOrigin?:string, expectedPersonalOwner?:Readonly<PersonalOwner>) {
-  if(!testMocksEnabled)throw Error(PAIRING_RETIRED);
-  const client=cloud;
+  const client=developmentCloud();
   client.setPhoneTarget(null);
-  const identity = await verifyService(cloud, signal); signal.throwIfAborted();
+  const identity = await verifyService(client, signal); signal.throwIfAborted();
   const verifyPersonalOwner=async()=>{
     if(!expectedPersonalOwner)return;
     const credential=await cloudCredentialStore.read(client.environment);signal.throwIfAborted();
@@ -685,17 +687,17 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
   };
   await verifyPersonalOwner();
   if (expectedOwner && identity.userId !== expectedOwner) throw new Error('The Cloud account has changed. Refresh agents and choose an agent for this account.');
-  const agent = await cloud.agentDetail(agentId, signal);
+  const agent = await client.agentDetail(agentId, signal);
   await verifyPersonalOwner();
   if (agent.status !== 'running' || !agent.runtimeUrl) throw new Error('This agent is not ready. Refresh its status.');
   if(expectedOrigin&&new URL(agent.runtimeUrl).origin!==new URL(expectedOrigin).origin)throw Error('The personal Cloud runtime changed. Refresh its status.');
   const session = {ownerId:identity.userId,agentId,sessionId:crypto.randomUUID(),origin:new URL(agent.runtimeUrl).origin};
   const workflowProtocol=await workflowPresentationProtocol(signal);
-  const next: Extract<Active,{kind:'cloud'}> = {kind:'cloud',cloud,agentId,workflowProtocol};
+  const next: Extract<Active,{kind:'cloud'}> = {kind:'cloud',cloud:client,agentId,workflowProtocol};
   let attached = false;
   let reason = 'This Cloud runtime has not enabled verified phone actions, workflows or paired speech.';
   try {
-    const auth = await cloudCredentialStore.read(cloud.environment);
+    const auth = await cloudCredentialStore.read(client.environment);
     await verifyPersonalOwner();
     if (!auth?.credentialId || !identity.organizationId) throw new Error('Cloud owner configuration unavailable');
     const baseScope = await actionScope(JSON.stringify(['cloud',session.origin,identity.userId,agentId]));
@@ -732,15 +734,15 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
     next.revokeDevice=async revokeSignal=>{try{await client.phoneRequest(target,'/api/client-devices/revoke',revokeSignal,{});return true;}catch{revokeSignal.throwIfAborted();return false;}};
     next.request=request;
     next.phoneTarget=target; next.voiceExpiresAt=Math.min(auth.expiresAt ?? Infinity,Date.now()+30*60*1000);
-    await secureConnectionStore.write(`cloud-runtime:${session.sessionId}`,{environment:cloud.environment,credentialId:auth.credentialId,origin:session.origin,agentId,ownerId:session.ownerId,userId:identity.userId,organizationId:identity.organizationId,sessionId:session.sessionId,expiresAt:next.voiceExpiresAt});
-    signal.throwIfAborted(); cloud.setPhoneTarget(target); reason=profileReason;
+    await secureConnectionStore.write(`cloud-runtime:${session.sessionId}`,{environment:client.environment,credentialId:auth.credentialId,origin:session.origin,agentId,ownerId:session.ownerId,userId:identity.userId,organizationId:identity.organizationId,sessionId:session.sessionId,expiresAt:next.voiceExpiresAt});
+    signal.throwIfAborted(); client.setPhoneTarget(target); reason=profileReason;
   } catch (error) {
     signal.throwIfAborted();
     if (expired(error)) throw error;
     next.actions=undefined;next.phoneTarget=undefined;next.voiceExpiresAt=undefined;next.revokeDevice=undefined;session.ownerId=identity.userId;
   }
   await verifyPersonalOwner();signal.throwIfAborted();
-  save({ kind:'cloud',environment:cloud.environment,agentId,ownerId:identity.userId });
+  save({ kind:'cloud',environment:client.environment,agentId,ownerId:identity.userId });
   activate(next,session,agent.name || 'Eliza Cloud agent'); attached=true; update({phoneCapabilityReason:reason});
   await restoreSavedHistory(signal);
 }
@@ -756,6 +758,28 @@ function migrateLegacyMock(): boolean {
   if (!stored || typeof stored !== 'object' || (stored as { kind?: unknown }).kind !== 'mock') return false;
   try { save({ kind: 'none' }); } catch { /* The open chooser still requires an explicit choice. */ }
   update({ open: true, message: 'This version connects to real agents only. Choose how to connect your agent.' });
+  return true;
+}
+/** Saved selection kinds of the retired hosted and paired agents (remote, local development, Cloud). */
+function legacyHostedKind(kind: unknown): kind is 'remote' | 'local' | 'cloud' { return kind === 'remote' || kind === 'local' || kind === 'cloud'; }
+/** Where a migrated hosted-agent selection is kept, unread by product code, for recovery and diagnostics. */
+export const LEGACY_HOSTED_SELECTION = 'alpha.connection.legacy-hosted-selection.v1';
+/**
+ * The agent always runs on the phone (#406): product builds have no remote, paired or Cloud-hosted
+ * agent. A saved selection of one from an earlier build becomes the resident agent. The old choice is
+ * moved to LEGACY_HOSTED_SELECTION, not deleted (an earlier record is kept). Nothing is connected to
+ * it: no credential slot is read or removed, no request is made, and conversation selections and
+ * history stay where they are. Test-mocks builds keep their development selections.
+ */
+function migrateLegacyHostedSelection(): boolean {
+  if (testMocksEnabled) return false;
+  let stored: unknown = null;
+  try { stored = JSON.parse(localStorage.getItem(SELECTION) || 'null'); } catch { return false; }
+  if (!stored || typeof stored !== 'object' || !legacyHostedKind((stored as { kind?: unknown }).kind)) return false;
+  try {
+    if (localStorage.getItem(LEGACY_HOSTED_SELECTION) === null) localStorage.setItem(LEGACY_HOSTED_SELECTION, JSON.stringify(stored));
+    save({ kind: 'resident' });
+  } catch { /* selection() already reads the stored choice as the resident agent. */ }
   return true;
 }
 /**
@@ -997,6 +1021,86 @@ function boundNavigation():ViewNavigationClient|undefined {
  * subscribe/getSnapshot expose connection changes; send uses server-bound identity
  * and one persisted conversation per origin+owner+agent. It never executes proposals.
  */
+/*
+ * DEVELOPMENT INFRASTRUCTURE ONLY (#406). The agent always runs on the phone; remote pairing, the
+ * local development agent and Cloud-hosted agents (discovery, personal/Dedicated setup, runtime
+ * restore) exist only in ELIZA_DEV_ALLOW_TEST_MOCKS=1 builds. `hosted` is null in every product
+ * build, so none of these functions is reachable or bundled there (the production bundle audit
+ * denies their markers).
+ */
+async function pair(kind: 'remote' | 'local', origin: string, code: string) {
+  await work('Verifying your agent…', async signal => { retire(); try { await connectRemote(kind, origin, code, signal); } catch (error) { throw pairingError(error, !!code.trim()); } });
+}
+async function restoreHosted(saved: Extract<Selection, { kind: 'cloud' | 'remote' | 'local' }>, signal: AbortSignal) {
+  if (saved.kind === 'cloud') {
+    cloud = makeCloud(saved.environment);
+    const identity=await verifyService(cloud,signal);
+    if(saved.ownerId&&identity.userId!==saved.ownerId)throw Error('The Cloud account changed. Review your personal agent before connecting.');
+    await inspectPersonal(signal);
+    const current=state.cloudPersonal;
+    if(saved.ownerId&&current?.view?.kind==='ready'&&!current.blocked)await connectCloud(current.view.identity.activeAgentId!,signal,saved.ownerId,current.view.identity.apiBase,personalSetup?.client.owner);
+    else update({open:true});
+  }
+  else await connectRemote(saved.kind, saved.origin, '', signal);
+}
+async function cloudList(environment: CloudEnvironment) {
+  await work('Loading your agents…', async signal => { cloud = makeCloud(environment);
+    if (service && service.identity.environment !== environment) { detachCloudTarget(); detachService(); }
+    const previous = service?.identity.sessionId;
+    try { await verifyService(cloud, signal); }
+    catch (error) { if (previous) connectionController.rejectCloudSession(previous, error); throw error; }
+    if (!active) save({ kind: 'none' });
+    await inspectPersonal(signal); });
+}
+function personalDecline(){if(operation)return;clearPersonalSetup();update({cloudPersonal:{view:null,blocked:false,declined:true},message:'Cloud account connected. Dedicated setup was not started.',error:''});}
+async function personalAccept(){await personalWork('Submitting the reviewed setup…',async(binding,view,signal)=>{
+   if(view.kind!=='review'||state.cloudPersonal?.blocked)throw Error('Refresh setup status before continuing.');
+   const generation=personalGeneration,attempt=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:view.review.personalElizaId,dedicatedAgentId:view.review.dedicatedAgentId,state:'attempting'},null,signal);
+   await personalDispatch(binding,generation,attempt,signal);
+   let next:PersonalView,intent:PersonalIntent|null=attempt;
+   try{next=await binding.client.accept(view.review,signal);}
+   catch(error){if(error instanceof PersonalProtocolError&&error.code==='http'&&error.status!==undefined&&error.status>=400&&error.status<500){await clearPersonalIntent(binding.client.owner,attempt);if(personalCurrent(binding,generation))update({cloudPersonal:{view:null,blocked:false,declined:false}});}throw error;}
+   if(next.kind==='review'||next.kind==='unavailable'){await clearPersonalIntent(binding.client.owner,attempt);intent=null;}
+   else if(next.kind==='pending')intent=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:next.receipt.personalElizaId,dedicatedAgentId:next.receipt.dedicatedAgentId,state:'accepted'},attempt);
+   if(personalCurrent(binding,generation)){await publishPersonal(binding,next,intent,generation,signal);if(next.kind==='review')update({message:'The hosting terms changed. Review the current quote before continuing.'});}
+  });}
+async function personalPoll(){await personalWork('Checking setup status…',async(binding,view,signal)=>{const generation=personalGeneration,expected=await personalIntent(binding.client.owner,signal);const next=view.kind==='pending'?await binding.client.poll(view.receipt,signal):await binding.client.inspect(signal);if(personalCurrent(binding,generation))await publishPersonal(binding,next,expected,generation,signal);});}
+async function personalFinalize(){await personalWork('Completing personal agent setup…',async(binding,view,signal)=>{
+   if(view.kind!=='pending'||view.phase!=='cutover'||state.cloudPersonal?.blocked)throw Error('Check setup status before continuing.');
+   const generation=personalGeneration,prior=await personalIntent(binding.client.owner,signal);if(prior?.phase==='cutover')throw Error('Check the previous setup outcome before continuing.');if(prior&&(prior.personalElizaId!==view.receipt.personalElizaId||prior.dedicatedAgentId&&prior.dedicatedAgentId!==view.receipt.dedicatedAgentId))throw Error('Cloud setup target changed. Refresh its status.');
+   const attempt=await savePersonalIntent(binding.client.owner,{phase:'cutover',personalElizaId:view.receipt.personalElizaId,dedicatedAgentId:view.receipt.dedicatedAgentId,state:'attempting'},prior,signal);
+   await personalDispatch(binding,generation,attempt,signal);
+   const next=await binding.client.finalize(view.receipt,signal);let intent:PersonalIntent=attempt;
+   // A returned pending state is the protocol's explicit non-ambiguous retry permission.
+   if(next.kind==='pending')intent=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:next.receipt.personalElizaId,dedicatedAgentId:next.receipt.dedicatedAgentId,state:'accepted'},attempt);
+   else if(next.kind==='review'||next.kind==='unavailable')intent=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:view.receipt.personalElizaId,dedicatedAgentId:view.receipt.dedicatedAgentId,state:'accepted'},attempt);
+   if(personalCurrent(binding,generation))await publishPersonal(binding,next,intent,generation,signal);
+  });}
+async function personalRecoveryOpen(){
+   const binding=personalSetup,generation=personalGeneration;if(Capacitor.getPlatform()==='android'||!binding||!personalCurrent(binding,generation)||operation)return;
+   personalRecovery?.abort();const controller=personalRecovery=new AbortController(),check=()=>{controller.signal.throwIfAborted();if(!personalCurrent(binding,generation))throw Error('Cloud account changed.');};
+   try{const domain=await personalIntentDocument(binding.client.owner);check();openDomainRecovery({async capture(signal){check();const value=await domain.capture(signal);check();return value;},async reset(expected,signal){check();await domain.reset(expected,signal);check();}},'Cloud setup intent','Cloud setup intent recovery','Download this account’s exact saved intent before resetting. An uncertain setup may already have started hosting. Check Cloud status first. Reset only clears local recovery; it does not stop hosting, revoke credentials or send another setup request.',controller.signal);}catch{if(!controller.signal.aborted&&personalCurrent(binding,generation))update({error:'Cloud setup recovery could not be opened.'});}
+}
+async function cloudManage(environment:CloudEnvironment){await work('Opening Cloud account…',signal=>openConnectionBrowser(testMocksEnabled&&environment==='staging'?'https://cloud-staging.eliza.app/cloud/agents':'https://cloud.eliza.app/cloud/agents',signal));}
+async function personalConnect(){await personalWork('Verifying your personal Cloud agent…',async(binding,_view,signal)=>{
+   const generation=personalGeneration,expected=await personalIntent(binding.client.owner,signal),next=await binding.client.inspect(signal);if(!personalCurrent(binding,generation))return;await publishPersonal(binding,next,expected,generation,signal);
+   if(next.kind!=='ready'||state.cloudPersonal?.blocked)throw Error('Your personal Cloud agent is not ready.');
+   await connectCloud(next.identity.activeAgentId!,signal,binding.client.owner.userId,next.identity.apiBase,binding.client.owner);
+  });}
+/** Development only: a request to a paired remote or local development agent with its saved session. */
+async function pairedRequest(selected:Extract<Active,{kind:'remote'|'local'}>,session:VerifiedSession,path:string,method:AutomationsMethod,body:unknown,signal:AbortSignal,current:()=>void,recheck:boolean){
+  const credential=await remoteCredentialStore.read(selected.origin);if(recheck)current();
+  if(!credential||credential.identityId!==session.ownerId||credential.expiresAt<=Date.now())throw Error('Pair the agent again');
+  const response=await nativeRemoteRequest({url:selected.origin+path,method,headers:{Accept:'application/json','Content-Type':'application/json',Authorization:`Bearer ${credential.token}`},...(body===undefined?{}:{body:JSON.stringify(body)}),signal});current();
+  if(recheck){
+    const latest=await remoteCredentialStore.read(selected.origin);current();
+    if(!latest||latest.token!==credential.token||latest.identityId!==session.ownerId||latest.expiresAt<=Date.now())throw new DOMException('The paired account changed','AbortError');
+  }
+  if(response.status<200||response.status>=300)throw new WorkflowHttpError(response.status,response.body);
+  return response.body;
+}
+const hosted = testMocksEnabled ? { pairedRequest, pair, restore: restoreHosted, inspectPersonal, cloudList, cloudManage, personalDecline, personalAccept, personalPoll, personalFinalize, personalRecoveryOpen, personalConnect } : null;
+
 export const connectionController = {
   subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
   getSnapshot() { return state; },
@@ -1151,7 +1255,7 @@ export const connectionController = {
   },
   getAutomationsClient(): {sessionId:string;scope?:string;request:(path:string,method:AutomationsMethod,body:unknown|undefined,signal:AbortSignal)=>Promise<unknown>} | null {
     const selected=active,session=state.session,generation=epoch;
-    if(!selected||!session||(selected.kind==='cloud'&&!selected.phoneTarget))return null;
+    if(!selected||!session||(testMocksEnabled&&selected.kind==='cloud'&&!selected.phoneTarget))return null;
     return {sessionId:session.sessionId,scope:selected.actions?.scope,request:async(path,method,body,signal)=>{
       if(!automationsRouteAllowed(path,method)||((method==='GET'||method==='DELETE')&&body!==undefined))throw Error('Unsupported automation request');
       const controller=new AbortController(),bounded=AbortSignal.any([signal,controller.signal]);automationsRequests.add(controller);
@@ -1159,17 +1263,10 @@ export const connectionController = {
       try{
         current();
         let result:unknown;
-        if(selected.kind==='cloud')result=await selected.cloud.phoneRequest(selected.phoneTarget!,path,bounded,body,method);
-        else if(selected.kind==='resident')result=await selected.remote.request(path,body,bounded,{},method);
-        else {
-          const credential=await remoteCredentialStore.read(selected.origin);current();
-          if(!credential||credential.identityId!==session.ownerId||credential.expiresAt<=Date.now())throw Error('Pair the agent again');
-          const response=await nativeRemoteRequest({url:selected.origin+path,method,headers:{Accept:'application/json','Content-Type':'application/json',Authorization:`Bearer ${credential.token}`},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:bounded});current();
-          const latest=await remoteCredentialStore.read(selected.origin);current();
-          if(!latest||latest.token!==credential.token||latest.identityId!==session.ownerId||latest.expiresAt<=Date.now())throw new DOMException('The paired account changed','AbortError');
-          if(response.status<200||response.status>=300)throw new WorkflowHttpError(response.status,response.body);
-          result=response.body;
-        }
+        if(selected.kind==='resident')result=await selected.remote.request(path,body,bounded,{},method);
+        else if(!hosted)throw Error('Your agent runs on this phone.');
+        else if(selected.kind==='cloud')result=await selected.cloud.phoneRequest(selected.phoneTarget!,path,bounded,body,method);
+        else result=await hosted.pairedRequest(selected,session,path,method,body,bounded,current,true);
         current();return result;
       }catch(error){if(error instanceof CloudProtocolError&&error.status)throw new WorkflowHttpError(error.status,error.data);if(error&&typeof error==='object'&&'status' in error&&typeof error.status==='number'&&!(error instanceof WorkflowHttpError))throw new WorkflowHttpError(error.status,'data' in error?error.data:undefined);throw error;}
       finally{automationsRequests.delete(controller);}
@@ -1177,25 +1274,23 @@ export const connectionController = {
   },
   getWorkflowClient(): { client: WorkflowProtocol; sessionId: string; scope?:string } | null {
     const selected = active, session = state.session;
-    if (!selected || !session || (selected.kind==='cloud' && !selected.phoneTarget)) return null;
+    if (!selected || !session || (testMocksEnabled && selected.kind==='cloud' && !selected.phoneTarget)) return null;
     const generation = epoch;
     return { sessionId: session.sessionId, scope:selected.actions?.scope, client: new WorkflowProtocol(async (path, body, signal) => {
       signal.throwIfAborted();
       if (generation !== epoch) throw new Error('Agent changed');
-      if (selected.kind==='cloud') { try { const response=await selected.cloud.phoneRequest(selected.phoneTarget!,path,signal,body); if(generation!==epoch)throw new Error('Agent changed');return response; } catch(error) { if(error instanceof CloudProtocolError && error.status)throw new WorkflowHttpError(error.status,error.data); throw error; } }
       if(selected.kind==='resident'){try{const response=await selected.remote.request(path,body,signal);if(generation!==epoch)throw Error('Agent changed');return response;}catch(error){if(error&&typeof error==='object'&&'status' in error&&typeof error.status==='number')throw new WorkflowHttpError(error.status,'data' in error?error.data:undefined);throw error;}}
-      const credential = await remoteCredentialStore.read(selected.origin);
-      if (!credential || credential.identityId !== session.ownerId || credential.expiresAt <= Date.now()) throw new Error('Pair the agent again');
-      const response = await nativeRemoteRequest({ url: selected.origin + path, method: body === undefined ? 'GET' : 'POST', headers: { Accept: 'application/json', 'Content-Type':'application/json', Authorization: `Bearer ${credential.token}` }, ...(body===undefined?{}:{body:JSON.stringify(body)}), signal });
-      if (generation !== epoch) throw new Error('Agent changed');
-      if (response.status<200||response.status>=300) throw new WorkflowHttpError(response.status, response.body);
-      return response.body;
+      if (!hosted) throw new Error('Your agent runs on this phone.');
+      if (selected.kind==='cloud') { try { const response=await selected.cloud.phoneRequest(selected.phoneTarget!,path,signal,body); if(generation!==epoch)throw new Error('Agent changed');return response; } catch(error) { if(error instanceof CloudProtocolError && error.status)throw new WorkflowHttpError(error.status,error.data); throw error; } }
+      return hosted.pairedRequest(selected,session,path,body === undefined ? 'GET' : 'POST',body,signal,()=>{if (generation !== epoch) throw new Error('Agent changed');},false);
     }) };
   },
   getResidentReadingBinding(){return active?.kind==='resident'&&state.session?{execution:'device' as const,ownerId:state.session.ownerId,sessionId:state.session.sessionId}:null;},
   getBrowserSpeechAgent(){return active?.kind==='resident'&&state.session&&active.remote.browserSpeechAvailable?active.remote:null;},
   async refreshDeveloperVoiceHistory(binding:VoiceConversationBinding,signal:AbortSignal){if(!browserLocalAgentEnabled||active?.kind!=='resident'||!this.voiceConversationCurrent(binding))throw Error('Developer voice conversation changed');await restoreConversationHistory(binding.conversationId,signal,true);if(!this.voiceConversationCurrent(binding))throw Error('Developer voice conversation changed');},
   getPairedVoiceBinding(): { origin: string; ownerId: string; expiresAt: number; sessionId: string } | null {
+    // Paired voice belongs to development and hosted agents; the resident agent has its own speech path.
+    if (!testMocksEnabled) return null;
     if(browserDevProfile&&selection()?.kind==='development'&&state.session)return {...state.session,expiresAt:developmentVoiceExpiresAt};
     if (active?.kind==='cloud' && state.session && active.phoneTarget && active.voiceExpiresAt && active.voiceExpiresAt>Date.now()) return {origin:state.session.origin,ownerId:state.session.ownerId,expiresAt:active.voiceExpiresAt,sessionId:state.session.sessionId};
     if (!active || active.kind === 'cloud' || active.kind === 'resident' || !state.session || !active.remote.session || active.remote.session.expiresAt <= Date.now()) return null;
@@ -1206,7 +1301,7 @@ export const connectionController = {
   rejectCloudSession(sessionId: string, error: unknown) {
     if (!expired(error) || service?.identity.sessionId !== sessionId) return false;
     const environment = service.identity.environment;
-    if (active?.kind === 'cloud' && active.cloud.environment === environment) retire('Sign-in required');
+    if (testMocksEnabled && active?.kind === 'cloud' && active.cloud.environment === environment) retire('Sign-in required');
     detachService();
     update({ error: testMocksEnabled?'Eliza Cloud sign-in has expired. Sign in again; remote agent pairing is unchanged.':'Eliza Cloud sign-in has expired. Sign in again to use managed services.' });
     return true;
@@ -1273,6 +1368,8 @@ export const connectionController = {
       // Subscription gate QA in a test-mocks build runs the production gate before any development flow.
       if (residentQa()) { await startResidentGate(); return; }
       if (!testMocksEnabled && migrateLegacyMock()) return;
+      // A saved hosted or paired agent becomes the resident agent; nothing connects to it.
+      if (!testMocksEnabled) migrateLegacyHostedSelection();
       if (testMocksEnabled && ((!isAndroid && !browserLocalAgentEnabled) || new URLSearchParams(location.search).get('mode') === 'mock')) return;
       if (!testMocksEnabled && !isAndroid && !browserLocalAgentEnabled) {
         // A production browser build has no on-device agent. Explain the real choices once.
@@ -1289,10 +1386,6 @@ export const connectionController = {
       if (saved?.kind === 'offline') return;
       if (saved?.kind === 'mock') { const url = new URL(location.href); url.searchParams.set('mode', 'mock'); location.replace(url.href); return; }
       await work('Restoring your connection…', async signal => {
-        if (webCloudUnavailable()) {
-          // A saved Cloud agent is not restored: the service was signed out above without a request or a stored-token read.
-          if (saved?.kind === 'cloud') { try { save({ kind: 'none' }); } catch { /* The chooser still requires a choice. */ } update({ open: true, message: '', error: WEB_CLOUD_UNAVAILABLE }); return; }
-        }
         const environment = localStorage.getItem(CLOUD_SERVICE);
         if (environment === 'staging' && !testMocksEnabled) { localStorage.removeItem(CLOUD_SERVICE); update({ message: 'Sign in with Eliza Cloud to continue.' }); }
         else if (cloudEnvironmentAllowed(environment)) {
@@ -1303,16 +1396,8 @@ export const connectionController = {
         // `npm run dev` starts the agent on this computer; connect to it on first launch. An explicit choice (including offline) is kept.
         if (!saved && !isAndroid && browserLocalAgentEnabled) { await connectResident(signal); return; }
         if (!saved || saved.kind === 'none') { update({ open: !service, message: 'Choose where to run your agent.' }); return; }
-        if (saved.kind === 'cloud') {
-          cloud = makeCloud(saved.environment);
-          const identity=await verifyService(cloud,signal);
-          if(saved.ownerId&&identity.userId!==saved.ownerId)throw Error('The Cloud account changed. Review your personal agent before connecting.');
-          await inspectPersonal(signal);
-          const current=state.cloudPersonal;
-          if(saved.ownerId&&current?.view?.kind==='ready'&&!current.blocked)await connectCloud(current.view.identity.activeAgentId!,signal,saved.ownerId,current.view.identity.apiBase,personalSetup?.client.owner);
-          else update({open:true});
-        }
-        else if(saved.kind==='remote'||saved.kind==='local')await connectRemote(saved.kind, saved.origin, '', signal);
+        // Development infrastructure only: product selection() never returns a hosted kind.
+        if (hosted && (saved.kind === 'cloud' || saved.kind === 'remote' || saved.kind === 'local')) await hosted.restore(saved, signal);
       });
     })().finally(()=>update({startupResolved:true}));
     return startup;
@@ -1362,8 +1447,8 @@ export const connectionController = {
   async saveDevelopment(profile:DevelopmentProfile,reply:string){if(!devSurfacesEnabled)return;await work('Saving development reply…',async signal=>{await saveDevelopmentReply(profile,reply,signal);update({message:'Development reply saved.'});});},
   async startLocal() { await work('Starting the local agent…', signal => { retire(); return connectResident(signal); }); },
   async pair(kind: 'remote' | 'local', origin: string, code: string) {
-    if (remotePairingRetired) { update({ error: PAIRING_RETIRED }); return; }
-    await work('Verifying your agent…', async signal => { retire(); try { await connectRemote(kind, origin, code, signal); } catch (error) { throw pairingError(error, !!code.trim()); } });
+    if (!hosted) { update({ error: PAIRING_RETIRED }); return; }
+    await hosted.pair(kind, origin, code);
   },
   async residentCloudLogin() {
     await work('Opening Eliza Cloud sign-in…',async signal=>{
@@ -1430,62 +1515,25 @@ export const connectionController = {
       await cloud.login(signal, () => update({ message: accountOnly?'Finish signing in to Eliza Cloud in your browser, then return here. If the link expires, cancel and sign in again.':'Use the newly opened browser tab to sign in and approve this phone. If the link expires, cancel here and start a fresh sign-in.' }));
       await verifyService(cloud, signal);
       if (!active) save({ kind: 'none' });
-      if(accountOnly)update({message:'Signed in to Eliza Cloud.'});else await inspectPersonal(signal);
+      if(accountOnly)update({message:'Signed in to Eliza Cloud.'});else if(hosted)await hosted.inspectPersonal(signal);
     });
   },
   async cloudList(environment: CloudEnvironment) {
-    if(!testMocksEnabled){update({error:PAIRING_RETIRED});return;}
-    if (webCloudUnavailable()) { update({ open: true, error: WEB_CLOUD_UNAVAILABLE, message: '' }); return; }
-    await work('Loading your agents…', async signal => { cloud = makeCloud(environment);
-      if (service && service.identity.environment !== environment) { detachCloudTarget(); detachService(); }
-      const previous = service?.identity.sessionId;
-      try { await verifyService(cloud, signal); }
-      catch (error) { if (previous) connectionController.rejectCloudSession(previous, error); throw error; }
-      if (!active) save({ kind: 'none' });
-      await inspectPersonal(signal); });
+    if (!hosted) { update({ error: PAIRING_RETIRED }); return; }
+    await hosted.cloudList(environment);
   },
   cloudEnvironment(environment: CloudEnvironment) {
     if (operation || !cloudEnvironmentAllowed(environment)) return;
     clearPersonalSetup(); cloud = makeCloud(environment); update({ agents: [], message: '', error: '' });
   },
-  // Cloud connects only to the account's personal agent: a running Dedicated agent connects via
-  // cloudPersonalConnect; otherwise the reviewed Dedicated setup or Manage Cloud account applies.
-  cloudPersonalDecline(){if(operation)return;clearPersonalSetup();update({cloudPersonal:{view:null,blocked:false,declined:true},message:'Cloud account connected. Dedicated setup was not started.',error:''});},
-  async cloudPersonalAccept(){await personalWork('Submitting the reviewed setup…',async(binding,view,signal)=>{
-   if(view.kind!=='review'||state.cloudPersonal?.blocked)throw Error('Refresh setup status before continuing.');
-   const generation=personalGeneration,attempt=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:view.review.personalElizaId,dedicatedAgentId:view.review.dedicatedAgentId,state:'attempting'},null,signal);
-   await personalDispatch(binding,generation,attempt,signal);
-   let next:PersonalView,intent:PersonalIntent|null=attempt;
-   try{next=await binding.client.accept(view.review,signal);}
-   catch(error){if(error instanceof PersonalProtocolError&&error.code==='http'&&error.status!==undefined&&error.status>=400&&error.status<500){await clearPersonalIntent(binding.client.owner,attempt);if(personalCurrent(binding,generation))update({cloudPersonal:{view:null,blocked:false,declined:false}});}throw error;}
-   if(next.kind==='review'||next.kind==='unavailable'){await clearPersonalIntent(binding.client.owner,attempt);intent=null;}
-   else if(next.kind==='pending')intent=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:next.receipt.personalElizaId,dedicatedAgentId:next.receipt.dedicatedAgentId,state:'accepted'},attempt);
-   if(personalCurrent(binding,generation)){await publishPersonal(binding,next,intent,generation,signal);if(next.kind==='review')update({message:'The hosting terms changed. Review the current quote before continuing.'});}
-  });},
-  async cloudPersonalPoll(){await personalWork('Checking setup status…',async(binding,view,signal)=>{const generation=personalGeneration,expected=await personalIntent(binding.client.owner,signal);const next=view.kind==='pending'?await binding.client.poll(view.receipt,signal):await binding.client.inspect(signal);if(personalCurrent(binding,generation))await publishPersonal(binding,next,expected,generation,signal);});},
-  async cloudPersonalFinalize(){await personalWork('Completing personal agent setup…',async(binding,view,signal)=>{
-   if(view.kind!=='pending'||view.phase!=='cutover'||state.cloudPersonal?.blocked)throw Error('Check setup status before continuing.');
-   const generation=personalGeneration,prior=await personalIntent(binding.client.owner,signal);if(prior?.phase==='cutover')throw Error('Check the previous setup outcome before continuing.');if(prior&&(prior.personalElizaId!==view.receipt.personalElizaId||prior.dedicatedAgentId&&prior.dedicatedAgentId!==view.receipt.dedicatedAgentId))throw Error('Cloud setup target changed. Refresh its status.');
-   const attempt=await savePersonalIntent(binding.client.owner,{phase:'cutover',personalElizaId:view.receipt.personalElizaId,dedicatedAgentId:view.receipt.dedicatedAgentId,state:'attempting'},prior,signal);
-   await personalDispatch(binding,generation,attempt,signal);
-   const next=await binding.client.finalize(view.receipt,signal);let intent:PersonalIntent=attempt;
-   // A returned pending state is the protocol's explicit non-ambiguous retry permission.
-   if(next.kind==='pending')intent=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:next.receipt.personalElizaId,dedicatedAgentId:next.receipt.dedicatedAgentId,state:'accepted'},attempt);
-   else if(next.kind==='review'||next.kind==='unavailable')intent=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:view.receipt.personalElizaId,dedicatedAgentId:view.receipt.dedicatedAgentId,state:'accepted'},attempt);
-   if(personalCurrent(binding,generation))await publishPersonal(binding,next,intent,generation,signal);
-  });},
-  async cloudPersonalRecovery(){
-   if(!testMocksEnabled)return;
-   const binding=personalSetup,generation=personalGeneration;if(Capacitor.getPlatform()==='android'||!binding||!personalCurrent(binding,generation)||operation)return;
-   personalRecovery?.abort();const controller=personalRecovery=new AbortController(),check=()=>{controller.signal.throwIfAborted();if(!personalCurrent(binding,generation))throw Error('Cloud account changed.');};
-   try{const domain=await personalIntentDocument(binding.client.owner);check();openDomainRecovery({async capture(signal){check();const value=await domain.capture(signal);check();return value;},async reset(expected,signal){check();await domain.reset(expected,signal);check();}},'Cloud setup intent','Cloud setup intent recovery','Download this account’s exact saved intent before resetting. An uncertain setup may already have started hosting. Check Cloud status first. Reset only clears local recovery; it does not stop hosting, revoke credentials or send another setup request.',controller.signal);}catch{if(!controller.signal.aborted&&personalCurrent(binding,generation))update({error:'Cloud setup recovery could not be opened.'});}
-  },
-  async cloudManage(environment:CloudEnvironment){if(!testMocksEnabled){update({error:PAIRING_RETIRED});return;}await work('Opening Cloud account…',signal=>openConnectionBrowser(testMocksEnabled&&environment==='staging'?'https://cloud-staging.eliza.app/cloud/agents':'https://cloud.eliza.app/cloud/agents',signal));},
-  async cloudPersonalConnect(){await personalWork('Verifying your personal Cloud agent…',async(binding,_view,signal)=>{
-   const generation=personalGeneration,expected=await personalIntent(binding.client.owner,signal),next=await binding.client.inspect(signal);if(!personalCurrent(binding,generation))return;await publishPersonal(binding,next,expected,generation,signal);
-   if(next.kind!=='ready'||state.cloudPersonal?.blocked)throw Error('Your personal Cloud agent is not ready.');
-   await connectCloud(next.identity.activeAgentId!,signal,binding.client.owner.userId,next.identity.apiBase,binding.client.owner);
-  });},
+  // Development infrastructure only: Cloud-hosted agents are not a product path (#406).
+  cloudPersonalDecline(){hosted?.personalDecline();},
+  async cloudPersonalAccept(){if(!hosted){update({error:PAIRING_RETIRED});return;}await hosted.personalAccept();},
+  async cloudPersonalPoll(){if(!hosted){update({error:PAIRING_RETIRED});return;}await hosted.personalPoll();},
+  async cloudPersonalFinalize(){if(!hosted){update({error:PAIRING_RETIRED});return;}await hosted.personalFinalize();},
+  async cloudPersonalRecovery(){await hosted?.personalRecoveryOpen();},
+  async cloudManage(environment:CloudEnvironment){if(!hosted){update({error:PAIRING_RETIRED});return;}await hosted.cloudManage(environment);},
+  async cloudPersonalConnect(){if(!hosted){update({error:PAIRING_RETIRED});return;}await hosted.personalConnect();},
   /** Revoke on the agent first (device enrollment, then owner session), then forget the local
    * credential and this phone's device installation key. */
   async disconnect() {
@@ -1921,18 +1969,16 @@ export function ConnectionChooser() {
   return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="connection-title" tabIndex={-1} ref={panel}>
     <header><span className="alpha-connection-logo alpha-compute-mark" aria-label="Alpha Compute"/><button aria-label="Close connection settings" disabled={snapshot.busy} onClick={() => connectionController.close()}><span aria-hidden="true" data-alpha-icon="/icons/lucide/x.svg" style={iconStyle("x")}/></button></header>
     <h1 id="connection-title" className="serif">Your agent.<br />Your phone.</h1>
-    <p>{browserOnly ? 'Connect your own remote agent, or continue offline.' : 'Run your agent locally, or connect an optional remote agent.'} Model inference uses the provider configured for that agent.</p>
-    {browserOnly ? <section className="alpha-connection-notice"><h3>On-device agent unavailable here</h3>
-      <p>The web version of Alpha Phone does not run an agent itself. Connect your own remote agent, or continue offline with local apps such as Notes and Calendar.</p>
-    </section> : <section><h3>{isAndroid ? 'On-device agent' : 'Agent on this computer'}</h3>
+    <p>{testMocksEnabled ? 'Run your agent locally, or use a development connection below.' : 'Your agent runs on this phone.'} Model inference uses the provider configured for that agent.</p>
+    <section><h3>{isAndroid ? 'On-device agent' : 'Agent on this computer'}</h3>
       <p>{isAndroid ? 'Agent execution and state stay on this Android device. Hosted inference, when configured, receives your prompts and selected context.' : 'The agent runs on your development computer. This preview connects to it; the Android app runs its own agent.'}</p>
       {isAndroid && localPackaging==='available' && <details onToggle={event=>{if((event.currentTarget as HTMLDetailsElement).open)void connectionController.refreshProviderStatus();}}><summary>Model provider</summary><p role="status">{providerStatusLabel(snapshot.providerStatus)}</p><p>Cerebras receives prompts and selected context for inference with {LOCAL_PROVIDER_MODEL}. Your key is checked with Cerebras, then stored using Android Keystore. A new key takes effect after the agent restarts.</p><form onSubmit={event=>{event.preventDefault();const key=providerKey.current?.value||'';if(providerKey.current)providerKey.current.value='';void connectionController.configureLocal(key);}}><label>Cerebras API key<input ref={providerKey} type="password" autoComplete="off" required disabled={snapshot.busy}/></label><p>Model: {LOCAL_PROVIDER_MODEL}</p><button disabled={snapshot.busy}>Save provider</button></form>
         {snapshot.providerStatus?.configured&&snapshot.providerStatus.provider==='cerebras'&&(confirmRemove?<><p role="alert">Remove the saved Cerebras key from this phone? The local agent stops and cannot start again until you add a key.</p><button disabled={snapshot.busy} onClick={()=>{setConfirmRemove(false);void connectionController.removeProvider();}}>Remove key</button><button disabled={snapshot.busy} onClick={()=>setConfirmRemove(false)}>Keep key</button></>:<button disabled={snapshot.busy} onClick={()=>setConfirmRemove(true)}>Remove key…</button>)}</details>}
       <button disabled={snapshot.busy || localPackaging!=='available'} onClick={() => void connectionController.startLocal()}>Start local agent</button>
       {localPackaging==='checking' && <p role="status">Checking local agent availability…</p>}
-      {localPackaging==='unavailable' && <p>The local agent is unavailable in this version. Connect a remote agent, sign in with Eliza Cloud, or continue offline.</p>}
-    </section>}
-    {snapshot.session && <section className="alpha-connection-current"><strong>{snapshot.name}</strong><span>Connected · {snapshot.kind === 'cloud' ? 'Eliza Cloud' : snapshot.kind === 'resident' ? (isAndroid ? 'On this device' : 'On this computer · development') : snapshot.kind === 'local' ? 'Local development' : 'Remote agent'}</span><button disabled={snapshot.busy} onClick={() => void connectionController.disconnect()}>Disconnect agent</button>{isAndroid && snapshot.kind==='resident' && <button disabled={snapshot.busy} onClick={()=>void connectionController.stopLocal()}>Stop local agent</button>}</section>}
+      {localPackaging==='unavailable' && <p>The local agent is unavailable in this version.{testMocksEnabled ? ' Use a development connection below, or continue offline.' : ''}</p>}
+    </section>
+    {snapshot.session && <section className="alpha-connection-current"><strong>{snapshot.name}</strong><span>Connected · {snapshot.kind === 'cloud' ? 'Eliza Cloud' : snapshot.kind === 'resident' ? (isAndroid ? 'On this device' : 'On this computer · development') : testMocksEnabled ? (snapshot.kind === 'local' ? 'Local development' : 'Remote agent') : 'On this device'}</span><button disabled={snapshot.busy} onClick={() => void connectionController.disconnect()}>Disconnect agent</button>{isAndroid && snapshot.kind==='resident' && <button disabled={snapshot.busy} onClick={()=>void connectionController.stopLocal()}>Stop local agent</button>}</section>}
     {!isAndroid&&<button disabled={snapshot.busy} onClick={()=>void recoverConversationChoice()}>Conversation selection recovery</button>}
     {conversations}
     {snapshot.session && snapshot.phoneCapabilityReason && <p role="status">{snapshot.phoneCapabilityReason}</p>}
