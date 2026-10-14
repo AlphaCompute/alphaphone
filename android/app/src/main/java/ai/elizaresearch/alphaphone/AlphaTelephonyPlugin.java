@@ -521,6 +521,16 @@ public class AlphaTelephonyPlugin extends Plugin {
   catch (Exception unrecorded) { call.reject("Nothing was sent.", "unavailable"); }
  }
 
+ /** An invalidated agent approval can cancel only its own outstanding native dialog. */
+ @PluginMethod public void cancelSmsReview(PluginCall call) {
+  if (refused(call)) return;
+  final String operationId=call.getString("operationId", "");
+  main.post(() -> {
+   if (reviewCall != null && operationId.equals(reviewCall.getString("operationId"))) cancelReview();
+   call.resolve();
+  });
+ }
+
  /** Bounded receipt metadata only; drafts and phone numbers never enter this history response. */
  @PluginMethod public void smsSendHistory(PluginCall call) {
   if (refused(call)) return;

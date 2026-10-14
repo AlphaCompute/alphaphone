@@ -1,3 +1,7 @@
+import {aospImage} from '../runtime/aosp-image';
+import {createAospTelephony,type AlphaTelephonyPlugin} from '../runtime/aosp-telephony';
+import {isSmsSend,validateSmsResult,smsAgentHash,smsDeviceStatus} from '../runtime/sms-agent-contract';
+import {receiptLabel} from '../runtime/image-sms';
 import {deletions,refreshDeletionViews,reminderDeletionRefusal} from '../runtime/deletions';
 import {BrowserReviews} from '../browser/review';
 import type {ConversationMessageTarget} from '../runtime/alpha-client';
@@ -368,6 +372,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const state = shell.vget('inbox');
       if (state.open === state.nativeMailSelection?.id) providerSelection = state.nativeMailSelection;
     }
+    if(view==='messages')providerSelection=shell.smsSelection?.();
     if(view==='calendar')providerSelection=shell.calendarSelection?.();
     if (view === 'contacts' || view==='calendar'&&!providerSelection) {
       const state = shell.vget(view);
@@ -565,7 +570,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       else transport.close?.();
     };
     connectionController.setDeviceRecovery(async(operation,operationId,bindingHash,signal)=>{
-      signal.throwIfAborted();if(!isReminderOperation(operation)&&!isReminderCreate(operation))return {status:'unknown'};
+      signal.throwIfAborted();
+      if(isSmsSend(operation)){if(!aospImage)throw Error('Native SMS receipt unavailable');const client=createAospTelephony(registerPlugin<AlphaTelephonyPlugin>('AlphaTelephony'),true);const smsResult=validateSmsResult(operation,await client.smsSendResult(operation,operationId),operationId,await smsAgentHash(operation));signal.throwIfAborted();return {status:smsDeviceStatus(smsResult),smsResult};}
+      if(!isReminderOperation(operation)&&!isReminderCreate(operation))return {status:'unknown'};
       const result=await DailyApps.reminderOperationReceipt({operation,operationId,bindingHash});signal.throwIfAborted();
       return result.status==='succeeded'?{status:'succeeded',reminderResult:isReminderCreate(operation)?validateReminderCreateResult(operation,result.result,operationId):validateReminderResult(operation,result.result)}:{status:'unknown'};
     });
@@ -586,6 +593,19 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute, journalIdentity) => {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
+      if(isSmsSend(operation)){
+        if(!aospImage||expectedContext.sensitive||document.hidden||expectedContext.view!=='messages'||expectedContext.selectedObject?.kind!=='sms-subscription'||expectedContext.selectedObject.id!==String(operation.subscriptionId))throw Error('Open Messages on the Alpha image and select the approved SIM');
+        const plugin=registerPlugin<AlphaTelephonyPlugin>('AlphaTelephony'),client=createAospTelephony(plugin,true);
+        const ownerSession=connectionController.getSnapshot().session,ownerTarget=JSON.stringify(connectionController.getWorkflowDeviceTarget());
+        const current=()=>{signal.throwIfAborted();context(this);if(!ownerSession||connectionController.getSnapshot().session!==ownerSession||JSON.stringify(connectionController.getWorkflowDeviceTarget())!==ownerTarget||!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('SMS review context changed');};
+        const status=await client.status();current();
+        const selectedSim=status.subscriptions?.find(sim=>sim.id===operation.subscriptionId);
+        if(!selectedSim||expectedContext.selectedObject.revision!==JSON.stringify([selectedSim.slot,selectedSim.carrierName]))throw Error('The selected SIM changed; refresh Messages and select it again');
+        const cancel=()=>{void plugin.cancelSmsReview({operationId}).catch(()=>{});};
+        signal.addEventListener('abort',cancel,{once:true});
+        try{current();const native=await client.sendSms(operation,operationId);const smsResult=validateSmsResult(operation,native,operationId,await smsAgentHash(operation));return {status:smsDeviceStatus(smsResult),smsResult,summary:receiptLabel(smsResult.status)};}
+        finally{signal.removeEventListener('abort',cancel);}
+      }
       if(isClockOperation(operation)){
         if(Capacitor.getPlatform()!=='android'&&!browserDevProfile)return {status:'failed',summary:'Native Clock handoff is unavailable in browser development. No alarm request was sent.'};
         assertClockTimeZone(operation,expectedContext.timeZone);signal.throwIfAborted();
