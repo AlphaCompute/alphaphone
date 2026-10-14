@@ -74,7 +74,8 @@ test('grant revocation outside Calendar clears cached events before returning',a
 test('leaving during a pending Google read allows automatic reload on return',async()=>{const h=await harness([event()]);try{const release=h.holdNextRead();await h.startRefresh();h.leave();release();for(let i=0;i<8;i++)await Promise.resolve();await h.returnToCalendar();assert.equal(h.render().events.length,1);}finally{h.close();}});
 
 test('on a wide canvas each Google event is drawn in the column of its own day and opens that occurrence',async()=>{
-  const h=await harness([event(),event({id:'google:grant:calendar:later',providerEventId:'later',title:'Later Google event',begin:at(15,9),end:at(15,10)})],{days:3});
+  // Three columns lead with the day before the selected one: selecting tomorrow shows today to the day after.
+  const h=await harness([event(),event({id:'google:grant:calendar:later',providerEventId:'later',title:'Later Google event',begin:at(15,9),end:at(15,10)})],{day:1,days:3});
   try{
     const out=h.render();
     assert.equal(out.multiDay,true);assert.equal(out.dayCount,3);assert.equal(out.events.length,0);
@@ -94,7 +95,7 @@ test('day columns that cross a month end and a daylight-saving change keep each 
     const offset=(Date.UTC(2026,9,31)-Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/86400000;
     const rows=[['halloween','Halloween dinner',9,31,18],['fallback','After fall-back',10,1,9],['monday','Monday standup',10,2,9]]
       .map(([id,title,month,day,hour])=>event({id:`google:grant:calendar:${id}`,providerEventId:id,title,begin:local(month,day,hour),end:local(month,day,hour+1)}));
-    const h=await harness(rows,{day:offset,days:3});
+    const h=await harness(rows,{day:offset+1,days:3});
     try{
       const out=h.render();
       assert.deepEqual(JSON.parse(JSON.stringify(out.dayColumns.map(column=>column.events.map(e=>e.title)))),[['Halloween dinner'],['After fall-back'],['Monday standup']]);
