@@ -1,6 +1,8 @@
 import ai.eliza.plugins.securestore.nativeonly.JsonCredentialSlots;
 import java.io.File;
 public final class MemoryTest {
+ /** A valid JSON string value of exactly n UTF-8 bytes. */
+ private static String json(int n){byte[] bytes=new byte[n];java.util.Arrays.fill(bytes,(byte)'x');bytes[0]=bytes[n-1]='"';return new String(bytes,java.nio.charset.StandardCharsets.US_ASCII);}
  public static void main(String[] args)throws Exception{
   final int cap=32*1024*1024;
   JsonCredentialSlots store=new JsonCredentialSlots(new File(args[0]),"fixture",slot->cap);
@@ -58,6 +60,24 @@ public final class MemoryTest {
   try{reduced.write("new-retained",retained);throw new AssertionError("New oversized slot accepted");}catch(JsonCredentialSlots.CapacityException expected){}
   reduced.write("retained","{}");
   try{reduced.write("retained",shrunk);throw new AssertionError("Shrunk slot grew past new cap");}catch(JsonCredentialSlots.CapacityException expected){}
+  // The lowered Notes Trash cap (30 MiB, retained 32 MiB) with a document written under the older
+  // cap, in the order NotesStorageDurabilityInstrumentedTest drives it on Android: the caller keeps
+  // the stored value and the proposed value alive while the slot decides growth versus shrink.
+  final int lowered=30*1024*1024;
+  JsonCredentialSlots trash=new JsonCredentialSlots(new File(args[0]),"fixture",slot->lowered,slot->cap);
+  String oversize=json(lowered+4096);store.write("trash",oversize);
+  System.out.println("lowered read");if(!oversize.equals(trash.read("trash")))throw new AssertionError("Older oversize Trash unreadable");
+  System.out.println("lowered growth");
+  try{trash.write("trash",json(lowered+8192));throw new AssertionError("Growth above the lowered cap accepted");}catch(JsonCredentialSlots.CapacityException expected){}
+  if(!oversize.equals(trash.read("trash")))throw new AssertionError("Refused growth changed bytes");
+  System.out.println("lowered shrink");
+  String smaller=json(lowered+1024);
+  if(!trash.compareExchange("trash",oversize,smaller))throw new AssertionError("Shrink above the lowered cap refused");oversize=null;
+  if(!smaller.equals(trash.read("trash")))throw new AssertionError("Shrink not persisted");
+  String fits=json(lowered);if(!trash.compareExchange("trash",smaller,fits))throw new AssertionError("Value at the lowered cap refused");smaller=null;
+  try{trash.write("trash",json(lowered+1));throw new AssertionError("Growth above the lowered cap accepted again");}catch(JsonCredentialSlots.CapacityException expected){}
+  if(!fits.equals(trash.read("trash")))throw new AssertionError("Final refusal changed bytes");fits=null;
+  trash.remove("trash");
   System.out.println("PASS 32 MiB authenticated write/read/CAS with 192 MiB heap");
  }
 }

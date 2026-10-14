@@ -46,6 +46,19 @@ final class AppNavigation {
    android.os.SystemClock.sleep(100);
   }
  }
+ /**
+  * Decision P-43: a flag-off build signed out of Eliza Cloud opens the "Your agent" sign-in dialog by
+  * itself, and it cannot be dismissed (connection-ui.tsx residentSignInRequired); it covers every view
+  * and withdraws the native browser page. Tests never enter credentials, so a journey that needs the
+  * views runs on the test-mocks pair, or on a flag-off phone its owner already signed in. Skips with
+  * that reason instead of timing out behind the dialog.
+  */
+ static void assumeNoRequiredSignIn(String journey) throws Exception {
+  if (BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS) return;
+  android.content.Context context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().getTargetContext();
+  org.junit.Assume.assumeTrue(journey + " needs the views: this flag-off build is signed out of Eliza Cloud, so P-43's sign-in dialog opens by itself and cannot be dismissed (tests never sign in). Run it on the test-mocks pair or on a flag-off phone its owner signed in.",
+   new AlphaCredentialStore(context).readCredentialSlot("cloud:production") != null);
+ }
  static String selected(String view) { return "document.documentElement.dataset.activeView==="+JSONObject.quote(view.toLowerCase()); }
  static String composer() { return "[...document.querySelectorAll('textarea[data-alpha-composer]')].find(e=>!e.disabled&&e.getClientRects().length&&!e.closest('[inert], [aria-hidden=\"true\"]'))"; }
  static String type() { return "document.querySelector('button[aria-label=\"Type\"]')?.click()"; }

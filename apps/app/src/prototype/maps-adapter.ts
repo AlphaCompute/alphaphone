@@ -219,7 +219,12 @@ export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views
     } catch (error) { message = failure(error).message; }
     invalidate();
   }
-  const back = () => { discardHandoff();++searchIntent;if(originMode){originMode=false;ensure().cancelOriginSearch();message='';invalidate();return true;} if(directions||navigating){directions=false;void stopGuidance().catch(()=>{});message='';invalidate();return true;} if (selected) { selected = undefined; message = ''; invalidate(); return true; } if (searching || query) { searching = false; query = ''; message = ''; void ensure().search(''); invalidate(); return true; } return false; };
+  const back = () => { discardHandoff();++searchIntent;if(originMode){originMode=false;ensure().cancelOriginSearch();message='';invalidate();return true;} if(directions||navigating){directions=false;void stopGuidance().catch(()=>{});message='';invalidate();return true;} if (selected) { selected = undefined; message = ''; invalidate(); return true; } if (searching || query) {
+      // The search an event's location opened is the cross-app hand-off, not a Maps layer the user
+      // made: system Back clears it and lets the shell return to that event (J04-7), never re-searching.
+      const handoff=!!eventQuery&&query===eventQuery&&!!mapsEventReturnOffered(api?.get('maps').fromEvent,api?.S.stack,navigating);
+      searching = false; query = ''; message = ''; if(handoff)eventQuery=''; void ensure().search(''); invalidate(); return !handoff;
+    } return false; };
   module.back = back; module.onLeave = () => release(); module.ongoing = () => null;
   module.reply = () => null;
   module.suggestions = () => mapsConnected() ? ['Help me with this place', 'Explain Maps coverage'] : ['Help me choose a Maps provider', 'Explain location permissions'];
