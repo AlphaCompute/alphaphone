@@ -11,15 +11,16 @@ import { reviewMailContext, validateMailContext } from '../apps/app/src/runtime/
 import { CloudProtocolError, safeMailLink } from '../apps/app/src/runtime/cloud-protocol.ts';
 import { reviewOpaqueAttachment, checkOutgoingAttachments, outgoingAttachmentLimits, attachmentBytes } from '../apps/app/src/runtime/inbox-operation.ts';
 import * as mailbox from '../apps/app/src/runtime/gmail-mailbox.ts';
+import * as grants from '../apps/app/src/runtime/gmail-grants.ts';
 import * as googleAccounts from '../apps/app/src/runtime/google-accounts.ts';
 import { presentHomeInboxStatus } from '../apps/app/src/prototype/home-cards.ts';
 import { formatTime } from '../apps/app/src/prototype/locale-time.ts';
-let session='account-a',agent='remote-a',releaseSearch,releaseAccounts,delayAccounts=true,delay=false,failNext=null,connected=true,confirmAnswer=true;
+let session='account-a',agent='remote-a',releaseSearch,releaseAccounts,delayAccounts=true,delay=false,failNext=null,connected=true,readGrant=true,confirmAnswer=true;
 const slots=new Map(),reads=[],searches=[],disconnects=[],toasts=[],events=[];
 const mail=(id,extra={})=>({id,threadId:'thread-'+id,subject:'Fixture '+id,from:'Sender',fromEmail:'sender@example.invalid',to:['fixture@example.invalid'],snippet:'Preview',receivedAt:'2026-09-30T00:00:00Z',unread:false,...extra});
 const pages={'in:inbox':[[mail('mail-1',{unread:true}),mail('mail-2')],[mail('mail-2'),mail('mail-3')]],'in:sent':[[mail('sent-1',{to:['friend@example.invalid']})]],'from:fixture':[[mail('mail-1')]]};
 const client={
- gmailAccounts:async()=>{if(delayAccounts)await new Promise(resolve=>{releaseAccounts=resolve;});return [{connectionId:'grant-a',label:'Fixture account',connected,grantedCapabilities:connected?['google.gmail.triage']:[]}];},
+ gmailAccounts:async()=>{if(delayAccounts)await new Promise(resolve=>{releaseAccounts=resolve;});return [{connectionId:'grant-a',label:'Fixture account',connected,grantedCapabilities:connected&&readGrant?['google.gmail.triage']:[]}];},
  gmailSearch:async(_grant,query,_signal,size,pageToken)=>{searches.push({query,size,pageToken:pageToken??null});if(failNext){const error=failNext;failNext=null;throw error;}
   const list=pages[query]||[[]],index=pageToken?Number(pageToken.slice(5)):0,result={messages:list[index]||[],syncedAt:'revision',nextPageToken:index+1<list.length?'page-'+(index+1):null};
   if(delay)return new Promise(resolve=>{releaseSearch=()=>resolve(result);});return result;},
@@ -35,15 +36,15 @@ const strip=async(file,name)=>{let source=await readFile(new URL(`../apps/app/sr
 const windowFixture={addEventListener:(name,fn)=>events.push({name,fn}),removeEventListener:()=>{},dispatchEvent:event=>{events.push({dispatched:event.type,detail:event.detail});return true;},confirm:()=>confirmAnswer};
 class CustomEvent{constructor(type,init){this.type=type;this.detail=init?.detail;}}
 const inboxUnsaved=()=>({ready:Promise.resolve(),available:false,conflict:false,error:false,status:'',edit(){},clear:async()=>{},retire(){},resume(){}});
-const sandbox={prepareMailHtml:()=>{throw Error("HTML uses the rendered browser test");},readGmailAccountChoice:()=> 'grant-a',saveGmailAccountChoice,GmailReadAhead,URL,presentHomeInboxStatus,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,safeMailLink,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,reviewMailAttachment,reviewMailContext,validateMailContext,...mailbox,...googleAccounts,Event,googleConnectionController:{open(){throw Error('Explicit Google authorization not exercised by this read fixture');}},registerPlugin:()=>({cancel:async()=>{}}),crypto:globalThis.crypto,TextEncoder,structuredClone,secureConnectionStore:{read:async key=>slots.get(key)??null,compareExchange:async(key,prior,next)=>{if(JSON.stringify(slots.get(key)??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)slots.delete(key);else slots.set(key,next);return {status:'saved'};}},connectionController:controller,DailyApps:{addListener:async()=>({remove:async()=>{}})},openConnectionBrowser:async()=>{throw new Error('No automatic OAuth');},queueMicrotask,setTimeout,AbortController,DOMException,Date,console,window:windowFixture,CustomEvent,document:{addEventListener(){},removeEventListener(){},documentElement:{dataset:{connectionMode:'live'}}}};
+const sandbox={prepareMailHtml:()=>{throw Error("HTML uses the rendered browser test");},readGmailAccountChoice:()=> 'grant-a',saveGmailAccountChoice,GmailReadAhead,URL,presentHomeInboxStatus,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,safeMailLink,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,reviewMailAttachment,reviewMailContext,validateMailContext,...mailbox,...googleAccounts,...grants,Event,googleConnectionController:{open(){throw Error('Explicit Google authorization not exercised by this read fixture');}},registerPlugin:()=>({cancel:async()=>{}}),crypto:globalThis.crypto,TextEncoder,structuredClone,secureConnectionStore:{read:async key=>slots.get(key)??null,compareExchange:async(key,prior,next)=>{if(JSON.stringify(slots.get(key)??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)slots.delete(key);else slots.set(key,next);return {status:'saved'};}},connectionController:controller,DailyApps:{addListener:async()=>({remove:async()=>{}})},openConnectionBrowser:async()=>{throw new Error('No automatic OAuth');},queueMicrotask,setTimeout,AbortController,DOMException,Date,console,window:windowFixture,CustomEvent,document:{addEventListener(){},removeEventListener(){},documentElement:{dataset:{connectionMode:'live'}}}};
 sandbox.inboxLocalStore=sandbox.secureConnectionStore;vm.createContext(sandbox);
 for(const [file,name] of [['inbox-provider-controls.ts','inboxProviderControls'],['inbox-drafts.ts','inboxDrafts'],['inbox-cloud-adapter.ts',['installInboxCloudAdapter','inboxAttention','openInbox','linkifyMailText','linkTextMismatch']]])vm.runInContext(await strip(file,name),sandbox);
-sandbox.installInboxCloudAdapter(Shell,views);
+sandbox.installInboxCloudAdapter(Shell,views);const inboxAttentionNow=()=>sandbox.inboxAttention();
 const shell=new Shell();shell.componentDidMount();
 const swipes=new Map();const api={sw:fn=>{const handlers={down(){},up(){}};swipes.set(handlers,fn);return handlers;},swallowed:()=>false,get:()=>shell.st,isActive:()=>true,set:p=>shell.vset('inbox',p),toast:text=>toasts.push(text)};
 const render=()=>views.inbox.render(shell.st,api);const tick=async()=>{for(let i=0;i<6;i++)await new Promise(r=>setTimeout(r,0));};
 const local=value=>JSON.parse(JSON.stringify(value));// vm-realm arrays compare by value
-const chip=label=>{if(label==='Refresh')return {pick:render().refresh};const found=[...render().chips,...render().extraFolders].find(c=>c.label===label);assert.ok(found,`chip ${label} in ${render().chips.map(c=>c.label)}`);return found;};
+const chip=label=>{if(label==='Check connection')return {pick:()=>shell.inboxAccountsChanged({})};if(label==='Refresh')return {pick:render().refresh};const found=[...render().chips,...render().extraFolders].find(c=>c.label===label);assert.ok(found,`chip ${label} in ${render().chips.map(c=>c.label)}`);return found;};
 
 assert.equal(shell.renderVals().homeInboxTitle,'Inbox');assert.equal(searches.length,0,'Home does not discover accounts or read mail');
 // Home's read time is the completed first-page read; a later page or a local recount never moves it.
@@ -64,7 +65,7 @@ assert.deepEqual(local(render().rows.map(r=>r.subj)),['Fixture mail-1','Fixture 
 assert.equal(render().hasMore,false,'last page has no Load more');
 const beforeWarm=searches.length;views.inbox.onLeave();render();await tick();assert.equal(render().rows.length,3,'warm reopen restores only the same account list');assert.equal(render().cachedListShown,true);assert.equal(searches.length,beforeWarm,'warm reopen spends zero account or page requests');
 assert.equal(shell.renderVals().homeInboxCount,'1 unread','complete paging removes the lower-bound qualifier');const homeSearches=searches.length;for(let i=0;i<5;i++)shell.renderVals();assert.equal(searches.length,homeSearches,'Home rerenders never fetch mail');
-render();[...swipes.values()].at(-1)(-120,4);await tick();assert.match(toasts.at(-1),/Enable mailbox changes in Settings/,'swipe without the grant changes nothing');
+render();[...swipes.values()].at(-1)(-120,4);await tick();assert.match(toasts.at(-1),/Enable Gmail changes in Settings/,'swipe without the grant changes nothing');
 const refreshed=clock(19);
 chip('Refresh').pick();await tick();assert.deepEqual(searches.filter(s=>!s.pageToken).at(-1),{query:'in:inbox',size:25,pageToken:null},'Refresh restarts from the first page');
 assert.match(shell.renderVals().homeInboxStatus,new RegExp(`Read ${refreshed.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`),'a completed refresh moves the read time');
@@ -88,6 +89,13 @@ for(const [error,kind,text] of [[new TypeError('Failed to fetch'),'offline',/off
  if(kind==='revoked')chip('Reconnect Gmail');
  chip('Retry').pick();await tick();assert.equal(searches.filter(s=>!s.pageToken).length,before+2,'Retry is the explicit second demand attempt');assert.equal(render().rows.length,2);
 }
+// P-37: the read grant is withdrawn on the same connection. The re-read drops the shown mail, the
+// Home preview and the badge at once; nothing read under the old grant is shown again.
+assert.equal(shell.renderVals().homeInboxHasRows,true);assert.equal(views.inbox.badge(),true);
+readGrant=false;chip('Check connection').pick();await tick();
+assert.equal(render().rows.length,0,'mail read under the withdrawn grant is gone');assert.equal(shell.renderVals().homeInboxHasRows,false,'Home preview dropped');assert.equal(views.inbox.badge(),false,'badge dropped');
+assert.equal(inboxAttentionNow().unread,0,'Home attention no longer counts the old mail');
+readGrant=true;const regranted=searches.filter(row=>!row.pageToken).length;chip('Check connection').pick();await tick();assert.equal(searches.filter(row=>!row.pageToken).length,regranted+1,'a renewed read grant reads again');assert.equal(render().rows.length,2);
 assert.equal(mailbox.classifyGmailFailure(new CloudProtocolError('http',409),'operation').kind,'stale','operation 409 is a stale review');
 assert.equal(mailbox.classifyGmailFailure(new CloudProtocolError('http',500),'read',false).kind,'offline','browser offline wins');
 

@@ -9,7 +9,7 @@ async function setup(page:Page,options:Options={}){
  await page.goto('/');
  await page.evaluate(async options=>{
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
-  const {secureConnectionStore:s}=await import('/src/runtime/native-connection.ts');
+  const {inboxLocalStore:s}=await import('/src/runtime/inbox-local-store.ts');
   const {CloudProtocolError}=await import('/src/runtime/cloud-protocol.ts');
   const w=window as any,slots:Record<string,unknown>={};w.gmSlots=slots;
   s.read=async(key:string)=>structuredClone(slots[key]??null) as any;
@@ -157,7 +157,7 @@ test('Inbox disconnect asks first and then shows the honest disconnected state',
  await expect(page.getByText(/owner@example\.test is disconnected from Alpha\. Eliza Cloud no longer holds this Google connection/).first()).toBeVisible();
  await expect(page.getByText('Subject in-0-a',{exact:true})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Disconnect Google account',exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Refresh',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Refresh inbox',exact:true})).toHaveCount(0);
  expect((await gm(page)).disconnects).toEqual(['grant-0']);
 });
 
@@ -191,7 +191,7 @@ test('Share by email from Notes opens a prefilled local draft without sending',a
 test('compose From switcher moves a new email to another connected account',async({page})=>{
  await setup(page,{accounts:['first@example.test','second@example.test']});
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
- await expect(page.getByRole('button',{name:'Refresh',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Refresh inbox',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Compose',exact:true}).click();
  await expect(page.getByRole('button',{name:'From account',exact:true})).toContainText('From first@example.test');
  await page.getByRole('textbox',{name:'Subject',exact:true}).fill('Moving subject');
@@ -207,7 +207,7 @@ test('compose From switcher moves a new email to another connected account',asyn
 test('single-account compose has no From switcher',async({page})=>{
  await setup(page);
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
- await expect(page.getByRole('button',{name:'Refresh',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Refresh inbox',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Compose',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'From account',exact:true})).toHaveCount(0);
@@ -265,7 +265,7 @@ test('From switcher returns the email to its account when the other account alre
  await setup(page,{accounts:['first@example.test','second@example.test']});
  await page.evaluate(()=>{const owner=JSON.stringify(['production','fixture-owner','','grant-1']);(window as any).gmSlots['inbox-drafts:v1:'+owner]={version:1,id:'saved-1',revision:'rev-1',owner,to:[],subject:'Second saved',body:'Kept'};});
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
- await expect(page.getByRole('button',{name:'Refresh',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Refresh inbox',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Compose',exact:true}).click();
  await page.getByRole('textbox',{name:'Subject',exact:true}).fill('Stays subject');
  await page.getByRole('textbox',{name:'Message',exact:true}).fill('Stays body');

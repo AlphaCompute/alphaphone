@@ -5,7 +5,7 @@ import {disconnectGmailAccount, type GmailDisconnectOutcome} from './gmail-mailb
 export const GOOGLE_ACCOUNTS_CHANGED = 'alpha:google-accounts-changed';
 
 export interface GoogleAccountsClient {
-  initiateGoogle(signal: AbortSignal, calendarPermission?: 'read' | 'write', gmailPermission?: 'read' | 'send' | 'drafts' | 'mailbox'): Promise<string>;
+  initiateGoogle(signal: AbortSignal, calendarPermission?: 'read' | 'write', gmailPermission?: 'read' | 'modify' | 'send' | 'drafts' | 'mailbox'): Promise<string>;
   gmailAccounts(signal: AbortSignal): Promise<GmailAccount[]>;
   disconnectGmail(connectionId: string, signal: AbortSignal): Promise<void>;
 }
@@ -51,7 +51,7 @@ export function createGoogleAccounts(
       return accounts;
     },
     /** Returns the authorization URL only; authorization completion must be checked with list. */
-    async connect(signal: AbortSignal, calendarPermission: 'read' | 'write' = 'read', gmailPermission: 'read' | 'send' | 'drafts' | 'mailbox' = 'read'): Promise<string> {
+    async connect(signal: AbortSignal, calendarPermission: 'read' | 'write' = 'read', gmailPermission: 'read' | 'modify' | 'send' | 'drafts' | 'mailbox' = 'read'): Promise<string> {
       check(signal);
       const url = await client.initiateGoogle(signal, calendarPermission, gmailPermission);
       check(signal);

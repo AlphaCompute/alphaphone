@@ -39,6 +39,7 @@ for(const permission of ['send','drafts','mailbox']){
  assert.deepEqual(calls.at(-1).body.capabilities,['google.basic_identity','google.gmail.triage','google.calendar.read',`google.gmail.${permission}`]);
  assert.equal(calls.at(-1).body.capabilities.includes('google.calendar.write'),false,'Gmail upgrade never adds Calendar writes');
 }
+await client.initiateGoogle(signal(),'read','modify');assert.deepEqual(calls.at(-1).body.capabilities,['google.basic_identity','google.gmail.triage','google.gmail.send','google.gmail.drafts','google.gmail.mailbox','google.calendar.read'],'one incremental modify consent retains Calendar read');
 const beforeInvalidPermission=calls.length;
 await assert.rejects(client.initiateGoogle(signal(),'read','manage'),TypeError);
 assert.equal(calls.length,beforeInvalidPermission,'unsupported permissions never dispatch');

@@ -9,6 +9,7 @@ import { presentHomeInboxStatus } from './home-cards';
 import { inboxDrafts, type ComposePrefill, type SuggestionTarget } from './inbox-drafts';
 import { classifyGmailFailure, gmailReadable, setGmailReadState, GMAIL_ACCOUNTS_CHANGED, type GmailFailureKind } from '../runtime/gmail-mailbox';
 import { connectionController } from '../runtime/connection-ui';
+import { gmailGrantChange, gmailInboxAllows, gmailModifyIncomplete, gmailReadCacheKey } from '../runtime/gmail-grants';
 import { safeMailLink, type GmailAccount, type GmailDraftContent, type GmailDraftSummary, type GmailLink, type GmailMessage } from '../runtime/cloud-protocol';
 import { reviewOpaqueAttachment } from '../runtime/inbox-operation';
 import {googleConnectionController} from '../runtime/google-connection-ui';
@@ -71,7 +72,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   view.state = { ...view.state, mails: [], sent: [], open: null, compose: null, q: null, nativeMailSelection: null };
   view.reply = () => null;
   let shell: Bag | undefined, api: Bag | undefined;
-  let accounts: GmailAccount[] = [], messages: GmailMessage[] = [], accountsChecked = false;
+  let accounts: GmailAccount[] = [], messages: GmailMessage[] = [], accountsChecked = false,accountsSession='';
   type Folder = 'inbox' | 'sent' | 'drafts' | 'archive' | 'trash' | 'starred' | 'all' | 'spam';
   const MAILBOX_CHANGED = 'Newer mail arrived while this list was loading and is not shown yet. Load newer mail to read the list again.';
   let newerMail = false,spamTrashSearch=false;
@@ -81,7 +82,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let providerDrafts: GmailDraftSummary[] = [];
   // Only a boolean leaves this closure: the Home badge reflects the last loaded Inbox page(s).
   // Home retains only metadata from Inbox pages the user already loaded, never message bodies.
-  let inboxPreview: {sessionId:string;accountId:string;messages:Pick<GmailMessage,'id'|'subject'|'from'|'unread'>[];more:boolean;readAt:number|null}|null=null;
+  // `key` is the P-37 read-cache identity (Cloud session, connection, read grant): Home shows the
+  // preview only while the selected account still has that identity.
+  let inboxPreview: {key:string;sessionId:string;accountId:string;messages:Pick<GmailMessage,'id'|'subject'|'from'|'unread'>[];more:boolean;readAt:number|null}|null=null;
   let homeFailure:GmailFailureKind|null=null;
   let hasUnread = false;
   let failure: { kind: GmailFailureKind; retry: () => void } | null = null;
@@ -110,7 +113,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   // changes, attachments, timers or background reads after leaving the app.
   function prepareBodies(){
     const binding=connectionController.getCloudClient(),accountId=selected;
-    if(!binding||!api?.isActive()||document.hidden||draftsView()||drafts.render().composing)return;
+    if(!binding||typeof binding.client.gmailRead!=='function'||!api?.isActive()||document.hidden||draftsView()||drafts.render().composing)return;
     for(const message of messages.slice(0,2)){
       const key=bodyKey(message.id),cached=messageBodies.get(key);
       if(cached&&Date.now()-cached.at<LIST_TTL||pendingBodies.has(key)||pendingBodies.size>=2)continue;
@@ -172,11 +175,14 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   provider.setComposer(()=>drafts.email());
   const readable = () => accounts.filter(gmailReadable);
   const currentQuery = () => String(api?.get('inbox')?.q || '').trim() || folderQuery[folder];
+  /** Read-cache identity of the selected account now; null while nothing it read may be shown. */
+  const readKey = (id = selected) => gmailReadCacheKey(connectionController.getCloudClient()?.sessionId, accounts.find(a => a.connectionId === id));
   const accountLabel = (id = selected) => accounts.find(a => a.connectionId === id)?.label || null;
   // `fresh` marks a completed first-page provider read. Later pages and local recounts keep that
   // time, so the time shown is never newer than the oldest data counted; no time is invented.
   const recountUnread = (more=inboxPreview?.more??nextPageToken!==null,fresh=false) => {
-    if (loadedQuery === 'in:inbox') inboxPreview={sessionId:connectionController.getCloudClient()?.sessionId||'',accountId:selected,messages:messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),more,readAt:fresh?Date.now():inboxPreview?.readAt??null};
+    const key=readKey();
+    if (loadedQuery === 'in:inbox') inboxPreview=key?{key,sessionId:connectionController.getCloudClient()?.sessionId||'',accountId:selected,messages:messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),more,readAt:fresh?Date.now():inboxPreview?.key===key?inboxPreview.readAt:null}:null;
     if(loadedQuery==='in:inbox')setAttention({state:'ready',unread:messages.filter(m=>m.unread).length,unreadMore:more,source:accountLabel(),updatedAt:revision||new Date().toISOString()});
     hasUnread=!!inboxPreview?.messages.some(m=>m.unread);
   };
@@ -203,7 +209,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     setAttention({ state: connectionController.getCloudClient() ? 'loading' : 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null });
     void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;provider.reset(); drafts.reset();
     generation++; operation?.abort(); operation = null;
-    thread=null; accounts = []; accountsChecked = false; messages = []; selected = ''; loadedQuery = ''; nextPageToken = null; body = null; phase = 'idle'; revision = '';
+    thread=null; accounts = []; accountsChecked = false;accountsSession=''; messages = []; selected = ''; loadedQuery = ''; nextPageToken = null; body = null; phase = 'idle'; revision = '';
     hasUnread = false; inboxPreview=null;homeFailure=null; failure = null; pendingCompose = null; resumeDraftFor = '';
     readStateInFlight.clear(); readStateUnconfirmed.clear(); seenCursors = new Set();
     status = 'Connect Eliza Cloud to use Gmail';
@@ -240,8 +246,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   async function refreshAccounts(preserveSelection=false) {
     invalidateList();
     let loadAfter = false;
-    await work('Checking Gmail connection…', async ({ client }, signal, valid) => {
-      const hint=selected||readGmailAccountChoice(connectionController.getSnapshot().cloudAccount);
+    await work('Checking Gmail connection…', async (binding, signal, valid) => {
+      const {client}=binding;
+      const hint=readGmailAccountChoice(connectionController.getSnapshot().cloudAccount);
       const query=currentQuery(),captured=connectionController.getCloudClient();
       // Cost: account discovery + at most one first-page read in parallel, never polling.
       // A remembered ID is not permission: both reads are owner-authorized by Cloud.
@@ -252,12 +259,17 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       });
       const result = await client.gmailAccounts(signal);
       if (!valid()) return;
-      const previous=selected;accounts = result; accountsChecked = true;
+      const previous=selected,before={sessionId:accountsSession||null,account:accounts.find(a=>a.connectionId===previous)};accounts = result; accountsChecked = true; accountsSession = binding.sessionId;
+      // P-37: a withdrawn change grant discards the unsent review prepared under it (nothing is
+      // dispatched); a changed read-cache identity (session, connection or read grant) drops the mail read under it.
+      const grantChange=gmailGrantChange(before,{sessionId:binding.sessionId,account:accounts.find(a=>a.connectionId===previous)});
+      if(previous&&grantChange.withdrawn.length)provider.withdrawn();
       if (!accounts.some(a => a.connectionId === selected && a.connected && a.grantedCapabilities.includes('google.gmail.triage'))) selected = accounts.find(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage'))?.connectionId || '';
-      if(previous!==selected){inboxPreview=null;hasUnread=false;}
+      const dropped=previous!==selected||(!!previous&&grantChange.dropReadCache);
+      if(dropped){inboxPreview=null;hasUnread=false;if(selected)setAttention({state:'loading',unread:0,unreadMore:false,source:null,updatedAt:null});}
       if(hint&&hint!==selected)readAhead.invalidate();
       saveGmailAccountChoice(connectionController.getSnapshot().cloudAccount,selected||null);
-      const retained=preserveSelection&&!!selected&&selected===previous;
+      const retained=preserveSelection&&!!selected&&!dropped;
       if(!retained){void attachmentNative.cancel().catch(()=>{});attachmentView=null;contextReview=null;thread=null;messages=[];body=null;}
       void provider.bind(selected); void drafts.bind(selected, accounts.find(a => a.connectionId === selected)?.label || '');
       if(!retained){status = selected ? 'Loading Gmail…' : 'Connect Gmail to read your inbox';nextPageToken=null;loadedQuery='';providerDrafts=[];if(!selected){hasUnread=false;setAttention({state:'not-connected',unread:0,unreadMore:false,source:null,updatedAt:null});}}
@@ -411,7 +423,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   /** Swipe left routes to the same reviewed archive flow as the message view. */
   async function swipeArchive(message: GmailMessage) {
     const caps = provider.capabilities();
-    if (!caps?.mailboxMutations) { api?.toast('Enable mailbox changes in Settings → Connections to archive. Nothing was changed.'); return; }
+    if (!caps || !gmailInboxAllows(caps, 'archive')) { api?.toast('Enable Gmail changes in Settings → Connections to archive. Nothing was changed.'); return; }
     if (!caps.threads) { api?.toast('Open the message to archive it. Nothing was changed.'); return; }
     const accountId = selected; let historyId: string | null = null;
     await work('Preparing archive review…', async ({ client }, signal, valid) => {
@@ -519,7 +531,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const homeRender = p.renderVals;
   p.renderVals = function () {
     const out = homeRender.call(this), binding=connectionController.getCloudClient(),connected = readable().length > 0;
-    const cached=inboxPreview?.sessionId===binding?.sessionId&&inboxPreview?.accountId===selected?inboxPreview:null;
+    const key=readKey(),cached=key&&inboxPreview?.key===key&&inboxPreview.sessionId===binding?.sessionId&&inboxPreview.accountId===selected?inboxPreview:null;
     const unread=cached?.messages.filter(m=>m.unread)||[],pending=phase==='busy'||phase==='scheduled';
     const count=unread.length?`${unread.length}${cached?.more?'+':''} unread`:'';
     // Account and read time of the page the user loaded in Inbox; Home never reads mail to refresh it.
