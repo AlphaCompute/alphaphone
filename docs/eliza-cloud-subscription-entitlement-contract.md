@@ -17,7 +17,13 @@ Alpha source: `apps/app/src/runtime/subscription-entitlement.ts`, `cloud-protoco
 - An assistant turn never waits on a billing service. Cloud authorises each inference or Maps
   request from its own cached quota or token bucket.
 - Every Alpha Phone signs in to Eliza Cloud and holds a plan (owner decision, October 2026). The
-  plan gate runs at admission and on return to the app; a turn never does.
+  plan check runs at admission and on return to the app; a turn never does.
+- The on-device agent ALWAYS runs (owner directive 2026-10-13: "there should NEVER be no agent
+  connected"). Plan state decides only whether Eliza Cloud inference (and other Cloud managed
+  services) is bound into it. Without an admissible plan, offline or signed out, the agent runs
+  with Cloud inference unbound and answers chat and assistant requests honestly (a plan is needed,
+  or Cloud is unreachable) with Redeem code / Choose a plan actions. Local tools, scheduling,
+  approvals, notices and on-device speech keep working. Cloud is never a replacement agent.
 - Once a plan was verified on the phone recently, local apps, on-device speech and local tools do
   not depend on an online billing check (offline grace, section 4).
 - Nothing is purchased automatically: no overage purchase, upgrade or retry that spends money.
@@ -118,23 +124,24 @@ retry and reset times only for direct HTTP refusals.
 Cloud side: elizaOS/eliza PR #36125 (`POST /api/v1/subscription/redeem`, the entitlement and key
 routes, refusal bodies with `retryAfterSeconds`, 402 `allowance_exhausted` with `resetsAt`).
 
-| Condition | Phone result | Agent admitted |
+| Condition | Phone result | Cloud inference bound (the agent runs in every row) |
 |---|---|---|
-| No saved sign-in (first run, signed out) | Sign-in gate. No local-only bypass; the dialog cannot be dismissed | no |
+| No saved sign-in (first run, signed out) | Sign-in dialog; no local-only bypass; it cannot be dismissed. The agent runs behind it | no |
 | Valid entitlement, plan `active` or `trialing` | Plan name and the Cloud allowance | yes |
 | Valid entitlement, plan `past_due` | Plan name, "Payment is past due" warning and "Manage plan in Eliza Cloud" | yes |
-| Valid entitlement, plan `canceled` or `none` | "Needs plan" gate: "<plan> has ended" or "No active plan", with Redeem code, Choose a plan (hosted page) and Check plan again | no |
-| Route absent (404/405/501) | `GET /api/v1/billing/limits`, `data.v2.subscription`: `trialing`/`active` admit, `grace`/`past_due`/`unpaid` admit with the warning, `canceled`/`incomplete_expired`/`not_applicable` need a plan | as mapped |
-| Route absent and the billing snapshot is absent or reports no known state | "Plan status unavailable" with Check plan again, Redeem code and Choose a plan | no |
-| Billing outage (5xx, timeout) after identity succeeded | Admitted when this sign-in had an admitting plan verified within the last 7 days ("Plan status unavailable"); otherwise the needs-plan gate with a retry | as stated |
-| Cloud unreachable at start (identity read fails in transport) | With a plan verified for this sign-in within 7 days: "Offline" notice, closable; local apps and on-device speech work, no agent starts. Otherwise the sign-in gate with the error | no |
-| Bad signature, unknown key or bad claims | Reported as unavailable (`invalid`), never trusted; needs-plan gate with a retry | no |
+| Valid entitlement, plan `canceled` or `none` | Non-blocking plan notice beside the running agent (Redeem code, Choose a plan); the plan panel shows "<plan> has ended" or "No active plan" with Check plan again | no |
+| Route absent (404/405/501) | `GET /api/v1/billing/limits`, `data.v2.subscription`: `trialing`/`active` bind, `grace`/`past_due`/`unpaid` bind with the warning, `canceled`/`incomplete_expired`/`not_applicable` need a plan | as mapped |
+| Route absent and the billing snapshot is absent or reports no known state | Plan notice; "Plan status unavailable" with Check plan again, Redeem code and Choose a plan | no |
+| Billing outage (5xx, timeout) after identity succeeded | Bound when this sign-in had an admitting plan verified within the last 7 days ("Plan status unavailable"); otherwise the plan notice with a retry | as stated |
+| Cloud unreachable at start (identity or plan read fails in transport) | "Cloud cannot be reached" notice, closable. With a plan verified for this sign-in within 7 days the stored binding is kept (Cloud decides each request once reachable); otherwise it is removed | kept / no |
+| Bad signature, unknown key or bad claims | Reported as unavailable (`invalid`), never trusted; plan notice with a retry | no |
 | Entitlement issued for another account, at admission | An error asking the owner to sign in again | no |
-| Plan reported `canceled`/`none` by a background refresh or a return to the app | The resident agent is stopped and the needs-plan gate is shown | stopped |
-| Entitlement issued for another account, during background refresh | Refresh stops, the Cloud-bound resident agent is stopped, the Cloud account is detached and the same sign-in error is shown | stopped |
+| Plan reported `canceled`/`none` by a background refresh or a return to the app | Cloud inference is unbound (native restarts the process without the provider; history kept); the plan notice is shown | unbound |
+| Entitlement issued for another account, during background refresh | Refresh stops, the account is re-admitted: Cloud inference unbound, the Cloud account detached and the same sign-in error shown | unbound |
 | A verified entitlement lapses while refreshes fail | "Plan status is out of date" (`expired`), kept on every later failed refresh until a check succeeds | unchanged; Cloud decides |
-| Sign-in rejected (401), at admission | Sign-in action | no |
-| Sign-in rejected (401), during background refresh | Same as an account mismatch during refresh: agent stopped, sign-in shown | stopped |
+| Sign-in rejected (401), at admission | Sign-in dialog | no |
+| Sign-in rejected (401), during background refresh | Same as an account mismatch during refresh: unbound, sign-in shown | unbound |
+| Plan becomes admissible (redeem, return to the app, Check plan again) | Bound into the running agent: attached when the process already matches, otherwise a clean restart that keeps history | yes |
 | Cloud sign-in key expires within 14 days (`expiresAt` from the CLI login) | Warning in the account panel and Settings, with "Approve this phone again" (a fresh CLI sign-in) | unchanged |
 
 The 7-day offline grace is an engineering bound for offline use, not a billing decision: Cloud
