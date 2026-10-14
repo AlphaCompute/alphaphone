@@ -111,8 +111,11 @@ export const CLASS_REGISTRY = {
   PasswordBrowserFill: {},
   InboxOperationJournal: { args: { inboxOperationNative: "1" } },
   MailAttachment: { args: { mailAttachmentNative: "1" } },
-  Notifications: { note: "opens Android's own shade (launcher button, or Android's global action on standalone) and taps the notice there; Alpha draws no shade (#416)" },
-  SystemShade: { note: "launcher Home asks Android for its shade (EXPAND_STATUS_BAR); standalone never does (#416, #417). No recorded run; not AOSP-image or device acceptance" },
+  // Both drive Home, which a production Android build covers with the Eliza Cloud sign-in gate;
+  // only a test-mocks build offers "Continue offline" to reach it without an account. SystemShade's
+  // outcome and permission methods also run on a flag-off build; its Home method is skipped there.
+  Notifications: { requiresTestMocksBuild: true, note: "opens Android's own shade with Android's global action on both flavors and taps the notice on its own row (Android 15 bundles two notices into a collapsed automatic group first); Alpha draws no shade (#416)" },
+  SystemShade: { note: "homeAsksAndroidForItsShadeOnTheLauncherOnly needs --test-mocks (skipped otherwise). Launcher Home asks Android for its shade (EXPAND_STATUS_BAR); standalone never does (#416, #417). Not AOSP-image or device acceptance" },
   CameraScan: {},
   FilesTree: {},
   // J05-2: native page excerpt -> reviewed question -> composer; a note's web source across recreation.
