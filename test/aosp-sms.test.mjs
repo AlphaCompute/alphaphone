@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
-import { createAospTelephony, TelephonyUnavailable, parseTelephonyStatus, parseThreads, parseMessages, parseSmsSendResult, smsBindingText, smsBindingHash, reviewSms } from "../apps/app/src/runtime/aosp-telephony.ts";
+import { createAospTelephony, TelephonyUnavailable, parseTelephonyStatus, parseThreads, parseMessages, parseSmsSendResult, parseSmsJournal, smsBindingText, smsBindingHash, reviewSms } from "../apps/app/src/runtime/aosp-telephony.ts";
 
 const root = resolve(import.meta.dirname, "..");
 const JAVA = join(root, "android/app/src/main/java/ai/elizaresearch/alphaphone");
@@ -33,7 +33,7 @@ test("JVM: journal binding, evidence-only status, durable reconciliation and pro
   const dir = mkdtempSync(join(tmpdir(), "alpha-sms-"));
   const java = name => process.env.JAVA_HOME ? join(process.env.JAVA_HOME, "bin", name) : name;
   try {
-    execFileSync(java("javac"), ["--release", "11", "-d", dir, join(JAVA, "SmsSendJournal.java"), join(JAVA, "SmsRecords.java"), join(root, "test/fixtures/SmsSendJournalTest.java")], { timeout: 60000 });
+    execFileSync(java("javac"), ["--release", "11", "-d", dir, join(JAVA, "SmsSendJournal.java"), join(JAVA, "SmsRecords.java"), join(JAVA, "SmsPageCursor.java"), join(root, "test/fixtures/SmsSendJournalTest.java")], { timeout: 60000 });
     const body = "Running late \"5\" min\né😀\t\u0001";
     const expected = createHash("sha256").update(smsBindingText({ recipients: ["+15555550100", "5550101"], body, subscriptionId: 3 })).digest("hex");
     assert.match(execFileSync(java("java"), ["-cp", dir, "ai.elizaresearch.alphaphone.SmsSendJournalTest", expected], { encoding: "utf8", timeout: 20000 }), /PASS sms send journal/);
@@ -146,6 +146,18 @@ test("native sends: exact binding, evidence-backed status, no resend", async () 
   assert.equal(parseSmsSendResult(result({ status: "denied", parts: [] }), review, "op-1", hash).parts.length, 0);
 });
 
+test("journal history restores unknown operations without draft content or optimistic delivery", async () => {
+ const row={kind:'sms-send',operationId:'lost-transport',subscriptionId:3,bindingHash:'a'.repeat(64),status:'unknown',parts:[{index:0,recipientIndex:0,partIndex:0,sent:'unknown',delivery:'unknown'}],createdAt:1};
+ assert.equal(parseSmsJournal({receipts:[row]})[0].operationId,'lost-transport');
+ assert.throws(()=>parseSmsJournal({receipts:[row,row]}),/journal/);
+ assert.throws(()=>parseSmsJournal({receipts:[{...row,status:'delivered'}]}),/SMS/);
+ assert.throws(()=>parseSmsJournal({receipts:[{...row,body:'must not leak'}]}),/SMS/);
+ const {plugin,calls}=stub({smsSendHistory:{receipts:[row]}});
+ assert.equal((await createAospTelephony(plugin,true).smsSendHistory())[0].status,'unknown');
+ assert.deepEqual(calls.map(([method])=>method),['smsSendHistory']);
+ await assert.rejects(createAospTelephony(plugin,false).smsSendHistory(),TelephonyUnavailable);
+});
+
 test("native boundary: image-only plugin methods, immutable explicit callbacks, journal before dispatch", () => {
   const plugin = read("android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaTelephonyPlugin.java");
   const sms = read("android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaSms.java");
@@ -185,7 +197,9 @@ test("native boundary: image-only plugin methods, immutable explicit callbacks, 
   assert.match(plugin, /send\.setFilterTouchesWhenObscured\(true\)/);
   assert.match(plugin, /catch \(SmsSendJournal\.Expired expired\) \{ call\.reject\(/);
   assert.match(receiver, /getResultCode\(\) == Activity\.RESULT_OK/, "sent only from a successful sent callback");
-  for (const method of ["listThreads", "listMessages", "observeMessages", "sendSms", "smsSendResult"])
+  assert.match(plugin, /main.post\(\(\) -> reviewSmsOnMain\(call\)\);/, "review is marshalled from Capacitor's plugin thread to main");
+  assert.match(plugin, /private void reviewSmsOnMain\(PluginCall call\) \{\n  if \(refused\(call\)\) return;/, "admission is rechecked on main before review");
+  for (const method of ["listThreads", "listMessages", "observeMessages", "smsSendHistory", "smsSendResult"])
     assert.match(plugin, new RegExp(`@PluginMethod public void ${method}\\(PluginCall call\\) \\{\\n  if \\(refused\\(call\\)\\) return;`), `${method} re-checks the image capability first`);
 });
 
@@ -211,7 +225,7 @@ test("standalone SMS stays unavailable at the UI and agent boundaries", async ()
   const features = read("apps/app/src/prototype/mvp-features.ts");
   assert.match(features, /\/\/ "messages",/, "the Messages view is not enabled");
   const { ADMITTED_AOSP_VIEW_ADAPTERS, admittedAospViews } = await import("../apps/app/src/runtime/aosp-image.ts");
-  assert.ok(!ADMITTED_AOSP_VIEW_ADAPTERS.includes("messages"));
+  assert.ok(ADMITTED_AOSP_VIEW_ADAPTERS.includes("messages"));
   assert.deepEqual(admittedAospViews(false, ["messages", "phone", "contacts"]), []);
   // Agent: the phone does not negotiate sms.send.v1 and its device-action validator has no sms_send
   // operation until the shared contract (elizaOS/eliza#36178) is in the reviewed pin and the host admits

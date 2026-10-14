@@ -298,7 +298,7 @@ Release signing and version use the upstream elizaOS names:
 | --- | --- |
 | `ELIZAOS_KEYSTORE_PATH`, `ELIZAOS_KEYSTORE_PASSWORD`, `ELIZAOS_KEY_ALIAS`, `ELIZAOS_KEY_PASSWORD` | Release signing. Release APKs are signed only when all four are set; otherwise the build produces `*-release-unsigned.apk`. Keep the keystore and passwords in the signing service or CI secret store, never in the repository. |
 | `ELIZAOS_VERSION_CODE`, `ELIZAOS_VERSION_NAME` | Override `versionCode`/`versionName` (defaults from `app.config.json`). |
-| `VITE_MAPS_BASE_URL` | Owned regional Maps gateway (HTTPS for release); unset means Maps reports unconfigured. |
+| `VITE_MAPS_BASE_URL` | Regional Maps gateway for test-mocks builds only (development prototype). Other builds ignore it and use Eliza Cloud Maps after Cloud sign-in. |
 
 `node scripts/verify-apks.mjs` (`npm run android:verify`) inspects APK bytes: package
 IDs, HOME/LAUNCHER filters, debug flags and signatures, the absence of test-mock

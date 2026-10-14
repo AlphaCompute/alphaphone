@@ -52,14 +52,14 @@ test('Cloud inference is bound only for an admitted plan and unbound otherwise',
   // Every other outcome clears the stored provider before the agent starts.
   assert.ok(bind.split('await clearLocalProvider()').length >= 3);
   // The running state the UI and tests read is derived from the binding actually applied.
-  assert.match(between(ui, 'async function connectResident(', 'async function connectCloud('), /residentBinding=bound\.binding;\n\s+update\(\{residentInference:bound\.binding==='cloud'\?'cloud':'unavailable'\}\);/);
+  assert.match(between(ui, 'async function connectResident(', 'async function connectCloud('), /residentBinding=bound\.binding;\n\s+update\(\{residentInference:bound\.binding==='cloud'\?'cloud':bound\.binding==='unbound'\?'unavailable':'unknown'\}\);/);
 });
 
 test('a chat turn without Cloud inference gets an honest answer with the plan actions', () => {
   const send = between(ui, '  async send(', 'export function ConnectionChooser');
   const honest = send.indexOf('inferenceUnavailableReply(notice, signedIn)');
   assert.ok(honest > 0 && honest < send.indexOf("new Error('The agent could not complete this response.')"), 'the plan answer precedes the generic failure');
-  assert.match(send, /state\.residentInference !== 'cloud' \|\| \('failureKind' in reply && reply\.failureKind === 'no_provider'\)/);
+  assert.match(send, /state\.residentInference === 'unavailable' \|\| \('failureKind' in reply && reply\.failureKind === 'no_provider'\)/);
   const reply = between(ui, 'export function inferenceUnavailableReply(', '\n}\n');
   for (const text of ['Redeem a subscription code or choose a plan', "can't reach Eliza Cloud", 'Sign in with Eliza Cloud', 'keep working'])
     assert.ok(reply.includes(text), text);
