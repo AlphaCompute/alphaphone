@@ -18,7 +18,7 @@ const archive = {kind: 'archive', messageId: 'message-1', expectedHistoryId: 'hi
 function device() {
   const slots = new Map(), toasts = [], remote = {prepares: 0, dispatches: 0, hold: null, caps: {send: true, providerDrafts: true, mailboxMutations: true, threads: true, from: 'owner@example.invalid'}};
   const client = {
-    gmailInboxCapabilities: async () => ({...remote.caps}),
+    gmailInboxCapabilities: async (_grant, signal) => remote.capabilityRead ? remote.capabilityRead(signal) : ({...remote.caps}),
     gmailPrepareOperation: async (_grant, requestId, proposal) => {
       remote.prepares++; if (remote.hold) await remote.hold;
       const review = {...proposal, from: 'owner@example.invalid', attachments: []};
@@ -97,3 +97,33 @@ function device() {
   assert.equal(d.slot()?.phase, 'observed', 'the receipt stays'); assert.equal(d.provider.render().provider.canUndo, true);
 }
 console.log('PASS: withdrawn Gmail change grant discards undispatched reviews in review and preparing phases, across a same-turn unbind, and keeps receipts. Synthetic provider only.');
+
+// Newer explicit refresh owns capabilities even when an old transport ignores cancellation.
+for (const staleFailure of [false, true]) {
+  const d = device(); await d.bind();
+  const pending = [];
+  d.remote.capabilityRead = signal => new Promise((resolve, reject) => pending.push({signal, resolve, reject}));
+  const older = d.provider.bind('grant-a');
+  const newer = d.provider.bind('grant-a');
+  assert.equal(pending[0].signal.aborted, true);
+  pending[1].resolve({...d.remote.caps, send: false}); await newer;
+  if (staleFailure) pending[0].reject(new Error('late failure'));
+  else pending[0].resolve({...d.remote.caps, send: true});
+  await older;
+  assert.equal(d.provider.capabilities().send, false, 'old success or failure cannot replace the latest capability read');
+}
+// Initial binding is also retired by a newer refresh and by account teardown.
+{
+  const d = device(), pending = [];
+  d.remote.capabilityRead = signal => new Promise(resolve => pending.push({signal, resolve}));
+  const initial = d.provider.bind('grant-a'); await tick();
+  const newer = d.provider.bind('grant-a');
+  pending[1].resolve({...d.remote.caps, send: false}); await newer;
+  pending[0].resolve({...d.remote.caps, send: true}); await initial;
+  assert.equal(d.provider.capabilities().send, false);
+  const retired = d.provider.bind('grant-a'); d.provider.reset();
+  assert.equal(pending[2].signal.aborted, true);
+  pending[2].resolve({...d.remote.caps}); await retired;
+  assert.equal(d.provider.capabilities(), null, 'teardown never restores capabilities');
+}
+console.log('PASS: capability refresh rejects stale success/failure, initial-bind overlap and account teardown.');

@@ -9,6 +9,8 @@ type Bag=Record<string,any>;
 export function inboxProviderControls(publish:()=>void,toast:(message:string)=>void){
  let editor:((proposal:Bag,reference:{draftId:string;providerDigest:string})=>Promise<boolean>)|null=null;
  let selected='',session='',epoch=0,operation:InboxOperation|null=null,caps:GmailInboxCapabilities|null=null,busy=false,visible=false,status='';
+ // Explicit refresh can overlap an older read without changing the account epoch.
+ let capabilityRead:AbortController|null=null;
  let draftRead:AbortController|null=null,failure:GmailFailureKind|null=null;
  // P-37: a change grant withdrawn while a provider run is active is applied when that run settles,
  // or by reset() once the run has stopped, so it is never skipped.
@@ -31,17 +33,17 @@ export function inboxProviderControls(publish:()=>void,toast:(message:string)=>v
  const sentSource=(record:ReturnType<InboxOperation['snapshot']>)=>record&&record.phase==='observed'&&record.receipt?.state==='succeeded'&&record.receipt.kind==='send'&&record.proposal.kind==='send'&&record.receipt.requestId===record.requestId&&typeof record.receipt.providerResult?.messageId==='string'&&!!record.receipt.providerResult.messageId&&!!selected&&record.grantId===selected&&record.source?record.source:null;
  const settleSent=(owned:InboxOperation)=>{const record=owned.snapshot(),source=sentSource(record);if(record&&source)onSent?.(source,record.proposal,record.grantId);};
  function reset(){if(withdrawal){const pending=withdrawal,inFlight=running;withdrawal=null;void (async()=>{await inFlight?.catch(()=>{});await InboxOperation.discardUnsent(inboxLocalStore,pending.owner,pending.grant).catch(()=>false);})();}
- epoch++;draftRead?.abort();draftRead=null;operation?.stop();operation=null;selected=session=owner='';running=null;caps=null;busy=visible=false;status='';failure=null;reported='';}
+ epoch++;capabilityRead?.abort();capabilityRead=null;draftRead?.abort();draftRead=null;operation?.stop();operation=null;selected=session=owner='';running=null;caps=null;busy=visible=false;status='';failure=null;reported='';}
  async function bind(grant:string){
   const binding=connectionController.getCloudClient(),account=connectionController.getSnapshot().cloudAccount;
-  if(binding&&grant===selected&&binding.sessionId===session&&operation){const token=epoch;try{const next=await binding.client.gmailInboxCapabilities(grant,new AbortController().signal);if(token===epoch){caps=next;publish();}}catch{if(token===epoch){caps=null;publish();}}return;}
+  if(binding&&grant===selected&&binding.sessionId===session&&operation){const token=epoch;capabilityRead?.abort();const read=capabilityRead=new AbortController();try{const next=await binding.client.gmailInboxCapabilities(grant,read.signal);if(token===epoch&&capabilityRead===read){caps=next;publish();}}catch{if(token===epoch&&capabilityRead===read){caps=null;publish();}}return;}
   reset();if(!binding||!account||!grant||document.documentElement.dataset.connectionMode==='mock')return;
-  selected=grant;session=binding.sessionId;const token=epoch;owner=JSON.stringify([account.environment,account.userId,account.organizationId||'']);
+  selected=grant;session=binding.sessionId;const token=epoch,read=capabilityRead=new AbortController();owner=JSON.stringify([account.environment,account.userId,account.organizationId||'']);
   operation=new InboxOperation({owner,grantId:grant,store:inboxLocalStore,client:binding.client,active:()=>epoch===token&&session===connectionController.getCloudClient()?.sessionId&&document.documentElement.dataset.connectionMode!=='mock'});
-  try{await operation.load();if(token!==epoch)return;
+  try{await operation.load();if(token!==epoch||capabilityRead!==read)return;
    if(operation.snapshot()){status='Saved mail operation. Check its exact review and receipt before continuing.';visible=true;settleSent(operation);}
-   const next=await binding.client.gmailInboxCapabilities(grant,new AbortController().signal);if(token!==epoch)return;caps=next;
-  }catch{if(token===epoch)status='Provider actions unavailable. Your local drafts remain on this device.';}
+   const next=await binding.client.gmailInboxCapabilities(grant,read.signal);if(token!==epoch||capabilityRead!==read)return;caps=next;
+  }catch{if(token===epoch&&capabilityRead===read)status='Provider actions unavailable. Your local drafts remain on this device.';}
   if(token===epoch)publish();
  }
  // The buttons inside the review change when an operation started there finishes: Confirm gives
