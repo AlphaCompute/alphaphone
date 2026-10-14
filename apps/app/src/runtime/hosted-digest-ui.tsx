@@ -1,4 +1,4 @@
-import {reviewHostedNoticeQuestion} from './hosted-notice-question';
+import {hostedTapResolver,reviewHostedNoticeQuestion} from './hosted-notice-question';
 import {iconStyle} from '../icon-style';
 import {registerPlugin} from '../platform-plugins';
 import {openDomainRecovery} from '../browser/domain-recovery';
@@ -52,6 +52,7 @@ function canSyncResults(){return !document.hidden&&(isAndroid||(document.documen
 export function HostedDigestPanel({composeQuestion}:{composeQuestion?:(draft:string,sessionId:string)=>boolean}={}) {
  const questionClose=useRef<undefined|(()=>void)>(undefined);
  const questionBusy=useRef(false);
+ const resolveTap=useRef(hostedTapResolver());
  useEffect(()=>()=>questionClose.current?.(),[]);
 	const panel = useRef<HTMLElement>(null);
 	const connection = useSyncExternalStore(
@@ -111,7 +112,7 @@ export function HostedDigestPanel({composeQuestion}:{composeQuestion?:(draft:str
 		};
 	}, []);
     useEffect(()=>{if(isAndroid)return;let live=true;const update=()=>{void hostedResultNative.status().then(value=>{if(live){setNoticeEnabled(value.enabled);setBackgroundEnabled(value.backgroundEnabled===true);}}).catch(()=>{});};update();window.addEventListener('alpha:hosted-notices-changed',update);return()=>{live=false;window.removeEventListener('alpha:hosted-notices-changed',update);};},[]);
-    const checkTap = async (requestSignal?:AbortSignal) => {
+    const checkTap = (requestSignal?:AbortSignal) => resolveTap.current(async () => {
         if(!canSyncResults()||questionBusy.current||questionClose.current)return;
         const b=binding.current;
         try {
@@ -121,14 +122,14 @@ export function HostedDigestPanel({composeQuestion}:{composeQuestion?:(draft:str
             if(result.kind==='ready' && b&&result.question){
                 const current=()=>mounted.current&&binding.current===b&&b.notices.current()&&canSyncResults()&&!connectionController.getSnapshot().open;
                 questionBusy.current=true;
-                questionClose.current=reviewHostedNoticeQuestion({result,current,recheck:()=>resolveHostedResultTap(hostedResultNative,b.notices,b.controller.signal),consume:()=>hostedResultNative.consumeResult({token:result.token}),discard:async()=>{if(!hostedResultNative.releaseResultQuestion)throw Error('Question release unavailable');await hostedResultNative.releaseResultQuestion({token:result.token});},compose:draft=>{if(!composeQuestion?.(draft,b.sessionId))throw Error('Conversation unavailable');setOpen(false);},report:setMessage,closed:()=>{questionBusy.current=false;questionClose.current=undefined;}});
+                questionClose.current=reviewHostedNoticeQuestion({signal:b.controller.signal,result,current,recheck:()=>resolveHostedResultTap(hostedResultNative,b.notices,b.controller.signal),consume:()=>hostedResultNative.consumeResult({token:result.token}),discard:async()=>{if(!hostedResultNative.releaseResultQuestion)throw Error('Question release unavailable');await hostedResultNative.releaseResultQuestion({token:result.token});},compose:draft=>{if(!composeQuestion?.(draft,b.sessionId))throw Error('Conversation unavailable');setOpen(false);},report:setMessage,closed:()=>{questionBusy.current=false;questionClose.current=undefined;}});
                 if(!questionClose.current)questionBusy.current=false;
                 return;
             }
             if(result.kind==='ready' && b){const history=await b.inbox.history();if(binding.current!==b||!canSyncResults())return;setOpen(true);setResults(history);setFocusedRun(result.result.runId);setTap({token:result.token,runId:result.result.runId,sessionId:b.sessionId});setMessage('Opened the saved result from this account and agent.');}
             else {setOpen(true);setMessage(result.kind==='other-account'?'Connect the matching account and agent to open this saved result. No account was switched.':'This result link needs a verified connection and retained history. No workflow was restarted.');}
         } catch { if(!b || binding.current===b)setMessage('Result link is waiting for a verified connection.'); }
-    };
+    });
     useEffect(()=>{const listener=hostedResultNative.addListener('pendingResult',()=>{void checkTap();}).catch(()=>null);void checkTap();return()=>{void listener.then(value=>value?.remove());};},[]);
     useEffect(()=>{
         if(!open||!tap||!canSyncResults()||binding.current?.sessionId!==tap.sessionId)return;
@@ -190,6 +191,7 @@ export function HostedDigestPanel({composeQuestion}:{composeQuestion?:(draft:str
 	useEffect(() => {
 		const selected = connectionController.getWorkflowClient();
 		binding.current?.controller.abort();
+        questionClose.current?.();
 		binding.current = null;
 		setAvailable(false);setNativeReady(false);setBackgroundEnabled(false);setNoticeEnabled(false);setFeatures({nativeEvening:false,sourcePause:false});
 		setResults([]);rememberRetainedDigests(null);setFocusedRun(null);setTap(null);setRenewing(null);

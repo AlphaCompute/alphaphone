@@ -10,7 +10,13 @@ test('retained result Ask requires unchanged owner and content; cancel preserves
  const port={sensitive:false,review:null};globalThis.__hostedQuestionFixture=port;
  try{
   const bundle=await build({entryPoints:[resolve('apps/app/src/runtime/hosted-notice-question.ts')],bundle:true,format:'esm',platform:'node',write:false,plugins:[{name:'ports',setup(b){b.onResolve({filter:/browser\/content-question$|alpha-client$|hosted-digests$/},a=>({path:a.path,namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},a=>({contents:a.path.endsWith('content-question')?'export const reviewContentQuestion=input=>{globalThis.__hostedQuestionFixture.review=input;return ()=>input.closed(false)};':a.path.endsWith('alpha-client')?'export const alphaClient={getState:()=>({context:{sensitive:globalThis.__hostedQuestionFixture.sensitive}})};':'export const digestSummaryText=result=>result.output;'}));}}]});
-  const file=join(dir,'question.mjs');writeFileSync(file,bundle.outputFiles[0].text);const {reviewHostedNoticeQuestion}=await import(pathToFileURL(file));
+  const file=join(dir,'question.mjs');writeFileSync(file,bundle.outputFiles[0].text);const {reviewHostedNoticeQuestion,hostedTapResolver}=await import(pathToFileURL(file));
+  const gate=hostedTapResolver();let release;let resolutions=0,dialogs=0;
+  const first=gate(async()=>{resolutions++;await new Promise(r=>release=r);dialogs++;});
+  await gate(async()=>{resolutions++;dialogs++;});assert.equal(resolutions,1);assert.equal(dialogs,0);
+  release();await first;assert.equal(dialogs,1);
+  await assert.rejects(gate(async()=>{throw Error('native unavailable')}));
+  await gate(async()=>{resolutions++;});assert.equal(resolutions,2,'failure releases the reservation');
   const result={kind:'ready',question:true,token:'token-1',result:{runId:'run-1',output:'Your reviewed tasks are ready.'}};
   let current=true,consumed=0,discarded=0,composed=0,reported=0;
   const tick=()=>new Promise(r=>setImmediate(r));
