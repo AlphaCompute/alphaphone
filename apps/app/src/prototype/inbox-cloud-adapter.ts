@@ -73,10 +73,11 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   view.reply = () => null;
   let shell: Bag | undefined, api: Bag | undefined;
   let accounts: GmailAccount[] = [], messages: GmailMessage[] = [], accountsChecked = false,accountsSession='';
-  type Folder = 'inbox' | 'sent' | 'drafts' | 'archive' | 'trash' | 'starred' | 'all' | 'spam';
+  type Folder = 'inbox' | 'sent' | 'drafts' | 'archive' | 'trash' | 'starred' | 'all' | 'spam' | 'important' | 'primary' | 'social' | 'promotions' | 'updates' | 'forums' | `label:${string}`;
+  let labelCatalog:{id:string;name:string;type:'system'|'user'}[] = [],labelCatalogAt=0,labelCatalogScope='';
   const MAILBOX_CHANGED = 'Newer mail arrived while this list was loading and is not shown yet. Load newer mail to read the list again.';
   let newerMail = false,spamTrashSearch=false;
-  const folderQuery: Record<Folder, string> = { inbox: 'in:inbox', sent: 'in:sent', drafts: 'in:drafts', archive: 'in:archive', trash: 'in:trash', starred:'is:starred', all:'-in:spam -in:trash',spam:'in:spam' };
+  const folderQuery: Record<string, string> = { inbox: 'in:inbox', sent: 'in:sent', drafts: 'in:drafts', archive: 'in:archive', trash: 'in:trash', starred:'is:starred', all:'-in:spam -in:trash',spam:'in:spam',important:'is:important',primary:'in:inbox category:primary',social:'in:inbox category:social',promotions:'in:inbox category:promotions',updates:'in:inbox category:updates',forums:'in:inbox category:forums' };
   let loadedQuery = '', nextPageToken: string | null = null, folder: Folder = 'inbox';
   // Provider drafts are listed separately from messages.
   let providerDrafts: GmailDraftSummary[] = [];
@@ -150,13 +151,13 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   type CachedList={key:string;at:number;messages:GmailMessage[];query:string;cursor:string|null;revision:string;cursors:string[];newerMail:boolean;status:string};
   const folderLists=new Map<string,CachedList>();
   function rememberList(){if(operation||failure||!loadedQuery||loadedQuery==='in:drafts'||messages.length>100)return;const key=listKey();folderLists.delete(key);folderLists.set(key,{key,at:listReadAt,messages:[...messages],query:loadedQuery,cursor:nextPageToken,revision,cursors:[...seenCursors],newerMail,status});while(folderLists.size>8)folderLists.delete(folderLists.keys().next().value!);}
-  const listKey=(accountId=selected)=>{const binding=connectionController.getCloudClient();return JSON.stringify([binding?.sessionId,binding?.credentialId,accountId,currentQuery()]);};
-  function invalidateList(){stopBodyReads();readAhead.invalidate();folderLists.clear();messageBodies.clear();cachedListShown=false;}
+  const listKey=(accountId=selected)=>{const binding=connectionController.getCloudClient();return JSON.stringify([binding?.sessionId,binding?.credentialId,accountId,currentQuery(),currentLabelId()]);};
+  function invalidateList(){stopBodyReads();readAhead.invalidate();folderLists.clear();messageBodies.clear();labelCatalog=[];labelCatalogAt=0;labelCatalogScope='';cachedListShown=false;}
   function prepareNextPage(){
-    const binding=connectionController.getCloudClient(),cursor=nextPageToken,key=listKey(),accountId=selected,query=currentQuery();
+    const binding=connectionController.getCloudClient(),cursor=nextPageToken,key=listKey(),accountId=selected,query=currentQuery(),options=pageOptions();
     if(!binding||!cursor||!api?.isActive()||document.hidden||draftsView()||loadedQuery!==query)return;
     readAhead.prepare(key,cursor,async signal=>{
-      const page=await binding.client.gmailSearch(accountId,query,signal,25,cursor);
+      const page=await binding.client.gmailSearch(accountId,query,signal,25,cursor,options);
       if(!api?.isActive()||key!==listKey()||binding.client!==connectionController.getCloudClient()?.client)throw new DOMException('Mailbox changed','AbortError');
       return page;
     });
@@ -174,7 +175,12 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   provider.setEditor((proposal,reference)=>drafts.editProvider(proposal,reference));
   provider.setComposer(()=>drafts.email());
   const readable = () => accounts.filter(gmailReadable);
-  const currentQuery = () => String(api?.get('inbox')?.q || '').trim() || folderQuery[folder];
+  const currentQuery = () => String(api?.get('inbox')?.q || '').trim() || folderQuery[folder] || '-in:spam -in:trash';
+  const currentLabelId=()=>!String(api?.get('inbox')?.q||'').trim()&&folder.startsWith('label:')?folder.slice(6):undefined;
+  const catalogScope=()=>{const binding=connectionController.getCloudClient();return JSON.stringify([binding?.sessionId,binding?.credentialId,selected]);};
+  const pageOptions=(catalog=false)=>({labelId:currentLabelId(),includeLabels:catalog&&(labelCatalogScope!==catalogScope()||Date.now()-labelCatalogAt>=LIST_TTL)});
+  function retainCatalog(page:{labels?:typeof labelCatalog}){if(page.labels){labelCatalog=page.labels;labelCatalogScope=catalogScope();labelCatalogAt=Date.now();}}
+
   /** Read-cache identity of the selected account now; null while nothing it read may be shown. */
   const readKey = (id = selected) => gmailReadCacheKey(connectionController.getCloudClient()?.sessionId, accounts.find(a => a.connectionId === id));
   const accountLabel = (id = selected) => accounts.find(a => a.connectionId === id)?.label || null;
@@ -204,7 +210,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   });
   provider.onRestored(() => { if (selected && !draftsView()) void load(); });
   function clear() {
-    invalidateList();spamTrashSearch=false;
+    invalidateList();spamTrashSearch=false;labelCatalog=[];labelCatalogAt=0;labelCatalogScope='';
     providerDrafts = [];
     setAttention({ state: connectionController.getCloudClient() ? 'loading' : 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null });
     void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;provider.reset(); drafts.reset();
@@ -254,7 +260,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       // A remembered ID is not permission: both reads are owner-authorized by Cloud.
       if(hint&&!draftsView()&&!preserveSelection)readAhead.prepare(listKey(hint),'',async pageSignal=>{
         const abort=()=>readAhead.invalidate();signal.addEventListener('abort',abort,{once:true});
-        try{const page=await client.gmailSearch(hint,query,pageSignal,25);pageSignal.throwIfAborted();const current=connectionController.getCloudClient();if(current?.client!==captured?.client||current?.sessionId!==captured?.sessionId||current?.credentialId!==captured?.credentialId)throw new DOMException('Mailbox changed','AbortError');return page;}
+        try{const page=await client.gmailSearch(hint,query,pageSignal,25,undefined,{...pageOptions(true),includeLabels:true});pageSignal.throwIfAborted();const current=connectionController.getCloudClient();if(current?.client!==captured?.client||current?.sessionId!==captured?.sessionId||current?.credentialId!==captured?.credentialId)throw new DOMException('Mailbox changed','AbortError');return page;}
         finally{signal.removeEventListener('abort',abort);}
       });
       const result = await client.gmailAccounts(signal);
@@ -283,7 +289,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     invalidateList();
     if (operation && !force) return;
     if (operation) { generation++; operation.abort(); operation = null; phase = 'ready'; }
-    void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;inboxPreview=null;homeFailure=null;hasUnread=false;selected = gmailReadable(a) ? a.connectionId! : '';saveGmailAccountChoice(connectionController.getSnapshot().cloudAccount,selected||null); void provider.bind(selected); void drafts.bind(selected, a.label); messages = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; failure = null;
+    void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;inboxPreview=null;homeFailure=null;hasUnread=false;labelCatalog=[];labelCatalogAt=0;labelCatalogScope='';selected = gmailReadable(a) ? a.connectionId! : '';saveGmailAccountChoice(connectionController.getSnapshot().cloudAccount,selected||null); void provider.bind(selected); void drafts.bind(selected, a.label); messages = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; failure = null;
     status = selected ? 'Loading Gmail…' : 'This account needs Gmail authorization';
     publish({ open: null, nativeMailSelection: null });
     if (selected) void load();
@@ -358,7 +364,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     try { await work(more ? 'Loading more messages…' : 'Loading Gmail…', async ({ client }, signal, valid) => {
       const prepared=await readAhead.take(listKey(),pageToken||'',signal);
       if(!prepared)readAhead.invalidate(listKey());
-      const result = prepared??await client.gmailSearch(accountId, query, signal, 25, pageToken || undefined);
+      const result = prepared??await client.gmailSearch(accountId, query, signal, 25, pageToken || undefined,pageOptions(!more));
       if (!valid() || selected !== accountId || currentQuery() !== query) return;
       const seen = new Set(pageToken ? messages.map(m => m.id) : []);
       // A later page that repeats a loaded message was cut from a mailbox that changed after the
@@ -373,7 +379,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       const next = result.nextPageToken ?? null;
       nextPageToken = next && !seenCursors.has(next) ? next : null;
       if (nextPageToken) seenCursors.add(nextPageToken);
-      spamTrashSearch=result.supportsSpamTrash===true;
+      spamTrashSearch=result.supportsSpamTrash===true;retainCatalog(result);
       loadedQuery = query; revision = result.syncedAt;listReadAt=Date.now();cachedListShown=false;
       recountUnread(result.nextPageToken!=null,!pageToken);
       if (!pageToken) body = null;
@@ -633,6 +639,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     const extraFolders = binding&&selected?[
       {...chip('Starred',()=>setFolder('starred'),folder==='starred'),value:'starred'},
       {...chip('All mail',()=>setFolder('all'),folder==='all'),value:'all'},
+      {...chip('Important',()=>setFolder('important'),folder==='important'),value:'important'},
+      ...(['primary','social','promotions','updates','forums'] as const).map(value=>({...chip(value[0].toUpperCase()+value.slice(1),()=>setFolder(value),folder===value),value})),
+      ...(labelCatalogScope===catalogScope()?labelCatalog.filter(row=>row.type==='user').sort((a,b)=>a.name.localeCompare(b.name)).map(row=>({...chip(row.name,()=>setFolder(`label:${row.id}`),folder===`label:${row.id}`),value:`label:${row.id}`})):[]),
       ...(provider.capabilities()?.draftsList?[{...chip('Drafts',()=>setFolder('drafts'),folder==='drafts'),value:'drafts'}]:[]),
       {...chip(spamTrashSearch?'Spam':'Spam — not available yet',()=>setFolder('spam'),folder==='spam'),value:'spam',disabled:!spamTrashSearch},
       {...chip(spamTrashSearch||provider.capabilities()?.searchTrash?'Trash':'Trash — not available yet',()=>setFolder('trash'),folder==='trash'),value:'trash',disabled:!spamTrashSearch&&!provider.capabilities()?.searchTrash},
@@ -673,7 +682,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       doc.addEventListener('click',follow);doc.addEventListener('keydown',event=>{if(event.key==='Enter')follow(event);});
     };
 
-    return {folderChips:chips.filter(row=>['Inbox','Sent','Archive'].includes(row.label)),actionChips:chips.filter(row=>!['Inbox','Sent','Archive'].includes(row.label)),hasActionChips:chips.some(row=>!['Inbox','Sent','Archive'].includes(row.label)),extraFolders,hasExtraFolders:!!extraFolders.length,extraFolderValue:['inbox','sent','archive'].includes(folder)?'':folder,changeExtraFolder:(event:Bag)=>{const row=extraFolders.find(row=>row.value===event.target.value);if(row&&!('disabled' in row&&row.disabled))row.pick();}, contextReviewOpen:!!contextReview,contextReview:contextReview?{source:`From: ${contextReview.source.from}\nTo: ${contextReview.source.to.join(', ')}\nSubject: ${contextReview.source.subject}\n\n${contextReview.source.bodyText}`,destination:`${contextReview.destination.origin} · agent ${contextReview.destination.agentId} · owner ${contextReview.destination.ownerId}`,send:()=>void sendContext(),busy:contextBusy,close:()=>{contextReview=null;publish();}}:null,attachmentOpen:!!attachmentView,attachment:attachmentView?{...attachmentView,close:()=>{void attachmentNative.cancel().catch(()=>{});attachmentView=null;publish();}}:null,chips, rows, searching: st.q != null, notSearching: st.q == null, q: st.q || '', hasQ: false,
+    return {folderTitle:st.q!=null?'Search':folder==='inbox'?'Inbox':folder==='sent'?'Sent':folder==='archive'?'Archive':extraFolders.find(row=>row.value===folder)?.label||'Inbox',folderChips:chips.filter(row=>['Inbox','Sent','Archive'].includes(row.label)),actionChips:chips.filter(row=>!['Inbox','Sent','Archive'].includes(row.label)),hasActionChips:chips.some(row=>!['Inbox','Sent','Archive'].includes(row.label)),extraFolders,hasExtraFolders:!!extraFolders.length,extraFolderValue:['inbox','sent','archive'].includes(folder)?'':folder,changeExtraFolder:(event:Bag)=>{const row=extraFolders.find(row=>row.value===event.target.value);if(row&&!('disabled' in row&&row.disabled))row.pick();}, contextReviewOpen:!!contextReview,contextReview:contextReview?{source:`From: ${contextReview.source.from}\nTo: ${contextReview.source.to.join(', ')}\nSubject: ${contextReview.source.subject}\n\n${contextReview.source.bodyText}`,destination:`${contextReview.destination.origin} · agent ${contextReview.destination.agentId} · owner ${contextReview.destination.ownerId}`,send:()=>void sendContext(),busy:contextBusy,close:()=>{contextReview=null;publish();}}:null,attachmentOpen:!!attachmentView,attachment:attachmentView?{...attachmentView,close:()=>{void attachmentNative.cancel().catch(()=>{});attachmentView=null;publish();}}:null,chips, rows, searching: st.q != null, notSearching: st.q == null, q: st.q || '', hasQ: false,
       openSearch: () => changeQuery(''), closeSearch: () => changeQuery(null), onQ: (e: Bag) => changeQuery(e.target.value),
       compose: () => drafts.begin(), empty: rows.length === 0, emptyIcon: 'M4 6h16v12H4zM4 6l8 6 8-6', emptyText: pendingCompose && !selected ? 'Shared content is ready for a new email. Connect Gmail to continue; nothing has been sent.' : status,
       hasMore: rows.length > 0 && (!!nextPageToken || (!!operation && loadingMore)), loadingMore: !!operation && loadingMore, loadMoreDisabled: !!operation, loadMoreLabel: operation && loadingMore ? 'Loading more…' : 'Load more', loadMore: () => void load(true),

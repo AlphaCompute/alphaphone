@@ -5497,9 +5497,10 @@ class Component extends DCLogic {
     ORDER.forEach(function (k) { is[k] = isView && v === k; });
     out.is = is;
     if (isView && mod && mod.render) out[v] = mod.render(st, this.api(v));
+    if (v === "inbox" && out.inbox && !out.inbox.folderTitle) out.inbox.folderTitle = "Inbox";
     // Compose attach copy follows the provider adapter's attachment limit (c.attachLabel); one
     // reviewed file until an adapter reports more.
-    if (v === "inbox" && out.inbox && out.inbox.c && !out.inbox.c.attachLabel) out.inbox.c = Object.assign({}, out.inbox.c, { attachLabel: "Attach one PDF, image or TXT (up to 5 MiB)" });
+    if (v === "inbox" && out.inbox && out.inbox.c && !out.inbox.c.attachLabel) out.inbox.c = Object.assign({}, out.inbox.c, { attachLabel: "Attach file", heading: "New message" });
 
     var apps = ORDER.filter(function (k) { return !VIEWS[k].hidden; }).map(function (k) {
       var def = VIEWS[k];

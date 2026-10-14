@@ -142,7 +142,7 @@ test('F-5: the send review shows From, To, Cc, Bcc, subject, body and the attach
   await page.getByRole('textbox', {name: 'Cc', exact: true}).fill('carol@example.invalid, dave@example.invalid');
   await page.getByRole('textbox', {name: 'Bcc', exact: true}).fill('audit@example.invalid');
   const chooser = page.waitForEvent('filechooser');
-  await button(page, 'Attach one PDF, image or TXT (up to 5 MiB)').click();
+  await button(page, 'Attach file').click();
   await (await chooser).setFiles({name: 'timetable.txt', mimeType: 'text/plain', buffer: bytes});
   await expect(button(page, 'Remove timetable.txt')).toBeVisible();
   expect(await provider(page)).toMatchObject({prepared: [], dispatched: [], sent: []});

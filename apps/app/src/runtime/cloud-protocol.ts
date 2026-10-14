@@ -578,16 +578,24 @@ export class CloudProtocol {
       ...(data.hasAttachments === undefined ? {} : typeof data.hasAttachments === "boolean" ? { hasAttachments: data.hasAttachments } : (() => { throw new CloudProtocolError("invalid-response"); })()) };
   }
   /** One page of results. `nextPageToken` is the provider's opaque cursor for the same query, or null. */
-  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 10 | 25 | 50 = 25, pageToken?: string): Promise<{ messages: GmailMessage[]; syncedAt: string; nextPageToken: string | null;supportsSpamTrash:boolean }> {
+  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 10 | 25 | 50 = 25, pageToken?: string, options?: {labelId?:string;includeLabels?:boolean}): Promise<{ messages: GmailMessage[]; syncedAt: string; nextPageToken: string | null;supportsSpamTrash:boolean;labels?:{id:string;name:string;type:"system"|"user"}[] }> {
     if (pageToken !== undefined && (typeof pageToken !== "string" || !pageToken || pageToken.length > 4096)) throw new TypeError("Invalid Gmail page token");
     const params = new URLSearchParams({ side: "owner", grantId: string(grantId), query: string(query), maxResults: String(maxResults) });
     if (pageToken !== undefined) params.set("pageToken", pageToken);
+    if(options?.labelId){if(!/^[A-Za-z0-9_-]{1,256}$/.test(options.labelId))throw new TypeError('Invalid Gmail label ID');params.set('labelId',options.labelId);}
+    if(options?.includeLabels)params.set('includeLabels','true');
     const data = await this.call(`/api/v1/eliza/google/gmail/search?${params}`, signal, { authenticated: true });
     if (!Array.isArray(data.messages)) throw new CloudProtocolError("invalid-response");
     const next = data.nextPageToken;
     if (next != null && (typeof next !== "string" || !next || next.length > 4096 || next === pageToken)) throw new CloudProtocolError("invalid-response");
     if(data.supportsSpamTrash!==undefined&&typeof data.supportsSpamTrash!=='boolean')throw new CloudProtocolError('invalid-response');
-    return { messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt), nextPageToken: next == null ? null : next,supportsSpamTrash:data.supportsSpamTrash===true };
+    let labels:{id:string;name:string;type:"system"|"user"}[]|undefined;
+    if(data.labels!==undefined){
+      if(!Array.isArray(data.labels)||data.labels.length>10000)throw new CloudProtocolError('invalid-response');
+      const seen=new Set<string>();
+      labels=data.labels.map(value=>{const row=object(value);if(typeof row.id!=='string'||!/^[A-Za-z0-9_-]{1,256}$/.test(row.id)||seen.has(row.id)||typeof row.name!=='string'||!row.name||row.name.length>1024||(row.type!=='user'&&row.type!=='system'))throw new CloudProtocolError('invalid-response');seen.add(row.id);return {id:row.id,name:row.name,type:row.type};});
+    }
+    return { ...(labels?{labels}:{}),messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt), nextPageToken: next == null ? null : next,supportsSpamTrash:data.supportsSpamTrash===true };
   }
   /** Revokes Eliza Cloud's stored Google grant for one owner connection. It does not delete mail and
    * cannot remove the app from the user's Google Account permissions; callers verify with gmailAccounts. */

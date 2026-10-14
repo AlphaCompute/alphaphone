@@ -153,8 +153,8 @@ for(const maximumOutgoing of [10,1]){
  t.render().compose();await t.tick();
  for(let i=0;i<3;i++){t.render().c.attach();await t.tick();}
  let c=t.render().c;
- if(maximumOutgoing===1){deq(c.atts.map(a=>a.name),['a.txt']);assert.match(t.toasts.at(-1),/one attachment per email/);assert.match(c.attachLabel,/Attach one/);t.shell.componentWillUnmount();continue;}
- deq(c.atts.map(a=>a.name),['a.txt','b.txt','c.txt'],'three attachments');assert.equal(c.attachLabel,'Attach PDFs, images or text files');
+ if(maximumOutgoing===1){deq(c.atts.map(a=>a.name),['a.txt']);assert.match(t.toasts.at(-1),/one attachment per email/);assert.equal(c.attachLabel,'Attach file');assert.match(c.attachmentHint,/1 file/);t.shell.componentWillUnmount();continue;}
+ deq(c.atts.map(a=>a.name),['a.txt','b.txt','c.txt'],'three attachments');assert.equal(c.attachLabel,'Attach file');assert.match(c.attachmentHint,/10 files/);
  c.atts[1].rm();c=t.render().c;deq(c.atts.map(a=>a.name),['a.txt','c.txt'],'remove the middle one only');
  c.atts[0].rm();t.render().c.attach();await t.tick();c=t.render().c;deq(c.atts.map(a=>a.name),['c.txt','a.txt']);
  c.onTo({target:{value:'friend@example.invalid'}});c.toKey({key:'Enter',preventDefault(){}});t.render().c.send();await t.tick();
