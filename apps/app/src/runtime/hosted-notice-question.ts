@@ -1,0 +1,34 @@
+import {reviewContentQuestion} from '../browser/content-question';
+import {sensitiveReadingText} from '../browser/reading-sensitive';
+import {noticeReviewable} from '../prototype/context-selection';
+import {alphaClient} from './alpha-client';
+import {digestSummaryText} from './hosted-digests';
+import type {resolveHostedResultTap} from './hosted-result-notices';
+type Result=Awaited<ReturnType<typeof resolveHostedResultTap>>;
+/** The opaque Android action resolves only a retained result from the same owner and agent. */
+export function reviewHostedNoticeQuestion(options:{result:Extract<Result,{kind:'ready'}>;current:()=>boolean;recheck:()=>Promise<Result>;consume:()=>Promise<void>;discard:()=>Promise<void>;compose:(draft:string)=>void;report:(message:string)=>void;closed:()=>void}):(()=>void)|undefined {
+ const {result}=options,text=digestSummaryText(result.result),snapshot=JSON.stringify(result.result);
+ const current=()=>options.current()&&!alphaClient.getState().context.sensitive;
+ if(text==='No readable summary was returned. Open execution details to inspect this result.'||!result.question||!current()||!noticeReviewable({source:'own',id:result.result.runId,revision:result.token,title:'Scheduled result',text})||sensitiveReadingText(text)){
+  options.report('This result cannot be reviewed here. Open its saved history.');return;
+ }
+ let composing=false,interrupted=false,ended=false;
+ const done=()=>{if(ended)return;ended=true;window.removeEventListener('blur',abort);window.removeEventListener('launcher-home',abort);options.closed();};
+ let abort=()=>{};
+ const close=reviewContentQuestion({name:'Scheduled result notification',text,question:'Help me understand this saved result.',current,validate:value=>!sensitiveReadingText(value),closed:dismissed=>queueMicrotask(()=>{
+  if(!composing){if(dismissed&&!interrupted)void options.discard().catch(()=>{});interrupted=true;done();}
+ }),compose:draft=>{
+  composing=true;
+  void(async()=>{try{
+   if(interrupted||!current())throw Error();
+   const fresh=await options.recheck();
+   if(interrupted||!current()||fresh.kind!=='ready'||!fresh.question||fresh.token!==result.token||JSON.stringify(fresh.result)!==snapshot)throw Error();
+   await options.consume();
+   if(interrupted||!current())throw Error();
+   options.compose(draft);
+  }catch{options.report('The result or account changed. Nothing was added to your conversation.');}finally{done();}})();
+ }});
+ abort=()=>{interrupted=true;close();done();};
+ window.addEventListener('blur',abort);window.addEventListener('launcher-home',abort);
+ return abort;
+}

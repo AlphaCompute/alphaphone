@@ -4,7 +4,8 @@ import type { DigestResult } from './hosted-digests';
 export interface HostedResultRoute { scope:string;origin:string;ownerId:string;agentId:string;runId:string;workflowId:string;workflowVersionId:string }
 export interface HostedResultNative {
  publishResult(route:HostedResultRoute):Promise<{phase:string}>;
- pendingResult():Promise<Partial<HostedResultRoute>&{token?:string;retained?:boolean}>;
+ pendingResult():Promise<Partial<HostedResultRoute>&{token?:string;retained?:boolean;question?:boolean}>;
+ releaseResultQuestion?(input:{token:string}):Promise<void>;
  consumeResult(input:{token:string}):Promise<void>;
  status():Promise<{enabled:boolean;backgroundEnabled?:boolean;backgroundStatus?:string;lastSuccess?:number}>;
  setBackgroundPolling(input:{enabled:boolean}):Promise<{enabled:boolean;backgroundEnabled?:boolean}>;
@@ -26,12 +27,12 @@ export async function publishHostedResult(native:HostedResultNative,binding:Host
  return resultState;
 }
 /** No automatic account selection, workflow execution, or unverified result display. */
-export async function resolveHostedResultTap(native:HostedResultNative,binding:HostedResultBinding|null,signal:AbortSignal):Promise<{kind:'none'|'other-account'|'unavailable'}|{kind:'ready';token:string;result:DigestResult}>{
+export async function resolveHostedResultTap(native:HostedResultNative,binding:HostedResultBinding|null,signal:AbortSignal):Promise<{kind:'none'|'other-account'|'unavailable'}|{kind:'ready';token:string;question:boolean;result:DigestResult}>{
  const tap=await native.pendingResult();signal.throwIfAborted();if(!tap.token)return {kind:'none'};
  if(!binding||!binding.current()||tap.scope!==binding.scope||tap.origin!==binding.origin||tap.ownerId!==binding.ownerId||tap.agentId!==binding.agentId)return {kind:'other-account'};
  if(!await binding.revalidate(signal))return {kind:'unavailable'};signal.throwIfAborted();if(!binding.current())throw new Error('Hosted account changed');
  const result=(await binding.history()).find(row=>row.runId===tap.runId&&row.workflowId===tap.workflowId&&row.workflowVersionId===tap.workflowVersionId);
  signal.throwIfAborted();if(!binding.current())throw new Error('Hosted account changed');
  if(!result||tap.retained!==true)return {kind:'unavailable'};
- return {kind:'ready',token:tap.token,result};
+ return {kind:'ready',token:tap.token,question:tap.question===true,result};
 }

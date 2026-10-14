@@ -1,3 +1,4 @@
+import {reviewHostedNoticeQuestion} from './hosted-notice-question';
 import {iconStyle} from '../icon-style';
 import {registerPlugin} from '../platform-plugins';
 import {openDomainRecovery} from '../browser/domain-recovery';
@@ -48,7 +49,10 @@ type Pending = {
 const nativeSources=registerPlugin<{nativeSourceConsent(input:Record<string,unknown>):Promise<Record<string,unknown>>;nativeSourceIdentity(input:{sessionId:string}):Promise<Record<string,unknown>>;scheduleSourceRenewal(input:{sourceId:string;expiresAt:number}):Promise<void>;clearSourceRenewal(input:{sourceId:string}):Promise<void>;pendingSourceRenewal():Promise<{sourceId?:string}>;addListener(event:'renewSource',listener:()=>void):Promise<{remove():Promise<void>}>}>('AlphaHostedResults');
 const nativeCalendars=registerPlugin<{requestWorkflowReadAccess():Promise<{status:string}>;workflowCalendars():Promise<{status:string;calendars:Array<{id:string;name:string;account:string;sourceRevision:string}>}>}>('AlphaCalendar');
 function canSyncResults(){return !document.hidden&&(isAndroid||(document.documentElement.dataset.devBackground!=='true'&&!browserScreenLocked()));}
-export function HostedDigestPanel() {
+export function HostedDigestPanel({composeQuestion}:{composeQuestion?:(draft:string,sessionId:string)=>boolean}={}) {
+ const questionClose=useRef<undefined|(()=>void)>(undefined);
+ const questionBusy=useRef(false);
+ useEffect(()=>()=>questionClose.current?.(),[]);
 	const panel = useRef<HTMLElement>(null);
 	const connection = useSyncExternalStore(
 		connectionController.subscribe,
@@ -108,12 +112,19 @@ export function HostedDigestPanel() {
 	}, []);
     useEffect(()=>{if(isAndroid)return;let live=true;const update=()=>{void hostedResultNative.status().then(value=>{if(live){setNoticeEnabled(value.enabled);setBackgroundEnabled(value.backgroundEnabled===true);}}).catch(()=>{});};update();window.addEventListener('alpha:hosted-notices-changed',update);return()=>{live=false;window.removeEventListener('alpha:hosted-notices-changed',update);};},[]);
     const checkTap = async (requestSignal?:AbortSignal) => {
-        if(!canSyncResults())return;
+        if(!canSyncResults()||questionBusy.current||questionClose.current)return;
         const b=binding.current;
         try {
             const result=await resolveHostedResultTap(hostedResultNative,b?.notices ?? null,requestSignal ?? b?.controller.signal ?? new AbortController().signal);
             if(result.kind==='none'||!canSyncResults()||requestSignal?.aborted)return;
             if(b && binding.current!==b)return;
+            if(result.kind==='ready' && b&&result.question){
+                const current=()=>mounted.current&&binding.current===b&&b.notices.current()&&canSyncResults()&&!connectionController.getSnapshot().open;
+                questionBusy.current=true;
+                questionClose.current=reviewHostedNoticeQuestion({result,current,recheck:()=>resolveHostedResultTap(hostedResultNative,b.notices,b.controller.signal),consume:()=>hostedResultNative.consumeResult({token:result.token}),discard:async()=>{if(!hostedResultNative.releaseResultQuestion)throw Error('Question release unavailable');await hostedResultNative.releaseResultQuestion({token:result.token});},compose:draft=>{if(!composeQuestion?.(draft,b.sessionId))throw Error('Conversation unavailable');setOpen(false);},report:setMessage,closed:()=>{questionBusy.current=false;questionClose.current=undefined;}});
+                if(!questionClose.current)questionBusy.current=false;
+                return;
+            }
             if(result.kind==='ready' && b){const history=await b.inbox.history();if(binding.current!==b||!canSyncResults())return;setOpen(true);setResults(history);setFocusedRun(result.result.runId);setTap({token:result.token,runId:result.result.runId,sessionId:b.sessionId});setMessage('Opened the saved result from this account and agent.');}
             else {setOpen(true);setMessage(result.kind==='other-account'?'Connect the matching account and agent to open this saved result. No account was switched.':'This result link needs a verified connection and retained history. No workflow was restarted.');}
         } catch { if(!b || binding.current===b)setMessage('Result link is waiting for a verified connection.'); }
