@@ -5,9 +5,9 @@ import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import {calendarFormTimeProblem} from '../runtime/calendar-form-draft';
+import {calendarDayColumns,calendarDayCount,calendarDayLabel,calendarReturnDay,visibleCalendarDays} from './calendar-days';
 import {mapsEventOriginFor} from '../runtime/maps-event-return';
 import {rememberNoteOrigin,forgetNoteOrigin,noteOriginSupported} from './note-origin-adapter';
-import {calendarDayColumns,calendarDayCount,calendarDayLabel,visibleCalendarDays} from './calendar-days';
 type Bag = Record<string, any>;
 const calendar = registerPlugin<any>('AlphaCalendar');
 const DAY=86400000;
@@ -356,7 +356,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     if(selected?.alphaCalendarId&&out.ev){
       const key=JSON.stringify([selected.id,selected.nativeEvent]);
       if(agentSelectionKey!==key){agentSelectionKey=key;agentSelection=undefined;const token=++agentSelectionEpoch,currentOwner=owner,event=selected.nativeEvent;queueMicrotask(async()=>{try{const request={id:event.id,calendarId:event.calendarId,expected:{title:event.title||'',body:event.body||'',location:event.location||'',begin:event.begin,end:event.end}};let value=await calendar.inspect(request);if(Capacitor.isNativePlatform()&&value.status!=='ready')value=await calendar.inspectDeletion(request);if(owner===currentOwner&&token===agentSelectionEpoch&&api.get('calendar').open===selected.id&&value.status==='ready'){agentSelection={kind:'calendar-event',id:value.eventId||event.id,open:selected.id,revision:value.revision,accountId:event.calendarId,sourceRevision:value.sourceRevision};api.set({nativeAgentRevision:value.revision});}}catch{}});}
-      out.ev.close=()=>{agentSelection=undefined;agentSelectionKey='';agentSelectionEpoch++;api.set({open:null,openDay:null,day:state.openDay??state.day??selected.off});};
+      out.ev.close=()=>{agentSelection=undefined;agentSelectionKey='';agentSelectionEpoch++;api.set({open:null,openDay:null,day:calendarReturnDay(Number(state.day||0),state.openDay??state.day??selected.off)});};
       if(selected.allDay){
         out.ev.when='All day';
         const options:Intl.DateTimeFormatOptions={weekday:'short',month:'short',day:'numeric',year:'numeric',timeZone:'UTC'};

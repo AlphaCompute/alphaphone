@@ -13,6 +13,12 @@ const REFERENCE_LEFT = 60, REFERENCE_WIDTH = 336;
 
 export const calendarDayCount = (): number => currentSurfaceLayout().calendarDays;
 export const visibleCalendarDays = (day: number, count = calendarDayCount()): number[] => Array.from({ length: count }, (_, index) => day + index);
+/**
+ * The selected day after an event closes. Closing returns to the event's day, but while that day is
+ * already one of the visible columns the selection stays, so an event opened from a later column
+ * does not move the days on screen.
+ */
+export const calendarReturnDay = (day: number, eventDay: number, count = calendarDayCount()): number => eventDay >= day && eventDay < day + count ? day : eventDay;
 
 export function calendarDayLabel(now: Date | number, off: number): string {
   const date = new Date(now); date.setDate(date.getDate() + off);

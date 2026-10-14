@@ -38,11 +38,25 @@ const REFERENCE_WIDTH = 412, REFERENCE_HEIGHT = 915;
 /** Canvas width from which lists, settings and readers hold a bounded reading column (phone.css). */
 export const WIDE_CANVAS = 760;
 
-/** Remembers the window height without the keyboard for the current width. */
+/**
+ * Remembers the window height without the keyboard for the current width.
+ *
+ * Android keeps the field focused and the keyboard up through a rotation (MainActivity handles
+ * orientation changes itself and resizes for the keyboard), so the first measurement after turning
+ * a small phone back to portrait can already be shorter than it is wide. When the width changes
+ * while a field has focus and the new width is about the previous keyboard-free height, the sides
+ * were swapped: the previous width stands in for the new keyboard-free height until the keyboard
+ * closes or the field loses focus.
+ */
 export function keyboardFreeHeight() {
   let base = { width: 0, height: 0 };
   return (width: number, height: number, editing: boolean) => {
-    if (width !== base.width || !editing || height > base.height) base = { width, height };
+    if (width === base.width) {
+      if (!editing || height > base.height) base = { width, height };
+    } else {
+      const swapped = editing && base.width > 0 && Math.abs(width - base.height) <= base.height * 0.2;
+      base = { width, height: swapped ? Math.max(height, base.width) : height };
+    }
     return base.height;
   };
 }

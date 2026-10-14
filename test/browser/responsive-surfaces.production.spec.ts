@@ -287,6 +287,28 @@ test('Notes opens beside its list on a wide canvas and keeps each draft through 
   }
 });
 
+test('switching notes beside the list leaves the previous one as Back does', async ({ page }) => {
+  await open(page, 'Notes');
+  await resize(page, TABLET_LANDSCAPE);
+  const title = page.getByRole('textbox', { name: 'Title', exact: true }), newItem = page.getByRole('textbox', { name: 'New item', exact: true });
+  await page.getByRole('button', { name: 'New note', exact: true }).click();
+  await title.fill('List A');
+  await page.getByRole('button', { name: 'Turn into checklist', exact: true }).click();
+  await newItem.fill('Half-typed item for list A');
+  // The unsent item belongs to List A; it is not carried into the next note.
+  await page.getByRole('button', { name: 'New note', exact: true }).click();
+  await title.fill('List B');
+  await page.getByRole('button', { name: 'Turn into checklist', exact: true }).click();
+  await expect(newItem).toHaveValue('');
+  // An untouched new note is dropped when another note is opened beside the list, as Back drops it.
+  await page.getByRole('button', { name: 'New note', exact: true }).click();
+  await expect(title).toHaveValue('');
+  await page.getByRole('button', { name: 'Open List A', exact: true }).click();
+  await expect(title).toHaveValue('List A');
+  await expect(page.getByRole('button', { name: 'Open Untitled', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Open List B', exact: true })).toHaveCount(1);
+});
+
 test('Calendar shows readable day columns on wide screens, a single-day agenda at large text, and keeps the opened event', async ({ page }) => {
   await open(page, 'Calendar');
   await resize(page, TABLET_LANDSCAPE);

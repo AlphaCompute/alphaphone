@@ -2,7 +2,7 @@ import {bindBrowserDeletionOwner} from './runtime/deletion-owner';
 import {DEFAULT_PULL_DISTANCE,DEFAULT_PULL_VELOCITY} from "../../../.eliza/client-features/packages/ui/src/gestures/constants";
 import {usePullGesture} from "../../../.eliza/client-features/packages/ui/src/components/shell/use-pull-gesture";
 import {installChatOverlayMotion} from './prototype/chat-overlay-motion-adapter';
-import {installSubviewAccessibility} from './prototype/subview-accessibility';
+import {installSubviewAccessibility,keepFocusOnScreen} from './prototype/subview-accessibility';
 import {installCalendarMonthFocus} from './prototype/calendar-month-focus';
 import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-adapter';
 import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
@@ -191,7 +191,8 @@ function Phone() {
       const next = surfaceLayout(canvasWidth, textScale, desktopCanvas);
       if (!publishSurfaceLayout(next)) return;
       document.documentElement.classList.toggle('alpha-split', next.split);
-      shell?.setState({ surfaceLayoutRevision: Date.now() });
+      const focused = document.activeElement;
+      shell?.setState({ surfaceLayoutRevision: Date.now() }, () => keepFocusOnScreen(focused));
     };
     const textScaleObserver = new MutationObserver(publishLayout);
     textScaleObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });

@@ -39,8 +39,22 @@ test('the keyboard shortens a portrait window without flipping it to landscape',
   // Rotation changes the width, so it is honoured even while a field has focus.
   const turned = keyboardFreeHeight();
   turned(412, 915, true);
-  assert.equal(turned(915, 300, true), 300);
-  assert.equal(canvasGeometry(input(915, 300, { editing: true }), 300).landscape, true);
+  assert.equal(canvasGeometry(input(915, 300, { editing: true }), turned(915, 300, true)).landscape, true);
+  // Turning back while the keyboard stays up: a small phone's portrait window is already shorter
+  // than it is wide, but the sides were swapped, so it is portrait again.
+  assert.equal(canvasGeometry(input(412, 380, { editing: true }), turned(412, 380, true)).landscape, false);
+  // The same on a 360x640 phone, starting in landscape with the keyboard closed.
+  const small = keyboardFreeHeight();
+  small(640, 360, false);
+  assert.equal(canvasGeometry(input(640, 150, { editing: true }), small(640, 150, true)).landscape, true);
+  assert.equal(canvasGeometry(input(360, 330, { editing: true }), small(360, 330, true)).landscape, false);
+  assert.equal(canvasGeometry(input(640, 150, { editing: true }), small(640, 150, true)).landscape, true);
+  // Once the keyboard closes the measured height is used again.
+  assert.equal(small(360, 600, false), 600);
+  // A width change that is not a swap (a resized window) takes the measured height as it is.
+  const resized = keyboardFreeHeight();
+  resized(500, 900, false);
+  assert.equal(resized(700, 400, true), 400);
 });
 
 test('list-detail split and Calendar day columns follow measured width, with an agenda at large text', () => {

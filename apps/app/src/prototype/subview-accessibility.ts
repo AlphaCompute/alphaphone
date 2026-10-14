@@ -107,6 +107,20 @@ function reviewFocus(close:()=>void){
  }};
 }
 
+/**
+ * A list-detail split that collapses covers its list (#411). When the list held focus, focus moves
+ * into the open item that now fills the screen instead of being dropped to the page. `previous` is
+ * the focused element from before the layout changed.
+ */
+export function keepFocusOnScreen(previous:Element|null){
+ if(!(previous instanceof HTMLElement)||!previous.isConnected)return;
+ if(document.activeElement!==previous&&document.activeElement!==document.body&&document.activeElement!==null)return;
+ const covered=previous.closest<HTMLElement>('[data-alpha-subview][inert]');
+ if(!covered)return;
+ const open=Array.from(covered.parentElement?.children||[]).filter((element):element is HTMLElement=>element instanceof HTMLElement&&element.matches('[data-alpha-subview]:not([inert])')).pop();
+ open?.querySelector<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),[tabindex="0"]')?.focus({preventScroll:true});
+}
+
 type FocusTarget={element:HTMLElement|null;scope:HTMLElement|null};
 /** Keep the opener before an asynchronous read can replace its list item. */
 function focusHistory(){

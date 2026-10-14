@@ -85,3 +85,23 @@ test('on a wide canvas each Google event is drawn in the column of its own day a
     assert.equal(h.state.open,'google:grant:calendar:later');assert.equal(h.state.openDay,2);
   }finally{h.close();}
 });
+
+test('day columns that cross a month end and a daylight-saving change keep each event on its own wall-clock day',async()=>{
+  const zone=process.env.TZ;process.env.TZ='America/Los_Angeles';
+  try{
+    // Oct 31 – Nov 2, 2026 in Los Angeles: the month ends and clocks fall back on Nov 1 (a 25-hour day).
+    const local=(month,day,hour)=>new Date(2026,month,day,hour).getTime(),today=new Date(instant);
+    const offset=(Date.UTC(2026,9,31)-Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/86400000;
+    const rows=[['halloween','Halloween dinner',9,31,18],['fallback','After fall-back',10,1,9],['monday','Monday standup',10,2,9]]
+      .map(([id,title,month,day,hour])=>event({id:`google:grant:calendar:${id}`,providerEventId:id,title,begin:local(month,day,hour),end:local(month,day,hour+1)}));
+    const h=await harness(rows,{day:offset,days:3});
+    try{
+      const out=h.render();
+      assert.deepEqual(JSON.parse(JSON.stringify(out.dayColumns.map(column=>column.events.map(e=>e.title)))),[['Halloween dinner'],['After fall-back'],['Monday standup']]);
+      // 9am on the 25-hour day sits at the same height as 9am on the next day.
+      assert.equal(out.dayColumns[1].events[0].top,out.dayColumns[2].events[0].top);
+      out.dayColumns[2].events[0].open();
+      assert.equal(h.state.open,'google:grant:calendar:monday');assert.equal(h.state.openDay,offset+2);
+    }finally{h.close();}
+  }finally{if(zone===undefined)delete process.env.TZ;else process.env.TZ=zone;}
+});

@@ -107,7 +107,9 @@ const inert = (locator: Locator) => locator.evaluate(element => !!element.closes
 test('Inbox shows the open message beside its list on a wide canvas and keeps the selection when it collapses', async ({ page }) => {
   await openMock(page, 'Inbox');
   await resize(page, { width: 1280, height: 800 });
-  await page.getByRole('button', { name: /Jordan Park/ }).first().click();
+  const jordan = page.getByRole('button', { name: /Jordan Park, Revised term sheet/ });
+  await expect(jordan).toHaveAttribute('aria-label', /^Unread, /);
+  await jordan.click();
   const list = page.locator('[data-alpha-subview="inbox-list"]'), detail = page.locator('[data-alpha-subview="inbox-detail"]');
   await expect(detail).toContainText('Revised term sheet');
   await expect.poll(() => inert(list)).toBe(false);
@@ -117,6 +119,14 @@ test('Inbox shows the open message beside its list on a wide canvas and keeps th
   await page.getByRole('button', { name: /Maya Chen/ }).first().click();
   await expect(detail).toContainText('Notes for the 3:00 review');
   await expect(page.getByRole('button', { name: /Maya Chen/ }).first()).toHaveAttribute('aria-current', 'true');
+  // The message it replaced is left read, as Back leaves it, and is no longer the open row.
+  await expect(jordan).not.toHaveAttribute('aria-label', /^Unread, /);
+  await expect(jordan).toHaveAttribute('aria-current', 'false');
+  // Focus on the list when the split collapses moves into the open message that now covers it.
+  await jordan.focus();
+  await resize(page, { width: 412, height: 915 });
+  await expect.poll(() => detail.evaluate(element => element.contains(document.activeElement))).toBe(true);
+  await resize(page, { width: 1280, height: 800 });
   for (const viewport of [{ width: 412, height: 915 }, { width: 915, height: 412 }, { width: 640, height: 360 }, { width: 800, height: 1280 }]) {
     await resize(page, viewport);
     await expect(detail).toContainText('Notes for the 3:00 review');
@@ -144,16 +154,28 @@ test('Files previews beside its list on a tablet-width canvas and full screen on
   await expect.poll(() => inert(list)).toBe(false);
 });
 
-test('Calendar day columns open the event of the column that was tapped', async ({ page }) => {
+test('Calendar day columns open the occurrence of the column that was tapped and keep the days on screen', async ({ page }) => {
   await openMock(page, 'Calendar');
   await resize(page, { width: 1280, height: 800 });
   const columns = page.locator('[data-alpha-calendar-day]');
   await expect(columns).toHaveCount(5);
-  const later = columns.nth(2).getByRole('button').first();
-  const name = (await later.getAttribute('aria-label'))!.split(',')[0];
-  await later.click();
+  const labels = await columns.evaluateAll(list => list.map(column => column.getAttribute('aria-label')));
+  // The weekday Standup repeats, so the same event is in several columns: the tapped column's
+  // occurrence opens, not the first one.
+  let index = -1;
+  for (let i = labels.length - 1; i >= 2 && index < 0; i--) if (await columns.nth(i).getByRole('button', { name: /^Standup, / }).count()) index = i;
+  expect(index).toBeGreaterThanOrEqual(2);
+  await columns.nth(index).getByRole('button', { name: /^Standup, / }).click();
   const detail = page.locator('[data-alpha-subview="calendar-detail"]');
-  await expect(detail).toContainText(name);
+  await expect(detail).toContainText('Standup');
+  const day = await page.evaluate(offset => { const date = new Date(); date.setDate(date.getDate() + offset); return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date); }, index);
+  await expect(detail).toContainText(day);
   await resize(page, { width: 412, height: 915 });
-  await expect(detail).toContainText(name);
+  await expect(detail).toContainText('Standup');
+  await expect(detail).toContainText(day);
+  // Closing on the wide canvas keeps the same days on screen instead of jumping to the event's day.
+  await resize(page, { width: 1280, height: 800 });
+  await page.getByRole('button', { name: 'Back to calendar', exact: true }).click();
+  await expect(detail).toHaveCount(0);
+  await expect.poll(() => columns.evaluateAll(list => list.map(column => column.getAttribute('aria-label')))).toEqual(labels);
 });

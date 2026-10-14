@@ -43,6 +43,8 @@ test('Older servers offer only the query-based Archive folder',async({page})=>{
 
 test('Drafts, Archive and Trash load their lists; a Gmail draft opens for editing and saves only through review',async({page})=>{
  await install(page,{draftsList:true,searchTrash:true});
+ // Folder filters, including the overflow menu, are full 44px touch targets (#411).
+ for(const control of [page.getByRole('combobox',{name:'Other mail folders',exact:true}),page.getByRole('button',{name:'Archive',exact:true})])expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
  await page.getByRole('combobox',{name:'Other mail folders',exact:true}).selectOption('trash');
  await expect(page.getByText('Trashed fixture',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Archive',exact:true}).click();
