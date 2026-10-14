@@ -25,8 +25,8 @@ test("the renderer sees the image only through the native image-only plugin on A
 
 test("image views open only on the image and only with an admitted adapter", () => {
   assert.deepEqual([...AOSP_IMAGE_VIEWS].sort(), ["contacts", "messages", "phone"]);
-  assert.deepEqual(ADMITTED_AOSP_VIEW_ADAPTERS, [], "no prototype telephony view is admitted while its actions are simulated");
-  assert.deepEqual(admittedAospViews(true), []);
+  assert.deepEqual(ADMITTED_AOSP_VIEW_ADAPTERS, ["messages"], "only the implemented native Messages adapter is admitted");
+  assert.deepEqual(admittedAospViews(true), ["messages"]);
   assert.deepEqual(admittedAospViews(false, ["contacts"]), [], "no install without the image admits a view");
   assert.deepEqual(admittedAospViews(true, ["contacts", "wallet", "inbox"]), ["contacts"], "only image views can be admitted this way");
 });
@@ -84,7 +84,7 @@ test("the telephony plugin is registered and answers only on the verified image"
   // Every @PluginMethod, overrides of Capacitor's inherited permission methods included.
   const methods = [...plugin.matchAll(/@PluginMethod public void (\w+)\(PluginCall call\)\s*\{\s*([^\n]*)/g)];
   assert.equal(methods.length, (plugin.match(/@PluginMethod/g) || []).length, "no plugin method escapes the check");
-  assert.deepEqual(methods.map(m => m[1]).sort(), ["checkPermissions", "composeSms", "dial", "imageCapability", "listMessages", "listThreads", "observeMessages", "requestAccess", "requestPermissions", "requestRole", "searchContacts", "sendSms", "smsSendResult", "status"]);
+  assert.deepEqual(methods.map(m => m[1]).sort(), ["checkPermissions", "composeSms", "dial", "imageCapability", "listMessages", "listThreads", "observeMessages", "requestAccess", "requestPermissions", "requestRole", "searchContacts", "sendSms", "smsSendHistory", "smsSendResult", "status"]);
   for (const [, name, first] of methods) assert.match(first, /^if \(!?refused\(call\)\)/, `${name} re-checks the capability before anything else`);
   for (const callback of plugin.matchAll(/@(?:Permission|Activity)Callback private void (\w+)\([^)]*\) \{ (.*)/g)) assert.match(callback[2], /refused\(call\)/, `${callback[1]} re-checks the capability`);
   assert.doesNotMatch(plugin, /sendTextMessage|sendMultipartTextMessage|ACTION_CALL\b|placeCall|WRITE_CONTACTS|insert\(|applyBatch/, "no direct call or contact write; native SMS dispatch lives only in AlphaSms behind the native review");

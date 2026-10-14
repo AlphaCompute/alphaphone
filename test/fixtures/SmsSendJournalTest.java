@@ -127,9 +127,87 @@ public final class SmsSendJournalTest {
   throwsOn(() -> boundReloaded.existing("b0", b0), "tombstones survive reload");
   require(boundReloaded.existing("b" + (SmsSendJournal.MAX_RECORDS + 4), SmsSendJournal.sha256(SmsSendJournal.bindingText(one, "m" + (SmsSendJournal.MAX_RECORDS + 4), 3))) != null, "kept records survive reload");
 
+  // No lifetime lockout and no forgotten key: beyond the tombstone bound, IDs are compacted into the
+  // retired-ID filter. Every earlier ID stays refused (including after reload) and new IDs still send.
+  final String[] memory = { null };
+  SmsSendJournal.Storage storage = new SmsSendJournal.Storage() {
+   public String read() { return memory[0]; }
+   public void write(String value) { memory[0] = value; }
+  };
+  SmsSendJournal capacity = new SmsSendJournal(storage);
+  int lifetime = SmsSendJournal.MAX_RECORDS + SmsSendJournal.MAX_TOMBSTONES + 300;
+  String longId = "c".repeat(120);
+  for (int i = 0; i < lifetime; i++) capacity.decide(longId + i, one, "x", 3, "cancelled", i + 1, 7);
+  require(capacity.retiredCount() == 300, "oldest tombstones are compacted, not discarded");
+  SmsSendJournal.Record afterLifetime = capacity.beginDispatch("overflow", one, "x", 3, new int[] { 1 }, 99999, 7);
+  require(afterLifetime != null && "unknown".equals(afterLifetime.status()), "sending continues past the old lifetime capacity");
+  require(memory[0].length() < 1024 * 1024 / 2, "journal with compacted IDs stays well inside the encrypted slot");
+  SmsSendJournal capacityReloaded = new SmsSendJournal(storage);
+  String xHash = SmsSendJournal.sha256(SmsSendJournal.bindingText(one, "x", 3));
+  for (int i = 0; i < lifetime; i++) {
+   final String id = longId + i;
+   boolean refused = false;
+   try { capacityReloaded.existing(id, xHash); } catch (IllegalStateException expected) { refused = true; }
+   require(refused || capacityReloaded.get(id) != null, "every earlier key is preserved after reload: " + i);
+  }
+  boolean compactedExpired = false; try { capacityReloaded.existing(longId + 0, SmsSendJournal.sha256(SmsSendJournal.bindingText(one, "other", 3))); } catch (SmsSendJournal.Expired expected) { compactedExpired = true; }
+  require(compactedExpired, "a compacted ID is refused whatever its content");
+  throwsOn(() -> { try { capacityReloaded.beginDispatch(longId + 0, one, "x", 3, new int[] { 1 }, 99999, 7); } catch (java.io.IOException e) { throw new RuntimeException(e); } }, "oldest compacted key cannot redispatch after reload");
+  require(capacityReloaded.retiredCount() == 301 && capacityReloaded.isRetired(longId + 0) && !capacityReloaded.isRetired("fresh-id"), "filter survives reload");
+  require(capacityReloaded.beginDispatch("fresh-after-reload", one, "x", 3, new int[] { 1 }, 100000, 7) != null, "fresh IDs send after reload");
+  // Cancelled records never reached Android, so pruning them does not disable delivery attribution.
+  require(!capacity.ambiguousProviderOwner(afterLifetime, 0, 600000), "cancelled-only pruning keeps attribution");
+
+  // A pruned dispatched record disables attribution only for records near or before it.
+  SmsSendJournal watermark = new SmsSendJournal(new File(dir, "watermark"));
+  for (int i = 0; i <= SmsSendJournal.MAX_RECORDS; i++) { watermark.beginDispatch("w" + i, one, "w" + i, 3, new int[] { 1 }, 1000 + i, 7); watermark.endDispatch("w" + i, true); watermark.sentResult("w" + i, 0, true); }
+  require(watermark.get("w0") == null, "dispatched record pruned");
+  SmsSendJournal.Record nearPruned = watermark.get("w1");
+  require(watermark.ambiguousProviderOwner(nearPruned, 0, 600000), "records within the window of a pruned send stay unknown");
+  SmsSendJournal.Record later = watermark.beginDispatch("later", one, "later", 3, new int[] { 1 }, 1000 + 600000 + 10, 7);
+  require(!watermark.ambiguousProviderOwner(later, 0, 600000), "records after the window attribute again");
+  require(new SmsSendJournal(new File(dir, "watermark")).ambiguousProviderOwner(nearPruned, 0, 600000), "watermark survives reload");
+  // A journal saved before the watermark existed keeps attribution off once anything was pruned.
+  File legacyFile = new File(dir, "legacy");
+  Files.write(legacyFile.toPath(), ("t1|old|" + xHash + "\n").getBytes("UTF-8"));
+  SmsSendJournal legacyJournal = new SmsSendJournal(legacyFile);
+  SmsSendJournal.Record legacyLater = legacyJournal.beginDispatch("legacy-later", one, "x", 3, new int[] { 1 }, 999999999, 7);
+  require(legacyJournal.ambiguousProviderOwner(legacyLater, 0, 600000), "legacy pruned journal never guesses attribution");
+  SmsSendJournal failing = new SmsSendJournal(new SmsSendJournal.Storage() {
+   public String read() { return null; }
+   public void write(String value) throws java.io.IOException { throw new java.io.IOException("secure storage failed"); }
+  });
+  throwsOn(() -> { try { failing.beginDispatch("blocked", one, "x", 3, new int[] { 1 }, 1, 7); } catch (java.io.IOException e) { throw new RuntimeException(e); } }, "secure storage failure refuses dispatch");
+  require(failing.get("blocked") == null, "failed initial storage has no dispatched record");
+
+  SmsSendJournal.ProviderMatch unique = new SmsSendJournal.ProviderMatch();
+  unique.visit(1, false, false); unique.visit(2, true, false);
+  require(unique.result() == 2, "one fully enumerated provider match");
+  unique.visit(3, true, false); require(unique.result() == 0, "identical provider messages are ambiguous");
+  SmsSendJournal.ProviderMatch claimed = new SmsSendJournal.ProviderMatch(); claimed.visit(2, true, true);
+  require(claimed.result() == 0, "another operation owns the row");
+  SmsSendJournal.ProviderMatch truncated = new SmsSendJournal.ProviderMatch(); truncated.visit(1, true, false);
+  for (int i = 0; i < 20; i++) truncated.visit(i + 2, false, false);
+  require(truncated.result() == 0, "bounded incomplete enumeration proves no match");
+  SmsSendJournal attribution = new SmsSendJournal(new File(dir, "attribution"));
+  SmsSendJournal.Record first = attribution.beginDispatch("first", one, "same", 3, new int[] { 1 }, 1000, 7);
+  attribution.endDispatch("first", true);
+  require(!attribution.ambiguousProviderOwner(first, 0, 600000), "one operation can own unique row");
+  attribution.beginDispatch("second", one, "same", 3, new int[] { 1 }, 2000, 7);
+  require(attribution.ambiguousProviderOwner(first, 0, 600000), "two identical reviewed sends cannot steal delivery evidence");
+
   // A damaged journal is an error, never an empty journal that would allow a resend.
   Files.write(file.toPath(), "v1|broken\n".getBytes("UTF-8"));
   throwsOn(() -> { try { new SmsSendJournal(file); } catch (java.io.IOException e) { throw new RuntimeException(e); } }, "damaged journal refused");
+
+  // Equal timestamps across thread/SMS/MMS boundaries preserve every stable row.
+  SmsPageCursor cursor = SmsPageCursor.parse("1000:mms:5", false);
+  require(cursor.admits(1000, "mms", 4) && cursor.admits(1000, "sms", 99), "equal-time rows continue by kind and ID");
+  require(!cursor.admits(1000, "mms", 5) && !cursor.admits(1000, "mms", 6), "cursor excludes rows already shown");
+  require(cursor.admits(999, "sms", 100), "older rows continue");
+  require(SmsPageCursor.parse("1000:thread:5", true).admits(1000, "thread", 4), "equal-time threads continue");
+  require(SmsPageCursor.parse("1500:sms:5", false).predicate("mms", "date", "_id").equals("date <= 1"), "MMS seconds preserve fractional timestamp boundary");
+  throwsOn(() -> SmsPageCursor.parse("1000:thread:5", false), "cursor kind bound");
 
   // Provider mapping.
   require("incoming".equals(SmsRecords.direction(SmsRecords.INBOX)) && "outgoing".equals(SmsRecords.direction(SmsRecords.OUTBOX)) && SmsRecords.direction(SmsRecords.DRAFT) == null, "direction");

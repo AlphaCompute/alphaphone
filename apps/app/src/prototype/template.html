@@ -423,6 +423,26 @@
 
 
 <sc-if value="{{is.messages}}">
+<sc-if value="{{messages.nativeManaged}}">
+ <div class="scr" style="height:100%;overflow-y:auto;padding:56px 20px 120px;box-sizing:border-box">
+  <h1>Text messages</h1><p>SMS and MMS text can be read here. MMS sending and attachments use your existing messaging app, which remains the default.</p>
+  <p role="status">{{messages.nativeStatus}}</p>
+  <button onClick="{{messages.nativeRead}}" style="min-height:44px">SMS read access</button>
+  <button onClick="{{messages.nativeSendAccess}}" style="min-height:44px">SMS send access</button>
+  <button onClick="{{messages.nativeSimAccess}}" style="min-height:44px">SIM access</button>
+  <button onClick="{{messages.nativeRefresh}}" disabled="{{messages.nativeBusy}}" style="min-height:44px">Refresh</button>
+  <h2>Compose SMS</h2>
+  <label>Phone numbers, separated by commas<input disabled="{{messages.nativeBusy}}" aria-label="SMS recipients" value="{{messages.nativeRecipients}}" onChange="{{messages.nativeOnRecipients}}" style="width:100%;min-height:44px;box-sizing:border-box" maxlength="110"></label>
+  <label>Message<textarea disabled="{{messages.nativeBusy}}" aria-label="SMS text" value="{{messages.nativeBody}}" onChange="{{messages.nativeOnBody}}" style="width:100%;min-height:96px;box-sizing:border-box" maxlength="1600"></textarea></label>
+  <p>{{messages.nativeSim}}</p><sc-for list="{{messages.nativeSims}}" as="sim"><button disabled="{{messages.nativeBusy}}" onClick="{{sim.pick}}" style="min-height:44px">{{sim.label}}</button></sc-for>
+  <button onClick="{{messages.nativeSend}}" disabled="{{messages.nativeBusy}}" style="min-height:44px">Review SMS</button><button disabled="{{messages.nativeBusy}}" onClick="{{messages.nativeClear}}" style="min-height:44px">Clear draft</button>
+  <button onClick="{{messages.nativeHandoff}}" disabled="{{messages.nativeBusy}}" style="min-height:44px">Review in messaging app (choose SIM there)</button><p role="status">{{messages.nativeNotice}}</p>
+  <h2>Recent Alpha send records</h2><sc-for list="{{messages.nativeReceipts}}" as="receipt"><p>{{receipt.label}}</p></sc-for>
+  <h2>Device messages</h2><sc-if value="{{messages.nativeInThread}}"><button onClick="{{messages.nativeBack}}">All conversations</button></sc-if><sc-for list="{{messages.nativeThreads}}" as="thread"><button onClick="{{thread.open}}" style="display:block;width:100%;text-align:left;margin:8px 0"><strong>{{thread.label}}</strong><p>{{thread.snippet}}</p></button></sc-for><sc-for list="{{messages.nativeRows}}" as="row"><article style="border-top:1px solid var(--s2);padding:12px 0"><strong>{{row.address}}</strong><p>{{row.direction}} · {{row.when}} · Subscription {{row.subscriptionId}}</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">{{row.body}}</p></article></sc-for>
+  <sc-if value="{{messages.nativeMore}}"><button onClick="{{messages.nativeLoadMore}}" disabled="{{messages.nativeBusy}}" style="min-height:44px">Older messages</button></sc-if>
+ </div>
+</sc-if>
+<sc-if value="{{messages.nativePrototype}}">
 <div style="display: flex; flex-direction: column; height: 100%; position: relative">
   <sc-if value="{{messages.notSearching}}">
     <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
@@ -582,7 +602,7 @@
   </sc-if>
 </div>
 </sc-if>
-
+</sc-if>
 
 <sc-if value="{{is.inbox}}">
 <div onFocusCapture="{{inbox.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
