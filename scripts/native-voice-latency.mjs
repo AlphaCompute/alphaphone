@@ -52,7 +52,7 @@ export function aggregateNativeVoice(documents, required = { warm: 20, cold: 5 }
     const result = { identity, trials: rows.length, failures: rows.filter(row => row.outcome === 'failed').length, cancelled: rows.filter(row => row.outcome === 'cancelled').length };
     for (const cold of [false, true]) result[cold ? 'cold' : 'warm'] = statistics(passed.filter(row => row.cold === cold).map(row => row.marks['audible-playback'] - row.marks['last-user-audio']));
     result.sufficient = passed.length >= 50 && result.warm.samples >= Math.max(20, required.warm) && result.cold.samples >= Math.max(5, required.cold);
-    result.withinBudget = result.sufficient && !result.failures && !result.cancelled && result.warm.p95 <= 6000 && result.cold.p95 <= 6000;
+    result.withinBudget = result.sufficient && !result.failures && !result.cancelled && result.warm.max <= 6000 && result.cold.max <= 6000;
     return result;
   });
   return { boundary: 'last-user-audio to audible-playback, including endpoint detection and buffering', units: 'ms', requiredSuccessfulTrials: 50, budgetMs: 6000, invalid, conflictingTrials: conflicts.size, cohorts,

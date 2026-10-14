@@ -105,6 +105,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const text = JSON.stringify(summary, null, 2);
   if (options.out) fs.writeFileSync(options.out, text + '\n'); else console.log(text);
   if (!summary.sufficient) { console.error('Insufficient native audio evidence: require at least 50 successful simple-query trials per source/model/device/environment cohort, including the requested warm/cold minimums. Legacy renderer samples are diagnostic only; inspect native.invalid and native.conflictingTrials for rejected records.'); process.exit(2); }
-  if (!summary.native.withinBudget) { console.error('Native audio evidence failed the latency/reliability check: inspect cold/warm p95 against 6000 ms and failures/cancelled counts in native.cohorts.'); process.exit(3); }
+  if (!summary.native.withinBudget) { console.error('Native audio evidence failed the latency/reliability check: inspect cold/warm max against the 6000 ms upper budget and failures/cancelled counts in native.cohorts.'); process.exit(3); }
   console.error('Native timing sample and budget checks passed. Clock provenance, microphone/speaker quality and target-device acceptance still require review.');
 }

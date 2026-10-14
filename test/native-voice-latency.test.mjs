@@ -73,3 +73,13 @@ test('CLI distinguishes insufficient samples, failed budgets and measured timing
     assert.equal(run([...samples(), failed]).status, 3);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+
+test('the six-second upper budget rejects a single slow outlier even when p95 passes', () => {
+  const rows = samples(); rows[49] = trial(49, 60000);
+  const summary = aggregateNativeVoice([document(rows)]);
+  assert.equal(summary.sufficient, true);
+  assert.equal(summary.cohorts[0].warm.p95, 5900);
+  assert.equal(summary.cohorts[0].warm.max, 60000);
+  assert.equal(summary.withinBudget, false);
+});
