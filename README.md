@@ -151,12 +151,11 @@ For real host inference and speech, follow the separate [local agent setup](docs
 **Settings → Character → Wake assistant** opens the recording UI; recording starts
 only after Start recording is selected.
 
-Voice recording in the web build is transcribed locally by Whisper tiny.en (English only) in a
-browser worker; audio is not uploaded and the transcript is always reviewed before it is saved
-or used. The ~56 MB model is downloaded once at build time by `npm run browser-speech:prepare`
-(run automatically before `build` and the dev servers), self-hosted under `browser-speech/` and
-loaded only on the first transcription. APKs omit it. See
-[in-browser speech recognition](docs/browser-speech-recognition.md).
+The web build retains browser audio capture and reviewed manual transcripts. Browser-local
+speech recognition is unavailable after the shared ONNX engine retirement. An explicitly
+selected development agent can transcribe an owned recording; no automatic network fallback
+is used. Production Android speech uses the native engine. See
+[browser recording and transcription](docs/browser-speech-recognition.md).
 
 Deleted notes, including voice notes, move to a Trash inside Notes and are erased
 automatically 3 days after deletion; Undo, Restore, Delete forever and Empty Trash are
