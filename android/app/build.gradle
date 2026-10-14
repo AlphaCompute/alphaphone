@@ -23,7 +23,8 @@ if (!releaseSigningReady && releaseSigningMissing.size() < releaseSigningNames.s
  throw new GradleException("[release-signing] incomplete signing environment. Missing: ${releaseSigningMissing.join(', ')}. Set all four ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS and ELIZAOS_KEY_PASSWORD, or none.")
 if (releaseSigningReady && !file(envValue('ELIZAOS_KEYSTORE_PATH')).isFile())
  throw new GradleException('ELIZAOS_KEYSTORE_PATH does not name a readable keystore file')
-// Verified App Links return for Eliza Cloud delegation. Unset by default: no https autoVerify
+// Verified App Links return for Eliza Cloud delegation and the in-app Cloud sign-in
+// (/alphaphone/auth/callback, which Steward returns to only on eliza.app). Unset by default: no https autoVerify
 // filter is emitted. When set, a generated overlay adds the filter for ${appLinkHost}; publish
 // the assetlinks.json rendered by scripts/render-assetlinks.mjs on that host first.
 def appLinkHostRaw = project.findProperty('ELIZAOS_APP_LINK_HOST') ?: envValue('ELIZAOS_APP_LINK_HOST')
@@ -39,6 +40,7 @@ if (appLinkHost) {
  <application>
   <activity android:name="${identity.appId}.MainActivity">
    <intent-filter android:autoVerify="true"><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="https" android:host="\${appLinkHost}" android:pathPrefix="/alphaphone/cloud-delegation"/></intent-filter>
+   <intent-filter android:autoVerify="true"><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="https" android:host="\${appLinkHost}" android:path="/alphaphone/auth/callback"/></intent-filter>
   </activity>
  </application>
 </manifest>
@@ -66,6 +68,8 @@ android {
   buildConfigField 'String', 'ELIZA_CHROMIUM_PACKAGE_NAME', '""'
   buildConfigField 'String', 'ELIZA_CHROMIUM_CERT_SHA256', '""'
   buildConfigField 'boolean', 'ELIZA_DEV_ALLOW_TEST_MOCKS', 'false'
+  // The verified App Link host this build declares (ELIZAOS_APP_LINK_HOST), or "" when none.
+  buildConfigField 'String', 'ELIZAOS_APP_LINK_HOST', "\"${appLinkHost}\""
   // libelizainference ASR backend and decode threads, exported by the pinned ElizaVoiceNative
   // (ElizaAsrNativeEnv) before the library loads. The APK ships only Phonon-2
   // (android/paradee-voice/asr-inputs.json), so the default is parakeet; an explicit

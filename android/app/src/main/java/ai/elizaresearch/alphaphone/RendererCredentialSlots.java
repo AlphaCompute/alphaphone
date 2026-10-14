@@ -5,7 +5,9 @@ final class RendererCredentialSlots {
  private static final String[] NATIVE_NAMESPACES = {
   "gmail-background", "native-delete-journal", "native-delete-installation", "native-digest-source", "resident-results", "local-agent-provider", "workflow-notice-taps",
   "workflow-notice-delivery", "workflow-notice-owner", "workflow-approval-notices", "action-journal", "hosted-background",
-  "hosted-digests", "hosted-notices", "note-audio-metadata", "reminder-taps"
+  "hosted-digests", "hosted-notices", "note-audio-metadata", "reminder-taps",
+  // In-app Cloud sign-in: the pending Google PKCE record and the key acknowledgement receipt.
+  "cloud-signin"
  };
  static String requireAllowed(String slot) {
   if (slot == null || slot.isEmpty() || slot.length() > 1024) throw new SecurityException("Invalid credential slot");
