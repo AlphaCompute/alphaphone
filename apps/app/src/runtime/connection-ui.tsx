@@ -342,8 +342,8 @@ function errorMessage(error: unknown): string {
 async function work(message: string, action: (signal: AbortSignal) => Promise<void>, showDialog = true) {
   if (operation) return;
   const controller = new AbortController(); operation = controller;
+  // A step without the dialog (for example a plan change rebinding the running agent) stays quiet.
   update({ busy: true, ...(showDialog ? {open:true} : {}), message, error: '' });
-
   try { await action(controller.signal); }
   catch (error) {
     if(controller.signal.aborted&&!state.open){update({error:'',message:''});return;}
@@ -352,10 +352,19 @@ async function work(message: string, action: (signal: AbortSignal) => Promise<vo
       try { await previous.cloud.disconnect(); }
       catch { update({ error: 'The expired connection is detached, but its stored credential could not be removed.', open: true, message: '' }); return; }
     }
-    update({ error: errorMessage(error), ...(!showDialog&&!state.open?{purpose:'cloud-account' as const}:{}), open: true, message: '' });
+    update({ error: errorMessage(error), ...(!showDialog&&!state.open?{purpose:residentCloudFlow()?'agent' as const:'cloud-account' as const}:{}), open: true, message: '' });
   }
   finally { if (operation === controller) operation = null; update({ busy: false, ...(!showDialog&&!state.open?{message:''}:{}) }); runQueuedResidentRebind(); }
-
+}
+function activate(next: Active, session: VerifiedSession, name: string) {
+  retireReadReplies();
+  active?.viewNavigation?.dispose();
+  actionReceipts.clear();
+  conversationMemory.clear();
+  cancelStoppedReply();
+  for(const request of automationsRequests)request.abort(new DOMException('The connection changed','AbortError'));
+  epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
+  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, historyError: '', historyPartial:false, replyNotice:'', actionHistory: [], kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
 }
 /**
  * Applies a plan change to the running on-device agent: re-admits the account, binds or unbinds
@@ -372,16 +381,6 @@ function queueResidentRebind() {
   void work('Updating your agent…', async signal => { retire(); await connectResident(signal); if (shown && state.open && !state.message) update({ message: shown }); }, false);
 }
 function runQueuedResidentRebind() { if (residentRebindQueued && !operation) queueResidentRebind(); }
-function activate(next: Active, session: VerifiedSession, name: string) {
-  retireReadReplies();
-  active?.viewNavigation?.dispose();
-  actionReceipts.clear();
-  conversationMemory.clear();
-  cancelStoppedReply();
-  for(const request of automationsRequests)request.abort(new DOMException('The connection changed','AbortError'));
-  epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
-  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, historyError: '', historyPartial:false, replyNotice:'', actionHistory: [], kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
-}
 async function remoteIdentity(remote: RemoteProtocol, signal: AbortSignal) {
   const credential = await remoteCredentialStore.read(remote.origin);
   if (!credential || !remote.session) throw new Error('Pair this agent before connecting.');

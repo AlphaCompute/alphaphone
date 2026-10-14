@@ -46,7 +46,6 @@ test('reconnects retire the session while busy, and the notice owner update carr
   f.retire();await f.drain();assert.equal(f.controller.getSnapshot().session,null);assert.deepEqual(f.transitions,['A'],'the notice owner stays fenced while the reconnection is busy');
  });
  await f.drain();assert.equal(f.controller.getSnapshot().error,'');assert.deepEqual(f.transitions,['A',null],'the settled missing session retires the notice owner');
-
  assert.match(controller,/async startLocal\(\) \{ await work\('Starting the local agent…', signal => \{ retire\(\);/);
  assert.match(adapter,/startupResolved:connectionController\.getSnapshot\(\)\.startupResolved,busy:connectionController\.getSnapshot\(\)\.busy\}\)/);
 });
