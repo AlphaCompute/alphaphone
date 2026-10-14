@@ -79,7 +79,9 @@ final class GmailDelivery {
   }catch(Exception failure){synchronized(JsonCredentialSlots.LOCK){guard.check();engine(binding).failure(failure instanceof IllegalStateException?"capacity-reached":"retrying");}return false;}
  }
  private void publishNotices(JSONObject binding,GmailReconciliation.Guard guard)throws Exception{for(int i=0;i<25;i++){synchronized(JsonCredentialSlots.LOCK){guard.check();GmailReconciliation e=engine(binding);e.publish();if(!e.hasPending())return;}}}
- void capture(String key)throws Exception{synchronized(JsonCredentialSlots.LOCK){JSONObject s=saved();if(s!=null)engine(s.getJSONObject("binding")).capture(key);}}
+ void capture(String key)throws Exception{capture(key,false);}
+ void capture(String key,boolean question)throws Exception{synchronized(JsonCredentialSlots.LOCK){JSONObject s=saved();if(s!=null)engine(s.getJSONObject("binding")).capture(key,question);}}
  JSONObject pending(GmailReconciliation.Guard foreground)throws Exception{foreground.check();JSONObject binding;synchronized(JsonCredentialSlots.LOCK){JSONObject s=saved();if(s==null)return new JSONObject();binding=s.getJSONObject("binding");if(!engine(binding).pending().has("token"))return new JSONObject();}verify(binding,()->{foreground.check();synchronized(JsonCredentialSlots.LOCK){current(binding);}});foreground.check();synchronized(JsonCredentialSlots.LOCK){foreground.check();return engine(binding).pending();}}
+ void releaseQuestion(String token,GmailReconciliation.Guard foreground)throws Exception{foreground.check();synchronized(JsonCredentialSlots.LOCK){foreground.check();JSONObject s=saved();if(s==null)throw new SecurityException();engine(s.getJSONObject("binding")).releaseQuestion(token);}}
  void consume(String token,GmailReconciliation.Guard foreground)throws Exception{foreground.check();synchronized(JsonCredentialSlots.LOCK){foreground.check();JSONObject s=saved();if(s==null)throw new SecurityException();engine(s.getJSONObject("binding")).consume(token);}}
 }

@@ -6,7 +6,7 @@ import { validateMapsSelectedObject } from '../maps/agent-context.ts';
 import type { ContextEnvelope } from './alpha-client';
 
 const views = new Set(['home', 'assistant', 'apps', 'maps', 'camera', 'photos', 'notes', 'calendar', 'notifications', 'reminders', 'workflows', 'files', 'inbox', 'browser', 'phone', 'messages', 'contacts', 'settings']);
-const kinds = new Set(['note', 'document', 'photo', 'video', 'browser-tab', 'calendar-event', 'calendar-source', 'event', 'reminder', 'contact', 'email', 'file', 'workflow', 'workflow-run', 'map-place', 'map-route', 'map-search','clock-draft','folder','notification','settings']);
+const kinds = new Set(['note', 'document', 'photo', 'video', 'browser-tab', 'calendar-event', 'calendar-source', 'event', 'reminder', 'contact', 'email', 'file', 'workflow', 'workflow-run', 'map-place', 'map-route', 'map-search','clock-draft','folder','notification','settings','sms-subscription']);
 /** Marker for Alpha Phone's own notifications; other apps' and hosted notices never become context. */
 export const OWN_NOTIFICATION_SOURCE = 'own';
 const SETTINGS_SECTION = /^[a-z][a-z0-9-]{0,63}$/;
@@ -36,6 +36,10 @@ export function sanitizePhoneContext(input: ContextEnvelope): ContextEnvelope {
     }
     if(selected.kind==='settings'){
       if(input.view!=='settings'||typeof selected.id!=='string'||!SETTINGS_SECTION.test(selected.id)||SENSITIVE_SETTINGS.test(selected.id)||selected.revision!==undefined||selected.accountId!==undefined||selected.sourceRevision!==undefined||selected.occurrenceId!==undefined)throw new Error('This settings page cannot share agent context.');
+    }
+    if(selected.kind==='sms-subscription'){
+      // Android subscription id plus an opaque slot/carrier revision; never a number, carrier or SIM name.
+      if(input.view!=='messages'||typeof selected.id!=='string'||!/^\d{1,10}$/.test(selected.id)||typeof selected.revision!=='string'||!/^slot\d{1,3}-[0-9a-f]{8}$/.test(selected.revision)||selected.accountId!==undefined||selected.sourceRevision!==undefined||selected.occurrenceId!==undefined)throw new Error('The selected SIM observation is no longer current.');
     }
     if(selected.kind==='workflow-run'){
       if(input.view!=='workflows'||selected.revision===undefined||selected.accountId!==undefined||selected.sourceRevision!==undefined||selected.occurrenceId!==undefined)throw new Error('The workflow execution observation is no longer current.');

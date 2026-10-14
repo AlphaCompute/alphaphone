@@ -271,6 +271,8 @@ test('production ignores the development render-failure hook', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Agent connection', exact: true })).toBeVisible();
 });
 
+// Production speech is device-only (owner rule): the browser build has no on-device engine, so a
+// signed-out user is told to retry local speech or type, and no Cloud or network voice route is offered.
 test('production signed-out voice stays on-device with no capture, upload or Cloud route under the shipped CSP', async ({ page }) => {
   const violations = await trackCsp(page);
   const foreign: string[] = [], uploads: string[] = [], engines: string[] = [];

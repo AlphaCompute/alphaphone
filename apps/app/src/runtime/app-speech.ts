@@ -14,7 +14,7 @@ export async function speakAppText(text:string,signal:AbortSignal,onStarted?:()=
  const interrupted=new Promise<never>((_,reject)=>owned.signal.addEventListener('abort',()=>{if(!admitted)reject(owned.signal.reason);},{once:true}));void interrupted.catch(()=>{});
  const pending=(async()=>{
   current();const voice=createOnDeviceVoice();await previous;current();admitted=true;
-  if(!voice||!await voice.ready(owned.signal))throw Error('On-device speech is unavailable. Retry local speech or read the text.');
+  if(!voice||!await voice.playbackReady(owned.signal))throw Error('On-device speech is unavailable. Retry local speech or read the text.');
   current();let marked=false;
   try{await voice.speak(text,owned.signal,()=>{current();marked=true;markTtsPlaybackStarted();onStarted?.();},true,{queue,assertCurrent:current});current();}
   finally{if(marked)markTtsPlaybackEnded();}

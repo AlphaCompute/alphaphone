@@ -1,3 +1,5 @@
+import {aospImage} from './aosp-image';
+import {SMS_SEND_CAPABILITY} from './sms-agent-contract';
 import {automationsRouteAllowed, type AutomationsMethod} from './automations-route-policy.ts';
 import {iconStyle} from '../icon-style';
 import {validateUuid} from '../../../../vendor/eliza/packages/core/src/utils/uuid';
@@ -249,6 +251,8 @@ async function deviceCapabilities(offered:unknown):Promise<string>{
   if(availabilityNegotiated(agent))capabilities.push(CALENDAR_AVAILABILITY_CAPABILITY);
   if(android&&agent.includes('clock.handoff.v1'))capabilities.push('clock.handoff.v1');
   if(android&&agent.includes('clock.handoff.v2')&&await clockRepeatDaysSupported())capabilities.push('clock.handoff.v2');
+  // SMS sending is negotiated only on the AOSP image, where Alpha holds the SMS role.
+  if(aospImage&&agent.includes(SMS_SEND_CAPABILITY))capabilities.push(SMS_SEND_CAPABILITY);
   return capabilities.join(',');
 }
 let deviceReadReview:((proposal:ActionProposal,context:ContextEnvelope,signal:AbortSignal)=>Promise<void>)|undefined;

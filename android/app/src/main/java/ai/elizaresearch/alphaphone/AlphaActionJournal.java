@@ -31,6 +31,7 @@ final class AlphaActionJournal {
  }
  static void checkResult(JSONObject entry,String status,JSONObject result)throws Exception{
   JSONObject retainedOperation=entry.getJSONObject("record").optJSONObject("operation");
+  if(retainedOperation!=null&&"sms_send".equals(retainedOperation.optString("type"))){SmsActionJournalResult.check(entry,status,result);return;}
   // A free/busy answer holds up to 200 busy intervals: it has its own exact shape and bound.
   if(retainedOperation!=null&&CalendarAvailabilityJournalResult.TYPE.equals(retainedOperation.optString("type"))){CalendarAvailabilityJournalResult.check(retainedOperation,entry.getString("operationId"),status,result);return;}
   if("succeeded".equals(status)&&entry.getJSONObject("record").has("workflow")&&retainedOperation!=null&&Set.of("read_selected_notes","read_calendar_range").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();

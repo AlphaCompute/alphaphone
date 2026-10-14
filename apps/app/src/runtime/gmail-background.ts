@@ -1,12 +1,13 @@
 import {registerPlugin} from '../platform-plugins';
 import {isAndroid} from '../native';
 export interface GmailBackgroundStatus {status:string;lastSyncAt?:number;incompleteCatchup?:boolean;uncertainNotices?:number;deniedNotices?:number;notificationsAllowed?:boolean;grantId?:string}
-export interface GmailNoticeTap {token:string;grantId:string;credentialId:string;userId:string;generation:string}
+export interface GmailNoticeTap {token:string;grantId:string;credentialId:string;userId:string;generation:string;question?:boolean;messageId?:string;threadId?:string}
 const native=registerPlugin<{
  configure(input:{credentialId:string;grantId:string}):Promise<GmailBackgroundStatus>;
  withdraw(input?:{grantId?:string}):Promise<void>;
  status():Promise<GmailBackgroundStatus>;
  pending():Promise<Partial<GmailNoticeTap>>;
+ releaseQuestion(input:{token:string}):Promise<void>;
  consume(input:{token:string}):Promise<void>;
  notificationSettings():Promise<void>;
  addListener(name:'pendingMail',handler:()=>void):Promise<{remove():Promise<void>}>;
@@ -45,3 +46,5 @@ export async function consumeGmailNotice(token:string){if(isAndroid)await native
 const noListener={remove:async()=>{}};
 /** A missing native bridge (older shell, test fixture) means no background taps, never an unhandled rejection. */
 export function onGmailNotice(handler:()=>void):Promise<{remove():Promise<void>}>{if(!isAndroid)return Promise.resolve(noListener);try{return Promise.resolve(native.addListener('pendingMail',handler)).catch(()=>noListener);}catch{return Promise.resolve(noListener);}}
+
+export async function releaseGmailQuestion(token:string){if(isAndroid)await native.releaseQuestion({token});}

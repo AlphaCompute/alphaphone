@@ -51,6 +51,7 @@ export function createOnDeviceVoice() {
     finally { modeChanged?.disconnect(); signal.removeEventListener('abort', cancel); document.removeEventListener('visibilitychange', visibility); unsubscribe(); }
   }
   return {
+    /** Transcription readiness. */
     async ready(signal: AbortSignal) { return operation(signal, async (requestId, interrupted) => { const result = await Promise.race([native.localSpeechStatus({ requestId }), interrupted]); return result.ready === true && result.execution === (Capacitor.isNativePlatform()?'device':'browser'); }); },
     /** Read-aloud readiness: a browser without the local agent can still use its own local voices. */
     async playbackReady(signal: AbortSignal) { return operation(signal, async (requestId, interrupted) => { const result = await Promise.race([native.localSpeechStatus({ requestId }), interrupted]); return (result.ready === true || result.playback === true) && result.execution === (Capacitor.isNativePlatform()?'device':'browser'); }); },

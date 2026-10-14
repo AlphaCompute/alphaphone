@@ -1,3 +1,4 @@
+import {reviewOwnNoticeQuestion} from './own-notice-question';
 import {deletions,refreshDeletionViews,reminderDeletionRefusal} from '../runtime/deletions';
 import { alphaClient } from '../runtime/alpha-client';
 import { connectionController } from '../runtime/connection-ui';
@@ -24,11 +25,13 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
   views.calendar.state = { ...views.calendar.state, events: [] };
   let owner: Bag;
   const events = (rows: Reminder[]) => reminderEvents(rows);
+  let closeNoticeQuestion:(()=>void)|undefined;
   let tapBusy=false, tapRequested=false, tapInteraction=0;
   const interaction=()=>{tapInteraction++;};
   for(const name of ['openView','goHome','back']){const original=p[name];p[name]=function(...args:Bag[]){tapInteraction++;return original.apply(this,args);};}
   const sameTarget=(a:Bag,b:Bag)=>!!a&&!!b&&Object.keys(a).length===Object.keys(b).length&&Object.entries(a).every(([key,value])=>b[key]===value);
   async function checkReminderTap(explicit=false) {
+    if(closeNoticeQuestion)return;
     if(tapBusy){if(explicit)tapRequested=true;return;}
     const shell=owner;
     if(!Capacitor.isNativePlatform()||!shell?.live||document.hidden||connectionController.getSnapshot().open||alphaClient.getState().context.sensitive||shell.vget('calendar').form)return;
@@ -58,6 +61,18 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
       // Consume only after the exact detail is visible. Native rechecks the current
       // source, occurrence and revision; a newer queued tap cannot be consumed here.
       if(tapInteraction!==openingInteraction||owner!==shell||!shell.live||document.hidden||shell.S().view!=='calendar'||shell.vget('calendar').open!==target.id)return;
+      if(pending.question){
+        const session=connectionController.getSnapshot().session,enrollment=JSON.stringify(connectionController.getWorkflowDeviceTarget());
+        if(!session){shell.toast('Select an agent before asking about this reminder. The notification is retained.');return;}
+        const live=()=>owner===shell&&shell.live&&!document.hidden&&!connectionController.getSnapshot().open&&!alphaClient.getState().context.sensitive&&connectionController.getSnapshot().session===session&&JSON.stringify(connectionController.getWorkflowDeviceTarget())===enrollment&&shell.S().view==='calendar'&&shell.vget('calendar').open===target.id;
+        closeNoticeQuestion=reviewOwnNoticeQuestion({notice:{id:selected.id,revision:pending.target.revision,source:'own',title:selected.title,text:selected.body||'',appLabel:'Alpha Phone'},current:live,recheck:async()=>{
+          const again=await DailyApps.pendingReminderTap();if(!live()||again.token!==pending.token||!again.question||!again.retained||!sameTarget(again.target,pending.target))return false;
+          const fresh=await DailyApps.listReminders();return live()&&fresh.reminders.some(row=>sameTarget(row.target,pending.target)&&row.title===selected.title&&(row.body||'')===(selected.body||''));
+        },consume:()=>DailyApps.consumeReminderTap({token:pending.token!}),release:()=>DailyApps.releaseReminderQuestion({token:pending.token!}),compose:draft=>shell.api(shell.S().view).composeContentQuestion(draft),report:message=>shell.toast(message),closed:()=>{closeNoticeQuestion=undefined;
+          // Refresh only the saved-link banner from native; never reopen the review here.
+          void DailyApps.pendingReminderTap().then(next=>{if(owner===shell&&shell.live)shell.vset('calendar',{reminderTapPending:!!next.token,reminderTapToken:next.token});}).catch(()=>{});}});
+        return;
+      }
       await DailyApps.consumeReminderTap({token:pending.token});
       if(owner===shell&&shell.live)shell.vset('calendar',{reminderTapPending:false});
     } catch {if(current())shell.vset('calendar',{reminderTapPending:true});}
@@ -118,6 +133,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
     this.reminderTapListener=DailyApps.addListener('pendingReminderTap',()=>void checkReminderTap(true)).catch(()=>null);
   };
   p.componentWillUnmount = function () {
+    closeNoticeQuestion?.();closeNoticeQuestion=undefined;
     this.reminderTapConnection?.();
     document.removeEventListener('visibilitychange',this.reminderTapVisible);
     window.removeEventListener('pointerdown',interaction,true);window.removeEventListener('keydown',interaction,true);

@@ -227,13 +227,14 @@ test("standalone SMS stays unavailable at the UI and agent boundaries", async ()
   const { ADMITTED_AOSP_VIEW_ADAPTERS, admittedAospViews } = await import("../apps/app/src/runtime/aosp-image.ts");
   assert.ok(ADMITTED_AOSP_VIEW_ADAPTERS.includes("messages"));
   assert.deepEqual(admittedAospViews(false, ["messages", "phone", "contacts"]), []);
-  // Agent: the phone does not negotiate sms.send.v1 and its device-action validator has no sms_send
-  // operation until the shared contract (elizaOS/eliza#36178) is in the reviewed pin and the host admits
-  // it on the verified image only.
-  for (const file of ["apps/app/src/runtime/device-actions.ts", "apps/app/src/runtime/connection-ui.tsx"]) {
-    const source = read(file);
-    assert.doesNotMatch(source, /sms_send|sms\.send\.v1|SMS_SEND_CAPABILITY/, `${file} does not admit agent SMS sends`);
-  }
+  // Agent SMS is negotiated only by the verified image, then validated by the reviewed shared contract.
+  const connection=read("apps/app/src/runtime/connection-ui.tsx");
+  // One negotiation (deviceCapabilities) serves the resident, remote and Cloud runtimes.
+  assert.equal((connection.match(/if\(aospImage&&.*includes\(SMS_SEND_CAPABILITY\)/g)||[]).length,1);
+  assert.match(connection.slice(connection.indexOf('async function deviceCapabilities('),connection.indexOf("return capabilities.join(',');")),/if\(aospImage&&agent\.includes\(SMS_SEND_CAPABILITY\)\)capabilities\.push\(SMS_SEND_CAPABILITY\);/);
+  assert.equal((connection.match(/await deviceCapabilities\(/g)||[]).length,3);
+  assert.match(read("apps/app/src/runtime/device-actions.ts"),/claimed.providerIdempotencyKey!==operationId/);
+  assert.match(read("apps/app/src/prototype/agent-adapter.ts"),/if\(!aospImage\|\|expectedContext.sensitive/);
   const telephony = read("apps/app/src/runtime/aosp-telephony.ts");
   assert.doesNotMatch(telephony.replace(/\/\*[\s\S]*?\*\//g, ""), /location\.|localStorage|testMocksEnabled/, "nothing outside the native image capability turns messages on");
 });

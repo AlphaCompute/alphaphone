@@ -1,3 +1,4 @@
+import {reviewSourceRenewalQuestion,renewalMatches,type SourceRenewalTap} from './source-renewal-question';
 import {hostedTapResolver,reviewHostedNoticeQuestion} from './hosted-notice-question';
 import {iconStyle} from '../icon-style';
 import {registerPlugin} from '../platform-plugins';
@@ -50,7 +51,7 @@ type Pending = {
  /** Run now of this missed record (#394): hidden here once confirmed; the agent returns the same run on repeat. */
  missedRunId?:string;
 };
-const nativeSources=registerPlugin<{nativeSourceConsent(input:Record<string,unknown>):Promise<Record<string,unknown>>;nativeSourceIdentity(input:{sessionId:string}):Promise<Record<string,unknown>>;scheduleSourceRenewal(input:{sourceId:string;expiresAt:number}):Promise<void>;clearSourceRenewal(input:{sourceId:string}):Promise<void>;pendingSourceRenewal():Promise<{sourceId?:string}>;addListener(event:'renewSource',listener:()=>void):Promise<{remove():Promise<void>}>}>('AlphaHostedResults');
+const nativeSources=registerPlugin<{nativeSourceConsent(input:Record<string,unknown>):Promise<Record<string,unknown>>;nativeSourceIdentity(input:{sessionId:string}):Promise<Record<string,unknown>>;scheduleSourceRenewal(input:{selection:SourceRenewalTap['selection'];expiresAt:number}):Promise<void>;clearSourceRenewal(input:{selection:SourceRenewalTap['selection']}):Promise<void>;pendingSourceRenewal():Promise<Partial<SourceRenewalTap>>;settleSourceRenewal(input:{token:string;discard:boolean}):Promise<void>;addListener(event:'renewSource',listener:()=>void):Promise<{remove():Promise<void>}>}>('AlphaHostedResults');
 const nativeCalendars=registerPlugin<{requestWorkflowReadAccess():Promise<{status:string}>;workflowCalendars():Promise<{status:string;calendars:Array<{id:string;name:string;account:string;sourceRevision:string}>}>}>('AlphaCalendar');
 function canSyncResults(){return !document.hidden&&(isAndroid||(document.documentElement.dataset.devBackground!=='true'&&!browserScreenLocked()));}
 export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQuestion?:(draft:string,sessionId:string)=>boolean;canComposeQuestion?:(sessionId:string)=>boolean}={}) {
@@ -91,7 +92,7 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
 		[morning, setMorning] = useState("08:00"),
 		[evening, setEvening] = useState("18:00");
  const [nativeLabel,setNativeLabel]=useState('Phone sources');
- const [renewing,setRenewing]=useState<string|null>(null),[nativeOpen,setNativeOpen]=useState(false),[snapshotOpen,setSnapshotOpen]=useState(false),[renewTap,setRenewTap]=useState<string|null>(null);
+ const [renewing,setRenewing]=useState<string|null>(null),[nativeOpen,setNativeOpen]=useState(false),[snapshotOpen,setSnapshotOpen]=useState(false);
  const [calendarChoices,setCalendarChoices]=useState<Array<{id:string;name:string;account:string;sourceRevision:string}>>([]),[selectedCalendars,setSelectedCalendars]=useState<string[]>([]),[selectedReminders,setSelectedReminders]=useState(false);
  useEffect(()=>{setCalendarChoices([]);setSelectedCalendars([]);setSelectedReminders(false);},[connection.session?.sessionId]);
 	const binding = useRef<{
@@ -187,6 +188,7 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
 			setMessage("Synced with this agent.");
             try {const status=await hostedResultNative.status();if(binding.current===b){setNoticeEnabled(status.enabled);setBackgroundEnabled(status.backgroundEnabled===true);}}catch{}
             await checkTap(signal);
+            await checkRenewal();
 		} catch {
 			if (binding.current === b && (timedOut || !signal.aborted) && !document.hidden)
 				setMessage(
@@ -324,11 +326,24 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
 			previous?.focus();
 		};
 	}, [open]);
-    // A Renew tap opens this panel at that source's renewal; it never renews by itself.
-    useEffect(()=>{if(!isAndroid)return;let live=true;const take=()=>{void nativeSources.pendingSourceRenewal().then(r=>{if(live&&r.sourceId){setOpen(true);setRenewTap(r.sourceId);}}).catch(()=>{});};const listener=nativeSources.addListener('renewSource',take).catch(()=>null);take();return()=>{live=false;void listener.then(l=>l?.remove());};},[]);
-    useEffect(()=>{if(!renewTap)return;const source=sources.find(s=>s.id===renewTap);if(!source)return;setRenewTap(null);startRenewal(source.id);},[renewTap,sources]);
+    // The native token carries the exact owner/enrollment/source revision, never an unbound source ID.
+    const renewalSources=useRef(sources);renewalSources.current=sources;
+    const renewalFlight=resolveTap;
+    const renewalStart=useRef(startRenewal);renewalStart.current=startRenewal;
+    const checkRenewal=()=>renewalFlight.current(async()=>{
+      const b=binding.current;if(!b||!canSyncResults()||questionBusy.current||questionClose.current)return;
+      try{const tap=await nativeSources.pendingSourceRenewal();if(!tap.token||!tap.selection||typeof tap.expiresAt!=='number'||binding.current!==b||!b.notices.current()||!canSyncResults())return;
+       const current=()=>mounted.current&&binding.current===b&&b.notices.current()&&canSyncResults()&&!connectionController.getSnapshot().open&&renewalSources.current.some(source=>!source.revoked&&source.live?.provider==='native'&&renewalMatches(tap as SourceRenewalTap,source.live,source.expiresAt));
+       if(!current())return;
+       if(tap.question){questionBusy.current=true;questionClose.current=reviewSourceRenewalQuestion({tap:tap as SourceRenewalTap,signal:b.controller.signal,current,recheck:()=>nativeSources.pendingSourceRenewal(),settle:discard=>nativeSources.settleSourceRenewal({token:tap.token!,discard}),compose:draft=>composeQuestion?.(draft,b.sessionId)===true,report:setMessage,closed:()=>{questionBusy.current=false;questionClose.current=undefined;}});if(!questionClose.current)questionBusy.current=false;return;}
+       await nativeSources.settleSourceRenewal({token:tap.token,discard:false});if(!current()){if(binding.current===b)setMessage('Source renewal changed before review opened. Nothing was renewed; renew it from Sources when it is current.');return;}setOpen(true);renewalStart.current(tap.selection.sourceId);
+      }catch{if(binding.current===b)setMessage('Source renewal is waiting for the matching account and current consent.');}
+    });
+    useEffect(()=>{if(!isAndroid)return;const listener=nativeSources.addListener('renewSource',()=>{void checkRenewal();}).catch(()=>null);void checkRenewal();return()=>{void listener.then(l=>l?.remove());};},[]);
+    useEffect(()=>{if(isAndroid)void checkRenewal();},[sources]);
     // Arm the background renewal notice for each phone source that keeps a schedule running.
-    useEffect(()=>{if(!isAndroid)return;for(const source of sources){if(source.live?.provider!=='native')continue;const bound=loops.some(l=>!l.removed&&l.spec.enabled&&l.spec.sourceId===source.id);if(bound&&!source.revoked)void nativeSources.scheduleSourceRenewal({sourceId:source.id,expiresAt:Date.parse(source.expiresAt)}).catch(()=>{});else void nativeSources.clearSourceRenewal({sourceId:source.id}).catch(()=>{});}},[sources,loops]);
+    useEffect(()=>{if(!isAndroid)return;for(const source of sources){if(source.live?.provider!=='native')continue;const bound=loops.some(l=>!l.removed&&l.spec.enabled&&l.spec.sourceId===source.id);if(bound&&!source.revoked)void nativeSources.scheduleSourceRenewal({selection:source.live,expiresAt:Date.parse(source.expiresAt)}).catch(()=>{});else void nativeSources.clearSourceRenewal({selection:source.live}).catch(()=>{});}},[sources,loops]);
+    function clearRenewal(id:string){const selection=renewalSources.current.find(source=>source.id===id)?.live;if(selection?.provider==='native')void nativeSources.clearSourceRenewal({selection}).catch(()=>{});}
     function startRenewal(id:string){
      const source=sources.find(s=>s.id===id);if(!source)return;setRenewing(id);setReview(null);setSourceId('');
      const bound=loops.find(l=>!l.removed&&l.spec.sourceId===id);if(bound)setZone(bound.spec.timeZone);
@@ -373,9 +388,9 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
               const source=(saved as {source?:{id?:unknown;revision?:unknown}}).source;
               if(binding.current!==b)return;if(!source||source.id!==body.id||typeof source.revision!=='string')throw Error('Renewed source receipt changed');
               for(const loop of value.rebind){if(binding.current!==b)return;await b.client.mutate('loops',{spec:{...loop.spec,sourceId:source.id,sourceRevision:source.revision},mutationId:loop.mutationId,confirmed:true,id:loop.id,expectedVersionId:loop.expectedVersionId},b.controller.signal);}
-              if(value.renews&&isAndroid)void nativeSources.clearSourceRenewal({sourceId:value.renews}).catch(()=>{});
+              if(value.renews&&isAndroid)clearRenewal(value.renews);
             }
-            if(value.path==='sources/revoke'&&isAndroid&&typeof body.id==='string')void nativeSources.clearSourceRenewal({sourceId:body.id}).catch(()=>{});
+            if(value.path==='sources/revoke'&&isAndroid&&typeof body.id==='string')clearRenewal(body.id);
             if(value.nativeConsent&&binding.current===b)setSourceId(value.nativeConsent.sourceId);
             if(value.renews&&binding.current===b)setRenewing(null);
             if(value.missedRunId&&binding.current===b){const id=value.missedRunId;setRanMissed(prior=>new Set([...prior,id]));}
