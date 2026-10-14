@@ -1,6 +1,7 @@
 package ai.elizaresearch.alphaphone;
 
 import static org.junit.Assert.*;
+import static org.junit.Assume.assumeTrue;
 
 import android.content.Context;
 import android.content.pm.PackageInfo;
@@ -20,8 +21,9 @@ import org.junit.runner.RunWith;
  * flavor launcher Home asks Android to open it (button and pull on empty Home, EXPAND_STATUS_BAR);
  * the standalone app is an ordinary app and never asks. Alpha draws no shade of its own.
  *
- * Emulator evidence when run; no run of this class is recorded yet. It is not AOSP-image, Pixel 10a
- * or TalkBack acceptance.
+ * The Home method needs a test-mocks app build (it is skipped on any other): a production Android
+ * build opens the Eliza Cloud sign-in gate over Home, which cannot be passed without an account. Emulator evidence only (see
+ * docs/verification.md); not AOSP-image, Pixel 10a or TalkBack acceptance.
  */
 @RunWith(AndroidJUnit4.class)
 public class SystemShadeInstrumentedTest {
@@ -64,9 +66,16 @@ public class SystemShadeInstrumentedTest {
  }
 
  @Test public void homeAsksAndroidForItsShadeOnTheLauncherOnly() throws Exception {
+  // A production Android build covers Home with the Eliza Cloud sign-in gate; only a test-mocks
+  // build offers "Continue offline" to reach Home without an account.
+  assumeTrue("Home is reachable without an account only in a test-mocks app build", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
   try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
    AppNavigation.liveMode(); js(AppNavigation.request("Home")); until(AppNavigation.selected("Home")); AppNavigation.declineStartupAccess();
+   // Home must be in front with nothing over it. The connection panel (a production build's Cloud
+   // sign-in gate) also reports Home as the active view while it covers Home and takes every
+   // touch, so a pull would land on the panel and the standalone half would pass vacuously.
+   until("!document.querySelector('.alpha-connection-scrim')");
    until(AndroidShade.ALPHA_SHADE_ABSENT);
    // The plugin call the button makes, with Alpha in front.
    js("window.__shadeOutcome=null;Capacitor.Plugins.AlphaDevice.openNotificationShade().then(r=>window.__shadeOutcome=r.status,()=>window.__shadeOutcome='rejected')");

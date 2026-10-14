@@ -72,10 +72,44 @@ final class AndroidShade {
   return null;
  }
 
- /** Taps the notification row that shows this text, as a person tapping it in the shade. */
+ static final String ROW_ID = SYSTEM_UI + ":id/expandableNotificationRow";
+
+ /** The notification row that owns this node (SystemUI's ExpandableNotificationRow), or null. */
+ static AccessibilityNodeInfo ownRow(AccessibilityNodeInfo node) {
+  for (int i = 0; node != null && i < 12; i++, node = node.getParent())
+   if (ROW_ID.equals(node.getViewIdResourceName())) return node;
+  return null;
+ }
+
+ private static boolean expandable(AccessibilityNodeInfo node) {
+  for (AccessibilityNodeInfo.AccessibilityAction action : node.getActionList())
+   if (action.getId() == AccessibilityNodeInfo.ACTION_EXPAND) return true;
+  return false;
+ }
+
+ /**
+  * Taps the notification row that shows this text, as a person tapping that notice in the shade.
+  * Only the notice's own row is clicked. Android 15 bundles two or more notices of one app into
+  * an automatic group ("ranker_group"); while that group is collapsed its children are previews
+  * inside the group's summary row, and clicking the summary is a tap on the group (measured on
+  * the API 35 emulator: it dispatched no child's intent and cancelled every notice in the group).
+  * So a collapsed group is expanded first, the way a person opens it, and the notice is found
+  * again and tapped on its own row. Returns false when no row of this notice can be tapped.
+  */
  static boolean tap(AccessibilityNodeInfo node) {
-  for (int i = 0; node != null && i < 8; i++, node = node.getParent())
-   if (node.isClickable() && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
+  if (node == null) return false;
+  CharSequence label = node.getText();
+  AccessibilityNodeInfo row = ownRow(node);
+  if (row == null) return false;
+  if (row.isClickable()) return row.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+  AccessibilityNodeInfo group = ownRow(row.getParent());
+  if (group == null || label == null || !expandable(group) || !group.performAction(AccessibilityNodeInfo.ACTION_EXPAND)) return false;
+  long end = SystemClock.uptimeMillis() + 5000;
+  do {
+   SystemClock.sleep(200);
+   AccessibilityNodeInfo again = ownRow(text(label.toString()));
+   if (again != null && again.isClickable()) return again.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+  } while (SystemClock.uptimeMillis() < end);
   return false;
  }
 }
