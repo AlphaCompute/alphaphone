@@ -166,6 +166,15 @@ public final class SmsSendJournalTest {
   Files.write(file.toPath(), "v1|broken\n".getBytes("UTF-8"));
   throwsOn(() -> { try { new SmsSendJournal(file); } catch (java.io.IOException e) { throw new RuntimeException(e); } }, "damaged journal refused");
 
+  // Equal timestamps across thread/SMS/MMS boundaries preserve every stable row.
+  SmsPageCursor cursor = SmsPageCursor.parse("1000:mms:5", false);
+  require(cursor.admits(1000, "mms", 4) && cursor.admits(1000, "sms", 99), "equal-time rows continue by kind and ID");
+  require(!cursor.admits(1000, "mms", 5) && !cursor.admits(1000, "mms", 6), "cursor excludes rows already shown");
+  require(cursor.admits(999, "sms", 100), "older rows continue");
+  require(SmsPageCursor.parse("1000:thread:5", true).admits(1000, "thread", 4), "equal-time threads continue");
+  require(SmsPageCursor.parse("1500:sms:5", false).predicate("mms", "date", "_id").equals("date <= 1"), "MMS seconds preserve fractional timestamp boundary");
+  throwsOn(() -> SmsPageCursor.parse("1000:thread:5", false), "cursor kind bound");
+
   // Provider mapping.
   require("incoming".equals(SmsRecords.direction(SmsRecords.INBOX)) && "outgoing".equals(SmsRecords.direction(SmsRecords.OUTBOX)) && SmsRecords.direction(SmsRecords.DRAFT) == null, "direction");
   require("received".equals(SmsRecords.smsStatus(1, -1, false)) && "read".equals(SmsRecords.smsStatus(1, -1, true)), "incoming status");

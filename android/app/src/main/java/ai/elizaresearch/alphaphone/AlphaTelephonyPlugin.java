@@ -342,7 +342,9 @@ public class AlphaTelephonyPlugin extends Plugin {
   if (refused(call)) return;
   Integer limit = call.getInt("limit", 20); long before = before(call);
   if (limit == null || limit < 1 || limit > SmsRecords.MAX_THREADS || before < 0) { call.reject("Invalid thread page", "invalid"); return; }
-  readSms(call, cancel -> AlphaSms.threads(getContext(), limit, before, cancel));
+  final SmsPageCursor cursor;
+  try { cursor = SmsPageCursor.parse(call.getString("cursor"), true); } catch (RuntimeException invalid) { call.reject("Invalid thread cursor", "invalid"); return; }
+  readSms(call, cancel -> AlphaSms.threads(getContext(), limit, before, cursor, cancel));
  }
 
  /** Messages of one thread, SMS and MMS, newest first. */
@@ -350,7 +352,9 @@ public class AlphaTelephonyPlugin extends Plugin {
   if (refused(call)) return;
   Integer limit = call.getInt("limit", 25); long before = before(call); long thread = SmsRecords.threadRow(call.getString("threadId", ""));
   if (limit == null || limit < 1 || limit > SmsRecords.MAX_MESSAGES || before < 0 || thread < 1) { call.reject("Invalid message page", "invalid"); return; }
-  readSms(call, cancel -> AlphaSms.messages(getContext(), thread, limit, before, cancel));
+  final SmsPageCursor cursor;
+  try { cursor = SmsPageCursor.parse(call.getString("cursor"), false); } catch (RuntimeException invalid) { call.reject("Invalid message cursor", "invalid"); return; }
+  readSms(call, cancel -> AlphaSms.messages(getContext(), thread, limit, before, cursor, cancel));
  }
 
  // ---- Incoming/outgoing change observation ----------------------------------------------------
@@ -408,6 +412,7 @@ public class AlphaTelephonyPlugin extends Plugin {
  private PluginCall reviewCall;
  private Runnable reviewCancelled;
  private void cancelReview() {
+  if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) { main.post(this::cancelReview); return; }
   android.app.AlertDialog open = review; Runnable cancelled = reviewCancelled;
   review = null; reviewCall = null; reviewCancelled = null;
   if (open != null) { open.setOnDismissListener(null); open.dismiss(); }
@@ -442,6 +447,10 @@ public class AlphaTelephonyPlugin extends Plugin {
   * The result is the shared `SmsSendResult`; "submitted" proves only that Android accepted the request.
   */
  @PluginMethod public void sendSms(PluginCall call) {
+  if (refused(call)) return;
+  main.post(() -> reviewSmsOnMain(call));
+ }
+ private void reviewSmsOnMain(PluginCall call) {
   if (refused(call)) return;
   String operationId = call.getString("operationId"), body = call.getString("body");
   String[] recipients = numbers(call.getArray("recipients"));
@@ -510,6 +519,16 @@ public class AlphaTelephonyPlugin extends Plugin {
  private void decide(PluginCall call, SmsSendJournal journal, String operationId, String[] recipients, String body, int subscriptionId, String decision, long now, long boot) {
   try { call.resolve(AlphaSms.result(journal.decide(operationId, recipients, body, subscriptionId, decision, now, boot))); }
   catch (Exception unrecorded) { call.reject("Nothing was sent.", "unavailable"); }
+ }
+
+ /** Bounded receipt metadata only; drafts and phone numbers never enter this history response. */
+ @PluginMethod public void smsSendHistory(PluginCall call) {
+  if (refused(call)) return;
+  try {
+   JSArray rows = new JSArray();
+   for (SmsSendJournal.Record record : AlphaSms.journal(getContext()).recent(SmsSendJournal.MAX_RECORDS)) rows.put(AlphaSms.result(record));
+   JSObject result = new JSObject(); result.put("receipts", rows); call.resolve(result);
+  } catch (Exception unreadable) { call.reject("The send history could not be read.", "unavailable"); }
  }
 
  /** The journaled result of a reviewed send. Reading never sends. */

@@ -727,6 +727,7 @@ registerView("messages", {
     }
 
     return {
+      nativePrototype: true,
       convos: convos,
       newMsg: function () { api.set({ compose: true, q: "", local: true }); },
       searching: st.sq != null, notSearching: st.sq == null, sq: st.sq || "", hasSq: !!sq, empty: convos.length === 0,

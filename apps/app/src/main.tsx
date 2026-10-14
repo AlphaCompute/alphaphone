@@ -8,6 +8,7 @@ import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-a
 import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
 // Register browser implementations before any runtime module claims plugin identity.
 import './browser/register';
+import { installSmsAdapter } from './prototype/sms-adapter';
 import { installContactsAdapter } from './prototype/contacts-adapter';
 import { admitImageContacts } from './prototype/mvp-features';
 import {DeletionUndo} from './runtime/deletion-undo';
@@ -101,7 +102,7 @@ if (!fixture) {
   installAgentAdapter(Component, VIEWS);
   installReminderAdapter(Component, VIEWS);
   installCalendarAdapter(Component, VIEWS);
-  if(isAndroid)installContactsAdapter(Component,VIEWS);
+  if(isAndroid){installContactsAdapter(Component,VIEWS);installSmsAdapter(Component,VIEWS);}
   installCalendarFormDraftAdapter(Component, VIEWS);
   installCalendarEditDraftAdapter(Component, VIEWS);
   installGoogleCalendarViewAdapter(Component, VIEWS);
