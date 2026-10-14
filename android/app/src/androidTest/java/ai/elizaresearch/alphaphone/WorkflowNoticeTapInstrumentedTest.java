@@ -142,10 +142,17 @@ public final class WorkflowNoticeTapInstrumentedTest {
    String revision=question.getJSONObject("notice").getString("revision");
    assertTrue("A normal open cannot consume an Ask review",call("Capacitor.Plugins.AlphaNotifications.consumeWorkflowTap({token:"+JSONObject.quote(token)+"})").has("error"));
    assertTrue("An old revision cannot consume it",call("Capacitor.Plugins.AlphaNotifications.consumeWorkflowTap({token:"+JSONObject.quote(token)+",noticeRevision:'wrong'})").has("error"));
-   manager.cancel("alpha-workflow-"+id,0);long removed=SystemClock.elapsedRealtime()+5000;while(noticePresent(manager,id)&&SystemClock.elapsedRealtime()<removed)SystemClock.sleep(50);
-   assertFalse("Gone own notice exposes no excerpt",pending(token).has("notice"));
-   assertTrue("Gone notice leaves its tap retained",call("Capacitor.Plugins.AlphaNotifications.consumeWorkflowTap({token:"+JSONObject.quote(token)+",noticeRevision:"+JSONObject.quote(revision)+"})").has("error"));
-   assertEquals(token,WorkflowNoticeTapsFactory.create(context).pending().getString("token"));
+   assertFalse("Explicit Cancel settles the Ask tap without consuming it",call("Capacitor.Plugins.AlphaNotifications.consumeWorkflowTap({token:"+JSONObject.quote(token)+",discard:true})").has("error"));
+   assertFalse("Canceled Ask review does not reopen",WorkflowNoticeTapsFactory.create(context).pending().has("token"));assertTrue("The notice stays usable",noticePresent(manager,id));
+   posted.actions[0].actionIntent.send();assertTrue(pending(token).getBoolean("question"));
+   PendingIntent open=posted.contentIntent,ask=posted.actions[0].actionIntent;new WorkflowNoticePoster(context).cancel(id);
+   assertThrows("Withdrawal revokes the open target",PendingIntent.CanceledException.class,()->open.send());
+   assertThrows("Withdrawal revokes the Ask target",PendingIntent.CanceledException.class,()->ask.send());
+   long removed=SystemClock.elapsedRealtime()+5000;while(noticePresent(manager,id)&&SystemClock.elapsedRealtime()<removed)SystemClock.sleep(50);
+   JSONObject gone=pending(token);assertFalse("Gone own notice exposes no excerpt",gone.has("notice"));assertFalse("Gone notice settles as a plain open tap",gone.has("question"));
+   assertTrue("Its old revision no longer applies",call("Capacitor.Plugins.AlphaNotifications.consumeWorkflowTap({token:"+JSONObject.quote(token)+",noticeRevision:"+JSONObject.quote(revision)+"})").has("error"));
+   assertFalse(call("Capacitor.Plugins.AlphaNotifications.consumeWorkflowTap({token:"+JSONObject.quote(token)+"})").has("error"));
+   assertFalse(WorkflowNoticeTapsFactory.create(context).pending().has("token"));
   }finally{manager.cancel("alpha-workflow-"+id,0);store.removeCredentialSlot(WorkflowNoticeTaps.SLOT);store.removeCredentialSlot(WorkflowNoticeDelivery.SLOT);}
  }
 

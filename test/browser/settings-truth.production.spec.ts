@@ -28,6 +28,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
   const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
   w.Capacitor={
    PluginHeaders:[
+        { name: 'AlphaDeletions', methods: methods(['pending']) },
     {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','notificationHistory','list','open','dismiss','clear','openChannelSettings','openAppSettings','addListener','removeListener'])},
     {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
     {name:'Agent',methods:methods(['getStatus','start','stop','providerStatus'])},
@@ -39,6 +40,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
    ],
    nativeCallback:(plugin:string,method:string,options:any,callback:(value:unknown)=>void)=>{if(method==='addListener'){listeners.push({plugin,event:options?.eventName,callback});return String(listeners.length);}return '0';},
    nativePromise:async(plugin:string,method:string,input:any)=>{
+        if (plugin === 'AlphaDeletions' && method === 'pending') return { deletions: [] };
     w.truth.calls.push({plugin,method,input});
     if(plugin==='AlphaNotifications'){
      if(method==='status')return JSON.parse(JSON.stringify(state.status));

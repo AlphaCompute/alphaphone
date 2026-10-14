@@ -120,7 +120,11 @@ workflow and run under the current agent before offering the editable excerpt re
 Continue rereads the still-posted notice and its revision, consumes only that reviewed
 tap, and fills a conversation draft. Send remains a separate choice. Account changes,
 Home/background transitions, dismissed/replaced notices and sensitive excerpts cannot
-silently insert text.
+silently insert text. Cancel (or Escape/Back) settles the Ask tap natively and returns
+it to untapped, so the review never reopens itself; leaving for Home or the background
+keeps it for the next return. If the step notice is gone when its Ask tap is read (timed
+out, swiped or withdrawn), there is nothing left to review, and the tap opens its run
+like the notice body. Withdrawing a notice revokes both its open and Ask PendingIntents.
 
 This first native action covers workflow **step** notices only. Approval notices retain
 their existing run-review tap; Calendar/reminder and other notice publishers still need

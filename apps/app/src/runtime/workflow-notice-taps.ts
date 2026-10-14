@@ -4,7 +4,8 @@ import type {WorkflowRun,RemoteWorkflow} from './workflow-protocol';
 export interface WorkflowTap extends WorkflowNoticeRoute {token:string;operationId:string;bindingHash:string;retained:boolean;question?:boolean;notice?:{id:string;revision:string;source:string;appLabel:string;title:string;text:string}}
 export interface WorkflowTapNative {
  pendingWorkflowTap():Promise<Partial<WorkflowTap>>;
- consumeWorkflowTap(input:{token:string;noticeRevision?:string}):Promise<void>;
+ /** `discard` returns an explicitly canceled Ask tap to its untapped state; it opens and fills nothing. */
+ consumeWorkflowTap(input:{token:string;noticeRevision?:string;discard?:boolean}):Promise<void>;
  addListener(event:'pendingWorkflowTap',listener:()=>void):Promise<PluginListenerHandle>;
 }
 export interface WorkflowTapBinding {

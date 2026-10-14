@@ -23,6 +23,15 @@ public final class WorkflowNoticeTapsTest {
   check(questionTaps.pending().getString("runId").equals("question-run"));
   questionTaps.capture(questionToken);check(!questionTaps.pending().has("question"));
   questionTaps.capture(questionToken,true);questionTaps.consume(questionToken);questionTaps.capture(questionToken,true);check(questionTaps.pending().length()==0);
+  // A reposted notice rotates its route; a stale Ask purpose never survives into the fresh route.
+  questionTaps.fresh("question");String rotated=questionTaps.token("question");check(!rotated.equals(questionToken));check(!new JSONObject(questionStore.values.get(WorkflowNoticeTaps.SLOT)).getJSONObject("question").has("question"));
+  questionTaps.capture(rotated,true);questionTaps.fresh("question");String reposted=questionTaps.token("question");check(questionTaps.pending().length()==0);
+  questionTaps.capture(reposted,false);check(!questionTaps.pending().has("question"));check(questionTaps.pending().getString("token").equals(reposted));
+  rejects(()->questionTaps.settleQuestion(reposted,true));questionTaps.consume(reposted);
+  // Explicit Cancel returns an Ask tap to untapped; a gone notice keeps it as a plain open tap.
+  questionTaps.fresh("question");String canceled=questionTaps.token("question");questionTaps.capture(canceled,true);questionTaps.settleQuestion(canceled,true);check(questionTaps.pending().length()==0);
+  rejects(()->questionTaps.settleQuestion(canceled,true));questionTaps.capture(canceled,true);questionTaps.settleQuestion(canceled,false);check(questionTaps.pending().getString("token").equals(canceled));check(!questionTaps.pending().has("question"));
+  questionTaps.consume(canceled);check(questionTaps.pending().length()==0);
   // Seed prior durable rows once; exercise both sides of the capacity boundary
   // through production prepare without quadratically revalidating setup rows.
   JSONObject full=new JSONObject(s.values.get(WorkflowNoticeTaps.SLOT));
