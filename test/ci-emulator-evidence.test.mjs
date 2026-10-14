@@ -286,7 +286,8 @@ test('speech candidate check refuses another test, another pin, a missing ABI an
  const run=spawnSync(process.execPath,['scripts/ci/speech-candidate.mjs','check','android/local-speech/requalification/candidate-20261009.json'],{encoding:'utf8'});
  assert.equal(run.status,1,'the committed candidate is from an earlier pin and already ran arm64; it is not this run\'s candidate');
  assert.match(run.stderr,/Speech candidate refused/);
- assert.equal(committed.provenance.canonicalTestSha256,sha(CANONICAL_TEST),'the canonical test is unchanged since that candidate');
+ assert.notEqual(committed.provenance.canonicalTestSha256,sha(CANONICAL_TEST),'Paradee test changes cannot reuse the historical Sherpa candidate');
+ assert.match(run.stderr,/canonical test differs/);
 });
 
 test('speech package holds what ingest reads and reports only what the candidate records',t=>{

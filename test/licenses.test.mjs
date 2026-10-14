@@ -35,7 +35,7 @@ test('the committed notices flag what the product ships today, in the JSON and a
   assert.deepEqual(flagged.mediabunny, ['copyleft-weak']);
   assert.deepEqual(flagged['OpenStreetMap data'], ['share-alike-data']);
   assert.deepEqual(flagged['pdf.js QuickJS sandbox'], ['licence-text-missing-from-package', 'unverified']);
-  assert.deepEqual(flagged['Piper LJSpeech medium voice model (int8)'], ['unverified']);
+  assert.deepEqual(flagged['eSpeak NG (Paradee speech runtime dependency)'], ['copyleft-strong', 'licence-text-missing-from-package']);
   assert.deepEqual(flagged['Denton typeface'], ['proprietary-licence-held-outside-repo']);
   // Packages that ship no licence file carry the canonical text of their declared licence.
   const tr46 = fresh.entries.find(entry => entry.name === 'tr46');
@@ -161,14 +161,14 @@ test('an item with no recorded reason is still listed and flagged; reason files 
   const dir = scratchRoot(t);
   const file = path.join(dir, ALLOWLIST);
   const allowlist = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const piper = result => result.entries.find(entry => entry.name === 'Piper LJSpeech medium voice model (int8)');
-  fs.writeFileSync(file, JSON.stringify({...allowlist, entries: allowlist.entries.filter(entry => !entry.name.startsWith('Piper'))}));
+  const runtime = result => result.entries.find(entry => entry.name === 'On-device elizaOS agent runtime payload');
+  fs.writeFileSync(file, JSON.stringify({...allowlist, entries: allowlist.entries.filter(entry => entry.name !== 'On-device elizaOS agent runtime payload')}));
   let result = collectNotices(dir);
   assert.deepEqual(result.errors, []);
-  assert.ok(result.warnings.some(warning => warning.startsWith('Piper LJSpeech') && warning.includes('no reason recorded')));
-  assert.deepEqual([piper(result).license, piper(result).flags], [UNVERIFIED, ['unverified']]);
-  assert.match(piper(fresh).obligations[0].note, /^The pinned voice model card lists the LJ Speech dataset as public domain/);
-  assert.doesNotMatch(piper(result).obligations[0].note, /LJ Speech/);
+  assert.ok(result.warnings.some(warning => warning.startsWith('On-device elizaOS agent runtime payload') && warning.includes('no reason recorded')));
+  assert.deepEqual([runtime(result).license, runtime(result).flags], [UNVERIFIED, ['unverified']]);
+  assert.match(runtime(fresh).obligations[0].note, /^The staged runtime can ship in standard Android builds/);
+  assert.doesNotMatch(runtime(result).obligations[0].note, /PGlite/);
   fs.writeFileSync(file, JSON.stringify({...allowlist, entries: [...allowlist.entries, {name: 'Removed font', reason: 'no longer shipped anywhere in the product'}]}));
   result = collectNotices(dir);
   assert.deepEqual(result.errors, []);
@@ -231,10 +231,12 @@ test('broken input still fails: a corrupted or missing package manifest is an er
   assert.equal(result.errors.length, 2);
 });
 
-test('generation fails when pinned speech license copies drift from the upstream reference manifest', t => {
-  const dir = scratchRoot(t);
-  fs.appendFileSync(path.join(dir, 'licenses/whisper-MIT.txt'), '\nmodified');
-  assert.ok(collectNotices(dir).errors.some(error => error.includes('licenses/whisper-MIT.txt does not match')));
+test('Paradee notices preserve the eSpeak license and exclude the retired speech runtime', () => {
+  const {entries} = collectNotices(ROOT);
+  const espeak = entries.find(row => row.name.startsWith('eSpeak NG'));
+  assert.equal(espeak.license, 'GPL-3.0-or-later');
+  assert.match(espeak.text, /GNU GENERAL PUBLIC LICENSE/);
+  assert.equal(entries.some(row => row.name.startsWith('Sherpa-ONNX')), false);
 });
 
 function scratchRoot(t, {ownNodeModules = false} = {}) {
