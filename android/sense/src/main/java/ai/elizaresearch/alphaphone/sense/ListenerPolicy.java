@@ -157,12 +157,20 @@ public final class ListenerPolicy {
   * POST_NOTIFICATIONS granted, the app's notifications enabled, the listening channel at least
   * DEFAULT importance and not set to hide on the lock screen. A channel the user lowered to LOW is
   * a "silent" notification, which the lock screen hides when silent notifications are hidden, and
-  * MIN is collapsed, so both count as not visible. Anything else holds listening in
+  * MIN is collapsed, so both count as not visible. The device-wide "show notifications on the lock
+  * screen" setting being off (or unreadable) hides it as well. Anything else holds listening in
   * {@link State#NOTIFICATIONS_REQUIRED}.
+  *
+  * Android sends no broadcast when a channel is lowered or the lock-screen setting changes, so the
+  * running service re-evaluates this at least every {@link #INDICATOR_RECHECK_MS} while it holds the
+  * microphone and before each utterance is recognised.
   */
- public static boolean notificationsVisible(boolean postGranted,boolean appEnabled,int channelImportance,boolean channelHiddenOnLockScreen){
-  return postGranted&&appEnabled&&channelImportance>=IMPORTANCE_DEFAULT&&!channelHiddenOnLockScreen;
+ public static boolean notificationsVisible(boolean postGranted,boolean appEnabled,int channelImportance,boolean channelHiddenOnLockScreen,boolean lockScreenShowsNotifications){
+  return postGranted&&appEnabled&&channelImportance>=IMPORTANCE_DEFAULT&&!channelHiddenOnLockScreen&&lockScreenShowsNotifications;
  }
+
+ /** Longest time the microphone stays open after the indicator silently stops being visible. */
+ public static final long INDICATOR_RECHECK_MS=15_000;
 
  /** The consent screen records consent only when both the microphone and the indicator are allowed. */
  public static boolean consentPermissionsGranted(boolean recordAudio,boolean postNotifications){return recordAudio&&postNotifications;}

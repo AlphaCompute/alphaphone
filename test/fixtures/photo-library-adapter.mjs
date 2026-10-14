@@ -15,7 +15,7 @@ function fakePort(){
   async inspect({id}){const row=state.rows.find(r=>item(r).id===id);if(!row)throw Object.assign(Error('missing'),{code:'LIBRARY_MISSING'});return item(row);},
   async validate({items}){return {...scope(),items:items.map(entry=>({id:entry.id,status:state.rows.some(r=>item(r).id===entry.id)?'current':'missing'}))};},
   async changes(){return {...scope(),...state.changes};},
-  async requestChange(){throw Error('not in this fixture');},async share(){throw Error('not in this fixture');},
+  async requestChange(options){state.changes.requested=(state.changes.requested||0)+1;if(!state.change)throw Error('not in this fixture');return state.change(options);},async share(){throw Error('not in this fixture');},
   async watch({active}){state.watch.push(active);return {active};},
   async addListener(event,listener){state.listeners[event]=listener;return {remove:async()=>{}};},
  };
@@ -97,5 +97,28 @@ const fakeApi=()=>{const store={photos:{album:'device'}};return {store,api:{get:
  await assert.rejects(library.agent.run({type:'photo_library_search'},signal),/not allowed/);
  library.dispose();
  assert.equal(deviceLibraryAgent(),undefined);
+}
+// 5. The adapter reads the real native change contract (PermittedMediaReview): resolved
+//    {status:'complete'|'partial',outcomes:[...]}, rejected LIBRARY_DECLINED / LIBRARY_STALE.
+{
+ const rejection=(message,code)=>()=>{throw Object.assign(Error(message),{code});};
+ for(const [name,change,expected,revalidates] of [
+  ['complete',()=>({status:'complete',outcomes:[{id:'lib:i:3:30',status:'trashed'}]}),/^1 item changed and verified\. /,true],
+  ['partial',()=>({status:'partial',outcomes:[{id:'lib:i:3:30',status:'stale'}]}),/^0 of 1 changes verified; 1 changed elsewhere and was skipped\./,true],
+  ['unverified',()=>({status:'partial',outcomes:[{id:'lib:i:3:30',status:'unverified'}]}),/^0 of 1 changes verified\./,true],
+  ['declined',rejection('Photo change cancelled. No change was dispatched.','LIBRARY_DECLINED'),/^Android review was cancelled\. Nothing changed\. /,false],
+  ['stale',rejection('Selected media changed or is unavailable. Refresh Photos.','LIBRARY_STALE'),/^An item changed before Android review\. Nothing changed; review again\. /,true],
+  ['other',rejection('Finish the current photo review first.','LIBRARY_BUSY'),/^The action could not be completed\./,false],
+ ]){
+  const {state,port}=fakePort(),{api}=fakeApi(),library=createDeviceLibrary(port,()=>true);
+  library.tile(api);library.album({},api);await tick();
+  const signal=new AbortController().signal,search=await library.agent.run({type:'photo_library_search',limit:1},signal);
+  await library.agent.run(lib.validateLibraryOperation({type:'photo_library_review',action:'trash',items:[{id:'lib:i:3:30',revision:search.items[0].revision}]}),signal);
+  state.change=change;let validations=0;const validate=port.validate;port.validate=async options=>{validations++;return validate(options);};
+  library.album({},api).dev.confirm();await tick(10);
+  assert.equal(state.changes.requested,1,name);assert.match(library.album({},api).status,expected,name);
+  assert.equal(validations>0,revalidates,name+' revalidation');
+  library.dispose();
+ }
 }
 console.log('PASS photo library adapter');

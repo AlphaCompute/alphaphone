@@ -25,7 +25,9 @@ import com.getcapacitor.JSObject;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
@@ -38,21 +40,31 @@ final class PermittedMediaCatalog implements AutoCloseable {
  private final ContentResolver resolver;
  private final Handler main=new Handler(Looper.getMainLooper());
  private final AtomicLong epoch=new AtomicLong();
- private final Runnable changed;
+ private final java.util.concurrent.CopyOnWriteArrayList<Runnable> listeners=new java.util.concurrent.CopyOnWriteArrayList<>();
+ /** Views that currently need MediaStore observation (Photos grid, Device library album). */
+ private final java.util.Set<String> watchers=new java.util.HashSet<>();
  private volatile boolean closed,foreground=true;
  private final android.content.BroadcastReceiver screenOff=new android.content.BroadcastReceiver(){@Override public void onReceive(Context c,android.content.Intent intent){invalidate();}};
  private final LinkedHashMap<String,Page> pages=new LinkedHashMap<>();
- private final ContentObserver observer=new ContentObserver(main){@Override public void onChange(boolean selfChange){invalidate();changed.run();}};
+ private final ContentObserver observer=new ContentObserver(main){@Override public void onChange(boolean selfChange){invalidate();for(Runnable listener:listeners)listener.run();}};
  private static final class Page {
   final String snapshot,query,kind;final int bucket;final long before,until;
   Page(String snapshot,String query,String kind,int bucket,long before){this.snapshot=snapshot;this.query=query;this.kind=kind;this.bucket=bucket;this.before=before;until=SystemClock.elapsedRealtime()+120000;}
  }
  private boolean observing;
  PermittedMediaCatalog(Context context,Runnable changed){this(context,true,changed);}
- PermittedMediaCatalog(Context context,boolean active,Runnable changed){this.context=context;this.changed=changed;resolver=context.getContentResolver();
+ PermittedMediaCatalog(Context context,boolean active,Runnable changed){this.context=context;listeners.add(changed);resolver=context.getContentResolver();
 
   androidx.core.content.ContextCompat.registerReceiver(context,screenOff,new android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF),androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);watch(active);}
- synchronized void watch(boolean active){if(active&&!observing&&!closed){resolver.registerContentObserver(MediaStore.AUTHORITY_URI,true,observer);observing=true;}else if(!active&&observing){resolver.unregisterContentObserver(observer);observing=false;}}
+ /** One catalog serves every permitted-media surface; each adds its own change listener. */
+ void addListener(Runnable listener){listeners.add(listener);}
+ synchronized void watch(boolean active){watch("default",active);}
+ /** The MediaStore observer is registered only while at least one view watches. */
+ synchronized void watch(String view,boolean active){
+  if(active&&!closed)watchers.add(view);else watchers.remove(view);
+  boolean wanted=!watchers.isEmpty()&&!closed;
+  if(wanted&&!observing){resolver.registerContentObserver(MediaStore.AUTHORITY_URI,true,observer);observing=true;}else if(!wanted&&observing){resolver.unregisterContentObserver(observer);observing=false;}
+ }
  void foreground(boolean value){foreground=value;invalidate();}
  private String lastReadAccess="";
  private synchronized void checkReadAccess(){String current=access().toString();if(!current.equals(lastReadAccess)){lastReadAccess=current;invalidate();}}
@@ -168,6 +180,26 @@ final class PermittedMediaCatalog implements AutoCloseable {
   unlocked();Bundle args=new Bundle();args.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,"_id=? AND is_pending=0"+(Build.VERSION.SDK_INT>=30&&!includeTrash?" AND is_trashed=0":""));if(Build.VERSION.SDK_INT>=30)args.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,includeTrash?MediaStore.MATCH_INCLUDE:MediaStore.MATCH_EXCLUDE);args.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{Long.toString(key.id)});
   try(Cursor row=query(key.volume,key.video,args)){if(row==null||!row.moveToFirst())throw new SecurityException("Selected media is unavailable");return metadata(row,key.volume,key.video);}
  }
+ /**
+  * Metadata for many album members with one provider query per volume and media type instead of a
+  * fenced read per member. Members that are missing, trashed, unreadable or whose identity changed
+  * are omitted (membership is retained by the caller). The caller's Fence covers consistency.
+  */
+ Map<String,JSObject> albumItems(List<String[]> members)throws Exception{
+  unlocked();List<String> volumes=volumes();Map<String,Map<Long,String[]>> groups=new LinkedHashMap<>();
+  for(String[] member:members){MediaLibraryKey key;try{key=MediaLibraryKey.parse(member[0]);}catch(RuntimeException invalid){continue;}if(!volumes.contains(key.volume))continue;groups.computeIfAbsent(key.volume+"|"+key.video,group->new LinkedHashMap<>()).put(key.id,member);}
+  Map<String,JSObject> result=new HashMap<>();
+  for(Map.Entry<String,Map<Long,String[]>> group:groups.entrySet()){
+   MediaLibraryKey first=MediaLibraryKey.parse(group.getValue().values().iterator().next()[0]);
+   StringBuilder selection=new StringBuilder("is_pending=0"+(Build.VERSION.SDK_INT>=30?" AND is_trashed=0":"")+" AND _id IN (");String[] args=new String[group.getValue().size()];int n=0;
+   for(Long id:group.getValue().keySet()){if(n>0)selection.append(',');selection.append('?');args[n++]=Long.toString(id);}selection.append(')');
+   Bundle query=new Bundle();query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,selection.toString());query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,args);if(Build.VERSION.SDK_INT>=30)query.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_EXCLUDE);
+   try(Cursor rows=query(first.volume,first.video,query)){
+    while(rows.moveToNext()){String[] member=group.getValue().get(rows.getLong(0));if(member==null)continue;JSObject row=metadata(rows,first.volume,first.video);if(member[1].equals(row.getString("identity")))result.put(member[0],row);}
+   }catch(SecurityException revoked){/* This media type is no longer readable: withhold its members. */}
+  }
+  return result;
+ }
  JSObject albumItem(String id,String identity,boolean pixels)throws Exception{
   JSObject row=read(id,null,false);if(!identity.equals(row.getString("identity")))throw new IllegalStateException("Media identity changed");
   if(pixels){row.put("image",thumbnail(MediaLibraryKey.parse(id),240));if(!row.getString("revision").equals(read(id,null,false).getString("revision")))throw new IllegalStateException("Media changed");}return row;
@@ -212,5 +244,5 @@ final class PermittedMediaCatalog implements AutoCloseable {
   JSObject after=inspect(key,true);if(Boolean.TRUE.equals(after.getBoolean(favorite?"favorite":"trashed"))!=desired||!before.getString("identity").equals(after.getString("identity")))throw new IllegalStateException("unverified");
   after.put("status",favorite?(desired?"favorited":"unfavorited"):(desired?"trashed":"restored"));invalidate();return after;
  }
- @Override public void close(){closed=true;invalidate();watch(false);context.unregisterReceiver(screenOff);}
+ @Override public void close(){synchronized(this){closed=true;watchers.clear();}invalidate();watch(false);context.unregisterReceiver(screenOff);}
 }

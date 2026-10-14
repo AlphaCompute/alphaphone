@@ -27,7 +27,9 @@ for(const mode of ['fresh','stale','response-loss','staging-loss','navigate','le
   if(mode==='navigate')await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));
   else await review.getByRole('button',{name:'Delete reminder',exact:true}).click();
  }
- if(['stale','staging-loss','late-stale'].includes(mode))await expect(page.getByText('Deletion is unconfirmed. Check action status in Calendar; no cancellation will be repeated.',{exact:true})).toBeVisible();
+ // A changed selection is refused before admission: definite, never reported as an uncertain outcome.
+ if(mode==='stale'){await expect(page.getByText('This reminder changed. Review it again before deleting.',{exact:true})).toBeVisible();await expect(page.getByText('Deletion is unconfirmed. Check action status in Calendar; no cancellation will be repeated.',{exact:true})).toHaveCount(0);expect(await page.evaluate(()=>(window as any).stages)).toBe(0);}
+ if(['staging-loss','late-stale'].includes(mode))await expect(page.getByText('Deletion is unconfirmed. Check action status in Calendar; no cancellation will be repeated.',{exact:true})).toBeVisible();
  if(['fresh','response-loss','reload-loss'].includes(mode)){
   const panel=page.getByRole('complementary',{name:'Pending deletions'});await expect(panel.getByRole('button',{name:'Undo',exact:true})).toBeVisible();
   expect((await read(page)).reminders[0].status).toBe('scheduled');expect(Object.keys((await read(page)).deletions)).toHaveLength(1);

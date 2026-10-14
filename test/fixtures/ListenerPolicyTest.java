@@ -49,14 +49,16 @@ public final class ListenerPolicyTest {
   check(!ListenerPolicy.foreground(State.NOTIFICATIONS_REQUIRED)&&!ListenerPolicy.holdsMicrophone(State.NOTIFICATIONS_REQUIRED)&&ListenerPolicy.needsAttention(State.NOTIFICATIONS_REQUIRED),"indicator missing holds nothing");
   in.speechUnavailable=true;in.inCall=true;
   check(ListenerPolicy.decide(in,now)==State.NOTIFICATIONS_REQUIRED,"the indicator check precedes every capturing state");
-  check(ListenerPolicy.notificationsVisible(true,true,ListenerPolicy.IMPORTANCE_DEFAULT,false),"granted, enabled, DEFAULT channel, shown on lock screen");
-  check(!ListenerPolicy.notificationsVisible(true,true,ListenerPolicy.IMPORTANCE_LOW,false),"channel lowered to silent (may be hidden on the lock screen)");
-  check(ListenerPolicy.notificationsVisible(true,true,4,false),"higher importance");
-  check(!ListenerPolicy.notificationsVisible(false,true,3,false),"POST_NOTIFICATIONS denied");
-  check(!ListenerPolicy.notificationsVisible(true,false,3,false),"app notifications blocked");
-  check(!ListenerPolicy.notificationsVisible(true,true,ListenerPolicy.IMPORTANCE_NONE,false),"channel blocked");
-  check(!ListenerPolicy.notificationsVisible(true,true,ListenerPolicy.IMPORTANCE_MIN,false),"channel minimised (hidden on the lock screen)");
-  check(!ListenerPolicy.notificationsVisible(true,true,3,true),"channel hidden on the lock screen");
+  check(ListenerPolicy.notificationsVisible(true,true,ListenerPolicy.IMPORTANCE_DEFAULT,false,true),"granted, enabled, DEFAULT channel, shown on lock screen");
+  check(!ListenerPolicy.notificationsVisible(true,true,ListenerPolicy.IMPORTANCE_LOW,false,true),"channel lowered to silent (may be hidden on the lock screen)");
+  check(ListenerPolicy.notificationsVisible(true,true,4,false,true),"higher importance");
+  check(!ListenerPolicy.notificationsVisible(false,true,3,false,true),"POST_NOTIFICATIONS denied");
+  check(!ListenerPolicy.notificationsVisible(true,false,3,false,true),"app notifications blocked");
+  check(!ListenerPolicy.notificationsVisible(true,true,ListenerPolicy.IMPORTANCE_NONE,false,true),"channel blocked");
+  check(!ListenerPolicy.notificationsVisible(true,true,ListenerPolicy.IMPORTANCE_MIN,false,true),"channel minimised (hidden on the lock screen)");
+  check(!ListenerPolicy.notificationsVisible(true,true,3,true,true),"channel hidden on the lock screen");
+  check(!ListenerPolicy.notificationsVisible(true,true,3,false,false),"lock-screen notifications turned off device-wide");
+  check(ListenerPolicy.INDICATOR_RECHECK_MS>0&&ListenerPolicy.INDICATOR_RECHECK_MS<=30_000,"indicator re-checked while capturing");
   check(ListenerPolicy.consentPermissionsGranted(true,true),"consent with both permissions");
   check(!ListenerPolicy.consentPermissionsGranted(true,false)&&!ListenerPolicy.consentPermissionsGranted(false,true),"consent needs microphone and notifications");
   // ---- user switching ----

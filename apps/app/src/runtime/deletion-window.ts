@@ -25,3 +25,7 @@ export function claimDeletion<T>(entry:PendingDeletion<T>,owner:string,clock:Del
 const browserContinuity=crypto.randomUUID();
 /** A new renderer cannot prove continuity of an OS clock while it was absent: review again. */
 export const browserDeletionClock=():DeletionClock=>({continuity:browserContinuity,elapsed:performance.now(),wall:Date.now()});
+
+export const UNDO_TOO_LATE='Undo was too late. The deletion already went ahead; check the item before relying on it.';
+/** Undo is confirmed only by a receipt whose phase is 'undone'; a settled deletion is never shown as kept. */
+export function undoConfirmed(result:unknown){return !!result&&typeof result==='object'&&(result as {phase?:unknown}).phase==='undone';}

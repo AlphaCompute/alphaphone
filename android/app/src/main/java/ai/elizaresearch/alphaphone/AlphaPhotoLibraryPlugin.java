@@ -11,7 +11,8 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /** Agent album facade over the same permission and exact-revision catalog as Photos.
- * It owns no index and never uses URI-only destructive MediaStore requests. */
+ * It uses AlphaPhotos' PermittedMediaCatalog and PermittedMediaReview instances (one epoch, one
+ * observer, one review at a time), owns no index and never uses URI-only destructive requests. */
 @CapacitorPlugin(name="AlphaPhotoLibrary")
 public class AlphaPhotoLibraryPlugin extends Plugin {
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -19,8 +20,10 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  private PermittedMediaReview review;
  private volatile boolean destroyed,watching;
  @Override public void load(){
-  catalog=new PermittedMediaCatalog(getContext(),false,()->{if(watching&&!destroyed)notifyListeners("libraryChanged",new JSObject());});
-  review=new PermittedMediaReview(getBridge(),catalog,worker);
+  AlphaPhotosPlugin photos=(AlphaPhotosPlugin)getBridge().getPlugin("AlphaPhotos").getInstance();
+  catalog=photos.permittedCatalog();review=photos.permittedReview();
+  if(catalog==null||review==null)throw new IllegalStateException("AlphaPhotos must load before AlphaPhotoLibrary");
+  catalog.addListener(()->{if(watching&&!destroyed)notifyListeners("libraryChanged",new JSObject());});
  }
  private interface ReadAction {void run(long ticket);}
  private void submit(PluginCall call,ReadAction action){
@@ -42,7 +45,7 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
  }
  @PluginMethod public void scope(PluginCall call){call.resolve(scopeResult());}
  @PluginMethod public void requestAccess(PluginCall call){((AlphaPhotosPlugin)getBridge().getPlugin("AlphaPhotos").getInstance()).requestLibraryAccess(call);}
- @PluginMethod public void watch(PluginCall call){watching=call.getBoolean("active",false);catalog.watch(watching);JSObject out=new JSObject();out.put("active",watching);call.resolve(out);}
+ @PluginMethod public void watch(PluginCall call){watching=call.getBoolean("active",false)&&!destroyed;catalog.watch("library",watching);JSObject out=new JSObject();out.put("active",watching);call.resolve(out);}
  private JSObject item(JSObject row){row.put("takenAt",row.optLong("date",0L));return row;}
  @PluginMethod public void page(PluginCall call){submit(call,ticket->{
   if(!readable(call))return;
@@ -75,7 +78,9 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
   }catch(Exception unavailable){call.reject("Select current permitted items before review.");}
  });}
  @PluginMethod public void share(PluginCall call){((AlphaPhotosPlugin)getBridge().getPlugin("AlphaPhotos").getInstance()).shareMany(call);}
- @Override protected void handleOnPause(){watching=false;catalog.watch(false);catalog.foreground(false);}
- @Override protected void handleOnResume(){catalog.foreground(true);notifyListeners("scopeChanged",scopeResult());}
- @Override protected void handleOnDestroy(){destroyed=true;watching=false;review.close();catalog.close();worker.shutdown();}
+ // Foreground state and closing belong to AlphaPhotos, which owns the shared catalog and review.
+ @Override protected void handleOnPause(){watching=false;catalog.watch("library",false);}
+ // Posted so AlphaPhotos' own handleOnResume (plugin order is unspecified) has restored foreground first.
+ @Override protected void handleOnResume(){new android.os.Handler(android.os.Looper.getMainLooper()).post(()->{if(!destroyed)notifyListeners("scopeChanged",scopeResult());});}
+ @Override protected void handleOnDestroy(){destroyed=true;watching=false;catalog.watch("library",false);worker.shutdown();}
 }

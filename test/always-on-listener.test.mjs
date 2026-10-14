@@ -87,6 +87,12 @@ test('audio and transcripts stay in RAM and invocation carries no content',()=>{
  assert.match(service,/ListenerPolicy\.callMode\(mode\)/,'ringing pauses');
  assert.match(service,/ListenerPolicy\.playbackSuppressesWake\(/,'speech-capable playback suppresses wake');
  assert.match(service,/ListenerPolicy\.mayInvokeAssistant\(keyguard==null\|\|keyguard\.isKeyguardLocked\(\)\)/,'never invokes behind the keyguard');
+ // A channel lowered to silent/hidden sends no broadcast: the held microphone re-checks the indicator.
+ assert.match(service,/holdsMicrophone\(state\)\)\{startCapture\(\);main\.postDelayed\(indicatorCheck,ListenerPolicy\.INDICATOR_RECHECK_MS\);\}/,'indicator re-checked while the microphone is held');
+ assert.match(service,/if\(!ListenerNotifications\.indicatorVisible\(ListeningService\.this\)\)apply\(\);/,'a hidden indicator converges the service');
+ assert.match(service,/if\(!ListenerNotifications\.indicatorVisible\(this\)\)\{main\.post\(reapply\);return;\}\s*text=local\.transcribe/,'no recognition while the indicator is hidden');
+ assert.match(service,/registerContentObserver\(Settings\.Secure\.getUriFor\(ListenerNotifications\.LOCK_SCREEN_SHOW_NOTIFICATIONS\)/,'observes the device-wide lock-screen notification setting');
+ assert.match(notifications,/lockScreenShowsNotifications\(context\)\);/,'the lock-screen notification setting is a visibility input');
 });
 
 test('the listener is an image-only APK, never part of the standalone or launcher APK',()=>{
