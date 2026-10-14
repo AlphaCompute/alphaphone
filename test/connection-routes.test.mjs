@@ -47,7 +47,14 @@ test('Reset Alpha data records the reset, revokes Cloud keys best effort within 
  assert.match(authenticated,/main\.postDelayed\(reset,REVOCATION_DEADLINE_MS\)/,'a deadline resets even when revocation hangs');
  assert.match(authenticated,/finally\{main\.post\(reset\);\}/,'revocation always ends in the reset');
  assert.match(authenticated,/dispatched\.compareAndSet\(false,true\)/,'the reset is dispatched once');
- assert.match(authenticated,/CloudKeyRevocation\.revoke\(environment,/,'revocation goes through the exact self-revocation policy');
+ assert.match(authenticated,/ResetCloudRevocation\.revoke\(context,REVOCATION_DEADLINE_MS-500\)/,'the live path uses bounded shared revocation');
+ const notice=authenticated.indexOf('showRevocationNotice();');
+ assert.ok(notice>record&&notice<revoke,'a blocking notice covers the revocation window');
+ const shared=readFileSync(resolve(import.meta.dirname,'../android/app/src/main/java/ai/elizaresearch/alphaphone/ResetCloudRevocation.java'),'utf8');
+ assert.match(shared,/CloudKeyRevocation\.revoke\(environment,/,'revocation goes through the exact self-revocation policy');
+ assert.match(shared,/AlphaCredentialStore\.readSlotBeforeAttach\(context,"cloud:"\+environment\)/);
+ const application=readFileSync(resolve(import.meta.dirname,'../android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaApplication.java'),'utf8');
+ assert.match(application,/AlphaDataReset\.pending\(this\)\)\{ResetCloudRevocation\.revoke\(base,ResetCloudRevocation\.PENDING_DEADLINE_MS\);AlphaDataReset\.admitAndExit\(this\);\}/,'interrupted reset revokes before bounded reset admission');
  assert.match(source,/REVOCATION_DEADLINE_MS=8000;/);
 });
 test('production refuses a direct (bring-your-own) provider key before reading it',()=>{
