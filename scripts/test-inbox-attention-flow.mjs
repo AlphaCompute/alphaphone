@@ -52,7 +52,7 @@ function scenario({caps={},accounts=null}={}){
   gmailOperation:async()=>{throw new Error('No receipt');},
  };
  const listeners=new Set(),slots=new Map();
- const controller={getCloudClient:()=>session?{client,sessionId:session,credentialId:'fixture-credential'}:null,getSnapshot:()=>({session:null,cloudAccount:session?{environment:'production',userId:'fixture-owner',sessionId:session}:null}),subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},rejectCloudSession:()=>false,open:()=>{}};
+ const controller={getCloudClient:()=>session?{client,sessionId:session,credentialId:'fixture-credential'}:null,getWorkflowDeviceTarget:()=>({installationId:'device'}),getSnapshot:()=>({session:mailNotices?.agent||null,cloudAccount:session?{environment:'production',userId:'fixture-owner',sessionId:session}:null}),subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},rejectCloudSession:()=>false,open:()=>{}};
  class Shell{constructor(){this.st={q:null,compose:null};this.opened=[];}componentDidMount(){}componentWillUnmount(){}vset(_,p){Object.assign(this.st,p);}openView(view,patch){this.opened.push([view,patch]);}browserNavigateApproved(href){navigations.push(href);return Promise.resolve();}}
  const views={inbox:{state:{}}};
  let selectionCount=0;const files=[{name:'a.txt',mimeType:'text/plain',text:'alpha'},{name:'b.txt',mimeType:'text/plain',text:'bravo'},{name:'c.txt',mimeType:'text/plain',text:'charlie'}];
@@ -61,8 +61,8 @@ function scenario({caps={},accounts=null}={}){
  class FixedDate extends Date{constructor(...a){super(...(a.length?a:[clock]));}static now(){return clock;}}
  const windowFixture={addEventListener(){},removeEventListener(){},dispatchEvent(){return true;},confirm:text=>{confirms.push(text);return confirmAnswer;}};
  const inboxUnsaved=()=>({ready:Promise.resolve(),available:false,conflict:false,error:false,status:'',edit(){},clear:async()=>{},retire(){},resume(){}});
- const mailNotices={tap:null,withdrawals:0,consumed:[],listener:null};
- const sandbox={configureGmailBackground:async()=>{},withdrawGmailBackground:async()=>{mailNotices.withdrawals++;},pendingGmailNotice:async()=>mailNotices.tap,consumeGmailNotice:async token=>{mailNotices.consumed.push(token);mailNotices.tap=null;},onGmailNotice:async fn=>{mailNotices.listener=fn;return {remove:async()=>{}};},prepareMailHtml:()=>{throw Error("HTML uses the rendered browser test");},readGmailAccountChoice,saveGmailAccountChoice,GmailReadAhead,URL,Date:FixedDate,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,reviewMailAttachment,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,safeMailLink,reviewMailContext,validateMailContext,...mailbox,...googleAccounts,...grants,Event,googleConnectionController:{open(){throw Error('Explicit Google authorization not exercised by this read fixture');}},
+ const mailNotices={tap:null,withdrawals:0,consumed:[],listener:null,agent:null,review:null,released:0,drafts:[]};
+ const sandbox={alphaClient:{getState:()=>({context:{sensitive:false}})},reviewOwnNoticeQuestion:options=>{mailNotices.review=options;return ()=>{};},releaseGmailQuestion:async()=>{mailNotices.released++;mailNotices.tap=null;},configureGmailBackground:async()=>{},withdrawGmailBackground:async()=>{mailNotices.withdrawals++;},pendingGmailNotice:async()=>mailNotices.tap,consumeGmailNotice:async token=>{mailNotices.consumed.push(token);mailNotices.tap=null;},onGmailNotice:async fn=>{mailNotices.listener=fn;return {remove:async()=>{}};},prepareMailHtml:()=>{throw Error("HTML uses the rendered browser test");},readGmailAccountChoice,saveGmailAccountChoice,GmailReadAhead,URL,Date:FixedDate,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,reviewMailAttachment,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,safeMailLink,reviewMailContext,validateMailContext,...mailbox,...googleAccounts,...grants,Event,googleConnectionController:{open(){throw Error('Explicit Google authorization not exercised by this read fixture');}},
   registerPlugin:()=>native,crypto:globalThis.crypto,TextEncoder,structuredClone,
   secureConnectionStore:{read:async key=>structuredClone(slots.get(key)??null),compareExchange:async(key,prior,next)=>{if(JSON.stringify(slots.get(key)??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)slots.delete(key);else slots.set(key,structuredClone(next));return {status:'saved'};}},
   connectionController:controller,
@@ -359,4 +359,13 @@ console.log('PASS prepared Gmail reads cancel on hide and invalidate content on 
  t.mailNotices.listener();await t.tick();t.sandbox.document.hidden=true;
  release({token:'paused',grantId:'grant-a',credentialId:'fixture-credential',userId:'fixture-owner',generation:'g'});await t.tick();
  assert.equal(t.mailNotices.consumed.length,0);assert.equal(t.shell.opened.length,0);t.shell.componentWillUnmount();
+}
+
+// Explicit Gmail Ask reads only after tapping and rechecks exact source before draft handoff.
+{
+ const t=await boot();t.mount();await t.tick();let reads=0;t.mailNotices.agent={sessionId:'agent'};
+ t.client.gmailRead=async()=>{reads++;return {message:{id:'mail',threadId:'thread',subject:'Review subject',snippet:'Public snippet'},historyId:'10',bodyText:'BODY MUST NOT ENTER REVIEW',attachments:[]};};
+ t.mailNotices.tap={token:'ask',grantId:'grant-a',credentialId:'fixture-credential',userId:'fixture-owner',generation:'generation',question:true,messageId:'mail',threadId:'thread'};
+ assert.equal(reads,0);t.mailNotices.listener();await t.tick();assert.equal(reads,1);assert.equal(t.mailNotices.review.notice.text,'Public snippet');assert.equal(await t.mailNotices.review.recheck(),true);assert.equal(reads,2);
+ await t.mailNotices.review.release();assert.equal(t.mailNotices.released,1);assert.equal(t.mailNotices.consumed.length,0);t.shell.componentWillUnmount();
 }

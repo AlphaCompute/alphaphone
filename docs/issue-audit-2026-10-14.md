@@ -112,7 +112,8 @@ source and qualified assets; this audit does not establish voice acceptance.
 
 Workflow result Ask already exists; PR472 adds approval/quiet approval Ask. Shared
 [Reminder PR36179](https://github.com/elizaOS/eliza/pull/36179) and its Alpha adapter
-add exact-source reminder review with reusable cancellation. Gmail, hosted result
-and source-renewal publishers are separate follow-ups; navigation progress has no
+add exact-source reminder review with reusable cancellation. The Alpha adapter
+also adds Gmail Ask with explicit current-message checks and subject/snippet review.
+Hosted result and source-renewal publishers are separate follow-ups; navigation progress has no
 qualified immutable question source yet. External Calendar notifications and OS
 DownloadManager notifications are not Alpha-owned publishers. #449 stays open.
