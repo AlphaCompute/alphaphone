@@ -61,7 +61,8 @@ final class AlphaSms {
     public String read() throws IOException {
      try {
       String encrypted = store.readCredentialSlot(slot);
-      if (encrypted != null) { if (legacy.exists() && !legacy.delete()) throw new IOException("Legacy SMS journal could not be removed"); return new JSONObject(encrypted).getString("journal"); }
+      // The encrypted ledger is authoritative once written; a leftover plaintext copy is only removed.
+      if (encrypted != null) { removeLegacy(legacy); return new JSONObject(encrypted).getString("journal"); }
       if (!legacy.exists()) return null;
       String previous = new String(java.nio.file.Files.readAllBytes(legacy.toPath()), java.nio.charset.StandardCharsets.UTF_8);
       // Encrypt before removing the old file; an interrupted migration never loses replay protection.
@@ -72,8 +73,9 @@ final class AlphaSms {
     public void write(String value) throws IOException {
      try {
       store.writeCredentialSlot(slot, new JSONObject().put("journal", value).toString());
-      if (legacy.exists() && !legacy.delete()) throw new IOException("Legacy SMS journal could not be removed");
      } catch (Exception failure) { throw new IOException("SMS journal unavailable", failure); }
+     // After a durable encrypted write, failing to delete the old copy must not read as an unrecorded send.
+     removeLegacy(legacy);
     }
    });
    loaded.reconcile(boot(context), false);
@@ -81,6 +83,7 @@ final class AlphaSms {
   }
   return journal;
  }
+ private static void removeLegacy(File legacy) { if (legacy.exists() && !legacy.delete()) android.util.Log.w("AlphaSms", "Legacy plaintext SMS journal could not be removed yet"); }
  static long boot(Context context) {
   try { return Settings.Global.getInt(context.getContentResolver(), Settings.Global.BOOT_COUNT, -1); }
   catch (RuntimeException unreadable) { return -1; }
