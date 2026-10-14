@@ -159,7 +159,7 @@ public class AlphaBrowserPlugin extends Plugin {
  /** Kept separate from dispatch so resolver changes cannot bypass page/owner checks. */
  private java.util.function.Function<Intent,java.util.List<android.content.pm.ResolveInfo>> externalBrowserResolver =
   intent->getContext().getPackageManager().queryIntentActivities(intent,android.content.pm.PackageManager.MATCH_DEFAULT_ONLY|android.content.pm.PackageManager.GET_RESOLVED_FILTER);
- private static class Tab { BrowserReadingWorld readingWorld; BrowserDownloads.BlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; /** Exact origins of this tab's frame and resource requests (any thread), never sent anywhere. */ final java.util.Set<String> requestOrigins=java.util.concurrent.ConcurrentHashMap.newKeySet(); volatile boolean requestOriginsOverflow; /** Origin of a submitted HTTP sign-in whose result is pending; Save waits for it. */ String authSaveOrigin; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
+ private static class Tab { BrowserReadingWorld readingWorld; BrowserDownloads.BlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; /** Origin of a submitted HTTP sign-in whose result is pending; Save waits for it. */ String authSaveOrigin; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
  /** Credentials stay in the framework/provider and the remote document. No bridge API
   * reads fields or replaces Chromium's frame-specific webDomain metadata. The only addition
   * is the committed top-level origin, which the password provider requires to equal the
@@ -371,7 +371,7 @@ public class AlphaBrowserPlugin extends Plugin {
      if (r.isForMainFrame()) t.pendingMain=target;
      return false;
     }
-    @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) { if (r.isForMainFrame()) t.pendingMain=r.getUrl().toString(); else recordRequestOrigin(t,r.getUrl().toString()); if (r.isForMainFrame() && !safe(r.getUrl().toString())) return new WebResourceResponse("text/plain","UTF-8",new java.io.ByteArrayInputStream(new byte[0])); return null; }
+    @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) { if (r.isForMainFrame()) t.pendingMain=r.getUrl().toString(); if (r.isForMainFrame() && !safe(r.getUrl().toString())) return new WebResourceResponse("text/plain","UTF-8",new java.io.ByteArrayInputStream(new byte[0])); return null; }
     @Override public void onPageStarted(WebView v, String url, Bitmap icon) { if (!safe(url)) { fail(t,"This address type is not supported."); return; } t.url=url; if(t.readingWorld!=null)t.readingWorld.pageStarted(url); loading(t,true); emit(t); }
     @Override public void onPageCommitVisible(WebView v, String url) {
      if (!t.error.isEmpty() || !url.equals(v.getUrl())) return;
@@ -387,7 +387,7 @@ public class AlphaBrowserPlugin extends Plugin {
      // retry links and traffic challenges. Transport/TLS failures remain fatal.
      if (r.isForMainFrame()) { t.httpStatus=response.getStatusCode(); emit(t); }
     }
-    @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) { finishAuthSave(t,null); if(t.readingWorld!=null)t.readingWorld.close(); if(reading!=null)reading.cancel();disableAutofill(t); clearTimeout(t); t.dead=true; t.loading=false; t.committed=false; t.error="Browser renderer stopped. Close this tab and open a new one."; t.frame.removeView(v); v.destroy(); t.message.setText(t.error); t.message.setVisibility(View.VISIBLE); JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("sequence",++sequence); event.put("error",t.error); event.put("loading",false); notifyListeners("stateChanged",event); return true; }
+    @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) { finishAuthSave(t,null); if(t.readingWorld!=null)t.readingWorld.close(); if(reading!=null)reading.cancel();disableAutofill(t); clearTimeout(t); t.dead=true; if(siteDialogTab==t)dismissSiteDialogs(); t.loading=false; t.committed=false; t.error="Browser renderer stopped. Close this tab and open a new one."; t.frame.removeView(v); v.destroy(); t.message.setText(t.error); t.message.setVisibility(View.VISIBLE); JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("sequence",++sequence); event.put("error",t.error); event.put("loading",false); notifyListeners("stateChanged",event); return true; }
    });
    t.web.setWebChromeClient(new WebChromeClient() {
     @Override public void onProgressChanged(WebView v,int p) { if(p==100 && t.committed && t.error.isEmpty()) t.loading=false; syncAutofill(t); emit(t); }
@@ -454,9 +454,9 @@ public class AlphaBrowserPlugin extends Plugin {
  // ---- Site prompts: permissions, HTTP authentication, camera choice -------------
  private boolean promptable(Tab t){return !paused&&!destroyed&&!t.dead&&tabs.get(t.id)==t&&Objects.equals(presentedId,t.id)&&t.error.isEmpty();}
  private void showSiteDialog(Tab t,AlertDialog dialog,Runnable cancel){
-  dismissSiteDialogs();siteDialog=dialog;siteDialogTab=t;siteDialogCancel=cancel;siteDialogAutofill=false;
+  dismissSiteDialogs();siteDialog=dialog;siteDialogTab=t;siteDialogCancel=cancel;siteDialogAutofill=false;siteDialogRevoke=null;
   for(Tab tab:tabs.values())disableAutofill(tab);
-  dialog.setOnDismissListener(d->{if(siteDialog!=dialog)return;Runnable pending=siteDialogCancel;siteDialog=null;siteDialogTab=null;siteDialogCancel=null;siteDialogAutofill=false;if(pending!=null)pending.run();
+  dialog.setOnDismissListener(d->{if(siteDialog!=dialog)return;revokeSiteDialogAutofill();Runnable pending=siteDialogCancel;siteDialog=null;siteDialogTab=null;siteDialogCancel=null;siteDialogAutofill=false;if(pending!=null)pending.run();
    // The overlay is gone: the presented tab may become fillable again.
    Tab shown=presentedId==null?null:tabs.get(presentedId);if(shown!=null&&!shown.dead)syncAutofill(shown);});
   dialog.show();
@@ -467,18 +467,23 @@ public class AlphaBrowserPlugin extends Plugin {
   * offer Save for values the site never accepted. */
  private void dismissSiteDialogs(){
   AlertDialog dialog=siteDialog;if(dialog==null)return;
+  revokeSiteDialogAutofill();
   if(siteDialogAutofill){siteDialogAutofill=false;AutofillManager manager=getActivity().getSystemService(AutofillManager.class);if(manager!=null)manager.cancel();}
   dialog.dismiss();
  }
+ private void revokeSiteDialogAutofill(){Runnable revoke=siteDialogRevoke;siteDialogRevoke=null;if(revoke!=null)revoke.run();}
  /** Whether the open site prompt has Autofill-bound fields (the HTTP sign-in prompt). */
  private boolean siteDialogAutofill;
- private static final int MAX_REQUEST_ORIGINS=256;
- /** Remember which origins this tab's frames and resources contacted, so an HTTP sign-in
-  * challenge from a same-host frame on another port is never bound to the page's origin. */
- private static void recordRequestOrigin(Tab t,String url){
-  String origin=BrowserHttpAuthOrigin.requestOrigin(url);
-  if(origin==null||t.requestOrigins.contains(origin))return;
-  if(t.requestOrigins.size()>=MAX_REQUEST_ORIGINS)t.requestOriginsOverflow=true;else t.requestOrigins.add(origin);
+ /** Revokes the open HTTP sign-in prompt's Autofill binding; runs before any dismissal. */
+ private Runnable siteDialogRevoke;
+ /** Android's standard WebView reports no authenticated challenge origin (see BrowserHttpAuthOrigin). */
+ private final BrowserHttpAuthOrigin.EngineChallengeSource authEngine=BrowserHttpAuthOrigin.STANDARD_WEBVIEW;
+ /** What the browser host sees of tab {@code t} when it receives an HTTP sign-in challenge. */
+ private BrowserHttpAuthOrigin.TabSnapshot authSnapshot(Tab t,String host,String realm){
+  BrowserHttpAuthOrigin.TabSnapshot s=new BrowserHttpAuthOrigin.TabSnapshot();
+  s.reportedHost=host;s.reportedRealm=realm;s.pendingMain=t.pendingMain;s.error=t.error;s.navigation=t.navigation;
+  s.closed=destroyed||t.dead||tabs.get(t.id)!=t;s.paused=paused;s.selected=Objects.equals(presentedId,t.id);s.shown=t.frame.isShown();s.otherPrompt=siteDialog!=null;
+  return s;
  }
  /** Resolve a submitted HTTP sign-in. Save is offered (commit) only when the main frame then
   * commits at the bound origin without an authentication error; every other outcome, including
@@ -597,18 +602,22 @@ public class AlphaBrowserPlugin extends Plugin {
   if(++t.authAttempts>3){handler.cancel();fail(t,"Sign-in failed. Reload to try again.");return;}
   float density=getContext().getResources().getDisplayMetrics().density;int pad=Math.round(20*density);
   android.widget.LinearLayout form=new android.widget.LinearLayout(getActivity());form.setOrientation(android.widget.LinearLayout.VERTICAL);form.setPadding(pad,pad/2,pad,0);
-  // WebView does not authenticate the challenge URL, port or frame. The origin policy
-  // returns null, excluding provider fill/save until the engine supplies that binding.
-  String authOrigin=BrowserHttpAuthAutofill.origin(host,t.pendingMain,t.url,t.committed,t.requestOriginsOverflow?null:t.requestOrigins);
-  android.widget.EditText user=BrowserHttpAuthAutofill.field(getActivity(),authOrigin,false);
-  android.widget.EditText pass=BrowserHttpAuthAutofill.field(getActivity(),authOrigin,true);
+  // Provider fill/save needs the engine's own report of this challenge (exact request origin
+  // after redirects, realm, top-level, validated TLS, this navigation) for the selected, shown
+  // tab. Standard WebView reports none, so the prompt says why fill is off and stays manual.
+  BrowserHttpAuthOrigin.Decision authDecision=BrowserHttpAuthOrigin.bind(authEngine.challenge(host,realm),authSnapshot(t,host,realm));
+  String authOrigin=authDecision.origin;
+  BrowserHttpAuthOrigin.Binding authBinding=authOrigin==null?null:new BrowserHttpAuthOrigin.Binding(authOrigin,t.navigation);
+  java.util.function.BooleanSupplier bound=()->authBinding!=null&&authBinding.admits(authSnapshot(t,host,realm))&&siteDialogTab==t;
+  android.widget.EditText user=BrowserHttpAuthAutofill.field(getActivity(),authOrigin,bound,false);
+  android.widget.EditText pass=BrowserHttpAuthAutofill.field(getActivity(),authOrigin,bound,true);
   form.addView(user);form.addView(pass);
   String label=realm==null?"":realm.replaceAll("[\\x00-\\x1f\\x7f]"," ").trim();if(label.length()>100)label=label.substring(0,100);
   // Name the password manager only when Android has one enabled for Alpha. Whether a third-party
   // provider fills a browser prompt is its own policy, so that case is stated conditionally.
   AutofillManager autofillState=getActivity().getSystemService(AutofillManager.class);
   boolean autofillOn=authOrigin!=null&&autofillState!=null&&autofillState.isEnabled();
-  String managerLine=!autofillOn?"":autofillState.hasEnabledAutofillServices()?" Alpha's password manager can fill it, and offer to save it after the site accepts it, for "+authOrigin+".":" If your password manager supports this browser, it can fill or save it for "+authOrigin+".";
+  String managerLine=authOrigin==null?"\n"+authDecision.refusal:!autofillOn?"":autofillState.hasEnabledAutofillServices()?" Alpha's password manager can fill it, and offer to save it after the site accepts it, for "+authOrigin+".":" If your password manager supports this browser, it can fill or save it for "+authOrigin+".";
   String message=asked+" asks you to sign in."+(label.isEmpty()?"":"\nThe site says: “"+label+"”")+"\nAlpha's browser does not keep this password."+managerLine+(t.authAttempts>1?"\n\nThe previous sign-in was not accepted.":"");
   boolean[] answered={false};
   // The buttons are wired after show() so Sign in can keep the prompt open while the site
@@ -620,6 +629,7 @@ public class AlphaBrowserPlugin extends Plugin {
   // Cancelling the page's own sign-in stops the load; for a resource of an already shown page it only notes it.
   showSiteDialog(t,dialog,()->{if(answered[0])return;handler.cancel();if(tabs.get(t.id)!=t||t.dead)return;if(t.committed)notice(t,"Sign-in was cancelled.");else fail(t,"Sign-in was cancelled. Reload to try again.");});
   siteDialogAutofill=authOrigin!=null;
+  siteDialogRevoke=()->{if(authBinding!=null)authBinding.revoke();BrowserHttpAuthAutofill.exclude(user,pass);};
   dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v->{if(siteDialog==dialog)dismissSiteDialogs();else dialog.dismiss();});
   dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
    if(answered[0]||siteDialog!=dialog)return;answered[0]=true;siteDialogCancel=null;
@@ -628,7 +638,7 @@ public class AlphaBrowserPlugin extends Plugin {
    if(authOrigin==null){user.setText("");pass.setText("");dismissSiteDialogs();handler.proceed(u,p);return;}
    // Keep the fields (and the provider's view of them) until the site answers: Save is offered
    // only after this load commits at authOrigin; a repeated challenge or failure cancels.
-   t.authSaveOrigin=authOrigin;
+   t.authSaveOrigin=authOrigin;authBinding.submitted();
    v.setEnabled(false);dialog.setMessage(message+"\n\nSigning in…");
    handler.proceed(u,p);
   });

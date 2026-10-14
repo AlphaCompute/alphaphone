@@ -432,7 +432,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           const day=(at:number)=>new Date(at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
           page.groups.push(group([{kNav:true,label:'Eliza Cloud account & plan',lbl:'Eliza Cloud account & plan',val:plan.keyExpiring?'Sign-in expiring':plan.plan,hasVal:true,chev:true,noAB:true,go:()=>api.set({page:'cloud-plan'})}]));
           if(state.page==='cloud-plan'){
-            const rows:Bag[]=[info('Account',plan.account??(plan.offline?'Eliza Cloud unreachable':'Not signed in')),info('Plan',plan.plan)];
+            // The agent always runs on this phone; the plan decides only whether Eliza Cloud AI is connected.
+            const rows:Bag[]=[info('Account',plan.account??(plan.offline?'Eliza Cloud unreachable':'Not signed in')),info('Plan',plan.plan),info('Agent','Running on this phone'),info('AI replies',plan.inference)];
             if(plan.endsAt)rows.push(info(plan.status==='active'||plan.status==='trialing'||plan.status==='past_due'?'Plan runs until':'Plan ended',day(plan.endsAt)));
             if(plan.keyExpiresAt)rows.push(info(plan.keyExpiring?'Sign-in expires soon':'Sign-in expires',day(plan.keyExpiresAt)));
             const actions:Bag[]=plan.signedIn?[
@@ -440,7 +441,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
               {kNav:true,label:'Redeem code',lbl:'Redeem code',chev:true,noAB:true,go:()=>connectionController.openPlan()},
               {kNav:true,label:'Manage plan',lbl:'Manage plan',chev:true,noAB:true,go:()=>void connectionController.residentManagePlan()},
               {kNav:true,label:'Sign out',lbl:'Sign out of Eliza Cloud',chev:true,noAB:true,go:()=>void connectionController.cloudSignOut()},
-            ]:plan.offline?[{kNav:true,label:'Check plan again',lbl:'Check plan again',chev:true,noAB:true,go:()=>void connectionController.startLocal()}]
+            ]:plan.offline?[{kNav:true,label:'Check plan again',lbl:'Check plan again',chev:true,noAB:true,go:()=>connectionController.recheckPlanOnReturn()}]
             :[{kNav:true,label:'Sign in with Eliza Cloud',lbl:'Sign in with Eliza Cloud',chev:true,noAB:true,go:()=>void connectionController.residentCloudLogin()}];
             out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Eliza Cloud account & plan',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[group(rows),group(actions)]});
           }

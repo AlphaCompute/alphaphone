@@ -16,7 +16,8 @@ import static org.junit.Assert.*;
  * Alpha draws no shade of its own: the page has no notification layer, Android shows the notice,
  * and the tap reaches the PendingIntent the notice was posted with. The shade is opened with
  * Android's own global action on both flavors; the launcher button is SystemShadeInstrumentedTest's.
- * Emulator evidence only; not AOSP-image or device acceptance.
+ * Needs a test-mocks app build: a production Android build covers Home with the Eliza Cloud sign-in
+ * gate. Emulator evidence only; not AOSP-image or device acceptance.
  */
 @RunWith(AndroidJUnit4.class)
 public class NotificationsInstrumentedTest {
@@ -34,6 +35,7 @@ public class NotificationsInstrumentedTest {
   assertEquals("true",WebViewTestDriver.evaluate(AndroidShade.ALPHA_SHADE_ABSENT));
  }
  @Test public void actualNotificationsAppearAndOpenInAndroidsShade()throws Exception{
+  org.junit.Assume.assumeTrue("Home is reachable without an account only in a test-mocks app build",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();NotificationManager manager=context.getSystemService(NotificationManager.class);
   InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context.getPackageName(),android.Manifest.permission.POST_NOTIFICATIONS);
   ReminderTestAccess.channel(context);String token=java.util.UUID.randomUUID().toString(),title="Synthetic notification "+token,tag="notification-fixture-"+token;
@@ -66,6 +68,7 @@ public class NotificationsInstrumentedTest {
  }
  /** A canceled target must not be confused with a neighboring live notice in SystemUI. */
  @Test public void goneTargetNeverDispatchesOrOpensItsNeighbor()throws Exception{
+  org.junit.Assume.assumeTrue("Home is reachable without an account only in a test-mocks app build",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();NotificationManager manager=context.getSystemService(NotificationManager.class);
   InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context.getPackageName(),android.Manifest.permission.POST_NOTIFICATIONS);
   ReminderTestAccess.channel(context);String token=java.util.UUID.randomUUID().toString(),tag="gone-target-"+token;
